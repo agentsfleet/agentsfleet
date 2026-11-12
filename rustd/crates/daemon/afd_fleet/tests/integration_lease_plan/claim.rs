@@ -15,7 +15,7 @@ const RETAINED: &str = "WITH events AS (INSERT INTO fleet.events \
     event_created_at,posture,provider,model,last_metered_at,fencing_token,lease_expires_at, \
     status,posted_message_count,created_at,updated_at) \
     SELECT uuidv7(),l.runner_id,l.fleet_id,l.workspace_id,l.tenant_id,e.event_id,l.event_created_at, \
-    l.posture,l.provider,l.model,l.last_metered_at,0,l.lease_expires_at,$2,0,now(),now() \
+    l.posture,l.provider,l.model,l.last_metered_at,0,l.lease_expires_at,$2,0,l.created_at,now() \
     FROM runner.leases l CROSS JOIN events e WHERE l.id=$1";
 const FRESH: &str = "WITH ended AS (UPDATE fleet.admissions SET settled_at=now() \
     WHERE fleet_id=$1 RETURNING fleet_id,workspace_id) \
@@ -57,9 +57,12 @@ async fn prior_lease_lookup_probes_the_lease_event_index_for_fresh_and_reclaimed
         }
         let plan = claim_plan(&mut tx, &held.fleet, &held.runner).await;
         // Leases carry the event they ran, so the prior-lease lookup is one
-        // index probe on `runner.leases` by `event_id`, with no `fleet.events` join.
+        // index probe on `runner.leases` by `event_id`, with no `fleet.events`
+        // join. The claim's own insert into `fleet.events` writes; it reads nothing.
         assert!(
-            relation_scans(&plan, "events").is_empty(),
+            relation_scans(&plan, "events")
+                .iter()
+                .all(|node| node["Node Type"] == "ModifyTable"),
             "fresh={fresh}: {plan}"
         );
         let prior = relation_scans(&plan, "leases");
@@ -96,6 +99,9 @@ async fn claim_plan(
     .bind(af_wire::task::TaskState::Ready.as_str())
     .bind(af_wire::task::TaskState::Running.as_str())
     .bind(afd_fleet::task::DECISION_POLICY_PATH)
+    .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
+    .bind(af_core::event::status::RECEIVED)
+    .bind(afd_admission::Producer::Steer.as_str())
     .fetch_one(connection)
     .await
     .expect("prepared production claim plan")

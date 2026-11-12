@@ -21,7 +21,6 @@ CREATE TABLE fleet.task_waits (
     fallback_count INTEGER NOT NULL CHECK (fallback_count >= 0),
     initial_read_at TIMESTAMPTZ(3),
     signalled_at TIMESTAMPTZ(3),
-    observed_signal_at TIMESTAMPTZ(3),
     signal_sequence BIGINT NOT NULL CHECK (signal_sequence >= 0),
     observed_signal_sequence BIGINT NOT NULL CHECK (observed_signal_sequence >= 0),
     claim_id UUID,

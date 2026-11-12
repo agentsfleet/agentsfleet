@@ -38,7 +38,7 @@ fn a_workspace_that_resolves_to_no_tenant_is_refused_terminally() {
     );
 }
 
-/// The refusal carries the label the events table stores, and no detail.
+/// The refusal carries the label the events table stores.
 ///
 /// `failure_label` is what an operator filters a dashboard on, so an empty
 /// one would make these refusals invisible among every other ended event.
@@ -48,11 +48,6 @@ fn the_refusal_carries_the_stored_failure_label() {
 
     assert_eq!(unowned_workspace(&workspace()), Declined::Refuse(expected));
     assert!(!expected.label.is_empty(), "{:?}", expected.label);
-    assert!(
-        expected.detail.is_empty(),
-        "this refusal carries no recovery instruction; an operator fixes the \
-         workspace row, which is not something the wire can tell a runner"
-    );
 }
 
 /// A found payer is the tenant the gates bill.

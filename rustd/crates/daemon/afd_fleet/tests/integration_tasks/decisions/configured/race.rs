@@ -17,11 +17,6 @@ async fn race(case: &Case) {
     let fixture = Decisions::create(case).await;
     expire(case).await;
     let acquired = selected(case).await.expect("enabled source claim");
-    case.held
-        .leases
-        .record_received(&acquired)
-        .await
-        .expect("history before host lock");
     let mut connection = case
         .held
         .fixtures

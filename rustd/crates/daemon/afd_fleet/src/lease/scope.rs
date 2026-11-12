@@ -85,9 +85,6 @@ impl Leases {
             return Ok(None);
         };
 
-        // A stored identifier that is not one is a datastore this daemon cannot
-        // reason about, not a lease that failed to authorise — so it propagates
-        // rather than becoming a `None` a caller would read as "no such lease".
         Ok(Some(MintScope {
             workspace_id: found.workspace_id.clone(),
             fleet_id: found.fleet_id.clone(),

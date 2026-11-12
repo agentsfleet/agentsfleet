@@ -4,7 +4,8 @@ mod queries;
 mod types;
 
 pub use types::{
-    Activity, Aggregate, Boundary, Charge, Filter, Report, Request, Window, dimension,
+    Activity, Aggregate, Boundary, Charge, ChargeBoundary, Filter, Report, Request, Window,
+    dimension,
 };
 
 #[cfg(feature = "test-util")]
@@ -66,7 +67,7 @@ pub(crate) async fn details(
     tenant: &Uuid7,
     work: &WorkKey,
     request: &Request,
-    after: Option<i64>,
+    after: Option<&ChargeBoundary>,
 ) -> Result<Vec<Charge>> {
     let mut connection = database.acquire().await?;
     queries::charges(|statement| statement, tenant, work, request, after)

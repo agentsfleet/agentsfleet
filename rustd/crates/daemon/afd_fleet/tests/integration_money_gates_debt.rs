@@ -47,7 +47,7 @@ async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
     let decided = money_gates(
         &accounts,
         &biller,
-        accounts.payer(&workspace).await,
+        Ok(Some(tenant.clone())),
         request(&workspace, &fleet, &in_debt, &config),
         fixtures.enrolled_at(),
     )
@@ -62,7 +62,7 @@ async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
     let decided = money_gates(
         &accounts,
         &biller,
-        accounts.payer(&workspace).await,
+        Ok(Some(tenant.clone())),
         request(&workspace, &fleet, &repaid, &config),
         fixtures.enrolled_at(),
     )

@@ -110,7 +110,6 @@ impl AuthoringFixture {
                     text: "Review this setup".into(),
                 }],
                 max_output_tokens: 64,
-                supports_compaction: true,
             },
         }
     }

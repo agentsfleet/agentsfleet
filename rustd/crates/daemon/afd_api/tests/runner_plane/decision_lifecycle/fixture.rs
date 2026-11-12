@@ -230,10 +230,6 @@ async fn acquire(
         (&acquired.fleet_id, &acquired.event_id),
         (&owner.fleet, &admitted)
     );
-    leases
-        .record_received(&acquired)
-        .await
-        .expect("native run record");
     let issued = leases
         .issue(
             &runner.id,

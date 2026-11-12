@@ -6,10 +6,6 @@
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
-#![allow(
-    dead_code,
-    reason = "test support: shared by several test binaries, each using a subset"
-)]
 
 use af_core::id::Uuid7;
 use af_wire::runner::{HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
@@ -167,9 +163,4 @@ pub(crate) async fn select_fleet(
         assert_eq!(&acquired.fleet_id, fleet);
     }
     acquired
-}
-
-/// One serving discovery pass, including its unconditional Postgres probe.
-pub(crate) async fn select_once(leases: &Leases, runner: &Uuid7) -> Option<Acquired> {
-    leases.select(runner, &[]).await.expect("serving selection")
 }

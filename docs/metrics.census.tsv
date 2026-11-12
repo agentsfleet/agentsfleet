@@ -35,6 +35,7 @@
 name	kind	number	unit	temporality	labels	bounds	policy	live_read	category	watch_for
 agentsfleet_db_pool_connections	gauge	u64	{connection}	-	role,state	-	fixed:15	yes	saturation	actual open, idle, used, capacity and waiting readings by role
 agentsfleet_db_pool_acquire_duration_seconds	histogram	f64	s	cumulative	role,outcome	0.001,0.005,0.01,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:15	no	latency	whole connection acquisition including stall retry and cancellation
+agentsfleet_db_pool_checkout_pings_total	counter	u64	{ping}	cumulative	role	-	fixed:3	no	saturation	idle connections a checkout tested before handing out, by role: a connection used within PING_AFTER_IDLE goes out untested, so this moves only after a pool sat quiet
 agentsfleet_model_call_duration_seconds	histogram	f64	s	cumulative	gen_ai.request.model,gen_ai.provider.name,outcome	0.01,0.05,0.1,0.25,0.5,1,2,5,10,30,60,120,300	shared:cost	no	latency	individual provider stream duration by model and outcome
 agentsfleet_model_first_token_duration_seconds	histogram	f64	s	cumulative	gen_ai.request.model,gen_ai.provider.name,outcome	0.01,0.05,0.1,0.25,0.5,1,2,5,10,30,60,120	shared:cost	no	latency	first nonempty text; absent for a call with no text
 agentsfleet_model_limit_tokens	gauge	u64	{token}	-	gen_ai.request.model,gen_ai.provider.name,limit	-	shared:cost	yes	saturation	verified context and configured output limits; snapshots expire
@@ -65,23 +66,24 @@ agentsfleet_api_in_flight_requests	gauge	u64	{request}	-	-	-	fixed:1	no	saturati
 agentsfleet_sse_backpressure_rejections_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	streams refused at the cap
 agentsfleet_sse_in_flight_streams	gauge	u64	{stream}	-	-	-	fixed:1	no	saturation	approaching the stream cap
 agentsfleet_sse_dropped_frames_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	slow consumers losing frames
-agentsfleet_sse_hub_reconnects_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	NATS client reconnects; spikes mean broker instability
+agentsfleet_bus_reconnects_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	NATS client reconnects; spikes mean broker instability
 agentsfleet_worker_running	gauge	u64	{worker}	-	-	-	fixed:1	yes	health	0 when the worker should be up
-agentsfleet_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	-	fixed:18	no	errors	telemetry loss counted at the source
-agentsfleet_otel_attribute_omitted_total	counter	u64	1	cumulative	attribute,reason	-	fixed:6	no	health	model attribution gaps (never faked)
+agentsfleet_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	-	fixed:6	no	errors	telemetry loss counted at the source
+agentsfleet_otel_attribute_omitted_total	counter	u64	1	cumulative	attribute,reason	-	fixed:1	no	health	model attribution gaps (never faked)
 agentsfleet_signup_bootstrapped_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: fresh accounts
 agentsfleet_signup_replayed_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: idempotent replays
-agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:5	no	errors	rejected signups per cause
+agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:6	no	errors	rejected signups per cause
 agentsfleet_lease_polls_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	the denominator for the three below
 agentsfleet_lease_poll_candidates_scanned_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = fan-out per poll
 agentsfleet_lease_history_bytes	histogram	f64	By	cumulative	-	0,1024,4096,8192,16384,32768,49152,65536	fixed:1	no	traffic	bytes of earlier turns each chat lease carries; a crowd at 65536 means conversations outgrow the window
 agentsfleet_lease_history_cuts_total	counter	u64	{lease}	cumulative	reason	-	fixed:3	no	traffic	chat leases whose turns a cap cut, by cap: turns means long conversations, text or bytes means large turns
 agentsfleet_lease_held_claims_total	counter	u64	{lease}	cumulative	outcome	-	fixed:2	no	traffic	won claims on a fleet whose runner held its sandbox frozen: holder means the follow-up continued where the last run stopped, other_after_lapse means the hold lapsed or its runner went silent first
+agentsfleet_lease_cache_lookups_total	counter	u64	{lookup}	cumulative	cache,outcome	-	fixed:6	no	traffic	lease-path cache lookups by cache and outcome: misses over lookups is how often a lease still reads or parses what the cache holds; each cache is keyed by a version a statement in the same pass read
 agentsfleet_lease_history_read_failures_total	counter	u64	{lease}	cumulative	-	-	fixed:1	no	errors	chat leases issued without their turns because the thread read failed
 agentsfleet_steer_dispositions_total	counter	u64	{message}	cumulative	outcome	-	fixed:3	no	traffic	accepted steers by where they went: started means a run of its own, folded means a live run took it, queued means it waits its turn
 agentsfleet_lease_folds_total	counter	u64	{message}	cumulative	outcome	-	fixed:2	no	traffic	messages live runs took from their fleets: claimed when a claim took one, settled when a report answered it; claimed above settled means runs ended before reading what they took
 agentsfleet_fleet_runs_started_total	counter	u64	1	cumulative	kind	-	fixed:2	no	traffic	fresh and reclaimed lease starts
-agentsfleet_fleet_delivery_stage_seconds	histogram	f64	s	cumulative	stage	0.05,0.1,0.25,0.5,1,2,5,10,20,40,80,160,320	fixed:7	no	latency	event-to-lease, lease-to-first-chunk, event-to-first-chunk, zombie-to-first-chunk, lease-to-report, report-to-complete and event-to-complete latency; event_to_complete is the chat round trip
+agentsfleet_fleet_delivery_stage_seconds	histogram	f64	s	cumulative	stage	0.05,0.1,0.25,0.5,1,2,5,10,20,40,80,160,320	fixed:7	no	latency	event-to-lease, lease-to-first-chunk, event-to-first-chunk, run-to-first-chunk, lease-to-report, report-to-complete and event-to-complete latency; event_to_complete is the chat round trip
 agentsfleet_fleet_ready_wake_failures_total	counter	u64	1	cumulative	kind	-	fixed:2	no	errors	failed or timed-out publishes and lost notification channels; Postgres polling still discovers the work
 agentsfleet_runner_stream_connect_total	counter	u64	{connection}	cumulative	transport,outcome	-	fixed:20	no	health	every native connection attempt including HTTP/3 failure before HTTP/2 fallback
 agentsfleet_runner_stream_connect_seconds	histogram	f64	s	cumulative	transport,outcome	0.001,0.005,0.01,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:20	no	latency	native connection duration including name resolution verification and cancellation
@@ -99,11 +101,11 @@ agentsfleet_runner_retention_sweep_failures_total	counter	u64	1	cumulative	-	-	f
 agentsfleet_admissions_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	accepted, replayed, refused and over-budget admission attempts
 agentsfleet_admission_backlog	gauge	u64	{row}	-	-	-	fixed:1	no	saturation	unsettled admissions, counted by the fleet census; use max across replicas
 agentsfleet_admission_backlog_oldest_age_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest unsettled admission; absent when the census cannot read Postgres
-agentsfleet_library_stage_duration_seconds_total	counter	f64	s	cumulative	surface,stage	-	fixed:40	no	latency	÷ observations = mean stage cost
-agentsfleet_library_stage_observations_total	counter	u64	1	cumulative	surface,stage	-	fixed:40	no	latency	the denominator above
-agentsfleet_library_read_outcome_total	counter	u64	1	cumulative	surface,outcome	-	fixed:36	no	errors	non-`ok` outcomes per surface
-agentsfleet_library_payload_bytes_total	counter	u64	By	cumulative	surface	-	fixed:4	no	traffic	response bytes per surface
-agentsfleet_library_results_total	counter	u64	1	cumulative	surface	-	fixed:4	no	traffic	rows served per surface
+agentsfleet_library_stage_duration_seconds_total	counter	f64	s	cumulative	surface,stage	-	fixed:4	no	latency	÷ observations = mean stage cost
+agentsfleet_library_stage_observations_total	counter	u64	1	cumulative	surface,stage	-	fixed:4	no	latency	the denominator above
+agentsfleet_library_read_outcome_total	counter	u64	1	cumulative	surface,outcome	-	fixed:16	no	errors	non-`ok` outcomes per surface
+agentsfleet_library_payload_bytes_total	counter	u64	By	cumulative	surface	-	fixed:2	no	traffic	response bytes per surface
+agentsfleet_library_results_total	counter	u64	1	cumulative	surface	-	fixed:2	no	traffic	rows served per surface
 agentsfleet_memory_entries_captured_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	durable-memory write volume
 agentsfleet_memory_push_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	memory writes failing
 agentsfleet_memory_hydration_window_entries	gauge	u64	{entry}	-	-	-	fixed:1	no	saturation	hydration window fill

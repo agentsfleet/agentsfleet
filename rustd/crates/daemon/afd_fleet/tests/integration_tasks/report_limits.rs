@@ -90,10 +90,11 @@ async fn settle(case: &Case, task: DecisionTaskVersion, reason: Option<&str>) {
         .await;
     } else {
         plane
-            .report(
+            .report_with(
                 &case.held.runner,
                 &report,
                 now,
+                None,
                 &mut af_observability::verb_span::VerbClock::untimed(),
             )
             .await
@@ -103,10 +104,11 @@ async fn settle(case: &Case, task: DecisionTaskVersion, reason: Option<&str>) {
     let retained = evidence(case, &id(&task.task_id), reason).await;
     assert_eq!(case.counts().await, (1, 1, 1));
     plane
-        .report(
+        .report_with(
             &case.held.runner,
             &report,
             now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -170,15 +172,18 @@ async fn report_after_preparation_deadline(
         .acquire()
         .await
         .expect("commit barrier");
-    let mut held = connection.begin().await.expect("host authority barrier");
-    let pid: i32 =
-        sqlx::query_scalar("SELECT pg_backend_pid() FROM runner.runners WHERE id=$1 FOR UPDATE")
-            .bind(&case.held.runner)
-            .fetch_one(&mut *held)
-            .await
-            .expect("hold report host row");
+    // The report statement locks the fleet's slot before it measures the
+    // slice; holding the slot holds the report there.
+    let mut held = connection.begin().await.expect("slot barrier");
+    let pid: i32 = sqlx::query_scalar(
+        "SELECT pg_backend_pid() FROM runner.fleet_slots WHERE fleet_id=$1 FOR UPDATE",
+    )
+    .bind(&case.scope.fleet_id)
+    .fetch_one(&mut *held)
+    .await
+    .expect("hold the report's slot row");
     let mut untimed = af_observability::verb_span::VerbClock::untimed();
-    let reporting = plane.report(&case.held.runner, report, now, &mut untimed);
+    let reporting = plane.report_with(&case.held.runner, report, now, None, &mut untimed);
     let release = async {
         observe_report_commit(case, pid).await;
         // Preparation has finished and commit owns the original report. Advance
@@ -215,7 +220,7 @@ async fn observe_report_commit(case: &Case, pid: i32) {
                     .expect("report lock observer"),
             )
             .await
-            .expect("native commit host lock wait");
+            .expect("native commit slot lock wait");
             if blocked {
                 break;
             }
@@ -224,4 +229,92 @@ async fn observe_report_commit(case: &Case, pid: i32) {
     })
     .await
     .expect("report reaches commit after live preparation");
+}
+
+// Value: protects=a stopped task's notice reaches the person when its run
+// answered nothing; fails_when=the notice only rewrites an answer already owed
+// and a run with no text owes none; why_new=the report owes an answer inside
+// its one statement, before the task settlement writes the notice;
+// seam=none; no_claim=the notice's wording.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_notice_is_owed_when_the_run_answered_nothing() {
+    exercise(async |case| {
+        sqlx::query(
+            "UPDATE fleet.admissions SET reply_provider = $2, reply_address = $3 WHERE id = $1",
+        )
+        .bind(&case.held.event_id)
+        .bind(afd_connector::Provider::Slack.id())
+        .bind("C0FIXTURE:1700000000.000100")
+        .execute(
+            &mut *case
+                .held
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("producer"),
+        )
+        .await
+        .expect("the admission asks for its answer on a thread");
+        let task = bind(
+            case,
+            TaskLimits {
+                leases: 1,
+                ..TaskLimits::default()
+            },
+        )
+        .await;
+        let semantic = TaskReport {
+            task,
+            disposition: TaskDisposition::Continue,
+            decision_call_id: None,
+            checkpoint_id: None,
+            covered_input_sequence: 0,
+            effect_watermark: 0,
+        };
+        let report = af_wire::report::ReportRequest {
+            response_text: std::borrow::Cow::Borrowed(""),
+            ..request(case, Some(semantic))
+        };
+        let mut plane = case.held.fixtures.plane();
+        plane.task_reports = Some(Arc::new(case.tasks.clone()));
+        plane
+            .report_with(
+                &case.held.runner,
+                &report,
+                af_core::clock::after(case.held.now, crate::report_seed::SLICE),
+                None,
+                &mut af_observability::verb_span::VerbClock::untimed(),
+            )
+            .await
+            .expect("the report settles");
+
+        let (owed, answered): (Option<String>, String) = sqlx::query_as(
+            "SELECT (SELECT o.answer FROM fleet.obligations o WHERE o.event_id = e.event_id), \
+                    e.response_text FROM fleet.events e WHERE e.event_id = $1",
+        )
+        .bind(&case.held.event_id)
+        .fetch_one(
+            &mut *case
+                .held
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("observer"),
+        )
+        .await
+        .expect("the event reads");
+        assert!(
+            !answered.is_empty(),
+            "the task's notice replaced the empty answer"
+        );
+        assert_eq!(
+            owed.as_deref(),
+            Some(answered.as_str()),
+            "the notice is owed"
+        );
+    })
+    .await;
 }

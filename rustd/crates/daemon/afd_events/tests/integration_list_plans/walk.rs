@@ -43,13 +43,11 @@ impl Scope {
     }
 }
 
-/// Which listing entry point a walk pages through.
+/// Which listing a walk pages through: the whole workspace, or one fleet of it.
 #[derive(Debug, Clone, Copy)]
 enum Listing {
     Fleet,
     Workspace,
-    /// The workspace listing narrowed to one fleet, which runs the fleet texts.
-    WorkspaceDrillDown,
 }
 
 /// The instant of the `nth` pair of walked events.
@@ -87,17 +85,12 @@ async fn listing_page(
     match listing {
         Listing::Fleet => {
             history
-                .page_for_fleet(workspace, fleet, filter, cursor, PAGE)
+                .page_for_workspace(workspace, Some(fleet), filter, cursor, PAGE)
                 .await
         }
         Listing::Workspace => {
             history
                 .page_for_workspace(workspace, None, filter, cursor, PAGE)
-                .await
-        }
-        Listing::WorkspaceDrillDown => {
-            history
-                .page_for_workspace(workspace, Some(fleet), filter, cursor, PAGE)
                 .await
         }
     }
@@ -190,11 +183,7 @@ pub(super) async fn assert_walks(lane: &EventsLane, seeded: &[(Timestamp, Uuid7)
         (filter(Some(SEEDED_ACTOR), Some(since)), recent),
         (filter(Some(OTHER_ACTOR), None), Vec::new()),
     ];
-    let listings = [
-        Listing::Fleet,
-        Listing::Workspace,
-        Listing::WorkspaceDrillDown,
-    ];
+    let listings = [Listing::Fleet, Listing::Workspace];
     for (filter, expected) in &cases {
         for listing in listings {
             let walked = walk_listing(&history, &scope, listing, filter).await;

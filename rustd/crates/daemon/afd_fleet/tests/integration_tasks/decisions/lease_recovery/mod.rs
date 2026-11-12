@@ -64,10 +64,11 @@ async fn changed_setup_blocks_reclaimed_task_without_issuing_another_lease() {
         let task = fixture.bind_goal().await;
         let task_id = id(&task.task_id);
         support::expire(case).await;
-        let acquired = support::claim(case).await;
+        // The setup changes before the reclaim, which reads it in its claim.
         let config = serde_json::json!({"name":"pull-request-repair","x-agentsfleet":{"tools":[],"triggers":[],
             "budget":{"daily_nanos":"900000000"},"decision_policy":super::fixture::policy()}});
         case.held.fixtures.native_config(&case.held.fleet, &config.to_string()).await;
+        let acquired = support::claim(case).await;
         let body = case.held.fixtures.plane().claim_selected(acquired, &case.held.runner, af_core::clock::now()).await.expect("changed authority is a native refusal");
         assert!(body.is_none());
         support::assert_blocked(case, &task_id).await;

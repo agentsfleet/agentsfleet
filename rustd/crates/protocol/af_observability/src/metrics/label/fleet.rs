@@ -2,6 +2,8 @@
 
 use crate::metrics::label::closed_set;
 
+pub use super::lease_cache::{CacheOutcome, LeaseCache};
+
 closed_set! {
     /// Packet counters are cumulative; observers export only the delta.
     StreamPacket {
@@ -163,10 +165,10 @@ closed_set! {
 closed_set! {
     /// Why opening an account from a signup delivery did not happen.
     ///
-    /// Five, and the split is the point: the first four are the delivery being
-    /// wrong and the last is this daemon being unable to act on a delivery that
-    /// was right. An operator seeing a spike needs to know which half, because
-    /// only one of them is theirs to fix.
+    /// Six, and the split is the point: the first four are the delivery being
+    /// wrong and the last two are this daemon being unable to act on a delivery
+    /// that was right. An operator seeing a spike needs to know which half,
+    /// because only one of them is theirs to fix.
     SignupFailure {
         /// The signature did not verify.
         BadSignature => "bad_sig",
@@ -178,6 +180,9 @@ closed_set! {
         UnverifiedEmail => "unverified_email",
         /// The database refused the write.
         DatabaseError => "db_error",
+        /// The account opened, but the identity provider did not take its
+        /// tenant, so the person's next token carries none.
+        WritebackFailed => "writeback_failed",
     }
 }
 
@@ -268,7 +273,7 @@ closed_set! {
         /// Producer event timestamp to first stream frame received by the daemon.
         EventToFirstChunk => "event_to_first_chunk",
         /// Execution invocation to its first safe stream chunk, as the runner measured it.
-        ZombieToFirstChunk => "zombie_to_first_chunk",
+        RunToFirstChunk => "run_to_first_chunk",
         /// Producer event timestamp to the `event_complete` publish: the whole round trip.
         EventToComplete => "event_to_complete",
         /// Lease issue to the report's arrival at the daemon.

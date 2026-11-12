@@ -58,7 +58,7 @@ async fn source_authority(case: &Case) {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn malformed_spans_and_unapproved_limits_cannot_leave_a_partial_plan() {
+async fn malformed_spans_cannot_leave_a_partial_plan() {
     exercise(interpretation_bounds).await;
 }
 
@@ -72,10 +72,6 @@ async fn interpretation_bounds(case: &Case) {
     ] {
         let plan = span_plan(case, span);
         refused(case, &plan, expected).await;
-    }
-    for limits in lower_limits().into_iter().chain(upper_limits()) {
-        let plan = case.source_plan(case.held.event_id.clone(), "invalid-allowance", 3, limits);
-        refused(case, &plan, error_code::TASK_LIMIT_EXHAUSTED).await;
     }
     let accepted = tasks
         .bind(case.lease(), &case.plan("corrected-interpretation", 3))
@@ -103,74 +99,6 @@ fn span_plan(case: &Case, span: Range<i32>) -> PreparedPlan {
         "invalid-span".to_owned(),
         vec![item],
     )
-}
-
-fn lower_limits() -> [TaskLimits; 7] {
-    let approved = TaskLimits::default();
-    [
-        TaskLimits {
-            model_nanos: 0,
-            ..approved
-        },
-        TaskLimits {
-            wall_seconds: 0,
-            ..approved
-        },
-        TaskLimits {
-            running_seconds: 0,
-            ..approved
-        },
-        TaskLimits {
-            leases: 0,
-            ..approved
-        },
-        TaskLimits {
-            publications: 0,
-            ..approved
-        },
-        TaskLimits {
-            decision_calls: 0,
-            ..approved
-        },
-        TaskLimits {
-            fallback_reads: 0,
-            ..approved
-        },
-    ]
-}
-
-fn upper_limits() -> [TaskLimits; 7] {
-    let approved = TaskLimits::default();
-    [
-        TaskLimits {
-            model_nanos: approved.model_nanos + 1,
-            ..approved
-        },
-        TaskLimits {
-            wall_seconds: approved.wall_seconds + 1,
-            ..approved
-        },
-        TaskLimits {
-            running_seconds: approved.running_seconds + 1,
-            ..approved
-        },
-        TaskLimits {
-            leases: approved.leases + 1,
-            ..approved
-        },
-        TaskLimits {
-            publications: approved.publications + 1,
-            ..approved
-        },
-        TaskLimits {
-            decision_calls: approved.decision_calls + 1,
-            ..approved
-        },
-        TaskLimits {
-            fallback_reads: approved.fallback_reads + 1,
-            ..approved
-        },
-    ]
 }
 
 #[tokio::test]

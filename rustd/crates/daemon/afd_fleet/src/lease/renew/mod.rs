@@ -36,12 +36,14 @@ use crate::lease::store::Leases;
 use crate::lease::usage::{self, Pricing};
 use afd_billing::Nanos;
 use afd_billing::biller::Settlement;
-use afd_billing::rates::Posture;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_LOAD: &str = "renew lease load";
 
+mod batch;
 mod extend;
+
+pub use self::batch::{FUNDS_CHECK_TICKS, Renewals, funds_due};
 
 /// The lease a renewal is about, as the row holds it.
 #[derive(Debug, Clone)]
@@ -83,11 +85,6 @@ pub enum Renewed {
     },
     /// Still the live holder, but the hard runtime ceiling is reached.
     MaxRuntime,
-    /// Accounting committed, but task authority stopped during this measurement.
-    Stopped {
-        /// Known usage still settles through the original biller.
-        settlement: Option<Box<Settlement>>,
-    },
     /// The lease is no longer this runner's, or only half the extend applied.
     Lost,
 }
@@ -225,7 +222,7 @@ impl LeaseService {
         };
         let pricing = Pricing::load(
             self.leases.pool(),
-            posture_of(&lease),
+            Pricing::posture_of(&lease.posture)?,
             &lease.provider,
             &lease.model,
             lease_id.as_str(),
@@ -253,13 +250,8 @@ impl LeaseService {
                 settlement,
             } => Ok((expires_at, usage::charged(settlement.as_deref()))),
             Renewed::Cancelled => Err(lease_cancelled()),
-            Renewed::Stopped { .. } | Renewed::Lost => Err(lease_lost()),
+            Renewed::Lost => Err(lease_lost()),
             Renewed::MaxRuntime => Err(lease_max_runtime()),
         }
     }
-}
-
-/// The posture this lease was issued under; see the report's twin.
-pub(super) fn posture_of(lease: &Renewing) -> Posture {
-    Posture::parse(&lease.posture).unwrap_or(Posture::Platform)
 }

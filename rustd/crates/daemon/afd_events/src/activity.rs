@@ -65,7 +65,7 @@ pub async fn record_on(
     fleet: &Uuid7,
     activity: FleetActivity<'_>,
 ) -> Result<Announcement, sqlx::Error> {
-    let (inserted, _id): (bool, Uuid7) = sqlx::query_as(crate::sql::INSERT_FLEET_EVENT)
+    let inserted: bool = sqlx::query_scalar(crate::sql::INSERT_FLEET_EVENT)
         .bind(fleet)
         .bind(None::<&Uuid7>)
         .bind(workspace)

@@ -110,6 +110,10 @@ impl PlatformKeys {
     /// one writes nothing, and the source workspace's foreign key refuses a
     /// workspace with no row. Either leaves the previous default unchanged.
     ///
+    /// A change advances the catalogue version in the same transaction, so a
+    /// platform key cache keyed on it misses on the next claim; a refusal rolls
+    /// back and moves nothing.
+    ///
     /// # Errors
     /// Reports a transaction failure.
     pub async fn set(&self, input: PlatformKeyInput) -> Result<SetPlatformKey> {
@@ -137,6 +141,7 @@ impl PlatformKeys {
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_SET))?;
+        crate::model::bump(&mut transaction, CONTEXT_SET).await?;
         transaction.commit().await.map_err(query(CONTEXT_SET))?;
         Ok(SetPlatformKey::Set(PlatformKey {
             provider: input.provider,
@@ -147,7 +152,8 @@ impl PlatformKeys {
         }))
     }
 
-    /// Deactivates one provider without reading its vault row.
+    /// Deactivates one provider without reading its vault row, advancing the
+    /// catalogue version when a default changed.
     ///
     /// # Errors
     /// Reports a query failure.
@@ -165,6 +171,9 @@ impl PlatformKeys {
             .map_err(query(CONTEXT_DEACTIVATE))?
             .rows_affected()
             != 0;
+        if changed {
+            crate::model::bump(&mut transaction, CONTEXT_DEACTIVATE).await?;
+        }
         transaction
             .commit()
             .await

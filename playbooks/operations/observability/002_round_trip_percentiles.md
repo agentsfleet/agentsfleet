@@ -77,7 +77,7 @@ histogram_quantile(0.95, sum by (le, stage) (rate(agentsfleet_fleet_delivery_sta
 histogram_quantile(0.99, sum by (le, stage) (rate(agentsfleet_fleet_delivery_stage_seconds_bucket[5m])))
 ```
 
-`stage` is `event_to_lease`, `lease_to_first_chunk`, `event_to_first_chunk`, `zombie_to_first_chunk`, `event_to_complete`, `lease_to_report` or `report_to_complete`.
+`stage` is `event_to_lease`, `lease_to_first_chunk`, `event_to_first_chunk`, `run_to_first_chunk`, `event_to_complete`, `lease_to_report` or `report_to_complete`.
 
 ## Options
 

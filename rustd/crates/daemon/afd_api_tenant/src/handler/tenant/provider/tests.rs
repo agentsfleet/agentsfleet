@@ -31,12 +31,6 @@ use super::*;
 /// literal spelled on both sides can drift on one and still read as a pass.
 const DEFAULT_CAP_TOKENS: u32 = 1_000_000;
 
-/// The workspace a seeded default is sourced from.
-fn workspace() -> Uuid7 {
-    Uuid7::parse("019329c5-0000-7000-8000-0000000000b1")
-        .expect("the fixture workspace id is canonical")
-}
-
 /// A tenant's own entry, its credential naming `provider`.
 fn own(provider: Option<&str>) -> OwnModel {
     OwnModel {
@@ -97,9 +91,7 @@ fn should_render_an_entry_whose_credential_names_no_provider_with_the_empty_name
 fn should_compose_a_tenant_without_a_row_from_the_live_default() {
     let fallback = PlatformDefault {
         provider: "anthropic".into(),
-        source_workspace_id: workspace(),
         model: "claude-sonnet-5".into(),
-        base_url: None,
         context_cap_tokens: DEFAULT_CAP_TOKENS,
     };
 

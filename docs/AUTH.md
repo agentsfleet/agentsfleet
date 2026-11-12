@@ -312,9 +312,10 @@ Clerk user.created
   │     5. billing.wallets         the starter grant
   │   commit — four of five is not an account
   │
-  └─► best-effort Clerk writeback  PATCH {CLERK_API_BASE}/users/{subject}/metadata
+  └─► Clerk writeback              PATCH {CLERK_API_BASE}/users/{subject}/metadata
         {tenant_id, scopes}        scopes = signup_owner_claim()
-        failure is logged, never answered with
+        unreachable → 503 UZ-AUTH-004, Svix redelivers, the replay writes it
+        refused credential or unknown subject → logged, answered 200
 ```
 
 **Five rows, one transaction.** A tenant with no wallet answers 500 on every
@@ -338,9 +339,23 @@ deliveries can both pass it. The second trips `uq_users_oidc_subject`
 (`schema/20261108120400_identity_users.sql`), re-reads what the winner committed,
 and answers as a replay. An index holds under concurrency and a read never can.
 
-**The writeback cannot fail the delivery**. The tenant row is already committed. Refusing the delivery would reject an existing account and invite a retry that can only duplicate work.
+**A provider that could not be reached fails the delivery, and the redelivery repairs it.**
 
-A failed writeback is logged with the tenant and the reason; the subject stays out of the log line. The cost is a person whose next token carries no tenant. An operator repairs that from the provider's dashboard, and only if the log gave them something to repair from.
+The tenant row is already committed when the write runs, and a timeout, a 5xx or a 429 answers `503 UZ-AUTH-004`. Svix sends the event again at 5 s, 5 min, 30 min, 2 h, 5 h and 10 h twice. The redelivery takes the replay path, opens nothing new, and writes the tenant back (`an_unreachable_provider_refuses_the_delivery_and_the_redelivery_writes_back`).
+
+A refused credential and an unknown subject are answered 200, because a redelivery cannot change either answer. The first is the operator's `CLERK_SECRET_KEY` to fix, and the second is a person deleted since the event.
+
+Every failed writeback is logged with the tenant and the reason, with the subject kept out of the log line, and counted under `agentsfleet_signup_failed_total{reason="writeback_failed"}`. An account the writeback never reached is repaired by replaying its `user.created` delivery from the provider's webhook dashboard, which takes the same replay path.
+
+**The dashboard waits for the writeback.**
+
+A browser that finished signing up can reach `/` with a token minted before the writeback landed. The workspace list is then refused with `403 UZ-AUTH-022`.
+
+When that refusal meets a token with no tenant, the entry page renders a setup screen. The daemon reads the tenant at the top level or under `metadata.tenant_id`.
+
+The screen mints a fresh token through `user.reload()` every 2 s and re-runs the page. The page redirects once the token carries the tenant. The screen gives up after 90 s (`ui/packages/app/app/(dashboard)/AccountSetup.tsx`).
+
+A token that carries a tenant and still lacks the scope gets the error screen. No wait brings back a scope an operator removed.
 
 **Signup publishes nothing on the bus.** `afd_tenant`, which runs it, does not
 depend on `afd_bus` (`rustd/crates/daemon/afd_tenant/Cargo.toml`). The account
@@ -845,7 +860,15 @@ The runner receives a tenant's `secrets_map` inline in a lease only because `age
 
 **Secret delivery is placement, not a standing grant**. `Principal::Runner` carries no tenant at all, which is the signal that this credential holds no tenant authority.
 
-The same placement model carries the resolved **LLM provider key** (M80_009). `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_reference`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`. It is the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row.
+The same placement model carries the resolved **LLM provider key** (M80_009). `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_observed`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`. A tenant's own key is read every time.
+
+The shared platform key may be held decrypted in daemon memory. The cache keys it by the catalogue version, the secret's id and a digest of the stored ciphertext and endpoint. A replaced key therefore misses.
+
+An entry also ends with the price window it matched, never lives past five minutes, and is zeroed when it drops.
+
+Eviction runs when the replica serves chats, so that bound holds while it does. An idle replica keeps an expired entry until its next chat.
+
+The delivered key is the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row.
 
 A runner receives the billed provider key only because work was placed on it. Inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/daemon/afd_credential/src/provider/resolved.rs`). The serialized lease body is outside that guarantee.
 
@@ -1215,7 +1238,7 @@ Slack reads `x-slack-request-timestamp`; Svix reads `svix-id` and `svix-timestam
 
 For example, a custom trigger declares `{"type":"webhook","source":"acme","credential_name":"acme-signing","verifier":{"scheme":"body-hex-sha256","header":"x-acme-signature"}}`. A Svix sender declares `{"type":"webhook","source":"clerk","credential_name":"clerk-signing","verifier":{"scheme":"svix-v1"}}`.
 
-Save advertises each source's own URL. The former `/v1/webhooks/svix/{fleet_id}` address returns 404.
+Save advertises each source's own URL. The former `/v1/webhooks/svix/{fleet_id}` address is not served: `svix` is refused as a malformed fleet id.
 
 These recipes verify incoming signed deliveries. They do not connect an account, create a vendor subscription, or grant outbound application actions. App-level ingress keeps its platform secret and provider-specific handler.
 

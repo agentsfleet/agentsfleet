@@ -281,7 +281,7 @@ async fn page_since(lane: &EventsLane, since: Since) -> BTreeSet<Uuid7> {
     };
 
     history
-        .page_for_fleet(&lane.workspace, &lane.fleet, &filter, None, MAX_LIMIT)
+        .page_for_workspace(&lane.workspace, Some(&lane.fleet), &filter, None, MAX_LIMIT)
         .await
         .expect("the history read must run")
         .into_iter()

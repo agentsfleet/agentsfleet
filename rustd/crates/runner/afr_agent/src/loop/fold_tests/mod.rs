@@ -38,6 +38,29 @@ async fn a_message_waiting_when_the_run_starts_joins_its_opening_turn() -> crate
     Ok(())
 }
 
+/// The claims one answering run asks for, under a lease whose
+/// `inputs_waiting` is `waiting`.
+async fn answered(waiting: bool) -> crate::Result<Vec<i64>> {
+    let script = Script::new([vec![say("Deployed to staging.")]]);
+    let mut payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    payload.inputs_waiting = waiting;
+    let inbox = Arriving::default();
+    run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
+    Ok(inbox.asked())
+}
+
+// Value: protects=a lease whose claim found nothing waiting skips the ask
+// before its first model call, and asks after the answer; fails_when=the skip
+// never happens, swallows the ask after the answer, or fires on a lease that
+// said true; why_new=that ask moved into the claim;
+// seam=none; no_claim=what the daemon computes, which its claim test proves.
+#[tokio::test]
+async fn first_model_call_skips_the_answered_fold_ask() -> crate::Result<()> {
+    assert_eq!(answered(false).await?, [0], "one ask, after the answer");
+    assert_eq!(answered(true).await?, [0, 0], "before and after");
+    Ok(())
+}
+
 #[tokio::test]
 async fn a_message_sent_while_tools_run_is_read_by_the_next_call() -> crate::Result<()> {
     let script = Script::new([

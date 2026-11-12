@@ -101,8 +101,8 @@ pub(super) async fn assert_settled_once(run: &Scenario) {
         "connection recovery never redispatches this completed turn"
     );
     wait_for_billing(run).await;
-    let lines: Vec<(i64,i64,i64,bool)> = sqlx::query_as("SELECT seq,input_token_count,output_token_count,settled_at IS NOT NULL FROM billing.usage_lines WHERE event_id=$1 AND seq=$2")
-        .bind(&run.event_id).bind(0_i64)
+    let lines: Vec<(i64,i64,i64,bool)> = sqlx::query_as("SELECT seq,input_token_count,output_token_count,settled_at IS NOT NULL FROM billing.usage_lines WHERE event_id=$1 AND seq=$2 AND kind=$3")
+        .bind(&run.event_id).bind(0_i64).bind(af_wire::usage::LineKind::Model.as_str())
         .fetch_all(&mut *run.booted.database.acquire().await.expect("provider receipt observer"))
         .await.expect("real provider receipt");
     assert_eq!(lines, vec![(0, 12000, 4000, true)]);

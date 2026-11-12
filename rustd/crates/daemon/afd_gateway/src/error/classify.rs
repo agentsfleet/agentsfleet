@@ -40,7 +40,6 @@ impl Error {
             | ErrorKind::Protocol
             | ErrorKind::Conversion { .. }
             | ErrorKind::DuplicateStream { .. }
-            | ErrorKind::Header { .. }
             | ErrorKind::Bounds { .. }
             | ErrorKind::Json { .. } => error_code::INVALID_REQUEST,
             ErrorKind::Binding => error_code::AUTH_FORBIDDEN,
@@ -56,7 +55,6 @@ impl Error {
             | ErrorKind::ChannelSend { .. }
             | ErrorKind::Completion { .. }
             | ErrorKind::Timeout { .. }
-            | ErrorKind::Io { .. }
             | ErrorKind::Worker { .. }
             | ErrorKind::Http { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
@@ -73,7 +71,6 @@ impl Error {
             ErrorKind::Protocol | ErrorKind::Conversion { .. } => "The message is not valid for this stream or session state.".into(),
             ErrorKind::Binding => "Attach this kind to the physical connection that authenticated its session.".into(),
             ErrorKind::DuplicateStream { kind } => format!("The {} kind is already attached. Open each kind once.", kind.as_str()).into(),
-            ErrorKind::Header { .. } => "A runner stream header is not valid text.".into(),
             ErrorKind::Identifier { .. } => "The message contains an invalid UUIDv7 identifier.".into(),
             ErrorKind::Bounds { .. } => "The message exceeds the permitted size, entry count or field bounds.".into(),
             ErrorKind::Json { .. } => "The message is not valid JSON for this runner protocol.".into(),
@@ -82,7 +79,7 @@ impl Error {
             ErrorKind::Authority { refusal: Refusal::Superseded } => "Another connection owns this runner. Stop this process to avoid competing connections.".into(),
             ErrorKind::Capacity { .. } => "This daemon has no available stream slots. Retry after the advertised delay.".into(),
             ErrorKind::Timeout { operation, .. } => format!("The stream timed out while {operation}. Retain the last confirmed lease deadline.").into(),
-            ErrorKind::Closed | ErrorKind::ChannelSend { .. } | ErrorKind::Completion { .. } | ErrorKind::Transport { .. } | ErrorKind::Io { .. } => "The connection ended. Reconnect before the last confirmed lease deadline.".into(),
+            ErrorKind::Closed | ErrorKind::ChannelSend { .. } | ErrorKind::Completion { .. } | ErrorKind::Transport { .. } => "The connection ended. Reconnect before the last confirmed lease deadline.".into(),
             ErrorKind::Database { .. } | ErrorKind::Query { .. } => "The database did not confirm the operation. Retain the last confirmed lease deadline.".into(),
             ErrorKind::Bus { .. } => "The notification broker is unavailable. Database recovery remains active.".into(),
             ErrorKind::Worker { .. } => "A session worker stopped. Reconnect before the last confirmed lease deadline.".into(),
@@ -110,7 +107,6 @@ impl Error {
             | ErrorKind::SessionIdentifier { .. }
             | ErrorKind::Binding
             | ErrorKind::DuplicateStream { .. }
-            | ErrorKind::Header { .. }
             | ErrorKind::Identifier { .. }
             | ErrorKind::Bounds { .. }
             | ErrorKind::Json { .. } => false,
@@ -132,7 +128,6 @@ impl Error {
             | ErrorKind::ChannelSend { .. }
             | ErrorKind::Completion { .. }
             | ErrorKind::Timeout { .. }
-            | ErrorKind::Io { .. }
             | ErrorKind::Database { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::Bus { .. }
@@ -152,8 +147,7 @@ impl Error {
             | ErrorKind::UnknownStream
             | ErrorKind::ControlBearerMissing
             | ErrorKind::UnexpectedBearer
-            | ErrorKind::SessionIdentifier { .. }
-            | ErrorKind::Header { .. } => "metadata",
+            | ErrorKind::SessionIdentifier { .. } => "metadata",
             ErrorKind::Protocol
             | ErrorKind::Conversion { .. }
             | ErrorKind::Identifier { .. }
@@ -174,7 +168,6 @@ impl Error {
             ErrorKind::Closed | ErrorKind::ChannelSend { .. } | ErrorKind::Completion { .. } => {
                 "closed"
             }
-            ErrorKind::Io { .. } => "network",
             ErrorKind::Worker { .. } => "worker",
             ErrorKind::Database { .. } | ErrorKind::Query { .. } => "database",
             ErrorKind::Bus { .. } => "broker",

@@ -99,9 +99,6 @@ pub(super) struct Store {
 }
 
 impl CheckpointStore for Store {
-    fn load(&mut self) -> PortFuture<'_, Option<Checkpoint>> {
-        Box::pin(async { Ok(self.checkpoint.clone()) })
-    }
     fn commit(&mut self, expected_generation: u64, checkpoint: Checkpoint) -> PortFuture<'_, ()> {
         Box::pin(async move {
             if self.refuse

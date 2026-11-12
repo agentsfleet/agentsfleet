@@ -13,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 use crate::engine::{AgentEngine as _, AgentRun, Meter, RunOutput};
 use crate::fixture::{Canned, Script};
 use crate::harness::tests::engine;
-use crate::testing::{ContextMemory, Discard};
+use crate::testing::Discard;
 use crate::{Folded, Inbox};
 
 /// Locks `mutex`; a test that panicked holding it leaves its data readable.
@@ -119,7 +119,6 @@ pub(super) async fn run_with(
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,
-            context_checkpoints: &ContextMemory::default(),
             inbox,
             events: &|_frame| {},
             meter: &Meter::default(),

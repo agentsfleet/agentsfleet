@@ -4,7 +4,7 @@ import { request } from "./client";
 import { Instant } from "./decode";
 import { nanosSchema } from "./nanos";
 import { HTTP_METHOD } from "./retry";
-import { BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY } from "./billing-report-values";
+import { BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_CHARGE_KIND, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY } from "./billing-report-values";
 
 export { BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY } from "./billing-report-values";
 
@@ -21,7 +21,7 @@ const Activity = z.object({
   postures: z.array(z.enum(PROVIDER_MODE)),
 });
 const Charge = z.object({
-  id: z.string(), sequence: Count, model: z.string(), posture: z.enum(PROVIDER_MODE),
+  id: z.string(), kind: z.enum(BILLING_CHARGE_KIND), sequence: Count, model: z.string(), posture: z.enum(PROVIDER_MODE),
   charged_nanos: nanosSchema, input_tokens: Count, output_tokens: Count,
   runtime_ms: Count, unpriced_tokens: Count, requested_at: Instant, settled_at: Instant,
 });

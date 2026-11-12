@@ -3,7 +3,7 @@
 use af_wire::{
     decision::DecisionUsage,
     task::DecisionReceipt,
-    usage::{DECISION_SEQ_BASE, UsageLine},
+    usage::{LineKind, UsageLine},
 };
 use afd_billing::{
     Nanos, Posture,
@@ -77,11 +77,9 @@ fn unknown(call: &Call, digest: &str) -> Result<Plan> {
 }
 
 fn known(call: &Call, usage: DecisionUsage, uncached: u32, digest: &str) -> Result<Plan> {
-    let seq = u32::try_from(call.usage_sequence)
-        .ok()
-        .filter(|seq| *seq >= DECISION_SEQ_BASE)
-        .ok_or_else(sequence_corrupt)?;
+    let seq = u32::try_from(call.usage_sequence).map_err(|_range| sequence_corrupt())?;
     let line = UsageLine {
+        kind: LineKind::Decision,
         seq,
         at: call.price_snapshot.0.at,
         input_tokens: uncached,

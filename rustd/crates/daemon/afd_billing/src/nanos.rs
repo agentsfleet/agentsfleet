@@ -117,25 +117,13 @@ mod tests {
 
     use super::{NANOS_PER_USD, Nanos};
 
+    /// A declared ceiling converts to nanos without rounding.
+    ///
+    /// The scale factor's exactness in `f64` is `af_core::money`'s own
+    /// compile-time check; this proves the ceiling arrives in this crate's unit.
     #[test]
-    fn nanos_per_usd_is_exact_in_both_representations() {
-        // The scale factor exists twice — as the integer every ledger amount is
-        // counted in, and as the float a declared ceiling is multiplied by. The
-        // pair is only safe because 10^9 is under 2^53 and therefore exact in
-        // `f64`; this asserts that rather than leaving it to the comment, so a
-        // future change to either literal fails here instead of silently
-        // rounding a tenant's ceiling.
-        // A `const` block, so drift is a BUILD failure rather than a test
-        // failure — the right severity for a scale factor that prices every
-        // ceiling in the product.
-        // Both as `const` blocks, so drift is a BUILD failure rather than a
-        // test failure — the right severity for a scale factor that prices
-        // every ceiling in the product. Exact equality is the claim on the
-        // second: an epsilon comparison would admit the very drift this
-        // catches.
-        const { assert!(NANOS_PER_USD < (1_i64 << 53)) }
-
-        // And a five-dollar daily ceiling is five billion nanos.
+    fn a_declared_ceiling_converts_to_nanos_exactly() {
+        // A five-dollar daily ceiling is five billion nanos.
         assert_eq!(NANOS_PER_USD * 5, 5_000_000_000);
 
         let config = af_fleet_runtime::FleetConfig::stored(
@@ -152,7 +140,6 @@ mod tests {
     fn a_balance_covers_a_cost_it_equals_but_a_ceiling_refuses_one_it_equals() {
         // An arbitrary amount compared against itself; the VALUE is immaterial,
         // the direction of each comparison is the claim.
-        // pin test: literal is the contract
         let amount = Nanos::from_i64(1_000);
         // The credit gate admits a run it can exactly afford...
         assert!(amount.covers(amount));

@@ -22,14 +22,15 @@ pub(super) async fn charge(
     settlement: &Settlement,
 ) -> Result<Receipt> {
     let (work, tenant) = (&settlement.work, &settlement.payer.tenant);
-    let seqs: Vec<i64> = settlement
+    let (kinds, seqs): (Vec<&str>, Vec<i64>) = settlement
         .lines
         .iter()
-        .map(|line| i64::from(line.usage.seq))
-        .collect();
+        .map(|line| (line.usage.kind.as_str(), i64::from(line.usage.seq)))
+        .unzip();
     let charged: Vec<i64> = sqlx::query_scalar(SETTLE_LINES)
         .bind(work.work_type())
         .bind(work.id())
+        .bind(kinds)
         .bind(seqs)
         .fetch_all(&mut *connection)
         .await

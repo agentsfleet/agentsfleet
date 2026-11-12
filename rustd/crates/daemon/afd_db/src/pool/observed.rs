@@ -59,11 +59,7 @@ impl Acquisition {
         Self {
             waiting: Arc::clone(&db.waiting),
             started: Instant::now(),
-            role: match db.role {
-                DbRole::Default => PoolRole::Default,
-                DbRole::Api => PoolRole::Api,
-                DbRole::Migrator => PoolRole::Migrator,
-            },
+            role: pool_role(db.role),
             outcome: AcquireOutcome::Cancelled,
         }
     }
@@ -89,5 +85,14 @@ impl Drop for Acquisition {
             self.outcome,
             self.started.elapsed(),
         );
+    }
+}
+
+/// The metric label for `role`'s pool.
+pub(super) const fn pool_role(role: DbRole) -> PoolRole {
+    match role {
+        DbRole::Default => PoolRole::Default,
+        DbRole::Api => PoolRole::Api,
+        DbRole::Migrator => PoolRole::Migrator,
     }
 }

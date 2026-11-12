@@ -45,7 +45,6 @@ pub(crate) async fn drive(
         mint: &CountingMint::never(),
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,
-        context_checkpoints: &crate::testing::ContextMemory::default(),
         inbox: &crate::testing::NoInbox,
         events: &sink,
         meter: &Meter::default(),
@@ -273,7 +272,6 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
     let stop = CancellationToken::new();
     let mint = CountingMint::never();
     let meter = Meter::default();
-    let context_checkpoints = crate::testing::ContextMemory::default();
     let executor = afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox);
     let run = engine.run(AgentRun {
         recovered_task: None,
@@ -284,7 +282,6 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
         mint: &mint,
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,
-        context_checkpoints: &context_checkpoints,
         inbox: &crate::testing::NoInbox,
         events: &sink,
         meter: &meter,

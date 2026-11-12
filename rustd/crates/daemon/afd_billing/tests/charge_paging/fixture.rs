@@ -19,7 +19,7 @@ pub(super) async fn attempts(db: &Db, tenant: &Uuid7, start: i64, end: i64) {
 /// One settled setup usage line per attempt created at seconds `start..=end`,
 /// as a setup chat's report logs it.
 pub(super) async fn lines(db: &Db, tenant: &Uuid7, start: i64, end: i64) {
-    sqlx::query("INSERT INTO billing.usage_lines(id,work_type,work_id,seq,tenant_id,workspace_id,authoring_attempt_id,provider,model,posture,requested_at,input_token_count,cached_input_token_count,cache_write_token_count,cache_write_5m_token_count,cache_write_1h_token_count,output_token_count,runtime_ms,unpriced_token_count,charged_nanos,settled_at,created_at,updated_at) SELECT id,$4,id,0,tenant_id,workspace_id,id,'setup','setup-model','platform',created_at,23,0,0,0,0,29,31,0,17,created_at,created_at,created_at FROM authoring.attempts WHERE tenant_id=$1 AND created_at BETWEEN to_timestamp($2) AND to_timestamp($3)")
+    sqlx::query("INSERT INTO billing.usage_lines(id,work_type,work_id,seq, kind,tenant_id,workspace_id,authoring_attempt_id,provider,model,posture,requested_at,input_token_count,cached_input_token_count,cache_write_token_count,cache_write_5m_token_count,cache_write_1h_token_count,output_token_count,runtime_ms,unpriced_token_count,charged_nanos,settled_at,created_at,updated_at) SELECT id,$4,id,0, 'model',tenant_id,workspace_id,id,'setup','setup-model','platform',created_at,23,0,0,0,0,29,31,0,17,created_at,created_at,created_at FROM authoring.attempts WHERE tenant_id=$1 AND created_at BETWEEN to_timestamp($2) AND to_timestamp($3)")
         .bind(tenant).bind(start).bind(end).bind(afd_billing::sql::work::AUTHORING_ATTEMPT)
         .execute(&mut *db.acquire().await.unwrap()).await.unwrap();
 }

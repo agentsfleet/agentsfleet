@@ -19,5 +19,5 @@ WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at), timed AS MATERIAL
 )
 UPDATE fleet.tasks t SET used_model_nanos = t.used_model_nanos + (
     SELECT COALESCE(sum(u.charged_nanos), 0) FROM billing.usage_lines u
-    WHERE u.work_type = $4 AND u.work_id = $2 AND u.seq < $5), updated_at = now()
+    WHERE u.work_type = $4 AND u.work_id = $2 AND u.kind = $5), updated_at = now()
 FROM bound WHERE t.id = bound.task_id AND EXISTS (SELECT 1 FROM slot)

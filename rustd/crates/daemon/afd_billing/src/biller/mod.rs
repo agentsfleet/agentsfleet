@@ -10,8 +10,8 @@
 //! implementation of the same trait, held as `Arc<dyn Biller>` (billing §11).
 //!
 //! `billing.usage_lines` records what happened (always ours); a biller moves
-//! money from it. `settle` is idempotent on each line's `(work, seq)`, so a
-//! retried or repeated relay pass never charges twice.
+//! money from it. `settle` is idempotent on each line's `(work, kind, seq)`, so
+//! a retried or repeated relay pass never charges twice.
 
 use af_core::id::Uuid7;
 use jiff::Timestamp;
@@ -23,7 +23,7 @@ pub(crate) mod observed;
 mod outage;
 
 pub use self::observed::Observed;
-pub use self::outage::{OutagePolicy, WithOutagePolicy};
+pub use self::outage::FailOpen;
 
 #[cfg(feature = "test-util")]
 pub mod conformance;
@@ -196,15 +196,14 @@ impl Balance {
 /// Checks funds and charges money for work (billing §11).
 ///
 /// `check` writes nothing; `settle` is idempotent on each line's
-/// `(work, seq)`.
+/// `(work, kind, seq)`.
 #[async_trait::async_trait]
 pub trait Biller: Send + Sync + std::fmt::Debug {
     /// Whether `ask.payer` can fund `ask.next` on top of every line it has
     /// logged and not yet been charged for.
     ///
     /// # Errors
-    /// The biller could not answer. [`WithOutagePolicy`] decides what the work
-    /// does then.
+    /// The biller could not answer. [`FailOpen`] admits the work then.
     async fn check(&self, ask: &Ask) -> Result<Funds>;
 
     /// Charges `settlement`'s lines that were not charged before.

@@ -1,15 +1,15 @@
-//! The billing relay: the only task that moves money. Renewals and reports log
-//! their usage lines and return; every 2 s this task settles those lines
-//! through the daemon's [`Biller`] (billing §11).
+//! The billing relay: the task that settles logged usage. Renewals and reports
+//! log their usage lines and return; every 2 s this task settles those lines
+//! through the daemon's [`Biller`]. The expiry sweeper bills the
+//! last slice of a lease that ended unreported, and its lines settle here.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use af_crypto::entropy::Entropy;
 use afd_billing::biller::Biller;
 use afd_billing::ledger::Resume;
 use afd_db::Db;
-use afd_fleet::lease::billing_sweep::BillingSwept;
+use afd_fleet::lease::billing_sweep::LinesSwept;
 use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _, Tasks};
 use tokio_util::sync::CancellationToken;
 
@@ -42,7 +42,6 @@ const REFUSED: &str = "billing_sweep_refused";
 pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, tasks: Tasks) {
     let database = database.clone();
     let biller: Arc<dyn Biller> = crate::billing::biller(database.clone());
-    let entropy = Entropy::new();
     supervisor.spawn(super::BILLING, async move |stop| {
         let mut decision_cursor = DecisionMaintenanceCursor::default();
         let mut interval = tokio::time::interval(INTERVAL);
@@ -65,11 +64,7 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, tasks: Tasks) {
                 _recovery = tasks.maintain_decisions(&mut decision_cursor) => {},
             }
             lap(&mut ticks, &resume);
-            drain(
-                || sweep_leases(&database, biller.as_ref(), &entropy, &resume),
-                &stop,
-            )
-            .await;
+            drain(|| sweep_leases(&database, biller.as_ref(), &resume), &stop).await;
         }
     });
 }
@@ -94,22 +89,15 @@ async fn drain<F: Future<Output = bool>>(
 
 /// One pass over fleet leases from where the last one stopped, logged at both
 /// ends. Answers whether to run again at once.
-async fn sweep_leases(
-    database: &Db,
-    biller: &dyn Biller,
-    entropy: &Entropy,
-    resume: &Mutex<Option<Resume>>,
-) -> bool {
+async fn sweep_leases(database: &Db, biller: &dyn Biller, resume: &Mutex<Option<Resume>>) -> bool {
     tracing::debug!(
         event = STARTED,
         pass = "leases",
         "billing relay pass starts"
     );
     let after = resume.lock().map_or(None, |at| at.clone());
-    let now = af_core::clock::now();
     let swept =
-        afd_fleet::lease::billing_sweep::sweep(database, biller, entropy, now, after.as_ref())
-            .await;
+        afd_fleet::lease::billing_sweep::settle_lines(database, biller, after.as_ref()).await;
     match swept {
         Ok(swept) => {
             if let Ok(mut at) = resume.lock() {
@@ -149,15 +137,15 @@ fn lap<T>(ticks: &mut u64, resume: &Mutex<Option<T>>) {
 /// A pass that read a whole batch runs again at once, resuming after it, so a
 /// backlog drains at the biller's pace and a batch the biller refused never
 /// holds newer lines. [`DRAIN_PASSES`] bounds the passes one tick makes.
-const fn drains(swept: &BillingSwept) -> bool {
-    swept.lines_full
+const fn drains(swept: &LinesSwept) -> bool {
+    swept.full
 }
 
 /// Logs a lease pass's end. Every pass is one iteration of a 2 s poll, so its
 /// counts log at `debug` (LOG-HOT); a pass the biller refused part of also
 /// warns once, with the first refusal's code, and the next pass retries.
-fn log_moved(swept: &BillingSwept) {
-    let refused = swept.settle_failures + swept.expired_settle_failures;
+fn log_moved(swept: &LinesSwept) {
+    let refused = swept.settle_failures;
     if let (true, Some(code)) = (refused > 0, swept.refused) {
         let error_code = code.as_str();
         tracing::warn!(
@@ -172,8 +160,6 @@ fn log_moved(swept: &BillingSwept) {
         pass = "leases",
         resettled = swept.resettled,
         settle_failures = swept.settle_failures,
-        expired_billed = swept.expired_billed,
-        expired_settle_failures = swept.expired_settle_failures,
         "billing relay pass finished"
     );
 }

@@ -39,11 +39,7 @@ impl LeaseService {
         acquired: &Acquired,
         runner_id: &Uuid7,
     ) -> Result<Step<Installed>> {
-        match self
-            .leases
-            .installed_for_admission(&acquired.fleet_id, Some(&acquired.event_id))
-            .await
-        {
+        match self.leases.installed_claimed(&acquired.opened).await {
             Ok(Some(installed)) => Ok(Step::Go(installed)),
             // The selection pass filters on status, so reaching here with a
             // stopped fleet means an operator paused it in the window between
@@ -84,7 +80,7 @@ impl LeaseService {
         match declined {
             Declined::Await(waiting) => Ok(waited(runner_id, waiting)),
             Declined::Refuse(refusal) => self
-                .refused(acquired, refusal.label, runner_id, refusal.detail)
+                .refused(acquired, refusal.label, runner_id, "")
                 .await
                 .map(|()| Step::Stop),
             Declined::Retry(transient) => {
@@ -109,7 +105,7 @@ impl LeaseService {
     ) -> Result<()> {
         let ended = self
             .leases
-            .block(acquired, Refusal { label, detail: "" })
+            .block(acquired, Refusal::labelled(label))
             .await?;
         if let crate::lease::event::Ended::Now(closed) = ended {
             let publication = self.leases.publish_completion(&closed, None).await;
@@ -229,7 +225,7 @@ impl LeaseService {
         runner_id: &Uuid7,
         reason: &str,
     ) -> Result<()> {
-        let received = self.leases.record_received(acquired).await?;
+        let received = acquired.opened.received;
         if received.delivery == Delivery::First {
             self.leases
                 .publish_received(acquired, received.opened_at, received.counters)

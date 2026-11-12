@@ -37,6 +37,8 @@ pub enum Path {
     Activity,
     /// Settling the run: result, slot release, obligation.
     Report,
+    /// A live run's ask for the messages its fleet received while it works.
+    Fold,
     /// Durable-task reads every verb sends: the lease's task, its generation
     /// and its execution deadline.
     Task,
@@ -51,7 +53,7 @@ pub enum Path {
 
 impl Path {
     /// Every path, in report order.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Claim,
         Self::Gates,
         Self::Pricing,
@@ -60,6 +62,7 @@ impl Path {
         Self::Meter,
         Self::Activity,
         Self::Report,
+        Self::Fold,
         Self::Task,
         Self::Shared,
         Self::Sweep,
@@ -78,6 +81,7 @@ impl Path {
             Self::Meter => "meter",
             Self::Activity => "activity",
             Self::Report => "report",
+            Self::Fold => "fold",
             Self::Task => "task",
             Self::Shared => "shared",
             Self::Sweep => "sweep",
@@ -92,12 +96,43 @@ impl Path {
 /// shortest text that names one product statement. When a statement changes,
 /// its row lands in `other` until its fragment follows.
 const FRAGMENTS: &[(&str, Path)] = &[
-    // Claim: the candidate scan, the slot-and-head claim, and the delivery
-    // that follows it: received event, stamp, admission lock, counters read.
+    // The one-statement paths come first: each embeds text a later,
+    // older entry also matches (the issue insert stamps the host's lease
+    // version; the report writes usage lines and sessions).
+    (
+        "WITH instant AS MATERIALIZED ( SELECT clock_timestamp() AS checked_at ), host AS MATERIALIZED",
+        Path::Issue,
+    ),
+    (
+        "WITH scope AS MATERIALIZED ( SELECT f.id FROM fleet.fleets f JOIN identity.lock_workspace(",
+        Path::Report,
+    ),
+    (
+        "WITH event AS ( UPDATE fleet.events SET response_text",
+        Path::Report,
+    ),
+    (
+        "SET settled_at = clock_timestamp(), parked_at = NULL",
+        Path::Report,
+    ),
+    // The renewal: the host's pre-read, the documents a cold cache reads,
+    // and the batch itself.
+    (
+        "l.cancel_requested_at IS NOT NULL AS cancelled",
+        Path::Meter,
+    ),
+    (
+        "SELECT r.id, r.definition::text AS definition FROM fleet.revisions r WHERE r.id = ANY(",
+        Path::Meter,
+    ),
+    // Fold: `claim_inputs.sql`.
+    ("head.sequence AS head_sequence", Path::Fold),
+    // Claim: the candidate scan, the slot-and-head claim (which
+    // opens the event and stamps delivery itself), the admission lock and
+    // the counters read.
     ("eligible AS MATERIALIZED", Path::Claim),
     ("FOR UPDATE OF s SKIP LOCKED", Path::Claim),
     ("INSERT INTO fleet.events (fleet_id, event_id", Path::Claim),
-    ("UPDATE fleet.admissions SET delivered_at", Path::Claim),
     ("WITH slot AS MATERIALIZED", Path::Claim),
     (
         "SELECT COALESCE((SELECT k.event_count FROM fleet.activity_counters",
@@ -140,7 +175,13 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     ("FROM memory.entries WHERE fleet_id", Path::Issue),
     ("SELECT dek_ciphertext, dek_nonce", Path::Issue),
-    ("WITH held AS ( UPDATE runner.fleet_slots", Path::Issue),
+    // The memory window's role, and the thread's earlier turns a chat lease
+    // carries (`select_thread_finished_before.sql`): both ride the delivery.
+    ("SET LOCAL ROLE memory_runtime", Path::Issue),
+    (
+        "SELECT fleet_id, event_id, workspace_id, actor, event_type, status, token_count, wall_ms, failure_reason",
+        Path::Issue,
+    ),
     // Host: the capacity lock, its census and the lease-type record.
     ("SELECT worker_count, status, degraded_reason", Path::Host),
     (
@@ -148,6 +189,11 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Host,
     ),
     ("UPDATE runner.runners SET lease_version", Path::Host),
+    // The placement choice an offer reads before it claims (`choice.sql`).
+    (
+        "SELECT lease_version, last_lease_type FROM runner.runners",
+        Path::Host,
+    ),
     // Meter.
     (
         "s.fencing_token, s.lease_expires_at FROM runner.fleet_slots s JOIN runner.leases",
@@ -155,21 +201,18 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     ("INSERT INTO billing.usage_lines", Path::Meter),
     (
-        "posture, provider, model, status FROM runner.leases WHERE id",
+        "posture, provider, model, status, cancel_requested_at IS NOT NULL AS cancelled FROM runner.leases WHERE id",
         Path::Meter,
     ),
-    // Activity: authorizing one live-tail post.
-    (
-        "SELECT l.fleet_id AS fleet_id, e.event_id, l.created_at, l.event_created_at",
-        Path::Activity,
-    ),
+    // Activity has no fragment: a session authorizes its lease once, when it
+    // opens, so a live-tail post of a plain chat sends no statement and the
+    // path reads zero. A durable task's progress frame runs
+    // `lease/activity/task_history.sql`, whose text the claim fragments above
+    // already match; the chat drain sends none. A statement a post starts
+    // sending lands in `other`, which every drain reports.
     // Report.
     (
         "UPDATE runner.fleet_slots SET lease_expires_at = clock_timestamp() - interval",
-        Path::Report,
-    ),
-    (
-        "DELETE FROM fleet.tool_calls t USING fleet.events",
         Path::Report,
     ),
     (
@@ -177,15 +220,10 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Report,
     ),
     (
-        "l.tenant_id::text AS tenant_id, e.event_id, e.actor",
+        "l.tenant_id, l.event_id, e.actor, l.posture, l.provider",
         Path::Report,
     ),
     ("WITH closed AS ( UPDATE fleet.events", Path::Report),
-    (
-        "SELECT fleet_id AS fleet_id, event_id, workspace_id AS workspace_id, actor, event_type",
-        Path::Issue,
-    ),
-    ("SELECT COALESCE(sum(input_token_count)", Path::Report),
     (
         "SELECT reply_provider, reply_address FROM fleet.admissions",
         Path::Report,
@@ -202,7 +240,9 @@ const FRAGMENTS: &[(&str, Path)] = &[
         "task_execution_deadline_at) AS execution_deadline",
         Path::Task,
     ),
-    // Shared.
+    // Shared. `set_config(` is the bench's own session-naming statement
+    // (`saturation/sql/name_writer.sql`), classified here so the bench's
+    // bookkeeping does not read as the product's `other`.
     ("SELECT set_config(", Path::Shared),
     ("FOR KEY SHARE OF", Path::Shared),
     ("INSERT INTO fleet.activity_counters", Path::Shared),

@@ -4324,282 +4324,6 @@
         ]
       }
     },
-    "/v1/runners/me/leases/{lease_id}/context-checkpoints/{branch_id}": {
-      "get": {
-        "tags": [
-          "Runners"
-        ],
-        "summary": "Load private run working notes",
-        "description": "Requires the current assignment. Notes belong only to this run branch and are separate from fleet memory.",
-        "operationId": "runner_load_context_checkpoint",
-        "parameters": [
-          {
-            "name": "lease_id",
-            "in": "path",
-            "description": "The run assignment whose current holder may access the notes.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "branch_id",
-            "in": "path",
-            "description": "The root conversation or child conversation within that assignment.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "fencing_token",
-            "in": "query",
-            "description": "The assignment's current token.",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ContextLoaded"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "The resource was not found or is not accessible to you",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The request conflicts with the resource's current state",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "RunnerBearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Runners"
-        ],
-        "summary": "Replace private run working notes",
-        "description": "Publishes a complete validated checkpoint under the current assignment and expected generation. Identical retries acknowledge one write; changed assignments or generations return 409 with superseded.",
-        "operationId": "runner_put_context_checkpoint",
-        "parameters": [
-          {
-            "name": "lease_id",
-            "in": "path",
-            "description": "The run assignment whose current holder may access the notes.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "branch_id",
-            "in": "path",
-            "description": "The root conversation or child conversation within that assignment.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ContextPut"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Checkpoint saved"
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "The resource was not found or is not accessible to you",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The request conflicts with the resource's current state",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "The request body exceeds this endpoint's size limit",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "RunnerBearerAuth": []
-          }
-        ]
-      }
-    },
     "/v1/runners/me/leases/{lease_id}/messages": {
       "post": {
         "tags": [
@@ -20575,6 +20299,7 @@
         "description": "One physically recorded charge in a billed activity.",
         "required": [
           "id",
+          "kind",
           "sequence",
           "model",
           "posture",
@@ -20599,6 +20324,10 @@
             "type": "integer",
             "format": "int64",
             "description": "Recorded input tokens."
+          },
+          "kind": {
+            "type": "string",
+            "description": "What the charge bills: `model` for a model call, `runtime` for sandbox\nrun time, `decision` for a native decision call."
           },
           "model": {
             "type": "string",
@@ -20626,7 +20355,7 @@
           "sequence": {
             "type": "integer",
             "format": "int64",
-            "description": "Position within the activity."
+            "description": "The charge's number within its activity and kind."
           },
           "settled_at": {
             "type": "string",
@@ -20790,6 +20519,7 @@
               "description": "One physically recorded charge in a billed activity.",
               "required": [
                 "id",
+                "kind",
                 "sequence",
                 "model",
                 "posture",
@@ -20814,6 +20544,10 @@
                   "type": "integer",
                   "format": "int64",
                   "description": "Recorded input tokens."
+                },
+                "kind": {
+                  "type": "string",
+                  "description": "What the charge bills: `model` for a model call, `runtime` for sandbox\nrun time, `decision` for a native decision call."
                 },
                 "model": {
                   "type": "string",
@@ -20841,7 +20575,7 @@
                 "sequence": {
                   "type": "integer",
                   "format": "int64",
-                  "description": "Position within the activity."
+                  "description": "The charge's number within its activity and kind."
                 },
                 "settled_at": {
                   "type": "string",
@@ -22564,43 +22298,6 @@
             "minimum": 0
           }
         }
-      },
-      "ContextLoaded": {
-        "type": "object",
-        "description": "No saved notes is an absent field; original history remains available.",
-        "properties": {
-          "checkpoint": {
-            "description": "The private branch's complete checkpoint, when one exists."
-          }
-        },
-        "additionalProperties": false
-      },
-      "ContextPut": {
-        "type": "object",
-        "description": "Replace a branch's complete notes against the generation read before sending.",
-        "required": [
-          "fencing_token",
-          "expected_generation",
-          "checkpoint"
-        ],
-        "properties": {
-          "checkpoint": {
-            "description": "Closed, bounded checkpoint document validated by the shared engine."
-          },
-          "expected_generation": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Generation observed before the summary call, zero on first publication.",
-            "minimum": 0
-          },
-          "fencing_token": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The current assignment token.",
-            "minimum": 0
-          }
-        },
-        "additionalProperties": false
       },
       "Conversation_Value_Value": {
         "type": "object",
@@ -27341,19 +27038,19 @@
           "lease_id",
           "fencing_token",
           "lease_expires_at",
-          "secret_delivery",
           "event",
           "policy",
           "instructions",
           "history",
-          "resume_hold"
+          "resume_hold",
+          "inputs_waiting"
         ],
         "properties": {
           "decision": {
             "oneOf": [
               {
                 "$ref": "#/components/schemas/DecisionAssignment",
-                "description": "Reviewed runner decision selection frozen at issue; no provider key.\nAbsent on older leases or hosts without an enabled reviewed selection."
+                "description": "Reviewed runner decision selection frozen at issue; no provider key.\nAbsent on hosts without an enabled reviewed selection."
               },
               {
                 "type": "null"
@@ -27368,14 +27065,6 @@
             "$ref": "#/components/schemas/EventEnvelope",
             "description": "The event to run."
           },
-          "execution_deadline": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Immutable native runtime ceiling, including a bound task's shorter slice.\nAbsent on older daemons; task work must not guess this deadline."
-          },
           "fencing_token": {
             "type": "integer",
             "format": "int64",
@@ -27389,6 +27078,10 @@
             },
             "description": "The fleet's earlier turns, oldest first, ahead of this event; empty\nunless the event is a chat message."
           },
+          "inputs_waiting": {
+            "type": "boolean",
+            "description": "Whether a later message waited in the run's conversation when the\ndaemon claimed it. False lets the run skip its first fold ask; a\nmessage that lands after the claim folds on the ask after the answer."
+          },
           "instructions": {
             "type": "string",
             "description": "The installed fleet's behaviour prose, so the sandboxed turn runs the\ninstalled behaviour rather than a generic one. Soft reasoning input —\nhard tool and secret policy stays in `policy`."
@@ -27401,17 +27094,6 @@
           "lease_id": {
             "type": "string",
             "description": "Identifier for this lease."
-          },
-          "limits": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/SandboxLimits",
-                "description": "The sandbox to run in; null uses this runner's configured defaults."
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "memory": {
             "oneOf": [
@@ -27433,10 +27115,6 @@
           "resume_hold": {
             "type": "boolean",
             "description": "True when the runner can reuse its latest held sandbox for a new event. Reassigned\nevents and expired or outdated sandboxes require a fresh sandbox."
-          },
-          "secret_delivery": {
-            "$ref": "#/components/schemas/SecretDelivery",
-            "description": "How secrets reached this run."
           },
           "task": {
             "oneOf": [
@@ -30349,38 +30027,6 @@
         },
         "additionalProperties": false
       },
-      "SandboxLimits": {
-        "type": "object",
-        "description": "Required sandbox resources. The runner refuses values outside the published limits.\nWhether the host has enough capacity is checked separately.",
-        "required": [
-          "cpu_millis",
-          "memory_bytes",
-          "disk_bytes"
-        ],
-        "properties": {
-          "cpu_millis": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Processor share, in thousandths of one core.",
-            "maximum": 32000,
-            "minimum": 250
-          },
-          "disk_bytes": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The workspace disk's size, in bytes.",
-            "maximum": 274877906944,
-            "minimum": 1073741824
-          },
-          "memory_bytes": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Memory, in bytes.",
-            "maximum": 68719476736,
-            "minimum": 268435456
-          }
-        }
-      },
       "SandboxTier": {
         "type": "string",
         "description": "The isolation strength assigned to a runner.",
@@ -30674,15 +30320,6 @@
             "description": "The zone that expression is read in. Absent means UTC."
           }
         }
-      },
-      "SecretDelivery": {
-        "type": "string",
-        "description": "How tenant secrets reach the runner.",
-        "enum": [
-          "inline",
-          "scoped",
-          "proxy"
-        ]
       },
       "SecretSummary": {
         "type": "object",

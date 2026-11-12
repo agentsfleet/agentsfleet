@@ -11,8 +11,8 @@
 //!
 //! # Why the enum nests
 //!
-//! Eighty-one variants in one flat list is a thing nobody reads and therefore
-//! nobody reviews. Grouping by family — the ten modules beside this one — keeps
+//! More than a hundred variants in one flat list is a thing nobody reads and
+//! therefore nobody reviews. Grouping by family — the ten modules beside this one — keeps
 //! each file to a surface a person can hold, and rustc stays exhaustive at BOTH
 //! levels: a new family and a new route within a family each fail the build
 //! until matched.
@@ -61,7 +61,7 @@ pub use self::verb::Verb;
 pub use self::webhook::WebhookRoute;
 pub use self::workspace::WorkspaceRoute;
 
-/// The five facts that used to live in four files and 165 handler bodies.
+/// The five facts every route declares once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RouteMeta {
     /// What must be presented before a handler runs.
@@ -119,11 +119,10 @@ impl RouteMeta {
 /// spells `{workspace_id}` and one that is not does not. Deriving it means the
 /// two cannot disagree — there is no second place for the fact to live.
 ///
-/// The operator plane's fleet-addressed routes (`/v1/fleets/{fleet_id}/…`)
-/// resolve their workspace through the fleet row instead, which is a different
-/// statement and a different verdict. They arrive with M179 and will add a
-/// variant here; until then no route in the table needs one, so declaring it
-/// now would be a branch nothing can reach.
+/// A fleet-addressed operator route (`/v1/fleets/{fleet_id}/…`) would resolve
+/// its workspace through the fleet row instead, which is a different statement
+/// and a different verdict, and would add a variant here. No such route exists,
+/// so declaring the variant now would be a branch nothing can reach.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ownership {
     /// Nothing in the path names a tenant-owned object.
@@ -209,8 +208,6 @@ pub enum Guard {
     WebhookHmac,
     /// The per-fleet webhook signature header.
     WebhookSignature,
-    /// A Svix-signed delivery.
-    Svix,
     /// A delivery the handler verifies by its payload signature, because the
     /// secret it needs is looked up per provider or per deployment and the
     /// layer cannot hold it. The layer classifies no plane, exactly as for

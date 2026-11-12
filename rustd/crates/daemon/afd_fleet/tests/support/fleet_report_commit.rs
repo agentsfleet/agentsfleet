@@ -5,10 +5,6 @@
 //! files — one proves the four writes commit together, the other proves an
 //! empty claim commits none of them — while the fixture between them is the
 //! same run reported the same way.
-#![allow(
-    dead_code,
-    reason = "test support: shared by several test binaries, each using a subset"
-)]
 
 use af_core::id::Uuid7;
 use afd_fleet::lease::usage::Pricing;

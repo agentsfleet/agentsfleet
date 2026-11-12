@@ -131,14 +131,10 @@ async fn assert_delivery_receipts(
         .expect("claim")
         .expect("work");
     assert_eq!(&acquired.event_id, admission);
-    let first = leases
-        .record_received(&acquired)
-        .await
-        .expect("first delivery");
-    let again = leases
-        .record_received(&acquired)
-        .await
-        .expect("repeat delivery");
-    assert_eq!(first.delivery, afd_fleet::lease::Delivery::First);
-    assert_eq!(again.delivery, afd_fleet::lease::Delivery::Repeat);
+    // The claim statement opened the event row, so its first claim answers a
+    // first delivery.
+    assert_eq!(
+        acquired.opened.received.delivery,
+        afd_fleet::lease::Delivery::First
+    );
 }

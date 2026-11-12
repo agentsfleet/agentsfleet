@@ -49,6 +49,11 @@ const REPORT_P95_MS: &str = "drain_report_p95_ms";
 /// Measurement key: statements per lease across offer, native exchanges and completion.
 const STATEMENTS_PER_LEASE: &str = "drain_statements_per_lease";
 
+/// Measurement key: the share of leases that arrived with their memory
+/// window. Under 1.0, a hydrate failed inside the drain and its run read
+/// memory outside the count, so `issue` reads low.
+const MEMORY_WINDOWS_PER_LEASE: &str = "drain_memory_windows_per_lease";
+
 /// Measurement key: transactions Postgres committed per lease issued.
 const COMMITS_PER_LEASE: &str = "drain_commits_per_lease";
 

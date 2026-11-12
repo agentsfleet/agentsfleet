@@ -21,8 +21,12 @@ impl Harness<'_, '_> {
     }
 
     /// The messages a person sent the fleet since the root's last claim,
-    /// claimed for this run; a stopped loop claims none.
+    /// claimed for this run; a stopped loop claims none, and neither does an
+    /// ask the lease's claim already answered.
     async fn claim_folded(&mut self) -> Vec<String> {
+        if std::mem::take(&mut self.claim_answered) {
+            return Vec::new();
+        }
         let shared = self.shared;
         let mut claimed = tokio::select! {
             biased;

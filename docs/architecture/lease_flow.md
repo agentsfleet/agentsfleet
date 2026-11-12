@@ -138,12 +138,15 @@ Each fleet lease follows these steps:
 1. Admit its tools, provider and policy; claim the fleet's local turn.
 2. Load the lease's memory window, or read memory through the retained HTTP route when the window is absent.
 3. Prepare or thaw a sandbox when the admitted tools need one, then run the agent loop.
-4. Request folded inputs before model calls and send bounded activity over the native session.
+4. Request folded inputs before model calls, skipping the first ask when the lease says none waits, and send bounded activity over the native session.
 5. Freeze and hold a completed sandbox, or kill it; post full tool records through the retained HTTP route.
 6. Flush outstanding usage through renewals, then send the report with memory, timing segments and folded-input progress.
 7. Retain the report in the worker's memory until acknowledgement or a terminal refusal, then finish sandbox cleanup and drain activity.
 
 The daemon captures reported memory under the lease fence before the settlement transaction.
+
+A plain chat's report then commits in one statement, `commit_report.sql`, under the lease row lock with no host lock. Its runtime line is a `runtime`-kind usage line numbered by its slice's start, read from the locked lease row. Each host's renewals run as one fenced statement per tick.
+
 Settlement records usage, event outcome, session checkpoint, admission completion, slot release and any outbound obligation.
 Only a successful report settles folded messages through `folded_through_sequence`.
 
@@ -387,7 +390,7 @@ Each gap names what would close it.
 6. **Kill and pause never reach a running lease**: renewal ignores the fleet's status but still enforces its stored budget ceiling. The heartbeat names no lease ([Runner Fleet](./runner_fleet.md) §"Steer, kill, pause"). A revocation on the heartbeat or a refused renewal closes it.
 7. **Browser tools are refused** under the bubblewrap engine ([`runner_execution.md`](./runner_execution.md) §"Sandbox engines"). A Firecracker engine closes it.
 8. **Warm slots are not wired into the supervisor.** Wiring `WarmSlots` around the host's engine closes it.
-9. **Limits are not per fleet.** The daemon sends `limits: null` (`afd_fleet`'s lease answer). A size on the fleet's config closes it.
+9. **Limits are not per fleet.** The lease carries no size, so every sandbox gets the runner host's own limits. A per-fleet size would be a new wire field.
 10. **Nothing checks memory or disk against the host.** 2 GiB × workers and 4 GiB × live and held leases go unchecked. A reserve the worker checks before it leases closes it.
 11. **An operator's extra binds are never bound**. The assigned policy carries them and no runner reads them ([Runner Fleet](./runner_fleet.md) §"The sandbox filesystem rules"). Binding them in the sandbox's layout, or dropping the field, closes it.
 12. **A rotating-CDN host can fail mid-lease under `allow_list_egress`.** The set is pinned at lease bind. The DNS-answer name layer in [Runner Fleet](./runner_fleet.md) §"Egress model" closes it.

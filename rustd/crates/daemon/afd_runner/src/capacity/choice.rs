@@ -26,7 +26,14 @@ impl Ticket {
     /// A concurrent placement invalidates this choice before another insert.
     #[must_use]
     pub const fn permits(self, capacity: Capacity, kind: LeaseKind) -> bool {
-        self.revision == capacity.lease_version && self.accepted.contains(kind)
+        self.permits_revision(capacity.lease_version, kind)
+    }
+
+    /// [`Self::permits`] against a host row's revision, for a lock that took
+    /// no census.
+    #[must_use]
+    pub const fn permits_revision(self, lease_version: i64, kind: LeaseKind) -> bool {
+        self.revision == lease_version && self.accepted.contains(kind)
     }
 }
 

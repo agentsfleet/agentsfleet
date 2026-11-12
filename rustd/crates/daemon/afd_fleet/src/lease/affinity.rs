@@ -20,11 +20,15 @@
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
+#[cfg(any(test, feature = "test-util"))]
 use af_core::timing::{RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 use af_observability::metrics::label::fleet::HeldClaim;
 use af_observability::producers;
+#[cfg(any(test, feature = "test-util"))]
 use jiff::Timestamp;
+#[cfg(any(test, feature = "test-util"))]
 use sqlx::PgConnection;
+#[cfg(any(test, feature = "test-util"))]
 use std::time::Duration;
 
 use crate::error::{Result, query};
@@ -32,6 +36,7 @@ use crate::lease::envelope::Acquired;
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
+#[cfg(any(test, feature = "test-util"))]
 /// Statement name, for the context a query failure carries.
 const CONTEXT_CLAIM: &str = "affinity claim";
 
@@ -43,9 +48,10 @@ pub(crate) const EVENT_CLAIM_RELEASE_FAILED: &str = "lease_claim_release_failed"
 
 /// The `fencing_token` column, which is the one number that orders lease holders.
 ///
-/// Monotonic per fleet and minted only by [`Leases::claim`]: every winning
-/// claim bumps it, so a holder superseded by a reclaim carries a strictly
-/// smaller value than the runner that displaced it. That is the whole basis of
+/// Monotonic per fleet and minted by the slot upsert inside the claim head
+/// (`claim_admission_head.sql`): every winning claim bumps it, so a holder
+/// superseded by a reclaim carries a strictly smaller value than the runner
+/// that displaced it. That is the whole basis of
 /// Invariant 2, and the reason a report verifies its token inside the same
 /// statement that flips the lease.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -84,6 +90,10 @@ impl Fence {
 
 /// A won claim: the new token, the instant the slot — and the lease issued
 /// against it — stays valid until, and whether the winner held the fleet.
+///
+/// What the test-only [`Leases::claim`] answers; production reads the same
+/// facts from the claim head's row.
+#[cfg(any(test, feature = "test-util"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Claimed {
     /// The monotonic token this claim minted.
@@ -95,6 +105,7 @@ pub struct Claimed {
     pub resume_hold: bool,
 }
 
+#[cfg(any(test, feature = "test-util"))]
 /// What [`sql::lease::CLAIM_FLEET_SLOT`] answers when the claim wins: the new
 /// fence, the slot's deadline on the database clock, and whether the slot's
 /// prior hold was still live and whose it was.
@@ -108,6 +119,7 @@ struct Won {
 }
 
 impl Leases {
+    #[cfg(any(test, feature = "test-util"))]
     /// Atomically claim `fleet_id`'s lease slot for `runner_id`, valid for
     /// `ttl_ms`.
     ///
@@ -119,6 +131,10 @@ impl Leases {
     ///
     /// The claim PRECEDES the event read by design: a loser has consumed no
     /// event, so nothing is orphaned by losing.
+    ///
+    /// A test seam: production claims through the `slot` step of the claim head
+    /// (`claim_admission_head.sql`), which runs this same upsert beside the head
+    /// read, so this method is not compiled into a build without `test-util`.
     ///
     /// # Errors
     /// Reports a datastore that would not answer. A refused claim is
@@ -202,6 +218,7 @@ impl Leases {
         }
     }
 
+    #[cfg(any(test, feature = "test-util"))]
     /// The release a finished run owes, on a connection the caller already
     /// holds. Keeps the sticky hint: this runner did lease the fleet. Records
     /// `hold_expires_at` too, the hold the run's sandbox is kept under, or clears
@@ -246,6 +263,7 @@ pub(crate) fn count_resumed(acquired: &Acquired) {
     }
 }
 
+#[cfg(any(test, feature = "test-util"))]
 /// Who won a claim on a fleet whose slot held a sandbox live at `now`, from
 /// the slot's prior `hold_expires_at` and `last_runner_id`, or `None` when it held
 /// none. A hold at or past its deadline binds nobody at the claim's own

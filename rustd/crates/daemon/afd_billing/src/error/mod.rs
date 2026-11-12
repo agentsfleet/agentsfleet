@@ -21,7 +21,7 @@ mod raise;
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
 pub(crate) use self::raise::{
-    billing_wallet_missing, charge_overflow, charges_cursor_invalid, query, row_malformed,
+    billing_wallet_missing, charge_overflow, charges_cursor_invalid, query,
 };
 
 /// The result every fallible function in this crate returns.
@@ -61,19 +61,6 @@ pub(crate) enum ErrorKind {
         context: &'static str,
         #[source]
         source: sqlx::Error,
-    },
-
-    /// A stored value is not a shape this daemon can read.
-    ///
-    /// Names the table AND the column, because the identifier columns this
-    /// fires on appear under the same name in several tables — "`tenant_id` is
-    /// not a `UUIDv7`" is not an actionable sentence without the table.
-    #[error("{table}.{column} holds a value this build cannot read")]
-    RowMalformed {
-        table: &'static str,
-        column: &'static str,
-        #[source]
-        source: af_core::error::Error,
     },
 
     /// A ledger row's identifier could not be minted.
@@ -119,10 +106,7 @@ impl Error {
             ErrorKind::WalletMissing => {
                 (error_code::INTERNAL_OPERATION_FAILED, DETAIL_WALLET_MISSING)
             }
-            ErrorKind::Query { .. }
-            | ErrorKind::RowMalformed { .. }
-            | ErrorKind::Entropy { .. }
-            | ErrorKind::ChargeOverflow => (
+            ErrorKind::Query { .. } | ErrorKind::Entropy { .. } | ErrorKind::ChargeOverflow => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 DETAIL_OPERATION_FAILED,
             ),
@@ -166,7 +150,6 @@ impl Error {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Query { source, .. } => afd_db::error::is_connection_lost(source),
             ErrorKind::TimedOut { .. }
-            | ErrorKind::RowMalformed { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::WalletMissing
             | ErrorKind::ChargesCursorInvalid

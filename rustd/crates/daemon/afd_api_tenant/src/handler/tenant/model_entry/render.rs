@@ -298,10 +298,7 @@ mod tests {
             platform_default: Some(PricedDefault {
                 default: PlatformDefault {
                     provider: "anthropic".into(),
-                    source_workspace_id: Uuid7::parse("019329c5-0000-7000-8000-0000000000b1")
-                        .expect("the fixture workspace id is canonical"),
                     model: "claude-sonnet-5".into(),
-                    base_url: None,
                     context_cap_tokens: DEFAULT_CAP_TOKENS,
                 },
                 rate: Some(rate()),
@@ -332,9 +329,7 @@ mod tests {
             platform_default: Some(PricedDefault {
                 default: PlatformDefault {
                     provider: "anthropic".into(),
-                    source_workspace_id: tenant(),
                     model: "claude-haiku-4-5".into(),
-                    base_url: None,
                     context_cap_tokens: 200_000,
                 },
                 rate: None,
