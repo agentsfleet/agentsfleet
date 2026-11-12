@@ -21,7 +21,9 @@ async function run(verb: Verb, body: unknown, json = false) {
   const args = ["schedule", verb, FLEET, ...(verb === "list" || verb === "create" ? [] : [SCHEDULE]),
     ...(verb === "create" ? ["--cron", ROW.cron, "--message", ROW.message] : []),
     ...(verb === "update" ? ["--message", ROW.message] : []), ...(json ? ["--json"] : [])];
-  return withAuthedStateDir({workspaceId: WS}, () => withMockApi({[`${method} ${path}`]: () => jsonResponse(200, body)}, async (apiUrl, calls) => {
+  // `update` reads the row's tag before it writes, so it meets a valid row first.
+  const read = verb === "update" ? {[`GET ${path}`]: () => jsonResponse(200, {...ROW, source: "api", etag: "opaque"})} : {};
+  return withAuthedStateDir({workspaceId: WS}, () => withMockApi({...read, [`${method} ${path}`]: () => jsonResponse(200, body)}, async (apiUrl, calls) => {
     const out = bufferStream(); const err = bufferStream(); out.stream.isTTY = true;
     const code = await runCli(args, {stdout: out.stream, stderr: err.stream, env: cliEnv({AGENTSFLEET_API_URL: apiUrl})});
     return {code, stdout: out.read(), stderr: err.read(), calls};
@@ -53,7 +55,7 @@ describe("schedule responses are checked before rendering", () => {
     const result = await run(verb, verb === "list" ? {schedules: [{}]} : {}, true);
     expect(result.code).not.toBe(0);
     expect(result.stdout + result.stderr).toContain(INVALID);
-    expect(result.calls).toHaveLength(1);
+    expect(result.calls).toHaveLength(verb === "update" ? 2 : 1);
   });
 
   test.each(VERBS)("%s retains extra server fields in valid raw JSON", async (verb) => {
@@ -62,7 +64,7 @@ describe("schedule responses are checked before rendering", () => {
     const result = await run(verb, body, true);
     expect(result.code).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual(body);
-    expect(result.calls).toHaveLength(1);
+    expect(result.calls).toHaveLength(verb === "update" ? 2 : 1);
   });
 
   test.each([

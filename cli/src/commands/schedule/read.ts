@@ -28,6 +28,16 @@ function decode<T>(schema: Schema.Codec<T, unknown>, value: unknown): Effect.Eff
 }
 
 export const decodeSchedule = (value: unknown) => decode(ScheduleSchema, value);
+
+// What an edit reads back first (afd_api_wire::schedule::View): the tag the
+// daemon makes every PATCH match, the source that says whether the row inherits
+// the fleet's recipe, and the overlay an `override` replaces whole.
+const OverlaySchema = Schema.Struct({
+  cron: Schema.optionalKey(text), timezone: Schema.optionalKey(text),
+  message: Schema.optionalKey(text), status: Schema.optionalKey(text),
+});
+const EditBaseSchema = Schema.Struct({etag: text, source: text, override: Schema.optionalKey(OverlaySchema)});
+export const decodeEditBase = (value: unknown) => decode(EditBaseSchema, value);
 export const decodeSchedules = (value: unknown) => decode(SchedulePageSchema, value);
 
 function scheduleState(row: Schedule): string {
