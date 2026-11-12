@@ -165,6 +165,23 @@ impl Error {
         matches!(self.inner.kind, ErrorKind::Datastore { .. })
     }
 
+    /// Whether reading again could succeed: the datastore would not answer, or a
+    /// statement failed in flight.
+    ///
+    /// Wider than [`Self::is_datastore_unavailable`], which the HTTP edge turns
+    /// into a 503. A connection dropped between the statement and its answer is
+    /// a `Query` failure, answers as a 500, and a second read usually passes. An
+    /// envelope that will not open under this key, a refused name and a body the
+    /// vault will not store do not heal, so a caller that waits on them waits
+    /// on a configuration fault.
+    #[must_use]
+    pub const fn is_retryable(&self) -> bool {
+        matches!(
+            self.inner.kind,
+            ErrorKind::Datastore { .. } | ErrorKind::Query { .. }
+        )
+    }
+
     /// How many registry entries refused this delete, when that is why it failed.
     ///
     /// `Some` for exactly one kind. The 409's body names the count so an

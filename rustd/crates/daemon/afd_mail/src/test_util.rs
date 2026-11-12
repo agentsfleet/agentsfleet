@@ -129,7 +129,7 @@ impl FakeRelay {
     #[cfg(test)]
     pub(crate) fn relay(&self) -> crate::relay::Relay {
         let bag = af_crypto::secret::SecretBytes::new(bag_json(LOOPBACK, self.port()).into_bytes());
-        crate::relay::Relay::parse(&bag).expect("a complete bag is a relay")
+        afd_vault::bag::parse::<crate::relay::Relay>(&bag).expect("a complete bag is a relay")
     }
 }
 

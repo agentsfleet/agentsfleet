@@ -29,9 +29,9 @@ afd_runner.workspace = true
 # The steer ingress path the steer lane drives.
 afd_events.workspace = true
 # The rest of the lease plane the drain composes: `Plane::lease` walks past the
-# claim into the payer's wallet (`afd_billing`), the provider and the vault
-# (`afd_credential`), the approval gate (`afd_gate`) and the standing grants
-# (`afd_approval`). The drain builds the same plane the daemon's root builds,
+# claim into the payer's wallet (`afd_billing`), the provider
+# (`afd_credential`), the vault (`afd_vault`), the approval gate (`afd_gate`)
+# and the standing grants (`afd_approval`). The drain builds the same plane the daemon's root builds,
 # so each is here for the same reason `afd_fleet` is: a copy would not be the
 # path under measurement.
 afd_billing.workspace = true

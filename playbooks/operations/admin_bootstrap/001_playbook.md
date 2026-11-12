@@ -161,7 +161,7 @@ Provider registration pages use this after Indy creates the provider app.
 | `slack-app` | `slack-app`: `client_id`, `client_secret`, `signing_secret` | Per request |
 | `linear-app`, `jira-app`, `zoho-app` | Same-named item: `client_id`, `client_secret` | Refresh uses the startup copy; restart |
 | `approval-signing` | `approval-signing-secret`: `credential`, which the bag stores as `webhook_secret` | Per request |
-| `qstash` | `qstash`: `token`, `current-signing-key`, `next-signing-key`, `url` | At startup; restart |
+| `qstash` | `qstash`: `token`, `current-signing-key`, `next-signing-key`, `url` | Per use |
 | `smtp-relay` | `smtp-relay`: `host`, `port`, `username`, `password`, `from_address` | Per send |
 
 The script reads `api-key` and `platform_admin_workspace_id` from `agentsfleet-admin`, then replaces the whole bag.

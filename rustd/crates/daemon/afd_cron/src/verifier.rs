@@ -23,7 +23,7 @@
 //!
 //! The scheduler publishes a current and a next signing key, and rotates by
 //! promoting the second. A verifier that knew one would refuse every delivery
-//! between the vendor's rotation and this daemon's redeploy.
+//! between the vendor's rotation and the update of this daemon's `qstash` bag.
 
 use af_crypto::secret::SecretString;
 use garde::Unvalidated;
@@ -50,14 +50,22 @@ const EXPECTED_ISSUER: &str = "Upstash";
 /// decoder.
 pub const MAX_TOKEN_BYTES: usize = 8 * 1024;
 
-/// The fire token as it arrived, with the bound it must hold before the
-/// decoder reads a byte of it.
+/// The fire token as it arrived, with the bound and the shape it must hold
+/// before the decoder reads a byte of it.
 ///
-/// Declared on the field rather than checked by hand: an empty header and an
-/// oversized one are the same refusal, [`MAX_TOKEN_BYTES`].
+/// Declared on the field rather than checked by hand: an empty header, an
+/// oversized one and one that is not three base64url segments joined by dots
+/// are the same refusal. The shape is the compact form a signed token takes, so
+/// a request that is not even that costs the keys' datastore read nothing.
 #[derive(Debug, Clone, Copy, garde::Validate)]
 #[garde(transparent)]
-struct Token<'a>(#[garde(length(bytes, min = 1, max = MAX_TOKEN_BYTES))] &'a str);
+struct Token<'a>(
+    #[garde(
+        length(bytes, min = 1, max = MAX_TOKEN_BYTES),
+        pattern(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
+    )]
+    &'a str,
+);
 
 /// What a believed fire carries.
 #[derive(Debug, Clone)]
@@ -92,6 +100,24 @@ pub struct SigningKeys {
     pub current: SecretString,
     /// The key it will sign with next.
     pub next: SecretString,
+}
+
+/// Refuses a token past the bound, or not shaped like one, before anything is
+/// read to check it.
+///
+/// Run ahead of the credentials read, so a request with no token, an oversized
+/// one or a string that is no token at all, the cheapest things a stranger can
+/// send, costs no datastore round trip.
+///
+/// # Errors
+/// The `token_malformed` refusal, for an empty token, one past
+/// [`MAX_TOKEN_BYTES`], or one that is not three base64url segments joined by
+/// dots.
+pub(crate) fn bounded(token: &str) -> Result<()> {
+    Unvalidated::new(Token(token))
+        .validate()
+        .map(|_within| ())
+        .map_err(|_bound| error::token_malformed())
 }
 
 /// Whether `token` proves `body` was sent by the scheduler to `destination`.

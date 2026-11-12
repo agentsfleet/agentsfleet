@@ -117,12 +117,8 @@ impl Services for ServingPlane {
         &self.login.app_url
     }
 
-    fn schedule_signing_keys(&self) -> Option<&afd_cron::SigningKeys> {
-        self.outbound.schedule_keys.as_ref()
-    }
-
-    fn schedule_destination(&self) -> &str {
-        &self.outbound.schedule_destination
+    fn scheduler(&self) -> &dyn afd_cron::Scheduler {
+        self.outbound.scheduler.as_ref()
     }
 
     fn platform_admin_workspace(&self) -> Option<&af_core::id::Uuid7> {

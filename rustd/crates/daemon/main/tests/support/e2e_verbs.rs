@@ -46,6 +46,15 @@ const HEADER_SCHEDULE_ID: &str = "Upstash-Schedule-Id";
 /// The fixture bearer the daemon presents to the fake scheduler.
 pub(crate) const QSTASH_TOKEN: &str = "qstash-fixture-token";
 
+/// The `Authorization` header of a call, or nothing when it carried none.
+fn authorization(headers: &HeaderMap) -> String {
+    headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_owned()
+}
+
 /// What the fake scheduler was told, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Told {
@@ -59,6 +68,8 @@ pub(crate) enum Told {
 pub(crate) struct FakeQStash {
     base: String,
     told: Arc<Mutex<Vec<Told>>>,
+    /// The `Authorization` header each call carried, in order.
+    bearers: Arc<Mutex<Vec<String>>>,
     handle: JoinHandle<()>,
 }
 
@@ -81,11 +92,18 @@ impl FakeQStash {
         let base = format!("http://{}/v2", listener.local_addr().expect("bound"));
         let told: Arc<Mutex<Vec<Told>>> = Arc::default();
         let (on_upsert, on_delete) = (Arc::clone(&told), Arc::clone(&told));
+        let bearers: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (upsert_bearers, delete_bearers) = (Arc::clone(&bearers), Arc::clone(&bearers));
         let router = Router::new().route(
             "/v2/schedules/{*rest}",
             post(move |headers: HeaderMap| {
                 let told = Arc::clone(&on_upsert);
+                let bearers = Arc::clone(&upsert_bearers);
                 async move {
+                    bearers
+                        .lock()
+                        .expect("the record is never poisoned")
+                        .push(authorization(&headers));
                     let cron = headers
                         .get(HEADER_CRON)
                         .and_then(|value| value.to_str().ok())
@@ -106,9 +124,14 @@ impl FakeQStash {
                     (status, axum::Json(body))
                 }
             })
-            .delete(move |Path(key): Path<String>| {
+            .delete(move |Path(key): Path<String>, headers: HeaderMap| {
                 let told = Arc::clone(&on_delete);
+                let bearers = Arc::clone(&delete_bearers);
                 async move {
+                    bearers
+                        .lock()
+                        .expect("the record is never poisoned")
+                        .push(authorization(&headers));
                     told.lock()
                         .expect("the record is never poisoned")
                         .push(Told::Delete(key));
@@ -120,10 +143,15 @@ impl FakeQStash {
                 .await
                 .expect("the fake scheduler serves until aborted");
         });
-        Self { base, told, handle }
+        Self {
+            base,
+            told,
+            bearers,
+            handle,
+        }
     }
 
-    /// The base the daemon's `QSTASH_URL` names.
+    /// The base the daemon's `qstash` bag names as its `url`.
     pub(crate) fn base(&self) -> &str {
         &self.base
     }
@@ -131,6 +159,14 @@ impl FakeQStash {
     /// Everything it was told so far.
     pub(crate) fn told(&self) -> Vec<Told> {
         self.told
+            .lock()
+            .expect("the record is never poisoned")
+            .clone()
+    }
+
+    /// The `Authorization` header of every call so far, in order.
+    pub(crate) fn bearers(&self) -> Vec<String> {
+        self.bearers
             .lock()
             .expect("the record is never poisoned")
             .clone()

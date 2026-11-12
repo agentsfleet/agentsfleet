@@ -1,30 +1,10 @@
-//! The store provider resolution reads through: one pool, one process key.
+//! The store provider resolution reads through: one pool and the vault that opens its rows.
 //!
 //! Same shape as [`afd_billing::Accounts`] and [`crate::lease::Leases`], for
 //! the same reason: the pool is OWNED here and [`Providers::pool`] is
 //! `pub(crate)`, so nothing outside this crate can run a statement that is not
 //! in [`crate::sql::provider`], and the side-by-side parity read of that module
 //! stays meaningful (Invariant 5).
-//!
-//! # Why the Key Encryption Key lives on the store
-//!
-//! A process global would carry the failure mode a process global has: every
-//! read is fallible because the variable might not have been set yet, so every
-//! read path would carry a "missing master key" arm for a condition that can
-//! only occur before the daemon serves traffic.
-//!
-//! Here it is a field. A [`Providers`] cannot be constructed without one, so
-//! there is no "not yet resolved" state to answer for and no arm to write: boot
-//! either produced a key and built this value, or it refused to start. That is
-//! the same move [`af_crypto::secret::Kek`] makes about mutation — the
-//! invariant becomes the type — applied one level up to availability.
-//!
-//! # `Arc`, not `Clone`
-//!
-//! [`Kek`] is `Clone`, and cloning it would copy thirty-two bytes of key
-//! material into every clone of this store — one per request-path handle, each
-//! zeroed at a different moment. Behind an `Arc` there is exactly one copy, and
-//! it is zeroed once when the last handle drops.
 
 use std::sync::Arc;
 
@@ -32,7 +12,7 @@ use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use afd_db::Db;
 
-use crate::vault::Vault;
+use afd_vault::Vault;
 
 /// Reads that resolve a tenant's provider, over the api-role pool.
 ///
@@ -47,7 +27,6 @@ use crate::vault::Vault;
 pub struct Providers {
     database: Db,
     vault: Vault,
-    kek: Arc<Kek>,
     entropy: Entropy,
     /// The platform default's resolution, shared by every clone.
     platform_keys: super::cache::PlatformKeys,
@@ -62,9 +41,8 @@ impl Providers {
     #[must_use]
     pub fn new(database: Db, kek: Arc<Kek>, entropy: Entropy) -> Self {
         Self {
-            vault: Vault::new(database.clone(), Arc::clone(&kek)),
+            vault: Vault::new(database.clone(), kek, entropy.clone()),
             database,
-            kek,
             entropy,
             platform_keys: super::cache::PlatformKeys::default(),
         }
@@ -82,14 +60,6 @@ impl Providers {
     /// The platform resolutions this replica holds, by witness.
     pub(crate) const fn platform_keys(&self) -> &super::cache::PlatformKeys {
         &self.platform_keys
-    }
-
-    /// The key an envelope this store opens is sealed under.
-    ///
-    /// Activation opens the row it has already locked, rather than handing the
-    /// name back to the vault for a second read of the same row.
-    pub(crate) fn vault_key(&self) -> &Kek {
-        &self.kek
     }
 
     /// The source a minted registry-entry identifier is drawn from.

@@ -1,16 +1,14 @@
 //! Open only the credential whose current metadata still equals the admitted snapshot.
 
 use af_core::id::Uuid7;
-use af_crypto::{aad::Aad, secret::SecretString};
-use afd_vault::StoredEnvelope;
+use af_crypto::secret::SecretString;
 use serde::Deserialize;
 use sqlx::PgConnection;
 
-use super::{CONTEXT, RegisteredModel, read};
+use super::{RegisteredModel, read};
 use crate::{
-    error::{Result, provider_malformed, query, vault_open},
+    error::{Result, provider_malformed, provider_secret_missing},
     provider::{Providers, credential},
-    vault::sql,
 };
 
 /// The field a registered model credential carries its key under.
@@ -28,7 +26,8 @@ impl Providers {
     /// The caller must commit dispatch intent before using the returned key.
     ///
     /// # Errors
-    /// Preserves store/decryption failures; stale metadata answers `None`.
+    /// Preserves store/decryption failures; stale metadata answers `None`. A
+    /// locked row that has vanished breaks the lock's guarantee and is an error.
     pub async fn registered_key(
         &self,
         connection: &mut PgConnection,
@@ -44,17 +43,11 @@ impl Providers {
         let (workspace, name) = (registration.workspace_id, registration.key_name);
         // `read` took this secret `FOR SHARE` in the caller's transaction, so
         // the row it named is still there to open.
-        let stored = sqlx::query_as::<_, StoredEnvelope>(sql::SELECT_SECRET)
-            .bind(&workspace)
-            .bind(&name)
-            .fetch_one(connection)
-            .await
-            .map_err(query(CONTEXT))?;
-        let body = stored
-            .into_envelope()
-            .map_err(vault_open)?
-            .open(self.vault_key(), &Aad::new(workspace.as_str(), &name))
-            .map_err(vault_open)?;
+        let body = self
+            .vault()
+            .find_on(connection, &workspace, &name)
+            .await?
+            .ok_or_else(provider_secret_missing)?;
         let key: Key = credential(body.expose(), FIELD_API_KEY)?;
         if key.api_key.is_empty() {
             return Err(provider_malformed(FIELD_API_KEY));

@@ -16,7 +16,6 @@ use af_crypto::entropy::Entropy;
 use af_crypto::secret::{Kek, SecretBytes};
 use af_observability::Analytics;
 use afd_connector::Dashboard;
-use afd_cron::SigningKeys;
 use afd_db::Db;
 use afd_sse::Live;
 
@@ -96,31 +95,18 @@ pub struct PlaneParts {
     pub vendor_client: reqwest::Client,
 }
 
-/// What the schedules surface needs from configuration.
+/// What the schedules surface and the fire ingress need from configuration.
 ///
-/// A struct rather than four more positional parameters, and for a sharper
-/// reason than length: `token` and the two signing keys are all opaque strings,
-/// so two of them transposed would compile and fail only as a 401 from the
-/// vendor that reads like a wrong credential.
+/// No credential: the scheduler's token and signing keys live in the admin
+/// workspace's `qstash` bag and are read on use, as the invite mailer reads
+/// `smtp-relay` — see `afd_cron::QStash`.
 #[derive(Debug, Clone)]
 pub struct ScheduleConfig {
     /// The client the management calls go out on.
     pub client: reqwest::Client,
-    /// This deployment's bearer for the external scheduler.
-    pub token: af_crypto::secret::SecretString,
-    /// Where a fire is expected to arrive — see [`qstash::destination_url`].
-    pub destination: String,
-    /// Which scheduler deployment the management calls go to.
-    ///
-    /// Resolved at boot rather than defaulted in the client, so a deployment
-    /// falling back to the vendor's US region is a visible decision in one
-    /// place — see [`crate::preflight::QSTASH_URL_KNOB`].
-    pub api_base: String,
-    /// The scheduler's signing keys, when this deployment configured them.
-    ///
-    /// `None` is fail-closed: every fire is refused, because a daemon that
-    /// cannot verify a callback must not act on one.
-    pub keys: Option<SigningKeys>,
+    /// This deployment's own base URL; the scheduler adapter derives the
+    /// callback a fire returns to from it.
+    pub api_url: Box<str>,
 }
 
 /// What the device-flow login surface needs from configuration.
@@ -145,26 +131,18 @@ pub struct LoginConfig {
     pub api_url: Box<str>,
 }
 
-/// The schedule plane over `schedule`: the management service and its
+/// The schedule plane over `scheduler`: the management service and its
 /// scheduler client, and the fire verb over the shared admissions ledger.
-///
-/// Takes the configuration whole, after the plane has copied out the
-/// destination and the signing keys it keeps for verifying a fire.
 pub(super) fn schedule_plane(
     database: &Db,
-    schedule: ScheduleConfig,
+    scheduler: Arc<dyn afd_cron::Scheduler>,
     admissions: afd_admission::Admissions,
 ) -> afd_api::SchedulePlane {
     afd_api::SchedulePlane::new(
         afd_cron::ScheduleService::new(
             afd_cron::Schedules::new(database.clone(), Entropy::new())
                 .with_activity_streams(admissions.streams()),
-            afd_cron::QStash::new(
-                schedule.client,
-                schedule.token,
-                schedule.destination,
-                schedule.api_base,
-            ),
+            scheduler,
         ),
         afd_cron::Fire::new(admissions),
         Entropy::new(),

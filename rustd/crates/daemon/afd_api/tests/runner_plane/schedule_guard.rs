@@ -55,12 +55,12 @@ async fn a_guarded_change_refuses_an_unheld_lease_and_finds_no_unknown_schedule(
     let plane = SchedulePlane::new(
         ScheduleService::new(
             Schedules::new(database.clone(), Entropy::new()),
-            QStash::new(
+            std::sync::Arc::new(QStash::fixed(
                 reqwest::Client::new(),
                 af_crypto::secret::SecretString::new(String::new()),
                 SCHEDULE_DESTINATION.to_owned(),
                 SCHEDULE_API_BASE.to_owned(),
-            ),
+            )),
         ),
         Fire::new(afd_admission::Admissions::for_tests(
             database.clone(),

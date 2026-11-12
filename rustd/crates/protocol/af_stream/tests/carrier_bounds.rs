@@ -192,6 +192,9 @@ async fn silent(transport: Transport) -> Result {
         while let Ok((socket, _)) = tcp.accept().await {
             held.push(socket);
         }
+        // Every accepted socket stays open until the listener fails, so the
+        // peer never closes a connection ahead of the deadline under test.
+        drop(held);
     });
     let endpoint = Endpoint::parse(&format!("https://[::1]:{port}"))?;
     let started = Instant::now();

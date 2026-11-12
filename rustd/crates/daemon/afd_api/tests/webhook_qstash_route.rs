@@ -15,8 +15,8 @@
 //! # Why these stop where they do
 //!
 //! Four decisions happen before the route touches a store: the body cap, a
-//! deployment holding no keys, a token that does not verify, and a verified
-//! callback naming no schedule. Everything past them reads
+//! deployment whose verifier holds blank keys, a token that does not verify, and
+//! a verified callback naming no schedule. Everything past them reads
 //! `fleet.schedules` and belongs to the integration lane. Splitting there
 //! is the same line every webhook suite in this tree splits on — the last point
 //! at which the handler has acquired nothing.
@@ -181,8 +181,8 @@ async fn a_body_past_the_cap_is_refused_before_the_token_is_read() {
 
 /// Every fire that does not prove itself earns one answer.
 ///
-/// A deployment holding no keys answers a token it could have believed exactly
-/// as it answers a forgery: a deployment that cannot verify must not act, and
+/// A deployment whose verifier holds blank keys answers a token it could have
+/// believed exactly as it answers a forgery: a deployment that cannot verify must not act, and
 /// telling a prober which of the two it hit would say whether this daemon is
 /// misconfigured. The `body` claim is what binds a token to its delivery;
 /// without that check a captured token would authorise any substituted payload.
@@ -194,7 +194,7 @@ async fn a_fire_that_does_not_prove_itself_is_refused() {
     let substituted = r#"{"schedule_id":"01J0000000000000000000000B"}"#;
     let cases = [
         (
-            "a deployment holding no keys",
+            "a deployment whose verifier holds blank keys",
             Fleet::new().router(),
             BODY,
             Some(good.as_str()),

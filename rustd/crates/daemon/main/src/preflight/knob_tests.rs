@@ -1,16 +1,7 @@
-//! The two knobs a rotation moves between, read as a pair.
-#![expect(
-    clippy::expect_used,
-    reason = "a test asserts by panicking; an unmet precondition should stop it"
-)]
-use super::{QSTASH_CURRENT_KEY_KNOB, QSTASH_NEXT_KEY_KNOB, optional, signing_keys};
+//! How an optional knob's value is read.
+use super::knobs::API_URL_KNOB;
+use super::{Fault, optional, read};
 use af_core::env::MapEnv;
-
-/// A key this fixture configures; the value is never parsed, only carried.
-const CURRENT: &str = "sig_current_fixture";
-
-/// The key a rotation moves to.
-const NEXT: &str = "sig_next_fixture";
 
 /// An exported-but-blank knob is unset, not a value.
 ///
@@ -47,39 +38,40 @@ fn a_blank_or_whitespace_knob_is_absent_rather_than_empty() {
     assert_eq!(optional(&source, "ABSENT"), None);
 }
 
-/// Both keys or neither — a half-rotation is no configuration.
-///
-/// The failure this prevents is delayed and total. A verifier holding only
-/// the current key works right up until the vendor rotates to the next one,
-/// and then refuses EVERY delivery — an outage that begins on the vendor's
-/// schedule rather than on any deploy of ours. Treating half as none makes
-/// it a loud refusal at the first fire instead.
+/// The scheduler calls every fire back under the API url, so one that cannot
+/// form that callback refuses boot instead of registering schedules that never
+/// fire.
 #[test]
-fn one_signing_key_is_no_configuration_rather_than_half_of_one() {
-    let neither = MapEnv::from_pairs([]);
-    assert!(
-        signing_keys(&neither).is_none(),
-        "neither key is unconfigured"
-    );
+fn an_api_url_that_cannot_form_a_callback_refuses_boot() {
+    for raw in [
+        "not a url",
+        "https://api.example.test/v2?region=eu",
+        "https://api.example.test/#top",
+    ] {
+        let mut faults = Vec::new();
 
-    let current_only = MapEnv::from_pairs([(QSTASH_CURRENT_KEY_KNOB, CURRENT)]);
-    assert!(
-        signing_keys(&current_only).is_none(),
-        "the current key alone is a rotation half-done — it verifies until \
-         the vendor rotates and then refuses everything"
-    );
+        let kept = read::deployment(raw.into(), &mut faults);
 
-    let next_only = MapEnv::from_pairs([(QSTASH_NEXT_KEY_KNOB, NEXT)]);
-    assert!(
-        signing_keys(&next_only).is_none(),
-        "the next key alone is the same half"
-    );
+        assert_eq!(&*kept, raw);
+        assert!(
+            matches!(
+                faults.as_slice(),
+                [Fault::Invalid {
+                    knob: API_URL_KNOB,
+                    ..
+                }]
+            ),
+            "{raw}: {faults:?}"
+        );
+    }
+}
 
-    let both = MapEnv::from_pairs([
-        (QSTASH_CURRENT_KEY_KNOB, CURRENT),
-        (QSTASH_NEXT_KEY_KNOB, NEXT),
-    ]);
-    let keys = signing_keys(&both).expect("both keys configured is a configuration");
-    assert_eq!(keys.current.expose(), CURRENT);
-    assert_eq!(keys.next.expose(), NEXT);
+#[test]
+fn a_plain_api_origin_forms_a_callback_and_is_kept() {
+    let mut faults = Vec::new();
+
+    let kept = read::deployment("https://api.example.test".into(), &mut faults);
+
+    assert_eq!(&*kept, "https://api.example.test");
+    assert!(faults.is_empty(), "{faults:?}");
 }

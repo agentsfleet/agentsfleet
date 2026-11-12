@@ -1,18 +1,15 @@
 //! Runtime opens the exact owner reference selected by the saved setup.
 
 use af_core::id::Uuid7;
-use af_crypto::aad::Aad;
 use afd_billing::Posture;
-use afd_vault::StoredEnvelope;
 use sqlx::Connection as _;
 
 use super::super::registered::{CONTEXT, read};
 use super::project;
 use crate::{
-    error::{Result, provider_secret_missing, query, vault_open},
+    error::{Result, provider_secret_missing, query},
     provider::cache::{Observed, PlatformKeyKey},
     provider::{PLATFORM_MODEL_REF, Providers, Resolved, managed, vetted},
-    vault::sql,
 };
 
 impl Providers {
@@ -94,17 +91,11 @@ impl Providers {
         let observed = registration.observed.clone();
         let (workspace, name) = (registration.workspace_id, registration.key_name);
         let model = project(registration.model).ok_or_else(provider_secret_missing)?;
-        let body = sqlx::query_as::<_, StoredEnvelope>(sql::SELECT_SECRET)
-            .bind(&workspace)
-            .bind(&name)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(query(CONTEXT))?
-            .ok_or_else(provider_secret_missing)?
-            .into_envelope()
-            .map_err(vault_open)?
-            .open(self.vault_key(), &Aad::new(workspace.as_str(), &name))
-            .map_err(vault_open)?;
+        let body = self
+            .vault()
+            .find_on(&mut tx, &workspace, &name)
+            .await?
+            .ok_or_else(provider_secret_missing)?;
         let credential = vetted::vet(body.expose())?;
         let api_key = managed::bearer(credential.api_key)?;
         tx.commit().await.map_err(query(CONTEXT))?;

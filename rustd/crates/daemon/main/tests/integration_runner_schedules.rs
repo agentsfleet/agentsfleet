@@ -2,7 +2,7 @@
 //! creating, listing, the fence and the fleet's own cap.
 //!
 //! Each case boots the daemon against the lane's Postgres and NATS, with
-//! `QSTASH_URL` pointed at a fake scheduler that records what it is told, so
+//! a `qstash` bag naming a fake scheduler that records what it is told, so
 //! "reconciled to `QStash`" is a call this suite can count rather than a sync
 //! state it infers. The fleet is always the lease's: no body here names one.
 //! The edits are in `integration_runner_schedules_edit`, the runs in
@@ -24,7 +24,7 @@ use reqwest::Method;
 use serde_json::Value;
 
 use crate::schedules::{KOLKATA, Leased, WEEKLY};
-use crate::verbs::{FakeQStash, Told};
+use crate::verbs::{FakeQStash, QSTASH_TOKEN, Told};
 
 /// Dimension 1.1. A valid create stores a `fleet`-sourced row, registers it
 /// once, and the fleet's own list returns it.
@@ -45,6 +45,11 @@ async fn test_fleet_creates_its_own_schedule() {
     );
     assert_eq!(created["timezone"], KOLKATA);
     assert_eq!(qstash.told(), [Told::Upsert(WEEKLY.to_owned())]);
+    assert_eq!(
+        qstash.bearers(),
+        [format!("Bearer {QSTASH_TOKEN}")],
+        "the call spent the token the `qstash` bag holds"
+    );
     assert_eq!(leased.held(Some(Source::Fleet)).await, 1);
 
     let (status, listed) = leased.call(Method::GET, &leased.fenced(""), None).await;

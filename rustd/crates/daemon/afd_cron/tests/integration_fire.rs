@@ -19,6 +19,7 @@
 //! below is the one that fails if the statement is split in two, which is why
 //! it races a hundred callers rather than sequencing them.
 
+#![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"

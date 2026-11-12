@@ -53,13 +53,7 @@ shutil.copyfile(os.environ["FAKE_BOOT_FAILURE" if os.getenv("FAIL_BOOT") else "F
 target.chmod(0o700)
 '''
 CURL = '''#!/usr/bin/env python3
-import json, sys, time
-if sys.argv[-1].endswith("/keys"):
-    if __import__("os").getenv("FAIL_KEYS"): sys.exit(22)
-    print(json.dumps({"current": "local-fixture-current", "next": "local-fixture-next"}))
-else:
-    time.sleep(0.05)
-    if __import__("os").getenv("FAIL_BOOT"): sys.exit(7)
+import os, sys, time; time.sleep(0.05); sys.exit(7 if os.getenv("FAIL_BOOT") else 0)
 '''
 class LauncherTests(unittest.TestCase):
     @classmethod
@@ -244,9 +238,6 @@ class LauncherTests(unittest.TestCase):
         self.assertNotIn("wrong", config["NATS_URL"])
         self.assertEqual(config["AGENTSFLEET_DEV_NAMESPACE"], self.run_dev("identity").stdout.strip())
         self.assertEqual(config["API_URL"], self.run_dev("url").stdout.strip().replace("127.0.0.1", "192.0.2.10"))
-    def test_signing_key_refusal_never_launches_a_daemon(self):
-        self.run_dev("up", env=dict(self.env, FAIL_KEYS="1"), expected=1)
-        self.assertFalse(list(self.shared().glob("worktrees/*/daemon.pid")))
     def test_boot_failure_never_reports_a_ready_daemon(self):
         result = self.run_dev("up", env=dict(self.env, FAIL_BOOT="1"), expected=1)
         self.assertNotIn("API:", result.stdout)

@@ -3,26 +3,29 @@
 //!
 //! # Why this is its own crate
 //!
-//! `afd_credential::vault` already reads `vault.secrets`, and it stays where it is.
-//! That reader is the RUNNER plane's: it opens a credential a fleet declared,
-//! refuses to degrade a row it cannot read, and never lists. This is the
-//! workspace-ADMIN plane: it seals, it lists without a key, and it holds the
-//! lock a delete must be taken under. Two failure policies over one table, and
-//! folding them together would mean one of the two policies losing.
+//! Every sealing and opening of a `vault.secrets` envelope is this crate's. The
+//! credential plane still locks a row for activation in a statement of its own,
+//! and hands the envelope here to be opened. The workspace-ADMIN
+//! plane seals, lists without a key and holds the lock a delete is taken under;
+//! the RUNNER plane opens a credential a fleet declared, refuses to degrade a
+//! row it cannot read, and rewrites a handle under its own row lock; a platform
+//! bag is a typed document read on use (see [`bag`]). Different failure
+//! policies over one table, each a function here rather than a second reader of
+//! the table elsewhere.
 //!
-//! The other two candidates are worse for the reasons `afd_fleet_lifecycle`
-//! already recorded. `afd_fleet` is thirty thousand lines, so an edit to a
-//! projection would rebuild the whole runner plane. `afd_state` is the
-//! credential directory the authentication path cannot start without, and
-//! putting AES-GCM behind it would rebuild every login when a `meta_*` column
-//! moved.
+//! Two other homes were considered and are worse, for the reasons
+//! `afd_fleet_lifecycle` already recorded. `afd_fleet` is thirty thousand
+//! lines, so an edit to a projection would rebuild the whole runner plane.
+//! `afd_state` is the credential directory the authentication path cannot
+//! start without, and putting AES-GCM behind it would rebuild every login when
+//! a `meta_*` column moved.
 //!
 //! # No ROUTE opens an envelope
 //!
 //! The workspace secret surface is four verbs — create, list, replace, delete —
-//! and not one of them returns a stored value. A secret is write-only by
-//! contract, so this crate SEALS and never opens, and spec Invariant 3's "list
-//! reads perform zero decrypt calls" holds for every verb rather than for one.
+//! and not one of them returns a stored value. A secret is write-only on that
+//! surface, so no route opens an envelope, and spec Invariant 3's "list reads
+//! perform zero decrypt calls" holds for every verb rather than for one.
 //!
 //! It is enforced twice over, independently:
 //!
@@ -37,11 +40,12 @@
 //! happened on the run that was measured; a missing field proves what can
 //! happen at all.
 //!
-//! [`Vault::load`] is the one verb that DOES open an envelope, and it is not on
-//! this surface at all: no route reaches it, and it answers one name rather
-//! than a page. It exists because a signature check needs the shared secret to
-//! compute a tag with. See [`load`] on exactly which of the three guarantees
-//! above it touches, which is none of them.
+//! The daemon's own readers do open envelopes: [`Vault::load`], [`Vault::find`],
+//! [`Vault::load_many`], [`Vault::bag`], [`Vault::open_shared_on`] and
+//! [`Vault::rewrite`]. None is on this surface: no route reaches them, and each
+//! answers a name the daemon chose rather than a page. A signature check, for
+//! one, needs the shared secret to compute a tag with. See [`load`] on exactly
+//! which of the three guarantees above they touch, which is none of them.
 //!
 //! # What it does not contain
 //!
@@ -63,8 +67,10 @@ use tokio as _;
 // sentence a refusal carries is a wire fact, and asserting on it beats
 // respelling it. The other two are private modules whose worthwhile types are
 // re-exported below, so the crate has one import path per name rather than two.
+pub mod bag;
 pub mod error;
 mod load;
+mod locked;
 
 mod classified;
 mod delete;
@@ -86,6 +92,7 @@ pub use self::classified::Classified;
 pub use self::delete::Deleted;
 pub use self::describe::Descriptor;
 pub use self::error::{Error, Result};
+pub use self::locked::{Generation, Rewritten};
 pub use self::projection::Kind;
 pub use self::read::SecretSummary;
 pub use self::secret::{MAX_DATA_BYTES, SecretBody, SecretName};
