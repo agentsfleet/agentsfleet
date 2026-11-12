@@ -194,9 +194,9 @@ Each domain file exports a factory; none exports a command constant. Only the pl
 
 ### §3 — Aligned error presentation
 
-`Command.runWith` runs with `renderErrors: true` and `CliOutput.layerPresenter(makePresenter(…))` from `program/entry/presenter.ts`. `Help` events print `formatter.formatHelpDoc(event.helpDoc)` through `Console.log`; `Version` delegates to `CliOutput.defaultPresenter`; `InvalidInvocation` writes nothing. `renderLibraryFailure` is the only writer of a usage-error block (text) or envelope (`--json`), built from `houseRejection(Cause.squash(cause), tree, argv)`; under `--json`, stderr holds exactly that one envelope. Every other failure writer (`renderCliError`, guard refusals through `io.ts` `writeError`, the unreadable-state notice) uses `output/error-block.ts`. No `TaggedCliError` defines `[CliError.userMessage]`, so `showUserError` never fires and `renderCliError` remains the only renderer of handler failures.
+`Command.runWith` runs with `renderErrors: true` and `CliOutput.layerPresenter(housePresenter)` from `program/entry/presenter.ts`. `Help` events print `formatter.formatHelpDoc(event.helpDoc)` through `Console.log`; `Version` delegates to `CliOutput.defaultPresenter`; `InvalidInvocation` writes nothing. `renderLibraryFailure` is the only writer of a usage-error block (text) or envelope (`--json`), built from `houseRejection(Cause.squash(cause), tree, argv)`; under `--json`, stderr holds exactly that one envelope. Every other failure writer (`renderCliError`, guard refusals through `io.ts` `writeError`, the unreadable-state notice) uses `output/error-block.ts`. No `TaggedCliError` defines `[CliError.userMessage]`, so `showUserError` never fires and `renderCliError` remains the only renderer of handler failures.
 
-A block's first line is `✕ error: <message>` (the unreadable-state notice uses `! warning:`). Labelled lines follow with a two-space indent; the label column is always 12 characters wide (`did you mean`) plus two spaces, so values start at column 17 whichever labels are present. Width is the stream's `columns`, otherwise 80; long values wrap to column 17 using `wrapAt` and `visibleLength`. Colour follows `detectColorMode` (`NO_COLOR`, `FORCE_COLOR`, non-TTY). `--json` envelopes are unchanged except where Dimension 3.2 says.
+A block's first line is `✕ error: <message>` (the unreadable-state notice uses `! warning:`). Labelled lines follow with a two-space indent; the label column is always 12 characters wide (`did you mean`) plus two spaces, so values start at column 17 whichever labels are present. On a terminal that reports its `columns`, long values wrap to column 17 using `wrapAt` and `visibleLength`; off a terminal each field stays on one line, so logs and pipes stay greppable. Colour follows `detectColorMode` (`NO_COLOR`, `FORCE_COLOR`, non-TTY). `--json` envelopes are unchanged except where Dimension 3.2 says.
 
 | Kind | `code` | `suggestion` | `usage` | `did you mean` | `request` |
 |---|---|---|---|---|---|
@@ -205,12 +205,12 @@ A block's first line is `✕ error: <message>` (the unreadable-state notice uses
 | Guard refusal | `AUTH_REQUIRED` / `DEPLOYMENT_UNKNOWN` | the refusal's fix | — | — | — |
 | Leaf usage error | `INVALID_ARGUMENT`, `MISSING_ARGUMENT`, `UNKNOWN_OPTION`, … | `run agentsfleet <path> --help` | the leaf's usage line | — | — |
 | Unknown command or bare group | `UNKNOWN_COMMAND` | `run agentsfleet <path> --help` | — | library suggestions, when any | — |
-| Invalid `--completions` value | `INVALID_ARGUMENT` | `choose one of bash, zsh, fish, powershell, sh, pwsh` | — | — | — |
+| Invalid `--completions` value | `INVALID_ARGUMENT` | `run agentsfleet --help`; the first line lists the shells in words | — | — | — |
 | Unreadable saved sign-in | — | the existing fix sentence | — | — | — |
 
-- **Dimension 3.1** — PENDING — One aligned block for every failure → Test `error_blocks_align_labels_and_wrap` (unit, `cli/test/error-blocks.unit.test.ts`): a server error with code, suggestion and request id, a network error, a guard refusal, a usage error (`fleet kill abc`), an unknown command (`lsit`) and `--completions tcsh` each render with every label value starting at column 17 at widths 60 and 120; stdout is empty and stderr contains no `DESCRIPTION` heading.
-- **Dimension 3.2** — PENDING — Machine output is unchanged → Test `json_error_envelope_is_unchanged` (unit, same file): under `--json` the same failures, except `--completions tcsh`, produce the literal envelopes recorded in the test from the base (for example `{"error":{"code":"UNKNOWN_COMMAND","message":…}}`); `--completions tcsh` is new and produces `{"error":{"code":"INVALID_ARGUMENT","message":…}}`; stdout stays empty and stderr is exactly one JSON document.
-- **Dimension 3.3** — PENDING — Requested help is untouched → Test `requested_help_prints_unchanged_document` (unit, same file): `fleet --help` and bare `fleet` print the help document on stdout with exit 0 and no block.
+- **Dimension 3.1** — DONE — One aligned block for every failure → Test `error_blocks_align_labels_and_wrap` (unit, `cli/test/error-blocks.unit.test.ts`): a server error with code, suggestion and request id, a network error, a guard refusal, a usage error (`fleet kill abc`), an unknown command (`lsit`) and `--completions tcsh` each render with every label value starting at column 17 at widths 60 and 120; stdout is empty and stderr contains no `DESCRIPTION` heading.
+- **Dimension 3.2** — DONE — Machine output is unchanged → Test `json_error_envelope_is_unchanged` (unit, same file): under `--json` the same failures, except `--completions tcsh`, produce the literal envelopes recorded in the test from the base (for example `{"error":{"code":"UNKNOWN_COMMAND","message":…}}`); `--completions tcsh` is new and produces `{"error":{"code":"INVALID_ARGUMENT","message":…}}`; stdout stays empty and stderr is exactly one JSON document.
+- **Dimension 3.3** — DONE — Requested help is untouched → Test `requested_help_prints_unchanged_document` (unit, same file): `fleet --help` and bare `fleet` print the help document on stdout with exit 0 and no block.
 
 ### §4 — Server and interface strings, docs and rebase
 
@@ -233,7 +233,7 @@ type Visibility = { _tag: "Unknown" } | { _tag: "Known"; scopes: ReadonlySet<str
 buildCommandTree(visibility: Visibility): Command   // cli/src/program/tree/index.ts
 DISCOVERY_TIMEOUT_MS = 2000; RunCliIo.discoveryTimeoutMs?: number
 isDiscoveryRequest(argv: ReadonlyArray<string>, tree: CommandNode): boolean   // cli/src/program/entry/discovery.ts
-makePresenter(input: { tree, argv, jsonMode, stderr }): CliOutput.Presenter    // cli/src/program/entry/presenter.ts
+housePresenter: CliOutput.Presenter   // cli/src/program/entry/presenter.ts; needs no input
 ```
 
 Root: `login`, `logout`, `whoami`, `doctor`, `workspace`, `chat`, `fleet`, `library`, `models`, `secrets`, `connections`, `api-keys`, `usage`, scope-advertised `platform`; unlisted `pet`. Global flags: `--api`, `--json`, `--help`/`-h`, `--version`/`-v`, `--log-level`, `--completions bash|zsh|fish|powershell|sh|pwsh`.

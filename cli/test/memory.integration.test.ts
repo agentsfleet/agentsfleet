@@ -210,7 +210,7 @@ describe("memory — error shapes", () => {
         const stderrText = err.read();
         expect(stderrText).toContain("UZ-MEM-002");
         expect(stderrText).toContain("agentsfleet fleet list");
-        expect(stderrText).toContain("request_id: req_mem_404");
+        expect(stderrText).toMatch(/^ {2}request {2,}req_mem_404$/m);
       });
     });
   });
@@ -265,7 +265,7 @@ describe("memory — error shapes", () => {
       );
       expect(code).not.toBe(0);
       const stderrText = err.read();
-      expect(stderrText).toContain("Suggestion:");
+      expect(stderrText).toMatch(/^ {2}suggestion {2,}\S/m);
       // a NetworkError, not a server-code failure misclassified as one
       expect(stderrText).toMatch(/reach|connect|network/i);
       expect(stderrText).not.toMatch(/UZ-MEM-/);

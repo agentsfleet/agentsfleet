@@ -29,9 +29,7 @@ import { detectTokenInArgv } from "./lib/argv-redact.ts";
 import { resolveApiKeyFromEnv } from "./services/config.ts";
 import type { FetchImpl } from "./lib/http.ts";
 import { printJson, writeError, writeLine } from "./program/io.ts";
-import { SUGGESTION_PREFIX } from "./constants/rejection.ts";
 import { guardCommand } from "./program/auth-guard.ts";
-import { ui } from "./output/index.ts";
 import { DEFAULT_API_URL, normalizeApiUrl, resolveDashboardUrl } from "./util/url.ts";
 import { buildCommandTree } from "./program/tree/index.ts";
 import { resolveCommandPath, type CommandNode } from "./program/tree/resolve-path.ts";
@@ -44,7 +42,8 @@ import { DISCOVERY_TIMEOUT_MS, discoverVisibility } from "./program/entry/discov
 import { completionsFlag } from "./program/tree/global-flags.ts";
 import { UNKNOWN_VISIBILITY } from "./program/tree/visibility.ts";
 import { consoleForStreams } from "./program/entry/console-bridge.ts";
-import { deferredHelp, type DeferredHelp } from "./program/entry/deferred-help.ts";
+import { housePresenter } from "./program/entry/presenter.ts";
+import { BLOCK_LABEL, BLOCK_SEVERITY, writeErrorBlock } from "./output/error-block.ts";
 import { helpFormatter } from "./program/entry/help-formatter.ts";
 import {
   exitCodeForFailure,
@@ -131,7 +130,6 @@ export async function runCli(
         { stderr: stderr as unknown as NodeJS.WritableStream, jsonMode },
         refusal.errorCode,
         refusal.message,
-        { ui },
       );
       return Effect.fail(new GuardRefused(GUARD_EXIT_CODE));
     }),
@@ -198,15 +196,10 @@ export async function runCli(
   // fail, and reading that as a plain success would report a broken
   // deployment as healthy.
   //
-  // The library's own parse failures are the exception — it has already
-  // written them, and their code comes from the exit-code map instead.
-  // In JSON mode the library's help document is held back until the outcome
-  // says whether it belongs on stdout — see `deferred-help.ts`. Outside JSON
-  // mode there is nothing to decide, so the real stream is used directly.
-  const heldHelp: DeferredHelp | null = jsonMode ? deferredHelp(stdout) : null;
-  const libraryStdout = heldHelp?.stream ?? stdout;
-
-  const program = Command.runWith(rootCommand, { version: VERSION, renderErrors: false })(effectiveArgv).pipe(
+  // The library's own parse failures are the exception: the presenter writes
+  // nothing for them, `renderLibraryFailure` writes the one block or envelope,
+  // and their code comes from the exit-code map.
+  const program = Command.runWith(rootCommand, { version: VERSION, renderErrors: true })(effectiveArgv).pipe(
     withCommandInstrumentation(),
     Effect.exit,
     Effect.flatMap((exit) => {
@@ -216,15 +209,16 @@ export async function runCli(
       // under the sentence it already printed.
       if (isGuardRefusal(exit.cause)) return Effect.succeed(exitCodeForFailure(exit.cause));
       return isLibraryUsageError(exit.cause)
-        ? Effect.succeed(renderLibraryFailure(exit.cause, tree, argv, stderr, jsonMode, heldHelp))
+        ? Effect.succeed(renderLibraryFailure(exit.cause, tree, argv, stderr, jsonMode))
         : renderAndCount(exit as Exit.Exit<unknown, never>);
     }),
     // The library renders help and parse errors through Console. Left alone
     // that reaches the real process streams, which would strand every test
     // that injected its own and break runCli's promise to write only where it
     // was told.
-    Effect.provideService(Console.Console, consoleForStreams(libraryStdout, stderr)),
+    Effect.provideService(Console.Console, consoleForStreams(stdout, stderr)),
     Effect.provide(CliOutput.layer(helpFormatter())),
+    Effect.provide(CliOutput.layerPresenter(housePresenter)),
     Effect.provide(CliConfig.layer({ builtIns: [GlobalFlag.Help, GlobalFlag.Version, completionsFlag, GlobalFlag.LogLevel] })),
     Effect.provide(layer),
     Effect.provide(managedExitCode.layer),
@@ -233,9 +227,6 @@ export async function runCli(
   );
 
   const exit = await Effect.runPromiseExit(program as Effect.Effect<number, never, never>);
-  // Help that no rejection spoke over is a person's help: it prints. `flush`
-  // is a no-op once `renderLibraryFailure` has discarded.
-  heldHelp?.flush();
   // The pipeline above turns every outcome into a number, so a failure here is
   // the runtime itself falling over rather than a command failing.
   if (Exit.isFailure(exit)) return exitCodeForFailure(exit.cause);
@@ -248,53 +239,49 @@ export async function runCli(
 // what the CLI is doing instead, and how to put it right. The endpoint is
 // named because a failed read took the recorded deployment down with it — an
 // operator pinned to a self-hosted backend would otherwise find out from the
-// access log. Same two-line shape as a rendered error: fact, then Suggestion.
+// access log. Same block as a rendered error, marked as a warning.
 function reportUnreadableState(
   stderr: WritableStreamLike,
   unreadable: ReadonlyArray<{ readonly file: string; readonly code: string }>,
   apiUrl: string,
 ): void {
   const files = unreadable.map((u) => `${u.file}: ${u.code}`).join(", ");
-  writeLine(
-    stderr,
-    `warning: cannot read your saved sign-in (${files}) — continuing signed out, against ${apiUrl}`,
-  );
-  writeLine(
-    stderr,
-    "  Suggestion: check the file's permissions, or run `agentsfleet login` to sign in again",
-  );
+  writeErrorBlock(stderr, {
+    severity: BLOCK_SEVERITY.warning,
+    message: `cannot read your saved sign-in (${files}); continuing signed out, against ${apiUrl}`,
+    fields: { suggestion: "check the file's permissions, or run `agentsfleet login` to sign in again" },
+  });
 }
 
 // A parse failure, answered in the house shape rather than the library's.
 //
-// The library has already written its own text and help document by the time
-// this runs, but neither carries the ✕ glyph, the `error:` stem, the
-// Suggestion line, or — under `--json` — the stable code a consumer switches
-// on. So the house lines are added here, and the exit code comes from the
-// shared map.
+// The presenter wrote nothing for it, so this is the whole answer: one block
+// in text mode, one envelope carrying the stable code under `--json`. The
+// exit code comes from the shared map.
 function renderLibraryFailure(
   cause: Parameters<typeof exitCodeForFailure>[0],
   tree: CommandNode,
   argv: readonly string[],
   stderr: WritableStreamLike,
   jsonMode: boolean,
-  heldHelp: DeferredHelp | null,
 ): number {
   const rejection = houseRejection(Cause.squash(cause), tree, argv);
   if (rejection !== null) {
     if (jsonMode) {
-      // The envelope is the whole answer for a machine. The help document the
-      // library rendered beneath the parse failure is dropped rather than
-      // printed, so stdout stays parseable.
-      heldHelp?.discard();
       printJson(stderr, {
         error: { code: rejection.code, message: rejection.detail },
       });
     } else {
-      writeLine(
-        stderr,
-        ui.err(`error: ${rejection.detail}${SUGGESTION_PREFIX}${rejection.suggestion}`),
-      );
+      writeErrorBlock(stderr, {
+        severity: BLOCK_SEVERITY.error,
+        message: rejection.headline,
+        fields: {
+          code: rejection.code,
+          usage: rejection.usage,
+          [BLOCK_LABEL.didYouMean]: rejection.didYouMean,
+          suggestion: rejection.suggestion,
+        },
+      });
     }
   }
   return exitCodeForFailure(cause);

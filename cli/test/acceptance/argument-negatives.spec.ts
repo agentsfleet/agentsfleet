@@ -9,7 +9,7 @@
  * only proof that `events` and `steer` reject a missing identifier lived in
  * the live lane, so `make test-unit-all` never ran it.
  *
- * The claim under test is uniformity. One shape (`✕ error:` + `Suggestion:`),
+ * The claim under test is uniformity. One shape (`✕ error:` + a labelled fix),
  * one exit code (validation), one stream (stderr for failure, stdout for
  * help) — whether the parser rejected the invocation at parse time or a
  * handler rejected it after.
@@ -33,7 +33,9 @@ import { EXIT_CODE } from "../../src/errors/index.ts";
 
 const ERROR_GLYPH = "✕";
 const ERROR_STEM = "error:";
-const SUGGESTION_STEM = "Suggestion:";
+// The block's fix: a `suggestion` line, or a `usage` line when the fix is the
+// command's own usage.
+const FIX_LINE = /^(suggestion|usage)\s{2,}(.+)$/;
 // Deliberately narrow: a bare /connect/ also matches the word "connector",
 // which is a command name, not evidence of a socket.
 const CONNECTION_MARKERS = /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|fetch failed/i;
@@ -75,7 +77,7 @@ async function reject(args: ReadonlyArray<string>): Promise<Rejection> {
   const result = await runFleetctl([...args], { env: env() });
   const lines = result.stderr.split("\n").map((l) => l.trim()).filter(Boolean);
   const detailLine = lines.find((l) => l.includes(ERROR_STEM)) ?? "";
-  const suggestionLine = lines.find((l) => l.startsWith(SUGGESTION_STEM)) ?? "";
+  const suggestionLine = lines.find((l) => FIX_LINE.test(l)) ?? "";
   return { code: result.code, stderr: result.stderr, stdout: result.stdout, detailLine, suggestionLine };
 }
 
@@ -86,9 +88,9 @@ function assertHouseShape(r: Rejection, label: string): void {
   assert.ok(r.stderr.includes(ERROR_GLYPH),
     `${label}: stderr carries no ${ERROR_GLYPH} glyph; stderr=${r.stderr}`);
   assert.ok(r.detailLine, `${label}: no "${ERROR_STEM}" line; stderr=${r.stderr}`);
-  assert.ok(r.suggestionLine, `${label}: no "${SUGGESTION_STEM}" line; stderr=${r.stderr}`);
+  assert.ok(r.suggestionLine, `${label}: no suggestion or usage line; stderr=${r.stderr}`);
   const detail = r.detailLine.slice(r.detailLine.indexOf(ERROR_STEM) + ERROR_STEM.length).trim();
-  const suggestion = r.suggestionLine.slice(SUGGESTION_STEM.length).trim();
+  const suggestion = FIX_LINE.exec(r.suggestionLine)?.[2]?.trim() ?? "";
   assert.notEqual(suggestion, detail,
     `${label}: the suggestion repeats the detail instead of naming the fix`);
   assert.ok(!CONNECTION_MARKERS.test(r.stderr),

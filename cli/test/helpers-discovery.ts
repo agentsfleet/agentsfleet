@@ -28,6 +28,8 @@ export interface Setup {
   readonly env?: Record<string, string>;
   // A stored login and the deployment it was minted against (null: unbound).
   readonly stored?: { readonly apiUrl: string | null };
+  // A credentials.json that exists but cannot be read (mode 000).
+  readonly storedUnreadable?: boolean;
   readonly scopes?: (bearer: string | null) => unknown;
   readonly fetchOverride?: (url: string, init?: RequestInit) => Promise<Response>;
   readonly discoveryTimeoutMs?: number;
@@ -59,6 +61,9 @@ export const run = (setup: Setup): Promise<Outcome> =>
         JSON.stringify({ token: STORED_TOKEN, saved_at: Date.now(), session_id: null, api_url: setup.stored.apiUrl, credential_id: "cred-1" }),
         { mode: 0o600 },
       );
+    }
+    if (setup.storedUnreadable === true) {
+      await fs.writeFile(path.join(dir, "credentials.json"), "{}", { mode: 0o000 });
     }
     const calls: Call[] = [];
     const fetchImpl = async (url: string, init?: RequestInit) => {

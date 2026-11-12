@@ -26,7 +26,8 @@ test.each([{command: []}, {command: ["platform"]}])("omits the wizard and offers
 test.each(["--wizard", "--completion"])("refuses removed flag %s", async flag => {
   const result = await run([flag]);
   expect(result.code).toBe(4);
-  expect(result.stdout).toContain("USAGE");
+  // A usage error is one block on stderr, never a help document on stdout.
+  expect(result.stdout).toBe("");
   expect(result.stderr).toContain(flag);
   expect(result.stderr).toContain("Unrecognized flag");
 });

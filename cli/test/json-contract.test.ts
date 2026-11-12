@@ -7,7 +7,7 @@ import { describe, test, expect } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { makeBufferStream, ui } from "./helpers.ts";
+import { makeBufferStream } from "./helpers.ts";
 import { runCli } from "../src/cli.ts";
 import { EXIT_CODE } from "../src/errors/index.ts";
 import { STATE_DIR_ENV } from "../src/constants/env.ts";
@@ -153,17 +153,17 @@ describe("writeError helper", () => {
   test("JSON mode emits structured error on stderr", () => {
     const { stream: stderr, read } = makeBufferStream();
     const ctx = { jsonMode: true, stderr };
-    writeError(ctx, "TEST_CODE", "test message", { ui });
+    writeError(ctx, "TEST_CODE", "test message");
     const parsed = tryParseJson(read()) as { error: { code: string; message: string } } | null;
     expect(parsed).not.toBeNull();
     expect(parsed?.error.code).toBe("TEST_CODE");
     expect(parsed?.error.message).toBe("test message");
   });
 
-  test("non-JSON mode emits human text via ui.err", () => {
+  test("non-JSON mode emits an error block", () => {
     const { stream: stderr, read } = makeBufferStream();
     const ctx = { jsonMode: false, stderr };
-    writeError(ctx, "TEST_CODE", "test message", { ui });
+    writeError(ctx, "TEST_CODE", "test message");
     expect(read()).toContain("test message");
     expect(tryParseJson(read())).toBeNull();
   });

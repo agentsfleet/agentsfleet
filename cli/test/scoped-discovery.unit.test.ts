@@ -137,6 +137,12 @@ describe("discovery_does_not_reuse_another_identity_or_target", () => {
     },
   );
 
+  test("a stored login that cannot be read is no credential at all", async () => {
+    const outcome = await run({ argv: ["--help"], storedUnreadable: true });
+    expect(identityReads(outcome.calls)).toEqual([]);
+    expect(rows(outcome.out)).not.toContain("platform");
+  });
+
   test("one discovery request makes exactly one identity read", async () => {
     const outcome = await withKey(["model:read"], ["--help"]);
     expect(identityReads(outcome.calls)).toHaveLength(1);
