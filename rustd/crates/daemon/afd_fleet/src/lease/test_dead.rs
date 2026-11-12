@@ -116,6 +116,7 @@ pub(crate) fn acquired() -> Acquired {
         event_created_at: AT,
         resume_hold: false,
         redelivered: false,
+        earlier_leases: 0,
         opened: crate::lease::envelope::Opened::unread(id(2), id(3)),
     }
 }

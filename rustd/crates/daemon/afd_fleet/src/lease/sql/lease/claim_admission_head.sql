@@ -147,6 +147,10 @@ SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        slot.fencing_token, slot.lease_expires_at,
        COALESCE(slot.held, false) AS held, slot.holder,
        b.id IS NOT NULL AS reclaimed,
+       -- The leases this event was issued before this claim. A report settles
+       -- its admission, so each one is a run that lapsed without reporting.
+       (SELECT count(*) FROM runner.leases x
+         WHERE x.event_id = a.id AND x.fleet_id = $1) AS earlier_leases,
        f.tenant_id, f.name, f.status, f.head_revision_id,
        f.memory_reads_workspace, f.memory_publishes_workspace,
        i.definition, i.runtime_model_ref, i.context_json, i.policy_semantics,

@@ -57,14 +57,18 @@ pub(crate) struct ReportStatement<'a> {
     pub(crate) obligation_receipt: &'a Uuid7,
     pub(crate) audit_id: &'a Uuid7,
     pub(crate) audit_metadata: serde_json::Value,
+    /// What the event's thread is owed when a failed run wrote no answer; a
+    /// clean run carries none, so its silence stays silence.
+    pub(crate) unanswered_notice: Option<&'a str>,
 }
 
-impl ReportStatement<'_> {
+/// [`COMMIT_REPORT`] while its parameters are being bound.
+type Statement<'q> = sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>;
+
+impl<'a> ReportStatement<'a> {
     /// Runs the statement and reads its one row.
     pub(crate) async fn run(&self, connection: &mut sqlx::PgConnection) -> Result<ReportAnswer> {
-        let lines = self.lines;
-        let column = |field: fn(&RatedLine) -> i64| lines.iter().map(field).collect::<Vec<i64>>();
-        let row = sqlx::query(COMMIT_REPORT)
+        let head = sqlx::query(COMMIT_REPORT)
             .bind(self.lease_id)
             .bind(self.runner_id)
             .bind(afd_billing::nanos::MS_PER_SEC)
@@ -78,31 +82,9 @@ impl ReportStatement<'_> {
             .bind(self.posture)
             .bind(self.provider)
             .bind(self.model)
-            .bind(self.catalogue_version)
-            .bind(self.line_ids)
-            .bind(column(|line| i64::from(line.usage.seq)))
-            .bind(
-                lines
-                    .iter()
-                    .map(|line| line.usage.at.to_sqlx())
-                    .collect::<Vec<_>>(),
-            )
-            .bind(column(|line| i64::from(line.usage.input_tokens)))
-            .bind(column(|line| i64::from(line.usage.cached_input_tokens)))
-            .bind(column(|line| i64::from(line.usage.cache_write_tokens)))
-            .bind(column(|line| i64::from(line.usage.cache_write_5m_tokens)))
-            .bind(column(|line| i64::from(line.usage.cache_write_1h_tokens)))
-            .bind(column(|line| i64::from(line.usage.output_tokens)))
-            .bind(
-                lines
-                    .iter()
-                    .map(|line| line.price.clone())
-                    .collect::<Vec<_>>(),
-            )
-            .bind(column(|line| {
-                i64::try_from(line.unpriced_tokens).unwrap_or(i64::MAX)
-            }))
-            .bind(column(|line| line.charged.as_i64()))
+            .bind(self.catalogue_version);
+        let row = self
+            .bind_lines(head)
             .bind(self.runtime_line_id)
             .bind(self.status)
             .bind(self.response_text)
@@ -132,10 +114,45 @@ impl ReportStatement<'_> {
             .bind(i64::from(af_wire::usage::RUNTIME_MS_MAX))
             .bind(af_wire::usage::LineKind::Runtime.as_str())
             .bind(i64::MAX)
+            .bind(self.unanswered_notice)
             .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;
         ReportAnswer::read(&row, self.lease_id)
+    }
+
+    /// Binds `$15` to `$26`: the runner's request lines, as parallel arrays.
+    fn bind_lines<'q>(&self, statement: Statement<'q>) -> Statement<'q>
+    where
+        'a: 'q,
+    {
+        let lines = self.lines;
+        let column = |field: fn(&RatedLine) -> i64| lines.iter().map(field).collect::<Vec<i64>>();
+        statement
+            .bind(self.line_ids)
+            .bind(column(|line| i64::from(line.usage.seq)))
+            .bind(
+                lines
+                    .iter()
+                    .map(|line| line.usage.at.to_sqlx())
+                    .collect::<Vec<_>>(),
+            )
+            .bind(column(|line| i64::from(line.usage.input_tokens)))
+            .bind(column(|line| i64::from(line.usage.cached_input_tokens)))
+            .bind(column(|line| i64::from(line.usage.cache_write_tokens)))
+            .bind(column(|line| i64::from(line.usage.cache_write_5m_tokens)))
+            .bind(column(|line| i64::from(line.usage.cache_write_1h_tokens)))
+            .bind(column(|line| i64::from(line.usage.output_tokens)))
+            .bind(
+                lines
+                    .iter()
+                    .map(|line| line.price.clone())
+                    .collect::<Vec<_>>(),
+            )
+            .bind(column(|line| {
+                i64::try_from(line.unpriced_tokens).unwrap_or(i64::MAX)
+            }))
+            .bind(column(|line| line.charged.as_i64()))
     }
 }
 
