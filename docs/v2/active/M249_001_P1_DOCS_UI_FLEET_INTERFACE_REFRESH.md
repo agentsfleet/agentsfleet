@@ -41,6 +41,9 @@
 
 | File | Action | Why |
 |---|---|---|
+| `ui/packages/app/components/domain/chat/AuthoringPrompt.tsx` | CREATE | Keep the native composer hook inside the existing lazy conversation boundary |
+| `ui/packages/app/components/domain/chat/AuthoringIntent.tsx` | CREATE | Keep shared navigation intent React-only |
+| `ui/packages/app/tests/authoring-intent.test.tsx` | CREATE | Preserve an existing conversation and unsent text while prefilling an explicit starter once |
 | `docs/v2/pending/M249_002_P1_API_CLI_DOCS_UI_FLEET_COMMANDS_AND_SCOPED_DISCOVERY.md` | CREATE | Combined approved CLI/API and scope-aware discovery follow-up; starts independently and merges after this UI PR |
 | `docs/v2/evidence/M249_VERIFICATION.md` | CREATE | Detailed repair checklist, visual method, measured results and follow-up boundaries |
 | `docs/v2/pending/M239_001_P1_API_DOCS_INFRA_UI_FLEET_TO_FLEET_STEER_AND_ACTIVITY.md` | EDIT | Retain the owner-requested deferred Flow 2 customer use case, invocation, ownership and design questions without adding implementation |
@@ -1223,3 +1226,18 @@ Claude's first-cut review is retained at `/workspace/artifacts/fleet-refresh-v2/
 > Owner: "Ensure typescript is 100% coverage - test, lints pass, dry-app test, bundle-size (if you pass the limits inform indy and get a signoff) and acceptance-codex passes."
 
 Run the actual acceptance-codex target and both package bundle-size checks. Keep all TypeScript coverage floors at 100 percent. A bundle-budget increase requires Indy's separate approval after exact measured sizes are reported. No increase is approved by this instruction.
+
+
+### Final performance verification, Nov 13, 2026
+
+The exact main base `4f3159269` passed `make test-unit-all` under verified Tini, `umask 022` and `RUST_TEST_THREADS=1`. Rust counts: runner 1,731, daemon 172, libraries 3,669; total 5,572. Package counts: app 4,271, website 133, CLI 2,223 with 17 existing skips, design system 488. Every package coverage floor passed (`refresh-main4f-unit-serial-v97.log`).
+
+Earlier unsupervised base tests left zombies under the container's `tail` PID 1. Tini closed those two cleanup failures. A subsequent parallel base run met `AddrInUse` in the IPv4 dual-transport test. The final full lane used serial test scheduling; it retained all selections and each test's internal concurrency. No test, timeout, assertion or gate was weakened.
+
+Current feature package coverage passed: app 4,564; website 133; CLI 2,223 plus 17 existing skips; design system 502. All available coverage metrics are 100 percent (`refresh-final-ui-checks-v89.log`). Its browser portion passed 88 checks and failed two obsolete dark loader-color assertions. Updating only that exact expected color passed both desktop/phone cases, retaining motion, reduced-motion, forced-color and geometry assertions (`refresh-loader-browser-v94.log`). The final full dry rerun remains required.
+
+The authoring context now imports React only. Its native assistant-ui prompt hook lives inside the existing dynamic conversation. Setup presentation loads only after confirmed setup data exists, and the lifecycle dialog loads after an explicit action. DraftClient, validation, action confirmation and identity owners stay in place.
+
+A mobile-dialog experiment reduced shared bytes but moved dialog code into saved-fleet incremental bytes. The final candidate retains the original native mobile navigation and avoids that tradeoff. Current app measurements: shared 292.30 kB against 276.48 kB; New fleet 87.38 kB and saved fleet 98.86 kB against 102.40 kB. Other route limits pass. The shared-cap approval request proposes 288 KiB; no approval or limit change is claimed (`refresh-app-bundle-size-v107.log`).
+
+Website build and size pass: JavaScript 109.71 kB against 128 kB, CSS 19.17 kB against 20 kB (`refresh-website-bundle-size-v104.log`). Estimo's browser cache selects the existing automated-test Chromium; the managed browser refused the benchmark's local file. The runtime cache change preserves actual measurement and leaves package source, budgets and timing checks unchanged.

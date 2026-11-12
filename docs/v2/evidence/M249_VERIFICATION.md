@@ -36,7 +36,7 @@ It labels earlier gallery inputs and current delivery status separately.
 | ✅ | Dialog title/close alignment | Shared 40px title row and aligned 40px close control; approved description spacing | All dialog families, both themes and widths; `design-system/Dialog.tsx` |
 | ✅ | Green successful tool glyphs | Secondary gray action glyphs; failure/interruption keep their distinct outcomes | Activity dark/light; `FleetToolCallHeader.tsx`, `FleetToolCalls.tsx` |
 | ✅ | Replace secret missing focus ring | Capture retains actual autofocus and waits for the exact replacement dialog; native outline remains | Four replacement captures and computed focus-visible/ring metrics |
-| ✅ | Phone select text | Ordinary phone/coarse-pointer form selects use 16px; composer metadata keeps its separate role | Model creation and Usage computed styles; `interactions.css` |
+| ✅ | Phone select text | Ordinary phone/coarse-pointer form selects use 16px; composer metadata keeps its separate role | Model creation and Usage computed styles; `app/globals.css` |
 | ✅ | Input text too close to border | Shared Input and Select use 12px horizontal padding | Dialog field metrics; `Input.tsx`, `Select.tsx` |
 | ✅ | Wake-up strip color and icon | Primary text and PencilSimple glyph | Wake-up top/latest, both themes; `WakeupStrip.tsx` |
 | ✅ | Running command proportional font | Command targets use the shared monospace role | Working desktop/phone; `FleetToolCallHeader.tsx` |
@@ -55,7 +55,7 @@ It labels earlier gallery inputs and current delivery status separately.
 | Result | Finding | Implemented repair | Evidence |
 |---|---|---|---|
 | ✅ | Make active looked like a radio | Square native checkbox; native key-mode radio choices remain separate | Both model key modes at both widths/themes; `Checkbox.tsx` |
-| ✅ | Activity lacked Changes flap | Shared recorded-write projection counts confirmed files before deduplication | Activity/Changes dialog; `ChangesStrip.tsx`, `WorkContextSections.tsx` |
+| ✅ | Activity lacked Changes flap | Shared recorded-write projection excludes pending calls before deduplication and counts unique resulting paths | Activity/Changes dialog; `ChangesStrip.tsx`, `WorkContextSections.tsx` |
 | ✅ | Team lacked You and vertical rhythm | Fixture identity matches signed-in owner; scope/search/section spacing restored | Members heading y424/h20, panel y456; `TeamTable.tsx`, `MembersView.tsx` |
 | ✅ | Phone Usage filter alignment | Right-aligned controls use the available width | Usage phone dark/light; `BillingFilters.tsx` |
 | ✅ | Phone wake-up label wrapped | UTC time is compact today; other dates retain their date; midnight refresh updates the label | Wake-up phone and midnight regression; `WorkWakeups.tsx` |
@@ -127,6 +127,12 @@ The fresh full browser/authenticated lanes below decide current candidate readin
 | Composer | Actual selected model; neutral empty Send; supported preview uploads only | Runtime context-budget facts if already recorded; real uploads/mentions remain separate scope |
 | Account | Native Personal account; combined API keys and sessions | No extra custom Profile/API-key page |
 
+Source review confirms the current API-key database has no display suffix or last-use field.
+Usage already has complete period-level fleet and model groups; the missing projection relates each fleet to its complete model set.
+
+Secret execution-policy declarations exist, but SecretSummary exposes no effective access projection.
+Plugin detail and history already expose decimal revision numbers; the collection card omits them.
+
 Usage More filters preserves real model filtering without crowding the approved primary toolbar. Delete Plugin preserves the existing supported operation inside its dialog. The sample uses a November period consistent with its November reference clock.
 
 Picker dialogs retain advanced-model filtering; the read-only Details dialog does not.
@@ -183,3 +189,19 @@ Its first step requires a fresh source inventory and reviewed spec before implem
 The branch includes main `4f3159269644b2a1d814fbcc9119f01830b7eaf8` through merge `aa0882080`.
 The previous base integration timeout occurred on isolated base `e8a5e8022`; it is not attributed to this UI change.
 Final required checks must report their actual results, including failures, before delivery claims change.
+
+
+## Current candidate performance
+
+| Check | Measured result | Disposition |
+|---|---|---|
+| App shared dashboard | 292.30 kB / 276.48 kB | Owner approval pending; cap unchanged |
+| New fleet incremental | 87.38 kB / 102.40 kB | Pass |
+| Saved fleet incremental | 98.86 kB / 102.40 kB | Pass |
+| Other app routes | Existing limits | Pass |
+| Website JavaScript | 109.71 kB / 128 kB | Pass |
+| Website CSS | 19.17 kB / 20 kB | Pass |
+
+App evidence: `refresh-app-bundle-size-v107.log`; website evidence: `refresh-website-bundle-size-v104.log`.
+The pending request changes only the shared dashboard cap from 270 KiB to 288 KiB.
+The current source retains the existing limit until Indy answers.

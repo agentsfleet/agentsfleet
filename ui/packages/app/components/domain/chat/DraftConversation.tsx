@@ -22,7 +22,7 @@ import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
 import { DraftMessage, DraftRetryProvider } from "./DraftMessage";
 import { chatMessageText } from "@/lib/chat-message-text";
 import { SetupApprovalSummary } from "./SetupApprovalSummary";
-import { AuthoringPrompt } from "./AuthoringIntent";
+import { AuthoringPrompt } from "./AuthoringPrompt";
 
 const SetupSummary = nextDynamic(() => import("./SetupSummary").then(module => module.SetupSummary), {ssr: false});
 
