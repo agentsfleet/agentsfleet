@@ -12,6 +12,10 @@ function renderTime(node: React.ReactElement) {
 }
 
 describe("Time", () => {
+  it("renders the UTC creation date across an offset midnight boundary", () => {
+    render(<Time value="2026-11-04T23:30:00-08:00" format="date" />);
+    expect(screen.getByText("Nov 5, 2026")).toHaveAttribute("datetime", "2026-11-05T07:30:00.000Z");
+  });
   it("renders datetime attr from a string value", () => {
     const { container } = renderTime(<Time value={ISO} tooltip={false} />);
     const t = container.querySelector("time");

@@ -16,7 +16,7 @@ export function Input({ className, type, ref, ...props }: InputProps) {
       type={type}
       className={cn(
         "flex min-h-11 w-full rounded-control border border-border bg-background pointer-coarse:min-h-11",
-        "px-md py-sm text-body-sm text-foreground font-sans",
+        "px-lg py-sm text-body-sm text-foreground font-sans",
         "placeholder:text-text-dim placeholder:opacity-100",
         "aria-invalid:border-destructive",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background",

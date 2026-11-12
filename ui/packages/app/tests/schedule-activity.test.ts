@@ -50,7 +50,7 @@ it("keeps fire messages readable while distinguishing native snapshots from olde
   const bodies = [SCHEDULE_EVENT.request_json, JSON.stringify({message: "Check the support queue"}),
     JSON.stringify({message: "", schedule: {description: "untrusted", schedule_id: 9}}), "{", "null", "[]"];
   expect(bodies.map(request_json => triggerBodyFor({...SCHEDULE_EVENT, request_json}))).toEqual([
-    "Schedule At 9:00 AM (Asia/Kolkata) fired: Review support failures — 東京 🦉", "Schedule fired: Check the support queue",
+    "Scheduled wake-up: Review support failures — 東京 🦉", "Schedule fired: Check the support queue",
     "Schedule fired", "cron received", "cron received", "cron received",
   ]);
   const unknown = JSON.stringify({...SCHEDULE_SNAPSHOT, kind: "schedule_changed", change: "changed", status: "future_state"});

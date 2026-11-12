@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import Link from "next/link";
-import { GitPullRequestIcon, PuzzlePieceIcon, RocketLaunchIcon } from "@phosphor-icons/react/ssr";
+import { GitPullRequestIcon, PuzzlePieceIcon, TerminalWindowIcon } from "@phosphor-icons/react/ssr";
 import nextDynamic from "next/dynamic";
 import { FleetConversationLayout } from "../FleetWorkSidebar";
 import { BrandMark, Button, PageTitle, cn } from "@agentsfleet/design-system";
@@ -115,7 +115,7 @@ function ChatEntrance() {
 function ChatSuggestions({ disabled }: { disabled: boolean }) {
   return <div className="mt-5 flex w-full flex-wrap justify-start gap-lg sm:justify-center">
     {CHAT_STARTERS.map(({ title, prompt }, index) => <ThreadPrimitive.Suggestion key={title} prompt={prompt} send={false} asChild>
-      <Button variant="outline" size="sm" disabled={disabled} className="min-h-9.5 rounded-full text-eyebrow font-semibold text-muted-foreground">{index === 0 ? <RocketLaunchIcon size={16} /> : index === 1 ? <GitPullRequestIcon size={16} /> : <PuzzlePieceIcon size={16} />}{title}</Button>
+      <Button variant="outline" size="sm" disabled={disabled} className="min-h-9.5 rounded-full text-eyebrow font-semibold text-muted-foreground">{index === 0 ? <TerminalWindowIcon size={16} /> : index === 1 ? <GitPullRequestIcon size={16} /> : <PuzzlePieceIcon size={16} />}{title}</Button>
     </ThreadPrimitive.Suggestion>)}
   </div>;
 }

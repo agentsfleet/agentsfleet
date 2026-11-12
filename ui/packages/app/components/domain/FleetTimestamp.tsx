@@ -46,7 +46,7 @@ export function Timestamp({ createdAt, compact = false }: { createdAt: Date; com
         label={label}
         tooltip={false}
         title={absolute}
-        className="shrink-0 font-sans text-eyebrow leading-eyebrow text-muted-foreground tabular-nums"
+        className="shrink-0 font-sans text-eyebrow leading-eyebrow text-muted-foreground"
       />
       <span className="sr-only">Occurred {absolute}</span>
     </>

@@ -79,6 +79,16 @@ afterEach(() => {
 });
 
 describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () => {
+  it("lets a connected app's details close from Done or Escape without disconnecting it", () => {
+    renderConnectors([{...GITHUB, connected: true}]);
+    fireEvent.click(screen.getByRole("button", {name: "Manage GitHub"}));
+    fireEvent.click(screen.getByRole("button", {name: "Done"}));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: "Manage GitHub"}));
+    fireEvent.keyDown(screen.getByRole("dialog"), {key: "Escape"});
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(disconnectConnectorActionMock).not.toHaveBeenCalled();
+  });
   it("renders one card per catalog entry — registry-driven, no hard-coded list", () => {
     renderConnectors([GITHUB, SLACK, ZOHO]);
     for (const e of [GITHUB, SLACK, ZOHO]) {
@@ -160,6 +170,8 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
 
     const busy = await screen.findByRole("button", { name: "Disconnecting…" });
+    fireEvent.keyDown(screen.getByRole("dialog"), {key: "Escape"});
+    expect(screen.getByRole("dialog")).toBeTruthy();
     expect(busy.getAttribute("aria-busy")).toBe("true");
     expect((busy as HTMLButtonElement).disabled).toBe(true);
     // One request, no matter how many times it is clicked while disabled.

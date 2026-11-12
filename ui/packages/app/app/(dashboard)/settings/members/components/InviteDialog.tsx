@@ -26,7 +26,7 @@ import {
   Spinner,
   Time,
 } from "@agentsfleet/design-system";
-import { PlusIcon } from "@phosphor-icons/react/ssr";
+import { PlusIcon, UsersIcon } from "@phosphor-icons/react/ssr";
 import type { InviteSummary } from "@/lib/api/invites";
 import { EMAIL_STATUS, type EmailStatus } from "@/lib/api/invites-types";
 import { presentErrorString } from "@/lib/errors";
@@ -138,7 +138,7 @@ function InviteForm({ error, pending, onSend, onCancel }: InviteFormProps) {
               </FormItem>
             )}
           />
-          <div className="flex items-start gap-lg rounded-md border border-border p-xl"><p className="text-label text-muted-foreground">They join as a <strong className="font-semibold text-foreground">Member</strong> and can open <strong className="font-semibold text-foreground">every workspace in this account</strong>.</p></div>
+          <div className="flex items-start gap-lg rounded-md border border-border p-xl"><UsersIcon size={20} className="mt-xs shrink-0 text-muted-foreground" aria-hidden="true" /><p className="text-label text-muted-foreground">They’ll join as a <strong className="font-semibold text-foreground">Member</strong> and can open <strong className="font-semibold text-foreground">every workspace in this account</strong>.</p></div>
           {error ? <Alert variant="destructive">{error}</Alert> : null}
           <DialogFooter>
             <Button type="button" variant="outline" disabled={pending} onClick={onCancel}>

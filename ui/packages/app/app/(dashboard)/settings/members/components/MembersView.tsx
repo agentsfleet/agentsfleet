@@ -124,17 +124,18 @@ export function MembersView(props: Props) {
   const query = useDeferredValue(search.trim().toLowerCase());
   const members = team.members.filter(member => `${memberName(member)} ${member.email}`.toLowerCase().includes(query));
   const invites = team.invites.filter(invite => invite.email.toLowerCase().includes(query));
+  const ownerName = team.members.find(member => member.role === "owner")?.display_name;
   return (
-    <PageLayout>
+    <PageLayout className="gap-2xl">
       <PageHeader className="sm:items-center" description={MEMBERS_DESCRIPTION} actions={<InviteDialogDynamic onSettled={team.refresh} />}>
         <PageTitle>{MEMBERS_TITLE}</PageTitle>
       </PageHeader>
       {/* Reachable by script only, for the focus a removal hands back. A screen
           reader announces it by its label; no outline marks it for a mouse. */}
-      <Section ref={regionRef} tabIndex={-1} aria-label={TEAM_CAPTION} className="focus:outline-none">
-        <div className="flex flex-wrap items-center gap-xl border-b border-border pb-2xl">
+      <Section ref={regionRef} tabIndex={-1} aria-label={TEAM_CAPTION} className="gap-2xl focus:outline-none">
+        <div className="flex flex-wrap items-center gap-xl border-b border-border pb-2xl pt-5">
           <UsersIcon size={24} className="mt-xs shrink-0 text-muted-foreground" aria-hidden="true" />
-          <div className="min-w-0 flex-1 space-y-xs"><p className="text-label font-semibold">{team.members.find(member => member.role === "owner")?.display_name ? `${team.members.find(member => member.role === "owner")?.display_name}’s account` : "Your account"}</p><p className="text-label text-muted-foreground">Members can open every workspace in this account.</p></div><div className="basis-full pl-10 sm:basis-auto sm:pl-0"><Badge>You’re the owner</Badge></div>
+          <div className="min-w-0 flex-1 space-y-sm"><p className="text-label font-semibold">{ownerName ? `${ownerName}’s account` : "Your account"}</p><p className="text-label text-muted-foreground">Members can open every workspace in this account.</p></div><div className="basis-full pl-10 sm:basis-auto sm:pl-0"><Badge>You’re the owner</Badge></div>
         </div>
         <CollectionToolbar label="Search name or email" value={search} onChange={setSearch} summary="Account-wide access" />
         {members.length === 0 && invites.length === 0 ? <EmptyState title="No matching people" description="Try another name or email, or clear your search." /> : null}

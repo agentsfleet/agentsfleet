@@ -30,7 +30,7 @@ export function SelectTrigger({
         // every route that renders it.
         appearance === "composer"
           ? "h-9 w-auto min-w-0 max-w-full border-0 bg-transparent px-md py-0 text-eyebrow leading-label text-muted-foreground"
-          : "min-h-11 w-full border border-border bg-background px-md py-sm text-label",
+          : "min-h-11 w-full border border-border bg-background px-lg py-sm text-label",
         // The coarse-pointer floor every Button-derived control already carries
         // (Button.tsx:11). Without it the "Rows per page" combobox was the one
         // interactive element in <main> under the 44px touch minimum.

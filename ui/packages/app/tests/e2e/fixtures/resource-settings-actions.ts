@@ -7,7 +7,7 @@ import {CATALOGUE_MODEL} from "@/tests/helpers/catalogue-fixtures";
 import {WORKSPACE, FLEET_ID} from "@/tests/helpers/draft-fixtures";
 
 export const SAMPLE_MEMBERS: MemberSummary[] = [
-  {user_id: "owner", display_name: "Kishore Neelamegam", email: "you@example.test", role: "owner", joined_at: "2026-11-01T10:00:00Z"},
+  {user_id: "fixture-owner", display_name: "Kishore Neelamegam", email: "you@example.test", role: "owner", joined_at: "2026-11-01T10:00:00Z"},
   {user_id: "member", display_name: "Release reviewer", email: "reviewer@example.test", role: "member", joined_at: "2026-11-05T10:00:00Z"},
 ];
 export const SAMPLE_INVITES: InviteSummary[] = [{id: "invite", email: "teammate@example.test", role: "member", created_at: "2026-11-11T10:00:00Z",

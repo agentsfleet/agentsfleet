@@ -61,6 +61,22 @@ afterEach(() => {
 });
 
 describe("the approved team list", () => {
+  it("keeps an account heading when its owner's name is unavailable", () => {
+    renderView([{...JOHN, display_name: null}]);
+    expect(screen.getByText("Your account")).toBeTruthy();
+    expect(screen.getByText("You’re the owner")).toBeTruthy();
+  });
+  it("copies an invitation link without dismissing its menu or changing membership", async () => {
+    const user = userEvent.setup();
+    const copied = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    renderView();
+    await user.click(screen.getByRole("button", {name: manageLabel(revokeFor(INVITE))}));
+    await user.click(screen.getByRole("menuitem", {name: copyLinkFor(INVITE)}));
+    expect(copied).toHaveBeenCalledWith(INVITE.link);
+    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(actions.revokeInviteAction).not.toHaveBeenCalled();
+    copied.mockRestore();
+  });
   it("shows names, roles and dates without confusing another owner with you", () => {
     renderView([JOHN, BOB, {...JOHN, user_id: "other_owner", display_name: "Dana", email: "dana@example.com"}]);
     expect(screen.getByRole("region", {name: "Members"})).toBeTruthy();

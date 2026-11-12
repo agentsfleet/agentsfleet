@@ -54,6 +54,18 @@ beforeEach(() => { push.mockReset(); refresh.mockReset(); current.params = new U
 afterEach(() => cleanup());
 
 describe("Billing report filters and details preserve period totals", () => {
+  it("retains unattributed setup charges and a deleted fleet's identifier without inventing a name", () => {
+    const report = billingReport();
+    view({...report, spending: {...report.spending, by_fleet: [
+      {key: null, label: null, totals: billingTotals()},
+      {key: "deleted-fleet", label: null, totals: billingTotals()},
+    ]}});
+    const section = screen.getByRole("region", {name: "By fleet"});
+    expect(within(section).getByText("Setup chats")).toBeTruthy();
+    expect(within(section).getByText("Fleet setup")).toBeTruthy();
+    expect(within(section).getByText("deleted-fleet")).toBeTruthy();
+    expect(within(section).getByText("Fleet work")).toBeTruthy();
+  });
   it("opens the previous UTC month and returns to the current month without losing fleet selection", () => {
     current.params = new URLSearchParams("fleet=deleted-fleet&through_at=2026-11-01T01:00:00Z&c=old&activity=old");
     view(billingReport({from_at: "2026-11-01T00:00:00Z", through_at: "2026-11-01T01:00:00Z"}));

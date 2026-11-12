@@ -9,6 +9,10 @@ import { FleetThreadViewport } from "@/components/domain/FleetThreadViewport";
 import { FleetConversationLayout } from "@/components/domain/FleetWorkSidebar";
 import { TaskPanel } from "@/components/domain/chat/TaskPanel";
 import { CONNECTION_STATUS } from "@/components/domain/useFleetEventStream";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import { TooltipProvider } from "@agentsfleet/design-system";
+
+const router = {bfcacheId: "task-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {}};
 
 const TASK_ACTIVITY = {items: [{kind: "task_transfer_progress", progress: {activity_id: TASK_IDS[0], task_id: TASK_IDS[0], source_admission_id: null, operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}}], truncated: false};
 const MESSAGES: ThreadMessageLike[] = [
@@ -21,7 +25,7 @@ const MESSAGES: ThreadMessageLike[] = [
 export function TaskFixture() {
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({messages: MESSAGES,
     convertMessage: message => message, onNew: async () => {}});
-  return <main className="flex h-dvh flex-col bg-background text-foreground">
+  return <AppRouterContext value={router}><TooltipProvider><main className="flex h-dvh flex-col bg-background text-foreground">
     <header className="shrink-0 border-b border-border px-xl py-lg"><h1 className="font-semibold">Linkwarden repairs</h1></header>
     <AssistantRuntimeProvider runtime={runtime}><SenderLabelProvider senderLabel="Linkwarden repair fleet across connected repositories">
       <FleetTaskProvider workspaceId="workspace" fleetId="linkwarden" subject="fixture-owner" revision={0} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}}>
@@ -30,5 +34,5 @@ export function TaskFixture() {
         onRestored={() => {}} onDraft={() => {}} modelLabel="Selected coding model" /></FleetConversationLayout>
       </FleetTaskProvider>
     </SenderLabelProvider></AssistantRuntimeProvider>
-  </main>;
+  </main></TooltipProvider></AppRouterContext>;
 }

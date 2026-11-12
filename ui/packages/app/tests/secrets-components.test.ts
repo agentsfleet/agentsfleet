@@ -96,7 +96,7 @@ describe("EditSecretDialog dismiss guard", () => {
     );
     fireEvent.change(screen.getByLabelText("Field 1 name"), {target: {value: "api_key"}});
     fireEvent.change(screen.getByLabelText("Field 1 value"), {target: {value: "replacement-test-value"}});
-    fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
+    fireEvent.click(screen.getByRole("button", {name: "Replace value"}));
     await waitFor(() => {
       expect(document.querySelector('button[aria-busy="true"]')).not.toBeNull();
     });
@@ -152,7 +152,7 @@ describe("AddSecretDialog", () => {
     await renderDialog();
     await userEvent.setup().click(screen.getByRole("button", {name: "Add secret"}));
     expect(await screen.findByLabelText("Value")).toHaveProperty("type", "password");
-    expect(screen.getByText("Secret values are hidden after saving.")).toBeTruthy();
+    expect(screen.getAllByText("Secret values are hidden after saving. You can replace them later.")).toHaveLength(1);
   });
 
   it("closes the dialog after a successful submit (onDone wiring)", async () => {

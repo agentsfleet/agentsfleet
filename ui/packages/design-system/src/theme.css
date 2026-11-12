@@ -160,9 +160,13 @@
   --text-display-md: var(--fs-display-md);
   --text-heading: var(--fs-heading);
   --text-conversation-heading: var(--fs-conversation-heading, var(--fs-heading));
+  --leading-conversation-heading: var(--lh-conversation-heading, var(--lh-heading));
+  --text-description: var(--fs-description, var(--fs-body));
   --text-eyebrow: var(--fs-eyebrow);
   --text-usage-total: var(--fs-usage-total);
   --text-usage-total--line-height: var(--lh-usage-total);
+  --leading-usage-total: var(--lh-usage-total);
+  --tracking-usage-total: var(--letter-spacing-usage-total);
   --text-body-lg: var(--fs-body-lg);
   --text-body: var(--fs-body);
   --text-body-sm: var(--fs-body-sm);

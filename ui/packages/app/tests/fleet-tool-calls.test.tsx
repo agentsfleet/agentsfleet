@@ -125,7 +125,7 @@ describe("FleetThread — tool cells", () => {
       call({ name: TOOL_NAME.FILE_DELETE, status: undefined }), running({ name: TOOL_NAME.FILE_DELETE }),
     ], RECEIVED);
     const [ok, bad, cut, unsaid, live] = cells();
-    expect(bulletOf(ok!).getAttribute("class")).toContain(SUCCESS);
+    expect(bulletOf(ok!).getAttribute("class")).toContain("text-muted-foreground");
     expect(bulletOf(bad!).getAttribute("class")).toContain(DESTRUCTIVE);
     // A failure says so in words, never by colour alone.
     expect(headerOf(bad!)).toContain("Failed: making request GET https://x/ Failed");

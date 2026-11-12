@@ -108,3 +108,12 @@ it("shows unresolved defaults and the exact source and fleet revisions under rev
   expect(screen.getByText("R3")).toBeTruthy();
   expect(screen.getByText("Add instructions before saving or publishing.")).toBeTruthy();
 });
+
+it("shows resolved model and instructions for a new setup without inventing saved revisions", async () => {
+  render(<FleetSetupDetails review={REVIEW} />);
+  expect(screen.getByText(REVIEW.effective.runtime_model_ref!)).toBeTruthy();
+  expect(await screen.findByText(REVIEW.effective.definition.instructions_md.trim())).toBeTruthy();
+  expect(screen.queryByText("Source revision")).toBeNull();
+  expect(screen.queryByText("Current saved setup revision")).toBeNull();
+  expect(screen.queryByText("Add instructions before saving or publishing.")).toBeNull();
+});

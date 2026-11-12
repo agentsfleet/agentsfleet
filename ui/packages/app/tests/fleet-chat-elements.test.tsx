@@ -7,6 +7,8 @@ import { FleetChatElementView } from "@/components/domain/FleetChatElements";
 import { GROUP_META } from "@/components/domain/useFleetThreadEntries";
 import { ACTOR, OUTCOME } from "@/lib/events/event-summary";
 import type { ActivityElementData } from "@/components/domain/fleet-chat-elements";
+import { ACTIVITY_KIND, FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
+import { SCHEDULE_SNAPSHOT } from "./helpers/schedule-activity";
 
 const APPROVAL: ActivityElementData = {
   eventId: "access-request", actor: ACTOR.GATE_BLOCKED, status: "gate_blocked",
@@ -15,6 +17,14 @@ const APPROVAL: ActivityElementData = {
 };
 
 describe("registered fleet chat elements", () => {
+  it("renders a recorded schedule creation with its message and cadence", () => {
+    mockStream([ev({id: "schedule-created", role: "system", actor: "system", status: FLEET_ACTIVITY.status,
+      custom: {requestJson: JSON.stringify({...SCHEDULE_SNAPSHOT, kind: ACTIVITY_KIND.scheduleChanged, change: "created"})}})]);
+    renderThread();
+    expect(screen.getByText("Scheduled wake-up")).toBeTruthy();
+    expect(screen.getByText(`${SCHEDULE_SNAPSHOT.message} · ${SCHEDULE_SNAPSHOT.description}`)).toBeTruthy();
+    expect(screen.queryByRole("button", {name: "View event"})).toBeNull();
+  });
   it("renders mixed recorded outcomes through the real transcript", async () => {
     mockStream([
       ev({id: "operator", role: "user", actor: "steer:private-person", text: "Review the release", reply: "Checks are ready."}),

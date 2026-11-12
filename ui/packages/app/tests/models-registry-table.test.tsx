@@ -8,6 +8,13 @@ const activate = /make active: claude-sonnet-5/i;
 const defaultAction = /make active: platform default/i;
 
 describe("Models registry actions", () => {
+  it("can return to the platform default when the previous model has no provider label", async () => {
+    resetProviderActionMock.mockResolvedValue({ok: true, data: {mode: "platform"}});
+    listModelEntriesActionMock.mockResolvedValue({ok: true, data: registry([])});
+    await renderTable(registry([entry({active: true, provider: undefined})]));
+    await userEvent.setup().click(screen.getByRole("button", {name: defaultAction}));
+    await waitFor(() => expect(resetProviderActionMock).toHaveBeenCalledOnce());
+  });
   it("keeps the platform default above every returned model", async () => {
     await renderTable(registry(Array.from({length: 9}, (_, i) => entry({id: `e${i}`, model_id: `model-${i}`}))));
     expect(screen.getByLabelText("Platform default")).toBeTruthy();

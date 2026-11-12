@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EVENTS } from "../lib/analytics/events";
 
@@ -42,6 +42,38 @@ afterEach(() => {
 });
 
 describe("CreateApiKeyDialog component", () => {
+  it("lets Done discard a confirmed key before transition bookkeeping finishes", async () => {
+    const concurrentAction = Promise.withResolvers<void>();
+    createApiKeyActionMock.mockResolvedValue({ok: true,
+      data: {id: "k", key_name: "automation", key: "agt_tdeadbeef", created_at: "1970-01-01T00:00:00.001Z"}});
+    const {user, onCreated} = await openDialog();
+    // React groups concurrent async Actions; the key response can arrive first.
+    React.startTransition(() => concurrentAction.promise);
+    try {
+      await user.type(screen.getByLabelText(/^name$/i), "automation");
+      await user.click(submitButton());
+      await screen.findByLabelText(/API key value/i);
+      fireEvent.click(screen.getByRole("button", {name: /^done$/i}));
+      await waitFor(() => expect(screen.queryByLabelText(/API key value/i)).toBeNull());
+      expect(onCreated).toHaveBeenCalledOnce();
+      expect(createApiKeyActionMock).toHaveBeenCalledOnce();
+    } finally {await act(async () => concurrentAction.resolve());}
+  });
+  it("does not discard an in-flight creation when the opening control is activated again", async () => {
+    const pending = Promise.withResolvers<{ok: false; error: string}>();
+    createApiKeyActionMock.mockReturnValueOnce(pending.promise);
+    const {user, onCreated} = await openDialog();
+    await user.type(screen.getByLabelText(/^name$/i), "automation");
+    const submit = submitButton();
+    await user.click(submit);
+    try {
+      await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("button", {name: /Creating.*Create/})).toHaveProperty("disabled", true));
+      fireEvent.click(screen.getByRole("button", {name: "Create API key", hidden: true}));
+      expect(screen.getByRole("dialog")).toBeTruthy();
+    } finally {await act(async () => pending.resolve({ok: false, error: "Creation refused"}));}
+    await waitFor(() => expect(submitButton()).toHaveProperty("disabled", false));
+    expect(onCreated).not.toHaveBeenCalled();
+  });
   async function openDialog(onCreated = vi.fn()) {
     const { default: CreateApiKeyDialog } = await import(
       "../app/(dashboard)/settings/security/components/CreateApiKeyDialog"

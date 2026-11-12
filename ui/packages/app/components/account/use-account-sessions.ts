@@ -14,9 +14,6 @@ export function useAccountSessions(client: AccountSettingsClient) {
   const epoch = useRef(0);
   const busy = useRef(false);
   const fail = (error: string, notice: string | null = null) => setState(previous => previous.kind === "ready" ? {...previous, error, notice} : {kind: "failed", error});
-  const clearFeedback = () => setState(previous => previous.kind === "ready" ? {...previous, error: null, notice: null} : previous);
-  const removeConfirmed = (id: string) => setState(previous => previous.kind === "ready"
-    ? {...previous, page: {...previous.page, sessions: previous.page.sessions.filter(session => session.id !== id)}} : previous);
   const readPage = useCallback(async (offset: number, append: boolean, mine: number) => {
     try {
       const result = await client.listSessions(offset);
@@ -26,7 +23,7 @@ export function useAccountSessions(client: AccountSettingsClient) {
         sessions: append && previous.kind === "ready"
           ? [...new Map([...previous.page.sessions, ...result.data.sessions].map(session => [session.id, session])).values()]
           : result.data.sessions}, error: null, notice: previous.kind === "ready" ? previous.notice : null}));
-      return true;
+      return result.data;
     } catch {if (epoch.current === mine) fail("Your sessions could not be loaded. Try again."); return false;}
   }, [client]);
   const refresh = useCallback(async (offset = 0, append = false) => {
@@ -47,7 +44,7 @@ export function useAccountSessions(client: AccountSettingsClient) {
   async function revoke(id: string): Promise<boolean> {
     if (busy.current || state.kind !== "ready") return false;
     busy.current = true;
-    clearFeedback();
+    setState({...state, error: null, notice: null});
     setOperation({revoke: id});
     const mine = epoch.current;
     try {
@@ -67,10 +64,11 @@ export function useAccountSessions(client: AccountSettingsClient) {
   async function revokeOthers(): Promise<boolean> {
     if (busy.current || state.kind !== "ready") return false;
     busy.current = true;
-    clearFeedback();
+    setState({...state, error: null, notice: null});
     setOperation("revoke-others");
     const mine = epoch.current;
     let failure: string | null = null;
+    const revoked = new Set<string>();
     try {
       const targets = await otherSessionIds(client, () => epoch.current === mine);
       for (const id of targets) {
@@ -78,14 +76,15 @@ export function useAccountSessions(client: AccountSettingsClient) {
         const result = await client.revokeSession(id);
         if (epoch.current !== mine) return false;
         if (!result.ok) { failure = result.error; break; }
-        removeConfirmed(id);
+        revoked.add(id);
+        setState({...state, page: {...state.page, sessions: state.page.sessions.filter(session => !revoked.has(session.id))}, error: null, notice: null});
       }
       if (epoch.current !== mine) return false;
       const refreshed = await readPage(0, false, mine);
       if (epoch.current !== mine) return false;
       if (failure) { fail(`Some sessions may remain signed in. ${failure}`); return false; }
       if (!refreshed) {fail("The session list could not be refreshed. Try refreshing it again.", "Other sessions signed out"); return true;}
-      setState(previous => previous.kind === "ready" ? {...previous, notice: "Other sessions signed out"} : previous);
+      setState({kind: "ready", page: refreshed, error: null, notice: "Other sessions signed out"});
       return true;
     } catch {
       if (epoch.current === mine) fail("Other session sign-out could not be confirmed. Refresh before trying again.");

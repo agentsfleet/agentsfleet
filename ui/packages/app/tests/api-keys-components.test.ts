@@ -102,6 +102,24 @@ describe("ApiKeyList component", () => {
     expect(screen.queryByText(/never used/i)).toBeNull();
   });
 
+  it("keeps a revoked key readable when its revocation timestamp is unavailable", async () => {
+    await renderList(listResponse([{...REVOKED, revoked_at: null}]));
+    const row = screen.getByRole("listitem");
+    expect(row.textContent).toContain("Revoked");
+    expect(row.querySelectorAll("time")).toHaveLength(1);
+  });
+
+  it("keeps an uncertain revoke open and reconciles the server list", async () => {
+    revokeApiKeyActionMock.mockRejectedValue(new Error("Response lost"));
+    listApiKeysActionMock.mockResolvedValue({ok: true, data: listResponse([ACTIVE])});
+    const user = userEvent.setup();
+    await renderList(listResponse([ACTIVE]));
+    await user.click(screen.getByLabelText(/Revoke API key ci-runner/i));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", {name: "Revoke key"}));
+    await waitFor(() => expect(screen.getByRole("alertdialog").textContent).toContain("The key change could not be confirmed"));
+    expect(listApiKeysActionMock).toHaveBeenCalled();
+  });
+
   it("active rows expose Revoke; revoked rows expose Delete", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(screen.getByLabelText(/Revoke API key ci-runner/i)).toBeTruthy();
@@ -139,6 +157,7 @@ describe("ApiKeyList component", () => {
     await renderList(listResponse([ACTIVE]));
     await user.click(screen.getByLabelText(/Revoke API key ci-runner/i));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+    expect(screen.getByRole("alertdialog").textContent).toContain(`Tools using “${ACTIVE.key_name}” will lose access`);
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^Revoke key$/i }));
     await waitFor(() => expect(revokeApiKeyActionMock).toHaveBeenCalledWith(ACTIVE.id));
     await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalled());
@@ -172,6 +191,7 @@ describe("ApiKeyList component", () => {
     const user = userEvent.setup();
     await renderList(listResponse([REVOKED]));
     await user.click(screen.getByLabelText(/Delete API key old-zapier/i));
+    expect(screen.getByRole("alertdialog").textContent).toContain(`revoked key “${REVOKED.key_name}”`);
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^delete$/i }));
     await waitFor(() => expect(deleteApiKeyActionMock).toHaveBeenCalledWith(REVOKED.id));
     await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalled());

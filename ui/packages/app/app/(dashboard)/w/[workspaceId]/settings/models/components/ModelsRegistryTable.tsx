@@ -183,7 +183,7 @@ export default function ModelsRegistryTable({ workspaceId, workspaces, initialPa
   return (
     <Section asChild className="gap-2xl">
       <section aria-label="Models">
-        <PageHeader description={MODELS_PAGE_DESCRIPTION}
+        <PageHeader className="sm:flex-col summary-medium:flex-row" description={MODELS_PAGE_DESCRIPTION}
           actions={
             <AddModelEntryDialog
               workspaceId={workspaceId}

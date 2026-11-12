@@ -28,7 +28,10 @@ export function SessionSettingsView({client}: {client: AccountSettingsClient}) {
         {state.page.sessions.map(session => <SessionRow key={session.id} session={session} disabled={sessions.pending} onRevoke={() => setTarget(session)} />)}
       </DashboardPanel> : null}
       {state.kind === "ready" && state.page.sessions.length === 0 ? <EmptyState title="No active browser sessions were returned" description="Refresh to check the latest session information." action={<Button variant="outline" disabled={sessions.pending} onClick={() => {void sessions.refresh();}}>Refresh sessions</Button>} /> : null}
-      {state.kind !== "loading" && state.error ? <Alert variant="destructive">{state.error}<Button variant="link" disabled={sessions.pending} onClick={() => {void sessions.refresh();}}>Refresh sessions</Button></Alert> : null}
+      {state.kind !== "loading" && state.error ? <Alert variant="destructive" className="flex-col sm:flex-row sm:items-center">
+        <span className="min-w-0 flex-1">{state.error}</span>
+        <Button variant="outline" className="shrink-0 self-start" disabled={sessions.pending} onClick={() => {void sessions.refresh();}}>Refresh sessions</Button>
+      </Alert> : null}
       {state.kind === "ready" && state.notice ? <output className="text-label text-success">{state.notice}</output> : null}
       {nextOffset !== null ? <Button variant="outline" className="self-start" disabled={sessions.pending}
         onClick={() => {void sessions.refresh(nextOffset, true);}}>Load more sessions</Button> : null}
@@ -42,10 +45,10 @@ export function SessionSettingsView({client}: {client: AccountSettingsClient}) {
 
 function SessionRow({session, disabled, onRevoke}: {session: AccountSession; disabled: boolean; onRevoke: () => void}) {
   const Icon = session.mobile ? DeviceMobileIcon : DesktopIcon;
-  return <div className="flex min-w-0 flex-col items-start gap-xl p-xl sm:p-5 sm:flex-row sm:items-center">
+  return <div className="flex min-h-21 min-w-0 flex-col items-start gap-xl p-xl sm:px-5 sm:py-xl sm:flex-row sm:items-center">
     <div className="flex min-w-0 flex-1 items-center gap-xl">
       <span className="hidden size-10 shrink-0 sm:flex items-center justify-center rounded-control border border-border" aria-hidden="true"><Icon size={16} /></span>
-      <div className="min-w-0 space-y-xs"><div className="flex flex-wrap items-center gap-sm">
+      <div className="min-w-0 space-y-1.5"><div className="flex flex-wrap items-center gap-sm">
         <span className="break-words text-body font-medium">{session.browser} on {session.device}</span>{session.current ? <Badge>This device</Badge> : null}
       </div><p className="break-words text-label text-muted-foreground">{session.location ? `${session.location} · ` : ""}Last active {session.lastActiveAt ? <Time value={session.lastActiveAt} format="relative" /> : "unavailable"}</p></div>
     </div>

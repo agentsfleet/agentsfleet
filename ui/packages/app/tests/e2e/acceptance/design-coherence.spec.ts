@@ -31,7 +31,7 @@ test("Secrets exposes hidden values, access limits and reachable management at b
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`/w/${workspaceId}/secrets`);
       const table = page.getByRole("table");
-      await expect(table.getByRole("columnheader")).toHaveText(["Name", "Type", "Value", "Available to", ""]);
+      await expect(table.getByRole("columnheader")).toHaveText(["Name", "Type", "Value", "Available to", "Actions"]);
       const row = table.getByRole("row").filter({hasText: name});
       await expect(row.getByRole("cell").nth(2)).toHaveText("Hidden");
       await expect(row.getByRole("cell").nth(3)).toHaveText("Access details unavailable");
@@ -44,7 +44,9 @@ test("Secrets exposes hidden values, access limits and reachable management at b
         await expect(management).toContainText("Stored in this workspace");
         await expectAccessible(page, "Secret management");
         await management.getByRole("button", {name: action, exact: true}).click();
-        const dialog = page.getByRole("dialog").or(page.getByRole("alertdialog"));
+        const dialog = action === "Replace value"
+          ? page.getByRole("dialog", {name: `Replace secret “${name}”`, exact: true})
+          : page.getByRole("alertdialog", {name: `Delete secret “${name}”?`, exact: true});
         await expect(dialog).toBeVisible();
         await expect(dialog).toHaveAccessibleName(/.+/);
         await expect(dialog).toHaveAccessibleDescription(/.+/);
@@ -63,10 +65,10 @@ test("Security key rows retain exact creation dates and reachable actions at bot
   const client = clientFor("admin");
   const name = `e2e-alignment-${crypto.randomUUID()}`;
   const { id } = await client.post<{ id: string }>("/v1/api-keys", { key_name: name });
-  const listing = await client.get<{items: {id: string; created_at: string}[]}>("/v1/api-keys");
-  const createdAt = listing.items.find(key => key.id === id)?.created_at;
-  expect(createdAt).toBeTruthy();
   try {
+    const listing = await client.get<{items: {id: string; created_at: string}[]}>("/v1/api-keys");
+    const createdAt = listing.items.find(key => key.id === id)?.created_at;
+    expect(createdAt).toBeTruthy();
     await signInAs(page, "admin");
     for (const width of VIEWPORTS) {
       await page.setViewportSize({ width, height: 900 });

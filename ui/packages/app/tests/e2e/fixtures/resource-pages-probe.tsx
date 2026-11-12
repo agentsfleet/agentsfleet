@@ -18,7 +18,7 @@ import IntegrationsConnectors from "@/app/(dashboard)/w/[workspaceId]/integratio
 import { CONNECT_APPS_COPY } from "@/app/(dashboard)/w/[workspaceId]/integrations/copy";
 import { BillingReportView } from "@/app/(dashboard)/settings/billing/components/BillingReportView";
 import { BILLING_DETAIL_STATE } from "@/app/(dashboard)/settings/billing/lib/report-detail";
-import { BILLING_MODEL, BILLING_MODEL_NAME, billingReport } from "@/tests/helpers/billing-report";
+import { BILLING_MODEL, BILLING_MODEL_NAME, billingActivity, billingReport } from "@/tests/helpers/billing-report";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 import { MODEL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
@@ -52,7 +52,7 @@ export function ResourcePagesFixture() {
 function ResourcePage({kind}: {kind: typeof PAGES[number]["key"]}) {
   if (kind === "new") return <EmptySetup />;
   if (kind === "usage") return <UsageLayout>
-    <BillingReportView report={billingReport()} pageSize={25} modelNames={{[BILLING_MODEL]: BILLING_MODEL_NAME}} detail={{status: BILLING_DETAIL_STATE.closed}} selected="" />
+    <BillingReportView report={billingReport({from_at: "2026-11-01T00:00:00Z", through_at: "2026-11-12T11:44:00Z", activities: {items: [billingActivity({recorded_at: "2026-11-12T11:00:00Z"})], total: 1, next_cursor: null}})} pageSize={25} modelNames={{[BILLING_MODEL]: BILLING_MODEL_NAME}} detail={{status: BILLING_DETAIL_STATE.closed}} selected="" />
   </UsageLayout>;
   if (kind === "library") return <LibraryContent workspaceId={WORKSPACE} />;
   if (kind === "integrations") return <Resource title={CONNECT_APPS_COPY.title} description={CONNECT_APPS_COPY.description}><IntegrationsConnectors workspaceId={WORKSPACE} catalog={CONNECTORS} /></Resource>;
@@ -62,7 +62,7 @@ function ResourcePage({kind}: {kind: typeof PAGES[number]["key"]}) {
 }
 
 function Resource({title, description, children, actions}: {title: string; description?: ReactNode; children: ReactNode; actions?: ReactNode}) {
-  return <PageLayout><PageHeader description={description} actions={actions}><PageTitle>{title}</PageTitle></PageHeader>{children}</PageLayout>;
+  return <PageLayout className="gap-2xl"><PageHeader description={description} actions={actions}><PageTitle>{title}</PageTitle></PageHeader>{children}</PageLayout>;
 }
 
 function EmptySetup() {

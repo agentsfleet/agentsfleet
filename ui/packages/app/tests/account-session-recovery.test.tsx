@@ -127,3 +127,35 @@ it("removes confirmed bulk sign-outs even when the subsequent list refresh fails
   expect(hook.result.current.state).toMatchObject({page: {sessions: []}, notice: "Other sessions signed out",
     error: "The session list could not be refreshed. Try refreshing it again."});
 });
+
+it("refuses bulk writes before a complete list exists and bounds a provider that never ends paging", async () => {
+  const api = client();
+  vi.mocked(api.listSessions).mockResolvedValueOnce({ok: false, error: "List unavailable"});
+  const hook = renderHook(() => useAccountSessions(api));
+  expect(await hook.result.current.revokeOthers()).toBe(false);
+  await waitFor(() => expect(hook.result.current.state.kind).toBe("failed"));
+  expect(await hook.result.current.revokeOthers()).toBe(false);
+  await act(() => hook.result.current.refresh());
+  vi.mocked(api.listSessions).mockImplementation(async (offset = 0) => ({ok: true, data: {sessions: [SESSION], nextOffset: offset + 1}}));
+  await act(async () => expect(await hook.result.current.revokeOthers()).toBe(false));
+  expect(api.listSessions).toHaveBeenCalledTimes(102);
+  expect(api.revokeSession).not.toHaveBeenCalled();
+});
+
+it.each(["paged-read", "empty-list", "write", "refresh"])("discards bulk sign-out after disposal during %s", async stage => {
+  const api = client(); const hook = renderHook(() => useAccountSessions(api));
+  await waitFor(() => expect(hook.result.current.state.kind).toBe("ready"));
+  const read = Promise.withResolvers<ActionResult<AccountSessionPage>>();
+  const write = Promise.withResolvers<ActionResult<{id: string}>>();
+  if (stage === "write") vi.mocked(api.revokeSession).mockReturnValueOnce(write.promise);
+  else if (stage === "refresh") vi.mocked(api.listSessions).mockResolvedValueOnce({ok: true, data: PAGE}).mockReturnValueOnce(read.promise);
+  else vi.mocked(api.listSessions).mockReturnValueOnce(read.promise);
+  let operation = Promise.resolve(false); act(() => {operation = hook.result.current.revokeOthers();});
+  if (stage === "write") await waitFor(() => expect(api.revokeSession).toHaveBeenCalledOnce());
+  if (stage === "refresh") await waitFor(() => expect(api.listSessions).toHaveBeenCalledTimes(3));
+  hook.unmount();
+  write.resolve({ok: true, data: {id: SESSION.id}});
+  read.resolve({ok: true, data: stage === "paged-read" ? {...PAGE, nextOffset: 1} : {sessions: [], nextOffset: null}});
+  expect(await operation).toBe(false);
+  expect(api.revokeSession).toHaveBeenCalledTimes(stage === "write" || stage === "refresh" ? 1 : 0);
+});

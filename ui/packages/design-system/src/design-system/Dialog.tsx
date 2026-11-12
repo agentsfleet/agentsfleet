@@ -94,7 +94,7 @@ export function DialogContent({
 function DialogCloseButton({ disabled }: { disabled: boolean }) {
   return (
     <DialogClose asChild>
-      <Button variant="ghost" size="icon" className="absolute right-sm top-sm" disabled={disabled}>
+      <Button variant="ghost" size="icon" className="absolute right-xl top-2xl" disabled={disabled}>
         <XIcon size={16} aria-hidden="true" />
         <span className="sr-only">Close</span>
       </Button>
@@ -103,7 +103,7 @@ function DialogCloseButton({ disabled }: { disabled: boolean }) {
 }
 
 export function DialogHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col gap-md pb-xl pr-3xl", className)} {...props} />;
+  return <div className={cn("flex flex-col gap-xl pb-xl", className)} {...props} />;
 }
 
 export type DialogTitleProps = ComponentProps<typeof DialogPrimitive.Title>;
@@ -112,7 +112,7 @@ export function DialogTitle({ className, ref, ...props }: DialogTitleProps) {
   return (
     <DialogPrimitive.Title
       ref={ref}
-      className={cn("font-sans text-heading font-title leading-heading tracking-display-md", className)}
+      className={cn("flex min-h-10 items-center pr-3xl font-sans text-heading font-title leading-heading tracking-display-md", className)}
       {...props}
     />
   );

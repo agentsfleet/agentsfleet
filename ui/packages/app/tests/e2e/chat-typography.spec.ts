@@ -114,7 +114,7 @@ test("the pull request starter remains editable and readable before any setup re
   });
   await page.goto(`${chatProbe}?starters=1`);
   await expect(page.getByRole("heading", {name: "What should your fleet do?"})).toBeVisible();
-  const suggestion = page.getByRole("button", {name: "Review pull requests", exact: true});
+  const suggestion = page.getByRole("button", {name: "Watch a pull request", exact: true});
   const input = page.getByRole("textbox", {name: "Describe the work you want this fleet to do…"});
   await expect(input).toHaveValue("");
   const unfinished = page.getByRole("region", {name: "Unfinished setups"});
@@ -140,7 +140,7 @@ test("the pull request starter remains editable and readable before any setup re
   await input.fill(edited);
   await expect(input).toHaveValue(edited);
   await expect(input).toHaveCSS("font-size", info.project.name === "mobile-chromium" ? "16px" : "13px");
-  await expect(page.getByRole("button", {name: "Send message"})).toBeEnabled();
+  await expect(page.getByRole("button", {name: "New fleet from message", exact: true})).toBeEnabled();
   expect(writes).toEqual([]);
   expect(errors).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -206,7 +206,7 @@ test("recorded actions stay visible and distinguish every terminal outcome", asy
   const screenshot = info.outputPath("chat-tool-activity-fixture.png");
   await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
   await info.attach("chat-tool-activity-fixture", {path: screenshot, contentType: "image/png"});
-  for (const [state, wording, color] of [["succeeded", "Opened pull request", "rgb(182, 228, 200)"], ["failed", "Failed: opening pull request", "rgb(255, 179, 182)"],
+  for (const [state, wording, color] of [["succeeded", "Opened pull request", "rgb(194, 199, 208)"], ["failed", "Failed: opening pull request", "rgb(255, 179, 182)"],
     ["interrupted", "Interrupted: opening pull request", "rgb(243, 203, 135)"], ["unconfirmed", "Outcome unavailable: opening pull request", "rgb(163, 171, 183)"]] as const) {
     await page.getByRole("button", {name: `Show ${state}`, exact: true}).click();
     await expect(pull.locator("[data-command-heading]")).toContainText(wording);
@@ -237,9 +237,10 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     const taskList = panel.getByRole("button", {name: /^Tasks/});
     await expect(taskList).toBeVisible();
     if (await taskList.getAttribute("aria-expanded") !== "true") await taskList.click();
-    for (const section of ["Outputs", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
-    await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toBeAttached();
-    await expect(panel.getByText("No changes yet.", {exact: true})).toBeAttached();
+    for (const section of ["Pull requests", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
+    await expect(panel.getByRole("heading", {name: "Outputs", exact: true})).toHaveCount(0);
+    await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toHaveCount(0);
+    await expect(panel.getByRole("region", {name: "Pull requests", exact: true})).toBeAttached();
     await expectSourceHierarchy(panel);
     if (window.height === 800) await page.screenshot({path: info.outputPath("context-sidebar-desktop.png"), scale: "css", animations: "disabled"});
     const repair = panel.getByRole("button", {name: /PR #123 repair/});
@@ -265,9 +266,14 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
 });
 
 async function expectActivityGeometry(page: Page, action: Locator, tools: Locator, mobile: boolean) {
-  for (const icon of await page.locator('[data-tool-bullet], [data-signal-spinner], [data-testid="fleet-message-sender"] svg').all()) {
+  for (const icon of await page.locator('[data-tool-bullet], [data-signal-spinner]').all()) {
     await expect(icon).toHaveCSS("width", "16px");
     await expect(icon).toHaveCSS("height", "16px");
+  }
+  for (const logo of await page.locator('[data-testid="fleet-message-sender"] svg').all()) {
+    await expect(logo).toHaveCSS("width", "18px");
+    await expect(logo).toHaveCSS("height", "18px");
+    await expect(logo).toHaveCSS("padding", "2px");
   }
   await expect(action).toHaveCSS("outline-style", "solid");
   await expect(action).toHaveCSS("outline-width", "2px");

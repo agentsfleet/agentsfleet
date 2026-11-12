@@ -57,7 +57,7 @@ it("fills registry details from a later page and preserves the selected entry", 
   setup(<ModelDetailsDialog target={ENTRY} onOpenChange={vi.fn()} />);
   await load();
   expect(screen.getByText(/Catalogue evidence and price schedule are unavailable/)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Load more models" }));
+  fireEvent.click(screen.getByRole("button", { name: "Load more catalogue evidence" }));
   await screen.findByRole("button", { name: "Price schedule (2)" });
   expect(screen.getByRole("dialog").textContent).toContain(ENTRY.model_id);
   expect(read).toHaveBeenLastCalledWith(false, "next-page");
@@ -83,7 +83,8 @@ it("reads advanced registry evidence only after explicit opt-in", async () => {
   setup(<ModelDetailsDialog target={ENTRY} onOpenChange={vi.fn()} />);
   await load();
   expect(read).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole("switch", { name: "Show advanced models" }));
+  expect(screen.queryByRole("switch", {name: "Show advanced models"})).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Load model evidence" }));
   await screen.findByText("Advanced model");
   expect(read.mock.calls).toEqual([[false, null], [true, null]]);
 });

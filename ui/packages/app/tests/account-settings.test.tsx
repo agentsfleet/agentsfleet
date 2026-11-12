@@ -1,6 +1,6 @@
 import type { AccountAccess, AccountSession, AccountSettingsClient } from "@/lib/auth/account-types";
 import { afterEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { SessionSettings, SessionSettingsView } from "@/components/account/SessionSettings";
@@ -31,6 +31,26 @@ it("shows own browser metadata, unknown activity and separate automation credent
   expect(screen.getByText("This device")).toBeTruthy();
   expect(screen.getAllByText("Last active unavailable")).toHaveLength(2);
   expect(api.revokeSession).not.toHaveBeenCalled();
+});
+
+it("refreshes an empty session response and confirms signing out only the other devices", async () => {
+  const api = client();
+  vi.mocked(api.listSessions).mockResolvedValueOnce({ok: true, data: {sessions: [], nextOffset: null}})
+    .mockResolvedValueOnce({ok: true, data: {sessions: [CURRENT, OTHER], nextOffset: null}})
+    .mockResolvedValueOnce({ok: true, data: {sessions: [CURRENT, OTHER], nextOffset: null}})
+    .mockResolvedValueOnce({ok: true, data: {sessions: [CURRENT], nextOffset: null}});
+  const user = userEvent.setup();
+  render(<TooltipProvider><SessionSettingsView client={api} /></TooltipProvider>);
+  await user.click(await screen.findByRole("button", {name: "Refresh sessions"}));
+  await user.click(await screen.findByRole("button", {name: "Sign out other sessions"}));
+  expect(api.revokeSession).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", {name: "Cancel"}));
+  await user.click(screen.getByRole("button", {name: "Sign out other sessions"}));
+  await user.click(within(screen.getByRole("alertdialog")).getByRole("button", {name: "Sign out other sessions"}));
+  await screen.findByText("Other sessions signed out");
+  expect(api.revokeSession).toHaveBeenCalledExactlyOnceWith(OTHER.id);
+  expect(screen.queryByText("Safari on iPhone")).toBeNull();
+  expect(screen.getByText("This device")).toBeTruthy();
 });
 
 it("confirms a remote sign-out and retains that success when refresh fails", async () => {

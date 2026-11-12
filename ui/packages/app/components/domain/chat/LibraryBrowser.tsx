@@ -2,7 +2,7 @@
 
 import type { Source } from "@/lib/api/draft-types";
 import type { Library, LibraryCard } from "@/lib/api/draft-library";
-import { DotsThreeIcon, NotePencilIcon, PuzzlePieceIcon } from "@phosphor-icons/react/ssr";
+import { CaretDownIcon, DotsThreeIcon, NotePencilIcon, PuzzlePieceIcon } from "@phosphor-icons/react/ssr";
 import { useCallback, useEffect, useState } from "react";
 import { workspacePath } from "@/lib/workspace-routes";
 import { Badge, Button, Collapsible, CollapsibleContent, CollapsibleTrigger, DashboardPanel, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, List, ListItem, Spinner, UnavailableState } from "@agentsfleet/design-system";
@@ -22,7 +22,7 @@ function libraryErrorMessage(cause: unknown, selected: boolean): string {
   return libraryUnavailableDescription(losesAccess(cause) ? cause.status : undefined, selected);
 }
 
-type Props = {workspace: string; onSelect: (source: Extract<Source, {kind: typeof SOURCE_KIND.library}>, intent?: "edit" | "new") => void};
+type Props = {workspace: string; onSelect: (source: Extract<Source, {kind: typeof SOURCE_KIND.library}>, intent: "edit" | "new") => void};
 
 export function LibraryBrowser(props: Props) {
   const user = useCurrentUser();
@@ -76,11 +76,11 @@ function WorkspacePlugins({workspace, onSelect}: Props) {
     {cursor ? <Button variant="outline" onClick={() => { setCursor(null); setSelected(null); }}>First page</Button> : null}
     {page?.next_cursor ? <Button variant="outline" onClick={() => { setCursor(page.next_cursor); setSelected(null); }}>Next page</Button> : null}
     <p className="text-eyebrow text-text-dim">Each new fleet keeps its own setup and history. Changing or deleting a Plugin does not change fleets already created from it.</p>
-    <Dialog open={selected !== null} onOpenChange={open => {if (!open) {setSelected(null); setEntry(null);}}}><DialogContent>
+    <Dialog open={selected !== null} onOpenChange={() => {setSelected(null); setEntry(null);}}><DialogContent>
       <DialogHeader><DialogTitle>{selected?.name ?? "Plugin"}</DialogTitle><DialogDescription>{selected?.description}</DialogDescription></DialogHeader>
     {error && selected ? <UnavailableState title="This plugin could not be loaded" description={error}
       actions={<Button variant="outline" onClick={() => {setError(null); setInspectionAttempt(value => value + 1);}}>Retry plugin</Button>} /> : null}
-    {selected ? <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" className="px-0">Choose a saved version</Button></CollapsibleTrigger><CollapsibleContent><LibraryHistory key={selected.id} workspace={workspace} library={selected.id} onError={selectionFailed} onSelect={(id) => { setEntry(null); setRevision(id); setError(null); setInspectionAttempt((value) => value + 1); }} /></CollapsibleContent></Collapsible> : null}
+    {selected ? <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" className="px-0">Choose a saved version<CaretDownIcon size={16} aria-hidden="true" /></Button></CollapsibleTrigger><CollapsibleContent><LibraryHistory key={selected.id} workspace={workspace} library={selected.id} onError={selectionFailed} onSelect={(id) => { setEntry(null); setRevision(id); setError(null); setInspectionAttempt((value) => value + 1); }} /></CollapsibleContent></Collapsible> : null}
     {selected && !entry && !error ? <Spinner label="Loading selected revision" /> : null}
     {entry && selected && !error ? <LibraryInspection entry={entry} onUse={intent => { onSelect({kind: SOURCE_KIND.library, library_id: entry.card.id, revision_id: entry.head.id}, intent); }} /> : null}
     {selected?.visibility === "tenant" ? <LibraryRemoval workspace={workspace} card={selected} onRemoved={() => {setSelected(null); setCursor(null); setAttempt(value => value + 1);}} /> : null}
@@ -98,7 +98,7 @@ function LibraryChoices({page, onInspect}: {page: Page | null; onInspect: (card:
   return <DashboardPanel padding="none"><List variant="plain" className="space-y-0 divide-y divide-border">{page?.items.map(card => <ListItem key={card.id} className="flex flex-wrap items-center gap-xl p-5">
     <span aria-hidden="true" className="hidden size-10 shrink-0 items-center justify-center rounded-control border border-border sm:flex"><PuzzlePieceIcon size={16} /></span>
     <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto"><p className="break-words text-label font-medium">{card.name}</p><p className="mt-sm text-label text-muted-foreground">{card.description}</p></div>
-    <span className="hidden text-eyebrow text-text-dim sm:block">Published setup</span>
+    <span className="text-eyebrow text-text-dim">Published setup</span>
     <Button variant="ghost" size="icon" aria-label={`Manage ${card.name}`} onClick={() => onInspect(card)}><DotsThreeIcon size={16} /></Button>
   </ListItem>)}</List></DashboardPanel>;
 }
@@ -132,11 +132,11 @@ function LibraryHistory({workspace, library, onSelect, onError}: {workspace: str
 }
 
 function LibraryInspection({entry, onUse}: {entry: Library; onUse: (intent: "edit" | "new") => void}) {
-  return <div className="space-y-xl">
+  return <div className="space-y-md">
     <p className="text-eyebrow text-text-dim">Version {entry.head.revision}</p>
-    {entry.card.visibility === "tenant" ? <Button variant="outline" className="h-auto w-full justify-start gap-xl p-xl" onClick={() => onUse("edit")}><NotePencilIcon size={16} /><span>Edit setup</span></Button> : null}
-    <Button variant="outline" className="h-auto w-full justify-start gap-xl p-xl" onClick={() => onUse("new")}><NotePencilIcon size={16} /><span>Use for new fleet</span></Button>
-    <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" className="px-0">Inspect setup</Button></CollapsibleTrigger>
+    {entry.card.visibility === "tenant" ? <Button variant="outline" className="min-h-11 w-full justify-start gap-md" onClick={() => onUse("edit")}><NotePencilIcon size={16} /><span>Edit setup</span></Button> : null}
+    <Button variant="outline" className="min-h-11 w-full justify-start gap-md" onClick={() => onUse("new")}><NotePencilIcon size={16} /><span>Use for new fleet</span></Button>
+    <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" className="px-0">Inspect setup<CaretDownIcon size={16} aria-hidden="true" /></Button></CollapsibleTrigger>
       <CollapsibleContent className="pt-lg"><FleetSetupDetails review={entry.review} /></CollapsibleContent></Collapsible>
   </div>;
 }

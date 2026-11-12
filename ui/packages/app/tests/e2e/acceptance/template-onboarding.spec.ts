@@ -34,7 +34,7 @@ test("a published recipe is inspected and pins the selected revision in a new pr
   const created = page.waitForResponse((response) => response.request().method() === "POST"
     && new URL(response.url()).pathname.endsWith(draftsPath));
   await page.getByLabel(CHAT_PLACEHOLDER).fill(FIRST_MESSAGE);
-  await page.getByRole("button", {name: "New fleet", exact: true}).click();
+  await page.getByRole("button", {name: "Send message", exact: true}).click();
   const response = await created;
   expect(response.request().postDataJSON()).toMatchObject({
     source: {kind: "library", library_id: published.library_id, revision_id: published.revision_id}, message: FIRST_MESSAGE,

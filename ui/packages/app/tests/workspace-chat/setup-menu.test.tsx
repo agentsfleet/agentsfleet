@@ -22,6 +22,16 @@ beforeEach(async () => {
 });
 afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
 
+it("starts a fresh setup from the empty heading action without writing a draft", () => {
+  client.fresh();
+  const fresh = vi.spyOn(client, "fresh");
+  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={client.getSnapshot()} />);
+  fireEvent.click(screen.getByRole("button", {name: "New fleet"}));
+  expect(fresh).toHaveBeenCalledOnce();
+  expect(client.getSnapshot().draft).toBeNull();
+  expect(fixture.writes()).toHaveLength(0);
+});
+
 it.each([false, true])("hides private actions without an accessible setup (inaccessible: %s)", (inaccessible) => {
   render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), draft: null, preview: null, inaccessible}} />);
   expect(screen.queryByRole("button", {name: MENU})).toBeNull();

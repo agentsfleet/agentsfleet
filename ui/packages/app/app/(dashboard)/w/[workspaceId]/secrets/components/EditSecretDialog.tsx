@@ -18,7 +18,7 @@ export default function EditSecretDialog({workspaceId, name, open, onOpenChange}
   return <Dialog open={open} onOpenChange={close}>
     <DialogContent className="ph-no-capture ph-no-record" closeDisabled={pending}>
       <DialogHeader>
-        <DialogTitle>Edit secret &ldquo;{name}&rdquo;</DialogTitle>
+        <DialogTitle>Replace secret &ldquo;{name}&rdquo;</DialogTitle>
         <DialogDescription>
           Re-enter every field you want to keep. Saving replaces all fields.
         </DialogDescription>

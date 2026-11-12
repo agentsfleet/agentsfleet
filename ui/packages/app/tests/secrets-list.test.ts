@@ -1,8 +1,9 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
+import { SecretActions } from "@/app/(dashboard)/w/[workspaceId]/secrets/components/secret-row-cells";
 
 const routerRefresh = vi.fn();
 
@@ -49,6 +50,50 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("SecretsList component", () => {
+  it("cancels a dialog handoff when its secret row is removed", async () => {
+    vi.useFakeTimers();
+    try {
+      const onEdit = vi.fn();
+      const onDelete = vi.fn();
+      const rendered = render(React.createElement(SecretActions, {
+        secret: {kind: "custom_secret", name: "fly", created_at: "2026-11-01T12:00:00Z"},
+        pending: false, protectedFromDelete: false, onEdit, onDelete,
+      }));
+      fireEvent.click(screen.getByRole("button", {name: "Manage fly"}));
+      fireEvent.click(screen.getByRole("button", {name: "Replace value"}));
+      rendered.unmount();
+      await act(async () => { await vi.runAllTimersAsync(); });
+      expect(onEdit).not.toHaveBeenCalled();
+      expect(onDelete).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  for (const action of ["Replace value", "Delete secret"]) {
+    it(`returns keyboard focus to Manage after cancelling ${action}`, async () => {
+      await renderList();
+      const user = userEvent.setup();
+      const manage = screen.getByRole("button", {name: "Manage fly"});
+      await user.click(manage);
+      await user.click(screen.getByRole("button", {name: action}));
+      const role = action === "Replace value" ? "dialog" : "alertdialog";
+      await screen.findByRole(role);
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByRole(role)).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(manage));
+      expect(deleteSecretActionMock).not.toHaveBeenCalled();
+    });
+  }
+
+  it("closes secret management without replacing or deleting the value", async () => {
+    await renderList();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", {name: "Manage fly"}));
+    await user.click(screen.getByRole("button", {name: "Done"}));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(deleteSecretActionMock).not.toHaveBeenCalled();
+  });
   async function renderList(
     secrets: Array<{ name: string; created_at: string }> = [
       { name: "fly", created_at: new Date(Date.UTC(2026, 3, 26, 12)).toISOString() },
@@ -145,8 +190,8 @@ describe("SecretsList component", () => {
     // asks the user to re-enter the secret rather than displaying the stored one.
     await user.click(screen.getByRole("button", {name: "Manage openai-key"}));
     await user.click(screen.getByRole("button", {name: "Replace value"}));
-    await waitFor(() => expect(screen.getByText(/Edit secret .*openai-key/i)).toBeTruthy());
-    expect(screen.getByRole("button", { name: /^save changes$/i })).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/Replace secret .*openai-key/i)).toBeTruthy());
+    expect(screen.getByRole("button", { name: /^replace value$/i })).toBeTruthy();
     expect(screen.getByText(/re-enter every field you want to keep/i)).toBeTruthy();
     // There is no "reveal"/"show" control that would expose the stored value.
     expect(screen.queryByRole("button", { name: /reveal|show secret/i })).toBeNull();
@@ -226,12 +271,12 @@ describe("SecretsList component", () => {
     await renderList();
     await user.click(screen.getByRole("button", {name: "Manage fly"}));
     await user.click(screen.getByRole("button", {name: "Replace value"}));
-    await waitFor(() => expect(screen.getByText(/Edit secret .*fly/i)).toBeTruthy());
-    expect(screen.getByRole("button", { name: /^save changes$/i })).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/Replace secret .*fly/i)).toBeTruthy());
+    expect(screen.getByRole("button", { name: /^replace value$/i })).toBeTruthy();
     // Editing keeps the reference name fixed.
     expect(screen.queryByRole("button", { name: /rename/i })).toBeNull();
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Edit secret .*fly/i })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Replace secret .*fly/i })).toBeNull());
   });
 
 

@@ -11,7 +11,7 @@ import EditSecretDialog from "./EditSecretDialog";
 const WORKSPACE = "ws_edit_test";
 const NAME = "fly";
 const TOKEN = "replacement-test-value";
-const SAVE = "Save changes";
+const SAVE = "Replace value";
 const INPUT_NAME = "Field 1 name";
 const INPUT_VALUE = "Field 1 value";
 function dialog(onOpenChange = vi.fn()) {

@@ -36,6 +36,7 @@ describe("cn", () => {
       "text-display-xl", "text-display-lg", "text-display-md", "text-heading",
       "text-eyebrow", "text-body-lg", "text-body", "text-body-sm",
       "text-label", "text-mono", "text-conversation", "text-composer", "text-chat-title",
+      "text-conversation-heading", "text-description", "text-new-fleet-title", "text-new-fleet-description", "text-usage-total",
     ];
     for (const token of scale) {
       expect(cn(token, "text-foreground")).toBe(`${token} text-foreground`);

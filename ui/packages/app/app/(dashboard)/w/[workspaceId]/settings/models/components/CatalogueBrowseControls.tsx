@@ -7,8 +7,7 @@ import { useModelCatalogue } from "./ModelCatalogueProvider";
 type Props = { id: string; advanced: boolean; onAdvancedChange: (value: boolean) => void };
 
 export function CatalogueBrowseControls({ id, advanced, onAdvancedChange }: Props) {
-  const { status, error, preloadAdvanced, nextCursor, advancedNextCursor, loadMore, retry } = useModelCatalogue();
-  const more = nextCursor !== null || (advanced && advancedNextCursor !== null);
+  const { preloadAdvanced } = useModelCatalogue();
   const changeAdvanced = (checked: boolean) => {
     onAdvancedChange(checked);
     if (checked) preloadAdvanced();
@@ -18,11 +17,20 @@ export function CatalogueBrowseControls({ id, advanced, onAdvancedChange }: Prop
       <Switch id={id} checked={advanced} onCheckedChange={changeAdvanced} />
       <Label htmlFor={id}>Show advanced models</Label>
     </div>
+    <CatalogueReadControls includeAdvanced={advanced} />
+  </div>;
+}
+
+/** Paging and recovery also serve read-only model evidence, without picker filters. */
+export function CatalogueReadControls({includeAdvanced = false, label = "Load more models"}: {includeAdvanced?: boolean; label?: string}) {
+  const {status, error, nextCursor, advancedNextCursor, loadMore, retry} = useModelCatalogue();
+  const more = nextCursor !== null || (includeAdvanced && advancedNextCursor !== null);
+  return <div className="space-y-sm">
     {status === CATALOGUE_STATUS.error && error ? <Alert variant="warning">
       {error}
       <Button type="button" variant="ghost" onClick={retry}>Try again</Button>
     </Alert> : null}
     {more ? <Button type="button" variant="secondary" disabled={status === CATALOGUE_STATUS.loading}
-      onClick={() => loadMore(advanced)}>Load more models</Button> : null}
+      onClick={() => loadMore(includeAdvanced)}>{label}</Button> : null}
   </div>;
 }

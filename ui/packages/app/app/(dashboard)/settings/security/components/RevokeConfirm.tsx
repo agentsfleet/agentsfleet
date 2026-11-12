@@ -11,12 +11,11 @@ export type ConfirmTarget = ConfirmTargetActive | null;
 const COPY = {
   revoke: {
     confirmLabel: "Revoke key",
-    description:
-      "Any service still using this key starts getting 401s immediately. This cannot be undone — a revoked key cannot be reactivated, only deleted.",
+    description: (name: string) => `Tools using “${name}” will lose access immediately. This cannot be undone.`,
   },
   delete: {
     confirmLabel: "Delete",
-    description: "This permanently removes the revoked key's record. Only already-revoked keys can be deleted.",
+    description: (name: string) => `This permanently removes the revoked key “${name}”.`,
   },
 } as const;
 
@@ -36,7 +35,7 @@ export default function RevokeConfirm({ target, error, onOpenChange, onConfirm }
       open={target !== null}
       onOpenChange={onOpenChange}
       title={`${verb} API key?`}
-      description={copy.description}
+      description={target ? copy.description(target.key_name) : ""}
       confirmLabel={copy.confirmLabel}
       intent="destructive"
       errorMessage={error}

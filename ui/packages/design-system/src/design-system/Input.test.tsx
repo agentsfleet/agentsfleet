@@ -51,6 +51,6 @@ describe("Input", () => {
     const html = renderToStaticMarkup(<Input placeholder="Email" />);
     expect(html).toMatch(/^<input /);
     expect(html).toContain('placeholder="Email"');
-    expect(html).toContain("bg-secondary");
+    expect(html).toContain("bg-background");
   });
 });

@@ -39,7 +39,7 @@ export function TeamTable(props: Props) {
 }
 
 function Heading({children, count}: {children: string; count: number}) {
-  return <h2 className="flex items-center gap-md text-label font-semibold">{children}<Badge>{count}</Badge></h2>;
+  return <h2 className="flex h-5 items-center gap-md text-label font-semibold">{children}<Badge className="h-6.75">{count}</Badge></h2>;
 }
 
 function MemberRow({member, pending, onRemove}: Pick<Props, "pending" | "onRemove"> & {member: MemberSummary}) {
@@ -50,8 +50,8 @@ function MemberRow({member, pending, onRemove}: Pick<Props, "pending" | "onRemov
   const initials = name.split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase();
   return <li aria-label={name} className={ROW}>
     <span className={AVATAR} aria-hidden="true">{initials}</span>
-    <div className="min-w-0"><p className="break-words text-label font-semibold">{name}{self ? <span className="ml-md text-eyebrow font-normal text-text-dim">You</span> : null}</p>
-      {name !== member.email ? <p className="mt-xs break-all text-label text-muted-foreground">{member.email}</p> : null}</div>
+    <div className="min-w-0"><p className="break-words text-label font-semibold"><span>{name}</span>{self ? <span className="ml-md text-eyebrow font-normal text-text-dim">You</span> : null}</p>
+      {name !== member.email ? <p className="mt-sm break-all text-label text-muted-foreground">{member.email}</p> : null}</div>
     <span className={`${META} text-label capitalize text-muted-foreground`}>{member.role}</span>
     <span className={`${META} text-eyebrow text-text-dim`}>Joined <Time value={member.joined_at} format="date" tooltip /></span>
     {!owner ? <div className={ACTION}><DropdownMenu>
@@ -67,7 +67,7 @@ function InvitationRow({invite, pending, onResend, onRevoke}: Pick<Props, "pendi
   return <li aria-label={invite.email} className={ROW}>
     <span className={`${AVATAR} border border-border bg-transparent text-muted-foreground`} aria-hidden="true"><EnvelopeSimpleIcon size={18} /></span>
     <div className="min-w-0"><p className="break-all text-label font-semibold">{invite.email}</p>
-      <p className={`mt-xs text-label ${delivered ? "text-muted-foreground" : "text-warning"}`}>{status}</p></div>
+      <p className={`mt-sm text-label ${delivered ? "text-muted-foreground" : "text-warning"}`}>{status}</p></div>
     <span className={`${META} text-label text-muted-foreground`}>Member</span>
     <span className={`${META} text-eyebrow text-text-dim`}>Expires <Time value={invite.expires_at} format="date" tooltip /></span>
     <div className={ACTION}><DropdownMenu>

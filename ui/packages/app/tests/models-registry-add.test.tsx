@@ -6,6 +6,12 @@ import type { Secret } from "@/lib/api/secrets";
 import { createModelEntryActionMock, setProviderSelfManagedActionMock, replaceSecretActionMock, createSecretActionMock, ANTHROPIC_SECRET, ROTATED_API_KEY, renderDialog, fillKnownForm, catalogueState, FORM_MODEL, modelIdentity } from "./helpers/models-registry-add-fixtures";
 
 describe("AddModelEntryDialog — unified form shape", () => {
+  it("asks for a provider before offering saved credentials", async () => {
+    const {user} = await renderDialog();
+    await user.click(screen.getByRole("radio", {name: "Use saved key"}));
+    expect(screen.getByText("Choose a provider to see its saved keys.")).toBeTruthy();
+    expect(screen.getByRole("combobox", {name: "Saved key"})).toHaveProperty("disabled", true);
+  });
   it("waits for the signed-in owner before opening or loading model credentials", async () => {
     const { default: AddModelEntryDialog } = await import("@/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog");
     const props = {workspaceId: "ws_1", secrets: [], secretsLoad: "ready" as const,

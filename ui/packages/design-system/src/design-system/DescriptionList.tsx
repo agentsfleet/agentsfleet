@@ -30,7 +30,7 @@ export const dlVariants = cva("text-sm", {
   variants: {
     layout: {
       inline:
-        "space-y-3 [&>div]:flex [&>div]:flex-wrap [&>div]:items-baseline [&>div]:justify-between [&>div]:gap-2",
+        "space-y-3 [&>div]:flex [&>div]:flex-wrap [&>div]:items-baseline [&>div]:justify-between [&>div]:gap-2 [&>div>dd]:ml-auto [&>div>dd]:text-right",
       stacked: "space-y-3",
     },
   },

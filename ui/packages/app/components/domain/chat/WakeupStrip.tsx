@@ -1,7 +1,7 @@
 "use client";
 
 import {useState} from "react";
-import {ClockIcon, NotePencilIcon, PauseIcon, PlayIcon, TrashIcon} from "@phosphor-icons/react/ssr";
+import {ClockIcon, PencilSimpleIcon, PauseIcon, PlayIcon, TrashIcon} from "@phosphor-icons/react/ssr";
 import {Button, Collapsible, CollapsibleContent, CollapsibleTrigger, ConfirmDialog} from "@agentsfleet/design-system";
 import type {Schedule} from "@/lib/api/draft-types";
 import {changeSchedule, deleteSchedule, readSchedule, type ScheduleDetail} from "@/lib/api/schedule-controls";
@@ -47,13 +47,13 @@ function OwnedWakeups({workspace, schedules}: {workspace: string; schedules: rea
         <CollapsibleContent className="max-h-40 overflow-y-auto">{rest.map(row)}</CollapsibleContent></Collapsible> : null}
       {control.error && !editing && !deleting ? <p role="alert" className="text-label text-destructive">{control.error}<Button variant="link" onClick={control.refresh}>Refresh schedule</Button></p> : null}
     </div> : null}
-    <WakeupEditor schedule={editing} pending={control.pending} error={control.error} onClose={() => setEditing(null)}
-      onReload={() => {if (editing) void control.run(signal => readSchedule(workspace, editing, signal), setEditing);}}
-      onSave={change => {if (editing) void control.run(signal => changeSchedule(workspace, editing, change, signal), value => updated(editing, value));}} />
-    <ConfirmDialog open={deleting !== null} onOpenChange={open => {if (!open && !control.pending) setDeleting(null);}} title="Delete wake-up?"
+    {editing ? <WakeupEditor schedule={editing} pending={control.pending} error={control.error} onClose={() => setEditing(null)}
+      onReload={() => {void control.run(signal => readSchedule(workspace, editing, signal), setEditing);}}
+      onSave={change => {void control.run(signal => changeSchedule(workspace, editing, change, signal), value => updated(editing, value));}} /> : null}
+    <ConfirmDialog open={deleting !== null} onOpenChange={() => setDeleting(null)} title="Delete wake-up?"
       description="This fleet will stop waking on this schedule. Its previous activity stays in the conversation."
       confirmLabel="Delete wake-up" intent="destructive" errorMessage={control.error}
-      onConfirm={() => deleting ? control.run(signal => deleteSchedule(workspace, deleting, signal), value => updated(deleting, value)) : Promise.resolve()} />
+      onConfirm={deleting ? () => control.run(signal => deleteSchedule(workspace, deleting, signal), value => updated(deleting, value)) : undefined} />
   </>;
 }
 
@@ -63,10 +63,10 @@ function WakeupRow({schedule, pending, onEdit, onToggle, onDelete}: {
   const label = schedule.description || "Scheduled wake-up";
   const locked = pending || !["active", "paused"].includes(schedule.status);
   return <fieldset aria-label={label} className="flex min-w-0 items-center gap-md">
-    <ClockIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+    <ClockIcon size={16} className="shrink-0" aria-hidden="true" />
     <div className="min-w-0 flex-1" title={label}><WakeupState schedule={schedule} compact /></div>
-    <Button variant="ghost" size="icon-sm" aria-label="Edit wake-up" disabled={locked} onClick={onEdit}><NotePencilIcon size={16} /></Button>
-    <Button variant="ghost" size="icon-sm" aria-label={schedule.status === "paused" ? "Resume wake-up" : "Pause wake-up"} disabled={locked} onClick={onToggle}>{schedule.status === "paused" ? <PlayIcon size={16} /> : <PauseIcon size={16} />}</Button>
-    <Button variant="ghost" size="icon-sm" aria-label="Delete wake-up" disabled={locked} onClick={onDelete}><TrashIcon size={16} /></Button>
+    <Button variant="ghost" size="icon-sm" className="text-foreground" aria-label="Edit wake-up" disabled={locked} onClick={onEdit}><PencilSimpleIcon size={16} /></Button>
+    <Button variant="ghost" size="icon-sm" className="text-foreground" aria-label={schedule.status === "paused" ? "Resume wake-up" : "Pause wake-up"} disabled={locked} onClick={onToggle}>{schedule.status === "paused" ? <PlayIcon size={16} /> : <PauseIcon size={16} />}</Button>
+    <Button variant="ghost" size="icon-sm" className="text-foreground" aria-label="Delete wake-up" disabled={locked} onClick={onDelete}><TrashIcon size={16} /></Button>
   </fieldset>;
 }

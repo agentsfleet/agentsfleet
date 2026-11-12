@@ -20,9 +20,8 @@ type Props = {
 export const FleetToolGroup = memo(function FleetToolGroup({content, indices, running, wallMs, figures, activity, children}: Props) {
   // A run's duration belongs to the whole group only when its calls are contiguous.
   const wholeRun = !running && content.filter(part => part.type === "tool-call").length === indices.length;
-  return <ToolCallList activity={toolGroupActivity(content, indices, running, wholeRun ? wallMs : null)}>{children}
-    {wholeRun && figures ? <li><FleetReplyFigures figures={figures} activity={activity} /></li> : null}
-  </ToolCallList>;
+  return <ToolCallList activity={toolGroupActivity(content, indices, running, wholeRun ? wallMs : null)}
+    footer={wholeRun && figures ? <FleetReplyFigures figures={figures} activity={activity} /> : null}>{children}</ToolCallList>;
 }, sameToolGroup);
 
 // Conversion reallocates part wrappers but retains a call's cached fields.

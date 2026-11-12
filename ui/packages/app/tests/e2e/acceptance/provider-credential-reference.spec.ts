@@ -120,12 +120,12 @@ test.describe("provider credential reference guard", () => {
     expect(geometry.valueLeft).toBeGreaterThanOrEqual(geometry.left - 1);
     expect(geometry.valueRight).toBeLessThanOrEqual(geometry.chevronLeft ?? 0);
     expect(geometry.chevronRight).toBeLessThanOrEqual(geometry.right + 1);
-    const addKey = dialog.getByRole("button", {name: "Add new key", exact: true});
+    const addKey = dialog.getByRole("radio", {name: "Add new key", exact: true});
     await addKey.click();
-    await expect(addKey).toHaveAttribute("aria-pressed", "true");
+    await expect(addKey).toBeChecked();
     await dialog.getByLabel("Key name", {exact: true}).fill(CREDENTIAL_NAME);
     await dialog.getByLabel("API key", {exact: true}).fill(INERT_PROVIDER_KEY);
-    const active = dialog.getByRole("switch", {name: "Make active", exact: true});
+    const active = dialog.getByRole("checkbox", {name: "Make active", exact: true});
     await active.check();
     await expect(active).toBeChecked();
     await page.screenshot({path: test.info().outputPath("live-create-model.png"), scale: "css", animations: "disabled"});
@@ -145,9 +145,9 @@ test.describe("provider credential reference guard", () => {
       has_key: true,
       active: true,
     });
-    const activeRow = page.getByRole("region", {name: "Models", exact: true}).getByRole("article").filter({
-      has: page.getByRole("button", { name: `View details for ${choice.id}`, exact: true }),
-    }).filter({ has: page.getByText("Active", { exact: true }) }).filter({hasText: CREDENTIAL_NAME});
+    const activeRow = page.getByRole("region", {name: "Your models", exact: true})
+      .getByRole("listitem", {name: choice.id, exact: true})
+      .filter({has: page.getByText("Active", {exact: true})}).filter({hasText: CREDENTIAL_NAME});
     await expect(activeRow).toHaveCount(1);
     await expect(activeRow).toContainText(providerLabel(choice.provider));
     await expect(activeRow).toContainText(choice.display_name);
