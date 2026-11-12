@@ -21,7 +21,7 @@ import {
   resolveWorkspaceId,
   WORKSPACE_FLAG,
 } from "../workspace/guards.ts";
-import { decodeSchedule, decodeSchedules, scheduleRows, scheduleSummary } from "./read.ts";
+import { decodeEditBase, decodeSchedule, decodeSchedules, scheduleRows, scheduleSummary } from "./read.ts";
 import { isString } from "../../lib/guards.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 const STATUS_ACTIVE = "active" as const;
@@ -33,6 +33,9 @@ const FIELD_NEXT_RUN = "next_run_at" as const;
 const FIELD_MESSAGE = "message" as const;
 const FIELD_STATUS = "status" as const;
 const DEFAULT_TIMEZONE = "UTC" as const;
+// Written by the fleet's own trigger; such a row inherits the fleet's recipe.
+const SOURCE_TRIGGER = "trigger" as const;
+const HEADER_IF_MATCH = "If-Match" as const;
 
 const USAGE_CREATE =
   "usage: agentsfleet schedule create <fleet_id> --cron <expr> --message <text> [--timezone <tz>]";
@@ -176,20 +179,27 @@ export const scheduleUpdateEffectFromArgs = (
     const fleetId = yield* requireValidId(fleetIdRaw, FIELD_FLEET_ID, USAGE_UPDATE);
     const scheduleId = yield* requireValidId(scheduleIdRaw, FIELD_SCHEDULE_ID, USAGE_UPDATE);
     const desiredStatus = yield* parseStatus(flags.status);
-    const body = {
+    const change = {
       ...(flags.cron !== undefined ? { cron: flags.cron } : {}),
       ...(flags.timezone !== undefined ? { timezone: flags.timezone } : {}),
       ...(flags.message !== undefined ? { message: flags.message } : {}),
-      ...(desiredStatus !== undefined ? { paused: desiredStatus === STATUS_PAUSED } : {}),
+      ...(desiredStatus !== undefined ? { status: desiredStatus } : {}),
     };
-    if (Object.keys(body).length === 0) {
+    if (Object.keys(change).length === 0) {
       return yield* Effect.fail(new ValidationError({ detail: "no schedule fields provided", suggestion: USAGE_UPDATE }));
     }
     const ctx = yield* scheduleContext(flags);
+    const path = wsFleetSchedulePath(ctx.wsId, fleetId, scheduleId);
+    // The daemon refuses a PATCH without the row's current tag (428), and an
+    // inherited row takes only an `override` that replaces its overlay whole,
+    // so the row is read first and the change merged into the overlay it holds.
+    const base = yield* decodeEditBase(yield* ctx.http.request<unknown>({ path, token: ctx.token }));
+    const body = base.source === SOURCE_TRIGGER ? { override: { ...base.override, ...change } } : change;
     const row = yield* ctx.http.request<unknown>({
-      path: wsFleetSchedulePath(ctx.wsId, fleetId, scheduleId),
-      method: "PATCH",
+      path,
+      method: HTTP_METHOD.patch,
       token: ctx.token,
+      headers: { [HEADER_IF_MATCH]: base.etag },
       body,
     });
     yield* printSchedule(ctx.output, row, flags.stdoutIsTty, "updated");
