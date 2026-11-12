@@ -13,6 +13,7 @@
 //! Self-skips outside `make test-integration-rustd`, as `integration_sync.rs`
 //! does, for the reason `live_qstash.rs` gives.
 
+#![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
     clippy::panic,

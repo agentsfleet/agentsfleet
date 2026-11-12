@@ -126,6 +126,20 @@ impl SecretBody {
         // derived struct, and for the same reason.
         let object = SecretObject::parse(data.get().as_bytes())
             .map_err(|_not_an_object| ErrorKind::DataInvalid)?;
+        Self::from_object(&object)
+    }
+
+    /// A body from an object already in memory: the refusals of [`Self::parse`]
+    /// and the projection of the same bytes.
+    ///
+    /// For a caller that edits a stored handle and hands it back, as the
+    /// refresh-token rotation does through [`crate::Vault::rewrite`], so a
+    /// rewritten secret is held to the bounds a written one is.
+    ///
+    /// # Errors
+    /// Refuses an object with no keys, and a canonical form past
+    /// [`MAX_DATA_BYTES`].
+    pub fn from_object(object: &SecretObject) -> Result<Self> {
         if object.fields().is_empty() {
             return Err(ErrorKind::DataInvalid.into());
         }

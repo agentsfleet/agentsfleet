@@ -23,6 +23,7 @@ use jiff::Timestamp;
 use sqlx::Transaction;
 
 use crate::error::{ErrorKind, Result, query};
+use crate::projection::Projection;
 use crate::secret::{SecretBody, SecretName};
 use crate::{Vault, sql};
 
@@ -173,27 +174,19 @@ impl Vault {
         let envelope = self.seal(workspace, name, body)?;
         let projection = body.projection();
 
-        let written = sqlx::query(sql::UPDATE_SECRET)
-            .bind(workspace)
-            .bind(name.as_str())
-            .bind(envelope.wrapped_dek())
-            .bind(envelope.dek_nonce().as_slice())
-            .bind(envelope.dek_tag().as_slice())
-            .bind(envelope.payload_nonce().as_slice())
-            .bind(envelope.payload_ciphertext())
-            .bind(envelope.payload_tag().as_slice())
-            .bind(envelope.kek_version())
-            .bind(projection.kind.as_str())
-            .bind(projection.provider.as_deref())
-            .bind(projection.base_url.as_deref())
-            .bind(projection.has_key)
-            .execute(&mut **transaction)
-            .await
-            .map_err(query(CONTEXT_REPLACE))?;
+        let rows = update_row(
+            transaction,
+            workspace,
+            name,
+            &envelope,
+            projection,
+            CONTEXT_REPLACE,
+        )
+        .await?;
 
         // Zero rows means this workspace holds no such name. Nothing was
         // written and nothing was created.
-        if written.rows_affected() == 0 {
+        if rows == 0 {
             return Err(ErrorKind::NotFound.into());
         }
         let fleets = afd_events::activity::record_access_on(transaction, workspace, name.as_str())
@@ -216,11 +209,50 @@ impl Vault {
     /// The associated data binds both, so a row lifted into another workspace
     /// or renamed fails its authentication tag instead of decrypting — the
     /// ciphertext columns are not portable on their own.
-    fn seal(&self, workspace: &Uuid7, name: &SecretName, body: &SecretBody) -> Result<Envelope> {
+    pub(crate) fn seal(
+        &self,
+        workspace: &Uuid7,
+        name: &SecretName,
+        body: &SecretBody,
+    ) -> Result<Envelope> {
         Ok(self.sealer.seal(
             &self.kek,
             &Aad::new(workspace.as_str(), name.as_str()),
             body.plaintext(),
         )?)
     }
+}
+
+/// Writes `envelope` and the `projection` that describes it over the row at
+/// `(workspace, name)` on the caller's transaction, and answers how many rows
+/// that touched.
+///
+/// The one statement a replace and a rewrite share, so a ciphertext and its
+/// projection always land together.
+pub(crate) async fn update_row(
+    transaction: &mut Transaction<'_, sqlx::Postgres>,
+    workspace: &Uuid7,
+    name: &SecretName,
+    envelope: &Envelope,
+    projection: &Projection,
+    context: &'static str,
+) -> Result<u64> {
+    let written = sqlx::query(sql::UPDATE_SECRET)
+        .bind(workspace)
+        .bind(name.as_str())
+        .bind(envelope.wrapped_dek())
+        .bind(envelope.dek_nonce().as_slice())
+        .bind(envelope.dek_tag().as_slice())
+        .bind(envelope.payload_nonce().as_slice())
+        .bind(envelope.payload_ciphertext())
+        .bind(envelope.payload_tag().as_slice())
+        .bind(envelope.kek_version())
+        .bind(projection.kind.as_str())
+        .bind(projection.provider.as_deref())
+        .bind(projection.base_url.as_deref())
+        .bind(projection.has_key)
+        .execute(&mut **transaction)
+        .await
+        .map_err(query(context))?;
+    Ok(written.rows_affected())
 }

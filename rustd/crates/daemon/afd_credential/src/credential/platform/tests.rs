@@ -3,7 +3,20 @@
     clippy::expect_used,
     reason = "test fixtures should fail loudly when their preconditions drift"
 )]
-use super::{GithubApp, OauthApp, Platform, github_app, oauth_app, unusable};
+use super::{GithubApp, GithubRow, OauthApp, OauthRow, Platform, usable_row};
+use afd_vault::bag::BagFault;
+
+fn github_app(row: &[u8]) -> Option<GithubApp> {
+    afd_vault::bag::parse::<GithubRow>(&af_crypto::secret::SecretBytes::new(row.to_vec()))
+        .ok()
+        .map(|found| found.0)
+}
+
+fn oauth_app(row: &[u8]) -> Option<OauthApp> {
+    afd_vault::bag::parse::<OauthRow>(&af_crypto::secret::SecretBytes::new(row.to_vec()))
+        .ok()
+        .map(|found| found.0)
+}
 
 fn oauth() -> OauthApp {
     OauthApp {
@@ -76,18 +89,50 @@ fn stored_platform_rows_are_strict_about_required_fields() {
         b"not-json".as_slice(),
         br#"{"app_id":"not-a-number","private_key_pem":"pem"}"#,
         br#"{"app_id":"42"}"#,
+        br#"{"app_id":"42","private_key_pem":""}"#,
+        br#"{"app_id":"","private_key_pem":"pem"}"#,
+        br#"{"app_id":42,"private_key_pem":"pem"}"#,
     ] {
-        assert!(github_app(invalid).is_none());
+        assert!(github_app(invalid).is_none(), "{invalid:?}");
     }
-    for invalid in [b"not-json".as_slice(), br#"{"client_id":"public"}"#] {
-        assert!(oauth_app(invalid).is_none());
+    for invalid in [
+        b"not-json".as_slice(),
+        br#"{"client_id":"public"}"#,
+        br#"{"client_id":"","client_secret":"secret"}"#,
+        br#"{"client_id":"public","client_secret":""}"#,
+    ] {
+        assert!(oauth_app(invalid).is_none(), "{invalid:?}");
     }
 }
 
 #[test]
-fn unusable_platform_rows_emit_their_diagnostic() {
-    let subscriber = tracing_subscriber::fmt().with_test_writer().finish();
-    tracing::subscriber::with_default(subscriber, || unusable("github-app"));
+fn an_unusable_row_logs_its_bag_its_fault_and_the_field_at_fault() {
+    let capture = af_core::test_util::trace::Capture::install();
+
+    assert!(
+        usable_row::<GithubRow>(Err(BagFault::Missing("private_key_pem")), "github-app").is_none()
+    );
+
+    let logged = capture.only("platform_credential_incomplete");
+    assert_eq!(logged.field("bag"), Some("github-app"));
+    assert_eq!(logged.field("fault"), Some("missing"));
+    assert_eq!(logged.field("field"), Some("private_key_pem"));
+    assert!(
+        logged
+            .field("error_code")
+            .is_some_and(|code| code.starts_with("UZ-"))
+    );
+}
+
+#[test]
+fn a_row_that_is_not_a_document_logs_no_field() {
+    let capture = af_core::test_util::trace::Capture::install();
+
+    assert!(usable_row::<OauthRow>(Err(BagFault::Malformed), "zoho-app").is_none());
+
+    let logged = capture.only("platform_credential_incomplete");
+    assert_eq!(logged.field("fault"), Some("malformed"));
+    assert_eq!(logged.field("field"), None, "there is no field to name");
 }
 
 /// A row that will not open leaves a line saying why without repeating the
@@ -97,15 +142,16 @@ fn unusable_platform_rows_emit_their_diagnostic() {
 async fn an_unreadable_platform_credential_reason_carries_no_code_prefix() {
     let capture = af_core::test_util::trace::Capture::install();
     let kek = af_crypto::secret::Kek::from_hex(&"0".repeat(64)).expect("a 32-byte key");
-    let vault = crate::vault::Vault::new(
+    let vault = afd_vault::Vault::new(
         afd_db::test_util::unreachable_db(),
         std::sync::Arc::new(kek),
+        af_crypto::entropy::Entropy::new(),
     );
     let workspace = af_core::id::Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011")
         .expect("a fixture identifier");
 
     assert!(
-        super::read(&vault, &workspace, "github_app")
+        super::read::<GithubRow>(&vault, &workspace, "github_app")
             .await
             .is_none()
     );

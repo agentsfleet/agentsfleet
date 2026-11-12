@@ -128,7 +128,11 @@ async fn open_broker(
     client: reqwest::Client,
 ) -> Arc<afd_credential::credential::Broker> {
     let broker = crate::credentials::resolve(
-        &afd_credential::vault::Vault::new(database.clone(), Arc::clone(kek)),
+        &afd_vault::Vault::new(
+            database.clone(),
+            Arc::clone(kek),
+            af_crypto::entropy::Entropy::new(),
+        ),
         config.platform_admin_workspace(),
         client,
     )
@@ -159,26 +163,15 @@ fn login_config(config: &BootConfig) -> crate::plane::LoginConfig {
     }
 }
 
-/// The scheduler the plane registers schedules with.
+/// What the plane needs to register schedules and receive their fires.
 ///
-/// A destination that will not build is a deployment that cannot register
-/// schedules, and it fails CLOSED rather than registering a truncated
-/// callback: the empty string matches no token's subject, so every fire is
-/// refused until the api url is corrected.
+/// Neither the scheduler's credentials nor its callback are decided here: the
+/// credentials are read from the `qstash` bag on use, and the callback is the
+/// adapter's to derive from the api url (`plane::platform::qstash`).
 fn schedule_config(config: &BootConfig, client: reqwest::Client) -> crate::plane::ScheduleConfig {
     crate::plane::ScheduleConfig {
         client,
-        token: af_crypto::secret::SecretString::new(
-            config.qstash_token().unwrap_or_default().to_owned(),
-        ),
-        destination: afd_cron::qstash::destination_url(config.api_url()).unwrap_or_default(),
-        // The one place the vendor's US region is chosen, and only when this
-        // deployment named no scheduler of its own.
-        api_base: config
-            .qstash_url()
-            .unwrap_or(afd_cron::qstash::API_BASE)
-            .to_owned(),
-        keys: config.qstash_signing_keys().cloned(),
+        api_url: config.api_url().into(),
     }
 }
 

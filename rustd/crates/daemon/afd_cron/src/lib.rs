@@ -38,10 +38,12 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
+mod credentials;
 mod fire;
 mod next;
 mod recipe;
 mod run;
+mod scheduler;
 mod service;
 mod store;
 
@@ -60,6 +62,7 @@ pub use self::model::{
 };
 pub use self::qstash::{Attempts, QStash};
 pub use self::recipe::{Inherited, Recipe, RecipeSet};
+pub use self::scheduler::Scheduler;
 pub use self::service::{Reconciled, Schedules as ScheduleService};
 pub use self::store::{
     Change, EditRequest, FireTarget, NewSchedule, Refused, SYNC_LEASE, Schedules,
@@ -68,3 +71,11 @@ pub use self::upstream::{HEADER_SCHEDULE_ID, schedule_of, upstream_id};
 
 pub use self::validate::Invalid;
 pub use self::verifier::{SigningKeys, VerifiedFire};
+
+/// Bindings the suites in other crates need, kept out of the production surface
+/// (`RS-TESTCONST`).
+#[cfg(feature = "test-util")]
+pub mod test_util {
+    /// The platform bag the scheduler's credentials are stored under.
+    pub const QSTASH_BAG: &str = crate::credentials::QSTASH_BAG;
+}

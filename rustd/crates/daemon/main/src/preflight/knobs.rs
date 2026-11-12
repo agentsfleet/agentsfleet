@@ -31,9 +31,10 @@ pub(super) const WHY_IDENTITY_PROXY: &str =
 
 /// The workspace holding this deployment's own platform credentials.
 ///
-/// The GitHub App and the OAuth clients the credential broker mints through
-/// live as ordinary vault rows in ONE workspace, so this knob names which.
-/// Optional: a deployment that has connected no third party mints nothing.
+/// The GitHub App, the OAuth clients the credential broker mints through and
+/// the scheduler's `qstash` bag live as ordinary vault rows in ONE workspace,
+/// so this knob names which. Optional: a deployment that has connected no third
+/// party mints nothing, and without the bag it registers no schedule.
 pub const PLATFORM_ADMIN_WORKSPACE_KNOB: &str = "PLATFORM_ADMIN_WORKSPACE_ID";
 
 /// The key a device-flow verification code's digest is taken under.
@@ -42,22 +43,6 @@ pub const PLATFORM_ADMIN_WORKSPACE_KNOB: &str = "PLATFORM_ADMIN_WORKSPACE_ID";
 /// daemon would store an unpeppered digest, and a queue somebody can read would
 /// become a queue somebody can log in from.
 pub const SESSION_CODE_PEPPER_KNOB: &str = "AUTH_SESSION_CODE_PEPPER";
-
-/// This deployment's bearer for the external scheduler.
-///
-/// Optional, for [`PLATFORM_ADMIN_WORKSPACE_KNOB`]'s reason: a deployment that
-/// registers no schedules still serves everything else, and refusing to boot
-/// would take the product down for a surface nobody called.
-pub const QSTASH_TOKEN_KNOB: &str = "QSTASH_TOKEN";
-
-/// Which scheduler deployment the management calls go to.
-///
-/// Optional, and its absence resolves to [`afd_cron::qstash::API_BASE`].
-/// It exists because the vendor is regional: a deployment on
-/// `qstash-eu-central-1.upstash.io` is the case a hardcoded US host breaks.
-/// `playbooks/lib/platform_secret_sync.sh` syncs `url|qstash/url` beside the
-/// token, so the value reaches the daemon wherever the token does.
-pub const QSTASH_URL_KNOB: &str = "QSTASH_URL";
 
 /// Which Slack API the answer and interim posts go to.
 ///
@@ -80,22 +65,8 @@ pub(super) const WHY_SLACK_API_URL: &str = "an https URL, or http only on a loop
 /// Optional, and its absence is FAIL-CLOSED rather than a degradation: the
 /// route refuses every delivery, because accepting an unverified one on a
 /// public endpoint that creates accounts would be strictly worse than serving
-/// none. The same posture `QSTASH_CURRENT_KEY_KNOB` takes, for the same reason.
+/// none. The scheduler's fire route takes the same posture, for the same reason.
 pub const IDENTITY_WEBHOOK_SECRET_KNOB: &str = "CLERK_WEBHOOK_SECRET";
-
-/// The key the scheduler is signing fire callbacks with now.
-///
-/// Optional AND fail-closed, which is not a contradiction: a deployment without
-/// it boots and serves, and refuses every fire — because a daemon that cannot
-/// verify a callback must not act on one.
-pub const QSTASH_CURRENT_KEY_KNOB: &str = "QSTASH_CURRENT_SIGNING_KEY";
-
-/// The key it will sign with next.
-///
-/// Both are read because the scheduler rotates by promoting the second, and a
-/// daemon that knew one would refuse every delivery between the vendor's
-/// rotation and its own redeploy.
-pub const QSTASH_NEXT_KEY_KNOB: &str = "QSTASH_NEXT_SIGNING_KEY";
 
 /// Where a person goes to approve a command-line login.
 ///
@@ -120,6 +91,11 @@ pub const API_URL_KNOB: &str = "API_URL";
 
 /// The deployment [`API_URL_KNOB`] falls back to.
 pub(super) const API_URL_DEFAULT: &str = "https://api.agentsfleet.net";
+
+/// Why [`API_URL_KNOB`] must form a callback: the scheduler calls every fire back
+/// under it.
+pub(super) const WHY_API_URL: &str = "an absolute http(s) URL with no query or fragment; \
+     the scheduler calls every schedule fire back under it";
 
 /// The `PostHog` project this deployment reports product events to.
 ///
@@ -161,7 +137,7 @@ pub(super) const WHY_SSE_MAX_STREAMS: &str =
     "a whole number of concurrent event streams, at least 1";
 
 /// Why a set platform-admin workspace has to be an identifier.
-pub(super) const WHY_PLATFORM_ADMIN: &str = "the workspace holding this deployment's platform credentials, as a UUIDv7; unset it to serve without on-demand credential minting";
+pub(super) const WHY_PLATFORM_ADMIN: &str = "the workspace holding this deployment's platform credentials, as a UUIDv7; unset it to serve without on-demand credential minting, the scheduler or any other platform bag";
 
 /// Why the daemon needs the API database role.
 pub(super) const WHY_DATABASE: &str = "the API role's Postgres connection URL";

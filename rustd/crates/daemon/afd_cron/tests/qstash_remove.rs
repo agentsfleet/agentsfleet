@@ -4,6 +4,7 @@
 //! other refusal leaves it registered and must not read as done, or a paused
 //! schedule would go on firing with the row saying it stopped.
 
+#![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"

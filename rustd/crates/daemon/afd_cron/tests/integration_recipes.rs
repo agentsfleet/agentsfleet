@@ -5,6 +5,7 @@
 //! does, and reads the table back afterwards: a refusal is only worth its name
 //! if the rows it refused to touch are untouched.
 
+#![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"

@@ -24,9 +24,10 @@ use crate::deliver::tests::Scripted;
 use crate::mailer::{
     REASON_DEADLINE, REASON_RELAY_UNREAD, REASON_TLS_SETUP, REASON_UNCONFIGURED, RelayRead,
 };
-use crate::relay::{BagFault, Relay, Server};
+use crate::relay::{Relay, Server};
 use crate::test_util::{FakeRelay, LOOPBACK, PASSWORD, Session, bag_json};
 use crate::{IDEMPOTENCY_HEADER, InviteMailer, SMTP_RELAY_BAG};
+use afd_vault::bag::BagFault;
 
 /// What the vault read resolves to, already.
 type Read = Ready<RelayRead>;
@@ -115,7 +116,7 @@ async fn should_name_fault_not_value_when_bag_unusable() {
     let id = id();
     let invite = invite(&id);
     let json = bag_json(LOOPBACK, 1).replace("\"1\"", "\"not a port\"");
-    let unusable = Relay::parse(&SecretBytes::new(json.into_bytes()));
+    let unusable = afd_vault::bag::parse::<Relay>(&SecretBytes::new(json.into_bytes()));
     let events = captured(
         send_within(read(Ok(unusable)), connect, &invite, DEADLINE),
         InviteEmailOutcome::Unconfigured,
