@@ -163,9 +163,15 @@ impl Lane {
 
     /// Re-seals the stored envelope under a rotated refresh token.
     async fn reseal(&self) {
-        rotate_refresh_token(&self.vault, &self.workspace, PROVIDER, REFRESH_OLD, REFRESH_NEW)
-            .await
-            .expect("the matching handle rotates");
+        rotate_refresh_token(
+            &self.vault,
+            &self.workspace,
+            PROVIDER,
+            REFRESH_OLD,
+            REFRESH_NEW,
+        )
+        .await
+        .expect("the matching handle rotates");
     }
 
     /// Closes the default's price window `span` from the database's clock.
