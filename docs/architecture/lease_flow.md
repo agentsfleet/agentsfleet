@@ -26,7 +26,7 @@ Sections 6 and 7 cover the sandbox and host.
                            instructions_md, config (selected)                 Postgres
                          connector.integration_grants (fleet, "github") pending,
                            then approved by a person                          Postgres
-                         agentsfleet resume <FLEET_ID> retries setup
+                         agentsfleet fleet resume <FLEET_ID> retries setup
                          locked recheck, all checks ready ⇒ active            Postgres
                          start none: no admission, no event, no lease row
 
@@ -65,7 +65,7 @@ Save (`POST /v1/workspaces/{ws}/fleets`, C1 in [`api_resources.md`](./api_resour
 
 Setup then advances in bounded steps (`afd_authoring`'s creation activate).
 A missing grant raises a pending approval card (`afd_approval`'s setup request).
-After approval, run `agentsfleet resume <FLEET_ID>` to retry setup.
+After approval, run `agentsfleet fleet resume <FLEET_ID>` to retry setup.
 
 [Setup recovery](data_flow.md#fleet-creation-and-setup-recovery) covers bounded retries.
 Once setup checks pass, a locked recheck activates the fleet.

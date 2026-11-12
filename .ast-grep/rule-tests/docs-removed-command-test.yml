@@ -1,7 +1,11 @@
 id: docs-removed-command
 valid:
   - |
-    const hint = "agentsfleet secret create";
+    const hint = "agentsfleet secrets create";
+  - |
+    const kill = "agentsfleet fleet kill x";
+  - |
+    const vault = "agentsfleet secrets list";
   - |
     // agentsfleet chat --publish x
 invalid:
@@ -13,3 +17,7 @@ invalid:
     const a = <p>Run agentsfleet workspace add</p>;
   - |
     const t = `agentsfleet fleet update ${id}`;
+  - |
+    const hint = "agentsfleet kill x";
+  - |
+    // agentsfleet api-key list

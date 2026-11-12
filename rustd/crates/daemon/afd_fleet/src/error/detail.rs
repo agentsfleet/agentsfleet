@@ -54,7 +54,7 @@ pub const DETAIL_PROVIDER_UNRESOLVED: &str = "provider unresolved";
 /// detail is not optional, and answering a DIFFERENT sentence for the same code
 /// on one surface is how a runbook stops matching what the product says.
 pub const DETAIL_CREDENTIAL_MISSING: &str =
-    "A required credential is not in the vault. Add it with: `agentsfleet secret create <NAME>`";
+    "A required credential is not in the vault. Add it with: `agentsfleet secrets create <NAME>`";
 
 /// A stored credential body that is not an addressable JSON object.
 ///

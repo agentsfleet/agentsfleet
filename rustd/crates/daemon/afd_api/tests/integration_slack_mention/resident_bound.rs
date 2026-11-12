@@ -94,7 +94,7 @@ async fn a_stopped_subscriber_owes_the_paused_notice_without_admission() {
     assert!(
         notices[0]
             .answer
-            .contains(&format!("agentsfleet resume {}", stopped.as_str()))
+            .contains(&format!("agentsfleet fleet resume {}", stopped.as_str()))
     );
     fixture.cleanup().await;
 }

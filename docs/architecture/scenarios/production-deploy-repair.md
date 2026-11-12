@@ -44,7 +44,7 @@ Trigger wiring determines which Fleet runs. No model chooses a crew member, and 
 
 ## 2. Approve before repository write access exists
 
-There is no per-event approval card and no request ceiling, and M202 retired both. The `github` grant a person approves while the fleet is set up authorises a write. That grant, the fleet's `budget.daily_nanos` and `agentsfleet grant delete` bound it (`rustd/crates/daemon/afd_gate/src/gate/first.rs:8-17`).
+There is no per-event approval card and no request ceiling, and M202 retired both. The `github` grant a person approves while the fleet is set up authorises a write. That grant, the fleet's `budget.daily_nanos` and `agentsfleet fleet grants revoke` bound it (`rustd/crates/daemon/afd_gate/src/gate/first.rs:8-17`).
 
 The token is repository-scoped and expires in one hour. It carries contents and Pull Request write permissions, and never carries workflow-file permission (`WRITE_REACH` in `rustd/crates/daemon/afd_credential/src/credential/github/request.rs:23-26`). The daemon verifies the token returned by GitHub before exposing it to the run.
 

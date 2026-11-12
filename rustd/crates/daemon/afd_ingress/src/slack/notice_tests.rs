@@ -54,7 +54,7 @@ fn each_notice_kind_owes_one_fixed_text() {
     let paused = notice_text(&Notice::Paused { fleet: &repairer });
     assert!(paused.starts_with("ci-repairer is paused"), "{paused}");
     assert!(
-        paused.contains("`agentsfleet resume 0199a0b0-0000-7000-8000-000000000002`"),
+        paused.contains("`agentsfleet fleet resume 0199a0b0-0000-7000-8000-000000000002`"),
         "the notice names the command, with the fleet filled in: {paused}"
     );
 }

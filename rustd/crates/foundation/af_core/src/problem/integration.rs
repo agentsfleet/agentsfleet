@@ -39,7 +39,7 @@ pub(super) const INTEGRATION: &[Problem] = &[
         code: error_code::PROVIDER_SECRET_NOT_FOUND,
         status: 400,
         title: "Secret not found",
-        hint: "The named secret_ref does not exist in the tenant's primary workspace. Create it with `agentsfleet secret create <NAME> --data=@-`.",
+        hint: "The named secret_ref does not exist in the tenant's primary workspace. Create it with `agentsfleet secrets create <NAME> --data=@-`.",
         user_message: Some(
             "We couldn't find that secret. Store it under Secrets & ENVs, then try again.",
         ),

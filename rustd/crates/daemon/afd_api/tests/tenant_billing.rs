@@ -68,7 +68,7 @@ async fn a_scoped_person_reaches_both_verbs() {
     }
 }
 
-/// The terminal's class is admitted — `agentsfleet billing show` is a thing.
+/// The terminal's class is admitted — `agentsfleet usage show` is a thing.
 #[tokio::test]
 async fn a_command_line_credential_reads_billing_too() {
     let router = Fleet::new()

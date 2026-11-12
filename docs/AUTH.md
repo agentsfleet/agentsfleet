@@ -17,6 +17,7 @@ Find the question, jump to the one §-section that answers it, and do not read t
 | Which validator handles my route's credential? | §Auth model in one screen |
 | What scope does a route require? | `afd_http`'s route table (declaration) + §"Scope catalogue" (meaning) |
 | Where do a principal's scopes come from, per credential? | §"Scope catalogue" → §"CLI credential: resolved, not granted" |
+| Why does CLI help hide `platform` from me? | §"CLI help: scoped advertising, not authorization" |
 | How does `agentsfleet login` work, and its threat model? | §"Flow 1: CLI device flow (`agentsfleet login`)" + [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) |
 | Why does the dashboard send Bearer, never the cookie? | §"Flow 2: UI (browser dashboard)" → §"Where the cookie lives" |
 | Why does the dashboard carry one token and not two? | §Why the dashboard rides one token |
@@ -284,6 +285,14 @@ Grant the full platform-operator bundle only to a development user who needs wri
 It includes platform key rotation and access across tenants. Read-only inspection needs neither permission.
 
 ---
+
+### CLI help: scoped advertising, not authorization
+
+`agentsfleet --help`, `agentsfleet platform --help`, a typo at either level and `agentsfleet --completions <shell>` advertise only the `platform` commands the caller can use. The CLI reads `scopes` from `GET /v1/users/me`, which renders the closure `ScopeSet` already holds, and lists a platform command when its scope is in that list (`cli/src/program/entry/discovery.ts`). It keeps no ladder of its own.
+
+The read is one attempt bounded to two seconds, and it goes out only when it is safe to present the credential. A stored login goes only to the deployment that minted it. An `AGENTSFLEET_API_KEY` goes only to a target that was inferred or set in `AGENTSFLEET_API_URL`, never to a host named only by `--api` on that line, and it never falls back to the stored login. A failed, skipped or malformed answer advertises nothing. No command that runs makes the read.
+
+Hiding is not refusal. An unadvertised command still parses, meets `guardCommand`, and is decided by the route's scope gate on the server, under the refresh policy above. A completion script is a snapshot of what its credential could see when it was generated. Write it to a file rather than sourcing `$(agentsfleet --completions zsh)` from a shell profile, which would make the read at every shell start, and regenerate it after a login, a target change or a permission change.
 
 ## Signup: what `user.created` writes
 
@@ -1259,7 +1268,7 @@ The check answers with exactly three error codes for webhook auth failures, each
 
 | Code | When it fires | What the operator should do |
 | --- | --- | --- |
-| `UZ-WH-020 webhook_credential_not_configured` (401) | Named credential missing, unusable `webhook_secret`, or malformed Svix key | `agentsfleet secret create <source> --data='{"webhook_secret":"<key>"}'` in the workspace |
+| `UZ-WH-020 webhook_credential_not_configured` (401) | Named credential missing, unusable `webhook_secret`, or malformed Svix key | `agentsfleet secrets create <source> --data='{"webhook_secret":"<key>"}'` in the workspace |
 | `UZ-WH-010 invalid_signature` (401) | Provider + secret are both configured, but a required signature or Svix header is missing, or body authentication fails | Check the sender's headers and that its registered secret matches the workspace vault. |
 | `UZ-WH-011 stale_timestamp` (401) | Slack timestamp missing, or a supplied Slack or Svix timestamp is invalid or outside the 300-second window | Clock skew or replay attempt. Investigate. |
 
@@ -1315,7 +1324,7 @@ A missing state is malformed (`UZ-REQ-001`). A forged, expired, replayed, or ide
   The broker later mints fresh access tokens from the refresh handle (see *Broker refresh-mint* below). The runner never sees the refresh token.
 - **Datadog, Grafana, Fly are not connectors**. A registry shape for operator-pasted vendor keys was considered for these three and dropped (M108_002; no such archetype ships). A static vendor key is a workspace secret, not a connector.
 
-  There is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key as a plain workspace secret with `agentsfleet secret create <name>`.
+  There is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key as a plain workspace secret with `agentsfleet secrets create <name>`.
 
   The fleet's reviewed setup names it under `credentials`, so a tool call references it as `${secrets.<name>.<field>}` like any other tool secret. It never touches the connect/callback surface.
 
