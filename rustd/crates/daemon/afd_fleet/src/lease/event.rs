@@ -15,19 +15,39 @@
 //! fires only on a row still in the status the claim wrote — so the
 //! [`Delivery`] the claim answers and the ending that reads it sit together.
 
+use af_core::id::Uuid7;
 use jiff::Timestamp;
-use sqlx::Connection as _;
+use sqlx::{Connection as _, PgConnection};
 
 use afd_api_wire::tail::FleetCounters;
 use afd_events::Closed;
+use afd_outbound::obligation::Delivery as Owed;
 
 use crate::error::{Result, query};
 use crate::lease::admit::Refusal;
 use crate::lease::envelope::Acquired;
 use crate::lease::store::Leases;
+use crate::lease::unanswered;
 
-/// Statement name, for the context a refusal's query failure carries.
-const CONTEXT_BLOCKED: &str = "fleet event gate blocked";
+/// Statement name, for the context a query failure carries while an event is
+/// ended with no report: at a gate, or after its leases kept lapsing.
+const CONTEXT_ENDED: &str = "fleet event ended without a report";
+
+/// The stored `failure_detail` of an event the daemon stopped re-leasing.
+pub const DETAIL_LEASES_LAPSED: &str = "every lease this event was issued lapsed without a report";
+
+/// How an event ends when no report will end it.
+#[derive(Debug, Clone, Copy)]
+struct Unreported<'a> {
+    /// The terminal status the event row takes.
+    status: &'static str,
+    /// The stored `failure_reason`.
+    label: &'static str,
+    /// The stored `failure_detail`, when the ending has one to give.
+    detail: Option<&'static str>,
+    /// What the event's thread is owed, when it was asked from one.
+    notice: &'a str,
+}
 
 /// Whether this delivery was the first.
 ///
@@ -106,13 +126,53 @@ impl Leases {
     /// reopened: a request arriving after a `gate_blocked` is a NEW delivery
     /// with its own row, not a resurrection of this one.
     ///
+    /// The pass that ends the event also owes its thread the refusal, when it
+    /// was asked from one: no run follows a gate, so nothing else would answer.
+    ///
     /// # Errors
     /// Reports a datastore that would not answer, and a closing this daemon
     /// cannot read. A row that has already ended is [`Ended::Already`], not
     /// an error — see that type.
     pub async fn block(&self, acquired: &Acquired, refusal: Refusal) -> Result<Ended> {
+        let notice = unanswered::refused(&acquired.fleet_id, refusal.label);
+        let ending = Unreported {
+            status: af_core::event::status::GATE_BLOCKED,
+            label: refusal.label,
+            // A gate refusal carries no operator-readable instruction.
+            detail: None,
+            notice: &notice,
+        };
+        self.end_unreported(acquired, ending).await
+    }
+
+    /// End an event whose leases kept lapsing, as the failed run it is.
+    ///
+    /// A lapsed lease is reclaimed and its event runs again from the start.
+    /// Past [`af_core::limits::EVENT_LEASES_MAX`] holders the daemon stops:
+    /// the event ends under the label a lapsed lease reports, its thread is
+    /// told, and the fleet's next event is free to run. The caller keeps a
+    /// durable task's event out of here: ending it would leave its task
+    /// running with nothing left to run it.
+    ///
+    /// # Errors
+    /// As [`Self::block`].
+    pub async fn abandon(&self, acquired: &Acquired) -> Result<Ended> {
+        let label = af_core::event::label::LEASE_EXPIRED;
+        let notice = unanswered::failed_run(&acquired.fleet_id, Some(label));
+        let ending = Unreported {
+            status: af_core::event::status::FLEET_ERROR,
+            label,
+            detail: Some(DETAIL_LEASES_LAPSED),
+            notice: &notice,
+        };
+        self.end_unreported(acquired, ending).await
+    }
+
+    /// Writes the terminal row, settles the admission and owes the notice, in
+    /// one transaction under the claim's fence.
+    async fn end_unreported(&self, acquired: &Acquired, ending: Unreported<'_>) -> Result<Ended> {
         let mut connection = self.pool().acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_BLOCKED))?;
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_ENDED))?;
         if !self
             .lock_admission_on(
                 &mut transaction,
@@ -127,23 +187,58 @@ impl Leases {
         let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_FAILURE)
             .bind(&acquired.fleet_id)
             .bind(&acquired.event_id)
-            .bind(af_core::event::status::GATE_BLOCKED)
-            .bind(refusal.label)
+            .bind(ending.status)
+            .bind(ending.label)
             .bind(af_core::event::status::RECEIVED)
-            // A gate refusal carries no operator-readable instruction: empty
-            // stores as SQL NULL through the statement's `NULLIF`.
-            .bind("")
+            .bind(ending.detail)
             .bind(afd_api_wire::approval::status::PENDING)
             .fetch_optional(&mut *transaction)
             .await
-            .map_err(query(CONTEXT_BLOCKED))?;
+            .map_err(query(CONTEXT_ENDED))?;
 
         self.settle_terminal_on(&mut transaction, acquired).await?;
-        let ended = match closed {
-            Some(row) => Ended::Now(Box::new(Closed::read(&row)?)),
-            None => Ended::Already,
+        let (ended, owed) = match closed {
+            Some(row) => (
+                Ended::Now(Box::new(Closed::read(&row)?)),
+                self.owe_notice(&mut transaction, acquired, ending.notice)
+                    .await?,
+            ),
+            None => (Ended::Already, None),
         };
-        transaction.commit().await.map_err(query(CONTEXT_BLOCKED))?;
+        transaction.commit().await.map_err(query(CONTEXT_ENDED))?;
+        if let Some(owed) = owed {
+            self.wake_delivery(&owed).await;
+        }
         Ok(ended)
+    }
+
+    /// Owes the ended event's thread its notice, and answers the row owed.
+    ///
+    /// `None` for an event asked from nowhere an answer can go: a webhook, a
+    /// schedule and a message sent from the dashboard have no thread.
+    async fn owe_notice(
+        &self,
+        connection: &mut PgConnection,
+        acquired: &Acquired,
+        notice: &str,
+    ) -> Result<Option<Uuid7>> {
+        let event = acquired.event_id.as_str();
+        let Some(reply) = Self::reply_destination(connection, &acquired.fleet_id, event).await?
+        else {
+            return Ok(None);
+        };
+        self.owe_delivery(
+            connection,
+            Owed {
+                fleet_id: &acquired.fleet_id,
+                workspace_id: &acquired.workspace_id,
+                provider: reply.provider,
+                destination: &reply.address,
+                event_id: &acquired.event_id,
+                answer: notice,
+            },
+            af_core::clock::now(),
+        )
+        .await
     }
 }

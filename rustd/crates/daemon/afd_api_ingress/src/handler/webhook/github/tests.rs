@@ -15,7 +15,7 @@
 use super::{Ingest, Policy, REASON_MISSING_REPOSITORY, classify};
 
 /// The header GitHub names a workflow run in.
-const EVENT_WORKFLOW_RUN: &str = "workflow_run";
+pub(super) const EVENT_WORKFLOW_RUN: &str = "workflow_run";
 
 /// The header GitHub names a pull request in.
 const EVENT_PULL_REQUEST: &str = "pull_request";
@@ -23,10 +23,10 @@ const EVENT_PULL_REQUEST: &str = "pull_request";
 /// A fixed receipt instant, so a digest is byte-comparable across runs.
 ///
 /// 2026-08-26T12:00:00Z.
-const RECEIVED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_787_745_600, 0);
+pub(super) const RECEIVED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_787_745_600, 0);
 
 /// A failed run — the delivery that wakes a fleet.
-const RUN_FAILURE: &str =
+pub(super) const RUN_FAILURE: &str =
     include_str!("../../../../../../../../tests/fixtures/webhooks/github_run_failure.json");
 
 /// A `ping` — the delivery GitHub sends when a hook is first created.

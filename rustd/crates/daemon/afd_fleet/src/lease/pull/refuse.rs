@@ -16,9 +16,9 @@ use super::step::{Step, waited};
 use super::{AdmittedFleetWork, LeaseService};
 use crate::error::{Error, Result};
 use crate::lease::admit::{Declined, Refusal};
-use crate::lease::answer::{EVENT_REFUSED, no_work};
+use crate::lease::answer::{EVENT_ABANDONED, EVENT_REFUSED, no_work};
 use crate::lease::envelope::Acquired;
-use crate::lease::event::Delivery;
+use crate::lease::event::{DETAIL_LEASES_LAPSED, Delivery, Ended};
 use crate::lease::installed::Installed;
 
 /// The no-work reason for a fleet paused between selection and claim.
@@ -107,13 +107,7 @@ impl LeaseService {
             .leases
             .block(acquired, Refusal::labelled(label))
             .await?;
-        if let crate::lease::event::Ended::Now(closed) = ended {
-            let publication = self.leases.publish_completion(&closed, None).await;
-            afd_bus::observe_notification(
-                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
-                publication,
-            );
-        }
+        self.close_tail(ended).await;
         let runner_id_field = runner_id.as_str();
         let fleet_id_field = acquired.fleet_id.as_str();
         let event_id_field = acquired.event_id.as_str();
@@ -128,6 +122,44 @@ impl LeaseService {
         );
         no_work(runner_id, label);
         Ok(())
+    }
+
+    /// End an event whose leases kept lapsing, then answer no-work.
+    ///
+    /// Logged under its own event, apart from a gate's refusal. The fleet's
+    /// next event is claimable the moment this commits: the ending settles
+    /// the admission that was holding the queue's head.
+    pub(super) async fn abandoned(&self, acquired: &Acquired, runner_id: &Uuid7) -> Result<()> {
+        let ended = self.leases.abandon(acquired).await?;
+        self.close_tail(ended).await;
+        let runner_id_field = runner_id.as_str();
+        let fleet_id_field = acquired.fleet_id.as_str();
+        let event_id_field = acquired.event_id.as_str();
+        let earlier_leases = acquired.earlier_leases;
+        tracing::warn!(
+            event = EVENT_ABANDONED,
+            runner_id = runner_id_field,
+            fleet_id = fleet_id_field,
+            agentsfleet_event_id = event_id_field,
+            label = label::LEASE_EXPIRED,
+            earlier_leases,
+            reason = DETAIL_LEASES_LAPSED,
+            "the event was ended after its leases kept lapsing"
+        );
+        no_work(runner_id, label::LEASE_EXPIRED);
+        Ok(())
+    }
+
+    /// The tail's closing bracket for an event this pass ended. A row an
+    /// earlier pass ended already has its bracket, so nothing is published.
+    async fn close_tail(&self, ended: Ended) {
+        if let Ended::Now(closed) = ended {
+            let publication = self.leases.publish_completion(&closed, None).await;
+            afd_bus::observe_notification(
+                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                publication,
+            );
+        }
     }
 
     /// One fleet's unreadable configuration ends THAT fleet's event, and
