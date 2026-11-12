@@ -9,6 +9,16 @@ import { AccountSetup } from "./AccountSetup";
 
 export const dynamic = "force-dynamic";
 
+/** The refusals a token minted before signup's writeback can meet. */
+const OPENING_REFUSALS: ReadonlySet<string> = new Set([
+  // The daemon refuses a session token with no tenant claim at authentication,
+  // before any scope is read (`afd_auth/src/authenticate.rs`): the first
+  // request of almost every new account.
+  ERROR_CODE.AUTH_UNAUTHORIZED,
+  // A token that does reach the scope gate without the owner scopes.
+  ERROR_CODE.INSUFFICIENT_SCOPE,
+]);
+
 // Dashboard entry (`/`). Resolves the caller's own workspace — or, owning none,
 // the first one they joined — and redirects once to New fleet; a caller
 // with no workspace at all lands on the create-workspace empty state instead
@@ -38,16 +48,6 @@ export default async function DashboardIndexPage() {
 
   return <NoWorkspaceEmptyState />;
 }
-
-/** The refusals a token minted before signup's writeback can meet. */
-const OPENING_REFUSALS: ReadonlySet<string> = new Set([
-  // The daemon refuses a session token with no tenant claim at authentication,
-  // before any scope is read (`afd_auth/src/authenticate.rs`): the first
-  // request of almost every new account.
-  ERROR_CODE.AUTH_UNAUTHORIZED,
-  // A token that does reach the scope gate without the owner scopes.
-  ERROR_CODE.INSUFFICIENT_SCOPE,
-]);
 
 /**
  * Whether the list was refused because this account is still opening: the

@@ -9,7 +9,7 @@ const PAGE_COPY = {
 
 /**
  * The brand mark's path, copied from `ui/packages/design-system/src/assets/logo-dark.svg`.
- * Inline because the page loads nothing (`default-src 'none'`); a test keeps the copy equal.
+ * Inline because the page loads nothing (`default-src 'none'`). Copy it again when the logo changes.
  */
 export const BRAND_MARK_PATH =
   "M12 2v6m0 8v6M2 12h6m8 0h6M4.93 4.93l4.24 4.24m5.66 5.66 4.24 4.24M4.93 19.07l4.24-4.24m5.66-5.66 4.24-4.24";

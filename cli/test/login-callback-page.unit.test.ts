@@ -13,8 +13,17 @@ describe("the login callback page", () => {
     }
   });
 
-  test("keeps the strict content policy", () => {
-    const policy = callbackPage(PAGE_STATUS.success).headers.get("Content-Security-Policy");
-    expect(policy).toContain("default-src 'none'");
+  // Every directive, spelled out: dropping any one of them must fail here.
+  test("keeps the strict content policy on every outcome", () => {
+    for (const status of Object.values(PAGE_STATUS)) {
+      const policy = callbackPage(status).headers.get("Content-Security-Policy");
+      expect(policy?.split("; ").sort()).toEqual([
+        "base-uri 'none'",
+        "default-src 'none'",
+        "form-action 'none'",
+        "frame-ancestors 'none'",
+        "style-src 'unsafe-inline'",
+      ]);
+    }
   });
 });
