@@ -13,6 +13,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# The draft's credential inspection reads the vault on the review transaction.
+afd_vault.workspace = true
 afd_bus.workspace = true
 af_core = { workspace = true, features = ["sqlx"] }
 af_inference.workspace = true
@@ -77,7 +79,6 @@ afd_approval = { workspace = true, features = ["test-util"] }
 afd_admission = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
 af_observability = { workspace = true, features = ["test-util"] }
-afd_vault.workspace = true
 # The mocked entropy source, so a proof can make one draw fail.
 af_crypto = { workspace = true, features = ["test-util"] }
 # The fleet purge, so the deletion-matrix test drives both

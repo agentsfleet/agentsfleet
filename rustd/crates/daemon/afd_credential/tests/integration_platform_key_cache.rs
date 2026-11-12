@@ -21,7 +21,7 @@ use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use afd_credential::provider::cache::Observed;
 use afd_credential::provider::{Added, PLATFORM_MODEL_REF, Providers};
-use afd_credential::vault::KeyRef;
+use afd_credential::secrets::rotate_refresh_token;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::statements::{self, Ran, Window};
@@ -48,7 +48,6 @@ struct Lane {
     api: Db,
     providers: Providers,
     vault: afd_vault::Vault,
-    kek: Arc<Kek>,
     /// The clock the cache tells time by, which a test moves.
     clock: FixedClock,
     tenant: Uuid7,
@@ -85,7 +84,6 @@ impl Lane {
             database,
             owner,
             api,
-            kek,
             clock,
             tenant,
             workspace,
@@ -165,15 +163,7 @@ impl Lane {
 
     /// Re-seals the stored envelope under a rotated refresh token.
     async fn reseal(&self) {
-        afd_credential::vault::Vault::new(self.api.clone(), Arc::clone(&self.kek))
-            .rotate_refresh_token(
-                KeyRef {
-                    workspace_id: &self.workspace,
-                    name: PROVIDER,
-                },
-                REFRESH_OLD,
-                REFRESH_NEW,
-            )
+        rotate_refresh_token(&self.vault, &self.workspace, PROVIDER, REFRESH_OLD, REFRESH_NEW)
             .await
             .expect("the matching handle rotates");
     }
@@ -214,10 +204,18 @@ impl Lane {
 
 /// Calls of the statement that opens a vault row.
 fn secret_reads(ran: &Ran) -> u64 {
-    let read = afd_credential::vault::sql::SELECT_SECRET.trim();
+    // The vault's one read of a row's envelope: it names the sealed key and
+    // the ciphertext from `vault.secrets` by workspace and name, and no other
+    // statement does both without taking a lock or writing.
     ran.statements()
         .iter()
-        .filter(|(query, _)| query.trim() == read)
+        .filter(|(query, _)| {
+            query.contains("secret_ciphertext, secret_tag, kek_version")
+                && query.contains("FROM vault.secrets")
+                && !query.contains("FOR UPDATE")
+                && !query.contains("INSERT")
+                && !query.contains("UPDATE vault.secrets")
+        })
         .map(|(_, calls)| calls)
         .sum()
 }

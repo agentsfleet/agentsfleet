@@ -96,6 +96,9 @@ fn a_value_that_is_not_a_url_at_all_is_unusable() {
         "api.example.com",
         "not a url",
         "://missing-scheme",
+        "localhost:8080",
+        "ftp://api.example.com",
+        "mailto:ops@example.com",
     ] {
         assert_eq!(
             refusal(candidate),

@@ -136,7 +136,7 @@ for entry in "${field_refs[@]}"; do
   item_field="${entry#*|}"
   value="$(op read "op://$vault/$item_field")"
   if [ -z "$value" ]; then
-    echo "ERROR: empty 1Password field: op://$vault/$item_field" >&2
+    echo "ERROR: empty 1Password field: $item_field" >&2
     exit 1
   fi
   printf '%s\0%s\0' "$json_key" "$value" >>"$pairs_file"

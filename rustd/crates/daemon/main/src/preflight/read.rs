@@ -15,11 +15,12 @@ use afd_identity::ProviderSecret;
 use url::Host;
 
 use super::knobs::{
-    APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, IDENTITY_HTTP_PROXY_URL_KNOB, OIDC_AUDIENCE_KNOB,
-    OIDC_ISSUER_KNOB, OIDC_JWKS_URL_KNOB, PLATFORM_ADMIN_WORKSPACE_KNOB, PROVIDER_API_BASE_KNOB,
-    PROVIDER_SECRET_KNOB, SLACK_API_URL_KNOB, SSE_MAX_STREAMS_DEFAULT, SSE_MAX_STREAMS_KNOB,
-    WHY_API_BASE, WHY_API_BASE_UNSAFE, WHY_APP_URL, WHY_AUDIENCE, WHY_IDENTITY_PROXY, WHY_ISSUER,
-    WHY_KEK, WHY_PLATFORM_ADMIN, WHY_SECRET, WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
+    API_URL_KNOB, APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, IDENTITY_HTTP_PROXY_URL_KNOB,
+    OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB, OIDC_JWKS_URL_KNOB, PLATFORM_ADMIN_WORKSPACE_KNOB,
+    PROVIDER_API_BASE_KNOB, PROVIDER_SECRET_KNOB, SLACK_API_URL_KNOB, SSE_MAX_STREAMS_DEFAULT,
+    SSE_MAX_STREAMS_KNOB, WHY_API_BASE, WHY_API_BASE_UNSAFE, WHY_API_URL, WHY_APP_URL,
+    WHY_AUDIENCE, WHY_IDENTITY_PROXY, WHY_ISSUER, WHY_KEK, WHY_PLATFORM_ADMIN, WHY_SECRET,
+    WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
 };
 use super::{Fault, IdentityConfig};
 
@@ -32,6 +33,15 @@ const LOOPBACK_NAME: &str = "localhost";
 pub(super) fn dashboard(raw: &str, faults: &mut Vec<Fault>) -> Option<Dashboard> {
     let parsed = Dashboard::parse(raw).ok_or(WHY_APP_URL);
     classify(faults, true, APP_URL_KNOB, WHY_APP_URL, parsed)
+}
+
+/// The deployment base `raw` names, which is also the origin the scheduler calls
+/// every fire back on: a base that cannot form that callback refuses boot rather
+/// than registering schedules that never fire.
+pub(super) fn deployment(raw: Box<str>, faults: &mut Vec<Fault>) -> Box<str> {
+    let callback = afd_cron::qstash::destination_url(&raw).map_err(|_unusable| WHY_API_URL);
+    classify(faults, true, API_URL_KNOB, WHY_API_URL, callback);
+    raw
 }
 
 /// Resolves the identity provider, which every boot must have.

@@ -15,11 +15,13 @@ use std::time::{Duration, Instant};
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_observability::InviteEmailOutcome;
-use afd_vault::{SecretName, Vault};
+use afd_vault::Vault;
 use lettre::message::Mailbox;
 
 use crate::deliver::{self, Attempted, Delivery, IdempotencyKey, Mailer};
-use crate::relay::{BagFault, Relay, SMTP_RELAY_BAG, Server, TlsCache};
+use afd_vault::bag::BagFault;
+
+use crate::relay::{Relay, SMTP_RELAY_BAG, Server, TlsCache};
 use crate::{InviteLetter, render_invite};
 
 /// How long one invite send may take: the relay read and both tries.
@@ -95,14 +97,7 @@ impl InviteMailer {
 
     /// The relay the admin workspace's bag names, or why there is none.
     async fn relay(&self, admin: Option<&Uuid7>) -> RelayRead {
-        let (Some(admin), Ok(name)) = (admin, SecretName::parse(SMTP_RELAY_BAG)) else {
-            return Ok(Err(BagFault::Absent));
-        };
-        let stored = self.vault.load(admin, &name).await?;
-        Ok(stored
-            .as_ref()
-            .ok_or(BagFault::Absent)
-            .and_then(Relay::parse))
+        self.vault.bag::<Relay>(admin, SMTP_RELAY_BAG).await
     }
 }
 

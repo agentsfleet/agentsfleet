@@ -28,6 +28,7 @@
 //! that talks to a fake catches this: a fake answers whatever key it is asked
 //! about. `the_scheduler_key_is_adopted_and_a_delete_names_it` is the guard.
 
+#![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
     clippy::panic,
@@ -189,12 +190,12 @@ async fn a_scheduler_that_cannot_be_reached_keeps_its_reason_on_the_row() {
 
     let stalled = Reconciler::new(
         lane.store.clone(),
-        QStash::new(
+        std::sync::Arc::new(QStash::fixed(
             reqwest::Client::new(),
             af_crypto::secret::SecretString::new("unused".to_owned()),
             LIVE_DESTINATION.to_owned(),
             UNREACHABLE_BASE.to_owned(),
-        ),
+        )),
     );
     let reconciled = stalled
         .reconcile(&held, &claim)

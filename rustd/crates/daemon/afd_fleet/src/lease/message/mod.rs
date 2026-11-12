@@ -110,10 +110,13 @@ impl LeaseService {
         if names.is_empty() {
             return Ok(text.to_owned());
         }
-        let declared = self
-            .vault
-            .declared(&standing.workspace_id, &names, self.broker.connectors())
-            .await?;
+        let declared = afd_credential::secrets::declared(
+            &self.vault,
+            &standing.workspace_id,
+            &names,
+            self.broker.connectors(),
+        )
+        .await?;
         let scrub = Scrub::of(StaticSecrets::of_map(declared.secrets_map()).values())?;
         Ok(scrub.text(text).into_owned())
     }

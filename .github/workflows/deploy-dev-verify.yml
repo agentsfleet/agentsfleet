@@ -136,13 +136,17 @@ jobs:
       # any step had repaired the tunnel, and its fail-fast curl would abort
       # the deploy for a reason the next step exists to fix.
       #
-      # `approval-signing` is the deployment-level HMAC key. The retired daemon
-      # read it from APPROVAL_SIGNING_SECRET in the environment; `agentsfleetd`
-      # reads it as an admin-workspace vault row, and nothing carried the value
-      # across at cutover — so every connector answered 503 UZ-CONN-001 on a
-      # deployment whose Fly secret was set and correct.
+      # `approval-signing` is the deployment-level HMAC key. `agentsfleetd` reads
+      # it as an admin-workspace vault row, never from the environment, so this
+      # sync is what puts it in reach; without it every connector answers 503
+      # UZ-CONN-001.
+      #
+      # `qstash` is the scheduler's token and signing keys, read the same way:
+      # without it no schedule registers and every fire is refused.
       - name: Seed platform vault secrets
-        run: ENV=dev ./playbooks/lib/platform_secret_sync.sh approval-signing
+        run: |
+          ENV=dev ./playbooks/lib/platform_secret_sync.sh approval-signing
+          ENV=dev ./playbooks/lib/platform_secret_sync.sh qstash
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT: ${{ vars.VAULT_DEV }}

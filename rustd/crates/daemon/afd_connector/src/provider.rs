@@ -122,7 +122,7 @@ impl Provider {
     /// The workspace vault key this provider's grant is sealed under.
     ///
     /// The bare id: the connector handle is stored under the provider name,
-    /// and the runner plane's `afd_credential::vault` opens it by that name
+    /// and the runner plane's `afd_vault::Vault::load` opens it by that name
     /// when a fleet declares the integration.
     #[must_use]
     pub const fn grant_key(self) -> &'static str {

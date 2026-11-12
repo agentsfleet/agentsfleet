@@ -161,17 +161,10 @@ impl Services for Fleet {
         &self.dashboard_base
     }
 
-    /// No signing keys, which is the fail-closed default.
-    ///
-    /// A suite proving that a fire is refused when this deployment cannot
-    /// verify one needs exactly this state, and it is the state most
-    /// deployments are in — the schedules surface is opt-in.
-    fn schedule_signing_keys(&self) -> Option<&afd_cron::SigningKeys> {
-        self.schedule_keys.as_ref()
-    }
-
-    fn schedule_destination(&self) -> &str {
-        SCHEDULE_DESTINATION
+    /// The fixture scheduler: blank signing keys unless a suite set them, which
+    /// is the fail-closed default — see `fleet_credentials::fixed_scheduler`.
+    fn scheduler(&self) -> &dyn afd_cron::Scheduler {
+        self.scheduler.as_ref()
     }
 
     /// The deployment's own admin workspace, when a suite configured one.

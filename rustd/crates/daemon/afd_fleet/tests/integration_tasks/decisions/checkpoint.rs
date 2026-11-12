@@ -99,7 +99,7 @@ pub(super) fn storage(fixture: &Decisions<'_>) -> Tasks {
     dependencies.storage = Some(R2CheckpointStore::new(
         config,
         case.scope.workspace_id.clone(),
-        case.held.fixtures.plane().vault,
+        fixture.vault.clone(),
         Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("fixture key")),
         client,
     ));

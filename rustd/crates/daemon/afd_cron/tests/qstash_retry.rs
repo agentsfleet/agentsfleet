@@ -6,6 +6,7 @@
 //! one answer more than it expects to be asked for, so a repeat that should not
 //! happen shows up as a different outcome rather than as a hang.
 
+#![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
     clippy::panic,
@@ -221,6 +222,9 @@ async fn a_scheduler_that_never_answers_is_given_up_on_inside_the_sync_fence() {
         while let Ok((stream, _peer)) = listener.accept().await {
             held.push(stream);
         }
+        // Every accepted connection stays open, unanswered, until the listener
+        // fails.
+        drop(held);
     });
     let started = tokio::time::Instant::now();
 

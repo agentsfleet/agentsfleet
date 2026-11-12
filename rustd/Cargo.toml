@@ -216,11 +216,12 @@ afd_tenant = { path = "crates/daemon/afd_tenant" }
 # route's fixed sentence. A leaf beside `af_core` rather than a module in it
 # (M-SMALLER-CRATES): it depends on garde and nothing of ours.
 af_validate = { path = "crates/foundation/af_validate" }
-# The workspace secret surface. Deliberately NOT folded into `afd_fleet`, whose
-# `vault` module is the RUNNER plane's reader — it opens a declared credential
-# for a lease, refuses to degrade a row, and never lists — nor into `afd_state`,
-# which is the credential directory the authentication path cannot start
-# without and would then rebuild every login when a projection column moved.
+# The one reader and writer of `vault.secrets`: the workspace secret surface,
+# the runner plane's by-name and locked reads, and the typed bag reader.
+# Deliberately NOT folded into `afd_fleet`, which is thirty thousand lines, nor
+# into `afd_state`, which is the credential directory the authentication path
+# cannot start without and would then rebuild every login when a projection
+# column moved.
 afd_vault = { path = "crates/daemon/afd_vault" }
 # The signature wall: what an unauthenticated delivery must prove before
 # anything reads its body. Its own crate rather than a module in `afd_auth`,
@@ -1094,7 +1095,7 @@ branches_sharing_code = "deny"
 cfg_not_test = "deny"
 clear_with_drain = "deny"
 coerce_container_to_any = "deny"
-# collection_is_never_read = "deny"  # off until fixed: 1 findings today
+collection_is_never_read = "deny"
 # create_dir = "deny"  # off until fixed: 52 findings today
 debug_assert_with_mut_call = "deny"
 default_union_representation = "deny"

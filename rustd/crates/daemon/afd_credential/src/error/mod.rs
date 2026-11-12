@@ -6,6 +6,7 @@
 //! raisers that bind data.
 
 use af_core::error_code::{self, ErrorCode};
+use afd_vault::bag::BagFault;
 
 #[cfg(test)]
 mod tests;
@@ -51,17 +52,11 @@ pub(crate) enum ErrorKind {
     DecisionCredentialInvalid {
         api: af_wire::decision::DecisionApi,
         #[source]
-        source: af_core::json::Unreadable,
+        fault: BagFault,
     },
 
     #[error("a stored provider endpoint was refused: {reason}")]
     ProviderEndpoint { reason: &'static str },
-
-    #[error("a stored credential envelope would not open")]
-    Vault {
-        #[source]
-        source: af_crypto::error::Error,
-    },
 
     #[error("a stored credential body is not the JSON object the tool bridge addresses")]
     VaultDataInvalid,
@@ -75,8 +70,8 @@ pub(crate) enum ErrorKind {
         source: af_crypto::error::Error,
     },
 
-    #[error("the credential directory would not describe a registry page's rows")]
-    Directory {
+    #[error("the secrets vault would not answer")]
+    Vault {
         #[source]
         source: afd_vault::Error,
     },
@@ -93,26 +88,21 @@ impl Error {
             ErrorKind::Datastore { .. } => {
                 (error_code::INTERNAL_DB_UNAVAILABLE, DETAIL_UNAVAILABLE)
             }
-            // `Directory` joins them because it can only BE one of them: the
-            // describe read fails on a datastore that would not answer or a
-            // row whose columns are not the types this build reads, and it
-            // decrypts nothing that could fail differently.
-            ErrorKind::Query { .. } | ErrorKind::Directory { .. } => {
-                (error_code::INTERNAL_DB_QUERY, DETAIL_DATABASE_ERROR)
-            }
+            ErrorKind::Query { .. } => (error_code::INTERNAL_DB_QUERY, DETAIL_DATABASE_ERROR),
+            // `Vault` is the vault crate's own failure, and that crate has
+            // already decided what a caller is told. A failed statement, an
+            // outage and an envelope that will not open are three different
+            // answers: one table, read here, never copied.
+            ErrorKind::Vault { source } => (source.code(), source.detail()),
             // The provider family answers one code for the whole of it. The
             // finer `UZ-PROVIDER-*` codes belong to the tenant plane's handler;
             // declaring them on a path that cannot emit them would be an
             // unreferenced code that looks like coverage.
-            //
-            // `Vault` joins them: an envelope that will not open answers the
-            // same internal code.
             ErrorKind::ProviderMalformed { .. }
             | ErrorKind::ProviderSecretMissing
             | ErrorKind::ProviderEndpoint { .. }
             | ErrorKind::DecisionCredentialMissing { .. }
-            | ErrorKind::DecisionCredentialInvalid { .. }
-            | ErrorKind::Vault { .. } => (
+            | ErrorKind::DecisionCredentialInvalid { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 DETAIL_PROVIDER_UNRESOLVED,
             ),
@@ -157,18 +147,17 @@ impl Error {
     pub const fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
-            // An outage reached through the credential directory is the same
+            // An outage reached through the vault is the same
             // outage. Answering 500 here and 503 one statement earlier would
             // make the status depend on which read noticed first, which is not
             // a distinction an operator or a retrying client can use.
-            ErrorKind::Directory { source } => source.is_datastore_unavailable(),
+            ErrorKind::Vault { source } => source.is_datastore_unavailable(),
             _otherwise @ (ErrorKind::Query { .. }
             | ErrorKind::ProviderMalformed { .. }
             | ErrorKind::ProviderSecretMissing
             | ErrorKind::DecisionCredentialMissing { .. }
             | ErrorKind::DecisionCredentialInvalid { .. }
             | ErrorKind::ProviderEndpoint { .. }
-            | ErrorKind::Vault { .. }
             | ErrorKind::VaultDataInvalid
             | ErrorKind::CredentialMissing
             | ErrorKind::Entropy { .. }) => false,
@@ -222,7 +211,7 @@ const DETAIL_CREDENTIAL_MISSING: &str =
 
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_vault::Error => Directory,
+    afd_vault::Error => Vault,
 );
 
 /// Reports a statement that would not run, naming what it was doing.
@@ -247,15 +236,6 @@ pub(crate) fn provider_secret_missing() -> Error {
 /// a rejection line that quotes the credential is one that leaks it.
 pub(crate) fn provider_endpoint(reason: &'static str) -> Error {
     ErrorKind::ProviderEndpoint { reason }.into()
-}
-
-/// Reports a stored envelope that is malformed or will not authenticate.
-///
-/// A conversion that ADDS the context the call site alone knows, with the cause
-/// riding through as `#[source]` so the chain stays intact — the carve-out
-/// `RUST_ERROR_STANDARD` rule 3 names.
-pub(crate) fn vault_open(source: af_crypto::error::Error) -> Error {
-    ErrorKind::Vault { source }.into()
 }
 
 /// Reports a stored credential body that is not an addressable object.

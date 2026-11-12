@@ -36,7 +36,10 @@ use af_core::id::Uuid7;
 
 use crate::error::Result;
 use crate::model::{DesiredStatus, Schedule};
-use crate::qstash::{Attempts, QStash};
+use std::sync::Arc;
+
+use crate::qstash::Attempts;
+use crate::scheduler::Scheduler;
 use crate::store::Schedules as Store;
 use crate::upstream::upstream_id;
 
@@ -66,13 +69,13 @@ pub struct Schedules {
     /// Where the intent lives.
     store: Store,
     /// What the intent is mirrored to.
-    upstream: QStash,
+    upstream: Arc<dyn Scheduler>,
 }
 
 impl Schedules {
     /// Binds the reconciler to a store and a scheduler.
     #[must_use]
-    pub const fn new(store: Store, upstream: QStash) -> Self {
+    pub fn new(store: Store, upstream: Arc<dyn Scheduler>) -> Self {
         Self { store, upstream }
     }
 

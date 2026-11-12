@@ -52,8 +52,10 @@ use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::{Kek, SecretBytes};
 use af_observability::Analytics;
+use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_api::router::{Dependencies, ReadyInputs, build};
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, SchedulePlane, Services};
+use afd_approval::{Inbox, IntegrationGrants};
 use afd_auth::credential::CredentialKind;
 use afd_auth::directory::{CredentialDirectory, CredentialRecord, Digest, Liveness};
 use afd_auth::error::Unavailable;
@@ -75,16 +77,12 @@ use afd_state::Credentials;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
+use afd_tenant::preference::Preferences;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
-use jiff::Timestamp;
-// Aliased for the reason the composition root aliases it: `afd_credential::vault`
-// is the runner plane's reader and this is the workspace-admin surface.
-use afd_admin::{Models as AdminModels, PlatformKeys};
-use afd_approval::{Inbox, IntegrationGrants};
-use afd_tenant::preference::Preferences;
 use afd_vault::Vault as SecretVault;
 use axum::Router;
+use jiff::Timestamp;
 
 mod readiness;
 mod stubs_identity;
@@ -268,7 +266,7 @@ pub(crate) struct Fleet {
     signup_writeback: RecordingWriteback,
     schedules: SchedulePlane,
     connectors: afd_connector::Connectors,
-    schedule_keys: Option<afd_cron::SigningKeys>,
+    scheduler: std::sync::Arc<dyn afd_cron::Scheduler>,
     platform_admin: Option<Uuid7>,
     /// Opening a personal account, over whatever pool this fixture holds.
     signups: afd_tenant::signup::Signups,

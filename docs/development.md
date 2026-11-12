@@ -38,7 +38,12 @@ Namespace: wt_<WORKTREE_CHECKSUM>
 With healthy shared services, repeating it rebuilds and restarts only this daemon while preserving its database.
 The default `FOLLOW_LOGS=1` follows the daemon log after startup.
 
-The launcher reuses existing `DATABASE_URL_API`, `DATABASE_URL_MIGRATOR`, `NATS_URL`, `API_URL` and QStash settings with local addresses.
+The launcher reuses existing `DATABASE_URL_API`, `DATABASE_URL_MIGRATOR`, `NATS_URL` and `API_URL` settings with local addresses.
+It exports no QStash setting.
+
+The scheduler's credentials are the admin workspace's `qstash` bag.
+The acceptance bootstrap seeds it from the local emulator, so schedules register only after that setup has run.
+
 `API_URL` uses the default network interface's IPv4 address and this worktree's port.
 Native clients and QStash therefore receive the same reachable origin.
 
@@ -100,6 +105,8 @@ These settings override the generated defaults:
 
 The machine environment and `AGENTSFLEET_UI_ENV_FILE` supply development Clerk credentials.
 Initial setup uses the machine's `FIREWORKS_API_KEY` and the existing development GitHub App item to populate the local encrypted vault.
+It also seeds the `qstash` bag from the local scheduler emulator.
+
 The default model's settings and prices come from the checked catalogue; an existing platform default is preserved.
 Signing keys stay in the signing process's environment, and temporary setup sessions are revoked.
 

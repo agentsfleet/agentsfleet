@@ -15,6 +15,19 @@ impl Error {
             ErrorKind::Invalid { invalid } => (error_code::INVALID_REQUEST, invalid.detail()),
             ErrorKind::Refused { refusal } => (refusal.code(), refusal.detail()),
             ErrorKind::Held => (error_code::SCHEDULE_SYNCING, detail::SYNC_HELD),
+            // The vault decides the code. The sentence stays inside this
+            // crate's declared set, because a schedule's caller did no secret
+            // operation.
+            ErrorKind::BagUnreadable { source } => {
+                let code = source.code();
+                if source.is_datastore_unavailable() {
+                    (code, detail::DATABASE_UNAVAILABLE)
+                } else if code == error_code::INTERNAL_DB_QUERY {
+                    (code, detail::DATABASE_ERROR)
+                } else {
+                    (code, detail::OPERATION_FAILED)
+                }
+            }
             ErrorKind::Datastore { .. } => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 detail::DATABASE_UNAVAILABLE,
@@ -31,7 +44,9 @@ impl Error {
             // status is already in the row's `last_error` where an operator
             // reads it. What they are told is that the schedule is not yet
             // registered and that `:sync` will retry.
-            ErrorKind::UpstreamUnreachable { .. } | ErrorKind::UpstreamRefused { .. } => (
+            ErrorKind::UpstreamUnreachable { .. }
+            | ErrorKind::UpstreamRefused { .. }
+            | ErrorKind::BagUnusable { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::UPSTREAM_UNAVAILABLE,
             ),

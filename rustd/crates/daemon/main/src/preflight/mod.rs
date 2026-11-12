@@ -43,7 +43,6 @@ pub use self::knobs::{
     API_URL_KNOB, APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, IDENTITY_HTTP_PROXY_URL_KNOB,
     IDENTITY_WEBHOOK_SECRET_KNOB, OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB, OIDC_JWKS_URL_KNOB,
     PLATFORM_ADMIN_WORKSPACE_KNOB, PROVIDER_API_BASE_KNOB, PROVIDER_SECRET_KNOB,
-    QSTASH_CURRENT_KEY_KNOB, QSTASH_NEXT_KEY_KNOB, QSTASH_TOKEN_KNOB, QSTASH_URL_KNOB,
     SESSION_CODE_PEPPER_KNOB, SLACK_API_URL_KNOB,
 };
 
@@ -58,7 +57,6 @@ use af_core::env::{EnvSource, optional};
 use af_core::id::Uuid7;
 use af_crypto::secret::{Kek, SecretBytes};
 use afd_connector::Dashboard;
-use afd_cron::SigningKeys;
 use afd_db::config::{DbRole, PoolConfig};
 
 #[doc(inline)]
@@ -125,7 +123,7 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
     let otlp = otlp::otlp(env, faults);
     let slack_api_url = read::slack_api_url(env, faults);
     let dashboard = read::dashboard(&optional_url(APP_URL_KNOB, APP_URL_DEFAULT), faults);
-    let deployment = optional_url(API_URL_KNOB, API_URL_DEFAULT);
+    let deployment = read::deployment(optional_url(API_URL_KNOB, API_URL_DEFAULT), faults);
     let identity = identity(env, faults);
     // Answers `None` for BOTH "configured nothing" and "configured badly", and
     // only the second pushed a fault — which is why `Readings::admit` reads the
@@ -235,11 +233,8 @@ impl Readings {
                 identity,
                 platform_admin_workspace,
                 checkpoint_storage,
-                qstash_token: optional_secret(env, QSTASH_TOKEN_KNOB),
-                qstash_url: optional(env, QSTASH_URL_KNOB),
                 slack_api_url,
                 identity_webhook_secret: optional_secret(env, IDENTITY_WEBHOOK_SECRET_KNOB),
-                qstash_keys: signing_keys(env),
                 sse_max_streams,
                 runner_wake,
                 frame_memory,
@@ -259,20 +254,6 @@ impl Readings {
             _refused => Err(Refusal::new(faults)),
         }
     }
-}
-
-/// The scheduler's signing keys, when BOTH are configured.
-///
-/// Both or neither, deliberately. One key configured is a rotation half-done,
-/// and a verifier holding the current key alone refuses every delivery the
-/// vendor has already moved to the next one — which is the outage the two-key
-/// check exists to prevent. Treating a half-configuration as no configuration
-/// makes that a loud refusal at the first fire rather than a silent one at the
-/// vendor's next rotation.
-fn signing_keys<E: EnvSource + ?Sized>(source: &E) -> Option<SigningKeys> {
-    let current = optional_secret(source, QSTASH_CURRENT_KEY_KNOB)?;
-    let next = optional_secret(source, QSTASH_NEXT_KEY_KNOB)?;
-    Some(SigningKeys { current, next })
 }
 
 /// Keep optional secret configuration guarded even on a later validation failure.

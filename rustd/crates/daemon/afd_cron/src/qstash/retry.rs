@@ -22,6 +22,14 @@
 //! push beside this one, so each attempt is bounded here and the whole budget
 //! is asserted against [`SYNC_LEASE`].
 
+// # The credentials are read before the first attempt
+//
+// One read per call, ahead of the loop. The bag is one pooled statement,
+// bounded by the pool's own acquire timeout as every other statement of the
+// sync path is, and a bag that cannot be read ends the call before any request
+// is sent. A read inside each attempt would sit outside [`ATTEMPT_TIMEOUT`] and
+// would retry a key fault no wait can repair.
+
 use std::time::Duration;
 
 use backon::{ExponentialBuilder, Retryable as _};

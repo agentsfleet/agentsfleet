@@ -27,7 +27,7 @@ fn bag(json: &str) -> SecretBytes {
 
 /// The relay a complete bag naming `host:port` parses to.
 fn relay_at(host: &str, port: u16) -> Relay {
-    Relay::parse(&bag(&bag_json(host, port))).expect("a complete bag is a relay")
+    afd_vault::bag::parse::<Relay>(&bag(&bag_json(host, port))).expect("a complete bag is a relay")
 }
 
 /// The transport built for `host:port`, as lettre's `Debug` prints it: a built
@@ -40,8 +40,7 @@ fn transport_shape(host: &str, port: u16) -> String {
     format!("{transport:?}")
 }
 
-/// Dimension 2.7: no host on the network is ever reached in plaintext, and
-/// loopback is.
+/// No host on the network is ever reached in plaintext, and loopback is.
 #[test]
 fn test_plaintext_refused_off_loopback() {
     for port in [SMTPS_PORT, SUBMISSION_PORT, MAILPIT_PORT] {
@@ -138,21 +137,11 @@ fn should_name_the_field_at_fault_when_bag_unusable() {
         ),
     ];
     for (json, fault) in cases {
-        assert_eq!(Relay::parse(&bag(json)).err(), Some(fault), "{json}");
-    }
-}
-
-/// What the `unconfigured` record says for each fault: its name, and the
-/// field's name where one is at fault — never a value from the bag.
-#[test]
-fn should_log_fault_by_name_and_field() {
-    for (fault, name, field) in [
-        (BagFault::Absent, "absent", None),
-        (BagFault::Malformed, "malformed", None),
-        (BagFault::Missing("password"), "missing", Some("password")),
-        (BagFault::Unparsed("port"), "unparsed", Some("port")),
-    ] {
-        assert_eq!((fault.name(), fault.field()), (name, field), "{fault:?}");
+        assert_eq!(
+            afd_vault::bag::parse::<Relay>(&bag(json)).err(),
+            Some(fault),
+            "{json}"
+        );
     }
 }
 

@@ -209,7 +209,8 @@ check_prod() {
   if [ "$stage" = "deployment" ]; then
     check_runner_stream "$v"
     # Browser callbacks bind workspace intent with this agentsfleet-owned
-    # signing key. It is a Fly boot secret, not a provider app bag.
+    # signing key. `platform_secret_sync.sh approval-signing` syncs it into the
+    # admin vault, and `agentsfleetd` reads it from there.
     check_ref "op://$v/approval-signing-secret/credential"
     check_ref "op://$v/cloudflare-r2/account-id"
     check_ref "op://$v/cloudflare-r2/access-key-id"

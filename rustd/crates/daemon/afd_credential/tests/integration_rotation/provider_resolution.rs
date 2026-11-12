@@ -117,11 +117,14 @@ async fn an_undeclared_connector_is_never_injected() {
         )
         .await;
     let connectors = Registry::default();
-    let declared = fixture
-        .vault
-        .declared(&fixture.workspace, &["github"], &connectors)
-        .await
-        .expect("the one declared credential resolves");
+    let declared = afd_credential::secrets::declared(
+        &fixture.vault,
+        &fixture.workspace,
+        &["github"],
+        &connectors,
+    )
+    .await
+    .expect("the one declared credential resolves");
     assert!(
         declared.secrets_map().get("slack").is_none(),
         "the undeclared Slack handle is not in the static map"
@@ -157,11 +160,14 @@ async fn declared_credentials_batch_static_and_mintable_rows_without_leaking_han
         .await;
     let connectors = Registry::default();
 
-    let declared = fixture
-        .vault
-        .declared(&fixture.workspace, &["static", "github"], &connectors)
-        .await
-        .expect("both declared credentials resolve in one batch");
+    let declared = afd_credential::secrets::declared(
+        &fixture.vault,
+        &fixture.workspace,
+        &["static", "github"],
+        &connectors,
+    )
+    .await
+    .expect("both declared credentials resolve in one batch");
     assert_eq!(
         declared
             .secrets_map()
@@ -180,19 +186,25 @@ async fn declared_credentials_batch_static_and_mintable_rows_without_leaking_han
         "github"
     );
 
-    let missing = fixture
-        .vault
-        .declared(&fixture.workspace, &["absent"], &connectors)
-        .await
-        .expect_err("a declared but absent credential ends the lease");
+    let missing = afd_credential::secrets::declared(
+        &fixture.vault,
+        &fixture.workspace,
+        &["absent"],
+        &connectors,
+    )
+    .await
+    .expect_err("a declared but absent credential ends the lease");
     assert!(missing.is_credential_missing());
 
     fixture.seed("invalid", br#""not-an-object""#).await;
-    let invalid = fixture
-        .vault
-        .declared(&fixture.workspace, &["invalid"], &connectors)
-        .await
-        .expect_err("a static credential must be a JSON object");
+    let invalid = afd_credential::secrets::declared(
+        &fixture.vault,
+        &fixture.workspace,
+        &["invalid"],
+        &connectors,
+    )
+    .await
+    .expect_err("a static credential must be a JSON object");
     assert_eq!(invalid.code(), af_core::error_code::VAULT_DATA_INVALID);
     fixture.cleanup().await;
 }

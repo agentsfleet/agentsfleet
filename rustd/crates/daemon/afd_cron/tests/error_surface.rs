@@ -26,7 +26,8 @@ use afd_cron::error::{detail, one_of_each_kind};
 ///
 /// Named here rather than asked of the type, so that the test disagrees with a
 /// change to `is_retryable` instead of following it.
-const RETRYABLE: &[&str] = &["datastore", "upstream unreachable"];
+const RETRYABLE: &[&str] = &["datastore", "upstream unreachable", "bag unreadable"];
+// "bag undecryptable" is an unreadable bag that no wait repairs: not retryable.
 
 /// The kinds a refused schedule fire is raised as, by sample label.
 const FIRE_REFUSALS: &[&str] = &[
@@ -34,6 +35,7 @@ const FIRE_REFUSALS: &[&str] = &[
     "token malformed",
     "signature invalid",
     "body mismatch",
+    "bag unusable",
 ];
 
 /// The word every kind that is not a refused fire reads under.
@@ -48,13 +50,13 @@ fn the_error_surface_holds() {
     let samples = one_of_each_kind();
     assert_eq!(
         samples.len(),
-        16,
+        19,
         "a kind was added or dropped without its sample"
     );
     grade(
         &samples,
         Expect {
-            with_source: 6,
+            with_source: 8,
             distinct_codes: 5,
         },
     );
@@ -83,7 +85,8 @@ fn every_sentence_is_one_of_the_declared_details() {
     }
 }
 
-/// Retryable is exactly the two kinds, and `:sync` depends on it being exact.
+/// Retryable is exactly the kinds named in `RETRYABLE`, and `:sync` depends on
+/// it being exact.
 #[test]
 fn only_the_kinds_a_retry_could_fix_are_retryable() {
     for (label, error) in one_of_each_kind() {

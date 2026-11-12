@@ -33,7 +33,9 @@ impl Error {
             | ErrorKind::SignatureInvalid
             | ErrorKind::BodyMismatch
             | ErrorKind::DestinationUnusable
-            | ErrorKind::DestinationNotPlainOrigin => None,
+            | ErrorKind::DestinationNotPlainOrigin
+            | ErrorKind::BagUnusable { .. }
+            | ErrorKind::BagUnreadable { .. } => None,
         }
     }
 
@@ -62,7 +64,9 @@ impl Error {
             | ErrorKind::SignatureInvalid
             | ErrorKind::BodyMismatch
             | ErrorKind::DestinationUnusable
-            | ErrorKind::DestinationNotPlainOrigin => None,
+            | ErrorKind::DestinationNotPlainOrigin
+            | ErrorKind::BagUnusable { .. }
+            | ErrorKind::BagUnreadable { .. } => None,
         }
     }
 }
