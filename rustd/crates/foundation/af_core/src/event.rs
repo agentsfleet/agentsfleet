@@ -30,9 +30,9 @@ pub mod status {
 
     /// The status an event opens in.
     ///
-    /// The report flips it to [`PROCESSED`] or [`FLEET_ERROR`], and the gate
-    /// pass to [`GATE_BLOCKED`] — all three read
-    /// this spelling as the status they are guarded against, so it is declared
+    /// The report flips it to [`PROCESSED`] or [`FLEET_ERROR`], the gate pass
+    /// to [`GATE_BLOCKED`], and the lapse cap to [`FLEET_ERROR`]. Each reads
+    /// this spelling as the status it is guarded against, so it is declared
     /// once (RULE UFS).
     pub const RECEIVED: &str = "received";
 
@@ -49,7 +49,9 @@ pub mod status {
     /// The status a failed run ends in.
     ///
     /// Runner-reported, unlike [`GATE_BLOCKED`]: the daemon refuses at a gate,
-    /// and the runner reports a failure it observed.
+    /// and the runner reports a failure it observed. The one daemon-side
+    /// writer is the lapse cap, for a run that failed with no holder left to
+    /// report it.
     pub const FLEET_ERROR: &str = "fleet_error";
 
     /// A thread row for a message admitted and waiting for a runner.
@@ -60,7 +62,8 @@ pub mod status {
     pub const QUEUED: &str = "queued";
 }
 
-/// Why a gate refused an event, as `fleet.events.failure_reason`.
+/// Why the daemon ended an event itself, as `fleet.events.failure_reason`: a
+/// gate's refusal, or leases that kept lapsing.
 ///
 /// One ownership site (RULE UFS) — the webhook path, the steer path and the
 /// dashboard all read these strings, and a second spelling at a second write

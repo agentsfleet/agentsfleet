@@ -10,9 +10,10 @@ WITH event AS (
   UPDATE fleet.sessions SET context_json = $4::jsonb, updated_at = now()
   WHERE fleet_id = $1
 ), owed AS (
-  -- An answer still owed carries the notice instead. A run that answered
-  -- nothing owed none, so the notice is owed in its place, to the admission's
-  -- reply destination, as the report statement owes a run's own text.
+  -- An answer still owed carries the notice instead, a failed run's
+  -- unanswered notice included. A clean run that answered nothing owed none,
+  -- so the notice is owed in its place, to the admission's reply destination,
+  -- as the report statement owes a run's own text.
   INSERT INTO fleet.obligations AS o
     (id, fleet_id, workspace_id, provider, destination, event_id, answer,
      receipt, claim_expires_at, delivered_at, attempt_count, created_at, updated_at)

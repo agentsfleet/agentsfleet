@@ -29,11 +29,12 @@ use crate::lease::envelope::Acquired;
 use crate::lease::store::Leases;
 use crate::lease::unanswered;
 
-/// Statement name, for the context a refusal's query failure carries.
-const CONTEXT_BLOCKED: &str = "fleet event gate blocked";
+/// Statement name, for the context a query failure carries while an event is
+/// ended with no report: at a gate, or after its leases kept lapsing.
+const CONTEXT_ENDED: &str = "fleet event ended without a report";
 
-/// The stored detail of an event the daemon stopped re-leasing.
-const DETAIL_LEASES_LAPSED: &str = "every lease this event was issued lapsed without a report";
+/// The stored `failure_detail` of an event the daemon stopped re-leasing.
+pub const DETAIL_LEASES_LAPSED: &str = "every lease this event was issued lapsed without a report";
 
 /// How an event ends when no report will end it.
 #[derive(Debug, Clone, Copy)]
@@ -42,9 +43,8 @@ struct Unreported<'a> {
     status: &'static str,
     /// The stored `failure_reason`.
     label: &'static str,
-    /// The stored `failure_detail`. Empty stores as SQL NULL through the
-    /// statement's `NULLIF`.
-    detail: &'static str,
+    /// The stored `failure_detail`, when the ending has one to give.
+    detail: Option<&'static str>,
     /// What the event's thread is owed, when it was asked from one.
     notice: &'a str,
 }
@@ -139,7 +139,7 @@ impl Leases {
             status: af_core::event::status::GATE_BLOCKED,
             label: refusal.label,
             // A gate refusal carries no operator-readable instruction.
-            detail: "",
+            detail: None,
             notice: &notice,
         };
         self.end_unreported(acquired, ending).await
@@ -150,7 +150,9 @@ impl Leases {
     /// A lapsed lease is reclaimed and its event runs again from the start.
     /// Past [`af_core::limits::EVENT_LEASES_MAX`] holders the daemon stops:
     /// the event ends under the label a lapsed lease reports, its thread is
-    /// told, and the fleet's next event is free to run.
+    /// told, and the fleet's next event is free to run. The caller keeps a
+    /// durable task's event out of here: ending it would leave its task
+    /// running with nothing left to run it.
     ///
     /// # Errors
     /// As [`Self::block`].
@@ -160,7 +162,7 @@ impl Leases {
         let ending = Unreported {
             status: af_core::event::status::FLEET_ERROR,
             label,
-            detail: DETAIL_LEASES_LAPSED,
+            detail: Some(DETAIL_LEASES_LAPSED),
             notice: &notice,
         };
         self.end_unreported(acquired, ending).await
@@ -170,7 +172,7 @@ impl Leases {
     /// one transaction under the claim's fence.
     async fn end_unreported(&self, acquired: &Acquired, ending: Unreported<'_>) -> Result<Ended> {
         let mut connection = self.pool().acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_BLOCKED))?;
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_ENDED))?;
         if !self
             .lock_admission_on(
                 &mut transaction,
@@ -192,7 +194,7 @@ impl Leases {
             .bind(afd_api_wire::approval::status::PENDING)
             .fetch_optional(&mut *transaction)
             .await
-            .map_err(query(CONTEXT_BLOCKED))?;
+            .map_err(query(CONTEXT_ENDED))?;
 
         self.settle_terminal_on(&mut transaction, acquired).await?;
         let (ended, owed) = match closed {
@@ -203,7 +205,7 @@ impl Leases {
             ),
             None => (Ended::Already, None),
         };
-        transaction.commit().await.map_err(query(CONTEXT_BLOCKED))?;
+        transaction.commit().await.map_err(query(CONTEXT_ENDED))?;
         if let Some(owed) = owed {
             self.wake_delivery(&owed).await;
         }

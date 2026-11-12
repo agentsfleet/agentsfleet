@@ -6,8 +6,12 @@
 //! queue, so the pass counts the leases an event was issued and stops at the
 //! cap.
 
+use af_core::event::label::LEASE_EXPIRED;
+use af_core::event::status::FLEET_ERROR;
 use af_core::limits::EVENT_LEASES_MAX;
+use af_core::test_util::trace::Capture;
 use afd_fleet::lease::Billed;
+use afd_fleet::lease::event::DETAIL_LEASES_LAPSED;
 
 use super::seed::seed_provider_resolution;
 use super::*;
@@ -80,13 +84,14 @@ async fn an_event_whose_every_lease_lapsed_is_ended_as_failed_and_frees_the_queu
     let answer = drive(&fixtures, &seeded, claimed).await;
 
     assert_eq!(
-        counted, 3,
+        counted,
+        i64::from(EVENT_LEASES_MAX),
         "the claim counts every lease the event was issued"
     );
     assert!(answer.is_none(), "a fourth lease was issued: {answer:?}");
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
-        Some(("fleet_error".to_owned(), "lease_expired".to_owned()))
+        Some((FLEET_ERROR.to_owned(), LEASE_EXPIRED.to_owned()))
     );
     assert_eq!(
         fixtures
@@ -96,7 +101,7 @@ async fn an_event_whose_every_lease_lapsed_is_ended_as_failed_and_frees_the_queu
             )
             .await
             .as_deref(),
-        Some("every lease this event was issued lapsed without a report")
+        Some(DETAIL_LEASES_LAPSED)
     );
 
     let next = chat(&fixtures, &seeded.fleet, &workspace).await;
@@ -130,6 +135,47 @@ async fn an_event_one_lapse_short_of_the_cap_is_leased_again() {
         Some((STATUS_RECEIVED.to_owned(), String::new())),
         "the event is still open, running under its third holder"
     );
+
+    fixtures.cleanup().await;
+}
+
+/// The log capture reads the current thread alone, so this case drives a
+/// current-thread runtime where its siblings take four workers.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_event_ended_at_the_cap_is_logged_as_abandoned_and_never_as_a_refusal() {
+    let fixtures = Fixtures::create().await;
+    let (seeded, _workspace) = funded(&fixtures).await;
+    lapse(&fixtures, &seeded, EVENT_LEASES_MAX).await;
+    let claimed = claim(&fixtures, &seeded).await;
+    let log = Capture::install();
+
+    let answer = drive(&fixtures, &seeded, claimed).await;
+
+    assert!(answer.is_none(), "a fourth lease was issued: {answer:?}");
+    let line = log.only("runner_lease_abandoned");
+    let cap = EVENT_LEASES_MAX.to_string();
+    assert_eq!(
+        (
+            line.field("agentsfleet_event_id"),
+            line.field("label"),
+            line.field("earlier_leases"),
+            line.field("reason"),
+        ),
+        (
+            Some(seeded.event_id.as_str()),
+            Some(LEASE_EXPIRED),
+            Some(cap.as_str()),
+            Some(DETAIL_LEASES_LAPSED),
+        )
+    );
+    assert!(
+        log.events()
+            .iter()
+            .all(|event| event.field("event") != Some("runner_lease_refused")),
+        "no gate refused this event, so no refusal is counted for it"
+    );
+    drop(log);
 
     fixtures.cleanup().await;
 }
