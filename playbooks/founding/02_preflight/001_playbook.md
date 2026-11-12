@@ -83,7 +83,7 @@ No gate requires these. Never store a placeholder.
 | `smtp-relay` (`host`, `port`, `username`, `password`, `from_address`) | `operations/smtp_relay_registration`, after the relay verifies the sending domain |
 | `agentsfleet-fleets-investigation-service-token` | `operations/observability` |
 | runner `tailscale-hostname`, `deploy-user` | the environment's runner bootstrap step |
-| runner `runner-token` | the dashboard **Add runner** action |
+| runner `runner-token` | `agentsfleet platform runners enroll` ([runner onboarding](../../operations/runner_onboarding/001_playbook.md)) |
 
 The first deployment starts the connector broker in static-only mode.
 Admin bootstrap sets the workspace pointer and restarts the service.

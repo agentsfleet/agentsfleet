@@ -16,7 +16,8 @@ import { HttpClient, type HttpRequestInput } from "../src/services/http-client.t
 import { Output, type OutputShape } from "../src/services/output.ts";
 import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
-import { ValidationError } from "../src/errors/index.ts";
+import { ServerError, ValidationError } from "../src/errors/index.ts";
+import { SCHEDULE_RESPONSE_INVALID } from "../src/commands/schedule/read.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000000001";
 const FLEET_ID = "01900000-0000-7000-8000-000000000002";
@@ -122,8 +123,10 @@ const scheduleRow = {
   cron: "0 9 * * *",
   timezone: "Asia/Kolkata",
   message: "summarize",
+  source: "api",
   status: "active",
   sync: "synced",
+  etag: '"tag-1"',
   description: "At 9:00 AM (Asia/Kolkata)",
   run_state: "scheduled",
   next_run_at: "2026-11-01T03:30:00Z",
@@ -183,36 +186,68 @@ describe("schedule create/list/update/delete/sync effects", () => {
     expect(piped.jsons).toEqual([envelope]);
   });
 
-  test("update patches only supplied fields and rejects empty updates", async () => {
-    const cap = newCapture();
+  test("update reads the tag, then patches an independent schedule's fields", async () => {
     const calls: HttpRequestInput[] = [];
     const ok = await Effect.runPromiseExit(
       provide(
-        scheduleUpdateEffectFromArgs(FLEET_ID, SCHEDULE_ID, {
-          message: "again",
-          status: "paused",
-        }),
-        cap,
+        scheduleUpdateEffectFromArgs(FLEET_ID, SCHEDULE_ID, { message: "again", status: "paused" }),
+        newCapture(),
         calls,
-        { ...scheduleRow, message: "again", status: "paused" },
+        scheduleRow,
       ),
     );
     expect(Exit.isSuccess(ok)).toBe(true);
-    expect(calls[0]?.method).toBe("PATCH");
-    expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`);
-    expect(calls[0]?.body).toEqual({ message: "again", paused: true });
+    const path = `/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`;
+    expect(calls.map((c) => [c.method, c.path])).toEqual([[undefined, path], ["PATCH", path]]);
+    expect(calls[1]?.headers).toEqual({ "If-Match": '"tag-1"' });
+    expect(calls[1]?.body).toEqual({ message: "again", status: "paused" });
 
     const resumed: HttpRequestInput[] = [];
     const resume = await Effect.runPromiseExit(
       provide(scheduleUpdateEffectFromArgs(FLEET_ID, SCHEDULE_ID, { status: "active" }), newCapture(), resumed, scheduleRow),
     );
     expect(Exit.isSuccess(resume)).toBe(true);
-    expect(resumed[0]?.body).toEqual({ paused: false });
+    expect(resumed[1]?.body).toEqual({ status: "active" });
+  });
 
-    const empty = await Effect.runPromiseExit(
-      provide(scheduleUpdateEffectFromArgs(FLEET_ID, SCHEDULE_ID, {}), newCapture(), [], scheduleRow),
+  // A trigger row inherits the fleet's recipe: the daemon refuses flat fields
+  // for it, and an override replaces the overlay whole, so pausing must keep
+  // an override already set or it would silently undo it.
+  test.each([
+    ["no overlay", undefined, { status: "paused" }],
+    ["an overlay", { cron: "0 10 * * *", message: "earlier" }, { cron: "0 10 * * *", message: "earlier", status: "paused" }],
+    ["a paused overlay", { status: "active" }, { status: "paused" }],
+  ])("update of a trigger schedule with %s sends the merged override", async (_label, overlay, expected) => {
+    const calls: HttpRequestInput[] = [];
+    const row = { ...scheduleRow, source: "trigger", ...(overlay === undefined ? {} : { override: overlay }) };
+    const exit = await Effect.runPromiseExit(
+      provide(scheduleUpdateEffectFromArgs(FLEET_ID, SCHEDULE_ID, { status: "paused" }), newCapture(), calls, row),
     );
-    expect(Exit.isFailure(empty)).toBe(true);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(calls[1]?.headers).toEqual({ "If-Match": '"tag-1"' });
+    expect(calls[1]?.body).toEqual({ override: expected });
+  });
+
+  test("update refuses before any write when nothing changes or the row has no tag", async () => {
+    const none: HttpRequestInput[] = [];
+    const empty = await Effect.runPromise(Effect.flip(
+      provide(scheduleUpdateEffectFromArgs(FLEET_ID, SCHEDULE_ID, {}), newCapture(), none, scheduleRow),
+    ));
+    expect(empty).toBeInstanceOf(ValidationError);
+    if (!(empty instanceof ValidationError)) throw new Error("missing empty-update refusal");
+    expect(empty.detail).toBe("no schedule fields provided");
+    expect(empty.suggestion).toContain("agentsfleet schedule update");
+    expect(none).toEqual([]);
+
+    const untagged: HttpRequestInput[] = [];
+    const { etag: _dropped, ...row } = scheduleRow;
+    const refused = await Effect.runPromise(Effect.flip(
+      provide(scheduleUpdateEffectFromArgs(FLEET_ID, SCHEDULE_ID, { status: "paused" }), newCapture(), untagged, row),
+    ));
+    expect(refused).toBeInstanceOf(ServerError);
+    if (!(refused instanceof ServerError)) throw new Error("missing untagged-row refusal");
+    expect(refused.code).toBe(SCHEDULE_RESPONSE_INVALID);
+    expect(untagged.map((c) => c.method)).toEqual([undefined]);
   });
 
   test("rm, status, and sync hit the expected schedule item routes", async () => {
