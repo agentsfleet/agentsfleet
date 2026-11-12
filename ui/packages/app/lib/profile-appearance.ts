@@ -14,8 +14,16 @@ export const PROFILE_APPEARANCE = {
     scrollBox: { borderRadius: "var(--r-lg)", boxShadow: "none" },
     pageScrollBox: {
       ...AUTH_APPEARANCE.elements.pageScrollBox,
-      padding: "var(--sp-2xl)", height: "auto",
+      padding: "var(--sp-lg)", height: "auto",
     },
+    // Native section headers prefer 264px even below the widget's mobile breakpoint.
+    profileSectionHeader: { minWidth: 0, maxWidth: "100%" },
+    profilePageContent: {
+      minWidth: 0, maxWidth: "100%",
+      // The native mobile media rule otherwise restores a second padding layer.
+      "&&": { padding: 0 },
+    },
+    actionCard: { padding: "var(--sp-lg)" },
     navbarButton: {
       ...AUTH_APPEARANCE.elements.navbarButton,
       fontSize: "var(--fs-body-sm)", fontWeight: 500, borderRadius: "var(--r-md)",

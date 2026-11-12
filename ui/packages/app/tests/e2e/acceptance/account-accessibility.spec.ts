@@ -73,6 +73,9 @@ for (const width of WIDTHS) {
     await expect(page).toHaveURL(/\/settings\/account\/sign-in/);
     const nativeAccount = page.getByRole("region", {name: "Secure account controls", exact: true});
     await expect(nativeAccount).toBeVisible();
+    const nativeViewport = nativeAccount.locator(".cl-pageScrollBox");
+    await expect(nativeViewport).toBeVisible();
+    await expect.poll(() => nativeViewport.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
     const security = nativeAccount.getByRole("button", {name: "Security", exact: true});
     if (width < 768) await nativeAccount.getByRole("button", {name: "Account", exact: true}).click();
     await security.click();
@@ -81,6 +84,14 @@ for (const width of WIDTHS) {
     await expect(password).toBeVisible();
     await expect(password).toBeEnabled();
     await expectAccessible(page, "Password editing");
+    await expect.poll(() => nativeViewport.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    const bounds = await nativeAccount.boundingBox();
+    const field = await password.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(field).not.toBeNull();
+    if (!bounds || !field) throw new Error("Native account controls must have measurable bounds");
+    expect(field.x).toBeGreaterThanOrEqual(bounds.x - 1);
+    expect(field.x + field.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1);
     await page.screenshot({path: test.info().outputPath(`live-password-editor-${width}.png`), scale: "css", animations: "disabled"});
     await nativeAccount.getByRole("button", {name: CANCEL_LABEL, exact: true}).click();
     await expect(password).toBeHidden();
