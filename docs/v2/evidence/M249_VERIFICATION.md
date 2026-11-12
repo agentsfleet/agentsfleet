@@ -181,7 +181,7 @@ Its first step requires a fresh source inventory and reviewed spec before implem
 | Focused shared merge/Button behavior | 32 tests passed across two files | Passed before latest main merge |
 | Native authenticated Personal account/menu | Two browser journeys passed, 27.4s; real development provider | Passed before latest main merge |
 | Final UI lint/coverage/dry | `make lint-app lint-design-system test-coverage-all dry-app` | Running on merged candidate |
-| Required repository checks | Declared lint, unit, integration, version and PR gate | Pending |
+| Required repository checks | Lint passed. Rust unit shards passed 5,573 tests. App first-load dialog lookup fixed; full package/PR rerun pending | In progress |
 | Current authenticated resource journeys | Real development API/provider, isolated fresh task database | Pending rerun |
 | Owner eyeball approval | Indy requested further corrections | Not claimed |
 | UI implementation PR | Not open at preparation | Pending |
@@ -208,3 +208,7 @@ Indy approved only the shared dashboard cap from 270 KiB to 288 KiB:
 Every route and website limit remains unchanged. The size check must pass against the approved cap.
 
 The additional bounded source review found no concrete defect in the conditional native setup/lifecycle boundaries and no further clear low-risk eager-shell reduction. Existing menu/history/analytics boundaries are already deferred. The reverted mobile-dialog experiment shifted bytes into the constrained saved-fleet route; it is not part of the delivered source. The approved cap passed in `refresh-app-bundle-size-v113.log`.
+
+## Final full-lane rerun
+
+`make lint-all` passed (`refresh-root-lint-v111.log`). `make test-unit-all` passed runner 1,731, daemon 172 and library 3,670 tests, then reported one app test failure: the first lazy lifecycle dialog was queried synchronously before it appeared. Its helper now waits for the visible alert dialog; the cancellation/no-write assertions are unchanged. The full focused file passes 17 tests (`refresh-lifecycle-lazy-wait-v115.log`). The complete repository/package rerun, dry lane and actual full Linux acceptance remain required.
