@@ -96,8 +96,11 @@ The existing `connector.channels` row supplies a stable notice-only owner.
 If no valid binding exists, notice handling binds an existing configured candidate rather than creating a fleet.
 
 The binding must match the current workspace and installed team.
-Deleted owners and moved-team bindings cannot supply stale authority. An archived fleet is never chosen as a carrier, because it cannot acquire another outbound obligation; when no active fleet can carry a notice, including a bound carrier that was later archived, the notice is dropped as `no_active_notice_carrier`.
+Deleted owners and moved-team bindings cannot supply stale authority.
 Concurrent notices converge on the channel's existing unique binding.
+
+An archived fleet is never chosen as a carrier, because it cannot acquire another outbound obligation.
+When no active fleet can carry a notice, the notice is dropped as `no_active_notice_carrier`; that includes a bound carrier that was later archived.
 
 [Notice ownership](../../../rustd/crates/daemon/afd_api_ingress/src/handler/mention/notice.rs) owns those checks and the recorded thread destination.
 Slack retries reuse the existing deterministic notice identity.
