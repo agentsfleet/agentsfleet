@@ -45,9 +45,9 @@ test.describe("reload + back-nav mid-session", () => {
 
     // 2. Client-side nav away through the sidebar, and back through history.
     await markDocument(page);
-    await openSettingsDestination(page, "Activity");
-    await expect(page).toHaveURL(workspaceUrlPattern("events"));
-    await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
+    await openSettingsDestination(page, "Models");
+    await expect(page).toHaveURL(workspaceUrlPattern("settings/models"));
+    await expect(page.getByRole("heading", { name: "Models", exact: true })).toBeVisible();
 
     await page.goBack();
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${seeded.id}`));

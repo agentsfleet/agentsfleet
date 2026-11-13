@@ -169,6 +169,7 @@ The runner starts in an owned privileged Docker container, using the shipping bi
 Its private cgroup namespace contains the delegated `agentsfleet/runner` subgroup.
 
 The kernel must support the Enhanced Read-Only File System (EROFS), loop devices, Landlock, seccomp and the CPU, input/output, memory and process controllers.
+The Docker entrypoint also mounts `securityfs` at `/sys/kernel/security`; the host kernel must include `CONFIG_SECURITYFS`.
 Missing mechanisms fail the run; the adapter does not select a test driver.
 
 Caddy listens only on loopback addresses in this virtual machine.

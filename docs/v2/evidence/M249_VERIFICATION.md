@@ -6,7 +6,29 @@ The UI refresh incorporates the CLI/API work merged in PR #839.
 
 ## Current result
 
-M249_001 remains active until the integrated candidate clears the final gates. All 32 visual backlog findings have measured closure evidence. The pre-merge native coverage and dry-app lanes passed; the new integration requires fresh repository verification.
+M249_001 moves to done at Indy's explicit implementation-closeout request. All 14 Dimensions and 32 visual findings are complete. Remaining verification is listed below without a green claim.
+
+## Final publication checkpoint
+
+✅ Integrated `make test-coverage-all` passed: app 478 files / 4,558 tests; website 20 / 133; CLI 2,336 passed; design system 65 / 514.
+
+All enforced coverage metrics are 100 percent. The CLI retains 17 existing live-lane skips; no threshold or exclusion changed. Evidence: `refresh-integrated-coverage-v329.log`, ending “All package coverage gates passed”.
+
+✅ `make lint-all` and `make check-version` passed in `refresh-integrated-pr-gate-v315.log`. The later acceptance-test repairs passed strict `make lint-app` in v327.
+
+The full local Rust unit run passed 1,903 tests before a later link exhausted disk. The local integration run exceeded its gate budget.
+
+The reported fencing case passed unchanged in a workspace-wide isolated retry after the native fixture reset. This does not establish a full integration pass.
+
+> Owner: "Let the CI handle test integration Rusty"
+
+The PR delegates final Rust checks to CI. The final combined local PR gate is not rerun because it launches those checks again.
+
+> Owner: "Is I need the spec moved to done now since all are done"
+
+This explicit closeout changes the spec location, not its recorded test outcomes. Full `acceptance-codex` remains host-blocked by missing securityfs; no sandbox admission check is bypassed.
+
+The latest integrated changes after visual signoff affect acceptance tests and documentation. They update supported navigation, preserve lifecycle/recovery assertions, and disable artifacts for a real-key journey.
 
 ## PR #839 integration review
 

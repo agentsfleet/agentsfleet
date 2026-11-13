@@ -6,7 +6,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { clientFor } from "./fixtures/api-client";
 import { listWorkspaces } from "./fixtures/seed";
 import { cleanWorkspaceFleets, purgeFixtureFleet } from "./fixtures/teardown";
-import { gotoWorkspace, openSettingsDestination, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { expectSelectedWorkspace, gotoWorkspace, openWorkspaceMenu, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
   archiveFleet,
@@ -19,6 +19,9 @@ import {
   spawnAgentsfleet,
   writeCliState,
 } from "./fixtures/cli-runner";
+
+// This flow reveals a one-time credential; browser artifacts must never retain it.
+test.use({trace: "off", screenshot: "off", video: "off"});
 
 const JOURNEY_TIMEOUT_MS = 300_000;
 const ACTION_TIMEOUT_MS = 60_000;
@@ -62,7 +65,7 @@ async function closeApiKeyReveal(page: Page): Promise<void> {
 async function createWorkspaceFromSwitcher(page: Page, name: string): Promise<void> {
   const switcher = page.getByTestId("workspace-switcher");
   await expect(switcher).toBeVisible();
-  await switcher.click();
+  await openWorkspaceMenu(page);
   await page.getByTestId("workspace-new").click();
 
   const dialog = page.getByRole("dialog", { name: "Create workspace" });
@@ -70,7 +73,7 @@ async function createWorkspaceFromSwitcher(page: Page, name: string): Promise<vo
   await dialog.getByLabel("Name").fill(name);
   await dialog.getByTestId("workspace-create-submit").click();
   await expect(dialog).toBeHidden({ timeout: ACTION_TIMEOUT_MS });
-  await expect(switcher).toContainText(name, { timeout: ACTION_TIMEOUT_MS });
+  await expectSelectedWorkspace(page, name);
   const workspaceId = await workspaceIdByName(name);
   await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/fleets/new(?:\\?|$)`), {
     timeout: ACTION_TIMEOUT_MS,
@@ -80,18 +83,9 @@ async function createWorkspaceFromSwitcher(page: Page, name: string): Promise<vo
 async function switchWorkspace(page: Page, name: string): Promise<void> {
   const switcher = page.getByTestId("workspace-switcher");
   await expect(switcher).toBeVisible();
-  for (let attempt = 1; attempt <= MENU_CLICK_ATTEMPTS; attempt += 1) {
-    if ((await switcher.getAttribute("aria-expanded")) !== "true") {
-      await switcher.click();
-    }
-    try {
-      await page.getByRole("menuitem", { name }).click({ timeout: MENU_CLICK_TIMEOUT_MS });
-      break;
-    } catch (error) {
-      if (attempt === MENU_CLICK_ATTEMPTS) throw error;
-    }
-  }
-  await expect(switcher).toContainText(name, { timeout: ACTION_TIMEOUT_MS });
+  const menu = await openWorkspaceMenu(page);
+  await menu.getByRole("menuitem", {name, exact: true}).click();
+  await expectSelectedWorkspace(page, name);
 }
 
 function combinedOutput(result: { stdout: string; stderr: string }): string {
@@ -205,15 +199,13 @@ test.describe("operator journey", () => {
     // post-install scaffolding assertion.
     await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
 
-    await openSettingsDestination(page, "Activity");
+    await page.goto(workspaceHref(wsId, "events"));
     await expect(page).toHaveURL(workspaceUrlPattern("events"));
     await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
     await expect(page.getByLabel("Workspace activity", { exact: true })).toBeVisible();
 
-    await openSettingsDestination(page, "Approvals");
-    await expect(page).toHaveURL(workspaceUrlPattern("approvals"));
-    await expect(page.getByRole("heading", { name: /^approvals$/i })).toBeVisible();
-    await expect(page.getByLabel("Approval gates")).toBeVisible();
+    await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
+    await expect(page.getByLabel("Fleet chat")).toBeVisible();
 
     // The standalone workspace-settings page was folded into API Keys post-M118
     // (no `/settings` sidebar link, no workspace-settings index route), so the
@@ -222,9 +214,9 @@ test.describe("operator journey", () => {
     await clickSidebarLink(page, "/settings/billing", /\/settings\/billing(\?|$)/);
     await expect(page.getByLabel("Period totals")).toBeVisible();
 
-    await page.goto("/settings/api-keys");
-    await expect(page).toHaveURL(/\/settings\/api-keys(\?|$)/);
-    await page.getByRole("button", { name: "Create key", exact: true }).click();
+    await page.goto("/settings/security");
+    await expect(page).toHaveURL(/\/settings\/security(\?|$)/);
+    await page.getByRole("button", { name: "Create API key", exact: true }).click();
     const createKeyDialog = page.getByRole("dialog", { name: "Create API key" });
     await createKeyDialog.getByLabel(/^name$/i).fill(apiKeyName);
     createdApiKeyName = apiKeyName;
@@ -261,12 +253,12 @@ test.describe("operator journey", () => {
     await expectRowState(page, fleetId, "archived");
     await deleteFleetWithApiKey(apiUrl, rawApiKey, wsId, fleetId);
 
-    await page.goto("/settings/api-keys");
+    await page.goto("/settings/security");
     await expect(page.getByText(apiKeyName, { exact: true })).toBeVisible();
 
     const revoke = page.getByRole("button", { name: new RegExp(`revoke api key ${apiKeyName}`, "i") });
     await revoke.click();
-    await page.getByRole("alertdialog").getByRole("button", { name: /^revoke$/i }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Revoke key", exact: true }).click();
 
     const revokedCli = await spawnAgentsfleet(
       ["fleet", "list", "--workspace", wsId, "--limit", "1"],

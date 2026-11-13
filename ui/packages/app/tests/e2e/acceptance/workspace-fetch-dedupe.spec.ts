@@ -8,7 +8,7 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
-import { openSettingsDestination, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { expectSelectedWorkspace, openWorkspaceMenu, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const AUDIT_URL = "/acceptance-audit/workspace-fetches";
 const NOT_FOUND_STATUS = 404;
@@ -54,19 +54,16 @@ test.describe("workspace fetch dedupe", () => {
     await expectWorkspaceFetchesWithinLimit(page, "fleets render");
 
     await resetAudit(page);
-    await openSettingsDestination(page, "Activity");
-    await expect(page).toHaveURL(workspaceUrlPattern("events"));
-    await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
-    await expectWorkspaceFetchesWithinLimit(page, "events navigation");
+    await page.getByRole("navigation", {name: "Primary", exact: true}).getByRole("link", {name: "Secrets", exact: true}).click();
+    await expect(page).toHaveURL(workspaceUrlPattern("secrets"));
+    await expect(page.getByRole("heading", { name: "Secrets", exact: true })).toBeVisible();
+    await expectWorkspaceFetchesWithinLimit(page, "secrets navigation");
 
     await resetAudit(page);
-    const switcher = page.getByTestId("workspace-switcher");
-    await switcher.click();
+    await openWorkspaceMenu(page);
     await page.getByRole("menuitem", { name: secondary.name ?? secondary.id }).click();
-    await expect(page).toHaveURL(new RegExp(`/w/${secondary.id}/events$`), {timeout: SWITCH_TIMEOUT_MS});
-    await expect(switcher).toHaveAttribute("title", secondary.name ?? "Unnamed workspace", {
-      timeout: SWITCH_TIMEOUT_MS,
-    });
+    await expect(page).toHaveURL(new RegExp(`/w/${secondary.id}/secrets$`), {timeout: SWITCH_TIMEOUT_MS});
+    await expectSelectedWorkspace(page, secondary.name ?? "Unnamed workspace");
     await expectWorkspaceFetchesWithinLimit(page, "workspace switch");
   });
 
