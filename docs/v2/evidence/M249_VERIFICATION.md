@@ -30,6 +30,26 @@ This explicit closeout changes the spec location, not its recorded test outcomes
 
 The latest integrated changes after visual signoff affect acceptance tests and documentation. They update supported navigation, preserve lifecycle/recovery assertions, and disable recordings for a real-key acceptance test.
 
+## PR #840 first review repairs
+
+✅ P1 `WakeupEditor.tsx`: send only fields changed from the authorized schedule read. The existing API adapter preserves the complete explicit trigger overlay.
+
+Regression checks edit message, cron and timezone independently for both trigger-backed and API schedules. They assert the complete request body and original ETag.
+
+✅ P1 `SetupApprovalSummary.tsx`: successful saved-setup reads advance `readinessRevision`. The approval reader consumes that signal independently of focus and activity counts.
+
+The regression mounts the real DraftClient and conversation. It starts with no approval, refreshes unchanged history, then requires the newly opened approval to appear.
+
+✅ Website Chromium assertions now match the approved shared controls: panel-filled outline actions, 40px desktop buttons and unfilled 6px label chips. No production style changed.
+
+Focused app diagnostics: 42 tests passed across four files (`refresh-pr840-regressions-v340.log`). Website Chromium diagnostics: 31 cases passed (`refresh-website-controls-v336.log`).
+
+Native `make lint-app lint-website` passed, including strict TypeScript (`refresh-pr840-lint-v339.log`).
+
+PR #840 CI also confirms all bundle caps: shared app 291.28/294.91 kB; website JavaScript 109.83/128 kB and CSS 19.65/20 kB.
+
+The first Rust daemon-libraries job failed in an unchanged launcher port test before Rust tests started. Its one-job retry is separate from source repairs.
+
 ## PR #839 integration review
 
 ✅ Preserve the refresh header and its CSS classes. Only its wire-state comparisons change from `killed` to `archived`.
