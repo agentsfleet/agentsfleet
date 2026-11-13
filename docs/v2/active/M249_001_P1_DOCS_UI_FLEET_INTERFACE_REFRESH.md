@@ -264,7 +264,7 @@
 | `ui/packages/app/app/(dashboard)/settings/billing/components/BillingReportView.tsx` | EDIT | Use shared Manrope typography |
 | `ui/packages/design-system/src/assets/logo-dark.svg` | EDIT | Use the shared Manrope family in the wordmark |
 | `ui/packages/design-system/src/assets/logo-light.svg` | EDIT | Use the shared Manrope family in the wordmark |
-| `ui/packages/website/src/pages/DesignSystemGallery.tsx` | EDIT | Label the shared Manrope display and reading roles accurately |
+| `ui/packages/website/src/pages/DesignSystemGallery.tsx` | EDIT | Keep shared Manrope roles and modal footer/cancel styling consistent |
 | `ui/packages/website/src/pages/Privacy.tsx` | EDIT | Remove stale font documentation |
 | `ui/packages/website/tests/e2e/design-system-ownership.spec.ts` | EDIT | Verify Manrope ownership in the website |
 | `ui/packages/website/tests/e2e/design-system-status-smoke.spec.ts` | EDIT | Verify Manrope in rendered shared controls |
