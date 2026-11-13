@@ -12,11 +12,28 @@ The latest native `make dry-app` passed 4,564 app unit tests and all 90 desktop/
 
 That run included the repaired Model details selectors. Production source matched `f12b9e326`; test and documentation edits were uncommitted during the run.
 
-Claude owns the separate chat cleanup in issue #838. Aiwa owns the remaining visual checks, integration, final coverage, authenticated acceptance, bundles and PR gates.
+Claude returned the six cleanup items in issue #838. Aiwa reviewed and integrated commit `2db506057` as `4245d4339`, and owns the remaining verification and UI PR.
 
 No further ZIP or gallery delivery is required. Use targeted internal measurements against the unchanged proposal; Indy reviews the PR preview or deployment.
 
 Earlier review bundles and green ticks below are historical evidence. They do not establish that the final integrated candidate passes every gate.
+
+## Returned chat cleanup review
+
+✅ All six #838 items are integrated. The patch removes 361 lines and adds 217 across 19 files. It removes the extra task reader and unused terminal options, narrows linked-work updates, and gives the final tool group one run-details entry.
+
+Four review findings were repaired before final verification:
+
+- ✅ The split-group regression now reuses native part objects, so it detects a missing ownership comparison. Removing that comparison fails the test; restoring it passes.
+- ✅ Task controls exercise the production TaskPanel and provider, including pause, refresh and criteria adoption.
+- ✅ Runtime guards replace unchecked group assertions.
+- ✅ Private ownership helpers follow the main export.
+
+Focused package diagnostics passed 16 tests: split groups, task controls, attachment rendering and dashboard notice placement. Logs: `refresh-838-integrated-diagnostic-v250.log` and `refresh-attachments-diagnostic-v251.log`. These diagnostics do not satisfy the final repository gate.
+
+The notice test exercises its dashboard portal. Attachment rendering no longer contains an unreachable styling condition. Full coverage has not yet been rerun; the reported 99.96% branch result remains unresolved until the native coverage lane proves otherwise.
+
+Claude measured 20 extra settled-card renders for 20 unrelated text events before the context change, and zero after it. This is a render-count result, not a latency measurement. His final report is [on #838](https://github.com/agentsfleet/agentsfleet/issues/838#issuecomment-6851308911).
 
 ## Reference and comparison method
 

@@ -1,4 +1,5 @@
 import { afterEach, expect, it } from "vitest";
+import type { MessageState } from "@assistant-ui/react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 
@@ -6,6 +7,7 @@ import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { formatCompactCount, formatRunDuration } from "@/lib/events/run-figures-format";
 import { formatDollars } from "@/lib/money";
+import { FleetToolGroup } from "@/components/domain/FleetToolGroup";
 import { renderFleetMessage } from "@/components/domain/fleetMessageRenderers";
 import { toReplyMessage } from "@/components/domain/fleetReplyMessage";
 import { convertEvent } from "@/components/domain/useFleetEventStream";
@@ -45,7 +47,8 @@ const details = () => screen.queryAllByRole("button", {name: RUN_DETAILS});
 
 it("keeps exactly one reachable run-details entry, with the whole run's figures, across a split reply", () => {
   render(<Reply tools={[call("a"), call("b"), call("c")]} after={2} />);
-  const [first, last] = groups() as [HTMLElement, HTMLElement];
+  const [first, last] = groups();
+  if (!first || !last) throw new Error("Both tool groups must be present");
   expect(groups()).toHaveLength(2);
   // Neither partial group claims the whole run's duration.
   expect(first.getAttribute("aria-label")).toBe("Tool activity: Worked · 2 tools");
@@ -54,7 +57,9 @@ it("keeps exactly one reachable run-details entry, with the whole run's figures,
   expect(details()).toHaveLength(0);
   fireEvent.click(last);
   expect(details()).toHaveLength(1);
-  fireEvent.click(details()[0]!);
+  const entry = details()[0];
+  if (!entry) throw new Error("The final group must expose run details");
+  fireEvent.click(entry);
   const popover = screen.getByRole("dialog", {name: RUN_DETAILS});
   expect(within(popover).getByText(formatRunDuration(WALL_MS))).toBeTruthy();
   expect(within(popover).getByText(formatCompactCount(TOKENS))).toBeTruthy();
@@ -62,19 +67,31 @@ it("keeps exactly one reachable run-details entry, with the whole run's figures,
 });
 
 it("moves the entry to the newest group without remounting an open one", () => {
-  const view = render(<Reply tools={[call("a"), call("b")]} after={2} />);
-  const [only] = groups() as [HTMLElement];
+  const nativeCall = (id: string): MessageState["content"][number] => ({type: "tool-call", toolCallId: id,
+    toolName: "file_read", args: {path: `src/${id}.ts`}, argsText: JSON.stringify({path: `src/${id}.ts`}), result: {status: "succeeded"}});
+  const firstCalls = [nativeCall("a"), nativeCall("b")];
+  function Groups({content}: {content: MessageState["content"]}) {
+    const props = {content, running: false, eventId: "stable-calls", wallMs: WALL_MS,
+      figures: {wallMs: WALL_MS, tokens: TOKENS, costNanos: COST_NANOS}};
+    return <><FleetToolGroup {...props} indices={[0, 1]}>Earlier calls</FleetToolGroup>
+      {content.length > 2 ? <FleetToolGroup {...props} indices={[3]}>New call</FleetToolGroup> : null}</>;
+  }
+  const view = render(<Groups content={firstCalls} />);
+  const [only] = groups();
+  if (!only) throw new Error("The original tool group must be present");
   expect(only.getAttribute("aria-label")).toBe(`Tool activity: Worked for ${formatRunDuration(WALL_MS)} · 2 tools`);
   fireEvent.click(only);
   expect(details()).toHaveLength(1);
 
-  view.rerender(<Reply tools={[call("a"), call("b"), call("c")]} after={2} />);
+  view.rerender(<Groups content={[...firstCalls, {type: "text", text: "Between the calls."}, nativeCall("c")]} />);
   expect(groups()).toHaveLength(2);
   expect(groups()[0]).toBe(only);
   expect(only.getAttribute("aria-expanded")).toBe("true");
   expect(only.getAttribute("aria-label")).toBe("Tool activity: Worked · 2 tools");
   expect(details()).toHaveLength(0);
-  fireEvent.click(groups()[1]!);
+  const newest = groups()[1];
+  if (!newest) throw new Error("The appended tool group must be present");
+  fireEvent.click(newest);
   expect(details()).toHaveLength(1);
 });
 

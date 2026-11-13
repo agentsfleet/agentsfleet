@@ -15,6 +15,14 @@ const advance = async (ms: number) => act(async () => vi.advanceTimersByTime(ms)
 beforeEach(() => {vi.useFakeTimers(); identity.userId = "owner";});
 afterEach(() => {cleanup(); vi.useRealTimers();});
 
+it("places feedback inside the dashboard canvas when the provider is outside it", () => {
+  render(<><main className="app-dashboard-canvas" aria-label="Dashboard canvas" />{surface()}</>);
+  fireEvent.click(screen.getByText("Archive example"));
+  const canvas = screen.getByRole("main", {name: "Dashboard canvas"});
+  expect(canvas.contains(screen.getByTestId("fleet-notice"))).toBe(true);
+  expect(canvas.contains(screen.getByRole("link", {name: "View history"}))).toBe(true);
+});
+
 it("announces a confirmed result politely, preserves focus and dismisses after eight seconds", async () => {
   render(surface());
   screen.getByRole("textbox").focus();
