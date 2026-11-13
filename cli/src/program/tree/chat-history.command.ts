@@ -13,7 +13,8 @@ const textFlag = (name: string, description: string, metavar: string) => Flag.St
 const list = Command.make("list", {
   search: textFlag("search", "Search your chat titles and message text, 1..200 characters", METAVAR.text),
   limit: textFlag("limit", "Page size, 1..100 (default 50)", METAVAR.count), cursor: cursorFlag,
-  state: Flag.Literals("state", Object.values(DRAFT_STATE)).pipe(Flag.withDescription("Filter by editing, saving or closed"), Flag.optional),
+  state: Flag.Literals("state", Object.values(DRAFT_STATE)).pipe(Flag.withDescription("Filter by editing, saving or closed"),
+    Flag.withMetavar(`<${Object.values(DRAFT_STATE).join("|")}>`), Flag.optional),
   fleet: fleetFlag, workspace: workspaceFlag,
 }).pipe(Command.withDescription("List or search your private setup chats (one page)"),
   guardedHandler(flags => chatListEffect({search: opt(flags.search), limit: opt(flags.limit), cursor: opt(flags.cursor),
