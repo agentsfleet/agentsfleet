@@ -14,15 +14,15 @@
 
 ## Overview
 
-**Goal (testable):** Every public route, payload, permission, status, CLI path, UI adapter, OpenAPI document and public doc names Plugins and archived fleets, and no removed spelling serves a request.
+**Goal (testable):** Every public route, payload, permission, status, CLI path, UI adapter, OpenAPI document and public doc names Plugins and archived fleets, archive and delete are independent operations, no operator stop exists, and no removed spelling serves a request.
 
-**Problem:** The API still says `fleet-libraries`, `library_id`, `library:write` and `killed`, while the approved interface says Plugins and Archive. A platform-wide library catalogue (`/v1/admin/fleet-libraries`, `platform-library:write`, `authoring.library_entries.platform_slug`) exists that Flow 1 does not use.
+**Problem:** The API still says `fleet-libraries`, `library_id`, `library:write` and `killed`, while the approved interface says Plugins and Archive. A platform-wide library catalogue (`/v1/admin/fleet-libraries`, `platform-library:write`, `authoring.library_entries.platform_slug`) exists that Flow 1 does not use. `fleet delete` refuses a fleet that is not killed (`afd_fleet_lifecycle/src/purge.rs:111`), so deleting takes a kill first, and an operator `Stopped` status (`afd_fleet_lifecycle/src/lib.rs:96`) duplicates what archive and the platform's `Paused` already cover.
 
-**Solution summary:** Rename the routes, wire types, permission and terminal status in one coordinated change. Remove the platform catalogue and the redundant `/owned` collection. Edit the fresh-development schema files in place and regenerate OpenAPI. Point the CLI and the refreshed UI's adapters at the renamed routes. Indy permits resetting the development database; there is no alias, backfill, dual read or guarded cutover.
+**Solution summary:** Rename the routes, wire types, permission and terminal status in one coordinated change. Remove the platform catalogue and the redundant `/owned` collection. Make archive and delete independent, and remove the operator stop. Edit the fresh-development schema files in place and regenerate OpenAPI. Point the CLI and the refreshed UI's adapters at the renamed routes. Indy permits resetting the development database; there is no alias, backfill, dual read or guarded cutover.
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** Rename Fleet libraries to Plugins and killed fleets to archived
+- **PR title (eventual):** Rename Fleet libraries to Plugins, archive fleets, delete in any status
 - **Intent:** One vocabulary, the same authority and the same immutable Flow 1 semantics.
 - **Implementer handshake:** Before editing, record the fetched base, the M249_001 and M249_002 merge commits, and the production/test split of every token in the blast inventory below.
 
@@ -31,7 +31,7 @@
 1. `rustd/crates/daemon/afd_http/src/route/workspace.rs` and `route/admin.rs`: the library routes.
 2. `rustd/crates/daemon/afd_auth/src/scope.rs`: `LibraryWrite`, `PlatformLibraryWrite`, `HIERARCHY` and the `KNOWN_BITS` assertion a removed variant changes.
 3. `rustd/crates/daemon/afd_api_tenant/src/handler/library/` and `afd_api_operator/src/handler/admin/libraries.rs`, `library_stage.rs`: the handlers.
-4. `rustd/crates/daemon/afd_api_wire/src/fleet/input.rs`: the `Killed` status spelling; `afd_authoring/src/creation/mod.rs` `KILLED`.
+4. `rustd/crates/daemon/afd_api_wire/src/fleet/input.rs`: the `Killed` and `Stopped` status spellings; `afd_authoring/src/creation/mod.rs` `KILLED`; `afd_fleet_lifecycle/src/lib.rs` `FleetStatus` and `purge.rs`, the terminal-only delete guard.
 5. `schema/20261108121700_authoring_library_entries.sql`, `schema/20261108121800_authoring_library_revisions.sql`: `platform_slug` and the library tables.
 6. `docs/RUST_ERROR_STANDARD.md` before touching a fallible signature; `docs/DESIGN_SYSTEM.md` and the merged M249_001 spec before touching UI adapters.
 
@@ -44,7 +44,8 @@
 | `rustd/crates/daemon/afd_api_tenant/src/handler/library/*` | MOVE/EDIT | `handler/plugin/*` |
 | `rustd/crates/daemon/afd_api_operator/src/handler/admin/libraries.rs`, `library_stage.rs` | DELETE | Platform catalogue |
 | `rustd/crates/daemon/afd_authoring/src/library/**` | EDIT | Plugin names; `publish/platform.rs` DELETE |
-| `rustd/crates/daemon/afd_api_wire/src/library/**`, `fleet/input.rs` | EDIT | `plugin_id`, `plugin` source kind, `archived` status |
+| `rustd/crates/daemon/afd_api_wire/src/library/**`, `fleet/input.rs` | EDIT | `plugin_id`, `plugin` source kind, `archived` status, `stopped` removed |
+| `rustd/crates/daemon/afd_fleet_lifecycle/src/lib.rs`, `purge.rs` and their tests | EDIT | `Stopped` removed; delete admits any status |
 | `rustd/crates/daemon/afd_auth/src/scope.rs`, `tests/scope_catalogue.rs` | EDIT | `plugins:write`; `platform-library:write` removed |
 | `rustd/crates/protocol/af_observability/src/metrics/declared/library.rs`, `product/telemetry/authoring*.rs` | EDIT | Metric and event names |
 | `rustd/crates/foundation/af_core/src/error_code/**`, `problem/**` | EDIT | Hints that say killed or library |
@@ -52,11 +53,12 @@
 | `rustd/crates/**/src/**/*.sql` referencing those tables | EDIT | Statement renames |
 | `rustd/crates/daemon/afd_api/tests/**`, `afd_authoring/tests/**` | EDIT | New paths, names, status; removed-route negatives |
 | `public/openapi.json` | GENERATE | `--no-banner`, never by hand |
-| `cli/src/lib/api-paths.ts`, `cli/src/commands/library/*` → `cli/src/commands/plugins/*`, `cli/src/commands/platform/**`, `cli/src/program/tree/{plugins,chat,fleet,platform*}.command.ts`, `cli/src/commands/fleet/fleet.ts`, `cli/src/commands/chat/*`, `cli/src/errors/index.ts` | EDIT/MOVE/DELETE | Plugin and archive vocabulary, readers, delete composition, `platform fleet-library` removed |
+| `cli/src/lib/api-paths.ts`, `cli/src/commands/library/*` → `cli/src/commands/plugins/*`, `cli/src/commands/platform/**`, `cli/src/program/tree/{plugins,chat,fleet,platform*}.command.ts`, `cli/src/commands/fleet/fleet.ts`, `cli/src/commands/chat/*`, `cli/src/errors/index.ts` | EDIT/MOVE/DELETE | Plugin and archive vocabulary, readers, `fleet stop` removed, `platform fleet-library` removed |
 | `cli/src/program/tree/platform-library.command.ts` | DELETE | With its `platform-library:write` leaves |
 | `cli/test/scoped-discovery.unit.test.ts`, `cli/test/completions.unit.test.ts` | EDIT | Drop the `platform-library:write` cases |
 | `cli/test/**`, `cli/test/acceptance/**` | EDIT | New spellings; §2b and §2c proofs |
 | `ui/packages/app/lib/api/draft-library.ts` and affected adapters, types and `lib/auth/scopes.ts` | EDIT | After the M249_001 merge; layouts untouched |
+| The refreshed UI's fleet lifecycle actions and their tests | EDIT | Stop removed; Archive and Delete offered separately |
 | Affected docs, playbooks and changelog | EDIT | Current spellings |
 | `~/Projects/docs` branch `chore/m249-plugin-vocabulary-changelog` | EDIT | Public API reference, after merge |
 
@@ -107,33 +109,34 @@ Delete `/v1/admin/fleet-libraries*`, the operator handlers, `publish/platform.rs
 - **Dimension 2b.1** — PENDING — CLI Plugin reuse pins a revision → Test `chat_plugin_flags_pin_the_selected_revision` (unit): `chat --plugin P --revision R --no-input` sends `P` and `R` unchanged in the draft-creation body; `chat --library P` exits 4 with `UNKNOWN_OPTION`.
 - **Dimension 2b.2** — PENDING — Plugin readers hit the renamed routes → Test `plugins_show_and_revisions_read_renamed_routes` (unit): `show`, `revisions` and `revisions <r>` request `/plugins/P`, `/plugins/P/revisions` and `/plugins/P/revisions/R`, print the stubbed `etag` and digests, and a 404 renders the block with its `UZ-` code and exit 3.
 
-### §2c — Fleet archive and direct deletion
+### §2c — Fleet archive and delete, independently
 
-`fleet kill` becomes `fleet archive`, printing `<id> archived.` Today `fleet delete` refuses a non-terminal fleet with the server's 409. The authored spec asked for direct deletion of an active fleet with the archive composed internally.
+Archive and delete are two commands, and neither invokes the other.
 
-**Open owner decision (ask when this spec moves to `active/`).** PATCH status needs `fleet:write` and DELETE needs `fleet:admin` (`afd_http/src/route/fleet.rs:187`), so a `fleet:write`-only caller would archive irreversibly and then be refused the delete. Options from the Nov 13 review: (a) compose only with a TTY confirmation or an explicit `--archive`, refused under `--no-input` without it; (b) compose after an advisory `/v1/users/me` check for `fleet:admin`, the server still deciding; (c) keep today's 409 and suggest `fleet archive`.
+- `fleet kill` becomes `fleet archive`: one `PATCH {status:"archived"}`, printing `<id> archived.` Archive is terminal and keeps history; there is no restore. It needs `fleet:write`.
+- `fleet delete` deletes a fleet in any status: one `DELETE`, printing `<id> deleted.` It never sends a PATCH first. It needs `fleet:admin` (`afd_http/src/route/fleet.rs:187`). The server drops the terminal-only guard at `afd_fleet_lifecycle/src/purge.rs:111` and its 409. Deleting a fleet with live work ends that work through the path archive already uses before removing rows; the implementer names that path from source when this spec moves to `active/`.
+- `fleet stop` is removed (§3).
 
-**Mechanism once chosen.** The server's fleet status is the state authority; `archived` is terminal. (1) GET the fleet. (2) Non-terminal: `PATCH {status:"archived"}` with `If-Match: <GET etag>` and `retry: {maxAttempts: 1}`; a 2xx whose decoded status is `archived` confirms the archive; a 4xx renders the server error and no DELETE is sent; a network error, timeout or 5xx fails with `FleetArchiveUncertain` (`FLEET_ARCHIVE_UNCERTAIN`, exit 2, suggestion `agentsfleet fleet delete <id>`). (3) `DELETE` with `If-Match` from the PATCH response, or the GET etag when already terminal, and `retry: {maxAttempts: 1}`. (4) A 2xx prints `<id> deleted.`; a 4xx after a confirmed archive fails with `FleetArchivedNotDeleted` (`FLEET_ARCHIVED_NOT_DELETED`, exit of the cause, JSON `{"error":{"code":"FLEET_ARCHIVED_NOT_DELETED","message":…,"fleet_id":…,"archived":true}}`). (5) A network error, timeout, 502, 503 or 504 on DELETE triggers one GET with `retry: {maxAttempts: 1}`: 404 succeeds with `reconciled: true` only while workspace access is proven by a 200 on the workspace read; 200 fails as `FleetArchivedNotDeleted`; 401, 403, other 5xx, network failure or an undecodable body fails as `FleetDeleteUncertain` (`FLEET_DELETE_UNCERTAIN`, exit 2). The reconcile pattern mirrors `cli/src/commands/workspace/create-reconcile.ts`. All three errors subclass `TaggedCliError`.
+- **Dimension 2c.1** — PENDING — Archive and delete are independent → Test `fleet_archive_and_delete_are_independent` (unit): `fleet archive <id>` sends exactly one PATCH; `fleet delete <id>` sends exactly one DELETE and no PATCH, for an active and for an archived fleet; a 403 on either renders the block with no second request; `fleet stop` and `fleet kill` are `UNKNOWN_COMMAND`.
+- **Dimension 2c.2** — PENDING — The server deletes any status → Test `delete_removes_a_fleet_in_any_status` (integration): DELETE on an active, a paused and an archived fleet each returns 2xx, a later GET returns 404 and no lease remains; a `fleet:write`-only caller gets 403 and the fleet is unchanged.
 
-- **Dimension 2c.1** — PENDING — Direct deletion keeps its checkpoint → Test `fleet_delete_retains_confirmed_archive_checkpoint` (unit): request sequences — active: GET, PATCH, DELETE, exit 0; archived: GET, DELETE; PATCH 409: GET, PATCH, no DELETE, exit 1; PATCH network error: no DELETE, `FLEET_ARCHIVE_UNCERTAIN`; DELETE 409 after PATCH 200: `FLEET_ARCHIVED_NOT_DELETED` and a retry sending GET, DELETE only; DELETE 503 then GET 404: exit 0, `reconciled: true`; DELETE 503 then GET 200, 403, network error or `{}`: the matching code, exit ≠ 0; the DELETE `If-Match` equals the PATCH response's `etag`.
-- **Dimension 2c.2** — PENDING — The chosen option's permission case → Test `fleet_delete_respects_the_chosen_permission_guard` (unit): a `fleet:write`-only caller on an active fleet gets the behaviour the owner chose, with the quote in Discovery.
+### §3 — Fleet lifecycle: archived, no operator stop
 
-### §3 — Archived terminal status
-
-The public terminal status `killed` becomes `archived` in wire types, filters, CLI rendering, UI callers and the fresh-development schema. No lifecycle state is added. PATCH and DELETE keep their semantics.
+The public terminal status `killed` becomes `archived`, and the operator `Stopped` status is removed, in `FleetStatus`, wire types, filters, CLI rendering, UI callers and the fresh-development schema constants. The platform's anomaly-held `Paused` stays, and `fleet resume` stays only to clear it. No lifecycle state is added.
 
 - **Dimension 3.1** — PENDING — Archive is terminal → Test `archived_fleet_refuses_resume_and_keeps_history` (integration): PATCH `{"status":"archived"}` then resume returns the existing state refusal; events remain readable; `{"status":"killed"}` is a validation error.
+- **Dimension 3.2** — PENDING — No operator stop → Test `stopped_status_is_not_accepted` (integration): PATCH `{"status":"stopped"}` is a validation error, and resume of a `Paused` fleet still returns it to `Active`.
 
 ### §4 — Coordinated callers
 
 Regenerate OpenAPI. Update CLI paths, the refreshed UI's adapters and types, docs and the public reference together. Rerun setup, Plugin publication and lifecycle journeys on the refreshed UI.
 
 - **Dimension 4.1** — PENDING — Every caller uses the renamed surface → Test `plugin_surfaces_match_cli_ui_and_openapi` (integration + browser): create, revise, reuse and delete succeed through the CLI and the UI against the new paths, and OpenAPI lists no `fleet-libraries` path.
-- **Dimension 4.2** — PENDING — One vocabulary → Test `removed_public_spellings_have_only_historical_references` (source scan): `fleet-libraries`, `library_id`, `library:write`, `platform-library` and the `killed` status appear only in changelog history and `docs/v2/done`.
+- **Dimension 4.2** — PENDING — One vocabulary → Test `removed_public_spellings_have_only_historical_references` (source scan): `fleet-libraries`, `library_id`, `library:write`, `platform-library`, the `killed` and `stopped` statuses and `fleet stop` appear only in changelog history and `docs/v2/done`.
 
 ## Interfaces
 
-`/v1/workspaces/{workspace_id}/plugins`, `/plugins/{plugin_id}`, `/plugins/{plugin_id}/revisions`, `/plugins/{plugin_id}/revisions/{revision_id}`. Scope `plugins:write`. Fleet terminal status `archived`. Account API keys stay `/v1/api-keys`; platform defaults stay `/v1/admin/platform-keys`.
+`/v1/workspaces/{workspace_id}/plugins`, `/plugins/{plugin_id}`, `/plugins/{plugin_id}/revisions`, `/plugins/{plugin_id}/revisions/{revision_id}`. Scope `plugins:write`. Fleet terminal status `archived`; no `stopped` status; `DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}` admits any status. Account API keys stay `/v1/api-keys`; platform defaults stay `/v1/admin/platform-keys`.
 
 ## Failure Modes
 
@@ -180,13 +183,13 @@ Remove the admin catalogue handlers, `publish/platform.rs`, the platform CLI fam
 
 ## Product Clarity (authoring record)
 
-1. **Successful user moment** — The API, CLI and UI all say Plugin and Archive.
+1. **Successful user moment** — The API, CLI and UI all say Plugin and Archive, and a fleet is archived or deleted in one step.
 2. **Preserved user behaviour** — Authority, immutable revisions, private history and recovery.
 3. **Optimal-way check** — A rename on existing resources; no new resource model.
 4. **Rebuild-vs-iterate** — Iterate.
 5. **What we build** — Renamed routes and payloads, catalogue removal, regenerated OpenAPI and callers.
 6. **What we do NOT build** — Aliases, migrations, capability systems.
-7. **Fit with existing features** — Flow 1 drafts, publication ETags, lifecycle PATCH/DELETE.
+7. **Fit with existing features** — Flow 1 drafts, publication ETags, lifecycle PATCH; DELETE loses its terminal-only guard.
 8. **Surface order** — API and schema, then CLI and UI callers, then docs.
 9. **Dashboard restraint** — Adapters change; layouts do not.
 10. **Confused-user next step** — An old path returns 404 with the problem type; old CLI spellings already fail in M249_002.
@@ -206,5 +209,7 @@ Remove the admin catalogue handlers, `publish/platform.rs`, the platform CLI fam
 > Owner decision (Indy, Nov 12, 2026: 11:55 PM): selected "Split into two PRs (my call)" — PR B is "the Plugin + archived rename across Rust, SQL, OpenAPI, CLI flags, UI adapters and docs, rebased onto A".
 
 > Review transfer (Nov 13, 2026): EGM design, readiness and codebase reviews of M249_002 found that the CLI Plugin and Archive renames, the Plugin readers and the `fleet delete` composition contradicted the selected split above and left interim mismatches (`fleet archive` printing "killed", `plugins list` widening to the platform catalogue). They move here unchanged in intent; §2c carries the reviewers' mechanism and the open owner decision.
+
+> Owner decision (Indy, Nov 13, 2026), on the open §2c question of composing archive into delete: "There are two separate options = Archive, and Delete the user can invoke both of then individually. I shouldnt say archive and delte. there no sense to stop and delete. They are independent." Then: "In my view stop must be removed". This supersedes the reviewers' composition mechanism and its options (a)–(c); §2c and §3 carry the result. Assumption recorded with it: `fleet resume` stays for the platform's `Paused` status.
 
 > Owner decisions carried from the authored spec: "Yes flow 1"; "Permanent stop, retain history, no Restore"; "there is no primary vault"; "i dont need a guarded cutover"; "i am only in development".

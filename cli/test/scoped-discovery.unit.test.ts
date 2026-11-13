@@ -67,7 +67,9 @@ describe("discovery_refuses_malformed_expired_and_unavailable_identity", () => {
       const baseline = await signedOut();
       const started = performance.now();
       const help = await run({ argv: ["--help"], env: { AGENTSFLEET_API_KEY: ENV_KEY }, ...setup });
-      expect(performance.now() - started).toBeLessThan(1_000);
+      // Under the 2000 ms default timeout, so a read that ignores the timeout
+      // seam still fails; the room above 1000 ms is for coverage runs.
+      expect(performance.now() - started).toBeLessThan(1_900);
       expect(help.code).toBe(EXIT_OK);
       expect(rows(help.out)).not.toContain("platform");
       expect(help.out).toBe(baseline.out);
