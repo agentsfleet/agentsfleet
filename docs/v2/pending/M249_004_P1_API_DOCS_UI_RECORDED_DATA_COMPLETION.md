@@ -123,7 +123,10 @@ Follow the merged lifecycle and Plugin vocabulary. This workstream does not own 
 - **Dimension 1.1** — Every displayed fact names a stored source → Test `ui_projection_inventory_matches_contract` (review): field table cites producer, storage, authorization and adapter.
 - **Dimension 1.2** — Unsupported facts remain explicit → Test `unavailable_projection_never_becomes_zero` (unit): omitted facts show unavailable; measured zero remains zero.
 
-### §2 — Complete settled usage
+### §2 — Complete settled usage (moved to M249_003 §6)
+
+Indy's Nov 14, 2026 request to align Usage with the uploaded proposal moves this slice into the active interface follow-up in M249_003 §6.
+That workstream owns its implementation and verification; the description below records its original scope and is not a second implementation task here.
 
 Extend the existing report with UTC daily buckets and each fleet's complete model set. Apply the same filters and snapshot cutoff as totals.
 
