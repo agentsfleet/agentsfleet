@@ -1,5 +1,6 @@
 import type {Page} from "@playwright/test";
 export async function measureVisualState(page: Page) {
+ await page.evaluate(() => {for (const animation of document.getAnimations()) {if (animation.effect?.getComputedTiming().iterations !== Infinity) animation.finish();}});
  return page.evaluate(() => {
   const visible=(node:Element)=>{const r=node.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(node).visibility!=='hidden'&&!node.closest('[aria-hidden=true],[hidden]');};
   const box=(node:Element|null)=>{
