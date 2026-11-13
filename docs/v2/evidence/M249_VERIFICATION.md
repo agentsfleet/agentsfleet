@@ -6,7 +6,7 @@ The UI refresh and the pending CLI work ship in separate PRs.
 
 ## Current result
 
-M249_001 remains active. All 32 visual backlog findings now have measured closure evidence in M249_VISUAL_BACKLOG.md. Final native coverage, dry-app, authenticated acceptance, bundle checks and the PR gate remain due.
+M249_001 remains active. All 32 visual backlog findings now have measured closure evidence in M249_VISUAL_BACKLOG.md. Native coverage now passes all package floors. Final dry-app, authenticated acceptance, bundle checks and the PR gate remain due.
 
 The latest native `make dry-app` passed 4,564 app unit tests and all 90 desktop/phone browser checks. Evidence: `refresh-dry-app-v237.log`.
 
@@ -34,6 +34,14 @@ Focused package diagnostics passed 16 tests: split groups, task controls, attach
 The notice test exercises its dashboard portal. Attachment rendering no longer contains an unreachable styling condition. Full coverage has not yet been rerun; the reported 99.96% branch result remains unresolved until the native coverage lane proves otherwise.
 
 Claude measured 20 extra settled-card renders for 20 unrelated text events before the context change, and zero after it. This is a render-count result, not a latency measurement. His final report is [on #838](https://github.com/agentsfleet/agentsfleet/issues/838#issuecomment-6851308911).
+
+## Integrated coverage result
+
+✅ `make test-coverage-all` passed on production checkpoint `8353a97d5`. App: 478 files / 4,562 tests; website: 20 / 133; CLI: 2,223 passed and 17 existing live-lane skips; design system: 65 / 514. Every enforced package coverage metric is 100 percent. App branches are 9,690 of 9,690.
+
+Log: `/workspace/scratch/refresh-final-coverage-v266.log`, ending “All package coverage gates passed”. The only uncommitted change during this run was specification maintenance; production and test source remained unchanged. No coverage exclusion, threshold or timeout changed.
+
+The spec now fits 497 lines and lists all 676 repository paths plus three companion-doc paths. Review confirmed the inventory and found two incorrect failure-mode test references; both now name tests that inject the stated failure. Historical authoring and intermediate checks remain available at commit `8353a97d5`.
 
 ## Reference and comparison method
 
