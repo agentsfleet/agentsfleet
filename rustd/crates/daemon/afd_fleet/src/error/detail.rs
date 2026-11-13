@@ -54,7 +54,7 @@ pub const DETAIL_PROVIDER_UNRESOLVED: &str = "provider unresolved";
 /// detail is not optional, and answering a DIFFERENT sentence for the same code
 /// on one surface is how a runbook stops matching what the product says.
 pub const DETAIL_CREDENTIAL_MISSING: &str =
-    "A required credential is not in the vault. Add it with: `agentsfleet secret create <NAME>`";
+    "A required credential is not in the vault. Add it with: `agentsfleet secrets create <NAME>`";
 
 /// A stored credential body that is not an addressable JSON object.
 ///
@@ -108,7 +108,7 @@ pub const DETAIL_LEASE_LOST: &str = "Lease was reassigned before this renewal; t
 
 /// Durable cancellation refuses another execution slice while accepting the final report.
 pub const DETAIL_LEASE_CANCELLED: &str =
-    "Fleet was killed; stop this lease and report its final result";
+    "Fleet was archived; stop this lease and report its final result";
 
 /// The renewal refusal at the hard runtime ceiling.
 pub const DETAIL_LEASE_MAX_RUNTIME: &str = "Lease reached the hard max runtime; not renewed";

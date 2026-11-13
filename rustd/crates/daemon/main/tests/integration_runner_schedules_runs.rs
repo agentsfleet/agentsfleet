@@ -138,7 +138,7 @@ async fn test_run_now_refuses_a_schedule_that_would_not_fire() {
     leased.finish(supervisor).await;
 }
 
-/// A fleet an operator stopped takes no run-now, whatever its schedules say.
+/// An archived fleet takes no run-now, whatever its schedules say.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_run_now_refuses_a_fleet_that_takes_no_work() {
@@ -147,13 +147,13 @@ async fn test_run_now_refuses_a_fleet_that_takes_no_work() {
     let leased = Leased::boot(&mut supervisor, &qstash).await;
     let schedule = leased.seed(Source::Fleet, "own-active").await;
     leased
-        .on_fleet("UPDATE fleet.fleets SET status = 'paused' WHERE id = $1")
+        .on_fleet("UPDATE fleet.fleets SET status = 'archived' WHERE id = $1")
         .await;
 
     let (status, refused) = leased.run_now(&schedule).await;
     assert_eq!(
         (status, &refused["error_code"], &refused["current_state"]),
-        (409, &json!("UZ-AGT-012"), &json!("paused")),
+        (409, &json!("UZ-AGT-012"), &json!("archived")),
         "{refused}"
     );
     assert_eq!(leased.admitted(&schedule).await, 0);

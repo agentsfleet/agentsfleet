@@ -22,7 +22,7 @@
 //!
 //! The filter reads [`GateStatus`] and not `Decision` for that reason:
 //! `Decision` is the three arms an operator WRITES, and routing the filter
-//! through it left `auto_killed` — a state a row really is in, and one the
+//! through it left `archived` — a state a row really is in, and one the
 //! dashboard's own type declares — unreachable through this listing.
 
 use af_core::id::Uuid7;
@@ -76,7 +76,7 @@ const DETAIL_CURSOR: &str = "invalid cursor";
 ///
 /// Every spelling the column holds is served, so this names a value that is
 /// not one of them rather than one the filter merely cannot express.
-const DETAIL_STATUS: &str = "status must be pending, approved, denied, timed_out or auto_killed";
+const DETAIL_STATUS: &str = "status must be pending, approved, denied, timed_out or archived";
 
 /// The refusal a fleet id that is not an identifier earns.
 ///
@@ -230,8 +230,8 @@ fn parse_fleet_id(raw: Option<&str>) -> Result<Option<af_core::id::Uuid7>, Refus
 /// statement spells it: an absent filter binds the pending status. The two are
 /// the same request, so they parse to the same thing.
 ///
-/// Every other spelling the column holds is served, including the killer's:
-/// `auto_killed` is a state a row is really in, and a filter that refused it
+/// Every other spelling the column holds is served, including `archived`:
+/// it is a state a row is really in, and a filter that refused it
 /// left those gates unreachable through the only listing that shows them.
 fn parse_status(raw: Option<&str>) -> Result<Option<GateStatus>, Refusal> {
     let Some(raw) = raw else {

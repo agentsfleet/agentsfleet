@@ -1,12 +1,12 @@
 import {RunnerAction, RunnerEventType, RunnerHistory} from "../../commands/platform/runner-vocabulary.ts";
-import { Option, Schema } from "effect";
+import { Schema } from "effect";
 import { Command, Flag } from "effect/cli";
 import { platformRunnerAction, platformRunnerDelete, platformRunnerEnroll, platformRunnerHistory, platformRunnersList, platformRunnerRotate, platformRunnerShow, platformRunnerUpdate } from "../../commands/platform/runners.ts";
 import { guardedHandler } from "./guarded-handler.ts";
-import { platformLabelsFlag, platformPagingFlags, platformPolicyFlag, platformTokenFlag } from "./platform-flags.ts";
-import { eventTimeFlag, idArgument, requiredIdFlag, requiredTextFlag, sinceFlag } from "./flags.ts";
+import { grants, listedWhen, type Visibility } from "./visibility.ts";
+import { PLATFORM_SCOPE, platformLabelsFlag, platformPagingFlags, platformPolicyFlag, platformTokenFlag } from "./platform-flags.ts";
+import { eventTimeFlag, idArgument, opt, requiredIdFlag, requiredTextFlag, sinceFlag } from "./flags.ts";
 
-const opt = Option.getOrUndefined;
 const runnerId = {id: idArgument("runner_id", "Platform runner identifier")};
 const actionCommand = (name: string, action: RunnerAction) => Command.make(name, runnerId).pipe(
   Command.withDescription(`Request ${name} (runner:write)`), guardedHandler(({id}) => platformRunnerAction(id, action)),
@@ -48,9 +48,23 @@ const leases = Command.make("leases", {...runnerId, ...platformPagingFlags,
 }).pipe(Command.withDescription("Read runner leases (runner:read)"), guardedHandler(({id, limit, startingAfter, workspace, fleet}) =>
   platformRunnerHistory(id, RunnerHistory.Leases, {limit: opt(limit), startingAfter: opt(startingAfter), workspace: opt(workspace), fleet: opt(fleet)})));
 
-export const platformRunnersCommand = Command.make("runners").pipe(
-  Command.withDescription("Manage platform execution hosts"), Command.withSubcommands([
-    list, show, enroll, update, rotate, remove, events, leases,
-    actionCommand("cordon", RunnerAction.Cordon), actionCommand("drain", RunnerAction.Drain), actionCommand("revoke", RunnerAction.Revoke), actionCommand("self-test", RunnerAction.SelfTest),
-  ]),
-);
+// `runner:enroll` is independent of the read/write ladder: an enroller sees
+// `enroll` and nothing else unless the server also reported `runner:read`.
+export const platformRunnersCommand = (visibility: Visibility) => {
+  const read = grants(visibility, PLATFORM_SCOPE.runnerRead);
+  const enrollable = grants(visibility, PLATFORM_SCOPE.runnerEnroll);
+  const write = grants(visibility, PLATFORM_SCOPE.runnerWrite);
+  const reads = listedWhen(read);
+  const writes = listedWhen(write);
+  return {
+    listed: read || enrollable || write,
+    command: Command.make("runners").pipe(
+      Command.withDescription("Manage platform execution hosts"), Command.withSubcommands([
+        reads(list), reads(show), listedWhen(enrollable)(enroll), writes(update), writes(rotate), writes(remove),
+        reads(events), reads(leases),
+        writes(actionCommand("cordon", RunnerAction.Cordon)), writes(actionCommand("drain", RunnerAction.Drain)),
+        writes(actionCommand("revoke", RunnerAction.Revoke)), writes(actionCommand("self-test", RunnerAction.SelfTest)),
+      ]),
+    ),
+  };
+};

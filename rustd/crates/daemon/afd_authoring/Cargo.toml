@@ -13,6 +13,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# A delete ends setup and live work and removes the row in one transaction.
+afd_fleet_lifecycle.workspace = true
 # The draft's credential inspection reads the vault on the review transaction.
 afd_vault.workspace = true
 afd_bus.workspace = true
@@ -81,9 +83,6 @@ afd_db = { workspace = true, features = ["test-util"] }
 af_observability = { workspace = true, features = ["test-util"] }
 # The mocked entropy source, so a proof can make one draw fail.
 af_crypto = { workspace = true, features = ["test-util"] }
-# The fleet purge, so the deletion-matrix test drives both
-# erasure roots from one fixture. Already in the tree through afd_approval.
-afd_fleet_lifecycle.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util", "test-util"] }
 
 [features]

@@ -64,7 +64,7 @@ describe("approvals commands", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "list"], {
+        const code = await runCli(["fleet", "approvals", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -78,7 +78,7 @@ describe("approvals commands", () => {
         expect(text).toContain("pending");
         expect(text).toContain("approved");
         // A pending gate earns the line naming the command that clears it.
-        expect(text).toContain("agentsfleet approvals approve");
+        expect(text).toContain("agentsfleet fleet approvals approve");
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([`GET ${APPROVALS}`]);
       });
     });
@@ -96,7 +96,7 @@ describe("approvals commands", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "list", "--fleet", FLEET_ID], {
+        const code = await runCli(["fleet", "approvals", "list", "--fleet", FLEET_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -118,7 +118,7 @@ describe("approvals commands", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "list"], {
+        const code = await runCli(["fleet", "approvals", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -139,7 +139,7 @@ describe("approvals commands", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "show", GATE_ID], {
+        const code = await runCli(["fleet", "approvals", "show", GATE_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -164,7 +164,7 @@ describe("approvals commands", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "approve", GATE_ID], {
+        const code = await runCli(["fleet", "approvals", "approve", GATE_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -187,7 +187,7 @@ describe("approvals commands", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "deny", GATE_ID], {
+        const code = await runCli(["fleet", "approvals", "deny", GATE_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -213,7 +213,7 @@ describe("approvals commands", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "approve", GATE_ID], {
+        const code = await runCli(["fleet", "approvals", "approve", GATE_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -233,13 +233,13 @@ describe("approvals commands", () => {
           jsonResponse(409, {
             error_code: "UZ-APPROVAL-002",
             detail: "gate already resolved",
-            user_message: "That gate was already decided. Run `agentsfleet approvals show` to see who decided it.",
+            user_message: "That gate was already decided. Run `agentsfleet fleet approvals show` to see who decided it.",
           }),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "approve", GATE_ID], {
+        const code = await runCli(["fleet", "approvals", "approve", GATE_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -261,7 +261,7 @@ describe("approvals — machine surface", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "list", "--json"], {
+        const code = await runCli(["fleet", "approvals", "list", "--json"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -282,7 +282,7 @@ describe("approvals — machine surface", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        await runCli(["approvals", "list", "--json", "--fleet", FLEET_ID], {
+        await runCli(["fleet", "approvals", "list", "--json", "--fleet", FLEET_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -301,7 +301,7 @@ describe("approvals — machine surface", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "show", "--json", GATE_ID], {
+        const code = await runCli(["fleet", "approvals", "show", "--json", GATE_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -322,7 +322,7 @@ describe("approvals — machine surface", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "approve", "--json", GATE_ID], {
+        const code = await runCli(["fleet", "approvals", "approve", "--json", GATE_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -346,7 +346,7 @@ describe("approvals — degraded daemon answers", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "show", GATE_ID], {
+        const code = await runCli(["fleet", "approvals", "show", GATE_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -369,7 +369,7 @@ describe("approvals — degraded daemon answers", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        await runCli(["approvals", "list"], {
+        await runCli(["fleet", "approvals", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -400,7 +400,7 @@ describe("approvals — a gate past the first page", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "list"], {
+        const code = await runCli(["fleet", "approvals", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -433,7 +433,7 @@ describe("approvals show — who decided it", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["approvals", "show", GATE_ID], {
+        const code = await runCli(["fleet", "approvals", "show", GATE_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -455,7 +455,7 @@ describe("approvals show — who decided it", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        await runCli(["approvals", "show", GATE_ID], {
+        await runCli(["fleet", "approvals", "show", GATE_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -476,7 +476,7 @@ describe("approvals show — who decided it", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        await runCli(["approvals", "show", GATE_ID], {
+        await runCli(["fleet", "approvals", "show", GATE_ID], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),

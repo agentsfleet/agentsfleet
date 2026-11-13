@@ -26,7 +26,7 @@ Sections 6 and 7 cover the sandbox and host.
                            instructions_md, config (selected)                 Postgres
                          connector.integration_grants (fleet, "github") pending,
                            then approved by a person                          Postgres
-                         agentsfleet resume <FLEET_ID> retries setup
+                         the approval retries setup
                          locked recheck, all checks ready ⇒ active            Postgres
                          start none: no admission, no event, no lease row
 
@@ -65,7 +65,7 @@ Save (`POST /v1/workspaces/{ws}/fleets`, C1 in [`api_resources.md`](./api_resour
 
 Setup then advances in bounded steps (`afd_authoring`'s creation activate).
 A missing grant raises a pending approval card (`afd_approval`'s setup request).
-After approval, run `agentsfleet resume <FLEET_ID>` to retry setup.
+Approving it retries setup (`afd_api_tenant`'s approval resolve).
 
 [Setup recovery](data_flow.md#fleet-creation-and-setup-recovery) covers bounded retries.
 Once setup checks pass, a locked recheck activates the fleet.
@@ -389,7 +389,7 @@ Each gap names what would close it.
 3. **No workspace restore or save.** Snapshots in R2 are design only ([`runner_execution.md`](./runner_execution.md) §"Workspace between leases"). The snapshot workstream closes it.
 4. **The session checkpoint reaches no lease**. It is written and loaded, and `render` never puts it on the lease (`afd_fleet`'s lease answer). A lease field the agent loop reads closes it.
 5. **`propose_change` and the supervisor push are not written.** The sandbox `git` tool refuses `push` (`afr_tools`' sandbox git). The push path in [`runner_execution.md`](./runner_execution.md) §"Repository writes" closes it.
-6. **Kill and pause never reach a running lease**: renewal ignores the fleet's status but still enforces its stored budget ceiling. The heartbeat names no lease ([Runner Fleet](./runner_fleet.md) §"Steer, kill, pause"). A revocation on the heartbeat or a refused renewal closes it.
+6. **A gate trip never reaches a running lease**: it writes only the status. Renewal ignores the fleet's status but still enforces its stored budget ceiling. Archive and delete send Cancel ([Runner Fleet](./runner_fleet.md) §"Steer, archive, delete"); a Cancel from the gate's archive closes it.
 7. **Browser tools are refused** under the bubblewrap engine ([`runner_execution.md`](./runner_execution.md) §"Sandbox engines"). A Firecracker engine closes it.
 8. **Warm slots are not wired into the supervisor.** Wiring `WarmSlots` around the host's engine closes it.
 9. **Limits are not per fleet.** The lease carries no size, so every sandbox gets the runner host's own limits. A per-fleet size would be a new wire field.

@@ -36,7 +36,7 @@ const invoke = async (argv: ReadonlyArray<string>): Promise<{ code: number; err:
 describe("tenant provider create is wired to its effect", () => {
   test("it parses its flags and reaches the handler", async () => {
     const { code } = await invoke([
-      "tenant", "provider", "create", "--secret", "my-secret", "--model", "gpt-4",
+      "models", "use", "--secret", "my-secret", "--model", "gpt-4",
     ]);
     // Not a validation exit: the flags were accepted and the handler ran.
     expect(code).not.toBe(EXIT_VALIDATION);
@@ -44,7 +44,7 @@ describe("tenant provider create is wired to its effect", () => {
 
   test("it still refuses a flag it does not declare", async () => {
     const { code, err } = await invoke([
-      "tenant", "provider", "create", "--secret", "s", "--model", "m", "--nope", "x",
+      "models", "use", "--secret", "s", "--model", "m", "--nope", "x",
     ]);
     expect(code).toBe(EXIT_VALIDATION);
     expect(err).toContain("--nope");
@@ -53,12 +53,12 @@ describe("tenant provider create is wired to its effect", () => {
 
 describe("billing show is wired to its effect", () => {
   test("it parses its paging flags and reaches the handler", async () => {
-    const { code } = await invoke(["billing", "show", "--limit", "10"]);
+    const { code } = await invoke(["usage", "show", "--limit", "10"]);
     expect(code).not.toBe(EXIT_VALIDATION);
   });
 
   test("its cap is its own, not the list cap", async () => {
-    const { code, err } = await invoke(["billing", "show", "--limit", "9999"]);
+    const { code, err } = await invoke(["usage", "show", "--limit", "9999"]);
     expect(code).toBe(EXIT_VALIDATION);
     expect(err).toContain("must be ≤ 100");
   });
@@ -119,15 +119,15 @@ test("workspace delete removes the selected local workspace", async () => {
   });
 });
 
-test("tenant provider show and delete reach their distinct HTTP methods", async () => {
+test("models current and reset reach their distinct HTTP methods", async () => {
   await withAuthedStateDir({ workspaceId: WORKSPACE_ID }, async () => {
     await withMockApi({
       [`GET ${TENANT_PROVIDER_PATH}`]: () => jsonResponse(200, PROVIDER),
       [`DELETE ${TENANT_PROVIDER_PATH}`]: () => jsonResponse(200, PROVIDER),
     }, async (apiUrl, calls) => {
-      for (const verb of ["show", "delete"]) {
+      for (const verb of ["current", "reset"]) {
         const out = bufferStream();
-        const code = await runCli(["--json", "tenant", "provider", verb], {
+        const code = await runCli(["--json", "models", verb], {
           stdout: out.stream,
           stderr: bufferStream().stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),

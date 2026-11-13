@@ -3,8 +3,7 @@ import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetDetail } from "@/lib/types";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
-import FleetConfig from "./FleetConfig";
-import KillSwitch from "./KillSwitch";
+import FleetActions from "./FleetActions";
 import { EditSetupButton } from "@/components/domain/chat/FleetSetupWorkspace";
 import { ChatSummaryToggle } from "@/components/domain/chat/ChatSummary";
 import { MemoryMenu } from "./MemoryMenu";
@@ -35,21 +34,14 @@ export function FleetHeader({
         ) : null}
         <EditSetupButton workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision} />
         <ChatSummaryToggle />
-        {fleet.status === AGENTSFLEET_STATUS.INSTALLING || fleet.status === AGENTSFLEET_STATUS.ACTIVE ? null : fleet.status === AGENTSFLEET_STATUS.KILLED ? (
-          <FleetConfig
-            workspaceId={workspaceId}
-            fleetId={fleet.id}
-            fleetName={fleet.name}
-            etag={fleet.etag}
-          />
-        ) : (
+        {fleet.status === AGENTSFLEET_STATUS.INSTALLING || fleet.status === AGENTSFLEET_STATUS.ACTIVE ? null : (
           <Badge aria-label={`Fleet status: ${fleet.status}`}>
             {fleet.status}
           </Badge>
         )}
-        <KillSwitch workspaceId={workspaceId} fleet={fleet}>
+        <FleetActions workspaceId={workspaceId} fleet={fleet}>
           <MemoryMenu workspaceId={workspaceId} fleetId={fleet.id} access={fleet.memory_access} canGrant={canGrant} />
-        </KillSwitch>
+        </FleetActions>
       </div>
     </div>
   );

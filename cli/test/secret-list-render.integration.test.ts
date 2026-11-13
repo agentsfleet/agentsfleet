@@ -1,4 +1,4 @@
-// `agentsfleet secret list` renders like every other list in the surface.
+// `agentsfleet secrets list` renders like every other list in the surface.
 //
 // It printed two space-separated fields and a raw epoch integer, so the one
 // list a person reads while handling credentials was the one that looked
@@ -35,7 +35,7 @@ describe("secret list rendering", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["secret", "list"], {
+        const code = await runCli(["secrets", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -56,7 +56,7 @@ describe("secret list rendering", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        await runCli(["secret", "list"], {
+        await runCli(["secrets", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -75,7 +75,7 @@ describe("secret list rendering", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        await runCli(["secret", "list"], {
+        await runCli(["secrets", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -108,7 +108,7 @@ describe("secret list rendering", () => {
       await withMockApi(leaky, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        await runCli(["secret", "list"], {
+        await runCli(["secrets", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -125,7 +125,7 @@ describe("secret list rendering", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        await runCli(["secret", "list", "--json"], {
+        await runCli(["secrets", "list", "--json"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -173,7 +173,7 @@ describe("status — a parked Fleet says so", () => {
       await withMockApi(statusRoutes(gates), async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["status"], {
+        const code = await runCli(["fleet", "status"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -183,7 +183,7 @@ describe("status — a parked Fleet says so", () => {
         // `active` alone is what made a parked Fleet look healthy.
         expect(text).toContain("active");
         expect(text).toContain("Waiting");
-        expect(text).toContain("agentsfleet approvals list");
+        expect(text).toContain("agentsfleet fleet approvals list");
       });
     });
   });
@@ -193,12 +193,12 @@ describe("status — a parked Fleet says so", () => {
       await withMockApi(statusRoutes([]), async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        await runCli(["status"], {
+        await runCli(["fleet", "status"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
-        expect(out.read()).not.toContain("agentsfleet approvals list");
+        expect(out.read()).not.toContain("agentsfleet fleet approvals list");
       });
     });
   });
@@ -235,7 +235,7 @@ describe("status — an inbox this credential cannot read", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["status"], {
+        const code = await runCli(["fleet", "status"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -246,12 +246,12 @@ describe("status — an inbox this credential cannot read", () => {
         expect(text).toContain("pr-reviewer");
         expect(text).toMatch(/Waiting\s+·\s+—/);
         expect(text).not.toMatch(/Waiting\s+·\s+0/);
-        expect(text).toContain("agentsfleet approvals list");
+        expect(text).toContain("agentsfleet fleet approvals list");
         // States what happened, not why — a timeout and a scope refusal arrive
         // here identically, so naming a cause would be a guess.
         expect(text).not.toContain("approval:read");
         // No parked-fleet hint: nothing is known to be waiting.
-        expect(text).not.toContain("Review with: agentsfleet approvals list");
+        expect(text).not.toContain("Review with: agentsfleet fleet approvals list");
       });
     });
   });
@@ -278,7 +278,7 @@ describe("status — an inbox this credential cannot read", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["status"], {
+        const code = await runCli(["fleet", "status"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),

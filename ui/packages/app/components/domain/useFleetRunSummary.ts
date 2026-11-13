@@ -18,12 +18,12 @@ import { useFleetStreams } from "./FleetStreamProvider";
  * per completion. The server's figures are the floor: whichever fact the
  * stream has not yet spoken to falls back to `initialSummary`, and a fresh
  * server render pushes its facts into the registry so a change the page just
- * read (a kill from the header, say) is not shadowed by an older frame.
+ * read (an archive from the header, say) is not shadowed by an older frame.
  *
  * The one read this hook can cause is a `router.refresh()`, once, when the
  * fleet status the stream reports differs from the one the server rendered:
  * the page header's lifecycle controls render on the server, and a run that
- * paused or killed the fleet is the one thing a frame cannot repaint.
+ * archived the fleet is the one thing a frame cannot repaint.
  */
 export function useFleetRunSummary(
   workspaceId: string,

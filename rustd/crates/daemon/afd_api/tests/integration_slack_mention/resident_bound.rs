@@ -70,16 +70,22 @@ async fn a_moved_team_uses_its_current_workspaces_notice_carrier() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_stopped_subscriber_owes_the_paused_notice_without_admission() {
+async fn an_archived_subscriber_owes_the_archived_notice_without_admission() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let stopped = fixture
-        .fleet(&owner_document(), FleetStatus::Stopped.as_str())
+    let carrier = fixture
+        .fleet(
+            &document("responder", CHANNEL, None),
+            FleetStatus::Active.as_str(),
+        )
         .await;
-    bind(&fixture, &stopped).await;
+    bind(&fixture, &carrier).await;
+    fixture
+        .fleet(&owner_document(), FleetStatus::Archived.as_str())
+        .await;
     let body = mention(
         &fixture.team,
-        "EvStopped01",
+        "EvArchived01",
         PERSON,
         &format!("<@{BOT_USER}> notice-carrier: who is on call?"),
     );
@@ -90,18 +96,14 @@ async fn a_stopped_subscriber_owes_the_paused_notice_without_admission() {
     assert_eq!(fixture.admissions().await, 0);
     let notices = owed(&fixture).await;
     assert_eq!(notices.len(), 1);
-    assert_eq!(notices[0].owner, "notice-carrier");
-    assert!(
-        notices[0]
-            .answer
-            .contains(&format!("agentsfleet resume {}", stopped.as_str()))
-    );
+    assert_eq!(notices[0].owner, "responder");
+    assert!(notices[0].answer.contains("notice-carrier is archived"));
     fixture.cleanup().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_killed_bound_carrier_drops_notices_even_with_active_subscribers() {
+async fn an_archived_bound_carrier_drops_notices_even_with_active_subscribers() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     for name in ["responder", "triage"] {
@@ -109,23 +111,23 @@ async fn a_killed_bound_carrier_drops_notices_even_with_active_subscribers() {
             .fleet(&document(name, CHANNEL, None), FleetStatus::Active.as_str())
             .await;
     }
-    let killed = fixture
-        .fleet(&owner_document(), FleetStatus::Killed.as_str())
+    let archived = fixture
+        .fleet(&owner_document(), FleetStatus::Archived.as_str())
         .await;
-    bind(&fixture, &killed).await;
+    bind(&fixture, &archived).await;
     let body = mention(
         &fixture.team,
-        "EvKilled02",
+        "EvArchived02",
         PERSON,
         &format!("<@{BOT_USER}> who is on call?"),
     );
     let answer = json_body(deliver(&fixture.router(), &body).await).await;
     assert_eq!(
         answer.get("ignored").and_then(Value::as_str),
-        Some("notice_owner_killed")
+        Some("no_active_notice_carrier")
     );
     assert_eq!(fixture.admissions().await, 0);
     assert!(owed(&fixture).await.is_empty());
-    assert_eq!(bound(&fixture).await.0, killed.as_str());
+    assert_eq!(bound(&fixture).await.0, archived.as_str());
     fixture.cleanup().await;
 }

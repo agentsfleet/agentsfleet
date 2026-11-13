@@ -124,7 +124,7 @@ The fleet should take ownership of that outcome. It gathers evidence, explains w
 
 The flagship workflow is `platform-ops`. The wedge surface is **GitHub Actions deploy-failure responder + manual operator steer**.
 
-One fleet wakes on a failed deploy webhook (continuous-deployment failure), gathers evidence and posts a diagnosis to Slack. It is also reachable via `agentsfleet steer` for manual investigation.
+One fleet wakes on a failed deploy webhook (continuous-deployment failure), gathers evidence and posts a diagnosis to Slack. It is also reachable via `agentsfleet fleet steer` for manual investigation.
 
 ---
 
@@ -276,7 +276,7 @@ Trigger modes:
 
 - **Cron.** A periodic production health check, stored by `agentsfleet` and mirrored to Upstash QStash. Each signed QStash fire arrives at `agentsfleetd` as a synthetic event with `actor=cron:<schedule_id>`. The runner owns no timer or local scheduler state ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
 
-- **Steer.** A direct operator instruction via `agentsfleet steer <fleet_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
+- **Steer.** A direct operator instruction via `agentsfleet fleet steer <fleet_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
 All three flow through the same reasoning loop. The fleet does not branch on actor type. Its instructions describe the general outcome and the same `http_request` tool calls fire regardless of trigger source.
 

@@ -43,7 +43,7 @@ export default async function ApprovalDetailPage({
   const statusVariant: "default" | "destructive" | "green" | "amber" =
     gate.status === "approved" ? "green"
     : gate.status === "denied" ? "destructive"
-    : gate.status === "timed_out" || gate.status === "auto_killed" ? "amber"
+    : gate.status === "timed_out" || gate.status === "archived" ? "amber"
     : "default";
 
   return (

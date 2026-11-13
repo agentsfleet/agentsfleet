@@ -35,6 +35,10 @@ pub(crate) fn config(repository_write: bool) -> FleetConfig {
     FleetConfig::stored(&document).expect("the stored fixture config resolves")
 }
 
+/// A runaway rule: the second identical chat in a minute archives the fleet.
+pub(crate) const RUNAWAY_AT_TWO: &str =
+    r#"{"anomaly_rules":[{"pattern":"same_action","threshold_count":2,"threshold_window_s":60}]}"#;
+
 pub(crate) fn config_gates(gates: &str) -> FleetConfig {
     let document = format!(
         r#"{{"name":"gate-fixture","x-agentsfleet":{{"triggers":[],"tools":[],"budget":{{"daily_nanos":"1000000000"}},"gates":{gates}}}}}"#
@@ -86,6 +90,15 @@ impl Fixture {
             request_json: r#"{"proposed_action":"update dependency","evidence":{"pr":7}}"#,
             config,
         }
+    }
+
+    /// The fleet's stored status, read back after a gate decided.
+    pub(crate) async fn status(&self) -> String {
+        sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id = $1")
+            .bind(&self.fleet)
+            .fetch_one(&mut *self.database.acquire().await.expect("live database"))
+            .await
+            .expect("the archived fleet stays readable")
     }
 
     pub(crate) async fn seed(&self) {

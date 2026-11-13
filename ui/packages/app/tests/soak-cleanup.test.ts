@@ -18,7 +18,7 @@ beforeEach(() => {
   fetcher.mockReset();
   fetcher.mockImplementation(async (_url, init) => init?.method === METHOD.delete
     ? new Response(null, {status: 204})
-    : Response.json({...FLEET, name: NAME, status: init?.method === METHOD.patch ? AGENTSFLEET_STATUS.KILLED : AGENTSFLEET_STATUS.ACTIVE}));
+    : Response.json({...FLEET, name: NAME, status: AGENTSFLEET_STATUS.ACTIVE}));
 });
 afterEach(() => {vi.unstubAllGlobals(); vi.unstubAllEnvs();});
 
@@ -47,12 +47,14 @@ it("removes only the supplied fleet and drafts, after a guarded name check", asy
   const deleted = fetcher.mock.calls.filter(([, init]) => init?.method === METHOD.delete).map(([url]) => requestUrl(url));
   const scope = `https://api-dev.agentsfleet.net/v1/workspaces/${WORKSPACE}`;
   expect(deleted).toEqual([`${scope}/fleets/${FLEET_ID}`, ...IDENTIFIERS.drafts.map(id => `${scope}/drafts/${id}`)]);
+  // DELETE ends a live fleet's work itself: nothing archives first.
+  expect(fetcher.mock.calls.some(([, init]) => init?.method === METHOD.patch)).toBe(false);
 });
 
 it("retains drafts when the fleet cannot be removed", async () => {
   fetcher.mockImplementation(async (_url, init) => init?.method === METHOD.delete
     ? Response.json({error_code: "fixture-delete-failed"}, {status: 409})
-    : Response.json({...FLEET, name: NAME, status: AGENTSFLEET_STATUS.KILLED}));
+    : Response.json({...FLEET, name: NAME, status: AGENTSFLEET_STATUS.ARCHIVED}));
   await expect(cleanupSoak(IDENTIFIERS, handle)).rejects.toThrow("409");
   expect(fetcher.mock.calls.some(([url]) => requestUrl(url).includes("/drafts/"))).toBe(false);
 });
@@ -64,7 +66,7 @@ it("resumes a partial cleanup using the same saved identifiers", async () => {
   fetcher.mockImplementation(async (url, init) => {
     const target = requestUrl(url);
     if (removed.has(target)) return Response.json({error_code: "fixture-already-removed"}, {status: HTTP_STATUS_NOT_FOUND});
-    if (init?.method !== METHOD.delete) return Response.json({...FLEET, name: NAME, status: AGENTSFLEET_STATUS.KILLED});
+    if (init?.method !== METHOD.delete) return Response.json({...FLEET, name: NAME, status: AGENTSFLEET_STATUS.ARCHIVED});
     if (target.endsWith(CANDIDATE_ID) && !interrupted) {interrupted = true; throw interruption;}
     removed.add(target);
     return new Response(null, {status: 204});

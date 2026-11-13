@@ -1,4 +1,4 @@
-//! Stop a scenario fleet so later daemon scenarios cannot lease its work.
+//! Archive a scenario fleet so later daemon scenarios cannot lease its work.
 #![allow(
     dead_code,
     reason = "test support: shared by several test binaries, each using a subset"
@@ -13,9 +13,9 @@ use afd_fleet_lifecycle::FleetStatus;
 use afd_state::sql::{LEASE_STATUS_ACTIVE, LEASE_STATUS_EXPIRED};
 use agentsfleetd::serve::Booted;
 
-/// Stopped rather than killed: an operator's stop is the status nothing sweeps
-/// or purges, so retirement starts no further work of its own.
-const RETIRED: FleetStatus = FleetStatus::Stopped;
+/// Archived: terminal, and nothing sweeps or purges it, so retirement starts no
+/// further work of its own.
+const RETIRED: FleetStatus = FleetStatus::Archived;
 
 pub(crate) async fn retire_fleet(booted: &Booted, fleet: &Uuid7) {
     let mut connection = booted

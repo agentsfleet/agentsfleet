@@ -1,4 +1,4 @@
-// `agentsfleet approvals approve|deny` — the write half of the inbox.
+// `agentsfleet fleet approvals approve|deny` — the write half of the inbox.
 //
 // Split from approvals.ts because the daemon splits it: reading a gate needs
 // `ApprovalRead`, deciding one needs `ApprovalResolve`, and the decision is its

@@ -23,6 +23,8 @@ export const CLI_NAME = "agentsfleet" as const;
 export const HELP_HINT_PREFIX = "run `" as const;
 export const HELP_FLAG = "--help" as const;
 export const HELP_HINT_SUFFIX = "` for the command list" as const;
+// A leaf has no command list; its help lists its arguments and flags.
+export const HELP_HINT_LEAF_SUFFIX = "` for its arguments and flags" as const;
 
 export const REJECTION_CODE = {
   missingArgument: "MISSING_ARGUMENT",

@@ -34,8 +34,7 @@ fn every_status_is_published_and_the_absent_ones_read_zero() {
     let census = FleetCensus::new();
     census.publish(&[
         (FleetStatusLabel::Active, 2),
-        (FleetStatusLabel::Paused, 1),
-        (FleetStatusLabel::Stopped, 1),
+        (FleetStatusLabel::Archived, 1),
     ]);
 
     assert_eq!(
@@ -43,9 +42,7 @@ fn every_status_is_published_and_the_absent_ones_read_zero() {
         vec![
             ("installing".to_owned(), 0),
             ("active".to_owned(), 2),
-            ("paused".to_owned(), 1),
-            ("stopped".to_owned(), 1),
-            ("killed".to_owned(), 0),
+            ("archived".to_owned(), 1),
         ],
         "a successful count that omits a status has measured zero of them"
     );
@@ -72,12 +69,15 @@ fn a_withdrawn_census_publishes_no_reading_at_all() {
 #[test]
 fn a_status_listed_twice_is_summed_not_overwritten() {
     let census = FleetCensus::new();
-    census.publish(&[(FleetStatusLabel::Killed, 1), (FleetStatusLabel::Killed, 4)]);
-    let killed = pairs(&census)
+    census.publish(&[
+        (FleetStatusLabel::Archived, 1),
+        (FleetStatusLabel::Archived, 4),
+    ]);
+    let archived = pairs(&census)
         .into_iter()
-        .find(|(status, _)| status == "killed")
+        .find(|(status, _)| status == "archived")
         .map(|(_, value)| value);
-    assert_eq!(killed, Some(5));
+    assert_eq!(archived, Some(5));
 }
 
 #[test]

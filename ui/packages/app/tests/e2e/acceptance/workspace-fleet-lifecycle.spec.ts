@@ -6,14 +6,14 @@
  *      workspace UI yet).
  *   2. Sign in, switch to the 2nd workspace via the header switcher (UI).
  *   3. Install a fleet via /w/<secondary>/fleets/new (UI).
- *   4. Kill it (UI confirm dialog).
- *   5. Assert /w/<secondary>/fleets marks the row failed (terminal).
+ *   4. Archive it (UI confirm dialog).
+ *   5. Assert /w/<secondary>/fleets marks the row archived (terminal).
  *
  * UI-delete is deliberately NOT asserted here pending a known backend bug
- * (UZ-INTERNAL-002 ConnectionBusy on DELETE for killed rows — see PR
- * Discovery + HANDOFF in the implementation branch). When the backend
- * fix lands, the closing assertion graduates from `expectRowState
- * failed` to the full delete + row-absent check.
+ * (UZ-INTERNAL-002 ConnectionBusy on DELETE — see PR Discovery + HANDOFF
+ * in the implementation branch). When the backend fix lands, the closing
+ * assertion graduates from `expectRowState archived` to the full delete +
+ * row-absent check.
  *
  * Why this matters: every existing spec runs on the fixture user's
  * default workspace. A regression in `setActiveWorkspace`'s cookie write,
@@ -27,7 +27,7 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
 import { saveFleetViaUI } from "./fixtures/install-ui";
-import { expectDetailKilled, expectRowState, killFleet } from "./fixtures/lifecycle";
+import { archiveFleet, expectDetailArchived, expectRowState } from "./fixtures/lifecycle";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
@@ -41,7 +41,7 @@ const SEED_PREFIX = "ws-life";
 test.describe("multi-workspace + fleet lifecycle", () => {
   test.setTimeout(FLOW_TIMEOUT_MS);
 
-  test("operator switches workspace, installs, then kills the fleet", async ({ page }) => {
+  test("operator switches workspace, installs, then archives the fleet", async ({ page }) => {
     const primary = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
     expect(secondary.id).not.toEqual(primary);
@@ -70,16 +70,16 @@ test.describe("multi-workspace + fleet lifecycle", () => {
     await expectRowState(page, fleetId, "live");
 
     await page.goto(workspaceHref(secondary.id, `fleets/${fleetId}`));
-    await killFleet(page);
-    await expectDetailKilled(page);
+    await archiveFleet(page);
+    await expectDetailArchived(page);
 
-    // UI-delete intentionally skipped: api-dev currently 500s on DELETE
-    // for killed rows (UZ-INTERNAL-002 ConnectionBusy). Once the backend
-    // fix lands, this branch graduates to clicking "Delete fleet" →
-    // confirming the dialog → asserting redirect to /w/<secondary>/fleets and row
-    // absence. Cleanup still runs via the afterEach below.
+    // UI-delete intentionally skipped: api-dev has 500ed on DELETE
+    // (UZ-INTERNAL-002 ConnectionBusy). Once the backend fix lands, this
+    // branch graduates to Fleet actions → "Delete fleet" → confirming the
+    // dialog → asserting redirect to /w/<secondary>/fleets and row absence.
+    // Cleanup still runs via the afterEach below.
     await page.goto(workspaceHref(secondary.id, "fleets"));
-    await expectRowState(page, fleetId, "failed");
+    await expectRowState(page, fleetId, "archived");
   });
 
   test.afterEach(async () => {

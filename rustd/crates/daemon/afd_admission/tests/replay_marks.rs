@@ -21,7 +21,7 @@ use af_core::test_util::trace::{Capture, install_subscriber};
 const SEEDED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// The status that keeps every lease path off the fixture fleet.
-const FLEET_STOPPED: &str = "stopped";
+const FLEET_ARCHIVED: &str = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
 
 /// The line a lost notification is logged under.
 const RING_FAILED: &str = "admission_wake_ring_failed";
@@ -29,7 +29,7 @@ const RING_FAILED: &str = "admission_wake_ring_failed";
 /// What the server half sends down a wake shard after the rings it holds.
 const DRAINED: &str = "drained";
 
-/// A stopped fleet and the rows above it, removed by [`Seeded::cleanup`].
+/// A archived fleet and the rows above it, removed by [`Seeded::cleanup`].
 struct Seeded {
     handle: TestDatabase,
     database: Db,
@@ -69,7 +69,7 @@ impl Seeded {
             &seeded.fleet,
             &seeded.workspace,
             &seeded.tenant,
-            FLEET_STOPPED,
+            FLEET_ARCHIVED,
         )
         .name("replay-fixture-fleet")
         .at(SEEDED_AT)

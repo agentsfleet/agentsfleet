@@ -3,7 +3,7 @@
 //! A resident's configuration is code (RULE PRI): no person writes or reviews
 //! it, so it skips the private draft and the review digest a Save presents. It
 //! still lands as an immutable definition revision, so the lease, the fleet
-//! read, Kill and purge treat it exactly like a saved fleet.
+//! read, archive and purge treat it exactly like a saved fleet.
 
 use super::{
     ACTIVE, CONTEXT, Creations, INITIAL_VERSION, INSTALLING, reserve::Instance, source::Captured,

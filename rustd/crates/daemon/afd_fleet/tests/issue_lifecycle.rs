@@ -1,4 +1,4 @@
-//! A selected admission cannot acquire execution after its fleet was killed.
+//! A selected admission cannot acquire execution after its fleet was archived.
 
 use std::time::Duration;
 
@@ -59,10 +59,10 @@ impl Selected {
             .await?)
     }
 
-    async fn kill(&self, connection: &mut PgConnection) -> TestResult {
+    async fn archive(&self, connection: &mut PgConnection) -> TestResult {
         sqlx::query("UPDATE fleet.fleets SET status = $2 WHERE id = $1")
             .bind(&self.acquired.fleet_id)
-            .bind(afd_api_wire::fleet::PatchStatus::Killed.as_str())
+            .bind(afd_api_wire::fleet::PatchStatus::Archived.as_str())
             .execute(connection)
             .await?;
         Ok(())
@@ -81,14 +81,14 @@ impl Selected {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_kill_committed_after_selection_prevents_a_later_issue() -> TestResult {
+async fn an_archive_committed_after_selection_prevents_a_later_issue() -> TestResult {
     let selected = Selected::create().await?;
     selected
-        .kill(&mut *selected.fixtures.database.acquire().await?)
+        .archive(&mut *selected.fixtures.database.acquire().await?)
         .await?;
     assert!(
         selected.issue().await?.is_none(),
-        "Kill invalidated the selected work"
+        "the archive invalidated the selected work"
     );
     selected.assert_empty().await?;
     selected.fixtures.cleanup().await;
@@ -97,7 +97,7 @@ async fn a_kill_committed_after_selection_prevents_a_later_issue() -> TestResult
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_issue_waiting_on_a_kill_rechecks_the_committed_fleet_state() -> TestResult {
+async fn an_issue_waiting_on_an_archive_rechecks_the_committed_fleet_state() -> TestResult {
     let selected = Selected::create().await?;
     let mut writer = selected.fixtures.database.acquire().await?;
     let mut transaction = writer.begin().await?;
@@ -106,14 +106,14 @@ async fn an_issue_waiting_on_a_kill_rechecks_the_committed_fleet_state() -> Test
             .bind(&selected.acquired.fleet_id)
             .fetch_one(&mut *transaction)
             .await?;
-    let killing = async {
+    let archiving = async {
         wait_for_blocker(&selected, blocker).await?;
-        selected.kill(&mut transaction).await?;
+        selected.archive(&mut transaction).await?;
         transaction.commit().await?;
         Ok::<_, Box<dyn std::error::Error + Send + Sync>>(())
     };
-    let (issued, killed) = tokio::join!(selected.issue(), killing);
-    killed?;
+    let (issued, archived) = tokio::join!(selected.issue(), archiving);
+    archived?;
     assert!(
         issued?.is_none(),
         "an issue cannot outlive the Kill it waited behind"

@@ -27,7 +27,7 @@ describe("grant (integration grant) commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["grant", "list", "--fleet", FLEET_ID],
+          ["fleet", "grants", "list", "--fleet", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -60,7 +60,7 @@ describe("grant (integration grant) commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["grant", "list", "--fleet", FLEET_ID],
+          ["fleet", "grants", "list", "--fleet", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -92,7 +92,7 @@ describe("grant (integration grant) commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["grant", "list", "--fleet", FLEET_ID, "--json"],
+          ["fleet", "grants", "list", "--fleet", FLEET_ID, "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -121,7 +121,7 @@ describe("grant (integration grant) commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["grant", "delete", "--fleet", FLEET_ID, "01900000-0000-7000-8000-000000067a01"],
+          ["fleet", "grants", "revoke", "--fleet", FLEET_ID, "01900000-0000-7000-8000-000000067a01"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);

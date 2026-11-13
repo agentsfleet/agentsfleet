@@ -227,7 +227,7 @@ const renderOutcome = (
         return yield* Effect.fail(
           new ConfigError({
             detail: `event ${eventId} terminated with status: ${outcome.status}`,
-            suggestion: `inspect: agentsfleet events ${fleetId}`,
+            suggestion: `inspect: agentsfleet fleet events ${fleetId}`,
           }),
         );
       }
@@ -244,7 +244,7 @@ const renderOutcome = (
     return yield* Effect.fail(
       new ConfigError({
         detail: `event ${eventId} still in flight after ${SSE_FALLBACK_TIMEOUT_SECONDS}s`,
-        suggestion: parked ?? `inspect: agentsfleet events ${fleetId}; sending again may create another event`,
+        suggestion: parked ?? `inspect: agentsfleet fleet events ${fleetId}; sending again may create another event`,
       }),
     );
   });
@@ -272,7 +272,7 @@ export const steerEffectFromArgs = (
 
     if (!fleetId) {
       return yield* Effect.fail(
-        new ValidationError({ detail: "fleet_id is required", suggestion: `usage: agentsfleet steer <fleet_id> ${MESSAGE_PLACEHOLDER}` }),
+        new ValidationError({ detail: "fleet_id is required", suggestion: `usage: agentsfleet fleet steer <fleet_id> ${MESSAGE_PLACEHOLDER}` }),
       );
     }
 
@@ -330,7 +330,7 @@ export const steerEffectFromArgs = (
       return yield* Effect.fail(
         new ValidationError({
           detail: "message is required",
-          suggestion: `usage: agentsfleet steer <fleet_id> ${MESSAGE_PLACEHOLDER}`,
+          suggestion: `usage: agentsfleet fleet steer <fleet_id> ${MESSAGE_PLACEHOLDER}`,
         }),
       );
     }

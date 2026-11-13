@@ -61,7 +61,7 @@ describe("parkedGateHint", () => {
   test("names the single gate and the command that clears it", async () => {
     const hint = await runHint({ items: [gate()] });
     expect(hint).toContain(GATE_ID);
-    expect(hint).toContain("agentsfleet approvals approve");
+    expect(hint).toContain("agentsfleet fleet approvals approve");
   });
 
   test("points at the list when more than one gate is waiting", async () => {
@@ -69,7 +69,7 @@ describe("parkedGateHint", () => {
       items: [gate(), gate({ gate_id: "01900000-0000-7000-8000-000000099a02" })],
     });
     expect(hint).toContain("2 approval gates");
-    expect(hint).toContain("agentsfleet approvals list --fleet");
+    expect(hint).toContain("agentsfleet fleet approvals list --fleet");
   });
 
   test("returns null when nothing is holding this Fleet", async () => {
@@ -159,7 +159,7 @@ describe("requireGateId", () => {
     // `string | undefined`, and must not send a request for `undefined`.
     const exit = await Effect.runPromiseExit(requireGateId(undefined));
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(JSON.stringify(exit)).toContain("agentsfleet approvals show");
+    expect(JSON.stringify(exit)).toContain("agentsfleet fleet approvals show");
   });
 });
 

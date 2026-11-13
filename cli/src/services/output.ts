@@ -13,6 +13,7 @@ import { Effect, Layer, Context, type Scope } from "effect";
 import { CliConfig } from "./config.ts";
 import { startProgress } from "../output/progress.ts";
 import { isTty } from "../output/capability.ts";
+import { BLOCK_SEVERITY, writeErrorBlock, type ErrorBlock } from "../output/error-block.ts";
 import {
   ui as defaultUi,
   printKeyValue as printKeyValueRaw,
@@ -89,9 +90,11 @@ export interface OutputShape {
    */
   readonly success: (msg: string, data?: OutputData) => Effect.Effect<void>;
   readonly warn: (msg: string) => Effect.Effect<void>;
+  // Text mode renders `msg` as the head of an error block and `fields` as
+  // its labelled lines (see output/error-block.ts).
   readonly error: (
     msg: string,
-    meta?: Record<string, unknown>,
+    meta?: { readonly fields?: ErrorBlock["fields"] },
   ) => Effect.Effect<void>;
   readonly outro: (msg: string) => Effect.Effect<void>;
   readonly printJson: (payload: unknown) => Effect.Effect<void>;
@@ -144,7 +147,8 @@ export const makeStdioOutput = ({ stdout, stderr, format, env }: OutputConfig): 
         )
       : Effect.sync(() => writeLine(stdout, defaultUi.ok(msg))),
   warn: (msg) => Effect.sync(() => writeLine(stderr, defaultUi.warn(msg))),
-  error: (msg) => Effect.sync(() => writeLine(stderr, defaultUi.err(`error: ${msg}`))),
+  error: (msg, meta) => Effect.sync(() =>
+    writeErrorBlock(stderr, { severity: BLOCK_SEVERITY.error, message: msg, fields: meta?.fields ?? {} })),
   outro: (msg) => Effect.sync(() => writeLine(stdout, `\n${msg}`)),
   printJson: (payload) =>
     Effect.sync(() => writeLine(stdout, JSON.stringify(payload, null, JSON_INDENT))),

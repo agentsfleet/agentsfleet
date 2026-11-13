@@ -81,7 +81,7 @@ function FleetSigil({ identity, live }: { identity: FleetIdentity; live: boolean
 
 // One tile. The status decides the whole subtree before any hook runs: a
 // drained fleet renders `DrainedTile`, which never calls the streaming hook, so
-// a parked or killed fleet opens no stream at all. A live fleet
+// an archived fleet opens no stream at all. A live fleet
 // renders `StreamingTile`, which subscribes and then shows either `live` or
 // `snapshot` — never blank. The tile is always a link to its console (all
 // kinds), so no tile is ever a dead end. Memoised: a wall of tiles re-renders

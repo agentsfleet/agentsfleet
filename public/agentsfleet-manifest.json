@@ -24,14 +24,14 @@
       "operationId": "patch_fleet",
       "method": "PATCH",
       "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
-      "description": "Partial update of a Fleet. Body fields are optional and presence-based: name (rename the instance) and/or status (\"active\" to resume, \"stopped\" to halt, \"killed\" to mark terminal). Setup changes go through apply_fleet_revision. The 'paused' state is platform-only — anomaly-gate auto-halt — and rejected here.",
+      "description": "Partial update of a Fleet. Body fields are optional and presence-based: name (rename the instance) and/or status (\"active\" activates a Fleet still installing and retries its setup, \"archived\" cancels its work and keeps its history; archived is terminal). Setup changes go through apply_fleet_revision. Approving a setup grant retries setup without a PATCH.",
       "actionClass": "sensitive"
     },
     {
       "operationId": "delete_fleet",
       "method": "DELETE",
       "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
-      "description": "Hard-delete a Fleet and cascade its history (events, telemetry, sessions, approval gates, memory entries). Precondition: status='killed' — kill the fleet before deleting. Returns 204 on success, 409 if not yet killed.",
+      "description": "Hard-delete a Fleet in any status and cascade its history (events, telemetry, sessions, approval gates, memory entries). Live work is cancelled first. Returns 204 on success.",
       "actionClass": "critical"
     },
     {

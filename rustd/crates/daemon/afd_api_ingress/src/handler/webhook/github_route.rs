@@ -14,7 +14,7 @@
 //! # Every non-acceptance here is a 2xx
 //!
 //! A green build, a label edit, a repair branch, an event this daemon serves no
-//! rule for, a paused fleet: all real deliveries, all correctly signed, none of
+//! rule for, an archived fleet: all real deliveries, all correctly signed, none of
 //! them waking anything. They answer 200 with a reason. A 4xx would put each in
 //! GitHub's redelivery queue, where retrying changes none of them. Only the
 //! wall's own refusals are errors, and they are answered before this file runs.
@@ -117,7 +117,7 @@ pub(crate) async fn receive<D: Services>(
         return Ok(ignored(webhook::REASON_EVENT_NOT_SUBSCRIBED));
     }
     if !proven.binding.is_runnable() {
-        return Ok(ignored(webhook::REASON_FLEET_PAUSED));
+        return Ok(ignored(webhook::REASON_FLEET_NOT_ACTIVE));
     }
 
     let delivery = super::github::Delivery::read(&event, &proven.body).map_err(|_unreadable| {

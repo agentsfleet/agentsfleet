@@ -160,8 +160,8 @@ under `app` and `components`.
 | `Suspense` files | 6 | every data route | `grep -rl Suspense app \| wc -l` |
 
 The first two keep moving away from target as the app grows. `useOptimistic`
-lives in three surfaces today: secrets delete, runner state and the fleet kill
-switch, each reconciling inside the transition that set it.
+lives in three surfaces today: secrets delete, runner state and the fleet
+archive action, each reconciling inside the transition that set it.
 
 The chat's summary strip owns one `useEffect`, and it is statement 5 as written. It is a subscription to the fleet stream (`useFleetRunSummary`), never a load.
 
@@ -252,7 +252,7 @@ Private drafts appear under **Unfinished setups** on **New fleet**.
 
 Active fleet dots use the brand color; hover or keyboard focus reveals the delete control.
 
-Fleet **Edit setup** opens the authoring page at its latest saved revision. **Stop** and permanent **Kill** live in **Fleet actions**.
+Fleet **Edit setup** opens the authoring page at its latest saved revision. **Archive** and permanent **Delete** live in **Fleet actions**.
 
 While authoring a saved fleet, the header offers **Save changes**. **Instructions** opens a tall editor from the chat menu.
 Saving a revision keeps authoring open. An explicit chat Save shows `Saving setup...` through model finalization and the checked write, then `Save done vN`.

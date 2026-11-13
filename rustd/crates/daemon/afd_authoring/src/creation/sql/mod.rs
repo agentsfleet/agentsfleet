@@ -74,12 +74,12 @@ pub(super) const CLOSE_DRAFT: &str = include_str!("close_draft.sql");
 /// `$1` fleet, `$2` workspace, `$3` status, `$4` name.
 pub(super) const UPDATE: &str = include_str!("update.sql");
 
-/// Returns a killed fleet's saving drafts to editing.
+/// Returns an archived fleet's saving drafts to editing.
 ///
 /// `$1` fleet, `$2` the editing status, `$3` the saving status.
 pub(super) const RESTORE: &str = include_str!("restore.sql");
 
-/// Mark every active fleet lease before the Kill transaction commits.
+/// Mark every active fleet lease before the archive transaction commits.
 pub(super) const CANCEL_LEASES: &str = include_str!("mark_leases_cancel_requested.sql");
 
 /// The number of a revision this fleet accepted.

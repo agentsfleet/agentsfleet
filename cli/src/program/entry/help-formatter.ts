@@ -18,6 +18,7 @@
 // renderer to keep in step with the tree.
 
 import { CliError, CliOutput } from "effect/cli";
+import { visibleLength, wrapAt } from "../../output/text.ts";
 
 const MAX_WIDTH = 80;
 const NEWLINE = "\n";
@@ -40,37 +41,13 @@ const HELP_POINTER = "\n\n  Run `agentsfleet --help` to see the available comman
 // the description began.
 const ENTRY_PATTERN = /^(\s+)(\S(?:.*?\S)?)(\s{2,})(\S.*)$/;
 const INDENT_PATTERN = /^\s*/;
-const ANSI_PATTERN = /\u001B\[[0-9;]*m/g;
 
 // Past this, aligning the description would leave it a sliver of the line, so
 // the entry breaks after its term instead and the description starts fresh.
 const MAX_TERM_COLUMN = 34;
 const HANGING_INDENT = "    ";
 
-const visibleLength = (text: string): number => text.replace(ANSI_PATTERN, "").length;
 
-/**
- * Greedy word wrap at a fixed left margin.
- *
- * Width is measured on visible characters: a colour escape costs terminal
- * columns nowhere but in `String.length`, and counting it would wrap styled
- * help earlier than plain help for no reason a reader could see.
- */
-const wrapAt = (text: string, margin: string, width: number): ReadonlyArray<string> => {
-  const lines: string[] = [];
-  let current = "";
-  for (const word of text.split(/\s+/)) {
-    const candidate = current.length === 0 ? word : `${current} ${word}`;
-    if (visibleLength(candidate) > width && current.length > 0) {
-      lines.push(current);
-      current = word;
-      continue;
-    }
-    current = candidate;
-  }
-  if (current.length > 0) lines.push(current);
-  return lines.map((line, index) => (index === 0 ? line : `${margin}${line}`));
-};
 
 const wrapEntry = (
   indent: string,

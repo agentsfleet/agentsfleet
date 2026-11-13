@@ -32,7 +32,7 @@ pub(crate) const fn answer(status: GateStatus) -> Option<Answer> {
     match status {
         GateStatus::Pending => None,
         GateStatus::Approved => Some(Answer::Approved),
-        GateStatus::Denied | GateStatus::TimedOut | GateStatus::AutoKilled => Some(Answer::Denied),
+        GateStatus::Denied | GateStatus::TimedOut | GateStatus::Archived => Some(Answer::Denied),
     }
 }
 
@@ -49,7 +49,7 @@ mod tests {
         for refusing in [
             GateStatus::Denied,
             GateStatus::TimedOut,
-            GateStatus::AutoKilled,
+            GateStatus::Archived,
         ] {
             assert_eq!(answer(refusing), Some(Answer::Denied), "{refusing:?}");
         }
@@ -65,7 +65,7 @@ mod tests {
             ("approved", GateStatus::Approved),
             ("denied", GateStatus::Denied),
             ("timed_out", GateStatus::TimedOut),
-            ("auto_killed", GateStatus::AutoKilled),
+            ("archived", GateStatus::Archived),
         ] {
             assert_eq!(
                 from_spelling::<GateStatus>(spelling),

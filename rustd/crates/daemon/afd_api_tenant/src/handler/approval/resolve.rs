@@ -91,6 +91,12 @@ pub(crate) async fn resolve<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_RESOLVE))?;
 
+    super::setup::after_resolution(&services, &gate, outcome, &resolution, &person).await;
+    answered(resolution)
+}
+
+/// The response a resolution earns.
+fn answered(resolution: Resolution) -> Result<Response, Refusal> {
     match resolution {
         Resolution::Resolved(row) => Ok(Json(ResolvedResponse {
             gate_id: Cow::Owned(row.gate_id.into()),
@@ -123,6 +129,7 @@ pub(crate) async fn resolve<D: Services>(
         )),
     }
 }
+
 /// The status the path's verb resolves to.
 fn parse_decision(decision: &str) -> Result<Decision, Refusal> {
     match decision {

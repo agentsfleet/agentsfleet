@@ -26,14 +26,10 @@ export type TileLiveness =
 export const SNAPSHOT_CAPPED_OR_ERRORED = "capped_or_errored" as const;
 export type SnapshotReason = typeof SNAPSHOT_CAPPED_OR_ERRORED;
 
-const DRAINED_STATUSES: ReadonlySet<string> = new Set([
-  AGENTSFLEET_STATUS.STOPPED,
-  AGENTSFLEET_STATUS.PAUSED,
-  AGENTSFLEET_STATUS.KILLED,
-]);
+const DRAINED_STATUSES: ReadonlySet<string> = new Set([AGENTSFLEET_STATUS.ARCHIVED]);
 
 // Pure liveness derivation — the single source both the tile and its tests
-// read. A parked or killed fleet is `drained` and opens no stream at all; a
+// read. An archived fleet is `drained` and opens no stream at all; a
 // live fleet whose connection is up (or still opening) is `live`; a live fleet
 // whose connection is reconnecting, offline, or ended for lost access shows its
 // last event as a `snapshot` rather than going dark. If the connection recovers
@@ -54,16 +50,17 @@ export function deriveTileLiveness(
 }
 
 // The fleet's LIFECYCLE state (distinct from stream liveness): active → live,
-// parked/killed → parked/failed. Emitted as the tile link's `data-state` so
-// lifecycle acceptance tests can key on how a stop/kill reflects in the wall,
+// installing → installing, archived → archived, and an unrecognised status →
+// parked. Emitted as the tile link's `data-state` so lifecycle acceptance
+// tests can key on how an archive reflects in the wall,
 // the same vocabulary the list rows used. Not the same axis as `TileKind`,
 // which is about the stream (a live fleet can be `snapshot` if its feed drops).
-export type FleetRowState = "live" | "installing" | "parked" | "failed";
+export type FleetRowState = "live" | "installing" | "archived" | "parked";
 
 export function fleetRowState(status: string): FleetRowState {
   if (status === AGENTSFLEET_STATUS.ACTIVE) return "live";
   if (status === AGENTSFLEET_STATUS.INSTALLING) return "installing";
-  if (status === AGENTSFLEET_STATUS.KILLED) return "failed";
+  if (status === AGENTSFLEET_STATUS.ARCHIVED) return "archived";
   return "parked";
 }
 

@@ -18,8 +18,8 @@ use afd_runner::sweep::census::Census;
 /// The statuses this fixture seeds, and how many of each.
 const SEEDED: [(FleetStatusLabel, u64); 3] = [
     (FleetStatusLabel::Active, 2),
-    (FleetStatusLabel::Paused, 1),
-    (FleetStatusLabel::Stopped, 1),
+    (FleetStatusLabel::Installing, 1),
+    (FleetStatusLabel::Archived, 1),
 ];
 
 #[tokio::test]

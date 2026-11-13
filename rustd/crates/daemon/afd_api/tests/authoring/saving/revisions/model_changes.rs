@@ -126,53 +126,6 @@ async fn save_without_model_change(fleet: &Fleet, applied: &Value) {
     assert_eq!(history_with_receipts(fleet, 3).await.len(), 1);
 }
 
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn catalogue_price_changes_do_not_require_review_to_resume_a_ready_fleet() {
-    let fleet = Fleet::create().await;
-    let stopped = stop_then_change_price(&fleet).await;
-    let resumed = fleet
-        .patch_resource(
-            r#"{"status":"active"}"#,
-            stopped["etag"].as_str().expect("stopped tag"),
-        )
-        .await;
-    assert_eq!(resumed.status(), StatusCode::OK);
-    let resumed = json_body(resumed).await;
-    assert_eq!(
-        resumed["status"], "active",
-        "ready setup needs no repeat review"
-    );
-    assert!(resumed.get("needs_re_review").is_none());
-    assert!(
-        !resumed["setup"]["checks"]
-            .as_array()
-            .expect("current checks")
-            .iter()
-            .any(|check| check["subject"] == "review_changed")
-    );
-    assert!(
-        history_with_receipts(&fleet, 1).await.is_empty(),
-        "price drift is not a model change"
-    );
-    fleet.case.cleanup().await;
-}
-
-async fn stop_then_change_price(fleet: &Fleet) -> Value {
-    let stopped = fleet
-        .patch_resource(
-            r#"{"status":"stopped"}"#,
-            fleet.saved["etag"].as_str().expect("fleet tag"),
-        )
-        .await;
-    assert_eq!(stopped.status(), StatusCode::OK);
-    sqlx::query("UPDATE model.platform_model_prices SET input_nanos_per_mtok=input_nanos_per_mtok+1,updated_at=clock_timestamp() WHERE platform_model_id=$1")
-        .bind(&fleet.case.base.catalogue)
-        .execute(&mut *fleet.case.base.db.acquire().await.expect("price connection"))
-        .await.expect("catalogue price changed");
-    json_body(stopped).await
-}
-
 async fn select_model(fleet: &Fleet, draft: &str, model: &str) -> Value {
     let current = send(
         &fleet.case.router,

@@ -52,8 +52,8 @@ const RUNNABLE_CLOSED: Bound = Bound {
     ..RUNNABLE_OPEN
 };
 
-fn stopped(mut answer: Answer) -> Answer {
-    answer.status = Some(FleetStatus::Stopped.as_str().to_owned());
+fn archived(mut answer: Answer) -> Answer {
+    answer.status = Some(FleetStatus::Archived.as_str().to_owned());
     answer
 }
 
@@ -63,17 +63,17 @@ fn verdict_names_the_first_refusal_in_order() -> Outcome {
     absent.fleet_found = false;
     assert!(refusal(&absent, RUNNABLE_OPEN)?.is_fleet_absent());
 
-    let repeat = decide(&stored(stopped(open()), false), RUNNABLE_CLOSED)?;
+    let repeat = decide(&stored(archived(open()), false), RUNNABLE_CLOSED)?;
     assert!(
         !repeat.inserted,
-        "a stored row on a stopped fleet answers the repeat"
+        "a stored row on an archived fleet answers the repeat"
     );
 
-    let mut foreign_marker = stopped(open());
+    let mut foreign_marker = archived(open());
     foreign_marker.setup_current = false;
     assert_eq!(
         refusal(&foreign_marker, RUNNABLE_OPEN)?.not_runnable(),
-        Some(FleetStatus::Stopped)
+        Some(FleetStatus::Archived)
     );
 
     let mut policy = open();
@@ -104,7 +104,7 @@ fn an_unbound_status_admits_an_installing_fleet() -> Outcome {
 #[test]
 fn an_unknown_status_or_a_missing_row_is_unreadable() -> Outcome {
     let mut unknown = open();
-    unknown.status = Some("archived".to_owned());
+    unknown.status = Some("draining".to_owned());
     assert_eq!(
         refusal(&unknown, RUNNABLE_OPEN)?.code(),
         af_core::error_code::INTERNAL_DB_QUERY

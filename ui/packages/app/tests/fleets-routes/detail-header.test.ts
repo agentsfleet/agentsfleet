@@ -27,9 +27,9 @@ describe("fleets routes — detail header and summary", () => {
     })}));
   });
 
-  it("shows the fleet card's agent name beneath the fleet name when paused", async () => {
+  it("shows the fleet card's agent name beneath the fleet name when archived", async () => {
     const { definition } = detailBody();
-    mockFetchBilling(happyBilling, {fleet: {status: "paused", definition: {
+    mockFetchBilling(happyBilling, {fleet: {status: "archived", definition: {
       ...definition, config: {...definition.config, name: "support-triage"},
     }}});
     const { default: Page } =
@@ -46,7 +46,7 @@ describe("fleets routes — detail header and summary", () => {
     expect(markup).toContain(FLEET_TITLE_MARKUP);
     expect(markup).toContain(`>${agentDisplayName(FLEET_ID)}</p>`);
     expect(markup).not.toContain(">support-triage</p>");
-    expect(markup).not.toContain(">paused</p>");
+    expect(markup).not.toContain(">archived</p>");
     expect(markup).not.toContain("data-live");
   });
 

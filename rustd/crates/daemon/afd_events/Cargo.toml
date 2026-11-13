@@ -28,7 +28,7 @@ afd_admission.workspace = true
 af_core = { workspace = true, features = ["sqlx"] }
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
-# The status a stopped-fleet refusal names.
+# The status a refusal for a fleet that is not active names.
 afd_fleet_lifecycle.workspace = true
 # The event type and status spellings the wire carries.
 afd_api_wire.workspace = true

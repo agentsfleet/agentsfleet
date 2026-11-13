@@ -50,7 +50,9 @@ export async function getFleet(
   return { fleet, etag: fleet.etag };
 }
 
-export type FleetStatusSettable = "active" | "stopped" | "killed";
+// `active` retries setup of an installing fleet; `archived` is terminal, and a
+// PATCH on an archived fleet answers 409 `UZ-AGT-020`.
+export type FleetStatusSettable = "active" | "archived";
 
 export type FleetStatusUpdate = FleetDetail;
 
@@ -70,8 +72,8 @@ export async function setFleetStatus(
 }
 
 // DELETE /v1/workspaces/{ws}/fleets/{id}
-// Hard-purge. Precondition: status='killed'. Throws UZ-AGT-010 (409) if not
-// killed yet, UZ-AGT-009 (404) if fleet missing.
+// Hard-purge in any status: the daemon ends live work itself, so nothing is
+// archived first. 204 on success; UZ-AGT-009 (404) if the fleet is missing.
 export async function deleteFleet(
   workspaceId: string,
   fleetId: string,

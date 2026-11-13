@@ -10,15 +10,14 @@
 https://agentsfleet.net/v1
 
 ## Operations (operationId: method path)
-Status transitions ride PATCH on the fleet resource — body {status: "active"|"stopped"|"killed"}.
-"paused" is a platform-only state set by the anomaly gate; not callable from the API.
+Status transitions ride PATCH on the fleet resource — body {status: "active"|"archived"}.
+A tripped gate archives the fleet; approving a setup grant retries setup without a PATCH.
 - create_fleet:        POST   /v1/workspaces/{workspace_id}/fleets     # body: {source, name, review_digest, start} — saves a reviewed draft
 - patch_fleet:         PATCH  /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # body: {name?, status?}
-                       #   status "stopped" — halt session, resumable
-                       #   status "active"  — resume from stopped/paused
-                       #   status "killed"  — terminal mark (irreversible)
+                       #   status "active"   — activate an installing fleet, retrying setup
+                       #   status "archived" — cancel its work, keep history (irreversible)
 - apply_fleet_revision: POST  /v1/workspaces/{workspace_id}/fleets/{fleet_id}/revisions   # apply a reviewed setup improvement
-- delete_fleet:        DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # hard-purge; precondition status='killed'
+- delete_fleet:        DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # hard-purge in any status
 - post_fleet_message:  POST   /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages   # steer / chat
 - list_fleet_events:   GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events
 - stream_fleet_events: GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream

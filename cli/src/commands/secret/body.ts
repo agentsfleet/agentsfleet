@@ -59,9 +59,9 @@ const reject = (message: string, suggestion: string): ParsedData =>
 // walks the reader into `--base-url is only valid with --provider
 // openai-compatible` — advice that produces the next error.
 const NAMED_PROVIDER_USAGE =
-  `agentsfleet secret create|update <name> --provider <id> --api-key <key> --model <m>`;
+  `agentsfleet secrets create|update <name> --provider <id> --api-key <key> --model <m>`;
 const CUSTOM_ENDPOINT_USAGE =
-  `agentsfleet secret create|update <name> --provider ${OPENAI_COMPATIBLE_PROVIDER} ` +
+  `agentsfleet secrets create|update <name> --provider ${OPENAI_COMPATIBLE_PROVIDER} ` +
   `--base-url https://host/v1 --model <m> [--api-key <key>]`;
 // For the caller who has not named a provider yet, so neither shape is wrong.
 const PROVIDER_ADD_USAGE = `${NAMED_PROVIDER_USAGE}  (or)  ${CUSTOM_ENDPOINT_USAGE}`;
@@ -178,7 +178,7 @@ const resolveDataSource = (
       return yield* Effect.fail(
         new ValidationError({
           detail: "--data=@- but stdin was empty",
-          suggestion: "pipe JSON on stdin: cat secret.json | agentsfleet secret create <name> --data=@-",
+          suggestion: "pipe JSON on stdin: cat secret.json | agentsfleet secrets create <name> --data=@-",
         }),
       );
     }

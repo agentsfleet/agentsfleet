@@ -10,7 +10,7 @@ import { COMPOSER_NAME, SEND_LABEL, UUID_V7 } from "./steer-copy";
 export * from "./steer-copy";
 export const OPERATION_ID = expect.stringMatching(UUID_V7);
 // A definite refusal: the fleet will not take work, so nothing was admitted.
-export const REFUSED = { ok: false, error: "Fleet is paused", status: 409, errorCode: "UZ-AGT-012" } as const;
+export const REFUSED = { ok: false, error: "Fleet is not active", status: 409, errorCode: "UZ-AGT-012" } as const;
 // An answer that settles nothing: the daemon may hold the message.
 export const UNAVAILABLE = { ok: false, error: "Provider unavailable", status: 503, errorCode: "UZ-API-002" } as const;
 // The 202 as the daemon answers a fresh admission.

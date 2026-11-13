@@ -153,8 +153,8 @@ impl LeaseService {
         let config = match self.leases.stored_config(&lease.fleet_id).await {
             Ok(Some(config)) => config,
             // The row is gone only when a purge raced the run. There is no
-            // ceiling left to read; a stopped or killed fleet still has one,
-            // so it never reaches this arm.
+            // ceiling left to read; an archived fleet still has one, so it
+            // never reaches this arm.
             Ok(None) => return Ok(()),
             // The one CLOSED arm. A stored ceiling this daemon cannot parse is
             // not a ceiling it may ignore — and unlike the outage below, it

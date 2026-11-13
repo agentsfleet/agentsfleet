@@ -8,7 +8,7 @@ pub(crate) mod patch;
 pub(crate) mod read;
 mod render;
 pub(crate) mod revision;
-mod schedules;
+pub(crate) mod schedules;
 
 use crate::auth::{Owned, PersonIdentity};
 use afd_authoring::Access;

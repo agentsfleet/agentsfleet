@@ -150,8 +150,8 @@ pub(crate) async fn fleet<D: Services>(
 
     // Read the status only to prove the fleet is THIS workspace's. A stream
     // opened on a fleet somebody else owns would deliver their frames, so the
-    // check is not a nicety — and a stopped fleet still streams, because a
-    // person watching one wants to see it stop.
+    // check is not a nicety — and an archived fleet still streams, because a
+    // person watching one wants to see its last run end.
     services
         .fleets()
         .ingress_status(&owned.workspace, &fleet)

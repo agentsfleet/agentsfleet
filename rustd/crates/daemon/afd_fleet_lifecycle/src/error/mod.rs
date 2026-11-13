@@ -27,7 +27,7 @@ use af_core::error_code::{self, ErrorCode};
 pub mod detail;
 mod raise;
 
-pub(crate) use self::raise::{query, row_malformed, shared, source_stale};
+pub(crate) use self::raise::{query, row_malformed, shared};
 
 /// The result every fallible function in this crate returns.
 ///
@@ -69,15 +69,6 @@ pub(crate) enum ErrorKind {
     #[error("no fleet with that id lives in this workspace")]
     NotFound,
 
-    #[error("a fleet must be killed before it can be purged")]
-    MustKillFirst,
-
-    #[error("the caller's If-Match names a version the row has moved past")]
-    SourceStale {
-        /// The tag the row holds now, so a caller retries in one round trip.
-        current: Box<str>,
-    },
-
     /// One load every concurrent reader of a cache entry waited on, and its
     /// failure, which each of them receives behind the same `Arc`.
     #[error("a load shared by every concurrent reader failed")]
@@ -102,13 +93,6 @@ impl Error {
                 (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)
             }
             ErrorKind::NotFound => (error_code::AGENTSFLEET_NOT_FOUND, detail::NOT_FOUND),
-            ErrorKind::MustKillFirst => (
-                error_code::AGENTSFLEET_ALREADY_TERMINAL,
-                detail::MUST_KILL_FIRST,
-            ),
-            ErrorKind::SourceStale { .. } => {
-                (error_code::AGENTSFLEET_SOURCE_STALE, detail::SOURCE_STALE)
-            }
             // A shared load answers as the failure beneath it, so a caller of
             // a coalesced read tells an outage from a bad statement as one
             // that ran its own statement does.
@@ -142,28 +126,7 @@ impl Error {
         match &self.inner.kind {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Shared { source } => source.is_datastore_unavailable(),
-            ErrorKind::Query { .. }
-            | ErrorKind::RowMalformed { .. }
-            | ErrorKind::NotFound
-            | ErrorKind::MustKillFirst
-            | ErrorKind::SourceStale { .. } => false,
-        }
-    }
-
-    /// The tag the row holds now, when this is a stale-version refusal.
-    ///
-    /// `Some` for exactly one kind. The 412's body carries it so a caller
-    /// retries without a second round trip to learn what it should have sent.
-    #[must_use]
-    pub fn stale_tag(&self) -> Option<&str> {
-        match &self.inner.kind {
-            ErrorKind::SourceStale { current } => Some(current),
-            ErrorKind::Datastore { .. }
-            | ErrorKind::Query { .. }
-            | ErrorKind::RowMalformed { .. }
-            | ErrorKind::NotFound
-            | ErrorKind::MustKillFirst
-            | ErrorKind::Shared { .. } => None,
+            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } | ErrorKind::NotFound => false,
         }
     }
 }

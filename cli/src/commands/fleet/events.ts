@@ -1,4 +1,4 @@
-// `agentsfleet events <fleet_id>` — newest-first paginated history print.
+// `agentsfleet fleet events <fleet_id>` — newest-first paginated history print.
 // Filters: --actor (glob), --since (Go-style duration or RFC 3339),
 // --cursor (opaque base64url from a prior `next_cursor`), --limit.
 // Default: one line per event with ts + actor + status + preview.
@@ -97,7 +97,7 @@ export const eventsEffectFromFlags = (
         new ValidationError({
           detail: "fleet_id is required",
           suggestion:
-            "usage: agentsfleet events <fleet_id> [--actor=glob] [--since=2h] [--cursor=...] [--limit=N] [--json]",
+            "usage: agentsfleet fleet events <fleet_id> [--actor=glob] [--since=2h] [--cursor=...] [--limit=N] [--json]",
         }),
       );
     }
@@ -126,7 +126,7 @@ export const eventsEffectFromFlags = (
     }
     if (res.next_cursor) {
       yield* output.info(
-        ui.dim(`  More: agentsfleet events ${flags.fleetId} --cursor=${res.next_cursor}`),
+        ui.dim(`  More: agentsfleet fleet events ${flags.fleetId} --cursor=${res.next_cursor}`),
       );
     }
   });

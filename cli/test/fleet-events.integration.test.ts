@@ -28,7 +28,7 @@ describe("events — happy path (human output)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["events", FLEET_ID],
+          ["fleet", "events", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -65,7 +65,7 @@ describe("events — happy path (human output)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["events", FLEET_ID],
+          ["fleet", "events", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -86,7 +86,7 @@ describe("events — happy path (human output)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["events", FLEET_ID],
+          ["fleet", "events", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -106,7 +106,7 @@ describe("events — happy path (human output)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["events", FLEET_ID],
+          ["fleet", "events", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -128,7 +128,7 @@ describe("events — happy path (human output)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["events", FLEET_ID],
+          ["fleet", "events", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -153,7 +153,7 @@ describe("events — happy path (human output)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["events", FLEET_ID],
+          ["fleet", "events", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -176,7 +176,7 @@ describe("events — query parameter forwarding", () => {
         const out = bufferStream();
         const err = bufferStream();
         await runCli(
-          ["events", FLEET_ID, "--actor", "user", "--since", "2h", "--cursor", "tok_xyz", "--limit", "10"],
+          ["fleet", "events", FLEET_ID, "--actor", "user", "--since", "2h", "--cursor", "tok_xyz", "--limit", "10"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         const search = calls[0]?.search ?? "";
@@ -199,7 +199,7 @@ describe("events — query parameter forwarding", () => {
         const out = bufferStream();
         const err = bufferStream();
         await runCli(
-          ["events", FLEET_ID],
+          ["fleet", "events", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         const search = calls[0]?.search ?? "";
@@ -227,7 +227,7 @@ describe("events — JSON output", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["events", FLEET_ID, "--json"],
+          ["fleet", "events", FLEET_ID, "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -248,7 +248,7 @@ describe("events — JSON output", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["--json", "events", FLEET_ID],
+          ["--json", "fleet", "events", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -273,7 +273,7 @@ describe("events — API error paths", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["events", FLEET_ID],
+          ["fleet", "events", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -295,7 +295,7 @@ describe("events — API error paths", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["events", FLEET_ID],
+          ["fleet", "events", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);

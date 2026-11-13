@@ -37,8 +37,8 @@ pub mod status {
     pub const DENIED: &str = "denied";
     /// The deadline passed with no answer.
     pub const TIMED_OUT: &str = "timed_out";
-    /// The daemon stopped the fleet.
-    pub const AUTO_KILLED: &str = "auto_killed";
+    /// The fleet was archived or deleted while the gate waited.
+    pub const ARCHIVED: &str = "archived";
 }
 
 /// Every state a gate row's `status` can be in.
@@ -61,8 +61,8 @@ pub enum GateStatus {
     Denied,
     /// The deadline passed with no answer.
     TimedOut,
-    /// The daemon stopped the fleet.
-    AutoKilled,
+    /// The fleet was archived or deleted while the gate waited.
+    Archived,
 }
 
 impl GateStatus {
@@ -74,7 +74,7 @@ impl GateStatus {
             Self::Approved => status::APPROVED,
             Self::Denied => status::DENIED,
             Self::TimedOut => status::TIMED_OUT,
-            Self::AutoKilled => status::AUTO_KILLED,
+            Self::Archived => status::ARCHIVED,
         }
     }
 }
@@ -196,7 +196,7 @@ mod tests {
         GateStatus::Approved,
         GateStatus::Denied,
         GateStatus::TimedOut,
-        GateStatus::AutoKilled,
+        GateStatus::Archived,
     ];
 
     /// The spelling written is the spelling read, for every state: a drift
@@ -220,7 +220,7 @@ mod tests {
         // pin test: literal is the contract
         assert_eq!(
             spelled,
-            ["pending", "approved", "denied", "timed_out", "auto_killed"]
+            ["pending", "approved", "denied", "timed_out", "archived"]
         );
     }
 

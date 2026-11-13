@@ -29,7 +29,7 @@ export const TENANT_BILLING_PATH = "/v1/tenants/me/billing";
 export const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
 // The priced model catalogue (model.platform_models and model.platform_model_prices). Shared verbatim with
 // the route declared in rustd/crates/daemon/afd_http/src/route/tenant.rs and the dashboard's
-// lib/api/model_library.ts. Backs `agentsfleet models` and the `--provider`
+// lib/api/model_library.ts. Backs `agentsfleet models list` and the `--provider`
 // check — the CLI carries no provider list of its own.
 export const MODEL_LIBRARY_PATH = "/v1/models";
 export const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";

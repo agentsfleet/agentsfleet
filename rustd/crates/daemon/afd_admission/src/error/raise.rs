@@ -189,7 +189,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         (
             "not runnable",
             ErrorKind::NotRunnable {
-                status: afd_fleet_lifecycle::FleetStatus::Paused,
+                status: afd_fleet_lifecycle::FleetStatus::Archived,
             }
             .into(),
         ),

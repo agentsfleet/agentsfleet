@@ -28,21 +28,21 @@ async fn native_instructions_and_model_survive_the_claim_without_markdown_parsin
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn stopped_and_missing_fleets_do_not_issue_work() {
+async fn archived_and_missing_fleets_do_not_issue_work() {
     let fixtures = Fixtures::create().await;
     let held = seeded::<0>(&fixtures).await;
     fixtures.native_definition(&held.fleet, &definition()).await;
-    sqlx::query("UPDATE fleet.fleets SET status='stopped' WHERE id=$1")
+    sqlx::query("UPDATE fleet.fleets SET status='archived' WHERE id=$1")
         .bind(&held.fleet)
         .execute(&mut *fixtures.database.acquire().await.expect("connection"))
         .await
-        .expect("stop owned fleet");
+        .expect("archive owned fleet");
     assert!(
         fixtures
             .leases()
             .installed(&held.fleet)
             .await
-            .expect("stopped read")
+            .expect("archived read")
             .is_none()
     );
     let absent = afd_db::test_util::mint_id();

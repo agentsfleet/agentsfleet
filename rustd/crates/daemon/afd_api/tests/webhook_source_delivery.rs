@@ -55,7 +55,7 @@ const NOT_JSON: &str = "deploy.finished refs/heads/main";
 const ACTOR_LINEAR: &str = "webhook:linear";
 
 /// The reason a delivery to a fleet that is not runnable is dropped.
-const REASON_PAUSED: &str = "fleet_paused";
+const REASON_FLEET_NOT_ACTIVE: &str = "fleet_not_active";
 
 /// A fleet id that is not one.
 const UNPARSEABLE_FLEET: &str = "not-a-uuid";
@@ -156,11 +156,11 @@ async fn a_redelivery_repeats_the_first_claim_and_reports_that_it_did() {
 #[tokio::test]
 async fn a_delivery_to_a_fleet_that_is_not_runnable_is_acknowledged_and_dropped() {
     // Acknowledged rather than refused: the sender configured this URL against
-    // a fleet somebody has since paused, and a 4xx would retry-loop a delivery
-    // that will be just as paused next time. The fleet's state is read before
+    // a fleet since archived, and a 4xx would retry-loop a delivery that will
+    // be just as refused next time. The fleet's state is read before
     // the body is parsed, so a body that is not a document is dropped alike.
     for (case, body) in [("a document", PAYLOAD), ("not a document", NOT_JSON)] {
-        let ingress = fleet_in("paused");
+        let ingress = fleet_in("archived");
         let answered = deliver(&ingress, signed::FLEET, signed::SECRET, body).await;
 
         let status = answered.status();
@@ -168,12 +168,12 @@ async fn a_delivery_to_a_fleet_that_is_not_runnable_is_acknowledged_and_dropped(
         assert_eq!(status, StatusCode::OK, "{case}: {document}");
         assert_eq!(
             document.get("ignored").and_then(Value::as_str),
-            Some(REASON_PAUSED),
+            Some(REASON_FLEET_NOT_ACTIVE),
             "{case}"
         );
         assert!(
             ingress.deliveries().is_empty(),
-            "{case}: a paused fleet must not accumulate work to run when it resumes"
+            "{case}: an archived fleet accumulates no work"
         );
     }
 }

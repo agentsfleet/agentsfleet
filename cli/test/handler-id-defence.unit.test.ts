@@ -14,7 +14,7 @@ import { HttpClient } from "../src/services/http-client.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 
-import { stopEffectFromId, resumeEffectFromId, killEffectFromId } from "../src/commands/fleet/fleet.ts";
+import { activateEffectFromId, archiveEffectFromId } from "../src/commands/fleet/fleet.ts";
 
 const MALFORMED = "not-a-uuid";
 const WORKSPACE_ID = "0192a3b4-c5d6-7e8f-9012-3456789abcde";
@@ -74,30 +74,23 @@ const refusalText = async (effect: Effect.Effect<unknown, unknown, never>): Prom
 };
 
 describe("handler id defence — a malformed id never reaches the wire", () => {
-  test("stop refuses a malformed fleet_id", async () => {
+  test("activate refuses a malformed fleet_id", async () => {
     const text = await refusalText(
-      stopEffectFromId(MALFORMED) as Effect.Effect<unknown, unknown, never>,
+      activateEffectFromId(MALFORMED) as Effect.Effect<unknown, unknown, never>,
     );
     expect(text).toContain("fleet_id");
   });
 
-  test("resume refuses a malformed fleet_id", async () => {
+  test("archive refuses a malformed fleet_id", async () => {
     const text = await refusalText(
-      resumeEffectFromId(MALFORMED) as Effect.Effect<unknown, unknown, never>,
-    );
-    expect(text).toContain("fleet_id");
-  });
-
-  test("kill refuses a malformed fleet_id", async () => {
-    const text = await refusalText(
-      killEffectFromId(MALFORMED) as Effect.Effect<unknown, unknown, never>,
+      archiveEffectFromId(MALFORMED) as Effect.Effect<unknown, unknown, never>,
     );
     expect(text).toContain("fleet_id");
   });
 
   test("an absent fleet_id is refused as required, not as malformed", async () => {
     const text = await refusalText(
-      stopEffectFromId(undefined) as Effect.Effect<unknown, unknown, never>,
+      archiveEffectFromId(undefined) as Effect.Effect<unknown, unknown, never>,
     );
     expect(text).toContain("required");
   });

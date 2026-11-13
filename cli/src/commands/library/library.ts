@@ -9,7 +9,7 @@ import { readLibraryPage, type LibraryPageOptions } from "./read.ts";
 import { ui, AGE_KEY } from "../../output/index.ts";
 
 const FIELD = { id: "id", name: "name", visibility: "visibility", revision: "revision" } as const;
-const CHAT_HINT = "Start from a revision: agentsfleet chat --library <library_id> --revision <revision_id>";
+const CHAT_HINT = "Start from a revision: agentsfleet chat --plugin <plugin_id> --revision <revision_id>";
 const PUBLISH_HINT = "Publish a reviewed chat with /publish <label>, or chat --publish <label> --review-digest <digest>.";
 
 export const libraryEffectFromOptions = Effect.fn("library.browse")(function* (
@@ -23,13 +23,13 @@ export const libraryEffectFromOptions = Effect.fn("library.browse")(function* (
   const path = owned ? wsOwnedFleetLibrariesPath(workspace) : wsFleetLibrariesPath(workspace);
   const result = yield* readLibraryPage(http, path, token, options);
   if (output.format !== OUTPUT_FORMAT.text) {
-    yield* output.success(owned ? "Owned Fleet libraries" : "Fleet libraries", { ...result });
+    yield* output.success(owned ? "Owned plugins" : "Plugins", { ...result });
     return;
   }
-  if (result.items.length === 0) yield* output.info("No published Fleet libraries in this page.");
+  if (result.items.length === 0) yield* output.info("No published plugins on this page.");
   else yield* output.printEntityTable({
     name: { key: FIELD.name, label: "NAME" },
-    id: { key: FIELD.id, label: "LIBRARY" },
+    id: { key: FIELD.id, label: "PLUGIN" },
     domain: [{ key: FIELD.visibility, label: "TIER" }, { key: FIELD.revision, label: "REVISION" }],
   }, result.items.map((entry) => ({
     id: entry.id, name: entry.name, visibility: entry.visibility,
@@ -37,6 +37,6 @@ export const libraryEffectFromOptions = Effect.fn("library.browse")(function* (
   })));
   yield* output.info(ui.dim(result.items.length === 0 ? PUBLISH_HINT : CHAT_HINT));
   if (result.next_cursor !== null) yield* output.info(ui.dim(
-    `More available: agentsfleet library${owned ? " list" : ""} --starting-after ${result.next_cursor}`,
+    `More available: agentsfleet plugins${owned ? " list" : ""} --starting-after ${result.next_cursor}`,
   ));
 });

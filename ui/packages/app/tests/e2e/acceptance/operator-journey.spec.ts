@@ -9,11 +9,9 @@ import { cleanWorkspaceFleets, purgeFixtureFleet } from "./fixtures/teardown";
 import { gotoWorkspace, openSettingsDestination, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
-  expectDetailKilled,
+  archiveFleet,
+  expectDetailArchived,
   expectRowState,
-  killFleet,
-  resumeFleet,
-  stopFleet,
 } from "./fixtures/lifecycle";
 import {
   cliEnv,
@@ -246,28 +244,21 @@ test.describe("operator journey", () => {
       AGENTSFLEET_API_URL: apiUrl,
       AGENTSFLEET_API_KEY: rawApiKey,
     });
-    const cli = await spawnAgentsfleet(["--json", "list", "--workspace", wsId, "--limit", "10"], commandEnv);
+    const cli = await spawnAgentsfleet(["--json", "fleet", "list", "--workspace", wsId, "--limit", "10"], commandEnv);
     if (cli.code !== 0) {
-      throw new Error(`agentsfleet list failed with API key auth (exit ${cli.code}):\n${cli.stderr}`);
+      throw new Error(`agentsfleet fleet list failed with API key auth (exit ${cli.code}):\n${cli.stderr}`);
     }
     const cliList = JSON.parse(cli.stdout) as CliFleetListResponse;
     expect(cliList.items?.some((fleet) => fleet.id === fleetId && (fleet.name ?? "").startsWith(JOURNEY_FLEET_PREFIX))).toBe(true);
 
-    await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
-    await stopFleet(page);
     await clickSidebarLink(page, "/settings/billing", /\/settings\/billing(\?|$)/);
     await expect(page.getByLabel("Period totals")).toBeVisible();
 
     await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
-    await resumeFleet(page);
+    await archiveFleet(page);
+    await expectDetailArchived(page);
     await page.goto(workspaceHref(wsId, "fleets"));
-    await expectRowState(page, fleetId, "live");
-
-    await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
-    await killFleet(page);
-    await expectDetailKilled(page);
-    await page.goto(workspaceHref(wsId, "fleets"));
-    await expectRowState(page, fleetId, "failed");
+    await expectRowState(page, fleetId, "archived");
     await deleteFleetWithApiKey(apiUrl, rawApiKey, wsId, fleetId);
 
     await page.goto("/settings/api-keys");
@@ -278,7 +269,7 @@ test.describe("operator journey", () => {
     await page.getByRole("alertdialog").getByRole("button", { name: /^revoke$/i }).click();
 
     const revokedCli = await spawnAgentsfleet(
-      ["list", "--workspace", wsId, "--limit", "1"],
+      ["fleet", "list", "--workspace", wsId, "--limit", "1"],
       cliEnv({
         ...commandEnv,
         AGENTSFLEET_NO_RETRY: "1",

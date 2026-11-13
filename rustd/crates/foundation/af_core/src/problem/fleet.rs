@@ -146,7 +146,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::RUN_LEASE_CANCELLED,
         status: 409,
         title: "Lease cancelled",
-        hint: "The fleet was killed. Stop this lease and report its final result.",
+        hint: "The fleet was archived. Stop this lease and report its final result.",
         user_message: None,
     },
     Problem {
@@ -170,7 +170,7 @@ pub(super) const FLEET: &[Problem] = &[
         // exists to make.
         status: 424,
         title: "Fleet credential missing",
-        hint: "A required credential is not in the vault. Add it with: `agentsfleet secret create <NAME>`",
+        hint: "A required credential is not in the vault. Add it with: `agentsfleet secrets create <NAME>`",
         // Not dashboard-facing: this is a CLI and API-key surface, and on the
         // lease path it is logged rather than rendered at all.
         user_message: None,
@@ -179,7 +179,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::AGENTSFLEET_NAME_EXISTS,
         status: 409,
         title: "Fleet name already exists",
-        hint: "A Fleet with this name already exists. Use `agentsfleet kill <name>` first, then deploy again.",
+        hint: "A Fleet with this name already exists. Find its id with `agentsfleet fleet list`, run `agentsfleet fleet delete <fleet_id>`, then deploy again.",
         // No dashboard sentence: an explicit name is a command-line and
         // API-key surface, because the dashboard's one-step install names
         // nothing and takes the re-drawn suffix instead of ever seeing this.
@@ -201,18 +201,9 @@ pub(super) const FLEET: &[Problem] = &[
         // oracle for which identifiers are real.
         status: 404,
         title: "Fleet not found",
-        hint: "Fleet not found. Verify the fleet_id and that it has not been killed.",
+        hint: "Fleet not found. Verify the fleet_id and that it has not been deleted.",
         user_message: Some(
             "We couldn't find that Fleet. It may have been deleted, or the identifier doesn't match one in this workspace.",
-        ),
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_ALREADY_TERMINAL,
-        status: 409,
-        title: "Fleet state transition not allowed",
-        hint: "That action is not valid from the fleet's current state. The error detail names the refused transition.",
-        user_message: Some(
-            "That action isn't available for this Fleet right now — check its current status and try again.",
         ),
     },
     Problem {
@@ -238,11 +229,11 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
-        code: error_code::AGENTSFLEET_PAUSED_INGRESS,
+        code: error_code::AGENTSFLEET_NOT_ACTIVE,
         status: 409,
-        title: "Fleet is paused",
-        hint: "This fleet is not active and refuses new work. Resume it with: `agentsfleet resume <fleet>`, then retry.",
-        user_message: Some("This Fleet is paused. Resume it before sending new work."),
+        title: "Fleet is not active",
+        hint: "This fleet is not active and refuses new work: it is still installing, or it was archived. Check it with `agentsfleet fleet show <fleet>`.",
+        user_message: Some("This Fleet isn't active, so it can't take new work."),
     },
     Problem {
         code: error_code::EVENT_NOT_FOUND,
@@ -260,6 +251,15 @@ pub(super) const FLEET: &[Problem] = &[
         hint: "No full output was kept for that call on this event. Use the call_id the thread shows, as {fence}:{n}. A call in another workspace answers the same.",
         user_message: Some(
             "The full output of this call wasn't kept. The thread still shows its first and last lines.",
+        ),
+    },
+    Problem {
+        code: error_code::AGENTSFLEET_ARCHIVED,
+        status: 409,
+        title: "Fleet is archived",
+        hint: "This fleet is archived, and archive is terminal: no status or name change applies. Delete it with `agentsfleet fleet delete <fleet_id>`, or set up a new fleet.",
+        user_message: Some(
+            "This Fleet is archived and can't change. Delete it, or set up a new Fleet.",
         ),
     },
     Problem {

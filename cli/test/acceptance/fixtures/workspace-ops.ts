@@ -108,7 +108,7 @@ export async function useWorkspace(env: Env, workspaceId: string): Promise<void>
 
 /** `list --workspace <id> --json` → the workspace's fleet rows. */
 export async function listFleetsIn(env: Env, workspaceId: string): Promise<ReadonlyArray<FleetRow>> {
-  const result = await runFleetctl(["list", FLAG_WORKSPACE, workspaceId, FLAG_JSON], { env });
+  const result = await runFleetctl(["fleet", "list", FLAG_WORKSPACE, workspaceId, FLAG_JSON], { env });
   const parsed = parseJson(result, `list ${FLAG_WORKSPACE} ${workspaceId}`);
   const items = parsed[AGENT_LIST_ITEMS_KEY];
   assert.ok(Array.isArray(items),

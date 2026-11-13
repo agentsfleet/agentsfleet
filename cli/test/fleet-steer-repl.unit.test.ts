@@ -93,7 +93,8 @@ const testLayer = (
       info: (msg) => Effect.sync(() => rec.stdout.push(msg)),
       success: (msg) => Effect.sync(() => rec.stdout.push(msg)),
       warn: (msg) => Effect.sync(() => rec.stderr.push(msg)),
-      error: (msg) => Effect.sync(() => rec.stderr.push(msg)),
+      // Head and labelled fields together, as the block would print them.
+      error: (msg, meta) => Effect.sync(() => rec.stderr.push([msg, ...Object.values(meta?.fields ?? {})].join("\n"))),
       outro: (msg) => Effect.sync(() => rec.stdout.push(msg)),
       printJson: (payload) => Effect.sync(() => rec.stdout.push(JSON.stringify(payload))),
       printJsonErr: (payload) => Effect.sync(() => rec.stderr.push(JSON.stringify(payload))),

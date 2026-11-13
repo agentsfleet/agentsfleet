@@ -2,7 +2,7 @@
 //
 // `Command.provideEffectDiscard` runs an effect before a handler — but before
 // the handler of the ONE command it is attached to. The root has no handler of
-// its own, so attaching there gates nothing; a signed-out `agentsfleet list`
+// its own, so attaching there gates nothing; a signed-out `agentsfleet fleet list`
 // would sail past and fail later, deeper, with a worse message.
 //
 // So the gate is composed into each handler instead, through this one helper.

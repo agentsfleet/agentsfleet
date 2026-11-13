@@ -14,7 +14,7 @@ import type { ApprovalDecision } from "./approvals-types";
 // (`GateRow` in rustd/crates/daemon/afd_approval/src/inbox/row.rs)
 // verbatim — no shim, no rename. Renders the same shape the dashboard queries.
 
-export type ApprovalStatus = "pending" | "approved" | "denied" | "timed_out" | "auto_killed";
+export type ApprovalStatus = "pending" | "approved" | "denied" | "timed_out" | "archived";
 
 export type ApprovalStatusValue = ApprovalStatus | (string & {});
 

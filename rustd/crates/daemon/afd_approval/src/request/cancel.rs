@@ -14,14 +14,14 @@ const CANCELLED_BY: &str = "setup-cancellation";
 const CANCELLED_DETAIL: &str = "Fleet setup was cancelled";
 
 impl IntegrationGrants {
-    /// Closes outstanding setup requests in the transaction that kills their fleet.
+    /// Closes outstanding setup requests in the transaction that archives or deletes their fleet.
     ///
     /// The caller holds the fleet row exclusively. `request_for_setup` takes that
     /// same lock before writing, so a late retry cannot reopen these cards. The
     /// cards close on the database clock.
     ///
     /// # Errors
-    /// Preserves statement failures so the surrounding Kill rolls back atomically.
+    /// Preserves statement failures so the surrounding archive or delete rolls back atomically.
     pub async fn cancel_setup_on(
         &self,
         connection: &mut PgConnection,
@@ -29,7 +29,7 @@ impl IntegrationGrants {
     ) -> Result<()> {
         sqlx::query(grant_sql::CANCEL_SETUP_CARDS)
             .bind(fleet)
-            .bind(status::AUTO_KILLED)
+            .bind(status::ARCHIVED)
             .bind(CANCELLED_BY)
             .bind(CANCELLED_DETAIL)
             .bind(super::KIND_INTEGRATION_GRANT)

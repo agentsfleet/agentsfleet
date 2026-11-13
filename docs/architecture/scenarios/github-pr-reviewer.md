@@ -36,7 +36,7 @@ sequenceDiagram
   GH-->>API: installation accessible
   API->>PG: conditional vault handle + connector.installs route
   Note over API,PG: other workspace already owns installation → 403, no mutation
-  Op->>CLI: chat --library github-pr-reviewer --revision <REVISION_ID> --model <MODEL_REF>
+  Op->>CLI: chat --plugin github-pr-reviewer --revision <REVISION_ID> --model <MODEL_REF>
   CLI->>API: POST /v1/workspaces/{ws}/drafts { source: library revision }
   Op->>CLI: ask for repositories=[acme/payments], events=[pull_request]; review
   CLI->>API: GET draft review (setup, access, readiness, review digest)
@@ -44,8 +44,6 @@ sequenceDiagram
   API->>PG: INSERT fleet.fleets (installing) + setup revision 1
   API-->>CLI: { fleet, setup checks: github grant pending }
   Op->>API: approve the github grant on the setup check
-  Op->>CLI: resume <FLEET_ID>
-  CLI->>API: PATCH fleet active with current If-Match
   API->>PG: locked setup recheck ⇒ active
   Note over Op,Runner: …a PR is opened…
   GH->>API: POST /v1/ingress/github
@@ -66,7 +64,7 @@ sequenceDiagram
 A platform admin publishes a reviewed draft candidate through `POST` and `PATCH /v1/admin/fleet-libraries`. John opens a private draft pinned to that revision:
 
 ```bash
-agentsfleet chat --library github-pr-reviewer --revision <REVISION_ID> --model <MODEL_REF>
+agentsfleet chat --plugin github-pr-reviewer --revision <REVISION_ID> --model <MODEL_REF>
 ```
 
 He requests his repository, reviews the exact setup, then saves through `POST /v1/workspaces/{ws}/fleets`.
@@ -85,9 +83,9 @@ The fleet runs the instructions and policy of its selected setup revision in `fl
 
    It selects only active and approved fleets matching `acme/payments` plus `pull_request`. Each fleet's `fleet.admissions` row is keyed by fleet and body digest. A best-effort notification starts an offer pass; each replica's 5-second recovery probe also queries Postgres ([`../lease_flow.md`](../lease_flow.md#admission-commits-the-queue-row)).
 
-4. **The authorisation, once, at Save.** Save raises a `github` grant check. John approves it, then runs `agentsfleet resume <FLEET_ID>`; activation rechecks all setup checks under lock.
+4. **The authorisation, once, at Save.** Save raises a `github` grant check. John approves it, and the approval retries setup: activation rechecks all setup checks under lock.
 
-   Approval alone does not resume setup (`rustd/crates/daemon/afd_authoring/src/creation/patch.rs`). Grant scope and revocation belong in [connector trust anchors](../connectors.md#trust-anchors). To narrow repository reach, apply a reviewed improvement with a shorter `repositories` list.
+   The approval handler runs the same setup step PATCH `active` runs (`rustd/crates/daemon/afd_api_tenant/src/handler/approval/resolve.rs`). Grant scope and revocation belong in [connector trust anchors](../connectors.md#trust-anchors). To narrow repository reach, apply a reviewed improvement with a shorter `repositories` list.
 
    There is no per-event approval. A repository-write gate was raised on every first-encounter event until M202: a continuation carries a fresh event identifier, so each model turn re-parked, and one steer produced three cards and zero review comments. The grant replaced it because the grant already carried everything the card asked about.
 
@@ -102,7 +100,7 @@ The gate + billing path is identical to every other event; see [`../billing_and_
 ## 5. What John sees after the integration test proves the path
 
 - Not yet: the pull request carries no review, because the review POST is refused at egress (§4).
-- `agentsfleet events {id}` / the dashboard `/fleets/{id}` thread shows the run: the `http_request` tool calls and the response, streamed over Server-Sent Events (SSE), durable in `fleet.events`.
+- `agentsfleet fleet events {id}` / the dashboard `/fleets/{id}` thread shows the run: the `http_request` tool calls and the response, streamed over Server-Sent Events (SSE), durable in `fleet.events`.
 
 ## 6. Proof status
 

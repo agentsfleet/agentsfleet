@@ -9,7 +9,8 @@ const recordingOutput = (sink: string[]) =>
   Layer.succeed(Output, {
     ...outputDouble(),
     warn: (msg) => Effect.sync(() => sink.push(msg)),
-    error: (msg) => Effect.sync(() => sink.push(msg)),
+    // The block's head and each labelled field, one per line, as written.
+    error: (msg, meta) => Effect.sync(() => sink.push([msg, ...Object.entries(meta?.fields ?? {}).map(([label, value]) => `${label}: ${value}`)].join("\n"))),
   });
 
 describe("exitToCliError", () => {
@@ -36,15 +37,25 @@ describe("renderCliError", () => {
     const sink: string[] = [];
     const err = new ServerError({ detail: "nope", suggestion: "retry", code: "UZ-X", status: 502, requestId: "req-1" });
     await Effect.runPromise(renderCliError(err).pipe(Effect.provide(recordingOutput(sink))));
-    expect(sink[0]).toContain("UZ-X nope");
-    expect(sink[0]).toContain("request_id: req-1");
+    expect(sink[0]).toContain("nope");
+    expect(sink[0]).toContain("code: UZ-X");
+    expect(sink[0]).toContain("suggestion: retry");
+    expect(sink[0]).toContain("request: req-1");
+  });
+
+  test("a handler's usage hint lands on the usage line, not the suggestion line", async () => {
+    const sink: string[] = [];
+    const err = new ServerError({ detail: "nope", suggestion: "usage: agentsfleet fleet show <fleet_id>", code: "UZ-X", status: 400, requestId: null });
+    await Effect.runPromise(renderCliError(err).pipe(Effect.provide(recordingOutput(sink))));
+    expect(sink[0]).toContain("usage: agentsfleet fleet show <fleet_id>");
+    expect(sink[0]).not.toContain("suggestion:");
   });
 
   test("ServerError without a request_id omits the request_id line", async () => {
     const sink: string[] = [];
     const err = new ServerError({ detail: "nope", suggestion: "retry", code: "UZ-X", status: 502, requestId: null });
     await Effect.runPromise(renderCliError(err).pipe(Effect.provide(recordingOutput(sink))));
-    expect(sink[0]).not.toContain("request_id");
+    expect(sink[0]).not.toContain("request:");
   });
 
   test("a non-server error prints its plain message", async () => {
