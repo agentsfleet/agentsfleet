@@ -248,7 +248,7 @@ describe("ApprovalDetailPage", () => {
     expect(markup).toContain("denied");
   });
 
-  it("renders timed_out + auto_killed status badges in the amber variant", async () => {
+  it("renders timed_out + archived status badges in the amber variant", async () => {
     getApprovalMock.mockResolvedValueOnce(
       gateFixture({ status: "timed_out", resolved_by: "system:timeout" }),
     );
@@ -256,6 +256,14 @@ describe("ApprovalDetailPage", () => {
     const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) }));
     expect(markup).toContain("timed_out");
     expect(markup).toContain("system:timeout");
+  });
+
+  it("renders an archived gate as settled, not pending", async () => {
+    getApprovalMock.mockResolvedValueOnce(gateFixture({ status: "archived" }));
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page");
+    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, gateId: GATE_ID }) }));
+    expect(markup).toContain("archived");
+    expect(markup).not.toContain("pending");
   });
 
   it("falls back to tool_name:action_name when proposed_action is empty", async () => {

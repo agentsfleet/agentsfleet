@@ -184,7 +184,7 @@ The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** ope
 Fleet messages, setup receipts, and integration activity share one chronological conversation.
 
 **Save fleet** sits beside the authoring chat title. Authoring a saved fleet shows **Save changes** in that position.
-**Stop** and permanent **Kill** live in **Fleet actions**, with confirmation dialogs.
+**Archive** and permanent **Delete** live in **Fleet actions**, with confirmation dialogs.
 
 Setup and saved chat share a 728px reading column and a composer pinned to its bottom edge.
 User messages use a quiet bubble; assistant replies use plain prose and the fleet's name.

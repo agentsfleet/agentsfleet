@@ -28,14 +28,15 @@ export const REFRESHED_LABEL = "Refreshed";
 
 // The five states a row can be in, as the status cell spells them. Two are
 // nobody's verdict: `timed_out` is the deadline passing unanswered, and
-// `auto_killed` is the daemon stopping the fleet and closing its open questions
-// with it — so the cell names them rather than implying a person decided.
+// `archived` is the fleet being archived or deleted while the gate waited,
+// which closes its open questions with it — so the cell names them rather
+// than implying a person decided.
 export const STATUS_LABEL = {
   pending: "Pending",
   approved: "Approved",
   denied: "Denied",
   timed_out: "Timed out",
-  auto_killed: "Auto-killed",
+  archived: "Archived",
 } as const;
 
 // The colour each state carries. Pending is the only one asking for anything,
@@ -46,7 +47,7 @@ export const STATUS_VARIANT = {
   approved: "green",
   denied: "destructive",
   timed_out: "orange",
-  auto_killed: "default",
+  archived: "default",
 } as const;
 
 /** What a pending row shows where a resolved one shows who decided it. */

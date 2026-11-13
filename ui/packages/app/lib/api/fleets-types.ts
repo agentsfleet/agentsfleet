@@ -6,9 +6,9 @@
 // the backend `FleetStatus` enum in rustd/crates/daemon/afd_fleet_lifecycle/src/lib.rs.
 export const AGENTSFLEET_STATUS = {
   ACTIVE: "active",
-  PAUSED: "paused",
-  STOPPED: "stopped",
-  KILLED: "killed",
+  // Terminal. An operator's archive (or the platform gate) cancels live work
+  // and keeps the history readable; nothing returns the fleet to `active`.
+  ARCHIVED: "archived",
   // The status a row is born in. Mirrors `FleetStatus::Installing` in
   // rustd/crates/daemon/afd_fleet_lifecycle/src/lib.rs — but no caller sees it on a
   // successful create any more: the flip to `active` happens inside the

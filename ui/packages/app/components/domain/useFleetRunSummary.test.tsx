@@ -137,25 +137,25 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
       ...row(),
       event_id: "evt_live",
       created_at: new Date(SEED_AT + 1).toISOString(),
-      fleet_status: "paused",
+      fleet_status: "archived",
       pending_approvals: 0,
     });
     expect(refreshMock).toHaveBeenCalledTimes(1);
     // A gate opens while the round trip is in flight …
     emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", event_id: "evt_live", pending_approvals: 1 });
     // … and the render lands carrying the count the server read before it.
-    const landed: FleetRunSummary = { ...INITIAL, status: "paused", pendingApprovals: 0 };
+    const landed: FleetRunSummary = { ...INITIAL, status: "archived", pendingApprovals: 0 };
     view.rerender(React.createElement(Harness, { summary: landed }));
     expect(seen?.pendingApprovals).toBe(1);
-    expect(seen?.status).toBe("paused");
+    expect(seen?.status).toBe("archived");
     expect(refreshMock).toHaveBeenCalledTimes(1);
 
-    // The next server render — the kill switch's own, with nothing newer on
+    // The next server render — Fleet actions' own, with nothing newer on
     // the tail — lands as the server wrote it.
-    const killed: FleetRunSummary = { ...INITIAL, status: "killed", pendingApprovals: 0 };
-    view.rerender(React.createElement(Harness, { summary: killed }));
+    const settled: FleetRunSummary = { ...INITIAL, status: "archived", pendingApprovals: 0 };
+    view.rerender(React.createElement(Harness, { summary: settled }));
     expect(seen?.pendingApprovals).toBe(0);
-    expect(seen?.status).toBe("killed");
+    expect(seen?.status).toBe("archived");
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 

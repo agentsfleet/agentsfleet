@@ -20,15 +20,16 @@ export type ApprovalDecision = typeof APPROVAL_DECISION[keyof typeof APPROVAL_DE
 // inbox's client components can name a status without pulling the transport.
 //
 // Only two are decisions a person makes. `timed_out` is the deadline passing
-// with no answer; `auto_killed` is the daemon stopping the fleet and closing its
-// open questions with it — neither is anybody's verdict, which is why the
-// resolve vocabulary has three arms and this one has five.
+// with no answer; `archived` is the fleet being archived or deleted while the
+// gate waited, which closes its open questions with it. Neither is anybody's
+// verdict, which is why the resolve vocabulary has three arms and this one
+// has five.
 export const APPROVAL_STATUS = {
   PENDING: "pending",
   APPROVED: "approved",
   DENIED: "denied",
   TIMED_OUT: "timed_out",
-  AUTO_KILLED: "auto_killed",
+  ARCHIVED: "archived",
 } as const;
 
 export type ApprovalStatusTag = typeof APPROVAL_STATUS[keyof typeof APPROVAL_STATUS];

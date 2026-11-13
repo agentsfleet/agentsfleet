@@ -17,13 +17,12 @@ import { FleetSchema } from "@/lib/api/draft-types";
 import { clientFor } from "./api-client";
 import type { ClientHandle } from "./api-client";
 import { listFleets, listWorkspaces } from "./seed";
-import { AGENTSFLEET_STATUS, FIXTURE_KEYS } from "./constants";
+import { FIXTURE_KEYS } from "./constants";
 import { SOAK_FLEET_PREFIX } from "./soak-scenario";
 
 /**
- * agentsfleetd enforces a state-machine transition before delete:
- * PATCH status=killed must run first, otherwise DELETE 409s with UZ-AGT-010.
- * Fleets in any non-killed state need to be killed before being deleted.
+ * DELETE purges a fleet in any status and ends its live work itself, so each
+ * fleet is read for its current tag and deleted; nothing archives first.
  *
  * Tolerates per-fleet failures so one stuck row doesn't block teardown of
  * the rest. Returns the count successfully removed.
@@ -336,14 +335,10 @@ async function revokeAndDeleteKey(
   await client.delete(`/v1/api-keys/${id}`);
 }
 
-/** Reads current versions for both Kill and purge; stale replies stay visible. */
+/** Reads the current version, then purges in any status; stale replies stay visible. */
 export async function purgeFixtureFleet(handle: ClientHandle, workspaceId: string, fleetId: string): Promise<void> {
   const client = clientFor(handle);
   const endpoint = `/v1/workspaces/${encodeURIComponent(workspaceId)}/fleets/${encodeURIComponent(fleetId)}`;
-  let current = FleetSchema.parse(await client.get<unknown>(endpoint));
-  if (current.status !== AGENTSFLEET_STATUS.killed) {
-    current = FleetSchema.parse(await client.patch<unknown>(endpoint,
-      {status: AGENTSFLEET_STATUS.killed}, {"If-Match": current.etag}));
-  }
+  const current = FleetSchema.parse(await client.get<unknown>(endpoint));
   await client.delete(endpoint, {"If-Match": current.etag});
 }
