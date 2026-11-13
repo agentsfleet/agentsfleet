@@ -3,7 +3,6 @@
 // Two groups that share nothing but their shape: each names a thing the
 // tenant owns and offers the verbs that read or set it.
 
-import { Option } from "effect";
 import { Command } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import {
@@ -14,30 +13,17 @@ import {
   workspaceUseEffectFromArgs,
 } from "../../commands/workspace/workspace.ts";
 import { billingShowEffectFromArgs } from "../../commands/billing/billing.ts";
-import {
-  billingLimitFlag,
-  cursorFlag,
-  workspaceIdArgument,
-  workspaceFlag,
-  workspaceIdOptionalArgument,
-  workspaceNameArgument,
-} from "./flags.ts";
+import { billingLimitFlag, cursorFlag, opt, VERB, workspaceFlag, workspaceIdArgument, workspaceIdOptionalArgument, workspaceNameArgument } from "./flags.ts";
 
-const opt = Option.getOrUndefined;
-
-const LIST = "list" as const;
-const SHOW = "show" as const;
-const CREATE = "create" as const;
-const DELETE = "delete" as const;
 
 // ── workspace ───────────────────────────────────────────────────────
 
-const workspaceCreateCommand = Command.make(CREATE, { name: workspaceNameArgument }).pipe(
+const workspaceCreateCommand = Command.make(VERB.create, { name: workspaceNameArgument }).pipe(
   Command.withDescription("Create a new workspace"),
   guardedHandler(({ name }) => workspaceAddEffect(name)),
 );
 
-const workspaceListCommand = Command.make(LIST).pipe(
+const workspaceListCommand = Command.make(VERB.list).pipe(
   Command.withDescription("List workspaces"),
   guardedHandler(() => workspaceListEffect),
 );
@@ -49,7 +35,7 @@ const workspaceUseCommand = Command.make("use", { workspaceId: workspaceIdArgume
 
 // The id may arrive as a positional or as `--workspace`; the handler owns
 // which wins, so both reach it rather than one being resolved away here.
-const workspaceShowCommand = Command.make(SHOW, {
+const workspaceShowCommand = Command.make(VERB.show, {
   workspaceId: workspaceIdOptionalArgument,
   workspace: workspaceFlag,
 }).pipe(
@@ -59,7 +45,7 @@ const workspaceShowCommand = Command.make(SHOW, {
   ),
 );
 
-const workspaceDeleteCommand = Command.make(DELETE, { workspaceId: workspaceIdArgument }).pipe(
+const workspaceDeleteCommand = Command.make(VERB.delete, { workspaceId: workspaceIdArgument }).pipe(
   Command.withDescription("Remove a workspace from local client state"),
   guardedHandler(({ workspaceId }) => workspaceDeleteEffectFromArgs(workspaceId, undefined)),
 );
@@ -77,7 +63,7 @@ export const workspaceCommand = () => Command.make("workspace").pipe(
 
 // ── usage ───────────────────────────────────────────────────────────
 
-const usageShowCommand = Command.make(SHOW, {
+const usageShowCommand = Command.make(VERB.show, {
   limit: billingLimitFlag,
   cursor: cursorFlag,
 }).pipe(

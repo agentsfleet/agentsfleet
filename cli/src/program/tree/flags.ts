@@ -9,6 +9,7 @@
 // The check is a predicate plus the sentence to print, so the sentence lives
 // beside the rule it belongs to rather than inside a thrown error object.
 
+import { Option } from "effect";
 import { Flag, Argument } from "effect/cli";
 import { EXAMPLE_UUIDV7, isValidId } from "../../lib/id.ts";
 import {
@@ -111,6 +112,19 @@ export const requiredIdFlag = (name: string, description: string) =>
     Flag.filter((value: string) => isValidId(value), () => NOT_A_UUIDV7),
   );
 
+// The verbs every resource group spells, named once.
+export const VERB = Object.freeze({
+  list: "list", show: "show", create: "create", update: "update", delete: "delete", sync: "sync",
+} as const);
+
+// A parsed optional flag as the command Effects take it.
+export const opt = Option.getOrUndefined;
+
+// The command Effects take a page size as the wire's string; the flag already
+// refused anything outside its bound, so this only converts back.
+export const optNum = (value: Option.Option<number>): string | undefined =>
+  Option.match(value, { onNone: () => undefined, onSome: (n) => String(n) });
+
 export const requiredTextFlag = (name: string, description: string, metavar: string = METAVAR.text) =>
   Flag.String(name).pipe(
     Flag.withDescription(description),
@@ -118,7 +132,7 @@ export const requiredTextFlag = (name: string, description: string, metavar: str
   );
 
 const idFlag = (name: string, description: string) => requiredIdFlag(name, description).pipe(Flag.optional);
-const textFlag = (name: string, description: string, metavar: string = METAVAR.text) =>
+export const textFlag = (name: string, description: string, metavar: string = METAVAR.text) =>
   requiredTextFlag(name, description, metavar).pipe(Flag.optional);
 
 export const workspaceFlag = idFlag("workspace", WORKSPACE_ID_DESC);

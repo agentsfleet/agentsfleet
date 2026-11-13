@@ -1,12 +1,10 @@
-import { Option } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 import { platformKeysDelete, platformKeysList, platformKeysUse } from "../../commands/platform/keys.ts";
 import { guardedHandler } from "./guarded-handler.ts";
 import { PLATFORM_SCOPE } from "./platform-flags.ts";
 import { grants, listedWhen, type Visibility } from "./visibility.ts";
-import { baseUrlFlag, requiredIdFlag, requiredTextFlag } from "./flags.ts";
+import { baseUrlFlag, opt, requiredIdFlag, requiredTextFlag } from "./flags.ts";
 
-const opt = Option.getOrUndefined;
 const list = Command.make("list").pipe(Command.withDescription("Read provider default metadata (platform-key:read)"), guardedHandler(() => platformKeysList()));
 const use = Command.make("use", {
   provider: requiredTextFlag("provider", "Provider with a named secret in the source workspace"),

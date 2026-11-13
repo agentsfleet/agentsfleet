@@ -6,7 +6,6 @@
 // the command Effect — there is no frame, no options bag and no bridge between
 // the two, because the parser already produced the values the Effect asks for.
 
-import { Option } from "effect";
 import { Command } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import {
@@ -31,29 +30,13 @@ import {
   grantDeleteEffectFromArgs,
   grantListEffectFromArgs,
 } from "../../commands/grant/grant.ts";
-import {
-  apiKeyIdArgument,
-  descriptionFlag,
-  fleetFlag,
-  gateIdArgument,
-  grantIdArgument,
-  keyNameFlag,
-  providerArgument,
-  sortFlag,
-  workspaceFlag,
-} from "./flags.ts";
+import { apiKeyIdArgument, descriptionFlag, fleetFlag, gateIdArgument, grantIdArgument, keyNameFlag, opt, providerArgument, sortFlag, VERB, workspaceFlag } from "./flags.ts";
 
 /** An optional flag as the command Effects spell it. */
-const opt = Option.getOrUndefined;
-
-const LIST = "list" as const;
-const SHOW = "show" as const;
-const CREATE = "create" as const;
-const DELETE = "delete" as const;
 
 // ── api-keys ────────────────────────────────────────────────────────
 
-const apiKeyCreateCommand = Command.make(CREATE, {
+const apiKeyCreateCommand = Command.make(VERB.create, {
   name: keyNameFlag,
   description: descriptionFlag,
 }).pipe(
@@ -63,7 +46,7 @@ const apiKeyCreateCommand = Command.make(CREATE, {
   ),
 );
 
-const apiKeyListCommand = Command.make(LIST, { sort: sortFlag }).pipe(
+const apiKeyListCommand = Command.make(VERB.list, { sort: sortFlag }).pipe(
   Command.withDescription("List tenant API keys"),
   guardedHandler(({ sort }) => apiKeyListEffectFromArgs({ sort: opt(sort) })),
 );
@@ -73,7 +56,7 @@ const apiKeyRevokeCommand = Command.make("revoke", { apiKeyId: apiKeyIdArgument 
   guardedHandler(({ apiKeyId }) => apiKeyRevokeEffectFromId(apiKeyId)),
 );
 
-const apiKeyDeleteCommand = Command.make(DELETE, { apiKeyId: apiKeyIdArgument }).pipe(
+const apiKeyDeleteCommand = Command.make(VERB.delete, { apiKeyId: apiKeyIdArgument }).pipe(
   Command.withDescription("Delete a revoked tenant API key"),
   guardedHandler(({ apiKeyId }) => apiKeyDeleteEffectFromId(apiKeyId)),
 );
@@ -90,12 +73,12 @@ export const apiKeysCommand = () => Command.make("api-keys").pipe(
 
 // ── connections ─────────────────────────────────────────────────────
 
-const connectorListCommand = Command.make(LIST, { workspace: workspaceFlag }).pipe(
+const connectorListCommand = Command.make(VERB.list, { workspace: workspaceFlag }).pipe(
   Command.withDescription("List connector setup and connection state"),
   guardedHandler(({ workspace }) => connectorListEffectFromArgs(opt(workspace))),
 );
 
-const connectorShowCommand = Command.make(SHOW, {
+const connectorShowCommand = Command.make(VERB.show, {
   provider: providerArgument,
   workspace: workspaceFlag,
 }).pipe(
@@ -112,12 +95,12 @@ export const connectionsCommand = () => Command.make("connections").pipe(
 
 // ── approvals ───────────────────────────────────────────────────────
 
-const approvalsListCommand = Command.make(LIST, { fleet: fleetFlag }).pipe(
+const approvalsListCommand = Command.make(VERB.list, { fleet: fleetFlag }).pipe(
   Command.withDescription("List approval gates in the active workspace"),
   guardedHandler(({ fleet }) => approvalsListEffectFromArgs(opt(fleet))),
 );
 
-const approvalsShowCommand = Command.make(SHOW, { gateId: gateIdArgument }).pipe(
+const approvalsShowCommand = Command.make(VERB.show, { gateId: gateIdArgument }).pipe(
   Command.withDescription("Show one gate's proposed action and blast radius"),
   guardedHandler(({ gateId }) => approvalsShowEffectFromArgs(gateId)),
 );
@@ -147,7 +130,7 @@ export const approvalsCommand = () => Command.make("approvals").pipe(
 
 // ── grants ──────────────────────────────────────────────────────────
 
-const grantListCommand = Command.make(LIST, { fleet: fleetFlag }).pipe(
+const grantListCommand = Command.make(VERB.list, { fleet: fleetFlag }).pipe(
   Command.withDescription("List integration grants for a Fleet"),
   guardedHandler(({ fleet }) => grantListEffectFromArgs(undefined, opt(fleet))),
 );

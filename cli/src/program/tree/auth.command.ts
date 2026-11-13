@@ -1,14 +1,11 @@
 // Who this terminal is signed in as, and the two verbs that change it.
 
-import { Option } from "effect";
 import { Command, Flag } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import { whoamiEffect } from "../../commands/auth/whoami.ts";
 import { logoutEffect } from "../../commands/auth/logout.ts";
 import { loginEffectFromFlags } from "../../commands/auth/login.ts";
-import { forceFlag, logoutAllFlag, tokenNameFlag } from "./flags.ts";
-
-const opt = Option.getOrUndefined;
+import { forceFlag, logoutAllFlag, opt, tokenNameFlag } from "./flags.ts";
 
 // What logout actually does, at its true scope: it revokes THIS machine's
 // credential and aborts unfinished sign-ins. Other machines stay signed in,

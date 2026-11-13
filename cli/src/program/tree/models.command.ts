@@ -5,7 +5,6 @@
 // or the platform default. One group, because a person choosing a model asks
 // both questions in the same breath.
 
-import { Option } from "effect";
 import { Command, Flag } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import { modelsEffectFromFlags } from "../../commands/models/models.ts";
@@ -14,9 +13,7 @@ import {
   tenantProviderDeleteEffect,
   tenantProviderShowEffect,
 } from "../../commands/tenant/tenant.ts";
-import { modelOverrideFlag, providerFlag, secretNameFlag } from "./flags.ts";
-
-const opt = Option.getOrUndefined;
+import { modelOverrideFlag, opt, providerFlag, secretNameFlag } from "./flags.ts";
 
 const modelsListCommand = Command.make("list", {
   provider: providerFlag,

@@ -1,12 +1,10 @@
-import { Option } from "effect";
 import { Command } from "effect/cli";
 import { platformModelDelete, platformModelShow, platformModelsList, platformModelWrite } from "../../commands/platform/models.ts";
 import { guardedHandler } from "./guarded-handler.ts";
 import { grants, listedWhen, type Visibility } from "./visibility.ts";
 import { PLATFORM_SCOPE, platformFileFlag, platformPagingFlags } from "./platform-flags.ts";
-import { idArgument } from "./flags.ts";
+import { idArgument, opt } from "./flags.ts";
 
-const opt = Option.getOrUndefined;
 const modelId = {id: idArgument("model_id", "Platform catalogue row identifier")};
 const list = Command.make("list", platformPagingFlags).pipe(Command.withDescription("List the full admin catalogue (model:read)"),
   guardedHandler(({limit, startingAfter}) => platformModelsList({limit: opt(limit), startingAfter: opt(startingAfter)})));

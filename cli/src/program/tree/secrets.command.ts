@@ -2,7 +2,6 @@
 //
 // Every verb names a secret by its vault name, and none echoes secret bytes.
 
-import { Option } from "effect";
 import { Command } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import {
@@ -12,21 +11,8 @@ import {
   secretUpdateEffectFromFlags,
 } from "../../commands/secret/secret.ts";
 import { secretListEffect } from "../../commands/secret/list.ts";
-import {
-  apiKeyFlag,
-  baseUrlFlag,
-  dataFlag,
-  dataReplacementFlag,
-  modelFlag,
-  providerFlag,
-  secretNameArgument,
-} from "./flags.ts";
+import { apiKeyFlag, baseUrlFlag, dataFlag, dataReplacementFlag, modelFlag, opt, providerFlag, secretNameArgument, VERB } from "./flags.ts";
 
-const opt = Option.getOrUndefined;
-
-const LIST = "list" as const;
-const DELETE = "delete" as const;
-const UPDATE = "update" as const;
 
 // Two ways to supply the body: the generic `--data` blob, or the typed
 // provider flags composing the same JSON object. `--base-url` is checked at
@@ -56,7 +42,7 @@ const secretCreateCommand = Command.make("create", {
 // Replaces the stored body in place: the name stays claimed for the whole
 // call, so fleets that require it keep resolving. Delete-then-create also
 // replaces a value, but leaves a window where the name does not exist.
-const secretUpdateCommand = Command.make(UPDATE, {
+const secretUpdateCommand = Command.make(VERB.update, {
   name: secretNameArgument,
   data: dataReplacementFlag,
   provider: providerFlag,
@@ -82,12 +68,12 @@ const secretShowCommand = Command.make("show", { name: secretNameArgument }).pip
   guardedHandler(({ name }) => secretShowEffectFromName(name)),
 );
 
-const secretListCommand = Command.make(LIST).pipe(
+const secretListCommand = Command.make(VERB.list).pipe(
   Command.withDescription("List secrets in the workspace vault"),
   guardedHandler(() => secretListEffect),
 );
 
-const secretDeleteCommand = Command.make(DELETE, { name: secretNameArgument }).pipe(
+const secretDeleteCommand = Command.make(VERB.delete, { name: secretNameArgument }).pipe(
   Command.withDescription("Delete a secret from the workspace vault"),
   guardedHandler(({ name }) => secretDeleteEffectFromName(name)),
 );
