@@ -618,14 +618,15 @@ sequenceDiagram
 
 ### Personal profile and browser sessions
 
-Profile and Security consume app-owned types from `ui/packages/app/lib/auth/account-types.ts`.
-`account-client.ts` isolates the provider hooks and native recent-verification flow. Profile names update through the existing browser SDK.
+API Keys combines keys, browser sessions and native profile/sign-in controls.
+Session controls consume app-owned types from `ui/packages/app/lib/auth/account-types.ts`.
+`account-client.ts` isolates provider hooks and native recent verification.
 
 Email, password, passkey and multi-factor controls retain the provider's existing instance policies.
 
 No application view receives a provider resource. The existing subject used by chat, pending sends and caches is unchanged.
 
-Sign-in methods opens `/settings/account/sign-in`. The app supplies a persistent page title and labelled region.
+The Profile and sign-in settings action scrolls to an always-mounted named section on API Keys.
 `account-controls.tsx` embeds the supported provider widget with hash routing and retains its native verification flows.
 
 Subject/session changes remount that widget; ordinary resource refreshes retain it.
@@ -646,7 +647,7 @@ Responses are limited to one MiB and parsed with runtime schemas. Mutations are 
 
 Mounted settings state belongs to one subject/session generation. Changing identities, including an A → B → A round trip, invalidates pending native challenge callbacks and discards late read results. Ordinary resource refreshes do not change that owner.
 
-A confirmed remote sign-out remains visible even if the following refresh fails. Profile drafts survive failed form actions; untouched fields adopt confirmed changes made through secure account controls.
+A confirmed remote sign-out remains visible even if the following refresh fails. The provider widget owns profile drafts and verification state.
 
 ### SSE stream: Next Route Handler injects Bearer
 
