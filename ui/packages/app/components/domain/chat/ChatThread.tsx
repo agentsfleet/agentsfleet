@@ -17,12 +17,12 @@ export function ChatThread({children, footer, label, testId, autoScroll = true, 
     <Section aria-label={label} className={cn("relative flex min-h-0 flex-1 flex-col overflow-clip bg-background", centered && "[--max-w-chat:var(--max-w-new-fleet)] [--chat-input-height:var(--new-fleet-input-height)] min-[681px]:[--chat-inset:var(--sp-3xl)]")}>
     <ThreadPrimitive.Viewport turnAnchor="top" autoScroll={autoScroll && !composing && !centered} scrollToBottomOnInitialize={autoScroll && !centered} scrollToBottomOnThreadSwitch={autoScroll && !centered} role="presentation"
       className={cn("flex min-h-0 flex-1 flex-col overflow-y-auto", summary && "summary:grid summary:grid-cols-[minmax(0,1fr)_var(--summary-width)] summary:grid-rows-[1fr_auto] summary:gap-x-lg summary:pr-lg summary-medium:gap-x-xl summary-medium:pr-xl summary-wide:gap-x-3xl summary-wide:pr-2xl")}>
-      <div className={cn("flex min-w-0 flex-col", centered ? "mt-2xl flex-none sm:mt-auto sm:-translate-y-xl" : "flex-1", summary && "summary:contents")}>
-        <div className={cn("flex min-w-0 flex-1 flex-col px-xl sm:px-chat-inset", !centered && "pt-xl sm:pt-2xl", summary && "summary:col-start-1 summary:row-start-1")}>{children}</div>
+      <div className={cn("flex min-w-0 flex-col", centered ? "mt-4xl flex-none sm:mt-auto sm:-translate-y-xl" : "flex-1", summary && "summary:contents")}>
+        <div className={cn("flex min-w-0 flex-1 flex-col px-xl sm:px-chat-inset", centered && "max-[42.5rem]:px-5", !centered && "pt-xl sm:pt-2xl", summary && "summary:col-start-1 summary:row-start-1")}>{children}</div>
         <FleetWorkSidebar>{summary}</FleetWorkSidebar>
       </div>
       <ThreadPrimitive.ViewportFooter data-testid="fleet-chat-footer"
-        className={cn("flex max-h-[calc(100%_-_3rem_-_var(--sp-sm))] shrink-0 flex-col bg-background px-xl sm:px-chat-inset", centered ? "relative mb-2xl pt-xl sm:mb-auto sm:-translate-y-xl sm:pt-3xl" : "relative pb-5 pt-lg min-[681px]:sticky min-[681px]:bottom-0", summary && "summary:col-start-1 summary:row-start-2 summary:max-h-[calc(100dvh_-_9rem)]")}>
+        className={cn("z-10 flex max-h-[calc(100%_-_3rem_-_var(--sp-sm))] shrink-0 flex-col bg-background px-xl sm:px-chat-inset", centered ? "relative mb-2xl pt-3xl max-[42.5rem]:px-5 sm:mb-auto sm:-translate-y-xl" : "relative pb-5 pt-lg min-[681px]:sticky min-[681px]:bottom-0", summary && "summary:col-start-1 summary:row-start-2 summary:max-h-[calc(100dvh_-_9rem)]")}>
         <div className="relative mx-auto flex w-full max-w-chat flex-col">
         {autoScroll ? <ThreadPrimitive.ScrollToBottom asChild>
           <Button variant="secondary" size="icon" aria-label="Jump to latest"

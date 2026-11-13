@@ -38,6 +38,7 @@ export const buttonVariants = cva(
         lg: "h-11 px-xl py-sm text-body",
         card: "h-auto min-h-16 p-lg text-body-sm",
         icon: "size-[var(--control-height)] shrink-0 p-0",
+        "icon-header": "h-10 w-8 shrink-0 p-0 min-[681px]:w-10",
         "icon-row": "size-9 shrink-0 p-0 pointer-coarse:min-h-9 pointer-coarse:min-w-9",
         compact: "min-h-9 px-md py-sm text-label leading-label",
         "icon-compact": "h-8 w-8 shrink-0 p-0",
@@ -52,6 +53,7 @@ export const buttonVariants = cva(
       },
       wrap: { true: "h-auto max-w-full whitespace-normal", false: "" },
     },
+    compoundVariants: [{variant: "ghost", size: "compact", className: "border-0"}],
     defaultVariants: {
       variant: "default",
       size: "default",

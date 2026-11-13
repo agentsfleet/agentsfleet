@@ -53,7 +53,7 @@ export function FleetActions({workspaceId, fleet, children}: Props) {
 
   return <>
     <DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-compact" aria-label="Fleet actions"><DotsThreeIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-header" aria-label="Fleet actions"><DotsThreeIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-60 max-w-full p-sm">
         {children}
         {children ? <DropdownMenuSeparator /> : null}

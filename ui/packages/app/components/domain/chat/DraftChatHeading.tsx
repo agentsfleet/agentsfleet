@@ -40,14 +40,14 @@ function HeadingContent({client, view, workspace, fleetPage, returnToFleet, menu
   const empty = !view.draft && !view.preview && !view.fleet;
   const canEdit = Boolean(draft?.candidate || view.preview || view.fleet?.definition);
   return <>
-    <header className="fleet-chat-heading flex min-h-16 w-full shrink-0 flex-wrap items-center gap-md border-b border-border-subtle px-lg py-sm summary-medium:px-xl summary-wide:px-2xl">
+    <header className="fleet-chat-heading flex min-h-16 w-full shrink-0 flex-wrap items-center gap-md border-b border-border-subtle px-lg py-sm summary-medium:gap-lg summary-medium:px-xl summary-wide:px-2xl">
       {!fleetPage && !empty ? <Button asChild variant="ghost" size="icon" aria-label={returnFleet ? "Back to fleet conversation" : "Back to your fleets"}><Link href={returnFleet ? `/w/${workspace}/fleets/${returnFleet}` : `/w/${workspace}/fleets`}><ArrowLeftIcon size={16} aria-hidden="true" /></Link></Button> : null}
-      {empty ? <NotePencilIcon size={16} aria-hidden="true" /> : null}
+      {empty ? <NotePencilIcon data-app-header-icon="" size={16} className="hidden shrink-0 sm:block" aria-hidden="true" /> : null}
       <HeadingTitle client={client} view={view} state={state} label={label} locked={locked} primary={!fleetPage && Boolean(view.draft || view.preview || view.fleet)} />
       {view.fleet && fleetPage && view.fleet.status === AGENTSFLEET_STATUS.INSTALLING
         ? <EditSetupButton workspace={workspace} fleet={view.fleet.id} revision={view.fleet.setup_revision} /> : null}
       {canEdit ? <Button variant="ghost" size="icon" aria-label="Edit instructions" title="Edit instructions" disabled={locked} onClick={() => {void state.prepare(false).catch(ignore);}}><NotePencilIcon size={16} aria-hidden="true" /></Button> : null}
-      {empty ? <Button variant="ghost" size="icon" aria-label="New fleet" onClick={() => client.fresh()}><NotePencilIcon size={16} /></Button> : <DraftSaveButton client={client} view={view} dirty={state.dirty} />}
+      {empty ? <Button variant="ghost" size="icon-header" aria-label="New fleet" onClick={() => client.fresh()}><NotePencilIcon size={16} /></Button> : <DraftSaveButton client={client} view={view} dirty={state.dirty} />}
       {canEdit || draft ? <HeadingMenu state={state} label={label} canEdit={canEdit} locked={locked} canRename={draft?.state === DRAFT_STATE.editing}>{menuItems}</HeadingMenu> : null}
     </header>
     <InstructionsDialog client={client} view={view} state={state} />

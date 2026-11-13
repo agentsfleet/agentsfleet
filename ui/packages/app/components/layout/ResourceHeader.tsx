@@ -30,5 +30,5 @@ export function ResourceHeader({workspaceId: selectedWorkspace = null}: {workspa
 /** One navigation intent for account, resource and conversation headers. */
 export function NewFleetShortcut({workspaceId}: {workspaceId: string}) {
   const fresh = useFreshFleetChat(workspaceId);
-  return <TooltipButton tooltip="New fleet" asChild variant="ghost" size="icon" aria-label="New fleet"><Link href={workspacePath(workspaceId, "fleets/new")} onClick={fresh}><NotePencilIcon size={16} aria-hidden="true" /></Link></TooltipButton>;
+  return <TooltipButton tooltip="New fleet" asChild variant="ghost" size="icon-header" aria-label="New fleet"><Link href={workspacePath(workspaceId, "fleets/new")} onClick={fresh}><NotePencilIcon size={16} aria-hidden="true" /></Link></TooltipButton>;
 }
