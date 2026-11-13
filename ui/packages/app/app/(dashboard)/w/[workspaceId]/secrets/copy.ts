@@ -1,5 +1,4 @@
 export const SECRETS_PAGE_TITLE = "Secrets";
-export const CREATE_SECRET_TOOLTIP = "Create an encrypted workspace secret.";
 
 export const DELETE_SECRET_DESCRIPTION = "Deleting breaks fleets that reference it. This cannot be undone.";
 export const DELETE_SECRET_CONFIRM = "Delete";

@@ -93,7 +93,7 @@ export function CopyButton({ value, label, showLabel = false, onOutcomeChange, c
         void copy();
       }}
       aria-label={accessibleName}
-      title={accessibleName}
+      title={showLabel ? undefined : accessibleName}
       // Icon-only keeps its 24px visuals; the ::after overlay widens the
       // interactive area vertically, where the row's own padding leaves room.
       // A labelled button already clears the floor on its own.

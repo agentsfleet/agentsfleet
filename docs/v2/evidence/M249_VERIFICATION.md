@@ -326,3 +326,15 @@ rewriting the hash. There is no enclosing application dialog or separate profile
 route. This also preserves the earlier verified accessibility fix for native
 password editing. Sample fixtures label the native forms as authenticated-only;
 real authenticated captures supply those forms.
+
+### Final tooltip consistency sweep
+
+The source sweep removed the duplicate tool-group title, the visible secret
+submit tooltip, and native titles on labelled Copy controls. Expanded navigation
+keeps the same button mounted while suppressing its redundant hint; icon-only
+navigation still shows its tooltip. A focus-preservation regression and the
+existing clipboard tests pass 12 tests. App and design-system lint/type checks
+pass. The complete dry-app target passed 4,564 unit tests and all 90 browser
+checks before this final tooltip repair; the final candidate must repeat the
+required full verification. Evidence: `refresh-root-dry-v177.log`,
+`refresh-tooltip-tests-v179.log`, `refresh-tooltip-lint-v180.log`.
