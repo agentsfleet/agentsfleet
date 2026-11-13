@@ -4,11 +4,11 @@
 **Milestone:** M249
 **Workstream:** 002
 **Date:** Nov 13, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1, make the command surface coherent and advertise only usable operator commands
 **Categories:** CLI, API, DOCS
 **Batch:** B2
-**Depends on:** M249_001 (UI refresh) merges before this workstream merges; building starts before it
+**Depends on:** nothing; it merges before M249_001 (UI refresh), which rebases onto it (Indy, Nov 13, 2026, Discovery)
 **Provenance:** Agent-generated from Indy's approved CLI grouping and permission-discovery decisions; split from the authored M249_002 on Nov 12, 2026 (see Discovery)
 **Canonical architecture:** `docs/architecture/api_resources.md`; `docs/architecture/context_lifecycle.md`
 
@@ -226,12 +226,12 @@ After `gh pr view <M249_001 PR> --json state` reads `MERGED`, rebase onto it. Th
 - **Dimension 4.1** — DONE — Every printed command parses → Test `cli_hint_strings_name_real_commands` (unit, `cli/test/command-groups.unit.test.ts`): every string literal in `cli/src/**` (comments excluded) containing `agentsfleet `, read as the words after it up to the first token starting with `-`, `<`, `[`, `$` or a backtick, and every rendered suggestion in the Dimension 1.1 run, resolves through `resolveCommandPath` on `buildCommandTree(Unknown)` to the full word sequence it names, or to a leaf followed by its declared positionals.
 - **Dimension 4.2** — DONE — Removed spellings are lint errors → DOC-09 (`docs-removed-command*.yml`) extended with the 18 removed verbs, rule-test positive `agentsfleet kill x`, negatives `agentsfleet fleet kill x` and `agentsfleet secrets list` → `make lint-all` exit 0.
 - **Dimension 4.3** — DONE — Server hints name current commands → Tests `integration_unanswered_notice` and `notice_tests` (existing, Rust) assert `agentsfleet fleet events` and `agentsfleet fleet resume` → `make test-integration-rustd` and `make test-unit-all` exit 0.
-- **Dimension 4.4** — PENDING — Rebased on the UI refresh → `manual`: `gh pr view <M249_001 PR> --json state` reads `MERGED` and `git merge-base --is-ancestor <merge commit> HEAD` exits 0; both outputs go in the PR Session Notes.
+- **Dimension 4.4** — DONE — Lands before the UI refresh, with the current dashboard on the new lifecycle → Tests: the dashboard on this branch (`ui/packages/app`) sends only `active` and `archived`, deletes without archiving first, reads `archived` instead of `killed`, `stopped`, `paused` and `auto_killed`, and offers Archive and Delete in place of Stop, Resume and Kill; `make test-unit-all` and `make dry-app` pass. The UI refresh (M249_001) rebases onto this merge.
 
 ### §5 — Help report and verification
 
-- **Dimension 5.1** — PENDING — Every help page is reviewed → `manual` (Indy, Nov 12, 2026: "i need a report of the help, and the subcommands helps so i know you have fixed it"): on the final tree, `--help` for root and every group and leaf under three scope sets (`[]`, `["model:read"]`, and the union of every scope in the §2 table), plus one sample of each §3 block, written by a helper kept outside the repository; the report goes to Indy and its path into the PR Session Notes.
-- **Dimension 5.2** — PENDING — Lanes are green on the final tree → rubric R1–S4 at `orly gate pr`.
+- **Dimension 5.1** — DONE — Every help page is reviewed → `manual` (Indy, Nov 12, 2026: "i need a report of the help, and the subcommands helps so i know you have fixed it"): on the final tree, `--help` for root and every group and leaf under three scope sets (`[]`, `["model:read"]`, and the union of every scope in the §2 table), plus one sample of each §3 block, written by a helper kept outside the repository; the report goes to Indy and its path into the PR Session Notes.
+- **Dimension 5.2** — DONE — Lanes are green on the final tree → rubric R1–S4 at `orly gate pr`.
 
 ### §6 — Fleet lifecycle: archive and delete
 
@@ -249,13 +249,14 @@ any status ──DELETE (fleet delete)──▶ gone
 - Approving a setup grant re-advances that fleet's setup, so an installing fleet becomes active with no further request; this replaces `fleet resume` as the retry after approval. A denial does not advance. PATCH `active` on an installing fleet still retries setup for callers that use it.
 - Schedule `desired_status = 'paused'` is a schedule state, not a fleet state, and stays.
 - Known limits, recorded rather than built: a gate trip writes only the status, so a lease already running ends on its own (the cancel path is in `afd_authoring`, which `afd_gate` cannot reach); and delete purges lease rows in the transaction after its release, so a runner that reads the Cancel late stops at its next renewal (`RUN_LEASE_NOT_FOUND`).
-- After the rebase onto M249_001 (Dimension 4.4), the refreshed UI's callers change with this Section: `ui/packages/app/lib/api/fleets.ts` settable statuses and its delete precondition comment, `lib/api/fleets-types.ts` statuses, `components/layout/FleetDeleteDialog.tsx` (no kill first), the fleet tiles and wall, `lib/api/client.test.ts` (`UZ-AGT-010`), e2e acceptance fixtures, `docs/DESIGN_SYSTEM.md:187`, `docs/architecture/web_app.md:163,255` and `playbooks/operations/acceptance/001_playbook.md` step 8.
+- The current dashboard on `main` moves to the new lifecycle in this PR (Dimension 4.4): `ui/packages/app/lib/api/fleets.ts` and `fleets-types.ts` statuses, `components/layout/FleetDeleteDialog.tsx` (no archive before delete), `KillSwitch.tsx` (Archive and Delete), the approval status `archived`, and their tests. `docs/DESIGN_SYSTEM.md`, `docs/architecture/web_app.md` and the acceptance playbook follow.
 - CLI: `fleet activate <fleet_id>` sends PATCH `active`, which re-checks an installing fleet's setup: the retry after fixing a missing secret, connector, model or balance, which no event retries on its own; it prints the status the server answered, and on `installing` names `agentsfleet fleet show`. `fleet archive <fleet_id>` prints `<id> archived.`; `fleet delete <fleet_id>` prints `<id> deleted.`; `stop`, `resume` and `kill` are removed. Status rendering and every hint naming them change. `public/openapi.json` is regenerated. The refreshed UI's lifecycle actions follow after the rebase (Dimension 4.4).
 
 - **Dimension 6.1** — DONE — The lifecycle has three states → Test `fleet_lifecycle_is_activate_archive_delete` (integration, `afd_api`): PATCH `archived` on an active fleet returns `archived` and cancels its leases; PATCH `active` or `archived` on an archived fleet is refused with 409 `UZ-AGT-020` and `current_state` `archived`; PATCH `stopped`, `killed` or `paused` is a validation error; events of an archived fleet stay readable.
 - **Dimension 6.2** — DONE — Delete works in any status → Test `delete_removes_a_fleet_in_any_status` (integration, `afd_api`): DELETE on an installing, an active and an archived fleet each returns 2xx, a later GET returns 404, and no active lease remains.
 - **Dimension 6.3** — DONE — A gate trip archives → Test `gate_trip_archives_the_fleet` (integration, `afd_gate`): an anomaly trip and an `auto_kill` rule each leave the fleet `archived`.
 - **Dimension 6.5** — DONE — Approval resumes setup → Test `approving_a_setup_grant_resumes_setup` (integration): approving the pending setup grant leaves the fleet `active` with no PATCH; denying it leaves the fleet `installing`.
+- **Dimension 6.6** — DONE — A gate rule only asks, and a runaway archives and closes its event → Tests: a Definition carrying `behavior` is refused as an unknown key; a matching rule raises an approval and never archives; a runaway trip archives the fleet and settles the triggering event with a named label instead of retrying it; the approval status enum lists `archived`, not `auto_killed`.
 - **Dimension 6.4** — DONE — The CLI offers archive and delete only → Test `fleet_lifecycle_commands` (unit, CLI): `fleet activate <id>` sends one PATCH `{"status":"active"}` and reports a still-waiting setup with its next step; `fleet archive <id>` sends one PATCH `{"status":"archived"}`; `fleet delete <id>` sends one DELETE and no PATCH; `fleet stop`, `fleet resume` and `fleet kill` are `UNKNOWN_COMMAND`.
 
 ### §7 — Review-driven command changes
@@ -368,7 +369,15 @@ Delete `root.command.ts`, the root-level verb factories, `tenantCommand`, `billi
 - **Red-green evidence (Nov 13, 2026).** Each mutation below was applied by hand, run, and reverted byte for byte (`cmp` against the saved file): discovery writing the token to stderr and an ineligible env key falling back to the stored login → `scoped-discovery.unit.test.ts` 24 pass, 7 fail; the block gap widened by one space → `error-blocks.unit.test.ts` 9 pass, 16 fail; the unreadable credentials file made readable → its test 0 pass, 1 fail. Each restored file returned the suite to green.
 - **Rebase plan (Nov 13, 2026).** `feat/m249-fleet-interface-refresh` is on the remote at `b22d51c91` (36 commits past `origin/main`), with no PR yet (`gh pr list --head feat/m249-fleet-interface-refresh` → `[]`). `git merge-tree --write-tree HEAD origin/feat/m249-fleet-interface-refresh` reports two conflicts. `cli/src/program/tree/workspace.command.ts`: the UI branch adds `--workspace` to `tenant provider create`, which carries over to `models use` in `models.command.ts`. `docs/architecture/billing_and_provider_keys.md`: a text clash. The UI branch also adds the authored M249_002 at `pending/`; it differs from the copy this branch started from only in banned-word substitutions, so its copy becomes the authored base and this branch's move to `active/` supersedes it.
 - **§6 evidence (Nov 13, 2026).** On the §6 tree: `make lint-all` exit 0; `make test-unit-all` exit 0; `make test-integration-rustd` exit 2 on its first run (two `afd_fleet` parking race tests, `55P03` lock timeout, in code §6 does not touch), then exit 0 on a clean rerun with 1763 passed and 0 failed. The route-level approval test was proved by mutation: flipping `resolve.rs:98` to `Denied` failed it at `grant_resume.rs:89`, and the restored file passed.
-- **Open blockers:** M249_001 merging gates the rebase (Dimension 4.4), the final help report (5.1), CHORE(close) and the PR.
+- **Close evidence (Nov 13, 2026).**
+  - **4.4:** the dashboard on this branch moved to the new lifecycle: `cd ui/packages/app && bun run test:coverage` exit 0 (440 files, 4269 tests, 100% coverage); `make lint-app` exit 0; `make dry-app` exit 0 (68 Playwright specs passed, after `bunx playwright install chromium` fixed 68 "Executable doesn't exist" failures from a missing browser).
+  - **5.1:** the help report for the final tree is `/tmp/m249_002/report/help-report.md` (311 help pages and error samples; index in `help-index.md`), generated by a helper kept outside the repository.
+  - **6.6:** `tests/definition/fields.rs::a_gate_rule_naming_a_behaviour_is_refused_as_an_unknown_key` and `integration_lease_gates::runaway::a_runaway_trip_archives_the_fleet_and_ends_its_event`; restoring the `Retry` arm failed the latter at `runaway.rs:42`, and the restored file was byte-identical.
+  - **5.2:** `orly gate pr` on the pushed revision; its result is in the PR body.
+  - **Unverified:** rubric rows R4 and R5 (`make acceptance-local SUITE=cli|e2e`) were not run. They start OrbStack services, trust a local certificate, and need development Clerk credentials, a model key and a signed Linux toolbox; `.orly/LOCAL.md` runs acceptance after merge. About ten acceptance specs and fixtures changed here (lifecycle, teardown, command matrix, help, chat) and are typechecked by `make lint-cli`, not executed.
+  - **Integration lane flakes:** two `afd_fleet` parking tests, one `wall_ticks` test and, in the server agent's runs, `contention::one_hundred_concurrent_saves` and `concurrent_plan_replays` failed on `55P03` lock timeouts or `PoolCapacity` while other lanes ran on the same machine. Each passed alone and on a clean rerun; none touches code this branch changes.
+- **Dependency updates (Nov 13, 2026, Indy: "if there is an update to any of the packages please do so").** `effect` and `@effect/platform-bun` 4.1.3 → 4.1.4 (CLI and app), plus patch and minor updates; the effect-tied Dimensions (1.1, 2.1, 2.5) pass on 4.1.4. `tsrs` stays at 0.23.0: 0.25.0 is a beta two minors ahead. Rust crates were not checked (`cargo-outdated` is not installed).
+- **Open blockers:** none outside this branch. The dashboard move (4.4), the final help report (5.1) and the final gate (5.2) remain.
 
 > Owner (Indy, Nov 12, 2026): "2, 3 can be one spec pushed in your PR. claude will need a handoff prompt to start the spec and create work tree from your merged PR1 by a separate agent. For 2,3 commit in the PR you do for 1, so upon merge we pull and start on this."
 
@@ -391,5 +400,9 @@ Delete `root.command.ts`, the root-level verb factories, `tenantCommand`, `billi
 > Owner decisions (Indy, Nov 13, 2026), on the full command review (§7): "3. remove the chat delete's prompt and the --yes"; "4. rename" (`library` to `plugins`); "6. remove secrets open"; "8. yes rename" (`platform keys set` to `use`); "9. leave it for M249_003?" (`platform fleet-library` removal stays there).
 
 > Owner decisions (Indy, Nov 13, 2026), on the standards review of §6 and §7: delete in one transaction, "1. yes AFTER (one step) - signed off"; schedule sync after an approval, "2. yes signed off"; an archived fleet's refusal, "1. 409 signed off agree". On the runner message a delete sends: "the one you say is fine" (it stays `Cancel`, which stops one run).
+
+> Owner decisions (Indy, Nov 13, 2026), on the gate's remaining kill vocabulary: "7. Yes rename. we dont have to specific auto_kill or auto_archive this must be default"; then "Item 7 - signed off". A gate rule always asks a person (`behavior` and `auto_kill` removed); a runaway archives by default; `auto_killed` becomes `archived`; a gate-stopped event closes when its fleet is archived. On an archived fleet never carrying a Slack notice: "3. Okay signed off".
+
+> Owner decision (Indy, Nov 13, 2026), reversing the merge order: "Codex is still spinning … So in the mean time if your PR is ready we will merge this first." Then: "take a note of it s well". This PR merges first, so it moves the current dashboard on `main` to the new lifecycle itself (Dimension 4.4); the UI refresh rebases onto it.
 
 > Owner (Indy, Nov 12, 2026): "i think after you complete i need a report of the help, and the subcommands helps so i know you have fixed it. and the unit test acceptance fixed too for cli." Recorded as Dimension 5.1 and rubric R4.
