@@ -112,7 +112,11 @@ When deliberately recreating this worktree’s acceptance database:
 1. Stop its daemon with `make down`. This stops the process; it does not erase the database.
 2. Back up the private settings file and runner registration with their restricted permissions. The settings file is `AGENTSFLEET_LOCAL_ACCEPTANCE_ENV_FILE` when selected, otherwise `<WORKTREE_STATE>/acceptance.env`.
 3. Recreate only the intended worktree database using the development teardown procedure. Check ownership before a shared-stack teardown.
-4. Remove the locally generated `PLATFORM_ADMIN_WORKSPACE_ID` assignment from that settings file and move aside the runner registration selected by `ACCEPTANCE_LOCAL_RUNNER_RECORD`. Resolve a path containing `$DEV_STATE` against this worktree’s state directory. Preserve the encryption key, Clerk/provider credentials and signed toolbox. Preserve operator-managed settings that do not belong to this fixture.
+4. Remove the locally generated `PLATFORM_ADMIN_WORKSPACE_ID` assignment from that settings file and move aside the runner registration selected by `ACCEPTANCE_LOCAL_RUNNER_RECORD`.
+
+   Resolve a path containing `$DEV_STATE` against this worktree’s state directory. Preserve the encryption key, Clerk/provider credentials and signed toolbox.
+
+   Preserve operator-managed settings that do not belong to this fixture.
 5. Run `make acceptance-codex` with the same settings file. Bootstrap creates the replacement workspace configuration and runner registration together.
 
 This recovery applies only after a database reset you deliberately initiated. An unexpected `401`, `403`, missing registration file or unfinished enrollment is not proof of a reset. Keep the existing refusal and credential-recovery checks; do not automatically enroll another runner or replace an existing platform workspace.

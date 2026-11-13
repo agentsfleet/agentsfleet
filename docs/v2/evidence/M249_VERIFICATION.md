@@ -16,7 +16,13 @@ M249_001 remains active until the integrated candidate clears the final gates. A
 
 ✅ Retain scoped uncertain-response recovery, ETags, cancellation, sidebar removal and navigation. Strict app TypeScript checking and 116 focused tests pass (`refresh-merged-typecheck-v294.log`, `refresh-merged-focused-v296.log`). Tests cover active/installing/archived deletion without a preceding archive.
 
-✅ Internal visual review before the broad gates: 24 measured states across 1480px and 390px, both themes, covering conversation, menus, Archive/Delete confirmations and archived history. Desktop composer is 740×139. Attachment radius is 10px; bubble corners are 22/22/6/22; Summary and composer are 22px, matching the proposal. Confirmation buttons share their baseline: 40px desktop and 44px phone. Header and read-only footer remain legible without a toast covering them. Source: `main-integration-v297/point-measurements.json`; these are working-merge diagnostics, not clean-checkout release evidence. The separate sidebar review passed eight desktop/phone states in both themes, including archived labels, deletion confirmation and Cancel (`main-sidebar-v302/point-measurements.json`).
+✅ Internal visual review before the broad gates: 24 measured states across 1480px and 390px, both themes, covering conversation, menus, Archive/Delete confirmations and archived history. Desktop composer is 740×139.
+
+Attachment radius is 10px; bubble corners are 22/22/6/22; Summary and composer are 22px, matching the proposal. Confirmation buttons share their baseline: 40px desktop and 44px phone.
+
+Header and read-only footer remain legible without a toast covering them. Source: `main-integration-v297/point-measurements.json`; these are working-merge diagnostics, not clean-checkout release evidence.
+
+The separate sidebar review passed eight desktop/phone states in both themes, including archived labels, deletion confirmation and Cancel (`main-sidebar-v302/point-measurements.json`).
 
 The initial light-theme capture sampled an inherited color during the theme transition. The repeat waits for the expected computed color before inspecting the visible screen. No production CSS change was needed.
 
@@ -51,7 +57,9 @@ Claude measured 20 extra settled-card renders for 20 unrelated text events befor
 
 ## Integrated coverage result
 
-✅ `make test-coverage-all` passed on production checkpoint `8353a97d5`. App: 478 files / 4,562 tests; website: 20 / 133; CLI: 2,223 passed and 17 existing live-lane skips; design system: 65 / 514. Every enforced package coverage metric is 100 percent. App branches are 9,690 of 9,690.
+✅ `make test-coverage-all` passed on production checkpoint `8353a97d5`. App: 478 files / 4,562 tests; website: 20 / 133; CLI: 2,223 passed and 17 existing live-lane skips; design system: 65 / 514.
+
+Every enforced package coverage metric is 100 percent. App branches are 9,690 of 9,690.
 
 Log: `/workspace/scratch/refresh-final-coverage-v266.log`, ending “All package coverage gates passed”. The only uncommitted change during this run was specification maintenance; production and test source remained unchanged. No coverage exclusion, threshold or timeout changed.
 
