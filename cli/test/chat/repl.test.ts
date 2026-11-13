@@ -51,7 +51,7 @@ test("should keep the conversation open after refused actions, touch nothing and
     `info: ${HELP}`, `info: ${HELP}`, `warn: Unknown chat action. ${HELP}`,
     "warn: This conversation has no accessible draft. send your first message or resume an accessible draft",
     `warn: ${MISSING_REVIEW}`, `warn: Missing run message. ${HELP}`, `warn: ${MISSING_REVIEW}`,
-    `warn: Missing Library label. ${HELP}`, `warn: ${MISSING_REVIEW}`, `warn: Missing authoring model reference. ${HELP}`,
+    `warn: Missing plugin label. ${HELP}`, `warn: ${MISSING_REVIEW}`, `warn: Missing authoring model reference. ${HELP}`,
   ]);
 });
 

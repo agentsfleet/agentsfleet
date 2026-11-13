@@ -39,7 +39,7 @@ export function dispatch(actions: ChatActions, text: string, output: Output): Ef
     case COMMAND.review: return actions.review(argument || undefined).pipe(Effect.asVoid);
     case COMMAND.save: return actions.save();
     case COMMAND.run: return required(argument, "run message").pipe(Effect.andThen(() => actions.save({kind: START.runNow, message: argument})));
-    case COMMAND.publish: return required(argument, "Library label").pipe(Effect.andThen(() => actions.publish(argument)));
+    case COMMAND.publish: return required(argument, "plugin label").pipe(Effect.andThen(() => actions.publish(argument)));
     case COMMAND.apply: return actions.apply();
     case COMMAND.stop: return actions.stop();
     case COMMAND.model: return required(argument, "authoring model reference").pipe(Effect.andThen(() => actions.model(argument)));
