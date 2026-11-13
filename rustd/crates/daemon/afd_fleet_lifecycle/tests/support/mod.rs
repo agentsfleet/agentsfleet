@@ -134,6 +134,24 @@ impl Lane {
         self.database.open(DbRole::Migrator, &[]).await
     }
 
+    /// Deletes `fleet` from `workspace` the way production does: one
+    /// transaction around [`afd_fleet_lifecycle::delete_locked`], committed
+    /// only when it succeeds, then the live set expired.
+    pub(crate) async fn delete(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+    ) -> afd_fleet_lifecycle::Result<()> {
+        let mut connection = self.connection().await;
+        let mut transaction = sqlx::Acquire::begin(&mut *connection)
+            .await
+            .expect("the delete transaction opens");
+        afd_fleet_lifecycle::delete_locked(&mut transaction, workspace, fleet).await?;
+        transaction.commit().await.expect("the delete commits");
+        self.fleets.invalidate_live_set(workspace).await;
+        Ok(())
+    }
+
     /// One pooled connection, for the fixture's own reads and writes.
     pub(crate) async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
         self.pool

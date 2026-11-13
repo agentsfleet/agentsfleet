@@ -106,7 +106,7 @@ async fn removed_file_configuration_inputs_are_refused() {
 
 #[tokio::test]
 async fn a_patch_may_not_forge_a_status_the_platform_owns() {
-    for spelling in ["paused", "installing", "deleted", ""] {
+    for spelling in ["paused", "stopped", "killed", "installing", "deleted", ""] {
         let body = serde_json::json!({"status":spelling}).to_string();
         let response = authorised(Method::PATCH, &item(), &body).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{spelling}");
@@ -115,7 +115,7 @@ async fn a_patch_may_not_forge_a_status_the_platform_owns() {
 
 #[tokio::test]
 async fn a_status_patch_requires_the_resource_tag_before_reaching_the_store() {
-    let response = authorised(Method::PATCH, &item(), r#"{"status":"stopped"}"#).await;
+    let response = authorised(Method::PATCH, &item(), r#"{"status":"archived"}"#).await;
     assert_eq!(response.status(), StatusCode::PRECONDITION_REQUIRED);
     assert_eq!(
         harness::json_body(response).await["error_code"],

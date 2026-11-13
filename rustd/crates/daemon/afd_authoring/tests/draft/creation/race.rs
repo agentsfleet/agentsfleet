@@ -1,4 +1,4 @@
-//! Kill and activation contend for one fleet row and linearise: whichever
+//! Archive and activation contend for one fleet row and linearise: whichever
 //! commits first decides, and the other observes it.
 //!
 //! Each order is forced, never hoped for. A transaction on its own connection
@@ -37,7 +37,7 @@ const AT_WALLET: &str = "SELECT balance_nanos FROM billing.wallets";
 /// Where activation waits when its draft row is held: holding the fleet row it
 /// has just activated, before its transaction commits.
 const AT_CLOSE: &str = "UPDATE authoring.drafts\n   SET status = $2, closed_at";
-/// Kill's fleet row lock, the only read that could wait on an activation.
+/// Archive's fleet row lock, the only read that could wait on an activation.
 const AT_LOCK: &str = "SELECT";
 
 /// One row lock held open on a connection of its own.
@@ -153,21 +153,21 @@ fn activate(c: &Arc<Case>, key: Uuid7, request: SaveFleet) -> JoinHandle<Result<
     })
 }
 
-/// A Kill under the tag the person last read, on its own task.
-fn kill(c: &Arc<Case>, fleet: &Uuid7, tag: String) -> JoinHandle<Result<SavedFleet>> {
+/// An archive under the tag the person last read, on its own task.
+fn archive(c: &Arc<Case>, fleet: &Uuid7, tag: String) -> JoinHandle<Result<SavedFleet>> {
     let (c, fleet) = (Arc::clone(c), fleet.clone());
     tokio::spawn(async move {
-        let killed = Some("killed");
+        let archived = Some("archived");
         let access = c.base.access();
         c.creations
-            .patch(access, &fleet, Some(&tag), killed, None, now())
+            .patch(access, &fleet, Some(&tag), archived, None, now())
             .await
     })
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_kill_committed_while_activation_waits_refuses_that_activation() {
+async fn a_archive_committed_while_activation_waits_refuses_that_activation() {
     let c = Arc::new(Case::create().await);
     let Installing {
         fleet,
@@ -175,26 +175,26 @@ async fn a_kill_committed_while_activation_waits_refuses_that_activation() {
         request,
         tag,
         draft,
-    } = Installing::save(&c, "kill-first").await;
+    } = Installing::save(&c, "archive-first").await;
     let wallet = Hold::take(&c.base.owner_url(), HOLD_WALLET, &c.base.tenant).await;
     let activation = activate(&c, key, request);
     blocked(&c, &[wallet.pid], AT_WALLET).await;
-    let killed = bounded(
-        "Kill never waits on a pending activation",
-        kill(&c, &fleet, tag),
+    let archived = bounded(
+        "Archive never waits on a pending activation",
+        archive(&c, &fleet, tag),
     )
     .await
-    .expect("Kill task")
-    .expect("Kill wins the fleet row");
-    assert_eq!(killed.status, "killed");
+    .expect("Archive task")
+    .expect("Archive wins the fleet row");
+    assert_eq!(archived.status, "archived");
     wallet.release().await;
     let refused = bounded("activation resumes", activation)
         .await
         .expect("activation task")
         .expect("a refused activation still answers the retained fleet");
     assert_eq!(
-        refused.status, "killed",
-        "activation saw the committed Kill"
+        refused.status, "archived",
+        "activation saw the committed Archive"
     );
     assert_eq!(refused.setup.state, "cancelled");
     assert_eq!(c.admissions(&fleet).await, NO_ADMISSIONS);
@@ -204,8 +204,8 @@ async fn a_kill_committed_while_activation_waits_refuses_that_activation() {
 }
 
 /// A fixture trigger removal can queue this table lock between activation and
-/// Kill. Force that ordering so lock observation must follow the whole chain.
-async fn kill_after_table_lock(
+/// Archive. Force that ordering so lock observation must follow the whole chain.
+async fn archive_after_table_lock(
     c: &Arc<Case>,
     fleet: &Uuid7,
     tag: String,
@@ -229,9 +229,9 @@ async fn kill_after_table_lock(
             .expect("release table lock");
     });
     blocked(c, &[activating], "LOCK TABLE").await;
-    let killing = kill(c, fleet, tag);
+    let archiving = archive(c, fleet, tag);
     tokio::spawn(async move {
-        let result = killing.await.expect("Kill task");
+        let result = archiving.await.expect("Archive task");
         queued.await.expect("table lock task");
         result
     })
@@ -239,7 +239,7 @@ async fn kill_after_table_lock(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn an_activation_committed_first_makes_the_concurrent_kill_stale() {
+async fn an_activation_committed_first_makes_the_concurrent_archive_stale() {
     let c = Arc::new(Case::create().await);
     let Installing {
         fleet,
@@ -251,7 +251,7 @@ async fn an_activation_committed_first_makes_the_concurrent_kill_stale() {
     let linked = Hold::take(&c.base.owner_url(), HOLD_DRAFT, &draft).await;
     let activation = activate(&c, key, request);
     let activating = blocked(&c, &[linked.pid], AT_CLOSE).await;
-    let kill = kill_after_table_lock(&c, &fleet, tag, activating).await;
+    let archive = archive_after_table_lock(&c, &fleet, tag, activating).await;
     blocked(&c, &[activating], AT_LOCK).await;
     linked.release().await;
     let activated = bounded("activation commits", activation)
@@ -266,10 +266,10 @@ async fn an_activation_committed_first_makes_the_concurrent_kill_stale() {
             ..
         }
     ));
-    let stale = bounded("Kill resumes", kill)
+    let stale = bounded("Archive resumes", archive)
         .await
-        .expect("Kill task")
-        .expect_err("a Kill against the pre-activation tag is stale");
+        .expect("Archive task")
+        .expect_err("an archive against the pre-activation tag is stale");
     assert_eq!(stale.code(), error_code::AUTHORING_STALE);
     assert_eq!(stale.etag(), Some(activated.etag.as_str()));
     let current = c.creations.read(c.base.access(), &fleet).await;

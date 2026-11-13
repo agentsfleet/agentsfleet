@@ -26,7 +26,7 @@ const runAt = async (level: ReadonlyArray<string>): Promise<string> => {
     await withMockApi(routes, async (apiUrl) => {
       const out = bufferStream();
       const err = bufferStream();
-      const code = await runCli([...level, "list"], {
+      const code = await runCli([...level, "fleet", "list"], {
         stdout: out.stream,
         stderr: err.stream,
         env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -72,7 +72,7 @@ describe("the level governs records that exist", () => {
   test("a level we do not offer is still refused, naming the nine we do", async () => {
     const out = bufferStream();
     const err = bufferStream();
-    const code = await runCli(["--log-level", "bogus", "list"], {
+    const code = await runCli(["--log-level", "bogus", "fleet", "list"], {
       stdout: out.stream,
       stderr: err.stream,
       env: cliEnv({}),

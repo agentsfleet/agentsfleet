@@ -1,4 +1,4 @@
-// `agentsfleet approvals` — the workspace approval inbox, read side.
+// `agentsfleet fleet approvals` — the workspace approval inbox, read side.
 //
 // A Fleet whose trigger declares a write capability parks every run behind a
 // gate until a person decides it. Before this command the gate was reachable
@@ -112,10 +112,10 @@ const EMPTY_INBOX = "No approval gates in this workspace." as const;
 const GATES_LISTED = "Approval gates" as const;
 const GATE_SHOWN = "Approval gate" as const;
 const SECTION_TITLE = "Approval gate" as const;
-const SHOW_USAGE = "usage: agentsfleet approvals show <gate_id>" as const;
+const SHOW_USAGE = "usage: agentsfleet fleet approvals show <gate_id>" as const;
 const GATE_ID_REQUIRED = "<gate_id> is required" as const;
 export const APPROVALS_LIST_HINT =
-  "Decide one with: agentsfleet approvals approve <gate_id>" as const;
+  "Decide one with: agentsfleet fleet approvals approve <gate_id>" as const;
 
 const cell = (value: string | null | undefined): string =>
   value && value.length > 0 ? value : EMPTY_CELL;

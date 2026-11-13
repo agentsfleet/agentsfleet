@@ -75,14 +75,14 @@ mod tests {
     #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(rename_all = "snake_case")]
     enum Renamed {
-        AutoKilled,
+        TimedOut,
         #[serde(rename = "approve")]
         Approved,
     }
 
     #[test]
     fn a_declared_spelling_resolves_to_its_variant() {
-        assert_eq!(from_spelling("auto_killed"), Some(Renamed::AutoKilled));
+        assert_eq!(from_spelling("timed_out"), Some(Renamed::TimedOut));
         // An explicit rename wins over the group rule, which is what lets one
         // enum serve a column and a differently-spelled key.
         assert_eq!(from_spelling("approve"), Some(Renamed::Approved));
@@ -93,14 +93,14 @@ mod tests {
         // Including the variant's Rust name, which is deliberately NOT a
         // spelling: a stored value is what a rename says, never what the
         // identifier happens to look like.
-        for unknown in ["AutoKilled", "autoKilled", "approved", "", "pending"] {
+        for unknown in ["TimedOut", "timedOut", "approved", "", "pending"] {
             assert_eq!(from_spelling::<Renamed>(unknown), None, "{unknown}");
         }
     }
 
     #[test]
     fn a_variant_spells_as_its_declaration_and_round_trips() {
-        for variant in [Renamed::AutoKilled, Renamed::Approved] {
+        for variant in [Renamed::TimedOut, Renamed::Approved] {
             let word = to_spelling(&variant).unwrap_or_default();
             assert_eq!(from_spelling(&word), Some(variant), "{word}");
         }

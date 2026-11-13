@@ -235,7 +235,7 @@ export const openEventTail = (
       // event_complete would otherwise pass itself off as the whole reply.
       const dropped = buffer.droppedCount();
       if (dropped > 0) {
-        printLine(ui.dim(`${dropped} early frame(s) dropped live — full history: agentsfleet events ${fleetId}`));
+        printLine(ui.dim(`${dropped} early frame(s) dropped live — full history: agentsfleet fleet events ${fleetId}`));
       }
       const filtered = makeFrameCallback({ printLine, eventId: id, presentation }, (next) => {
         outcome = next;

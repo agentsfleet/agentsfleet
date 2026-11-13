@@ -9,6 +9,7 @@
 // The check is a predicate plus the sentence to print, so the sentence lives
 // beside the rule it belongs to rather than inside a thrown error object.
 
+import { Option } from "effect";
 import { Flag, Argument } from "effect/cli";
 import { EXAMPLE_UUIDV7, isValidId } from "../../lib/id.ts";
 import {
@@ -111,6 +112,19 @@ export const requiredIdFlag = (name: string, description: string) =>
     Flag.filter((value: string) => isValidId(value), () => NOT_A_UUIDV7),
   );
 
+// The verbs every resource group spells, named once.
+export const VERB = Object.freeze({
+  list: "list", show: "show", create: "create", update: "update", delete: "delete", sync: "sync",
+} as const);
+
+// A parsed optional flag as the command Effects take it.
+export const opt = Option.getOrUndefined;
+
+// The command Effects take a page size as the wire's string; the flag already
+// refused anything outside its bound, so this only converts back.
+export const optNum = (value: Option.Option<number>): string | undefined =>
+  Option.match(value, { onNone: () => undefined, onSome: (n) => String(n) });
+
 export const requiredTextFlag = (name: string, description: string, metavar: string = METAVAR.text) =>
   Flag.String(name).pipe(
     Flag.withDescription(description),
@@ -118,7 +132,7 @@ export const requiredTextFlag = (name: string, description: string, metavar: str
   );
 
 const idFlag = (name: string, description: string) => requiredIdFlag(name, description).pipe(Flag.optional);
-const textFlag = (name: string, description: string, metavar: string = METAVAR.text) =>
+export const textFlag = (name: string, description: string, metavar: string = METAVAR.text) =>
   requiredTextFlag(name, description, metavar).pipe(Flag.optional);
 
 export const workspaceFlag = idFlag("workspace", WORKSPACE_ID_DESC);
@@ -154,7 +168,7 @@ export const billingLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, BILLING_L
 // provider dropdown is built from.
 export const providerFlag = textFlag(
   FLAG.provider,
-  `Provider id from \`agentsfleet models\` (use '${OPENAI_COMPATIBLE_PROVIDER}' with --base-url for an endpoint the catalogue does not carry)`,
+  `Provider id from \`agentsfleet models list\` (use '${OPENAI_COMPATIBLE_PROVIDER}' with --base-url for an endpoint the catalogue does not carry)`,
   METAVAR.name,
 );
 
@@ -224,6 +238,7 @@ export const scheduleStatusFlag = textFlag("status", "active or paused", METAVAR
 
 export const sortFlag = Flag.Literals("sort", API_KEY_SORTS).pipe(
   Flag.withDescription("Sort order"),
+  Flag.withMetavar(`<${API_KEY_SORTS.join("|")}>`),
   Flag.optional,
 );
 
@@ -269,7 +284,7 @@ export const gateIdArgument = idArgument("gate_id", "Approval gate ID");
 export const apiKeyIdArgument = idArgument("api_key_id", "API key ID");
 export const grantIdArgument = idArgument("grant_id", "Grant ID");
 export const scheduleIdArgument = idArgument("schedule_id", "Schedule ID");
-export const entryIdArgument = idArgument("entry_id", "Fleet library entry ID");
+export const pluginIdArgument = idArgument("plugin_id", "Plugin ID");
 
 export const workspaceNameArgument = Argument.String(FLAG.name).pipe(
   Argument.withDescription("Workspace name"),

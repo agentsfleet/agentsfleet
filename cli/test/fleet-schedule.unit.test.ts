@@ -32,7 +32,7 @@ test("a missing required schedule value refuses before any request", async () =>
     ));
     expect(failure).toBeInstanceOf(ValidationError);
     if (!(failure instanceof ValidationError)) throw new Error("missing schedule refusal");
-    expect(failure.suggestion).toContain("agentsfleet schedule create");
+    expect(failure.suggestion).toContain("agentsfleet fleet schedule create");
     expect(calls).toEqual([]);
   }
 });
@@ -236,7 +236,7 @@ describe("schedule create/list/update/delete/sync effects", () => {
     expect(empty).toBeInstanceOf(ValidationError);
     if (!(empty instanceof ValidationError)) throw new Error("missing empty-update refusal");
     expect(empty.detail).toBe("no schedule fields provided");
-    expect(empty.suggestion).toContain("agentsfleet schedule update");
+    expect(empty.suggestion).toContain("agentsfleet fleet schedule update");
     expect(none).toEqual([]);
 
     const untagged: HttpRequestInput[] = [];
@@ -279,7 +279,7 @@ describe("schedule create/list/update/delete/sync effects", () => {
 
 describe("each schedule refusal suggests a verb the parser accepts", () => {
   // The rename moved the verbs and left these usage lines behind once, so a
-  // bad input answered with `usage: agentsfleet schedule rm ...`. A missing
+  // bad input answered with `usage: agentsfleet fleet schedule rm ...`. A missing
   // fleet id is what earns the usage line, and the parser answers for it
   // before a handler runs, so the handler's own suggestion is driven here.
   const MISSING_ID = undefined;
@@ -300,7 +300,7 @@ describe("each schedule refusal suggests a verb the parser accepts", () => {
     const suggestion = (failure as { readonly suggestion?: string } | null)?.suggestion ?? "";
 
     expect(calls).toEqual([]);
-    expect(suggestion).toContain(`agentsfleet schedule ${verb} `);
-    for (const retired of RETIRED) expect(suggestion).not.toContain(`agentsfleet schedule ${retired} `);
+    expect(suggestion).toContain(`agentsfleet fleet schedule ${verb} `);
+    for (const retired of RETIRED) expect(suggestion).not.toContain(`agentsfleet fleet schedule ${retired} `);
   });
 });

@@ -12,11 +12,11 @@ struct DomainRefusal;
 
 impl Refusable for DomainRefusal {
     fn code(&self) -> error_code::ErrorCode {
-        error_code::AGENTSFLEET_PAUSED_INGRESS
+        error_code::AGENTSFLEET_NOT_ACTIVE
     }
 
     fn detail(&self) -> &'static str {
-        "the fleet is paused"
+        "the fleet is not active"
     }
 
     fn is_datastore_unavailable(&self) -> bool {
@@ -53,7 +53,7 @@ fn constructors_preserve_each_refusal_status_and_header() {
             StatusCode::BAD_REQUEST,
         ),
         (
-            Refusal::conflict(error_code::AGENTSFLEET_PAUSED_INGRESS, "paused", "paused"),
+            Refusal::conflict(error_code::AGENTSFLEET_NOT_ACTIVE, "archived", "archived"),
             StatusCode::CONFLICT,
         ),
         (Refusal::forbidden("forbidden"), StatusCode::FORBIDDEN),
@@ -66,11 +66,11 @@ fn constructors_preserve_each_refusal_status_and_header() {
             StatusCode::PRECONDITION_FAILED,
         ),
         (
-            Refusal::conflict_at("fixture", "paused")(DomainRefusal),
+            Refusal::conflict_at("fixture", "archived")(DomainRefusal),
             StatusCode::CONFLICT,
         ),
         (
-            Refusal::conflict_detailed("fixture", "counted conflict".to_owned(), "paused")(
+            Refusal::conflict_detailed("fixture", "counted conflict".to_owned(), "archived")(
                 DomainRefusal,
             ),
             StatusCode::CONFLICT,
@@ -107,8 +107,8 @@ async fn current_state(refusal: Refusal) -> Option<String> {
 #[tokio::test]
 async fn conflict_or_at_names_a_state_only_for_the_errors_the_call_site_picks() {
     let named =
-        Refusal::conflict_or_at("fixture", |_: &DomainRefusal| Some("paused"))(DomainRefusal);
-    assert_eq!(current_state(named).await.as_deref(), Some("paused"));
+        Refusal::conflict_or_at("fixture", |_: &DomainRefusal| Some("archived"))(DomainRefusal);
+    assert_eq!(current_state(named).await.as_deref(), Some("archived"));
 
     let plain = Refusal::conflict_or_at("fixture", |_: &DomainRefusal| None)(DomainRefusal);
     assert_eq!(current_state(plain).await, None);

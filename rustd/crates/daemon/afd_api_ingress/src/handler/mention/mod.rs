@@ -49,8 +49,9 @@ pub(super) const REASON_BOT_MESSAGE: &str = "bot_message";
 pub(super) const REASON_TEAM_NOT_MAPPED: &str = "team_not_mapped";
 /// No saved fleet is configured for this channel.
 pub(super) const REASON_CHANNEL_NOT_CONFIGURED: &str = "channel_not_configured";
-/// A killed notice owner cannot acquire another outbound obligation.
-pub(super) const REASON_NOTICE_OWNER_KILLED: &str = "notice_owner_killed";
+/// No active fleet in the channel can carry a notice: an archived fleet
+/// cannot acquire another outbound obligation, so it is never a carrier.
+pub(super) const REASON_NO_ACTIVE_CARRIER: &str = "no_active_notice_carrier";
 
 /// The event a datastore failure on this path is refused under.
 const EVENT_MENTION: &str = "slack_mention_failed";
@@ -246,7 +247,7 @@ pub(super) async fn admit<D: Services>(
         Route::Addressed { fleet, message } | Route::Sole { fleet, message } => (fleet, message),
         Route::Unconfigured => return Ok(Outcome::Dropped(REASON_CHANNEL_NOT_CONFIGURED)),
         Route::Notice(notice) => {
-            return notice::owe(services, provider, &workspace, asked, &notice).await;
+            return notice::owe(services, provider, &workspace, asked, &notice, &subscribers).await;
         }
     };
     admit::routed(

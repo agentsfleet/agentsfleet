@@ -66,7 +66,7 @@ pub(crate) struct FleetSourcePath {
     description = concat!(
         "Sends an event to a fleet's named webhook trigger. Requires the trigger's valid ",
         "signature. New events return 202; repeats within 24 hours return `status: ",
-        "duplicate`. Paused fleets return `ignored: fleet_paused`; resend after resuming.",
+        "duplicate`. A fleet that is not active returns `ignored: fleet_not_active`.",
     ),
     request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(

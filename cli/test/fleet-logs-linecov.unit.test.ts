@@ -154,7 +154,7 @@ describe("logsEffectFromFlags — id validation guard", () => {
         expect(err.detail).toMatch(/invalid fleet_id/i);
         // The suggestion names the fix; asserting it differs from the detail is
         // what keeps the pre-M171 echo from coming back.
-        expect(err.suggestion).toMatch(/usage: agentsfleet logs --fleet <id>/);
+        expect(err.suggestion).toMatch(/usage: agentsfleet fleet logs --fleet <id>/);
         expect(err.suggestion).not.toBe(err.detail);
       }
     }

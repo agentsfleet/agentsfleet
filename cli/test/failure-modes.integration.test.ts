@@ -55,7 +55,7 @@ describe("failure modes — login surface", () => {
         const text = err.read();
         expect(text).toContain("UZ-AUTH-004");
         expect(text).toContain("Authentication service unavailable");
-        expect(text).toMatch(/request_id/);
+        expect(text).toMatch(/^ {2}request {2,}\S/m);
       });
     });
   });
@@ -113,7 +113,7 @@ describe("failure modes — runtime / observability surface", () => {
         const logsOut = bufferStream();
         const logsErr = bufferStream();
         const logsCode = await runCli(
-          ["logs", FLEET_ID],
+          ["fleet", "logs", FLEET_ID],
           { stdout: logsOut.stream, stderr: logsErr.stream,
             env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
@@ -139,7 +139,7 @@ describe("failure modes — runtime / observability surface", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["logs", FLEET_ID],
+          ["fleet", "logs", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         // Effect-shape contract: HTTP 401 → ServerError → exit 3.

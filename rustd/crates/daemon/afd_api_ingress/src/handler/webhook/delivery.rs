@@ -18,7 +18,7 @@ pub(super) async fn deliver<D: Services>(
         return Ok((
             StatusCode::OK,
             Json(webhook::Ignored {
-                ignored: webhook::REASON_FLEET_PAUSED.into(),
+                ignored: webhook::REASON_FLEET_NOT_ACTIVE.into(),
             }),
         )
             .into_response());

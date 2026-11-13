@@ -7,13 +7,16 @@ import { describe, test, expect } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { makeBufferStream, ui } from "./helpers.ts";
+import { makeBufferStream } from "./helpers.ts";
 import { runCli } from "../src/cli.ts";
 import { EXIT_CODE } from "../src/errors/index.ts";
 import { STATE_DIR_ENV } from "../src/constants/env.ts";
 import { writeError } from "../src/program/io.ts";
-import { rootCommand } from "../src/program/tree/root.command.ts";
+import { buildCommandTree } from "../src/program/tree/index.ts";
+
 import { childrenOf, type CommandNode } from "../src/program/tree/resolve-path.ts";
+
+const rootCommand = buildCommandTree();
 
 // The credential store resolves from the environment `runCli` is handed, so
 // the auth-shaped cases below isolate by passing this directory in `io.env` —
@@ -47,18 +50,18 @@ describe("CLI tree — every documented route is reachable", () => {
   const expectedCommands = [
     ["login"], ["logout"], ["doctor"],
     ["workspace", "create"], ["workspace", "list"], ["workspace", "use"],
-    ["workspace", "show"], ["workspace", "secrets"], ["workspace", "delete"],
-    ["api-key", "create"], ["api-key", "list"], ["api-key", "revoke"], ["api-key", "delete"],
-    ["connector", "list"], ["connector", "show"],
-    ["grant", "list"], ["grant", "delete"],
-    ["schedule", "create"], ["schedule", "list"], ["schedule", "update"], ["schedule", "delete"], ["schedule", "show"], ["schedule", "sync"],
-    ["tenant", "provider", "show"], ["tenant", "provider", "create"], ["tenant", "provider", "delete"],
-    ["billing", "show"],
+    ["workspace", "show"], ["workspace", "delete"],
+    ["api-keys", "create"], ["api-keys", "list"], ["api-keys", "revoke"], ["api-keys", "delete"],
+    ["connections", "list"], ["connections", "show"],
+    ["fleet", "grants", "list"], ["fleet", "grants", "revoke"],
+    ["fleet", "schedule", "create"], ["fleet", "schedule", "list"], ["fleet", "schedule", "update"], ["fleet", "schedule", "delete"], ["fleet", "schedule", "show"], ["fleet", "schedule", "sync"],
+    ["models", "current"], ["models", "use"], ["models", "reset"],
+    ["usage", "show"],
     ["chat", "list"], ["chat", "rename"], ["chat", "delete"],
-    ["library", "list"], ["library", "delete"], ["fleet", "show"],
-    ["list"], ["status"], ["stop"], ["resume"], ["kill"], ["delete"],
-    ["logs"], ["events"], ["steer"],
-    ["secret", "create"], ["secret", "update"], ["secret", "show"], ["secret", "list"], ["secret", "delete"],
+    ["plugins", "list"], ["plugins", "delete"], ["fleet", "show"],
+    ["fleet", "list"], ["fleet", "status"], ["fleet", "activate"], ["fleet", "archive"], ["fleet", "delete"],
+    ["fleet", "logs"], ["fleet", "events"], ["fleet", "steer"],
+    ["secrets", "create"], ["secrets", "update"], ["secrets", "show"], ["secrets", "list"], ["secrets", "delete"],
   ];
 
   for (const path of expectedCommands) {
@@ -150,17 +153,17 @@ describe("writeError helper", () => {
   test("JSON mode emits structured error on stderr", () => {
     const { stream: stderr, read } = makeBufferStream();
     const ctx = { jsonMode: true, stderr };
-    writeError(ctx, "TEST_CODE", "test message", { ui });
+    writeError(ctx, "TEST_CODE", "test message");
     const parsed = tryParseJson(read()) as { error: { code: string; message: string } } | null;
     expect(parsed).not.toBeNull();
     expect(parsed?.error.code).toBe("TEST_CODE");
     expect(parsed?.error.message).toBe("test message");
   });
 
-  test("non-JSON mode emits human text via ui.err", () => {
+  test("non-JSON mode emits an error block", () => {
     const { stream: stderr, read } = makeBufferStream();
     const ctx = { jsonMode: false, stderr };
-    writeError(ctx, "TEST_CODE", "test message", { ui });
+    writeError(ctx, "TEST_CODE", "test message");
     expect(read()).toContain("test message");
     expect(tryParseJson(read())).toBeNull();
   });

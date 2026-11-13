@@ -41,6 +41,7 @@ use crate::services::{Services, WorkspaceApprovals as _};
 
 mod query;
 pub(crate) mod resolve;
+mod setup;
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_LIST: &str = "approval_list_failed";
@@ -94,7 +95,7 @@ pub(crate) struct ResolvePath {
     ),
     params(
         afd_http::openapi::path::Workspace,
-        ("status" = Option<String>, Query, description = "Narrows to one state: \"pending\", \"approved\", \"denied\", \"timed_out\" or \"auto_killed\". Omit it for every state."),
+        ("status" = Option<String>, Query, description = "Narrows to one state: \"pending\", \"approved\", \"denied\", \"timed_out\" or \"archived\". Omit it for every state."),
         ("fleet_id" = Option<String>, Query),
         ("gate_type" = Option<String>, Query),
         ("limit" = Option<String>, Query),

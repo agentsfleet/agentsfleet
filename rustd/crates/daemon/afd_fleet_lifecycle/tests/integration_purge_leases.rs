@@ -68,11 +68,10 @@ async fn a_purge_deletes_the_live_lease_and_keeps_the_settled_one() {
         .await
         .expect("the runner, event and leases seed");
 
-    let tag = lane.kill(&fleet).await;
-    lane.fleets
-        .purge_tagged(&lane.workspace, &fleet, &tag)
+    lane.archive(&fleet).await;
+    lane.delete(&lane.workspace, &fleet)
         .await
-        .expect("a killed fleet purges under its current tag");
+        .expect("an archived fleet purges under its current tag");
 
     assert!(
         !exists(&lane, &live).await,

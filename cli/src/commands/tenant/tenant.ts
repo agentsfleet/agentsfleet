@@ -108,7 +108,7 @@ export const tenantProviderShowEffect: Effect.Effect<
     const ref = res.secret_ref ?? "(unknown)";
     const msg =
       res.error === "credential_missing"
-        ? `⚠ Secret ${ref} is missing from vault — re-add under the same name OR run 'agentsfleet tenant provider delete'.`
+        ? `⚠ Secret ${ref} is missing from vault — re-add under the same name OR run 'agentsfleet models reset'.`
         : `⚠ Provider resolver error: ${res.error} (secret_ref=${ref})`;
     yield* output.error(msg);
   }
@@ -137,7 +137,7 @@ export const tenantProviderAddEffectFromArgs = (
     if (!secretRef) {
       return yield* Effect.fail(
         new ValidationError({
-          detail: "tenant provider create requires --secret <name>",
+          detail: "models use requires --secret <name>",
           suggestion:
             "pick the secret explicitly so the link to your vault entry is clear",
         }),

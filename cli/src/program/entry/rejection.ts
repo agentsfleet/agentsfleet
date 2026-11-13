@@ -1,16 +1,20 @@
 // A rejected invocation, in this CLI's own shape.
 //
 // The library states its parse failures plainly — "Missing argument", and a
-// help document underneath. This CLI has always answered in a fixed two-line
-// shape instead:
+// help document underneath. This CLI answers with one labelled block instead
+// (see `output/error-block.ts`):
 //
 //     ✕ error: <what was wrong>
-//       Suggestion: <what to run instead>
+//       code          <stable code>
+//       usage         <the leaf's usage line, for a leaf>
+//       did you mean  <near-miss names, for an unknown command>
+//       suggestion    <where to look next>
 //
 // and under `--json`, an envelope carrying a stable code. Both halves are
-// load-bearing. The Suggestion is the half a person acts on, and it must name
-// a fix rather than restate the fault — the acceptance suite asserts the two
-// lines differ, because a suggestion that repeats the detail is decoration.
+// load-bearing. The fix line (`suggestion` or `usage`) is what a person acts
+// on, and it must name a fix rather than restate the fault — the acceptance
+// suite asserts the two differ, because a fix that repeats the detail is
+// decoration.
 // The codes are a machine contract (`constants/rejection.ts`, RULE JCL): a
 // `--json` consumer switches on them, so renaming one breaks that consumer.
 //
@@ -23,9 +27,9 @@ import {
   CLI_NAME,
   HELP_FLAG,
   HELP_HINT_PREFIX,
+  HELP_HINT_LEAF_SUFFIX,
   HELP_HINT_SUFFIX,
   REJECTION_CODE,
-  USAGE_PREFIX,
   type RejectionCode,
 } from "../../constants/rejection.ts";
 import { childrenOf, resolveCommandPath, type CommandNode } from "../tree/resolve-path.ts";
@@ -37,8 +41,17 @@ const FLAG_PREFIX = "--" as const;
 
 export interface HouseRejection {
   readonly code: RejectionCode;
+  // The envelope's message under `--json`.
   readonly detail: string;
+  // The block's first line in text mode.
+  readonly headline: string;
+  // Where to look next: the reached command's help.
   readonly suggestion: string;
+  // A leaf's own usage line, when the reached command is a leaf.
+  readonly usage: string | undefined;
+  // The library's near-miss names for an unknown command. The library leaves
+  // unlisted commands out, so a hidden command is never suggested here.
+  readonly didYouMean: string | undefined;
 }
 
 // Every variant that means "the invocation was wrong". `ShowHelp` is absent
@@ -87,28 +100,36 @@ const nodeAt = (root: CommandNode, path: ReadonlyArray<string>): CommandNode | n
   return node;
 };
 
-/**
- * What to run instead.
- *
- * A leaf gets its own usage line, which is a command someone can type. A group
- * or the root has no runnable form of its own, so it points at the command
- * list — telling somebody to run `agentsfleet workspace` when that is what
- * just failed would be a loop.
- */
-const suggestionFor = (root: CommandNode, path: ReadonlyArray<string>): string => {
+// Whether a non-root path ends at a command with no children. A leaf gets its
+// own usage line, which is a command someone can type; a group or the root has
+// no runnable form, so its hint points at its command list instead.
+const isLeaf = (root: CommandNode, path: ReadonlyArray<string>): boolean => {
   const node = path.length > 0 ? nodeAt(root, path) : root;
-  if (node === null || childrenOf(node).length > 0 || path.length === 0) {
-    // The hint names the group that was actually reached: `connector pogo`
-    // sends someone to `agentsfleet connector --help`, which lists the verbs
-    // they were choosing between, not the root list they have to search again.
-    const scope = [CLI_NAME, ...path].join(" ");
-    return `${HELP_HINT_PREFIX}${scope} ${HELP_FLAG}${HELP_HINT_SUFFIX}`;
-  }
-  const args = ((node as ArgumentNode).config?.arguments ?? [])
+  return node !== null && path.length > 0 && childrenOf(node).length === 0;
+};
+
+// The hint names the command that was actually reached: `connections pogo`
+// sends someone to `agentsfleet connections --help`, which lists the verbs
+// they were choosing between, not the root list they have to search again.
+const suggestionFor = (root: CommandNode, path: ReadonlyArray<string>): string => {
+  const scope = [CLI_NAME, ...path].join(" ");
+  const suffix = isLeaf(root, path) ? HELP_HINT_LEAF_SUFFIX : HELP_HINT_SUFFIX;
+  return `${HELP_HINT_PREFIX}${scope} ${HELP_FLAG}${suffix}`;
+};
+
+const usageFor = (root: CommandNode, path: ReadonlyArray<string>): string | undefined => {
+  if (!isLeaf(root, path)) return undefined;
+  const node = nodeAt(root, path) as ArgumentNode;
+  const args = (node.config?.arguments ?? [])
     .map(spellArgument)
     .filter((spelling) => spelling.length > 0);
-  return [USAGE_PREFIX + CLI_NAME, ...path, OPTIONS_PLACEHOLDER, ...args].join(" ");
+  return [CLI_NAME, ...path, OPTIONS_PLACEHOLDER, ...args].join(" ");
 };
+
+const didYouMeanFor = (rejected: CliError.CliError): string | undefined =>
+  rejected instanceof CliError.UnknownSubcommand && rejected.suggestions.length > 0
+    ? rejected.suggestions.join(", ")
+    : undefined;
 
 /**
  * The rejection inside a failure, if there is one.
@@ -127,6 +148,14 @@ const unwrapShowHelp = (error: unknown): CliError.CliError | null => {
   const [first] = error.errors;
   return first ?? null;
 };
+
+// The library spells a choice as its type, `"bash" | "zsh"`; a person reads
+// a list of words. Anything else it expected is left as it said it.
+const CHOICE_UNION = /^"[^"]*"(?: \| "[^"]*")+$/;
+const spellExpected = (expected: string): string =>
+  CHOICE_UNION.test(expected)
+    ? `expected one of ${expected.split(" | ").map((choice) => choice.slice(1, -1)).join(", ")}`
+    : expected;
 
 /**
  * The refusal sentence, in this repository's spelling rather than the library's.
@@ -163,6 +192,18 @@ const houseDetail = (rejected: CliError.CliError): string => {
   return rejected.message;
 };
 
+// The same refusal, for a person. The `--json` envelope keeps `houseDetail`
+// byte for byte; text mode gets the choice list in words, and drops the
+// "Did you mean" list the library appends, which the block carries on its
+// own line.
+const houseHeadline = (rejected: CliError.CliError): string => {
+  if (rejected instanceof CliError.InvalidValue) {
+    const name = rejected.kind === FLAG_KIND ? `${FLAG_PREFIX}${rejected.option}` : rejected.option;
+    return `invalid ${name}: ${spellExpected(rejected.expected)} (got ${JSON.stringify(rejected.value)})`;
+  }
+  return rejected.message.split("\n")[0] ?? rejected.message;
+};
+
 /**
  * The house shape for a library parse failure, or null if it is not one.
  *
@@ -176,11 +217,17 @@ export const houseRejection = (
 ): HouseRejection | null => {
   const rejected = unwrapShowHelp(error);
   if (rejected === null) return null;
-  const code = CODE_BY_TAG[rejected._tag];
-  if (code === undefined) return null;
+  // A failure the map does not name (a future `Command.validate`, say) is
+  // still an invalid invocation, and the presenter printed nothing for it, so
+  // it gets the generic code rather than a silent non-zero exit.
+  const code = CODE_BY_TAG[rejected._tag] ?? REJECTION_CODE.invalidArgument;
+  const path = resolveCommandPath(root, argv);
   return {
     code,
     detail: houseDetail(rejected),
-    suggestion: suggestionFor(root, resolveCommandPath(root, argv)),
+    headline: houseHeadline(rejected),
+    suggestion: suggestionFor(root, path),
+    usage: usageFor(root, path),
+    didYouMean: didYouMeanFor(rejected),
   };
 };

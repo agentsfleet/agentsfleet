@@ -69,9 +69,11 @@ describe("golden — --help under NO_COLOR is byte-exact", () => {
 
 // To regenerate (worktree mode runs source via bun because src/ is mixed .js/.ts
 // during the TypeScript migration; plain `node` resolves only .js extensions):
-//   NO_COLOR=1 bun cli/bin/agentsfleet.js --help \
+//   D=$(mktemp -d)   # an empty state dir: help is scoped to the caller, so a
+//                    # real login on this machine would change the document
+//   AGENTSFLEET_STATE_DIR=$D NO_COLOR=1 bun cli/src/bin/agentsfleet.ts --help \
 //     > cli/test/golden/help-no-color.txt && \
-//   NO_COLOR=1 bun cli/bin/agentsfleet.js --version \
+//   AGENTSFLEET_STATE_DIR=$D NO_COLOR=1 bun cli/src/bin/agentsfleet.ts --version \
 //     > cli/test/golden/version-no-color.txt
 // Then bump FIXTURE_VERSION above to match the current VERSION,
 // verify the diff is intentional, and commit.

@@ -28,7 +28,7 @@ type ConnectorStatusResponse = Record<string, unknown>;
 
 const PROVIDER_RE = /^[a-z][a-z0-9_-]{0,63}$/;
 const CONTROL_BYTES_RE = /[\u0000-\u001f\u007f-\u009f]/g;
-const CONNECTOR_LIST_HINT = "run `agentsfleet connector list` to see provider ids";
+const CONNECTOR_LIST_HINT = "run `agentsfleet connections list` to see provider ids";
 const CONNECTORS_LISTED = "Connectors" as const;
 const CONNECTOR_SHOWN = "Connector" as const;
 
@@ -41,7 +41,7 @@ const requireProvider = (
   Effect.gen(function* () {
     const provider = yield* requireValue(
       raw,
-      "connector show requires <provider>",
+      "connections show requires <provider>",
       "pass a provider id such as slack or github",
     );
     if (!PROVIDER_RE.test(provider)) {

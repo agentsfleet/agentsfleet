@@ -10780,7 +10780,7 @@
           "Webhooks"
         ],
         "summary": "Resolve a fleet approval gate",
-        "description": "Approves or rejects a paused fleet's request through an email link or Slack action. The body requires a valid signature using the fleet's webhook secret.",
+        "description": "Approves or rejects a fleet's pending request through an email link or Slack action. The body requires a valid signature using the fleet's webhook secret.",
         "operationId": "approval_webhook",
         "parameters": [
           {
@@ -11043,7 +11043,7 @@
           "Fleets"
         ],
         "summary": "Send a signed event from one source to a fleet",
-        "description": "Sends an event to a fleet's named webhook trigger. Requires the trigger's valid signature. New events return 202; repeats within 24 hours return `status: duplicate`. Paused fleets return `ignored: fleet_paused`; resend after resuming.",
+        "description": "Sends an event to a fleet's named webhook trigger. Requires the trigger's valid signature. New events return 202; repeats within 24 hours return `status: duplicate`. A fleet that is not active returns `ignored: fleet_not_active`.",
         "operationId": "receive_source_webhook",
         "parameters": [
           {
@@ -11313,7 +11313,7 @@
           {
             "name": "status",
             "in": "query",
-            "description": "Narrows to one state: \"pending\", \"approved\", \"denied\", \"timed_out\" or \"auto_killed\". Omit it for every state.",
+            "description": "Narrows to one state: \"pending\", \"approved\", \"denied\", \"timed_out\" or \"archived\". Omit it for every state.",
             "required": false,
             "schema": {
               "type": "string"
@@ -15205,7 +15205,7 @@
           "Fleets"
         ],
         "summary": "Permanently delete a fleet",
-        "description": "Permanently deletes the fleet, events, runs, approvals, grants, keys, and memory. This cannot be undone. Set the fleet status to `killed` first. Otherwise the request returns 409. Requires an operator role. ",
+        "description": "Permanently deletes the fleet, events, runs, approvals, grants, keys, and memory, in any status. A running fleet's setup and live work end first. This cannot be undone. Archive is a separate operation: set the status to `archived` to keep the history instead. ",
         "operationId": "delete_fleet",
         "parameters": [
           {
@@ -15280,16 +15280,6 @@
               }
             }
           },
-          "409": {
-            "description": "The request conflicts with the resource's current state",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
           "412": {
             "description": "Stale resource tag",
             "content": {
@@ -15352,7 +15342,7 @@
           "Fleets"
         ],
         "summary": "Change fleet lifecycle or name",
-        "description": "Updates lifecycle state or name. Send the current `ETag` in `If-Match`. Setting an installing fleet to active resumes setup checks. Killing it cancels setup and makes its private draft editable again.",
+        "description": "Updates lifecycle state or name. Send the current `ETag` in `If-Match`. Setting an installing fleet to active resumes setup checks. Archiving it cancels setup, ends its live work and makes its private draft editable again. Archive is terminal.",
         "operationId": "patch_fleet",
         "parameters": [
           {
@@ -15442,7 +15432,7 @@
             }
           },
           "404": {
-            "description": "Fleet unavailable",
+            "description": "No such fleet in this workspace",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -15452,7 +15442,7 @@
             }
           },
           "409": {
-            "description": "Lifecycle refuses mutation",
+            "description": "The fleet is archived (`UZ-AGT-020`, `current_state: archived`), or setup refuses the transition",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -24576,17 +24566,9 @@
         },
         "additionalProperties": false
       },
-      "DefinitionGateBehavior": {
-        "type": "string",
-        "description": "What happens when an approval rule applies.",
-        "enum": [
-          "approve",
-          "auto_kill"
-        ]
-      },
       "DefinitionGateRule": {
         "type": "object",
-        "description": "One rule for when a tool action needs a person.",
+        "description": "One rule for when a tool action needs a person: a matching action always\nwaits for a person's answer.",
         "required": [
           "tool",
           "action"
@@ -24597,10 +24579,6 @@
             "description": "The action on that tool.",
             "maxLength": 128,
             "minLength": 1
-          },
-          "behavior": {
-            "$ref": "#/components/schemas/DefinitionGateBehavior",
-            "description": "What happens when the rule applies."
           },
           "blast_radius": {
             "type": "string",
@@ -28607,8 +28585,7 @@
         "description": "Human-requestable lifecycle targets exclude system-owned pause states.",
         "enum": [
           "active",
-          "stopped",
-          "killed"
+          "archived"
         ]
       },
       "PatchTaskRequest": {

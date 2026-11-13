@@ -91,11 +91,11 @@ describe("fleet server actions — thin token-forwarders", () => {
   });
 
   it("setFleetStatusAction forwards ws, id, status with token last", async () => {
-    const update = { fleet_id: "z1", status: "stopped", config_revision: 7 };
+    const update = { fleet_id: "z1", status: "archived", config_revision: 7 };
     setFleetStatusMock.mockResolvedValueOnce(update);
-    const r = await setFleetStatusAction("ws1", "z1", "stopped", '"observed"');
+    const r = await setFleetStatusAction("ws1", "z1", "archived", '"observed"');
     expect(r).toEqual({ ok: true, data: update });
-    expect(setFleetStatusMock).toHaveBeenCalledWith("ws1", "z1", "stopped", '"observed"', "tok");
+    expect(setFleetStatusMock).toHaveBeenCalledWith("ws1", "z1", "archived", '"observed"', "tok");
   });
 
   it("deleteFleetAction preserves the observed version with token last", async () => {

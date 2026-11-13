@@ -44,7 +44,7 @@ it.each([401, 403, 404])("preserves a %s fleet-access refusal before reading the
 });
 
 it("refuses archive writes", async () => {
-  mocks.getFleet.mockResolvedValue({fleet: {status: "killed"}});
+  mocks.getFleet.mockResolvedValue({fleet: {status: "archived"}});
   const response = await POST(upload(), PARAMS);
   expect(response.status).toBe(409);
   expect(await response.json()).toEqual({error: "Archived fleets are read-only."});

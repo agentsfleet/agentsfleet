@@ -118,10 +118,10 @@ pub(crate) use afd_api_wire::ingress::{Accepted, Ignored};
 
 /// The reason a delivery to a fleet nobody is running is dropped.
 ///
-/// A webhook to a paused fleet answers 200
-/// `{"ignored":"fleet_paused"}`, because a sender's retry queue adds no value
-/// for a fleet somebody paused on purpose.
-pub(crate) const REASON_FLEET_PAUSED: &str = "fleet_paused";
+/// A webhook to a fleet that is installing or archived answers 200
+/// `{"ignored":"fleet_not_active"}`, because a sender's retry queue adds no
+/// value for a fleet that is not running.
+pub(crate) const REASON_FLEET_NOT_ACTIVE: &str = "fleet_not_active";
 
 /// The reason a delivery of a kind this daemon serves no rule for is dropped.
 ///

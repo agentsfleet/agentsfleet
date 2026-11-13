@@ -114,9 +114,9 @@ impl Binding {
 
     /// Whether this fleet will take new work.
     ///
-    /// `false` is not a refusal on this surface. A webhook to a paused fleet is
-    /// answered 200 with an ignore reason, because a sender's retry queue adds
-    /// nothing for a fleet somebody paused on purpose. The steer ingress, where
+    /// `false` is not a refusal on this surface. A webhook to an archived fleet
+    /// is answered 200 with an ignore reason, because a sender's retry queue
+    /// adds nothing for a fleet that will never run again. The steer ingress, where
     /// a person is waiting for an answer, refuses loudly with `UZ-AGT-012`
     /// instead.
     #[must_use]

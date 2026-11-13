@@ -31,13 +31,13 @@ export function FleetHeader({
         <StackIcon data-app-header-icon="" size={16} className="hidden shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
         <PageTitle data-app-header-title="" size="chat" className="truncate font-semibold">{fleet.name}</PageTitle></div>
         <FleetActions workspaceId={workspaceId} fleet={fleet}>
-          {fleet.status !== AGENTSFLEET_STATUS.KILLED ? <>
+          {fleet.status !== AGENTSFLEET_STATUS.ARCHIVED ? <>
             <EditSetupMenuItem workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision} />
             <MemoryMenu workspaceId={workspaceId} fleetId={fleet.id} access={fleet.memory_access} canGrant={canGrant} />
           </> : null}
         </FleetActions>
-        {fleet.status !== AGENTSFLEET_STATUS.KILLED ? <FleetHeaderStatus workspaceId={workspaceId} fleetId={fleet.id} initial={fleet.pending_approvals} schedules={fleet.schedules} latestRun={latestRun} /> : null}
-        {fleet.status === AGENTSFLEET_STATUS.INSTALLING || fleet.status === AGENTSFLEET_STATUS.ACTIVE ? null : fleet.status === AGENTSFLEET_STATUS.KILLED ? (
+        {fleet.status !== AGENTSFLEET_STATUS.ARCHIVED ? <FleetHeaderStatus workspaceId={workspaceId} fleetId={fleet.id} initial={fleet.pending_approvals} schedules={fleet.schedules} latestRun={latestRun} /> : null}
+        {fleet.status === AGENTSFLEET_STATUS.INSTALLING || fleet.status === AGENTSFLEET_STATUS.ACTIVE ? null : fleet.status === AGENTSFLEET_STATUS.ARCHIVED ? (
           <span aria-label="Fleet status: archived" className="inline-flex items-center gap-md text-eyebrow text-muted-foreground"><span aria-hidden="true" className="size-1.5 rounded-full bg-current" />Archived</span>
         ) : <Badge aria-label={`Fleet status: ${fleet.status}`}>{fleet.status}</Badge>}
       </div>

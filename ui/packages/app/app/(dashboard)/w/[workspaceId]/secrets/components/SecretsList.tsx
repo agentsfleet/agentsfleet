@@ -126,14 +126,14 @@ export default function SecretsList({
   // The row leaves the table the moment the operator confirms; the server is
   // told inside the same transition. A rejected delete ends that transition and
   // React restores the row from the server-rendered list on its own — the same
-  // shape the fleet kill switch uses, so nothing here has to put it back.
+  // shape the fleet actions menu uses, so nothing here has to put it back.
   const [visibleSecrets, hideSecret] = useOptimistic(
     secrets,
     (current: Secret[], removedName: string) => current.filter((secret) => secret.name !== removedName),
   );
 
   // Resolves when the transition settles, so the dialog can hold its buttons
-  // disabled and read "Working…" until then (the kill switch's shape). A
+  // disabled and read "Working…" until then (the fleet actions menu's shape). A
   // confirm that returned at once would leave the dialog live, and a second
   // click would send a second delete.
   function onConfirmDelete(name: string): Promise<void> {

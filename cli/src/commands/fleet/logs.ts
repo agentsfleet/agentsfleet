@@ -1,4 +1,4 @@
-// `agentsfleet logs` — paginated event print for a specific fleet.
+// `agentsfleet fleet logs` — paginated event print for a specific fleet.
 // Accepts `<fleet_id>` positional or `--fleet <id>` flag; `--limit`
 // (default 20) and `--cursor` for pagination.
 
@@ -25,7 +25,7 @@ const DEFAULT_LOGS_LIMIT = "20";
 // itself and told the operator nothing new on the second line.
 const FLEET_REQUIRED = "--fleet <id> is required";
 const USAGE =
-  "usage: agentsfleet logs --fleet <id> [--limit <n>] [--cursor <token>]";
+  "usage: agentsfleet fleet logs --fleet <id> [--limit <n>] [--cursor <token>]";
 
 
 interface EventRow {
@@ -116,7 +116,7 @@ export const logsEffectFromFlags = (
 
     if (res.next_cursor) {
       yield* output.info(
-        ui.dim(`  More: agentsfleet logs --cursor=${res.next_cursor}`),
+        ui.dim(`  More: agentsfleet fleet logs --cursor=${res.next_cursor}`),
       );
     }
   });

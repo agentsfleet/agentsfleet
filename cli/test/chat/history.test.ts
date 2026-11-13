@@ -150,7 +150,7 @@ test.each(["read", "write"] as const)("rename rejects a malformed %s response", 
 });
 
 test.each([401, 403, 404, 410] as const)("list and delete preserve access refusal %s", async status => {
-  for (const args of [["list"], ["delete", DRAFT_ID, "--yes"]]) {
+  for (const args of [["list"], ["delete", DRAFT_ID]]) {
     const result = await run(args, () => problem(status));
     expect(result.code).not.toBe(0);
     expect(result.stdout).toBe("");
@@ -160,7 +160,7 @@ test.each([401, 403, 404, 410] as const)("list and delete preserve access refusa
 
 test("delete removes only the selected private chat and keeps JSON machine readable", async () => {
   for (const json of [false, true]) {
-    const result = await run(["delete", DRAFT_ID, "--yes", ...(json ? ["--json"] : [])], () => new Response(null, {status: 204}));
+    const result = await run(["delete", DRAFT_ID, ...(json ? ["--json"] : [])], () => new Response(null, {status: 204}));
     expect(result.code).toBe(0);
     expect(result.calls).toEqual([{method: "DELETE", path: `${PATH}/${DRAFT_ID}`, body: null, query: "", tag: null, authenticated: true}]);
     if (json) expect(JSON.parse(result.stdout)).toEqual({draft_id: DRAFT_ID, deleted: true});
@@ -187,10 +187,15 @@ test("rename explains the daemon's busy refusal without retrying a write", async
   expect(result.calls).toHaveLength(2);
 });
 
-test("unattended deletion requires --yes without sending a request", async () => {
-  const result = await run(["delete", DRAFT_ID], () => problem(500));
+test("deletion asks nothing and sends one DELETE, unattended or not", async () => {
+  const result = await run(["delete", DRAFT_ID], () => new Response(null, {status: 204}));
+  expect(result.code).toBe(0);
+  expect(result.calls.map(call => call.method)).toEqual(["DELETE"]);
+});
+
+test("the removed --yes flag is refused", async () => {
+  const result = await run(["delete", DRAFT_ID, "--yes"], () => problem(500));
   expect(result.code).toBe(4);
-  expect(result.stderr).toContain("--yes");
   expect(result.calls).toHaveLength(0);
 });
 

@@ -1,5 +1,5 @@
 //! Setup reports its finish once, when activation commits, and its
-//! cancellation once, when a Kill lands on a fleet still installing.
+//! cancellation once, when an archive lands on a fleet still installing.
 
 use super::super::{fixture::now, funnel::property, mint};
 use super::fixture::Case;
@@ -9,7 +9,7 @@ use afd_authoring::{SavedFleet, types::Start};
 
 const FINISHED: &str = "fleet_setup_finished";
 const CANCELLED: &str = "fleet_setup_cancelled";
-const KILLED: &str = "killed";
+const ARCHIVED: &str = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
 
 /// Asserts `event` is the owner's step about `saved`.
 fn about(c: &Case, event: &Telemetry, saved: &SavedFleet) {
@@ -22,11 +22,11 @@ fn about(c: &Case, event: &Telemetry, saved: &SavedFleet) {
     );
 }
 
-async fn kill(c: &Case, fleet: &SavedFleet) -> afd_authoring::Result<SavedFleet> {
+async fn archive(c: &Case, fleet: &SavedFleet) -> afd_authoring::Result<SavedFleet> {
     let access = c.base.access();
     let tag = Some(fleet.etag.as_str());
     c.creations
-        .patch(access, &fleet.id, tag, Some(KILLED), None, now())
+        .patch(access, &fleet.id, tag, Some(ARCHIVED), None, now())
         .await
 }
 
@@ -53,47 +53,56 @@ async fn should_report_setup_finished_once_when_activation_commits() {
         "one activation, however often Save retries"
     );
     about(&c, &finished[0], &active);
-    kill(&c, &active).await.expect("a live fleet can be killed");
+    archive(&c, &active)
+        .await
+        .expect("a live fleet can be archived");
     assert!(
         c.base.reported(CANCELLED).is_empty(),
-        "killing a live fleet is not a setup cancellation"
+        "archiving a live fleet is not a setup cancellation"
     );
     c.cleanup().await;
 }
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn should_report_setup_cancelled_once_and_not_for_a_refused_kill() {
+async fn should_report_setup_cancelled_once_and_not_for_a_refused_archive() {
     let c = Case::create().await;
     let (_, request) = c.request("funnel-cancel", Start::None).await;
     let saved = c.save(&mint(), request).await;
     assert_eq!(saved.status, "installing");
-    let killed = kill(&c, &saved).await.expect("setup cancellation");
-    assert_eq!(killed.status, KILLED);
-    kill(&c, &saved).await.expect_err("a stale tag is refused");
-    for status in [Some(KILLED), Some("active"), None] {
+    let archived = archive(&c, &saved).await.expect("setup cancellation");
+    assert_eq!(archived.status, ARCHIVED);
+    archive(&c, &saved)
+        .await
+        .expect_err("a stale tag is refused");
+    for status in [Some(ARCHIVED), Some("active"), None] {
         let refused = c
             .creations
             .patch(
                 c.base.access(),
-                &killed.id,
-                Some(&killed.etag),
+                &archived.id,
+                Some(&archived.etag),
                 status,
                 Some("renamed"),
                 now(),
             )
             .await
-            .expect_err("a killed fleet is a tombstone for every edit");
-        assert_eq!(refused.code(), error_code::AGENTSFLEET_NOT_FOUND);
+            .expect_err("an archived fleet is a tombstone for every edit");
+        assert_eq!(
+            refused.code(),
+            error_code::AGENTSFLEET_ARCHIVED,
+            "{status:?}"
+        );
+        assert_eq!(refused.current_state(), Some("archived"), "{status:?}");
     }
     let unchanged = c
         .creations
-        .read(c.base.access(), &killed.id)
+        .read(c.base.access(), &archived.id)
         .await
         .expect("tombstone remains readable");
-    assert_eq!(unchanged.status, KILLED);
-    assert_eq!(unchanged.name, killed.name);
-    assert_eq!(unchanged.etag, killed.etag);
+    assert_eq!(unchanged.status, ARCHIVED);
+    assert_eq!(unchanged.name, archived.name);
+    assert_eq!(unchanged.etag, archived.etag);
     let cancelled = c.base.reported(CANCELLED);
     assert_eq!(cancelled.len(), 1, "one cancellation, refusals add nothing");
     about(&c, &cancelled[0], &saved);

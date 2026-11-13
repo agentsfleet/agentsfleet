@@ -48,7 +48,7 @@ else describe("chat refuses unsafe creation", () => {
     assert.notEqual(result.code, 0); assert.equal(result.stdout.trim(), "");
   });
   it("cannot author from an unavailable pinned Library revision", async () => {
-    const result = await run(["--library", uuidv7(), "--revision", uuidv7(), "--model", await authoringModel(context),
+    const result = await run(["--plugin", uuidv7(), "--revision", uuidv7(), "--model", await authoringModel(context),
       "--no-input", "--message", "Inspect this unavailable recipe"]);
     assert.notEqual(result.code, 0); assert.equal(result.stdout.trim(), "");
   });

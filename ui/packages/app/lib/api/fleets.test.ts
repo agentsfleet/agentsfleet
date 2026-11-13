@@ -81,9 +81,9 @@ describe("native fleet detail", () => {
     const {getFleet, setFleetStatus} = await import("./fleets");
     const observed = await getFleet(WORKSPACE, FLEET_ID, "tok");
     expect(observed.etag).toBe(ETAG);
-    fetchMock.mockResolvedValue(answer({...detail, status: "stopped"}));
-    const stopped = await setFleetStatus(WORKSPACE, FLEET_ID, "stopped", observed.etag, "tok");
-    expect(stopped.status).toBe("stopped");
+    fetchMock.mockResolvedValue(answer({...detail, status: "archived"}));
+    const archived = await setFleetStatus(WORKSPACE, FLEET_ID, "archived", observed.etag, "tok");
+    expect(archived.status).toBe("archived");
     expect(fetchMock.mock.calls.at(-1)?.[1]?.headers).toMatchObject({"If-Match": ETAG});
   });
   it("preserves exact nanos and independent permissions and derives triggers from native setup", async () => {
@@ -145,7 +145,7 @@ describe("native fleet detail", () => {
 });
 
 describe("conditional fleet lifecycle", () => {
-  it.each(["active", "stopped", "killed"] as const)("sends the displayed resource tag for %s", async (status) => {
+  it.each(["active", "archived"] as const)("sends the displayed resource tag for %s", async (status) => {
     fetchMock.mockResolvedValue(answer({...detail, status}));
     const {setFleetStatus} = await import("./fleets");
     const result = await setFleetStatus(WORKSPACE, FLEET_ID, status, ETAG, "tok");
@@ -163,7 +163,7 @@ describe("conditional fleet lifecycle", () => {
   it.each([409, 412])("preserves %i without rebasing and replaying a lifecycle change", async (status) => {
     fetchMock.mockResolvedValue({ok: false, status, json: async () => ({detail: "changed", error_code: "UZ-AGT-014"})});
     const {setFleetStatus} = await import("./fleets");
-    await expect(setFleetStatus(WORKSPACE, FLEET_ID, "stopped", ETAG, "tok")).rejects.toMatchObject({status});
+    await expect(setFleetStatus(WORKSPACE, FLEET_ID, "archived", ETAG, "tok")).rejects.toMatchObject({status});
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

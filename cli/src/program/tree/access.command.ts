@@ -1,11 +1,11 @@
-// The access groups: who you are, what you may reach, and who approved it.
+// The access groups: what you may reach, and who approved it.
 //
-// `auth`, `api-key`, `connector`, `approvals` and `grant`. Each leaf declares
+// `api-keys` and `connections` sit at the root; `approvals` and `grants`
+// belong to a fleet, so `fleet.command.ts` nests them. Each leaf declares
 // its flags from the shared vocabulary and hands the parsed config straight to
 // the command Effect — there is no frame, no options bag and no bridge between
 // the two, because the parser already produced the values the Effect asks for.
 
-import { Option } from "effect";
 import { Command } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import {
@@ -30,29 +30,13 @@ import {
   grantDeleteEffectFromArgs,
   grantListEffectFromArgs,
 } from "../../commands/grant/grant.ts";
-import {
-  apiKeyIdArgument,
-  descriptionFlag,
-  fleetFlag,
-  gateIdArgument,
-  grantIdArgument,
-  keyNameFlag,
-  providerArgument,
-  sortFlag,
-  workspaceFlag,
-} from "./flags.ts";
+import { apiKeyIdArgument, descriptionFlag, fleetFlag, gateIdArgument, grantIdArgument, keyNameFlag, opt, providerArgument, sortFlag, VERB, workspaceFlag } from "./flags.ts";
 
 /** An optional flag as the command Effects spell it. */
-const opt = Option.getOrUndefined;
 
-const LIST = "list" as const;
-const SHOW = "show" as const;
-const CREATE = "create" as const;
-const DELETE = "delete" as const;
+// ── api-keys ────────────────────────────────────────────────────────
 
-// ── api-key ─────────────────────────────────────────────────────────
-
-const apiKeyCreateCommand = Command.make(CREATE, {
+const apiKeyCreateCommand = Command.make(VERB.create, {
   name: keyNameFlag,
   description: descriptionFlag,
 }).pipe(
@@ -62,7 +46,7 @@ const apiKeyCreateCommand = Command.make(CREATE, {
   ),
 );
 
-const apiKeyListCommand = Command.make(LIST, { sort: sortFlag }).pipe(
+const apiKeyListCommand = Command.make(VERB.list, { sort: sortFlag }).pipe(
   Command.withDescription("List tenant API keys"),
   guardedHandler(({ sort }) => apiKeyListEffectFromArgs({ sort: opt(sort) })),
 );
@@ -72,12 +56,12 @@ const apiKeyRevokeCommand = Command.make("revoke", { apiKeyId: apiKeyIdArgument 
   guardedHandler(({ apiKeyId }) => apiKeyRevokeEffectFromId(apiKeyId)),
 );
 
-const apiKeyDeleteCommand = Command.make(DELETE, { apiKeyId: apiKeyIdArgument }).pipe(
+const apiKeyDeleteCommand = Command.make(VERB.delete, { apiKeyId: apiKeyIdArgument }).pipe(
   Command.withDescription("Delete a revoked tenant API key"),
   guardedHandler(({ apiKeyId }) => apiKeyDeleteEffectFromId(apiKeyId)),
 );
 
-export const apiKeyCommand = Command.make("api-key").pipe(
+export const apiKeysCommand = () => Command.make("api-keys").pipe(
   Command.withDescription("Manage tenant API keys"),
   Command.withSubcommands([
     apiKeyCreateCommand,
@@ -87,14 +71,14 @@ export const apiKeyCommand = Command.make("api-key").pipe(
   ]),
 );
 
-// ── connector ───────────────────────────────────────────────────────
+// ── connections ─────────────────────────────────────────────────────
 
-const connectorListCommand = Command.make(LIST, { workspace: workspaceFlag }).pipe(
+const connectorListCommand = Command.make(VERB.list, { workspace: workspaceFlag }).pipe(
   Command.withDescription("List connector setup and connection state"),
   guardedHandler(({ workspace }) => connectorListEffectFromArgs(opt(workspace))),
 );
 
-const connectorShowCommand = Command.make(SHOW, {
+const connectorShowCommand = Command.make(VERB.show, {
   provider: providerArgument,
   workspace: workspaceFlag,
 }).pipe(
@@ -104,19 +88,19 @@ const connectorShowCommand = Command.make(SHOW, {
   ),
 );
 
-export const connectorCommand = Command.make("connector").pipe(
+export const connectionsCommand = () => Command.make("connections").pipe(
   Command.withDescription("Inspect workspace connectors"),
   Command.withSubcommands([connectorListCommand, connectorShowCommand]),
 );
 
 // ── approvals ───────────────────────────────────────────────────────
 
-const approvalsListCommand = Command.make(LIST, { fleet: fleetFlag }).pipe(
+const approvalsListCommand = Command.make(VERB.list, { fleet: fleetFlag }).pipe(
   Command.withDescription("List approval gates in the active workspace"),
   guardedHandler(({ fleet }) => approvalsListEffectFromArgs(opt(fleet))),
 );
 
-const approvalsShowCommand = Command.make(SHOW, { gateId: gateIdArgument }).pipe(
+const approvalsShowCommand = Command.make(VERB.show, { gateId: gateIdArgument }).pipe(
   Command.withDescription("Show one gate's proposed action and blast radius"),
   guardedHandler(({ gateId }) => approvalsShowEffectFromArgs(gateId)),
 );
@@ -134,7 +118,7 @@ const approvalsDenyCommand = Command.make("deny", { gateId: gateIdArgument }).pi
   guardedHandler(({ gateId }) => approvalsDenyEffectFromArgs(gateId)),
 );
 
-export const approvalsCommand = Command.make("approvals").pipe(
+export const approvalsCommand = () => Command.make("approvals").pipe(
   Command.withDescription("Review and decide pending approval gates"),
   Command.withSubcommands([
     approvalsListCommand,
@@ -144,14 +128,14 @@ export const approvalsCommand = Command.make("approvals").pipe(
   ]),
 );
 
-// ── grant ───────────────────────────────────────────────────────────
+// ── grants ──────────────────────────────────────────────────────────
 
-const grantListCommand = Command.make(LIST, { fleet: fleetFlag }).pipe(
+const grantListCommand = Command.make(VERB.list, { fleet: fleetFlag }).pipe(
   Command.withDescription("List integration grants for a Fleet"),
   guardedHandler(({ fleet }) => grantListEffectFromArgs(undefined, opt(fleet))),
 );
 
-const grantDeleteCommand = Command.make(DELETE, {
+const grantRevokeCommand = Command.make("revoke", {
   grantId: grantIdArgument,
   fleet: fleetFlag,
 }).pipe(
@@ -159,7 +143,7 @@ const grantDeleteCommand = Command.make(DELETE, {
   guardedHandler(({ grantId, fleet }) => grantDeleteEffectFromArgs(opt(fleet), grantId)),
 );
 
-export const grantCommand = Command.make("grant").pipe(
-  Command.withDescription("Manage integration grants"),
-  Command.withSubcommands([grantListCommand, grantDeleteCommand]),
+export const grantsCommand = () => Command.make("grants").pipe(
+  Command.withDescription("Manage a fleet's integration grants"),
+  Command.withSubcommands([grantListCommand, grantRevokeCommand]),
 );

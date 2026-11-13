@@ -66,13 +66,11 @@ export const exitCodeForFailure = (cause: Cause.Cause<unknown>): number => {
 };
 
 /**
- * Whether this failure was the CLI library's own, and therefore already
- * written.
+ * Whether this failure was the CLI library's own parse or usage failure.
  *
- * The library renders its parse and usage errors — and the help document
- * beneath them — before the failure ever leaves it. So the entry point must
- * NOT hand these to the shared renderer, which would staple a second,
- * differently-shaped line underneath. It takes only the exit code from them.
+ * The presenter writes nothing for these, so the entry point renders them
+ * itself, once, through `renderLibraryFailure` and takes their exit code
+ * from the shared map; the shared handler renderer never sees them.
  */
 export const isLibraryUsageError = (cause: Cause.Cause<unknown>): boolean =>
   CliError.isCliError(Cause.squash(cause));

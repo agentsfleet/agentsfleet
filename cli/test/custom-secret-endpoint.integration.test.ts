@@ -39,7 +39,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "create", SECRET_NAME,
+            "secrets", "create", SECRET_NAME,
             "--provider", OPENAI_COMPATIBLE_PROVIDER,
             "--base-url", VALID_BASE_URL,
             "--api-key", API_KEY,
@@ -86,7 +86,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "create", SECRET_NAME,
+            "secrets", "create", SECRET_NAME,
             "--provider", OPENAI_COMPATIBLE_PROVIDER,
             "--base-url", NON_HTTPS_BASE_URL,
             "--api-key", API_KEY,
@@ -119,7 +119,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "create", SECRET_NAME,
+            "secrets", "create", SECRET_NAME,
             "--provider", OPENAI_COMPATIBLE_PROVIDER,
             "--base-url", "not a url",
             "--api-key", API_KEY,
@@ -141,7 +141,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
       const err = bufferStream();
       const code = await runCli(
         [
-          "secret", "create", SECRET_NAME,
+          "secrets", "create", SECRET_NAME,
           "--provider", OPENAI_COMPATIBLE_PROVIDER,
           "--api-key", API_KEY,
           "--json",
@@ -167,7 +167,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "create", SECRET_NAME,
+            "secrets", "create", SECRET_NAME,
             "--provider", OPENAI_COMPATIBLE_PROVIDER,
             "--base-url", VALID_BASE_URL,
             "--model", MODEL,
@@ -193,7 +193,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
       const err = bufferStream();
       const code = await runCli(
         [
-          "secret", "create", SECRET_NAME,
+          "secrets", "create", SECRET_NAME,
           "--provider", "anthropic",
           "--model", MODEL,
           "--json",
@@ -212,7 +212,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
       const err = bufferStream();
       const code = await runCli(
         [
-          "secret", "create", SECRET_NAME,
+          "secrets", "create", SECRET_NAME,
           "--provider", OPENAI_COMPATIBLE_PROVIDER,
           "--base-url", VALID_BASE_URL,
           "--api-key", API_KEY,
@@ -232,7 +232,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
       const err = bufferStream();
       const code = await runCli(
         [
-          "secret", "create", SECRET_NAME,
+          "secrets", "create", SECRET_NAME,
           "--provider", "anthropic",
           "--base-url", VALID_BASE_URL,
           "--api-key", API_KEY,
@@ -256,7 +256,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
       const err = bufferStream();
       const code = await runCli(
         [
-          "secret", "create", SECRET_NAME,
+          "secrets", "create", SECRET_NAME,
           "--model", MODEL,
           "--json",
         ],

@@ -19,7 +19,7 @@ export type ActionResult<T> =
 
 // ── Shared mock fns ─────────────────────────────────────────────────────────
 export const createWorkspaceActionMock = vi.fn().mockResolvedValue({ ok: true, data: { workspace_id: "ws_new", name: "fresh-name" } });
-export const stopFleetMock = vi.fn();
+export const setFleetStatusMock = vi.fn();
 export const listFleetsMock = vi.fn();
 export const getTenantBillingMock = vi.fn();
 export const listWorkspaceEventsMock = vi.fn();
@@ -37,7 +37,7 @@ export const setFleetStatusActionMock = vi.fn<
   (ws: string, zid: string, status: string, ifMatch: string) => Promise<ActionResult<unknown>>
 >(async (ws, zid, status, ifMatch) => {
   try {
-    return { ok: true, data: await stopFleetMock(ws, zid, status, ifMatch, "tok") };
+    return { ok: true, data: await setFleetStatusMock(ws, zid, status, ifMatch, "tok") };
   } catch (e) {
     const err = e as Error & { status?: number };
     return { ok: false, error: err.message ?? String(e), status: err.status };
@@ -52,7 +52,7 @@ export const listFleetsActionMock = vi.fn<
     return { ok: false, error: (e as Error).message ?? String(e) };
   }
 });
-export const deleteFleetActionMock = vi.fn<() => Promise<ActionResult<void>>>(
+export const deleteFleetActionMock = vi.fn<(ws: string, fleetId: string, ifMatch: string) => Promise<ActionResult<void>>>(
   async () => ({ ok: true, data: undefined }),
 );
 export const installFleetActionMock = vi.fn<
@@ -63,11 +63,11 @@ export const installFleetActionMock = vi.fn<
 export function fleetsApiMock() {
   return {
     listFleets: listFleetsMock,
-    setFleetStatus: stopFleetMock,
+    setFleetStatus: setFleetStatusMock,
     getFleet: vi.fn(),
     installFleet: vi.fn(),
     deleteFleet: vi.fn(),
-    AGENTSFLEET_STATUS: { ACTIVE: "active", PAUSED: "paused", STOPPED: "stopped", KILLED: "killed", INSTALLING: "installing" },
+    AGENTSFLEET_STATUS: { ACTIVE: "active", ARCHIVED: "archived", INSTALLING: "installing" },
   };
 }
 
@@ -168,8 +168,8 @@ export function resetDashboardMocks() {
   listFleetsMock.mockResolvedValue({
     items: [
       { id: "zom_1", name: "alpha-bot", status: "active", created_at: "2026-04-22T00:00:00Z" },
-      { id: "zom_2", name: "beta-bot", status: "paused", created_at: "2026-04-22T00:00:01Z" },
-      { id: "zom_3", name: "gamma-bot", status: "stopped", created_at: "2026-04-22T00:00:02Z" },
+      { id: "zom_2", name: "beta-bot", status: "installing", created_at: "2026-04-22T00:00:01Z" },
+      { id: "zom_3", name: "gamma-bot", status: "archived", created_at: "2026-04-22T00:00:02Z" },
     ],
     total: 3,
     cursor: null,
@@ -177,7 +177,7 @@ export function resetDashboardMocks() {
   getTenantBillingMock.mockResolvedValue({ balance_nanos: String(5 * NANOS_PER_USD), is_exhausted: false, exhausted_at: null });
   listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
   listFleetEventsMock.mockResolvedValue({ items: [], next_cursor: null });
-  stopFleetMock.mockResolvedValue(undefined);
+  setFleetStatusMock.mockResolvedValue(undefined);
   listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
   onboardWorkspaceFleetLibraryMock.mockResolvedValue({
     id: "tmpl_1",

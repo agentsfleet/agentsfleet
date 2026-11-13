@@ -8,7 +8,7 @@ The shared identity is owned by [`BrandMark.tsx`](../ui/packages/design-system/s
 
 | File | Use |
 | --- | --- |
-| `avatar-512.png`, `github-avatar.png` | Square avatar for GitHub, X, or community profiles; padded for circular crops |
+| `avatar-512.png` | Square avatar for GitHub, X, or community profiles; padded for circular crops |
 | `avatar-1024.png` | Larger square avatar and press image |
 | `agentsfleet-mark.svg` | Scalable mark on charcoal |
 | `agentsfleet-mark-transparent.svg`, `.png` | Mint mark without a background; use on dark surfaces |

@@ -102,7 +102,7 @@ async fn a_failed_run_that_wrote_nothing_owes_its_thread_the_notice() {
         answers(&stage).await,
         vec![format!(
             "This run ended before it could answer (timeout_kill). A workspace member can read \
-             what happened with `agentsfleet events {}`.",
+             what happened with `agentsfleet fleet events {}`.",
             stage.fleet
         )]
     );
@@ -214,7 +214,7 @@ async fn an_event_refused_by_racing_passes_owes_its_thread_one_refusal() {
         answers(&stage).await,
         vec![format!(
             "This request was not run (balance_exhausted). A workspace member can read why with \
-             `agentsfleet events {}`.",
+             `agentsfleet fleet events {}`.",
             stage.fleet
         )]
     );
@@ -261,7 +261,7 @@ async fn an_event_ended_after_its_leases_lapsed_owes_its_thread_the_notice() {
         answers(&stage).await,
         vec![format!(
             "This run ended before it could answer (lease_expired). A workspace member can read \
-             what happened with `agentsfleet events {}`.",
+             what happened with `agentsfleet fleet events {}`.",
             stage.fleet
         )]
     );

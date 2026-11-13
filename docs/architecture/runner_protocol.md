@@ -150,7 +150,7 @@ This leaves time to stop the engine and reap its processes.
 Repeated outages can exceed the recovery window; confirmed lease expiry still stops the running lease.
 Reconnect starts renewal immediately; it never waits for the next periodic tick.
 
-A kill saves cancellation before sending its notification.
+An archive or delete saves cancellation before sending its notification.
 Renewal and reconnect read that saved decision if the notification is lost.
 Revocation and token rotation fence new grants before an old socket detects the change.
 
@@ -173,7 +173,7 @@ The older process receives UZ-RUN-021 and halts; stop the duplicate process befo
 | [UZ-RUN-001](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-001) | Missing, changed or invalid runner token | Set the intended runner's current token; re-register if necessary |
 | [UZ-RUN-009](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-009) | Administrative state blocks access | Check cordon, drain or revocation; re-enroll when required |
 | [UZ-RUN-021](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-021) | A newer connection owns the runner | Stop the duplicate process; keep one intended process per token |
-| [UZ-RUN-022](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-022) | The fleet was killed | Stop that lease and report its final result |
+| [UZ-RUN-022](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-022) | The fleet was archived or deleted | Stop that lease and report its final result |
 | [UZ-RUN-023](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-023) | Runner and daemon use different protocols | Upgrade the runner and daemon together |
 | [UZ-RUN-024](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-024) | The stream ended or stopped answering | None; the runner reconnects. If it repeats, check UDP and TCP reachability of the stream URL |
 

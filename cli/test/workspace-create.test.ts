@@ -49,7 +49,7 @@ test("workspace create does not persist local state when API create fails", asyn
 
     assert.equal(code, 3);
     assert.match(err.read(), /INTERNAL_ERROR/);
-    assert.match(err.read(), /request_id: req_abc123/);
+    assert.match(err.read(), /^ {2}request {2,}req_abc123$/m);
 
     const workspaces = await loadWorkspaces(process.env);
     assert.equal(workspaces.current_workspace_id, null);

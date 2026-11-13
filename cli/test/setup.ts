@@ -34,10 +34,13 @@ if (process.env.AGENTSFLEET_TELEMETRY_DISABLED === undefined) {
 // it into `io.env` via `cliEnv()` — so with nothing set, logged-out
 // against an empty directory is the baseline instead of whatever real login
 // sits in `~/.config/agentsfleet`. A test wanting stored state sets its own
-// (see `makeStubbedStateDir`), and an already-exported value is left alone.
+// (see `makeStubbedStateDir`).
+//
+// An exported value is overridden, not inherited. A developer's shell exports
+// one for the live local lanes, and it holds a real login; inherited, a help
+// test would read the caller's scopes from that login's deployment, so a unit
+// test would dial a real server with a real credential.
 //
 // The spawned-CLI acceptance specs do NOT inherit this — they compose a clean
 // child env via `composeEnv`, so they inject the same knob directly.
-if (process.env.AGENTSFLEET_STATE_DIR === undefined) {
-  process.env.AGENTSFLEET_STATE_DIR = makeEmptyStateDirSync();
-}
+process.env.AGENTSFLEET_STATE_DIR = makeEmptyStateDirSync();

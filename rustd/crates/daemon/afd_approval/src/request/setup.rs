@@ -10,7 +10,7 @@ use sqlx::Acquire as _;
 impl IntegrationGrants {
     /// Requests declared access only while the retained fleet is installing.
     ///
-    /// A concurrent Kill either waits for this transaction then cancels its
+    /// A concurrent archive or delete either waits for this transaction then cancels its
     /// pending card, or wins first and this method writes nothing. It never
     /// replaces a revoked or pending grant with an approved one.
     ///

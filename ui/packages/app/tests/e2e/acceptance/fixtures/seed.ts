@@ -64,7 +64,7 @@ export async function seedFleet(key: FixtureKey, workspaceId: string, opts: Seed
  * but the detail page hides its working surfaces behind the install gate until
  * the status flips — a spec that navigates immediately lands on the gate, not
  * the fleet. Waiting for `active` specifically (not merely "not installing")
- * means a fleet that FAILED, was killed, or paused fails the wait loudly
+ * means a fleet that FAILED or was archived fails the wait loudly
  * instead of passing the suite onto a fleet that can never render a console.
  */
 export async function waitForFleetActive(

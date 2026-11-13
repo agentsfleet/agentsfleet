@@ -404,6 +404,6 @@ Added by this milestone:
 
 - The runner protocol carries no `deletion_generation` (lease payload, activity, model calls, renew, report); a spooled report written before the change still decodes.
   The one development runner restarts on the new release; no fleets exist when it does.
-- `agentsfleet tenant provider create` writes through `model.tenant_models`; its output is unchanged.
+- `agentsfleet models use` writes through `model.tenant_models`; its output is unchanged.
 - Closed-draft retention, the 24-hour retry window and Library-card deletion (history goes with the
   card) are documented in the public docs.

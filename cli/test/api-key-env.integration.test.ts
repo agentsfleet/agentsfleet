@@ -123,7 +123,7 @@ test("AGENTSFLEET_API_KEY authenticates a request and writes no credentials file
         text: async () => JSON.stringify({ items: [] }),
       };
     });
-    await runCli(["--json", "list"], {
+    await runCli(["--json", "fleet", "list"], {
       env: envWith({ AGENTSFLEET_API_KEY: `agt_t${"b".repeat(48)}` }),
       stdout: out.stream,
       stderr: err.stream,

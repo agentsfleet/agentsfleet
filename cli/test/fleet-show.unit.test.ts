@@ -1,4 +1,4 @@
-// `agentsfleet status` answered for the whole workspace and there was no way
+// `agentsfleet fleet status` answered for the whole workspace and there was no way
 // to ask about one fleet. `status` keeps that meaning — narrowing it would
 // change a shipped command for every caller — and the one-fleet read is
 // `fleet show <fleet_id>`, named the way every other single-resource read on
@@ -26,7 +26,7 @@ const routes: MockRoutes = {
     jsonResponse(200, {
       items: [
         { id: WANTED, name: "reviewer", status: "active", events_processed: "0", budget_used_nanos: "0" },
-        { id: OTHER, name: "responder", status: "stopped", events_processed: "0", budget_used_nanos: "0" },
+        { id: OTHER, name: "responder", status: "archived", events_processed: "0", budget_used_nanos: "0" },
       ],
     }),
   [DETAIL_ROUTE]: () => jsonResponse(200, FLEET_ROW),
@@ -79,7 +79,7 @@ describe("one fleet has a one-fleet command", () => {
   });
 
   test("status still reports every fleet in the workspace, and takes no identifier", async () => {
-    const { code, text } = await run(["status"]);
+    const { code, text } = await run(["fleet", "status"]);
     expect(code).toBe(0);
     expect(text).toContain("reviewer");
     expect(text).toContain("responder");
@@ -95,7 +95,7 @@ describe("one fleet has a one-fleet command", () => {
   });
 
   test("status takes no identifier at all — the workspace view is its whole job", async () => {
-    const { code, text } = await run(["status", WANTED]);
+    const { code, text } = await run(["fleet", "status", WANTED]);
     expect(code).not.toBe(0);
     expect(text).toContain("Unexpected positional argument");
   });

@@ -12,7 +12,7 @@ async fn retrying_apply_after_purge_returns_gone_without_reviving_the_fleet() {
     let base = fleet.saved["setup_etag"].as_str().expect("base setup tag");
     let applied = fleet.apply(key.as_str(), base, &request).await;
     assert_eq!(applied.status(), StatusCode::CREATED);
-    kill_and_purge(&fleet).await;
+    archive_and_purge(&fleet).await;
 
     let replay = fleet.apply(key.as_str(), base, &request).await;
     assert_eq!(replay.status(), StatusCode::GONE);
@@ -29,13 +29,13 @@ async fn retrying_apply_after_purge_returns_gone_without_reviving_the_fleet() {
     fleet.case.cleanup().await;
 }
 
-/// Kills the fleet, then purges it under the killed resource's tag.
-async fn kill_and_purge(fleet: &Fleet) {
+/// Archives the fleet, then purges it under the archived resource's tag.
+async fn archive_and_purge(fleet: &Fleet) {
     let current = fleet.current().await;
     let tag = current["etag"].as_str().expect("fleet tag");
-    let killed = fleet.patch_resource(r#"{"status":"killed"}"#, tag).await;
-    assert_eq!(killed.status(), StatusCode::OK);
-    let killed = json_body(killed).await;
+    let archived = fleet.patch_resource(r#"{"status":"archived"}"#, tag).await;
+    assert_eq!(archived.status(), StatusCode::OK);
+    let archived = json_body(archived).await;
     let purged = send_with_headers(
         &fleet.case.router,
         Method::DELETE,
@@ -44,7 +44,7 @@ async fn kill_and_purge(fleet: &Fleet) {
         "",
         &[(
             header::IF_MATCH,
-            killed["etag"].as_str().expect("killed tag"),
+            archived["etag"].as_str().expect("archived tag"),
         )],
     )
     .await;

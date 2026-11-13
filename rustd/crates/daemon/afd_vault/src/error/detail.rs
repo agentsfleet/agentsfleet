@@ -30,7 +30,7 @@ pub const DATA_TOO_LARGE: &str = "secret data exceeds 4KB when stringified";
 pub const NOT_FOUND: &str = "secret not found in this workspace";
 
 /// `MSG_SECRET_NAME_TAKEN`.
-pub const NAME_TAKEN: &str = "a secret with this name already exists in this workspace; replace its value with `secret update` instead of creating it again";
+pub const NAME_TAKEN: &str = "a secret with this name already exists in this workspace; replace its value with `agentsfleet secrets update` instead of creating it again";
 
 /// The count-free form of the still-referenced refusal.
 ///

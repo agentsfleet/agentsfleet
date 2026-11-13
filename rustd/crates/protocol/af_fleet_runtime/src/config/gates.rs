@@ -42,9 +42,6 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_hours(1);
 /// Longest an approval may be made to wait.
 const MAX_TIMEOUT: Duration = Duration::from_hours(24);
 
-/// What an approval rule does when it fires.
-pub use crate::config::raw::Behavior;
-
 /// One action that needs a human before it runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GateRule {
@@ -58,8 +55,6 @@ pub struct GateRule {
     /// stops being expressible does not strand an already-installed fleet.
     /// Write-time validation is create/patch's job, where refusing is safe.
     pub condition: Option<Box<str>>,
-    /// What happens when it fires.
-    pub behavior: Behavior,
     /// What kind of decision the human is being asked for.
     ///
     /// Workspace-authored, so an approval card may state it as fact. Empty
@@ -77,7 +72,6 @@ impl TryFrom<raw::GateRule> for GateRule {
             tool: authored.tool.ok_or_else(|| missing(TOOL))?.into(),
             action: authored.action.ok_or_else(|| missing(ACTION))?.into(),
             condition: authored.condition.map(Into::into),
-            behavior: authored.behavior,
             gate_kind: authored.gate_kind.into(),
             blast_radius: authored.blast_radius.into(),
         })
@@ -280,30 +274,6 @@ mod tests {
         assert!(
             matches!(failure.kind(), ErrorKind::MissingRequiredField { field } if *field == "tool"),
             "{failure:?}"
-        );
-    }
-
-    #[test]
-    fn an_unknown_behaviour_names_the_ones_that_exist() {
-        let failure =
-            parse(r#"{"rules": [{"tool": "bash", "action": "run", "behavior": "shrug"}]}"#)
-                .expect_err("`shrug` is not a behaviour");
-
-        let rendered = format!("{failure:?}");
-        assert!(
-            rendered.contains("approve") && rendered.contains("auto_kill"),
-            "serde should name the accepted spellings: {rendered}"
-        );
-    }
-
-    #[test]
-    fn an_absent_behaviour_defaults_to_asking_a_human() {
-        let policy = parse(r#"{"rules": [{"tool": "bash", "action": "run"}]}"#)
-            .expect("behaviour is optional");
-
-        assert_eq!(
-            policy.rules().first().map(|rule| rule.behavior),
-            Some(super::Behavior::Approve)
         );
     }
 }

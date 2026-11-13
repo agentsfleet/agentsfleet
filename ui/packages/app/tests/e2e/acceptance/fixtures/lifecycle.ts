@@ -1,20 +1,4 @@
-/**
- * Shared selectors + action helpers for fleet lifecycle transitions.
- *
- * The Stop / Resume / Archive flow is the same Radix AlertDialog wiring across
- * every spec that drives it: lifecycle, kill, and the two full-lifecycle
- * scenarios. Each action is a menu item in Fleet actions + a confirm
- * button inside an alertdialog role. Without a shared helper the four specs
- * duplicate the same getByRole pattern, and a future ConfirmDialog refactor
- * (button label, copy, dialog role) has to be tracked across four files.
- *
- * State assertions key on the wall tile anchor (FleetTile) `data-state`
- * attribute (canonical mapping in
- * app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx:
- * active → live, paused/stopped → parked, killed/errored → failed).
- * Actions live in the detail header ("Fleet actions"), visible
- * from every rail view — the old Settings rail destination is gone.
- */
+/** Shared lifecycle selectors retain workspace scope and verify read-only archived history. */
 import { expect, type Page, type TestInfo } from "@playwright/test";
 import {writeFile} from "node:fs/promises";
 import {measureVisualState} from "../../fixtures/visual-measurement";
@@ -22,9 +6,9 @@ import {visualProvenance} from "../../fixtures/visual-provenance";
 
 const ROW_STATE_TIMEOUT_MS = 15_000;
 
-type RowState = "live" | "parked" | "failed";
+type RowState = "live" | "installing" | "archived";
 
-async function confirmAction(page: Page, label: "Stop" | "Resume" | "Archive"): Promise<void> {
+async function confirmAction(page: Page, label: "Archive"): Promise<void> {
   await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
   await page.getByRole("menuitem", {name: label, exact: true}).click();
   const dialog = page.getByRole("alertdialog");
@@ -41,14 +25,6 @@ async function confirmAction(page: Page, label: "Stop" | "Resume" | "Archive"): 
   await dialog.getByRole("button", { name: label }).click();
   await actionSettled;
   await expect(dialog).toBeHidden({ timeout: ROW_STATE_TIMEOUT_MS });
-}
-
-export async function stopFleet(page: Page): Promise<void> {
-  await confirmAction(page, "Stop");
-}
-
-export async function resumeFleet(page: Page): Promise<void> {
-  await confirmAction(page, "Resume");
 }
 
 export async function archiveFleet(page: Page): Promise<void> {

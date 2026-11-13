@@ -27,7 +27,7 @@ describe("FleetViewedTracker", () => {
     const { rerender } = render(
       React.createElement(FleetViewedTracker, { fleetId: "zom_1", status: "active" }),
     );
-    rerender(React.createElement(FleetViewedTracker, { fleetId: "zom_1", status: "paused" }));
+    rerender(React.createElement(FleetViewedTracker, { fleetId: "zom_1", status: "archived" }));
     expect(captureProductEventMock).toHaveBeenCalledTimes(1);
   });
 });

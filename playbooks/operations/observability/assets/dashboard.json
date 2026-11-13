@@ -411,19 +411,9 @@
           "refId": "B"
         },
         {
-          "expr": "max(agentsfleet_fleets{status=\"paused\"})",
-          "legendFormat": "paused",
+          "expr": "max(agentsfleet_fleets{status=\"archived\"})",
+          "legendFormat": "archived",
           "refId": "C"
-        },
-        {
-          "expr": "max(agentsfleet_fleets{status=\"stopped\"})",
-          "legendFormat": "stopped",
-          "refId": "D"
-        },
-        {
-          "expr": "max(agentsfleet_fleets{status=\"killed\"})",
-          "legendFormat": "killed",
-          "refId": "E"
         }
       ],
       "title": "Fleet status",

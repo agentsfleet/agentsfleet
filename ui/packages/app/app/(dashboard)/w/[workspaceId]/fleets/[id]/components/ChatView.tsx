@@ -51,8 +51,8 @@ export function ChatView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-xs overflow-clip">
-      <FleetThreadDynamic sources={sources} schedules={schedules} approvals={{count: summary.pendingApprovals, href: approvalsHref}} modelLabel={modelLabel} setupRevision={setupRevision} setup={summary.status === "killed" ? undefined : setup}
-        archived={summary.status === "killed"}
+      <FleetThreadDynamic sources={sources} schedules={schedules} approvals={{count: summary.pendingApprovals, href: approvalsHref}} modelLabel={modelLabel} setupRevision={setupRevision} setup={summary.status === "archived" ? undefined : setup}
+        archived={summary.status === "archived"}
         workspaceId={workspaceId}
         fleetId={fleetId}
         senderLabel={senderLabel}

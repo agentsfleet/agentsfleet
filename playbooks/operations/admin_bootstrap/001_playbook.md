@@ -52,7 +52,7 @@ Production uses `ENV=prod`, its own vault, `agentsfleetd-prod` and `https://api.
    ```
 
    The daemon restarts; wait for `/readyz`. Never use the Clerk `tenant_id` or `user.id` here.
-5. **Create the sync key.** Run `agentsfleet api-key create --name platform-priming --json`; it reveals the `agt_t` value once.
+5. **Create the sync key.** Run `agentsfleet api-keys create --name platform-priming --json`; it reveals the `agt_t` value once.
    Store it in the concealed `api-key` field of `agentsfleet-admin` through a template file, never as a command argument.
    Use `op item get --format json`, set the field, then `op item edit --template <file>`, and delete the file.
 
@@ -84,7 +84,7 @@ A startup-read bag takes effect at the next restart, such as the runner redeploy
 
 ```bash
 agentsfleet whoami
-agentsfleet secret list
+agentsfleet secrets list
 ```
 
 `whoami` lists the platform scopes, and `secret list` shows every synced bag.
@@ -100,7 +100,7 @@ agentsfleet secret list
 
 ## Remove or undo
 
-Revoke an unused key with `agentsfleet api-key revoke`; remove platform scopes in Clerk.
+Revoke an unused key with `agentsfleet api-keys revoke`; remove platform scopes in Clerk.
 Deleting the Clerk user leaves database rows; see [user teardown](../teardown/user/001_playbook.md).
 
 ## Related pages

@@ -66,7 +66,7 @@ fn the_three_filters_are_read_off_the_string() {
 fn every_state_a_row_can_be_in_maps_to_the_status_it_names() {
     // All five, not the two the other cases happen to reach: `approved` and
     // `timed_out` could be swapped and the integration case that reads an
-    // empty page would pass either way. `auto_killed` is the one that was
+    // empty page would pass either way. `archived` is the one that was
     // unreachable — a state the column really holds, which the filter refused
     // because it routed through the WRITER's three-arm vocabulary.
     assert_eq!(parsed("status=approved").status, Some(GateStatus::Approved));
@@ -75,10 +75,7 @@ fn every_state_a_row_can_be_in_maps_to_the_status_it_names() {
         parsed("status=timed_out").status,
         Some(GateStatus::TimedOut)
     );
-    assert_eq!(
-        parsed("status=auto_killed").status,
-        Some(GateStatus::AutoKilled)
-    );
+    assert_eq!(parsed("status=archived").status, Some(GateStatus::Archived));
     assert_eq!(parsed("status=pending").status, Some(GateStatus::Pending));
 }
 

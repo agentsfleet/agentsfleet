@@ -45,7 +45,7 @@ describe("steer — empty message validation via CLI (lines 340-345)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["steer", FLEET_ID, "   "],
+          ["fleet", "steer", FLEET_ID, "   "],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);

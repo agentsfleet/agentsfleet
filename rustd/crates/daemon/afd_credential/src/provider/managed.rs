@@ -11,7 +11,7 @@
 //! The credential's own `model` is therefore parsed — a non-string is still
 //! malformed — and then deliberately unread on the resolution path. Activation
 //! reads it as the default it stores when the provider request names no model
-//! (`agentsfleet tenant provider create --secret X` without `--model`).
+//! (`agentsfleet models use --secret X` without `--model`).
 //!
 //! # The key is required, for every provider
 //!

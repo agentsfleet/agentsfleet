@@ -1,4 +1,4 @@
-// `agentsfleet schedule ...` — explicit hosted schedules for a Fleet.
+// `agentsfleet fleet schedule ...` — explicit hosted schedules for a Fleet.
 //
 // Human terminal output is concise tables/success lines. `--json` or a
 // redirected stdout emits the API envelope or schedule object verbatim.
@@ -44,13 +44,13 @@ const DEFAULT_TIMEZONE = "UTC" as const;
 const HEADER_IF_MATCH = "If-Match" as const;
 
 const USAGE_CREATE =
-  "usage: agentsfleet schedule create <fleet_id> --cron <expr> --message <text> [--timezone <tz>]";
-const USAGE_LIST = "usage: agentsfleet schedule list <fleet_id>";
+  "usage: agentsfleet fleet schedule create <fleet_id> --cron <expr> --message <text> [--timezone <tz>]";
+const USAGE_LIST = "usage: agentsfleet fleet schedule list <fleet_id>";
 const USAGE_UPDATE =
-  "usage: agentsfleet schedule update <fleet_id> <schedule_id> [--cron <expr>] [--message <text>] [--timezone <tz>] [--status active|paused]";
-const USAGE_DELETE = "usage: agentsfleet schedule delete <fleet_id> <schedule_id>";
-const USAGE_SYNC = "usage: agentsfleet schedule sync <fleet_id> <schedule_id>";
-const USAGE_SHOW = "usage: agentsfleet schedule show <fleet_id> <schedule_id>";
+  "usage: agentsfleet fleet schedule update <fleet_id> <schedule_id> [--cron <expr>] [--message <text>] [--timezone <tz>] [--status active|paused]";
+const USAGE_DELETE = "usage: agentsfleet fleet schedule delete <fleet_id> <schedule_id>";
+const USAGE_SYNC = "usage: agentsfleet fleet schedule sync <fleet_id> <schedule_id>";
+const USAGE_SHOW = "usage: agentsfleet fleet schedule show <fleet_id> <schedule_id>";
 
 
 interface ScheduleCommonFlags {
