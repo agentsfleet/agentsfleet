@@ -1127,3 +1127,5 @@ The header action scrolls/focuses it without changing native verification hashes
 Attachment chips use 10px corners. User messages use 22px corners with a 6px lower-right corner. Summary and composer panels use 22px corners on all sides. Record all four radii in the visual checks.
 
 The reported run cost uses Manrope at 13px/20px and weight 500 in the secondary text colour. It aligns with the header title baseline. Amounts retain their reported precision.
+
+The header shortcut starts a new fleet through the shared navigation intent on resource pages and saved conversations, including archived fleets. Edit setup remains in Fleet actions.

@@ -185,7 +185,8 @@ test("recorded actions stay visible and distinguish every terminal outcome", asy
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.goto(`${chatProbe}?activity=1`);
   const group = page.getByRole("button", {name: /^Tool activity:/});
-  await expect(group).toContainText("Opening pull request agentsfleet/linkwarden · 2 active");
+  await expect(group).toContainText("Opening pull request");
+  await expect(group).not.toContainText("agentsfleet/linkwarden");
   await expect(group).toHaveAccessibleName("Tool activity: Opening pull request agentsfleet/linkwarden · 2 active");
   await group.focus(); await page.keyboard.press("Enter");
   const tools = page.getByRole("list", {name: "Tool activity"});
@@ -199,9 +200,12 @@ test("recorded actions stay visible and distinguish every terminal outcome", asy
   await expect(pull.getByText("Input", {exact: true})).toBeVisible();
   await expectActivityGeometry(page, action, tools, info.project.name === "mobile-chromium");
   await page.emulateMedia({reducedMotion: "reduce"});
-  for (const icon of await tools.locator('[data-tool-shimmer="true"]').all()) {
-    await expect(icon).toHaveCSS("animation-name", "none");
-    await expect(icon).toHaveCSS("color", "rgb(147, 197, 253)");
+  await expect(tools.locator('[data-tool-shimmer="true"]')).toHaveCount(0);
+  const runningLabels = tools.locator('[data-chat-loading="true"]');
+  expect(await runningLabels.count()).toBeGreaterThan(0);
+  for (const label of await runningLabels.all()) {
+    await expect(label).toHaveCSS("animation-name", "none");
+    await expect(label).toHaveCSS("background-image", "none");
   }
   const screenshot = info.outputPath("chat-tool-activity-fixture.png");
   await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
@@ -273,7 +277,7 @@ async function expectActivityGeometry(page: Page, action: Locator, tools: Locato
   for (const logo of await page.locator('[data-testid="fleet-message-sender"] svg').all()) {
     await expect(logo).toHaveCSS("width", "18px");
     await expect(logo).toHaveCSS("height", "18px");
-    await expect(logo).toHaveCSS("padding", "2px");
+    await expect(logo).toHaveCSS("padding", "0px");
   }
   await expect(action).toHaveCSS("--tw-ring-offset-width", "4px");
   await expect(action).toHaveCSS("box-shadow", /0px 0px 0px 6px/);

@@ -131,13 +131,14 @@ describe("fleets routes — detail views", () => {
     expect(markup).not.toContain("Balance exhausted");
   });
 
-  it("keeps the header edit action on the saved setup and retains its action menu", async () => {
+  it("offers a fresh fleet shortcut while retaining the saved fleet action menu", async () => {
     mockFetchBilling(happyBilling);
     const {default: Page} = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})}));
     expect(markup).toContain('aria-label="Fleet actions"');
-    expect(markup).toContain('aria-label="Edit setup"');
-    expect(markup).toContain(`/w/ws_1/fleets/new?fleet=${FLEET_ID}&amp;setup_revision=1`);
+    expect(markup).toContain('aria-label="New fleet"');
+    expect(markup).toContain('href="/w/ws_1/fleets/new"');
+    expect(markup).not.toContain('aria-label="Edit setup"');
     expect(markup).not.toContain('aria-label="Start a new fleet"');
     expect(markup).not.toContain("?view=setup");
   });

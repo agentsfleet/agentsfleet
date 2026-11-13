@@ -56,11 +56,15 @@ afterEach(() => cleanup());
 describe("ProviderModelSelect", () => {
   it("retains model evidence in a closed disclosure when the compact form requests it", () => {
     catalogueState.models = [cap("release-model", "openai")];
-    const view = render(<ProviderModelSelect id="compact-model" provider="openai" model="release-model" onModelChange={() => {}} details="disclosure" />);
-    const disclosure = view.container.querySelector("details");
-    expect(disclosure?.open).toBe(false);
-    expect(disclosure?.querySelector("summary")?.textContent).toBe("Model details");
-    expect(disclosure?.textContent).toContain("Context cap (tokens)");
+    render(<ProviderModelSelect id="compact-model" provider="openai" model="release-model" onModelChange={() => {}} details="disclosure" />);
+    const disclosure = screen.getByRole("button", {name: "Model details"});
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Context cap (tokens)")).toBeNull();
+    fireEvent.click(disclosure);
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Context cap (tokens)")).toBeTruthy();
+    fireEvent.click(disclosure);
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
   });
   it.each(["gpt-6.1-sol", "gpt-5.6-terra"])("retains %s while toggling explicit advanced opt-in", (model) => {
     const terra = { ...cap("gpt-5.6-terra", "openai", "GPT-5.6 Terra"), advanced: true };

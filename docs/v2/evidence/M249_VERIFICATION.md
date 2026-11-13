@@ -152,6 +152,10 @@ Flow 2 capabilities, real upload storage, mention invocation, new secret policy 
 
 ## Post-merge implementation start
 
+The repository follow-up is [M249_004](../pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md), with a [Claude handoff](M249_004_CLAUDE_HANDOFF.md).
+It remains pending. Its implementation starts after both UI and CLI merges; M249_003 on Claude's branch owns Plugin vocabulary.
+The historical downloadable prompt below is superseded by that repository handoff.
+
 Use these instructions if the downloadable backend-gap prompt cannot be opened.
 
 1. Verify the UI refresh PR has merged. Fetch main and create a separate worktree from that merge.
@@ -185,7 +189,7 @@ Its first step requires a fresh source inventory and reviewed spec before implem
 | Focused catalogue/secret recovery | 55 tests passed across five files | Passed before latest main merge |
 | Focused shared merge/Button behavior | 32 tests passed across two files | Passed before latest main merge |
 | Native authenticated Personal account/menu | Two browser journeys passed, 27.4s; real development provider | Passed before latest main merge |
-| TypeScript coverage | App 4,564; website 133; CLI 2,223 plus 17 existing live-lane skips; design system 502; all enforced metrics 100 percent | Passed; `make test-coverage-all` and the surviving full unit command |
+| TypeScript coverage | Earlier run: app 4,564; website 133; CLI 2,223 plus 17 existing live-lane skips; design system 502; enforced metrics 100 percent | Pending on the final tree after cleanup; earlier coverage does not close this row |
 | Final rendered flows | `make dry-app` | Pending after the complete repository gate |
 | Required repository checks | Full unit command passed before the final transport repair; nine focused transport regressions now pass | Full pushed-candidate gate pending |
 | Current authenticated resource journeys | Real development API/provider, isolated fresh task database | Pending rerun |
@@ -404,3 +408,33 @@ The owner’s follow-up puts raw commands, targets, tool identifiers and per-cal
 Secrets scope: Indy wrote, “this is not a priority but i plan ti revamp and change.” The refresh retains named secret fields required by the current API. The later Secrets editor redesign remains separate; this pass fixes its shared dialog layout, full-name readability and footer.
 
 `make lint-app test-unit-app` completed on the source repairs: 478 test files and 4,564 tests passed (`refresh-visual-gate-v220.log`). This is the app lane, not the final repository gate. Tests explicitly open disclosures to verify tool identity and literal input/output instead of requiring those details in the collapsed line.
+
+## Review delivery update
+
+Indy stopped the full internal capture run and requested fixes against the matrix. He will review the PR preview or deployment. No additional ZIP or gallery is required. The interrupted v223 run is partial evidence and carries no pass claim.
+
+The first native dry run after the repairs passed 4,564 app unit tests and 84 of 90 browser tests. The six browser failures are desktop/phone copies of three checks: collapsed activity still expected inline targets, the shared sample added a third member, and Manage still expected its former name-only title. Keep the three-row sample explicit, assert the generic summary plus full accessible identity, and verify the complete secret name inside the management dialog.
+
+The saved-fleet header now uses the same New fleet shortcut as resource headers, including its fresh-chat intent. Edit setup stays in Fleet actions. This follows the proposal’s header action and gate item G4. Compact wake-up titles use the essential 13px/20px/500 role; additional schedule and model details use shared caret disclosures. Logo framing follows the proposal’s original inset artwork while retaining navigation targets.
+
+The one-off full-matrix renderer/report scripts are kept locally outside the repository. The PR keeps the production fixes, browser regression checks, shared measurement fixture and owner findings. The native dry lane remains mandatory; artifact packaging is not a release condition.
+
+## Cleanup before coverage and Claude assistance
+
+The read-only audit found a missing run-details footer when text separates tool groups. It also identified unused badge, task-reader and terminal/demo branches.
+
+The linked-work card consumes a context that changes with streamed events. Measure its render count before narrowing subscriptions or adding memoization.
+
+These repairs stay in M249_001. Final coverage starts after their review and integration.
+
+Indy requested issue-based assistance:
+
+> "When you are ready, i expect you to create an gh issue, push your code and give a handoff prompt for claude to work and give back to you."
+
+> "In your PR you mark as `Closed #<issue number>`"
+
+The handoff must identify the pushed base, bounded files, regression requirements and return branch. Aiwa reviews the return and owns the final UI PR.
+
+The assistance checkpoint passed `make lint-app lint-design-system test-unit-app test-unit-design-system`: app 478 files/4,564 tests; design system 65 files/514 tests.
+Evidence: `refresh-checkpoint-v231.log`. Full-history and staged secret scans found no leaks; `orly gate work` passed.
+This checkpoint does not claim final coverage, dry-app, authenticated acceptance, bundles or PR-gate completion.

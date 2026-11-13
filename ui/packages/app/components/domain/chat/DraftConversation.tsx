@@ -106,7 +106,7 @@ function setupAnchor(view: DraftView): string | null {
 
 function ChatEntrance() {
   return <div className="content-entrance flex w-full flex-col items-center text-center">
-    <span className="mb-2xl flex size-11 items-center justify-center rounded-control bg-brand-tile"><BrandMark className="size-6 text-brand-ray" aria-hidden="true" /></span>
+    <BrandMark viewBox="-4 -4 32 32" className="mb-2xl size-11 rounded-brand bg-brand-tile text-brand-ray" aria-hidden="true" />
     <PageTitle className="mb-lg text-new-fleet-title leading-new-fleet-title tracking-new-fleet-title">What should your fleet do?</PageTitle>
     <p className="text-new-fleet-description text-muted-foreground">Give it a goal. Follow the work. Step in when you’re needed.</p>
   </div>;

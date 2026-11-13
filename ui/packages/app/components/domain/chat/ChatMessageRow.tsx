@@ -58,7 +58,7 @@ function SenderLine({sender, timestamp, annotation}: MessageIdentity) {
   return (
     <div className="flex min-h-5 w-full min-w-0 items-center gap-sm" data-testid="chat-message-header">
       <span aria-hidden="true" data-testid="fleet-message-sender" className="inline-flex min-w-0 items-center gap-md text-eyebrow leading-eyebrow text-muted-foreground">
-        <BrandMark className="size-4.5 shrink-0 rounded-brand bg-brand-tile p-xs text-brand-ray" /><span className="truncate font-semibold">{sender}</span>
+        <BrandMark viewBox="-4 -4 32 32" className="size-4.5 shrink-0 rounded-brand bg-brand-tile text-brand-ray" /><span className="truncate font-semibold">{sender}</span>
       </span>
       <MessageTime>{timestamp}</MessageTime>
       {annotation}

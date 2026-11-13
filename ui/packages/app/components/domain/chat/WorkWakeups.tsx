@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Time, formatTimeClockUtc, formatTimeCompactUtc } from "@agentsfleet/design-system";
-import { ClockIcon } from "@phosphor-icons/react/ssr";
+import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Time, formatTimeClockUtc, formatTimeCompactUtc } from "@agentsfleet/design-system";
+import { ClockIcon, CaretDownIcon } from "@phosphor-icons/react/ssr";
 import type { Schedule } from "@/lib/api/draft-types";
 import { SCHEDULE_RUN_STATE, SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
 import { scheduleStateText } from "@/lib/api/schedule-status";
-import { WorkSection } from "./WorkContextSections";
+import { WorkSection } from "./WorkSection";
 
 const MAX_TIMER_MS = 2_147_483_647;
 const DAY_MS = 86_400_000;
@@ -21,17 +21,17 @@ export function WorkWakeups({schedules, compact = false}: {schedules?: readonly 
   });
   const displayed = compact ? ordered.slice(0, 1) : visible;
   return <WorkSection title={compact ? "Next wake-up" : "Wake-ups"}><WakeupRows schedules={displayed} compact={compact} />
-    {compact && visible.length > 1 ? <details className="text-eyebrow text-muted-foreground"><summary className="min-h-11 cursor-pointer content-center summary:min-h-9">{visible.length - 1} more</summary><WakeupRows schedules={ordered.slice(1)} compact={false} /></details> : null}
+    {compact && visible.length > 1 ? <Collapsible className="group text-eyebrow text-muted-foreground"><CollapsibleTrigger asChild><Button variant="ghost" size="compact" className="px-0">{visible.length - 1} more<CaretDownIcon size={16} className="group-data-[state=open]:rotate-180" aria-hidden="true" /></Button></CollapsibleTrigger><CollapsibleContent><WakeupRows schedules={ordered.slice(1)} compact={false} /></CollapsibleContent></Collapsible> : null}
   </WorkSection>;
 }
 
 function WakeupRows({schedules, compact}: {schedules: readonly Schedule[]; compact: boolean}) {
   return <ul className="space-y-lg">
-    {schedules.map(schedule => <li key={schedule.schedule_id} className="flex min-w-0 items-center gap-sm">
+    {schedules.map(schedule => <li key={schedule.schedule_id} className="flex min-w-0 items-center gap-md py-sm">
       <ClockIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <div className="min-w-0 break-words text-label leading-label">
         {compact ? null : <p>{schedule.description}</p>}<WakeupState schedule={schedule} compact={compact} />
-        {compact ? <p className="mt-xs text-eyebrow text-muted-foreground">{schedule.description}</p> : null}
+        {compact ? <p className="mt-xs text-eyebrow leading-label text-text-dim">{schedule.description}</p> : null}
       </div>
     </li>)}
   </ul>;
@@ -68,5 +68,5 @@ function NextWakeup({instant, timezone, compact}: {instant: string; timezone: st
   const compactLabel = `${today ? formatTimeClockUtc(instant) : formatTimeCompactUtc(instant)} UTC`;
   return elapsed ? <div className="text-eyebrow text-muted-foreground">
     <p>Next wake-up needs an update.</p><Button variant="link" size="eyebrow" onClick={() => router.refresh()}>Refresh schedule</Button>
-  </div> : <p className={`text-eyebrow leading-eyebrow ${compact ? "truncate whitespace-nowrap text-inherit" : "text-muted-foreground"}`}><span className={compact ? "sr-only sm:not-sr-only" : undefined}>Next wake-up · </span><Time value={instant} timeZone={timezone} label={compact ? compactLabel : undefined} tooltip={compact} />{compact ? null : <span> ({timezone})</span>}</p>;
+  </div> : <p className={compact ? "truncate whitespace-nowrap text-label font-medium leading-label text-foreground" : "text-eyebrow leading-eyebrow text-muted-foreground"}><span className={compact ? "sr-only" : undefined}>Next wake-up · </span><Time value={instant} timeZone={timezone} label={compact ? compactLabel : undefined} tooltip={compact} />{compact ? null : <span> ({timezone})</span>}</p>;
 }

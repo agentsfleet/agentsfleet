@@ -18,6 +18,7 @@ export function visualSecretName() {
 }
 
 export function visualMembers(sample: MemberSummary[]): MemberSummary[] {
+  if (!visualParity() && !new URLSearchParams(location.search).has("manyRows")) return sample;
   if (!visualParity()) return [...sample, {user_id: "support", display_name: "Support reviewer", email: "support@example.test", role: "member", joined_at: "2026-11-08T10:00:00Z"}];
   return [
     {user_id: "fixture-owner", display_name: "Kishore", email: "kishore@example.com", role: "owner", joined_at: "2026-11-01T10:00:00Z"},
