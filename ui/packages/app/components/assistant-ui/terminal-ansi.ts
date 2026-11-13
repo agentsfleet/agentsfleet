@@ -140,8 +140,8 @@ export function parseAnsi(line: string): AnsiSegment[] {
   return segments;
 }
 
-export const ansiColor = (color: AnsiColor, ink: boolean) => {
-  const paperColors: Record<AnsiColor, string> = {
+export const ansiColor = (color: AnsiColor) => {
+  const colors: Record<AnsiColor, string> = {
     30: "text-foreground/70",
     31: "text-red-600 dark:text-red-400",
     32: "text-emerald-600 dark:text-emerald-400",
@@ -159,24 +159,6 @@ export const ansiColor = (color: AnsiColor, ink: boolean) => {
     96: "text-cyan-500 dark:text-cyan-400",
     97: "text-foreground/85",
   };
-  const inkColors: Record<AnsiColor, string> = {
-    30: "text-background/70 dark:text-foreground/70",
-    31: "text-red-400 dark:text-red-400",
-    32: "text-emerald-400 dark:text-emerald-400",
-    33: "text-amber-300 dark:text-amber-300",
-    34: "text-blue-400 dark:text-blue-400",
-    35: "text-fuchsia-400 dark:text-fuchsia-400",
-    36: "text-cyan-300 dark:text-cyan-300",
-    37: "text-background/90 dark:text-foreground/90",
-    90: "text-background/50 dark:text-muted-foreground",
-    91: "text-red-400 dark:text-red-400",
-    92: "text-emerald-400 dark:text-emerald-400",
-    93: "text-amber-300 dark:text-amber-300",
-    94: "text-blue-400 dark:text-blue-400",
-    95: "text-fuchsia-400 dark:text-fuchsia-400",
-    96: "text-cyan-300 dark:text-cyan-300",
-    97: "text-background/90 dark:text-foreground/90",
-  };
 
-  return (ink ? inkColors : paperColors)[color];
+  return colors[color];
 };

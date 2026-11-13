@@ -27,7 +27,7 @@ export function ToolCallBody({outcome, onShowAll}: {outcome: ToolResult | undefi
 /** An edit's lines, indented under its cell, tinted by side. Exported for the
  * full-call dialog, which draws the same rows from the untrimmed edit. */
 export function DiffRows({diff}: {diff: LineDiff}) {
-  return <CodeDiff filename="Changes" additions={diff.added} deletions={diff.removed} lines={diff.rows} cycle={0} />;
+  return <CodeDiff filename="Changes" additions={diff.added} deletions={diff.removed} lines={diff.rows} />;
 }
 
 function OutputPreview({ outcome, onShowAll }: { outcome: ToolResult | undefined; onShowAll: OnShowAll }) {

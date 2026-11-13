@@ -10,7 +10,7 @@ export function FleetCommandResult({command, outcome, state, onShowAll}: {
 }) {
   const preview = outputPreview(outcome?.outputHead, outcome?.outputLineCount, outcome?.status, outcome?.outputTail);
   return <div className="space-y-xs" aria-label="Command result">
-    <TerminalBlock command={command} lines={preview.rows} visibleCount={preview.rows.length}
+    <TerminalBlock command={command} lines={preview.rows}
       done={state !== CELL_STATE.RUNNING} outcome={state === CELL_STATE.SETTLED ? "unconfirmed" : state === CELL_STATE.RUNNING ? undefined : state}
       exitCode={outcome?.exitCode} truncated={preview.hiddenLines > 0 || preview.cut} />
     {preview.note ? <p className="text-label text-muted-foreground">{preview.note}</p> : null}
