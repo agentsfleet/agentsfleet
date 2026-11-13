@@ -37,6 +37,12 @@ af_core::error_lifts!(Error, ErrorKind:
     afd_billing::Error => Billing,
 );
 
+/// What a refusal of an archived fleet's edit tells the caller.
+const DETAIL_ARCHIVED: &str =
+    "This fleet is archived and cannot change; delete it or set up a new fleet";
+/// The state an archived fleet's refusal names.
+const CURRENT_ARCHIVED: &str = "archived";
+
 impl Error {
     /// Stable registry classification; foreign failures retain their own codes.
     #[must_use]
@@ -45,6 +51,7 @@ impl Error {
             ErrorKind::Cron { source } => source.code(),
             ErrorKind::Hidden => error_code::AUTHORING_NOT_FOUND,
             ErrorKind::FleetMissing => error_code::AGENTSFLEET_NOT_FOUND,
+            ErrorKind::Archived => error_code::AGENTSFLEET_ARCHIVED,
             ErrorKind::NameExists => error_code::AGENTSFLEET_NAME_EXISTS,
             ErrorKind::Policy => error_code::AUTHORING_POLICY,
             ErrorKind::Fence => error_code::AUTHORING_FENCE,
@@ -88,6 +95,7 @@ impl Error {
         match self.kind() {
             ErrorKind::Cron { source } => source.detail(),
             ErrorKind::Invalid { detail } => detail,
+            ErrorKind::Archived => DETAIL_ARCHIVED,
             ErrorKind::Validation { .. } | ErrorKind::Definition { .. } => {
                 "Setup input violates the supported shape or bounds"
             }
@@ -137,6 +145,7 @@ impl Error {
             ErrorKind::Context { .. }
             | ErrorKind::Hidden
             | ErrorKind::FleetMissing
+            | ErrorKind::Archived
             | ErrorKind::NameExists
             | ErrorKind::Policy
             | ErrorKind::Fence
@@ -182,6 +191,7 @@ impl Error {
             | ErrorKind::Cron { .. }
             | ErrorKind::Hidden
             | ErrorKind::FleetMissing
+            | ErrorKind::Archived
             | ErrorKind::NameExists
             | ErrorKind::Policy
             | ErrorKind::Fence
@@ -224,6 +234,7 @@ impl Error {
         match self.kind() {
             ErrorKind::Cron { source } => source.current_state(),
             ErrorKind::State { current } => Some(current),
+            ErrorKind::Archived => Some(CURRENT_ARCHIVED),
             ErrorKind::Replay => Some("accepted"),
             ErrorKind::Review { .. } | ErrorKind::Policy => Some("review_required"),
             ErrorKind::NameExists => Some("name_exists"),

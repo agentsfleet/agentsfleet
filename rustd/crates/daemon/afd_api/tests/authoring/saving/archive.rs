@@ -71,12 +71,14 @@ async fn fleet_lifecycle_is_activate_archive_delete() {
     let current = archived["etag"].as_str().expect("archived tag");
     for body in [r#"{"status":"active"}"#, r#"{"status":"archived"}"#] {
         let refused = patch(&case, &item, body, current).await;
-        assert_eq!(refused.status(), StatusCode::NOT_FOUND, "{body}");
+        assert_eq!(refused.status(), StatusCode::CONFLICT, "{body}");
+        let problem = json_body(refused).await;
         assert_eq!(
-            json_body(refused).await["error_code"],
-            error_code::AGENTSFLEET_NOT_FOUND.as_str(),
+            problem["error_code"],
+            error_code::AGENTSFLEET_ARCHIVED.as_str(),
             "an archived fleet takes no further transition: {body}"
         );
+        assert_eq!(problem["current_state"], "archived", "{body}");
     }
 
     let read = send(&case.router, Method::GET, &item, Some(&case.base.token), "").await;

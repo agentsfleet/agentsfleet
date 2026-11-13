@@ -15432,7 +15432,7 @@
             }
           },
           "404": {
-            "description": "Fleet unavailable",
+            "description": "No such fleet in this workspace",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -15442,7 +15442,7 @@
             }
           },
           "409": {
-            "description": "Lifecycle refuses mutation",
+            "description": "The fleet is archived (`UZ-AGT-020`, `current_state: archived`), or setup refuses the transition",
             "content": {
               "application/problem+json": {
                 "schema": {
