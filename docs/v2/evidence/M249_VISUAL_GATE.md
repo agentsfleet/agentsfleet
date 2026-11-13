@@ -1,6 +1,10 @@
 # Visual gate for the agentsfleet interface refresh (M249): instructions for Codex
 
-You are finishing the agentsfleet interface refresh. Until now an outside reviewer compared your capture bundles with the approved `proposal.html` and sent findings back. That loop ends here. From now on you run the same review yourself, fix what it finds, and decide the verdict by the rules below. When the verdict is PASS you open the pull request. When something cannot or should not be fixed, you ask Indy for a decision instead of deciding it yourself.
+You are finishing the agentsfleet interface refresh. Until now an outside reviewer compared your capture bundles with the approved `proposal.html` and sent findings back.
+
+That loop ends here. From now on you run the same review yourself, fix what it finds, and decide the verdict by the rules below.
+
+When the verdict is PASS you open the pull request. When something cannot or should not be fixed, you ask Indy for a decision instead of deciding it yourself.
 
 Baseline for this document: candidate `ed7c4032b378ef3c137ec6eeaa48d2f0f665de21`, reviewed three times against proposal SHA-256 `8feabc24f6d6e91d2caa22a4b52060074f2877b291fce4d2f1da5c3fc6d8be5a`. All measured values quoted below come from that candidate.
 
@@ -20,7 +24,7 @@ Read this whole file before changing anything.
 
 **PASS BY EXCEPTION** means Indy approved the difference in writing. You record his exact words, the date, and the check it covers in `EXCEPTIONS.md`. You never write an exception on your own authority.
 
-**VISUAL PASS is not release approval.** The repository gates and the authenticated evidence listed in `M249_VERIFICATION.md` are separate. The PR opens only when the visual gate and those gates are both satisfied, or Indy has descoped the missing ones (section 11).
+**VISUAL PASS is not release approval**. The repository gates and the authenticated evidence listed in `M249_VERIFICATION.md` are separate. The PR opens only when the visual gate and those gates are both satisfied, or Indy has descoped the missing ones (section 11).
 
 ---
 
@@ -28,16 +32,22 @@ Read this whole file before changing anything.
 
 These come directly from mistakes found in the earlier bundles.
 
-1. **Expected values come from the proposal, never from the implementation.** Render `proposal.html` in the same run, at the same width and theme, and read the expected value from it. The earlier self-check expected 40px dialog footer buttons at 390 while `reference-measurements.json` in the same bundle computed 44px. That check passed 128 times and was wrong every time.
-2. **A check covers every instance, not a chosen sample.** The earlier primary-button check named four buttons. It missed `Create API key`, which was 40px at 390 against the proposal's 44px. Enumerate every button, field, row, icon and heading in every capture.
-3. **Every repair you claim needs its own measured row.** The four Astra repairs had no row in the self-check; they were only asserted in a JSON note. A sentence is not evidence.
-4. **Review the commit you ship.** One earlier review ran on `4a88af5e0` and was then cited for a different commit. Captures, measurements, reference render and verdict all carry the same revision and source digest, or the run is void.
-5. **Never weaken a check to make it pass.** If you believe a check is wrong, show the reference measurement that proves it, change it, and list the change in the report under "Checks changed". No tolerance widens without Indy.
-6. **`NOT RUN` is not `PASS`.** Report it as `NOT RUN` and say why.
-7. **Never edit `proposal.html`.** Verify its SHA-256 at the start and end of every run.
-8. **Never invent data to match the proposal.** Missing backend facts stay explicitly unavailable.
-9. **Screenshots are unmodified.** No cropping, retouching or re-encoding of evidence files.
-10. **Do not say Claude, Astra or Indy approved anything they did not approve on this commit.**
+1. **Expected values come from the proposal, never from the implementation**. Render `proposal.html` in the same run, at the same width and theme, and read the expected value from it.
+
+   The earlier self-check expected 40px dialog footer buttons at 390 while `reference-measurements.json` in the same bundle computed 44px. That check passed 128 times and was wrong every time.
+2. **A check covers every instance, not a chosen sample**. The earlier primary-button check named four buttons.
+
+   It missed `Create API key`, which was 40px at 390 against the proposal's 44px. Enumerate every button, field, row, icon and heading in every capture.
+3. **Every repair you claim needs its own measured row**. The four Astra repairs had no row in the self-check; they were only asserted in a JSON note. A sentence is not evidence.
+4. **Review the commit you ship**. One earlier review ran on `4a88af5e0` and was then cited for a different commit. Captures, measurements, reference render and verdict all carry the same revision and source digest, or the run is void.
+5. **Never weaken a check to make it pass**. If you believe a check is wrong, show the reference measurement that proves it.
+
+   Change it and list the change under "Checks changed". No tolerance widens without Indy.
+6. **`NOT RUN` is not `PASS`**. Report it as `NOT RUN` and say why.
+7. **Never edit `proposal.html`**. Verify its SHA-256 at the start and end of every run.
+8. **Never invent data to match the proposal**. Missing backend facts stay explicitly unavailable.
+9. **Screenshots are unmodified**. No cropping, retouching or re-encoding of evidence files.
+10. **Do not say Claude, Astra or Indy approved anything they did not approve on this commit**.
 
 ---
 
@@ -45,9 +55,13 @@ These come directly from mistakes found in the earlier bundles.
 
 Most ambiguity in the earlier reviews came from the implementation showing different sample text from the proposal. Table columns, wrapped lines and right-aligned labels all moved, and nobody could tell whether the layout or the text caused it. Remove that ambiguity with two capture modes.
 
-**Parity mode.** A fixture that feeds the production components the proposal's own strings, counts and names for each matched state: "Release watch", "Update runner image", `REGISTRY_TOKEN`, "Kishore’s account", and so on. Fields the backend cannot supply stay unavailable as they are today. In parity mode every geometry check runs at full strictness, because the content is the same.
+**Parity mode**. Feed production components the proposal's own strings, counts and names for each matched state.
 
-**Real-data mode.** The current labelled sample data. Here you check tokens, type, icons, control sizes, insets and component structure, and you check that nothing overflows, truncates or collides. Position checks that depend on text length are skipped and marked `CONTENT`.
+Examples include "Release watch", "Update runner image", `REGISTRY_TOKEN` and "Kishore’s account". Fields the backend cannot supply stay unavailable as they are today. In parity mode every geometry check runs at full strictness, because the content is the same.
+
+**Real-data mode**. The current labelled sample data.
+
+Here you check tokens, type, icons, control sizes, insets and component structure, and you check that nothing overflows, truncates or collides. Position checks that depend on text length are skipped and marked `CONTENT`.
 
 A difference is `CONTENT` only if it disappears in parity mode. If it remains in parity mode it is a defect. If you cannot build parity mode for a state, say so and treat every unexplained position difference in that state as a defect.
 
@@ -66,13 +80,23 @@ A difference is `CONTENT` only if it disappears in parity mode. If it remains in
 | phone, short | 390 × 500 | Composer focused |
 | phone, touch | 390 × 844 with touch enabled and a coarse pointer | Every state with a button |
 
-Device scale 1. Zoom 100%. Dark and light for every capture. Fonts loaded before capture. Pointer parked away from interactive elements unless the state is a hover state; an earlier capture showed an accidental hover highlight on "Use for new fleet".
+Device scale 1. Zoom 100%.
 
-The touch run is required. The proposal's 44px phone control height is triggered by width. If the implementation ties it to pointer type, a 390 capture with a mouse pointer shows 40px and nobody can tell whether a real phone gets 44px.
+Dark and light for every capture. Fonts loaded before capture.
+
+Park the pointer away from interactive elements unless testing hover. An earlier capture showed an accidental hover highlight on "Use for new fleet".
+
+The touch run is required. The proposal's 44px phone control height is triggered by width.
+
+If height depends on pointer type, a 390 capture with a mouse shows 40px. That cannot prove whether a real phone gets 44px.
 
 ### Review bar offset
 
-The proposal draws its own review bar above the app. It is one row at 1480 and 900, so the shell starts at y46. It is two rows at 696 and 390, so the shell starts at y80. The implementation harness bar is always one row. **Compare shell-relative coordinates**: subtract the shell's top from every y value on both sides. Also take one set of captures with the harness bar removed, to check anything positioned against the viewport such as toasts.
+The proposal draws its own review bar above the app. It is one row at 1480 and 900, so the shell starts at y46.
+
+It is two rows at 696 and 390, so the shell starts at y80. The implementation harness bar is always one row.
+
+**Compare shell-relative coordinates**: subtract the shell's top from every y value on both sides. Also take one set of captures with the harness bar removed, to check anything positioned against the viewport such as toasts.
 
 ### State matrix
 
@@ -80,19 +104,29 @@ Pages: Models, Team, Usage, API Keys, Secrets, Plugins, Connected apps, New flee
 
 Fleet states: Conversation (top and latest), Activity, Wake-up (top and latest), Error, Working, Archived, Deleted destination, Account menu open, Composer focused.
 
-Dialogs: Create model (new key, saved key, and scrolled to the footer on phone), Model details, Edit model, Invite member, Create API key, Revoke API key, Sign out session, Sign out other sessions, Add secret, Manage secret, Replace secret, Delete secret, Plugin details, Connected app details, Archive fleet, Delete fleet, Recorded changes.
+Dialogs:
+
+- Create model: new key, saved key, and scrolled to the footer on phone.
+- Model details, Edit model and Invite member.
+- Create API key, Revoke API key, Sign out session and Sign out other sessions.
+- Add secret, Manage secret, Replace secret and Delete secret.
+- Plugin details, Connected app details, Archive fleet, Delete fleet and Recorded changes.
 
 Interaction states: primary button hover, primary button keyboard focus, search focus, one keyboard-focused control inside a dialog.
 
 **New required states:**
 
-- A secret whose name is at least 64 characters with no spaces, and one of about 40 characters with spaces, in Manage secret, Replace secret and Delete secret, at 1480 and 390, both themes. The complete name must be readable somewhere in each dialog.
+- Use two secret names: at least 64 characters without spaces, and about 40 characters with spaces.
+  Test Manage secret, Replace secret and Delete secret at 1480 and 390, in both themes. The complete name must be readable somewhere in each dialog.
 - Team, Plugins and Usage with at least three rows, so row rhythm can be measured.
-- Loader: eight recordings and eight lossless frame pairs (1480 and 390, both themes, motion allowed and reduced), with the recording cropped or annotated so the label's box is known.
+- Loader: eight recordings and eight lossless frame pairs at 1480 and 390, both themes, with motion allowed and reduced.
+  Crop or annotate the recording so the label's box is known.
 
 ### Reference render
 
-Open `proposal.html` from disk in the same browser build. Set the theme with `document.documentElement.dataset.theme`. Change view with the page's own `showView(name)`. Open dialogs by clicking the proposal's own controls.
+Open `proposal.html` from disk in the same browser build. Set the theme with `document.documentElement.dataset.theme`.
+
+Change view with the page's own `showView(name)`. Open dialogs by clicking the proposal's own controls.
 
 | Implementation state | Proposal view or action |
 |---|---|
@@ -129,7 +163,12 @@ Use three methods together. Computed styles alone missed several defects that pi
 
 ### 5.1 Element geometry and computed style
 
-For every visible element of interest on both sides record: role, accessible name, text, bounding box, font family, size, weight, line height, colour, background, border width and colour, radius, padding, gap, box shadow, outline, and whether it has keyboard focus. Match elements between proposal and implementation by role and name, not by index.
+For every visible element of interest on both sides record these properties:
+
+- Role, accessible name, text and bounding box.
+- Font family, size, weight, line height and colour.
+- Background, border width and colour, radius, padding and gap.
+- Box shadow, outline and keyboard focus. Match elements between proposal and implementation by role and name, not by index.
 
 ### 5.2 Ink bounds from pixels
 
@@ -160,11 +199,15 @@ def ink_runs(path, box, axis, threshold=30, min_gap=2):
     return [(s + offset, e + offset) for s, e in runs]
 ```
 
-This is how the header gaps, the day marker, the file chip, the output card title, the Summary rhythm, the rail offsets and the account-menu insets were found. Use it wherever two things should line up or sit a fixed distance apart.
+This found the header gaps, day marker, file chip, output card title and Summary rhythm. It also found rail offsets and account-menu insets. Use it wherever two things should line up or sit a fixed distance apart.
 
 ### 5.3 Theme parity from edges
 
-Dark and light must have the same layout. Build an edge mask of each capture (neighbouring pixels differing by more than 14 grey levels), ignore the harness bar, dilate by 2px, and count edge pixels in one theme with no neighbour in the other. At `ed7c4032b` the worst pair differed by 0.7%. Fail any pair above 1.5%.
+Dark and light must have the same layout. Build each capture’s edge mask from neighbouring pixels differing by more than 14 grey levels.
+
+Ignore the harness bar and dilate by 2px. Count edge pixels in one theme with no neighbour in the other.
+
+At `ed7c4032b` the worst pair differed by 0.7%. Fail any pair above 1.5%.
 
 ### 5.4 Pixel checks for states
 
@@ -174,7 +217,9 @@ Dark and light must have the same layout. Build an edge mask of each capture (ne
 
 ### 5.5 Look at it
 
-After the numbers, view proposal and implementation side by side at 100% for every state, and at 2× to 5× for every dialog, header, list row and icon. Ask the questions in section 7. Several findings (wrong icon, two-tone focus halo, stacked phone buttons, a wrapped "Done" button) were seen before they were measured.
+After the numbers, view proposal and implementation side by side at 100% for every state.
+
+Use 2× to 5× for every dialog, header, list row and icon. Ask the questions in section 7. Several findings (wrong icon, two-tone focus halo, stacked phone buttons, a wrapped "Done" button) were seen before they were measured.
 
 ### Tolerances
 
@@ -450,21 +495,39 @@ Do not fix and do not accept these on your own. Send them as one request (sectio
 | D8 | Usage selects at 390 | Smaller than 16px | 16px after the earlier phone-select fix |
 | D9 | Strip and Team row controls | 36px | 40px (backlog 14 and 24), if you want the larger target kept |
 
-Already approved, do not reopen: Security renamed API Keys with profile and sign-in settings; workspace submenu in the account menu; inline Approve and Deny; neutral empty Send and New fleet; no Slack receipt line, mention button, token budget, diff totals, daily chart, key suffix or last-used time; More filters on Usage; Delete Plugin and Inspect setup in the plugin dialog; Show advanced models in the model pickers; Sources and Tasks in the Summary; wake-up strip 45px.
+Already approved, do not reopen:
+
+- Security renamed API Keys with profile and sign-in settings.
+- Workspace submenu in the account menu; inline Approve and Deny.
+- Neutral empty Send and New fleet.
+- No Slack receipt line, mention button, token budget, diff totals, daily chart, key suffix or last-used time.
+- More filters on Usage; Delete Plugin and Inspect setup in the plugin dialog.
+- Show advanced models in the model pickers; Sources and Tasks in the Summary.
+- Wake-up strip 45px. The later accepted D9 decision in M249_EXCEPTIONS.md takes precedence.
 
 ---
 
 ## 10. The loop
 
-1. **Start clean.** Fetch, confirm the branch and HEAD, confirm `git status` is empty, verify the proposal hash.
-2. **Build the tools once.** Parity fixtures, reference renderer, capture script, measurement extractor, the checks in section 6. Commit them with the work.
-3. **Fix the backlog.** P2 first. Fix shared components rather than single screens: items 2 and 10 are one rule, items 21 and 22 are one layout rule, item 3 is one token.
+1. **Start clean**. Fetch, confirm the branch and HEAD, confirm `git status` is empty, verify the proposal hash.
+2. **Build the tools once**. Parity fixtures, reference renderer, capture script, measurement extractor, the checks in section 6. Commit them with the work.
+3. **Fix the backlog**. P2 first.
+
+   Fix shared components rather than single screens. Items 2 and 10 share one rule; items 21 and 22 share one layout rule.
+
+Item 3 is one token.
 4. **Capture** the full matrix from the clean commit, plus the reference render, in one run.
-5. **Run the rubric.** Write `self-check.md` and `self-check.json`. Any `FAIL` sends you back to step 3.
-6. **Adversarial pass.** With a fresh context, or a sub-agent that has not seen your fixes, give it only the captures, the reference render and sections 5 to 7. Its job is to find defects, not to confirm closure. It must view every state side by side and report at least what it checked per screen. Anything it finds goes into the backlog and you return to step 3.
-7. **Regression sweep.** After the last fix, re-run everything. A fix to a shared component can move something that passed.
-8. **Stop conditions.** Stop and write to Indy if the same check fails after three fix attempts, if a fix would change behaviour, permissions or data, or if two rubric rows contradict each other.
-9. **Verdict.** Apply section 1.
+5. **Run the rubric**. Write `self-check.md` and `self-check.json`. Any `FAIL` sends you back to step 3.
+6. **Adversarial pass**. Use a fresh context or a sub-agent that has not seen your fixes.
+
+   Give it only the captures, reference render and sections 5 to 7. Its job is to find defects, not to confirm closure.
+
+   It must view every state side by side and report at least what it checked per screen. Anything it finds goes into the backlog and you return to step 3.
+7. **Regression sweep**. After the last fix, re-run everything. A fix to a shared component can move something that passed.
+8. **Stop conditions**. Stop and write to Indy if the same check fails after three fix attempts.
+
+Also stop if a fix would change behaviour, permissions or data, or if two rubric rows contradict each other.
+9. **Verdict**. Apply section 1.
 
 Never batch "small" differences as acceptable. Below 2px on a single element is within tolerance only if the check's tolerance says so; anything else is fixed or goes to Indy.
 
@@ -502,7 +565,11 @@ Record each answer in `EXCEPTIONS.md` as: date, item, Indy's exact words, the ch
 Open it only when all of these hold on the same commit:
 
 1. VISUAL PASS by section 1.
-2. The repository gates in the `M249_VERIFICATION.md` punchlist have run and report their real results: lint, unit tests, coverage at the enforced thresholds, the rendered-flow run, the acceptance run, and the app and website bundle-size checks.
+2. The repository gates in the `M249_VERIFICATION.md` punchlist have run and report their real results:
+
+   - Lint, unit tests and coverage at the enforced thresholds.
+   - The rendered-flow and acceptance runs.
+   - App and website bundle-size checks.
 3. Authenticated evidence on this commit: account controls, a real archive with read-only history, a real delete landing on New fleet. If you cannot produce it, ask Indy to descope it; do not substitute fixture images.
 4. `EXCEPTIONS.md` is complete.
 

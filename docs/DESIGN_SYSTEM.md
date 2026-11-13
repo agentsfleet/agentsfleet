@@ -426,19 +426,27 @@ Each tool call has a separate entry with its recorded name, status, and elapsed 
 A running call has its own spinner. **Input** and **Output** or **Error** open independently for each call.
 Commands and returned text stay inside these disclosures. Tool status does not claim the fleet's overall task succeeded.
 
-Create and Edit secret use the same field editor with masked values and add/remove controls.
-Both dialogs share the encryption explanation and help link. Edit locks the name and explains that saving replaces every field.
-Stored values are never loaded into the editor. Manage opens the secret actions. Named-target dialogs show the complete name in wrapping body text.
+Create and Edit secret use the same field editor with masked values and add/remove controls. Both dialogs share the encryption explanation and help link.
+
+Edit locks the name and explains that saving replaces every field. Stored values are never loaded into the editor.
+
+Manage opens the secret actions. Named-target dialogs show the complete name in wrapping body text.
 
 ### Compact density
 
-Default and small text buttons use `--control-height`: 40px above 680px and 44px at phone widths, independently of pointer type. Large actions and form fields are 44px. Usage toolbar selects are 40px on larger screens. Icon controls share the responsive size; compact icon actions are 32px, and `icon-row` actions are 36px.
+Default and small text buttons use `--control-height`: 40px above 680px and 44px at phone widths, independently of pointer type. Large actions and form fields are 44px.
 
-Coarse pointers use 44px targets except the explicitly compact composer and wake-up actions. Dialog close controls remain 40px. Rail targets are 48px, with 44px phone navigation.
-Use the approved app type roles above.
+Usage toolbar selects are 40px on larger screens. Icon controls share the responsive size; compact icon actions are 32px, and `icon-row` actions are 36px.
 
-Smaller glyphs retain their click targets, and compact controls retain readable labels.
-Dialog footer actions stay in one right-aligned row with an 8px gap. Separate body actions from the completion footer when needed. Shared DialogFooter owns the 24px content gap. Confirmation dialogs focus Cancel. Form dialogs focus the first editable field.
+Coarse pointers use 44px targets except the explicitly compact composer and wake-up actions. Dialog close controls remain 40px.
+
+Rail targets are 48px, with 44px phone navigation. Use the approved app type roles above.
+
+Smaller glyphs retain their click targets, and compact controls retain readable labels. Dialog footer actions stay in one right-aligned row with an 8px gap.
+
+Separate body actions from the completion footer when needed. Shared DialogFooter owns the 24px content gap.
+
+Confirmation dialogs focus Cancel. Form dialogs focus the first editable field.
 
 Use shared Button, Input, Select, Label, Badge, and StatusPill variants for these decisions. Pages must not recreate their appearance with local class overrides.
 Use `Card interactive` only when the surface opens a destination.
@@ -567,11 +575,14 @@ Pointer hover must preserve the focus ring on an already focused input.
 Chat composers use the shared Textarea's `composer` appearance, with a neutral outer boundary and no inner focus ring.
 Focus the composer on entry and restore typing after Send. Conversation updates must preserve focus on other controls.
 
-Dialogs use the shared 22px radius, line border, overlay, and dialog elevation tokens. The default width is 540px; wide forms use 620px. Phone dialogs fit within 16px outer gutters. Wide forms use 20px phone padding and a pinned footer.
+Dialogs use the shared 22px radius, line border, overlay, and dialog elevation tokens. The default width is 540px; wide forms use 620px.
+
+Phone dialogs fit within 16px outer gutters. Wide forms use 20px phone padding and a pinned footer.
+
 Select and dropdown surfaces use the floating elevation token. Motion follows shared timing and respects reduced-motion preferences.
 
-The close control uses Button and reserves space beside the dialog title.
-Constrain the panel to the viewport and scroll its content so footer actions remain reachable.
+The close control uses Button and reserves space beside the dialog title. Constrain the panel to the viewport and scroll its content so footer actions remain reachable.
+
 Focus uses a 2px accent ring at a 4px offset. `--control-focus-surface` follows a control into a dialog so the ring gap matches that panel.
 
 Event details focus on the outcome, request context, and actionable failure guidance. Omit clipboard controls and empty action footers.
@@ -1124,7 +1135,9 @@ The header action scrolls/focuses it without changing native verification hashes
 
 ### Conversation shape and header cost
 
-Attachment chips use 10px corners. User messages use 22px corners with a 6px lower-right corner. Summary and composer panels use 22px corners on all sides. Record all four radii in the visual checks.
+Attachment chips use 10px corners. User messages use 22px corners with a 6px lower-right corner.
+
+Summary and composer panels use 22px corners on all sides. Record all four radii in the visual checks.
 
 The reported run cost uses Manrope at 13px/20px and weight 500 in the secondary text colour. It aligns with the header title baseline. Amounts retain their reported precision.
 

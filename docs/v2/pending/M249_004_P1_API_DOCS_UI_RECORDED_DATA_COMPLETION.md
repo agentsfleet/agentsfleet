@@ -7,8 +7,8 @@
 **Status:** PENDING
 **Priority:** P1, approved screens need authoritative data
 **Categories:** API, DOCS, UI
-**Batch:** B3, after the UI and CLI merges
-**Depends on:** M249_001 and M249_002 merged; coordinate Plugin field changes with M249_003
+**Batch:** B3, data work may run alongside M249_003
+**Depends on:** M249_001 and M249_002 before implementation; M249_003 before final Plugin wiring and this workstream's merge
 **Provenance:** Agent-generated from the UI data inventory and Indy's requested Claude handoff
 **Canonical architecture:** `docs/DESIGN_SYSTEM.md`; `docs/architecture/context_lifecycle.md`; `docs/architecture/api_resources.md`
 
@@ -23,6 +23,9 @@
 **Design flow:** Authenticated read → existing account/workspace authorization → stored ledger, policy or event facts → typed response → existing UI adapter → approved component.
 
 This spec ships as documentation in the UI PR. Its implementation uses a separate worktree and PR after both dependency merges.
+
+Usage, key metadata, secret access, recorded work and context measurement can proceed while M249_003 runs.
+Finish Plugin revision-label wiring against M249_003's merged names and payloads. Merge M249_003 before M249_004.
 
 ## PR Intent & comprehension handshake
 
@@ -152,7 +155,7 @@ Keep workspace-backed storage, hidden values, named-field replacement and active
 
 ### §4 — Revision labels and recorded work
 
-Expose the head revision ordinal in Plugin collection metadata from the existing revision row. Coordinate names with M249_003 and avoid per-card history requests.
+Expose the head revision ordinal in Plugin collection metadata from the existing revision row. Use M249_003's merged names and avoid per-card history requests.
 
 Preserve immutable revision identity, complete reusable setups and independently saved fleets.
 
@@ -249,6 +252,7 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 - **Model reviews:** Authoring draft; independent EGM review and resolution remain pending. This document carries no implementation-readiness claim.
 - **Open blockers:** Exact last-use, effective-access, publication and context producers need the merged-base inventory. Unknown semantics must be resolved before their Sections start.
 - **Merge order:** Both UI and CLI must merge before implementation. CLI may merge first only with coherent current UI lifecycle callers.
+- **Staggered work:** Independent data Sections may run alongside M249_003. Final Plugin wiring and M249_004's merge follow M249_003.
 
 > Owner (Indy): "claude to works from your PR merged on the UI refresh you did with gaps delta on api needed on the backend and wire it into the ui you created (post your PR merge)."
 
