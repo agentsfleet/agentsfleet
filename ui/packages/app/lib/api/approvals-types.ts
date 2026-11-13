@@ -1,10 +1,3 @@
-// The approval decision tags and page size the inbox and its buttons share. Dependency-free on purpose: client components read these
-// without pulling the transport, whose retry policy is server-only.
-
-/** How many gates one inbox page carries — the first render, each poll, and
- * every "load more" ask for the same page. */
-export const APPROVALS_PAGE_LIMIT = 50;
-
 // Wire-protocol values the API understands for the `/approve` / `/deny` POST
 // paths. Single source of truth — dashboard components import these so the
 // decision flow has one place that pins the literal.
@@ -31,5 +24,3 @@ export const APPROVAL_STATUS = {
   TIMED_OUT: "timed_out",
   ARCHIVED: "archived",
 } as const;
-
-export type ApprovalStatusTag = typeof APPROVAL_STATUS[keyof typeof APPROVAL_STATUS];

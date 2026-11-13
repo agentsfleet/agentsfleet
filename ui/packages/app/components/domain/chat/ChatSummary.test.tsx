@@ -1,45 +1,40 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
-import { ChatSummaryProvider, ChatSummaryToggle } from "./ChatSummary";
-import { FleetWorkSidebar } from "../FleetWorkSidebar";
+import type { ReactNode } from "react";
+import type { ThreadMessageLike } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, useExternalStoreRuntime } from "@assistant-ui/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, expect, it } from "vitest";
+import { FleetConversationLayout } from "../FleetWorkSidebar";
+import { ChatThread } from "./ChatThread";
 
-afterEach(() => {cleanup(); vi.restoreAllMocks();});
+const NO_MESSAGES: ThreadMessageLike[] = [];
 
-function workspace() {
-  return <ChatSummaryProvider><ChatSummaryToggle /><textarea aria-label="Draft" defaultValue="Keep my draft" />
-    <FleetWorkSidebar><h3>Durable tasks</h3><p>Validate the repair</p></FleetWorkSidebar></ChatSummaryProvider>;
-}
+afterEach(cleanup);
 
-it("opens the mobile summary with one header action and restores focus on close", async () => {
-  render(workspace());
-  const trigger = screen.getByRole("button", {name: "Toggle fleet summary"});
-  expect(trigger.getAttribute("aria-expanded")).toBe("false");
-  fireEvent.click(trigger);
-  expect(screen.getByRole("dialog").textContent).toContain("Durable tasks");
-  expect(screen.queryByRole("button", {name: "Work context"})).toBeNull();
-  expect(screen.getByRole("textbox", {name: "Draft", hidden: true})).toHaveProperty("value", "Keep my draft");
-  fireEvent.click(screen.getByRole("button", {name: "Close"}));
+it("keeps Summary inline and preserves the composer while recorded work changes", () => {
+  const workspace = (status: string) => <Conversation work={<p>{status}</p>} />;
+  const view = render(workspace("Running checks"));
+  const draft = screen.getByRole("textbox", {name: "Draft"});
+  draft.focus();
+  fireEvent.change(draft, {target: {value: "Keep my exact direction"}});
+  expect(screen.getByRole("complementary", {name: "Summary"}).textContent).toContain("Running checks");
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(trigger.getAttribute("aria-expanded")).toBe("false");
-  await waitFor(() => expect(document.activeElement).toBe(trigger));
-});
-
-it("toggles one desktop summary while preserving the composer", () => {
-  const original = window.matchMedia;
-  vi.spyOn(window, "matchMedia").mockImplementation(query => ({...original(query), matches: true}));
-  render(workspace());
-  const draft = screen.getByRole("textbox");
-  const toggle = screen.getByRole("button", {name: "Toggle fleet summary"});
-  expect(screen.queryByRole("complementary")).toBeNull();
-  fireEvent.click(toggle);
-  expect(screen.getByRole("complementary", {name: "Fleet summary"}).textContent).toContain("Validate the repair");
-  fireEvent.click(toggle);
-  expect(screen.queryByRole("complementary")).toBeNull();
-  expect(screen.getByRole("textbox")).toBe(draft);
-  expect(draft).toHaveProperty("value", "Keep my draft");
-});
-
-it("does not add a summary action outside a chat owner", () => {
-  render(<ChatSummaryToggle />);
   expect(screen.queryByRole("button")).toBeNull();
+  view.rerender(workspace("Checks passed"));
+  expect(screen.getAllByRole("complementary")).toHaveLength(1);
+  expect(screen.getByRole("textbox")).toBe(draft);
+  expect(draft).toHaveProperty("value", "Keep my exact direction");
+  expect(document.activeElement).toBe(draft);
 });
+
+it("omits an absent work reader without hiding the conversation", () => {
+  render(<Conversation />);
+  expect(screen.queryByRole("complementary")).toBeNull();
+  expect(screen.getByRole("textbox")).toBeTruthy();
+});
+
+function Conversation({work}: {work?: ReactNode}) {
+  const runtime = useExternalStoreRuntime({messages: NO_MESSAGES, isRunning: false, convertMessage: (message: ThreadMessageLike) => message, onNew: async () => {}});
+  return <AssistantRuntimeProvider runtime={runtime}><FleetConversationLayout work={work}>
+    <ChatThread label="Conversation" autoScroll={false} footer={<textarea aria-label="Draft" defaultValue="Keep my draft" />}><p>Conversation history</p></ChatThread>
+  </FleetConversationLayout></AssistantRuntimeProvider>;
+}

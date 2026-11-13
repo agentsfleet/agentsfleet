@@ -51,12 +51,13 @@ export default async function FleetDetailPage({
   const pendingSetup = fleet.status === AGENTSFLEET_STATUS.INSTALLING;
   const content = pendingSetup ? <FleetPendingChat account={account} workspace={workspaceId} fleet={fleet} canGrant={canGrant} />
     : await loadChatView(workspaceId, fleet, viewData);
+  const latestRun = pendingSetup ? null : buildRunSummary(fleet.status, await viewData.thread, fleet.pending_approvals).latest;
   return <div data-fleet-workspace className="flex h-full min-h-0 flex-1 flex-col overflow-clip">
     <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
     <FleetSetupWorkspace account={account} fleet={fleet.id} revision={fleet.setup_revision}
       model={typeof fleet.definition.config["x-agentsfleet"].model === "string" ? fleet.definition.config["x-agentsfleet"].model : "platform-default"}
       workspace={workspaceId} viewer={typeof sessionClaims?.sub === "string" ? sessionClaims.sub : null}
-      header={pendingSetup ? null : <FleetHeader workspaceId={workspaceId} fleet={fleet} canGrant={canGrant}
+      header={pendingSetup ? null : <FleetHeader workspaceId={workspaceId} fleet={fleet} canGrant={canGrant} latestRun={latestRun}
         exhaustedAt={billing?.is_exhausted ? billing.exhausted_at : undefined} />}>
       <div className="page-entrance flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip">{content}</div>
     </FleetSetupWorkspace>
@@ -85,11 +86,12 @@ async function loadChatView(
   // Who is signed in, from the verified claims this request already holds:
   // the thread keys its unsent messages by it before the client knows.
   const subject = (await claims())?.sub;
-  const approvalsHref = `${workspacePath(workspaceId, "approvals")}?fleetId=${encodeURIComponent(fleet.id)}`;
+  const approvalsHref = `${workspacePath(workspaceId, `fleets/${fleet.id}`)}#fleet-approvals`;
   return (
     <ChatView
       workspaceId={workspaceId}
       fleetId={fleet.id}
+      schedules={fleet.schedules}
       sources={fleetSources(fleet.definition.config["x-agentsfleet"])}
       senderLabel={fleet.name}
       setupRevision={fleet.setup_revision}

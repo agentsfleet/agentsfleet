@@ -48,6 +48,12 @@ function termTexts(): string[] {
 afterEach(() => cleanup());
 
 describe("ModelDetailsDialog", () => {
+  it("does not present catalogue rates as charges for a self-hosted Ollama model", () => {
+    renderDialog(makeEntry({provider: "ollama"}));
+    const label = screen.getByText("Input / cached input / output ($/1M)");
+    expect(label.parentElement?.textContent).toContain("Unknown");
+    expect(screen.getByText("Ollama")).toBeTruthy();
+  });
   it("test_details_row_order_no_kind", () => {
     renderDialog(makeEntry());
 
@@ -56,19 +62,19 @@ describe("ModelDetailsDialog", () => {
     expect(screen.queryByText(/has key/i)).toBeNull();
 
     // With base_url set, the description terms are exactly these, in this order.
-    expect(termTexts()).toEqual(["Provider", "Model", "Secret ref", "Endpoint"]);
+    expect(termTexts()).toEqual(["Provider", "Model", "Key name", "Workspace", "Endpoint", "Context cap (tokens)", "Input / cached input / output ($/1M)"]);
   });
 
   it("test_details_row_order_no_kind_without_base_url", () => {
     // Endpoint appears only when base_url is set; drop it and the term vanishes.
     renderDialog(makeEntry({ base_url: undefined }));
-    expect(termTexts()).toEqual(["Provider", "Model", "Secret ref"]);
+    expect(termTexts()).toEqual(["Provider", "Model", "Key name", "Workspace", "Context cap (tokens)", "Input / cached input / output ($/1M)"]);
   });
 
   it("test_secret_ref_row_label", () => {
     renderDialog(makeEntry({ secret_ref: "pioneer" }));
 
-    const term = screen.getByText("Secret ref");
+    const term = screen.getByText("Key name");
     expect(term.tagName).toBe("DT");
     // The value sits in the sibling <dd> of the same row group.
     const value = term.parentElement?.querySelector("dd");
@@ -77,14 +83,14 @@ describe("ModelDetailsDialog", () => {
 
   it("test_vault_badge_reflects_has_key", () => {
     renderDialog(makeEntry({ has_key: true }));
-    expect(screen.getByText("In vault")).toBeTruthy();
-    expect(screen.queryByText("Keyless endpoint")).toBeNull();
+    expect(screen.getByText("Key stored")).toBeTruthy();
+    expect(screen.queryByText("Key unavailable")).toBeNull();
 
     cleanup();
 
     renderDialog(makeEntry({ has_key: false }));
-    expect(screen.getByText("Keyless endpoint")).toBeTruthy();
-    expect(screen.queryByText("In vault")).toBeNull();
+    expect(screen.getByText("Key unavailable")).toBeTruthy();
+    expect(screen.queryByText("Key stored")).toBeNull();
   });
 
   it("test_added_time_relative_in_header", () => {
@@ -107,6 +113,6 @@ describe("ModelDetailsDialog", () => {
     // A NaN created_at must degrade to "—" via Time's own guard — no thrown
     // RangeError tearing down the dialog subtree.
     expect(() => renderDialog(makeEntry({ created_at: "not-an-instant" }))).not.toThrow();
-    expect(screen.getByText("—")).toBeTruthy();
+    expect(document.querySelector("time")?.textContent).toBe("—");
   });
 });

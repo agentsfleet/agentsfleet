@@ -7,5 +7,5 @@ const ScheduleFire = z.object({message: z.string(), schedule: z.object({
 /** Only the native cron envelope's display fields may enter its chat headline. */
 export function scheduleFireHeadline(payload: unknown): string | null {
   const parsed = ScheduleFire.safeParse(payload);
-  return parsed.success ? `Schedule ${parsed.data.schedule.description} fired: ${parsed.data.message}` : null;
+  return parsed.success ? `Scheduled wake-up: ${parsed.data.message}` : null;
 }

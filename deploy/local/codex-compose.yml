@@ -4,4 +4,4 @@ services:
     network_mode: host
     ports: !reset []
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:${LOCAL_ACCEPTANCE_ADMIN_PORT}/config/"]
+      test: ["CMD", "wget", "-Y", "off", "-q", "-O", "/dev/null", "http://127.0.0.1:${LOCAL_ACCEPTANCE_ADMIN_PORT}/config/"]

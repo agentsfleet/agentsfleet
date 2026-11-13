@@ -1,5 +1,5 @@
 /**
- * settings-api-keys.spec.ts — /settings/api-keys full round-trip for an
+ * Security API keys section: full round-trip for an
  * operator-role tenant user: mint → one-time reveal → close → revoke → delete.
  *
  * Uses FIXTURE_KEY.admin because the route is operator-gated (the backend's
@@ -20,23 +20,21 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 // trades failure evidence for keeping that value out of every artifact.
 test.use({ trace: "off", screenshot: "off" });
 
-test.describe("settings api-keys page", () => {
+test.describe("Security API keys", () => {
   test("operator round-trip: mint, reveal once, revoke, delete", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.admin);
-    await page.goto("/settings/api-keys");
-    await expect(page).toHaveURL(/\/settings\/api-keys(\?|$)/);
-    // The Workspace tab folded into this page — it's the API
-    // Keys page's own heading now, not a shared "Settings" area heading, and
-    // the sidebar (not a tab strip) marks the active destination.
-    await expect(page.getByRole("heading", { name: /^api keys$/i })).toBeVisible();
-    await page.getByRole("button", {name: "Workspace and account menu"}).click();
-    await expect(page.getByRole("menuitem", {name: "Get API keys", exact: true})).toHaveAttribute("aria-current", "page");
+    await page.goto("/settings/security");
+    await expect(page).toHaveURL(/\/settings\/security(\?|$)/);
+    await expect(page.getByRole("heading", {name: "API Keys", level: 1, exact: true})).toBeVisible();
+    await expect(page.getByRole("region", {name: "Account API keys", exact: true}).getByRole("heading", { name: "API keys", exact: true })).toBeVisible();
+    await page.getByRole("button", {name: /^Workspace and account menu(?::|$)/}).click();
+    await expect(page.getByRole("menuitem", {name: "API Keys", exact: true})).toHaveAttribute("aria-current", "page");
     await page.keyboard.press("Escape");
 
     const name = `e2e-${Date.now()}`;
 
     // Mint. The dialog submit is just "Create"; the trigger keeps the noun.
-    await page.getByRole("button", { name: /^create key$/i }).click();
+    await page.getByRole("button", { name: "Create API key", exact: true }).click();
     await page.getByLabel(/^name$/i).fill(name);
     await page.getByRole("dialog").getByRole("button", { name: /^create$/i }).click();
 
@@ -56,7 +54,7 @@ test.describe("settings api-keys page", () => {
 
     // Revoke → the row flips to a revoked state exposing Delete.
     await page.getByRole("button", { name: new RegExp(`revoke api key ${name}`, "i") }).click();
-    await page.getByRole("alertdialog").getByRole("button", { name: /^revoke$/i }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Revoke key", exact: true }).click();
     const del = page.getByRole("button", { name: new RegExp(`delete api key ${name}`, "i") });
     await expect(del).toBeVisible();
 

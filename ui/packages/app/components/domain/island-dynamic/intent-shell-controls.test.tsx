@@ -1,293 +1,34 @@
-import React from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
+import { TooltipProvider } from "@agentsfleet/design-system";
+import { ShellControls, SidebarExpandControl } from "@/components/layout/ShellControls";
+import { shellSidebarState, useShellSidebarCollapsed } from "@/components/layout/shell-sidebar-state";
 
-// Every listed workspace names its account and the caller's role in it; these
-// are all the caller's own, the shape a solo account's list has.
-type Snapshot = {
-  error: unknown;
-  module: { default: React.ComponentType<Record<string, unknown>> } | null;
-  status: "idle" | "loading" | "ready" | "error";
-};
+afterEach(() => { cleanup(); shellSidebarState.reset(); });
 
-type TestLoader = {
-  importModule: () => Promise<unknown>;
-  preload: ReturnType<typeof vi.fn>;
-  retry: ReturnType<typeof vi.fn>;
-  snapshot: Snapshot;
-};
+function NavigationControls() {
+  const collapsed = useShellSidebarCollapsed();
+  return <TooltipProvider>
+    <ShellControls workspaceId="workspace" collapsed={collapsed} />
+    <SidebarExpandControl collapsed={collapsed} />
+    <label>Unsent message<input defaultValue="Keep my draft" /></label>
+  </TooltipProvider>;
+}
 
-const state = vi.hoisted(() => ({
-  loaders: [] as TestLoader[],
-  maySpeculate: true,
-  pathname: "/",
-  renderedProps: null as Record<string, unknown> | null,
-  setAnalyticsContext: vi.fn(),
-}));
-
-vi.mock("./intent-module-loader", () => ({
-  INTENT_MODULE_STATUS: {
-    idle: "idle",
-    loading: "loading",
-    ready: "ready",
-    error: "error",
-  },
-  createIntentModuleLoader: (importModule: () => Promise<unknown>) => {
-    const loader: TestLoader = {
-      importModule,
-      preload: vi.fn(() => Promise.resolve(loader.snapshot.module)),
-      retry: vi.fn(() => Promise.resolve(loader.snapshot.module)),
-      snapshot: { error: null, module: null, status: "idle" },
-    };
-    state.loaders.push(loader);
-    return loader;
-  },
-  maySpeculateOnHover: () => state.maySpeculate,
-  useIntentModule: (loader: TestLoader) => loader.snapshot,
-}));
-
-vi.mock("@agentsfleet/design-system", async () => {
-  const ReactModule = await import("react");
-  function Button({
-    children,
-    size: _size,
-    variant: _variant,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    size?: string;
-    variant?: string;
-  }) {
-    return ReactModule.createElement("button", props, children);
-  }
-  function BrandMark(props: React.SVGProps<SVGSVGElement>) {
-    return ReactModule.createElement("svg", props);
-  }
-  function Spinner({ srLabel }: { srLabel?: string }) {
-    return ReactModule.createElement("span", { role: "status" }, srLabel);
-  }
-  // The real `cn` is clsx + tailwind-merge; this test only renders and reads
-  // class strings, so joining the truthy values is the whole of what it needs.
-  function cn(...values: unknown[]) {
-    return values.filter(Boolean).join(" ");
-  }
-  return { Button, Spinner, BrandMark, cn };
+it("keeps the home route usable without downloading a navigation drawer", () => {
+  render(<NavigationControls />);
+  expect(screen.getByRole("link", {name: "agentsfleet home"}).getAttribute("href")).toBe("/w/workspace/fleets/new");
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
-vi.mock("@/lib/auth/client", () => ({ useCurrentUser: () => ({ userId: "person" }) }));
-
-vi.mock("next/navigation", () => ({
-  usePathname: () => state.pathname,
-  useRouter: () => ({ refresh: vi.fn() }),
-}));
-
-vi.mock("next/link", async () => {
-  const ReactModule = await import("react");
-  return {
-    default: ({
-      children,
-      ...props
-    }: React.PropsWithChildren<React.AnchorHTMLAttributes<HTMLAnchorElement>>) =>
-      ReactModule.createElement("a", props, children),
-  };
-});
-
-vi.mock("@/lib/analytics/posthog", () => ({
-  setAnalyticsContext: state.setAnalyticsContext,
-}));
-
-function loadedProbe(props: Record<string, unknown>) {
-  state.renderedProps = props;
-  return React.createElement("div", null, "loaded controls");
-}
-
-function latestLoader(): TestLoader {
-  const loader = state.loaders.at(-1);
-  if (!loader) throw new Error("expected wrapper to create an intent loader");
-  return loader;
-}
-
-function showLoaded(loader: TestLoader) {
-  loader.snapshot = {
-    error: null,
-    module: { default: loadedProbe },
-    status: "ready",
-  };
-}
-
-function showError(loader: TestLoader) {
-  loader.snapshot = {
-    error: new Error("chunk unavailable"),
-    module: null,
-    status: "error",
-  };
-}
-
-beforeEach(() => {
-  state.loaders = [];
-  state.maySpeculate = true;
-  state.pathname = "/";
-  state.renderedProps = null;
-  state.setAnalyticsContext.mockReset();
-  vi.resetModules();
-});
-
-afterEach(cleanup);
-
-describe("shell intent controls", () => {
-  it("renders the workspace trigger defaults without loading its menu", async () => {
-    const { WorkspaceSwitcherTrigger } = await import(
-      "@/components/layout/WorkspaceSwitcherTrigger"
-    );
-    render(<WorkspaceSwitcherTrigger activeLabel="Default workspace" />);
-    const trigger = screen.getByRole("button", {
-      name: "Your workspace Default workspace",
-    });
-    expect(trigger.getAttribute("aria-busy")).toBeNull();
-    expect(trigger.textContent).toContain("Default workspace");
-  });
-
-  it("preserves mobile navigation through capability checks and retry", async () => {
-    const { ShellControls } = await import("@/components/layout/ShellControls");
-    const loader = latestLoader();
-    expect(await loader.importModule()).toHaveProperty("default");
-    const view = render(
-      <ShellControls
-        workspaces={[]}
-        sidebarNavId="test-sidebar"
-      />,
-    );
-    const trigger = screen.getByRole("button", { name: "Open navigation" });
-    expect(
-      screen.getByRole("link", { name: "agentsfleet home" }).getAttribute("href"),
-    ).toBe("/");
-    expect(state.setAnalyticsContext).toHaveBeenCalledWith({
-      workspaceCount: 0,
-      workspaceId: null,
-    });
-
-    trigger.focus();
-    await userEvent.hover(trigger);
-    expect(loader.preload).toHaveBeenCalledTimes(2);
-    state.maySpeculate = false;
-    await userEvent.unhover(trigger);
-    await userEvent.hover(trigger);
-    expect(loader.preload).toHaveBeenCalledTimes(2);
-
-    await userEvent.click(trigger);
-    loader.snapshot = { error: null, module: null, status: "loading" };
-    view.rerender(
-      <ShellControls
-        workspaces={[]}
-        sidebarNavId="test-sidebar"
-      />,
-    );
-    expect(trigger.getAttribute("aria-busy")).toBe("true");
-
-    showError(loader);
-    view.rerender(
-      <ShellControls
-        workspaces={[]}
-        sidebarNavId="test-sidebar"
-      />,
-    );
-    await userEvent.click(
-      screen.getByRole("button", { name: "Retry navigation" }),
-    );
-    expect(loader.retry).toHaveBeenCalledOnce();
-
-    state.pathname = "/w/ws_active/events";
-    showLoaded(loader);
-    view.rerender(
-      <ShellControls
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
-        sidebarNavId="test-sidebar"
-      />,
-    );
-    await waitFor(() =>
-      expect(state.renderedProps).toMatchObject({
-        open: false,
-        pathname: "/w/ws_active/events",
-        workspaceId: "ws_active",
-      }),
-    );
-    const restoreFocus = state.renderedProps?.restoreFocus;
-    expect(typeof restoreFocus).toBe("function");
-    if (typeof restoreFocus === "function") restoreFocus();
-    expect(document.activeElement).toBe(trigger);
-  });
-
-  it("keeps the workspace trigger stable through preload, failure, and load", async () => {
-    const { default: WorkspaceSwitcher } = await import(
-      "@/components/layout/WorkspaceSwitcher"
-    );
-    const loader = latestLoader();
-    expect(await loader.importModule()).toHaveProperty("default");
-    const view = render(
-      <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
-      />,
-    );
-    const trigger = screen.getByTestId("workspace-switcher");
-    expect(trigger.textContent).toContain("Fallback");
-
-    trigger.focus();
-    await userEvent.hover(trigger);
-    expect(loader.preload).toHaveBeenCalledTimes(2);
-    state.maySpeculate = false;
-    await userEvent.unhover(trigger);
-    await userEvent.hover(trigger);
-    expect(loader.preload).toHaveBeenCalledTimes(2);
-
-    await userEvent.click(trigger);
-    loader.snapshot = { error: null, module: null, status: "loading" };
-    view.rerender(
-      <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
-      />,
-    );
-    expect(trigger.getAttribute("aria-busy")).toBe("true");
-
-    state.pathname = "/w/ws_missing/fleets";
-    view.rerender(
-      <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
-      />,
-    );
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("workspace-switcher").getAttribute("aria-busy"),
-      ).not.toBe("true"),
-    );
-
-    showError(loader);
-    view.rerender(
-      <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
-      />,
-    );
-    await userEvent.click(
-      screen.getByRole("button", { name: /^Retry account menu\b/ }),
-    );
-    expect(loader.retry).toHaveBeenCalledOnce();
-
-    showLoaded(loader);
-    view.rerender(
-      <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
-      />,
-    );
-    expect(state.renderedProps).toMatchObject({ open: true });
-
-    state.pathname = "/w/ws_missing/events";
-    view.rerender(
-      <WorkspaceSwitcher
-        workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
-      />,
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("workspace-switcher")).toBeTruthy(),
-    );
-  });
+it("expands and collapses navigation without replacing the draft", async () => {
+  render(<NavigationControls />);
+  const draft = screen.getByRole("textbox", {name: "Unsent message"});
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", {name: "Expand navigation"}));
+  expect(screen.getByRole("button", {name: "Collapse navigation"}).getAttribute("aria-expanded")).toBe("true");
+  await user.click(screen.getByRole("button", {name: "Collapse navigation"}));
+  expect(screen.getByRole("textbox", {name: "Unsent message"})).toBe(draft);
+  expect((draft as HTMLInputElement).value).toBe("Keep my draft");
 });

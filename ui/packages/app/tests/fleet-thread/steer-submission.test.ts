@@ -7,7 +7,6 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import React from "react";
 import { FleetThread } from "@/components/domain/FleetThread";
 import { ACTOR } from "@/lib/events/event-summary";
-import type { AppendMessage } from "@assistant-ui/react";
 import userEvent from "@testing-library/user-event";
 import { getPendingSends } from "@/lib/streaming/pending-sends";
 import { MintUnavailable } from "@/lib/streaming/operation-id";
@@ -227,8 +226,9 @@ describe("FleetThread — steer submission", () => {
     renderThread();
     expect(capturedOnNew.current).toBeTypeOf("function");
     await capturedOnNew.current!({
+      ...appendMessage(""),
       content: [{ type: "image", image: "data:image/png;base64,xx" }],
-    } as unknown as AppendMessage);
+    });
     expect(postSteerMock).not.toHaveBeenCalled();
     expect(appendOptimistic).not.toHaveBeenCalled();
   });

@@ -79,7 +79,7 @@ async fn a_name_the_vault_does_not_hold_is_refused_without_writing() {
     let outcome = providers(&fixture)
         .activate(
             &fixture.tenant,
-            "nobody-stored-this",
+            fixture.key("nobody-stored-this"),
             Some(UNCATALOGUED),
             NOW,
         )
@@ -106,7 +106,12 @@ async fn a_row_whose_metadata_is_not_a_provider_key_is_refused_before_any_decryp
         .await;
 
     let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "a-webhook-secret", Some(UNCATALOGUED), NOW)
+        .activate(
+            &fixture.tenant,
+            fixture.key("a-webhook-secret"),
+            Some(UNCATALOGUED),
+            NOW,
+        )
         .await
         .expect("a non-provider credential is an outcome");
 
@@ -131,7 +136,12 @@ async fn an_uncatalogued_model_writes_neither_the_entry_nor_the_selection() {
         .await;
 
     let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "tenant-key", Some(UNCATALOGUED), NOW)
+        .activate(
+            &fixture.tenant,
+            fixture.key("tenant-key"),
+            Some(UNCATALOGUED),
+            NOW,
+        )
         .await
         .expect("an uncatalogued model is an outcome");
 
@@ -174,7 +184,12 @@ async fn an_activation_after_a_committed_delete_writes_nothing() {
     drop(connection);
 
     let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "doomed-key", Some(&model), NOW)
+        .activate(
+            &fixture.tenant,
+            fixture.key("doomed-key"),
+            Some(&model),
+            NOW,
+        )
         .await
         .expect("a deleted credential is an outcome");
 
@@ -201,7 +216,7 @@ async fn a_body_that_will_not_read_as_a_credential_is_refused_after_the_metadata
     let outcome = providers(&fixture)
         .activate(
             &fixture.tenant,
-            "a-truncated-credential",
+            fixture.key("a-truncated-credential"),
             Some(UNCATALOGUED),
             NOW,
         )
@@ -233,7 +248,7 @@ async fn a_compatible_endpoint_in_a_blocked_range_is_refused_by_the_guard() {
     let outcome = providers(&fixture)
         .activate(
             &fixture.tenant,
-            "a-blocked-endpoint",
+            fixture.key("a-blocked-endpoint"),
             Some(UNCATALOGUED),
             NOW,
         )
@@ -255,7 +270,12 @@ async fn a_tenant_with_no_workspace_is_refused_before_any_credential_is_looked_f
     // workspace is what a credential is looked up UNDER, so there is nowhere
     // to look and the refusal names that rather than the missing credential.
     let outcome = providers(&fixture)
-        .activate(&orphan, "anything-at-all", Some(UNCATALOGUED), NOW)
+        .activate(
+            &orphan,
+            fixture.key("anything-at-all"),
+            Some(UNCATALOGUED),
+            NOW,
+        )
         .await
         .expect("a bootstrap invariant violation is an outcome");
 

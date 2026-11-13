@@ -1,19 +1,8 @@
-/**
- * Shared selectors + action helpers for Fleet actions lifecycle transitions.
- *
- * Archive is the same Radix AlertDialog wiring across every spec that drives
- * it: a menu item in Fleet actions + a confirm button inside an alertdialog
- * role. Without a shared helper the four specs duplicate the same getByRole
- * pattern, and a future ConfirmDialog refactor (button label, copy, dialog
- * role) has to be tracked across four files.
- *
- * State assertions key on the wall tile anchor (FleetTile) `data-state`
- * attribute (canonical mapping in lib/wall/tile-liveness.ts `fleetRowState`:
- * active → live, installing → installing, archived → archived).
- * Actions live in the detail header ("Fleet lifecycle actions"), visible
- * from every rail view — the old Settings rail destination is gone.
- */
-import { expect, type Page } from "@playwright/test";
+/** Shared lifecycle selectors retain workspace scope and verify read-only archived history. */
+import { expect, type Page, type TestInfo } from "@playwright/test";
+import {writeFile} from "node:fs/promises";
+import {measureVisualState} from "../../fixtures/visual-measurement";
+import {visualProvenance} from "../../fixtures/visual-provenance";
 
 const ROW_STATE_TIMEOUT_MS = 15_000;
 
@@ -24,8 +13,7 @@ async function confirmAction(page: Page, label: "Archive"): Promise<void> {
   await page.getByRole("menuitem", {name: label, exact: true}).click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toBeVisible();
-  // The dialog and status flip optimistically the moment confirm is clicked;
-  // only the Server Action's response proves the transition reached the API.
+  // Wait for the confirmed Server Action before leaving the current route.
   // Without this wait a spec that navigates right after aborts the in-flight
   // action POST and the fleet never actually changes state.
   const actionSettled = page.waitForResponse(
@@ -41,6 +29,8 @@ async function confirmAction(page: Page, label: "Archive"): Promise<void> {
 
 export async function archiveFleet(page: Page): Promise<void> {
   await confirmAction(page, "Archive");
+  await expect(page.getByTestId("fleet-notice")).toContainText("Fleet archived");
+  await page.getByRole("link", {name: "View history", exact: true}).click();
 }
 
 export async function expectRowState(
@@ -63,21 +53,48 @@ export async function expectRowState(
   // page was correct each time, and the locator was reading the tree React was
   // in the middle of retiring. Filtering to the visible one reads the wall the
   // person is actually looking at.
-  const row = page.locator(`a[href$="/fleets/${fleetId}"]`).filter({ visible: true });
+  const row = page.locator(`a[data-state][href$="/fleets/${fleetId}"]`).filter({ visible: true });
   await expect(row).toBeVisible();
   await expect(row).toHaveAttribute("data-state", state, {
     timeout: ROW_STATE_TIMEOUT_MS,
   });
 }
 
-// An archived fleet reads archived in the detail header, and Fleet actions
-// offers only Delete: nothing returns an archived fleet to work.
+// Archived history permits permanent deletion without restoring execution.
 export async function expectDetailArchived(page: Page): Promise<void> {
-  await expect(page.getByLabel("Fleet status: archived", { exact: true })).toBeVisible({
-    timeout: ROW_STATE_TIMEOUT_MS,
-  });
+  await expect(page.getByLabel("Fleet status: archived")).toBeVisible({timeout: ROW_STATE_TIMEOUT_MS});
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await expect(page.getByRole("button", {name: "Approve", exact: true})).toHaveCount(0);
+  await expect(page.getByRole("button", {name: "Deny", exact: true})).toHaveCount(0);
   await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
-  await expect(page.getByRole("menuitem", { name: "Delete fleet", exact: true })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Archive", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", {name: "Permanently delete", exact: true})).toBeVisible();
+  for (const name of ["Stop", "Resume", "Restore", "Archive"]) await expect(page.getByRole("menuitem", {name, exact: true})).toHaveCount(0);
   await page.keyboard.press("Escape");
+}
+
+/** Called only after the journey confirms the backend transition. */
+export async function captureLifecycleReview(page: Page, info: TestInfo, outcome: "archived" | "deleted") {
+  const source = await visualProvenance();
+  for (const width of [1480, 390]) for (const theme of ["dark", "light"]) {
+    await page.setViewportSize({width, height: width === 390 ? 844 : 1000});
+    await page.evaluate(value => {
+      localStorage.setItem("theme", value);
+      window.dispatchEvent(new StorageEvent("storage", {key: "theme", newValue: value}));
+    }, theme);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await page.evaluate(() => document.fonts.ready);
+    if (outcome === "archived") await expectDetailArchived(page);
+    else {
+      await expect(page).toHaveURL(/\/fleets\/new$/);
+      await expect(page.getByTestId("fleet-thread-root")).toHaveCount(0);
+    }
+    const name = `authenticated-fleet-${outcome}-${width}-${theme}`;
+    const geometry = await measureVisualState(page);
+    await page.screenshot({path: info.outputPath(`${name}.png`), animations: "disabled"});
+    await writeFile(info.outputPath(`${name}-evidence.json`), JSON.stringify({...source,
+      captureTimeUtc: new Date().toISOString(), evidenceKind: "authenticated-lifecycle", outcome, width, theme, geometry, url: page.url()}, null, 2));
+  }
+  const after = await visualProvenance();
+  expect(after.revision).toBe(source.revision);
+  expect(after.sourceTreeSha256).toBe(source.sourceTreeSha256);
 }

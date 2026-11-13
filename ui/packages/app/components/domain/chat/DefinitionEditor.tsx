@@ -52,7 +52,7 @@ export function DefinitionEditor({client, view, onUpdated, onDirtyChange, onCanc
       <Textarea id={`${inputId}-instructions`} disabled={view.busy || view.pending} rows={18} className="min-h-64 flex-1 resize-y leading-prose" value={instructions} onChange={event => form.change("instructions", event.target.value)} /></div>
     {error ? <Alert variant="destructive">{error}</Alert> : null}
     <div className="flex flex-wrap items-center gap-sm">
-      <div className="ml-auto flex gap-sm">{onCancel ? <Button variant="ghost" disabled={view.busy} onClick={onCancel}>Cancel</Button> : null}
+      <div className="ml-auto flex gap-sm">{onCancel ? <Button variant="outline" disabled={view.busy} onClick={onCancel}>Cancel</Button> : null}
         <Button disabled={locked || !hasWork} onClick={() => {void apply();}}>{retryApply ? "Retry save" : "Save changes"}</Button></div>
     </div>
   </div>;

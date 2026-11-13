@@ -28,6 +28,7 @@ export {
 
 export type UseFleetEventStreamResult = {
   tasksSeq: number;
+  approvalsSeq: number;
   events: FleetEvent[];
   connectionStatus: ConnectionStatus;
   appendOptimistic: (text: string, actor: string, sentAs?: string) => string;
@@ -100,6 +101,7 @@ export function useFleetEventStream(
   // the row it belongs to, where a strand can only misreport itself.
   return {
     tasksSeq: snapshot.tasksSeq,
+    approvalsSeq: snapshot.approvalsSeq,
     events: snapshot.events,
     connectionStatus: snapshot.connectionStatus,
 

@@ -17,13 +17,8 @@ import {
   Section,
   Time,
 } from "@agentsfleet/design-system";
-import {
-  ActivityIcon,
-  AlertTriangleIcon,
-  CheckCircle2Icon,
-  CircleXIcon,
-  type LucideIcon,
-} from "lucide-react";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+import { PulseIcon, WarningIcon, CheckCircleIcon, XCircleIcon } from "@phosphor-icons/react/ssr";
 import type { EventDetail, EventLocator, EventRow } from "@/lib/api/events";
 import { byInstant } from "@/lib/api/decode";
 import { useEventDetail } from "./use-event-detail";
@@ -57,7 +52,7 @@ const FleetMarkdown = nextDynamic(
 type EventTone = {
   alertVariant: AlertVariant;
   iconLabel: string;
-  Icon: LucideIcon;
+  Icon: PhosphorIcon;
 };
 
 const EVENT_DETAILS_TITLE = "Event details";
@@ -80,25 +75,25 @@ const TYPE_LABEL = "Type:";
 const WARNING_TONE: EventTone = {
   alertVariant: "warning",
   iconLabel: "Warning event",
-  Icon: AlertTriangleIcon,
+  Icon: WarningIcon,
 };
 
 const EVENT_TONES: Record<string, EventTone> = {
   processed: {
     alertVariant: "success",
     iconLabel: "Successful event",
-    Icon: CheckCircle2Icon,
+    Icon: CheckCircleIcon,
   },
   fleet_error: {
     alertVariant: "destructive",
     iconLabel: "Failed event",
-    Icon: CircleXIcon,
+    Icon: XCircleIcon,
   },
   gate_blocked: WARNING_TONE,
   received: {
     alertVariant: "info",
     iconLabel: "Event in progress",
-    Icon: ActivityIcon,
+    Icon: PulseIcon,
   },
 };
 
@@ -151,7 +146,7 @@ function RunnerDiagnostic({ detail }: { detail: string }) {
   const titleId = useId();
   return (
     <Section aria-labelledby={titleId} className="gap-md">
-      <h3 id={titleId} className="text-label uppercase tracking-label text-muted-foreground">
+      <h3 id={titleId} className="text-label font-medium tracking-label text-muted-foreground">
         {RUNNER_DIAGNOSTIC_TITLE}
       </h3>
       <RequestContextFallback>{detail}</RequestContextFallback>
@@ -210,7 +205,7 @@ function RequestContext({ row, detail }: { row: EventRow; detail: EventDetail | 
   return (
     <Section aria-labelledby={contextId} className="gap-md">
       <div className="flex flex-wrap items-center justify-between gap-md">
-        <h3 id={contextId} className="text-label uppercase tracking-label text-muted-foreground">
+        <h3 id={contextId} className="text-label font-medium tracking-label text-muted-foreground">
           {REQUEST_CONTEXT_TITLE}
         </h3>
         <div className="flex flex-wrap items-center gap-sm">

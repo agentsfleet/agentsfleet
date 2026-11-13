@@ -6,6 +6,7 @@ import { useAuiState } from "@assistant-ui/react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { MessageExpansion } from "./MessageExpansion";
+import { CodeBlock } from "@/components/assistant-ui/CodeBlock";
 
 /**
  * A fleet's reply, as markdown.
@@ -80,7 +81,7 @@ const COMPONENTS = {
 // Match the approved conversation type in setup and saved fleet chat.
 const BODY_CLASS = "space-y-lg font-sans text-conversation leading-conversation text-foreground";
 
-const REPLY_COMPONENTS = memoizeMarkdownComponents(COMPONENTS);
+const REPLY_COMPONENTS = memoizeMarkdownComponents({...COMPONENTS, CodeHeader: () => null, SyntaxHighlighter: CodeBlock});
 
 /** Keep the library's text-part renderer mounted through streaming and completion. */
 export const FleetReplyMarkdown = memo(function FleetReplyMarkdown() {
@@ -102,11 +103,9 @@ export const FleetMarkdown = memo(function FleetMarkdown({ children, expandable 
   );
 });
 
-// One size for every level. A reply is a paragraph in a conversation, not a
-// document, so an `###` inside it is a label — nesting six type scales into a
-// chat bubble buys hierarchy nobody is navigating.
+// One compact heading scale keeps answers scannable within the conversation.
 function Heading({ children }: { children: ReactNode }) {
-  return <p className="text-label font-medium text-foreground">{children}</p>;
+  return <h2 className="mb-md text-conversation-heading font-title leading-conversation-heading text-foreground">{children}</h2>;
 }
 
 function Code({ children }: { children: ReactNode }) {

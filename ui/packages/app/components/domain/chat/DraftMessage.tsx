@@ -2,7 +2,7 @@
 
 import { createContext, memo, useCallback, useContext, useMemo, type ReactNode } from "react";
 import { MessagePrimitive, type MessageState } from "@assistant-ui/react";
-import { CircleCheckIcon, ClockIcon } from "lucide-react";
+import { CheckCircleIcon, ClockIcon } from "@phosphor-icons/react/ssr";
 import type { DraftClient } from "@/lib/api/drafts";
 import { MessageSchema, MESSAGE_ROLE } from "@/lib/api/draft-types";
 import { draftFailureCopy } from "@/lib/api/draft-failure-copy";
@@ -12,6 +12,7 @@ import { FleetMarkdown, FleetReplyMarkdown } from "../FleetMarkdown";
 import { ChatMessageRow } from "./ChatMessageRow";
 import { ChatFailure } from "./ChatFailure";
 import { ContextProgressStatus } from "../ContextProgressStatus";
+import { Timestamp } from "../FleetTimestamp";
 
 const PART_COMPONENTS = {Text: FleetReplyMarkdown};
 const RetryContext = createContext<{disabled: boolean; retry: (text: string) => Promise<void>} | null>(null);
@@ -38,13 +39,13 @@ export const DraftMessage = memo(function DraftMessage({message}: {message: Mess
   const saving = message.metadata.custom.saving === true;
   const context = useMemo(() => readContextProgress(message.metadata.custom.contextProgress), [message.metadata.custom.contextProgress]);
   if (message.metadata.custom.activity === true) return <MessagePrimitive.Root>
-    <p className="my-md inline-flex items-center gap-xs py-xs text-body font-medium text-foreground"><CircleCheckIcon className="size-3.5 text-success" aria-hidden="true" />{text}</p>
+    <p className="my-md inline-flex items-center gap-xs py-xs text-body font-medium text-foreground"><CheckCircleIcon className="size-4 text-success" aria-hidden="true" />{text}</p>
   </MessagePrimitive.Root>;
   return <MessagePrimitive.Root>
-    <ChatMessageRow sender={user ? "You" : "Fleet setup"} operator={user} messageRole={message.role}>
+    <ChatMessageRow sender={user ? "You" : "Fleet setup"} operator={user} messageRole={message.role} timestamp={<Timestamp createdAt={message.createdAt} />}>
       {saving ? null : text ? user ? <FleetMarkdown expandable>{text}</FleetMarkdown> : <MessagePrimitive.Parts components={PART_COMPONENTS} /> : null}
       {saving ? null : running && context ? <ContextProgressStatus value={context} /> :
-        queued && !text ? <output aria-label="Queued" aria-live="off" className="inline-flex items-center gap-sm text-body-sm text-muted-foreground"><ClockIcon className="size-3.5 text-warning" aria-hidden="true" />Queued…</output>
+        queued && !text ? <output aria-label="Queued" aria-live="off" className="inline-flex items-center gap-sm text-body-sm text-muted-foreground"><ClockIcon className="size-4 text-warning" aria-hidden="true" />Queued…</output>
         : running && !text ? <output aria-label="Refining setup" aria-live="off" className="inline-flex items-center gap-sm text-body-sm text-muted-foreground"><span data-chat-loading="true">Refining setup…</span></output>
         : null}
       {!user && message.metadata.custom.failure ? <DraftFailure message={message} /> : null}

@@ -49,12 +49,12 @@ describe("setTenantProviderSelfManaged", () => {
       }),
     });
     const { setTenantProviderSelfManaged } = await import("./tenant_provider");
-    await setTenantProviderSelfManaged({ secret_ref: "fw-key", model: "kimi-k2.6" }, "tok");
+    await setTenantProviderSelfManaged({ workspace_id: "ws_1", secret_ref: "fw-key", model: "kimi-k2.6" }, "tok");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0]!;
     expect(init).toMatchObject({ method: "PUT" });
     const body = JSON.parse((init as { body: string }).body);
-    expect(body).toEqual({ mode: PROVIDER_MODE.self_managed, secret_ref: "fw-key", model: "kimi-k2.6" });
+    expect(body).toEqual({ mode: PROVIDER_MODE.self_managed, workspace_id: "ws_1", secret_ref: "fw-key", model: "kimi-k2.6" });
   });
 
   it("omits model when not provided so backend uses vault default", async () => {
@@ -70,7 +70,7 @@ describe("setTenantProviderSelfManaged", () => {
       }),
     });
     const { setTenantProviderSelfManaged } = await import("./tenant_provider");
-    await setTenantProviderSelfManaged({ secret_ref: "fw-key" }, "tok");
+    await setTenantProviderSelfManaged({ workspace_id: "ws_1", secret_ref: "fw-key" }, "tok");
     const [, init] = fetchMock.mock.calls[0]!;
     const body = JSON.parse((init as { body: string }).body);
     expect(body.model).toBeUndefined();
@@ -83,7 +83,7 @@ describe("setTenantProviderSelfManaged", () => {
       json: async () => ({ detail: "credential body missing required fields", error_code: "UZ-PROVIDER-002" }),
     });
     const { setTenantProviderSelfManaged } = await import("./tenant_provider");
-    await expect(setTenantProviderSelfManaged({ secret_ref: "junk" }, "tok"))
+    await expect(setTenantProviderSelfManaged({ workspace_id: "ws_1", secret_ref: "junk" }, "tok"))
       .rejects.toBeInstanceOf(ApiError);
   });
 });

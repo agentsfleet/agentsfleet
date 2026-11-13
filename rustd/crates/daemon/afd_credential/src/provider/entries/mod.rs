@@ -9,7 +9,7 @@
 //!
 //! The registry's `active` flag is computed against [`Selection`], its page
 //! carries the live [`PlatformDefault`], and its writes reach the credential
-//! through the same primary-workspace bridge activation uses. All three already
+//! through the explicit credential reference activation uses. All three already
 //! live here, and `model.tenant_models` already has a writer here —
 //! activation guarantees an entry for the pair it selects. Splitting the
 //! readers out would put one table's statements in two crates, which is exactly
@@ -57,6 +57,8 @@ pub struct Entry {
     pub model_name: Box<str>,
     /// The vault key name backing it. Immutable once the entry exists.
     pub secret_ref: Box<str>,
+    /// The credential namespace. Missing only for a legacy or removed workspace.
+    pub workspace_id: Option<Uuid7>,
     /// When it was first stored.
     pub created_at: Timestamp,
 }
@@ -67,6 +69,7 @@ struct EntryRow {
     id: Uuid7,
     model_name: String,
     secret_ref: String,
+    workspace_id: Option<Uuid7>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
 }
@@ -78,6 +81,7 @@ impl EntryRow {
             id: self.id.clone(),
             model_name: self.model_name.into_boxed_str(),
             secret_ref: self.secret_ref.into_boxed_str(),
+            workspace_id: self.workspace_id,
             created_at: self.created_at,
         }
     }
@@ -249,6 +253,7 @@ mod tests {
             id: id(raw),
             model_name: "claude-opus-5".into(),
             secret_ref: "anthropic-prod".into(),
+            workspace_id: None,
             created_at: CREATED,
         }
     }
@@ -258,6 +263,7 @@ mod tests {
             tenant_model_id: id(raw),
             model: "claude-opus-5".into(),
             secret_ref: "anthropic-prod".into(),
+            workspace_id: None,
             provider: Some("anthropic".into()),
             context_cap_tokens: 200_000,
         })

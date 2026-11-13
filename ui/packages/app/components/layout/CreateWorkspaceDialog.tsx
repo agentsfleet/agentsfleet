@@ -77,6 +77,7 @@ export default function CreateWorkspaceDialog({
         }}
       >
         <ActionForm
+          className="space-y-0"
           onSubmit={submit}
           data-testid={CREATE_FORM_TEST_ID}
           aria-busy={pending}
@@ -85,35 +86,37 @@ export default function CreateWorkspaceDialog({
             <DialogTitle>Create workspace</DialogTitle>
             <DialogDescription>{WORKSPACE_DESCRIPTION}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor={inputId}>Name (optional)</Label>
-            <Input
-              id={inputId}
-              name={WORKSPACE_NAME_FIELD}
-              placeholder="acme-prod"
-              autoComplete="off"
-              disabled={pending}
-              aria-describedby={hintId}
-              onInput={(event) => event.currentTarget.setCustomValidity("")}
-              data-testid="workspace-name-input"
-            />
-            <p id={hintId} className="text-sm text-muted-foreground">
-              Leave blank to generate a workspace name automatically.
-            </p>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor={inputId}>Name (optional)</Label>
+              <Input
+                id={inputId}
+                name={WORKSPACE_NAME_FIELD}
+                placeholder="acme-prod"
+                autoComplete="off"
+                disabled={pending}
+                aria-describedby={hintId}
+                onInput={(event) => event.currentTarget.setCustomValidity("")}
+                data-testid="workspace-name-input"
+              />
+              <p id={hintId} className="text-sm text-muted-foreground">
+                Leave blank to generate a workspace name automatically.
+              </p>
+            </div>
+            {error ? (
+              <Alert
+                variant="destructive"
+                className="text-xs"
+                data-testid="workspace-create-error"
+              >
+                {error}
+              </Alert>
+            ) : null}
           </div>
-          {error ? (
-            <Alert
-              variant="destructive"
-              className="mt-4 text-xs"
-              data-testid="workspace-create-error"
-            >
-              {error}
-            </Alert>
-          ) : null}
           <DialogFooter>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               onClick={() => onOpenChange(false)}
             >
               {pending ? "Hide" : "Cancel"}

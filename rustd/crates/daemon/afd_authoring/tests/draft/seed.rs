@@ -87,12 +87,13 @@ pub(super) async fn model(f: &Fixture, catalogue: &Uuid7, entry: &Uuid7) {
         .await
         .expect("seed isolated priced model");
     sqlx::query(
-        "INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) \
-        VALUES($1,$2,$3,'authoring-model',now(),now())",
+        "INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,workspace_id,created_at,updated_at) \
+        VALUES($1,$2,$3,'authoring-model',$4,now(),now())",
     )
     .bind(entry)
     .bind(&f.tenant)
     .bind(&model)
+    .bind(&f.workspace)
     .execute(&mut *f.connection().await)
     .await
     .expect("register workspace owner's model");

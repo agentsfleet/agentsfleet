@@ -13,7 +13,7 @@ import {
   tenantProviderDeleteEffect,
   tenantProviderShowEffect,
 } from "../../commands/tenant/tenant.ts";
-import { modelOverrideFlag, opt, providerFlag, secretNameFlag } from "./flags.ts";
+import { modelOverrideFlag, opt, providerFlag, secretNameFlag, workspaceFlag } from "./flags.ts";
 
 const modelsListCommand = Command.make("list", {
   provider: providerFlag,
@@ -33,10 +33,11 @@ const modelsCurrentCommand = Command.make("current").pipe(
 
 const modelsUseCommand = Command.make("use", {
   secret: secretNameFlag,
+  workspace: workspaceFlag,
   model: modelOverrideFlag,
 }).pipe(
   Command.withDescription("Run a self-managed provider secret"),
-  guardedHandler(({ secret, model }) => tenantProviderAddEffectFromArgs(opt(secret), opt(model))),
+  guardedHandler(({ secret, model, workspace }) => tenantProviderAddEffectFromArgs(opt(secret), opt(model), opt(workspace))),
 );
 
 const modelsResetCommand = Command.make("reset").pipe(

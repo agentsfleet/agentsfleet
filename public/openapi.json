@@ -9801,7 +9801,7 @@
           "Tenant"
         ],
         "summary": "Register a model entry",
-        "description": "Adds a `(model_id, secret_ref)` entry. First store the secret in your account's primary workspace through `/v1/workspaces/{workspace_id}/secrets`. Select the new model through `PUT /v1/tenants/me/provider`; adding it does not activate it.",
+        "description": "Adds a `(workspace_id, model_id, secret_ref)` entry. First store the secret through `/v1/workspaces/{workspace_id}/secrets`. The workspace must belong to your account. Select the new model through `PUT /v1/tenants/me/provider`; adding it does not activate it.",
         "operationId": "create_tenant_model_entry",
         "requestBody": {
           "content": {
@@ -10230,7 +10230,7 @@
           "Tenant"
         ],
         "summary": "Set account model provider",
-        "description": "Sets your account's provider mode and model. Self-managed mode requires an existing secret named by `credential_ref`. Creates the model entry if it is missing.",
+        "description": "Sets your account's provider mode and model. Self-managed mode requires an existing secret named by `secret_ref` in the supplied `workspace_id`. The workspace must belong to your account. Creates the model entry if missing.",
         "operationId": "put_tenant_provider",
         "requestBody": {
           "content": {
@@ -22370,8 +22370,9 @@
       },
       "CreateModelEntryRequest": {
         "type": "object",
-        "description": "Registers a model against a stored credential.\n\nagentsfleet ignores fields it does not know, instead of refusing the\nrequest.",
+        "description": "Registers a model against a stored credential.\n\nUnknown request fields are refused.",
         "required": [
+          "workspace_id",
           "model_id",
           "secret_ref"
         ],
@@ -22383,6 +22384,10 @@
           "secret_ref": {
             "type": "string",
             "description": "The credential to back it with. Immutable once the entry exists."
+          },
+          "workspace_id": {
+            "type": "string",
+            "description": "The workspace holding the credential. Must belong to your account."
           }
         },
         "additionalProperties": false
@@ -27924,6 +27929,14 @@
           "secret_ref": {
             "type": "string",
             "description": "The vault key name backing it."
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The workspace holding the credential. Absent if that workspace is unavailable.",
+            "x-stability": "stable"
           }
         }
       },
@@ -30810,6 +30823,14 @@
           "secret_ref": {
             "type": "string",
             "description": "The vault key name backing it."
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The workspace holding the credential. Absent if that workspace is unavailable.",
+            "x-stability": "stable"
           }
         }
       },
@@ -32520,6 +32541,13 @@
               "null"
             ],
             "description": "The credential to dial with, required under self-managed mode."
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The workspace holding the credential, required under self-managed mode."
           }
         },
         "additionalProperties": false
@@ -32563,6 +32591,14 @@
               "null"
             ],
             "description": "The credential dialled under self-managed mode."
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The workspace holding the self-managed credential. Absent in platform mode\nor when the stored workspace is unavailable.",
+            "x-stability": "stable"
           }
         }
       },

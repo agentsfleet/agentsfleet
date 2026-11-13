@@ -33,6 +33,7 @@ mod registry_walk;
 mod resolution_locks;
 mod rotation;
 mod selection_pointer;
+mod workspace_credentials;
 
 const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 const KEY_NAME: &str = "provider-handle";
@@ -56,6 +57,16 @@ struct Fixture {
 }
 
 impl Fixture {
+    const fn key<'fixture>(
+        &'fixture self,
+        name: &'fixture str,
+    ) -> afd_credential::provider::KeyRef<'fixture> {
+        afd_credential::provider::KeyRef {
+            workspace_id: &self.workspace,
+            name,
+        }
+    }
+
     async fn create() -> Self {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
@@ -78,9 +89,8 @@ impl Fixture {
 
     /// A tenant row with NO workspace under it.
     ///
-    /// The bootstrap invariant every other fixture upholds, deliberately
-    /// broken: `primary_workspace` resolves the earliest-named workspace, so a
-    /// tenant without one is the only way to reach the refusal that names it.
+    /// Deliberately lacks any workspace that an explicit credential reference
+    /// could name, so activation must refuse without reading another account.
     /// Seeded as its own tenant rather than by deleting this fixture's
     /// workspace, which the vault rows reference.
     async fn seed_tenant_without_workspace(&self) -> Uuid7 {

@@ -79,7 +79,7 @@ describe("FleetThreadViewport offline notice", () => {
     const view = render(<View connectionStatus={CONNECTION_STATUS.OFFLINE} />);
     const notice = view.getByTestId("fleet-connection-notice");
     const footer = view.getByTestId("fleet-chat-footer");
-    expect(notice.parentElement).toBe(footer);
+    expect(notice.closest('[data-testid="fleet-chat-footer"]')).toBe(footer);
     expect(notice.closest(".absolute")).toBeNull();
     const composer = view.getByRole("form", { name: "Chat composer" });
     expect(notice.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -116,12 +116,11 @@ describe("FleetThreadViewport layout", () => {
   });
 });
 
- it("keeps work outside the composer and opens mobile context without modifying its text", () => {
+ it("keeps work outside the composer and shows inline Summary without modifying its text", () => {
   const view = render(<View work={<p>Saved PR evidence</p>} />);
   const composer = view.getByRole("textbox", {name: "Message your fleet…"});
   fireEvent.change(composer, {target: {value: "Keep session expiry unchanged"}});
   expect(view.getByTestId("fleet-chat-footer").textContent).not.toContain("Saved PR evidence");
-  fireEvent.click(view.getByRole("button", {name: "Work context"}));
-  expect(view.getByRole("dialog").textContent).toContain("Saved PR evidence");
+  expect(view.getByRole("complementary", {name: "Summary"}).textContent).toContain("Saved PR evidence");
   expect(composer).toHaveProperty("value", "Keep session expiry unchanged");
  });

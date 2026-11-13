@@ -39,7 +39,7 @@ describe("Card", () => {
     const { container } = render(<Card className="my-card">Content</Card>);
     const cls = (container.firstChild as HTMLElement).className;
     expect(cls).toContain("my-card");
-    expect(cls).toContain("rounded-lg");
+    expect(cls).toContain("rounded-md");
   });
 
   it("forwards arbitrary props (data-testid)", () => {
@@ -55,7 +55,7 @@ describe("Card", () => {
     );
     const section = container.firstChild as HTMLElement;
     expect(section.tagName).toBe("SECTION");
-    expect(section.className).toContain("rounded-lg");
+    expect(section.className).toContain("rounded-md");
   });
 
   it("forwards ref to the underlying element", () => {
@@ -67,7 +67,7 @@ describe("Card", () => {
   it("SSR renders <article> markup with card classes", () => {
     const html = renderToStaticMarkup(<Card>Hi</Card>);
     expect(html).toMatch(/^<article /);
-    expect(html).toContain("rounded-lg");
+    expect(html).toContain("rounded-md");
   });
 
   it("composes sub-parts in a dashboard layout", () => {

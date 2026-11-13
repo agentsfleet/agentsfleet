@@ -20,18 +20,19 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/integrations/connector-actions", () =
   disconnectConnectorAction: disconnectConnectorActionMock,
   startConnectAction: startConnectActionMock,
 }));
-vi.mock("lucide-react", () => {
+vi.mock("@phosphor-icons/react/ssr", async (original) => {
+  const actual = await original<Record<string, unknown>>();
   const make = (name: string) => (p: Record<string, unknown>) =>
     React.createElement("svg", { ...p, "data-icon": name });
-  return {
-    SearchIcon: make("SearchIcon"),
+  return { ...actual,
+    MagnifyingGlassIcon: make("MagnifyingGlassIcon"),
     BriefcaseIcon: make("BriefcaseIcon"),
     GitPullRequestIcon: make("GitPullRequestIcon"),
-    Grid2x2Icon: make("Grid2x2Icon"),
+    SquaresFourIcon: make("SquaresFourIcon"),
     HashIcon: make("HashIcon"),
-    PlugIcon: make("PlugIcon"),
+    PlugsConnectedIcon: make("PlugsConnectedIcon"),
     TicketIcon: make("TicketIcon"),
-    UnplugIcon: make("UnplugIcon"),
+    PlugsIcon: make("PlugsIcon"),
   };
 });
 
@@ -78,6 +79,16 @@ afterEach(() => {
 });
 
 describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () => {
+  it("lets a connected app's details close from Done or Escape without disconnecting it", () => {
+    renderConnectors([{...GITHUB, connected: true}]);
+    fireEvent.click(screen.getByRole("button", {name: "Manage GitHub"}));
+    fireEvent.click(screen.getByRole("button", {name: "Done"}));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: "Manage GitHub"}));
+    fireEvent.keyDown(screen.getByRole("dialog"), {key: "Escape"});
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(disconnectConnectorActionMock).not.toHaveBeenCalled();
+  });
   it("renders one card per catalog entry — registry-driven, no hard-coded list", () => {
     renderConnectors([GITHUB, SLACK, ZOHO]);
     for (const e of [GITHUB, SLACK, ZOHO]) {
@@ -128,21 +139,17 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     expect(screen.getByRole("button", { name: "Connect GitHub" })).toBeTruthy();
     // Not-connected is a neutral fact, not a fault (FINDING-007) — amber stays
     // reserved for reconnect-required, which genuinely needs attention.
-    expect(within(github).getByText("Not connected").getAttribute("data-variant")).toBe("neutral");
+    expect(within(github).getByText("Not connected").tagName).toBe("P");
   });
 
-  it("says connected exactly once, on the pill, and offers an exact Disconnect", () => {
+  it("shows connected once and keeps connection controls in Manage", () => {
     renderConnectors([{ ...GITHUB, connected: true }]);
-    const github = screen.getByTestId("integration-github");
-    // The pill is the one place the state is spelled. The description used to
-    // say "Connected." underneath it, so the row read the word twice, and the
-    // action beside it made three.
-    expect(github.textContent?.match(/Connected/g)).toHaveLength(1);
-    expect(within(github).getByText("Connected").getAttribute("data-variant")).toBe("success");
-    // The action is a glyph now; its accessible name still names the provider.
-    expect(screen.getByRole("button", { name: "Disconnect GitHub" })).toBeTruthy();
-    // And the description says what the pill cannot: what the connection is FOR.
-    expect(github.textContent).toContain("Authorization saved.");
+    expect(screen.getByTestId("integration-github").textContent?.match(/Connected/g)).toHaveLength(1);
+    expect(screen.queryByRole("button", {name: "Disconnect GitHub"})).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: "Manage GitHub"}));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/Authorization saved/)).toBeTruthy();
+    expect(within(dialog).getByRole("button", {name: "Disconnect GitHub"})).toBeTruthy();
   });
 
   it("should say it is disconnecting, and refuse a second click, while the write is in flight", async () => {
@@ -159,9 +166,12 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     );
     renderConnectors([{ ...GITHUB, connected: true }]);
 
+    fireEvent.click(screen.getByRole("button", { name: "Manage GitHub" }));
     fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
 
     const busy = await screen.findByRole("button", { name: "Disconnecting…" });
+    fireEvent.keyDown(screen.getByRole("dialog"), {key: "Escape"});
+    expect(screen.getByRole("dialog")).toBeTruthy();
     expect(busy.getAttribute("aria-busy")).toBe("true");
     expect((busy as HTMLButtonElement).disabled).toBe(true);
     // One request, no matter how many times it is clicked while disabled.
@@ -197,7 +207,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
   it("derives status from the catalog `connected` flag for every provider (Zoho)", () => {
     renderConnectors([entry({ id: "zoho", archetype: "oauth2", display_name: "Zoho Desk", connected: true })]);
     expect(within(screen.getByTestId("integration-zoho")).getByText("Connected")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Disconnect Zoho Desk" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Manage Zoho Desk" })).toBeTruthy();
   });
 
   it("gives identical visible actions provider-specific accessible names", () => {
@@ -209,7 +219,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
 
   it("shows the Slack team identity from the workspace catalog", () => {
     renderConnectors([{ ...SLACK, connected: true, label: "Acme Corp" }]);
-    expect(screen.getByTestId("integration-slack").textContent).toContain("Installed on Acme Corp");
+    expect(screen.getByTestId("integration-slack").textContent).toContain("Connected · Acme Corp");
   });
 
   it("redirects once and lets a restored page start a fresh connection", async () => {
@@ -264,6 +274,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     disconnectConnectorActionMock.mockResolvedValue({ ok: true, data: undefined });
     renderConnectors([{ ...GITHUB, connected: true }]);
 
+    fireEvent.click(screen.getByRole("button", { name: "Manage GitHub" }));
     fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
 
     await waitFor(() => expect(disconnectConnectorActionMock).toHaveBeenCalledWith("github", WS));
@@ -278,11 +289,13 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     });
     renderConnectors([{ ...GITHUB, connected: true }]);
 
+    fireEvent.click(screen.getByRole("button", { name: "Manage GitHub" }));
     fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
 
     await waitFor(() =>
-      expect(within(screen.getByTestId("integration-github")).getByRole("alert")).toBeTruthy(),
+      expect(within(screen.getByRole("dialog")).getByRole("alert")).toBeTruthy(),
     );
+    expect(screen.getByTestId("integration-github").textContent).toContain("Connected");
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
@@ -293,6 +306,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     disconnectConnectorActionMock.mockRejectedValue(cause);
     renderConnectors([{ ...GITHUB, connected: true }]);
 
+    fireEvent.click(screen.getByRole("button", { name: "Manage GitHub" }));
     fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
 
     expect(await screen.findByText(message)).toBeTruthy();
@@ -305,7 +319,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     const request = within(jira).getByRole("button", { name: "Request access to Jira" });
     expect(request.textContent).toBe("Request access");
     expect(request.closest("p")).toBeNull();
-    expect(jira.textContent).toContain("Choose Request access to register your interest.");
+    expect(jira.textContent).toContain("Requires platform setup");
     expect(jira.textContent).not.toContain("Admin setup required");
     expect(screen.queryByRole("button", { name: /connect jira/i })).toBeNull();
     expect(within(jira).queryByRole("link")).toBeNull();
@@ -325,18 +339,12 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
   });
 });
 
-it("searches integrations locally and clears an unmatched query", async () => {
-  renderConnectors([GITHUB, SLACK]);
-  fireEvent.change(screen.getByRole("searchbox", {name: "Search apps"}), {target: {value: "sLaCk"}});
-  await waitFor(() => expect(screen.queryByTestId("integration-github")).toBeNull());
-  expect(screen.getByRole("button", {name: "Connect Slack"}).textContent).toContain("Connect");
-  fireEvent.change(screen.getByRole("searchbox", {name: "Search apps"}), {target: {value: "No matching connector"}});
-  await screen.findByText("No matching apps");
-  expect(screen.queryByRole("button", {name: "Connect Slack"})).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Clear search"}));
-  await screen.findByRole("button", {name: "Connect GitHub"});
-  expect(startConnectActionMock).not.toHaveBeenCalled();
-  expect(disconnectConnectorActionMock).not.toHaveBeenCalled();
+it("shows the full catalog together without filtering away connections", () => {
+  renderConnectors([GITHUB, {...SLACK, connected: true, label: "Release team"}]);
+  expect(screen.getByRole("button", {name: "Connect GitHub"})).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Manage Slack"})).toBeTruthy();
+  expect(screen.getByText("Connected · Release team")).toBeTruthy();
+  expect(screen.queryByRole("searchbox")).toBeNull();
 });
 
 it("offers a real retry after the connector catalogue fails", () => {

@@ -1,57 +1,52 @@
-import { CopyButton, IconAction, Time } from "@agentsfleet/design-system";
-import { KeyRoundIcon, PencilIcon, Trash2Icon } from "lucide-react";
+"use client";
+
+import { useRef, useState } from "react";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@agentsfleet/design-system";
 import type { Secret } from "@/lib/api/secrets";
+import { SECRET_KIND } from "@/lib/api/secrets-types";
+import { providerLabel } from "@/lib/api/model-library-types";
 
-type SecretActionProps = {
-  secret: Secret;
-  pending: boolean;
-  protectedFromDelete: boolean;
-  onEdit: (name: string) => void;
-  onDelete: (name: string) => void;
-};
+type Props = {secret: Secret; pending: boolean; protectedFromDelete: boolean; onEdit: (name: string) => void; onDelete: (name: string) => void};
 
-export function SecretActions({ secret, pending, protectedFromDelete, onEdit, onDelete }: SecretActionProps) {
-  const deleteDisabled = pending || protectedFromDelete;
-  return (
-    <div className="flex justify-end gap-1">
-      <IconAction type="button" variant="ghost" onClick={() => onEdit(secret.name)} disabled={pending} label={`Edit secret ${secret.name}`}>
-        <PencilIcon size={14} />
-      </IconAction>
-      <IconAction
-        type="button"
-        variant="destructive"
-        onClick={() => onDelete(secret.name)}
-        disabled={deleteDisabled}
-        label={protectedFromDelete ? `Secret ${secret.name} is in model setup` : `Delete secret ${secret.name}`}
-        title={protectedFromDelete ? "Switch model setup to platform defaults or another secret before deleting this one." : undefined}
-      >
-        <Trash2Icon size={14} />
-      </IconAction>
-    </div>
-  );
+export function secretType(secret: Secret): string {
+  return secret.kind === SECRET_KIND.custom_secret ? "Secret" : `${providerLabel(secret.provider)} key`;
 }
 
-export function SecretCreatedCell({ secret }: { secret: Secret }) {
-  return <Time value={new Date(secret.created_at)} format="relative" className="font-sans text-body-sm leading-body-sm tabular-nums text-muted-foreground" />;
+export function SecretActions({secret, pending, protectedFromDelete, onEdit, onDelete}: Props) {
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const nextAction = useRef<(() => void) | null>(null);
+  function handoff(action: (name: string) => void) {
+    nextAction.current = () => action(secret.name);
+    setOpen(false);
+  }
+  return <Dialog open={open} onOpenChange={setOpen}>
+    <DialogTrigger asChild><Button ref={trigger} variant="ghost" size="compact" disabled={pending} aria-label={`Manage ${secret.name}`}>Manage</Button></DialogTrigger>
+    <DialogContent onCloseAutoFocus={event => {
+      const next = nextAction.current;
+      nextAction.current = null;
+      if (!next) return;
+      event.preventDefault();
+      // The next dialog must capture the lasting row action, not a button in
+      // this closing dialog. Navigation or removal cancels the handoff.
+      if (!trigger.current?.isConnected) return;
+      trigger.current.focus();
+      next();
+    }}>
+      <DialogHeader><DialogTitle>Manage secret</DialogTitle><DialogDescription>
+        <span className="mb-md block font-medium text-foreground">“{secret.name}”</span>Stored in this workspace. Fleet access details are not available here.
+      </DialogDescription></DialogHeader>
+      <p className="text-label text-muted-foreground">{secretType(secret)} · Value hidden</p>
+      {protectedFromDelete ? <p className="text-eyebrow text-text-dim">This key is used by your active model. Choose another model before deleting it.</p> : null}
+      <DialogFooter className="flex-wrap">
+        <Button variant="outline" className="px-lg" disabled={pending} onClick={() => handoff(onEdit)}>Replace value</Button>
+        <Button variant="outline" className="px-lg" disabled={pending || protectedFromDelete} onClick={() => handoff(onDelete)}>Delete secret</Button>
+        <Button onClick={() => setOpen(false)}>Done</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>;
 }
 
-export function SecretNameCell({ secret }: {secret: Secret}) {
-  return (
-    <div className="min-w-0">
-      {/* The name is the interpolation key in ${secrets.<name>.<field>}; copying it
-          avoids silent typos. It sits in one fixed slot that ellipsizes a long
-          name (the full name is the hover and what Copy copies), so the copy
-          icons after it line up on every row. On a phone the slot gives
-          way and the name takes what the row has left, or the row would push
-          its actions behind a horizontal scroll. */}
-      <div className="flex min-w-0 items-center gap-1">
-        <KeyRoundIcon size={14} className="shrink-0 text-evidence" aria-hidden="true" />
-        <span className="block min-w-0 truncate font-mono text-mono leading-mono sm:min-w-trim sm:max-w-trim" title={secret.name}>
-          {secret.name}
-        </span>
-        <CopyButton value={secret.name} label={`Copy secret name: ${secret.name}`} />
-      </div>
-      <div className="sm:hidden text-label leading-label text-muted-foreground">Created <SecretCreatedCell secret={secret} /></div>
-    </div>
-  );
+export function SecretNameCell({secret}: {secret: Secret}) {
+  return <span className="break-words font-mono text-mono font-normal leading-mono">{secret.name}</span>;
 }

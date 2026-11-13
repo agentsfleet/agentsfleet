@@ -34,9 +34,15 @@ describe("complete price disclosure", () => {
   });
 });
 
-it("keeps the complete source timestamps visible, including sub-millisecond precision", () => {
+it("keeps exact evidence timestamps available with readable UTC dates", () => {
   const instant = "2026-10-18T00:00:00.123456789Z";
   render(<ModelPriceSchedule prices={[{ ...PRICE, effective_from: instant, verified_at: instant }]} />);
   fireEvent.click(screen.getByRole("button", { name: "Price schedule (1)" }));
-  expect(screen.getAllByText(instant)).toHaveLength(2);
+  const dates = screen.getAllByTitle(instant);
+  expect(dates).toHaveLength(2);
+  for (const date of dates) {
+    expect(date.getAttribute("datetime")).toBe(new Date(instant).toISOString());
+    expect(date.textContent).toContain("Oct 18, 2026");
+    expect(date.parentElement?.textContent).toContain("UTC");
+  }
 });

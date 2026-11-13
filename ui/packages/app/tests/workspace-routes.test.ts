@@ -34,7 +34,7 @@ describe("workspaceIdFromPath", () => {
   });
 
   it("returns null for tenant routes (no /w segment)", () => {
-    expect(workspaceIdFromPath("/settings/account")).toBeNull();
+    expect(workspaceIdFromPath("/settings/security")).toBeNull();
     expect(workspaceIdFromPath("/settings/billing")).toBeNull();
     expect(workspaceIdFromPath("/")).toBeNull();
   });
@@ -48,7 +48,7 @@ describe("workspaceSubpath", () => {
 
   it("returns empty string at the workspace root or off-segment", () => {
     expect(workspaceSubpath("/w/ws_1")).toBe("");
-    expect(workspaceSubpath("/settings/account")).toBe("");
+    expect(workspaceSubpath("/settings/security")).toBe("");
   });
 
   it("round-trips with workspacePath to preserve the sub-page across a switch", () => {
@@ -60,7 +60,6 @@ describe("workspaceSubpath", () => {
 describe("workspaceSwitchSubpath", () => {
   it("collapses a resource-detail path to its section (target ws won't own the id)", () => {
     expect(workspaceSwitchSubpath("fleets/fleet_123")).toBe("fleets");
-    expect(workspaceSwitchSubpath("approvals/gate_9")).toBe("approvals");
   });
 
   it("preserves generic pages and maps an empty route to the workspace home", () => {

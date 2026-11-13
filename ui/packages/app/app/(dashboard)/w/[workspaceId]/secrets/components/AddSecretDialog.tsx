@@ -8,14 +8,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  TooltipButton,
+  Button,
 } from "@agentsfleet/design-system";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon } from "@phosphor-icons/react/ssr";
 import AddSecretFormDynamic from "@/components/domain/island-dynamic/AddSecretFormDynamic";
-import { CREATE_SECRET_TOOLTIP } from "../copy";
 import { SecretValueNotice } from "./SecretValueNotice";
 
-const ADD_SECRET_TRIGGER_LABEL = "Create secret";
+const ADD_SECRET_TRIGGER_LABEL = "Add secret";
 
 export default function AddSecretDialog({ workspaceId }: { workspaceId: string }) {
   const [open, setOpen] = useState(false);
@@ -23,20 +22,21 @@ export default function AddSecretDialog({ workspaceId }: { workspaceId: string }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <TooltipButton type="button" size="sm" tooltip={CREATE_SECRET_TOOLTIP}>
-          <PlusIcon size={14} />
+        <Button type="button" size="sm">
+          <PlusIcon size={16} />
           {ADD_SECRET_TRIGGER_LABEL}
-        </TooltipButton>
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create secret</DialogTitle>
+          <DialogTitle>Add secret</DialogTitle>
           <DialogDescription>
-            Name it and add one or more fields (like api_key). <SecretValueNotice />
+            <SecretValueNotice />
           </DialogDescription>
         </DialogHeader>
         <AddSecretFormDynamic
           workspaceId={workspaceId}
+          showValueNotice={false}
           onDone={() => setOpen(false)}
           onCancel={() => setOpen(false)}
         />

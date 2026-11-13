@@ -15,8 +15,8 @@ export class DraftPublication {
     private readonly request: Request) {}
 
 
-  async prepare(draft: ReadyDraft, label: string, append: boolean): Promise<SetupRequest> {
-    const target = append ? draft.publication?.library_id : undefined;
+  async prepare(draft: ReadyDraft, label: string, append: boolean, selectedTarget?: string): Promise<SetupRequest> {
+    const target = append ? selectedTarget ?? draft.publication?.library_id : undefined;
     if (append && !target) throw new SetupUnavailable("Choose a previously published Library entry before adding a revision.", 409);
     const path = target ? `${this.base}/fleet-libraries/${encodeURIComponent(target)}/revisions` : `${this.base}/fleet-libraries`;
     const body = target ? {draft_candidate_id: draft.candidate.id} : {draft_candidate_id: draft.candidate.id, label};

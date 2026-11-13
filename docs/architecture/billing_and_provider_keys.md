@@ -531,9 +531,11 @@ Vault credentials are opaque JSON objects keyed by name (the M45 vault design). 
 
 The `model.tenant_selections` row points at a `model.tenant_models` row, which names the credential through `secret_ref`. Multi-credential tenants are supported: a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `agentsfleet models use --secret <other>`. Only one is *active* at a time per tenant.
 
-**Vault scope: workspace-keyed; tenant→workspace bridge:** `vault.secrets` is keyed by `(workspace_id, key_name)` per the M45 schema. Tenant-scoped lookups (the self-managed resolver, the `agentsfleet secrets create` write path) bridge through `afd_credential`'s `Providers::primary_workspace`. The bridge picks the earliest-named workspace owned by the tenant.
+**Vault scope: explicit workspace ownership.** `vault.secrets` is keyed by `(workspace_id, key_name)`. Each `model.tenant_models` entry stores the credential's `workspace_id` and `secret_ref`; registration and activation prove that workspace belongs to the account. Runtime resolution reads that exact pair, so another workspace's same-named key cannot replace it.
 
-Single-workspace tenants (the v2.0 default) work transparently. Multi-workspace tenants implicitly pin **all** self-managed credentials to the earliest-named workspace. Per-workspace credential isolation, and a fully tenant-keyed vault, are post-v2.0 work; until then, the bridge is the rule.
+The account's active selection points to the configured model entry. Switching the workspace shown in the dashboard does not relocate its credential or change that selection. Removing its credential workspace clears the reference while retaining the model row, and resolution refuses the unavailable credential until the user selects a usable model.
+
+There is no primary-workspace lookup.
 
 **`context_cap_tokens` is not in the credential body.** Each model resolution reads the cap from the catalogue (`model.platform_models`, §10). It matches by provider and model name. Splitting the two lets a catalogue edit change the cap without touching the vault.
 

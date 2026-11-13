@@ -1,28 +1,10 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Alert,
-  Button,
-  DashboardPanel,
-  DashboardPanelHeader,
-  DashboardPanelTitle,
-  DashboardPanelDescription,
-  Spinner,
-  StatusPill,
-  type StatusPillVariant,
-} from "@agentsfleet/design-system";
-import {
-  BriefcaseIcon,
-  GitPullRequestIcon,
-  Grid2x2Icon,
-  HashIcon,
-  PlugIcon,
-  TicketIcon,
-  UnplugIcon,
-} from "lucide-react";
+import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Spinner } from "@agentsfleet/design-system";
+import { BriefcaseIcon, GitBranchIcon, SquaresFourIcon, HashIcon, PlugsConnectedIcon, TicketIcon } from "@phosphor-icons/react/ssr";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
 import { disconnectConnectorAction, startConnectAction } from "../connector-actions";
 import { presentErrorString, unexpectedErrorMessage } from "@/lib/errors";
@@ -56,11 +38,11 @@ const NOT_CONFIGURED_DESCRIPTION = "A platform admin needs to enable this connec
 // id with an icon. An unknown id falls back to a generic plug, so a newly
 // registered connector still renders — just without a bespoke glyph.
 const PROVIDER_ICON: Record<string, ComponentType<{ size?: number }>> = {
-  github: GitPullRequestIcon,
+  github: GitBranchIcon,
   slack: HashIcon,
   zoho: BriefcaseIcon,
   jira: TicketIcon,
-  linear: Grid2x2Icon,
+  linear: SquaresFourIcon,
 };
 
 // Registry-sourced strings key this lookup, so restrict to OWN keys — a provider
@@ -69,7 +51,7 @@ const PROVIDER_ICON: Record<string, ComponentType<{ size?: number }>> = {
 // then be rendered as a component).
 export function providerIcon(id: string): ComponentType<{ size?: number }> {
   const icon = Object.hasOwn(PROVIDER_ICON, id) ? PROVIDER_ICON[id] : undefined;
-  return icon ?? PlugIcon;
+  return icon ?? PlugsConnectedIcon;
 }
 
 // oauth2 / app_install connectors: connect is a redirect. The action returns the
@@ -88,6 +70,8 @@ export function OAuthConnectorRow({
 }) {
   const router = useRouter();
   const Icon = providerIcon(entry.id);
+  const [managing, setManaging] = useState(false);
+  const done = useRef<HTMLButtonElement>(null);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,9 +86,6 @@ export function OAuthConnectorRow({
 
   const isConnected = entry.connected;
   const identity = entry.label;
-  const pill: { label: string; variant: StatusPillVariant } = isConnected
-    ? { label: CONNECTED_LABEL, variant: "success" }
-    : { label: NOT_CONNECTED_LABEL, variant: "neutral" };
   async function connect() {
     setError(null);
     setConnecting(true);
@@ -143,6 +124,7 @@ export function OAuthConnectorRow({
         );
         return;
       }
+      setManaging(false);
       router.refresh();
     } catch (cause) {
       setError(unexpectedErrorMessage(cause, `disconnect ${entry.display_name}`));
@@ -155,40 +137,31 @@ export function OAuthConnectorRow({
     ? NOT_CONFIGURED_DESCRIPTION
     : isConnected
       ? identity
-        ? `${INSTALLED_ON_PREFIX}${identity}`
+        ? `${INSTALLED_ON_PREFIX}${identity}.`
         : CONNECTED_DESCRIPTION
       : "Choose Connect to authorize access with your provider.";
-  const iconColor = error ? "text-destructive" : connecting || disconnecting ? "text-info"
-    : isConnected ? "text-success" : !entry.configured ? "text-warning" : "text-muted-foreground";
-
-  return <DashboardPanel data-testid={`integration-${entry.id}`} className="flex flex-col gap-xl p-2xl">
-    <DashboardPanelHeader className="md:items-center">
-      <div className="flex min-w-0 items-center gap-lg">
-        <span className={`grid size-10 shrink-0 place-items-center rounded-lg bg-secondary transition-colors motion-reduce:transition-none ${iconColor}`} aria-hidden="true"><Icon size={22} /></span>
-        <DashboardPanelTitle>{entry.display_name}</DashboardPanelTitle>
-      </div>
-      {entry.configured ? <StatusPill variant={pill.variant} dot={pill.variant !== "neutral"}>{pill.label}</StatusPill>
-        : <Button variant="secondary" size="sm" className="shrink-0" aria-label={`${REQUEST_CONNECTOR_LABEL} to ${entry.display_name}`}
-          onClick={() => {
-            captureProductEvent(EVENTS.integration_requested, { integration_id: entry.id, integration_name: entry.display_name });
-            onRequest();
-          }}>{REQUEST_CONNECTOR_LABEL}</Button>}
-    </DashboardPanelHeader>
-    <DashboardPanelDescription className="flex-1">
-      {description}
-      {Object.hasOwn(PROVIDER_CAPABILITIES, entry.id) ? ` ${PROVIDER_CAPABILITIES[entry.id]}` : ""}
-    </DashboardPanelDescription>
-    {error ? <Alert variant="destructive">{error}</Alert> : null}
-    {entry.configured ? <div className="flex items-center justify-end border-t border-border pt-lg">
-      {isConnected ? <Button variant="ghost" size="sm"
-        aria-label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`}
-        disabled={disconnecting} aria-busy={disconnecting} onClick={() => void disconnect()}>
-        {disconnecting ? <Spinner size="sm" className="text-info" /> : <UnplugIcon size={16} aria-hidden="true" />}{disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
-      </Button> : <Button variant="secondary" size="sm"
-        aria-label={connecting ? CONNECTING_LABEL : `${CONNECT_LABEL} ${entry.display_name}`}
-        disabled={connecting} aria-busy={connecting} onClick={() => void connect()}>
-        {connecting ? <Spinner size="sm" className="text-info" /> : <PlugIcon size={16} className="text-pulse" aria-hidden="true" />}{connecting ? CONNECTING_LABEL : CONNECT_LABEL}
-      </Button>}
-    </div> : null}
-  </DashboardPanel>;
+  const pending = connecting || disconnecting;
+  return <div data-testid={`integration-${entry.id}`} className="p-xl sm:p-5">
+    <div className="flex min-w-0 flex-wrap items-center gap-xl">
+      <span className="hidden size-10 shrink-0 items-center justify-center rounded-control border border-border sm:flex" aria-hidden="true"><Icon size={16} /></span>
+      <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto"><h2 className="text-label font-medium">{entry.display_name}</h2>
+        <p className="mt-sm text-label text-muted-foreground">{isConnected ? `${CONNECTED_LABEL}${identity ? ` · ${identity}` : ""}` : entry.configured ? NOT_CONNECTED_LABEL : "Requires platform setup"}</p></div>
+      {entry.configured ? <Button variant="outline" disabled={pending} aria-busy={pending || undefined} aria-label={connecting ? CONNECTING_LABEL : `${isConnected ? "Manage" : CONNECT_LABEL} ${entry.display_name}`} onClick={() => isConnected ? setManaging(true) : void connect()}>
+        {connecting ? CONNECTING_LABEL : isConnected ? "Manage" : CONNECT_LABEL}
+      </Button> : <Button variant="outline" aria-label={`Request access to ${entry.display_name}`} onClick={() => {
+        captureProductEvent(EVENTS.integration_requested, {integration_id: entry.id, integration_name: entry.display_name}); onRequest();
+      }}>{REQUEST_CONNECTOR_LABEL}</Button>}
+    </div>
+    {error && !managing ? <Alert className="mt-lg" variant="destructive">{error}</Alert> : null}
+    <Dialog open={managing} onOpenChange={open => {if (!pending) setManaging(open);}}>
+      <DialogContent closeDisabled={pending} onOpenAutoFocus={event => {event.preventDefault(); done.current?.focus({preventScroll: true});}}>
+        <DialogHeader className="pb-0"><DialogTitle>{entry.display_name}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
+        {Object.hasOwn(PROVIDER_CAPABILITIES, entry.id) ? <p className="mt-xl text-label text-muted-foreground">{PROVIDER_CAPABILITIES[entry.id]}</p> : null}
+        {error ? <Alert className="mt-xl" variant="destructive">{error}</Alert> : null}
+        <DialogFooter><Button variant="outline" disabled={pending} aria-busy={disconnecting || undefined} aria-label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`} onClick={() => void disconnect()}>
+            {disconnecting ? <Spinner size="sm" /> : null}{disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
+          </Button><Button ref={done} disabled={pending} onClick={() => setManaging(false)}>Done</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </div>;
 }

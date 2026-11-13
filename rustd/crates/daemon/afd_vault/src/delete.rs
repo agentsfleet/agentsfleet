@@ -106,7 +106,7 @@ impl Directory {
         }
 
         let tenant = owning_tenant(transaction, workspace).await?;
-        let references = reference_count(transaction, &tenant, name).await?;
+        let references = reference_count(transaction, &tenant, workspace, name).await?;
         if references > 0 {
             return Err(still_referenced(entry_count(references)));
         }
@@ -159,11 +159,13 @@ async fn owning_tenant(
 async fn reference_count(
     transaction: &mut Transaction<'_, sqlx::Postgres>,
     tenant: &Uuid7,
+    workspace: &Uuid7,
     name: &SecretName,
 ) -> Result<usize> {
     Ok(sqlx::query(sql::LOCK_ENTRIES)
         .bind(tenant)
         .bind(name.as_str())
+        .bind(workspace)
         .fetch_all(&mut **transaction)
         .await
         .map_err(query(CONTEXT_DELETE))?

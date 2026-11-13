@@ -9,7 +9,7 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { expectAccessible, expectNoPageOverflow } from "./fixtures/accessibility";
 
-const PERIOD_CHARGE = "Charged this period";
+const PERIOD_CHARGE = "Settled charges";
 const BILLING_PATH = "/settings/billing";
 const FILTER_LABEL = { period: "Period", fleet: "Fleet", model: "Model" } as const;
 const ROLE = { combobox: "combobox", button: "button", heading: "heading" } as const;
@@ -36,20 +36,26 @@ test.describe("settings billing", () => {
     await page.goto(BILLING_PATH);
     await expect(page).toHaveURL(/\/settings\/billing(\?|$)/);
 
-    await expect(page.getByRole(ROLE.heading, { name: "Usage & billing", exact: true })).toBeVisible();
+    await expect(page.getByRole(ROLE.heading, { name: "Usage", exact: true })).toBeVisible();
     await expect(page.getByText(PERIOD_CHARGE, { exact: true })).toBeVisible();
-    const summary = page.locator('dl[aria-label="Period totals"]');
+    const summary = page.locator('[aria-label="Period totals"]');
     await expect(summary).toContainText(/\$\d/);
     await expect(page.getByRole(ROLE.combobox, { name: FILTER_LABEL.period, exact: true })).toBeVisible();
     await expect(page.getByRole(ROLE.combobox, { name: FILTER_LABEL.fleet, exact: true })).toBeVisible();
+    await page.getByRole(ROLE.button, {name: "More filters", exact: true}).click();
     await expect(page.getByRole(ROLE.combobox, { name: FILTER_LABEL.model, exact: true })).toBeVisible();
+    await expectAccessible(page, "Usage additional filters");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole(ROLE.button, {name: "More filters", exact: true})).toBeFocused();
     await expect(page.getByRole("link", { name: "Add credits" })).toHaveAttribute("href", /^mailto:/);
     await expect(page.getByText(/Totals exclude pending or unavailable provider usage/)).toBeVisible();
+    await expect(page.getByRole("table", {name: "Spending by fleet", exact: true})
+      .getByRole("columnheader")).toHaveText(["Fleet", "Activities", "Charged"]);
+    await expect(page.getByRole("figure", {name: "Daily spend"})).toContainText("Daily spending is not available yet.");
+    await page.getByRole(ROLE.button, {name: "Charge details", exact: true}).click();
     await expect(page.getByRole("table", { name: "Billing activity", exact: true })).toBeVisible();
-    await page.getByRole("tab", { name: "Spending breakdown", exact: true }).click();
-    await expect(page.getByRole("tabpanel")).toBeVisible();
-    await expect(page.getByRole("tabpanel")).toContainText(/Charged by fleet or setup chat|No settled spending/);
-    await expect(page.getByRole("tabpanel")).toContainText(/Charged by model|No settled spending/);
+    await expect(page.getByText(/Charged by fleet or setup chat|No settled spending/)).toBeVisible();
+    await expect(page.getByText(/Charged by model|No settled spending/)).toBeVisible();
     await page.getByRole(ROLE.combobox, { name: FILTER_LABEL.period, exact: true }).click();
     await page.getByRole("option", { name: "Today", exact: true }).click();
     await expect(page).toHaveURL(/period=today/);
@@ -63,20 +69,30 @@ test.describe("settings billing", () => {
       await page.goto(BILLING_PATH);
       await expect(page.getByText(PERIOD_CHARGE, { exact: true })).toBeVisible();
       await page.evaluate(value => document.documentElement.setAttribute("data-theme", value), theme);
+      await page.getByRole(ROLE.button, {name: "Charge details", exact: true}).click();
       for (const layout of LAYOUTS) {
         await page.setViewportSize(layout.viewport);
         if (layout.viewport.width >= VIEWPORT.intermediate.width) {
           const toggle = page.getByRole(ROLE.button, {
-            name: layout.navigation === NAVIGATION.expanded ? "Expand sidebar" : "Collapse sidebar", exact: true,
+            name: layout.navigation === NAVIGATION.expanded ? "Expand navigation" : "Collapse navigation", exact: true,
           });
           if (await toggle.isVisible()) await toggle.click();
+          const expanded = layout.navigation === NAVIGATION.expanded;
+          await expect(page.getByRole(ROLE.button, {name: expanded ? "Collapse navigation" : "Expand navigation", exact: true}))
+            .toHaveAttribute("aria-expanded", String(expanded));
         }
         await page.getByRole(ROLE.combobox, { name: FILTER_LABEL.fleet, exact: true }).scrollIntoViewIfNeeded();
         await expect(page.getByRole(ROLE.combobox, { name: FILTER_LABEL.fleet, exact: true })).toBeInViewport();
-        const totals = await page.locator('dl[aria-label="Period totals"] > div').evaluateAll(nodes =>
-          nodes.map(node => node.getBoundingClientRect().top));
+        const totals = await page.locator('[aria-label="Period totals"] > div').evaluateAll(nodes =>
+          nodes.map(node => ({top: node.getBoundingClientRect().top, left: node.getBoundingClientRect().left})));
         expect(totals).toHaveLength(3);
-        expect(Math.max(...totals) - Math.min(...totals)).toBeLessThan(1);
+        if (layout.viewport.width >= VIEWPORT.intermediate.width) {
+          expect(Math.max(...totals.map(metric => metric.top)) - Math.min(...totals.map(metric => metric.top))).toBeLessThan(1);
+        } else {
+          expect(totals[1]!.top).toBeGreaterThan(totals[0]!.top);
+          expect(totals[2]!.top).toBeGreaterThan(totals[1]!.top);
+          expect(Math.max(...totals.map(metric => metric.left)) - Math.min(...totals.map(metric => metric.left))).toBeLessThan(1);
+        }
         const activity = page.getByRole("table", { name: "Billing activity", exact: true });
         await expect(activity.getByRole("columnheader")).toHaveCount(5);
         const first = activity.locator("tbody > tr").first().getByRole("cell");

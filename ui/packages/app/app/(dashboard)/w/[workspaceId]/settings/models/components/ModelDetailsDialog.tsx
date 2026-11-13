@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRoundIcon } from "lucide-react";
+import { KeyIcon } from "@phosphor-icons/react/ssr";
 import {
   Badge,
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -14,22 +15,23 @@ import {
   DescriptionTerm,
   Time,
 } from "@agentsfleet/design-system";
-import { providerLabel } from "@/lib/api/model-library-types";
-import { CatalogueModelDetails } from "@/components/domain/CatalogueModelDetails";
-import { CatalogueBrowseControls } from "./CatalogueBrowseControls";
+import { OLLAMA_PROVIDER, providerLabel } from "@/lib/api/model-library-types";
+import { CatalogueEvidence, ModelPriceSchedule } from "@/components/domain/ModelPriceSchedule";
+import { CatalogueReadControls } from "./CatalogueBrowseControls";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
-import { libraryRateFor } from "./registry-view";
+import { libraryRateFor, rowRateFor } from "./registry-view";
 import { CATALOGUE_STATUS } from "./catalogue-status";
-import { modelLabel } from "@/lib/models/display";
+import { formatContextTokens, formatRatesPerMtok, modelLabel } from "@/lib/models/display";
 import type { TenantModelEntry } from "@/lib/types";
 
 type Props = {
   target: TenantModelEntry | null;
+  workspaceLabel?: string;
   onOpenChange: (open: boolean) => void;
 };
 
 /** Rendered only while `target` is non-null (see the Dialog body below). */
-function Details({ target }: { target: TenantModelEntry }) {
+function Details({ target, workspaceLabel }: { target: TenantModelEntry; workspaceLabel?: string }) {
   return (
     <>
       <DialogHeader>
@@ -42,8 +44,8 @@ function Details({ target }: { target: TenantModelEntry }) {
             Added <Time value={new Date(target.created_at)} format="relative" />
           </DialogDescription>
           <Badge variant={target.has_key ? "green" : "default"}>
-            <KeyRoundIcon size={12} aria-hidden="true" />
-            {target.has_key ? "In vault" : "Keyless endpoint"}
+            <KeyIcon size={12} aria-hidden="true" />
+            {target.has_key ? "Key stored" : "Key unavailable"}
           </Badge>
         </div>
       </DialogHeader>
@@ -59,8 +61,12 @@ function Details({ target }: { target: TenantModelEntry }) {
         {/* `secret_ref` is the vault key reference, not a display name — labelling
             it "Name" made it read as a duplicate of Provider. */}
         <div>
-          <DescriptionTerm>Secret ref</DescriptionTerm>
+          <DescriptionTerm>Key name</DescriptionTerm>
           <DescriptionDetails mono>{target.secret_ref}</DescriptionDetails>
+        </div>
+        <div>
+          <DescriptionTerm>Workspace</DescriptionTerm>
+          <DescriptionDetails>{workspaceLabel ?? target.workspace_id ?? "Unavailable"}</DescriptionDetails>
         </div>
         {target.base_url ? (
           <div>
@@ -75,22 +81,33 @@ function Details({ target }: { target: TenantModelEntry }) {
 }
 
 function CatalogueDetails({ target }: { target: TenantModelEntry }) {
-  const { models, status } = useModelCatalogue();
-  const [advanced, setAdvanced] = useState(false);
+  const { models, status, preloadAdvanced } = useModelCatalogue();
+  const [advancedRead, setAdvancedRead] = useState(false);
   const catalogue = libraryRateFor(models, target.provider, target.model_id);
-  return <div className="space-y-sm">
-    {catalogue ? <CatalogueModelDetails model={catalogue} /> : <DialogDescription>
+  const rates = target.provider === OLLAMA_PROVIDER ? null : rowRateFor(target) ?? catalogue;
+  return <div className="space-y-sm pt-lg">
+    {catalogue?.advanced ? <Badge>Advanced model</Badge> : null}
+    <DescriptionList>
+      <div><DescriptionTerm>Context cap (tokens)</DescriptionTerm><DescriptionDetails mono>{formatContextTokens(target.context_cap_tokens ?? catalogue?.context_cap_tokens)}</DescriptionDetails></div>
+      <div><DescriptionTerm>Input / cached input / output ($/1M)</DescriptionTerm><DescriptionDetails mono>{formatRatesPerMtok(rates)}</DescriptionDetails></div>
+    </DescriptionList>
+    {catalogue ? <>
+      {target.context_cap_tokens == null ? <CatalogueEvidence source={catalogue.context_source_url} verifiedAt={catalogue.context_verified_at} /> : null}
+      <ModelPriceSchedule prices={catalogue.prices} />
+    </> : <DialogDescription>
       {status === CATALOGUE_STATUS.loading ? "Loading catalogue details…" : "Catalogue evidence and price schedule are unavailable for this model."}
     </DialogDescription>}
-    <CatalogueBrowseControls id={`details-${target.id}-advanced`} advanced={advanced} onAdvancedChange={setAdvanced} />
+    {!catalogue && !advancedRead ? <Button variant="outline" disabled={status === CATALOGUE_STATUS.loading}
+      onClick={() => {setAdvancedRead(true); preloadAdvanced();}}>Load model evidence</Button> : null}
+    <CatalogueReadControls includeAdvanced={advancedRead} label="Load more catalogue evidence" />
   </div>;
 }
 
 /** Read-only detail view for one registry row — never the key material itself. */
-export default function ModelDetailsDialog({ target, onOpenChange }: Props) {
+export default function ModelDetailsDialog({ target, workspaceLabel, onOpenChange }: Props) {
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent>{target ? <Details target={target} /> : null}</DialogContent>
+      <DialogContent>{target ? <Details target={target} workspaceLabel={workspaceLabel} /> : null}</DialogContent>
     </Dialog>
   );
 }

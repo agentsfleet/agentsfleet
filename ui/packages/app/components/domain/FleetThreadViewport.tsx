@@ -2,6 +2,7 @@
 
 import { memo, useCallback, type ReactNode } from "react";
 import { ThreadPrimitive } from "@assistant-ui/react";
+import { ArchiveIcon } from "@phosphor-icons/react/ssr";
 import { Skeleton } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream";
 import { SteerComposer, type SteerComposerProps } from "./SteerComposer";
@@ -9,12 +10,15 @@ import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { renderFleetMessage } from "./fleetMessageRenderers";
 import { SettledReplyStatus } from "./FleetReplyAnnouncements";
 import { ChatThread } from "./chat/ChatThread";
+import { WakeupStrip } from "./chat/WakeupStrip";
+import { ChangesStrip } from "./chat/ChangesStrip";
 
 const PANEL_TITLE = "Chat";
 const EMPTY_HINT = "Message this fleet or wait for its next trigger. Activity and outcomes appear here.";
 const BACKFILL_LABEL = "Loading recent activity";
 
 type FleetThreadViewportProps = SteerComposerProps & {
+  archived?: boolean;
   setup?: ReactNode;
   setupEventId?: string;
   eventsCount: number;
@@ -26,11 +30,12 @@ type FleetThreadViewportProps = SteerComposerProps & {
 // Memoised: the thread re-renders on every streamed flush, and nothing this
 // shell draws moves with one. The messages below subscribe on their own.
 export const FleetThreadViewport = memo(function FleetThreadViewport({
-  eventsCount, connectionStatus, onRetry, pending, onResend, onDismiss, onRestored, onDraft, modelLabel, setup, setupEventId,
+  eventsCount, connectionStatus, onRetry, pending, onResend, onDismiss, onRestored, onDraft, modelLabel, setup, setupEventId, archived = false,
 }: FleetThreadViewportProps) {
   return <ChatThread testId="fleet-thread-root" label="Fleet chat" footer={<>
     <FleetConnectionNotice status={connectionStatus} onRetry={onRetry} />
-    <SteerComposer modelLabel={modelLabel} pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} />
+    {archived ? <p className="flex items-center justify-center gap-md border-t border-border py-xl text-center text-label text-muted-foreground"><ArchiveIcon size={16} aria-hidden="true" />Archived · This fleet is permanently stopped. Its history is available to read.</p>
+      : <><ChangesStrip /><WakeupStrip /><SteerComposer modelLabel={modelLabel} pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} /></>}
   </>}>
     <SettledReplyStatus><ChatHistory setup={setup} setupEventId={setupEventId} eventsCount={eventsCount} connectionStatus={connectionStatus} /></SettledReplyStatus>
   </ChatThread>;
@@ -72,7 +77,7 @@ function ChatHistory({ eventsCount, connectionStatus, setup, setupEventId }: Pic
       // never covers its newest rows. Top-aligned, as the viewport's top
       // anchor expects: a bottom-aligned short thread slid down by the height
       // of every Thought that folded above the composer.
-      className="mx-auto flex w-full max-w-chat flex-1 flex-col justify-start py-3xl"
+      className="mx-auto flex w-full max-w-chat flex-1 flex-col justify-start py-md"
     >
       {setupEventId ? null : setup}
       {isAwaitingFirstFrames ? <BackfillSkeleton /> : null}

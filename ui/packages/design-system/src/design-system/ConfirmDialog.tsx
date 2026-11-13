@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useState, type ReactNode } from "react";
+import { useCallback, useId, useRef, useState, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +63,7 @@ export function ConfirmDialog({
   onError,
 }: ConfirmDialogProps) {
   const [pending, setPending] = useState(false);
+  const cancel = useRef<HTMLButtonElement>(null);
   const descId = useId();
 
   const handleConfirm = useCallback(async () => {
@@ -88,22 +89,23 @@ export function ConfirmDialog({
         data-testid="confirm-dialog"
         role="alertdialog"
         aria-describedby={description ? descId : undefined}
-        className="max-w-md"
         closeDisabled={pending}
+        onOpenAutoFocus={event => {event.preventDefault(); cancel.current?.focus({preventScroll: true});}}
       >
-        <DialogHeader>
+        <DialogHeader className="pb-0">
           <DialogTitle>{title}</DialogTitle>
           {description ? (
             <DialogDescription id={descId}>{description}</DialogDescription>
           ) : null}
         </DialogHeader>
         {errorMessage ? (
-          <Alert variant="destructive">{errorMessage}</Alert>
+          <Alert variant="destructive" className="mt-xl">{errorMessage}</Alert>
         ) : null}
-        <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
+        <DialogFooter className="flex-nowrap">
           <Button
+            ref={cancel}
             type="button"
-            variant="ghost"
+            variant="outline"
             disabled={pending}
             onClick={() => onOpenChange(false)}
           >

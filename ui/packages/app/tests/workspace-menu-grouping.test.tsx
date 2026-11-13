@@ -36,34 +36,38 @@ beforeEach(() => { pathname.mockReturnValue(`/w/${BOB_HOME.id}/fleets`); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("workspace menu grouped by account", () => {
-  it("should show Bob's own workspace under Yours and John's under John's account", () => {
+  it("should show Bob's own workspace under Yours and John's under John's account", async () => {
     render(<WorkspaceSwitcherMenu open workspaces={[MARY_001, BOB_HOME]} onOpenChange={vi.fn()} />);
-    const menu = screen.getByRole("menu");
+    await userEvent.setup().click(screen.getByRole("menuitem", {name: /^Switch workspace:/}));
+    const menu = screen.getAllByRole("menu").find(node => node.contains(screen.getByTestId("workspace-list-scroll")))!;
     const labels = within(menu).getAllByText(new RegExp(`^(${OWN_ACCOUNT_LABEL}|${accountLabel(JOHNS.owner_name)})$`));
     expect(labels.map((label) => label.textContent)).toEqual([OWN_ACCOUNT_LABEL, accountLabel(JOHNS.owner_name)]);
     const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent ?? "");
     expect(items.findIndex((text) => text.includes("bob-home"))).toBeLessThan(items.findIndex((text) => text.includes("mary-001")));
   });
 
-  it("should label nothing while the person holds only their own account", () => {
+  it("should label nothing while the person holds only their own account", async () => {
     render(<WorkspaceSwitcherMenu open workspaces={[BOB_HOME]} onOpenChange={vi.fn()} />);
+    await userEvent.setup().click(screen.getByRole("menuitem", {name: /^Switch workspace:/}));
     expect(screen.queryByText(OWN_ACCOUNT_LABEL)).toBeNull();
     expect(screen.queryByRole("group")).toBeNull();
-    expect(screen.getByRole("menuitem", { name: /bob-home/ })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "bob-home" })).toBeTruthy();
   });
 
-  it("should group each account's workspaces under its label for screen readers", () => {
+  it("should group each account's workspaces under its label for screen readers", async () => {
     render(<WorkspaceSwitcherMenu open workspaces={[MARY_001, BOB_HOME]} onOpenChange={vi.fn()} />);
+    await userEvent.setup().click(screen.getByRole("menuitem", {name: /^Switch workspace:/}));
     const yours = screen.getByRole("group", { name: OWN_ACCOUNT_LABEL });
     const johns = screen.getByRole("group", { name: accountLabel(JOHNS.owner_name) });
-    expect(within(yours).getByRole("menuitem", { name: /bob-home/ })).toBeTruthy();
+    expect(within(yours).getByRole("menuitem", { name: "bob-home" })).toBeTruthy();
     expect(within(johns).getByRole("menuitem", { name: /mary-001/ })).toBeTruthy();
-    expect(within(johns).queryByRole("menuitem", { name: /bob-home/ })).toBeNull();
+    expect(within(johns).queryByRole("menuitem", { name: "bob-home" })).toBeNull();
   });
 
-  it("should list both workspaces of two accounts whose owners share a name, with no duplicate key", () => {
+  it("should list both workspaces of two accounts whose owners share a name, with no duplicate key", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     render(<WorkspaceSwitcherMenu open workspaces={[BOB_HOME, MARY_001, OPS_001]} onOpenChange={vi.fn()} />);
+    await userEvent.setup().click(screen.getByRole("menuitem", {name: /^Switch workspace:/}));
     expect(screen.getByRole("menuitem", { name: /mary-001/ })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: /ops-001/ })).toBeTruthy();
     expect(screen.getAllByRole("group", { name: accountLabel(JOHNS.owner_name) })).toHaveLength(2);
@@ -73,6 +77,7 @@ describe("workspace menu grouped by account", () => {
 
   it("should navigate to a joined account's workspace when it is picked", async () => {
     render(<WorkspaceSwitcherMenu open workspaces={[BOB_HOME, MARY_001]} onOpenChange={vi.fn()} />);
+    await userEvent.setup().click(screen.getByRole("menuitem", {name: /^Switch workspace:/}));
     await userEvent.setup().click(screen.getByRole("menuitem", { name: /mary-001/ }));
     expect(push).toHaveBeenCalledWith(`/w/${MARY_001.id}/fleets`);
   });

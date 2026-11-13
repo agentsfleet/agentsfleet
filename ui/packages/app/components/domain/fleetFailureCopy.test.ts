@@ -45,6 +45,12 @@ function failedMessage(
 }
 
 describe("fleetFailureCopy — startup_posture sentences", () => {
+  it("uses the recorded interruption detail without repeating a generic sentence", () => {
+    const detail = "The scan response was interrupted.";
+    expect(messageOutcome(failedMessage(detail, "failed", "transport_loss"))).toBe(detail);
+    expect(messageOutcome(failedMessage(null, "failed", "transport_loss"))).toBe("The response was interrupted");
+  });
+
   it.each([SANDBOX_REFUSAL, UNLISTED_CAUSE])(
     "reads every startup cause as the runner's refusal: %s",
     (detail) => {

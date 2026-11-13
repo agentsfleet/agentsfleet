@@ -14,7 +14,7 @@ export interface SaveAuth {
   config?: Definition["config"];
 }
 
-/** Edit instructions, save in authoring, then explicitly open the saved fleet. */
+/** Edit instructions and follow the confirmed save into the runtime conversation. */
 export async function saveFleetViaUI(page: Page, name: string, auth: SaveAuth): Promise<string> {
   const draft = await createFixtureDraft(auth.handle, auth.workspaceId,
     fixtureDefinition(name, undefined, auth.config ?? fixtureConfig(name)));
@@ -27,5 +27,5 @@ export async function saveFleetViaUI(page: Page, name: string, auth: SaveAuth): 
   await editor.getByRole("button", { name: CHAT_COPY.updateInstructions }).click();
   await expect(editor).toBeHidden();
   await page.getByRole("button", { name: CHAT_COPY.save, exact: true }).click();
-  return openSavedFleet(page);
+  return openSavedFleet(page, auth);
 }

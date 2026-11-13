@@ -76,7 +76,7 @@ it("refreshes the fleet page after checking newly authorized setup access", asyn
 async function openForm(refresh = vi.fn(async () => {})) {
   render(<SetupAccess workspace={WORKSPACE} name="fly" definition={definition} onRefresh={refresh} />);
   fireEvent.click(screen.getByRole("button", {name: "Connect Fly"}));
-  await screen.findByLabelText("Secret name");
+  await screen.findByLabelText("Name");
   return refresh;
 }
 
@@ -86,7 +86,7 @@ it("refuses a host field collision without losing the entered access", async () 
   await openForm();
   fireEvent.change(screen.getByLabelText("Field 1 name"), {target: {value: "host"}});
   fireEvent.change(screen.getByLabelText("Field 1 value"), {target: {value: FORM_VALUE}});
-  fireEvent.click(screen.getByRole("button", {name: "Create"}));
+  fireEvent.click(screen.getByRole("button", {name: "Add"}));
   await screen.findByText("Use Allowed host above instead of a host field");
   expect(api.create).not.toHaveBeenCalled();
   expect(screen.getByLabelText("Field 1 value")).toHaveProperty("value", FORM_VALUE);
@@ -94,12 +94,12 @@ it("refuses a host field collision without losing the entered access", async () 
 
 it("stores Fly through the existing vault form with an explicit host, then refreshes readiness", async () => {
   const refresh = await openForm();
-  expect(screen.getByLabelText("Secret name")).toHaveProperty("value", "fly");
+  expect(screen.getByLabelText("Name")).toHaveProperty("value", "fly");
   expect(screen.getByLabelText("Allowed host")).toHaveProperty("value", HOST);
   expect(screen.getByLabelText("Field 1 name")).toHaveProperty("value", "api_token");
   expect(screen.getByLabelText("Field 1 value")).toHaveProperty("type", "password");
   fireEvent.change(screen.getByLabelText("Field 1 value"), {target: {value: FORM_VALUE}});
-  fireEvent.click(screen.getByRole("button", {name: "Create"}));
+  fireEvent.click(screen.getByRole("button", {name: "Add"}));
   await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
   expect(api.create).toHaveBeenCalledWith(WORKSPACE, {name: "fly", data: {api_token: FORM_VALUE, host: HOST}});
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -112,7 +112,7 @@ it.each(["", "https://api.fly.io/path", "api.fly.io:8443", "api.fly.io/elsewhere
   await openForm();
   fireEvent.change(screen.getByLabelText("Allowed host"), {target: {value: host}});
   fireEvent.change(screen.getByLabelText("Field 1 value"), {target: {value: FORM_VALUE}});
-  fireEvent.click(screen.getByRole("button", {name: "Create"}));
+  fireEvent.click(screen.getByRole("button", {name: "Add"}));
   await screen.findByText(host ? /Enter a host such as/ : /Enter the host allowed/);
   expect(api.create).not.toHaveBeenCalled();
   expect(screen.getByRole("dialog")).toBeTruthy();
@@ -122,7 +122,7 @@ it.each(["Access denied", "Vault unavailable", "A secret with this name already 
   api.create.mockResolvedValueOnce({ok: false, error});
   const refresh = await openForm();
   fireEvent.change(screen.getByLabelText("Field 1 value"), {target: {value: FORM_VALUE}});
-  fireEvent.click(screen.getByRole("button", {name: "Create"}));
+  fireEvent.click(screen.getByRole("button", {name: "Add"}));
   await screen.findByText(new RegExp(error));
   expect(refresh).not.toHaveBeenCalled();
   expect(screen.getByLabelText("Field 1 value")).toHaveProperty("value", FORM_VALUE);
@@ -132,7 +132,7 @@ it.each(["Access denied", "Vault unavailable", "A secret with this name already 
 it("reports a failed readiness read separately from successful secret storage", async () => {
   const refresh = await openForm(vi.fn(async () => {throw new Error("read failed");}));
   fireEvent.change(screen.getByLabelText("Field 1 value"), {target: {value: FORM_VALUE}});
-  fireEvent.click(screen.getByRole("button", {name: "Create"}));
+  fireEvent.click(screen.getByRole("button", {name: "Add"}));
   await screen.findByText("Readiness could not be checked. Try checking again.");
   expect(api.create).toHaveBeenCalledOnce();
   refresh.mockResolvedValueOnce();
@@ -232,7 +232,7 @@ it("requires a destination choice when the instructions allow several hosts", as
   fireEvent.click(screen.getByRole("button", {name: "Connect Fly"}));
   expect(await screen.findByLabelText("Allowed host")).toHaveProperty("value", "");
   fireEvent.change(screen.getByLabelText("Field 1 value"), {target: {value: FORM_VALUE}});
-  fireEvent.click(screen.getByRole("button", {name: "Create"}));
+  fireEvent.click(screen.getByRole("button", {name: "Add"}));
   await screen.findByText(/Enter the host allowed/);
   expect(api.create).not.toHaveBeenCalled();
 });
@@ -243,6 +243,8 @@ it("ignores other services' references and cancels custom access without a write
   render(<SetupAccess workspace={WORKSPACE} name="fly" definition={{...definition,
     instructions_md: "Use ${secrets.other.key}.", config: {}}} />);
   fireEvent.click(screen.getByRole("button", {name: "Connect Fly"}));
+  await screen.findByLabelText("Value");
+  fireEvent.click(screen.getByRole("button", {name: "Use named fields"}));
   await screen.findByLabelText("Field 1 name");
   expect(screen.getByLabelText("Field 1 name")).toHaveProperty("value", "");
   fireEvent.click(screen.getByRole("button", {name: "Cancel"}));

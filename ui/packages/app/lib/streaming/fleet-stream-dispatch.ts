@@ -14,7 +14,7 @@ import {
   type ApplyEvents,
 } from "./fleet-stream-reply-registry";
 import { TERMINAL_STATUSES } from "./fleet-stream-row";
-import { patchSnapshot, patchSpokenFacts, setEvents } from "./fleet-stream-snapshot";
+import { patchSnapshot, patchGateFacts, setEvents } from "./fleet-stream-snapshot";
 
 // Where a live frame goes: held while a send here awaits its 202
 // (`HeldTurns`), else onto the thread. The registry owns the entry and the
@@ -35,7 +35,7 @@ const TaskChange = z.object({task_id: z.uuidv7(), resource_version: z.number().i
 // Reads back what the stream missed. A burst of gap signals during a walk
 // costs one more walk after it, not one each.
 export function recoverGap(entry: LiveEntry, fleetId: string): void {
-  patchSnapshot(entry, {tasksSeq: entry.snapshot.tasksSeq + 1});
+  patchSnapshot(entry, {tasksSeq: entry.snapshot.tasksSeq + 1, approvalsSeq: entry.snapshot.approvalsSeq + 1});
   setEvents(entry, hideContextProgress);
   void backfillEntry(entry, fleetId, {
     stillCurrent: entry.isCurrent,
@@ -70,7 +70,7 @@ function applyFrame(entry: LiveEntry, fleetId: string, frame: LiveFrame): void {
   // The first HTTP read can precede subscription. A ready stream closes that
   // gap even when the task's only hint was published before we subscribed.
   if (frame.kind === FRAME_KIND.HELLO) {
-    patchSnapshot(entry, {tasksSeq: entry.snapshot.tasksSeq + 1});
+    patchSnapshot(entry, {tasksSeq: entry.snapshot.tasksSeq + 1, approvalsSeq: entry.snapshot.approvalsSeq + 1});
     return;
   }
   // The daemon lost frames for this stream — dropped behind a slow reader, or
@@ -88,7 +88,7 @@ function applyFrame(entry: LiveEntry, fleetId: string, frame: LiveFrame): void {
   // a gate frame carries the count alone and touches no row.
   const facts = factsOf(frame);
   if (frame.kind === FRAME_KIND.GATE_OPENED || frame.kind === FRAME_KIND.GATE_RESOLVED) {
-    patchSpokenFacts(entry, facts);
+    patchGateFacts(entry, facts);
     return;
   }
   setEvents(entry, (prev) => applyLiveFrame(prev, frame), facts);

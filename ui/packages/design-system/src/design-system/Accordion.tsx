@@ -2,6 +2,7 @@
 
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { type ComponentProps } from "react";
+import { CaretDownIcon } from "@phosphor-icons/react/ssr";
 import { cn } from "../utils";
 
 /*
@@ -40,29 +41,16 @@ export function AccordionTrigger({ className, children, ref, ...props }: Accordi
       <AccordionPrimitive.Trigger
         ref={ref}
         className={cn(
-          "flex flex-1 items-center justify-between py-4 text-sm font-medium",
-          "transition-all hover:underline text-left motion-reduce:transition-none",
+          "flex flex-1 items-center justify-between rounded-control py-4 text-sm font-medium",
+          "transition-all hover:text-foreground text-left motion-reduce:transition-none",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-[var(--control-focus-surface)]",
           "[&[data-state=open]>svg]:rotate-180",
           className,
         )}
         {...props}
       >
         {children}
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="ml-2 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none"
-          aria-hidden="true"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        <CaretDownIcon size={16} className="ml-2 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none" aria-hidden="true" />
       </AccordionPrimitive.Trigger>
     </AccordionPrimitive.Header>
   );

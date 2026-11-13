@@ -104,12 +104,3 @@ describe("app layouts and pages", () => {
     expect(signUpMarkup).toContain("colorPrimary");
   });
 });
-
-it("renders account settings as a themed page with reloadable profile routes", async () => {
-  const { default: AccountPage } = await import("../app/(dashboard)/settings/account/[[...account]]/page");
-  const markup = renderToStaticMarkup(React.createElement(AccountPage));
-  expect(markup).toContain("Profile");
-  expect(markup).toContain('data-user-profile="/settings/account"');
-  expect(markup).toContain('data-routing="path"');
-  expect(markup).toContain("colorPrimary");
-});

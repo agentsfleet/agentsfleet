@@ -29,7 +29,7 @@ export function messageOutcome(message: MessageState): string {
   return formatFailureOutcome(failureLabel, rawOutcome, failureDetail);
 }
 
-export function eventOutcome(event: FleetEvent): string {
+export function eventOutcome(event: Pick<FleetEvent, "failureLabel" | "outcome" | "failureDetail">): string {
   if (!event.failureLabel) return event.outcome;
   return formatFailureOutcome(
     event.failureLabel,
@@ -66,5 +66,6 @@ function formatFailureOutcome(
   // Only prose is shown after the sentence: an internal identifier appended
   // after an em-dash reads as diagnostic detail while telling the user nothing.
   const shown = cause !== null && !isInternalIdentifier(cause) ? cause : null;
+  if (tag === "transport_loss" && shown) return shown;
   return shown ? `${sentence} — ${shown}` : sentence;
 }

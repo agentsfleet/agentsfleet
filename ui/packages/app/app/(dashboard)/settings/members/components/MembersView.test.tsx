@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // The server actions are this view's boundary: each is an RPC to the server,
@@ -26,11 +26,7 @@ import {
   BOB_NAME,
   CANCEL_LABEL,
   DONE,
-  EMAIL_NOT_SENT,
-  EMAIL_NOT_SET_UP,
-  EMAIL_SENT,
   INVITE,
-  INVITED_BADGE,
   JOHN,
   JOHN_NAME,
   LAST_OWNER,
@@ -44,24 +40,17 @@ import {
   SEND_FAILED,
   SEND_REFUSED,
   UNSENT,
-  actionsCellOf,
   confirmIn,
+  chooseTeamAction,
+  manageLabel,
   copyLinkFor,
   hiddenButton,
-  personCellOf,
   renderView,
   revokeFor,
   rowOf,
   sendAgain,
-  timeCellOf,
 } from "@/tests/helpers/members-fixtures";
 import { TEAM_CAPTION } from "./TeamTable";
-
-const WARNING = /\btext-warning\b/;
-const MUTED = /\btext-muted-foreground\b/;
-// Shown on a phone only; the timestamp column and the actions' status hide there.
-const PHONE_ONLY = '[class~="sm:hidden"]';
-const PHONE_HIDDEN = '[class~="hidden"]';
 
 beforeEach(() => {
   actions.loadTeamAction.mockResolvedValue({ ok: true, data: { members: [JOHN, BOB], invites: [INVITE] } });
@@ -71,137 +60,71 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-describe("the table", () => {
-  it("should list people and pending invites in one table, each with its role", () => {
+describe("the approved team list", () => {
+  it("keeps an account heading when its owner's name is unavailable", () => {
+    renderView([{...JOHN, display_name: null}]);
+    expect(screen.getByText("Your account")).toBeTruthy();
+    expect(screen.getByText("You’re the owner")).toBeTruthy();
+  });
+  it("copies an invitation link without dismissing its menu or changing membership", async () => {
+    const user = userEvent.setup();
+    const copied = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
     renderView();
-    expect(screen.getAllByRole("table")).toHaveLength(1);
-    expect(within(rowOf(JOHN_NAME)).getByText(ACCOUNT_ROLE.owner)).toBeTruthy();
-    expect(within(rowOf(BOB_NAME)).getByText(ACCOUNT_ROLE.member)).toBeTruthy();
-    expect(within(rowOf(INVITE.email)).getByText(INVITED_BADGE)).toBeTruthy();
+    await user.click(screen.getByRole("button", {name: manageLabel(revokeFor(INVITE))}));
+    await user.click(screen.getByRole("menuitem", {name: copyLinkFor(INVITE)}));
+    expect(copied).toHaveBeenCalledWith(INVITE.link);
+    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(actions.revokeInviteAction).not.toHaveBeenCalled();
+    copied.mockRestore();
+  });
+  it("shows names, roles and dates without confusing another owner with you", () => {
+    renderView([JOHN, BOB, {...JOHN, user_id: "other_owner", display_name: "Dana", email: "dana@example.com"}]);
+    expect(screen.getByRole("region", {name: "Members"})).toBeTruthy();
+    expect(screen.getByRole("region", {name: "Pending invitations"})).toBeTruthy();
+    expect(within(rowOf(JOHN_NAME)).getByText("You")).toBeTruthy();
+    expect(within(rowOf("Dana")).queryByText("You")).toBeNull();
+    expect(rowOf(BOB_NAME).textContent).toContain("member");
+    expect(rowOf(BOB_NAME).querySelector("time")?.dateTime).toBe(BOB.joined_at);
+    expect(rowOf(INVITE.email).querySelector("time")?.dateTime).toBe(INVITE.expires_at);
   });
 
-  it("should say when each person joined and when each invite went out and lapses", () => {
+  it("keeps member and invitation actions inside their own menus", async () => {
     renderView();
-    const stamps = (row: HTMLElement) => [...row.querySelectorAll("time")].map((time) => time.dateTime);
-    const iso = (at: string) => new Date(at).toISOString();
-    expect(stamps(timeCellOf(BOB_NAME))).toEqual([iso(BOB.joined_at)]);
-    expect(stamps(timeCellOf(INVITE.email))).toEqual([iso(INVITE.created_at), iso(INVITE.expires_at)]);
-    expect(timeCellOf(INVITE.email).textContent).toContain("expires");
-  });
-
-  it("should give an invite a copy and a revoke action, a member a remove, and the owner none", () => {
-    renderView();
-    expect(within(rowOf(INVITE.email)).getByRole("button", { name: copyLinkFor(INVITE) })).toBeTruthy();
-    expect(within(rowOf(INVITE.email)).getByRole("button", { name: revokeFor(INVITE) })).toBeTruthy();
-    expect(within(rowOf(BOB_NAME)).getByRole("button", { name: REMOVE_BOB })).toBeTruthy();
     expect(within(rowOf(JOHN_NAME)).queryAllByRole("button")).toHaveLength(0);
+    expect(within(rowOf(BOB_NAME)).getAllByRole("button")).toHaveLength(1);
+    await userEvent.setup().click(screen.getByRole("button", {name: manageLabel(revokeFor(INVITE))}));
+    expect(screen.getByRole("menuitem", {name: "Send invite again"})).toBeTruthy();
+    expect(screen.getByRole("menuitem", {name: copyLinkFor(INVITE)})).toBeTruthy();
+    expect(screen.getByRole("menuitem", {name: "Revoke invite"})).toBeTruthy();
   });
-});
 
-describe("invite email", () => {
-  it("should show each invite's email status, and offer send again whenever there is a relay to send it", () => {
+  it("shows delivery failures and their next step without inventing successful delivery", async () => {
     renderView([JOHN], [INVITE, UNSENT, NO_RELAY]);
-    expect(within(timeCellOf(INVITE.email)).getByText(EMAIL_SENT)).toBeTruthy();
-    expect(within(timeCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT)).toBeTruthy();
-    expect(within(timeCellOf(NO_RELAY.email)).getByText(EMAIL_NOT_SET_UP)).toBeTruthy();
-    // A sent email may still never arrive, so it can be sent again too.
-    expect(within(rowOf(INVITE.email)).getByRole("button", { name: sendAgain(INVITE) })).toBeTruthy();
-    expect(within(rowOf(UNSENT.email)).getByRole("button", { name: sendAgain(UNSENT) })).toBeTruthy();
-    expect(within(rowOf(NO_RELAY.email)).getByRole("button", { name: copyLinkFor(NO_RELAY) })).toBeTruthy();
+    expect(rowOf(INVITE.email).textContent).toContain("Invitation sent");
+    expect(rowOf(UNSENT.email).textContent).toContain("Email not sent · Share the invite link");
+    expect(rowOf(NO_RELAY.email).textContent).toContain("Email not set up · Share the invite link");
+    await userEvent.setup().click(screen.getByRole("button", {name: manageLabel(revokeFor(NO_RELAY))}));
+    expect(screen.queryByRole("menuitem", {name: "Send invite again"})).toBeNull();
+    expect(screen.getByRole("menuitem", {name: copyLinkFor(NO_RELAY)})).toBeTruthy();
   });
 
-  it("should send again and show the status the reloaded list carries", async () => {
+  it("resends and uses the reloaded delivery status", async () => {
     actions.sendInviteEmailAction.mockResolvedValue(DONE);
-    actions.loadTeamAction.mockResolvedValue({ ok: true, data: { members: [JOHN], invites: [{ ...UNSENT, email_status: EMAIL_STATUS.sent }] } });
+    actions.loadTeamAction.mockResolvedValue({ok: true, data: {members: [JOHN], invites: [{...UNSENT, email_status: EMAIL_STATUS.sent}]}});
     renderView([JOHN], [UNSENT]);
-    await userEvent.setup().click(screen.getByRole("button", { name: sendAgain(UNSENT) }));
-    await waitFor(() => expect(within(timeCellOf(UNSENT.email)).getByText(EMAIL_SENT)).toBeTruthy());
+    await chooseTeamAction(sendAgain(UNSENT));
+    await waitFor(() => expect(rowOf(UNSENT.email).textContent).toContain("Invitation sent"));
     expect(actions.sendInviteEmailAction).toHaveBeenCalledExactlyOnceWith(UNSENT.id);
   });
 
-  it("should announce a failed send-again as an alert when the email cannot be sent", async () => {
+  it("retains a failed resend and keeps its explanation after reloading", async () => {
     actions.sendInviteEmailAction.mockResolvedValue(SEND_REFUSED);
-    actions.loadTeamAction.mockResolvedValue({ ok: true, data: { members: [JOHN], invites: [UNSENT] } });
+    actions.loadTeamAction.mockResolvedValue({ok: true, data: {members: [JOHN], invites: [UNSENT]}});
     renderView([JOHN], [UNSENT]);
-    await userEvent.setup().click(screen.getByRole("button", { name: sendAgain(UNSENT) }));
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(SEND_FAILED);
-  });
-
-  it("should say the email could not be sent, and still show it as not sent once the lists reload", async () => {
-    actions.sendInviteEmailAction.mockResolvedValue(SEND_REFUSED);
-    actions.loadTeamAction.mockResolvedValue({ ok: true, data: { members: [JOHN], invites: [UNSENT] } });
-    renderView([JOHN], [UNSENT]);
-    const button = () => within(rowOf(UNSENT.email)).getByRole("button", { name: sendAgain(UNSENT) }) as HTMLButtonElement;
-    await userEvent.setup().click(button());
-    await waitFor(() => expect(screen.getByText(SEND_FAILED)).toBeTruthy());
-    // Send again holds until the reload behind the refusal has landed.
-    await waitFor(() => expect(button().disabled).toBe(false));
-    expect(actions.loadTeamAction).toHaveBeenCalledOnce();
-    expect(within(timeCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT)).toBeTruthy();
-  });
-});
-
-describe("an invite's email status", () => {
-  it("should offer send again for an email that failed, and never for one with no relay to send it", () => {
-    renderView([JOHN], [UNSENT, NO_RELAY]);
-    expect(within(actionsCellOf(UNSENT.email)).getByRole("button", { name: sendAgain(UNSENT) })).toBeTruthy();
-    expect(within(rowOf(NO_RELAY.email)).queryByRole("button", { name: sendAgain(NO_RELAY) })).toBeNull();
-  });
-
-  it("should read as a warning when the email did not go or cannot, and quietly once it went", () => {
-    renderView([JOHN], [INVITE, UNSENT, NO_RELAY]);
-    expect(within(timeCellOf(INVITE.email)).getByText(EMAIL_SENT).className).toMatch(MUTED);
-    expect(within(timeCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT).className).toMatch(WARNING);
-    expect(within(timeCellOf(NO_RELAY.email)).getByText(EMAIL_NOT_SET_UP).className).toMatch(WARNING);
-  });
-
-  it("should explain on focus that this deployment sends no email, and to copy the link instead", async () => {
-    renderView([JOHN], [NO_RELAY]);
-    fireEvent.focus(within(timeCellOf(NO_RELAY.email)).getByText(EMAIL_NOT_SET_UP));
-    // pin test: literal is the contract — what the owner reads on hover or focus.
-    const explained = "Email isn't set up for this deployment. Copy the link and share it instead.";
-    await waitFor(() => expect(screen.getAllByText(explained).length).toBeGreaterThan(0));
-  });
-
-  it("should reach that explanation through a keyboard-focusable button", () => {
-    renderView([JOHN], [NO_RELAY]);
-    expect(within(timeCellOf(NO_RELAY.email)).getByRole("button", { name: EMAIL_NOT_SET_UP })).toBeTruthy();
-  });
-});
-
-describe("row layout", () => {
-  it("the time column says whether the invite email went", () => {
-    renderView([JOHN], [INVITE, UNSENT]);
-    expect(within(timeCellOf(INVITE.email)).getByText(EMAIL_SENT)).toBeTruthy();
-    expect(within(timeCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT)).toBeTruthy();
-  });
-
-  it("an invite row's actions are icons only, right-aligned", () => {
-    renderView([JOHN], [INVITE]);
-    const actions = actionsCellOf(INVITE.email);
-    // No status words beside the buttons: every child is an icon button.
-    expect(actions.textContent?.trim()).toBe("");
-    expect(within(actions).getAllByRole("button")).toHaveLength(3);
-    expect(actions.querySelector(".justify-end")).not.toBeNull();
-  });
-});
-
-describe("a row at phone width", () => {
-  it("should carry an invite's times and email status under its address, leaving the actions cell only icons", () => {
-    renderView([JOHN], [UNSENT]);
-    const phoneOnly = personCellOf(UNSENT.email).querySelector(PHONE_ONLY);
-    expect(phoneOnly?.querySelectorAll("time")).toHaveLength(2);
-    expect(phoneOnly?.textContent).toContain(EMAIL_NOT_SENT);
-    expect(timeCellOf(UNSENT.email).matches(PHONE_HIDDEN)).toBe(true);
-  });
-
-  it("should carry a member's joined time under their name", () => {
-    renderView();
-    const phoneOnly = personCellOf(BOB_NAME).querySelector(PHONE_ONLY);
-    expect([...(phoneOnly?.querySelectorAll("time") ?? [])].map((time) => time.dateTime)).toEqual([
-      new Date(BOB.joined_at).toISOString(),
-    ]);
+    await chooseTeamAction(sendAgain(UNSENT));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(SEND_FAILED));
+    await waitFor(() => expect(screen.getByRole("button", {name: manageLabel(sendAgain(UNSENT))})).toHaveProperty("disabled", false));
+    expect(rowOf(UNSENT.email).textContent).toContain("Email not sent");
   });
 });
 
@@ -210,7 +133,7 @@ describe("people", () => {
     actions.removeMemberAction.mockResolvedValue(DONE);
     actions.loadTeamAction.mockResolvedValue({ ok: true, data: { members: [JOHN], invites: [INVITE] } });
     renderView();
-    await userEvent.setup().click(screen.getByRole("button", { name: REMOVE_BOB }));
+    await chooseTeamAction(REMOVE_BOB);
     await confirmIn(REMOVE_LABEL);
     await waitFor(() => expect(screen.queryByText(BOB_NAME)).toBeNull());
     expect(actions.removeMemberAction).toHaveBeenCalledExactlyOnceWith(BOB.user_id);
@@ -220,7 +143,7 @@ describe("people", () => {
   it("should keep the dialog open with the backend's reason when removal is refused", async () => {
     actions.removeMemberAction.mockResolvedValue(LAST_OWNER_REFUSED);
     renderView();
-    await userEvent.setup().click(screen.getByRole("button", { name: REMOVE_BOB }));
+    await chooseTeamAction(REMOVE_BOB);
     await confirmIn(REMOVE_LABEL);
     const dialog = await screen.findByRole("alertdialog");
     await waitFor(() => expect(dialog.textContent).toContain(LAST_OWNER.replace(/\.$/, "")));
@@ -231,12 +154,12 @@ describe("people", () => {
     actions.removeMemberAction.mockResolvedValue(LAST_OWNER_REFUSED);
     actions.loadTeamAction.mockResolvedValue(RELOAD_REFUSED);
     renderView();
-    await userEvent.setup().click(screen.getByRole("button", { name: REMOVE_BOB }));
+    await chooseTeamAction(REMOVE_BOB);
     await confirmIn(REMOVE_LABEL);
     const dialog = await screen.findByRole("alertdialog");
     // The row's own button stays disabled until the reload settles, so once it
     // re-enables both the refusal and the failed reload have landed.
-    await waitFor(() => expect(hiddenButton(REMOVE_BOB).disabled).toBe(false));
+    await waitFor(() => expect(hiddenButton(manageLabel(REMOVE_BOB)).disabled).toBe(false));
     expect(actions.loadTeamAction).toHaveBeenCalledOnce();
     expect(within(dialog).getByRole("alert").textContent).toContain(LAST_OWNER.replace(/\.$/, ""));
     expect(dialog.textContent).not.toMatch(RELOAD_FAILED);
@@ -253,7 +176,7 @@ describe("focus after a removal", () => {
     action.mockResolvedValue(DONE);
     actions.loadTeamAction.mockResolvedValue({ ok: true, data: left });
     renderView();
-    await userEvent.setup().click(screen.getByRole("button", { name: rowButton }));
+    await chooseTeamAction(rowButton);
     await confirmIn(confirmLabel);
     await waitFor(() => expect(screen.queryByText(gone)).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("region", { name: TEAM_CAPTION })));
@@ -266,7 +189,7 @@ describe("a member with no display name", () => {
   it("should name them by their address and leave them in place when the removal is cancelled", async () => {
     renderView([JOHN, DANA], []);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: `${REMOVE_LABEL} ${DANA.email}` }));
+    await chooseTeamAction(`${REMOVE_LABEL} ${DANA.email}`);
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog.textContent).toContain(`${REMOVE_LABEL} ${DANA.email}?`);
     await user.click(within(dialog).getByRole("button", { name: CANCEL_LABEL }));
@@ -281,7 +204,7 @@ describe("pending invites", () => {
     actions.revokeInviteAction.mockResolvedValue(DONE);
     actions.loadTeamAction.mockResolvedValue({ ok: true, data: { members: [JOHN, BOB], invites: [] } });
     renderView();
-    await userEvent.setup().click(screen.getByRole("button", { name: revokeFor(INVITE) }));
+    await chooseTeamAction(revokeFor(INVITE));
     await confirmIn(REVOKE_LABEL);
     await waitFor(() => expect(screen.queryByText(INVITE.email)).toBeNull());
     expect(actions.revokeInviteAction).toHaveBeenCalledExactlyOnceWith(INVITE.id);
@@ -290,7 +213,7 @@ describe("pending invites", () => {
   it("should keep the dialog open with the backend's reason when a revoke is refused", async () => {
     actions.revokeInviteAction.mockResolvedValue({ ok: false, status: 503, errorCode: "UZ-DB-001", error: "The database is unavailable." });
     renderView();
-    await userEvent.setup().click(screen.getByRole("button", { name: revokeFor(INVITE) }));
+    await chooseTeamAction(revokeFor(INVITE));
     await confirmIn(REVOKE_LABEL);
     const dialog = await screen.findByRole("alertdialog");
     await waitFor(() => expect(dialog.textContent).toContain("Couldn't revoke the invite"));
@@ -301,9 +224,30 @@ describe("pending invites", () => {
     actions.revokeInviteAction.mockResolvedValue(DONE);
     actions.loadTeamAction.mockResolvedValue(RELOAD_REFUSED);
     renderView();
-    await userEvent.setup().click(screen.getByRole("button", { name: revokeFor(INVITE) }));
+    await chooseTeamAction(revokeFor(INVITE));
     await confirmIn(REVOKE_LABEL);
     await waitFor(() => expect(screen.getByText(RELOAD_FAILED)).toBeTruthy());
     expect(screen.getByText(INVITE.email)).toBeTruthy();
   });
+});
+
+
+it("searches members and pending invitations without changing account access or sending writes", async () => {
+  renderView();
+  const user = userEvent.setup();
+  const search = screen.getByRole("searchbox", {name: "Search name or email"});
+  await user.type(search, BOB_NAME);
+  await waitFor(() => expect(screen.queryByRole("listitem", {name: JOHN_NAME})).toBeNull());
+  expect(rowOf(BOB_NAME)).toBeTruthy();
+  expect(screen.queryByRole("region", {name: "Pending invitations"})).toBeNull();
+  await user.click(screen.getByRole("button", {name: "Clear search"}));
+  await user.type(search, INVITE.email.toUpperCase());
+  await waitFor(() => expect(screen.queryByRole("listitem", {name: BOB_NAME})).toBeNull());
+  expect(rowOf(INVITE.email)).toBeTruthy();
+  await user.clear(search);
+  await user.type(search, "no-person-matches");
+  await screen.findByText("No matching people");
+  expect(actions.removeMemberAction).not.toHaveBeenCalled();
+  expect(actions.revokeInviteAction).not.toHaveBeenCalled();
+  expect(actions.loadTeamAction).not.toHaveBeenCalled();
 });

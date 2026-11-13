@@ -81,3 +81,14 @@ describe("FleetThread — reply figures", () => {
     expect(figures()).toBeNull();
   });
 });
+
+it("keeps routine task assessment in native run details even when no usage was reported", () => {
+  const taskActivity = {truncated: false, items: [{kind: "task_decision_completed", progress: {
+    activity_id: "019f0000-0000-7000-8000-000000000001", task_id: null, source_admission_id: null,
+    operation: "goal", phase: "recorded", provider: null, model: null, completed: 1, total: 1}}]} as const;
+  mockStream([{...ev({role: "user", actor: "operator", text: "Go", reply: "Done.", status: PROCESSED}), taskActivity: {...taskActivity, items: [...taskActivity.items]}}]);
+  renderThread();
+  expect(screen.queryByText("Assessment recorded · goal progress")).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: RUN_DETAILS_LABEL}));
+  expect(within(screen.getByRole("dialog", {name: RUN_DETAILS_LABEL})).getAllByText("Assessment recorded · goal progress").length).toBeGreaterThan(0);
+});

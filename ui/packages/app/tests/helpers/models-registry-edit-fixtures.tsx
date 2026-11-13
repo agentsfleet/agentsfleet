@@ -7,8 +7,9 @@ import { withTooltipProvider, listModelEntriesActionMock, registry } from "./mod
 
 export const EDIT_MODEL = "claude-opus-5-5";
 
-export async function clickRowAction(user: ReturnType<typeof userEvent.setup>, label: RegExp) {
-  await user.click(screen.getByRole("button", { name: label }));
+export async function clickRowAction(user: ReturnType<typeof userEvent.setup>, model: string, action: "Model details" | "Edit model" | "Remove model") {
+  await user.click(screen.getByRole("button", {name: `Manage ${model}`}));
+  await user.click(await screen.findByRole("menuitem", {name: action}));
 }
 
 export async function renderEditDialog(target: TenantModelEntry) {

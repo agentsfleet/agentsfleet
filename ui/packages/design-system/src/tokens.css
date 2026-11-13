@@ -1,15 +1,23 @@
-/* agentsfleet visual tokens. Source: docs/DESIGN_SYSTEM.md.
- * Charcoal, warm white, and mint; sans UI, expressive display, mono technical data.
- * Fonts are bundled locally. Theme utilities forward these values in theme.css. */
+/* agentsfleet shared default tokens. Source: docs/DESIGN_SYSTEM.md.
+ * Manrope for interface and display; Commit Mono for code and technical data.
+ * The dashboard imports app-tokens.css to override its visual values.
+ * Fonts are bundled locally. Only theme.css defines Tailwind utility mappings. */
 @import "@fontsource/commit-mono/400.css";
 @import "@fontsource/commit-mono/500.css";
 @import "@fontsource/commit-mono/600.css";
 @import "@fontsource/commit-mono/700.css";
-@import "@fontsource-variable/instrument-sans";
-@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/manrope";
 @import "./interactions.css";
 
 :root {
+  --control-height: 40px;
+  --control-focus-surface: var(--bg);
+  --max-w-new-fleet: 760px;
+  --new-fleet-input-height: 100px;
+  --fs-new-fleet-title: 34px;
+  --lh-new-fleet-title: 44px;
+  --letter-spacing-new-fleet-title: -.035em;
+  --fs-new-fleet-description: 15px;
 
   --overlay: rgba(0, 0, 0, 0.6);
   --elevation-floating: 0 8px 24px rgb(0 0 0 / 24%);
@@ -23,6 +31,7 @@
   --surface-3: #303631;
 
   --border: #3d4640;
+  --border-subtle: #303b33;
   --border-strong: #7c8980;
 
   --text: #f2f0e9;
@@ -56,32 +65,37 @@
   --success: #4ade80;
   --warn: #fbbf24;
   --error: #fca5a5;
+  --error-surface: color-mix(in srgb, var(--error) 10%, var(--surface-1));
+  --error-border: color-mix(in srgb, var(--error) 45%, var(--border));
   --info: #93c5fd;
   --evidence: #fbbf24;
 
+  --r-brand: 18.75%;
   --r-sm: 6px;
   --r-md: 8px;
   --r-lg: 12px;
 
   --ff-mono: "Commit Mono", "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
-  --ff-display: "Bricolage Grotesque Variable", "Instrument Sans Variable", sans-serif;
-  --ff-sans: "Instrument Sans Variable", system-ui, -apple-system, sans-serif;
-  --ff-system: system-ui, sans-serif;
-  /* Prototype only. System faces, no download: this exists so the serif
-     question can be looked at before it is paid for. A shipped serif means a
-     webfont and a bundle conversation. */
-  --ff-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --ff-sans: "Manrope Variable", system-ui, -apple-system, sans-serif;
+  --ff-display: var(--ff-sans);
 
   --fs-display-xl: 4.5rem;
   --fs-display-lg: 2.5rem;
   --fs-display-md: 1.75rem;
   --fs-heading: 1.25rem;
   --fs-eyebrow: 0.75rem;
+  --fs-usage-total: 2rem;
+  --lh-usage-total: 1.6875rem;
+  --letter-spacing-usage-total: -0.04em;
   --fs-body-lg: 1.125rem;
   --fs-body: 0.9375rem;
   --fs-body-sm: 0.875rem;
   --fs-label: 0.8125rem;
   --fs-mono: 0.8125rem;
+  --fs-ui-sm: 0.875rem;
+  --fs-ui-xs: 0.75rem;
+  --lh-ui-sm: 1.25rem;
+  --lh-ui-xs: 1rem;
 
   --letter-spacing-display-xl: -0.025em;
   --letter-spacing-display-lg: -0.02em;
@@ -118,8 +132,8 @@
   --sp-6xl: 6rem;
 
   /* How far a focus ring paints outside its control. Must equal Button's
-     `ring-2` + `ring-offset-2` (2px + 2px); a clipping surface reserves it. */
-  --focus-ring-reach: 4px;
+     `ring-2` + `ring-offset-4` (2px + 4px); a clipping surface reserves it. */
+  --focus-ring-reach: 6px;
 
   --easing-snap: ease-out;
   --motion-duration-snap: 120ms;
@@ -139,6 +153,13 @@
   --lh-conversation: 1.75;
   --fs-chat-title: 19px;
   --max-w-form: 760px;
+  --max-w-dialog: 540px;
+  --max-w-model-dialog: 620px;
+  --max-w-search: 340px;
+  --r-chip: 6px;
+  --control-hover: .94;
+  --blur-dialog: 3px;
+  --lh-dialog-description: 22px;
   --max-w-wide: 860px;
   --max-w-content: 1280px;
   --max-w-tagline: 28ch;
@@ -164,6 +185,7 @@
   --surface-2: #f0f0e9;
   --surface-3: #e5e9e0;
   --border: #c5d3cd;
+  --border-subtle: #dce3de;
   --border-strong: #738a80;
   --text: #14251f;
   /* Light's counterpart: warmed the same direction, off pure ink. */
@@ -198,4 +220,8 @@
   --table-row-alternate: color-mix(in srgb, var(--surface-1) 55%, var(--bg));
   --table-row-hover: color-mix(in srgb, var(--pulse) 7%, var(--surface-1));
   --table-divider: color-mix(in srgb, var(--border) 55%, var(--surface-1));
+}
+
+@media (max-width: 42.5rem) {
+  :root { --control-height: 44px; }
 }

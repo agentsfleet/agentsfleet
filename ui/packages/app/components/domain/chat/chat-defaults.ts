@@ -5,6 +5,7 @@ export const DEFAULT_INSTANCE_NAME = "my-fleet";
 export const DEFAULT_DAILY_NANOS = "1000000000";
 export const CHAT_PLACEHOLDER = "Describe the work you want this fleet to do…";
 export const CHAT_STARTERS: readonly {title: string; prompt: string}[] = starters;
+export const PLUGIN_CREATE_PROMPT = starters.find(starter => starter.title === "Create a plugin")?.prompt;
 
 export function initialDefinition(): Definition {
   return {schema_version: 1, description: "A fleet created in chat",

@@ -217,7 +217,10 @@ impl Fixture {
             Method::PUT,
             PROVIDER,
             Some(&self.token),
-            &format!(r#"{{"mode":"self_managed","secret_ref":"{secret_ref}"}}"#),
+            &format!(
+                r#"{{"workspace_id":"{}","mode":"self_managed","secret_ref":"{secret_ref}"}}"#,
+                self.workspace
+            ),
         )
         .await
     }

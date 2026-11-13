@@ -29,12 +29,13 @@ use sqlx::{Acquire as _, Transaction};
 use super::sql;
 use super::{Added, Entry, EntryRow, Removed, Retargeted};
 use crate::error::{Result, query};
+use crate::provider::KeyRef;
 use crate::provider::sql as provider_sql;
 use crate::provider::store::Providers;
 
 /// The entry's domain key, `(tenant, model, secret_ref)`: the one unique
 /// constraint a retarget can collide with (`schema/20261108121500_model_tenant_models.sql`).
-const UQ_ENTRY_DOMAIN_KEY: &str = "uq_tenant_models_tenant_id_model_name_secret_ref";
+const UQ_ENTRY_DOMAIN_KEY: &str = "uq_tenant_models_tenant_workspace_model_secret";
 
 /// The context a failed registry write reports under.
 const CONTEXT_WRITE: &str = "tenant model registry write";
@@ -57,7 +58,7 @@ impl Providers {
         &self,
         tenant: &Uuid7,
         model_name: &str,
-        secret_ref: &str,
+        credential: KeyRef<'_>,
         now: Timestamp,
     ) -> Result<Added> {
         let mut connection = self.pool().acquire().await?;
@@ -65,7 +66,8 @@ impl Providers {
 
         let locked = sqlx::query(provider_sql::LOCK_CREDENTIAL_FOR_REFERENCE)
             .bind(tenant)
-            .bind(secret_ref)
+            .bind(credential.name)
+            .bind(credential.workspace_id)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT_WRITE))?;
@@ -83,7 +85,8 @@ impl Providers {
             .bind(self.mint_entry_id(now)?)
             .bind(tenant)
             .bind(model_name)
-            .bind(secret_ref)
+            .bind(credential.name)
+            .bind(credential.workspace_id)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT_WRITE))?;
@@ -160,6 +163,7 @@ impl Providers {
         let held = sqlx::query(provider_sql::LOCK_CREDENTIAL_FOR_REFERENCE)
             .bind(tenant)
             .bind(&*entry.secret_ref)
+            .bind(entry.workspace_id.as_ref())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT_WRITE))?;

@@ -27,7 +27,7 @@ const FK_TENANT_MODEL: &str = "fk_tenant_selections_tenant_model";
 /// Activates `model` on [`CREDENTIAL`] and answers the entry it points at.
 async fn applied(store: &Providers, fixture: &Fixture, model: &str) -> OwnModel {
     let Activation::Applied(own) = store
-        .activate(&fixture.tenant, CREDENTIAL, Some(model), NOW)
+        .activate(&fixture.tenant, fixture.key(CREDENTIAL), Some(model), NOW)
         .await
         .expect("a catalogued activation is an outcome")
     else {

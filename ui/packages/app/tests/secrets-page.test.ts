@@ -1,7 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SECRETS_PAGE_DESCRIPTION } from "../app/(dashboard)/w/[workspaceId]/secrets/copy";
 
 // Server-component page test for the standalone /secrets page — Secrets &
 // ENVs is its own page again, not a Models section. The data layer
@@ -58,10 +57,11 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretDialog", 
     React.createElement("div", { "data-testid": "add-secret-dialog", "data-workspace": workspaceId }),
 }));
 
-vi.mock("lucide-react", () => {
+vi.mock("@phosphor-icons/react/ssr", async (original) => {
+  const actual = await original<Record<string, unknown>>();
   const make = (name: string) => (p: Record<string, unknown>) =>
     React.createElement("svg", { ...p, "data-icon": name });
-  return { ZapIcon: make("ZapIcon") };
+  return { ...actual, ZapIcon: make("ZapIcon") };
 });
 
 import { PROVIDER_MODE } from "@/lib/types";
@@ -116,8 +116,8 @@ describe("Secrets page", () => {
     const markup = renderToStaticMarkup(await renderPage(Page));
 
     expect(markup).toContain("Secrets");
-    expect(markup).toContain(SECRETS_PAGE_DESCRIPTION);
-    expect(markup).toContain('class="font-semibold text-info">Encrypted</span> at rest.');
+    expect(markup).toContain("Keep credentials private.");
+    expect(markup).not.toContain("text-info");
     expect(markup).not.toContain("Encrypted and hidden");
     expect(markup).toContain('data-testid="add-secret-dialog"');
     expect(markup).toContain('data-workspace="ws_1"');

@@ -54,7 +54,7 @@ describe("ModelsRegistryTable — hover speculation on a row's Edit control", ()
     await renderTableColdCatalogue();
 
     const user = userEvent.setup();
-    await user.hover(screen.getByRole("button", { name: "Edit claude-sonnet-5" }));
+    await user.hover(screen.getByRole("button", { name: "Manage claude-sonnet-5" }));
 
     await waitFor(() => expect(getModelLibraryActionMock).toHaveBeenCalledTimes(1));
   });
@@ -80,7 +80,7 @@ describe("ModelsRegistryTable — hover speculation on a row's Edit control", ()
     await renderTableColdCatalogue();
 
     const user = userEvent.setup();
-    await user.hover(screen.getByRole("button", { name: "Edit claude-sonnet-5" }));
+    await user.hover(screen.getByRole("button", { name: "Manage claude-sonnet-5" }));
 
     expect(getModelLibraryActionMock).not.toHaveBeenCalled();
   });

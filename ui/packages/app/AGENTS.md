@@ -22,12 +22,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Model mutually exclusive request stages with typed states. Derive the existing view flags from those states.
 - Pass each stream's cancellation signal to its reconciliation reads. Stop must cancel those reads before starting cancellation requests.
 - Preserve retry identities after uncertain responses and isolate every account, workspace, creator and conversation.
-- Keep chat transcript and composer text on the shared `conversation` token, currently 14px.
+- Keep chat transcript and composer text on the shared app tokens: desktop 13px/20px, phone reading 16px/26px and typing 16px/24px. Manrope is the approved app font; code remains monospace.
 - Measure settled-message rendering before adding memoization or virtualization. Preserve the existing output window and reduced-motion behavior.
 - Derive activity labels from recorded actions and outcomes. Show action and target while running; use completion verbs only for confirmed success. Keep failed, interrupted and unconfirmed outcomes explicit, including environment and access checks.
 
 - Pair activity icons with text: blue for running, green for confirmed success, red for failure, amber for interruption, and neutral for unknown outcomes.
-- Keep activity icons, running indicators and primary action text at 14px. Disclosures keep 8px inner padding, a 36px desktop minimum and a 44px mobile minimum. Separate action/target lines on mobile; preserve one visible keyboard-focus outline.
+- Keep action glyphs at 16px, rail glyphs at 20px, composer glyphs at 18px and primary action text at 13px/20px. Disclosures keep 8px inner padding, a 36px desktop minimum and a 44px mobile minimum. Separate action/target lines on mobile; preserve one visible keyboard-focus outline.
 
 ## Billing history
 

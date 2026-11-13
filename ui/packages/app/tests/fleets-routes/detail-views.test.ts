@@ -3,6 +3,7 @@ import { detailBody, detailResponse, exhaustedBilling, happyBilling, mockFetchBi
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fetchMock, authMock as auth, listTenantWorkspacesCached } from "../helpers/dashboard-mocks";
+import { chatProps } from "./page-parts";
 
 describe("fleets routes — detail views", () => {
   it("fleets detail page redirects to /sign-in when no token", async () => {
@@ -82,17 +83,14 @@ describe("fleets routes — detail views", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
-      await Page({
-        params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
-      }),
-    );
+    const page = await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})});
+    const markup = renderToStaticMarkup(page);
     expect(markup).toContain("Latest outcome");
     expect(markup).toContain("Latest data unavailable.");
     expect(markup).not.toContain("No outcome recorded yet.");
     // The pending count comes off the fleet detail the page already holds:
     // no approvals read is issued to render it.
-    expect(markup).toContain("2 approvals waiting");
+    expect(chatProps(page).initialSummary.pendingApprovals).toBe(2);
     expect(asked.some((url) => url.includes("/approvals"))).toBe(false);
     expect(markup).toContain('data-fleet-workspace');
   });
@@ -133,12 +131,15 @@ describe("fleets routes — detail views", () => {
     expect(markup).not.toContain("Balance exhausted");
   });
 
-  it("opens full-page setup editing from the fleet header", async () => {
+  it("offers a fresh fleet shortcut while retaining the saved fleet action menu", async () => {
     mockFetchBilling(happyBilling);
     const {default: Page} = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})}));
-    expect(markup).toContain('aria-label="Edit setup"');
-    expect(markup).toContain(`/fleets/new?fleet=${FLEET_ID}&amp;setup_revision=1`);
+    expect(markup).toContain('aria-label="Fleet actions"');
+    expect(markup).toContain('aria-label="New fleet"');
+    expect(markup).toContain('href="/w/ws_1/fleets/new"');
+    expect(markup).not.toContain('aria-label="Edit setup"');
+    expect(markup).not.toContain('aria-label="Start a new fleet"');
     expect(markup).not.toContain("?view=setup");
   });
 
@@ -152,7 +153,7 @@ describe("fleets routes — detail views", () => {
     const {default: Page} = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})}));
     expect(markup).not.toContain('aria-label="Fleet sections"');
-    expect(markup).toContain('aria-label="Edit setup"');
-    expect(markup).toContain(`/fleets/new?fleet=${FLEET_ID}`);
+    expect(markup).toContain('aria-label="Fleet actions"');
+    expect(markup).toContain('aria-label="Fleet actions"');
   });
 });

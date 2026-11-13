@@ -5,52 +5,7 @@ import { type ComponentProps } from "react";
 import { cn } from "../utils";
 const CHEVRON_CLASS_NAME = "ml-2 shrink-0 opacity-60";
 
-/*
- * Select — Radix Select composition with semantic utilities. Mirrors
- * shadcn/ui's compound API (Trigger / Content / Item / Value) so the
- * dashboard's existing select-shaped intent (ProviderKeyFields credential
- * picker, future filter dropdowns) stops re-implementing the Tailwind
- * styling for native <select> on every site.
- *
- * The chevron / check icons are inlined as SVGs so the design-system
- * package stays free of an icon-library transitive dep (see Dialog).
- */
-
-function ChevronDownIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m6 9 6 6 6-6" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M20 6 9 17l-5-5" />
-    </svg>
-  );
-}
+import { CaretDownIcon, CheckIcon } from "@phosphor-icons/react/ssr";
 
 export const Select = SelectPrimitive.Root;
 export const SelectGroup = SelectPrimitive.Group;
@@ -69,20 +24,20 @@ export function SelectTrigger({
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex items-center justify-between rounded-md font-sans transition-colors duration-snap ease-snap",
+        "flex items-center justify-between rounded-control font-sans transition-colors duration-snap ease-snap",
         // No resting shadow: borders define panels, and shadows belong to
         // dialogs and menus. This was the only box-shadow inside <main> on
         // every route that renders it.
         appearance === "composer"
-          ? "h-auto w-auto min-w-0 max-w-full border-0 bg-transparent px-0 py-0 text-eyebrow leading-label text-muted-foreground"
-          : "h-9 w-full border border-border-strong bg-secondary px-md py-sm text-body-sm enabled:hover:border-ring",
+          ? "h-9 w-auto min-w-0 max-w-full border-0 bg-transparent px-md py-0 text-eyebrow leading-label text-muted-foreground"
+          : "min-h-11 w-full border border-border bg-background px-lg py-sm text-label",
         // The coarse-pointer floor every Button-derived control already carries
         // (Button.tsx:11). Without it the "Rows per page" combobox was the one
         // interactive element in <main> under the 44px touch minimum.
         "pointer-coarse:min-h-11 pointer-coarse:min-w-11",
-        "focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-[var(--control-focus-surface)]",
         "disabled:cursor-not-allowed disabled:opacity-50",
-        "data-[placeholder]:text-muted-foreground",
+        "data-[placeholder]:text-text-dim",
         className,
       )}
       {...props}
@@ -90,7 +45,7 @@ export function SelectTrigger({
       {children}
       <SelectPrimitive.Icon asChild>
         <span className={CHEVRON_CLASS_NAME}>
-          <ChevronDownIcon />
+          <CaretDownIcon size={16} aria-hidden="true" />
         </span>
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
@@ -167,7 +122,7 @@ export function SelectItem({ className, children, ref, ...props }: SelectItemPro
     >
       <span className="absolute left-2 flex size-4 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
-          <CheckIcon />
+          <CheckIcon size={16} aria-hidden="true" />
         </SelectPrimitive.ItemIndicator>
       </span>
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>

@@ -4,9 +4,9 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import {
   Button,
   ConfirmDialog,
-  type DataTableColumn,
   Section,
-  SectionHeader,
+  PageHeader,
+  PageTitle,
 } from "@agentsfleet/design-system";
 import type { TenantModelEntryPageResult } from "@/lib/api/tenant_model_entries";
 import { LIBRARY_ERROR_KIND, readErrorFrom, type LibraryError } from "@/lib/api/library-types";
@@ -17,25 +17,18 @@ import { listModelEntriesAction, resetProviderAction, setProviderSelfManagedActi
 import { captureModelActivated, captureProviderReset } from "../lib/track";
 import AddModelEntryDialog from "./AddModelEntryDialog";
 import EditModelEntryDialog from "./EditModelEntryDialog";
-import { compareEntries, computeNextSort, readErrorCopy, type SortState } from "./registry-view";
+import { readErrorCopy } from "./registry-view";
 import { useStoredSecrets } from "./use-stored-secrets";
 import ModelDetailsDialog from "./ModelDetailsDialog";
 import { CATALOGUE_STATUS } from "./catalogue-status";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
-import {
-  ActionsCell,
-  ContextCell,
-  RatesCell,
-  ModelCell,
-  ProviderCell,
-  type RegistryRow,
-  StatusCell,
-} from "./ModelsRegistryCells";
 import { ModelsRegistryView } from "./ModelsRegistryView";
-import { CONTEXT_HEADER, RATES_HEADER } from "@/lib/models/display";
+import { MODELS_PAGE_DESCRIPTION } from "../copy";
+import { useCurrentUser } from "@/lib/auth/client";
 
 type Props = {
   workspaceId: string;
+  workspaces?: ReadonlyArray<{id: string; name: string | null}>;
   /** First registry page, or null when the read failed — see `initialError`. */
   initialPage: TenantModelEntryPageResult | null;
   /** Typed read failure. Distinct from an empty registry, and never both. */
@@ -45,13 +38,15 @@ const SWITCH_ACTION = "switch models";
 const SWITCH_PLATFORM_ACTION = "switch to platform defaults";
 const REMOVE_ACTION = "remove this model entry";
 
-export default function ModelsRegistryTable({ workspaceId, initialPage, initialError }: Props) {
+export default function ModelsRegistryTable({ workspaceId, workspaces, initialPage, initialError }: Props) {
+  const {userId} = useCurrentUser();
+  const workspaceNames = useMemo(() => new Map(workspaces?.map(({id, name}) => [id, name ?? "Unnamed workspace"])), [workspaces]);
   const [pending, startTransition] = useTransition();
   const readGeneration = useRef(0);
   const [entries, setEntries] = useState<TenantModelEntry[]>(initialPage?.models ?? []);
   // The secret list is NOT preloaded — the Add dialog loads it on open and
   // fails closed until it lands; the hook's docstring carries the why.
-  const { secrets, secretsLoad, refreshSecrets } = useStoredSecrets(workspaceId);
+  const { secrets, secretsLoad, refreshSecrets } = useStoredSecrets(workspaceId, userId);
   const [platformDefaultAvailable, setPlatformDefaultAvailable] = useState(
     initialPage?.platform_default_available ?? false,
   );
@@ -62,7 +57,6 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
   // say what has NOT been loaded, and both are rendered rather than implied.
   const [nextCursor, setNextCursor] = useState<string | null>(initialPage?.next_cursor ?? null);
   const [total, setTotal] = useState<number | null>(initialPage?.total ?? null);
-  const [sort, setSort] = useState<SortState>(null);
   const [error, setError] = useState<string | null>(null);
   // The server read's typed failure. Held separately from `error` (which is
   // action feedback) so a failed LOAD never renders as an empty registry.
@@ -73,32 +67,11 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
   const [removeError, setRemoveError] = useState<string | null>(null);
 
   // The catalogue warms on dialog intent; rows already carry their own rates.
-  const { models: libraryModels, status: catalogueStatus, preload: preloadCatalogue } = useModelCatalogue();
+  const { status: catalogueStatus, preload: preloadCatalogue } = useModelCatalogue();
 
   const hasActiveEntry = entries.some((e) => e.active);
   // An absent default must never be presented as active.
-  const isDefaultLive = !hasActiveEntry && platformDefaultAvailable;
-  // Hide the locked platform row outright when it is neither in effect nor
-  // configurable-from-here: a self-managed tenant with no platform default was
-  // shown a row it cannot act on and does not need.
-  const showDefaultRow = !hasActiveEntry || platformDefaultAvailable;
-
-  const sortedEntries = useMemo(() => {
-    if (!sort) return entries;
-    const dir = sort.dir === "ascending" ? 1 : -1;
-    return [...entries].sort((a, b) => compareEntries(a, b, sort.key, libraryModels) * dir);
-  }, [entries, sort, libraryModels]);
-
-  const rows: RegistryRow[] = [
-    ...(showDefaultRow ? [{ kind: "default" as const }] : []),
-    ...sortedEntries.map((entry) => ({ kind: "entry" as const, entry })),
-  ];
-
-  function onSortChange(key: string) {
-    const next = computeNextSort(sort, key);
-    if (next) setSort(next);
-  }
-
+  const isDefaultLive = nextCursor === null && !hasActiveEntry && platformDefaultAvailable;
   // Re-read from the FIRST page, discarding retained rows only once a
   // replacement actually arrives. A failed refresh leaves what is on screen
   // alone and surfaces the fault — it must never fall back to empty.
@@ -171,10 +144,10 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
     });
   }
 
-  function onSwitchEntry(entry: TenantModelEntry) {
+  function onSwitchEntry(entry: TenantModelEntry, sourceWorkspace: string) {
     setError(null);
     startTransition(async () => {
-      const r = await setProviderSelfManagedAction({ secret_ref: entry.secret_ref, model: entry.model_id });
+      const r = await setProviderSelfManagedAction({ workspace_id: sourceWorkspace, secret_ref: entry.secret_ref, model: entry.model_id });
       if (!r.ok) {
         // Failure Modes: "Stale activation — Switch races a concurrent entry
         // delete; UI surfaces the existing friendly error and refreshes the list."
@@ -207,61 +180,10 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
     });
   }
 
-  const columns: DataTableColumn<RegistryRow>[] = [
-    { key: "provider", header: "Provider", sortable: true, cell: (row) => <ProviderCell row={row} platformDefault={platformDefault} /> },
-    { key: "model", primary: true, header: "Model", sortable: true, cell: (row) => <ModelCell row={row} platformDefault={platformDefault} /> },
-    {
-      key: "context",
-      header: CONTEXT_HEADER,
-      numeric: true, sortable: true,
-      hideOnMobile: true,
-      cell: (row) => <ContextCell row={row} platformDefault={platformDefault} libraryModels={libraryModels} />,
-    },
-    {
-      key: "rates",
-      header: RATES_HEADER,
-      numeric: true, sortable: true,
-      hideOnMobile: true,
-      cell: (row) => <RatesCell row={row} platformDefault={platformDefault} libraryModels={libraryModels} />,
-    },
-    { key: "status", header: "Status", cell: (row) => <StatusCell row={row} isDefaultLive={isDefaultLive} /> },
-    {
-      key: "actions",
-      header: "Actions",
-      numeric: true,
-      cell: (row) => (
-        <ActionsCell
-          row={row}
-          pending={pending}
-          isDefaultLive={isDefaultLive}
-          platformDefaultAvailable={platformDefaultAvailable}
-          onSwitchDefault={onSwitchDefault}
-          onSwitchEntry={onSwitchEntry}
-          onView={(entry) => { preloadCatalogue(); setDetailsTarget(entry); }}
-          onEdit={(entry) => {
-            // Opening is ungated intent — the picker inside needs the
-            // catalogue now. Usually a no-op: focus or hover warmed it.
-            preloadCatalogue();
-            setEditTarget(entry);
-          }}
-          onEditFocusIntent={preloadCatalogue}
-          onEditHoverIntent={() => {
-            // A failed catalogue does not re-fetch on speculation: mousing
-            // across rows against a failing backend would fire one request
-            // per hover with no backoff. Deliberate intent (open) still
-            // retries.
-            if (catalogueStatus !== CATALOGUE_STATUS.error && maySpeculateOnHover()) preloadCatalogue();
-          }}
-          onRemove={setRemoveTarget}
-        />
-      ),
-    },
-  ];
-
   return (
-    <Section asChild>
+    <Section asChild className="gap-2xl">
       <section aria-label="Models">
-        <SectionHeader as="p"
+        <PageHeader className="sm:flex-col summary-medium:flex-row" description={MODELS_PAGE_DESCRIPTION}
           actions={
             <AddModelEntryDialog
               workspaceId={workspaceId}
@@ -273,12 +195,17 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
             />
           }
         >
-          Available models
-        </SectionHeader>
+          <PageTitle>Models</PageTitle>
+        </PageHeader>
 
-        <ModelsRegistryView columns={columns} rows={rows} platformDefault={platformDefault} sort={sort}
-          onSortChange={onSortChange} pending={pending}
-          onLoadMore={nextCursor ? () => loadMore(nextCursor) : undefined} />
+        {readError && entries.length === 0 ? null : <ModelsRegistryView entries={entries} platformDefault={platformDefault} workspaceNames={workspaceNames}
+          isDefaultLive={isDefaultLive} platformDefaultAvailable={platformDefaultAvailable} pending={pending}
+          onSwitchDefault={onSwitchDefault} onSwitchEntry={onSwitchEntry}
+          onView={entry => {preloadCatalogue(); setDetailsTarget(entry);}}
+          onEdit={entry => {preloadCatalogue(); setEditTarget(entry);}} onRemove={setRemoveTarget}
+          onIntent={() => {if (catalogueStatus !== CATALOGUE_STATUS.error && maySpeculateOnHover()) preloadCatalogue();}}
+          footerAction={<AddModelEntryDialog workspaceId={workspaceId} secrets={secrets} secretsLoad={secretsLoad} onCreated={refresh} onSecretsChanged={refreshSecrets} onSecretsNeeded={refreshSecrets} triggerLabel="Add another model" secondary />}
+          onLoadMore={nextCursor ? () => loadMore(nextCursor) : undefined} />}
 
         {nextCursor !== null ? <p className="text-body-sm text-muted-foreground" aria-live="polite">
           {total !== null ? `Showing ${entries.length} of ${total} models` : `Showing ${entries.length} models — more available`}
@@ -299,9 +226,10 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-        <ModelDetailsDialog target={detailsTarget} onOpenChange={() => setDetailsTarget(null)} />
+        <ModelDetailsDialog target={detailsTarget} workspaceLabel={workspaceNames.get(detailsTarget?.workspace_id ?? "")}
+          onOpenChange={() => setDetailsTarget(null)} />
         <EditModelEntryDialog
-          workspaceId={workspaceId}
+          workspaceId={editTarget?.workspace_id ?? ""}
           target={editTarget}
           onOpenChange={() => setEditTarget(null)}
           onSaved={() => {
@@ -316,7 +244,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
             setRemoveTarget(null);
             setRemoveError(null);
           }}
-          title={`Remove "${removeTarget?.model_id ?? ""}"?`}
+          title={`Remove “${removeTarget?.model_id ?? ""}”?`}
           description="This removes the model entry only — the stored key and any sibling entry sharing it are untouched."
           confirmLabel="Remove"
           intent="destructive"

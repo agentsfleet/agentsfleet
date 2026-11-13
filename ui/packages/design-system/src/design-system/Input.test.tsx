@@ -25,7 +25,7 @@ describe("Input", () => {
     render(<Input className="extra" data-testid="i" />);
     const cls = screen.getByTestId("i").className;
     expect(cls).toContain("extra");
-    expect(cls).toContain("rounded-md");
+    expect(cls).toContain("rounded-control");
   });
 
   it("fires onChange handlers and supports controlled usage", () => {
@@ -51,6 +51,6 @@ describe("Input", () => {
     const html = renderToStaticMarkup(<Input placeholder="Email" />);
     expect(html).toMatch(/^<input /);
     expect(html).toContain('placeholder="Email"');
-    expect(html).toContain("bg-secondary");
+    expect(html).toContain("bg-background");
   });
 });

@@ -17,7 +17,7 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
 import { getDefaultWorkspaceId, ensureSecondWorkspace } from "./fixtures/seed";
-import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
+import { expectSelectedWorkspace, gotoWorkspace, openWorkspaceMenu, workspaceUrlPattern } from "./fixtures/nav";
 
 const SWITCH_TIMEOUT_MS = 10_000;
 
@@ -39,7 +39,7 @@ test.describe("workspace in the URL", () => {
     await gotoWorkspace(page, FIXTURE_KEY.regular, "integrations");
 
     await expect(page).toHaveURL(workspaceUrlPattern("integrations"));
-    await expect(page.getByRole("heading", { name: /^connect apps$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^connected apps$/i })).toBeVisible();
     // The original bug: the connectors region failed to load ("Couldn't load
     // connectors"). It must render, with no load-failure banner.
     await expect(page.getByTestId("integrations-connectors")).toBeVisible();
@@ -57,7 +57,7 @@ test.describe("workspace in the URL", () => {
 
     const switcher = page.getByTestId("workspace-switcher");
     await expect(switcher).toBeVisible();
-    await switcher.click();
+    await openWorkspaceMenu(page);
     await page.getByRole("menuitem", { name: secondary.name ?? secondary.id }).click();
 
     // Selection is a navigation: the URL moves to the secondary workspace on the
@@ -65,8 +65,6 @@ test.describe("workspace in the URL", () => {
     await expect(page).toHaveURL(new RegExp(`/w/${secondary.id}/fleets`), {
       timeout: SWITCH_TIMEOUT_MS,
     });
-    await expect(switcher).toContainText(secondary.name ?? secondary.id, {
-      timeout: SWITCH_TIMEOUT_MS,
-    });
+    await expectSelectedWorkspace(page, secondary.name ?? "Unnamed workspace");
   });
 });

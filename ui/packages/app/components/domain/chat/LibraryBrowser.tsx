@@ -2,14 +2,16 @@
 
 import type { Source } from "@/lib/api/draft-types";
 import type { Library, LibraryCard } from "@/lib/api/draft-library";
+import { CaretDownIcon, DotsThreeIcon, NotePencilIcon, PencilSimpleIcon, PuzzlePieceIcon } from "@phosphor-icons/react/ssr";
 import { useCallback, useEffect, useState } from "react";
 import { workspacePath } from "@/lib/workspace-routes";
-import { Button, List, ListItem, Spinner, Tabs, TabsList, TabsTrigger, UnavailableState } from "@agentsfleet/design-system";
+import { Badge, Button, Collapsible, CollapsibleContent, CollapsibleTrigger, DashboardPanel, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, List, ListItem, Spinner, UnavailableState } from "@agentsfleet/design-system";
 import { FleetLibraryEmptyState } from "@/components/domain/FleetLibraryEmptyState";
 import { inspectLibrary, libraryHistory, libraryPage } from "@/lib/api/draft-library";
 import { losesAccess } from "@/lib/api/draft-request";
 import { LIBRARY_UNAVAILABLE_TITLE, libraryUnavailableDescription } from "@/lib/library-copy";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
+import { useCurrentUser } from "@/lib/auth/client";
 import { FleetSetupDetails } from "./FleetSetupDetails";
 import { LibraryRemoval } from "./LibraryRemoval";
 
@@ -20,8 +22,16 @@ function libraryErrorMessage(cause: unknown, selected: boolean): string {
   return libraryUnavailableDescription(losesAccess(cause) ? cause.status : undefined, selected);
 }
 
-export function LibraryBrowser({workspace, onSelect}: {workspace: string; onSelect: (source: Extract<Source, {kind: typeof SOURCE_KIND.library}>) => void}) {
-  const [owned, setOwned] = useState(false);
+type Props = {workspace: string; onSelect: (source: Extract<Source, {kind: typeof SOURCE_KIND.library}>, intent: "edit" | "new") => void};
+
+export function LibraryBrowser(props: Props) {
+  const user = useCurrentUser();
+  if (!user.isLoaded) return <Spinner label="Loading account" />;
+  if (!user.isSignedIn || !user.userId) return null;
+  return <WorkspacePlugins key={`${user.userId}:${props.workspace}`} {...props} />;
+}
+
+function WorkspacePlugins({workspace, onSelect}: Props) {
   const [cursor, setCursor] = useState<string | null>(null);
   const [page, setPage] = useState<Page | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -38,13 +48,13 @@ export function LibraryBrowser({workspace, onSelect}: {workspace: string; onSele
   useEffect(() => {
     const controller = new AbortController();
     setError(null); setEntry(null); setPage(null);
-    void libraryPage(workspace, owned, cursor, controller.signal).then((result) => {
+    void libraryPage(workspace, true, cursor, controller.signal).then((result) => {
       if (!controller.signal.aborted) setPage(result);
     }).catch((cause: unknown) => {
       if (!controller.signal.aborted) failed(cause);
     });
     return () => controller.abort();
-  }, [workspace, owned, cursor, attempt, failed]);
+  }, [workspace, cursor, attempt, failed]);
   useEffect(() => {
     const controller = new AbortController();
     setEntry(null);
@@ -56,43 +66,41 @@ export function LibraryBrowser({workspace, onSelect}: {workspace: string; onSele
     return () => controller.abort();
   }, [workspace, selected, revision, attempt, inspectionAttempt, selectionFailed]);
   return <div className="space-y-lg">
-    <LibraryScope owned={owned} onChange={(value) => { setOwned(value); setCursor(null); setSelected(null); }} />
-    {error ? <UnavailableState title={LIBRARY_UNAVAILABLE_TITLE} description={error}
-      actions={<Button variant="outline" onClick={() => setAttempt((value) => value + 1)}>Retry Library</Button>} /> : null}
+    <div className="flex items-center justify-between gap-xl"><h2 className="text-label font-semibold">Your plugins {page && !cursor && !page.next_cursor ? <Badge className="ml-md">{page.items.length}</Badge> : null}</h2><span className="text-label text-muted-foreground">Current account</span></div>
+    {error && !selected ? <UnavailableState title={LIBRARY_UNAVAILABLE_TITLE} description={error}
+      actions={<Button variant="outline" onClick={() => setAttempt((value) => value + 1)}>Retry plugins</Button>} /> : null}
     {!page && !error ? <Spinner label="Loading published setups" /> : null}
-    <LibraryChoices page={page} workspace={workspace} owned={owned} onRemoved={() => { setSelected(null); setCursor(null); setAttempt((value) => value + 1); }}
+    <LibraryChoices page={page}
       onInspect={(card) => { setEntry(null); setSelected(card); setRevision(undefined); setError(null); setInspectionAttempt((value) => value + 1); }} />
-    {!error && page && !page.items.length ? <LibraryEmpty workspace={workspace} paged={!!(cursor || page.next_cursor)} owned={owned} /> : null}
+    {!error && page && !page.items.length ? <LibraryEmpty workspace={workspace} paged={!!(cursor || page.next_cursor)} /> : null}
     {cursor ? <Button variant="outline" onClick={() => { setCursor(null); setSelected(null); }}>First page</Button> : null}
     {page?.next_cursor ? <Button variant="outline" onClick={() => { setCursor(page.next_cursor); setSelected(null); }}>Next page</Button> : null}
-    {selected ? <LibraryHistory key={selected.id} workspace={workspace} library={selected.id} onError={selectionFailed} onSelect={(id) => { setEntry(null); setRevision(id); setError(null); setInspectionAttempt((value) => value + 1); }} /> : null}
+    <p className="text-eyebrow leading-eyebrow text-text-dim">Each new fleet keeps its own setup and history. Changing or deleting a Plugin does not change fleets already created from it.</p>
+    <Dialog open={selected !== null} onOpenChange={() => {setSelected(null); setEntry(null);}}><DialogContent>
+      <DialogHeader><DialogTitle>{selected?.name ?? "Plugin"}</DialogTitle><DialogDescription>{selected?.description}</DialogDescription></DialogHeader>
+    {error && selected ? <UnavailableState title="This plugin could not be loaded" description={error}
+      actions={<Button variant="outline" onClick={() => {setError(null); setInspectionAttempt(value => value + 1);}}>Retry plugin</Button>} /> : null}
+    {selected ? <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" className="px-0">Choose a saved version<CaretDownIcon size={16} aria-hidden="true" /></Button></CollapsibleTrigger><CollapsibleContent><LibraryHistory key={selected.id} workspace={workspace} library={selected.id} onError={selectionFailed} onSelect={(id) => { setEntry(null); setRevision(id); setError(null); setInspectionAttempt((value) => value + 1); }} /></CollapsibleContent></Collapsible> : null}
     {selected && !entry && !error ? <Spinner label="Loading selected revision" /> : null}
-    {entry && selected && !error ? <LibraryInspection entry={entry} onUse={() => { onSelect({kind: SOURCE_KIND.library, library_id: entry.card.id, revision_id: entry.head.id}); }} /> : null}
+    {entry && selected && !error ? <LibraryInspection entry={entry} onUse={intent => { onSelect({kind: SOURCE_KIND.library, library_id: entry.card.id, revision_id: entry.head.id}, intent); }} /> : null}
+    {selected?.visibility === "tenant" ? <div className="pt-md"><LibraryRemoval workspace={workspace} card={selected} onRemoved={() => {setSelected(null); setCursor(null); setAttempt(value => value + 1);}} /></div> : null}
+    </DialogContent></Dialog>
   </div>;
 }
 
-function LibraryScope({owned, onChange}: {owned: boolean; onChange: (owned: boolean) => void}) {
-  const scope = {workspace: "workspace", all: "all"} as const;
-  return <div className="space-y-md"><Tabs value={owned ? scope.workspace : scope.all} onValueChange={(value) => onChange(value === scope.workspace)}>
-    <TabsList aria-label="Fleet library scope"><TabsTrigger value={scope.all}>All</TabsTrigger><TabsTrigger value={scope.workspace}>Workspace</TabsTrigger></TabsList>
-  </Tabs><p className="text-sm text-muted-foreground">{owned
-    ? "Setups published by your account, available in this workspace."
-    : "Platform setups and setups published by your account. Private setups from other accounts are never included."}</p></div>;
-}
-
-function LibraryEmpty({workspace, paged, owned}: {workspace: string; paged: boolean; owned: boolean}) {
-  const copy = paged ? "No published setups on this page. Check another page or change the library scope."
-    : owned ? "No setups have been published by this workspace. Start a fleet setup chat, then save or publish your setup."
+function LibraryEmpty({workspace, paged}: {workspace: string; paged: boolean}) {
+  const copy = paged ? "No published setups on this page. Check another page."
     : "No published setups are available yet. Start a fleet setup chat, then save or publish your setup.";
   return <FleetLibraryEmptyState createHref={workspacePath(workspace, "fleets/new")} description={copy} />;
 }
 
-function LibraryChoices({page, workspace, owned, onRemoved, onInspect}: {page: Page | null; workspace: string; owned: boolean; onRemoved: () => void; onInspect: (card: LibraryCard) => void}) {
-  return <List variant="plain" divided>{page?.items.map((card) => <ListItem key={card.id}>
-    <div className="flex items-start justify-between gap-md"><div><p className="font-medium">{card.name}</p><p className="text-sm text-muted-foreground">{card.description}</p></div>
-      <div className="flex items-center gap-sm"><Button variant="outline" onClick={() => onInspect(card)}>Inspect</Button>
-        {owned && card.visibility === "tenant" ? <LibraryRemoval workspace={workspace} card={card} onRemoved={onRemoved} /> : null}</div></div>
-  </ListItem>)}</List>;
+function LibraryChoices({page, onInspect}: {page: Page | null; onInspect: (card: LibraryCard) => void}) {
+  return <DashboardPanel padding="none"><List variant="plain" className="space-y-0 divide-y divide-border">{page?.items.map(card => <ListItem key={card.id} className="flex flex-wrap items-center gap-xl p-xl sm:p-5">
+    <span aria-hidden="true" className="hidden size-10 shrink-0 items-center justify-center rounded-control border border-border sm:flex"><PuzzlePieceIcon size={16} /></span>
+    <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto"><p className="break-words text-label font-medium">{card.name}</p><p className="mt-sm text-label text-muted-foreground">{card.description}</p></div>
+    <span className="text-eyebrow text-text-dim">Published setup</span>
+    <Button variant="ghost" size="icon" aria-label={`Manage ${card.name}`} onClick={() => onInspect(card)}><DotsThreeIcon size={16} /></Button>
+  </ListItem>)}</List></DashboardPanel>;
 }
 
 function LibraryHistory({workspace, library, onSelect, onError}: {workspace: string; library: string; onSelect: (id: string) => void; onError: (cause: unknown) => void}) {
@@ -123,10 +131,12 @@ function LibraryHistory({workspace, library, onSelect, onError}: {workspace: str
   </div>;
 }
 
-function LibraryInspection({entry, onUse}: {entry: Library; onUse: () => void}) {
-  return <div className="space-y-md border-t border-border pt-lg">
-    <h3 className="font-medium">{entry.card.name} · revision {entry.head.revision}</h3>
-    <FleetSetupDetails review={entry.review} />
-    <Button onClick={onUse}>New fleet</Button>
+function LibraryInspection({entry, onUse}: {entry: Library; onUse: (intent: "edit" | "new") => void}) {
+  return <div className="mt-md space-y-md">
+    <p className="text-eyebrow text-text-dim">Version {entry.head.revision}</p>
+    {entry.card.visibility === "tenant" ? <Button variant="outline" className="min-h-11 w-full justify-start gap-md" onClick={() => onUse("edit")}><PencilSimpleIcon size={16} /><span>Edit setup</span></Button> : null}
+    <Button variant="outline" className="min-h-11 w-full justify-start gap-md" onClick={() => onUse("new")}><NotePencilIcon size={16} /><span>Use for new fleet</span></Button>
+    <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" className="px-0">Inspect setup<CaretDownIcon size={16} aria-hidden="true" /></Button></CollapsibleTrigger>
+      <CollapsibleContent className="pt-lg"><FleetSetupDetails review={entry.review} /></CollapsibleContent></Collapsible>
   </div>;
 }

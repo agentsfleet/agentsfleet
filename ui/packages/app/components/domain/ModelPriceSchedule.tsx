@@ -15,9 +15,9 @@ const EVIDENCE_URL = z.url({ protocol: /^https?$/ });
 
 export function CatalogueEvidence({ source, verifiedAt }: { source: string; verifiedAt: string }) {
   const url = EVIDENCE_URL.safeParse(source);
-  return <div className="flex flex-wrap items-center gap-sm text-body-sm text-muted-foreground">
-    {url.success ? <Button asChild variant="ghost" size="sm"><a href={url.data} target="_blank" rel="noreferrer">Source</a></Button> : <span>{source}</span>}
-    <span>Verified <Time value={verifiedAt} format="datetime" label={verifiedAt} /></span>
+  return <div className="flex flex-wrap items-center justify-between gap-sm text-body-sm text-muted-foreground">
+    {url.success ? <Button asChild variant="ghost" size="sm" className="px-0"><a href={url.data} target="_blank" rel="noreferrer">Source</a></Button> : <span>{source}</span>}
+    <span className="ml-auto text-right">Verified <Time value={verifiedAt} title={verifiedAt} format="absolute" timeZone="UTC" /> UTC</span>
   </div>;
 }
 
@@ -41,9 +41,9 @@ function PriceDetails({ price }: { price: CataloguePrice }) {
       <div><DescriptionTerm>Prompt tier</DescriptionTerm><DescriptionDetails>
         {price.prompt_tokens_above === 0 ? "Base tier" : `Whole prompt above ${formatContextTokens(price.prompt_tokens_above)} tokens`}
       </DescriptionDetails></div>
-      <div><DescriptionTerm>Effective from</DescriptionTerm><DescriptionDetails><Time value={price.effective_from} format="datetime" label={price.effective_from} /></DescriptionDetails></div>
+      <div><DescriptionTerm>Effective from</DescriptionTerm><DescriptionDetails><Time value={price.effective_from} title={price.effective_from} format="absolute" timeZone="UTC" /> UTC</DescriptionDetails></div>
       <div><DescriptionTerm>Effective until (exclusive)</DescriptionTerm><DescriptionDetails>
-        {price.effective_until === null ? "Open-ended" : <Time value={price.effective_until} format="datetime" label={price.effective_until} />}
+        {price.effective_until === null ? "Open-ended" : <><Time value={price.effective_until} title={price.effective_until} format="absolute" timeZone="UTC" /> UTC</>}
       </DescriptionDetails></div>
       {RATES.map(([field, label]) => <div key={field}><DescriptionTerm>{label} ($/1M)</DescriptionTerm>
         <DescriptionDetails mono>{formatRatePerMtok(price[field])}</DescriptionDetails></div>)}

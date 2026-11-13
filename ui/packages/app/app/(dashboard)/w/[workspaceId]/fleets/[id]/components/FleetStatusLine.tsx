@@ -1,15 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import {
-  CircleCheckIcon,
-  CircleAlertIcon,
-  CoinsIcon,
-  HashIcon,
-  HourglassIcon,
-  LoaderCircleIcon,
-  TimerIcon,
-  type LucideIcon,
-} from "lucide-react";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+import { CheckCircleIcon, WarningCircleIcon, CoinsIcon, HashIcon, HourglassIcon, CircleNotchIcon, TimerIcon } from "@phosphor-icons/react/ssr";
 import { cn, StatusLine, StatusLineItem, type StatusLineTone, Time } from "@agentsfleet/design-system";
 import type { RunFigures } from "@/lib/events/run-summary";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
@@ -39,7 +31,7 @@ const APPROVALS_ARROW = "→";
 type OutcomeCell = {
   text: string;
   tone: StatusLineTone;
-  Icon: LucideIcon;
+  Icon: PhosphorIcon;
   /** True while the run is still going: the glyph turns. */
   live: boolean;
   at: Date | null;
@@ -80,11 +72,11 @@ export default function FleetStatusLine({
     >
       <StatusLineItem
         tone={status === AGENTSFLEET_STATUS.ACTIVE ? "pulse" : "neutral"}
-        className="uppercase"
+        className="normal-case"
       >
         <span className="size-2 shrink-0 rounded-full bg-current" aria-hidden="true" />
         <HiddenLabel>{METRICS_STATUS_LABEL}</HiddenLabel>
-        {status}
+        {status === AGENTSFLEET_STATUS.ARCHIVED ? "Archived" : status}
       </StatusLineItem>
       <StatusLineItem tone={outcome.tone} className="min-w-0 max-w-full">
         <OutcomeIcon
@@ -150,7 +142,7 @@ function Figure({
   unit,
   tone,
 }: {
-  Icon: LucideIcon;
+  Icon: PhosphorIcon;
   label: string;
   value: string;
   unit?: string;
@@ -178,7 +170,7 @@ function Figure({
 // sentence does, so a failure reads red before the words are read.
 function outcomeCell(latest: RunFigures | null, available: boolean): OutcomeCell {
   if (!available) {
-    return { text: METRICS_UNAVAILABLE, tone: "neutral", Icon: CircleAlertIcon, live: false, at: null };
+    return { text: METRICS_UNAVAILABLE, tone: "neutral", Icon: WarningCircleIcon, live: false, at: null };
   }
   if (latest === null) {
     return { text: METRICS_EMPTY, tone: "neutral", Icon: HourglassIcon, live: false, at: null };
@@ -189,15 +181,15 @@ function outcomeCell(latest: RunFigures | null, available: boolean): OutcomeCell
   const at = Number.isFinite(stamp.getTime()) ? stamp : null;
   const text = outcomeFor(latest);
   if (latest.status === EVENT_STATUS.RECEIVED) {
-    return { text, tone: "foreground", Icon: LoaderCircleIcon, live: true, at };
+    return { text, tone: "foreground", Icon: CircleNotchIcon, live: true, at };
   }
   if (latest.failure_label || latest.status === EVENT_STATUS.FLEET_ERROR) {
-    return { text, tone: "danger", Icon: CircleAlertIcon, live: false, at };
+    return { text, tone: "danger", Icon: WarningCircleIcon, live: false, at };
   }
   if (latest.status === EVENT_STATUS.GATE_BLOCKED) {
     return { text, tone: "warning", Icon: HourglassIcon, live: false, at };
   }
-  return { text, tone: "success", Icon: CircleCheckIcon, live: false, at };
+  return { text, tone: "success", Icon: CheckCircleIcon, live: false, at };
 }
 
 // What a figure cell shows: the figure, or the unknown mark when the read

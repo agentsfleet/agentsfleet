@@ -28,13 +28,12 @@ describe("Button", () => {
   it("applies the outline variant", () => {
     render(<Button variant="outline">Outline</Button>);
     const cls = screen.getByRole("button").className;
-    expect(cls).toContain("border-border-strong");
-    expect(cls).toContain("bg-transparent");
+    expect(cls.split(" ")).toEqual(expect.arrayContaining(["border-border", "bg-card"]));
   });
 
   it("applies the secondary variant", () => {
     render(<Button variant="secondary">Secondary</Button>);
-    expect(screen.getByRole("button").className).toContain("bg-primary/10");
+    expect(screen.getByRole("button")).toHaveClass("border-border", "bg-card", "text-foreground");
   });
 
   it("applies the ghost variant — muted text, transparent fill", () => {
@@ -140,7 +139,7 @@ describe("buttonVariants / buttonClassName", () => {
   it("buttonClassName returns the full class string for a variant", () => {
     const cls = buttonClassName("default");
     expect(cls).toContain("text-cta-foreground");
-    expect(cls).toContain("rounded-md");
+    expect(cls).toContain("rounded-control");
     expect(cls).toContain("inline-flex");
     expect(cls).toContain("font-sans");
   });
@@ -159,9 +158,12 @@ describe("buttonVariants / buttonClassName", () => {
     expect(new Set(classes).size).toBe(variants.length);
   });
 
-  it("every size produces a distinct class string", () => {
-    const sizes = ["default", "sm", "lg", "icon", "icon-compact"] as const;
-    const classes = sizes.map((s) => buttonVariants({ size: s }));
-    expect(new Set(classes).size).toBe(sizes.length);
+  it("standard controls share responsive size tokens", () => {
+    for (const size of ["default", "sm"] as const) {
+      expect(buttonVariants({ size }).split(" ")).toEqual(expect.arrayContaining(["min-h-[var(--control-height)]", "px-xl", "py-sm"]));
+    }
+    expect(buttonVariants({ size: "lg" }).split(" ")).toContain("h-11");
+    expect(buttonVariants({ size: "icon" }).split(" ")).toEqual(expect.arrayContaining(["size-[var(--control-height)]"]));
+    expect(buttonVariants({ size: "icon-compact" }).split(" ")).toEqual(expect.arrayContaining(["h-8", "w-8"]));
   });
 });

@@ -22,6 +22,16 @@ beforeEach(async () => {
 });
 afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
 
+it("starts a fresh setup from the empty heading action without writing a draft", () => {
+  client.fresh();
+  const fresh = vi.spyOn(client, "fresh");
+  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={client.getSnapshot()} />);
+  fireEvent.click(screen.getByRole("button", {name: "New fleet"}));
+  expect(fresh).toHaveBeenCalledOnce();
+  expect(client.getSnapshot().draft).toBeNull();
+  expect(fixture.writes()).toHaveLength(0);
+});
+
 it.each([false, true])("hides private actions without an accessible setup (inaccessible: %s)", (inaccessible) => {
   render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), draft: null, preview: null, inaccessible}} />);
   expect(screen.queryByRole("button", {name: MENU})).toBeNull();
@@ -185,8 +195,8 @@ it("opens the current active fleet from the composer without writing a revision"
 // why_new=existing publish tests began with a persisted draft; seam=none; no_claim=durable publication or provider latency.
 it("prepares a definition source for publication without saving or running the fleet", async () => {
   render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "definition", definition: REVIEW.effective.definition}} />);
-  await chooseSetupAction("Publish to Library");
-  const label = await screen.findByLabelText("Library name");
+  await chooseSetupAction("Publish plugin");
+  const label = await screen.findByLabelText("Plugin name");
   expect(label).toHaveProperty("value", REVIEW.effective.instance_name);
   expect(screen.getByRole("button", {name: "Publish new entry"})).toHaveProperty("disabled", false);
   expect(fixture.writes()).toHaveLength(1);
@@ -237,7 +247,6 @@ it("loads setup inspection when the summary is opened while preserving the draft
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
   const input = await screen.findByRole("textbox", {name: CHAT_PLACEHOLDER});
   fireEvent.change(input, {target: {value: "Preserve this unsent setup request"}});
-  fireEvent.click(screen.getByRole("button", {name: "Toggle fleet summary"}));
   expect(await screen.findByRole("region", {name: "Fleet purpose"})).toBeTruthy();
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER, hidden: true})).toHaveProperty("value", "Preserve this unsent setup request");
 });

@@ -12,8 +12,8 @@ export function sameOrigin(request: Request): boolean {
   try { return new URL(origin).origin === `${protocol}://${host}`; } catch { return false; }
 }
 
-export async function boundedBody(request: Request, signal: AbortSignal): Promise<Uint8Array<ArrayBuffer> | null> {
-  if (Number(request.headers.get("content-length") ?? 0) > SETUP_BODY_LIMIT_BYTES) return null;
+export async function boundedBody(request: Pick<Request, "headers" | "body">, signal: AbortSignal, limit = SETUP_BODY_LIMIT_BYTES): Promise<Uint8Array<ArrayBuffer> | null> {
+  if (Number(request.headers.get("content-length") ?? 0) > limit) return null;
   const reader = request.body?.getReader();
   if (!reader) return new Uint8Array();
   const chunks: Uint8Array[] = [];
@@ -24,7 +24,7 @@ export async function boundedBody(request: Request, signal: AbortSignal): Promis
     signal.throwIfAborted();
     for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
       size += chunk.value.byteLength;
-      if (size > SETUP_BODY_LIMIT_BYTES) { await reader.cancel(); return null; }
+      if (size > limit) { await reader.cancel(); return null; }
       chunks.push(chunk.value);
     }
     signal.throwIfAborted();

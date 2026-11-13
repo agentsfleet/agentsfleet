@@ -1,11 +1,11 @@
-import type { LucideIcon } from "lucide-react";
-import { PanelsTopLeftIcon, PlusIcon } from "lucide-react";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+import { StackIcon, NotePencilIcon, PuzzlePieceIcon, KeyIcon, PlugsConnectedIcon } from "@phosphor-icons/react/ssr";
 import { workspacePath } from "@/lib/workspace-routes";
 
 export type NavEntry = {
   label: string;
   path: string;
-  icon: LucideIcon;
+  icon: PhosphorIcon;
   workspaceScoped?: boolean;
   external?: boolean;
   analyticsSource?: string;
@@ -13,12 +13,14 @@ export type NavEntry = {
 
 
 export const NAV_SURFACE = "app_sidebar";
-export const NAV_ICON_SIZE = 18;
-export const NAV_ICON_STROKE_WIDTH = 1.5;
+export const NAV_ICON_SIZE = 16;
 
 export const PRIMARY_NAV: NavEntry[] = [
-  { label: "New fleet", path: "fleets/new", icon: PlusIcon, workspaceScoped: true },
-  { label: "Your fleets", path: "fleets", icon: PanelsTopLeftIcon, workspaceScoped: true },
+  { label: "New fleet", path: "fleets/new", icon: NotePencilIcon, workspaceScoped: true },
+  { label: "Your fleets", path: "fleets", icon: StackIcon, workspaceScoped: true },
+  { label: "Plugins", path: "library", icon: PuzzlePieceIcon, workspaceScoped: true },
+  { label: "Secrets", path: "secrets", icon: KeyIcon, workspaceScoped: true },
+  { label: "Connected apps", path: "integrations", icon: PlugsConnectedIcon, workspaceScoped: true },
 ];
 
 export function resolveHref(entry: NavEntry, workspaceId: string | null): string {

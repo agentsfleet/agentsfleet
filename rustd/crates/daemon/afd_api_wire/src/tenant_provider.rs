@@ -50,6 +50,11 @@ pub struct TenantProviderResponse<'a> {
     // absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub secret_ref: Option<&'a str>,
+    /// The workspace holding the self-managed credential. Absent in platform mode
+    /// or when the stored workspace is unavailable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(extensions(("x-stability" = json!("stable")))))]
+    pub workspace_id: Option<&'a str>,
     /// Whether an active platform-default row exists at all.
     //
     // Independent of this tenant's own mode, so the Models page can gate its
@@ -68,6 +73,9 @@ pub struct TenantProviderResponse<'a> {
 pub struct TenantProviderRequest {
     /// Whose key to dial with.
     pub mode: ProviderMode,
+    /// The workspace holding the credential, required under self-managed mode.
+    #[serde(default)]
+    pub workspace_id: Option<String>,
     /// The credential to dial with, required under self-managed mode.
     //
     // Not enforced here. A missing one is `UZ-PROVIDER-001` with a sentence,

@@ -2,14 +2,14 @@ import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { withTooltipProvider, listModelEntriesActionMock, updateModelEntryActionMock, deleteModelEntryActionMock, entry, registry, renderTable } from "./helpers/models-registry-fixtures";
+import { withTooltipProvider, listModelEntriesActionMock, updateModelEntryActionMock, deleteModelEntryActionMock, setProviderSelfManagedActionMock, entry, registry, renderTable } from "./helpers/models-registry-fixtures";
 import { clickRowAction } from "./helpers/models-registry-edit-fixtures";
 
 describe("Row actions — dialog dismissal wiring (via the full table)", () => {
   it("closes the View details dialog on its own Close button", async () => {
     await renderTable(registry([entry({})]));
     const user = userEvent.setup();
-    await clickRowAction(user, /view details for claude-sonnet-5/i);
+    await clickRowAction(user, "claude-sonnet-5", "Model details");
     const dialog = await screen.findByRole("dialog");
 
     await user.click(within(dialog).getByRole("button", { name: /^close$/i }));
@@ -19,7 +19,7 @@ describe("Row actions — dialog dismissal wiring (via the full table)", () => {
   it("closes the Edit dialog via Cancel, wired through the table's own state", async () => {
     await renderTable(registry([entry({})]));
     const user = userEvent.setup();
-    await clickRowAction(user, /edit claude-sonnet-5/i);
+    await clickRowAction(user, "claude-sonnet-5", "Edit model");
     const dialog = await screen.findByRole("dialog");
 
     await user.click(within(dialog).getByRole("button", { name: /^cancel$/i }));
@@ -30,7 +30,7 @@ describe("Row actions — dialog dismissal wiring (via the full table)", () => {
   it("dismissing the Remove confirm without confirming clears the pending target", async () => {
     await renderTable(registry([entry({})]));
     const user = userEvent.setup();
-    await clickRowAction(user, /^remove claude-sonnet-5$/i);
+    await clickRowAction(user, "claude-sonnet-5", "Remove model");
     await screen.findByRole("alertdialog");
 
     await user.keyboard("{Escape}");
@@ -40,6 +40,30 @@ describe("Row actions — dialog dismissal wiring (via the full table)", () => {
 });
 
 describe("Row actions — View details", () => {
+  it("marks a custom endpoint with no key as unavailable", async () => {
+    await renderTable(registry([entry({kind: "custom_endpoint", provider: "openai-compatible", has_key: false, base_url: "https://gateway.example/v1"})]));
+    await clickRowAction(userEvent.setup(), "claude-sonnet-5", "Model details");
+    expect(within(await screen.findByRole("dialog")).getByText("Key unavailable")).toBeTruthy();
+  });
+  it.each(["Staging", null])("shows the saved credential workspace label (%s) while viewing another workspace", async name => {
+    await renderTable(registry([entry({workspace_id: "ws-staging"})]), [{id: "ws-staging", name}]);
+    const user = userEvent.setup();
+    await clickRowAction(user, "claude-sonnet-5", "Model details");
+    expect(within(await screen.findByRole("dialog")).getByText(name ?? "Unnamed workspace")).toBeTruthy();
+  });
+
+  it("keeps a model with an unavailable credential workspace visible but refuses activation", async () => {
+    await renderTable(registry([entry({workspace_id: undefined})]));
+    const user = userEvent.setup();
+    const activate = screen.getByRole("button", {name: "Make active: claude-sonnet-5"});
+    expect(activate.hasAttribute("disabled")).toBe(true);
+    expect(activate.getAttribute("title")).toBe("The credential workspace is unavailable");
+    await user.click(activate);
+    expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
+    await clickRowAction(user, "claude-sonnet-5", "Model details");
+    expect(within(await screen.findByRole("dialog")).getByText("Unavailable")).toBeTruthy();
+  });
+
   it("renders nothing when no row is selected", async () => {
     const { default: ModelDetailsDialog } = await import(
       "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog"
@@ -50,7 +74,7 @@ describe("Row actions — View details", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("shows provider, endpoint, secret ref, and the In vault badge for a full custom-endpoint entry", async () => {
+  it("shows provider, endpoint, secret ref, and the Key stored badge for a full custom-endpoint entry", async () => {
     const { default: ModelDetailsDialog } = await import(
       "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog"
     );
@@ -68,12 +92,12 @@ describe("Row actions — View details", () => {
     expect(within(dialog).getByText("https://vllm.corp/v1")).toBeTruthy();
     expect(within(dialog).getByText("vllm-gateway")).toBeTruthy();
     // "Has key: Yes" became a header badge; "Kind" is gone entirely.
-    expect(within(dialog).getByText("In vault")).toBeTruthy();
+    expect(within(dialog).getByText("Key stored")).toBeTruthy();
     expect(within(dialog).queryByText("Yes")).toBeNull();
     expect(within(dialog).queryByText(/^kind$/i, { selector: "dt" })).toBeNull();
   });
 
-  it("shows Unknown provider and the Keyless endpoint badge for a minimal entry", async () => {
+  it("shows Unknown provider and the Key unavailable badge for a minimal entry", async () => {
     const { default: ModelDetailsDialog } = await import(
       "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog"
     );
@@ -81,8 +105,8 @@ describe("Row actions — View details", () => {
     render(withTooltipProvider(React.createElement(ModelDetailsDialog, { target, onOpenChange: vi.fn() } as never)));
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Unknown")).toBeTruthy();
-    expect(within(dialog).getByText("Keyless endpoint")).toBeTruthy();
+    expect(within(dialog).getByText("Provider").parentElement?.textContent).toContain("Unknown");
+    expect(within(dialog).getByText("Key unavailable")).toBeTruthy();
     expect(within(dialog).queryByText(/endpoint/i, { selector: "dt" })).toBeNull();
   });
 });
@@ -96,7 +120,7 @@ describe("Row actions — Remove", () => {
     await renderTable(registry([active, inactive]));
 
     const user = userEvent.setup();
-    await clickRowAction(user, /^remove claude-opus-4-8$/i);
+    await clickRowAction(user, "claude-opus-4-8", "Remove model");
 
     const confirm = await screen.findByRole("alertdialog");
     await user.click(within(confirm).getByRole("button", { name: /^remove$/i }));
@@ -113,7 +137,7 @@ describe("Row actions — Remove", () => {
     await renderTable(registry([inactive]));
 
     const user = userEvent.setup();
-    await clickRowAction(user, /^remove claude-opus-4-8$/i);
+    await clickRowAction(user, "claude-opus-4-8", "Remove model");
     const confirm = await screen.findByRole("alertdialog");
     await user.click(within(confirm).getByRole("button", { name: /^remove$/i }));
 
@@ -126,8 +150,9 @@ describe("Row actions — Remove", () => {
     await renderTable(registry([active]));
 
     const user = userEvent.setup();
-    const removeButton = screen.getByRole("button", { name: /cannot remove claude-sonnet-5 while it is active/i });
-    expect(removeButton.hasAttribute("disabled")).toBe(true);
+    await user.click(screen.getByRole("button", {name: "Manage claude-sonnet-5"}));
+    const removeButton = await screen.findByRole("menuitem", {name: "Remove model"});
+    expect(removeButton.getAttribute("aria-disabled")).toBe("true");
 
     await user.click(removeButton);
     expect(deleteModelEntryActionMock).not.toHaveBeenCalled();

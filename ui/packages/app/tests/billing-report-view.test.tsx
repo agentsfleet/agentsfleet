@@ -22,7 +22,6 @@ vi.mock("next/navigation", () => ({
 }));
 
 const names = { [BILLING_MODEL]: BILLING_MODEL_NAME };
-const SPENDING_TAB = "Spending breakdown";
 const BY_FLEET_LABEL = "Charged by fleet or setup chat";
 const BY_MODEL_LABEL = "Charged by model";
 const closed: BillingDetail = { status: BILLING_DETAIL_STATE.closed };
@@ -40,6 +39,7 @@ function details(detail: BillingDetail, modelNames: Record<string, string> = nam
   return render(<BillingActivityDetails activity={activity} detail={detail} modelNames={modelNames} />, { wrapper: TooltipProvider });
 }
 async function choose(label: string, value: string) {
+  if (label === "Model") fireEvent.click(screen.getByRole("button", {name: "More filters"}));
   const trigger = screen.getByRole("combobox", { name: label });
   fireEvent.click(trigger);
   fireEvent.keyDown(trigger, { key: "Enter" });
@@ -54,9 +54,22 @@ beforeEach(() => { push.mockReset(); refresh.mockReset(); current.params = new U
 afterEach(() => cleanup());
 
 describe("Billing report filters and details preserve period totals", () => {
+  it("retains unattributed setup charges and a deleted fleet's identifier without inventing a name", () => {
+    const report = billingReport();
+    view({...report, spending: {...report.spending, by_fleet: [
+      {key: null, label: null, totals: billingTotals()},
+      {key: "deleted-fleet", label: null, totals: billingTotals()},
+    ]}});
+    const section = screen.getByRole("region", {name: "By fleet"});
+    expect(within(section).getByText("Setup chats")).toBeTruthy();
+    expect(within(section).getByText("Fleet setup")).toBeTruthy();
+    expect(within(section).getByText("deleted-fleet")).toBeTruthy();
+    expect(within(section).getByText("Fleet work")).toBeTruthy();
+  });
   it("opens the previous UTC month and returns to the current month without losing fleet selection", () => {
     current.params = new URLSearchParams("fleet=deleted-fleet&through_at=2026-11-01T01:00:00Z&c=old&activity=old");
     view(billingReport({from_at: "2026-11-01T00:00:00Z", through_at: "2026-11-01T01:00:00Z"}));
+    fireEvent.click(screen.getByRole("button", {name: "More filters"}));
     fireEvent.click(screen.getByRole("button", {name: "Previous month"}));
     expect(pushedParams().get("through_at")).toBe("2026-10-31T23:59:59.999Z");
     expect(pushedParams().get("fleet")).toBe("deleted-fleet");
@@ -70,8 +83,9 @@ describe("Billing report filters and details preserve period totals", () => {
     view(billingReport({ totals: billingTotals({ charged_nanos: "5200000000", activity_count: 52, line_count: 150 }) }));
     expect(screen.getByText("$5.20")).toBeTruthy();
     expect(screen.getByText("52")).toBeTruthy();
-    expect(screen.getByText("Input / output tokens")).toBeTruthy();
-    expect(screen.getByText("40")).toBeTruthy();
+    expect(screen.getByText("Tokens")).toBeTruthy();
+    expect(screen.getByText("50")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Charge details"}));
     expect(screen.getAllByRole("button", { name: /Payment alerts/ })).toHaveLength(1);
     expect(screen.getByText(/Totals exclude pending or unavailable provider usage/)).toBeTruthy();
   });
@@ -79,10 +93,10 @@ describe("Billing report filters and details preserve period totals", () => {
   it("an empty successful report has an honest empty state and a disabled next page", () => {
     view(billingReport({ totals: billingTotals({ charged_nanos: "0", activity_count: 0, line_count: 0 }),
       activities: { items: [], total: 0, next_cursor: null }, spending: { by_fleet: [], by_model: [] }, filters: { fleets: [], models: [] } }));
+    expect(screen.getByText("Daily spending is not available yet.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Charge details"}));
     expect(screen.getByText("No settled activity")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Next page" }).hasAttribute("disabled")).toBe(true);
-    fireEvent.mouseDown(screen.getByRole("tab", { name: SPENDING_TAB }));
-    fireEvent.click(screen.getByRole("tab", { name: SPENDING_TAB }));
+    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
     expect(screen.getAllByText("No settled spending")).toHaveLength(1);
   });
 
@@ -178,8 +192,7 @@ describe("Billing report filters and details preserve period totals", () => {
 
   it("the spending view uses complete server groups and recorded names", () => {
     view();
-    fireEvent.mouseDown(screen.getByRole("tab", { name: SPENDING_TAB }));
-    fireEvent.click(screen.getByRole("tab", { name: SPENDING_TAB }));
+    fireEvent.click(screen.getByRole("button", {name: "Charge details"}));
     expect(within(screen.getByRole("list", { name: BY_FLEET_LABEL })).getByText("Payment alerts")).toBeTruthy();
     expect(within(screen.getByRole("list", { name: BY_MODEL_LABEL })).getByText(BILLING_MODEL_NAME)).toBeTruthy();
   });

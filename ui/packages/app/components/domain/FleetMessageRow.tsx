@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { FileTextIcon } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -11,9 +10,9 @@ import {
   cn,
 } from "@agentsfleet/design-system";
 
-import { FLEET_OUTCOME_CLASS, FleetFailedOutcome } from "./FleetFailedOutcome";
 import { RelativeNowProvider, Timestamp } from "./FleetTimestamp";
 import { ChatMessageRow } from "./chat/ChatMessageRow";
+export {ChatActivityRow as FleetActivityRow, type ChatActivityRowProps as FleetActivityRowProps} from "./chat/ChatActivityRow";
 
 const ROW_ENTER =
   "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-stream";
@@ -74,95 +73,15 @@ export function FleetMessageRow({
   failed,
   showSender,
   annotation,
+  createdAt,
 }: FleetMessageRowProps) {
   return <ChatMessageRow sender={sender} operator={tone === ROW_TONE.OPERATOR} messageRole={messageRole}
-    dimmed={dimmed} failed={failed} showSender={showSender} annotation={annotation}>
+    dimmed={dimmed} failed={failed} showSender={showSender} annotation={annotation} timestamp={createdAt ? <Timestamp createdAt={createdAt} compact /> : undefined}>
     {children}
   </ChatMessageRow>;
 }
 
-export type FleetActivityRowProps = {
-  /** Who the delivery came from — a word, never an identifier. */
-  sender: string;
-  createdAt: Date;
-  /** The one-line headline: what arrived. */
-  headline: string;
-  /** How it ended — rendered muted after the headline, omitted while working. */
-  outcome?: string;
-  /** True when the outcome is a failure, which is the one thing that shouts. */
-  failed?: boolean;
-  /** Rendered inline after the headline — an action `Badge`, a link. */
-  annotation?: ReactNode;
-  detailsLabel?: string;
-  /** Disclosure and any expansion, rendered under the tick line. */
-  children?: ReactNode;
-  messageRole: string;
-};
-
-export function FleetActivityRow({
-  sender,
-  createdAt,
-  headline,
-  outcome,
-  failed,
-  annotation,
-  detailsLabel = "View event",
-  children,
-  messageRole,
-}: FleetActivityRowProps) {
-  return (
-    <div
-      data-role={messageRole}
-      data-compact="true"
-      data-failed={failed || undefined}
-      className={cn("w-full", ROW_ENTER)}
-    >
-      <div className="flex min-w-0 items-start gap-md px-lg py-md">
-        <div className="min-w-0 flex-1 font-sans leading-body-sm">
-          <div className="flex min-w-0 flex-wrap items-center gap-sm text-conversation">
-            <span className="shrink-0 text-muted-foreground">{sender}</span>
-            {annotation}
-            <span aria-hidden="true" className="text-muted-foreground">
-              {TICK_SEPARATOR}
-            </span>
-            <span
-              className="min-w-0 break-words text-muted-foreground"
-              title={headline}
-            >
-              {headline}
-            </span>
-          </div>
-          {outcome ? (
-            <div className="mt-xs">
-              {failed ? (
-                <FleetFailedOutcome className="font-sans">{outcome}</FleetFailedOutcome>
-              ) : (
-                <p className={FLEET_OUTCOME_CLASS}>{outcome}</p>
-              )}
-            </div>
-          ) : null}
-          {children ? (
-            <Accordion type="single" collapsible className="w-fit">
-              <AccordionItem value={DETAILS_VALUE} className="border-0">
-                <AccordionTrigger className="min-h-11 w-fit flex-none gap-xs py-0 font-sans text-label leading-none text-muted-foreground hover:no-underline sm:min-h-6 [&>svg]:ml-0 [&>svg]:size-3">
-                  <span className="flex size-4 shrink-0 items-center justify-center">
-                    <FileTextIcon size={14} aria-hidden="true" />
-                  </span>
-                  {detailsLabel}
-                </AccordionTrigger>
-                <AccordionContent>{children}</AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          ) : null}
-        </div>
-        <Timestamp createdAt={createdAt} />
-      </div>
-    </div>
-  );
-}
-
 const TICK_SEPARATOR = "·";
-const DETAILS_VALUE = "details";
 
 export type FleetGroupRowProps = {
   sender: string;

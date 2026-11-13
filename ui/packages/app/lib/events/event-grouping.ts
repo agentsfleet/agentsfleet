@@ -18,6 +18,7 @@ import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
  * read as a stuck record; one is just an event.
  */
 export const MIN_GROUP_RUN = 2;
+const NO_BREAKS: ReadonlySet<string> = new Set();
 
 /** The two shapes a rendered thread entry takes — a lone row, or a collapsed
  * run. Named so the discriminant is written once, not spelled at each site. */
@@ -78,6 +79,7 @@ function sameRun(a: FleetEvent, b: FleetEvent): boolean {
 export function groupThreadEvents(
   events: FleetEvent[],
   previous?: readonly ThreadEntry[],
+  breakBefore: ReadonlySet<string> = NO_BREAKS,
 ): ThreadEntry[] {
   const entries: ThreadEntry[] = [];
   const reusable = new Map<string, ThreadEntry>();
@@ -103,7 +105,7 @@ export function groupThreadEvents(
     const lead = run[0];
     // Extend only a groupable run of the same delivery; anything else — a
     // non-groupable lead, a role change, a differing outcome — starts fresh.
-    if (lead !== undefined && groupable(lead) && groupable(event) && sameRun(lead, event)) {
+    if (lead !== undefined && !breakBefore.has(event.id) && groupable(lead) && groupable(event) && sameRun(lead, event)) {
       run.push(event);
     } else {
       flush(run);

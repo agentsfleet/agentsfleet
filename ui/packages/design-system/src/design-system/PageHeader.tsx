@@ -18,19 +18,19 @@ export function PageHeader({
   ...props
 }: PageHeaderProps) {
   return (
-    <div ref={ref} className={cn("flex flex-col items-start justify-between gap-4 border-b border-border pb-2xl sm:flex-row sm:gap-6", className)} {...props}>
+    <div ref={ref} data-slot="page-header" className={cn("flex flex-col items-start justify-between gap-4 sm:flex-row sm:gap-6", className)} {...props}>
       <div className="min-w-0 max-w-full">
         {children}
         {description != null ? <PageDescription>{description}</PageDescription> : null}
       </div>
-      {actions != null ? <div className="flex max-w-full flex-none flex-wrap gap-2">{actions}</div> : null}
+      {actions != null ? <div className="flex max-w-full flex-none flex-wrap gap-2 max-[42.5rem]:[&_button]:min-h-11 max-[42.5rem]:[&_a]:min-h-11">{actions}</div> : null}
     </div>
   );
 }
 
 /** The muted secondary line under a page title. */
 export function PageDescription({ className, ...props }: ComponentProps<"p">) {
-  return <p className={cn("mt-md max-w-prose text-body text-muted-foreground", className)} {...props} />;
+  return <p className={cn("mt-lg text-body leading-body text-muted-foreground", className)} {...props} />;
 }
 
 export default PageHeader;

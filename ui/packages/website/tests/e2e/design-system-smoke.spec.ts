@@ -47,11 +47,13 @@ test.describe("Button — computed styles", () => {
     expect(bg).not.toBe("transparent");
   });
 
-  test("outline variant has a transparent background and a visible border", async ({ page }) => {
+  test("outline variant uses the panel fill and a 1px border", async ({ page }) => {
     const bg = await computed(page, "btn-outline", "background-color");
     const border = await computed(page, "btn-outline", "border-top-width");
-    expect(bg).toBe("rgba(0, 0, 0, 0)");
-    expect(parseFloat(border)).toBeGreaterThan(0);
+    const panel = await computed(page, "card-default", "background-color");
+    expect(bg).toBe(panel);
+    expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+    expect(border).toBe("1px");
   });
 
   test("double-border variant has a 2px border", async ({ page }) => {
@@ -59,18 +61,16 @@ test.describe("Button — computed styles", () => {
     expect(parseFloat(w)).toBeCloseTo(2, 0);
   });
 
-  test("default radius is --r-md (~4px), not pill", async ({ page }) => {
-    // Spec component principles: "No border-radius: 9999px on buttons.
-    // Ever." Default Button uses rounded-md → --r-md → 4px.
+  test("default radius uses the shared non-pill control shape", async ({ page }) => {
     const r = await computed(page, "btn-default", "border-top-left-radius");
     const px = parseFloat(r);
     expect(px).toBeGreaterThan(0);
     expect(px).toBeLessThan(20); // hard ceiling well under any pill value
   });
 
-  test("sm size has h-8 (32px)", async ({ page }) => {
+  test("sm size keeps the approved 40px desktop height", async ({ page }) => {
     const h = await computed(page, "btn-sm", "height");
-    expect(parseFloat(h)).toBeCloseTo(32, 0);
+    expect(parseFloat(h)).toBeCloseTo(40, 0);
   });
 
   test("lg size has the approved 44px height", async ({ page }) => {
@@ -78,13 +78,11 @@ test.describe("Button — computed styles", () => {
     expect(parseFloat(h)).toBeCloseTo(COARSE_TARGET_PX, 0);
   });
 
-  test("icon size is 36x36 square (spec max for icon-only)", async ({ page }) => {
-    // Spec: "No icon-only buttons larger than 36px square." Button.tsx
-    // size="icon" is h-9 w-9 → 36px.
+  test("icon size is the approved 40x40 desktop square", async ({ page }) => {
     const h = await computed(page, "btn-icon", "height");
     const w = await computed(page, "btn-icon", "width");
-    expect(parseFloat(h)).toBeCloseTo(36, 0);
-    expect(parseFloat(w)).toBeCloseTo(36, 0);
+    expect(parseFloat(h)).toBeCloseTo(40, 0);
+    expect(parseFloat(w)).toBeCloseTo(40, 0);
   });
 
   test("asChild renders an <a> with button styles", async ({ page }) => {
@@ -98,8 +96,7 @@ test.describe("Button — computed styles", () => {
 });
 
 // A touch screen reports `pointer: coarse`, and there every Button keeps the
-// 44px target floor its compact sizes sit under. The fine-pointer sizes above
-// are the control: the same buttons measure 32 and 36px without touch.
+// 44px target floor. The fine-pointer control uses the shared 40px size.
 const COARSE_TARGET_PX = 44;
 const COMPACT_BUTTONS = ["btn-sm", "btn-icon", "btn-default-size"];
 
@@ -171,19 +168,17 @@ test.describe("Grid — computed styles", () => {
 });
 
 test.describe("Badge — computed styles", () => {
-  test("default badge has a visible border and muted background", async ({ page }) => {
+  test("default label badge has a 1px border and no fill", async ({ page }) => {
     const bw = await computed(page, "badge-default", "border-top-width");
     const bg = await computed(page, "badge-default", "background-color");
-    expect(parseFloat(bw)).toBeGreaterThan(0);
-    expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+    expect(bw).toBe("1px");
+    expect(bg).toBe("rgba(0, 0, 0, 0)");
   });
 
-  test("badge radius is --r-sm (~2px), flat status label not a pill", async ({ page }) => {
-    // Spec: "Badges: ... border-radius --r-sm." Switched from rounded-full.
+  test("badge uses the approved 6px chip radius", async ({ page }) => {
     const r = await computed(page, "badge-default", "border-top-left-radius");
     const px = parseFloat(r);
-    expect(px).toBeGreaterThan(0);
-    expect(px).toBeLessThan(10);
+    expect(px).toBe(6);
   });
 
   test("status variants produce distinct text colors", async ({ page }) => {

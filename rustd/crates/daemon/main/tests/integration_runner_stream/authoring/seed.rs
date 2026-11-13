@@ -52,8 +52,8 @@ impl Rows {
             .verified_at(clock::now())
             .inference(r#"{"api":"responses","base_url":"https://models.example.com/v1","max_output_tokens":8192}"#)
             .insert(&mut *connection).await.expect("priced model");
-        sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) VALUES($1,$2,$3,'authoring-model',now(),now())")
-            .bind(&rows.model).bind(&rows.tenant).bind(name).execute(&mut *connection).await.expect("tenant model");
+        sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,workspace_id,created_at,updated_at) VALUES($1,$2,$3,'authoring-model',$4,now(),now())")
+            .bind(&rows.model).bind(&rows.tenant).bind(name).bind(&rows.workspace).execute(&mut *connection).await.expect("tenant model");
         sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1,$2,now(),now())")
             .bind(&rows.tenant).bind(100 * NANOS_PER_USD).execute(&mut *connection).await.expect("funded wallet");
         drop(connection);

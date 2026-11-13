@@ -11,7 +11,7 @@ import EditSecretDialog from "./EditSecretDialog";
 const WORKSPACE = "ws_edit_test";
 const NAME = "fly";
 const TOKEN = "replacement-test-value";
-const SAVE = "Save changes";
+const SAVE = "Replace value";
 const INPUT_NAME = "Field 1 name";
 const INPUT_VALUE = "Field 1 value";
 function dialog(onOpenChange = vi.fn()) {
@@ -39,10 +39,8 @@ it("replaces fields under a dotted existing name without renaming it", async () 
 it("replaces through the existing update action with a locked name and masked field values", async () => {
   replace.mockResolvedValue({ok: true, data: {name: NAME}});
   const close = vi.fn(); dialog(close);
-  expect(screen.getByText(/Values are encrypted on save/)).toBeTruthy();
-  expect(screen.getByText("but never view them again.")).toBeTruthy();
-  expect(screen.getByRole("link", {name: /Learn more/}).getAttribute("href")).toBe("https://docs.agentsfleet.net/fleets/secrets");
-  expect(screen.getByLabelText("Secret name").getAttribute("readonly")).not.toBeNull();
+  expect(screen.getByText(/Secret values are hidden after saving/)).toBeTruthy();
+  expect(screen.getByLabelText("Name").getAttribute("readonly")).not.toBeNull();
   expect(screen.queryByRole("textbox", {name: /JSON/})).toBeNull();
   enter();
   fireEvent.click(screen.getByRole("button", {name: /Add field/}));

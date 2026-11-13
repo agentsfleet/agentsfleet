@@ -65,7 +65,7 @@ describe("FleetThread — header chrome", () => {
     expect(composer?.getAttribute("id")).toBe("fleet-steer-composer");
     const footer = container.querySelector('[data-testid="fleet-chat-footer"]');
     expect(footer?.contains(composer)).toBe(true);
-    expect(footer?.className).toMatch(/max-w-chat/);
+    expect(footer?.querySelector(".max-w-chat")?.contains(composer)).toBe(true);
     // The footer may shrink in a short panel; FleetThreadViewport.test.tsx
     // pins the classes that keep Send in view there.
     expect(container.querySelector('[role="log"]')?.contains(composer)).toBe(

@@ -35,6 +35,8 @@ export interface TimeProps
   format?: TimeFormat;
   tooltip?: boolean;
   locale?: string;
+  /** Named timezone for absolute schedule labels; the datetime stays canonical. */
+  timeZone?: string;
   /** Override the visible label while keeping the canonical datetime attr. */
   label?: string;
   /** Override the tooltip body. Defaults to the absolute formatted string. */
@@ -46,6 +48,7 @@ export function Time({
   format = "absolute",
   tooltip,
   locale = TIME_DEFAULT_LOCALE,
+  timeZone,
   label: labelOverride,
   tooltipContent,
   className,
@@ -67,7 +70,8 @@ export function Time({
   }
 
   const iso = toIso(d);
-  const label = labelOverride ?? visibleTimeLabel(value, format, locale, iso);
+  const label = labelOverride ?? (timeZone && format === "absolute"
+    ? formatTimeAbsolute(value, locale, timeZone) : visibleTimeLabel(value, format, locale, iso));
   const showTooltip = tooltip ?? format === "relative";
   const isRelative = format === "relative";
   // `clock` labels depend on the renderer's timezone the same way `relative`
@@ -89,7 +93,7 @@ export function Time({
 
   if (!showTooltip) return timeEl;
 
-  const tooltipBody = tooltipContent ?? formatTimeAbsolute(value, locale);
+  const tooltipBody = tooltipContent ?? formatTimeAbsolute(value, locale, timeZone);
   return (
     <Tooltip>
       <TooltipTrigger asChild>{timeEl}</TooltipTrigger>

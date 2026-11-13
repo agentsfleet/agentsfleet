@@ -93,6 +93,7 @@ mod instants;
 mod literals;
 mod locking;
 mod login;
+mod model_workspace;
 mod names;
 mod roles;
 mod shape;

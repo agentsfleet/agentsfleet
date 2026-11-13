@@ -58,6 +58,7 @@ use jiff::Timestamp;
 use sqlx::{Acquire as _, Transaction};
 
 use crate::error::{Result, entropy_drained, query};
+use crate::provider::KeyRef;
 use crate::provider::cap;
 use crate::provider::endpoint::Rejection;
 use crate::provider::selection::OwnModel;
@@ -133,7 +134,7 @@ impl Providers {
     pub async fn activate(
         &self,
         tenant_id: &Uuid7,
-        secret_ref: &str,
+        credential: KeyRef<'_>,
         model: Option<&str>,
         now: Timestamp,
     ) -> Result<Activation> {
@@ -143,7 +144,8 @@ impl Providers {
         let Some(locked) =
             sqlx::query_as::<_, LockedCredential>(sql::LOCK_CREDENTIAL_FOR_ACTIVATION)
                 .bind(tenant_id)
-                .bind(secret_ref)
+                .bind(credential.name)
+                .bind(credential.workspace_id)
                 .fetch_optional(&mut *transaction)
                 .await
                 .map_err(query(CONTEXT_ACTIVATE))?
@@ -172,7 +174,7 @@ impl Providers {
         let workspace = locked.workspace_id.clone();
         let opened = self
             .vault()
-            .open_stored(locked.envelope, &workspace, secret_ref)?;
+            .open_stored(locked.envelope, &workspace, credential.name)?;
         let vetted = match vet(opened.expose()) {
             Ok(vetted) => vetted,
             Err(Refused::Malformed) => return Ok(Activation::Malformed),
@@ -188,7 +190,7 @@ impl Providers {
         self.write_activation(
             transaction,
             tenant_id,
-            secret_ref,
+            credential,
             &vetted.provider,
             effective,
             now,
@@ -207,7 +209,7 @@ fn effective_model<'a>(override_: Option<&'a str>, credential: Option<&'a str>) 
 }
 
 impl Providers {
-    /// Whether `tenant_id` has a primary workspace at all, read in-transaction.
+    /// Whether `tenant_id` has any workspace, read in-transaction.
     ///
     /// The second half of telling two facts apart: a credential lock that
     /// matched nothing means the tenant has no workspace OR holds no such
@@ -221,13 +223,13 @@ impl Providers {
         transaction: &mut Transaction<'_, sqlx::Postgres>,
         tenant_id: &Uuid7,
     ) -> Result<bool> {
-        let held: Option<Uuid7> = sqlx::query_scalar(sql::SELECT_PRIMARY_WORKSPACE)
+        let held: bool = sqlx::query_scalar(sql::SELECT_WORKSPACE_EXISTS)
             .bind(tenant_id)
-            .fetch_optional(&mut **transaction)
+            .fetch_one(&mut **transaction)
             .await
             .map_err(query(CONTEXT_ACTIVATE))?;
 
-        Ok(held.is_some())
+        Ok(held)
     }
 
     /// The registry entry and the gated selection pointer, then commit.
@@ -235,7 +237,7 @@ impl Providers {
         &self,
         mut transaction: Transaction<'_, sqlx::Postgres>,
         tenant_id: &Uuid7,
-        secret_ref: &str,
+        credential: KeyRef<'_>,
         provider: &str,
         model: &str,
         now: Timestamp,
@@ -244,7 +246,8 @@ impl Providers {
             .bind(self.mint_entry_id(now)?)
             .bind(tenant_id)
             .bind(model)
-            .bind(secret_ref)
+            .bind(credential.name)
+            .bind(credential.workspace_id)
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_ACTIVATE))?;
@@ -253,7 +256,8 @@ impl Providers {
             .bind(tenant_id)
             .bind(provider)
             .bind(model)
-            .bind(secret_ref)
+            .bind(credential.name)
+            .bind(credential.workspace_id)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT_ACTIVATE))?;
@@ -267,7 +271,8 @@ impl Providers {
         let own = OwnModel {
             tenant_model_id: pointed.tenant_model_id.clone(),
             model: model.into(),
-            secret_ref: secret_ref.into(),
+            secret_ref: credential.name.into(),
+            workspace_id: Some(credential.workspace_id.clone()),
             provider: Some(provider.into()),
             context_cap_tokens: cap::stored(pointed.context_cap_tokens),
         };

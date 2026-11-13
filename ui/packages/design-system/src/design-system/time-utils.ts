@@ -6,7 +6,7 @@
  * bundle.
  */
 
-export type TimeFormat = "absolute" | "relative" | "datetime" | "clock";
+export type TimeFormat = "absolute" | "relative" | "datetime" | "clock" | "date" | "month";
 
 const DEFAULT_LOCALE = "en-US";
 
@@ -41,8 +41,12 @@ const ABSOLUTE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, ABSOLUTE_OPTIONS
 const CLOCK_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, CLOCK_OPTIONS);
 const UTC_DATE_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", year: "numeric", timeZone: "UTC"};
 const UTC_COMPACT_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC"};
+const UTC_CLOCK_OPTIONS: Intl.DateTimeFormatOptions = {hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC"};
 const UTC_DATE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_DATE_OPTIONS);
+const UTC_MONTH_OPTIONS: Intl.DateTimeFormatOptions = {month: "long", year: "numeric", timeZone: "UTC"};
+const UTC_MONTH_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_MONTH_OPTIONS);
 const UTC_COMPACT_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_COMPACT_OPTIONS);
+const UTC_CLOCK_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_CLOCK_OPTIONS);
 
 function formatterFor(
   locale: string,
@@ -63,9 +67,14 @@ export function toIso(d: Date): string {
 export function formatTimeAbsolute(
   value: string | Date,
   locale: string = DEFAULT_LOCALE,
+  timeZone?: string,
 ): string {
   const d = coerceDate(value);
   if (Number.isNaN(d.getTime())) return TIME_INVALID_FALLBACK;
+  if (timeZone) {
+    try { return new Intl.DateTimeFormat(locale, {...ABSOLUTE_OPTIONS, timeZone}).format(d); }
+    catch { return TIME_INVALID_FALLBACK; }
+  }
   return formatterFor(locale, ABSOLUTE_FORMAT, ABSOLUTE_OPTIONS).format(d);
 }
 
@@ -92,6 +101,13 @@ export function formatTimeCompactUtc(value: string | Date, locale: string = DEFA
   const date = coerceDate(value);
   if (Number.isNaN(date.getTime())) return TIME_INVALID_FALLBACK;
   return formatterFor(locale, UTC_COMPACT_FORMAT, UTC_COMPACT_OPTIONS).format(date);
+}
+
+/** Conversation clock: minute precision, with its exact UTC instant in Time. */
+export function formatTimeClockUtc(value: string | Date, locale: string = DEFAULT_LOCALE): string {
+  const date = coerceDate(value);
+  if (Number.isNaN(date.getTime())) return TIME_INVALID_FALLBACK;
+  return formatterFor(locale, UTC_CLOCK_FORMAT, UTC_CLOCK_OPTIONS).format(date);
 }
 
 /* The unit factors the relative label steps through. A month is 30 days and a
@@ -136,6 +152,11 @@ export function visibleTimeLabel(
   if (format === "datetime") return iso;
   if (format === "relative") return formatTimeRelative(value);
   if (format === "clock") return formatTimeClock(value, locale);
+  if (format === "date" || format === "month") {
+    const date = coerceDate(value);
+    const formatter = format === "month" ? formatterFor(locale, UTC_MONTH_FORMAT, UTC_MONTH_OPTIONS) : formatterFor(locale, UTC_DATE_FORMAT, UTC_DATE_OPTIONS);
+    return Number.isNaN(date.getTime()) ? TIME_INVALID_FALLBACK : formatter.format(date);
+  }
   return formatTimeAbsolute(value, locale);
 }
 

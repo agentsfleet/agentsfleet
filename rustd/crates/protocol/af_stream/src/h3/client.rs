@@ -49,20 +49,24 @@ pub(crate) async fn connect(
     crate::tls::key_exchange::require_session(initial.ssl_mut())?;
     let (driver, _completion, stats, mut key_exchange) =
         super::driver::Driver::new(driver, stop.clone());
+    let security = key_exchange.clone();
     let (_connection, handshake) = initial.handshake_fut(driver);
     let handshake = Box::pin(handshake);
-    let running = receiving(parent, deadline, &mut receive, async {
+    let running = receiving(parent, &stop, &security, deadline, &mut receive, async {
         handshake
             .await
             .map_err(|source| ErrorKind::QuicHandshake { source }.into())
     })
     .await?;
     tokio_quiche::InitialQuicConnection::<UdpSocket, _>::resume(running);
+    let negotiation = negotiated(&mut key_exchange);
     receiving(
         parent,
+        &stop,
+        &security,
         deadline,
         &mut receive,
-        negotiated(&mut key_exchange),
+        negotiation,
     )
     .await?;
     let (requests, receiver) = mpsc::channel(4);
@@ -72,35 +76,55 @@ pub(crate) async fn connect(
         af_observability::metrics::label::fleet::StreamPeer::Client,
     );
     let task = supervise(controller, receiver, stop, receive, shutdown, observed);
-    Ok((
-        Native::H3(Client {
-            requests,
-            stats,
-            key_exchange,
-            opened: 0,
-        }),
-        task,
-    ))
+    Ok((Native::H3(Client::new(requests, stats, key_exchange)), task))
 }
 
 /// The caller's token denotes cancellation; a native worker ending retains its cause.
 async fn receiving<T>(
     parent: &CancellationToken,
+    native: &CancellationToken,
+    security: &watch::Receiver<Option<crate::tls::KeyExchange>>,
     deadline: Instant,
     receive: &mut AbortOnDropHandle<Result<()>>,
     operation: impl Future<Output = Result<T>>,
 ) -> Result<T> {
     within(parent, deadline, Stage::Handshake, async {
-        tokio::select! {
+        let result = tokio::select! {
             biased;
             result = operation => result,
-            result = receive => {
+            result = &mut *receive => {
                 result??;
                 Err(ErrorKind::Closed { stage: Stage::Handshake }.into())
             }
+        };
+        let before_negotiation = security.borrow().is_none();
+        match result {
+            Err(failure)
+                if before_negotiation && native.is_cancelled() && erased_handshake(&failure) =>
+            {
+                // tokio-quiche erases an interrupted receiver's cause during handshake.
+                // Driver publishes security before identity checks and H3 initialization;
+                // those refusals remain authoritative even if their wrapper is opaque.
+                match receive.await? {
+                    Err(source) => Err(source),
+                    Ok(()) => Err(failure),
+                }
+            }
+            result => result,
         }
     })
     .await
+}
+
+fn erased_handshake(error: &crate::Error) -> bool {
+    let ErrorKind::QuicHandshake { source } = error.kind() else {
+        return false;
+    };
+    source.kind() == std::io::ErrorKind::Other
+        && source.get_ref().is_some_and(|cause| {
+            !cause.is::<tokio_quiche::quiche::Error>()
+                && !cause.is::<tokio_quiche::quic::HandshakeError>()
+        })
 }
 
 fn supervise(
@@ -124,6 +148,19 @@ fn supervise(
 }
 
 impl Client {
+    fn new(
+        requests: mpsc::Sender<Open>,
+        stats: watch::Receiver<NetworkStats>,
+        key_exchange: watch::Receiver<Option<crate::tls::KeyExchange>>,
+    ) -> Self {
+        Self {
+            requests,
+            stats,
+            key_exchange,
+            opened: 0,
+        }
+    }
+
     pub(crate) async fn open(&mut self, request: Request<Outgoing>) -> Result<Response<Incoming>> {
         if self.opened == crate::STREAMS {
             return Err(ErrorKind::Protocol.into());

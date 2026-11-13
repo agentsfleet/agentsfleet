@@ -1,3 +1,4 @@
+import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import type { Metadata } from "next";
 import { AuthProvider, AuthSessionKeeper } from "@/lib/auth/client";
 import { SIGN_IN_PATH } from "@/lib/auth/sign-in-redirect";
@@ -29,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       signUpFallbackRedirectUrl={DASHBOARD_ROOT_PATH}
       localization={{ userButton: { action__manageAccount: "Account" } }}
     >
-      <html lang="en" data-theme="dark">
+      <html lang="en" suppressHydrationWarning>
         <body>
           <AuthSessionKeeper />
           <AnalyticsBootstrap />
@@ -39,7 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               cli-auth each grew 10–20 kB gzipped for a component none of them
               render — and broke the size budget. Every tooltip in the app lives
               under the dashboard. */}
-          {children}
+          <ThemeProvider>{children}</ThemeProvider>
         </body>
       </html>
     </AuthProvider>

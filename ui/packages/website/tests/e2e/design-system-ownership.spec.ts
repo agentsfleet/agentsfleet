@@ -6,9 +6,11 @@ for (const theme of ["dark", "light"]) {
     await page.evaluate((value) => document.documentElement.dataset.theme = value, theme);
     const section = page.getByTestId("app-primitives");
     await expect(section).toBeVisible();
+    expect(await page.evaluate(async () => (await document.fonts.load('16px "Manrope Variable"', "Review the evidence")).length)).toBeGreaterThan(0);
+    expect(await page.locator(".font-display").first().evaluate((el) => getComputedStyle(el).fontFamily)).toContain("Manrope");
     const active = section.getByRole("link", { name: "Fleets" });
     await expect(active).toHaveAttribute("aria-current", "page");
-    expect(await active.evaluate((el) => getComputedStyle(el).fontFamily)).toContain("Instrument Sans");
+    expect(await active.evaluate((el) => getComputedStyle(el).fontFamily)).toContain("Manrope");
     const fill = section.locator(".usage-bar-fill");
     expect(await fill.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
     expect(await fill.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(0);
@@ -19,6 +21,7 @@ test("changing shared tokens updates consumers while technical text keeps its ro
   await page.goto("/_design-system");
   const section = page.getByTestId("app-primitives");
   const technicalFont = await section.locator("code").evaluate((el) => getComputedStyle(el).fontFamily);
+  expect(technicalFont).toContain("Commit Mono");
   await page.evaluate(() => {
     document.documentElement.style.setProperty("--ff-sans", "Georgia");
     document.documentElement.style.setProperty("--pulse", "rgb(11, 22, 33)");

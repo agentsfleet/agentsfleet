@@ -18,6 +18,5 @@ describe("root layout", () => {
   it("should mount the session keeper once above every route's content", () => {
     const markup = renderToStaticMarkup(RootLayout({ children: null }));
     expect(markup.split(KEEPER_MARKER).length - 1).toBe(1);
-    expect(markup).toContain('data-theme="dark"');
   });
 });

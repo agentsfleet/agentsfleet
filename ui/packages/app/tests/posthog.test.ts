@@ -72,6 +72,7 @@ async function loadModule(options: {
   }
 
   vi.unstubAllEnvs();
+  for (const key of ["NEXT_PUBLIC_POSTHOG_KEY", "NEXT_PUBLIC_POSTHOG_HOST", "NEXT_PUBLIC_POSTHOG_ENABLED"]) vi.stubEnv(key, undefined);
   for (const [key, value] of Object.entries(options.env ?? {})) {
     if (value === undefined) continue;
     vi.stubEnv(key, value);
@@ -87,6 +88,7 @@ describe("app analytics", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_ENABLED", undefined);
     vi.stubGlobal(
       "requestIdleCallback",
       vi.fn((callback: () => void) => {

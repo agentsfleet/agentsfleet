@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Badge, CopyButton, cn } from "@agentsfleet/design-system";
-import { LockIcon } from "lucide-react";
+import { LockIcon } from "@phosphor-icons/react/ssr";
 import { providerLabel } from "@/lib/api/model-library-types";
 import { modelIdCopyLabel, modelLabel } from "@/lib/models/display";
 
@@ -55,7 +55,6 @@ export function ModelName({
   displayName,
   managedByPlatform = false,
   trimmed = false,
-  copyable = true,
   trailing,
 }: {
   modelId: string;
@@ -64,8 +63,6 @@ export function ModelName({
   trimmed?: boolean;
   /** Marks the row as a platform admin's, which a tenant admin cannot edit. */
   managedByPlatform?: boolean;
-  /** Show the identifier copy control where the table offers it as an action. */
-  copyable?: boolean;
   /** What follows the name on this table, such as the library's Default badge. */
   trailing?: ReactNode;
 }) {
@@ -81,7 +78,7 @@ export function ModelName({
         >
           {modelLabel(modelId, displayName)}
         </span>
-        {copyable ? <CopyButton value={modelId} label={modelIdCopyLabel(modelId)} /> : null}
+        <CopyButton value={modelId} label={modelIdCopyLabel(modelId)} />
       </span>
       {trailing}
     </span>

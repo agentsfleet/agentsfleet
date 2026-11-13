@@ -7,8 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Button,
-  cn,
-  EYEBROW_CLASS,
+  DialogFooter,
   Form,
   FormControl,
   FormField,
@@ -17,17 +16,16 @@ import {
   FormMessage,
   Input,
   Spinner,
-  TooltipButton,
 } from "@agentsfleet/design-system";
-import { XIcon } from "lucide-react";
+import { XIcon, CaretDownIcon } from "@phosphor-icons/react/ssr";
 import { createSecretAction, replaceSecretAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
 import { SECRET_NAME_MAX } from "../lib/secret-data";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
-import { CREATE_SECRET_TOOLTIP } from "../copy";
 
 type Props = {
+  showValueNotice?: boolean;
   workspaceId: string;
   initialName?: string;
   initialFields?: readonly string[];
@@ -44,7 +42,7 @@ export const SECRET_FORM_MODE = {CREATE: "create", REPLACE: "replace"} as const;
 
 const STORE_ACTION = "store the secret";
 const ADD_FIELD_LABEL = "Add field";
-const ADD_SECRET_LABEL = "Create";
+const ADD_SECRET_LABEL = "Add";
 // New names support instruction references; existing vault names stay immutable.
 const NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 const FIELD_PATTERN = /^[A-Za-z0-9_]+$/;
@@ -115,20 +113,29 @@ const EMPTY_FIELD = { key: "", value: "" };
 export default function AddSecretForm(props: Props) {
   const state = useSecretForm(props);
   const {form, pending, apiError, onSubmit} = state;
-  const submitLabel = props.mode === SECRET_FORM_MODE.REPLACE ? "Save changes" : ADD_SECRET_LABEL;
+  const [namedFields, setNamedFields] = useState(props.mode === SECRET_FORM_MODE.REPLACE || Boolean(props.initialFields?.length));
+  const submitLabel = props.mode === SECRET_FORM_MODE.REPLACE ? "Replace value" : ADD_SECRET_LABEL;
   return <Form {...form}>
-    <form onSubmit={event => {void form.handleSubmit(onSubmit)(event);}} className="space-y-md">
-      <SecretNameField form={form} readOnly={props.mode === SECRET_FORM_MODE.REPLACE} />
-      {props.initialHost !== undefined ? <SecretHostField form={form} /> : null}
-      <SecretFields form={form} />
-      <div className="flex justify-end gap-2">
-        {props.onCancel ? <Button type="button" variant="ghost" disabled={pending} onClick={props.onCancel}>Cancel</Button> : null}
-        <TooltipButton type="submit" disabled={pending} aria-busy={pending || undefined} aria-label={submitLabel}
-          tooltip={props.mode === SECRET_FORM_MODE.REPLACE ? "Replace the fields stored under this name" : CREATE_SECRET_TOOLTIP}>
-          {pending ? <Spinner size="sm" srLabel="Saving" /> : null}{submitLabel}
-        </TooltipButton>
+    <form onSubmit={event => {void form.handleSubmit(onSubmit)(event);}}>
+      <div className="space-y-xl">
+        <SecretNameField form={form} readOnly={props.mode === SECRET_FORM_MODE.REPLACE} />
+        {props.initialHost !== undefined ? <SecretHostField form={form} /> : null}
+        {namedFields ? <SecretFields form={form} /> : <>
+          <FormField control={form.control} name="fields.0.value" render={({field}) => <FormItem>
+            <FormLabel>Value</FormLabel><FormControl><Input type="password" autoComplete="off" spellCheck={false} {...field} /></FormControl><FormMessage />
+          </FormItem>} />
+          <Button type="button" variant="ghost" className="px-0 text-muted-foreground" onClick={() => {form.setValue("fields.0.key", ""); setNamedFields(true);}}>Use named fields<CaretDownIcon size={16} aria-hidden="true" /></Button>
+        </>}
+        {props.showValueNotice !== false ? <p className="text-eyebrow text-text-dim">Secret values are hidden after saving.</p> : null}
+        {apiError ? <p className="text-body-sm text-destructive">{apiError}</p> : null}
       </div>
-      {apiError ? <p className="text-body-sm text-destructive">{apiError}</p> : null}
+      <DialogFooter>
+        {props.onCancel ? <Button type="button" variant="outline" disabled={pending} onClick={props.onCancel}>Cancel</Button> : null}
+        <Button type="submit" disabled={pending} aria-busy={pending || undefined} aria-label={submitLabel}
+          >
+          {pending ? <Spinner size="sm" srLabel="Saving" /> : null}{submitLabel}
+        </Button>
+      </DialogFooter>
     </form>
   </Form>;
 }
@@ -140,7 +147,7 @@ function useSecretForm({workspaceId, initialName = "", initialFields = [], initi
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema(mode, initialHost !== undefined)),
     defaultValues: {name: initialName, host: initialHost,
-      fields: initialFields.length ? initialFields.map(key => ({key, value: ""})) : [{...EMPTY_FIELD}]},
+      fields: initialFields.length ? initialFields.map(key => ({key, value: ""})) : [{key: mode === SECRET_FORM_MODE.CREATE ? "value" : "", value: ""}]},
   });
   const onSubmit = (values: FormValues): void => {
     setApiError(null);
@@ -157,7 +164,7 @@ function useSecretForm({workspaceId, initialName = "", initialFields = [], initi
           return;
         }
         if (mode === SECRET_FORM_MODE.CREATE) captureProductEvent(EVENTS.secret_added, {secret_name: name});
-        form.reset({name: "", host: initialHost, fields: [{...EMPTY_FIELD}]});
+        form.reset({name: "", host: initialHost, fields: [{key: mode === SECRET_FORM_MODE.CREATE ? "value" : "", value: ""}]});
         onDone?.(name);
         router.refresh();
       } catch {
@@ -172,9 +179,9 @@ type SecretForm = ReturnType<typeof useSecretForm>["form"];
 
 function SecretNameField({form, readOnly}: {form: SecretForm; readOnly: boolean}) {
   return <FormField control={form.control} name="name" render={({field}) => <FormItem>
-    <FormLabel>Secret name</FormLabel>
+    <FormLabel>Name</FormLabel>
     <FormControl><Input placeholder="stripe" className="font-mono" spellCheck={false} readOnly={readOnly} {...field} /></FormControl>
-    <p className="text-body-sm leading-body-sm text-muted-foreground">
+    <p className="text-eyebrow leading-eyebrow text-text-dim">
       Reference its fields in instructions as <code className="font-mono">${"{secrets.name.field}"}</code>.
     </p>
     <FormMessage />
@@ -193,8 +200,8 @@ function SecretHostField({form}: {form: SecretForm}) {
 function SecretFields({form}: {form: SecretForm}) {
   const {fields, append, remove} = useFieldArray({control: form.control, name: "fields"});
   return <div className="space-y-2">
-    <span className={cn(EYEBROW_CLASS, "block text-muted-foreground")}>Fields</span>
-    <div className="space-y-2">{fields.map((row, index) =>
+    <span className="block text-label font-medium">Named fields</span>
+    <div className="space-y-lg">{fields.map((row, index) =>
       <SecretFieldRow key={row.id} form={form} index={index} canRemove={fields.length > 1} onRemove={() => remove(index)} />
     )}</div>
     <Button type="button" variant="link" size="sm" onClick={() => append({...EMPTY_FIELD})}>+ {ADD_FIELD_LABEL}</Button>
@@ -202,16 +209,16 @@ function SecretFields({form}: {form: SecretForm}) {
 }
 
 function SecretFieldRow({form, index, canRemove, onRemove}: {form: SecretForm; index: number; canRemove: boolean; onRemove: () => void}) {
-  return <div className="flex items-start gap-2">
-    <FormField control={form.control} name={`fields.${index}.key`} render={({field}) => <FormItem className="w-48 flex-none">
+  return <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-lg sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+    <FormField control={form.control} name={`fields.${index}.key`} render={({field}) => <FormItem className="min-w-0">
       <FormControl><Input aria-label={`Field ${index + 1} name`} placeholder="api_key" className="font-mono" spellCheck={false} autoComplete="off" {...field} /></FormControl>
       <FormMessage />
     </FormItem>} />
-    <FormField control={form.control} name={`fields.${index}.value`} render={({field}) => <FormItem className="flex-1">
+    <FormField control={form.control} name={`fields.${index}.value`} render={({field}) => <FormItem className="col-span-full col-start-1 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1">
       <FormControl><Input aria-label={`Field ${index + 1} value`} type="password" placeholder="value (write-only)" className="font-mono" spellCheck={false} autoComplete="off" {...field} /></FormControl>
       <FormMessage />
     </FormItem>} />
-    <Button type="button" variant="ghost" size="sm" aria-label={`Remove field ${index + 1}`} disabled={!canRemove} onClick={onRemove}>
+    <Button type="button" variant="ghost" size="sm" className="col-start-2 row-start-1 sm:col-start-3" aria-label={`Remove field ${index + 1}`} disabled={!canRemove} onClick={onRemove}>
       <XIcon size={16} />
     </Button>
   </div>;

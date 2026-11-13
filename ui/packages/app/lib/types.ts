@@ -120,6 +120,7 @@ export type TenantProvider = {
   model: string;
   context_cap_tokens: number;
   secret_ref: string | null;
+  workspace_id?: string;
   /** Whether an active platform default exists, independent of `mode` — lets
    * the Models page gate "Switch to Default" before the click. */
   platform_default_available: boolean;

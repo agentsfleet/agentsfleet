@@ -46,6 +46,7 @@ mod store;
 mod vetted;
 mod wire;
 
+use af_core::id::Uuid7;
 use serde::de::DeserializeOwned;
 
 use crate::error::{Result, provider_malformed};
@@ -63,6 +64,15 @@ pub use self::secret_kind::SecretKind;
 pub use self::selection::{OwnModel, PlatformDefault, Selection};
 pub use self::store::Providers;
 pub use self::wire::Wire;
+
+/// A credential's explicit workspace and its name within that workspace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyRef<'a> {
+    /// The workspace holding the row.
+    pub workspace_id: &'a Uuid7,
+    /// The row's name within it.
+    pub name: &'a str,
+}
 
 /// Validates the provider/base-url pairing without exposing endpoint internals.
 ///

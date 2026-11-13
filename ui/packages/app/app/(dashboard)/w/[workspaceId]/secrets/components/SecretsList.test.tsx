@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { formatTimeAbsolute, TooltipProvider } from "@agentsfleet/design-system";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import { type Secret } from "@/lib/api/secrets";
 import { SECRET_KIND } from "@/lib/api/secrets-types";
 
@@ -59,7 +59,8 @@ function twoSecrets(): Secret[] {
 
 /** Click the row's delete, then confirm in the alert dialog. */
 async function confirmDelete(name: string) {
-  fireEvent.click(screen.getByRole("button", { name: `Delete secret ${name}` }));
+  fireEvent.click(screen.getByRole("button", {name: `Manage ${name}`}));
+    fireEvent.click(screen.getByRole("button", {name: "Delete secret"}));
   const dialog = await screen.findByRole("alertdialog");
   fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 }
@@ -171,44 +172,27 @@ describe("SecretsList — optimistic delete", () => {
   });
 });
 
-describe("SecretsList Created cell", () => {
-  it("test_secrets_created_relative", async () => {
-    const { container } = renderList([providerSecret(CREATED_AT)]);
-
-    // The Created cell renders a <time> whose datetime is the ISO instant and
-    // whose visible text is the relative "… ago" label.
-    const timeEl = container.querySelector("time");
-    expect(timeEl).not.toBeNull();
-    expect(timeEl!.getAttribute("datetime")).toBe(new Date(CREATED_AT).toISOString());
-    expect(timeEl!.textContent).toMatch(/ago$/);
-
-    // Focus opens the Radix tooltip, which carries the absolute timestamp.
-    const absolute = formatTimeAbsolute(CREATED_AT);
-    fireEvent.focus(timeEl!);
-    const tips = await screen.findAllByText(absolute);
-    expect(tips.length).toBeGreaterThan(0);
+describe("the approved secret rows", () => {
+  it("shows type and hidden value without guessing access", () => {
+    renderList([providerSecret(CREATED_AT)]);
+    expect(screen.getByText("OpenAI key")).toBeTruthy();
+    expect(screen.getByText("Hidden")).toBeTruthy();
+    expect(screen.getByText("Access details unavailable")).toBeTruthy();
   });
-});
 
-describe("SecretsList name cell", () => {
-  it("a long secret name ellipsizes and keeps its icons in line", () => {
-    const longName = "billing-warehouse-replica-read-only-credentials-for-the-nightly-export";
-    renderList([{ ...providerSecret(CREATED_AT), name: longName }]);
-    // From sm up the name sits in one fixed slot, as wide on every row, that
-    // truncates; the full name is its hover. On a phone the slot gives way.
-    const slot = screen.getByTitle(longName);
-    expect(slot.className).toContain("truncate");
-    expect(slot.className).toContain("sm:min-w-trim");
-    expect(slot.className).toContain("sm:max-w-trim");
-    // Below sm the slot may shrink: no unprefixed floor holds it at the trim width.
-    expect(slot.classList.contains("min-w-0")).toBe(true);
-    expect(slot.classList.contains("min-w-trim")).toBe(false);
-    // Copy is the only action beside the name; value editing belongs to Actions.
-    const iconRow = slot.parentElement!;
-    expect(within(iconRow).getByRole("button", { name: `Copy secret name: ${longName}` })).toBeTruthy();
-    expect(within(iconRow).getAllByRole("button")).toHaveLength(1);
-    expect(screen.queryByRole("button", {name: `Rename secret ${longName}`})).toBeNull();
-    expect(screen.getByRole("button", {name: `Edit secret ${longName}`})).toBeTruthy();
+  it("keeps the complete long reference readable in its row and delete confirmation", async () => {
+    const name = "billing-warehouse-replica-read-only-credentials-for-the-nightly-export";
+    renderList([{...providerSecret(CREATED_AT), name}]);
+    expect(screen.getByText(name).className).toContain("break-words");
+    expect(screen.getByRole("button", {name: `Manage ${name}`})).toBeTruthy();
+    expect(screen.queryByRole("button", {name: /Rename secret/})).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: `Manage ${name}`}));
+    fireEvent.click(screen.getByRole("button", {name: "Delete secret"}));
+    const dialog = await screen.findByRole("alertdialog");
+    const target = within(dialog).getByText(`“${name}”`, {exact: true});
+    expect(dialog.getAttribute("aria-describedby")?.split(/\s+/)).toContain(target.closest("p")?.id);
+    expect(within(dialog).getByRole("heading", {name: "Delete secret?"})).toBeTruthy();
+    expect(deleteSecretActionMock).not.toHaveBeenCalled();
   });
 });
 
@@ -221,7 +205,8 @@ describe("SecretsList — deleting a connection's secret", () => {
   }
 
   async function openDelete(name: string) {
-    fireEvent.click(screen.getByRole("button", { name: `Delete secret ${name}` }));
+    fireEvent.click(screen.getByRole("button", {name: `Manage ${name}`}));
+    fireEvent.click(screen.getByRole("button", {name: "Delete secret"}));
     return screen.findByRole("alertdialog");
   }
 
@@ -254,13 +239,10 @@ describe("SecretsList — deleting a connection's secret", () => {
   });
 });
 
-it("filters secrets by name without revealing values or making requests", async () => {
+it("keeps all workspace secrets visible without making extra requests", () => {
   renderList(twoSecrets());
-  fireEvent.change(screen.getByRole("searchbox", {name: "Search secrets"}), {target: {value: "ANTHROPIC"}});
-  await waitFor(() => expect(screen.queryByRole("button", {name: "Edit secret openai"})).toBeNull());
-  expect(screen.getByRole("button", {name: "Edit secret anthropic"})).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", {name: "Clear search"}));
-  await screen.findByRole("button", {name: "Edit secret openai"});
+  expect(screen.getByRole("button", {name: "Manage openai"})).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Manage anthropic"})).toBeTruthy();
   expect(refreshMock).not.toHaveBeenCalled();
   expect(deleteSecretActionMock).not.toHaveBeenCalled();
 });

@@ -136,25 +136,29 @@
   [data-signal-spinner] path:nth-child(8) { animation-delay: -0.2s; }
 }
 
-/* Running icons and chat labels share a cadence. The label's moving highlight
- * changes paint only, keeping the transcript and its reading position stable. */
+/* Status motion changes paint only; no layout or reading-position changes. */
 @keyframes tool-shimmer {
   0%, 100% { color: var(--text-dim); background-position: 150% 0; }
   50% { color: var(--tool-active-color, var(--pulse)); background-position: -50% 0; }
 }
 
 [data-tool-shimmer="true"] { animation: tool-shimmer 2.4s ease-in-out infinite; }
+@keyframes chat-status-sweep {
+  0%, 12% { background-position: 100% 0; }
+  88%, 100% { background-position: 0% 0; }
+}
 [data-chat-loading="true"] {
-  background-image: linear-gradient(110deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%);
+  color: var(--chat-loading-base, var(--text-subtle));
+  background-image: linear-gradient(100deg, var(--chat-loading-base, var(--text-subtle)) 30%, var(--chat-loading-sweep, var(--text-dim)) 50%, var(--chat-loading-base, var(--text-subtle)) 70%);
   background-size: 250% 100%;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: tool-shimmer 2.4s ease-in-out infinite;
+  animation: chat-status-sweep 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   [data-tool-shimmer="true"] { animation: none; color: var(--tool-active-color, var(--pulse)); opacity: 1; }
-  [data-chat-loading="true"] { animation: none; background: none; -webkit-text-fill-color: currentColor; color: var(--muted-foreground); }
+  [data-chat-loading="true"] { animation: none; background: none; -webkit-text-fill-color: currentColor; color: var(--text-muted); }
 }
 @media (forced-colors: active) {
   [data-chat-loading="true"] { animation: none; background: none; -webkit-text-fill-color: currentColor; color: CanvasText; }

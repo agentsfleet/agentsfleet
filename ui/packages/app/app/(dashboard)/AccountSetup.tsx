@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
-import { LoaderCircleIcon } from "lucide-react";
+import { Button, EmptyState, PageHeader, PageLayout, PageTitle, SignalSpinner } from "@agentsfleet/design-system";
 import { useSessionRefresh } from "@/lib/auth/client";
 
 // A new account's first minutes. Signup opens the account from
@@ -78,7 +77,7 @@ export function AccountSetup() {
       <EmptyState
         icon={
           stalled ? undefined : (
-            <LoaderCircleIcon size={32} className="motion-safe:animate-spin" aria-hidden />
+            <SignalSpinner className="size-6" />
           )
         }
         title={stalled ? STATE_TITLE_STALLED : STATE_TITLE_WAITING}

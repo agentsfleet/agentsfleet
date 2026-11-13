@@ -297,4 +297,3 @@ describe("built_binary_help_hides_platform_without_scope", () => {
     });
   }
 });
-
