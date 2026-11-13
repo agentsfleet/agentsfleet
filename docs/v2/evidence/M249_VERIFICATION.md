@@ -152,9 +152,9 @@ Flow 2 capabilities, real upload storage, mention invocation, new secret policy 
 
 ## Post-merge implementation start
 
-The repository follow-up is [M249_004](../pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md), with a [Claude handoff](M249_004_CLAUDE_HANDOFF.md).
-It remains pending. Its implementation starts after both UI and CLI merges; M249_003 on Claude's branch owns Plugin vocabulary.
-The historical downloadable prompt below is superseded by that repository handoff.
+The repository follow-up is [M249_004](../pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md), with a [Claude handoff](M249_004_CLAUDE_HANDOFF.md). It remains pending.
+
+Its implementation starts after both UI and CLI merges; M249_003 on Claude's branch owns Plugin vocabulary. The historical downloadable prompt below is superseded by that repository handoff.
 
 Use these instructions if the downloadable backend-gap prompt cannot be opened.
 
@@ -379,7 +379,9 @@ Rail sizing, phone card insets, 900px padding, setup wrapping, filter width and 
 
 The new long-name fixture exercises Manage, Replace and Delete with one complete technical name. Existing permission checks and mutation ownership stay in place.
 
-Indy answered “Accept all nine recommendations” on Nov 13. The normal conversation omits the Changes flap; expanding native tool activity shows it. The phone composer scrolls with the transcript. See M249_EXCEPTIONS.md.
+Indy answered “Accept all nine recommendations” on Nov 13. The normal conversation omits the Changes flap; expanding native tool activity shows it.
+
+The phone composer scrolls with the transcript. See M249_EXCEPTIONS.md.
 
 No Ready-to-review status is invented without a backend fact. Small transcript/card offsets remain open until measured against the reference.
 
@@ -389,35 +391,61 @@ Final light, intermediate-width, loader and authenticated checks remain pending.
 
 ## Owner visual gate, Nov 13
 
-The owner ended the external review ZIP loop. Use M249_VISUAL_GATE.md as the gate and keep captures internal. A final claim requires the complete matrix, a clean candidate revision, reference measurements from the unchanged proposal, and a fresh adversarial pass. The owner will review the final result and review again after deployment.
+The owner ended the external review ZIP loop. Use M249_VISUAL_GATE.md as the gate and keep captures internal.
+
+A final claim requires the complete matrix, a clean candidate revision, reference measurements from the unchanged proposal, and a fresh adversarial pass. The owner will review the final result and review again after deployment.
 
 The first diagnostic run on the current repairs recorded 332 states across all four widths with zero browser errors. A later 49-state diagnostic added full long names and toasts without the review bar. Neither run is clean-commit evidence or a visual pass.
 
 The cost label was 12px/400; it now uses the proposal’s 13px/20px/500 role. Diagnostic corner readings are 10px for attachments, 22/22/6/22px for the user bubble, and 22px on every Summary/composer corner. The final run must repeat these readings.
 
-Checks changed: phone footer height comes from the reference (44px), rather than the previous incorrect 40px expectation. Wide-form actions use the accepted 44px size. Source measurements compare shell-relative coordinates because the reference review bar can grow to fit its navigation. Tolerances stay unchanged.
+Checks changed: phone footer height comes from the reference (44px), rather than the previous incorrect 40px expectation. Wide-form actions use the accepted 44px size.
+
+Source measurements compare shell-relative coordinates because the reference review bar can grow to fit its navigation. Tolerances stay unchanged.
 
 ### Owner typography follow-up
 
-The proposal’s embedded Latin Manrope font and the installed shared font are byte-identical: SHA-256 `a30ddcd349703aff7464c34bef3fffdff405ee50c113440d7c8693c02d210972`. Main paragraphs are 13px/20px at weight 400; the approval action and Summary row titles are weight 500 in both diagnostic renders. The app forced grayscale font smoothing while the proposal uses the browser default. Remove that override and compare the new captures.
+The proposal’s embedded Latin Manrope font and the installed shared font are byte-identical: SHA-256 `a30ddcd349703aff7464c34bef3fffdff405ee50c113440d7c8693c02d210972`. Main paragraphs are 13px/20px at weight 400; the approval action and Summary row titles are weight 500 in both diagnostic renders.
 
-View exact action replaces the inline Action details disclosure. It opens the shared dialog for recorded tool/action, scope, evidence, expiry and optional reason. Approve and Deny keep their existing decision owner in the conversation. No separate approval page returns. The request dialog is added to the capture matrix.
+The app forced grayscale font smoothing while the proposal uses the browser default. Remove that override and compare the new captures.
 
-The owner’s follow-up puts raw commands, targets, tool identifiers and per-call duration inside each fold. Activity uses the shared disclosure, connecting line, generic action label and recorded outcome. Open groups omit their surrounding horizontal rules. Tests still assert the raw input, literal output, native timing and reload equivalence after opening details.
+View exact action replaces the inline Action details disclosure. It opens the shared dialog for recorded tool/action, scope, evidence, expiry and optional reason.
 
-Secrets scope: Indy wrote, “this is not a priority but i plan ti revamp and change.” The refresh retains named secret fields required by the current API. The later Secrets editor redesign remains separate; this pass fixes its shared dialog layout, full-name readability and footer.
+Approve and Deny keep their existing decision owner in the conversation. No separate approval page returns.
+
+The request dialog is added to the capture matrix.
+
+The owner’s follow-up puts raw commands, targets, tool identifiers and per-call duration inside each fold. Activity uses the shared disclosure, connecting line, generic action label and recorded outcome.
+
+Open groups omit their surrounding horizontal rules. Tests still assert the raw input, literal output, native timing and reload equivalence after opening details.
+
+Secrets scope follows Indy’s direction:
+
+> “this is not a priority but i plan ti revamp and change.”
+
+The refresh retains named secret fields required by the current API. The later Secrets editor redesign remains separate; this pass fixes its shared dialog layout, full-name readability and footer.
 
 `make lint-app test-unit-app` completed on the source repairs: 478 test files and 4,564 tests passed (`refresh-visual-gate-v220.log`). This is the app lane, not the final repository gate. Tests explicitly open disclosures to verify tool identity and literal input/output instead of requiring those details in the collapsed line.
 
 ## Review delivery update
 
-Indy stopped the full internal capture run and requested fixes against the matrix. He will review the PR preview or deployment. No additional ZIP or gallery is required. The interrupted v223 run is partial evidence and carries no pass claim.
+Indy stopped the full internal capture run and requested fixes against the matrix. He will review the PR preview or deployment.
 
-The first native dry run after the repairs passed 4,564 app unit tests and 84 of 90 browser tests. The six browser failures are desktop/phone copies of three checks: collapsed activity still expected inline targets, the shared sample added a third member, and Manage still expected its former name-only title. Keep the three-row sample explicit, assert the generic summary plus full accessible identity, and verify the complete secret name inside the management dialog.
+No additional ZIP or gallery is required. The interrupted v223 run is partial evidence and carries no pass claim.
 
-The saved-fleet header now uses the same New fleet shortcut as resource headers, including its fresh-chat intent. Edit setup stays in Fleet actions. This follows the proposal’s header action and gate item G4. Compact wake-up titles use the essential 13px/20px/500 role; additional schedule and model details use shared caret disclosures. Logo framing follows the proposal’s original inset artwork while retaining navigation targets.
+The first native dry run after the repairs passed 4,564 app unit tests and 84 of 90 browser tests. The six browser failures duplicate three checks across desktop and phone:
 
-The one-off full-matrix renderer/report scripts are kept locally outside the repository. The PR keeps the production fixes, browser regression checks, shared measurement fixture and owner findings. The native dry lane remains mandatory; artifact packaging is not a release condition.
+- Collapsed activity still expected inline targets.
+- The shared sample added a third member.
+- Manage still expected its former name-only title. Keep the three-row sample explicit, assert the generic summary plus full accessible identity, and verify the complete secret name inside the management dialog.
+
+The saved-fleet header now uses the same New fleet shortcut as resource headers, including its fresh-chat intent. Edit setup stays in Fleet actions.
+
+This follows the proposal’s header action and gate item G4. Compact wake-up titles use the essential 13px/20px/500 role; additional schedule and model details use shared caret disclosures.
+
+Logo framing follows the proposal’s original inset artwork while retaining navigation targets.
+
+The one-off full-matrix renderer/report scripts are kept locally outside the repository. The PR keeps the production fixes, browser regression checks, shared measurement fixture and owner findings. The native dry lane remains mandatory; ZIP packaging is not a release condition.
 
 ## Cleanup before coverage and Claude assistance
 
@@ -429,12 +457,23 @@ These repairs stay in M249_001. Final coverage starts after their review and int
 
 Indy requested issue-based assistance:
 
+<!-- lint-ignore: DOC-02 — preserve the owner’s handoff instruction verbatim. -->
 > "When you are ready, i expect you to create an gh issue, push your code and give a handoff prompt for claude to work and give back to you."
 
 > "In your PR you mark as `Closed #<issue number>`"
 
 The handoff must identify the pushed base, bounded files, regression requirements and return branch. Aiwa reviews the return and owns the final UI PR.
 
-The assistance checkpoint passed `make lint-app lint-design-system test-unit-app test-unit-design-system`: app 478 files/4,564 tests; design system 65 files/514 tests.
-Evidence: `refresh-checkpoint-v231.log`. Full-history and staged secret scans found no leaks; `orly gate work` passed.
-This checkpoint does not claim final coverage, dry-app, authenticated acceptance, bundles or PR-gate completion.
+The assistance checkpoint passed `make lint-app lint-design-system test-unit-app test-unit-design-system`: app 478 files/4,564 tests; design system 65 files/514 tests. Evidence: `refresh-checkpoint-v231.log`.
+
+Full-history and staged secret scans found no leaks; `orly gate work` passed. This checkpoint does not claim final coverage, dry-app, authenticated acceptance, bundles or PR-gate completion.
+
+Claude's cleanup is tracked in [#838](https://github.com/agentsfleet/agentsfleet/issues/838), based on pushed code commit `34f5158853567aab9ba53fe27012e72f6be95f38`.
+
+The first push-gate run passed full lint and version checks but found 47 documentation-language violations. The assistance checkpoint was pushed with that result disclosed.
+
+The prose repairs split long paragraphs and lists. Review tolerances and required checks remain unchanged.
+
+The owner's exact quotation uses a paragraph-scoped DOC-02 exception.
+
+The documentation repairs passed `orly gate verify` (`refresh-checkpoint-verify-v234.log`): documentation language, full repository lint and version checks.
