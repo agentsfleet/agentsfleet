@@ -1252,3 +1252,13 @@ File inventory adds `deploy/local/codex-compose.yml`. Its Caddy health probe dis
 The complete TypeScript coverage target passes on `b22d51c91`: app 4,564, website 133, CLI 2,223, design system 502. Every enforced coverage metric is 100 percent. CLI retains its 17 existing live-lane skips. Evidence: `refresh-typescript-coverage-v121.log`, exit 0.
 
 The repository gate passed integration with 1,772 tests, lint and version checks. Two runner process-cleanup tests failed under the detached supervisor. A verified Tini recipe shell then passed the unchanged native runner target: 1,731 tests. This runtime setup preserves all commands, assertions, test selections and deadlines. Evidence: `refresh-pr-gate-v122.log` and `refresh-runner-reaper-v125.json`. The full gate still requires a fresh run on the pushed candidate.
+
+
+### Runner receive failure found during final verification, Nov 13, 2026
+
+The lower-parallelism gate exposed a QUIC failure during sustained-outage shutdown. The runner returned a fatal handshake error instead of preserving the receiver's original network cause. Evidence: `refresh-integration-v129.log`, `recovery/runner.rs:91`. No test assertion or timeout changes are authorized by this repair.
+
+Bounded repair inventory: `rustd/crates/protocol/af_stream/src/h3/client.rs` and `rustd/crates/protocol/af_stream/src/h3/client_tests.rs`. Reproduce the competing ready errors deterministically before changing production code. Preserve certificate, key-exchange and protocol refusals. Preserve the original receiver cause only when the native worker has stopped and the handshake wrapper has erased its type. The existing connection and supervisor remain the sole transport and retry owners.
+
+
+The regression failed before repair: the competing ready handshake wrapper was classified as TLS instead of the receiver's network failure. A second regression exposed erased post-negotiation refusals. The existing key-exchange watch now excludes identity checks and H3 initialization from reconciliation. Nine focused tests pass, including typed refusals, successful receiver completion, cancellation and the unchanged deadline. Source review closed its security finding; full repository verification remains required. Evidence: `refresh-handshake-race-red-v131.log`, `refresh-handshake-security-red-v133.log`, `refresh-handshake-security-green-v135.log`.
