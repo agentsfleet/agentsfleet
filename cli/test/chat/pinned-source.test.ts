@@ -13,7 +13,7 @@ import { CANDIDATE_ID, DRAFT, DRAFT_ID, FLEET, FLEET_ID, LIBRARY_ID, MODEL, PRIV
 
 const DRAFTS = `/v1/workspaces/${WORKSPACE}/drafts`;
 const FLEETS = `/v1/workspaces/${WORKSPACE}/fleets`;
-const LIBRARY_ARGS = ["--library", LIBRARY_ID, "--revision", REVISION_ID, "--model", MODEL, "--no-input"];
+const LIBRARY_ARGS = ["--plugin", LIBRARY_ID, "--revision", REVISION_ID, "--model", MODEL, "--no-input"];
 const FLEET_ARGS = ["--fleet", FLEET_ID, "--setup-revision", FLEET.setup_revision, "--model", MODEL, "--no-input"];
 const LIBRARY_SOURCE = {kind: DRAFT_SOURCE.library, library_id: LIBRARY_ID, revision_id: REVISION_ID};
 const FLEET_SOURCE = {kind: DRAFT_SOURCE.fleet, fleet_id: FLEET_ID, setup_revision: FLEET.setup_revision};
@@ -95,13 +95,13 @@ test("a Library first message still travels with its source in one atomic creati
 });
 
 const CONFLICTS: ReadonlyArray<readonly [string, ReadonlyArray<string>, string]> = [
-  ["--library with --fleet", [...LIBRARY_ARGS, "--fleet", FLEET_ID, "--setup-revision", "1"], "Choose one source"],
-  ["--library on a resumed draft", [DRAFT_ID, "--library", LIBRARY_ID, "--revision", REVISION_ID, "--no-input"],
+  ["--plugin with --fleet", [...LIBRARY_ARGS, "--fleet", FLEET_ID, "--setup-revision", "1"], "Choose one source"],
+  ["--plugin on a resumed draft", [DRAFT_ID, "--plugin", LIBRARY_ID, "--revision", REVISION_ID, "--no-input"],
     "A resumed draft keeps its source"],
   ["--fleet on a resumed draft", [DRAFT_ID, "--fleet", FLEET_ID, "--setup-revision", "1", "--no-input"],
     "A resumed draft keeps its source"],
-  ["--library without --revision", ["--library", LIBRARY_ID, "--model", MODEL, "--no-input", "--review"],
-    "--library requires --revision"],
+  ["--plugin without --revision", ["--plugin", LIBRARY_ID, "--model", MODEL, "--no-input", "--review"],
+    "--plugin requires --revision"],
   ["--operation-id with --review", [...LIBRARY_ARGS, "--review", "--operation-id", DRAFT_ID], "--operation-id recovers"],
 ];
 

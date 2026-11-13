@@ -100,15 +100,6 @@ describe("removed_root_verbs_are_rejected", () => {
   });
 });
 
-describe("secrets_open_points_at_the_dashboard_vault", () => {
-  test("it makes no request and names the dashboard's /secrets page", async () => {
-    const run = await record(["--json", "secrets", "open"]);
-    expect(run.calls).toEqual([]);
-    expect(JSON.parse(run.out)).toMatchObject({ status: "redirect" });
-    expect(JSON.parse(run.out).message).toContain("/secrets in the dashboard");
-  });
-});
-
 describe("setup_chat_never_calls_runtime_steer", () => {
   const drafts = `/v1/workspaces/${WORKSPACE_ID}/drafts`;
   const messages = `/v1/workspaces/${WORKSPACE_ID}/fleets/${FLEET_ID}/messages`;

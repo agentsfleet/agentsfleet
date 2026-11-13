@@ -78,13 +78,13 @@ The minimum viable product (MVP)'s user-facing wedge is the **`agentsfleet` Comm
 curl -fsSL https://agentsfleet.dev | bash   # installs the agentsfleet CLI
 agentsfleet login                            # Clerk OAuth
 agentsfleet chat --model <MODEL_REF>          # describe the job, review it, then Save
-agentsfleet library                          # list reusable Library entries (GET /v1/workspaces/{ws}/fleet-libraries)
+agentsfleet plugins                          # list plugins (GET /v1/workspaces/{ws}/fleet-libraries)
 ```
 
 Choose `<MODEL_REF>` from the `ref` values returned by `GET /v1/workspaces/{ws}/models?purpose=authoring`. New drafts require this authoring model; resumed drafts keep their existing model. A draft starts from four sources:
 
 - **Nothing.** `agentsfleet chat --model <MODEL_REF>` creates a private draft when the first message is sent.
-- **A Library revision.** `agentsfleet chat --library <LIBRARY_ID> --revision <REVISION_ID> --model <MODEL_REF>` starts from one immutable Library revision.
+- **A Library revision.** `agentsfleet chat --plugin <PLUGIN_ID> --revision <REVISION_ID> --model <MODEL_REF>` starts from one immutable Library revision.
 - **A saved fleet.** `agentsfleet chat --fleet <FLEET_ID> --setup-revision <N> --model <MODEL_REF>` drafts an improvement to that exact setup revision.
 - **Native JSON.** `agentsfleet chat --definition <PATH> --model <MODEL_REF>` reads one native Definition from a local file, bounded at 448 KiB.
 

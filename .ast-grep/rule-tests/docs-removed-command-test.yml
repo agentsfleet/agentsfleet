@@ -20,6 +20,10 @@ invalid:
   - |
     const hint = "agentsfleet kill x";
   - |
+    const hint = "agentsfleet library list";
+  - |
+    const hint = "agentsfleet platform keys set";
+  - |
     const hint = "agentsfleet fleet kill x";
   - |
     // agentsfleet api-key list

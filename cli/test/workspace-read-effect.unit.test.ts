@@ -1,10 +1,9 @@
-// The read-side workspace handlers: list, use, show, and the secrets
-// redirect. Grouped because each is small and none writes workspace state.
+// The read-side workspace handlers: list, use and show. Grouped because each
+// is small and none writes workspace state.
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit } from "effect";
 import {
-  workspaceSecretsEffect,
   workspaceListEffect,
   workspaceShowEffectFromArgs,
   workspaceUseEffectFromArgs,
@@ -233,63 +232,6 @@ describe("workspaceShowEffectFromArgs", () => {
     expect(rec.stdout).toContain("# Workspace");
     expect(rec.stdout.some((line) => line.includes(`workspace_id:`))).toBe(
       true,
-    );
-  });
-});
-
-describe("workspaceSecretsEffect", () => {
-  test("emits redirect JSON envelope in jsonMode", async () => {
-    const rec = makeRecorder();
-    const program = workspaceSecretsEffect.pipe(
-      Effect.provide(configLayer({ jsonMode: true })),
-      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
-    );
-    await runWith(program);
-    expect(
-      rec.stdout.some((line) => line.includes(`"status":"redirect"`)),
-    ).toBe(true);
-  });
-
-  test("emits info line in human mode", async () => {
-    const rec = makeRecorder();
-    const program = workspaceSecretsEffect.pipe(
-      Effect.provide(configLayer()),
-      Effect.provide(outputLayer(rec)),
-    );
-    await runWith(program);
-    expect(rec.stdout).toContain("# Workspace secrets");
-    expect(rec.stdout.some((line) => line.includes("/secrets"))).toBe(true);
-  });
-
-  // The redirect must name the real top-level `secret` group
-  // (cli-tree-fleet.ts), not the phantom `agentsfleet agent secret` that has
-  // no registration anywhere in the CLI tree.
-  const REAL_COMMAND = "agentsfleet secrets";
-  const PHANTOM_COMMAND = "agentsfleet agent secret";
-
-  test("JSON-mode redirect names the real secret command", async () => {
-    const rec = makeRecorder();
-    const program = workspaceSecretsEffect.pipe(
-      Effect.provide(configLayer({ jsonMode: true })),
-      Effect.provide(outputLayer(rec, OUTPUT_FORMAT.json)),
-    );
-    await runWith(program);
-    expect(rec.stdout.some((line) => line.includes(REAL_COMMAND))).toBe(true);
-    expect(rec.stdout.some((line) => line.includes(PHANTOM_COMMAND))).toBe(
-      false,
-    );
-  });
-
-  test("human-mode redirect names the real secret command", async () => {
-    const rec = makeRecorder();
-    const program = workspaceSecretsEffect.pipe(
-      Effect.provide(configLayer()),
-      Effect.provide(outputLayer(rec)),
-    );
-    await runWith(program);
-    expect(rec.stdout.some((line) => line.includes(REAL_COMMAND))).toBe(true);
-    expect(rec.stdout.some((line) => line.includes(PHANTOM_COMMAND))).toBe(
-      false,
     );
   });
 });

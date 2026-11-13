@@ -156,7 +156,7 @@ Each domain file exports a factory; none exports a command constant. Only the pl
 | `grant list`, `grant delete` | `fleet grants list`, `fleet grants revoke` |
 | `models [--provider] [--advanced]` | `models list [--provider] [--advanced]` |
 | `tenant provider show`, `create`, `delete` | `models current`, `models use`, `models reset` |
-| `secret create/update/show/list/delete`, `workspace secrets` | `secrets create/update/show/list/delete`, `secrets open` |
+| `secret create/update/show/list/delete`, `workspace secrets` | `secrets create/update/show/list/delete` (§7 removed `secrets open`) |
 | `connector list/show` | `connections list/show` |
 | `api-key create/list/revoke/delete` | `api-keys create/list/revoke/delete` |
 | `billing show` | `usage show` |
@@ -181,7 +181,7 @@ Each domain file exports a factory; none exports a command constant. Only the pl
 | Leaf | `requiredScope` |
 |---|---|
 | `platform keys list` | `platform-key:read` |
-| `platform keys set`, `delete` | `platform-key:admin` |
+| `platform keys use`, `delete` | `platform-key:admin` |
 | `platform models list`, `show` | `model:read` |
 | `platform models create`, `update`, `delete` | `model:admin` |
 | `platform runners list`, `show`, `events`, `leases` | `runner:read` |
@@ -258,6 +258,17 @@ any status ──DELETE (fleet delete)──▶ gone
 - **Dimension 6.5** — DONE — Approval resumes setup → Test `approving_a_setup_grant_resumes_setup` (integration): approving the pending setup grant leaves the fleet `active` with no PATCH; denying it leaves the fleet `installing`.
 - **Dimension 6.4** — DONE — The CLI offers archive and delete only → Test `fleet_lifecycle_commands` (unit, CLI): `fleet activate <id>` sends one PATCH `{"status":"active"}` and reports a still-waiting setup with its next step; `fleet archive <id>` sends one PATCH `{"status":"archived"}`; `fleet delete <id>` sends one DELETE and no PATCH; `fleet stop`, `fleet resume` and `fleet kill` are `UNKNOWN_COMMAND`.
 
+### §7 — Review-driven command changes
+
+Indy reviewed the full command table on Nov 13, 2026 (Discovery) and chose four changes. They change the CLI only; routes, payloads and scopes stay.
+
+- `library` becomes `plugins` (`list`, `delete <plugin_id>`), matching the refreshed UI's "Plugins". `chat --library` becomes `--plugin` and `--library-etag` becomes `--plugin-etag`. The API keeps `fleet-libraries` until M249_003.
+- `chat delete <draft-id>` deletes without a prompt and has no `--yes`, like every other delete.
+- `secrets open` is removed: it opened nothing and only pointed at the dashboard.
+- `platform keys set` becomes `platform keys use`, matching `models use`.
+
+- **Dimension 7.1** — DONE — The four changes hold → Tests: `chat/library.test.ts` (`plugins` lists, deletes and hints `chat --plugin`), `chat/pinned-source.test.ts` (`--plugin requires --revision`), `chat/history.test.ts` (`deletion asks nothing and sends one DELETE, unattended or not`; `the removed --yes flag is refused`), `platform-catalogue.unit.test.ts` and `scoped-discovery.unit.test.ts` (`keys use`), `json-contract.test.ts` (no `secrets open`), golden root help; DOC-09 flags `agentsfleet library`, `chat --library`, `secrets open` and `platform keys set`.
+
 ## Interfaces
 
 ```
@@ -269,11 +280,11 @@ asCommandNode(command): CommandNode                                         // c
 housePresenter: CliOutput.Presenter   // cli/src/program/entry/presenter.ts; needs no input
 ```
 
-Root: `login`, `logout`, `whoami`, `doctor`, `workspace`, `chat`, `fleet`, `library`, `models`, `secrets`, `connections`, `api-keys`, `usage`, scope-advertised `platform`; unlisted `pet`. Global flags: `--api`, `--json`, `--help`/`-h`, `--version`/`-v`, `--log-level`, `--completions bash|zsh|fish|powershell|sh|pwsh`.
+Root: `login`, `logout`, `whoami`, `doctor`, `workspace`, `chat`, `fleet`, `plugins`, `models`, `secrets`, `connections`, `api-keys`, `usage`, scope-advertised `platform`; unlisted `pet`. Global flags: `--api`, `--json`, `--help`/`-h`, `--version`/`-v`, `--log-level`, `--completions bash|zsh|fish|powershell|sh|pwsh`.
 
 - `fleet`: `list [--workspace] [--starting-after] [--limit]`, `show <fleet_id>`, `status`, `activate <fleet_id>`, `archive <fleet_id>`, `delete <fleet_id>`, `steer <fleet_id> [message]`, `logs [fleet_id] [--fleet] [--limit] [--cursor]`, `events <fleet_id> [--actor] [--since] [--cursor] [--limit]`, `approvals {list [--fleet], show <gate_id>, approve <gate_id>, deny <gate_id>}`, `schedule {…as today}`, `memory {…as today}`, `grants {list [--fleet], revoke <grant_id> [--fleet]}`.
 - `models`: `list [--provider] [--advanced]`, `current`, `use [--secret <name>] [--model <ref>]`, `reset`.
-- `secrets`: `create <name> […typed provider flags]`, `update <name> […]`, `show <name>`, `list`, `delete <name>`, `open`.
+- `secrets`: `create <name> […typed provider flags]`, `update <name> […]`, `show <name>`, `list`, `delete <name>`.
 - `connections`: `list [--workspace]`, `show <provider> [--workspace]`. `api-keys`: `create [--name] [--description]`, `list [--sort]`, `revoke <api_key_id>`, `delete <api_key_id>`. `usage`: `show [--limit] [--cursor]`. `workspace`: `create`, `list`, `use`, `show`, `delete`.
 - Error block labels: `code`, `suggestion`, `usage`, `did you mean`, `request`; values at column 17.
 
@@ -376,5 +387,7 @@ Delete `root.command.ts`, the root-level verb factories, `tenantCommand`, `billi
 > Owner decisions (Indy, Nov 13, 2026), on the three review items (the Dimension 2.2 time bound raised from 1000 ms to 1900 ms; one factory per command group, kept; discovery's own strict `/v1/users/me` reader beside `readIdentity`, kept): "1, 2, 3 are fixed as per your recommendation". The two edited `main` tests (`entry-builtins.unit.test.ts` now expects `--completions`; `chat/library.test.ts` lets the discovery read through) were explained the same day and drew no objection.
 
 > Owner decisions (Indy, Nov 13, 2026), fleet lifecycle, moved into this PR (§6): "I want to take out or nuke this command (we donot need this) fleet stop <id>"; the same for `fleet resume <id>`; "There is no backward or legacy to think about"; "fleet kill <id> is fleet delete"; "fleet archive is a new state"; "i want this in this PR". On a gate trip archiving: "Yes correct i agree on this, i accept false-positive". On permissions: "there is no specific scope needed"; "by default you give me access". On the setup retry `fleet resume` used to give after a grant approval: "I prefer this approving the grant restarts setup automatically." For the checks no event retries (credential, connection, model, wallet), asked "what is the quickest fix? a retry?": `fleet activate`, CLI only, over the existing PATCH `active`. This supersedes M249_003's §2c and §3.
+
+> Owner decisions (Indy, Nov 13, 2026), on the full command review (§7): "3. remove the chat delete's prompt and the --yes"; "4. rename" (`library` to `plugins`); "6. remove secrets open"; "8. yes rename" (`platform keys set` to `use`); "9. leave it for M249_003?" (`platform fleet-library` removal stays there).
 
 > Owner (Indy, Nov 12, 2026): "i think after you complete i need a report of the help, and the subcommands helps so i know you have fixed it. and the unit test acceptance fixed too for cli." Recorded as Dimension 5.1 and rubric R4.

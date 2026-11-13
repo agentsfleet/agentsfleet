@@ -24,9 +24,8 @@ const rename = Command.make("rename", {draftId, title: Argument.String("title"),
   Command.withDescription("Rename an idle private setup chat; saved fleet names stay the same"),
   guardedHandler(flags => chatRenameEffect(flags.draftId, flags.title, {workspace: opt(flags.workspace)})),
 );
-const remove = Command.make("delete", {draftId, workspace: workspaceFlag,
-  yes: Flag.Boolean("yes").pipe(Flag.withDescription("Confirm deletion; saved fleets keep running"), Flag.withDefault(false)),
-}).pipe(Command.withDescription("Delete a private setup chat; saved fleets keep running"),
-  guardedHandler(flags => chatDeleteEffect(flags.draftId, {workspace: opt(flags.workspace), yes: flags.yes})));
+const remove = Command.make("delete", {draftId, workspace: workspaceFlag}).pipe(
+  Command.withDescription("Delete a private setup chat; saved fleets keep running"),
+  guardedHandler(flags => chatDeleteEffect(flags.draftId, {workspace: opt(flags.workspace)})));
 
 export const chatHistoryCommands = () => [list, rename, remove] as const;

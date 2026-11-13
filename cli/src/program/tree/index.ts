@@ -12,7 +12,7 @@ import { diagnosticsCommands } from "./diagnostics.command.ts";
 import { workspaceCommand, usageCommand } from "./workspace.command.ts";
 import { chatCommand } from "./chat.command.ts";
 import { fleetCommand } from "./fleet.command.ts";
-import { libraryCommand } from "./library.command.ts";
+import { pluginsCommand } from "./plugins.command.ts";
 import { modelsCommand } from "./models.command.ts";
 import { secretsCommand } from "./secrets.command.ts";
 import { apiKeysCommand, connectionsCommand } from "./access.command.ts";
@@ -31,7 +31,7 @@ export const buildCommandTree = (visibility: Visibility = UNKNOWN_VISIBILITY) =>
       workspaceCommand(),
       chatCommand(),
       fleetCommand(),
-      libraryCommand(),
+      pluginsCommand(),
       modelsCommand(),
       secretsCommand(),
       connectionsCommand(),

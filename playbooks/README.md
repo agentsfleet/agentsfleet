@@ -79,7 +79,7 @@ Every value comes from 1Password at runtime; nothing is pasted.
 | 1 | [Deploy](./founding/04_deploy_dev/001_playbook.md) with the runner disabled | `/readyz` succeeds |
 | 2 | [Bootstrap the administrator](./operations/admin_bootstrap/001_playbook.md): account, platform scopes, `agentsfleet login`, workspace pointer, API key | `agentsfleet whoami` lists the platform scopes |
 | 3 | Sync every bag in the [bag table](./operations/admin_bootstrap/001_playbook.md#sync-a-provider-secret-bag) | Each sync prints `✓ <bag> created` |
-| 4 | [Seed the model catalogue](./operations/model_catalogue/001_playbook.md), then set the default with `agentsfleet platform keys set` | `agentsfleet platform keys list` shows one active default |
+| 4 | [Seed the model catalogue](./operations/model_catalogue/001_playbook.md), then set the default with `agentsfleet platform keys use` | `agentsfleet platform keys list` shows one active default |
 | 5 | [Enroll the runner](./operations/runner_onboarding/001_playbook.md) and redeploy; the restart also loads the startup-read bags | `agentsfleet platform runners list` shows it online |
 | 6 | [Configure observability](./operations/observability/001_playbook.md) | Runtime series arrive |
 | 7 | Run [development](./founding/06_verify_dev/001_playbook.md) or [production](./founding/09_verify_prod/001_playbook.md) acceptance | Named lanes pass |

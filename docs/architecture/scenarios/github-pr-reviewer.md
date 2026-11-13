@@ -36,7 +36,7 @@ sequenceDiagram
   GH-->>API: installation accessible
   API->>PG: conditional vault handle + connector.installs route
   Note over API,PG: other workspace already owns installation → 403, no mutation
-  Op->>CLI: chat --library github-pr-reviewer --revision <REVISION_ID> --model <MODEL_REF>
+  Op->>CLI: chat --plugin github-pr-reviewer --revision <REVISION_ID> --model <MODEL_REF>
   CLI->>API: POST /v1/workspaces/{ws}/drafts { source: library revision }
   Op->>CLI: ask for repositories=[acme/payments], events=[pull_request]; review
   CLI->>API: GET draft review (setup, access, readiness, review digest)
@@ -64,7 +64,7 @@ sequenceDiagram
 A platform admin publishes a reviewed draft candidate through `POST` and `PATCH /v1/admin/fleet-libraries`. John opens a private draft pinned to that revision:
 
 ```bash
-agentsfleet chat --library github-pr-reviewer --revision <REVISION_ID> --model <MODEL_REF>
+agentsfleet chat --plugin github-pr-reviewer --revision <REVISION_ID> --model <MODEL_REF>
 ```
 
 He requests his repository, reviews the exact setup, then saves through `POST /v1/workspaces/{ws}/fleets`.

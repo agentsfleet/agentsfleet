@@ -50,7 +50,7 @@ describe("CLI tree — every documented route is reachable", () => {
   const expectedCommands = [
     ["login"], ["logout"], ["doctor"],
     ["workspace", "create"], ["workspace", "list"], ["workspace", "use"],
-    ["workspace", "show"], ["secrets", "open"], ["workspace", "delete"],
+    ["workspace", "show"], ["workspace", "delete"],
     ["api-keys", "create"], ["api-keys", "list"], ["api-keys", "revoke"], ["api-keys", "delete"],
     ["connections", "list"], ["connections", "show"],
     ["fleet", "grants", "list"], ["fleet", "grants", "revoke"],
@@ -58,7 +58,7 @@ describe("CLI tree — every documented route is reachable", () => {
     ["models", "current"], ["models", "use"], ["models", "reset"],
     ["usage", "show"],
     ["chat", "list"], ["chat", "rename"], ["chat", "delete"],
-    ["library", "list"], ["library", "delete"], ["fleet", "show"],
+    ["plugins", "list"], ["plugins", "delete"], ["fleet", "show"],
     ["fleet", "list"], ["fleet", "status"], ["fleet", "activate"], ["fleet", "archive"], ["fleet", "delete"],
     ["fleet", "logs"], ["fleet", "events"], ["fleet", "steer"],
     ["secrets", "create"], ["secrets", "update"], ["secrets", "show"], ["secrets", "list"], ["secrets", "delete"],

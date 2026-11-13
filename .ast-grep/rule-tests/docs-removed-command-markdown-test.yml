@@ -14,4 +14,8 @@ invalid:
   - |
     Run `agentsfleet kill x`.
   - |
+    Run `agentsfleet library list`.
+  - |
+    Run `agentsfleet platform keys set`.
+  - |
     Run `agentsfleet fleet kill x`.

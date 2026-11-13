@@ -71,7 +71,7 @@ describe("the table reshape did not reach the machine register", () => {
   test.each([
     ["secret list", ["secrets", "list"]],
     ["fleet list", ["fleet", "list"]],
-    ["library", ["library"]],
+    ["plugins", ["plugins"]],
     ["api-key list", ["api-keys", "list"]],
   ])("%s --json keeps the raw wire instant and no rendered age", async (_label, argv) => {
     const text = await runJson(argv as ReadonlyArray<string>);
