@@ -16,10 +16,15 @@ type Props = {
   onRevoke: (invite: InviteSummary) => void;
   onResend: (invite: InviteSummary) => void;
 };
-const ROW = "grid min-w-0 grid-cols-[minmax(0,1fr)_40px] items-center gap-x-xl gap-y-sm px-xl sm:px-5 py-4.5 min-[680px]:grid-cols-[36px_minmax(0,1fr)_40px] min-[900px]:grid-cols-[36px_minmax(0,1fr)_76px_148px_36px]";
-const AVATAR = "hidden size-9 shrink-0 items-center justify-center rounded-full text-eyebrow font-bold min-[680px]:flex";
-const META = "col-start-1 min-[680px]:col-start-2 min-[900px]:col-auto";
-const ACTION = "col-start-2 row-start-1 min-[680px]:col-start-3 min-[900px]:col-auto min-[900px]:row-auto";
+const ROW = [
+  "grid min-w-0 grid-cols-[minmax(0,1fr)_44px] items-center gap-md p-xl",
+  "min-[681px]:grid-cols-[36px_minmax(0,1fr)_72px_36px] min-[681px]:gap-x-lg min-[681px]:gap-y-1.5 min-[681px]:px-5 min-[681px]:py-4.5",
+  "min-[901px]:grid-cols-[36px_minmax(0,1fr)_76px_148px_36px] min-[901px]:gap-x-xl min-[901px]:gap-y-sm",
+].join(" ");
+const AVATAR = "hidden size-9 shrink-0 items-center justify-center rounded-full text-eyebrow font-bold min-[681px]:flex";
+const ROLE = "col-start-1 min-[681px]:col-start-3 min-[681px]:row-start-1 min-[901px]:col-auto min-[901px]:row-auto";
+const DATE = "col-start-1 min-[681px]:col-start-2 min-[681px]:row-start-2 min-[901px]:col-auto min-[901px]:row-auto";
+const ACTION = "col-start-2 row-start-1 min-[681px]:col-start-4 min-[901px]:col-auto min-[901px]:row-auto";
 
 export function TeamTable(props: Props) {
   return <div className="space-y-2xl" aria-busy={props.pending}>
@@ -52,10 +57,10 @@ function MemberRow({member, pending, onRemove}: Pick<Props, "pending" | "onRemov
     <span className={`${AVATAR} ${self ? "bg-muted" : "bg-pulse/15 text-success"}`} aria-hidden="true">{initials}</span>
     <div className="min-w-0"><p className="break-words text-label font-semibold"><span>{name}</span>{self ? <span className="ml-md text-eyebrow font-normal leading-eyebrow text-text-dim">You</span> : null}</p>
       {name !== member.email ? <p className="mt-sm break-all text-label text-muted-foreground">{member.email}</p> : null}</div>
-    <span className={`${META} text-label capitalize text-muted-foreground`}>{member.role}</span>
-    <span className={`${META} text-eyebrow text-text-dim`}>Joined <Time value={member.joined_at} format="date" tooltip /></span>
+    <span className={`${ROLE} text-label capitalize text-muted-foreground`}>{member.role}</span>
+    <span className={`${DATE} text-eyebrow leading-eyebrow text-text-dim`}>Joined <Time value={member.joined_at} format="date" tooltip /></span>
     {!owner ? <div className={ACTION}><DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="min-[900px]:size-9 min-[900px]:min-h-9" disabled={pending} aria-label={`Manage ${name}`}><DotsThreeIcon size={16} /></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="min-[681px]:size-9 min-[681px]:min-h-9" disabled={pending} aria-label={`Manage ${name}`}><DotsThreeIcon size={16} /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => onRemove(member)}>Remove {name}</DropdownMenuItem></DropdownMenuContent>
     </DropdownMenu></div> : null}
   </li>;
@@ -68,10 +73,10 @@ function InvitationRow({invite, pending, onResend, onRevoke}: Pick<Props, "pendi
     <span className={`${AVATAR} border border-border bg-transparent text-muted-foreground`} aria-hidden="true"><EnvelopeSimpleIcon size={18} /></span>
     <div className="min-w-0"><p className="break-all text-label font-semibold">{invite.email}</p>
       <p className={`mt-sm text-label ${delivered ? "text-muted-foreground" : "text-warning"}`}>{status}</p></div>
-    <span className={`${META} text-label text-muted-foreground`}>Member</span>
-    <span className={`${META} text-eyebrow text-text-dim`}>Expires <Time value={invite.expires_at} format="date" tooltip /></span>
+    <span className={`${ROLE} text-label text-muted-foreground`}>Member</span>
+    <span className={`${DATE} text-eyebrow leading-eyebrow text-text-dim`}>Expires <Time value={invite.expires_at} format="date" tooltip /></span>
     <div className={ACTION}><DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="min-[900px]:size-9 min-[900px]:min-h-9" disabled={pending} aria-label={`Manage invite for ${invite.email}`}><DotsThreeIcon size={16} /></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="min-[681px]:size-9 min-[681px]:min-h-9" disabled={pending} aria-label={`Manage invite for ${invite.email}`}><DotsThreeIcon size={16} /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {invite.email_status !== EMAIL_STATUS.unconfigured ? <DropdownMenuItem onSelect={() => onResend(invite)}>Send invite again</DropdownMenuItem> : null}
         <DropdownMenuItem asChild onSelect={event => event.preventDefault()}><CopyButton value={invite.link} label={`Copy invite link for ${invite.email}`} showLabel className="w-full justify-start border-0 bg-transparent" /></DropdownMenuItem>
