@@ -15,7 +15,6 @@ import {
   FormMessage,
   Input,
   Spinner,
-  TooltipButton,
 } from "@agentsfleet/design-system";
 import { XIcon, CaretDownIcon } from "@phosphor-icons/react/ssr";
 import { createSecretAction, replaceSecretAction } from "../actions";
@@ -23,7 +22,6 @@ import { presentErrorString } from "@/lib/errors";
 import { SECRET_NAME_MAX } from "../lib/secret-data";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
-import { CREATE_SECRET_TOOLTIP } from "../copy";
 
 type Props = {
   showValueNotice?: boolean;
@@ -129,10 +127,10 @@ export default function AddSecretForm(props: Props) {
       {props.showValueNotice !== false ? <p className="text-eyebrow text-text-dim">Secret values are hidden after saving.</p> : null}
       <div className="flex justify-end gap-2">
         {props.onCancel ? <Button type="button" variant="outline" disabled={pending} onClick={props.onCancel}>Cancel</Button> : null}
-        <TooltipButton type="submit" disabled={pending} aria-busy={pending || undefined} aria-label={submitLabel}
-          tooltip={props.mode === SECRET_FORM_MODE.REPLACE ? "Replace the fields stored under this name" : CREATE_SECRET_TOOLTIP}>
+        <Button type="submit" disabled={pending} aria-busy={pending || undefined} aria-label={submitLabel}
+          >
           {pending ? <Spinner size="sm" srLabel="Saving" /> : null}{submitLabel}
-        </TooltipButton>
+        </Button>
       </div>
       {apiError ? <p className="text-body-sm text-destructive">{apiError}</p> : null}
     </form>
