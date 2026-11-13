@@ -251,7 +251,7 @@ filename. No unresolved FAIL or required NOT RUN permits packaging.
 | Model Source and Connected app footer | Right-aligned evidence value; shared footer with local paragraph spacing | Final geometry pending |
 | Archived state could retain stale actions | Summary and task details suppress approval, schedule and task mutations while retaining readable history | Regression test and authenticated mutation journey required |
 | Toast-only lifecycle evidence | Sample archived state and New fleet destination; authenticated archive/delete journey captures after confirmed backend mutation | Final authenticated captures pending |
-| Account menu structure | Proposal navigation restored; workspace switching nested in identity header; 40px rows | Personal account and workspace submenu additions await owner decision; no approval inferred |
+| Account menu structure | Proposal navigation restored; workspace switching nested in identity header; 40px rows | Workspace submenu approved; owner requires Personal account to merge into the destination named API Keys |
 | Typography and redundant tooltips | Sentence-case labels; named Edit model uses curly quotes; visible-label key/setup controls have no redundant tooltip | Source sweep and final captures pending |
 | Dirty/mixed evidence | Clean-source capture guard, shared commit/digest/time stamps, full payload manifest and duplicate-image checks | Final clean candidate capture required |
 
@@ -261,9 +261,9 @@ filename. No unresolved FAIL or required NOT RUN permits packaging.
   and deletions remain omitted without backend evidence.
 - The source proposal's wake-up strip computes 46px; the requested 45px product
   strip remains within the specified 1px comparison tolerance.
-- Personal account is an existing authenticated destination without a proposal
-  screen. Its menu entry and the workspace identity submenu remain pending the
-  owner's explicit menu decision. They are not recorded as approved differences.
+- The owner approved the workspace identity submenu and requested a single
+  API Keys destination containing the former Security content and account/sign-in
+  controls. There is no separate Personal account route or menu entry.
 - The real archived fleet keeps task/history reads but has no mutation controls.
   Deletion lands on New fleet. Toasts supplement these states.
 - The review harness uses labelled sample dates, model names, tool counts and
@@ -293,3 +293,24 @@ Source review closed this finding and confirmed both affected functions meet
 the function-length limit. Evidence: `refresh-closing-focus-red-v151.log`,
 `refresh-closing-focus-green-v152.log`, `refresh-ui-checks-v149.log`,
 `refresh-lifecycle-tests-v147.log`, `refresh-typescript-coverage-v150.log`.
+
+### Owner-approved account navigation revision
+
+Owner quotes: “The workspace is  fine”; “The Personal account and Security must
+be merged, and renamed may be to API Keys?”; “SEcurity renamed to API Keys”.
+
+The menu retains the identity-header workspace submenu and offers Team,
+API Keys, Usage, Models, Appearance and Sign out. The separate Personal account
+entry and route are removed. The existing Security destination is labelled
+API Keys and retains API-key creation/revocation and signed-in sessions.
+A shared dialog opens the existing Clerk account widget through the auth facade
+for name/photo, verified email and sign-in operations. Password controls follow
+the existing Clerk configuration. No new Clerk key, credential endpoint,
+backend permission or secret storage is introduced.
+
+Visible differences from the immutable proposal are the approved API Keys menu
+and page name, the account/sign-in launcher and its native-provider dialog, and
+the identity workspace submenu. The existing `/settings/security` page path
+continues to own these operations; no compatibility route or backfill is added.
+Fresh authenticated captures must exercise profile editing/cancel, password
+editing/cancel when configured, sessions and keys on this combined destination.

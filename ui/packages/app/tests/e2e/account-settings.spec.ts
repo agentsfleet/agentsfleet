@@ -10,7 +10,7 @@ test("Security combines keys and sessions with compact type in both appearances"
   await expect(page.getByText("Last active unavailable")).toBeVisible();
   for (const theme of ["dark", "light"]) {
     await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
-    await expect(page.getByRole("heading", {name: "Security", exact: true})).toBeVisible();
+    await expect(page.getByRole("heading", {name: "API Keys", exact: true})).toBeVisible();
     await expect(page.getByRole("heading", {name: "API keys", exact: true})).toBeVisible();
     await expect(page.getByRole("heading", {name: "Active sessions", exact: true})).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

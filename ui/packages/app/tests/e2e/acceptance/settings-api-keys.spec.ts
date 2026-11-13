@@ -25,10 +25,10 @@ test.describe("Security API keys", () => {
     await signInAs(page, FIXTURE_KEY.admin);
     await page.goto("/settings/security");
     await expect(page).toHaveURL(/\/settings\/security(\?|$)/);
-    await expect(page.getByRole("heading", {name: "Security", exact: true})).toBeVisible();
+    await expect(page.getByRole("heading", {name: "API Keys", exact: true})).toBeVisible();
     await expect(page.getByRole("heading", { name: /^api keys$/i })).toBeVisible();
     await page.getByRole("button", {name: /^Workspace and account menu(?::|$)/}).click();
-    await expect(page.getByRole("menuitem", {name: "Security", exact: true})).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("menuitem", {name: "API Keys", exact: true})).toHaveAttribute("aria-current", "page");
     await page.keyboard.press("Escape");
 
     const name = `e2e-${Date.now()}`;

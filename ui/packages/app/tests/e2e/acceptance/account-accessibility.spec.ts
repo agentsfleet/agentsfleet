@@ -6,7 +6,7 @@ import { deleteUser, finalizeFixtureMetadata, provisionUser } from "./fixtures/c
 import { bootstrapTenant } from "./fixtures/bootstrap";
 
 const WIDTHS = [1440, 390, 320];
-const ACCOUNT_LABEL = "Personal account";
+const ACCOUNT_LABEL = "API Keys";
 const CANCEL_LABEL = "Cancel";
 const FIXTURE_TAG_BYTES = 4;
 const FIXTURE_PASSWORD_BYTES = 32;
@@ -45,8 +45,9 @@ for (const width of WIDTHS) {
     await expect(account).toBeVisible();
     await expectAccessible(page, "Account menu");
     await account.click();
-    await expect(page).toHaveURL(/\/settings\/account\/sign-in/);
-    await expect(page.getByRole("heading", {name: ACCOUNT_LABEL, exact: true})).toBeVisible();
+    await expect(page).toHaveURL(/\/settings\/security/);
+    await page.getByRole("button", {name: "Manage account and sign-in", exact: true}).click();
+    await expect(page.getByRole("dialog", {name: "Account and sign-in", exact: true})).toBeVisible();
     const nativeAccount = page.getByRole("region", {name: "Secure account controls", exact: true});
     const nativeViewport = nativeAccount.locator(".cl-pageScrollBox");
     await expect(nativeViewport).toBeVisible();
@@ -65,18 +66,19 @@ for (const width of WIDTHS) {
     await nativeAccount.getByRole("button", {name: "Update profile", exact: true}).click();
     await expect(firstName).toHaveValue(original);
     await nativeAccount.getByRole("button", {name: CANCEL_LABEL, exact: true}).click();
-    await page.getByRole("link", {name: "Back to Security", exact: true}).click();
-    await expect(page).toHaveURL(/\/settings\/security$/);
+    await page.getByRole("dialog", {name: "Account and sign-in", exact: true}).getByRole("button", {name: "Close", exact: true}).click();
+    await expect(page).toHaveURL(/\/settings\/security(?:#.*)?$/);
     const sessions = page.getByRole("region", {name: "Active sessions", exact: true});
     await expect(sessions.getByText("This device", {exact: true})).toBeVisible();
-    await expect(page.getByRole("heading", {name: "Security", exact: true})).toBeVisible();
+    await expect(page.getByRole("heading", {name: "API Keys", exact: true})).toBeVisible();
     await expectAccessible(page, "Security");
     await expectNoPageOverflow(page);
 
     await page.screenshot({path: test.info().outputPath(`live-security-${width}.png`), scale: "css", animations: "disabled"});
     await opener.click();
     await page.getByRole("menuitem", {name: ACCOUNT_LABEL, exact: true}).click();
-    await expect(page).toHaveURL(/\/settings\/account\/sign-in/);
+    await expect(page).toHaveURL(/\/settings\/security/);
+    await page.getByRole("button", {name: "Manage account and sign-in", exact: true}).click();
     await expect(nativeAccount).toBeVisible();
     await expect(nativeViewport).toBeVisible();
     await expect.poll(() => nativeViewport.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
@@ -100,11 +102,11 @@ for (const width of WIDTHS) {
     await nativeAccount.getByRole("button", {name: CANCEL_LABEL, exact: true}).click();
     await expect(password).toBeHidden();
     await expect(nativeAccount.getByRole("button", {name: "Update password", exact: true})).toBeVisible();
-    await page.getByRole("link", {name: "Back to Security", exact: true}).click();
+    await page.getByRole("dialog", {name: "Account and sign-in", exact: true}).getByRole("button", {name: "Close", exact: true}).click();
     await expect(nativeAccount).toBeHidden();
     await expect(sessions.getByText("This device", {exact: true})).toBeVisible();
     await page.reload();
-    await expect(page).toHaveURL(/\/settings\/security$/);
+    await expect(page).toHaveURL(/\/settings\/security(?:#.*)?$/);
     await expect(sessions.getByText("This device", {exact: true})).toBeVisible();
     await expectAccessible(page, "Security deep link after reload");
     await expectNoPageOverflow(page);

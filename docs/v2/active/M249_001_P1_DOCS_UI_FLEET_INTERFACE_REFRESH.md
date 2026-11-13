@@ -1292,3 +1292,18 @@ captures are excluded from final evidence. Source review found and closed a
 closing-dialog focus race; its two regressions failed before repair and pass
 with the existing dialog tests (23 total). Final clean captures and all required
 repository/browser gates remain pending.
+
+
+### Owner-approved combined account destination
+
+Owner: “The workspace is  fine”; “The Personal account and Security must be
+merged, and renamed may be to API Keys?”; “SEcurity renamed to API Keys”.
+Retain workspace switching/creation in the identity submenu. Remove the separate
+Personal account route/menu item. Label the existing keys/sessions destination
+API Keys and retain its existing operations. A shared account/sign-in dialog
+hosts the existing native provider controls through the auth facade; password
+availability follows the existing provider configuration. Additional inventory:
+`components/account/ManageAccountDialog.tsx`, account controls and authentication
+accessibility journeys; remove the former account catch-all page/loading route.
+Record the changed title, menu entry and sign-in launcher as explicit approved
+differences from the immutable proposal. No backend API or access-scope change.
