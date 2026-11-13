@@ -18,7 +18,7 @@ Backend data differences belong to [M249_004](../pending/M249_004_P1_API_DOCS_UI
 
 The native v237 run passed 4,564 app tests and all 90 browser checks. Model details now uses its native accessible button and expanded state.
 
-The integrated #838 checkpoint `11f2d4ffd` produced 416 same-run measurement records with no browser errors. All 48 confirmation cases and 136 dialog footer cases passed. Changes to subtitle type and phone composer width require their own follow-up measurements.
+The integrated #838 checkpoint `11f2d4ffd` produced 416 same-run measurement records with no browser errors. All 48 confirmation cases and 136 dialog footer cases passed. The repaired subtitle type and phone composer width passed their follow-up measurements below.
 
 ## Owner findings
 
