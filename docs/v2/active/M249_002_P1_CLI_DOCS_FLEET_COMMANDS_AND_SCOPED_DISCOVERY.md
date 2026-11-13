@@ -6,7 +6,7 @@
 **Date:** Nov 13, 2026
 **Status:** IN_PROGRESS
 **Priority:** P1, make the command surface coherent and advertise only usable operator commands
-**Categories:** CLI, DOCS
+**Categories:** CLI, API, DOCS
 **Batch:** B2
 **Depends on:** M249_001 (UI refresh) merges before this workstream merges; building starts before it
 **Provenance:** Agent-generated from Indy's approved CLI grouping and permission-discovery decisions; split from the authored M249_002 on Nov 12, 2026 (see Discovery)
@@ -14,7 +14,7 @@
 
 ## Overview
 
-**Goal (testable):** Every command sits under its resource group, help, suggestions and completions advertise only the platform commands the caller's server-reported scopes allow, and every failure renders as one aligned block, while each typed command keeps its handler and backend authorization.
+**Goal (testable):** Every command sits under its resource group, help, suggestions and completions advertise only the platform commands the caller's server-reported scopes allow, every failure renders as one aligned block, and a fleet's lifecycle is activate, archive or delete, while each typed command keeps its handler and backend authorization.
 
 **Problem:** Fleet verbs are scattered across root help (`cli/src/program/tree/root.command.ts:130`). Root help lists `platform` for every account, and `platform --help` lists all four operator families. A usage error prints the whole help document above a misaligned `✕ error:` / `  Suggestion:` pair (`cli.ts:270`).
 
@@ -101,6 +101,9 @@ argv ─▶ argv-scan (--json, --api, --, version)
 | `ui/packages/app/tests/e2e/acceptance/{operator-journey,retry-policy,soak-cli-smoke}.spec.ts` | EDIT | They spawn `list`, `api-key create`, `steer` (after the rebase) |
 | `.ast-grep/rules/docs/docs-removed-command{,-json,-markdown}.yml`, `.ast-grep/rule-tests/docs-removed-command*-test.yml` | EDIT | DOC-09 gains the removed root verbs |
 | `tests/fixtures/fleets/platform-ops/definition.json`, `playbooks/operations/admin_bootstrap/001_playbook.md`, `docs/AUTH.md`, `docs/architecture/{billing_and_provider_keys,capabilities,connectors,data_flow,high_level,lease_flow,postgres_schemas,user_flow}.md`, `docs/architecture/scenarios/{github-pr-reviewer,production-deploy-repair,two-fleets-github-slack}.md` | EDIT | Command examples; completion regeneration in `docs/AUTH.md` |
+| `rustd/crates/daemon/{afd_fleet_lifecycle,afd_api_wire,afd_authoring,afd_gate,afd_admission,afd_ingress,afd_api_tenant,afd_fleet,afd_runner,afd_cron}/**`, `afd_api/tests/**`, `daemon/main/tests/**`, `af_core/src/{error_code,problem}/**` | EDIT | §6 lifecycle: three states, delete in any status, gate archives |
+| `cli/src/program/tree/fleet.command.ts`, `cli/src/commands/fleet/**`, `cli/test/**` | EDIT | §6: `archive` added; `stop`, `resume`, `kill` removed |
+| `public/openapi.json` | GENERATE | §6 status and PATCH enums, `--no-banner` |
 | `VERSION`, `cli/package.json` and `make sync-version` consumers | EDIT | `0.76.0` → `0.77.0` (CL-BUMP) |
 | `~/Projects/docs` branch `chore/m249-cli-commands-changelog` (`4c99d50`): `changelog.mdx`, `cli/agentsfleet.mdx` and 15 pages naming removed spellings | EDIT | Upgrading entry, regrouped reference, current spellings; pushed with this PR, merged after it |
 
@@ -230,6 +233,27 @@ After `gh pr view <M249_001 PR> --json state` reads `MERGED`, rebase onto it. Th
 - **Dimension 5.1** — PENDING — Every help page is reviewed → `manual` (Indy, Nov 12, 2026: "i need a report of the help, and the subcommands helps so i know you have fixed it"): on the final tree, `--help` for root and every group and leaf under three scope sets (`[]`, `["model:read"]`, and the union of every scope in the §2 table), plus one sample of each §3 block, written by a helper kept outside the repository; the report goes to Indy and its path into the PR Session Notes.
 - **Dimension 5.2** — PENDING — Lanes are green on the final tree → rubric R1–S4 at `orly gate pr`.
 
+### §6 — Fleet lifecycle: archive and delete
+
+Indy, Nov 13, 2026 (Discovery): `fleet stop`, `fleet resume` and `fleet kill` go, with no backward path. `fleet archive` is a new terminal state that keeps history. `fleet delete` removes a fleet in any status. Archive and delete are independent; neither invokes the other. A gate trip archives the fleet, false positives accepted. Scopes do not change: PATCH keeps `fleet:write`, DELETE keeps `fleet:admin`, and workspace membership already holds both (`afd_http/src/auth/ownership/role.rs:42-52`).
+
+```
+installing ──PATCH active──▶ active ──PATCH archived (fleet archive)──▶ archived
+                               └──gate trip (anomaly or auto_kill)────▶ archived
+any status ──DELETE (fleet delete)──▶ gone
+```
+
+- `FleetStatus` is `Installing | Active | Archived` (`afd_fleet_lifecycle/src/lib.rs`); `Paused`, `Stopped` and `Killed` are removed. `PatchStatus` is `Active | Archived` (`afd_api_wire/src/fleet/input.rs`). PATCH `active` only activates an installing fleet; PATCH `archived` does what PATCH `killed` did (`afd_authoring/src/creation/patch.rs`: cancels leases and setup, restores the draft). An archived fleet refuses every further transition.
+- The gate's trip writes `archived` where it wrote `paused` (`afd_gate/src/gate/pause.rs`). Admission and ingress treat `archived` as not runnable where they named `paused` or `stopped`.
+- Purge drops its terminal-only guard (`afd_fleet_lifecycle/src/purge.rs:111`, `MustKillFirst`). Deleting a fleet with live work first cancels its leases through the same path archive uses.
+- Schedule `desired_status = 'paused'` is a schedule state, not a fleet state, and stays.
+- CLI: `fleet archive <fleet_id>` prints `<id> archived.`; `fleet delete <fleet_id>` prints `<id> deleted.`; `stop`, `resume` and `kill` are removed. Status rendering and every hint naming them change. `public/openapi.json` is regenerated. The refreshed UI's lifecycle actions follow after the rebase (Dimension 4.4).
+
+- **Dimension 6.1** — PENDING — The lifecycle has three states → Test `fleet_lifecycle_is_activate_archive_delete` (integration, `afd_api`): PATCH `archived` on an active fleet returns `archived` and cancels its leases; PATCH `active` or `archived` on an archived fleet is refused; PATCH `stopped`, `killed` or `paused` is a validation error; events of an archived fleet stay readable.
+- **Dimension 6.2** — PENDING — Delete works in any status → Test `delete_removes_a_fleet_in_any_status` (integration, `afd_api`): DELETE on an installing, an active and an archived fleet each returns 2xx, a later GET returns 404, and no active lease remains.
+- **Dimension 6.3** — PENDING — A gate trip archives → Test `gate_trip_archives_the_fleet` (integration, `afd_gate`): an anomaly trip and an `auto_kill` rule each leave the fleet `archived`.
+- **Dimension 6.4** — PENDING — The CLI offers archive and delete only → Test `fleet_lifecycle_commands` (unit, CLI): `fleet archive <id>` sends one PATCH `{"status":"archived"}`; `fleet delete <id>` sends one DELETE and no PATCH; `fleet stop`, `fleet resume` and `fleet kill` are `UNKNOWN_COMMAND`.
+
 ## Interfaces
 
 ```
@@ -243,13 +267,13 @@ housePresenter: CliOutput.Presenter   // cli/src/program/entry/presenter.ts; nee
 
 Root: `login`, `logout`, `whoami`, `doctor`, `workspace`, `chat`, `fleet`, `library`, `models`, `secrets`, `connections`, `api-keys`, `usage`, scope-advertised `platform`; unlisted `pet`. Global flags: `--api`, `--json`, `--help`/`-h`, `--version`/`-v`, `--log-level`, `--completions bash|zsh|fish|powershell|sh|pwsh`.
 
-- `fleet`: `list [--workspace] [--starting-after] [--limit]`, `show <fleet_id>`, `status`, `stop <fleet_id>`, `resume <fleet_id>`, `kill <fleet_id>`, `delete <fleet_id>`, `steer <fleet_id> [message]`, `logs [fleet_id] [--fleet] [--limit] [--cursor]`, `events <fleet_id> [--actor] [--since] [--cursor] [--limit]`, `approvals {list [--fleet], show <gate_id>, approve <gate_id>, deny <gate_id>}`, `schedule {…as today}`, `memory {…as today}`, `grants {list [--fleet], revoke <grant_id> [--fleet]}`.
+- `fleet`: `list [--workspace] [--starting-after] [--limit]`, `show <fleet_id>`, `status`, `archive <fleet_id>`, `delete <fleet_id>`, `steer <fleet_id> [message]`, `logs [fleet_id] [--fleet] [--limit] [--cursor]`, `events <fleet_id> [--actor] [--since] [--cursor] [--limit]`, `approvals {list [--fleet], show <gate_id>, approve <gate_id>, deny <gate_id>}`, `schedule {…as today}`, `memory {…as today}`, `grants {list [--fleet], revoke <grant_id> [--fleet]}`.
 - `models`: `list [--provider] [--advanced]`, `current`, `use [--secret <name>] [--model <ref>]`, `reset`.
 - `secrets`: `create <name> […typed provider flags]`, `update <name> […]`, `show <name>`, `list`, `delete <name>`, `open`.
 - `connections`: `list [--workspace]`, `show <provider> [--workspace]`. `api-keys`: `create [--name] [--description]`, `list [--sort]`, `revoke <api_key_id>`, `delete <api_key_id>`. `usage`: `show [--limit] [--cursor]`. `workspace`: `create`, `list`, `use`, `show`, `delete`.
 - Error block labels: `code`, `suggestion`, `usage`, `did you mean`, `request`; values at column 17.
 
-Discovery adds no endpoint and no permission family. HTTP routes are unchanged.
+Discovery adds no endpoint and no permission family. HTTP routes are unchanged; fleet statuses are `installing`, `active`, `archived`, and PATCH accepts `active` and `archived` (§6).
 
 ## Failure Modes
 
@@ -299,7 +323,7 @@ Delete `root.command.ts`, the root-level verb factories, `tenantCommand`, `billi
 
 ## Out of Scope
 
-- Plugin and Archive vocabulary, `fleet delete` composition, Plugin `show`/`revisions` readers, route/wire/permission/SQL/status renames, platform catalogue removal and UI adapters: M249_003.
+- Plugin vocabulary, Plugin `show`/`revisions` readers, route/wire/permission/SQL/status renames, platform catalogue removal and UI adapters: M249_003.
 - The `agentsfleet pet` sprite: its own spec after M249_003 (Indy, Nov 12, 2026).
 - Flow 2 capability composition, `@plugin` invocation and bindings (M239); new platform UI, ownership or sharing models, a primary vault.
 
@@ -345,5 +369,7 @@ Delete `root.command.ts`, the root-level verb factories, `tenantCommand`, `billi
 > Owner decision (Indy, Nov 13, 2026: 01:05 AM), on unit tests inheriting a developer's exported `AGENTSFLEET_STATE_DIR` (which holds a real dev login, so scoped `--help` read `/v1/users/me` on api-dev from a unit test): selected "Preload always isolates (my call)" — `cli/test/setup.ts` always creates an empty state dir.
 
 > Owner decisions (Indy, Nov 13, 2026), on the three review items (the Dimension 2.2 time bound raised from 1000 ms to 1900 ms; one factory per command group, kept; discovery's own strict `/v1/users/me` reader beside `readIdentity`, kept): "1, 2, 3 are fixed as per your recommendation". The two edited `main` tests (`entry-builtins.unit.test.ts` now expects `--completions`; `chat/library.test.ts` lets the discovery read through) were explained the same day and drew no objection.
+
+> Owner decisions (Indy, Nov 13, 2026), fleet lifecycle, moved into this PR (§6): "I want to take out or nuke this command (we donot need this) fleet stop <id>"; the same for `fleet resume <id>`; "There is no backward or legacy to think about"; "fleet kill <id> is fleet delete"; "fleet archive is a new state"; "i want this in this PR". On a gate trip archiving: "Yes correct i agree on this, i accept false-positive". On permissions: "there is no specific scope needed"; "by default you give me access". This supersedes M249_003's §2c and §3.
 
 > Owner (Indy, Nov 12, 2026): "i think after you complete i need a report of the help, and the subcommands helps so i know you have fixed it. and the unit test acceptance fixed too for cli." Recorded as Dimension 5.1 and rubric R4.
