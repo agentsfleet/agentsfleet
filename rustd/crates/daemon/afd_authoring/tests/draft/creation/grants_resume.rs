@@ -1,7 +1,7 @@
-//! An approved setup grant restarts setup on its own (Indy, Nov 13, 2026):
-//! the step the approval route runs, `Creations::resume_setup`, activates an
-//! installing fleet whose last grant was just approved, and a denial leaves it
-//! installing.
+//! An approved setup grant restarts setup on its own, because approving the
+//! last missing grant is the person's whole answer: the step the approval
+//! route runs, `Creations::resume_setup`, activates an installing fleet whose
+//! last grant was just approved, and a denial leaves it installing.
 
 use super::super::{fixture::now, mint};
 use super::fixture::Case;

@@ -146,7 +146,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::RUN_LEASE_CANCELLED,
         status: 409,
         title: "Lease cancelled",
-        hint: "The fleet was killed. Stop this lease and report its final result.",
+        hint: "The fleet was archived. Stop this lease and report its final result.",
         user_message: None,
     },
     Problem {
@@ -229,7 +229,7 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
-        code: error_code::AGENTSFLEET_PAUSED_INGRESS,
+        code: error_code::AGENTSFLEET_NOT_ACTIVE,
         status: 409,
         title: "Fleet is not active",
         hint: "This fleet is not active and refuses new work: it is still installing, or it was archived. Check it with `agentsfleet fleet show <fleet>`.",

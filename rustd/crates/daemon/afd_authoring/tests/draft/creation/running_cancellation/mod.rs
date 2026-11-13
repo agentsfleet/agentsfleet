@@ -13,7 +13,8 @@ use super::{
     fixture::Case,
 };
 
-type TestResult<T = ()> = afd_authoring::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+pub(super) type TestResult<T = ()> =
+    afd_authoring::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 const LEASE: &str = "INSERT INTO runner.leases \
     (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at, \
@@ -66,7 +67,7 @@ async fn archive_marks_running_leases_before_another_replica_receives_the_cancel
     Ok(())
 }
 
-async fn assert_cancel(
+pub(super) async fn assert_cancel(
     subject: &Subject,
     lease: &Uuid7,
     commands: &mut Subscription,
@@ -92,7 +93,7 @@ async fn assert_cancel(
     .await?
 }
 
-async fn seed_lease(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> {
+pub(super) async fn seed_lease(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> {
     let policy = afd_db::test_util::RunnerPolicy {
         sandbox_tier: "dev_none",
         network_policy: "deny_all_egress",

@@ -27,7 +27,7 @@
 /// secret this row leads to, and never the row's own visibility.
 ///
 /// `status` is read even though nothing in the trigger set mentions it: a
-/// delivery to a paused fleet is answered 200 and dropped rather than run, and
+/// delivery to a fleet that is not active is answered 200 and dropped rather than run, and
 /// a query that did not return the status would have no way to know.
 pub const SELECT_FLEET_INGRESS: &str = include_str!("select_fleet_ingress.sql");
 

@@ -9,7 +9,7 @@
 use crate::lease::admit::{Admission, Refusal, Transient};
 use afd_gate::gate::{Refused, Verdict};
 
-/// The gate that stopped a fleet, for a transient's `at`.
+/// The gate that archived a fleet, for a transient's `at`.
 const STOPPED: &str = "gate_auto_kill";
 
 /// The gate that could not be raised, for a transient's `at`.
@@ -23,9 +23,9 @@ impl Admission {
     /// the money gates that answer the same shape.
     ///
     /// [`Verdict::Killed`] becomes a [`Admission::Retry`] and not a refusal,
-    /// which reads backwards until you see what was stopped: the FLEET changed
-    /// state, and the event was written nothing, so a resume re-delivers it.
-    /// Ending the event as well would punish one delivery for a fleet-level
+    /// which reads backwards until you see what was archived: the FLEET
+    /// changed state, and the event was written nothing. Ending the event as
+    /// well would record a refusal against one delivery for a fleet-level
     /// decision it happens to have triggered.
     #[must_use]
     pub const fn of_gate(verdict: Verdict) -> Option<Self> {
@@ -112,12 +112,11 @@ mod tests {
     }
 
     #[test]
-    fn a_stopped_fleet_does_not_end_the_delivery_that_stopped_it() {
-        // The arm that reads backwards until you see what was stopped: the
-        // FLEET changed state, and this delivery was written nothing, so a
-        // resume re-delivers it. A refusal here would punish one event for a
-        // fleet-level decision it happened to trigger — and the event would be
-        // gone when an operator resumed the fleet to run it.
+    fn an_archived_fleet_does_not_end_the_delivery_that_archived_it() {
+        // The arm that reads backwards until you see what was archived: the
+        // FLEET changed state, and this delivery was written nothing. A
+        // refusal here would record against one event a fleet-level decision
+        // it happened to trigger.
         for trigger in [Trigger::Anomaly, Trigger::Policy] {
             assert!(
                 matches!(

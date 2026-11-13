@@ -194,10 +194,10 @@ pub const AGENTSFLEET_SOURCE_STALE: ErrorCode = ErrorCode::declare("UZ-AGT-014")
 /// The fleet will not take new work, so a steer was refused rather than taken.
 ///
 /// A 409 carrying `current_state`, and the status is the whole point: a
-/// message accepted for a stopped fleet would be a 202 whose run never
-/// happens, and a person watching for their answer would wait forever. The
-/// caller branches on paused-versus-stopped without re-reading the fleet.
-pub const AGENTSFLEET_PAUSED_INGRESS: ErrorCode = ErrorCode::declare("UZ-AGT-012");
+/// message accepted for a fleet that is not active would be a 202 whose run
+/// never happens, and a person watching for their answer would wait forever.
+/// The caller tells installing from archived without re-reading the fleet.
+pub const AGENTSFLEET_NOT_ACTIVE: ErrorCode = ErrorCode::declare("UZ-AGT-012");
 
 /// No event under that identifier, in that fleet, in that workspace.
 ///

@@ -33,6 +33,7 @@ af_core::error_lifts!(Error, ErrorKind:
     afd_runner::Error => Runner,
     afd_admission::Error => Admission,
     afd_approval::Error => Approval,
+    afd_fleet_lifecycle::Error => Lifecycle,
     afd_billing::Error => Billing,
 );
 
@@ -73,6 +74,7 @@ impl Error {
             ErrorKind::Runner { source } => source.code(),
             ErrorKind::Admission { source } => source.code(),
             ErrorKind::Approval { source } => source.code(),
+            ErrorKind::Lifecycle { source } => source.code(),
             ErrorKind::Billing { source } => source.code(),
             ErrorKind::Identifier { .. }
             | ErrorKind::Entropy { .. }
@@ -106,6 +108,7 @@ impl Error {
             | ErrorKind::Runner { .. }
             | ErrorKind::Admission { .. }
             | ErrorKind::Approval { .. }
+            | ErrorKind::Lifecycle { .. }
             | ErrorKind::Token
             | ErrorKind::Provider
             | ErrorKind::Unknown
@@ -147,6 +150,7 @@ impl Error {
             | ErrorKind::Runner { .. }
             | ErrorKind::Admission { .. }
             | ErrorKind::Approval { .. }
+            | ErrorKind::Lifecycle { .. }
             | ErrorKind::Token
             | ErrorKind::Provider
             | ErrorKind::Unknown
@@ -191,6 +195,7 @@ impl Error {
             | ErrorKind::Runner { .. }
             | ErrorKind::Admission { .. }
             | ErrorKind::Approval { .. }
+            | ErrorKind::Lifecycle { .. }
             | ErrorKind::Token
             | ErrorKind::Provider
             | ErrorKind::Unknown
@@ -238,6 +243,7 @@ impl Error {
             | ErrorKind::Runner { .. }
             | ErrorKind::Admission { .. }
             | ErrorKind::Approval { .. }
+            | ErrorKind::Lifecycle { .. }
             | ErrorKind::Token
             | ErrorKind::Provider
             | ErrorKind::Preview { .. }

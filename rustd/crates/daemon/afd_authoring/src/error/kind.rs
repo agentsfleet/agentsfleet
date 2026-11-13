@@ -53,6 +53,11 @@ pub(crate) enum ErrorKind {
         #[from]
         source: afd_approval::Error,
     },
+    #[error("the fleet row could not be removed")]
+    Lifecycle {
+        #[from]
+        source: afd_fleet_lifecycle::Error,
+    },
     #[error("the assembled authoring context exceeds its bound")]
     Token,
     #[error("the provider failed with known usage")]

@@ -41,7 +41,7 @@ async fn a_policy_kill_archives_the_fleet_even_when_the_bus_is_unreachable() {
         .bind(&fixture.fleet)
         .fetch_one(&mut *fixture.database.acquire().await.expect("live database"))
         .await
-        .expect("the stopped fleet remains readable");
+        .expect("the archived fleet remains readable");
     assert_eq!(status, afd_fleet_lifecycle::FleetStatus::Archived.as_str());
     fixture.cleanup().await;
 }

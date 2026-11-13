@@ -25,7 +25,7 @@ export interface ParityRow {
 export const COMMAND_PARITY: ReadonlyArray<ParityRow> = [
   { argv: ["fleet", "list"], calls: [`GET ${WS}/fleets`] },
   { argv: ["fleet", "status"], calls: [`GET ${WS}/fleets`] },
-  // New in §6, so recorded on this branch rather than at the base.
+  // No earlier spelling exists for these two, so they record today's calls.
   { argv: ["fleet", "activate", FLEET_ID], calls: [`GET ${FLEET}`] },
   { argv: ["fleet", "archive", FLEET_ID], calls: [`GET ${FLEET}`] },
   { argv: ["fleet", "delete", FLEET_ID], calls: [`GET ${FLEET}`] },

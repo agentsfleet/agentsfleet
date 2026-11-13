@@ -93,7 +93,7 @@ struct Answer {
     operation_id = "approval_webhook",
     summary = "Resolve a fleet approval gate",
     description = concat!(
-        "Approves or rejects a paused fleet's request through an email link or Slack ",
+        "Approves or rejects a fleet's pending request through an email link or Slack ",
         "action. The body requires a valid signature using the fleet's webhook secret.",
     ),
     request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),

@@ -48,8 +48,10 @@ impl Creations {
         }
         let requested = status.unwrap_or(&row.status);
         transition(&row, status)?;
+        // `transition` refused an archived row, so a fleet here is installing
+        // or active: a bare retry writes nothing and only re-runs setup.
         let retry = status == Some(ACTIVE);
-        if !retry || !matches!(row.status.as_str(), INSTALLING | ACTIVE) || name.is_some() {
+        if !retry || name.is_some() {
             let written = if retry && row.status != ACTIVE {
                 INSTALLING
             } else {

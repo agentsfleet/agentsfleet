@@ -1,7 +1,7 @@
 //! The gate chain over a claimed event, entered where a suite can steer it.
 //!
 //! Every gate below the claim is proven on its own elsewhere — `installed()`
-//! against a paused fleet, the money gates against a drained ledger,
+//! against an archived fleet, the money gates against a drained ledger,
 //! `Gates::check` against a recorded decision. What no suite reached is the
 //! ORDER above them: which of `Plane::lease`'s endings each verdict becomes,
 //! and what the event row is left holding on the way out.
@@ -176,7 +176,7 @@ async fn ready(fixtures: &Fixtures) -> Ready {
 /// Claims `ready`'s event, leaving the verb un-entered.
 ///
 /// Split from [`drive`] because the case below has to act BETWEEN the two: a
-/// fleet paused after its event was claimed is a window that exists only here.
+/// fleet archived after its event was claimed is a window that exists only here.
 async fn claim(fixtures: &Fixtures, ready: &Ready) -> Acquired {
     crate::seed::select_fleet(&fixtures.leases(), &ready.runner, &ready.fleet)
         .await

@@ -81,7 +81,7 @@ The route does not use historical channel fleets as fallback responders.
 |---|---|
 | No subscribers | `Unconfigured`; return `channel_not_configured`, without a model or fleet creation. |
 | One matching name, runnable | `Addressed`; admit that configured fleet. |
-| Matching name archived | `Archived` notice; no model call. |
+| Matching name archived | `Archived` notice from the channel's carrier, its oldest active fleet; no model call. With no active fleet in the channel, the notice is dropped as `no_active_notice_carrier`. |
 | Several names match ignoring case | `Ambiguous` notice; no arbitrary selection. |
 | No matching name, one eligible unaddressed subscriber | `Sole`; admit that configured fleet. |
 | No matching name, no eligible unaddressed subscriber | `AddressIt` notice naming configured candidates. |
@@ -96,7 +96,7 @@ The existing `connector.channels` row supplies a stable notice-only owner.
 If no valid binding exists, notice handling binds an existing configured candidate rather than creating a fleet.
 
 The binding must match the current workspace and installed team.
-Deleted owners and moved-team bindings cannot supply stale authority; an archived owner cannot acquire another outbound obligation.
+Deleted owners and moved-team bindings cannot supply stale authority. An archived fleet is never chosen as a carrier, because it cannot acquire another outbound obligation; when no active fleet can carry a notice, including a bound carrier that was later archived, the notice is dropped as `no_active_notice_carrier`.
 Concurrent notices converge on the channel's existing unique binding.
 
 [Notice ownership](../../../rustd/crates/daemon/afd_api_ingress/src/handler/mention/notice.rs) owns those checks and the recorded thread destination.

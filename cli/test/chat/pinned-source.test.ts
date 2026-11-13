@@ -95,7 +95,7 @@ test("a Library first message still travels with its source in one atomic creati
 });
 
 const CONFLICTS: ReadonlyArray<readonly [string, ReadonlyArray<string>, string]> = [
-  ["--plugin with --fleet", [...LIBRARY_ARGS, "--fleet", FLEET_ID, "--setup-revision", "1"], "Choose one source"],
+  ["--plugin with --fleet", [...LIBRARY_ARGS, "--fleet", FLEET_ID, "--setup-revision", "1"], "Choose one source: --fleet, --plugin or --definition"],
   ["--plugin on a resumed draft", [DRAFT_ID, "--plugin", LIBRARY_ID, "--revision", REVISION_ID, "--no-input"],
     "A resumed draft keeps its source"],
   ["--fleet on a resumed draft", [DRAFT_ID, "--fleet", FLEET_ID, "--setup-revision", "1", "--no-input"],

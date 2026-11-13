@@ -10,6 +10,7 @@ mod admission_faults;
 mod cancellation;
 mod confirmation;
 mod contention;
+mod delete;
 mod deletion_matrix;
 mod fixture;
 mod funnel;
