@@ -14,6 +14,7 @@ mod deletion_matrix;
 mod fixture;
 mod funnel;
 mod grants;
+mod grants_resume;
 mod identity;
 mod improvement;
 mod interleaving;

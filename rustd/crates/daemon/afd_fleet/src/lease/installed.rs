@@ -202,11 +202,10 @@ impl Leases {
     /// The config stored for `fleet_id` now, whatever the fleet's status.
     ///
     /// The renewal's ceiling read, beside the claim read above. Unlike
-    /// [`Self::installed`], a stopped or killed fleet still answers: a run in
-    /// flight keeps renewing under the fleet's stored ceiling, so the ceiling
-    /// has to stay readable after the fleet stops. A paused or stopped fleet's
-    /// config can still be edited mid-run and the next renewal reads the edit;
-    /// a killed fleet's cannot. `None` only when the row is gone.
+    /// [`Self::installed`], an archived fleet still answers: a run in flight
+    /// keeps renewing under the fleet's stored ceiling, so the ceiling has to
+    /// stay readable after the fleet is archived; an archived fleet's config
+    /// cannot be edited. `None` only when the row is gone.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and a revision `config` this

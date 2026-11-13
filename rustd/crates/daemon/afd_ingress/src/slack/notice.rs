@@ -37,11 +37,9 @@ pub fn notice_text(notice: &Notice<'_>) -> String {
              of those names.",
             names(fleets)
         ),
-        Notice::Paused { fleet } => format!(
-            "{} is paused and cannot answer. A workspace member can resume it with \
-             `agentsfleet fleet resume {}`.",
-            fleet.name,
-            fleet.fleet.as_str()
+        Notice::Archived { fleet } => format!(
+            "{} is archived and cannot answer. Mention another fleet attached here.",
+            fleet.name
         ),
     }
 }

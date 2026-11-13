@@ -110,12 +110,11 @@ export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
   // `status` takes NO positional — it answers for the workspace. The
   // one-fleet read is `fleet show`, which is the by-ID probe.
   { args: ["fleet", "show"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: true, validatesClient: true },
-  // kill/stop/resume/logs and grant/fleet delete all run validateRequiredId
+  // archive/logs and grant/fleet delete all run validateRequiredId
   // — §4c2 sweep relies on validatesClient: true to fire the no-network
   // invariant against an invalid-format id sample.
-  { args: ["fleet", "kill"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
-  { args: ["fleet", "stop"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
-  { args: ["fleet", "resume"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
+  { args: ["fleet", "activate"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
+  { args: ["fleet", "archive"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
   { args: ["fleet", "logs"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
   { args: ["workspace", "use"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: "UNKNOWN_WORKSPACE" },
   { args: ["workspace", "delete"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: null },
@@ -178,9 +177,8 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["fleet", "approvals", "approve"], missingArgName: "gate_id" },
   { args: ["fleet", "approvals", "deny"], missingArgName: "gate_id" },
   { args: ["connections", "show"], missingArgName: "provider" },
-  { args: ["fleet", "kill"], missingArgName: "fleet_id" },
-  { args: ["fleet", "stop"], missingArgName: "fleet_id" },
-  { args: ["fleet", "resume"], missingArgName: "fleet_id" },
+  { args: ["fleet", "activate"], missingArgName: "fleet_id" },
+  { args: ["fleet", "archive"], missingArgName: "fleet_id" },
   { args: ["fleet", "delete"], missingArgName: "fleet_id" },
   { args: ["fleet", "events"], missingArgName: "fleet_id" },
   { args: ["fleet", "steer"], missingArgName: "fleet_id" },
@@ -263,8 +261,8 @@ export const HANDLER_VALIDATED_REQUIRED_FLAG: ReadonlyArray<ReadonlyArray<string
 // runs client-side, so the rejection carries the same shape with no request.
 export const MALFORMED_ID_INVOCATIONS: ReadonlyArray<ReadonlyArray<string>> = [
   ["fleet", "logs", "--fleet", "not-a-uuid"],
-  ["fleet", "stop", "not-a-uuid"],
-  ["fleet", "kill", "not-a-uuid"],
+  ["fleet", "archive", "not-a-uuid"],
+  ["fleet", "delete", "not-a-uuid"],
 ];
 
 

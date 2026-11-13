@@ -1,8 +1,9 @@
-//! Explicit purge after Kill; native reads and edits live in `native`.
+//! Delete a fleet in any status; native reads and edits live in `native`.
 
-use crate::auth::WorkspaceContext;
+use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceFleets as _};
+use afd_http::handler::authoring_refusal;
 pub use afd_http::handler::{DETAIL_FLEET_ID, FleetPath, parse_fleet_id};
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
@@ -11,7 +12,7 @@ use std::sync::Arc;
 
 const EVENT_PURGE: &str = "fleet_purge_failed";
 
-/// `DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}` — purge a killed fleet.
+/// `DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}` — purge a fleet in any status.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
@@ -20,9 +21,9 @@ const EVENT_PURGE: &str = "fleet_purge_failed";
     summary = "Permanently delete a fleet",
     description = concat!(
         "Permanently deletes the fleet, events, runs, approvals, grants, ",
-        "keys, and memory. This cannot be undone. Set the fleet status to ",
-        "`killed` first. Otherwise the request returns 409. Requires an ",
-        "operator role. ",
+        "keys, and memory, in any status. A running fleet's setup and live ",
+        "work end first. This cannot be undone. Archive is a separate ",
+        "operation: set the status to `archived` to keep the history instead. ",
     ),
     params(
         afd_http::openapi::path::Fleet,
@@ -34,7 +35,6 @@ const EVENT_PURGE: &str = "fleet_purge_failed";
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 412, description = "Stale resource tag"),
         (status = 428, description = "Current resource tag required"),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -45,6 +45,7 @@ const EVENT_PURGE: &str = "fleet_purge_failed";
 pub(crate) async fn purge<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
+    person: PersonIdentity,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
     headers: HeaderMap,
 ) -> Result<Response, Refusal> {
@@ -55,18 +56,27 @@ pub(crate) async fn purge<D: Services>(
             "Send the current fleet If-Match tag",
         )
     })?;
+    // The teardown an archive runs, so a fleet deleted while it works stops
+    // working; it writes no status, so the purge's tag check is unchanged.
+    services
+        .creations()
+        .release(
+            afd_authoring::Access {
+                workspace: &owned.workspace,
+                subject: person.subject(),
+            },
+            &fleet,
+            expected,
+        )
+        .await
+        .map_err(authoring_refusal)?;
     services
         .fleets()
         .purge_tagged(&owned.workspace, &fleet, expected)
         .await
-        .map_err(|error| {
-            if let Some(etag) = error.stale_tag() {
-                Refusal::preconditioned(error.code(), error.detail(), etag)
-            } else if error.code() == af_core::error_code::AGENTSFLEET_ALREADY_TERMINAL {
-                Refusal::conflict_at(EVENT_PURGE, "kill_required")(error)
-            } else {
-                Refusal::at(EVENT_PURGE)(error)
-            }
+        .map_err(|error| match error.stale_tag() {
+            Some(etag) => Refusal::preconditioned(error.code(), error.detail(), etag),
+            None => Refusal::at(EVENT_PURGE)(error),
         })?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }

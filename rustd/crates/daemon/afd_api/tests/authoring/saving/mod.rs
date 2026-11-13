@@ -1,8 +1,10 @@
 //! Save and recovery cross the actual HTTP, Postgres and bus boundaries.
 
 mod activity;
+mod archive;
 mod chat_save;
 mod fixture;
+mod grant_resume;
 mod initial_run;
 mod lifecycle;
 mod preconditions;

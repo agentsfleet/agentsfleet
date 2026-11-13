@@ -1,4 +1,4 @@
-//! Kill wins against later retries and returns an unfinished draft to its creator.
+//! Archive wins against later retries and returns an unfinished draft to its creator.
 
 use super::super::{fixture::now, mint};
 use super::fixture::{Case, NO_ADMISSIONS};
@@ -35,26 +35,26 @@ async fn renamed(c: &Case, draft: &Uuid7, request: SaveFleet, name: &str) -> Sav
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn kill_restores_private_editing_and_replay_cannot_resurrect_the_fleet() {
+async fn archive_restores_private_editing_and_replay_cannot_resurrect_the_fleet() {
     let c = Case::create().await;
     let (draft, request) = c.request("cancel-setup", Start::None).await;
     let key = mint();
     let saved = c.save(&key, request.clone()).await;
     assert_eq!(saved.status, "installing");
-    let killed = c
+    let archived = c
         .creations
         .patch(
             c.base.access(),
             &saved.id,
             Some(&saved.etag),
-            Some("killed"),
+            Some("archived"),
             None,
             now(),
         )
         .await
         .expect("atomic setup cancellation");
-    assert_eq!(killed.status, "killed");
-    assert_eq!(killed.setup.state, "cancelled");
+    assert_eq!(archived.status, "archived");
+    assert_eq!(archived.setup.state, "cancelled");
     let restored = c
         .base
         .drafts
@@ -64,7 +64,7 @@ async fn kill_restores_private_editing_and_replay_cannot_resurrect_the_fleet() {
     assert_eq!(restored.state, DraftState::Editing);
     assert!(restored.linked_fleet_id.is_none());
     c.fund().await;
-    assert_eq!(c.save(&key, request.clone()).await.status, "killed");
+    assert_eq!(c.save(&key, request.clone()).await.status, "archived");
     assert_eq!(c.admissions(&saved.id).await, NO_ADMISSIONS);
     let another = renamed(&c, &draft, request, "new-setup").await;
     let saved_again = c.save(&mint(), another).await;
@@ -75,9 +75,9 @@ async fn kill_restores_private_editing_and_replay_cannot_resurrect_the_fleet() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn stale_kill_does_not_cancel_a_newer_resource_revision() {
+async fn stale_archive_does_not_cancel_a_newer_resource_revision() {
     let c = Case::create().await;
-    let (_, request) = c.request("stale-kill", Start::None).await;
+    let (_, request) = c.request("stale-archive", Start::None).await;
     let saved = c.save(&mint(), request).await;
     let renamed = c
         .creations
@@ -97,7 +97,7 @@ async fn stale_kill_does_not_cancel_a_newer_resource_revision() {
             c.base.access(),
             &saved.id,
             Some(&saved.etag),
-            Some("killed"),
+            Some("archived"),
             None,
             now(),
         )

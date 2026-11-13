@@ -20,11 +20,9 @@ import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { saveProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
+  archiveFleet,
   expectStatus,
-  killFleet,
-  stopFleet,
   TOMBSTONE_REFUSAL,
-  TRANSITION_REFUSAL,
 } from "./fixtures/lifecycle.ts";
 import { resolveFleetName, applyReviewedImprovement } from "./fixtures/improvement-ops.ts";
 
@@ -36,10 +34,6 @@ const LIVE_STATES: ReadonlyArray<string> = [
   AGENTSFLEET_STATUS.active,
   "running",
   "starting",
-];
-const STOPPED_STATES: ReadonlyArray<string> = [
-  AGENTSFLEET_STATUS.paused,
-  AGENTSFLEET_STATUS.stopped,
 ];
 
 const INSTALL_TIMEOUT_MS = 90_000;
@@ -121,21 +115,7 @@ if (!isLive) {
         assert.equal(typeof payload.status, "string");
       });
 
-      it("delete before kill is refused (must be killed first)", async () => {
-        // `purge.rs` refuses a fleet nobody killed first, and the daemon
-        // answers UZ-AGT-010. Proves the guard rather than assuming
-        // kill-then-delete is the only path.
-        const result = await runWithEnv(["fleet", "delete", fleetId, "--json"]);
-        assert.notEqual(result.code, 0, `expected non-zero deleting a live fleet; stdout=${result.stdout}`);
-        assert.match(result.stderr + result.stdout, TRANSITION_REFUSAL,
-          `delete-before-kill must be the 010 refusal, not the 009 tombstone; stdout=${result.stdout} stderr=${result.stderr}`);
-        await expectStatus(env, fleetId, LIVE_STATES);
-      });
-
-      it("kill → delete removes the fleet from the list", async () => {
-        await killFleet(env, fleetId);
-        await expectStatus(env, fleetId, TERMINAL_STATUSES);
-
+      it("delete removes a live fleet from the list", async () => {
         const deleted = await runWithEnv(["fleet", "delete", fleetId, "--json"]);
         assert.equal(deleted.code, 0, `delete exited ${deleted.code}: ${deleted.stderr}`);
         const parsed = JSON.parse(deleted.stdout.trim() || "{}") as { fleet_id?: string; deleted?: boolean };
@@ -153,61 +133,28 @@ if (!isLive) {
       }, 30_000);
     });
 
-    // Scenario 2a: install → kill → resume(killed) → non-zero + UZ-AGT-009.
-    describe("illegal transition — resume a killed fleet", () => {
+    // Scenario 2: install → archive → archive again → refused as a tombstone.
+    describe("archive is terminal", () => {
       let fleetId: string = "";
 
       beforeAll(async () => {
         const installed = await saveProbeFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
         fleetId = installedId(installed);
-        await killFleet(env, fleetId);
+        await archiveFleet(env, fleetId);
         await expectStatus(env, fleetId, TERMINAL_STATUSES);
       }, SETUP_TIMEOUT_MS);
 
-      it("resume <killed-id> is refused — a killed row is a tombstone", async () => {
-        const result = await runWithEnv(["fleet", "resume", fleetId, "--json"]);
-        assert.notEqual(result.code, 0, `expected non-zero resuming a killed fleet; stdout=${result.stdout}`);
+      it("archive <archived-id> is refused — an archived fleet never changes again", async () => {
+        const result = await runWithEnv(["fleet", "archive", fleetId, "--json"]);
+        assert.notEqual(result.code, 0, `expected non-zero archiving an archived fleet; stdout=${result.stdout}`);
         assert.match(result.stderr + result.stdout, TOMBSTONE_REFUSAL,
-          `a killed row is a tombstone — expected the 009 stem, not the 010 refusal; stdout=${result.stdout} stderr=${result.stderr}`);
-      });
-
-      it("status stays terminal after the rejected resume", async () => {
-        // The refused resume must not have flipped the fleet back to a
-        // live state — the terminal contract is irreversible.
+          `an archived fleet is a tombstone; stdout=${result.stdout} stderr=${result.stderr}`);
         await expectStatus(env, fleetId, TERMINAL_STATUSES);
       });
-    });
 
-    // Scenario 2b: install → stop → stop again → graceful handling.
-    describe("idempotent transition — stop an already-stopped fleet", () => {
-      let fleetId: string = "";
-
-      beforeAll(async () => {
-        const installed = await saveProbeFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
-        fleetId = installedId(installed);
-        await stopFleet(env, fleetId);
-        await expectStatus(env, fleetId, STOPPED_STATES);
-      }, SETUP_TIMEOUT_MS);
-
-      it("stop on an already-stopped fleet is handled gracefully", async () => {
-        // Either the server treats stop→stopped as a no-op (exit 0) or it
-        // rejects the redundant transition with a clear stem. What's not
-        // acceptable is a connection error, a leaked token, or a silent
-        // flip to a live state — the post-condition below catches the last.
-        const result = await runWithEnv(["fleet", "stop", fleetId, "--json"]);
-        if (result.code !== 0) {
-          assert.match(result.stderr + result.stdout, TRANSITION_REFUSAL,
-            `non-zero stop must carry the 010 transition stem; stdout=${result.stdout} stderr=${result.stderr}`);
-        }
-      });
-
-      it("status remains stopped after the redundant stop", async () => {
-        await expectStatus(env, fleetId, STOPPED_STATES);
-      });
-
-      it("teardown: kill the stopped fixture so the run leaves no live residue", async () => {
-        await killFleet(env, fleetId);
-        await expectStatus(env, fleetId, TERMINAL_STATUSES);
+      it("teardown: delete the archived fixture", async () => {
+        const result = await runWithEnv(["fleet", "delete", fleetId, "--json"]);
+        assert.equal(result.code, 0, `delete exited ${result.code}: ${result.stderr}`);
       });
     });
 

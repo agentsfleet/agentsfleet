@@ -49,7 +49,7 @@ const RUN_FAILURE: &str =
 const EVENT_WORKFLOW_RUN: &str = "workflow_run";
 
 /// The reason the route drops a delivery to a fleet nobody is running.
-const REASON_FLEET_PAUSED: &str = "fleet_paused";
+const REASON_FLEET_NOT_ACTIVE: &str = "fleet_not_active";
 
 /// The scheme `github` resolves to — a hex tag over the body alone.
 const SCHEME: Scheme = Scheme::BodyHex;
@@ -258,7 +258,7 @@ async fn a_paused_fleet_is_acknowledged_from_its_stored_status() {
     // reason rather than refused, because a sender's retry queue adds nothing
     // for a fleet somebody paused on purpose.
     let fixture = Fixture::create().await;
-    fixture.seed(Runnable::Paused, Secret::Stored).await;
+    fixture.seed(Runnable::Archived, Secret::Stored).await;
     let router = fixture.router();
 
     let dropped = deliver(&router, &fixture.fleet, SIGNING_SECRET).await;
@@ -267,7 +267,7 @@ async fn a_paused_fleet_is_acknowledged_from_its_stored_status() {
     assert_eq!(status, StatusCode::OK, "{document}");
     assert_eq!(
         document.get("ignored").and_then(Value::as_str),
-        Some(REASON_FLEET_PAUSED),
+        Some(REASON_FLEET_NOT_ACTIVE),
         "{document}"
     );
 

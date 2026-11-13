@@ -20,17 +20,17 @@ use af_core::error_code::{Coded as _, Logged};
 use jiff::Timestamp;
 use serde_json::Value;
 
+use crate::gate::archive::Trigger;
 use crate::gate::claim::Claim;
 use crate::gate::detail::Stated;
 use crate::gate::park::{Park, Parked};
 use crate::gate::pass::{Check, Verdict, Waiting};
-use crate::gate::pause::Trigger;
 use crate::gate::route::{RefState, Route, route};
 use crate::gate::store::Gates;
 use crate::gate::{Anomaly, Decision, match_rule};
 
-/// A fleet could not be stopped after a gate decided it should be.
-const EVENT_PAUSE_FAILED: &str = "gate_pause_failed";
+/// A fleet could not be archived after a gate decided it should be.
+const EVENT_ARCHIVE_FAILED: &str = "gate_archive_failed";
 
 /// The pass reached an arm its own ordering has already answered.
 const EVENT_ROUTE_UNREACHABLE: &str = "gate_route_unreachable";
@@ -133,25 +133,25 @@ impl Gates {
         }
     }
 
-    /// Stop the fleet, and say which trigger did it.
+    /// Archive the fleet, and say which trigger did it.
     ///
-    /// A failed pause does NOT change the verdict: the gate decided this fleet
+    /// A failed archive does NOT change the verdict: the gate decided this fleet
     /// should stop, and reporting that it did not while also admitting the
     /// event would be the worst of both. The event stays leasable either way,
-    /// so a fleet that could not be paused re-decides on the next poll.
+    /// so a fleet that could not be archived re-decides on the next poll.
     async fn stop(&self, request: &Check<'_>, trigger: Trigger) -> Verdict {
-        if let Err(fault) = self.pause(request.fleet_id, trigger).await {
+        if let Err(fault) = self.archive(request.fleet_id, trigger).await {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
             let fleet = request.fleet_id.as_str();
             let trigger_word = trigger.as_str();
             let Logged { error_code, reason } = fault.logged();
             tracing::error!(
                 error_code,
-                event = EVENT_PAUSE_FAILED,
+                event = EVENT_ARCHIVE_FAILED,
                 fleet_id = fleet,
                 trigger = trigger_word,
                 reason,
-                "the gate stopped this fleet and the row would not flip; it stays active"
+                "the gate archived this fleet and the row would not flip; it stays active"
             );
         }
         Verdict::Killed(trigger)

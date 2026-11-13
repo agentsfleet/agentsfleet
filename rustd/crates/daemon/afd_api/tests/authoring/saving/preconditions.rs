@@ -24,18 +24,18 @@ async fn stale_tags_and_changed_replay_bodies_cannot_rename_or_resurrect() {
         .to_str()
         .expect("fleet tag")
         .to_owned();
-    let killed = send_with_headers(
+    let archived = send_with_headers(
         &case.router,
         Method::PATCH,
         &item,
         Some(&case.base.token),
-        r#"{"status":"killed"}"#,
+        r#"{"status":"archived"}"#,
         &[(header::IF_MATCH, &tag)],
     )
     .await;
-    assert_eq!(killed.status(), StatusCode::OK);
-    let killed = json_body(killed).await;
-    assert_eq!(killed["status"], "killed");
+    assert_eq!(archived.status(), StatusCode::OK);
+    let archived = json_body(archived).await;
+    assert_eq!(archived["status"], "archived");
     let stale = send_with_headers(
         &case.router,
         Method::PATCH,
@@ -46,10 +46,10 @@ async fn stale_tags_and_changed_replay_bodies_cannot_rename_or_resurrect() {
     )
     .await;
     assert_eq!(stale.status(), StatusCode::PRECONDITION_FAILED);
-    assert_eq!(json_body(stale).await["etag"], killed["etag"]);
+    assert_eq!(json_body(stale).await["etag"], archived["etag"]);
     let replay = case.save(key.as_str(), &request).await;
     assert_eq!(replay.status(), StatusCode::CREATED);
-    assert_eq!(json_body(replay).await["status"], "killed");
+    assert_eq!(json_body(replay).await["status"], "archived");
     request["name"] = "changed-key-body".into();
     let conflict = case.save(key.as_str(), &request).await;
     assert_eq!(conflict.status(), StatusCode::CONFLICT);

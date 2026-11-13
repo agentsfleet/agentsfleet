@@ -23,7 +23,7 @@ const KILL_EVERY_CHAT: &str =
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_policy_kill_pauses_the_fleet_even_when_the_bus_is_unreachable() {
+async fn a_policy_kill_archives_the_fleet_even_when_the_bus_is_unreachable() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let gates = Gates::new(
@@ -42,7 +42,7 @@ async fn a_policy_kill_pauses_the_fleet_even_when_the_bus_is_unreachable() {
         .fetch_one(&mut *fixture.database.acquire().await.expect("live database"))
         .await
         .expect("the stopped fleet remains readable");
-    assert_eq!(status, afd_fleet_lifecycle::FleetStatus::Paused.as_str());
+    assert_eq!(status, afd_fleet_lifecycle::FleetStatus::Archived.as_str());
     fixture.cleanup().await;
 }
 

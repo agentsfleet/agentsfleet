@@ -179,7 +179,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::AGENTSFLEET_NAME_EXISTS,
         status: 409,
         title: "Fleet name already exists",
-        hint: "A Fleet with this name already exists. Find its id with `agentsfleet fleet list`, run `agentsfleet fleet kill <fleet_id>`, then deploy again.",
+        hint: "A Fleet with this name already exists. Find its id with `agentsfleet fleet list`, run `agentsfleet fleet delete <fleet_id>`, then deploy again.",
         // No dashboard sentence: an explicit name is a command-line and
         // API-key surface, because the dashboard's one-step install names
         // nothing and takes the re-drawn suffix instead of ever seeing this.
@@ -201,18 +201,9 @@ pub(super) const FLEET: &[Problem] = &[
         // oracle for which identifiers are real.
         status: 404,
         title: "Fleet not found",
-        hint: "Fleet not found. Verify the fleet_id and that it has not been killed.",
+        hint: "Fleet not found. Verify the fleet_id and that it has not been deleted.",
         user_message: Some(
             "We couldn't find that Fleet. It may have been deleted, or the identifier doesn't match one in this workspace.",
-        ),
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_ALREADY_TERMINAL,
-        status: 409,
-        title: "Fleet state transition not allowed",
-        hint: "That action is not valid from the fleet's current state. The error detail names the refused transition.",
-        user_message: Some(
-            "That action isn't available for this Fleet right now — check its current status and try again.",
         ),
     },
     Problem {
@@ -240,9 +231,9 @@ pub(super) const FLEET: &[Problem] = &[
     Problem {
         code: error_code::AGENTSFLEET_PAUSED_INGRESS,
         status: 409,
-        title: "Fleet is paused",
-        hint: "This fleet is not active and refuses new work. Resume it with: `agentsfleet fleet resume <fleet>`, then retry.",
-        user_message: Some("This Fleet is paused. Resume it before sending new work."),
+        title: "Fleet is not active",
+        hint: "This fleet is not active and refuses new work: it is still installing, or it was archived. Check it with `agentsfleet fleet show <fleet>`.",
+        user_message: Some("This Fleet isn't active, so it can't take new work."),
     },
     Problem {
         code: error_code::EVENT_NOT_FOUND,

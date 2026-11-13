@@ -1,6 +1,6 @@
 //! Installation checks report current prerequisites, never inferred grant approval.
 
-use super::{ACTIVE, KILLED, stored::Stored};
+use super::{ACTIVE, ARCHIVED, stored::Stored};
 use crate::types::{Action, Check, CheckKind, CheckState, Review};
 use serde::Serialize;
 
@@ -12,7 +12,7 @@ const CHECK_PENDING: &str = "pending";
 const CHECK_BLOCKED: &str = "blocked";
 /// The setup boundary a changed review is reported under.
 const KIND_POLICY: &str = "policy";
-/// Setup a Kill cancelled; its draft returned to editing.
+/// Setup an archive cancelled; its draft returned to editing.
 const SETUP_CANCELLED: &str = "cancelled";
 /// Setup finished: the fleet is active.
 const SETUP_READY: &str = "ready";
@@ -86,9 +86,9 @@ fn observed(check: &Check) -> SetupCheck {
 }
 
 /// The whole setup's state, which the fleet's lifecycle decides: a fleet that
-/// is neither killed nor active still holds its activation check pending.
+/// is neither archived nor active still holds its activation check pending.
 fn state(row: &Stored) -> &'static str {
-    if row.status == KILLED {
+    if row.status == ARCHIVED {
         SETUP_CANCELLED
     } else if row.status == ACTIVE {
         SETUP_READY

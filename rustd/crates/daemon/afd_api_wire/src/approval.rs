@@ -37,7 +37,7 @@ pub mod status {
     pub const DENIED: &str = "denied";
     /// The deadline passed with no answer.
     pub const TIMED_OUT: &str = "timed_out";
-    /// The daemon stopped the fleet.
+    /// The daemon archived the fleet.
     pub const AUTO_KILLED: &str = "auto_killed";
 }
 
@@ -61,7 +61,7 @@ pub enum GateStatus {
     Denied,
     /// The deadline passed with no answer.
     TimedOut,
-    /// The daemon stopped the fleet.
+    /// The daemon archived the fleet.
     AutoKilled,
 }
 

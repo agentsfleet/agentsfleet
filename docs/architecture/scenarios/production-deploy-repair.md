@@ -27,7 +27,7 @@ timer ----------> Fleet 1   Fleet 2    Fleet 3 <----- TARGET: production result
                      setup grant -> draft PR -> human merge -> production
 ```
 
-Fleet 1 never wakes Fleet 2 automatically. Its diagnosis may inform a later human steer. Each Fleet is saved, paused, improved through review, budgeted, and deleted independently.
+Fleet 1 never wakes Fleet 2 automatically. Its diagnosis may inform a later human steer. Each Fleet is saved, improved through review, budgeted, archived, and deleted independently.
 
 ## Proposed Grafana-only development extension
 

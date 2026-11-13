@@ -7,14 +7,14 @@
 //! inconsistency: the gate answers "did a human say yes", where the safe answer
 //! under uncertainty is to keep waiting, while this answers "has this repeated
 //! suspiciously often", where the safe answer under uncertainty is that we do
-//! not know and must not pause a healthy fleet on a guess.
+//! not know and must not archive a healthy fleet on a guess.
 //!
 //! # It counts per replica, in memory
 //!
 //! Each replica keeps its own windows, one per fleet, tool, action and rule
 //! window, bounded at [`ANOMALY_KEYS_MAX`] with the oldest window evicted. A
 //! runaway spread over R replicas can repeat up to R times a threshold before
-//! a pause, and a restart forgets every count. Both are accepted costs: a
+//! an archive, and a restart forgets every count. Both are accepted costs: a
 //! shared count would put a network round trip on every first encounter, and
 //! the brake is a backstop that fails open by design.
 //!
@@ -45,7 +45,7 @@ const EVENT_AUTO_KILL: &str = "gate_anomaly_auto_kill";
 pub enum Anomaly {
     /// Nothing has crossed a threshold.
     Normal,
-    /// A repetition tripped a rule; the fleet is paused.
+    /// A repetition tripped a rule; the fleet is archived.
     AutoKill,
 }
 

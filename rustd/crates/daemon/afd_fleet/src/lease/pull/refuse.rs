@@ -21,8 +21,8 @@ use crate::lease::envelope::Acquired;
 use crate::lease::event::{DETAIL_LEASES_LAPSED, Delivery, Ended};
 use crate::lease::installed::Installed;
 
-/// The no-work reason for a fleet paused between selection and claim.
-const FLEET_STOPPED: &str = "the fleet stopped between selection and claim";
+/// The no-work reason for a fleet archived between selection and claim.
+const FLEET_ARCHIVED: &str = "the fleet was archived between selection and claim";
 
 /// A fleet whose unreadable config could not even be recorded as such.
 pub(super) const EVENT_CONFIG_REFUSAL_UNRECORDED: &str = "config_refusal_unrecorded";
@@ -46,7 +46,7 @@ impl LeaseService {
             // selection and this read. The pass frees the claim; the pause
             // already cleared the mark.
             Ok(None) => {
-                no_work(runner_id, FLEET_STOPPED);
+                no_work(runner_id, FLEET_ARCHIVED);
                 Ok(Step::Stop)
             }
             // One fleet's unreadable document is that fleet's fault and not

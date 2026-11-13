@@ -59,7 +59,7 @@ describe("CLI tree — every documented route is reachable", () => {
     ["usage", "show"],
     ["chat", "list"], ["chat", "rename"], ["chat", "delete"],
     ["library", "list"], ["library", "delete"], ["fleet", "show"],
-    ["fleet", "list"], ["fleet", "status"], ["fleet", "stop"], ["fleet", "resume"], ["fleet", "kill"], ["fleet", "delete"],
+    ["fleet", "list"], ["fleet", "status"], ["fleet", "activate"], ["fleet", "archive"], ["fleet", "delete"],
     ["fleet", "logs"], ["fleet", "events"], ["fleet", "steer"],
     ["secrets", "create"], ["secrets", "update"], ["secrets", "show"], ["secrets", "list"], ["secrets", "delete"],
   ];

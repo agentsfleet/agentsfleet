@@ -13,8 +13,8 @@ use super::{Lane, NOW, mint};
 /// The status a fixture fleet is born in: leasable, as activation leaves it.
 const ACTIVE: &str = "active";
 
-/// The terminal status a purge requires.
-const KILLED: &str = "killed";
+/// The terminal status an archive leaves.
+const ARCHIVED: &str = "archived";
 
 /// The resource version a native Save writes on its first row.
 const INITIAL_VERSION: i64 = 1;
@@ -55,18 +55,18 @@ impl Lane {
         id
     }
 
-    /// Takes the fleet to `killed` and answers the tag a purge must present,
+    /// Takes the fleet to `archived` and answers the tag a purge must present,
     /// as the native status PATCH advances the resource version.
-    pub(crate) async fn kill(&self, fleet: &Uuid7) -> String {
+    pub(crate) async fn archive(&self, fleet: &Uuid7) -> String {
         let version: i64 = sqlx::query_scalar(
             "UPDATE fleet.fleets SET status = $2, resource_version = resource_version + 1 \
              WHERE id = $1 RETURNING resource_version",
         )
         .bind(fleet)
-        .bind(KILLED)
+        .bind(ARCHIVED)
         .fetch_one(&mut *self.connection().await)
         .await
-        .expect("an active fleet can be killed");
+        .expect("an active fleet can be archived");
         af_core::etag::versioned(fleet, version)
     }
 

@@ -89,9 +89,9 @@ impl Saved {
         (status, json_body(response).await)
     }
 
-    /// Stops the fleet against its current tag; a stopped fleet meets the same
-    /// ingress refusal the anomaly gate's pause does.
-    async fn stop(&self) {
+    /// Archives the fleet against its current tag; an archived fleet meets the
+    /// same ingress refusal the anomaly gate's archive does.
+    async fn archive(&self) {
         let current = send(
             &self.router,
             Method::GET,
@@ -104,16 +104,16 @@ impl Saved {
             .to_str()
             .expect("fleet tag")
             .to_owned();
-        let stopped = send_with_headers(
+        let archived = send_with_headers(
             &self.router,
             Method::PATCH,
             &self.item,
             Some(self.token()),
-            r#"{"status":"stopped"}"#,
+            r#"{"status":"archived"}"#,
             &[(header::IF_MATCH, &tag)],
         )
         .await;
-        assert_eq!(stopped.status(), StatusCode::OK);
+        assert_eq!(archived.status(), StatusCode::OK);
     }
 
     /// The completed event and the approved grant a run and a person leave.

@@ -1,5 +1,9 @@
 //! Gate parking and durable-decision fallback over both live datastores.
 #![cfg(feature = "test-util")]
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
 
 #[path = "support/gate_fixture.rs"]
 mod fixture;
@@ -211,6 +215,57 @@ async fn a_gate_that_cannot_mint_its_identity_fails_closed() {
             .await,
         Verdict::Unavailable,
         "a gate with no durable identity cannot release the event"
+    );
+    fixture.cleanup().await;
+}
+
+/// The fleet's stored status, read back after a gate decided.
+async fn status_of(fixture: &Fixture) -> String {
+    sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id = $1")
+        .bind(&fixture.fleet)
+        .fetch_one(&mut *fixture.database.acquire().await.expect("live database"))
+        .await
+        .expect("the archived fleet stays readable")
+}
+
+/// Dimension 6.3 (`M249_002`) — a trip archives the fleet, whichever trigger
+/// fired: archive is terminal, so nothing returns it to `active`.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn gate_trip_archives_the_fleet() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
+    let archived = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
+
+    let policy_kill = config_gates(
+        r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"auto_kill"}]}"#,
+    );
+    assert_eq!(
+        gates
+            .check(fixture.check(&mint_id(), &policy_kill), NOW)
+            .await,
+        Verdict::Killed(Trigger::Policy)
+    );
+    assert_eq!(
+        status_of(&fixture).await,
+        archived,
+        "a policy trip archives"
+    );
+
+    fixture.activate().await;
+    let anomaly = config_gates(
+        r#"{"anomaly_rules":[{"pattern":"same_action","threshold_count":2,"threshold_window_s":60}]}"#,
+    );
+    gates.check(fixture.check(&mint_id(), &anomaly), NOW).await;
+    assert_eq!(
+        gates.check(fixture.check(&mint_id(), &anomaly), NOW).await,
+        Verdict::Killed(Trigger::Anomaly)
+    );
+    assert_eq!(
+        status_of(&fixture).await,
+        archived,
+        "an anomaly trip archives"
     );
     fixture.cleanup().await;
 }

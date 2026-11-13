@@ -49,8 +49,8 @@ pub(super) const REASON_BOT_MESSAGE: &str = "bot_message";
 pub(super) const REASON_TEAM_NOT_MAPPED: &str = "team_not_mapped";
 /// No saved fleet is configured for this channel.
 pub(super) const REASON_CHANNEL_NOT_CONFIGURED: &str = "channel_not_configured";
-/// A killed notice owner cannot acquire another outbound obligation.
-pub(super) const REASON_NOTICE_OWNER_KILLED: &str = "notice_owner_killed";
+/// An archived notice owner cannot acquire another outbound obligation.
+pub(super) const REASON_NOTICE_OWNER_ARCHIVED: &str = "notice_owner_archived";
 
 /// The event a datastore failure on this path is refused under.
 const EVENT_MENTION: &str = "slack_mention_failed";

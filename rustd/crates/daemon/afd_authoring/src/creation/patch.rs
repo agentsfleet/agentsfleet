@@ -1,7 +1,7 @@
 //! Strong tags serialize status changes, setup retries and cancellation.
 
 use super::{
-    ACTIVE, CONTEXT, Creations, INSTALLING, KILLED, SavedFleet, etag, read, sql, stored::Stored,
+    ACTIVE, ARCHIVED, CONTEXT, Creations, INSTALLING, SavedFleet, etag, read, sql, stored::Stored,
 };
 use crate::{
     Access, Result, access,
@@ -21,7 +21,7 @@ impl Creations {
     ///
     /// # Errors
     /// Refuses stale/missing tags, unsupported transitions and invalid slugs.
-    /// A Kill and linked-draft restoration commit together.
+    /// An archive and linked-draft restoration commit together.
     pub async fn patch(
         &self,
         access: Access<'_>,
@@ -64,16 +64,16 @@ impl Creations {
                 .await
                 .map_err(query(CONTEXT))?;
         }
-        let cancelled = if requested == KILLED {
+        let cancelled = if requested == ARCHIVED {
             self.cancel(&mut tx, fleet).await?
         } else {
             Vec::new()
         };
         tx.commit().await.map_err(query(CONTEXT))?;
         self.announce_cancellations(cancelled).await;
-        // Killing an installing fleet cancels its setup; a live fleet's setup
-        // already finished, and `transition` refused any repeated Kill above.
-        if requested == KILLED && row.status == INSTALLING {
+        // Archiving an installing fleet cancels its setup; a live fleet's setup
+        // already finished, and `transition` refused any repeated archive above.
+        if requested == ARCHIVED && row.status == INSTALLING {
             let step = AuthoringStep::SetupCancelled {
                 fleet_id: fleet.clone(),
             };
@@ -85,7 +85,7 @@ impl Creations {
         self.read(access, fleet).await
     }
 
-    async fn cancel(
+    pub(super) async fn cancel(
         &self,
         connection: &mut PgConnection,
         fleet: &Uuid7,
@@ -107,7 +107,7 @@ impl Creations {
         Ok(cancelled)
     }
 
-    async fn announce_cancellations(&self, cancelled: Vec<(Uuid7, Uuid7)>) {
+    pub(super) async fn announce_cancellations(&self, cancelled: Vec<(Uuid7, Uuid7)>) {
         let bus = self.activity_streams();
         for (runner, lease_id) in cancelled {
             let subject = afd_bus::Subject::RunnerCommand(runner.clone());
@@ -119,16 +119,11 @@ impl Creations {
     }
 }
 
-/// A live fleet a person paused; an installing one cannot be stopped.
-const STOPPED: &str = "stopped";
-
 fn transition(row: &Stored, requested: Option<&str>) -> Result<()> {
-    if row.status == KILLED {
+    if row.status == ARCHIVED {
         return Err(ErrorKind::FleetMissing.into());
     }
-    if requested.is_some_and(|status| !matches!(status, ACTIVE | KILLED | STOPPED))
-        || (row.status == INSTALLING && requested == Some(STOPPED))
-    {
+    if requested.is_some_and(|status| !matches!(status, ACTIVE | ARCHIVED)) {
         return Err(ErrorKind::State {
             current: "transition_refused",
         }

@@ -69,9 +69,6 @@ pub(crate) enum ErrorKind {
     #[error("no fleet with that id lives in this workspace")]
     NotFound,
 
-    #[error("a fleet must be killed before it can be purged")]
-    MustKillFirst,
-
     #[error("the caller's If-Match names a version the row has moved past")]
     SourceStale {
         /// The tag the row holds now, so a caller retries in one round trip.
@@ -102,10 +99,6 @@ impl Error {
                 (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)
             }
             ErrorKind::NotFound => (error_code::AGENTSFLEET_NOT_FOUND, detail::NOT_FOUND),
-            ErrorKind::MustKillFirst => (
-                error_code::AGENTSFLEET_ALREADY_TERMINAL,
-                detail::MUST_KILL_FIRST,
-            ),
             ErrorKind::SourceStale { .. } => {
                 (error_code::AGENTSFLEET_SOURCE_STALE, detail::SOURCE_STALE)
             }
@@ -145,7 +138,6 @@ impl Error {
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::NotFound
-            | ErrorKind::MustKillFirst
             | ErrorKind::SourceStale { .. } => false,
         }
     }
@@ -162,7 +154,6 @@ impl Error {
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::NotFound
-            | ErrorKind::MustKillFirst
             | ErrorKind::Shared { .. } => None,
         }
     }

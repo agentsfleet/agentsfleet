@@ -136,7 +136,7 @@ fn should_carry_the_whole_terminal_row_on_a_completion() {
     let (text, value) = rendered(&TailFrame::EventComplete {
         event: Box::new(TailRow::from(row())),
         final_reply: Some(Cow::Borrowed("Done.")),
-        fleet_status: Cow::Borrowed("paused"),
+        fleet_status: Cow::Borrowed("archived"),
         pending_approvals: 2,
         counters: Some(COUNTERS),
     });
@@ -151,7 +151,7 @@ fn should_carry_the_whole_terminal_row_on_a_completion() {
         }
         assert_eq!(&value[key], expected, "{key} rides the frame unchanged");
     }
-    assert_eq!(value["fleet_status"], json!("paused"));
+    assert_eq!(value["fleet_status"], json!("archived"));
     assert_eq!(value["pending_approvals"], json!(2));
     assert_eq!(value["cost_nanos"], json!("40000000"));
     assert_eq!(value["final_reply"], json!("Done."));

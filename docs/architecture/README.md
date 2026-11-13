@@ -56,7 +56,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | How do three assigned repairs survive later CI and worker replacement, then verify a Grafana/Slack outcome? | [Durable repair scenario](scenarios/durable-repair.md) |
 | What network can a sandboxed fleet reach? | [`runner_fleet.md`](./runner_fleet.md) §"Egress model: outbound is the only network surface" |
 | Which sandbox tier may run whose work? | [`runner_fleet.md`](./runner_fleet.md) §"Sandbox tiers" |
-| How do steer, kill, and pause propagate? | [`runner_fleet.md`](./runner_fleet.md) §"Steer, kill, pause" |
+| How do steer, archive, and delete propagate? | [`runner_fleet.md`](./runner_fleet.md) §"Steer, archive, delete" |
 | Where does a webhook / steer / cron fire end up? | [`data_flow.md`](./data_flow.md) §"B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)" |
 | What does one event write, in what order? | [`data_flow.md`](./data_flow.md) §"Steer flow end-to-end" |
 | Which table answers "what did this fleet do"? | [`data_flow.md`](./data_flow.md) §"The five durable stores: who owns what" |

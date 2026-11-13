@@ -144,7 +144,7 @@ impl Ingress {
             // `is_runnable` is deliberately not re-asked: the statement bound
             // the status to `active`, and a second check here would be a
             // defensive re-test of a filter one layer up (RULE FN-RS). The
-            // per-fleet route DOES ask, because its URL reaches a paused fleet
+            // per-fleet route DOES ask, because its URL reaches an archived fleet
             // on purpose and owes that sender a reason.
             let subscribed =
                 Binding::read_for_source(fleet, owner, &row.status, &row.document, provider)?

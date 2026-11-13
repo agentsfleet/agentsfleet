@@ -24,22 +24,12 @@ export const FIXTURE_EMAIL_VAULT_PATHS = {
 export const AGENTSFLEET_STATUS = {
   active: "active",
   installing: "installing",
-  paused: "paused",
-  stopped: "stopped",
-  killed: "killed",
-  errored: "errored",
-  terminated: "terminated",
+  archived: "archived",
 } as const;
 
-// `terminated` is a third post-kill resting state alongside `killed` /
-// `errored`. The lifecycle suite accepts any of the three after
-// `killFleet`. Omitting it would land terminated fleets in the
-// teardown `live` list, where the kill retry trips UZ-AGT-010.
-export const TERMINAL_STATUSES: ReadonlyArray<string> = [
-  AGENTSFLEET_STATUS.killed,
-  AGENTSFLEET_STATUS.errored,
-  AGENTSFLEET_STATUS.terminated,
-];
+// A fleet's only resting state after `fleet archive`; `fleet delete` removes
+// the row instead of leaving one.
+export const TERMINAL_STATUSES: ReadonlyArray<string> = [AGENTSFLEET_STATUS.archived];
 
 export const LOGIN_POLL_MS = 500;
 

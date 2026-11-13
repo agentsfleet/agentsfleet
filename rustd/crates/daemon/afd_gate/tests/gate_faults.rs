@@ -3,7 +3,7 @@
 //! No datastore, deliberately: the pool points at a reserved port and the bus
 //! refuses every publish and subscribe as a disconnected broker does, so every
 //! read and write fails. One kill-rule check walks two failure arms in order — the lookup
-//! that could not be read and the pause that could not be written — and each
+//! that could not be read and the archive that could not be written — and each
 //! says why in a `reason` an operator can read without the registry code, which
 //! the line's own fields already carry, or a captured backtrace. The anomaly
 //! brake counts in memory and cannot fail to answer.
@@ -25,7 +25,7 @@ use afd_gate::gate::{Check, Claim, Gates, Park, Parked, Stated, Trigger, Verdict
 use self::fixture::config_gates;
 
 /// A rule that stops the fleet on every chat, and a threshold to count it
-/// against, so one check reaches the counter and then the pause.
+/// against, so one check reaches the counter and then the archive.
 const KILL_AND_COUNT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"auto_kill"}],"anomaly_rules":[{"pattern":"same_action","threshold_count":2,"threshold_window_s":60}]}"#;
 
 /// How long a parked question would wait for its answer.
@@ -37,8 +37,8 @@ const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee1";
 /// The lookup that could not tell whether the event already holds a gate.
 const EVENT_LOOKUP_UNREADABLE: &str = "gate_ref_lookup_failed";
 
-/// The pause that could not be written.
-const EVENT_PAUSE_FAILED: &str = "gate_pause_failed";
+/// The archive that could not be written.
+const EVENT_ARCHIVE_FAILED: &str = "gate_archive_failed";
 
 /// Gates over a pool and a bus that both refuse.
 fn unreachable_gates() -> Gates {
@@ -89,10 +89,10 @@ async fn every_failed_gate_read_and_write_reason_carries_no_code_prefix() {
     assert_eq!(
         verdict,
         Verdict::Killed(Trigger::Policy),
-        "a failed pause does not change what the gate decided"
+        "a failed archive does not change what the gate decided"
     );
     told_reason(&capture, EVENT_LOOKUP_UNREADABLE);
-    told_reason(&capture, EVENT_PAUSE_FAILED);
+    told_reason(&capture, EVENT_ARCHIVE_FAILED);
 }
 
 /// A rule that asks a human about every chat.

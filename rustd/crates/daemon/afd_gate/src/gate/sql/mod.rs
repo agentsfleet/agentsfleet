@@ -66,15 +66,15 @@ pub const SELECT_EVENT_GATE: &str = include_str!("select_event_gate.sql");
 /// `$14` stated binding, `$15` spend count, `$16` spend ceiling.
 pub const INSERT_GATE: &str = include_str!("insert_gate.sql");
 
-/// Stop a fleet, so nothing else of its work is admitted.
+/// Archive a fleet, so nothing else of its work is admitted.
 ///
 /// Written by the two auto-kill paths — a tripped anomaly rule and an
 /// `auto_kill` gate rule — and by nothing else in this crate. Kept here with
 /// the crate's other statements, per RULE SQLMOD, so every statement it runs
 /// can be reviewed in one place.
 ///
-/// `$1` the paused status, `$2` fleet.
-pub const PAUSE_FLEET: &str = include_str!("pause_fleet.sql");
+/// `$1` the archived status, `$2` fleet.
+pub const ARCHIVE_FLEET: &str = include_str!("archive_fleet.sql");
 
 /// One pending gate, bound to [`INSERT_GATE`] in `$n` order.
 ///

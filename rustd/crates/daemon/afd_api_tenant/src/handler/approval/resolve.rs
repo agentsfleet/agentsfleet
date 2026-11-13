@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use af_core::error_code;
 use afd_api_wire::approval::{ResolveApprovalRequest, ResolvedResponse};
-use afd_approval::{Decision, Resolution};
+use afd_approval::{Decision, KIND_INTEGRATION_GRANT, Resolution};
 use afd_http::envelope;
 use axum::Json;
 use axum::body::Bytes;
@@ -22,6 +22,9 @@ use super::{DETAIL_ALREADY_RESOLVED, DETAIL_NOT_FOUND, EVENT_RESOLVE, ResolvePat
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceApprovals as _};
+
+/// An approved setup grant whose setup step then failed.
+const EVENT_SETUP_RESUME_FAILED: &str = "approval_setup_resume_failed";
 
 /// The refusal a decision the path does not spell earns.
 const DETAIL_UNKNOWN_DECISION: &str = "decision must be approve or deny";
@@ -91,6 +94,13 @@ pub(crate) async fn resolve<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_RESOLVE))?;
 
+    if matches!(resolution, Resolution::Resolved(_))
+        && outcome == Decision::Approved
+        && gate.gate_type == KIND_INTEGRATION_GRANT
+    {
+        resume_setup(&services, &owned.workspace, &person, &gate.fleet_id).await;
+    }
+
     match resolution {
         Resolution::Resolved(row) => Ok(Json(ResolvedResponse {
             gate_id: Cow::Owned(row.gate_id.into()),
@@ -123,6 +133,39 @@ pub(crate) async fn resolve<D: Services>(
         )),
     }
 }
+/// An approved setup grant restarts that fleet's setup, the step PATCH
+/// `active` runs, so the fleet activates once its last grant is approved.
+///
+/// The decision is already committed and is the caller's answer, so a setup
+/// step that fails is logged, never turned into a refusal of the approval; the
+/// next approval or PATCH `active` retries it.
+async fn resume_setup<D: Services>(
+    services: &Arc<D>,
+    workspace: &af_core::id::Uuid7,
+    person: &PersonIdentity,
+    fleet: &af_core::id::Uuid7,
+) {
+    let access = afd_authoring::Access {
+        workspace,
+        subject: person.subject(),
+    };
+    if let Err(failed) = services
+        .creations()
+        .resume_setup(access, fleet, services.now())
+        .await
+    {
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let fleet_id = fleet.as_str();
+        let error_code = failed.code().as_str();
+        tracing::warn!(
+            event = EVENT_SETUP_RESUME_FAILED,
+            fleet_id,
+            error_code,
+            "an approved setup grant could not restart setup; a later approval or PATCH active retries it"
+        );
+    }
+}
+
 /// The status the path's verb resolves to.
 fn parse_decision(decision: &str) -> Result<Decision, Refusal> {
     match decision {

@@ -150,18 +150,18 @@ async fn test_absent_extensions_are_omitted_rather_than_nulled() {
 async fn test_each_extension_rides_its_own_status_only() {
     let (_status, _ct, conflict) = render(ProblemResponse::conflict(
         error_code::AUTH_UNAUTHORIZED,
-        "cannot start a paused fleet",
+        "cannot start an archived fleet",
         "req-409",
-        "paused",
+        "archived",
     ))
     .await;
-    assert_eq!(conflict["current_state"], "paused");
+    assert_eq!(conflict["current_state"], "archived");
     assert!(
         conflict.get("etag").is_none(),
         "a conflict must not carry a precondition's field"
     );
     assert_eq!(
-        conflict["detail"], "cannot start a paused fleet",
+        conflict["detail"], "cannot start an archived fleet",
         "the extension rides the base envelope, it does not replace it"
     );
 

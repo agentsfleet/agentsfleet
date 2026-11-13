@@ -1,4 +1,4 @@
-//! A fleet Kill commits its lease marker before publishing a runner command.
+//! A fleet Archive commits its lease marker before publishing a runner command.
 
 mod probe;
 
@@ -25,7 +25,7 @@ const WAIT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn kill_marks_running_leases_before_another_replica_receives_the_cancel() -> TestResult {
+async fn archive_marks_running_leases_before_another_replica_receives_the_cancel() -> TestResult {
     let case = Case::create().await;
     case.fund().await;
     let (_, request) = case.request("cancel-running-work", Start::None).await;
@@ -51,7 +51,7 @@ async fn kill_marks_running_leases_before_another_replica_receives_the_cancel() 
             case.base.access(),
             &saved.id,
             Some(&saved.etag),
-            Some("killed"),
+            Some("archived"),
             None,
             now(),
         )

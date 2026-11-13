@@ -228,7 +228,7 @@ async fn held<D: Services>(
                 .await
                 .map_err(Refusal::at(EVENT_DROPPED))?;
         }
-        return Ok(Some(dropped(webhook::REASON_FLEET_PAUSED)));
+        return Ok(Some(dropped(webhook::REASON_FLEET_NOT_ACTIVE)));
     }
     Ok(None)
 }

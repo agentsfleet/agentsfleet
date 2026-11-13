@@ -42,7 +42,7 @@ use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
 /// A fleet status other than active: what an owner's stop leaves.
-const STOPPED: &str = "stopped";
+const ARCHIVED: &str = "archived";
 
 /// The slot's hold and its last runner, as stored.
 async fn slot(fixtures: &Fixtures, fleet: &Uuid7) -> (Option<Timestamp>, Option<Uuid7>) {
@@ -215,7 +215,7 @@ async fn test_inactive_fleet_hold_destroyed() {
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     sqlx::query("UPDATE fleet.fleets SET status = $2 WHERE id = $1")
         .bind(&fleet)
-        .bind(STOPPED)
+        .bind(ARCHIVED)
         .execute(&mut *connection)
         .await
         .expect("the owner stops the fleet");
