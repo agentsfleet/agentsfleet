@@ -1,9 +1,9 @@
-import { afterEach, expect, it } from "vitest";
 import type { MessageState } from "@assistant-ui/react";
+import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
+import { afterEach, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 
-import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { formatCompactCount, formatRunDuration } from "@/lib/events/run-figures-format";
 import { formatDollars } from "@/lib/money";
