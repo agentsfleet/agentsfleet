@@ -50,6 +50,10 @@ PR #840 CI also confirms all bundle caps: shared app 291.28/294.91 kB; website J
 
 The first Rust daemon-libraries job failed in an unchanged launcher port test before Rust tests started. Its one-job retry is separate from source repairs.
 
+✅ Follow-up P2: unchanged wake-ups close without a request. Regression tests cover trigger and API schedules, including editing a value and reverting it.
+
+Stale-version recovery tests now submit actual changes before expecting PATCH. The focused suite passes 44 tests (`refresh-pr840-noop-v343.log`).
+
 ## PR #839 integration review
 
 ✅ Preserve the refresh header and its CSS classes. Only its wire-state comparisons change from `killed` to `archived`.

@@ -33,6 +33,20 @@ it.each(["trigger", "api"])("changes only edited fields and preserves existing %
   }
 });
 
+it.each(["trigger", "api"])("closes an unchanged %s wake-up without a write or refresh", async source => {
+  const saved = {...current, source};
+  const fetcher = vi.fn().mockImplementation(async () => Response.json(saved));
+  vi.stubGlobal("fetch", fetcher); mount();
+  fireEvent.click(screen.getByRole("button", {name: "Edit wake-up"}));
+  const input = await screen.findByLabelText("Schedule");
+  fireEvent.change(input, {target: {value: "17 5 * * 1"}});
+  fireEvent.change(input, {target: {value: saved.cron}});
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(fetcher).toHaveBeenCalledOnce();
+  expect(mocks.refresh).not.toHaveBeenCalled();
+});
+
 // Value: protects=editable concurrency-safe wake-up controls; fails_when=a stale form overwrites another edit or a late read opens in another account;
 // why_new=the approved composer exposes these actions; seam=HTTP; no_claim=live cron delivery.
 it("keeps a stale form visible and reloads its saved version before retrying", async () => {
@@ -43,12 +57,13 @@ it("keeps a stale form visible and reloads its saved version before retrying", a
   vi.stubGlobal("fetch", fetcher); mount();
   fireEvent.click(screen.getByRole("button", {name: "Edit wake-up"}));
   const schedule = await screen.findByLabelText("Schedule");
-  fireEvent.change(schedule, {target: {value: "0 9 * * *"}});
+  fireEvent.change(schedule, {target: {value: "0 11 * * *"}});
   fireEvent.click(screen.getByRole("button", {name: "Save"}));
   await screen.findByText("Schedule changed elsewhere");
-  expect(schedule).toHaveProperty("value", "0 9 * * *");
+  expect(schedule).toHaveProperty("value", "0 11 * * *");
   fireEvent.click(screen.getByRole("button", {name: "Reload saved schedule"}));
   await waitFor(() => expect(screen.getByLabelText("Schedule")).toHaveProperty("value", "0 8 * * *"));
+  fireEvent.change(screen.getByLabelText("Schedule"), {target: {value: "0 10 * * *"}});
   fireEvent.click(screen.getByRole("button", {name: "Save"}));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(fetcher.mock.calls[3]![1].headers["If-Match"]).toBe('"two"');
@@ -87,6 +102,7 @@ it("keeps a pending edit open and excludes a second programmatic submission", as
   vi.stubGlobal("fetch", fetcher); mount();
   fireEvent.click(screen.getByRole("button", {name: "Edit wake-up"}));
   const input = await screen.findByLabelText("Schedule");
+  fireEvent.change(input, {target: {value: "0 10 * * *"}});
   fireEvent.click(screen.getByRole("button", {name: "Save"}));
   await waitFor(() => expect(input).toHaveProperty("disabled", true));
   fireEvent.keyDown(screen.getByRole("dialog"), {key: "Escape"});
@@ -114,10 +130,10 @@ it("retains unsaved input and its original ETag across a schedule refresh", asyn
     .mockResolvedValueOnce(Response.json({user_message: "Schedule changed elsewhere"}, {status: 412}));
   vi.stubGlobal("fetch", fetcher); const view = mount();
   fireEvent.click(screen.getByRole("button", {name: "Edit wake-up"}));
-  fireEvent.change(await screen.findByLabelText("Schedule"), {target: {value: "0 9 * * *"}});
+  fireEvent.change(await screen.findByLabelText("Schedule"), {target: {value: "0 11 * * *"}});
   mocks.view.schedules = [{...current, status: "paused", next_run_at: null}, {...current, schedule_id: "next", next_run_at: "2099-11-12T14:00:00Z"}];
   view.rerender(<WakeupStrip />);
-  expect(screen.getByLabelText("Schedule")).toHaveProperty("value", "0 9 * * *");
+  expect(screen.getByLabelText("Schedule")).toHaveProperty("value", "0 11 * * *");
   fireEvent.click(screen.getByRole("button", {name: "Save"}));
   await screen.findByText("Schedule changed elsewhere");
   expect(fetcher.mock.calls[1]?.[1].headers["If-Match"]).toBe('"one"');
