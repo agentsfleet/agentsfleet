@@ -1,15 +1,10 @@
-import { Option } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 import { chatDeleteEffect, chatListEffect, chatRenameEffect } from "../../commands/chat/history.ts";
 import { DRAFT_STATE } from "../../commands/chat/protocol.ts";
-import { cursorFlag, fleetFlag, METAVAR, workspaceFlag } from "./flags.ts";
+import { cursorFlag, fleetFlag, METAVAR, opt, textFlag, workspaceFlag } from "./flags.ts";
 import { guardedHandler } from "./guarded-handler.ts";
 
-const opt = Option.getOrUndefined;
 const draftId = Argument.String("draft-id").pipe(Argument.withDescription("Private setup chat identifier"));
-const textFlag = (name: string, description: string, metavar: string) => Flag.String(name).pipe(
-  Flag.withDescription(description), Flag.withMetavar(metavar), Flag.optional,
-);
 const list = Command.make("list", {
   search: textFlag("search", "Search your chat titles and message text, 1..200 characters", METAVAR.text),
   limit: textFlag("limit", "Page size, 1..100 (default 50)", METAVAR.count), cursor: cursorFlag,

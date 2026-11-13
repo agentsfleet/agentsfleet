@@ -1,16 +1,12 @@
 // Ordinary terminal chat, backed by creator-private workspace drafts.
 
-import { Option } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 import { chatEffect } from "../../commands/chat/commands.ts";
 import { withManagedExitCode } from "../../runtime/exit-code.service.ts";
-import { METAVAR } from "./flags.ts";
+import { METAVAR, opt, textFlag } from "./flags.ts";
 import { guardedHandler } from "./guarded-handler.ts";
 import { chatHistoryCommands } from "./chat-history.command.ts";
 
-const opt = Option.getOrUndefined;
-const textFlag = (name: string, description: string, metavar: string) =>
-  Flag.String(name).pipe(Flag.withDescription(description), Flag.withMetavar(metavar), Flag.optional);
 const choiceFlag = (name: string, description: string) => Flag.Boolean(name).pipe(Flag.withDescription(description), Flag.withDefault(false));
 
 export const chatCommand = () => Command.make("chat", {

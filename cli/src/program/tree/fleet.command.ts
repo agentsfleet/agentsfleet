@@ -4,7 +4,6 @@
 // `chat --fleet <fleet_id>` improves a fleet's setup; `fleet steer` sends it a
 // runtime instruction. The two never stand in for each other.
 
-import { Option } from "effect";
 import { Command, Flag } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import { OPT_TTY } from "../../constants/cli-flags.ts";
@@ -22,40 +21,17 @@ import { steerEffectFromArgs } from "../../commands/fleet/steer.ts";
 import { approvalsCommand, grantsCommand } from "./access.command.ts";
 import { scheduleCommand } from "./schedule.command.ts";
 import { memoryCommand } from "./memory.command.ts";
-import {
-  actorFlag,
-  cursorFlag,
-  eventsLimitFlag,
-  fleetFlag,
-  fleetIdArgument,
-  fleetIdOptionalArgument,
-  listLimitFlag,
-  messageArgument,
-  sinceFlag,
-  startingAfterFlag,
-  workspaceFlag,
-} from "./flags.ts";
+import { actorFlag, cursorFlag, eventsLimitFlag, fleetFlag, fleetIdArgument, fleetIdOptionalArgument, listLimitFlag, messageArgument, opt, optNum, sinceFlag, startingAfterFlag, VERB, workspaceFlag } from "./flags.ts";
 
-const opt = Option.getOrUndefined;
 
-// The command Effects declare a page size as a string, which is the spelling
-// the wire uses. The flag has already refused anything outside the bound, so
-// this only converts back.
-const optNum = (value: Option.Option<number>): string | undefined =>
-  Option.match(value, { onNone: () => undefined, onSome: (n) => String(n) });
-
-const LIST = "list" as const;
-const DELETE = "delete" as const;
-const SHOW = "show" as const;
-
-const fleetShowCommand = Command.make(SHOW, { fleetId: fleetIdArgument }).pipe(
+const fleetShowCommand = Command.make(VERB.show, { fleetId: fleetIdArgument }).pipe(
   Command.withDescription("Show one fleet"),
   guardedHandler(({ fleetId }) => fleetShowEffectFromId(fleetId)),
 );
 
 // ── lifecycle verbs ─────────────────────────────────────────────────
 
-const listCommand = Command.make(LIST, {
+const listCommand = Command.make(VERB.list, {
   workspace: workspaceFlag,
   startingAfter: startingAfterFlag,
   limit: listLimitFlag,
@@ -85,7 +61,7 @@ const archiveCommand = Command.make("archive", { fleetId: fleetIdArgument }).pip
   guardedHandler(({ fleetId }) => archiveEffectFromId(fleetId)),
 );
 
-const deleteCommand = Command.make(DELETE, { fleetId: fleetIdArgument }).pipe(
+const deleteCommand = Command.make(VERB.delete, { fleetId: fleetIdArgument }).pipe(
   Command.withDescription("Delete the fleet in any status (irreversible)"),
   guardedHandler(({ fleetId }) => deleteEffectFromId(fleetId)),
 );

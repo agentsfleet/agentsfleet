@@ -1,13 +1,12 @@
 import {RunnerAction, RunnerEventType, RunnerHistory} from "../../commands/platform/runner-vocabulary.ts";
-import { Option, Schema } from "effect";
+import { Schema } from "effect";
 import { Command, Flag } from "effect/cli";
 import { platformRunnerAction, platformRunnerDelete, platformRunnerEnroll, platformRunnerHistory, platformRunnersList, platformRunnerRotate, platformRunnerShow, platformRunnerUpdate } from "../../commands/platform/runners.ts";
 import { guardedHandler } from "./guarded-handler.ts";
 import { grants, listedWhen, type Visibility } from "./visibility.ts";
 import { PLATFORM_SCOPE, platformLabelsFlag, platformPagingFlags, platformPolicyFlag, platformTokenFlag } from "./platform-flags.ts";
-import { eventTimeFlag, idArgument, requiredIdFlag, requiredTextFlag, sinceFlag } from "./flags.ts";
+import { eventTimeFlag, idArgument, opt, requiredIdFlag, requiredTextFlag, sinceFlag } from "./flags.ts";
 
-const opt = Option.getOrUndefined;
 const runnerId = {id: idArgument("runner_id", "Platform runner identifier")};
 const actionCommand = (name: string, action: RunnerAction) => Command.make(name, runnerId).pipe(
   Command.withDescription(`Request ${name} (runner:write)`), guardedHandler(({id}) => platformRunnerAction(id, action)),
