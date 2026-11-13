@@ -139,7 +139,7 @@ describe("scenario 5 — a named target wins, and a wrong pair fails at the serv
         await withMockApi(routes, async (apiUrl, calls) => {
           const out = bufferStream();
           const err = bufferStream();
-          const code = await runCli(["events", FLEET_ID, "--api", apiUrl], {
+          const code = await runCli(["fleet", "events", FLEET_ID, "--api", apiUrl], {
             stdout: out.stream,
             stderr: err.stream,
             env: cliEnv(),

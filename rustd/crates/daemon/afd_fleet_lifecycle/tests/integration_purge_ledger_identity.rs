@@ -219,11 +219,10 @@ async fn test_m201_ledger_retains_fleet_id_across_purge() {
     rename(&lane, &fleet, CHARGED_AS).await;
     let row = charge(&lane, &fleet).await;
 
-    let tag = lane.kill(&fleet).await;
-    lane.fleets
-        .purge_tagged(&lane.workspace, &fleet, &tag)
+    lane.archive(&fleet).await;
+    lane.delete(&lane.workspace, &fleet)
         .await
-        .expect("a killed fleet purges");
+        .expect("an archived fleet purges");
 
     assert!(
         lane.fleet_column(&fleet, "name").await.is_none(),
@@ -276,11 +275,10 @@ async fn test_m201_purge_destroys_no_less_than_before() {
         );
     }
 
-    let tag = lane.kill(&fleet).await;
-    lane.fleets
-        .purge_tagged(&lane.workspace, &fleet, &tag)
+    lane.archive(&fleet).await;
+    lane.delete(&lane.workspace, &fleet)
         .await
-        .expect("a killed fleet holding every child purges");
+        .expect("an archived fleet holding every child purges");
 
     for (table, _seeded) in SEEDED {
         assert_eq!(

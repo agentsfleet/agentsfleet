@@ -21,7 +21,7 @@ export async function POST(request: Request, {params}: Params): Promise<Response
   if (!token) return refusal(401, "Sign in before uploading a preview.");
   try {
     const {fleet} = await getFleet(scope.data.workspaceId, scope.data.fleetId, token);
-    if (fleet.status === AGENTSFLEET_STATUS.KILLED) return refusal(409, "Archived fleets are read-only.");
+    if (fleet.status === AGENTSFLEET_STATUS.ARCHIVED) return refusal(409, "Archived fleets are read-only.");
     return Response.json({preview: true, stored: false, reply: UPLOAD_PREVIEW_REPLY}, {headers: HEADERS});
   } catch (error) {
     return refusal(error instanceof ApiError && [401, 403, 404].includes(error.status) ? error.status : 503,

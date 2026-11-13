@@ -63,7 +63,7 @@ export function RefreshVisualFixture() {
       </div>
       <FleetSetupWorkspace account={OWN_ACCOUNT.account.tenant_id} workspace={WORKSPACE} fleet={FLEET_ID} revision={FLEET_DETAIL.setup_revision} viewer="fixture-owner" header={null}>
       {archived ? <VisualLifecycleNotice outcome="archived" /> : null}
-      <FleetHeader latestRun={latestFigures(events)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "killed" : "active", schedules: phase === "wake-up" ? [visualWakeup(started)] : [], pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
+      <FleetHeader latestRun={latestFigures(events)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules: phase === "wake-up" ? [visualWakeup(started)] : [], pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
       <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><FleetScopeProvider workspaceId={WORKSPACE} fleetId={FLEET_ID}><SenderLabelProvider senderLabel={fleetName}><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
         <FleetTaskProvider readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} events={events} schedules={phase === "wake-up" ? [visualWakeup(started)] : []} sources={{repositories: phase === "empty" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
           approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/fleets/${FLEET_ID}#fleet-approvals`}}>

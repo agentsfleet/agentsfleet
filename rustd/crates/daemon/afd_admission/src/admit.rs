@@ -172,7 +172,7 @@ impl Admissions {
 /// the deployment doing what it was told, and a database that would not answer
 /// is an incident.
 fn count_refusal(refused: &Error, admission: &Admission<'_>) {
-    // A missing or stopped fleet is the caller's answer, not an admission
+    // A missing or archived fleet is the caller's answer, not an admission
     // failure: the ledger's own statement now refuses both, where the route
     // once did before the ledger saw them.
     if refused.is_fleet_absent() || refused.not_runnable().is_some() {

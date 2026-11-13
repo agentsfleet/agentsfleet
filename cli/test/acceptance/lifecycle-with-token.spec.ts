@@ -47,7 +47,7 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { saveProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
-import { killFleet, resumeFleet, stopFleet, expectStatus, TOMBSTONE_REFUSAL } from "./fixtures/lifecycle.ts";
+import { archiveFleet, expectStatus, ARCHIVED_REFUSAL } from "./fixtures/lifecycle.ts";
 import { CLI_ROOT, isLive, type ValidateModule, randomUuidv7 } from "./helpers-lifecycle-with-token.ts";
 
 let validateModule: ValidateModule;
@@ -149,7 +149,7 @@ if (!isLive) {
         assert.equal(one.code, 0, `fleet show failed: ${one.stderr}`);
         assert.ok(one.stdout.includes(fleetId), `fleet show did not name it: ${one.stdout}`);
 
-        const all = await runFleetctl(["status", "--json"], { env });
+        const all = await runFleetctl(["fleet", "status", "--json"], { env });
         assert.equal(all.code, 0, `status failed: ${all.stderr}`);
         assert.ok(all.stdout.includes(fleetId), "status stopped naming the fleet");
       });
@@ -157,7 +157,7 @@ if (!isLive) {
       it("status exposes per-fleet events_processed and budget_used_nanos", async () => {
         // End-to-end: the real server reads these from fleet.activity_counters,
         // and the CLI surfaces them in the list row that backs
-        // `agentsfleet status`. A freshly-installed fleet may have zero of
+        // `agentsfleet fleet status`. A freshly-installed fleet may have zero of
         // each; decimal strings preserve counters beyond the safe integer
         // limit. The fixture refuses missing or malformed values.
         const payload = await expectStatus(env, fleetId, ["active", "starting", "running"]);
@@ -180,44 +180,30 @@ if (!isLive) {
         // `--fleet`, `--limit`, `--cursor`); an unknown flag exits 4 on
         // an unknown flag. The recency bound here was misplaced — the
         // intent is just to exercise the read path on a real fleet.
-        const result = await runWithEnv(["logs", "--fleet", fleetId, "--json"]);
+        const result = await runWithEnv(["fleet", "logs", "--fleet", fleetId, "--json"]);
         assert.equal(result.code, 0, `logs exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim() || "{}");
         assert.equal(typeof parsed, "object");
       });
 
       it("billing show --json returns a balance field", async () => {
-        const result = await runWithEnv(["billing", "show", "--json"]);
+        const result = await runWithEnv(["usage", "show", "--json"]);
         assert.equal(result.code, 0, `billing show exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim());
         assert.ok("balance_nanos" in parsed, `billing response missing balance_nanos: ${result.stdout}`);
       });
 
-      it("stop → resume → kill walks state", async () => {
-        await stopFleet(env, fleetId);
-        await expectStatus(env, fleetId, ["paused", "stopped"]);
-        await resumeFleet(env, fleetId);
-        await expectStatus(env, fleetId, ["active", "running", "starting"]);
-        await killFleet(env, fleetId);
-        await expectStatus(env, fleetId, ["killed", "errored", "terminated"]);
+      it("archive leaves the fleet archived", async () => {
+        await archiveFleet(env, fleetId);
+        await expectStatus(env, fleetId, TERMINAL_STATUSES);
       }, 30_000);
 
-      it("kill is idempotent on a terminal fleet", async () => {
-        const result = await runWithEnv(["kill", fleetId, "--json"]);
-        // Either succeed silently or report the tombstone: `edit.rs`'s
-        // `explain` answers UZ-AGT-009 for a killed row, so a second kill reads
-        // as not-found rather than as a refused transition. Matching the 010
-        // refusal here too would accept the daemon calling a tombstone a
-        // live-state conflict, the one thing this test is placed to notice. Nor
-        // is re-emitting `status: active` later; the assertion below catches it.
-        if (result.code !== 0) {
-          assert.match(
-            result.stderr + result.stdout,
-            TOMBSTONE_REFUSAL,
-            `a second kill must name the 009 tombstone: ${result.stdout}${result.stderr}`,
-          );
-        }
-        await expectStatus(env, fleetId, ["killed", "errored", "terminated"]);
+      it("a second archive is refused as archived", async () => {
+        const result = await runWithEnv(["fleet", "archive", fleetId, "--json"]);
+        assert.notEqual(result.code, 0, `expected non-zero archiving an archived fleet: ${result.stdout}`);
+        assert.match(result.stderr + result.stdout, ARCHIVED_REFUSAL,
+          `a second archive must name the archived conflict: ${result.stdout}${result.stderr}`);
+        await expectStatus(env, fleetId, TERMINAL_STATUSES);
       });
     });
 
@@ -241,8 +227,8 @@ if (!isLive) {
 
     // Prefix-scoped post-teardown emptiness — shared DEV tenants carry
     // residual fleets, so the contract is "none of MY run's fleets
-    // remain alive", not "the workspace is globally empty". Terminal
-    // (killed/errored/terminated) rows still surface in the list and
+    // remain alive", not "the workspace is globally empty". Archived
+    // rows still surface in the list and
     // prove teardown worked — filter them out before asserting.
     describe("post-teardown emptiness (prefix-scoped)", () => {
       beforeAll(async () => {
@@ -250,7 +236,7 @@ if (!isLive) {
       });
 
       it(`fleet list --json: no LIVE items match ACCEPTANCE_RUN_PREFIX`, async () => {
-        const result = await runWithEnv(["list", "--json"]);
+        const result = await runWithEnv(["fleet", "list", "--json"]);
         assert.equal(result.code, 0, `list --json exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown };
         const items = Array.isArray(parsed.items) ? (parsed.items as Array<{ name?: string; status?: string }>) : [];
@@ -334,7 +320,7 @@ if (!isLive) {
       for (const row of READ_ONLY_COMMANDS) {
         const head = row.args[0];
         if (!head) continue;
-        if (head === "list" || head === "doctor") exercised.add("fleet");
+        if (head === "doctor") exercised.add("fleet");
         if (COMMAND_GROUPS.includes(head)) exercised.add(head);
       }
       for (const row of PER_AGENTSFLEET_READ_ONLY_COMMANDS) {

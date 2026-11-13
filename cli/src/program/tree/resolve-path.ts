@@ -1,7 +1,7 @@
 // Which command an argv names, answered before the parser runs.
 //
 // The layer the tree executes in has to be built first, and it carries the
-// command path — the span name, the analytics label, `cli.grant.list`. So the
+// command path — the span name, the analytics label, `cli.fleet.grants.list`. So the
 // path is resolved by walking the tree against argv rather than by asking the
 // parser, which has not run yet and cannot until the layer exists.
 //
@@ -30,6 +30,15 @@ export interface CommandNode {
  * not the commands themselves. Reading it as a flat list reports one child and
  * makes a twenty-eight-command tree look empty.
  */
+/**
+ * A built command, viewed as the node shape the walks read.
+ *
+ * The library's `Command` carries `name` and `subcommands` at runtime but does
+ * not export a type that names them together, so the view is taken here, once,
+ * instead of with a cast at every caller.
+ */
+export const asCommandNode = (command: { readonly name: string }): CommandNode => command as unknown as CommandNode;
+
 export const childrenOf = (node: CommandNode): ReadonlyArray<CommandNode> =>
   (node.subcommands ?? []).flatMap((group) => group.commands);
 
@@ -86,11 +95,26 @@ export const booleanFlagNames = (root: CommandNode): ReadonlySet<string> => {
   return names;
 };
 
+/** Where the walk ended: the path it reached, and the positional it stopped on. */
+interface CommandWalk {
+  readonly path: ReadonlyArray<string>;
+  readonly node: CommandNode;
+  // The first positional token that named no child of `node`, or undefined
+  // when argv ran out or reached `--` first.
+  readonly stop: string | undefined;
+}
+
 export const resolveCommandPath = (
   root: CommandNode,
   argv: ReadonlyArray<string>,
   valueless: ReadonlySet<string> = booleanFlagNames(root),
-): ReadonlyArray<string> => {
+): ReadonlyArray<string> => walkCommandPath(root, argv, valueless).path;
+
+export const walkCommandPath = (
+  root: CommandNode,
+  argv: ReadonlyArray<string>,
+  valueless: ReadonlySet<string> = booleanFlagNames(root),
+): CommandWalk => {
   const path: string[] = [];
   let node = root;
   let skipNext = false;
@@ -113,10 +137,10 @@ export const resolveCommandPath = (
       continue;
     }
     const match = childrenOf(node).find((child) => child.name === token);
-    if (!match) break;
+    if (!match) return { path, node, stop: token };
     path.push(match.name);
     node = match;
   }
 
-  return path;
+  return { path, node, stop: undefined };
 };

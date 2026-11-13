@@ -7,14 +7,14 @@
 //! inconsistency: the gate answers "did a human say yes", where the safe answer
 //! under uncertainty is to keep waiting, while this answers "has this repeated
 //! suspiciously often", where the safe answer under uncertainty is that we do
-//! not know and must not pause a healthy fleet on a guess.
+//! not know and must not archive a healthy fleet on a guess.
 //!
 //! # It counts per replica, in memory
 //!
 //! Each replica keeps its own windows, one per fleet, tool, action and rule
 //! window, bounded at [`ANOMALY_KEYS_MAX`] with the oldest window evicted. A
 //! runaway spread over R replicas can repeat up to R times a threshold before
-//! a pause, and a restart forgets every count. Both are accepted costs: a
+//! an archive, and a restart forgets every count. Both are accepted costs: a
 //! shared count would put a network round trip on every first encounter, and
 //! the brake is a backstop that fails open by design.
 //!
@@ -38,15 +38,15 @@ use crate::gate::store::Gates;
 pub(crate) const ANOMALY_KEYS_MAX: usize = 10_000;
 
 /// A repetition crossed its threshold.
-const EVENT_AUTO_KILL: &str = "gate_anomaly_auto_kill";
+const EVENT_ARCHIVE: &str = "gate_anomaly_archive";
 
 /// What the counters make of one action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Anomaly {
     /// Nothing has crossed a threshold.
     Normal,
-    /// A repetition tripped a rule; the fleet is paused.
-    AutoKill,
+    /// A repetition tripped a rule; the fleet is archived.
+    Archive,
 }
 
 /// One rule's window for one action. The rule's position, not its window,
@@ -178,15 +178,15 @@ impl Gates {
         };
         let fleet = fleet_id.as_str();
         tracing::warn!(
-            event = EVENT_AUTO_KILL,
+            event = EVENT_ARCHIVE,
             fleet_id = fleet,
             tool,
             action,
             count,
             threshold,
-            "one action repeated past its threshold; the fleet is stopped"
+            "one action repeated past its threshold; the fleet is archived"
         );
-        Anomaly::AutoKill
+        Anomaly::Archive
     }
 }
 

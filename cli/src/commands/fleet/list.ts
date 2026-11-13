@@ -1,4 +1,4 @@
-// `agentsfleet list` — paginated table of fleets in a workspace.
+// `agentsfleet fleet list` — paginated table of fleets in a workspace.
 // Workspace defaults to `current_workspace_id`; `--workspace` overrides.
 
 import { Effect } from "effect";
@@ -80,7 +80,7 @@ export const listEffectFromFlags = Effect.fn("fleet.list")(function* (
   );
   if (res.next_cursor) {
     yield* output.info(
-      ui.dim(`More available. Next: agentsfleet list --starting-after ${res.next_cursor}`),
+      ui.dim(`More available. Next: agentsfleet fleet list --starting-after ${res.next_cursor}`),
     );
   }
 });

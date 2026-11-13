@@ -10,7 +10,7 @@ const EVENT_PATH = `/v1/workspaces/${WORKSPACE_ID}/fleets/${FLEET_ID}/events/${E
 // A well-formed command-line credential: the load check refuses anything
 // else, so a session-token-shaped stub reads as logged out.
 const TEST_TOKEN = `afc_${"f".repeat(64)}`;
-const STEER_COMMAND = "steer";
+const STEER_COMMAND = ["fleet", "steer"] as const;
 const JSON_FLAG = "--json";
 const TEST_MESSAGE = "return one short acknowledgement";
 const STATUS_PROCESSED = "processed";
@@ -137,8 +137,8 @@ async function runSteer(mode: ServerMode, jsonMode: boolean) {
     NO_COLOR: "1",
   });
   const args = jsonMode
-    ? [STEER_COMMAND, FLEET_ID, TEST_MESSAGE, JSON_FLAG]
-    : [STEER_COMMAND, FLEET_ID, TEST_MESSAGE];
+    ? [...STEER_COMMAND, FLEET_ID, TEST_MESSAGE, JSON_FLAG]
+    : [...STEER_COMMAND, FLEET_ID, TEST_MESSAGE];
   return {
     result: await runFleetctl(args, { env }),
     counts: server.counts,
@@ -196,7 +196,7 @@ async function runPhasedSteer() {
   cleanups.push(() => state.cleanup());
   const env = composeEnv({ AGENTSFLEET_API_URL: server.baseUrl,
     AGENTSFLEET_STATE_DIR: state.dir, NO_COLOR: "1" });
-  const child = spawnFleetctl([STEER_COMMAND, FLEET_ID, TEST_MESSAGE], { env });
+  const child = spawnFleetctl([...STEER_COMMAND, FLEET_ID, TEST_MESSAGE], { env });
   child.stdin.end();
   let stdout = "";
   let stderr = "";

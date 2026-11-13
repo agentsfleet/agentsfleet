@@ -36,7 +36,7 @@ else describe("explicit Library revisions", () => {
   async function publish(draft: string, label: string, previous?: typeof PublishedSchema.Type) {
     const review = await inspectDraft(env, draft);
     const result = await runFleetctl(["--json", "chat", draft, "--no-input", "--publish", label,
-      "--review-digest", review.review_digest, ...(previous ? ["--publish-to", previous.library_id, "--library-etag", previous.etag] : [])], {env});
+      "--review-digest", review.review_digest, ...(previous ? ["--publish-to", previous.library_id, "--plugin-etag", previous.etag] : [])], {env});
     const publication = commandValues(result).find(Schema.is(PublishedSchema));
     if (!publication) throw new Error("Publication returned no immutable revision identity");
     return publication;
@@ -45,7 +45,7 @@ else describe("explicit Library revisions", () => {
     const name = `${ACCEPTANCE_RUN_PREFIX}-publish-${uuidv7().slice(-8)}`;
     const draft = await createNativeDraft(ctx, fixtureDefinition(name));
     const published = await publish(draft.id, name);
-    const listed = await runFleetctl(["library", "--json"], {env});
+    const listed = await runFleetctl(["plugins", "--json"], {env});
     assert.equal(listed.code, 0);
     assert.match(listed.stdout, new RegExp(published.library_id));
     assert.match(listed.stdout, new RegExp(published.revision_id));

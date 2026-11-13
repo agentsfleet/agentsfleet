@@ -36,7 +36,7 @@ pub use self::anomaly::{AnomalyRule, Pattern};
 pub use self::budget::{Budget, BudgetCeiling};
 pub use self::condition::Condition;
 pub use self::decision::DecisionPolicy;
-pub use self::gates::{Behavior, DEFAULT_TIMEOUT, GatePolicy, GateRule};
+pub use self::gates::{DEFAULT_TIMEOUT, GatePolicy, GateRule};
 pub use self::policy::http_egress::HttpEgress;
 pub use self::policy::{ContextBudget, Network};
 pub use self::repository::{

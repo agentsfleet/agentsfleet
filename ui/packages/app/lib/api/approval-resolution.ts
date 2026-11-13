@@ -5,7 +5,7 @@ import { APPROVAL_DECISION } from "./approvals-types";
 
 const Receipt = z.object({
   gate_id: z.string().min(1), action_id: z.string().min(1),
-  outcome: z.enum(["approved", "denied", "timed_out", "auto_killed"]),
+  outcome: z.enum(["approved", "denied", "timed_out", "archived"]),
   resolved_at: z.iso.datetime({offset: true}), resolved_by: z.string().min(1),
 });
 const Outcome = z.discriminatedUnion("kind", [

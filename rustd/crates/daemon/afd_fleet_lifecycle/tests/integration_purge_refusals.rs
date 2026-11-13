@@ -9,54 +9,21 @@ use af_core::error_code;
 
 use crate::support::{Lane, NOW};
 
-/// The resource version a seeded fleet starts at, which a kill moves past.
-const SEEDED_VERSION: i64 = 1;
-
-/// A tag the row has moved past is refused with the tag it holds now, and the
-/// fleet survives.
+/// An active fleet purges under its current tag: delete and archive are
+/// separate operations, so a delete takes any status.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]
-async fn a_stale_tag_purges_nothing_and_answers_the_current_tag() {
+async fn an_active_fleet_purges_without_an_archive_first() {
     let lane = Lane::create().await;
     let fleet = lane.fleet().await;
-    let stale = af_core::etag::versioned(&fleet, SEEDED_VERSION);
-    let current = lane.kill(&fleet).await;
 
-    let refused = lane
-        .fleets
-        .purge_tagged(&lane.workspace, &fleet, &stale)
+    lane.delete(&lane.workspace, &fleet)
         .await
-        .expect_err("a tag from before the kill must not purge");
+        .expect("an active fleet purges");
 
-    assert_eq!(refused.code(), error_code::AGENTSFLEET_SOURCE_STALE);
-    assert_eq!(refused.stale_tag(), Some(current.as_str()));
     assert!(
-        lane.fleet_column(&fleet, "id").await.is_some(),
-        "the fleet survives"
-    );
-    lane.cleanup().await;
-}
-
-/// A fleet that was never killed is refused even with its current tag.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres"]
-async fn a_live_fleet_is_refused_until_it_is_killed() {
-    let lane = Lane::create().await;
-    let fleet = lane.fleet().await;
-    let tag = lane.tag(&fleet).await;
-
-    let refused = lane
-        .fleets
-        .purge_tagged(&lane.workspace, &fleet, &tag)
-        .await
-        .expect_err("an active fleet must not purge");
-
-    assert_eq!(refused.code(), error_code::AGENTSFLEET_ALREADY_TERMINAL);
-    assert_eq!(refused.stale_tag(), None);
-    assert_eq!(
-        lane.fleet_column(&fleet, "status").await.as_deref(),
-        Some("active"),
-        "the refused fleet is untouched"
+        lane.fleet_column(&fleet, "id").await.is_none(),
+        "the fleet is gone"
     );
     lane.cleanup().await;
 }
@@ -68,11 +35,10 @@ async fn another_workspaces_fleet_is_not_found() {
     let lane = Lane::create().await;
     let neighbour = lane.another_workspace().await;
     let theirs = lane.fleet_at(&neighbour, NOW).await;
-    let tag = lane.kill(&theirs).await;
+    lane.archive(&theirs).await;
 
     let refused = lane
-        .fleets
-        .purge_tagged(&lane.workspace, &theirs, &tag)
+        .delete(&lane.workspace, &theirs)
         .await
         .expect_err("a fleet outside the caller's workspace must not purge");
 
@@ -90,10 +56,9 @@ async fn another_workspaces_fleet_is_not_found() {
 async fn a_purge_commits_its_database_deletion() {
     let lane = Lane::create().await;
     let fleet = lane.fleet().await;
-    let tag = lane.kill(&fleet).await;
+    lane.archive(&fleet).await;
 
-    lane.fleets
-        .purge_tagged(&lane.workspace, &fleet, &tag)
+    lane.delete(&lane.workspace, &fleet)
         .await
         .expect("purge commits");
 
@@ -133,15 +98,14 @@ async fn fixture_ddl(lane: &Lane, statements: [String; 2]) {
 }
 
 /// A purge whose parent delete removes no row is refused and commits nothing,
-/// even though the lock and the tag both passed: the delete's own status
-/// predicate is the last word. The delete is skipped by a trigger scoped to
-/// this fleet.
+/// even though the lock and the tag both passed: the delete's own row count
+/// is the last word. The delete is skipped by a trigger scoped to this fleet.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]
 async fn a_purge_whose_delete_removes_no_row_is_refused_and_rolled_back() {
     let lane = Lane::create().await;
     let fleet = lane.fleet().await;
-    let tag = lane.kill(&fleet).await;
+    lane.archive(&fleet).await;
     // The identifier is minted, never input, which is what makes naming the
     // trigger after it and comparing against it in the DDL safe.
     let name = format!("afd_it_skip_{}", fleet.as_str().replace('-', ""));
@@ -161,8 +125,7 @@ async fn a_purge_whose_delete_removes_no_row_is_refused_and_rolled_back() {
     .await;
 
     let refused = lane
-        .fleets
-        .purge_tagged(&lane.workspace, &fleet, &tag)
+        .delete(&lane.workspace, &fleet)
         .await
         .expect_err("a delete that removed nothing is not a purge");
 
@@ -174,14 +137,13 @@ async fn a_purge_whose_delete_removes_no_row_is_refused_and_rolled_back() {
         ],
     )
     .await;
-    assert_eq!(refused.code(), error_code::AGENTSFLEET_ALREADY_TERMINAL);
+    assert_eq!(refused.code(), error_code::AGENTSFLEET_NOT_FOUND);
     assert_eq!(
         lane.fleet_column(&fleet, "status").await.as_deref(),
-        Some("killed"),
+        Some("archived"),
         "the refused purge left the fleet as it found it"
     );
-    lane.fleets
-        .purge_tagged(&lane.workspace, &fleet, &tag)
+    lane.delete(&lane.workspace, &fleet)
         .await
         .expect("with the delete free again, the same tag purges");
     assert!(

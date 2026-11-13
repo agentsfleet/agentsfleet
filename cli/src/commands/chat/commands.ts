@@ -110,14 +110,14 @@ function validate(options: ChatOptions) {
     }
     if (options.candidateId) yield* requireValidId(options.candidateId, "draft_candidate_id", USAGE);
     if (options.candidateId && !options.operationId || options.setupEtag && !(setupRecovery && options.apply)) return yield* fail("Recovery identity fields require their matching --operation-id setup action");
-    if (Boolean(options.publishTo) !== Boolean(options.libraryEtag) || options.publishTo && !options.publish) return yield* fail("Owned revision publication requires --publish, --publish-to and the inspected --library-etag");
+    if (Boolean(options.publishTo) !== Boolean(options.libraryEtag) || options.publishTo && !options.publish) return yield* fail("Owned revision publication requires --publish, --publish-to and the inspected --plugin-etag");
     if (options.draftId) yield* requireValidId(options.draftId, "draft_id", USAGE);
     if (!setupRecovery && !options.draftId && !options.model) return yield* fail("Choose an authoring model with --model");
     if (options.draftId && (options.fleet && !setupRecovery || options.library || options.definition !== undefined || options.model)) return yield* fail("A resumed draft keeps its source and model; use /model for future messages");
-    if (Number(Boolean(options.fleet)) + Number(Boolean(options.library)) + Number(options.definition !== undefined) > 1) return yield* fail("Choose one source: --fleet, --library or --definition");
+    if (Number(Boolean(options.fleet)) + Number(Boolean(options.library)) + Number(options.definition !== undefined) > 1) return yield* fail("Choose one source: --fleet, --plugin or --definition");
     if (options.fleet) yield* requireValidId(options.fleet, "fleet_id", USAGE);
     if (options.fleet && !setupRecovery && !DECIMAL_REVISION.test(options.setupRevision ?? "")) return yield* fail("--fleet requires --setup-revision <positive-decimal>");
-    if (options.library && !options.revision) return yield* fail("--library requires --revision <revision-id>");
+    if (options.library && !options.revision) return yield* fail("--plugin requires --revision <revision-id>");
     if (options.revision) yield* requireValidId(options.revision, "revision_id", USAGE);
     if (options.setupRevision && !options.fleet || options.revision && !options.library) return yield* fail("Revision selection requires its matching source");
     if (options.runNow !== undefined && !options.save) return yield* fail("--run-now requires explicit --save");

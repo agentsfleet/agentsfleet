@@ -1,6 +1,6 @@
 /**
  * Full-lifecycle Scenario 2 — persistent fixture login → install via dashboard
- * UI → observe → bill → halt.
+ * UI → observe → bill → archive.
  *
  * Sister to signup-lifecycle.spec.ts. Same install + observation + lifecycle
  * leg; the only difference is the auth prefix: cookie-mount via signInAs
@@ -18,11 +18,9 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
+  archiveFleet,
   expectDetailArchived,
   expectRowState,
-  archiveFleet,
-  resumeFleet,
-  stopFleet,
 } from "./fixtures/lifecycle";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
@@ -46,7 +44,7 @@ test.describe("login → install → lifecycle", () => {
     // Cookie-mount via signInAs — no form-drive needed.
     await signInAs(page, FIXTURE_KEY.regular);
 
-    // Save through the private chat's inline setup. A killed-but-not-deleted
+    // Save through the private chat's inline setup. An archived-but-not-deleted
     // row from an interrupted run is the server's to suffix around. The chat
     // targets the fixture's default workspace — the one active in the
     // browser here.
@@ -71,21 +69,11 @@ test.describe("login → install → lifecycle", () => {
     await page.goto("/settings/billing");
     await expect(page.getByLabel("Period totals")).toBeVisible();
 
-    // Lifecycle: Stop → Resume → Kill.
-    await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
-    await stopFleet(page);
-    await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectRowState(page, fleetId, "parked");
-
-    await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
-    await resumeFleet(page);
-    await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectRowState(page, fleetId, "live");
-
+    // Lifecycle: Archive — terminal, and the history stays readable.
     await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
     await archiveFleet(page);
     await expectDetailArchived(page);
     await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectRowState(page, fleetId, "failed");
+    await expectRowState(page, fleetId, "archived");
   });
 });

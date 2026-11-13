@@ -1,6 +1,7 @@
 import { Cause, Effect, Exit, Option } from "effect";
 import { Output, OUTPUT_FORMAT } from "../services/output.ts";
-import { REJECTION_CODE } from "../constants/rejection.ts";
+import { REJECTION_CODE, USAGE_PREFIX } from "../constants/rejection.ts";
+import type { ErrorBlock } from "../output/error-block.ts";
 import {
   UnexpectedError,
   type CliError,
@@ -18,6 +19,20 @@ export const exitToCliError = (exit: Exit.Exit<void, CliError>): CliError => {
   });
 };
 
+// A handler's own `usage: …` suggestion is a usage line, so it gets that label.
+const suggestionFields = (suggestion: string): ErrorBlock["fields"] =>
+  suggestion.startsWith(USAGE_PREFIX)
+    ? { usage: suggestion.slice(USAGE_PREFIX.length) }
+    : { suggestion };
+
+const textFields = (err: CliError): ErrorBlock["fields"] => {
+  if (err._tag === "ServerError" || err._tag === "AuthError") {
+    return { code: err.code, ...suggestionFields(err.suggestion), ...(err.requestId ? { request: err.requestId } : {}) };
+  }
+  const code = err._tag === "ValidationError" ? REJECTION_CODE.invalidArgument : err._tag;
+  return { code, ...suggestionFields(err.suggestion) };
+};
+
 export const renderCliError = (err: CliError): Effect.Effect<void, never, Output> =>
   Effect.gen(function* () {
     const output = yield* Output;
@@ -28,10 +43,5 @@ export const renderCliError = (err: CliError): Effect.Effect<void, never, Output
         ...("requestId" in err && err.requestId ? {request_id: err.requestId} : {})}});
       return;
     }
-    if (err._tag === "ServerError" || err._tag === "AuthError") {
-      const requestId = err.requestId ? `\nrequest_id: ${err.requestId}` : "";
-      yield* output.error(`${err.code} ${err.detail}\n  Suggestion: ${err.suggestion}${requestId}`);
-      return;
-    }
-    yield* output.error(err.message);
+    yield* output.error(err.detail, { fields: textFields(err) });
   });

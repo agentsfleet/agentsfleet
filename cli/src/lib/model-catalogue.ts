@@ -169,8 +169,8 @@ const CUSTOM_ENDPOINT_ROUTE =
 // Offering it there would send the operator to invent a URL that cannot exist.
 const PROVIDER_SUGGESTION = (provider: string): string =>
   isCliEngine(provider)
-    ? "use a provider that authenticates with an API key; run `agentsfleet models` to see them"
-    : `run \`agentsfleet models\` to see what this server prices, or reach it directly with ${CUSTOM_ENDPOINT_ROUTE}`;
+    ? "use a provider that authenticates with an API key; run `agentsfleet models list` to see them"
+    : `run \`agentsfleet models list\` to see what this server prices, or reach it directly with ${CUSTOM_ENDPOINT_ROUTE}`;
 
 export interface CatalogueTarget {
   /** The catalogue's spelling of the provider — what gets stored. */
@@ -200,7 +200,7 @@ const MODEL_REJECTED = (
   `Available: ${known.join(LIST_SEPARATOR)}`;
 
 const MODEL_SUGGESTION = (provider: string): string =>
-  `run \`agentsfleet models --provider ${provider}\` for the list`;
+  `run \`agentsfleet models list --provider ${provider}\` for the list`;
 
 /**
  * Resolve BOTH identifiers against one catalogue read.

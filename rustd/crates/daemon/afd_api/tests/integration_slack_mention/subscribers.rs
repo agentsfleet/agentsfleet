@@ -30,7 +30,7 @@ async fn subscribers_are_read_from_the_document() {
     let repairer = fixture
         .fleet(
             &document("repairer", CHANNEL, Some("write")),
-            FleetStatus::Paused.as_str(),
+            FleetStatus::Archived.as_str(),
         )
         .await;
     fixture

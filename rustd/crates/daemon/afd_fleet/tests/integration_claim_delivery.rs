@@ -100,12 +100,12 @@ async fn claim_opens_event_and_stamps_delivery() {
     fixtures.cleanup().await;
 }
 
-// Value: protects=a paused fleet runs nothing; fails_when=the claim moves a
-// fence or opens a row for a fleet paused after the scan; why_new=the claim
-// now reads the fleet itself; seam=none; no_claim=a pause mid-run.
+// Value: protects=an archived fleet runs nothing; fails_when=the claim moves a
+// fence or opens a row for a fleet archived after the scan; why_new=the claim
+// now reads the fleet itself; seam=none; no_claim=an archive mid-run.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn claim_on_paused_fleet_takes_nothing() {
+async fn claim_on_archived_fleet_takes_nothing() {
     let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [runner],
@@ -114,13 +114,13 @@ async fn claim_on_paused_fleet_takes_nothing() {
         ..
     } = seeded::<1>(&fixtures).await;
     let before = delivery(&fixtures, &event_id).await;
-    // The pause lands after a scan found the fleet: the claim statement is
+    // The archive lands after a scan found the fleet: the claim statement is
     // run alone, with the binds the claim path sends.
-    sqlx::query("UPDATE fleet.fleets SET status = 'paused' WHERE id = $1")
+    sqlx::query("UPDATE fleet.fleets SET status = 'archived' WHERE id = $1")
         .bind(&fleet)
         .execute(&mut *fixtures.database.acquire().await.expect("operator"))
         .await
-        .expect("the operator pauses the fleet");
+        .expect("the operator archives the fleet");
     let claimed = sqlx::query(afd_fleet::lease::sql::queue::CLAIM_HEAD)
         .bind(&fleet)
         .bind(&runner)
@@ -140,7 +140,7 @@ async fn claim_on_paused_fleet_takes_nothing() {
         .await
         .expect("the claim statement runs");
 
-    assert!(claimed.is_none(), "a paused fleet claims nothing");
+    assert!(claimed.is_none(), "an archived fleet claims nothing");
     assert_eq!(
         delivery(&fixtures, &event_id).await,
         before,

@@ -1,6 +1,6 @@
 //! A completed save request and its immutable setup share the report transaction.
 
-use super::{CONTEXT, Creations, KILLED, read, reserve::Instance, revision, source::Captured};
+use super::{ARCHIVED, CONTEXT, Creations, read, reserve::Instance, revision, source::Captured};
 use crate::{
     Access, Result, candidate, draft,
     error::{ErrorKind, raise::query},
@@ -112,8 +112,8 @@ impl Creations {
         if let Some(SourcePin::Fleet { fleet_id, .. }) = &locked.source_pin {
             let row = read::lock(connection, &locked.workspace_id, fleet_id).await?;
             revision::target(&captured, fleet_id, row.head_revision)?;
-            if row.status == KILLED {
-                return Err(ErrorKind::State { current: "killed" }.into());
+            if row.status == ARCHIVED {
+                return Err(ErrorKind::State { current: ARCHIVED }.into());
             }
             self.write_improvement(
                 connection,

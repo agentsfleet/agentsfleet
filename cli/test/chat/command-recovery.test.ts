@@ -101,7 +101,7 @@ test("owned publication recovery preserves candidate, key and inspected Library 
     }
     return Response.json(new URL(request.url).pathname.endsWith("/messages") ? EMPTY_PAGE : DRAFT);
   }, async (_, origin) => {
-    const args = ["--no-input", "--publish", "Argo", "--publish-to", LIBRARY_ID, "--library-etag", PUBLICATION.etag];
+    const args = ["--no-input", "--publish", "Argo", "--publish-to", LIBRARY_ID, "--plugin-etag", PUBLICATION.etag];
     expect((await invoke(origin, [DRAFT_ID, ...args, "--review-digest", REVIEW.review_digest])).code).not.toBe(0);
     const key = calls[0]?.key;
     if (!key) throw new Error("missing original publication key");

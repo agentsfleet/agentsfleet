@@ -11,7 +11,7 @@ it("accepts the requested decision only for the matching gate", () => {
   expect(confirmedApprovalResolution({...value, data: {...receipt, outcome: "denied"}}, "gate", "deny")).not.toBeNull();
 });
 
-it.each(["approved", "denied", "timed_out", "auto_killed"])("accepts a recorded competing terminal outcome: %s", outcome => {
+it.each(["approved", "denied", "timed_out", "archived"])("accepts a recorded competing terminal outcome: %s", outcome => {
   const value = {kind: "already_resolved", data: {...receipt, outcome, error_code: "UZ-APPROVAL-006", detail: "Already decided"}};
   expect(confirmedApprovalResolution(value, "gate", "deny")).toEqual(value);
 });

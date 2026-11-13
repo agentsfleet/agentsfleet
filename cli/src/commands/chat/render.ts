@@ -80,7 +80,7 @@ export function renderApplied(output: Output, applied: Applied): Effect.Effect<v
 // (cli/src/program/tree/schedule.command.ts) that retries the push.
 function renderScheduleOwed(output: Output, schedules: ReadonlyArray<Schedule>): Effect.Effect<void> {
   return Effect.forEach(schedules.filter(syncOwed), (schedule) => {
-    const retry = `agentsfleet schedule sync ${schedule.fleet_id} ${schedule.schedule_id}`;
+    const retry = `agentsfleet fleet schedule sync ${schedule.fleet_id} ${schedule.schedule_id}`;
     const failed = schedule.sync === SCHEDULE_SYNC.failed;
     if (output.format === OUTPUT_FORMAT.json) {
       return output.printJsonErr({kind: failed ? SCHEDULE_SYNC_FAILED : SCHEDULE_SYNC_UNCONFIRMED,

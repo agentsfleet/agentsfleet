@@ -16,9 +16,9 @@ beforeEach(() => {
 });
 afterEach(() => fixture.dispose());
 
-// Value: protects=stopped fleets stay stopped during chat recovery; fails_when=Retry treats a read failure as Start;
-// why_new=covers a saved edit and a concurrent stop; seam=HTTP only; no_claim=database lifecycle enforcement.
-it.each([AGENTSFLEET_STATUS.STOPPED, AGENTSFLEET_STATUS.INSTALLING])("preserves a fresh stop when retrying a saved %s edit", async status => {
+// Value: protects=archived fleets stay archived during chat recovery; fails_when=Retry treats a read failure as Start;
+// why_new=covers a saved edit and a concurrent archive; seam=HTTP only; no_claim=database lifecycle enforcement.
+it.each([AGENTSFLEET_STATUS.ARCHIVED, AGENTSFLEET_STATUS.INSTALLING])("preserves a fresh archive when retrying a saved %s edit", async status => {
   let refuseRead = false;
   fixture.fleet = {...FLEET_DETAIL, status};
   fixture.override = ({path, method}) => {
@@ -34,9 +34,9 @@ it.each([AGENTSFLEET_STATUS.STOPPED, AGENTSFLEET_STATUS.INSTALLING])("preserves 
   refuseRead = true;
   await expect(client.refreshSetup()).rejects.toMatchObject({status: 503});
   refuseRead = false;
-  fixture.fleet = {...fixture.fleet, status: AGENTSFLEET_STATUS.STOPPED};
+  fixture.fleet = {...fixture.fleet, status: AGENTSFLEET_STATUS.ARCHIVED};
   await client.retry();
-  expect(client.getSnapshot()).toMatchObject({fleet: {status: AGENTSFLEET_STATUS.STOPPED}, draft: {id: DRAFT_ID}, messages: [MESSAGE], busy: false});
+  expect(client.getSnapshot()).toMatchObject({fleet: {status: AGENTSFLEET_STATUS.ARCHIVED}, draft: {id: DRAFT_ID}, messages: [MESSAGE], busy: false});
   expect(fixture.mutations().map(call => ({method: call.method, path: call.path.split("/").at(-1)})))
     .toEqual([{method: "POST", path: "revisions"}]);
 });

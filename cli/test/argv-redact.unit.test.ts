@@ -18,7 +18,7 @@ describe("detectTokenInArgv", () => {
   });
 
   test("--token <value> (two-arg form) trips the warning", () => {
-    expect(detectTokenInArgv(["billing", "show", "--token", "secret"])).toBe(TOKEN_LEAK_WARNING);
+    expect(detectTokenInArgv(["usage", "show", "--token", "secret"])).toBe(TOKEN_LEAK_WARNING);
   });
 
   test("--token= with empty value is harmless (nothing to leak)", () => {

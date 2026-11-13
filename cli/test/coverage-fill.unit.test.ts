@@ -150,11 +150,11 @@ test("printTable writes columns and rows", () => {
     ],
     [
       { name: "alpha", status: "live" },
-      { name: "beta", status: "stopped" },
+      { name: "beta", status: "archived" },
     ],
   );
   expect(s.text).toContain("alpha");
-  expect(s.text).toContain("stopped");
+  expect(s.text).toContain("archived");
 });
 
 // ── api-paths.js (URL-encoding contract) ────────────────────────────────

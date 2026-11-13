@@ -24,7 +24,7 @@ describe("connector commands", () => {
       ]) }, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["connector", "show", "slack", "--workspace", WS_ID], {
+        const code = await runCli(["connections", "show", "slack", "--workspace", WS_ID], {
           stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(code).toBe(0);
@@ -70,7 +70,7 @@ describe("connector commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["connector", "list", "--workspace", WS_ID],
+          ["connections", "list", "--workspace", WS_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -110,7 +110,7 @@ describe("connector commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["connector", "show", "slack", "--workspace", WS_ID],
+          ["connections", "show", "slack", "--workspace", WS_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -144,7 +144,7 @@ describe("connector commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["connector", "show", "slack", "--workspace", WS_ID, "--json"],
+          ["connections", "show", "slack", "--workspace", WS_ID, "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -167,7 +167,7 @@ describe("connector commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["connector", "show", "Slack/Bad", "--workspace", WS_ID],
+          ["connections", "show", "Slack/Bad", "--workspace", WS_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -192,7 +192,7 @@ describe("connector commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["connector", "list"],
+          ["connections", "list"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -220,7 +220,7 @@ describe("connector commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["connector", "show", "github", "--workspace", WS_ID, "--json"],
+          ["connections", "show", "github", "--workspace", WS_ID, "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -244,7 +244,7 @@ describe("connector commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["connector", "list", "--workspace", WS_ID, "--json"],
+          ["connections", "list", "--workspace", WS_ID, "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);

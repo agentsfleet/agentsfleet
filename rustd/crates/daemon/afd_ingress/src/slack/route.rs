@@ -54,8 +54,8 @@ pub enum Notice<'s> {
         /// The attached fleets.
         fleets: Vec<&'s Subscriber>,
     },
-    /// The mention named a fleet that cannot run now.
-    Paused {
+    /// The mention named a fleet that cannot run now: it was archived.
+    Archived {
         /// The fleet named.
         fleet: &'s Subscriber,
     },
@@ -84,7 +84,7 @@ impl Notice<'_> {
             Self::Ambiguous { .. } => "ambiguous",
             Self::Choose { .. } => "choose",
             Self::AddressIt { .. } => "address_it",
-            Self::Paused { .. } => "paused",
+            Self::Archived { .. } => "archived",
         }
     }
 }
@@ -113,7 +113,7 @@ pub fn route<'s, 'm>(subscribers: &'s [Subscriber], text: &'m str) -> Route<'s, 
             fleet,
             message: rest,
         },
-        [fleet] => Route::Notice(Notice::Paused { fleet }),
+        [fleet] => Route::Notice(Notice::Archived { fleet }),
         [] => unaddressed(subscribers, text),
         [..] => Route::Notice(Notice::Ambiguous { fleets: named }),
     }

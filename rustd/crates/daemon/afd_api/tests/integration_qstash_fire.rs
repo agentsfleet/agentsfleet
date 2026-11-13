@@ -51,7 +51,7 @@ const REASON_NO_SUCH_SCHEDULE: &str = "schedule_not_found";
 const REASON_SCHEDULE_PAUSED: &str = "schedule_paused";
 
 /// The reason a fire for a fleet an operator halted is dropped.
-const REASON_FLEET_PAUSED: &str = "fleet_paused";
+const REASON_FLEET_NOT_ACTIVE: &str = "fleet_not_active";
 
 /// A schedule identifier no row was ever written for.
 const ABSENT_SCHEDULE: &str = "019329c5-0000-7000-8000-0000000000de";
@@ -149,12 +149,12 @@ async fn a_paused_schedules_fire_is_acknowledged_and_dropped() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_halted_fleets_fire_is_dropped_for_the_fleets_own_reason() {
     // The other half, and a different fact: the schedule is exactly as its
-    // owner wants it, and an operator has stopped everything the fleet does.
+    // owner wants it, and the fleet itself was archived.
     // One reason for both would tell that operator their schedule is paused
     // when it is not, and send them to the wrong surface to fix it.
     let fixture = Fixture::create().await;
     fixture
-        .seed(FleetStatus::Stopped, DesiredStatus::Active)
+        .seed(FleetStatus::Archived, DesiredStatus::Active)
         .await;
     let router = fixture.router();
 
@@ -166,9 +166,9 @@ async fn a_halted_fleets_fire_is_dropped_for_the_fleets_own_reason() {
         StatusCode::OK,
         "a drop is an acknowledgement: {dropped}"
     );
-    assert_eq!(ignored(&dropped), REASON_FLEET_PAUSED, "{dropped}");
+    assert_eq!(ignored(&dropped), REASON_FLEET_NOT_ACTIVE, "{dropped}");
     assert_ne!(
-        REASON_FLEET_PAUSED, REASON_SCHEDULE_PAUSED,
+        REASON_FLEET_NOT_ACTIVE, REASON_SCHEDULE_PAUSED,
         "the two pauses must read differently, or the assertion above proves \
          only that something was dropped"
     );

@@ -29,10 +29,10 @@ describe("factsOf", () => {
     const frame: LiveFrame = {
       kind: FRAME_KIND.EVENT_COMPLETE,
       event_id: "e1",
-      fleet_status: "paused",
+      fleet_status: "installing",
       pending_approvals: 2,
     };
-    expect(factsOf(frame)).toEqual({ status: "paused", pendingApprovals: 2 });
+    expect(factsOf(frame)).toEqual({ status: "installing", pendingApprovals: 2 });
   });
 
   it("a gate frame carries the count alone — a gate changes nothing about the lifecycle", () => {
@@ -96,9 +96,9 @@ describe("mergeFacts", () => {
   });
 
   it("folds a new fact in and leaves the other as it was", () => {
-    expect(mergeFacts(NO_FACTS, { status: "paused" })).toEqual({ status: "paused", pendingApprovals: null });
-    expect(mergeFacts({ status: "paused", pendingApprovals: 3 }, { pendingApprovals: 2 })).toEqual({
-      status: "paused",
+    expect(mergeFacts(NO_FACTS, { status: "installing" })).toEqual({ status: "installing", pendingApprovals: null });
+    expect(mergeFacts({ status: "installing", pendingApprovals: 3 }, { pendingApprovals: 2 })).toEqual({
+      status: "installing",
       pendingApprovals: 2,
     });
   });

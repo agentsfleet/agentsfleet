@@ -1,5 +1,20 @@
 import { Flag } from "effect/cli";
+
 import { boundedInt, METAVAR, requiredTextFlag, startingAfterFlag } from "./flags.ts";
+
+// The scope each platform leaf needs, in the server's claim spelling. Help
+// shows a leaf only to a caller whose server-reported scopes include it; the
+// server still decides every call.
+export const PLATFORM_SCOPE = {
+  keyRead: "platform-key:read",
+  keyAdmin: "platform-key:admin",
+  modelRead: "model:read",
+  modelAdmin: "model:admin",
+  runnerRead: "runner:read",
+  runnerEnroll: "runner:enroll",
+  runnerWrite: "runner:write",
+  libraryWrite: "platform-library:write",
+} as const;
 
 const PAGE_MIN = 1;
 const PAGE_MAX = 100;

@@ -41,7 +41,7 @@ describe("secret create — the typed form and its rejections", () => {
           const err = bufferStream();
           const code = await runCli(
             [
-              "secret", verb, SECRET_NAME,
+              "secrets", verb, SECRET_NAME,
               "--api-key", API_KEY,
               "--model", MODEL,
               "--json",
@@ -67,7 +67,7 @@ describe("secret create — the typed form and its rejections", () => {
       const out = bufferStream();
       const err = bufferStream();
       const code = await runCli(
-        ["secret", "create", SECRET_NAME, "--provider", "anthropic", "--model", MODEL, "--json"],
+        ["secrets", "create", SECRET_NAME, "--provider", "anthropic", "--model", MODEL, "--json"],
         { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:1/" }) },
       );
       expect(code).not.toBe(0);
@@ -85,7 +85,7 @@ describe("secret create — the typed form and its rejections", () => {
     await authedScope(async () => {
       const custom = bufferStream();
       await runCli(
-        ["secret", "create", SECRET_NAME, "--provider", OPENAI_COMPATIBLE_PROVIDER,
+        ["secrets", "create", SECRET_NAME, "--provider", OPENAI_COMPATIBLE_PROVIDER,
           "--base-url", VALID_BASE_URL, "--api-key", API_KEY, "--json"],
         { stdout: custom.stream, stderr: custom.stream, env: cliEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:1/" }) },
       );
@@ -93,7 +93,7 @@ describe("secret create — the typed form and its rejections", () => {
 
       const named = bufferStream();
       await runCli(
-        ["secret", "create", SECRET_NAME, "--provider", "anthropic", "--api-key", API_KEY, "--json"],
+        ["secrets", "create", SECRET_NAME, "--provider", "anthropic", "--api-key", API_KEY, "--json"],
         { stdout: named.stream, stderr: named.stream, env: cliEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:1/" }) },
       );
       const n = named.read();
@@ -118,7 +118,7 @@ describe("secret create — the typed form and its rejections", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "create", SECRET_NAME, "--provider", "anthropic",
+          ["secrets", "create", SECRET_NAME, "--provider", "anthropic",
             "--api-key", "   ", "--model", MODEL, "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
@@ -138,7 +138,7 @@ describe("secret create — the typed form and its rejections", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const code = await runCli(
-          ["secret", "create", SECRET_NAME, "--provider", "anthropic",
+          ["secrets", "create", SECRET_NAME, "--provider", "anthropic",
             "--api-key", `  ${API_KEY}  `, "--model", MODEL, "--json"],
           { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
@@ -164,7 +164,7 @@ describe("secret create — the typed form and its rejections", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "create", SECRET_NAME,
+            "secrets", "create", SECRET_NAME,
             "--provider", "claude-cli",
             "--api-key", API_KEY,
             "--model", MODEL,
@@ -190,7 +190,7 @@ describe("secret create — the typed form and its rejections", () => {
       const err = bufferStream();
       const code = await runCli(
         [
-          "secret", "create", SECRET_NAME,
+          "secrets", "create", SECRET_NAME,
           "--provider", OPENAI_COMPATIBLE_PROVIDER,
           "--base-url", VALID_BASE_URL,
           "--api-key", API_KEY,

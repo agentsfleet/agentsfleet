@@ -36,13 +36,12 @@ it("offers independent Archive and Permanently delete actions on an active fleet
   await menu();
   expect(screen.getByRole("menuitem", {name: "Archive"})).toBeTruthy();
   expect(screen.getByRole("menuitem", {name: "Permanently delete"})).toBeTruthy();
-  expect(screen.getByRole("menuitem", {name: "Stop"})).toBeTruthy();
-  expect(screen.queryByRole("menuitem", {name: "Kill"})).toBeNull();
+  for (const name of ["Stop", "Resume", "Kill"]) expect(screen.queryByRole("menuitem", {name})).toBeNull();
   expect(setStatus).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
 });
 
 it("keeps permanent deletion available in archived history without Restore", async () => {
-  await menu("killed");
+  await menu("archived");
   expect(screen.getByRole("menuitem", {name: "Permanently delete"})).toBeTruthy();
   for (const name of ["Archive", "Restore", "Resume", "Stop"]) expect(screen.queryByRole("menuitem", {name})).toBeNull();
 });
@@ -53,40 +52,23 @@ it("keeps an unfamiliar lifecycle state free of guessed destructive actions", as
   expect(setStatus).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
 });
 
-it.each(["stopped", "paused"])("preserves Resume for a temporarily %s fleet", async status => {
-  const user = await menu(status);
-  const dialog = await choose(user, "Resume");
-  await user.click(dialog.getByRole("button", {name: "Resume"}));
-  await waitFor(() => expect(navigation.refresh).toHaveBeenCalledOnce());
-  expect(setStatus).toHaveBeenCalledExactlyOnceWith("release", FLEET.id, "active", FLEET.etag);
-});
-
-it("requires confirmation before a temporary stop and sends the observed ETag", async () => {
-  const user = await menu();
-  const dialog = await choose(user, "Stop");
-  expect(setStatus).not.toHaveBeenCalled();
-  await user.click(dialog.getByRole("button", {name: "Stop"}));
-  await waitFor(() => expect(navigation.refresh).toHaveBeenCalledOnce());
-  expect(setStatus).toHaveBeenCalledExactlyOnceWith("release", FLEET.id, "stopped", FLEET.etag);
-});
-
 it("shows a refusal without navigating away or claiming a status change", async () => {
   setStatus.mockResolvedValue({ok: false, status: 403, error: "Access denied"});
   const user = await menu();
-  const dialog = await choose(user, "Stop");
-  await user.click(dialog.getByRole("button", {name: "Stop"}));
+  const dialog = await choose(user, "Archive");
+  await user.click(dialog.getByRole("button", {name: "Archive"}));
   expect((await screen.findByRole("alert")).textContent).toContain("Access denied");
   expect(navigation.replace).not.toHaveBeenCalled(); expect(navigation.refresh).not.toHaveBeenCalled();
   expect(screen.getByRole("alertdialog")).toBeTruthy();
 });
 
-it("discards a late response after unmount and excludes duplicate stop submissions", async () => {
+it("discards a late response after unmount and excludes duplicate archive submissions", async () => {
   const pending = Promise.withResolvers<unknown>(); setStatus.mockReturnValueOnce(pending.promise);
-  const user = await menu(); const dialog = await choose(user, "Stop");
-  const button = dialog.getByRole("button", {name: "Stop"});
+  const user = await menu(); const dialog = await choose(user, "Archive");
+  const button = dialog.getByRole("button", {name: "Archive"});
   act(() => {fireEvent.click(button); fireEvent.click(button);});
-  expect(setStatus).toHaveBeenCalledOnce();
-  cleanup(); pending.resolve({ok: true, data: {...FLEET, status: "stopped"}});
+  await waitFor(() => expect(setStatus).toHaveBeenCalledOnce());
+  cleanup(); pending.resolve({ok: true, data: {...FLEET, status: "archived"}});
   await pending.promise;
   expect(navigation.refresh).not.toHaveBeenCalled();
 });
@@ -99,23 +81,13 @@ it("keeps cancellation free of lifecycle writes", async () => {
   expect(network).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
 });
 
-it.each([409, 412])("refreshes stale fleet state after a %s refusal while retaining the error", async status => {
-  setStatus.mockResolvedValueOnce({ok: false, status, error: "Fleet changed"});
-  const user = await menu();
-  const dialog = await choose(user, "Stop");
-  await user.click(dialog.getByRole("button", {name: "Stop"}));
-  expect((await screen.findByRole("alert")).textContent).toContain("Fleet changed");
-  expect(navigation.refresh).toHaveBeenCalledOnce();
-  expect(navigation.replace).not.toHaveBeenCalled();
-});
-
-it.each(["contradictory", "thrown"])("keeps a %s stop response unconfirmed", async mode => {
+it.each(["contradictory", "thrown"])("keeps a %s archive response unconfirmed", async mode => {
   if (mode === "thrown") setStatus.mockRejectedValueOnce(new Error("Lost response"));
   else setStatus.mockResolvedValueOnce({ok: true, data: FLEET});
   const user = await menu();
-  const dialog = await choose(user, "Stop");
-  await user.click(dialog.getByRole("button", {name: "Stop"}));
-  expect((await screen.findByRole("alert")).textContent).toContain("We couldn’t confirm this request.");
+  const dialog = await choose(user, "Archive");
+  await user.click(dialog.getByRole("button", {name: "Archive"}));
+  expect((await screen.findByRole("alert")).textContent).toContain(mode === "thrown" ? "We couldn’t confirm this request." : "Archive could not be confirmed.");
   expect(navigation.refresh).not.toHaveBeenCalled();
   expect(screen.getByRole("alertdialog")).toBeTruthy();
 });
@@ -124,15 +96,15 @@ it("ignores a transport rejection after its action owner has unmounted", async (
   const pending = Promise.withResolvers<never>();
   setStatus.mockReturnValueOnce(pending.promise);
   const user = await menu();
-  const dialog = await choose(user, "Stop");
-  await user.click(dialog.getByRole("button", {name: "Stop"}));
+  const dialog = await choose(user, "Archive");
+  await user.click(dialog.getByRole("button", {name: "Archive"}));
   cleanup();
   await act(async () => {pending.reject(new Error("Disconnected"));});
   expect(navigation.refresh).not.toHaveBeenCalled();
   expect(navigation.replace).not.toHaveBeenCalled();
 });
 
-it.each(["Archive", "Stop"])("cancels %s without sending a lifecycle write", async label => {
+it.each(["Archive", "Permanently delete"])("cancels %s without sending a lifecycle write", async label => {
   const user = await menu();
   const dialog = await choose(user, label);
   if (label === "Archive") expect(dialog.getByText(/cannot be restored/)).toBeTruthy();
@@ -142,10 +114,10 @@ it.each(["Archive", "Stop"])("cancels %s without sending a lifecycle write", asy
   expect(remove).not.toHaveBeenCalled();
 });
 
-it("moves an archived open fleet to New fleet after its permanent stop is confirmed", async () => {
+it("moves an archived open fleet to New fleet after its archive is confirmed", async () => {
   const user = await menu(); const dialog = await choose(user, "Archive");
   await user.click(dialog.getByRole("button", {name: "Archive"}));
   await waitFor(() => expect(navigation.replace).toHaveBeenCalledExactlyOnceWith("/w/release/fleets/new"));
-  expect(setStatus).toHaveBeenCalledExactlyOnceWith("release", FLEET.id, "killed", FLEET.etag);
+  expect(setStatus).toHaveBeenCalledExactlyOnceWith("release", FLEET.id, "archived", FLEET.etag);
   expect(remove).not.toHaveBeenCalled();
 });

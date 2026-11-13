@@ -125,7 +125,7 @@ describe("steer — renderOutcome timeout path", () => {
       expect(JSON.stringify(exit)).toContain("still in flight");
       expect(rec.stderr.some((m) => m.includes("still in flight"))).toBe(false);
       // No pending gate in this scenario, so the ordinary suggestion stands.
-      expect(JSON.stringify(exit)).toContain("agentsfleet events");
+      expect(JSON.stringify(exit)).toContain("agentsfleet fleet events");
     } finally {
       setSystemTime(); // restore real clock
     }

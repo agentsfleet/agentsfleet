@@ -8,7 +8,7 @@ import { wsFleetLibraryPath } from "../../lib/api-paths.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 
 export const removedNotice = (entryId: string): string =>
-  `${entryId} is no longer in this workspace's Fleet library. ` +
+  `${entryId} is no longer one of this workspace's plugins. ` +
   `Fleets already installed from it keep running.`;
 
 const PUBLISH_HINT =

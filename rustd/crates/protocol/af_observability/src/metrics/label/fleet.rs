@@ -238,12 +238,8 @@ closed_set! {
         Installing => "installing",
         /// Leasable. The only status the runner's candidate query admits.
         Active => "active",
-        /// Held by the platform's anomaly gate.
-        Paused => "paused",
-        /// Stopped by an operator, and resumable.
-        Stopped => "stopped",
-        /// Terminal.
-        Killed => "killed",
+        /// Terminal: archived by an operator or by the platform gate.
+        Archived => "archived",
     }
 }
 

@@ -10,7 +10,7 @@
 //!
 //! # Every drop here is a 200, and that is the assertion
 //!
-//! A green build, an event outside the allow-list, a paused fleet: real
+//! A green build, an event outside the allow-list, an archived fleet: real
 //! deliveries, correctly signed, none of them waking anything. GitHub retries
 //! non-2xx for three days and retrying changes none of them, so the reason
 //! travels in the BODY and the status stays 200. A test that only checked "not
@@ -58,7 +58,7 @@ const ACTOR_GITHUB: &str = "webhook:github";
 const REASON_EVENT_NOT_SUBSCRIBED: &str = "event_not_subscribed";
 
 /// The reason the route drops a delivery to a fleet nobody is running.
-const REASON_FLEET_PAUSED: &str = "fleet_paused";
+const REASON_FLEET_NOT_ACTIVE: &str = "fleet_not_active";
 
 /// The reason `classify` gives for a run that did not fail.
 const REASON_NON_FAILURE_CONCLUSION: &str = "non_failure_conclusion";
@@ -265,8 +265,8 @@ async fn an_event_outside_the_allow_list_is_dropped_before_the_body_is_read() {
 }
 
 #[tokio::test]
-async fn a_paused_fleet_answers_two_hundred_rather_than_earning_a_retry() {
-    let ingress = serving(signed::TRIGGER_GITHUB, FleetStatus::Paused.as_str());
+async fn an_archived_fleet_answers_two_hundred_rather_than_earning_a_retry() {
+    let ingress = serving(signed::TRIGGER_GITHUB, FleetStatus::Archived.as_str());
 
     let response = deliver(
         &ingress,
@@ -276,10 +276,10 @@ async fn a_paused_fleet_answers_two_hundred_rather_than_earning_a_retry() {
     )
     .await;
 
-    assert_eq!(ignored_reason(response).await, REASON_FLEET_PAUSED);
+    assert_eq!(ignored_reason(response).await, REASON_FLEET_NOT_ACTIVE);
     assert!(
         ingress.deliveries().is_empty(),
-        "a fleet somebody paused on purpose takes no work"
+        "an archived fleet takes no work"
     );
 }
 

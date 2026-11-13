@@ -23,7 +23,7 @@ export const platformKeysList = Effect.fn("platform.keys.list")(function* () {
   ], ageKey: null}, response.keys.map(row => ({...row, active: row.active ? "Yes" : "No"})));
 });
 
-export const platformKeysSet = Effect.fn("platform.keys.set")(function* (options: KeyOptions) {
+export const platformKeysUse = Effect.fn("platform.keys.use")(function* (options: KeyOptions) {
   if (options.replace && !options.apiKeyStdin) return yield* Effect.fail(invalidInput("--replace requires --api-key-stdin"));
   if (options.apiKeyStdin) {
     const stdin = yield* Stdin;

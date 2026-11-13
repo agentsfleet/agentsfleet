@@ -104,7 +104,7 @@ test("command line: 20 setup messages, save, 20 runtime messages", async () => {
       const turn: Turn = {stage: "runtime", turn: index + 1, input, sentAt: new Date().toISOString(),
         reference: {fleet: evidence.fleet, event: null}};
       turns.push(turn);
-      const steered = await spawnAgentsfleet(["--json", "steer", evidence.fleet!, input], env, TURN_TIMEOUT_MS);
+      const steered = await spawnAgentsfleet(["--json", "fleet", "steer", evidence.fleet!, input], env, TURN_TIMEOUT_MS);
       turn.exit = steered.code; turn.doneAt = new Date().toISOString();
       if (steered.code !== 0) turn.stderr = steered.stderr.slice(-4000);
       const rows = (await runtimeHistory(client, `${base}/fleets/${evidence.fleet}`)).filter((row) => row.event_type === "chat");

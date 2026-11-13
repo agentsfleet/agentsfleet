@@ -7,7 +7,7 @@
 //!
 //! # Every non-acceptance here is a 2xx, and for a sharper reason than usual
 //!
-//! A paused schedule, a fleet somebody stopped, a schedule since deleted — all
+//! A paused schedule, an archived fleet, a schedule since deleted — all
 //! real callbacks the scheduler was correctly told to send. A 4xx would put
 //! each into its retry loop, and retrying changes none of them. Worse, the
 //! scheduler treats sustained failures as a reason to stop delivering, so a
@@ -207,8 +207,8 @@ async fn prove<D: Services>(
 /// The 200 a fire that must not run answers with, or `None` when it may run.
 ///
 /// Both halves can stop a fire and they are different facts: the schedule
-/// being paused is the scheduler not yet knowing, and the fleet being stopped
-/// is an operator halting everything it does.
+/// being paused is the scheduler not yet knowing, and the fleet not being
+/// active means it is still installing or was archived.
 async fn held<D: Services>(
     services: &D,
     schedule: &Uuid7,
@@ -228,7 +228,7 @@ async fn held<D: Services>(
                 .await
                 .map_err(Refusal::at(EVENT_DROPPED))?;
         }
-        return Ok(Some(dropped(webhook::REASON_FLEET_PAUSED)));
+        return Ok(Some(dropped(webhook::REASON_FLEET_NOT_ACTIVE)));
     }
     Ok(None)
 }

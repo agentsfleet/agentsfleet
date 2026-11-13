@@ -37,7 +37,7 @@ export const SYNCING_SCHEDULE: Schedule = {...SYNCED_SCHEDULE, sync: SCHEDULE_SY
 // A status a newer daemon may add; the client must decode it and still treat the push as owed.
 export const UNKNOWN_SYNC_SCHEDULE: Schedule = {...SYNCED_SCHEDULE, sync: "queued_upstream"};
 // pin test: literal is the contract — the command a person copies to retry a failed schedule push.
-export const SCHEDULE_RETRY = `agentsfleet schedule sync ${FLEET_ID} ${SCHEDULE_ID}`;
+export const SCHEDULE_RETRY = `agentsfleet fleet schedule sync ${FLEET_ID} ${SCHEDULE_ID}`;
 // pin test: literal is the contract — the diagnostic kinds a `--json` consumer branches on.
 export const SYNC_FAILED_KIND = "schedule_sync_failed";
 export const SYNC_UNCONFIRMED_KIND = "schedule_sync_unconfirmed";

@@ -55,7 +55,7 @@ test.describe("multi-workspace + fleet lifecycle", () => {
 
     // Archive retains the history row in the same workspace.
     await page.goto(workspaceHref(secondary.id, "fleets"));
-    await expectRowState(page, fleetId, "failed");
+    await expectRowState(page, fleetId, "archived");
   });
 
   test("an active fleet can be permanently deleted with one confirmation", async ({page}, info) => {

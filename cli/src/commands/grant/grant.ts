@@ -1,7 +1,7 @@
 // Integration Grant CLI commands — Effect-shaped.
 //
-// agentsfleet grant list   --fleet <id>              → list grants for a fleet
-// agentsfleet grant delete --fleet <id> <grant_id>   → revoke a grant immediately
+// agentsfleet fleet grants list   --fleet <id>              → list grants for a fleet
+// agentsfleet fleet grants revoke --fleet <id> <grant_id>   → revoke a grant immediately
 
 import { Effect } from "effect";
 import { instantCell } from "../../output/index.ts";
@@ -123,6 +123,6 @@ export const grantDeleteEffectFromArgs = Effect.fn("grant.delete")(function* (
 });
 const FLEET_REQUIRED = "--fleet <id> is required" as const;
 const GRANT_ID_REQUIRED = "<grant_id> is required" as const;
-const GRANT_LIST_USAGE = "usage: agentsfleet grant list --fleet <id>" as const;
+const GRANT_LIST_USAGE = "usage: agentsfleet fleet grants list --fleet <id>" as const;
 const GRANT_DELETE_USAGE =
-  "usage: agentsfleet grant delete <grant_id> --fleet <id>" as const;
+  "usage: agentsfleet fleet grants revoke <grant_id> --fleet <id>" as const;

@@ -60,7 +60,7 @@ export class ChatActions {
     });
   }
 
-  /** Opens a draft from a source that needs no first message: a Definition, Library revision or fleet setup. */
+  /** Opens a draft from a source that needs no first message: a Definition, plugin revision or fleet setup. */
   create() {
     const self = this;
     return Effect.gen(function* () {
@@ -109,7 +109,7 @@ export class ChatActions {
       if (!self.#seen) return yield* missingReview();
       self.#operation = OPERATION.publish;
       const published = yield* self.#setup.publish(self.#seen.draft, label, target);
-      yield* renderResult(self.#output, `Published Library revision ${published.revision_id}`, published);
+      yield* renderResult(self.#output, `Published plugin revision ${published.revision_id}`, published);
     });
   }
 
@@ -146,7 +146,7 @@ export class ChatActions {
         }
         case OPERATION.publish: {
           const publication = yield* self.#setup.retryPublication();
-          yield* renderResult(self.#output, `Published Library revision ${publication.revision_id}`, publication);
+          yield* renderResult(self.#output, `Published plugin revision ${publication.revision_id}`, publication);
           break;
         }
         case OPERATION.apply: {

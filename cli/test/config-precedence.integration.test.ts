@@ -50,6 +50,7 @@ import {
 // surface under test — it GETs /v1/workspaces/<wsId>/fleets with a Bearer
 // header and honours --workspace.
 const LIST = "list" as const;
+const FLEET = "fleet" as const;
 const FLAG_API = "--api" as const;
 const FLAG_WORKSPACE = "--workspace" as const;
 
@@ -117,7 +118,7 @@ describe("config precedence — API URL at the wire (authed list)", () => {
         await seedCreds(apiUrl, "sess_creds_url");
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli([LIST], { stdout: out.stream, stderr: err.stream, env: cliEnv() });
+        const code = await runCli([FLEET, LIST], { stdout: out.stream, stderr: err.stream, env: cliEnv() });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
         expect(calls[0]?.headers[HOST_HEADER]).toBe(new URL(apiUrl).host);
@@ -134,7 +135,7 @@ describe("config precedence — API URL at the wire (authed list)", () => {
         await seedCreds(UNROUTABLE_CREDS_URL, "sess_apiurl_env");
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli([LIST], {
+        const code = await runCli([FLEET, LIST], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -156,7 +157,7 @@ describe("config precedence — API URL at the wire (authed list)", () => {
         await seedCreds(UNROUTABLE_CREDS_URL, "sess_zenv_over_aenv");
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli([LIST], {
+        const code = await runCli([FLEET, LIST], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, API_URL: UNROUTABLE_ENV_URL }),
@@ -178,7 +179,7 @@ describe("config precedence — API URL at the wire (authed list)", () => {
         await seedCreds(UNROUTABLE_CREDS_URL, "sess_flag_url");
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli([FLAG_API, apiUrl, LIST], {
+        const code = await runCli([FLAG_API, apiUrl, FLEET, LIST], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: UNROUTABLE_ENV_URL, API_URL: UNROUTABLE_ENV_URL }),
@@ -201,7 +202,7 @@ describe("config precedence — auth token Bearer at the wire (authed list)", ()
         // Both credentials present: a stored login JWT on disk (seeded) plus an
         // exported service API key. resolveToken's env-first precedence sends
         // the API key as the wire Bearer, overriding the on-disk login.
-        const code = await runCli([LIST], {
+        const code = await runCli([FLEET, LIST], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_API_KEY: ENV_API_KEY }),
@@ -220,7 +221,7 @@ describe("config precedence — auth token Bearer at the wire (authed list)", ()
         const out = bufferStream();
         const err = bufferStream();
         // Env slot empty → resolveToken falls through to the file-slot login.
-        const code = await runCli([LIST], {
+        const code = await runCli([FLEET, LIST], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -244,7 +245,7 @@ describe("config precedence — auth token Bearer at the wire (authed list)", ()
       await withMockApi(listRoutes(WS_PERSISTED), async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli([LIST], {
+        const code = await runCli([FLEET, LIST], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_API_KEY: ENV_API_KEY }),
@@ -263,7 +264,7 @@ describe("config precedence — active workspace in the request path (authed lis
       await withMockApi(listRoutes(WS_PERSISTED), async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli([LIST], {
+        const code = await runCli([FLEET, LIST], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -282,7 +283,7 @@ describe("config precedence — active workspace in the request path (authed lis
       await withMockApi(listRoutes(WS_PERSISTED, WS_OVERRIDE), async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli([LIST, FLAG_WORKSPACE, WS_OVERRIDE], {
+        const code = await runCli([FLEET, LIST, FLAG_WORKSPACE, WS_OVERRIDE], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),

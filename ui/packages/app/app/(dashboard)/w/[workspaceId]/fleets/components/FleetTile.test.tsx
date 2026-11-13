@@ -63,14 +63,14 @@ afterEach(() => {
 });
 
 describe("FleetTile kinds", () => {
-  it("a parked fleet is a drained tile that never calls the stream hook", () => {
-    const { container, getByText } = renderTile(fleet({ status: "stopped" }));
+  it("an archived fleet is a drained tile that never calls the stream hook", () => {
+    const { container, getByText } = renderTile(fleet({ status: "archived" }));
     expect(streamMock).not.toHaveBeenCalled();
     const card = container.querySelector("[data-kind]");
     expect(card?.getAttribute("data-kind")).toBe("drained");
     expect(card?.className).not.toContain(FADED_CLASS);
     expect(getByText(FLEET_NO_LIVE_ACTIVITY_COPY)).toBeTruthy();
-    expect(container.querySelector("[data-fleet-status]")?.textContent).toBe("Stopped");
+    expect(container.querySelector("[data-fleet-status]")?.textContent).toBe("Archived");
     // Every tile links to its console, drained included.
     expect(container.querySelector('a[href="/w/ws_1/fleets/flt_1"]')).not.toBeNull();
   });
@@ -316,7 +316,7 @@ describe("FleetTile kinds", () => {
   });
 
   it("does not invent a purpose for a fleet without saved setup", () => {
-    const {container} = renderTile(fleet({status: "stopped"}));
+    const {container} = renderTile(fleet({status: "archived"}));
     expect(container.querySelector("[data-fleet-purpose]")).toBeNull();
     expect(container.textContent).toContain("alpha");
   });

@@ -126,7 +126,7 @@ async fn a_resolved_gate_refuses_an_unguarded_rewrite() {
 /// wake nor a continuation, because there is no run left to move on.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn an_auto_killed_gate_owes_its_run_nothing() {
+async fn an_archived_gate_owes_its_run_nothing() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
     sqlx::query(
@@ -135,7 +135,7 @@ async fn an_auto_killed_gate_owes_its_run_nothing() {
           WHERE action_id = $1 AND resolved_at IS NULL",
     )
     .bind(&action)
-    .bind(status::AUTO_KILLED)
+    .bind(status::ARCHIVED)
     .bind("system:fleet-kill")
     .execute(&mut *lane.pool.acquire().await.expect("the lane must answer"))
     .await
@@ -151,11 +151,11 @@ async fn an_auto_killed_gate_owes_its_run_nothing() {
         other => unreachable!("a closed gate is not answerable again, got {other:?}"),
     };
 
-    assert_eq!(standing.status, status::AUTO_KILLED);
+    assert_eq!(standing.status, status::ARCHIVED);
     assert!(standing.event_id.is_some(), "the gate held a run");
     assert_eq!(
         standing.continuation_event_id, None,
-        "a stopped fleet's run is owed no continuation"
+        "an archived fleet's run is owed no continuation"
     );
-    assert_eq!(lane.status_of(&action).await, status::AUTO_KILLED);
+    assert_eq!(lane.status_of(&action).await, status::ARCHIVED);
 }

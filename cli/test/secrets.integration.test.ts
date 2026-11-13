@@ -24,7 +24,7 @@ describe("secret commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "create", "github", `--data={"token":"ghp_test_value"}`],
+          ["secrets", "create", "github", `--data={"token":"ghp_test_value"}`],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -60,7 +60,7 @@ describe("secret commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "update", "github", `--data={"token":"ghp_replaced_value"}`],
+          ["secrets", "update", "github", `--data={"token":"ghp_replaced_value"}`],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -86,7 +86,7 @@ describe("secret commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "update", "ghost", `--data={"token":"x"}`],
+          ["secrets", "update", "ghost", `--data={"token":"x"}`],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -107,7 +107,7 @@ describe("secret commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "create", "github", `--data={"token":"ghp_second_attempt"}`],
+          ["secrets", "create", "github", `--data={"token":"ghp_second_attempt"}`],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         // Exit 0: re-running a provisioning script over names it already
@@ -116,7 +116,7 @@ describe("secret commands", () => {
         const text = out.read();
         expect(text).toMatch(/already exists/i);
         // The recovery is named, because there is no longer a flag for it.
-        expect(text).toMatch(/secret update github/);
+        expect(text).toMatch(/secrets update github/);
         expect(text).not.toMatch(/UZ-VAULT-005/);
         expect(calls.map((c) => c.method)).toEqual(["POST"]);
       });
@@ -137,7 +137,7 @@ describe("secret commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "create", "github", `--data={"token":"ghp_x"}`],
+          ["secrets", "create", "github", `--data={"token":"ghp_x"}`],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -152,7 +152,7 @@ describe("secret commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "create", "github", `--data={"token":"ghp_x"}`, "--force"],
+          ["secrets", "create", "github", `--data={"token":"ghp_x"}`, "--force"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -177,7 +177,7 @@ describe("secret commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "list"],
+          ["secrets", "list"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);

@@ -90,7 +90,7 @@ const PHOSPHOR_ICONS = [
   "MessageSquareIcon", "Code2Icon", "FolderIcon",
   "ArrowUpIcon", "ArrowDownIcon", "ArrowUpDownIcon", "ArrowUpIcon", "ArrowDownIcon", "CaretUpDownIcon",
   // The fleet lifecycle controls, which carry a glyph the way runner actions do.
-  "StopCircleIcon", "PlayIcon", "PowerIcon", "SquareIcon", "DotsThreeIcon",
+  "ArchiveIcon", "SquareIcon", "DotsThreeIcon",
   // The status lines' glyphs and the runner checks badge.
   "WarningCircleIcon", "CoinsIcon", "HourglassIcon", "CircleNotchIcon", "TimerIcon", "HeartPulseIcon",
   "ShieldCheckIcon", "ShieldAlertIcon", "LockKeyIcon",

@@ -172,14 +172,6 @@ pub const AGENTSFLEET_INVALID_CONFIG: ErrorCode = ErrorCode::declare("UZ-AGT-008
 /// [`AUTH_FORBIDDEN`]; the two axes are separate and both are checked.
 pub const AGENTSFLEET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-009");
 
-/// The fleet's current status does not permit the requested transition.
-///
-/// A 409, and it covers both halves of the same refusal: a transition the
-/// status machine does not allow from where the row stands, and a delete of a
-/// fleet that has not been killed first. Both are "the state refuses you", and
-/// a client acts identically on either — read the current status, then decide.
-pub const AGENTSFLEET_ALREADY_TERMINAL: ErrorCode = ErrorCode::declare("UZ-AGT-010");
-
 /// The install could not be finished, and nothing was kept.
 ///
 /// The promise this code carries is the one the caller can act on: retrying is
@@ -202,10 +194,10 @@ pub const AGENTSFLEET_SOURCE_STALE: ErrorCode = ErrorCode::declare("UZ-AGT-014")
 /// The fleet will not take new work, so a steer was refused rather than taken.
 ///
 /// A 409 carrying `current_state`, and the status is the whole point: a
-/// message accepted for a stopped fleet would be a 202 whose run never
-/// happens, and a person watching for their answer would wait forever. The
-/// caller branches on paused-versus-stopped without re-reading the fleet.
-pub const AGENTSFLEET_PAUSED_INGRESS: ErrorCode = ErrorCode::declare("UZ-AGT-012");
+/// message accepted for a fleet that is not active would be a 202 whose run
+/// never happens, and a person watching for their answer would wait forever.
+/// The caller tells installing from archived without re-reading the fleet.
+pub const AGENTSFLEET_NOT_ACTIVE: ErrorCode = ErrorCode::declare("UZ-AGT-012");
 
 /// No event under that identifier, in that fleet, in that workspace.
 ///
@@ -234,6 +226,16 @@ pub const AGENTSFLEET_OPERATION_CONFLICT: ErrorCode = ErrorCode::declare("UZ-AGT
 /// the statement carries the scope as a predicate. Telling them apart would
 /// disclose across a tenant boundary.
 pub const TOOL_CALL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-017");
+
+/// The fleet is archived, so no lifecycle change applies to it.
+///
+/// A 409 with `current_state: "archived"`, not the 404 of a fleet that is not
+/// there: an archived fleet still reads, so answering "not found" to its edit
+/// while its read succeeds would tell a client two different things about one
+/// row. Archive is terminal, so the client's next step is delete or a new
+/// fleet, never a retry. `UZ-AGT-018` and `UZ-AGT-019` are reserved for the
+/// fleet-to-fleet steer refusals, so this takes the next free number.
+pub const AGENTSFLEET_ARCHIVED: ErrorCode = ErrorCode::declare("UZ-AGT-020");
 
 /// The fleet a memory request names is not one this workspace holds.
 ///

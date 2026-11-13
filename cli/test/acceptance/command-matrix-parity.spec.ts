@@ -11,13 +11,16 @@
 import { describe, expect, test } from "bun:test";
 import { Param } from "effect/cli";
 
-import { rootCommand } from "../../src/program/tree/root.command.ts";
+import { buildCommandTree } from "../../src/program/tree/index.ts";
+
 import { childrenOf, type CommandNode } from "../../src/program/tree/resolve-path.ts";
 import {
   ACTION_GROUP_NODES,
   GROUP_NODES,
   REQUIRES_POSITIONAL_ARG,
 } from "./fixtures/command-matrix.ts";
+
+const rootCommand = buildCommandTree();
 
 const OPTIONAL_TAG = "Optional";
 

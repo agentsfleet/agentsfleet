@@ -412,7 +412,7 @@ The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** ope
 Fleet messages, setup receipts, and integration activity share one chronological conversation.
 
 **Save fleet** sits beside the authoring chat title. Authoring a saved fleet shows **Save changes** in that position.
-**Stop**, **Archive**, and **Permanently Delete** live in **Fleet actions**.
+**Archive** and **Permanently Delete** live in **Fleet actions**.
 
 Archive and deletion use separate confirmations.
 

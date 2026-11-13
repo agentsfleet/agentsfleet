@@ -21,8 +21,8 @@ use crate::lease::envelope::Acquired;
 use crate::lease::event::{DETAIL_LEASES_LAPSED, Delivery, Ended};
 use crate::lease::installed::Installed;
 
-/// The no-work reason for a fleet paused between selection and claim.
-const FLEET_STOPPED: &str = "the fleet stopped between selection and claim";
+/// The no-work reason for a fleet archived between selection and claim.
+const FLEET_ARCHIVED: &str = "the fleet was archived between selection and claim";
 
 /// A fleet whose unreadable config could not even be recorded as such.
 pub(super) const EVENT_CONFIG_REFUSAL_UNRECORDED: &str = "config_refusal_unrecorded";
@@ -31,7 +31,7 @@ impl LeaseService {
     /// The installed fleet behind a claim, or the answer that ends the pass.
     ///
     /// Three of the four arms end it, which is why this is a
-    /// [`Step`](super::step::Step) rather than an `Option`: a paused fleet, an
+    /// [`Step`](super::step::Step) rather than an `Option`: an archived fleet, an
     /// unreadable document and a datastore outage are different endings, and
     /// the caller should not have to tell them apart to know the pass is over.
     pub(super) async fn resolve_installed(
@@ -42,11 +42,11 @@ impl LeaseService {
         match self.leases.installed_claimed(&acquired.opened).await {
             Ok(Some(installed)) => Ok(Step::Go(installed)),
             // The selection pass filters on status, so reaching here with a
-            // stopped fleet means an operator paused it in the window between
-            // selection and this read. The pass frees the claim; the pause
-            // already cleared the mark.
+            // fleet that is not active means it was archived in the window
+            // between selection and this read. The pass frees the claim; the
+            // archive already cleared the mark.
             Ok(None) => {
-                no_work(runner_id, FLEET_STOPPED);
+                no_work(runner_id, FLEET_ARCHIVED);
                 Ok(Step::Stop)
             }
             // One fleet's unreadable document is that fleet's fault and not

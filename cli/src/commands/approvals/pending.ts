@@ -87,6 +87,6 @@ export const parkedGateHint = (
     const first = pending[0];
     if (first === undefined) return null;
     return pending.length === ONE_GATE
-      ? `waiting on approval gate ${first.gate_id ?? ""} — decide it with: agentsfleet approvals approve ${first.gate_id ?? ""}`
-      : `waiting on ${pending.length} approval gates — list them with: agentsfleet approvals list --fleet ${fleetId}`;
+      ? `waiting on approval gate ${first.gate_id ?? ""} — decide it with: agentsfleet fleet approvals approve ${first.gate_id ?? ""}`
+      : `waiting on ${pending.length} approval gates — list them with: agentsfleet fleet approvals list --fleet ${fleetId}`;
   });

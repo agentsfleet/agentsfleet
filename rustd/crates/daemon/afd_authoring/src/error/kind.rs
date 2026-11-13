@@ -16,6 +16,8 @@ pub(crate) enum ErrorKind {
     Hidden,
     #[error("the shared fleet is unavailable")]
     FleetMissing,
+    #[error("the fleet is archived, and archive is terminal")]
+    Archived,
     #[error("the instance name already exists in this workspace")]
     NameExists,
     #[error("the native setup policy needs a fresh review")]
@@ -52,6 +54,11 @@ pub(crate) enum ErrorKind {
     Approval {
         #[from]
         source: afd_approval::Error,
+    },
+    #[error("the fleet row could not be removed")]
+    Lifecycle {
+        #[from]
+        source: afd_fleet_lifecycle::Error,
     },
     #[error("the assembled authoring context exceeds its bound")]
     Token,

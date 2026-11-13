@@ -8,7 +8,7 @@ import { presentErrorString, UNCONFIRMED_REQUEST_MESSAGE } from "@/lib/errors";
 
 export type FleetLifecycleAction = "archive" | "delete";
 export type FleetLifecycleCheckpoint =
-  | {stage: "read" | "check_stop" | "check_delete"}
+  | {stage: "read" | "check_archive" | "check_delete"}
   | {stage: "delete"; etag: string};
 export type FleetLifecycleResult =
   | {kind: "completed"; outcome: "archived" | "deleted" | "absent"}
@@ -28,22 +28,19 @@ export async function advanceFleetLifecycle(request: Request, checkpoint: FleetL
     return retry(checkpoint, observed, "check this fleet");
   }
   const fleet = observed.data;
-  if (checkpoint.stage === "check_delete") return fleet.status === "killed"
-    ? {kind: "retry", checkpoint: {stage: "delete", etag: fleet.etag}, message: "Fleet archived. Deletion is not confirmed. Retry deletion to finish."}
-    : {kind: "retry", checkpoint: {stage: "read"}, message: "The fleet has changed. Review it before trying again."};
-  if (fleet.status === "killed") return afterStop(request, fleet);
-  if (checkpoint.stage === "check_stop") return {
-    kind: "retry", checkpoint: {stage: "read"}, message: "The fleet is still running or stopped temporarily. Retry to permanently stop it.",
+  if (checkpoint.stage === "check_delete") return {
+    kind: "retry", checkpoint: {stage: "delete", etag: fleet.etag}, message: "Deletion is not confirmed. Retry deletion to finish.",
   };
-  const stopped = await attempt(() => setFleetStatusAction(request.workspace, request.fleetId, "killed", fleet.etag));
+  if (request.action === "delete") return remove(request, fleet.etag);
+  if (fleet.status === "archived") return {kind: "completed", outcome: "archived"};
+  if (checkpoint.stage === "check_archive") return {
+    kind: "retry", checkpoint: {stage: "read"}, message: "The fleet is not archived. Retry to archive it.",
+  };
+  const archived = await attempt(() => setFleetStatusAction(request.workspace, request.fleetId, "archived", fleet.etag));
   if (cancelled(request)) return {kind: "cancelled"};
-  if (!stopped.ok) return retry({stage: "check_stop"}, stopped, "archive this fleet");
-  if (stopped.data.status !== "killed") return {kind: "retry", checkpoint: {stage: "check_stop"}, message: "Permanent stop could not be confirmed. Check status before continuing."};
-  return afterStop(request, stopped.data);
-}
-
-async function afterStop(request: Request, fleet: Pick<Fleet, "etag">): Promise<FleetLifecycleResult> {
-  return request.action === "archive" ? {kind: "completed", outcome: "archived"} : remove(request, fleet.etag);
+  if (!archived.ok) return retry({stage: "check_archive"}, archived, "archive this fleet");
+  if (archived.data.status !== "archived") return {kind: "retry", checkpoint: {stage: "check_archive"}, message: "Archive could not be confirmed. Check status before continuing."};
+  return {kind: "completed", outcome: "archived"};
 }
 
 async function remove(request: Request, etag: string): Promise<FleetLifecycleResult> {
@@ -51,7 +48,7 @@ async function remove(request: Request, etag: string): Promise<FleetLifecycleRes
   if (cancelled(request)) return {kind: "cancelled"};
   if (result.ok) return {kind: "completed", outcome: "deleted"};
   const canRetry = isDefiniteRefusal(result.status) && ![401, 403, 404, 409, 412, 428].some(status => status === result.status);
-  return retry(canRetry ? {stage: "delete", etag} : {stage: "check_delete"}, result, "permanently delete this fleet", "Fleet archived. History is retained until deletion is confirmed. ");
+  return retry(canRetry ? {stage: "delete", etag} : {stage: "check_delete"}, result, "permanently delete this fleet", "History is retained until deletion is confirmed. ");
 }
 
 async function attempt<T>(call: () => Promise<ActionResult<T>>): Promise<ActionResult<T>> {

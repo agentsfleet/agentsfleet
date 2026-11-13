@@ -1,4 +1,4 @@
-//! Stop survives Save, activation, and a setup Kill that restores editing.
+//! Stop survives Save, activation, and a setup Archive that restores editing.
 
 use super::{
     super::{attempt::Attempt, fixture::now, mint},
@@ -137,19 +137,19 @@ async fn finish_setup(
         assert_eq!(c.save(operation, request).await.status, "active");
         DraftState::Closed
     } else {
-        let killed = c
+        let archived = c
             .creations
             .patch(
                 c.base.access(),
                 &saved.id,
                 Some(&saved.etag),
-                Some("killed"),
+                Some("archived"),
                 None,
                 now(),
             )
             .await
-            .expect("setup Kill");
-        assert_eq!(killed.status, "killed");
+            .expect("setup Archive");
+        assert_eq!(archived.status, "archived");
         DraftState::Editing
     }
 }

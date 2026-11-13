@@ -30,7 +30,7 @@ for (const [verb, suffix] of [[[], ""], [["list"], "/owned"]] as const) {
       expect(request.headers.get("authorization")).toMatch(/^Bearer /u);
       return Response.json({ items: [CARD], next_cursor: CURSOR });
     }, async (_, origin) => {
-      const result = await invoke(origin, ["--json", "library", ...verb, "--limit", "2", "--starting-after", CURSOR]);
+      const result = await invoke(origin, ["--json", "plugins", ...verb, "--limit", "2", "--starting-after", CURSOR]);
       expect(result.code).toBe(0);
       expect(JSON.parse(result.out)).toEqual({ items: [CARD], next_cursor: CURSOR });
       expect(seen).toEqual([`${BASE}${suffix}?limit=2&starting_after=${encodeURIComponent(CURSOR)}`]);
@@ -41,10 +41,10 @@ for (const [verb, suffix] of [[[], ""], [["list"], "/owned"]] as const) {
 test("Library text gives revision and ordinary chat entry without walking hidden pages", async () => {
   let calls = 0;
   await withApi(() => { calls += 1; return Response.json({ items: [CARD], next_cursor: CURSOR }); }, async (_, origin) => {
-    const result = await invoke(origin, ["library"]);
+    const result = await invoke(origin, ["plugins"]);
     expect(result.code).toBe(0);
     expect(result.out).toContain(REVISION_ID);
-    expect(result.out).toContain("agentsfleet chat --library");
+    expect(result.out).toContain("agentsfleet chat --plugin");
     expect(result.out).toContain(`--starting-after ${CURSOR}`);
     expect(calls).toBe(1);
   });
@@ -52,7 +52,7 @@ test("Library text gives revision and ordinary chat entry without walking hidden
 
 test("an empty Library points to explicit chat publication", async () => {
   await withApi(() => Response.json({ items: [], next_cursor: null }), async (_, origin) => {
-    const result = await invoke(origin, ["library", "list"]);
+    const result = await invoke(origin, ["plugins", "list"]);
     expect(result.code).toBe(0);
     expect(result.out).toContain("/publish");
     expect(result.out).not.toContain("--github");
@@ -63,7 +63,7 @@ for (const body of [{ items: [] }, { items: [{ id: LIBRARY_ID }], next_cursor: n
   { items: Array.from({ length: LIBRARY_PAGE_LIMIT + 1 }, () => CARD), next_cursor: null }]) {
   test("malformed native Library pages fail visibly instead of becoming an empty result", async () => {
     await withApi(() => Response.json(body), async (_, origin) => {
-      const result = await invoke(origin, ["library", "--json"]);
+      const result = await invoke(origin, ["plugins", "--json"]);
       expect(result.code).not.toBe(0);
       expect(result.err).toContain("LIBRARY_RESPONSE_INVALID");
       expect(result.out).toBe("");
@@ -77,7 +77,7 @@ test("owned deletion names the native resource and leaves installed revision pin
     seen.push(`${request.method} ${new URL(request.url).pathname}`);
     return new Response(null, { status: 204 });
   }, async (_, origin) => {
-    const result = await invoke(origin, ["--json", "library", "delete", LIBRARY_ID]);
+    const result = await invoke(origin, ["--json", "plugins", "delete", LIBRARY_ID]);
     expect(result.code).toBe(0);
     expect(result.out).toContain('"removed": true');
     expect(seen).toEqual([`DELETE ${BASE}/${LIBRARY_ID}`]);
@@ -87,7 +87,7 @@ test("owned deletion names the native resource and leaves installed revision pin
 for (const status of [401, 403, 404, 409, 410]) {
   test(`Library deletion propagates ${status} without a success claim`, async () => {
     await withApi(() => problem(status), async (_, origin) => {
-      const result = await invoke(origin, ["library", "delete", LIBRARY_ID]);
+      const result = await invoke(origin, ["plugins", "delete", LIBRARY_ID]);
       expect(result.code).not.toBe(0);
       expect(result.out).not.toContain("no longer");
       expect(result.err).toContain("injected refusal");
@@ -97,7 +97,12 @@ for (const status of [401, 403, 404, 409, 410]) {
 
 test("removed bundle commands refuse before any server mutation", async () => {
   const seen: string[] = [];
-  await withApi((request) => { seen.push(request.method); return problem(500); }, async (_, origin) => {
+  // A root typo reads the caller's scopes for its suggestions; that read is
+  // not a mutation, so it is the one request this test lets through.
+  await withApi((request) => {
+    if (new URL(request.url).pathname !== "/v1/users/me") seen.push(request.method);
+    return problem(500);
+  }, async (_, origin) => {
     for (const argv of [["install", "--library", "argo"], ["library", "create", "--github", "acme/argo"],
       ["fleet", "update", LIBRARY_ID, "--from", "/tmp/argo"]]) {
       expect((await invoke(origin, argv)).code).not.toBe(0);

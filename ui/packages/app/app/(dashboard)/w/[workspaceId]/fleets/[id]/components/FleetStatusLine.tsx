@@ -76,7 +76,7 @@ export default function FleetStatusLine({
       >
         <span className="size-2 shrink-0 rounded-full bg-current" aria-hidden="true" />
         <HiddenLabel>{METRICS_STATUS_LABEL}</HiddenLabel>
-        {status === AGENTSFLEET_STATUS.KILLED ? "Archived" : status}
+        {status === AGENTSFLEET_STATUS.ARCHIVED ? "Archived" : status}
       </StatusLineItem>
       <StatusLineItem tone={outcome.tone} className="min-w-0 max-w-full">
         <OutcomeIcon

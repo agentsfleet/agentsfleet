@@ -22,8 +22,8 @@ pub const SELECT_FLEET_WITH_SESSION: &str = include_str!("select_fleet_with_sess
 
 /// A fleet's stored config, whatever its status.
 ///
-/// The renewal's ceiling read. No status filter, because a fleet an operator
-/// stopped or killed mid-run still has a stored ceiling for its run to obey.
+/// The renewal's ceiling read. No status filter, because a fleet archived
+/// mid-run still has a stored ceiling for its run to obey.
 ///
 /// `$1` fleet.
 pub const SELECT_FLEET_CONFIG: &str = include_str!("select_fleet_config.sql");

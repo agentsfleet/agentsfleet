@@ -18,7 +18,7 @@ type Verb = typeof VERBS[number];
 async function run(verb: Verb, body: unknown, json = false) {
   const method = verb === "create" || verb === "sync" ? "POST" : verb === "update" ? "PATCH" : "GET";
   const path = `${PATH}${verb === "list" || verb === "create" ? "" : `/${SCHEDULE}`}${verb === "sync" ? "/sync" : ""}`;
-  const args = ["schedule", verb, FLEET, ...(verb === "list" || verb === "create" ? [] : [SCHEDULE]),
+  const args = ["fleet", "schedule", verb, FLEET, ...(verb === "list" || verb === "create" ? [] : [SCHEDULE]),
     ...(verb === "create" ? ["--cron", ROW.cron, "--message", ROW.message] : []),
     ...(verb === "update" ? ["--message", ROW.message] : []), ...(json ? ["--json"] : [])];
   // `update` reads the row's tag before it writes, so it meets a valid row first.

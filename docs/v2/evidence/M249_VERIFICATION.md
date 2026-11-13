@@ -2,11 +2,25 @@
 
 This report tracks the approved proposal, the final Claude review and the implemented repairs.
 It distinguishes reviewed visuals, source fixes, automated checks and owner approval.
-The UI refresh and the pending CLI work ship in separate PRs.
+The UI refresh incorporates the CLI/API work merged in PR #839.
 
 ## Current result
 
-M249_001 remains active. All 32 visual backlog findings now have measured closure evidence in M249_VISUAL_BACKLOG.md. Native coverage now passes all package floors. Final dry-app passes; authenticated acceptance, bundle checks and the PR gate remain due.
+M249_001 remains active until the integrated candidate clears the final gates. All 32 visual backlog findings have measured closure evidence. The pre-merge native coverage and dry-app lanes passed; the new integration requires fresh repository verification.
+
+## PR #839 integration review
+
+✅ Preserve the refresh header and its CSS classes. Only its wire-state comparisons change from `killed` to `archived`.
+
+✅ Fleet actions keep the refreshed dropdown, shared confirmation dialog and lazy loading. Archive is terminal; permanent deletion uses a freshly authorized GET and one DELETE. Stop/Resume are removed.
+
+✅ Retain scoped uncertain-response recovery, ETags, cancellation, sidebar removal and navigation. Strict app TypeScript checking and 116 focused tests pass (`refresh-merged-typecheck-v294.log`, `refresh-merged-focused-v296.log`). Tests cover active/installing/archived deletion without a preceding archive.
+
+✅ Internal visual review before the broad gates: 24 measured states across 1480px and 390px, both themes, covering conversation, menus, Archive/Delete confirmations and archived history. Desktop composer is 740×139. Attachment radius is 10px; bubble corners are 22/22/6/22; Summary and composer are 22px, matching the proposal. Confirmation buttons share their baseline: 40px desktop and 44px phone. Header and read-only footer remain legible without a toast covering them. Source: `main-integration-v297/point-measurements.json`; these are working-merge diagnostics, not clean-checkout release evidence. The separate sidebar review passed eight desktop/phone states in both themes, including archived labels, deletion confirmation and Cancel (`main-sidebar-v302/point-measurements.json`).
+
+The initial light-theme capture sampled an inherited color during the theme transition. The repeat waits for the expected computed color before inspecting the visible screen. No production CSS change was needed.
+
+Authenticated archive/delete mutation evidence and full acceptance remain separate requirements. The prior acceptance run reached the runner preflight and failed because this Cloud kernel lacks `securityfs`; no test was skipped to call it green.
 
 The latest native `make dry-app` passed 4,564 app unit tests and all 90 desktop/phone browser checks. Evidence: `refresh-dry-app-v237.log`.
 
@@ -177,7 +191,7 @@ Indy authorized backend completion after the UI merge:
 
 The UI spec records the owner’s exact approval under Approved parallel CLI/API follow-up.
 
-The combined CLI/API and scoped-discovery follow-up is [M249_002](../pending/M249_002_P1_API_CLI_DOCS_UI_FLEET_COMMANDS_AND_SCOPED_DISCOVERY.md).
+The combined CLI/API and scoped-discovery follow-up is [M249_002](../done/M249_002_P1_CLI_DOCS_FLEET_COMMANDS_AND_SCOPED_DISCOVERY.md).
 It may start independently now, but merges after the UI PR and rebases before refreshed caller changes.
 Flow 2 capabilities, real upload storage, mention invocation, new secret policy and a platform UI are excluded.
 

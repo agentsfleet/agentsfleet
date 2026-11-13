@@ -38,7 +38,7 @@ fn value() -> Value {
             "tools":["http_request","shell"], "credentials":["GITHUB_TOKEN"],
             "budget":{"daily_nanos":"1000000001", "monthly_nanos":"10000000001"},
             "network":{"allow":["api.github.com"], "read_only":true, "read_post_paths":["/graphql"]},
-            "gates":{"timeout_ms":60000,"rules":[{"tool":"shell","action":"execute","behavior":"approve"}],
+            "gates":{"timeout_ms":60000,"rules":[{"tool":"shell","action":"execute"}],
                 "anomaly_rules":[{"pattern":"same_action","threshold_count":3,"threshold_window_s":ANOMALY_WINDOW_S}]},
             "repositories":["acme/checkout"], "repository_access":"write", "repository_base":"main",
             "context":{"context_cap_tokens":32000, "tool_window":4000, "memory_checkpoint_every":8, "stage_chunk_threshold":0.75},

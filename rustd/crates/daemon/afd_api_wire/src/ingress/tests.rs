@@ -17,7 +17,7 @@ fn test_the_events_answer_adds_no_bytes_around_either_document() {
         field: std::iter::once(("challenge", "3eZbrw1a")).collect(),
     });
     let ignored = EventsAnswer::Ignored(Ignored {
-        ignored: Cow::Borrowed("fleet_paused"),
+        ignored: Cow::Borrowed("fleet_not_active"),
     });
 
     assert_eq!(
@@ -26,7 +26,7 @@ fn test_the_events_answer_adds_no_bytes_around_either_document() {
     );
     assert_eq!(
         serde_json::to_string(&ignored).ok().as_deref(),
-        Some(r#"{"ignored":"fleet_paused"}"#),
+        Some(r#"{"ignored":"fleet_not_active"}"#),
     );
     let accepted = EventsAnswer::Accepted(Accepted {
         event_id: Cow::Borrowed("1700000000000-7"),
@@ -45,7 +45,7 @@ fn test_the_ingress_and_identity_answers_add_no_bytes_around_their_documents() {
         status: Cow::Borrowed("ok"),
     });
     let dropped = AppIngressAnswer::Ignored(Ignored {
-        ignored: Cow::Borrowed("fleet_paused"),
+        ignored: Cow::Borrowed("fleet_not_active"),
     });
     let opened = IdentityAnswer::Opened(AccountOpened {
         workspace_id: Cow::Borrowed("01924f4e-0000-7000-8000-000000000001"),
@@ -59,7 +59,7 @@ fn test_the_ingress_and_identity_answers_add_no_bytes_around_their_documents() {
     );
     assert_eq!(
         serde_json::to_string(&dropped).ok().as_deref(),
-        Some(r#"{"ignored":"fleet_paused"}"#)
+        Some(r#"{"ignored":"fleet_not_active"}"#)
     );
     assert_eq!(
         serde_json::to_string(&opened).ok().as_deref(),

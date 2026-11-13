@@ -28,7 +28,7 @@ describe("secret show", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "show", "github"],
+          ["secrets", "show", "github"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -53,7 +53,7 @@ describe("secret show", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "show", "slack", "--json"],
+          ["secrets", "show", "slack", "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -79,7 +79,7 @@ describe("secret show", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "show", "missing-key"],
+          ["secrets", "show", "missing-key"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -98,7 +98,7 @@ describe("secret show", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "show", "missing-key", "--json"],
+          ["secrets", "show", "missing-key", "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -119,7 +119,7 @@ describe("secret show", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "show", "bare"],
+          ["secrets", "show", "bare"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -146,7 +146,7 @@ describe("secret delete", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "delete", "github"],
+          ["secrets", "delete", "github"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -170,7 +170,7 @@ describe("secret delete", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "delete", "slack", "--json"],
+          ["secrets", "delete", "slack", "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -187,7 +187,7 @@ describe("secret delete", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "delete", "no-such"],
+          ["secrets", "delete", "no-such"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -215,7 +215,7 @@ describe("secret list extra branches", () => {
           const out = bufferStream();
           const err = bufferStream();
           const code = await runCli(
-            ["secret", "list", "--json"],
+            ["secrets", "list", "--json"],
             { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
           );
           expect(code).toBe(0);
@@ -235,7 +235,7 @@ describe("secret list extra branches", () => {
           const out = bufferStream();
           const err = bufferStream();
           const code = await runCli(
-            ["secret", "list"],
+            ["secrets", "list"],
             { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
           );
           expect(code).toBe(0);
@@ -261,7 +261,7 @@ describe("secret list extra branches", () => {
           const out = bufferStream();
           const err = bufferStream();
           const code = await runCli(
-            ["secret", "list"],
+            ["secrets", "list"],
             { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
           );
           expect(code).toBe(0);
@@ -292,13 +292,13 @@ describe("secret create already-exists human mode", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["secret", "create", "existing", `--data={"token":"x"}`],
+          ["secrets", "create", "existing", `--data={"token":"x"}`],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const text = out.read();
         expect(text).toMatch(/already exists/i);
-        expect(text).toMatch(/secret update existing/);
+        expect(text).toMatch(/secrets update existing/);
         expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
       });
     });

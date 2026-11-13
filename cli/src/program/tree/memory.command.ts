@@ -3,7 +3,7 @@
 // There is no write verb and that is architecture, not an omission: the tenant
 // memory plane is written by the Fleet and read by everyone else.
 
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { Command } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import {
@@ -15,20 +15,8 @@ import {
   DEFAULT_RECALL_LIMIT,
   MAX_RECALL_LIMIT,
 } from "../../constants/memory-limits.ts";
-import {
-  categoryFlag,
-  fleetFlag,
-  memoryLimitFlag,
-  queryArgument,
-  startingAfterFlag,
-  workspaceFlag,
-} from "./flags.ts";
+import { categoryFlag, fleetFlag, memoryLimitFlag, opt, optNum, queryArgument, startingAfterFlag, workspaceFlag } from "./flags.ts";
 import { stdoutIsTty } from "./tty.ts";
-
-const opt = Option.getOrUndefined;
-
-const optNum = (value: Option.Option<number>): string | undefined =>
-  Option.match(value, { onNone: () => undefined, onSome: (n) => String(n) });
 
 const memoryListCommand = Command.make("list", {
   fleet: fleetFlag,
@@ -77,7 +65,7 @@ const memorySearchCommand = Command.make("search", {
   ),
 );
 
-export const memoryCommand = Command.make("memory").pipe(
+export const memoryCommand = () => Command.make("memory").pipe(
   Command.withDescription("Inspect a Fleet's durable memory (read-only)"),
   Command.withSubcommands([memoryListCommand, memorySearchCommand]),
 );
