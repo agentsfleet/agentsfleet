@@ -15,7 +15,9 @@
  * Actions live in the detail header ("Fleet actions"), visible
  * from every rail view — the old Settings rail destination is gone.
  */
-import { expect, type Page } from "@playwright/test";
+import { expect, type Page, type TestInfo } from "@playwright/test";
+import {writeFile} from "node:fs/promises";
+import {visualProvenance} from "../../fixtures/visual-provenance";
 
 const ROW_STATE_TIMEOUT_MS = 15_000;
 
@@ -85,8 +87,36 @@ export async function expectRowState(
 export async function expectDetailArchived(page: Page): Promise<void> {
   await expect(page.getByLabel("Fleet status: archived")).toBeVisible({timeout: ROW_STATE_TIMEOUT_MS});
   await expect(page.getByRole("textbox")).toHaveCount(0);
+  await expect(page.getByRole("button", {name: "Approve", exact: true})).toHaveCount(0);
+  await expect(page.getByRole("button", {name: "Deny", exact: true})).toHaveCount(0);
   await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
   await expect(page.getByRole("menuitem", {name: "Permanently delete", exact: true})).toBeVisible();
   for (const name of ["Stop", "Resume", "Restore", "Archive"]) await expect(page.getByRole("menuitem", {name, exact: true})).toHaveCount(0);
   await page.keyboard.press("Escape");
+}
+
+/** Called only after the journey confirms the backend transition. */
+export async function captureLifecycleReview(page: Page, info: TestInfo, outcome: "archived" | "deleted") {
+  const source = await visualProvenance();
+  for (const width of [1480, 390]) for (const theme of ["dark", "light"]) {
+    await page.setViewportSize({width, height: width === 390 ? 844 : 1000});
+    await page.evaluate(value => {
+      localStorage.setItem("theme", value);
+      window.dispatchEvent(new StorageEvent("storage", {key: "theme", newValue: value}));
+    }, theme);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await page.evaluate(() => document.fonts.ready);
+    if (outcome === "archived") await expectDetailArchived(page);
+    else {
+      await expect(page).toHaveURL(/\/fleets\/new$/);
+      await expect(page.getByTestId("fleet-thread-root")).toHaveCount(0);
+    }
+    const name = `authenticated-fleet-${outcome}-${width}-${theme}`;
+    await page.screenshot({path: info.outputPath(`${name}.png`), animations: "disabled"});
+    await writeFile(info.outputPath(`${name}-evidence.json`), JSON.stringify({...source,
+      captureTimeUtc: new Date().toISOString(), evidenceKind: "authenticated-lifecycle", outcome, width, theme, url: page.url()}, null, 2));
+  }
+  const after = await visualProvenance();
+  expect(after.revision).toBe(source.revision);
+  expect(after.sourceTreeSha256).toBe(source.sourceTreeSha256);
 }

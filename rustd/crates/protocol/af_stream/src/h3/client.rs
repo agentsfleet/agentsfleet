@@ -76,15 +76,7 @@ pub(crate) async fn connect(
         af_observability::metrics::label::fleet::StreamPeer::Client,
     );
     let task = supervise(controller, receiver, stop, receive, shutdown, observed);
-    Ok((
-        Native::H3(Client {
-            requests,
-            stats,
-            key_exchange,
-            opened: 0,
-        }),
-        task,
-    ))
+    Ok((Native::H3(Client::new(requests, stats, key_exchange)), task))
 }
 
 /// The caller's token denotes cancellation; a native worker ending retains its cause.
@@ -156,6 +148,19 @@ fn supervise(
 }
 
 impl Client {
+    fn new(
+        requests: mpsc::Sender<Open>,
+        stats: watch::Receiver<NetworkStats>,
+        key_exchange: watch::Receiver<Option<crate::tls::KeyExchange>>,
+    ) -> Self {
+        Self {
+            requests,
+            stats,
+            key_exchange,
+            opened: 0,
+        }
+    }
+
     pub(crate) async fn open(&mut self, request: Request<Outgoing>) -> Result<Response<Incoming>> {
         if self.opened == crate::STREAMS {
             return Err(ErrorKind::Protocol.into());

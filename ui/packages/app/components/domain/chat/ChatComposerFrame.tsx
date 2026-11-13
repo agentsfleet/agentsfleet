@@ -33,7 +33,7 @@ type Props = {
 /** Both chat purposes use the same input, focus lifecycle and height limits. */
 export function ChatComposerFrame({id, label, placeholder, inputRef, disabled, focusKey, children, toolbar, actions}: Props) {
   useComposerFocus(inputRef, disabled, focusKey);
-  return <DashboardPanel asChild padding="none" className="min-h-0 shrink-0 rounded-lg bg-card px-xl pb-lg pt-xl transition-colors duration-150 focus-within:border-muted-foreground motion-reduce:transition-none">
+  return <DashboardPanel asChild padding="none" className="min-h-0 shrink-0 rounded-lg bg-card px-xl pb-[calc(var(--sp-lg)+1px)] pt-xl transition-colors duration-150 focus-within:border-muted-foreground motion-reduce:transition-none">
     <ComposerPrimitive.Root id={id} className="flex min-h-0 flex-col gap-sm" aria-label={label}>
       <ComposerQuote />
       {children}

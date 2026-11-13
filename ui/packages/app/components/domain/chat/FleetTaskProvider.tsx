@@ -19,6 +19,7 @@ export type FleetTaskProps = {
   events?: readonly FleetEvent[]; sources?: FleetSources; schedules?: readonly Schedule[];
   approvals?: {count: number; href: string};
   approvalRevision?: number;
+  readOnly?: boolean;
 };
 export type FleetTaskReadState = {scope: string; resource: TaskResource<TaskPage>; details: TaskDetails; references: readonly TaskReference[]; retry: () => void; retryDetails: () => void};
 type ViewState = FleetTaskProps & {read: FleetTaskReadState | null};
@@ -29,15 +30,15 @@ const DetailContext = createContext<TaskDetails>(EMPTY_DETAILS);
 const ViewContext = createContext<ViewState | null>(null);
 
 /** Key only the data owner: revocation must not remount the conversation draft. */
-export function FleetTaskProvider({children, workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision}: FleetTaskProps & {children: ReactNode}) {
-  const props = {workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision};
+export function FleetTaskProvider({children, workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, readOnly = false}: FleetTaskProps & {children: ReactNode}) {
+  const props = {workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, readOnly};
   const [read, publish] = useState<FleetTaskReadState | null>(null);
   const scope = `${props.subject}:${props.workspaceId}:${props.fleetId}`;
   const owned = props.subject && read?.scope === scope ? read : null;
   const details = owned && confirmed(owned.resource) ? owned.details : EMPTY_DETAILS;
   useEffect(() => {if (!subject) publish(null);}, [subject]);
-  const view = useMemo<ViewState>(() => ({workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, read: owned}),
-    [workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, owned]);
+  const view = useMemo<ViewState>(() => ({workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, readOnly, read: owned}),
+    [workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, readOnly, owned]);
   return <DetailContext value={details}><ViewContext value={view}>
     {props.subject ? <TaskReadOwner key={scope} {...props} scope={scope} publish={publish} /> : null}
     {children}

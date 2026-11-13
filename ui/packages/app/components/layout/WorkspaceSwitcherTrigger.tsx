@@ -20,7 +20,7 @@ export function WorkspaceSwitcherTrigger({ activeLabel, busy = false, failed = f
   const subtitle = failed ? "Retry account menu" : activeLabel;
   const visibleLabel = [!busy && initials, !collapsed && displayLabel, !collapsed && subtitle].filter(Boolean).join(" ");
   const accessibleLabel = visibleLabel ? `${menuLabel}: ${visibleLabel}` : menuLabel;
-  return <Button type="button" variant="ghost" size="lg" title={activeLabel} aria-label={accessibleLabel}
+  return <Button type="button" variant="ghost" size="lg" title={collapsed ? activeLabel : undefined} aria-label={accessibleLabel}
     className={cn("group h-11 min-h-11 w-full min-w-0 justify-center gap-2.5 px-0 py-sm hover:bg-muted hover:text-foreground md:h-12 md:min-h-12", !collapsed && "md:justify-start md:px-lg")}
     {...props}>
     <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-avatar text-avatar-foreground">

@@ -20,6 +20,7 @@ import { BillingReportView } from "@/app/(dashboard)/settings/billing/components
 import { BILLING_DETAIL_STATE } from "@/app/(dashboard)/settings/billing/lib/report-detail";
 import { BILLING_MODEL, BILLING_MODEL_NAME, billingActivity, billingReport } from "@/tests/helpers/billing-report";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
+import {VisualLifecycleNotice} from "./visual-lifecycle-notice";
 import { MODEL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 const router = {bfcacheId: "resource-pages-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {}};
@@ -37,7 +38,7 @@ const CONNECTORS: ConnectorCatalogEntry[] = [
 
 /** Production components and page composition; explicit samples, no live writes. */
 export function ResourcePagesFixture() {
-  const [selected, setSelected] = useState<typeof PAGES[number]>(PAGES[0]);
+  const [selected, setSelected] = useState<typeof PAGES[number]>(() => PAGES.find(page => page.key === new URLSearchParams(location.search).get("resource")) ?? PAGES[0]);
   const workspaces = [{id: WORKSPACE, name: "Release workspace", created_at: "2026-01-01T00:00:00Z", ...OWN_ACCOUNT}];
   return <AppRouterContext value={router}><PathnameContext value={selected.path}><SearchParamsContext value={new URLSearchParams()}><TooltipProvider>
     <style>{".app-shell{top:46px;height:calc(100dvh - 46px)}"}</style>
@@ -45,7 +46,7 @@ export function ResourcePagesFixture() {
       <span className="mr-auto text-eyebrow text-muted-foreground">Component review · Sample data · No live writes</span>
       {PAGES.map(page => <Button key={page.key} size="sm" variant="ghost" onClick={() => setSelected(page)}>{page.label}</Button>)}
     </div>
-    <ShellFrame workspaces={workspaces}><ResourcePage kind={selected.key} /></ShellFrame>
+    <ShellFrame workspaces={workspaces}>{new URLSearchParams(location.search).get("notice") === "deleted" ? <VisualLifecycleNotice outcome="deleted" /> : null}<ResourcePage kind={selected.key} /></ShellFrame>
   </TooltipProvider></SearchParamsContext></PathnameContext></AppRouterContext>;
 }
 

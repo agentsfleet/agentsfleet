@@ -1,10 +1,11 @@
 "use client";
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { type ComponentProps, type HTMLAttributes, useRef } from "react";
+import { type ComponentProps, type HTMLAttributes, useEffect, useRef } from "react";
 import { XIcon } from "@phosphor-icons/react/ssr";
 import { cn } from "../utils";
 import { Button } from "./Button";
+import { focusDialogField } from "./dialog-focus";
 
 /*
  * Dialog — Radix Dialog composition with semantic utilities. Client
@@ -42,6 +43,15 @@ export type DialogContentProps = ComponentProps<typeof DialogPrimitive.Content> 
   closeDisabled?: boolean;
 };
 
+const DIALOG_CONTENT_CLASS = [
+  "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
+  "w-[calc(100%-var(--spacing-3xl))] max-w-dialog rounded-lg border border-border bg-card p-2xl font-sans text-card-foreground shadow-dialog",
+  "max-h-[calc(100dvh-var(--spacing-3xl))] overflow-y-auto",
+  "data-[state=open]:animate-in data-[state=closed]:animate-out",
+  "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+  "duration-snap ease-snap motion-reduce:animate-none",
+].join(" ");
+
 export function DialogContent({
   className,
   children,
@@ -52,30 +62,23 @@ export function DialogContent({
   ...props
 }: DialogContentProps) {
   const openerRef = useRef<Element | null>(null);
+  const focusCleanup = useRef<(() => void) | null>(null);
+  useEffect(() => () => focusCleanup.current?.(), []);
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
         ref={ref}
-        className={cn(
-          "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
-          "w-[calc(100%-var(--spacing-3xl))] max-w-dialog rounded-lg border border-border bg-card p-2xl font-sans text-card-foreground shadow-dialog",
-          // A fixed, centre-translated panel cannot be scrolled to by the page,
-          // so a dialog taller than the viewport puts its own footer out of
-          // reach — the submit button is unclickable rather than merely
-          // off-screen. Cap the panel at the viewport and scroll inside it.
-          "max-h-[calc(100dvh-var(--spacing-3xl))] overflow-y-auto",
-          "data-[state=open]:animate-in data-[state=closed]:animate-out",
-          "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-          "duration-snap ease-snap motion-reduce:animate-none",
-          className,
-        )}
+        className={cn(DIALOG_CONTENT_CLASS, className)}
         {...props}
         onOpenAutoFocus={(event) => {
           openerRef.current = document.activeElement;
           onOpenAutoFocus?.(event);
+          focusCleanup.current?.();
+          focusCleanup.current = event.defaultPrevented ? null : focusDialogField(event.target as HTMLElement, event);
         }}
         onCloseAutoFocus={(event) => {
+          focusCleanup.current?.();
           onCloseAutoFocus?.(event);
           const opener = openerRef.current;
           if (!event.defaultPrevented && opener instanceof HTMLElement && opener !== document.body && opener.isConnected) {
@@ -94,7 +97,7 @@ export function DialogContent({
 function DialogCloseButton({ disabled }: { disabled: boolean }) {
   return (
     <DialogClose asChild>
-      <Button variant="ghost" size="icon" className="absolute right-xl top-2xl" disabled={disabled}>
+      <Button data-dialog-close="" variant="ghost" size="icon" className="absolute right-xl top-2xl" disabled={disabled}>
         <XIcon size={16} aria-hidden="true" />
         <span className="sr-only">Close</span>
       </Button>

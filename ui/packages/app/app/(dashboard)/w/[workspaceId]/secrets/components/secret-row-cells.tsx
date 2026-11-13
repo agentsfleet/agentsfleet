@@ -21,7 +21,7 @@ export function SecretActions({secret, pending, protectedFromDelete, onEdit, onD
     setOpen(false);
   }
   return <Dialog open={open} onOpenChange={setOpen}>
-    <DialogTrigger asChild><Button ref={trigger} variant="ghost" disabled={pending} aria-label={`Manage ${secret.name}`}>Manage</Button></DialogTrigger>
+    <DialogTrigger asChild><Button ref={trigger} variant="ghost" className="min-h-9 pointer-coarse:min-h-11" disabled={pending} aria-label={`Manage ${secret.name}`}>Manage</Button></DialogTrigger>
     <DialogContent onCloseAutoFocus={event => {
       const next = nextAction.current;
       nextAction.current = null;

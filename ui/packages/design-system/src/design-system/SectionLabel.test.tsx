@@ -22,7 +22,7 @@ describe("SectionLabel", () => {
     const { container } = render(<SectionLabel as="p">legal</SectionLabel>);
     const cls = (container.firstChild as HTMLElement).className;
     expect(cls).toContain("font-sans");
-    expect(cls).toContain("uppercase");
+    expect(cls).not.toContain("uppercase");
     expect(cls).toContain("text-eyebrow");
   });
 

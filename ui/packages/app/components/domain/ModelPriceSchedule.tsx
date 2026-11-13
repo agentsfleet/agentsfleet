@@ -15,9 +15,9 @@ const EVIDENCE_URL = z.url({ protocol: /^https?$/ });
 
 export function CatalogueEvidence({ source, verifiedAt }: { source: string; verifiedAt: string }) {
   const url = EVIDENCE_URL.safeParse(source);
-  return <div className="flex flex-wrap items-center gap-sm text-body-sm text-muted-foreground">
+  return <div className="flex flex-wrap items-center justify-between gap-sm text-body-sm text-muted-foreground">
     {url.success ? <Button asChild variant="ghost" size="sm" className="px-0"><a href={url.data} target="_blank" rel="noreferrer">Source</a></Button> : <span>{source}</span>}
-    <span>Verified <Time value={verifiedAt} title={verifiedAt} format="absolute" timeZone="UTC" /> UTC</span>
+    <span className="ml-auto text-right">Verified <Time value={verifiedAt} title={verifiedAt} format="absolute" timeZone="UTC" /> UTC</span>
   </div>;
 }
 

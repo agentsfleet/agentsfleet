@@ -27,11 +27,14 @@ beforeEach(() => { pathname.mockReturnValue("/w/ws_0/fleets"); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("lazy workspace menu entry focus", () => {
-  it("focuses a workspace when mounted open and keeps arrow-key navigation working", async () => {
+  it("focuses the identity header and keeps submenu arrow navigation working", async () => {
     const workspaces = Array.from({ length: 32 }, (_, index) => ({
       id: `ws_${index}`, name: `Workspace ${index}`, created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT,
     }));
     render(<WorkspaceSwitcherMenu open workspaces={workspaces} onOpenChange={vi.fn()} />);
+    const identity = await screen.findByRole("menuitem", {name: /^Switch workspace:/});
+    await waitFor(() => expect(document.activeElement).toBe(identity));
+    await userEvent.setup().keyboard("{ArrowRight}");
     const first = await screen.findByRole("menuitem", { name: "Workspace 0" });
     await waitFor(() => expect(document.activeElement).toBe(first));
     expect(first.tabIndex).toBe(0);
@@ -40,7 +43,7 @@ describe("lazy workspace menu entry focus", () => {
     await user.keyboard("{ArrowDown}");
     expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Workspace 1" }));
     await user.keyboard("{End}");
-    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Sign out" }));
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Create workspace" }));
     await user.keyboard("{Home}");
     expect(document.activeElement).toBe(first);
   });
@@ -48,6 +51,9 @@ describe("lazy workspace menu entry focus", () => {
   it("focuses Create workspace when the account has no workspace to select", async () => {
     pathname.mockReturnValue("/settings/security");
     render(<WorkspaceSwitcherMenu open workspaces={[]} onOpenChange={vi.fn()} />);
+    const identity = await screen.findByRole("menuitem", {name: /^Switch workspace:/});
+    await waitFor(() => expect(document.activeElement).toBe(identity));
+    await userEvent.setup().keyboard("{ArrowRight}");
     const create = await screen.findByRole("menuitem", { name: "Create workspace" });
     await waitFor(() => expect(document.activeElement).toBe(create));
     expect(create.tabIndex).toBe(0);
@@ -59,6 +65,9 @@ describe("lazy workspace menu entry focus", () => {
     }));
     const onOpenChange = vi.fn();
     const view = render(<WorkspaceSwitcherMenu open workspaces={workspaces} onOpenChange={onOpenChange} />);
+    const identity = await screen.findByRole("menuitem", {name: /^Switch workspace:/});
+    await waitFor(() => expect(document.activeElement).toBe(identity));
+    await userEvent.setup().keyboard("{ArrowRight}");
     const first = await screen.findByRole("menuitem", { name: "Workspace 0" });
     await waitFor(() => expect(document.activeElement).toBe(first));
     const user = userEvent.setup();
@@ -66,11 +75,13 @@ describe("lazy workspace menu entry focus", () => {
     await user.hover(later);
     await waitFor(() => expect(document.activeElement).toBe(later));
     await user.unhover(later);
-    expect(document.activeElement).toBe(screen.getByRole("menu"));
+    expect(document.activeElement?.getAttribute("role")).toBe("menu");
 
     view.rerender(<WorkspaceSwitcherMenu open={false} workspaces={workspaces} onOpenChange={onOpenChange} />);
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    await waitFor(() => expect(screen.queryAllByRole("menu")).toHaveLength(0));
     view.rerender(<WorkspaceSwitcherMenu open workspaces={workspaces} onOpenChange={onOpenChange} />);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("menuitem", {name: /^Switch workspace:/})));
+    await user.keyboard("{ArrowRight}");
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Workspace 0" })));
   });
 });

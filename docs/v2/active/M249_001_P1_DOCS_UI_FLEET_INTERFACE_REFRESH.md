@@ -1262,3 +1262,33 @@ Bounded repair inventory: `rustd/crates/protocol/af_stream/src/h3/client.rs` and
 
 
 The regression failed before repair: the competing ready handshake wrapper was classified as TLS instead of the receiver's network failure. A second regression exposed erased post-negotiation refusals. The existing key-exchange watch now excludes identity checks and H3 initialization from reconciliation. Nine focused tests pass, including typed refusals, successful receiver completion, cancellation and the unchanged deadline. Source review closed its security finding; full repository verification remains required. Evidence: `refresh-handshake-race-red-v131.log`, `refresh-handshake-security-red-v133.log`, `refresh-handshake-security-green-v135.log`.
+
+### Claude final visual verdict, Nov 13, 2026
+
+Owner supplied the completed review in `claude-final-verdict-v22.txt`. Restore the approved Changes pill and account-menu hierarchy. Capture actual archived history and the post-delete destination. Correct remaining composer, wake-up, activity, Secrets, gutter, evidence-row, focus and footer spacing differences. Personal account follows the shared resource-header pattern. Keep Personal account access and workspace creation/switching available through the existing scoped owners.
+
+This repair extends the existing visual inventory to the shared menu, dialog focus, composer and table primitives, account header and lifecycle capture fixtures. Preserve recorded file counts and native assistant-ui, Radix, authentication and mutation owners. New evidence must record revision, time and UI source digest, including real authenticated account captures. No old toast-only image establishes archived or deleted behavior.
+
+
+### Pre-submission gate requested by owner
+
+Validate all eight sections of the owner's November 13 checklist. Package only
+when every required check passes; missing evidence remains NOT RUN. Read the
+unchanged proposal at matching viewports and record computed geometry, rather
+than inferring dimensions from screenshots. Every sample, loader and authenticated
+capture must identify the same clean candidate commit, source-tree digest and
+UTC capture time. Hash all archive payloads, including reports and index. Any
+subsequent source repair invalidates its affected evidence.
+
+Additional bounded inventory: shared `dialog-focus.ts` and its regressions,
+`visual-provenance.ts`, `visual-lifecycle-notice.tsx`, lifecycle journey evidence,
+workspace-menu grouping/focus and creation regressions, task-history read-only
+regression, shared sentence-case labels and `docs/DESIGN_SYSTEM.md`.
+
+Internal development measurements match the requested composer dimensions and
+Changes pill height. Both-theme motion frames differ by 288–452 pixels; all
+four reduced-motion pairs are byte-identical. These dirty-source development
+captures are excluded from final evidence. Source review found and closed a
+closing-dialog focus race; its two regressions failed before repair and pass
+with the existing dialog tests (23 total). Final clean captures and all required
+repository/browser gates remain pending.

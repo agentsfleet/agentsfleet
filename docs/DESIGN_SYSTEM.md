@@ -1084,3 +1084,36 @@ The chart section keeps its 206px minimum height and 32px gap before the fleet t
 Saved fleet composers stay docked to the assistant-ui viewport at phone and desktop widths. Empty setup content remains scrollable in normal flow. Phone Summary stays in the conversation flow; the desktop Summary retains a 24px top inset while scrolling.
 
 Comparison captures label top-of-thread and latest positions separately.
+
+### Evidence and interaction corrections, Nov 13, 2026
+
+Form dialogs focus the first enabled, editable field. If the field arrives after
+loading, Radix retains focus until that initial field is available. Keyboard or
+pointer interaction cancels that delayed focus opportunity. Confirmation dialogs
+focus Cancel. Preserve native trapping and return focus to the invoking control.
+Capture keyboard modality consistently and record the active element and
+`:focus-visible`; an unfocused input alone does not describe dialog focus.
+
+The Changes flap is a centred, content-width raised pill: 38px high, 16px
+corners, 1px standard border, 12px text and an 8px gap above the composer.
+Show confirmed file counts; omit line totals without recorded evidence.
+Conversation and New fleet composers measure 740 × 139px and 760 × 183px at
+the approved desktop viewport. Intermediate New fleet layouts retain 32px side
+padding. Activity tool rows have a 36px desktop pitch; coarse pointers retain
+44px targets. Secret rows use 69px desktop height.
+
+Menu labels use sentence case. Account navigation uses 40px rows beside the
+rail; workspace switching retains native Radix submenu keyboard behavior.
+Archived fleets retain history and disable composer, approval, schedule and task
+mutations. Deletion evidence shows the destination after deletion, not a toast
+over the former conversation.
+
+Before packaging, render the unchanged approved proposal and candidate at the
+same widths and compare computed geometry. Capture 1480px and 390px in both
+themes, plus Conversation, Models, Security and New fleet at 696px and 900px.
+Every evidence file identifies a clean candidate revision, source-tree digest
+and UTC capture time. Motion evidence includes lossless frame pairs for both
+themes and sizes; reduced-motion pairs remain byte-identical. The bundle
+manifest hashes every payload, including reports and its index. Report each
+pre-submission check as PASS, FAIL or NOT RUN with measurements and filenames;
+unresolved failures prevent packaging.

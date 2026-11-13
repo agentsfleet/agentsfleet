@@ -208,6 +208,11 @@ export function designSystemDropdown() {
     StatusCard: ({ label, count, variant }: { label: string; count: number | string; variant?: string }) =>
       React.createElement("div", { "data-status-card": label, "data-variant": variant ?? "default" }, `${label}: ${count}`),
     DropdownMenu: ({ children }: { children: React.ReactNode }) => React.createElement("div", { "data-dropdown": "1" }, children),
+    // Native submenu interaction is covered in workspace-menu-focus; this
+    // fixture keeps durable creation tests independent of portal mechanics.
+    DropdownMenuSub: ({children}: {children: React.ReactNode}) => React.createElement("div", null, children),
+    DropdownMenuSubTrigger: ({children, ...props}: React.HTMLAttributes<HTMLDivElement>) => React.createElement("div", {role: "menuitem", tabIndex: 0, ...props}, children),
+    DropdownMenuSubContent: ({children}: {children: React.ReactNode}) => React.createElement("div", null, children),
     DropdownMenuTrigger: ({ children, asChild, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { children: React.ReactNode; asChild?: boolean }) =>
       asChild && React.isValidElement<React.ButtonHTMLAttributes<HTMLButtonElement>>(children)
         ? React.cloneElement(children, rest) : React.createElement("button", { ...rest }, children),

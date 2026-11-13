@@ -6,12 +6,17 @@ The UI refresh and the pending CLI work ship in separate PRs.
 
 ## Current result
 
-The independent Astra review found no remaining P2 visual defect in the V22 matrix. It inspected 194 images, including eight authenticated Personal account/menu captures and eight loader frames. Two remaining P3 fixes are in source: Edit model quotation marks and the redundant Add secret tooltip.
+Claude's subsequent V22 review found additional defects in the Changes flap,
+account menu and lifecycle evidence. That review supersedes the earlier visual
+readiness assessment. The refresh remains in progress; V22 is not final evidence.
 
-Their fresh captures and final repository checks remain open at this report's preparation.
+The latest repairs have internal development measurements. Clean-candidate
+captures, the full pre-submission self-check, authenticated lifecycle evidence,
+repository checks and owner visual approval remain open. No V23 bundle is
+approved for packaging while any required check fails or has not run.
 
-A green tick below means the named repair has reviewed source and V22 visual evidence.
-It does not mean Indy has approved the revised gallery or that every repository gate has passed.
+Historical green ticks below describe the stated source repair and its named
+evidence. They do not establish that the latest candidate passes all gates.
 
 ## Reference and comparison method
 
@@ -22,7 +27,7 @@ It does not mean Indy has approved the revised gallery or that every repository 
 - A 390 × 500 focused composer tests reduced viewport fit. It does not prove a physical phone keyboard's behavior.
 - Screenshots use production components with labelled sample data. Authenticated account captures use development fixture accounts.
 - Hover, keyboard focus, dialog autofocus, scrolled actions and top/latest transcript positions have distinct captures.
-- Loader evidence includes four WebM recordings and lossless frame pairs: desktop/phone, motion allowed/reduced.
+- Final loader evidence requires eight WebM recordings and lossless frame pairs: desktop/phone, both themes, motion allowed/reduced. Historical V22 contains only the earlier dark-theme set.
 - Every package must include the same source-tree digest. Separate desktop/phone packages must not mix older revisions.
 - Screenshots remain unmodified. Sample text, actual backend fields and review chrome are disclosed separately from visual differences.
 
@@ -228,3 +233,63 @@ The additional bounded source review found no concrete defect in the conditional
 The fix changes no endpoint, authority, retry policy, timeout or test assertion. The source review closed its security finding. Full repository and acceptance verification remain pending.
 
 Evidence: `refresh-handshake-race-red-v131.log`, `refresh-handshake-security-red-v133.log`, `refresh-handshake-security-green-v135.log`. The earlier interrupted unit command passed all Rust and TypeScript checks (`refresh-interrupted-unit-v126-result.json`). It does not substitute for the complete PR gate.
+
+## Latest Claude verdict and pre-submission validation
+
+The owner's November 13 checklist is the packaging gate. Each numbered check
+must report expected and measured values, PASS / FAIL / NOT RUN, and its capture
+filename. No unresolved FAIL or required NOT RUN permits packaging.
+
+| Finding | Repair in source | Current verification |
+|---|---|---|
+| Changes flap full width and attached | Centred intrinsic-width raised pill, 38px high, 16px corners, 8px composer gap | Internal desktop render measured 38px; final clean capture pending |
+| Composer heights | Shared panel bottom inset preserves input growth and adds 1px | Internal render: conversation 740 × 139; New fleet 760 × 183 |
+| Wake-up strip | Shared strip vertical inset corrected | Internal render: x270–970, 45px high; immutable proposal computes 46px, within the requested 1px tolerance |
+| Tool and secret rows | Desktop tool gap removed; Manage uses compact 36px control with coarse-pointer floor retained | Final measured matrix pending |
+| Intermediate New fleet gutters | Centred setup overrides its shared inset to 32px above 680px | Final 696px and 900px measurements pending |
+| Dialog focus | First eligible editable field; one delayed opportunity; user interaction cancels it; confirmations focus Cancel | Ten helper regressions and the existing Dialog tests pass (23 total); closing/outside-interaction races failed before repair; full coverage and final focus captures pending |
+| Model Source and Connected app footer | Right-aligned evidence value; shared footer with local paragraph spacing | Final geometry pending |
+| Archived state could retain stale actions | Summary and task details suppress approval, schedule and task mutations while retaining readable history | Regression test and authenticated mutation journey required |
+| Toast-only lifecycle evidence | Sample archived state and New fleet destination; authenticated archive/delete journey captures after confirmed backend mutation | Final authenticated captures pending |
+| Account menu structure | Proposal navigation restored; workspace switching nested in identity header; 40px rows | Personal account and workspace submenu additions await owner decision; no approval inferred |
+| Typography and redundant tooltips | Sentence-case labels; named Edit model uses curly quotes; visible-label key/setup controls have no redundant tooltip | Source sweep and final captures pending |
+| Dirty/mixed evidence | Clean-source capture guard, shared commit/digest/time stamps, full payload manifest and duplicate-image checks | Final clean candidate capture required |
+
+### Visible differences requiring explicit tracking
+
+- Real recorded file counts replace the proposal's sample totals. Line additions
+  and deletions remain omitted without backend evidence.
+- The source proposal's wake-up strip computes 46px; the requested 45px product
+  strip remains within the specified 1px comparison tolerance.
+- Personal account is an existing authenticated destination without a proposal
+  screen. Its menu entry and the workspace identity submenu remain pending the
+  owner's explicit menu decision. They are not recorded as approved differences.
+- The real archived fleet keeps task/history reads but has no mutation controls.
+  Deletion lands on New fleet. Toasts supplement these states.
+- The review harness uses labelled sample dates, model names, tool counts and
+  actual supported data fields. It does not invent backend fields to reproduce
+  static proposal text. The earlier API/data differences in this report remain
+  applicable and must be checked against every final capture.
+
+The automated reference render preserves the approved proposal SHA-256 and reads
+computed geometry at 1480, 390, 696 and 900 in both themes. Internal dirty-source
+images are explicitly debug-only and cannot enter the final package.
+
+### Latest code verification before candidate capture
+
+`make lint-app lint-design-system test-unit-design-system` passed app and shared
+component lint/type checks and 511 design-system tests. The scoped archive and
+workspace-creation regression files pass 33 tests. The full app coverage run
+passed 4,565 tests, with 100% statements, functions and lines; branch coverage
+was 99.98% because the private account menu retained an external-link branch
+after those entries were removed. That dead branch is now removed. The complete
+100% coverage target must pass again; no threshold was lowered.
+
+The adversarial review found a late-focus race during Radix's closing animation.
+Both closing-state and outside-pointer regressions failed before repair. The
+helper now observes native `data-state` and cancels on closing or document-level
+interaction. Its ten regressions and the existing Dialog tests pass 23 tests.
+Source review closed this finding and confirmed both affected functions meet
+the function-length limit. Evidence: `refresh-closing-focus-red-v151.log`,
+`refresh-closing-focus-green-v152.log`, `refresh-ui-checks-v149.log`,
+`refresh-lifecycle-tests-v147.log`, `refresh-typescript-coverage-v150.log`.

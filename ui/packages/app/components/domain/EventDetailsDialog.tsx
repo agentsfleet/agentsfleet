@@ -146,7 +146,7 @@ function RunnerDiagnostic({ detail }: { detail: string }) {
   const titleId = useId();
   return (
     <Section aria-labelledby={titleId} className="gap-md">
-      <h3 id={titleId} className="text-label uppercase tracking-label text-muted-foreground">
+      <h3 id={titleId} className="text-label font-medium tracking-label text-muted-foreground">
         {RUNNER_DIAGNOSTIC_TITLE}
       </h3>
       <RequestContextFallback>{detail}</RequestContextFallback>
@@ -205,7 +205,7 @@ function RequestContext({ row, detail }: { row: EventRow; detail: EventDetail | 
   return (
     <Section aria-labelledby={contextId} className="gap-md">
       <div className="flex flex-wrap items-center justify-between gap-md">
-        <h3 id={contextId} className="text-label uppercase tracking-label text-muted-foreground">
+        <h3 id={contextId} className="text-label font-medium tracking-label text-muted-foreground">
           {REQUEST_CONTEXT_TITLE}
         </h3>
         <div className="flex flex-wrap items-center gap-sm">

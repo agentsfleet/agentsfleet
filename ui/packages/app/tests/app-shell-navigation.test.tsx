@@ -12,15 +12,17 @@ import { ShellFrame } from "@/components/layout/ShellFrame";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 import { SidebarNavigation } from "@/components/layout/SidebarNavigation";
 import { NavSection } from "@/components/layout/SidebarNavigationSections";
-import { BOTTOM_NAV } from "@/components/layout/account-menu-data";
+import { BookOpenIcon } from "@phosphor-icons/react/ssr";
+import type { NavEntry } from "@/components/layout/sidebar-navigation-data";
 import { navSource } from "@/components/layout/sidebar-navigation-data";
 import { WorkspaceSwitcherTrigger } from "@/components/layout/WorkspaceSwitcherTrigger";
 
+const REFERENCE_NAV: NavEntry[] = [{label: "Learn more", path: "https://docs.agentsfleet.net", icon: BookOpenIcon, external: true, analyticsSource: "app_sidebar_docs"}];
 const WORKSPACE = { id: "ws_1", name: "My workspace", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT };
 
 it("keeps explicit navigation analytics stable and derives a fallback for other external links", () => {
-  expect(navSource(BOTTOM_NAV[0]!)).toBe("app_sidebar_docs");
-  expect(navSource({ ...BOTTOM_NAV[0]!, label: "Reference", analyticsSource: undefined })).toBe("app_sidebar_reference");
+  expect(navSource(REFERENCE_NAV[0]!)).toBe("app_sidebar_docs");
+  expect(navSource({ ...REFERENCE_NAV[0]!, label: "Reference", analyticsSource: undefined })).toBe("app_sidebar_reference");
 });
 const MENU = /Workspace and account menu/;
 function mount() { render(<ShellFrame workspaces={[WORKSPACE]}>Page content</ShellFrame>); }
@@ -37,7 +39,7 @@ describe("conversation-first app navigation", () => {
     const view = render(<SidebarNavigation pathname="/settings/account" workspaceId={null} collapsed onNavigate={() => {}} />);
     expect(screen.getByRole("button", {name: MENU})).toBeTruthy();
     view.unmount();
-    render(<NavSection items={BOTTOM_NAV} activeHref="" workspaceId={null} collapsed={false} onNavigate={() => {}} />);
+    render(<NavSection items={REFERENCE_NAV} activeHref="" workspaceId={null} collapsed={false} onNavigate={() => {}} />);
     const docs = screen.getByRole("link", {name: "Learn more"});
     expect(docs.getAttribute("target")).toBe("_blank");
     expect(docs.getAttribute("rel")).toBe("noopener noreferrer");
@@ -61,21 +63,15 @@ describe("conversation-first app navigation", () => {
     expect(screen.queryByRole("textbox", {name: "Search all chats"})).toBeNull();
     expect(screen.queryByText("Recents")).toBeNull();
   });
-  it("opens New fleet and records account and documentation destinations", async () => {
+  it("opens New fleet and records account destinations", async () => {
     mount(); const user = userEvent.setup();
     await user.click(screen.getAllByRole("link", {name: "New fleet"})[0]!);
     expect(mocks.track).toHaveBeenCalledWith({source: "app_sidebar_fleets_new", surface: "app_sidebar", target: "/w/ws_1/fleets/new"});
     await openMenu();
-    for (const [name, href] of [["Usage", "/settings/billing"], ["Connected apps", "/w/ws_1/integrations"], ["Security", "/settings/security"], ["Manage secrets", "/w/ws_1/secrets"]]) {
+    for (const [name, href] of [["Usage", "/settings/billing"], ["Team", "/settings/members"], ["Security", "/settings/security"], ["Models", "/w/ws_1/settings/models"]]) {
       expect(screen.getByRole("menuitem", {name}).getAttribute("href")).toBe(href);
     }
-    const docs = screen.getByRole("menuitem", {name: "Learn more"});
-    expect(docs.getAttribute("rel")).toBe("noopener noreferrer");
-    document.addEventListener("click", (event) => event.preventDefault(), {once: true});
-    await user.click(docs);
-    expect(screen.queryByRole("menu")).toBeNull();
-    expect(mocks.track).toHaveBeenCalledWith({source: "app_sidebar_docs", surface: "app_sidebar", target: "https://docs.agentsfleet.net"});
-    await openMenu();
+    expect(screen.queryByRole("menuitem", {name: "Learn more"})).toBeNull();
     await user.click(screen.getByRole("menuitem", {name: "Personal account"}));
     expect(screen.queryByRole("menu")).toBeNull();
     expect(mocks.track).toHaveBeenCalledWith({source: "app_sidebar_settings_account_sign-in", surface: "app_sidebar", target: "/settings/account/sign-in"});
@@ -88,15 +84,15 @@ describe("conversation-first app navigation", () => {
     expect(screen.queryByText("Workspace settings")).toBeNull();
     expect(screen.getByRole("button", { name: MENU }).closest("aside")).not.toBeNull();
   });
-  it("places Activity under Workspace and hides an empty Platform menu", async () => {
+  it("keeps the approved account destinations without an extra Activity or Platform entry", async () => {
     mount(); await openMenu();
     expect(screen.queryByRole("menuitem", {name: "Platform"})).toBeNull();
-    expect(screen.getByRole("menuitem", {name: "Activity"}).getAttribute("href")).toBe("/w/ws_1/events");
+    expect(screen.queryByRole("menuitem", {name: "Activity"})).toBeNull();
     expect(screen.queryByRole("menuitem", {name: "Runners"})).toBeNull();
   });
   it("keeps approval decisions inside fleets without separate Approvals or Grants destinations", async () => {
     mount(); await openMenu();
-    expect(screen.getByRole("menuitem", {name: "Activity"})).toBeTruthy();
+    expect(screen.getByRole("menuitem", {name: "Models"})).toBeTruthy();
     expect(screen.queryByRole("menuitem", {name: "Approvals"})).toBeNull();
     expect(screen.queryByRole("menuitem", {name: "Grants"})).toBeNull();
   });
