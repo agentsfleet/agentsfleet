@@ -33,9 +33,35 @@ export const PROFILE_APPEARANCE = {
       ...AUTH_APPEARANCE.elements.profileSectionTitleText,
       fontSize: "var(--fs-body-sm)", fontWeight: 500,
     },
+    formFieldInput: {
+      ...AUTH_APPEARANCE.elements.formFieldInput,
+      "&&": {
+        ...AUTH_APPEARANCE.elements.formFieldInput["&&"],
+        minHeight: "44px", padding: "8px 12px", fontSize: "var(--fs-body-sm)",
+        backgroundColor: "var(--bg)", border: "1px solid var(--border)", borderColor: "var(--border)",
+        borderRadius: "var(--r-control)",
+      },
+      "&&:focus": {borderColor: "var(--border)", boxShadow: "none"},
+      "&&:focus-visible": {outline: "2px solid var(--pulse)", outlineOffset: "4px"},
+      "@media (max-width: 42.5rem), (pointer: coarse)": {"&&": {fontSize: "16px", lineHeight: "24px"}},
+    },
+    formButtonPrimary: {
+      ...AUTH_APPEARANCE.elements.formButtonPrimary,
+      minHeight: "40px", padding: "8px 16px", fontSize: "var(--fs-body-sm)",
+      fontWeight: 500, borderRadius: "var(--r-control)",
+      "&&:hover:not(:disabled)": {filter: "brightness(.94)", backgroundColor: "var(--cta)"},
+      "&&:focus-visible": {boxShadow: "none", outline: "2px solid var(--pulse)", outlineOffset: "4px"},
+    },
+    formButtonReset: {
+      minHeight: "40px", padding: "8px 16px", backgroundColor: "var(--surface-1)",
+      border: "1px solid var(--border)", borderRadius: "var(--r-control)",
+      color: "var(--text)", fontSize: "var(--fs-body-sm)",
+      "&&:hover": {backgroundColor: "var(--surface-2)"},
+      "&&:focus-visible": {outline: "2px solid var(--pulse)", outlineOffset: "4px"},
+    },
     profileSectionPrimaryButton: {
       ...AUTH_APPEARANCE.elements.profileSectionPrimaryButton,
-      fontSize: "var(--fs-body-sm)",
+      minHeight: "40px", fontSize: "var(--fs-body-sm)", fontWeight: 500,
     },
   },
 } as const satisfies Appearance;
