@@ -34,7 +34,6 @@ use af_core::id::Uuid7;
 use af_fleet_runtime::FleetConfig;
 use jiff::Timestamp;
 
-use crate::gate::archive::Trigger;
 use crate::gate::pending::{Evaluation, GateRef, Recorded};
 use crate::gate::route::RefState;
 use crate::gate::store::Gates;
@@ -92,11 +91,10 @@ pub enum Verdict {
     Await(Waiting),
     /// End the event; a human refused it or the question lapsed.
     Refuse(Refused),
-    /// A rule or a threshold stopped the whole FLEET.
-    ///
-    /// The event itself is written nothing and stays leasable, so a resume
-    /// re-delivers it. It is the fleet that changed state, not this delivery.
-    Killed(Trigger),
+    /// The fleet ran away: one action repeated past an anomaly threshold, and
+    /// the fleet is archived. Archive is terminal, so the event that tripped
+    /// it ends too; nothing would ever run it.
+    Archived,
     /// A datastore would not answer. Nothing was decided and nothing written.
     Unavailable,
 }

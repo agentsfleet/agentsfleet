@@ -12,7 +12,7 @@ use af_core::test_util::trace::Capture;
 use afd_db::test_util::statements::{self, Ran, Window};
 
 /// A fleet whose chat events from the fixture actor need a human's approval.
-const GATED_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"gates":{"timeout_ms":60000,"rules":[{"tool":"chat","action":"fixture:steer","behavior":"approve"}]}}}"#;
+const GATED_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"gates":{"timeout_ms":60000,"rules":[{"tool":"chat","action":"fixture:steer"}]}}}"#;
 
 /// The gate reads the gates read replaced, by their text as
 /// `pg_stat_statements` records it (see [`recorded`]).

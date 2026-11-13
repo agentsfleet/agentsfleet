@@ -76,10 +76,7 @@ impl Creations {
         // Archiving an installing fleet cancels its setup; a live fleet's setup
         // already finished, and `transition` refused any repeated archive above.
         if requested == ARCHIVED && row.status == INSTALLING {
-            let step = AuthoringStep::SetupCancelled {
-                fleet_id: fleet.clone(),
-            };
-            self.setup.drafts.reached(access, step);
+            self.setup_cancelled(access, fleet);
         }
         if retry {
             self.advance(access, fleet, now).await?;
@@ -107,6 +104,15 @@ impl Creations {
             .await
             .map_err(query(CONTEXT))?;
         Ok(cancelled)
+    }
+
+    /// Reports that an installing fleet's setup was cancelled, by an archive
+    /// or a delete, once its transaction committed.
+    pub(super) fn setup_cancelled(&self, access: Access<'_>, fleet: &Uuid7) {
+        let step = AuthoringStep::SetupCancelled {
+            fleet_id: fleet.clone(),
+        };
+        self.setup.drafts.reached(access, step);
     }
 
     pub(super) async fn announce_cancellations(&self, cancelled: Vec<(Uuid7, Uuid7)>) {

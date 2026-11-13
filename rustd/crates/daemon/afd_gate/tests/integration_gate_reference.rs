@@ -13,7 +13,7 @@ use afd_gate::gate::{Gates, Refused, Verdict, Waiting};
 
 use fixture::{Fixture, NOW, bus, config, config_gates};
 
-const APPROVE_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#;
+const APPROVE_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","gate_kind":"deploy","blast_radius":"production"}]}"#;
 // Value: protects=a re-encounter cannot bypass, duplicate or restart a durable
 // gate; fails_when=a missing cache meant a first encounter; seam=Postgres.
 #[tokio::test]

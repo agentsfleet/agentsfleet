@@ -40,49 +40,19 @@ use af_core::id::Uuid7;
 use afd_state::sql::LEASE_STATUS_ACTIVE;
 
 use crate::error::{self, ErrorKind, Result};
-use crate::{Fleets, sql};
+use crate::sql;
 
 /// The contexts a failed statement on this path reports under.
-const CONTEXT_PROBE: &str = "lock fleet before purge";
-const CONTEXT_BEGIN: &str = "open fleet purge transaction";
 const CONTEXT_PARENT: &str = "purge fleet row";
 const CONTEXT_LEASES: &str = "purge fleet live leases";
-const CONTEXT_COMMIT: &str = "commit fleet purge";
-
-impl Fleets {
-    /// Purges one fleet and everything keyed to it, under the same current
-    /// resource version native reads return.
-    ///
-    /// # Errors
-    /// Refuses stale tags, foreign fleets and datastore failures.
-    pub async fn purge_tagged(
-        &self,
-        workspace: &Uuid7,
-        fleet: &Uuid7,
-        expected: &str,
-    ) -> Result<()> {
-        let mut connection = self.database.acquire().await?;
-        let mut transaction = sqlx::Acquire::begin(&mut *connection)
-            .await
-            .map_err(error::query(CONTEXT_BEGIN))?;
-        guard(&mut transaction, workspace, fleet, expected).await?;
-        delete_locked(&mut transaction, workspace, fleet).await?;
-        transaction
-            .commit()
-            .await
-            .map_err(error::query(CONTEXT_COMMIT))?;
-        self.live_sets.invalidate(workspace.as_str()).await;
-        Ok(())
-    }
-}
 
 /// Deletes `fleet`'s live leases, then its row, inside the caller's
 /// transaction.
 ///
-/// The caller already holds the row lock and has checked the tag, so a
-/// delete that also ends the fleet's setup and work commits all of it or none
-/// of it. It commits nothing itself; after the caller commits, it owes
-/// [`Fleets::invalidate_live_set`].
+/// The only delete path: the caller already holds the row lock and has
+/// checked the tag, so a delete that also ends the fleet's setup and work
+/// commits all of it or none of it. It commits nothing itself; after the
+/// caller commits, it owes [`crate::Fleets::invalidate_live_set`].
 ///
 /// # Errors
 /// Reports a fleet that is not in `workspace` and datastore failures.
@@ -105,32 +75,4 @@ pub async fn delete_locked(
         .map_err(error::query(CONTEXT_PARENT))?
         .ok_or(ErrorKind::NotFound)?;
     Ok(())
-}
-
-/// Locks the row and checks the tag under the lock, so no concurrent edit
-/// lands between the check and the delete.
-async fn guard(
-    connection: &mut sqlx::PgConnection,
-    workspace: &Uuid7,
-    fleet: &Uuid7,
-    expected: &str,
-) -> Result<()> {
-    let locked = sqlx::query_as::<_, LockedFleet>(sql::LOCK_FLEET)
-        .bind(fleet)
-        .bind(workspace)
-        .fetch_optional(connection)
-        .await
-        .map_err(error::query(CONTEXT_PROBE))?
-        .ok_or(ErrorKind::NotFound)?;
-    let current = af_core::etag::versioned(fleet, locked.resource_version);
-    if expected != current {
-        return Err(error::source_stale(current));
-    }
-    Ok(())
-}
-
-/// The row [`sql::LOCK_FLEET`] holds while the tag is compared.
-#[derive(Debug, sqlx::FromRow)]
-struct LockedFleet {
-    resource_version: i64,
 }

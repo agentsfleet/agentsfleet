@@ -53,7 +53,7 @@ async fn installing(case: &Case) -> (String, Uuid7) {
         .to_owned();
     let body = json_body(saved).await;
     assert_eq!(body["status"], "installing");
-    let fleet = Uuid7::parse(item.rsplit('/').next().expect("fleet id")).expect("fleet id");
+    let fleet = super::fixture::fleet_of(&item);
     let cards: Vec<(Uuid7, String, String)> = sqlx::query_as(
         "SELECT id,gate_type,status FROM fleet.approval_gates WHERE fleet_id=$1 ORDER BY id",
     )
@@ -76,7 +76,7 @@ async fn installing(case: &Case) -> (String, Uuid7) {
 
 /// The fleet's one schedule row version; every sync claim bumps it.
 async fn schedule_version(case: &Case, item: &str) -> i64 {
-    let fleet = Uuid7::parse(item.rsplit('/').next().expect("fleet id")).expect("fleet id");
+    let fleet = super::fixture::fleet_of(item);
     sqlx::query_scalar("SELECT resource_version FROM fleet.schedules WHERE fleet_id=$1")
         .bind(&fleet)
         .fetch_one(&mut *case.base.db.acquire().await.expect("schedule connection"))

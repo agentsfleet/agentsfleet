@@ -89,7 +89,7 @@ pub struct Filter<'a> {
     /// [`GateStatus`] and not [`Decision`]: a filter names states a row can BE
     /// in, and the writer's vocabulary has three arms because two of the five
     /// states are not decisions anyone makes. Routing the filter through it
-    /// left `auto_killed` unreachable.
+    /// left `archived` unreachable.
     pub status: Option<GateStatus>,
     /// Only gates raised by this fleet.
     pub fleet_id: Option<&'a Uuid7>,

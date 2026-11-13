@@ -47,11 +47,10 @@ mod route;
 pub mod sql;
 mod store;
 
-use af_fleet_runtime::config::{Behavior, Condition, GatePolicy, GateRule};
+use af_fleet_runtime::config::{Condition, GatePolicy, GateRule};
 use serde_json::Value;
 
 pub use self::anomaly::Anomaly;
-pub use self::archive::Trigger;
 pub use self::claim::{Claim, MAX_EVIDENCE_BYTES, MAX_PROPOSED_ACTION_BYTES, NO_EVIDENCE};
 pub use self::decision::Answer;
 pub use self::detail::Stated;
@@ -71,12 +70,11 @@ pub enum Decision {
     AutoApprove,
     /// A human must say yes first.
     RequiresApproval,
-    /// The fleet is archived and the event ends.
-    AutoKill,
 }
 
 impl Decision {
-    /// What a matched rule — or the absence of one — decides.
+    /// What a matched rule — or the absence of one — decides: a matching
+    /// rule always asks a person.
     ///
     /// `None` is the auto-approve fallthrough, and it is the reason the rules
     /// walk cannot be the only gate for a fleet with write access to a
@@ -85,10 +83,7 @@ impl Decision {
     pub const fn of(matched: Option<&GateRule>) -> Self {
         match matched {
             None => Self::AutoApprove,
-            Some(rule) => match rule.behavior {
-                Behavior::Approve => Self::RequiresApproval,
-                Behavior::AutoKill => Self::AutoKill,
-            },
+            Some(_rule) => Self::RequiresApproval,
         }
     }
 }
@@ -151,15 +146,14 @@ mod tests {
     use std::time::Duration;
 
     use super::{Decision, match_rule};
-    use af_fleet_runtime::config::{Behavior, GatePolicy, GateRule};
+    use af_fleet_runtime::config::{GatePolicy, GateRule};
     use serde_json::json;
 
-    fn rule(tool: &str, action: &str, condition: Option<&str>, behavior: Behavior) -> GateRule {
+    fn rule(tool: &str, action: &str, condition: Option<&str>) -> GateRule {
         GateRule {
             tool: tool.into(),
             action: action.into(),
             condition: condition.map(Into::into),
-            behavior,
             gate_kind: "deploy".into(),
             blast_radius: "production".into(),
         }
@@ -171,7 +165,7 @@ mod tests {
 
     #[test]
     fn a_matching_rule_decides_and_an_unmatched_action_approves() {
-        let policy = policy(vec![rule("shell", "run", None, Behavior::Approve)]);
+        let policy = policy(vec![rule("shell", "run", None)]);
 
         let matched = match_rule(&policy, "shell", "run", None);
         assert_eq!(Decision::of(matched), Decision::RequiresApproval);
@@ -183,14 +177,11 @@ mod tests {
 
     #[test]
     fn a_wildcard_matches_either_half() {
-        let policy = policy(vec![
-            rule("*", "delete", None, Behavior::AutoKill),
-            rule("shell", "*", None, Behavior::Approve),
-        ]);
+        let policy = policy(vec![rule("*", "delete", None), rule("shell", "*", None)]);
 
         assert_eq!(
-            Decision::of(match_rule(&policy, "anything", "delete", None)),
-            Decision::AutoKill
+            match_rule(&policy, "anything", "delete", None).map(|rule| &*rule.tool),
+            Some("*")
         );
         assert_eq!(
             Decision::of(match_rule(&policy, "shell", "whatever", None)),
@@ -207,25 +198,18 @@ mod tests {
         // Authored order is what a fleet author reads, so it is the precedence
         // they get — not "most specific", which would need them to hold a
         // ranking in their head.
-        let policy = policy(vec![
-            rule("*", "*", None, Behavior::Approve),
-            rule("shell", "run", None, Behavior::AutoKill),
-        ]);
+        let policy = policy(vec![rule("*", "*", None), rule("shell", "run", None)]);
 
         assert_eq!(
-            Decision::of(match_rule(&policy, "shell", "run", None)),
-            Decision::RequiresApproval
+            match_rule(&policy, "shell", "run", None).map(|rule| &*rule.tool),
+            Some("*"),
+            "the wildcard rule, authored first, is the one that fires"
         );
     }
 
     #[test]
     fn a_condition_narrows_which_actions_fire() {
-        let policy = policy(vec![rule(
-            "deploy",
-            "push",
-            Some("branch == 'main'"),
-            Behavior::Approve,
-        )]);
+        let policy = policy(vec![rule("deploy", "push", Some("branch == 'main'"))]);
         let fires = json!({"branch": "main"});
         let does_not = json!({"branch": "topic"});
 
@@ -235,12 +219,7 @@ mod tests {
 
     #[test]
     fn a_negated_condition_fires_on_anything_but_its_value() {
-        let policy = policy(vec![rule(
-            "deploy",
-            "push",
-            Some("env != 'staging'"),
-            Behavior::Approve,
-        )]);
+        let policy = policy(vec![rule("deploy", "push", Some("env != 'staging'"))]);
 
         assert!(match_rule(&policy, "deploy", "push", Some(&json!({"env": "prod"}))).is_some());
         assert!(match_rule(&policy, "deploy", "push", Some(&json!({"env": "staging"}))).is_none());
@@ -252,12 +231,7 @@ mod tests {
         // is that they all answer the SAME way. A fail-safe that is safe for
         // four of five inputs is not a fail-safe — and the unsafe direction
         // here lets an ungated action through.
-        let policy = policy(vec![rule(
-            "deploy",
-            "push",
-            Some("branch == 'main'"),
-            Behavior::Approve,
-        )]);
+        let policy = policy(vec![rule("deploy", "push", Some("branch == 'main'"))]);
 
         for undecidable in [
             None,
@@ -277,19 +251,14 @@ mod tests {
 
     #[test]
     fn an_unparseable_condition_fires_rather_than_disabling_the_gate() {
-        let policy = policy(vec![rule(
-            "deploy",
-            "push",
-            Some("garbage"),
-            Behavior::Approve,
-        )]);
+        let policy = policy(vec![rule("deploy", "push", Some("garbage"))]);
 
         assert!(match_rule(&policy, "deploy", "push", Some(&json!({"branch": "main"}))).is_some());
     }
 
     #[test]
     fn a_rule_with_no_condition_always_fires() {
-        let policy = policy(vec![rule("deploy", "push", None, Behavior::Approve)]);
+        let policy = policy(vec![rule("deploy", "push", None)]);
 
         assert!(match_rule(&policy, "deploy", "push", None).is_some());
         assert!(match_rule(&policy, "deploy", "push", Some(&json!({}))).is_some());

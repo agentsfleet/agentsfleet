@@ -175,7 +175,7 @@ async fn archive_closes_setup_cards_and_late_grant_work_cannot_reopen_them() {
     assert_eq!(archived.status, "archived");
     let ended = cards(&c, &saved.id).await;
     assert_eq!(ended.len(), 1);
-    assert_eq!(ended[0].1, "auto_killed");
+    assert_eq!(ended[0].1, "archived");
     let late = IntegrationGrants::new(c.base.db.clone(), Entropy::new())
         .request_for_setup(
             &c.base.workspace,

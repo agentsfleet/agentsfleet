@@ -1,21 +1,17 @@
 //! Gate parking and durable-decision fallback over both live datastores.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 #[path = "support/gate_fixture.rs"]
 mod fixture;
 
 use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
-use afd_gate::gate::{Gates, Refused, Trigger, Verdict, Waiting};
+use afd_gate::gate::{Gates, Refused, Verdict, Waiting};
 
-use self::fixture::{Fixture, NOW, bus, config, config_gates};
+use self::fixture::{Fixture, NOW, RUNAWAY_AT_TWO, bus, config, config_gates};
 
 /// The rule a gate rules fleet is parked by, and the only one this suite parks on.
-const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#;
+const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","gate_kind":"deploy","blast_radius":"production"}]}"#;
 
 /// Dimensions 2.1 and 2.2 — a write fleet runs every event, and every
 /// continuation of one, without a card.
@@ -164,34 +160,21 @@ async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route(
     let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
 
     let approval = config_gates(
-        r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#,
+        r#"{"rules":[{"tool":"chat","action":"user:fixture","gate_kind":"deploy","blast_radius":"production"}]}"#,
     );
     assert_eq!(
         gates.check(fixture.check(&mint_id(), &approval), NOW).await,
         Verdict::Await(Waiting::Parked)
     );
 
-    let policy_kill = config_gates(
-        r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"auto_kill"}]}"#,
-    );
-    assert_eq!(
-        gates
-            .check(fixture.check(&mint_id(), &policy_kill), NOW)
-            .await,
-        Verdict::Killed(Trigger::Policy)
-    );
-    fixture.activate().await;
-
-    let anomaly = config_gates(
-        r#"{"anomaly_rules":[{"pattern":"same_action","threshold_count":2,"threshold_window_s":60}]}"#,
-    );
+    let anomaly = config_gates(RUNAWAY_AT_TWO);
     assert_eq!(
         gates.check(fixture.check(&mint_id(), &anomaly), NOW).await,
         Verdict::Pass
     );
     assert_eq!(
         gates.check(fixture.check(&mint_id(), &anomaly), NOW).await,
-        Verdict::Killed(Trigger::Anomaly)
+        Verdict::Archived
     );
 
     fixture.cleanup().await;
@@ -219,17 +202,9 @@ async fn a_gate_that_cannot_mint_its_identity_fails_closed() {
     fixture.cleanup().await;
 }
 
-/// The fleet's stored status, read back after a gate decided.
-async fn status_of(fixture: &Fixture) -> String {
-    sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id = $1")
-        .bind(&fixture.fleet)
-        .fetch_one(&mut *fixture.database.acquire().await.expect("live database"))
-        .await
-        .expect("the archived fleet stays readable")
-}
-
-/// A trip archives the fleet, whichever trigger fired: archive is terminal, so
-/// nothing returns it to `active`, and a runaway cannot restart itself.
+/// A runaway trip archives the fleet: archive is terminal, so nothing returns
+/// it to `active`, and a runaway cannot restart itself. It is the only way the
+/// gate archives a fleet; a matching rule only ever asks a person.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn gate_trip_archives_the_fleet() {
@@ -238,34 +213,12 @@ async fn gate_trip_archives_the_fleet() {
     let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
     let archived = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
 
-    let policy_kill = config_gates(
-        r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"auto_kill"}]}"#,
-    );
-    assert_eq!(
-        gates
-            .check(fixture.check(&mint_id(), &policy_kill), NOW)
-            .await,
-        Verdict::Killed(Trigger::Policy)
-    );
-    assert_eq!(
-        status_of(&fixture).await,
-        archived,
-        "a policy trip archives"
-    );
-
-    fixture.activate().await;
-    let anomaly = config_gates(
-        r#"{"anomaly_rules":[{"pattern":"same_action","threshold_count":2,"threshold_window_s":60}]}"#,
-    );
+    let anomaly = config_gates(RUNAWAY_AT_TWO);
     gates.check(fixture.check(&mint_id(), &anomaly), NOW).await;
     assert_eq!(
         gates.check(fixture.check(&mint_id(), &anomaly), NOW).await,
-        Verdict::Killed(Trigger::Anomaly)
+        Verdict::Archived
     );
-    assert_eq!(
-        status_of(&fixture).await,
-        archived,
-        "an anomaly trip archives"
-    );
+    assert_eq!(fixture.status().await, archived, "a runaway trip archives");
     fixture.cleanup().await;
 }

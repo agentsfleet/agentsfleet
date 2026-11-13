@@ -21,8 +21,6 @@ use crate::services::Services;
 const EVENT_SETUP_RESUME_FAILED: &str = "approval_setup_resume_failed";
 /// A fleet an approval activated whose schedules could not then be read.
 const EVENT_SCHEDULES_UNSYNCED: &str = "approval_setup_schedules_unsynced";
-/// The stored status of a fleet that takes work.
-const ACTIVE: &str = "active";
 
 /// Resumes setup when `resolution` is this request's own approval of a setup
 /// grant; every other answer changes nothing here.
@@ -58,7 +56,7 @@ async fn resume<D: Services>(
         .resume_setup(access, fleet, services.now())
         .await
     {
-        Ok(saved) if saved.status == ACTIVE => {
+        Ok(saved) if saved.status == afd_fleet_lifecycle::FleetStatus::Active.as_str() => {
             if after_activation(services.as_ref(), workspace, fleet, true)
                 .await
                 .is_err()

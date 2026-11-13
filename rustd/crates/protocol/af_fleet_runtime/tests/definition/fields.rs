@@ -156,3 +156,33 @@ fn an_unknown_key_inside_the_context_block_is_refused_by_name() {
         "the refusal must name the field an author can fix: {rendered}"
     );
 }
+
+/// A gate rule's `behavior` is gone: a matching rule always asks a person, so a
+/// Definition that still names one is refused as an unknown key rather than
+/// read as if the rule would act on its own.
+#[test]
+fn a_gate_rule_naming_a_behaviour_is_refused_as_an_unknown_key() {
+    let document = json!({"name": "gate-with-behaviour", "x-agentsfleet": {
+        "triggers": [{"type": "webhook", "source": "github"}],
+        "tools": ["http_request"],
+        "budget": {"daily_nanos": NANOS_PER_USD.to_string()},
+        "gates": {"rules": [{"tool": "http_request", "action": "post", "behavior": "auto_kill"}]}
+    }});
+
+    let Err(refused) = FleetConfig::authored(&document.to_string()) else {
+        panic!("a gate rule naming a behaviour is refused");
+    };
+    assert!(
+        refused
+            .to_string()
+            .contains("unsupported configuration key"),
+        "refused as an unknown key, not a shape failure: {refused}"
+    );
+    let asks = json!({"name": "gate-asks", "x-agentsfleet": {
+        "triggers": [{"type": "webhook", "source": "github"}],
+        "tools": ["http_request"],
+        "budget": {"daily_nanos": NANOS_PER_USD.to_string()},
+        "gates": {"rules": [{"tool": "http_request", "action": "post"}]}
+    }});
+    FleetConfig::authored(&asks.to_string()).expect("the same rule without it parses");
+}

@@ -11,7 +11,7 @@ use super::Fallible;
 const SEEDED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// The status that keeps every lease path off the fixture fleet.
-const FLEET_ARCHIVED: &str = "archived";
+const FLEET_ARCHIVED: &str = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
 
 /// One fleet, archived so no lease path picks it up, and the rows above it.
 pub(crate) struct Lane {

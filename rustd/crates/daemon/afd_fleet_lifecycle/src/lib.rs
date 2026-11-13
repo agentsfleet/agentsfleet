@@ -46,10 +46,10 @@ use afd_db::Db;
 /// statements stay `pub(crate)`.
 #[cfg(feature = "test-util")]
 pub mod purge_statements {
-    /// See `crate::sql::LOCK_FLEET`.
-    pub const LOCK_FLEET: &str = crate::sql::LOCK_FLEET;
     /// See `crate::sql::DELETE_FLEET`.
     pub const DELETE_FLEET: &str = crate::sql::DELETE_FLEET;
+    /// See `crate::sql::DELETE_ACTIVE_LEASES`.
+    pub const DELETE_ACTIVE_LEASES: &str = crate::sql::DELETE_ACTIVE_LEASES;
 }
 
 pub use self::error::{Error, Result};

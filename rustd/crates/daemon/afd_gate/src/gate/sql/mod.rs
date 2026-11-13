@@ -68,8 +68,8 @@ pub const INSERT_GATE: &str = include_str!("insert_gate.sql");
 
 /// Archive a fleet, so nothing else of its work is admitted.
 ///
-/// Written by the two auto-kill paths — a tripped anomaly rule and an
-/// `auto_kill` gate rule — and by nothing else in this crate. Kept here with
+/// Written by a tripped anomaly rule, the gate's only archive, and by nothing
+/// else in this crate. Kept here with
 /// the crate's other statements, per RULE SQLMOD, so every statement it runs
 /// can be reviewed in one place.
 ///

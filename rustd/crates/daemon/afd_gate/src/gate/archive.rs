@@ -1,12 +1,12 @@
 //! Archiving a fleet, when the gate decides no further work of its may run.
 //!
-//! # Two auto-kill paths, one archive
+//! # One gate-driven archive
 //!
-//! A tripped anomaly rule and an `auto_kill` gate rule reach the same place: the
-//! fleet is archived, and the event that triggered it ends. They differ only in what
-//! an operator is told, which is why the trigger travels as a value rather than
-//! as two copies of this function.
-//!
+//! A tripped anomaly rule, one action repeated past its threshold, is the only
+//! way the gate archives a fleet. A matching gate rule always asks a person;
+//! no rule can archive on its own, so a fleet stops without a human's answer
+//! only when it is visibly running away.
+
 use af_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 
@@ -20,30 +20,6 @@ const CONTEXT_ARCHIVE: &str = "fleet archive";
 /// A fleet was archived by the gate.
 const EVENT_FLEET_ARCHIVED: &str = "gate_fleet_archived";
 
-/// What archived the fleet.
-///
-/// Two triggers and not a boolean: an operator reading the line wants to know
-/// whether a human's policy said stop or a runaway pattern did, and those lead
-/// to different runbooks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Trigger {
-    /// One action repeated past its threshold.
-    Anomaly,
-    /// A gate rule's behavior is `auto_kill`.
-    Policy,
-}
-
-impl Trigger {
-    /// The trigger's name, for the line an operator reads.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Anomaly => "anomaly",
-            Self::Policy => "policy",
-        }
-    }
-}
-
 impl Gates {
     /// Archive `fleet_id` so candidate discovery excludes it for good.
     ///
@@ -55,12 +31,12 @@ impl Gates {
     ///
     /// # Errors
     /// Reports a datastore that would not answer the archive. The caller absorbs
-    /// it — the EVENT is killed by policy whether or not the fleet's own row
-    /// could be flipped — but absorbing it is the caller's visible decision
+    /// it — the EVENT that tripped the rule ends whether or not the fleet's own
+    /// row could be flipped — but absorbing it is the caller's visible decision
     /// rather than something swallowed here.
     ///
     /// The row is stamped on the database clock.
-    pub async fn archive(&self, fleet_id: &Uuid7, trigger: Trigger) -> Result<()> {
+    pub async fn archive(&self, fleet_id: &Uuid7) -> Result<()> {
         let mut connection = self.database().acquire().await?;
         sqlx::query(sql::ARCHIVE_FLEET)
             .bind(FleetStatus::Archived.as_str())
@@ -71,30 +47,12 @@ impl Gates {
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let fleet = fleet_id.as_str();
-        let trigger_word = trigger.as_str();
         tracing::warn!(
             event = EVENT_FLEET_ARCHIVED,
             fleet_id = fleet,
-            trigger = trigger_word,
-            "the fleet is archived; no further work of its is admitted"
+            "the fleet ran away and is archived; no further work of its is admitted"
         );
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Trigger;
-
-    #[test]
-    fn the_two_triggers_name_themselves_distinctly() {
-        // They land in the same log field, so a shared or empty spelling would
-        // make the two incidents indistinguishable to the operator the field
-        // exists for.
-        assert_ne!(Trigger::Anomaly.as_str(), Trigger::Policy.as_str());
-        for trigger in [Trigger::Anomaly, Trigger::Policy] {
-            assert!(!trigger.as_str().is_empty(), "{trigger:?}");
-        }
     }
 }

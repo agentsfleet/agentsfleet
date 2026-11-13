@@ -146,10 +146,7 @@ fn validate(
         return Err(ErrorKind::Stale { etag: current }.into());
     }
     if row.status == ARCHIVED {
-        return Err(ErrorKind::State {
-            current: "archived",
-        }
-        .into());
+        return Err(ErrorKind::State { current: ARCHIVED }.into());
     }
     super::target(captured, &row.id, row.head_revision)?;
     captured.candidate.definition.validate_for_save()?;

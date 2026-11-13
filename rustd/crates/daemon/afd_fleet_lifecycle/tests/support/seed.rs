@@ -11,10 +11,10 @@ use jiff::Timestamp;
 use super::{Lane, NOW, mint};
 
 /// The status a fixture fleet is born in: leasable, as activation leaves it.
-const ACTIVE: &str = "active";
+const ACTIVE: &str = afd_fleet_lifecycle::FleetStatus::Active.as_str();
 
 /// The terminal status an archive leaves.
-const ARCHIVED: &str = "archived";
+const ARCHIVED: &str = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
 
 /// The resource version a native Save writes on its first row.
 const INITIAL_VERSION: i64 = 1;
