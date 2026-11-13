@@ -12,6 +12,14 @@ Indy stopped additional ZIPs and full capture delivery. Use targeted internal me
 
 Backend data differences belong to [M249_004](../pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md), not this visual backlog.
 
+## Current verification status
+
+Two findings are verified at the current code checkpoint: 31 and 32. The other 30 retained findings still need their closure evidence.
+
+The native v237 run passed 4,564 app tests and all 90 browser checks. Model details now uses its native accessible button and expanded state.
+
+A passing browser lane does not close unmeasured visual findings. Recheck affected findings after Claude’s #838 changes are integrated.
+
 ## Owner findings
 
 ## 8. Open backlog from the three reviews
@@ -64,13 +72,22 @@ Fix each item, add its regression check, and show the measured row. "Proposal" v
 
 ## Follow-up findings
 
-| Item | Scope | Required evidence |
-| --- | --- | --- |
-| 29 | Text weight, role colour and browser font smoothing across chat and Summary | Same-run computed styles, matching font asset hashes and pixel/ink checks |
-| 30 | Four corner radii and header cost type | Per-component radii; 13px/20px/500 cost label and baseline |
-| 31 | Exact action inspection | Shared dialog, preserved reason, inline approval decisions |
-| 32 | Generic activity summaries | Targets, raw commands, tool names and duration appear inside folds |
-| 33 | Activity connectors and separators | Vertical connectors in open details; no outer horizontal rules in open activity |
-| 34 | Cancel alignment | Every footer: same height/baseline, right alignment and 8px gap |
+| Item | Scope | Required evidence | Status |
+| --- | --- | --- | --- |
+| 29 | Text weight, role colour and browser font smoothing across chat and Summary | Same-run computed styles, matching font asset hashes and pixel/ink checks | ◻ Verification pending |
+| 30 | Four corner radii and header cost type | Per-component radii; 13px/20px/500 cost label and baseline | ◻ Verification pending |
+| 31 | Exact action inspection | Shared dialog, preserved reason, inline approval decisions | ✅ Verified — v237 |
+| 32 | Generic activity summaries | Targets, raw commands, tool names and duration appear inside folds | ✅ Verified — v237 |
+| 33 | Activity connectors and separators | Vertical connectors in open details; no outer horizontal rules in open activity | ◻ Verification pending |
+| 34 | Cancel alignment | Every footer: same height/baseline, right alignment and 8px gap | ◻ Verification pending |
 
 See M249_EXCEPTIONS.md for the nine accepted decisions. No external review ZIP is required.
+
+## Verified finding evidence
+
+| Finding | Evidence | Verified result |
+|---|---|---|
+| ✅ 31 | `FleetApprovalSummary.test.tsx`: “keeps evidence and a reason in the conversation and retains authorization errors”; passed within v237 app units | Exact action opens the shared dialog; recorded evidence is shown; the reason survives Done; Approve submits it and retains a 403 without claiming success. |
+| ✅ 32 | `chat-typography.spec.ts`: “recorded actions stay visible and distinguish every terminal outcome”; passed on desktop and phone in v237 | Visible summaries are generic; the full target remains accessible; raw input and duration appear inside details; success, failed, interrupted and unknown outcomes stay distinct. |
+
+Log: `/workspace/scratch/refresh-dry-app-v237.log`. Production code: `f12b9e326`, with the repaired resource selectors. The evidence records that test and documentation changes were uncommitted during the run.

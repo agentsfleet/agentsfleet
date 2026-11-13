@@ -14,9 +14,13 @@ test("Models and Team use actual components at the approved scale", async ({page
     await dialog.getByRole("combobox", {name: "Model", exact: true}).click();
     await page.getByRole("option", {name: /GLM 5.2/}).click();
     await expect(dialog.getByText("Context cap (tokens)")).toBeHidden();
-    await dialog.locator("summary").filter({hasText: "Model details"}).click();
+    const details = dialog.getByRole("button", {name: "Model details", exact: true});
+    await expect(details).toHaveAttribute("aria-expanded", "false");
+    await details.click();
+    await expect(details).toHaveAttribute("aria-expanded", "true");
     await expect(dialog.getByText("Context cap (tokens)")).toBeVisible();
-    await dialog.locator("summary").filter({hasText: "Model details"}).click();
+    await details.click();
+    await expect(details).toHaveAttribute("aria-expanded", "false");
     await dialog.getByRole("radio", {name: "Use saved key"}).click();
     await dialog.getByRole("combobox", {name: "Saved key"}).click();
     await page.getByRole("option", {name: "Fireworks workspace"}).click();
