@@ -254,14 +254,14 @@ function SkeletonDialogExamples() {
             Open dialog
           </DialogTrigger>
           <DialogContent data-testid="dialog-content">
-            <DialogHeader>
+            <DialogHeader className="pb-0">
               <DialogTitle>Confirm action</DialogTitle>
               <DialogDescription data-testid="dialog-description">
                 This is a smoke-route dialog for Playwright verification.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="ghost">Cancel</Button>
+              <Button variant="outline">Cancel</Button>
               <Button>Confirm</Button>
             </DialogFooter>
           </DialogContent>
