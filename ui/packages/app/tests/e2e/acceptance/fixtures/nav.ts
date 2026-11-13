@@ -7,9 +7,10 @@
  * workspace the app's entry redirect lands on, so a deep-link here matches what
  * a user reaches via `/`.
  */
-import type { Page } from "@playwright/test";
-import { getDefaultWorkspaceId } from "./seed";
+import type { Locator, Page } from "@playwright/test";
 import type { ClientHandle } from "./api-client";
+import { expect } from "@playwright/test";
+import { getDefaultWorkspaceId } from "./seed";
 
 // A URL matcher for a workspace-scoped page: `/w/<any-id>/<subpath>` with an
 // optional trailing query. Pass "" to match the workspace home (`/w/<id>`).
@@ -46,4 +47,18 @@ export async function openSettingsDestination(page: Page, label: string): Promis
   const href = await destination.getAttribute("href");
   if (!href) throw new Error(`Settings destination ${label} has no URL`);
   await Promise.all([page.waitForURL(href), destination.click()]);
+}
+
+/** Account identity and workspace choices have separate menu levels. */
+export async function openWorkspaceMenu(page: Page): Promise<Locator> {
+  const trigger = page.getByTestId("workspace-switcher");
+  if (await trigger.getAttribute("aria-expanded") !== "true") await trigger.click();
+  await page.getByRole("menuitem", {name: /^Switch workspace:/}).click();
+  return page.getByRole("menu", {name: "Switch workspace", exact: true});
+}
+
+export async function expectSelectedWorkspace(page: Page, name: string): Promise<void> {
+  await page.getByTestId("workspace-switcher").click();
+  await expect(page.getByRole("menuitem", {name: `Switch workspace: ${name}`, exact: true})).toBeVisible();
+  await page.keyboard.press("Escape");
 }

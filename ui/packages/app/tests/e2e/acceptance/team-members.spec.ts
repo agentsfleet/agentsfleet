@@ -18,7 +18,7 @@ import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { workspaceHref } from "./fixtures/nav";
+import { openWorkspaceMenu, workspaceHref } from "./fixtures/nav";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import {
   OWNER_INVITES, WAITING_INVITES, inviteeEmail, removeTeammate, signUpInvitee, type InviteRow, type OnePage,
@@ -163,11 +163,10 @@ test.describe("teammates join an account", () => {
     await expect(page).toHaveURL(new RegExp(`/w/${first!.id}/fleets/new(\\?|$)`));
 
     // The switcher files it under the owner's account, beside the invitee's own.
-    await page.getByTestId("workspace-switcher").click();
-    const menu = page.getByRole("menu");
+    const menu = await openWorkspaceMenu(page);
     await expect(menu.getByText(`${ownerName}'s account`, { exact: true })).toBeVisible();
     await expect(menu.getByText("Yours", { exact: true })).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: first!.name ?? "Unnamed workspace" })).toBeVisible();
+    await expect(menu.getByRole("group", {name: `${ownerName}'s account`, exact: true}).getByRole("menuitem", {name: first!.name ?? "Unnamed workspace", exact: true})).toBeVisible();
     await expect(page.getByTestId("invite-notice")).toHaveCount(0);
   });
 

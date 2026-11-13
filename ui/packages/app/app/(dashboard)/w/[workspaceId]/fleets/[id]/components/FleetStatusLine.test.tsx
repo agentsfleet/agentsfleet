@@ -95,7 +95,7 @@ describe("FleetStatusLine", () => {
     expect(toneOf("active")).toBe("pulse");
     cleanup();
     renderLine(event(), 0, true, "archived");
-    expect(toneOf("archived")).toBe("neutral");
+    expect(toneOf("Archived")).toBe("neutral");
   });
 
   it("says a run is still working rather than naming its event type, and keeps the glyph turning", () => {

@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 import { expect, test, type Route } from "@playwright/test";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
 import { signUpAs } from "./fixtures/signup";
-import { workspaceHref } from "./fixtures/nav";
+import { expectSelectedWorkspace, openWorkspaceMenu, workspaceHref } from "./fixtures/nav";
 
 const PASSWORD = "SignupFixture!2026-stable";
 const WORKSPACE_CREATE_TIMEOUT_MS = 30_000;
@@ -52,7 +52,7 @@ test.describe("workspace create", () => {
 
     const switcher = page.getByTestId("workspace-switcher");
     await expect(switcher).toBeVisible();
-    await switcher.click();
+    await openWorkspaceMenu(page);
     await page.getByTestId("workspace-new").click();
 
     const dialog = page.getByRole("dialog", { name: "Create workspace" });
@@ -64,13 +64,11 @@ test.describe("workspace create", () => {
     await dialog.getByTestId("workspace-create-submit").click();
     await expect(dialog).toBeHidden({ timeout: WORKSPACE_CREATE_TIMEOUT_MS });
 
-    await expect(switcher).toContainText(workspaceName, {
-      timeout: WORKSPACE_CREATE_TIMEOUT_MS,
-    });
+    await expectSelectedWorkspace(page, workspaceName);
     await expect(page).toHaveURL(new RegExp(`/w/(?!${workspaceId}/)[^/]+/fleets/new(?:\\?|$)`), {
       timeout: WORKSPACE_CREATE_TIMEOUT_MS,
     });
-    await switcher.click();
+    await openWorkspaceMenu(page);
     await expect(page.getByRole("menuitem", { name: workspaceName })).toBeVisible();
 
     await page.getByTestId("workspace-new").click();
@@ -90,10 +88,11 @@ test.describe("workspace create", () => {
       .toContainText(/already exists.*refreshing the workspace list/i);
     expect(duplicateActionPosts).toBe(1);
     await duplicateDialog.getByRole("button", { name: "Cancel" }).click();
-    await switcher.click();
+    await openWorkspaceMenu(page);
     await expect(page.getByRole("menuitem", { name: workspaceName }))
       .toHaveCount(1);
 
+    const activeUrl = page.url();
     const committedName = uniqueWorkspaceName();
     await page.getByTestId("workspace-new").click();
     const uncertainDialog = page.getByRole("dialog", {
@@ -124,11 +123,11 @@ test.describe("workspace create", () => {
       .toContainText(/refreshing the workspace list.*before retrying/i);
     // Losing the response also loses the created workspace identifier. The
     // refresh can expose it in the menu, but must not silently change routes.
-    await expect(switcher).toContainText(workspaceName);
+    await expect(page).toHaveURL(activeUrl);
     expect(uncertainActionPosts).toBe(1);
     await page.unroute("**/*", loseCommittedResponse);
     await uncertainDialog.getByRole("button", { name: "Cancel" }).click();
-    await switcher.click();
+    await openWorkspaceMenu(page);
     await expect(page.getByRole("menuitem", { name: committedName }))
       .toHaveCount(1);
   });

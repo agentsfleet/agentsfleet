@@ -53,7 +53,7 @@ export async function expectRowState(
   // page was correct each time, and the locator was reading the tree React was
   // in the middle of retiring. Filtering to the visible one reads the wall the
   // person is actually looking at.
-  const row = page.locator(`a[href$="/fleets/${fleetId}"]`).filter({ visible: true });
+  const row = page.locator(`a[data-state][href$="/fleets/${fleetId}"]`).filter({ visible: true });
   await expect(row).toBeVisible();
   await expect(row).toHaveAttribute("data-state", state, {
     timeout: ROW_STATE_TIMEOUT_MS,
