@@ -180,10 +180,12 @@ it("keeps evidence and a reason in the conversation and retains authorization er
   mocks.approve.mockResolvedValue({ok: false, status: 403, error: "Not permitted", errorCode: "UZ-AUTH-022"});
   render(<FleetApprovalSummary {...PROPS} />);
   await screen.findByText(GATE.proposed_action);
-  fireEvent.click(screen.getByText("Action details"));
+  fireEvent.click(screen.getByRole("button", {name: "View exact action"}));
+  expect(screen.getByRole("dialog", {name: "Exact action"})).toBeTruthy();
   expect(screen.getByText("Only the release tag")).toBeTruthy();
   expect(screen.getByText(/runner:release/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Reason (optional)"), {target: {value: "  release reviewed  "}});
+  fireEvent.click(screen.getByRole("button", {name: "Done"}));
   fireEvent.click(screen.getByRole("button", {name: "Approve"}));
   await screen.findByRole("alert");
   expect(mocks.approve).toHaveBeenCalledWith("workspace", "gate-one", "release reviewed");

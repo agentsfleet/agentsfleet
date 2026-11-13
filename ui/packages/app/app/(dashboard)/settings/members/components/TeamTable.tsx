@@ -16,7 +16,7 @@ type Props = {
   onRevoke: (invite: InviteSummary) => void;
   onResend: (invite: InviteSummary) => void;
 };
-const ROW = "grid min-w-0 grid-cols-[minmax(0,1fr)_40px] items-center gap-x-xl gap-y-sm px-5 py-4.5 min-[680px]:grid-cols-[36px_minmax(0,1fr)_40px] min-[900px]:grid-cols-[36px_minmax(0,1fr)_76px_148px_40px]";
+const ROW = "grid min-w-0 grid-cols-[minmax(0,1fr)_40px] items-center gap-x-xl gap-y-sm px-xl sm:px-5 py-4.5 min-[680px]:grid-cols-[36px_minmax(0,1fr)_40px] min-[900px]:grid-cols-[36px_minmax(0,1fr)_76px_148px_36px]";
 const AVATAR = "hidden size-9 shrink-0 items-center justify-center rounded-full bg-muted text-eyebrow font-bold min-[680px]:flex";
 const META = "col-start-1 min-[680px]:col-start-2 min-[900px]:col-auto";
 const ACTION = "col-start-2 row-start-1 min-[680px]:col-start-3 min-[900px]:col-auto min-[900px]:row-auto";
@@ -55,7 +55,7 @@ function MemberRow({member, pending, onRemove}: Pick<Props, "pending" | "onRemov
     <span className={`${META} text-label capitalize text-muted-foreground`}>{member.role}</span>
     <span className={`${META} text-eyebrow text-text-dim`}>Joined <Time value={member.joined_at} format="date" tooltip /></span>
     {!owner ? <div className={ACTION}><DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={pending} aria-label={`Manage ${name}`}><DotsThreeIcon size={16} /></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="min-[900px]:size-9 min-[900px]:min-h-9" disabled={pending} aria-label={`Manage ${name}`}><DotsThreeIcon size={16} /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => onRemove(member)}>Remove {name}</DropdownMenuItem></DropdownMenuContent>
     </DropdownMenu></div> : null}
   </li>;
@@ -71,7 +71,7 @@ function InvitationRow({invite, pending, onResend, onRevoke}: Pick<Props, "pendi
     <span className={`${META} text-label text-muted-foreground`}>Member</span>
     <span className={`${META} text-eyebrow text-text-dim`}>Expires <Time value={invite.expires_at} format="date" tooltip /></span>
     <div className={ACTION}><DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={pending} aria-label={`Manage invite for ${invite.email}`}><DotsThreeIcon size={16} /></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="min-[900px]:size-9 min-[900px]:min-h-9" disabled={pending} aria-label={`Manage invite for ${invite.email}`}><DotsThreeIcon size={16} /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {invite.email_status !== EMAIL_STATUS.unconfigured ? <DropdownMenuItem onSelect={() => onResend(invite)}>Send invite again</DropdownMenuItem> : null}
         <DropdownMenuItem asChild onSelect={event => event.preventDefault()}><CopyButton value={invite.link} label={`Copy invite link for ${invite.email}`} showLabel className="w-full justify-start border-0 bg-transparent" /></DropdownMenuItem>

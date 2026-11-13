@@ -1,3 +1,4 @@
+import {visualMembers, visualInvites, visualModels} from "./visual-fixture-data";
 import {useState} from "react";
 import {AppRouterContext} from "next/dist/shared/lib/app-router-context.shared-runtime";
 import {PathnameContext, SearchParamsContext} from "next/dist/shared/lib/hooks-client-context.shared-runtime";
@@ -22,9 +23,9 @@ export function ResourceSettingsFixture() {
         <Button size="sm" variant="ghost" onClick={() => setTeam(false)}>Models</Button>
         <Button size="sm" variant="ghost" onClick={() => setTeam(true)}>Team</Button>
       </div>
-      <ShellFrame workspaces={workspaces}>{team ? <MembersView initialMembers={SAMPLE_MEMBERS} initialInvites={SAMPLE_INVITES} /> :
+      <ShellFrame workspaces={workspaces}>{team ? <MembersView initialMembers={visualMembers(SAMPLE_MEMBERS)} initialInvites={visualInvites(SAMPLE_INVITES)} /> :
         <ModelCatalogueProvider><PageLayout>
-          <ModelsRegistryTable workspaceId={WORKSPACE} workspaces={workspaces} initialPage={SAMPLE_MODELS} initialError={null} />
+          <ModelsRegistryTable workspaceId={WORKSPACE} workspaces={workspaces} initialPage={visualModels(SAMPLE_MODELS)} initialError={null} />
         </PageLayout></ModelCatalogueProvider>}
       </ShellFrame>
     </TooltipProvider></SearchParamsContext.Provider>

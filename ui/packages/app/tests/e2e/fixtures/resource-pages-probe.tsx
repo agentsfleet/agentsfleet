@@ -1,3 +1,4 @@
+import { visualParity, visualSecretName } from "./visual-fixture-data";
 import type { ReactNode } from "react";
 import type { ConnectorCatalogEntry } from "@/lib/api/connectors";
 import { useEffect, useState } from "react";
@@ -53,12 +54,12 @@ export function ResourcePagesFixture() {
 function ResourcePage({kind}: {kind: typeof PAGES[number]["key"]}) {
   if (kind === "new") return <EmptySetup />;
   if (kind === "usage") return <UsageLayout>
-    <BillingReportView report={billingReport({from_at: "2026-11-01T00:00:00Z", through_at: "2026-11-12T11:44:00Z", activities: {items: [billingActivity({recorded_at: "2026-11-12T11:00:00Z"})], total: 1, next_cursor: null}})} pageSize={25} modelNames={{[BILLING_MODEL]: BILLING_MODEL_NAME}} detail={{status: BILLING_DETAIL_STATE.closed}} selected="" />
+    <BillingReportView report={billingReport({from_at: "2026-11-01T00:00:00Z", through_at: "2026-11-12T11:44:00Z", activities: {items: ["Release watch", "Merge watch", "Support triage"].map((name, index) => billingActivity({id: `sample-usage-${index}`, fleet_id: `sample-fleet-${index}`, fleet_name: visualParity() ? name : `Sample ${name}`, recorded_at: "2026-11-12T11:00:00Z"})), total: 3, next_cursor: null}})} pageSize={25} modelNames={{[BILLING_MODEL]: BILLING_MODEL_NAME}} detail={{status: BILLING_DETAIL_STATE.closed}} selected="" />
   </UsageLayout>;
   if (kind === "library") return <LibraryContent workspaceId={WORKSPACE} />;
   if (kind === "integrations") return <Resource title={CONNECT_APPS_COPY.title} description={CONNECT_APPS_COPY.description}><IntegrationsConnectors workspaceId={WORKSPACE} catalog={CONNECTORS} /></Resource>;
   return <Resource title="Secrets" description={<SecretsDescription />} actions={<AddSecretDialog workspaceId={WORKSPACE} />}>
-    <SecretsList workspaceId={WORKSPACE} secrets={[{name: "Release service", kind: "custom_secret", created_at: "2026-11-11T10:00:00Z"}]} />
+    <SecretsList workspaceId={WORKSPACE} secrets={[{name: visualSecretName(), kind: "custom_secret", created_at: "2026-11-11T10:00:00Z"}]} />
   </Resource>;
 }
 

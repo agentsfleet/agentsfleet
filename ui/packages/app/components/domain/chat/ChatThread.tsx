@@ -22,7 +22,7 @@ export function ChatThread({children, footer, label, testId, autoScroll = true, 
         <FleetWorkSidebar>{summary}</FleetWorkSidebar>
       </div>
       <ThreadPrimitive.ViewportFooter data-testid="fleet-chat-footer"
-        className={cn("flex max-h-[calc(100%_-_3rem_-_var(--sp-sm))] shrink-0 flex-col bg-background px-xl sm:px-chat-inset", centered ? "relative mb-2xl pt-xl sm:mb-auto sm:-translate-y-xl sm:pt-3xl" : "sticky bottom-0 pb-5 pt-lg", summary && "summary:col-start-1 summary:row-start-2 summary:max-h-[calc(100dvh_-_9rem)]")}>
+        className={cn("flex max-h-[calc(100%_-_3rem_-_var(--sp-sm))] shrink-0 flex-col bg-background px-xl sm:px-chat-inset", centered ? "relative mb-2xl pt-xl sm:mb-auto sm:-translate-y-xl sm:pt-3xl" : "relative pb-5 pt-lg min-[681px]:sticky min-[681px]:bottom-0", summary && "summary:col-start-1 summary:row-start-2 summary:max-h-[calc(100dvh_-_9rem)]")}>
         <div className="relative mx-auto flex w-full max-w-chat flex-col">
         {autoScroll ? <ThreadPrimitive.ScrollToBottom asChild>
           <Button variant="secondary" size="icon" aria-label="Jump to latest"

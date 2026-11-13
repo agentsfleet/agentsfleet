@@ -21,7 +21,7 @@ export function SecretActions({secret, pending, protectedFromDelete, onEdit, onD
     setOpen(false);
   }
   return <Dialog open={open} onOpenChange={setOpen}>
-    <DialogTrigger asChild><Button ref={trigger} variant="ghost" className="min-h-9 pointer-coarse:min-h-11" disabled={pending} aria-label={`Manage ${secret.name}`}>Manage</Button></DialogTrigger>
+    <DialogTrigger asChild><Button ref={trigger} variant="ghost" size="compact" disabled={pending} aria-label={`Manage ${secret.name}`}>Manage</Button></DialogTrigger>
     <DialogContent onCloseAutoFocus={event => {
       const next = nextAction.current;
       nextAction.current = null;
@@ -33,14 +33,16 @@ export function SecretActions({secret, pending, protectedFromDelete, onEdit, onD
       trigger.current.focus();
       next();
     }}>
-      <DialogHeader><DialogTitle>{secret.name}</DialogTitle><DialogDescription>
-        Stored in this workspace. Fleet access details are not available here.
+      <DialogHeader><DialogTitle>Manage secret</DialogTitle><DialogDescription>
+        <span className="mb-md block font-medium text-foreground">“{secret.name}”</span>Stored in this workspace. Fleet access details are not available here.
       </DialogDescription></DialogHeader>
       <p className="text-label text-muted-foreground">{secretType(secret)} · Value hidden</p>
       {protectedFromDelete ? <p className="text-eyebrow text-text-dim">This key is used by your active model. Choose another model before deleting it.</p> : null}
-      <DialogFooter>
-        <Button variant="outline" disabled={pending || protectedFromDelete} onClick={() => handoff(onDelete)}>Delete secret</Button>
+      <div className="mt-xl grid grid-cols-2 gap-xl">
         <Button variant="outline" disabled={pending} onClick={() => handoff(onEdit)}>Replace value</Button>
+        <Button variant="outline" disabled={pending || protectedFromDelete} onClick={() => handoff(onDelete)}>Delete secret</Button>
+        </div>
+      <DialogFooter>
         <Button onClick={() => setOpen(false)}>Done</Button>
       </DialogFooter>
     </DialogContent>

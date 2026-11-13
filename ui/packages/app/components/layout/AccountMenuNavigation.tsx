@@ -19,7 +19,7 @@ export function AccountMenuNavigation({workspaceId, billing}: Props) {
     <MenuLinks items={ACCOUNT_NAV} workspaceId={workspaceId} billing={billing} />
     <AppearanceMenuItem />
     <DropdownMenuSeparator />
-    <AuthSignOutButton redirectUrl="/sign-in"><DropdownMenuItem><SignOutIcon size={NAV_ICON_SIZE} className="shrink-0 text-muted-foreground" aria-hidden="true" />Sign out</DropdownMenuItem></AuthSignOutButton>
+    <AuthSignOutButton redirectUrl="/sign-in"><DropdownMenuItem className="gap-lg px-xl"><SignOutIcon size={NAV_ICON_SIZE} className="shrink-0 text-muted-foreground" aria-hidden="true" />Sign out</DropdownMenuItem></AuthSignOutButton>
   </>;
 }
 
@@ -28,7 +28,7 @@ function MenuLinks({ items, workspaceId, billing }: { items: NavEntry[]; workspa
   const activeHref = resolveActiveHref(items.map((entry) => resolveHref(entry, workspaceId)), pathname);
   return items.map((entry) => {
     const href = resolveHref(entry, workspaceId);
-    return <DropdownMenuItem key={entry.path} asChild onSelect={() => trackNavigationClicked({ source: navSource(entry), surface: NAV_SURFACE, target: href })}>
+    return <DropdownMenuItem className="gap-lg px-xl" key={entry.path} asChild onSelect={() => trackNavigationClicked({ source: navSource(entry), surface: NAV_SURFACE, target: href })}>
       <Link href={href} aria-current={href === activeHref ? "page" : undefined}
         className={cn(href === activeHref && "bg-accent text-primary")}
         >

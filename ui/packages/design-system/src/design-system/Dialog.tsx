@@ -41,9 +41,12 @@ export type DialogContentProps = ComponentProps<typeof DialogPrimitive.Content> 
   /** Disables the close X while the dialog refuses to close (a send in flight),
    * so it reads as unavailable instead of looking live and doing nothing. */
   closeDisabled?: boolean;
+  /** Wider forms keep their actions visible while the phone body scrolls. */
+  size?: "default" | "wide";
 };
 
 const DIALOG_CONTENT_CLASS = [
+  "[--control-focus-surface:var(--surface-1)]",
   "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
   "w-[calc(100%-var(--spacing-3xl))] max-w-dialog rounded-lg border border-border bg-card p-2xl font-sans text-card-foreground shadow-dialog",
   "max-h-[calc(100dvh-var(--spacing-3xl))] overflow-y-auto",
@@ -52,10 +55,21 @@ const DIALOG_CONTENT_CLASS = [
   "duration-snap ease-snap motion-reduce:animate-none",
 ].join(" ");
 
+const WIDE_DIALOG_CLASS = [
+  "max-w-model-dialog [&_[data-slot=dialog-footer]_button]:min-h-11",
+  "max-[42.5rem]:p-5 max-[42.5rem]:[&_[data-dialog-close]]:top-5",
+  "max-[42.5rem]:[&_[data-slot=dialog-footer]]:sticky max-[42.5rem]:[&_[data-slot=dialog-footer]]:-bottom-5",
+  "max-[42.5rem]:[&_[data-slot=dialog-footer]]:z-10 max-[42.5rem]:[&_[data-slot=dialog-footer]]:border-t",
+  "max-[42.5rem]:[&_[data-slot=dialog-footer]]:border-border max-[42.5rem]:[&_[data-slot=dialog-footer]]:bg-card",
+  "max-[42.5rem]:[&_[data-slot=dialog-footer]]:-mx-5 max-[42.5rem]:[&_[data-slot=dialog-footer]]:-mb-5",
+  "max-[42.5rem]:[&_[data-slot=dialog-footer]]:px-5 max-[42.5rem]:[&_[data-slot=dialog-footer]]:py-xl",
+].join(" ");
+
 export function DialogContent({
   className,
   children,
   closeDisabled = false,
+  size = "default",
   ref,
   onOpenAutoFocus,
   onCloseAutoFocus,
@@ -69,7 +83,7 @@ export function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Content
         ref={ref}
-        className={cn(DIALOG_CONTENT_CLASS, className)}
+        className={cn(DIALOG_CONTENT_CLASS, size === "wide" && WIDE_DIALOG_CLASS, className)}
         {...props}
         onOpenAutoFocus={(event) => {
           openerRef.current = document.activeElement;
@@ -97,7 +111,7 @@ export function DialogContent({
 function DialogCloseButton({ disabled }: { disabled: boolean }) {
   return (
     <DialogClose asChild>
-      <Button data-dialog-close="" variant="ghost" size="icon" className="absolute right-xl top-2xl" disabled={disabled}>
+      <Button data-dialog-close="" variant="ghost" size="icon" className="absolute right-xl top-2xl size-10 min-h-10 pointer-coarse:min-h-10 pointer-coarse:min-w-10" disabled={disabled}>
         <XIcon size={16} aria-hidden="true" />
         <span className="sr-only">Close</span>
       </Button>
@@ -136,5 +150,5 @@ export function DialogDescription({ className, ref, ...props }: DialogDescriptio
 }
 
 export function DialogFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div data-slot="dialog-footer" className={cn("flex flex-wrap justify-end gap-md pt-2xl", className)} {...props} />;
+  return <div data-slot="dialog-footer" className={cn("flex flex-nowrap justify-end gap-md pt-2xl", className)} {...props} />;
 }

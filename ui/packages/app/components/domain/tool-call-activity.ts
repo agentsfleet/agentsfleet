@@ -22,6 +22,15 @@ export function toolActivity(name: string, args: ToolArgs | undefined, state: Ce
   return {label, target: description.target, kind: description.kind, state};
 }
 
+/** Targets and raw tool names belong in the disclosure. */
+export function toolActivityLabel(activity: ToolActivity): string {
+  const label = activity.label;
+  if (activity.kind === "write" && !/\bfiles?\b/.test(label)) return `${label} file`;
+  if (activity.kind === "tool" && /\b(using|used)$/i.test(label)) return `${label} tool`;
+  if (activity.kind === "list" && /\b(listing|listed)$/i.test(label)) return `${label} items`;
+  return label;
+}
+
 /** Only this group's indices contribute; an adjacent text part cannot change its outcome. */
 export function toolGroupActivity(content: MessageState["content"], indices: readonly number[], running: boolean, wallMs?: number | null): ToolActivity {
   const calls = indices.flatMap(index => {const part = content[index]; return part?.type === "tool-call" ? [part] : [];});

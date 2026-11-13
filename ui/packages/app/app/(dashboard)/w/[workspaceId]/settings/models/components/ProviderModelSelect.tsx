@@ -30,7 +30,7 @@ export default function ProviderModelSelect({ id, provider, model, onModelChange
     <Label htmlFor={id}>{label}</Label>
     <ModelControl id={id} label={label} model={model} onModelChange={onModelChange}
       options={options} selected={selected} status={status} />
-    <CatalogueBrowseControls id={`${id}-advanced`} advanced={showAdvanced} onAdvancedChange={setShowAdvanced} />
+    <div className="pt-md"><CatalogueBrowseControls id={`${id}-advanced`} advanced={showAdvanced} onAdvancedChange={setShowAdvanced} /></div>
     {selected ? details === "disclosure" ? <details className="text-label">
       <summary className="min-h-11 cursor-pointer rounded-sm py-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9">Model details</summary>
       <CatalogueModelDetails model={selected} />

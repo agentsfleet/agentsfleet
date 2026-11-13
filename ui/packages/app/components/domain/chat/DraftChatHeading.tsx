@@ -40,7 +40,7 @@ function HeadingContent({client, view, workspace, fleetPage, returnToFleet, menu
   const empty = !view.draft && !view.preview && !view.fleet;
   const canEdit = Boolean(draft?.candidate || view.preview || view.fleet?.definition);
   return <>
-    <header className="fleet-chat-heading flex min-h-16 w-full shrink-0 flex-wrap items-center gap-md border-b border-border-subtle px-lg py-sm sm:px-2xl">
+    <header className="fleet-chat-heading flex min-h-16 w-full shrink-0 flex-wrap items-center gap-md border-b border-border-subtle px-lg py-sm summary-medium:px-xl summary-wide:px-2xl">
       {!fleetPage && !empty ? <Button asChild variant="ghost" size="icon" aria-label={returnFleet ? "Back to fleet conversation" : "Back to your fleets"}><Link href={returnFleet ? `/w/${workspace}/fleets/${returnFleet}` : `/w/${workspace}/fleets`}><ArrowLeftIcon size={16} aria-hidden="true" /></Link></Button> : null}
       {empty ? <NotePencilIcon size={16} aria-hidden="true" /> : null}
       <HeadingTitle client={client} view={view} state={state} label={label} locked={locked} primary={!fleetPage && Boolean(view.draft || view.preview || view.fleet)} />
@@ -105,7 +105,7 @@ function HeadingTitle({client, view, state, label, locked, primary}: {client: Dr
     <Button size="sm" disabled={locked || !state.title.trim()} onClick={() => {void client.rename(state.title.trim()).then(() => state.setRenaming(false)).catch(ignore);}}>Save name</Button>
     <Button variant="ghost" size="sm" disabled={locked} onClick={() => state.setRenaming(false)}>Cancel</Button>
   </>;
-  return <div className="min-w-0 flex-1"><Title className="truncate text-chat-title font-semibold">{label}</Title>
+  return <div className="min-w-0 flex-1"><Title data-app-header-title="" className="truncate text-chat-title font-semibold">{label}</Title>
     {view.draft || view.preview || view.fleet ? <p className="mt-xs text-eyebrow text-muted-foreground">Fleet setup{view.fleet ? ` · v${view.fleet.setup_revision}` : ""}</p> : null}</div>;
 }
 

@@ -158,12 +158,12 @@ describe("buttonVariants / buttonClassName", () => {
     expect(new Set(classes).size).toBe(variants.length);
   });
 
-  it("standard text controls share the approved 40px minimum", () => {
+  it("standard controls share responsive size tokens", () => {
     for (const size of ["default", "sm"] as const) {
-      expect(buttonVariants({ size }).split(" ")).toEqual(expect.arrayContaining(["min-h-10", "px-xl", "py-sm"]));
+      expect(buttonVariants({ size }).split(" ")).toEqual(expect.arrayContaining(["min-h-[var(--control-height)]", "px-xl", "py-sm"]));
     }
     expect(buttonVariants({ size: "lg" }).split(" ")).toContain("h-11");
-    expect(buttonVariants({ size: "icon" }).split(" ")).toEqual(expect.arrayContaining(["h-10", "w-10"]));
+    expect(buttonVariants({ size: "icon" }).split(" ")).toEqual(expect.arrayContaining(["size-[var(--control-height)]"]));
     expect(buttonVariants({ size: "icon-compact" }).split(" ")).toEqual(expect.arrayContaining(["h-8", "w-8"]));
   });
 });

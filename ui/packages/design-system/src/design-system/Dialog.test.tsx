@@ -16,7 +16,7 @@ describe("Dialog", () => {
       return <>
         <button onClick={() => setOpen(true)}>Edit item</button>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent>
+          <DialogContent size="wide">
             <DialogTitle>Edit item</DialogTitle>
             <DialogDescription>Update this item.</DialogDescription>
             <input aria-label="Name" />

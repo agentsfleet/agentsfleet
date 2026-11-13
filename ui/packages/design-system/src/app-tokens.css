@@ -98,7 +98,7 @@
   --text-muted: #495361;
   --text-subtle: #5e6876;
   --text-dim: #5e6876;
-  --chat-loading-base: #5e6876;
+  --chat-loading-base: #495361;
   --chat-loading-sweep: #303a48;
   --pulse: #24593d;
   --pulse-dim: #1d4c33;
@@ -116,6 +116,7 @@
 
 @media (max-width: 42.5rem) {
   :root {
+    --table-cell-inline: 16px;
     --fs-conversation: 1rem;
     --lh-conversation: 1.625rem;
     --fs-composer: 1rem;

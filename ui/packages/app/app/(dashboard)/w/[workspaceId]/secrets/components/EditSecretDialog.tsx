@@ -18,9 +18,9 @@ export default function EditSecretDialog({workspaceId, name, open, onOpenChange}
   return <Dialog open={open} onOpenChange={close}>
     <DialogContent className="ph-no-capture ph-no-record" closeDisabled={pending}>
       <DialogHeader>
-        <DialogTitle>Replace secret &ldquo;{name}&rdquo;</DialogTitle>
+        <DialogTitle>Replace secret</DialogTitle>
         <DialogDescription>
-          Re-enter every field you want to keep. Saving replaces all fields.
+          <span className="mb-md block font-medium text-foreground">“{name}”</span>Re-enter every field you want to keep. Saving replaces all fields.
         </DialogDescription>
       </DialogHeader>
       {open ? <AddSecretForm key={name} workspaceId={workspaceId} initialName={name} mode={SECRET_FORM_MODE.REPLACE}

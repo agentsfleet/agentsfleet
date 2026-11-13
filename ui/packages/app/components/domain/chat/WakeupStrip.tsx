@@ -42,7 +42,7 @@ function OwnedWakeups({workspace, schedules}: {workspace: string; schedules: rea
       return changeSchedule(workspace, current, {status: schedule.status === "paused" ? "active" : "paused"}, signal);
     }, value => updated(schedule, value));}} />;
   return <>
-    {next ? <div className="mx-5 rounded-t-md border border-b-0 border-border bg-muted px-lg py-1.5">
+    {next ? <div className="mx-5 rounded-t-md border border-b-0 border-border bg-muted px-lg py-1">
       {row(next)}{rest.length ? <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="eyebrow">{rest.length} more wake-ups</Button></CollapsibleTrigger>
         <CollapsibleContent className="max-h-40 overflow-y-auto">{rest.map(row)}</CollapsibleContent></Collapsible> : null}
       {control.error && !editing && !deleting ? <p role="alert" className="text-label text-destructive">{control.error}<Button variant="link" onClick={control.refresh}>Refresh schedule</Button></p> : null}
@@ -62,11 +62,11 @@ function WakeupRow({schedule, pending, onEdit, onToggle, onDelete}: {
 }) {
   const label = schedule.description || "Scheduled wake-up";
   const locked = pending || !["active", "paused"].includes(schedule.status);
-  return <fieldset aria-label={label} className="flex min-w-0 items-center gap-md">
+  return <fieldset aria-label={label} className="flex min-w-0 items-center gap-0">
     <ClockIcon size={16} className="shrink-0" aria-hidden="true" />
     <div className="min-w-0 flex-1" title={label}><WakeupState schedule={schedule} compact /></div>
-    <Button variant="ghost" size="icon-sm" className="text-foreground" aria-label="Edit wake-up" disabled={locked} onClick={onEdit}><PencilSimpleIcon size={16} /></Button>
-    <Button variant="ghost" size="icon-sm" className="text-foreground" aria-label={schedule.status === "paused" ? "Resume wake-up" : "Pause wake-up"} disabled={locked} onClick={onToggle}>{schedule.status === "paused" ? <PlayIcon size={16} /> : <PauseIcon size={16} />}</Button>
-    <Button variant="ghost" size="icon-sm" className="text-foreground" aria-label="Delete wake-up" disabled={locked} onClick={onDelete}><TrashIcon size={16} /></Button>
+    <Button variant="ghost" size="icon-row" className="text-foreground" aria-label="Edit wake-up" disabled={locked} onClick={onEdit}><PencilSimpleIcon size={16} /></Button>
+    <Button variant="ghost" size="icon-row" className="text-foreground" aria-label={schedule.status === "paused" ? "Resume wake-up" : "Pause wake-up"} disabled={locked} onClick={onToggle}>{schedule.status === "paused" ? <PlayIcon size={16} /> : <PauseIcon size={16} />}</Button>
+    <Button variant="ghost" size="icon-row" className="text-foreground" aria-label="Delete wake-up" disabled={locked} onClick={onDelete}><TrashIcon size={16} /></Button>
   </fieldset>;
 }

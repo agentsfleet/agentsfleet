@@ -19,7 +19,7 @@ export function Input({ className, type, ref, ...props }: InputProps) {
         "px-lg py-sm text-body-sm text-foreground font-sans",
         "placeholder:text-text-dim placeholder:opacity-100",
         "aria-invalid:border-destructive",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-[var(--control-focus-surface)]",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "transition-colors duration-snap ease-snap",
         className,
