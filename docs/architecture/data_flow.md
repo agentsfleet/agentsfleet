@@ -441,7 +441,9 @@ GET fleet and CLI expose both independently from required activation checks.
 
 #### Retry, archive and delete
 
-Same-key POST or `PATCH fleet {status:"active"}` with the current resource `If-Match` resumes missing setup checks. Approving a setup grant runs the same step, so a fleet whose last grant is approved activates with no further request (`afd_api_tenant`'s approval resolve). PATCH stays status/name only. Concurrent setup requests share the same guarded stages and initial admission identity.
+Same-key POST or `PATCH fleet {status:"active"}` with the current resource `If-Match` resumes missing setup checks. Approving a setup grant runs the same step (`afd_api_tenant`'s approval resolve). A fleet whose last grant is approved then activates with no further request.
+
+PATCH stays status/name only. Concurrent setup requests share the same guarded stages and initial admission identity.
 
 A name edit during installing invalidates the pending review and refuses activation until a newly reviewed revision is applied. It cannot silently change accepted creation inputs.
 

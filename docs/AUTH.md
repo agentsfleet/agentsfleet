@@ -288,11 +288,21 @@ It includes platform key rotation and access across tenants. Read-only inspectio
 
 ### CLI help: scoped advertising, not authorization
 
-`agentsfleet --help`, `agentsfleet platform --help`, a typo at either level and `agentsfleet --completions <shell>` advertise only the `platform` commands the caller can use. The CLI reads `scopes` from `GET /v1/users/me`, which renders the closure `ScopeSet` already holds, and lists a platform command when its scope is in that list (`cli/src/program/entry/discovery.ts`). It keeps no ladder of its own.
+`agentsfleet --help`, `agentsfleet platform --help`, a typo at either level and `agentsfleet --completions <shell>` advertise only the `platform` commands the caller can use.
 
-The read is one attempt bounded to two seconds, and it goes out only when it is safe to present the credential. A stored login goes only to the deployment that minted it. An `AGENTSFLEET_API_KEY` goes only to a target that was inferred or set in `AGENTSFLEET_API_URL`, never to a host named only by `--api` on that line, and it never falls back to the stored login. A failed, skipped or malformed answer advertises nothing. No command that runs makes the read.
+The CLI reads `scopes` from `GET /v1/users/me`, which renders the closure `ScopeSet` already holds. It lists a platform command when its scope is in that list (`cli/src/program/entry/discovery.ts`). It keeps no ladder of its own.
 
-Hiding is not refusal. An unadvertised command still parses, meets `guardCommand`, and is decided by the route's scope gate on the server, under the refresh policy above. A completion script is a snapshot of what its credential could see when it was generated. Write it to a file rather than sourcing `$(agentsfleet --completions zsh)` from a shell profile, which would make the read at every shell start, and regenerate it after a login, a target change or a permission change.
+The read is one attempt bounded to two seconds. It goes out only when it is safe to present the credential. A stored login goes only to the deployment that minted it.
+
+An `AGENTSFLEET_API_KEY` goes only to a target that was inferred or set in `AGENTSFLEET_API_URL`. It never goes to a host named only by `--api` on that line. It never falls back to the stored login.
+
+A failed, skipped or malformed answer advertises nothing. No command that runs makes the read.
+
+Hiding is not refusal. An unadvertised command still parses and meets `guardCommand`. The route's scope gate on the server decides it, under the refresh policy above.
+
+A completion script is a snapshot of what its credential could see when it was generated. Write it to a file. Sourcing `$(agentsfleet --completions zsh)` from a shell profile would make the read at every shell start.
+
+Regenerate the file after a login, a target change or a permission change.
 
 ## Signup: what `user.created` writes
 
