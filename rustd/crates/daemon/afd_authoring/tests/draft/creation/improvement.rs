@@ -6,7 +6,7 @@ use super::fixture::Case;
 use af_core::{error_code, id::Uuid7};
 use afd_authoring::{
     SavedFleet,
-    types::{ApplyRevision, DraftPatch, DraftState, SaveFleet, SaveSource, Source, Start},
+    types::{ApplyRevision, DraftPatch, SaveFleet, SaveSource, Source, Start},
 };
 
 /// Saves a funded fleet under `name` and answers it active.
@@ -44,14 +44,6 @@ async fn improvement(c: &Case, saved: &SavedFleet) -> (Uuid7, ApplyRevision) {
         review_digest: reviewed.review.expect("live review").review_digest,
     };
     (draft.id, apply)
-}
-
-async fn status(c: &Case, fleet: &Uuid7) -> String {
-    sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id=$1")
-        .bind(fleet)
-        .fetch_one(&mut *c.base.connection().await)
-        .await
-        .expect("the saved fleet")
 }
 
 /// The stored first revision's runtime choice, and whether its definition
@@ -121,59 +113,25 @@ async fn an_improvement_chat_inherits_the_model_its_fleet_resolved_at_save() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_paused_fleet_takes_the_revision_without_reinstalling_and_closes_the_chat() {
+async fn an_archived_fleet_refuses_the_revision_and_keeps_its_head() {
     let c = Case::create().await;
-    let saved = active(&c, "improve-paused").await;
-    let (draft, apply) = improvement(&c, &saved).await;
-    sqlx::query("UPDATE fleet.fleets SET status='paused' WHERE id=$1")
-        .bind(&saved.id)
-        .execute(&mut *c.base.connection().await)
-        .await
-        .expect("an operator paused the fleet");
-    let applied = c
-        .creations
-        .apply_revision(
-            c.base.access(),
-            &saved.id,
-            Some(&saved.setup_etag),
-            &mint(),
-            apply,
-            now(),
-        )
-        .await
-        .expect("a paused fleet takes a revision");
-    assert_eq!(applied.setup_revision, "2");
-    assert_eq!(
-        status(&c, &saved.id).await,
-        "paused",
-        "no reinstall is started"
-    );
-    let closed = c.base.drafts.read(c.base.access(), &draft).await;
-    assert_eq!(closed.expect("closed chat").state, DraftState::Closed);
-    c.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_killed_fleet_refuses_the_revision_and_keeps_its_head() {
-    let c = Case::create().await;
-    let saved = active(&c, "improve-killed").await;
+    let saved = active(&c, "improve-archived").await;
     let (_, apply) = improvement(&c, &saved).await;
-    let killed = c
+    let archived = c
         .creations
         .patch(
             c.base.access(),
             &saved.id,
             Some(&saved.etag),
-            Some("killed"),
+            Some("archived"),
             None,
             now(),
         )
         .await
-        .expect("Kill");
+        .expect("Archive");
     assert_eq!(
-        killed.setup_etag, saved.setup_etag,
-        "Kill moves no revision"
+        archived.setup_etag, saved.setup_etag,
+        "Archive moves no revision"
     );
     let refused = c
         .creations
@@ -186,10 +144,10 @@ async fn a_killed_fleet_refuses_the_revision_and_keeps_its_head() {
             now(),
         )
         .await
-        .expect_err("a killed fleet takes no revision");
-    assert_eq!(refused.current_state(), Some("killed"));
+        .expect_err("an archived fleet takes no revision");
+    assert_eq!(refused.current_state(), Some("archived"));
     let read = c.creations.read(c.base.access(), &saved.id).await;
-    assert_eq!(read.expect("killed fleet").setup_revision, "1");
+    assert_eq!(read.expect("archived fleet").setup_revision, "1");
     c.cleanup().await;
 }
 

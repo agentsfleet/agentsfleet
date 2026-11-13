@@ -252,9 +252,9 @@ fn an_empty_event_list_is_refused_at_parse_rather_than_interpreted() {
     );
 }
 
-/// Only `active` takes work, and the other four are not refusals here.
+/// Only `active` takes work, and the other two are not refusals here.
 ///
-/// A paused fleet's delivery is answered 200 and dropped — the rework that
+/// An archived fleet's delivery is answered 200 and dropped — the rework that
 /// retired `UZ-WH-003`. This asserts the QUESTION resolves correctly; what the
 /// handler does with the answer is the handler's test.
 #[test]
@@ -264,9 +264,7 @@ fn only_an_active_fleet_will_take_the_delivery() {
     let runnable = [
         (FleetStatus::Installing, false),
         (FleetStatus::Active, true),
-        (FleetStatus::Paused, false),
-        (FleetStatus::Stopped, false),
-        (FleetStatus::Killed, false),
+        (FleetStatus::Archived, false),
     ];
 
     for (status, expected) in runnable {

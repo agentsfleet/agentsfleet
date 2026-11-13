@@ -32,7 +32,7 @@ const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 /// one. It no longer parks anything — the standing integration grant
 /// authorises the write — so the gate is opened by an authored rule instead.
 /// What is under test here is the ANNOUNCEMENT, not which policy raised it.
-const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#;
+const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","gate_kind":"deploy","blast_radius":"production"}]}"#;
 
 /// A parked gate is announced on the fleet's live tail, count included.
 ///

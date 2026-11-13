@@ -7,10 +7,7 @@ use afd_connector::Provider;
 use afd_ingress::slack::{Notice, NoticeOwed, notice_text};
 use std::borrow::Cow;
 
-use super::{
-    Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, REASON_CHANNEL_NOT_CONFIGURED,
-    REASON_NOTICE_OWNER_KILLED, address,
-};
+use super::{Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, REASON_NO_ACTIVE_CARRIER, address};
 use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _};
 use afd_fleet_lifecycle::FleetStatus;
@@ -27,13 +24,12 @@ pub(super) async fn owe<D: Services>(
     workspace: &Uuid7,
     asked: &Asked,
     notice: &Notice<'_>,
+    subscribers: &[Subscriber],
 ) -> Result<Outcome, Refusal> {
-    let Some(owner) = owner(services, provider, workspace, asked, notice).await? else {
-        return Ok(Outcome::Dropped(REASON_CHANNEL_NOT_CONFIGURED));
+    let owner = owner(services, provider, workspace, asked, subscribers).await?;
+    let Some(owner) = owner.filter(|owner| owner.status != FleetStatus::Archived) else {
+        return Ok(Outcome::Dropped(REASON_NO_ACTIVE_CARRIER));
     };
-    if owner.status == FleetStatus::Killed {
-        return Ok(Outcome::Dropped(REASON_NOTICE_OWNER_KILLED));
-    }
     let address = address(&asked.thread())?;
     let text = notice_text(notice);
     let owed = services
@@ -70,7 +66,7 @@ async fn owner<D: Services>(
     provider: Provider,
     workspace: &Uuid7,
     asked: &Asked,
-    notice: &Notice<'_>,
+    subscribers: &[Subscriber],
 ) -> Result<Option<NoticeOwner>, Refusal> {
     let ingress = services.ingress();
     let existing = ingress
@@ -80,7 +76,7 @@ async fn owner<D: Services>(
     if existing.is_some() {
         return Ok(existing);
     }
-    let Some(candidate) = candidate(notice) else {
+    let Some(candidate) = carrier(subscribers) else {
         return Ok(None);
     };
     ingress
@@ -108,14 +104,12 @@ async fn owner<D: Services>(
         })
 }
 
-fn candidate<'a>(notice: &'a Notice<'a>) -> Option<&'a Subscriber> {
-    match notice {
-        Notice::Paused { fleet } => Some(*fleet),
-        Notice::Ambiguous { fleets } | Notice::Choose { fleets } | Notice::AddressIt { fleets } => {
-            fleets
-                .iter()
-                .copied()
-                .min_by(|left, right| left.fleet.as_str().cmp(right.fleet.as_str()))
-        }
-    }
+/// The channel's carrier: its oldest runnable fleet, whatever the notice is
+/// about. An archived fleet is never chosen, since it could not carry the
+/// obligation, so a channel with no runnable fleet has no carrier.
+fn carrier(subscribers: &[Subscriber]) -> Option<&Subscriber> {
+    subscribers
+        .iter()
+        .filter(|subscriber| subscriber.runnable)
+        .min_by(|left, right| left.fleet.as_str().cmp(right.fleet.as_str()))
 }

@@ -133,7 +133,7 @@ describe("Row actions — Edit", () => {
     // The dashboard cannot recompose an opaque body, so there is no key input
     // — replacement is the CLI's job and the hint names the command.
     expect(within(dialog).queryByLabelText(/api key/i)).toBeNull();
-    expect(within(dialog).getByText(/agentsfleet secret update/i)).toBeTruthy();
+    expect(within(dialog).getByText(/agentsfleet secrets update/i)).toBeTruthy();
 
     // No catalogue and no known provider → the model field is a free-text input.
     const model = within(dialog).getByLabelText(/^model$/i) as HTMLInputElement;

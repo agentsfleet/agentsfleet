@@ -46,50 +46,19 @@ async fn a_second_improvement_cannot_overwrite_a_changed_base_or_reuse_another_k
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn rename_and_stop_preserve_setup_and_resume_rechecks_the_removed_model() {
+async fn a_rename_preserves_setup() {
     let fleet = Fleet::create().await;
     let response = fleet
         .patch_resource(
-            r#"{"name":"resource-renamed","status":"stopped"}"#,
+            r#"{"name":"resource-renamed"}"#,
             fleet.saved["etag"].as_str().expect("resource tag"),
         )
         .await;
     assert_eq!(response.status(), StatusCode::OK);
-    let stopped = json_body(response).await;
-    assert!(stopped.get("needs_re_review").is_none());
-    assert_eq!(stopped["setup_etag"], fleet.saved["setup_etag"]);
-    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")
-        .bind(&fleet.case.base.model)
-        .execute(
-            &mut *fleet
-                .case
-                .base
-                .db
-                .acquire()
-                .await
-                .expect("model connection"),
-        )
-        .await
-        .expect("remove model selection");
-    let response = fleet
-        .patch_resource(
-            r#"{"status":"active"}"#,
-            stopped["etag"].as_str().expect("stopped tag"),
-        )
-        .await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let current = json_body(response).await;
-    assert_eq!(
-        current["status"], "installing",
-        "removed model cannot resume runtime work"
-    );
-    assert!(
-        current["setup"]["checks"]
-            .as_array()
-            .expect("setup checks")
-            .iter()
-            .any(|check| check["kind"] == "model" && check["state"] != "ready")
-    );
+    let renamed = json_body(response).await;
+    assert!(renamed.get("needs_re_review").is_none());
+    assert_eq!(renamed["setup_etag"], fleet.saved["setup_etag"]);
+    assert_eq!(renamed["status"], "active");
     fleet.case.cleanup().await;
 }
 

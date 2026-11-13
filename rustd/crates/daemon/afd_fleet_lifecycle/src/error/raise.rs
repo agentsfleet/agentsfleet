@@ -30,14 +30,6 @@ pub(crate) fn row_malformed(column: &'static str, stored: &str) -> Error {
     .into()
 }
 
-/// Refuses a conditional purge against a version the row has moved past.
-pub(crate) fn source_stale(current: impl Into<Box<str>>) -> Error {
-    ErrorKind::SourceStale {
-        current: current.into(),
-    }
-    .into()
-}
-
 /// Hands one shared load's failure to one of the readers that waited on it.
 pub(crate) fn shared(source: Arc<Error>) -> Error {
     ErrorKind::Shared { source }.into()

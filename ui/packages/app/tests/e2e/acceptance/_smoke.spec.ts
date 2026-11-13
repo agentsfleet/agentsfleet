@@ -90,7 +90,7 @@ test.describe("auth e2e wire", () => {
     // Seed a fresh fleet. Assertions only reference this row's id; pre-
     // existing rows from prior interrupted runs are noise we don't fail on.
     // Random suffix avoids (workspace_id, name) uniqueness collision when a
-    // prior interrupted run left a killed fleet that couldn't be deleted
+    // prior interrupted run left a fleet that couldn't be deleted
     // (agentsfleetd has a known ConnectionBusy bug on delete; orphans stick).
     const tag = Math.random().toString(36).slice(2, 8);
     // The create path is also the QStash-visibility probe: a deployment whose

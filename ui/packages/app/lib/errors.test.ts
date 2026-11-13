@@ -52,8 +52,8 @@ describe("presentErrorString", () => {
   });
 
   it("returns just the title when no body is provided", () => {
-    const s = presentErrorString({ action: "kill this Fleet" });
-    expect(s).toContain("Couldn't kill this Fleet");
+    const s = presentErrorString({ action: "archive this Fleet" });
+    expect(s).toContain("Couldn't archive this Fleet");
   });
 
   // Invariant guard: every curated map title must NOT end in terminal

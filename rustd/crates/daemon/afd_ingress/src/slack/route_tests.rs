@@ -35,7 +35,7 @@ fn writer(nth: usize, name: &str) -> Subscriber {
     subscriber(nth, name, true, true)
 }
 
-fn paused(nth: usize, name: &str) -> Subscriber {
+fn archived(nth: usize, name: &str) -> Subscriber {
     subscriber(nth, name, false, false)
 }
 
@@ -94,18 +94,18 @@ fn routing_table_is_total() {
         })
     );
 
-    // A paused fleet named earns a notice; unnamed, it is not eligible.
-    let with_paused = [paused(0, "responder")];
+    // An archived fleet named earns a notice; unnamed, it is not eligible.
+    let with_archived = [archived(0, "responder")];
     assert_eq!(
-        route(&with_paused, "responder why?"),
-        Route::Notice(Notice::Paused {
-            fleet: &with_paused[0]
+        route(&with_archived, "responder why?"),
+        Route::Notice(Notice::Archived {
+            fleet: &with_archived[0]
         })
     );
     assert_eq!(
-        route(&with_paused, "why?"),
+        route(&with_archived, "why?"),
         Route::Notice(Notice::AddressIt {
-            fleets: vec![&with_paused[0]]
+            fleets: vec![&with_archived[0]]
         })
     );
 }
@@ -210,7 +210,7 @@ fn every_notice_kind_spells_itself_apart() {
         Notice::Ambiguous { fleets: vec![] }.kind(),
         Notice::Choose { fleets: vec![] }.kind(),
         Notice::AddressIt { fleets: vec![] }.kind(),
-        Notice::Paused { fleet: &fleet }.kind(),
+        Notice::Archived { fleet: &fleet }.kind(),
     ];
     let distinct: std::collections::BTreeSet<&str> = kinds.into_iter().collect();
     assert_eq!(distinct.len(), kinds.len(), "{kinds:?}");

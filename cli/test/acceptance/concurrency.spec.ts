@@ -69,7 +69,7 @@ const SEED_SESSION_ID = `${ACCEPTANCE_RUN_PREFIX}-seed-session`;
 const DOCTOR_CLEAN_EXIT_CODES: ReadonlyArray<number> = [0, 1];
 const LIST_OK_EXIT_CODE = 0;
 
-const LIST_ARGS: ReadonlyArray<string> = ["list", "--json"];
+const LIST_ARGS: ReadonlyArray<string> = ["fleet", "list", "--json"];
 const DOCTOR_ARGS: ReadonlyArray<string> = ["doctor", "--json"];
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";

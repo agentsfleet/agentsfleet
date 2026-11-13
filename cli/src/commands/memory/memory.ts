@@ -1,8 +1,8 @@
-// `agentsfleet memory list|search` — read-only window into a fleet's durable
+// `agentsfleet fleet memory list|search` — read-only window into a fleet's durable
 // memory over GET /v1/workspaces/{ws}/fleets/{zid}/memories.
 //
-// agentsfleet memory list   --fleet <id> [--category <name>] [--limit <n>] [--workspace <id>]
-// agentsfleet memory search --fleet <id> <query> [--limit <n>] [--workspace <id>]
+// agentsfleet fleet memory list   --fleet <id> [--category <name>] [--limit <n>] [--workspace <id>]
+// agentsfleet fleet memory search --fleet <id> <query> [--limit <n>] [--workspace <id>]
 //
 // Output as a service (7 Pillars): a real terminal gets an aligned table;
 // `--json` or a piped/redirected stdout gets the published response envelope
@@ -41,20 +41,20 @@ const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
 
 const MEMORY_HYGIENE_DOCS_URL = "https://docs.agentsfleet.net/memory";
 const SUGGEST_AGENTSFLEET_NOT_FOUND =
-  "run `agentsfleet list` to see the fleets in this workspace (or pass --workspace <id>)";
+  "run `agentsfleet fleet list` to see the fleets in this workspace (or pass --workspace <id>)";
 const SUGGEST_MEM_UNAVAILABLE =
   "retry shortly — the memory backend is temporarily unavailable";
 
 const USAGE_LIST =
-  "usage: agentsfleet memory list --fleet <id> [--category <name>] [--limit <n>] [--starting-after <key>] [--workspace <id>]";
+  "usage: agentsfleet fleet memory list --fleet <id> [--category <name>] [--limit <n>] [--starting-after <key>] [--workspace <id>]";
 // Verb stem only; the emit site appends the resolved --fleet and the cursor, so
 // the printed line is runnable as-is. `memory list` requires --fleet, unlike
 // `fleet list`, whose hint needs no flag beyond the cursor.
-const NEXT_PAGE_COMMAND_LIST = "agentsfleet memory list" as const;
+const NEXT_PAGE_COMMAND_LIST = "agentsfleet fleet memory list" as const;
 const FLAG_FLEET = "--fleet" as const;
 const FLAG_STARTING_AFTER = "--starting-after" as const;
 const USAGE_SEARCH =
-  "usage: agentsfleet memory search --fleet <id> <query> [--limit <n>] [--workspace <id>]";
+  "usage: agentsfleet fleet memory search --fleet <id> <query> [--limit <n>] [--workspace <id>]";
 
 const EMPTY_LIST_MESSAGE = "No memories stored for this fleet yet.";
 

@@ -12,10 +12,3 @@ pub use af_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 
 /// A fleet id this workspace does not hold.
 pub const NOT_FOUND: &str = "Fleet not found";
-
-/// An edit guarded on a source that has since changed.
-pub const SOURCE_STALE: &str =
-    "The fleet changed since you read it; refetch and send its current tag";
-
-/// A delete of a fleet that is not yet killed.
-pub const MUST_KILL_FIRST: &str = "Fleet must be killed before delete (PATCH status=killed first)";

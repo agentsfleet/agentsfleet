@@ -13,12 +13,12 @@ use crate::report_seed::{DEEP_POOL, Held, held};
 const ONE_NANO_DAILY_BUDGET: &str = r#"{"name":"renew-cover","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1"}}}"#;
 const DEEP_DAILY_BUDGET: &str = r#"{"name":"renew-cover","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000000"}}}"#;
 
-/// The status a kill leaves on the fleet row.
+/// The status an archive leaves on the fleet row.
 ///
 /// `Leases::installed` answers `Ok(None)` for it, as for every status that is
-/// not `active`. The renewal's ceiling read must not: the cases below kill a
+/// not `active`. The renewal's ceiling read must not: the cases below archive a
 /// fleet while its run holds a lease and renew that lease.
-const FLEET_KILLED: &str = "killed";
+const FLEET_ARCHIVED: &str = "archived";
 
 async fn set_fleet_config(held: &Held, config: &str) {
     held.fixtures.native_config(&held.fleet, config).await;
@@ -73,7 +73,7 @@ async fn make_budget_unreadable(held: &Held) {
     held.fixtures.corrupt_native_config(&held.fleet, "{}").await;
 }
 
-async fn kill_fleet(held: &Held) {
+async fn archive_fleet(held: &Held) {
     let mut connection = held
         .fixtures
         .database
@@ -82,10 +82,10 @@ async fn kill_fleet(held: &Held) {
         .expect("a pooled connection");
     sqlx::query("UPDATE fleet.fleets SET status = $2 WHERE id = $1")
         .bind(&held.fleet)
-        .bind(FLEET_KILLED)
+        .bind(FLEET_ARCHIVED)
         .execute(&mut *connection)
         .await
-        .expect("the live fleet is killed");
+        .expect("the live fleet is archived");
 }
 
 #[tokio::test]
@@ -123,14 +123,14 @@ async fn missing_wallet_admits_while_exhausted_and_unreadable_budgets_refuse() {
     held.fixtures.cleanup().await;
 }
 
-/// A fleet killed mid-run keeps the ceiling its run was admitted under.
+/// A fleet archived mid-run keeps the ceiling its run was admitted under.
 ///
 /// Refuses FIRST while the fleet is active, against the same breached ceiling,
-/// so the refusal after the kill is proved to come from that ceiling and not
-/// from the kill itself.
+/// so the refusal after the archive is proved to come from that ceiling and not
+/// from the archive itself.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_fleet_killed_mid_run_keeps_its_breached_ceiling() {
+async fn a_fleet_archived_mid_run_keeps_its_breached_ceiling() {
     let held = held().await;
     let plane = held.fixtures.plane();
     let lease_id = &held.issued.lease_id;
@@ -142,32 +142,32 @@ async fn a_fleet_killed_mid_run_keeps_its_breached_ceiling() {
         .expect_err("the breached ceiling refuses while the fleet is still active");
     assert_eq!(refused.code(), error_code::RUN_BUDGET_EXCEEDED);
 
-    kill_fleet(&held).await;
+    archive_fleet(&held).await;
     let still_refused = plane
         .renew(&held.runner, lease_id, RenewRequest::default(), held.now)
         .await
-        .expect_err("a kill does not lift the ceiling of the run in flight");
+        .expect_err("an archive does not lift the ceiling of the run in flight");
     assert_eq!(still_refused.code(), error_code::RUN_BUDGET_EXCEEDED);
 
     drop(plane);
     held.fixtures.cleanup().await;
 }
 
-/// A kill never cancels a run that still has room: the lease in flight renews.
+/// An archive never cancels a run that still has room: the lease in flight renews.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_fleet_killed_mid_run_with_room_still_renews() {
+async fn a_fleet_archived_mid_run_with_room_still_renews() {
     let held = held().await;
     let plane = held.fixtures.plane();
     let lease_id = &held.issued.lease_id;
 
     held.fixtures.seed_wallet(&held.tenant, DEEP_POOL).await;
     set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
-    kill_fleet(&held).await;
+    archive_fleet(&held).await;
     plane
         .renew(&held.runner, lease_id, RenewRequest::default(), held.now)
         .await
-        .expect("a killed fleet's run with room left keeps renewing");
+        .expect("a archived fleet's run with room left keeps renewing");
 
     drop(plane);
     held.fixtures.cleanup().await;

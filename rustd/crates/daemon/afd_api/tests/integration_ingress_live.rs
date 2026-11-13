@@ -13,7 +13,7 @@
 //!
 //! # What this suite is for, and what `webhook_fleet_route/mod.rs` keeps
 //!
-//! The route's policy — which events a trigger admits, what a paused fleet is
+//! The route's policy — which events a trigger admits, what an archived fleet is
 //! answered, which actor a wake records — is proven with no datastore and stays
 //! there. What lives here is only what a stub cannot answer honestly: that the
 //! stored document resolves to the binding the reader believes it does, that
@@ -49,7 +49,7 @@ const RUN_FAILURE: &str =
 const EVENT_WORKFLOW_RUN: &str = "workflow_run";
 
 /// The reason the route drops a delivery to a fleet nobody is running.
-const REASON_FLEET_PAUSED: &str = "fleet_paused";
+const REASON_FLEET_NOT_ACTIVE: &str = "fleet_not_active";
 
 /// The scheme `github` resolves to — a hex tag over the body alone.
 const SCHEME: Scheme = Scheme::BodyHex;
@@ -252,13 +252,13 @@ async fn a_workspace_holding_no_credential_refuses_before_it_verifies() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_paused_fleet_is_acknowledged_from_its_stored_status() {
+async fn an_archived_fleet_is_acknowledged_from_its_stored_status() {
     // The status column is read on the same statement as the document, and this
-    // is what proves it is read at all: a paused fleet is answered 200 with a
-    // reason rather than refused, because a sender's retry queue adds nothing
-    // for a fleet somebody paused on purpose.
+    // is what proves it is read at all: an archived fleet is answered 200 with
+    // a reason rather than refused, because a sender's retry queue adds
+    // nothing for a fleet that will never run again.
     let fixture = Fixture::create().await;
-    fixture.seed(Runnable::Paused, Secret::Stored).await;
+    fixture.seed(Runnable::Archived, Secret::Stored).await;
     let router = fixture.router();
 
     let dropped = deliver(&router, &fixture.fleet, SIGNING_SECRET).await;
@@ -267,7 +267,7 @@ async fn a_paused_fleet_is_acknowledged_from_its_stored_status() {
     assert_eq!(status, StatusCode::OK, "{document}");
     assert_eq!(
         document.get("ignored").and_then(Value::as_str),
-        Some(REASON_FLEET_PAUSED),
+        Some(REASON_FLEET_NOT_ACTIVE),
         "{document}"
     );
 

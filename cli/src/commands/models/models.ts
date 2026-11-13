@@ -1,4 +1,4 @@
-// `agentsfleet models` — the priced model catalogue this server serves.
+// `agentsfleet models list` — the priced model catalogue this server serves.
 //
 // The CLI peer of the dashboard's model picker. Both read `GET /v1/models`;
 // this is the terminal rendering of the same rows the Add Model dialog puts in
@@ -63,7 +63,7 @@ export const modelsEffectFromFlags = Effect.fn("models.list")(function* (
     // because "no models" with no cause reads as a broken server.
     yield* output.info(
       provider
-        ? `No models for provider '${provider}'. Run \`agentsfleet models\` for the full catalogue.`
+        ? `No models for provider '${provider}'. Run \`agentsfleet models list\` for the full catalogue.`
         : "This server's model catalogue is empty — a platform admin primes it from scripts/model-library-allowlist.json.",
     );
     return;
@@ -91,7 +91,7 @@ export const modelsEffectFromFlags = Effect.fn("models.list")(function* (
   yield* output.info(
     ui.dim(
       `${models.length} model(s) across ${providers.length} provider(s). ` +
-        `Store a credential with: agentsfleet secret create <name> --provider <id> --api-key <key> --model <m>`,
+        `Store a credential with: agentsfleet secrets create <name> --provider <id> --api-key <key> --model <m>`,
     ),
   );
   if (!provider) {

@@ -67,7 +67,7 @@ it("shows the scope recovery message instead of internal continuation detail", a
 });
 
 it("shows recovery only for unfinished setup or first-run admission", async () => {
-  const view = render(<FleetRecovery fleet={{...FLEET, status: "stopped"}} workspace={WORKSPACE} />);
+  const view = render(<FleetRecovery fleet={{...FLEET, status: "archived"}} workspace={WORKSPACE} />);
   expect(screen.queryByRole("link")).toBeNull();
   view.rerender(<FleetRecovery fleet={{...FLEET, status: "active", start: {kind: "run_now", state: "pending"}}} workspace={WORKSPACE} />);
   expect(await screen.findByRole("button", {name: "Retry first run"})).toBeTruthy();
@@ -84,12 +84,12 @@ it("keeps Edit setup before Fleet actions in the existing fleet workspace", () =
   expect(screen.queryByLabelText("Fleet status: active")).toBeNull();
   expect(edit.getAttribute("href")).toContain("/fleets/new?fleet=");
   expect(edit.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(screen.queryByRole("button", {name: "Stop"})).toBeNull();
+  expect(screen.queryByRole("button", {name: "Archive"})).toBeNull();
   expect(screen.queryByRole("region", {name: "Saved instructions"})).toBeNull();
   expect(screen.queryByText("Access needs attention before resuming")).toBeNull();
 });
 
-it.each(["installing", "active", "stopped"] as const)("retries an unregistered schedule while %s and reports a refusal", async (status) => {
+it.each(["installing", "active"] as const)("retries an unregistered schedule while %s and reports a refusal", async (status) => {
   const failed = {...SCHEDULE, schedule_id: "sched-1", sync: "failed", last_error: "refused"};
   const fetchMock = vi.fn(async (_input: string, _init?: RequestInit) => new Response(JSON.stringify({...failed, sync: "synced", last_error: null}), {status: 200}));
   vi.stubGlobal("fetch", fetchMock);

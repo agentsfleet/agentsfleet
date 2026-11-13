@@ -115,7 +115,7 @@ async fn a_scoped_person_reaches_every_verb_on_their_own_workspace() {
             &Method::POST => {
                 r#"{"source":{"kind":"draft","draft_candidate_id":"01924f4e-0000-7000-8000-00000000f1ee"},"name":"daily-digest","review_digest":"review","start":{"kind":"none"}}"#
             }
-            &Method::PATCH => r#"{"status":"stopped"}"#,
+            &Method::PATCH => r#"{"status":"archived"}"#,
             _reads_and_deletes => "",
         };
         let response = authorised(method.clone(), &path, body).await;

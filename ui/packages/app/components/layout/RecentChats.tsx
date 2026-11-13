@@ -7,6 +7,7 @@ import Link from "next/link";
 import { NavItem, IconAction, Button } from "@agentsfleet/design-system";
 import { Trash2Icon } from "lucide-react";
 import { FleetListSchema, type NativeFleetSummary } from "@/lib/api/fleet-detail";
+import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { RecentCollection } from "@/lib/api/recent-collection";
 import { FleetDeleteDialog } from "./FleetDeleteDialog";
 
@@ -43,7 +44,7 @@ function FleetItems({collection, workspace, onNavigate}: {collection: RecentColl
         <Link href={`/w/${workspace}/fleets/${fleet.id}`} prefetch={false} title={`${fleet.name} · ${fleet.status}`}>
           <span className={`size-1.5 shrink-0 rounded-full ${fleet.status === "active" ? "bg-pulse" : "bg-muted-foreground"}`} aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate text-label text-foreground">{fleet.name}</span>
-          {fleet.status === "stopped" ? <span className="text-eyebrow text-muted-foreground">Stopped</span> : null}
+          {fleet.status === AGENTSFLEET_STATUS.ARCHIVED ? <span className="text-eyebrow text-muted-foreground">Archived</span> : null}
         </Link>
       </NavItem>
       <IconAction variant="ghost" label={`Delete fleet: ${fleet.name}`} disabled={selected !== null}

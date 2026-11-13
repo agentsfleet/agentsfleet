@@ -30,7 +30,7 @@ afd_db.workspace = true
 afd_events.workspace = true
 # A fleet's declared policy, as its config spells it.
 af_fleet_runtime.workspace = true
-# The fleet status the auto-kill writes (`paused`), spelled where the fleet's
+# The fleet status the auto-kill writes (`archived`), spelled where the fleet's
 # lifecycle declares it rather than as a literal in the statement.
 afd_fleet_lifecycle.workspace = true
 # The approval status vocabulary this plane shares with the operator's.

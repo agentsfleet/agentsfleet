@@ -1,4 +1,4 @@
-//! A fleet Kill commits its lease marker before publishing a runner command.
+//! A fleet Archive commits its lease marker before publishing a runner command.
 
 mod probe;
 
@@ -13,7 +13,8 @@ use super::{
     fixture::Case,
 };
 
-type TestResult<T = ()> = afd_authoring::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+pub(super) type TestResult<T = ()> =
+    afd_authoring::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 const LEASE: &str = "INSERT INTO runner.leases \
     (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at, \
@@ -25,7 +26,7 @@ const WAIT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn kill_marks_running_leases_before_another_replica_receives_the_cancel() -> TestResult {
+async fn archive_marks_running_leases_before_another_replica_receives_the_cancel() -> TestResult {
     let case = Case::create().await;
     case.fund().await;
     let (_, request) = case.request("cancel-running-work", Start::None).await;
@@ -51,7 +52,7 @@ async fn kill_marks_running_leases_before_another_replica_receives_the_cancel() 
             case.base.access(),
             &saved.id,
             Some(&saved.etag),
-            Some("killed"),
+            Some("archived"),
             None,
             now(),
         )
@@ -66,7 +67,7 @@ async fn kill_marks_running_leases_before_another_replica_receives_the_cancel() 
     Ok(())
 }
 
-async fn assert_cancel(
+pub(super) async fn assert_cancel(
     subject: &Subject,
     lease: &Uuid7,
     commands: &mut Subscription,
@@ -92,7 +93,7 @@ async fn assert_cancel(
     .await?
 }
 
-async fn seed_lease(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> {
+pub(super) async fn seed_lease(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> {
     let policy = afd_db::test_util::RunnerPolicy {
         sandbox_tier: "dev_none",
         network_policy: "deny_all_egress",

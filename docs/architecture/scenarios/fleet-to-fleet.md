@@ -36,8 +36,8 @@ One fleet the owner talks to. It reads every fleet and may steer any of them.
 08:00  schedule fires chief-of-staff
          fleet_activity()            ──► responder: active, 3 runs, last 02:14
                                           repairer: active, last answer "draft PR #412"
-                                          docs-bot: stopped since 03:40
-         answer in its chat          ──► "Night: one incident, repaired to draft #412; docs-bot is stopped."
+                                          docs-bot: archived since 03:40
+         answer in its chat          ──► "Night: one incident, repaired to draft #412; docs-bot is archived."
 
 10:12  owner, in the chief's chat: "have the repairer retry run #991 against dev"
          fleet_steer(<repairer id>, "retry run #991 against dev")
@@ -46,7 +46,7 @@ One fleet the owner talks to. It reads every fleet and may steer any of them.
 
 10:13  owner: "is docs-bot awake?"
          fleet_activity(<docs-bot id>) ──► status, last run.  docs-bot is not woken.
-         (budget left is not in the read; the chief says "stopped", not why)
+         (budget left is not in the read; the chief says "archived", not why)
 ```
 
 "Awake" is a daemon fact: status and last run (`rustd/crates/daemon/afd_fleet_lifecycle/src/lib.rs`, `FleetStatus`). Reading that fact costs no model call on the fleet asked. A digest agent is this fleet on a schedule.

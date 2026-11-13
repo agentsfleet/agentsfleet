@@ -24,15 +24,15 @@ fn counted(status: &str, fleets: u64) -> Counted {
 fn every_modelled_spelling_is_counted_under_its_member() {
     let tally = tally([
         counted("active", 2),
-        counted("paused", 1),
-        counted("stopped", 1),
+        counted("installing", 1),
+        counted("archived", 1),
     ]);
     assert_eq!(
         tally.counts,
         vec![
             (FleetStatusLabel::Active, 2),
-            (FleetStatusLabel::Paused, 1),
-            (FleetStatusLabel::Stopped, 1),
+            (FleetStatusLabel::Installing, 1),
+            (FleetStatusLabel::Archived, 1),
         ]
     );
     assert!(tally.unmodelled.is_empty(), "{:?}", tally.unmodelled);
@@ -41,13 +41,13 @@ fn every_modelled_spelling_is_counted_under_its_member() {
 
 #[test]
 fn an_unknown_spelling_is_set_aside_and_still_scanned() {
-    let tally = tally([counted("active", 3), counted("archived", 2)]);
+    let tally = tally([counted("active", 3), counted("draining", 2)]);
     assert_eq!(
         tally.counts,
         vec![(FleetStatusLabel::Active, 3)],
         "the unknown spelling produces no label"
     );
-    assert_eq!(tally.unmodelled, vec![counted("archived", 2)]);
+    assert_eq!(tally.unmodelled, vec![counted("draining", 2)]);
     assert_eq!(
         tally.scanned(),
         5,
@@ -82,7 +82,7 @@ fn a_failed_count_withdraws_the_census_and_a_good_one_restores_it() {
         "a failed count leaves a gap, never a zero"
     );
 
-    let swept = settle(Ok(vec![counted("killed", 4), counted("archived", 1)]))
+    let swept = settle(Ok(vec![counted("archived", 4), counted("draining", 1)]))
         .expect("a count that answered is published");
     assert_eq!(swept.scanned, 5);
     assert_eq!(swept.changed, 0, "a census changes nothing");
@@ -92,14 +92,14 @@ fn a_failed_count_withdraws_the_census_and_a_good_one_restores_it() {
         FleetStatusLabel::ALL.len(),
         "every modelled status publishes, the unknown one does not"
     );
-    let killed = readings
+    let archived = readings
         .iter()
         .find(|reading| {
             reading
                 .attributes
                 .iter()
-                .any(|attribute| attribute.value.as_str() == "killed")
+                .any(|attribute| attribute.value.as_str() == "archived")
         })
         .map(|reading| reading.value);
-    assert_eq!(killed, Some(4));
+    assert_eq!(archived, Some(4));
 }

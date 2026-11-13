@@ -190,13 +190,13 @@ async fn a_send_behind_a_held_fleet_row_times_out() -> Fallible {
     Ok(())
 }
 
-/// A stopped fleet's refusal is the caller's answer, not an admission failure:
+/// A archived fleet's refusal is the caller's answer, not an admission failure:
 /// no `admission_failed` and no capacity line, and so no tick of
 /// `agentsfleet_admissions_total`, which `count_refusal` records beside that
 /// log.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_stopped_fleet_refusal_counts_no_admission() -> Fallible {
+async fn an_archived_fleet_refusal_counts_no_admission() -> Fallible {
     let capture = af_core::test_util::trace::Capture::install();
     let lane = Lane::seed().await?;
     let admissions = over_lane(&lane).await?;
@@ -205,10 +205,10 @@ async fn a_stopped_fleet_refusal_counts_no_admission() -> Fallible {
         .admit_runnable(steer(&lane, key.as_str(), ReplyTo::None))
         .await
         .err()
-        .ok_or("the lane's fleet is stopped")?;
+        .ok_or("the lane's fleet is archived")?;
     assert_eq!(
         refused.not_runnable(),
-        Some(afd_fleet_lifecycle::FleetStatus::Stopped)
+        Some(afd_fleet_lifecycle::FleetStatus::Archived)
     );
     let refusal_lines = capture
         .events()
@@ -222,7 +222,7 @@ async fn a_stopped_fleet_refusal_counts_no_admission() -> Fallible {
         .count();
     assert_eq!(
         refusal_lines, 0,
-        "a stopped-fleet refusal is not an admission failure"
+        "an archived-fleet refusal is not an admission failure"
     );
     lane.cleanup().await;
     Ok(())

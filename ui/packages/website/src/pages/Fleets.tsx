@@ -19,7 +19,7 @@ agentsfleet login
 #    Use the fleet_id returned when the fleet is created.
 
 # 3. Back in the shell — steer the Fleet
-agentsfleet steer <fleet_id> "morning health check"`;
+agentsfleet fleet steer <fleet_id> "morning health check"`;
 
 const safetyLimits = [
   { title: "Idempotency", body: "Inbound webhook events deduplicate on event_id within a 24-hour window. Workspace updates use monotonic versions to prevent lost updates." },

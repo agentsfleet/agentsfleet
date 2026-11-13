@@ -1,23 +1,14 @@
 // Fleet lifecycle status — wire-level enum mirroring the `FleetStatus`
 // spellings in `rustd/crates/daemon/afd_fleet_lifecycle/src/lib.rs`.
-// RULE Unnamed String (UFS): every
-// emit/compare site reads from here. `paused` is server-set
-// (rate-limit / circuit-breaker); the CLI never mutates to it.
+// RULE Unnamed String (UFS): every emit/compare site reads from here.
+// `archived` is terminal and keeps history; deleting removes the fleet in any
+// status, so it is a request, not a status.
 
 export const AGENTSFLEET_STATUS = Object.freeze({
   INSTALLING: "installing",
   ACTIVE: "active",
-  PAUSED: "paused",
-  STOPPED: "stopped",
-  KILLED: "killed",
+  ARCHIVED: "archived",
 });
 
 export type FleetStatus =
   (typeof AGENTSFLEET_STATUS)[keyof typeof AGENTSFLEET_STATUS];
-
-// Status values the CLI is allowed to PATCH. `paused` is excluded
-// because no CLI verb sets it.
-export type FleetMutationStatus = Exclude<
-  FleetStatus,
-  typeof AGENTSFLEET_STATUS.PAUSED | typeof AGENTSFLEET_STATUS.INSTALLING
->;

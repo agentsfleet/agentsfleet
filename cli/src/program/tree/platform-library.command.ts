@@ -1,7 +1,8 @@
 import { Argument, Command } from "effect/cli";
 import { platformLibraryDelete, platformLibraryList, platformLibraryPublish, platformLibraryStage, platformLibraryUpdate } from "../../commands/platform/library.ts";
 import { guardedHandler } from "./guarded-handler.ts";
-import { platformEtagFlag, platformFileFlag } from "./platform-flags.ts";
+import { PLATFORM_SCOPE, platformEtagFlag, platformFileFlag } from "./platform-flags.ts";
+import { grants, listedWhen, type Visibility } from "./visibility.ts";
 import { requiredIdFlag, requiredTextFlag } from "./flags.ts";
 
 const entryId = {id: Argument.String("library_id").pipe(Argument.withDescription("Stable platform library identifier"))};
@@ -24,7 +25,17 @@ const publication = (name: "publish" | "unpublish", published: boolean) => Comma
 const remove = Command.make("delete", conditional).pipe(Command.withDescription("Delete the inspected platform entry (platform-library:write)"),
   guardedHandler(({id, etag}) => platformLibraryDelete(id, etag)));
 
-export const platformLibraryCommand = Command.make("fleet-library").pipe(
-  Command.withDescription("Manage the platform fleet library"),
-  Command.withSubcommands([list, show, stage, update, publication("publish", true), publication("unpublish", false), remove]),
-);
+export const platformLibraryCommand = (visibility: Visibility) => {
+  const write = grants(visibility, PLATFORM_SCOPE.libraryWrite);
+  const writes = listedWhen(write);
+  return {
+    listed: write,
+    command: Command.make("fleet-library").pipe(
+      Command.withDescription("Manage the platform fleet library"),
+      Command.withSubcommands([
+        writes(list), writes(show), writes(stage), writes(update),
+        writes(publication("publish", true)), writes(publication("unpublish", false)), writes(remove),
+      ]),
+    ),
+  };
+};

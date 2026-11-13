@@ -111,7 +111,7 @@ describe("steer — a parked run names the gate holding it", () => {
   // A Fleet whose trigger declares a write capability opens a gate per run and
   // waits. The timeout is the SYMPTOM; the gate is the cause, and before this
   // the terminal carried only the symptom plus a suggestion pointing at
-  // `agentsfleet events`, which showed the message stuck at `received`.
+  // `agentsfleet fleet events`, which showed the message stuck at `received`.
   // Narrows on `status` and `fleet_id` the way the route does. Without that a
   // decided gate would still be offered as the explanation, and the test would
   // pass while the CLI lied.
@@ -160,7 +160,7 @@ describe("steer — a parked run names the gate holding it", () => {
     ]);
     expect(Exit.isFailure(exit)).toBe(true);
     const rendered = JSON.stringify(exit);
-    expect(rendered).toContain("agentsfleet approvals approve");
+    expect(rendered).toContain("agentsfleet fleet approvals approve");
     expect(rendered).toContain(GATE_ID);
     // The dead end it replaces.
     expect(rendered).not.toContain("retry, or inspect");
@@ -171,7 +171,7 @@ describe("steer — a parked run names the gate holding it", () => {
       { gate_id: GATE_ID, fleet_id: FLEET_ID, status: "pending" },
       { gate_id: "01900000-0000-7000-8000-000000099a02", fleet_id: FLEET_ID, status: "pending" },
     ]);
-    expect(JSON.stringify(exit)).toContain("agentsfleet approvals list --fleet");
+    expect(JSON.stringify(exit)).toContain("agentsfleet fleet approvals list --fleet");
   }, 10_000);
 
   test("a gate belonging to another fleet does not explain this one's stall", async () => {

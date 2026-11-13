@@ -17,7 +17,7 @@ Slack -> agentsfleetd: signed app_mention
 agentsfleetd -> connector install: resolve team and current workspace
 agentsfleetd -> reviewed subscriptions: choose configured fleet
     no subscriber -> channel_not_configured; no fleet or model call
-    ambiguous / paused / needs name -> fixed notice through existing outbound ledger
+    ambiguous / archived / needs name -> fixed notice through existing outbound ledger
     addressed or sole eligible fleet -> one slack_mention admission
 Configured fleet -> GitHub + Grafana: read permitted evidence
 Fleet report -> recorded Slack thread: answer through existing outbound poster
@@ -81,7 +81,7 @@ The route does not use historical channel fleets as fallback responders.
 |---|---|
 | No subscribers | `Unconfigured`; return `channel_not_configured`, without a model or fleet creation. |
 | One matching name, runnable | `Addressed`; admit that configured fleet. |
-| Matching name paused | `Paused` notice; no model call. |
+| Matching name archived | `Archived` notice from the channel's carrier, its oldest active fleet; no model call. With no active fleet in the channel, the notice is dropped as `no_active_notice_carrier`. |
 | Several names match ignoring case | `Ambiguous` notice; no arbitrary selection. |
 | No matching name, one eligible unaddressed subscriber | `Sole`; admit that configured fleet. |
 | No matching name, no eligible unaddressed subscriber | `AddressIt` notice naming configured candidates. |
@@ -91,13 +91,16 @@ Addressed-only repairers require their configured name even when they are the ch
 The [native route](../../../rustd/crates/daemon/afd_ingress/src/slack/route.rs) owns eligibility and name matching.
 The [mention handler](../../../rustd/crates/daemon/afd_api_ingress/src/handler/mention/mod.rs) owns admission and the unconfigured outcome.
 
-Fixed ambiguity, paused and addressing notices use the existing outbound ledger and Slack poster.
+Fixed ambiguity, archived and addressing notices use the existing outbound ledger and Slack poster.
 The existing `connector.channels` row supplies a stable notice-only owner.
 If no valid binding exists, notice handling binds an existing configured candidate rather than creating a fleet.
 
 The binding must match the current workspace and installed team.
-Deleted owners and moved-team bindings cannot supply stale authority; a killed owner cannot acquire another outbound obligation.
+Deleted owners and moved-team bindings cannot supply stale authority.
 Concurrent notices converge on the channel's existing unique binding.
+
+An archived fleet is never chosen as a carrier, because it cannot acquire another outbound obligation.
+When no active fleet can carry a notice, the notice is dropped as `no_active_notice_carrier`; that includes a bound carrier that was later archived.
 
 [Notice ownership](../../../rustd/crates/daemon/afd_api_ingress/src/handler/mention/notice.rs) owns those checks and the recorded thread destination.
 Slack retries reuse the existing deterministic notice identity.

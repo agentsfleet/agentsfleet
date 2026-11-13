@@ -69,7 +69,7 @@ impl LeaseService {
     /// grant names the fleet, the fleet's binding names the repositories and
     /// the access level, and `ScopedRequest::for_binding` narrows the token to
     /// exactly those. What bounds the damage is the App installation, the
-    /// fleet's `budget.daily_nanos`, and `agentsfleet grant delete`.
+    /// fleet's `budget.daily_nanos`, and `agentsfleet fleet grants revoke`.
     async fn admit_mint(
         &self,
         scope: &MintScope,

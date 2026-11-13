@@ -132,7 +132,7 @@ credential object (`afd_connector`'s grant parser).
 
 A static vendor key is a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector. It never had a connect/callback round-trip or a platform app secret to protect.
 
-Those three providers are plain `agentsfleet secret create` entries, never registry entries. The `catalogue!` macro declares five variants: five Open Authorization (OAuth) or app-install connectors, not eight.
+Those three providers are plain `agentsfleet secrets create` entries, never registry entries. The `catalogue!` macro declares five variants: five Open Authorization (OAuth) or app-install connectors, not eight.
 
 ## Trust anchors
 
@@ -160,7 +160,7 @@ Those three providers are plain `agentsfleet secret create` entries, never regis
 
    A person's yes on that card is the answer. The reviewed Definition names the integration, and its binding names the repositories and the access level.
 
-   A repository write raises no per-event card. `agentsfleet grant delete` is the manual stop, taking effect on the next event before any provider call, and `budget.daily_nanos` bounds the money.
+   A repository write raises no per-event card. `agentsfleet fleet grants revoke` is the manual stop, taking effect on the next event before any provider call, and `budget.daily_nanos` bounds the money.
 
 The token is still narrowed to the declared repositories by `ScopedRequest::for_binding`, and `Granted::verify` still checks the response. The grant is the authorisation above that scoping, never a replacement for it.
 
@@ -407,7 +407,7 @@ An unknown provider (`UZ-CONN-004`) and a registry id with no `<provider>-app` b
 1. One `Provider` variant in the `catalogue!` macro, with its id and display name (RULE UFS). The id is at once the route segment, the vault-key stem and the registry id. The vault-key stem is `<provider>-app` for the platform app and the bare `<provider>` for the workspace grant (`Provider::app_key` and `Provider::grant_key`).
 2. One arm in `Provider::archetype()`, either `Oauth2Flow` (endpoints, scopes, delimiter, extra query, refresh) or `AppInstall` (authorize + token endpoints), plus arms in `state_binding()` and `event_ingress()`.
 3. The provider's arm in `complete::read`, which is where its answer is parsed into a grant. The registry holds no per-provider hook functions: it dispatches on the archetype enum and matches per provider.
-4. Create the `<provider>-app` bag in the admin vault. An operator-supplied vendor key with no browser round-trip (Datadog/Grafana/Fly's shape) is not a connector at all. It is a plain workspace secret, `agentsfleet secret create`, never a registry entry.
+4. Create the `<provider>-app` bag in the admin vault. An operator-supplied vendor key with no browser round-trip (Datadog/Grafana/Fly's shape) is not a connector at all. It is a plain workspace secret, `agentsfleet secrets create`, never a registry entry.
 5. Tests: the generic-route suites already cover the flow; add hook-level tests for the provider's parse/save deltas.
 
 No route, matcher, scope, invoke, or OpenAPI edit: the `{provider}` form already covers the new id.

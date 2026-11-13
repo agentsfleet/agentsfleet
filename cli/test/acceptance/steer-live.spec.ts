@@ -165,7 +165,7 @@ if (!isLive) {
       const result = await runWithEnv([STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE, JSON_FLAG]);
       const diagnostics = result.code === 0
         ? ""
-        : ` events=${JSON.stringify(await runWithEnv(["events", fleetId, JSON_FLAG]))}`;
+        : ` events=${JSON.stringify(await runWithEnv(["fleet", "events", fleetId, JSON_FLAG]))}`;
       assertSteerProcessed(result, diagnostics);
     }, STEER_TIMEOUT_MS);
 

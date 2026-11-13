@@ -62,7 +62,7 @@ async fn a_once_schedule_retires_after_its_qstash_fire() {
 async fn a_once_schedule_whose_fire_is_dropped_still_retires() {
     let fixture = Fixture::create().await;
     fixture
-        .seed(FleetStatus::Paused, DesiredStatus::Active)
+        .seed(FleetStatus::Archived, DesiredStatus::Active)
         .await;
     fixture.mark_once().await;
 
@@ -85,7 +85,7 @@ async fn a_once_schedule_whose_fire_is_dropped_still_retires() {
 async fn a_recurring_schedule_whose_fire_is_dropped_is_kept() {
     let fixture = Fixture::create().await;
     fixture
-        .seed(FleetStatus::Paused, DesiredStatus::Active)
+        .seed(FleetStatus::Archived, DesiredStatus::Active)
         .await;
 
     assert_eq!(

@@ -69,7 +69,7 @@ describe("auth staleness — expired token on a read", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["list"], {
+        const code = await runCli(["fleet", "list"], {
           stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(code).toBe(EXIT_SERVER_ERROR);
@@ -104,7 +104,7 @@ describe("auth staleness — token revoked mid-session", () => {
         // Leg 1: token still valid → success.
         const firstOut = bufferStream();
         const firstErr = bufferStream();
-        const firstCode = await runCli(["list"], {
+        const firstCode = await runCli(["fleet", "list"], {
           stdout: firstOut.stream, stderr: firstErr.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(firstCode).toBe(0);
@@ -112,7 +112,7 @@ describe("auth staleness — token revoked mid-session", () => {
         // Leg 2: token revoked server-side → clean typed failure, no loop.
         const secondOut = bufferStream();
         const secondErr = bufferStream();
-        const secondCode = await runCli(["list"], {
+        const secondCode = await runCli(["fleet", "list"], {
           stdout: secondOut.stream, stderr: secondErr.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(secondCode).toBe(EXIT_SERVER_ERROR);
@@ -146,7 +146,7 @@ describe("auth staleness — corrupt credentials.json", () => {
       await withMockApi({}, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["list"], {
+        const code = await runCli(["fleet", "list"], {
           stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         // No usable token → auth-guard bounce → exit 1, never a crash.

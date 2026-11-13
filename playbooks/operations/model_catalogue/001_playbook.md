@@ -70,7 +70,7 @@ Priming adds no credential and selects no default. Pipe the provider key from 1P
 
 ```bash
 op read "op://$VAULT/<PROVIDER_KEY_ITEM>/credential" \
-  | agentsfleet platform keys set --provider <PROVIDER> --model <MODEL_ID> \
+  | agentsfleet platform keys use --provider <PROVIDER> --model <MODEL_ID> \
       --workspace "$(op read "op://$VAULT/agentsfleet-admin/platform_admin_workspace_id")" --api-key-stdin
 agentsfleet platform keys list
 ```

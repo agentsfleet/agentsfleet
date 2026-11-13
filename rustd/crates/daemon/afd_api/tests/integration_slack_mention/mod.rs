@@ -244,6 +244,8 @@ async fn slack_retry_admits_nothing_new() {
 
 mod addressed;
 
+mod archived_carrier;
+
 mod drops;
 
 mod subscribers;

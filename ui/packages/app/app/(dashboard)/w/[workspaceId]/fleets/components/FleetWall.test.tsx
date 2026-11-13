@@ -89,7 +89,7 @@ it("FleetWall > keeps pagination and its failure visible when an empty page has 
 });
 
 it("FleetWall > renders one tile per fleet and a live count for active fleets", () => {
-  renderWall([fleet(), fleet({ id: "f2", name: "beta", status: "stopped" })]);
+  renderWall([fleet(), fleet({ id: "f2", name: "beta", status: "archived" })]);
   expect(screen.getAllByTestId("tile")).toHaveLength(2);
   expect(screen.getByRole("status").textContent).toContain("1 live");
   expect(screen.getByText("Your fleets")).toBeTruthy();
@@ -119,8 +119,8 @@ it("FleetWall > says offline when the stream has given up, rather than going qui
 });
 
 it("FleetWall > hides the live counter when no loaded fleet is active", () => {
-  renderWall([fleet({ status: "stopped" }), fleet({ id: "f2", name: "beta", status: "killed" })]);
-  // A wall of parked/killed fleets shows no "N live" eyebrow — a zero count
+  renderWall([fleet({ status: "archived" }), fleet({ id: "f2", name: "beta", status: "installing" })]);
+  // A wall with no active fleet shows no "N live" eyebrow — a zero count
   // is silence, not "0 live".
   // No badge at all, so no live region to announce anything.
   expect(screen.queryByRole("status")).toBeNull();

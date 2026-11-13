@@ -17,6 +17,27 @@ use sqlx::Transaction;
 const SETUP_BUDGET: Duration = Duration::from_secs(15);
 
 impl Creations {
+    /// Re-advances setup after a person approved one of its grant requests,
+    /// and answers the fleet as it now stands.
+    ///
+    /// Approving the last missing grant is the person's whole answer, so the
+    /// fleet should not wait on a second request to activate. The same step
+    /// PATCH `active` runs; a fleet that is not installing is left as it is,
+    /// exactly as that retry leaves it.
+    ///
+    /// # Errors
+    /// Refuses a caller who is not a current member, a fleet outside the
+    /// workspace, and datastore failures.
+    pub async fn resume_setup(
+        &self,
+        access: Access<'_>,
+        fleet: &Uuid7,
+        now: Timestamp,
+    ) -> Result<super::SavedFleet> {
+        self.advance(access, fleet, now).await?;
+        self.read(access, fleet).await
+    }
+
     pub(super) async fn advance(
         &self,
         access: Access<'_>,

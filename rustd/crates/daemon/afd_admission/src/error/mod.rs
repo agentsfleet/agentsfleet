@@ -110,8 +110,8 @@ impl Error {
                 af_core::problem::Problem::of(error_code::AGENTSFLEET_NOT_FOUND).title(),
             ),
             ErrorKind::NotRunnable { .. } => (
-                error_code::AGENTSFLEET_PAUSED_INGRESS,
-                af_core::problem::Problem::of(error_code::AGENTSFLEET_PAUSED_INGRESS).title(),
+                error_code::AGENTSFLEET_NOT_ACTIVE,
+                af_core::problem::Problem::of(error_code::AGENTSFLEET_NOT_ACTIVE).title(),
             ),
             ErrorKind::Datastore { .. }
             | ErrorKind::OverBudget { .. }

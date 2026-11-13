@@ -4,9 +4,7 @@ import { Effect, Schema } from "effect";
 import { CLI_ERROR_TAG, ServerError, ValidationError } from "../../errors/index.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 import { HttpClient } from "../../services/http-client.ts";
-import { Input } from "../../services/input.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
-import { Stdin } from "../../services/stdin.ts";
 import { EMPTY_CELL, ago } from "../../output/index.ts";
 import { requireValidId, resolveAuthToken, resolveWorkspaceId, WORKSPACE_FLAG } from "../workspace/guards.ts";
 import { createTransport, IF_MATCH } from "./transport.ts";
@@ -80,19 +78,11 @@ export const chatRenameEffect = Effect.fn("chat.rename")(function* (draftId: str
   yield* (yield* Output).success(`Renamed setup chat to ${changed.title}`, body);
 });
 
-export const chatDeleteEffect = Effect.fn("chat.delete")(function* (draftId: string, options: WorkspaceOptions & {readonly yes: boolean}) {
-  const id = yield* requireValidId(draftId, DRAFT_ID_FIELD, "agentsfleet chat delete <id> --yes");
+// Like every other delete, no prompt: the chat is private and saved fleets
+// keep running.
+export const chatDeleteEffect = Effect.fn("chat.delete")(function* (draftId: string, options: WorkspaceOptions) {
+  const id = yield* requireValidId(draftId, DRAFT_ID_FIELD, "agentsfleet chat delete <id>");
   const output = yield* Output;
-  if (!options.yes) {
-    const stdin = yield* Stdin;
-    if (!stdin.isTTY || output.format === OUTPUT_FORMAT.json) return yield* Effect.fail(new ValidationError({
-      detail: "Deleting a setup chat needs confirmation", suggestion: "pass --yes to delete this private chat; saved fleets keep running",
-    }));
-    const answer = yield* (yield* Input).readLine(`Delete setup chat ${id}? Saved fleets keep running. [y/N] `);
-    if (answer?.trim().toLowerCase() !== "y" && answer?.trim().toLowerCase() !== "yes") {
-      return yield* output.info("Chat deletion cancelled.");
-    }
-  }
   const transport = yield* historyTransport(options);
   yield* transport.empty({path: `${transport.drafts}/${encodeURIComponent(id)}`, method: HTTP_METHOD.delete, retry: null});
   yield* output.success(`Deleted setup chat ${id}. Saved fleets keep running.`, {draft_id: id, deleted: true});

@@ -32,8 +32,6 @@ pub enum Route {
     EvaluateRecorded,
     /// The event runs.
     Pass,
-    /// The fleet is paused and the event ends.
-    Kill,
     /// Policy wants a gate and none is recorded — raise one.
     RequestNew,
     /// Policy wants a gate but we could not read whether one already exists.
@@ -66,7 +64,6 @@ pub const fn route(state: RefState, decision: Option<Decision>) -> Route {
         (RefState::Absent | RefState::Unreadable, None | Some(Decision::AutoApprove)) => {
             Route::Pass
         }
-        (RefState::Absent | RefState::Unreadable, Some(Decision::AutoKill)) => Route::Kill,
         (RefState::Unreadable, Some(Decision::RequiresApproval)) => Route::Wait,
         (RefState::Absent, Some(Decision::RequiresApproval)) => Route::RequestNew,
     }
@@ -94,10 +91,6 @@ mod tests {
             route(RefState::Found, Some(Decision::RequiresApproval)),
             Route::EvaluateRecorded
         );
-        assert_eq!(
-            route(RefState::Found, Some(Decision::AutoKill)),
-            Route::EvaluateRecorded
-        );
     }
 
     #[test]
@@ -106,10 +99,6 @@ mod tests {
         assert_eq!(
             route(RefState::Absent, Some(Decision::AutoApprove)),
             Route::Pass
-        );
-        assert_eq!(
-            route(RefState::Absent, Some(Decision::AutoKill)),
-            Route::Kill
         );
         assert_eq!(
             route(RefState::Absent, Some(Decision::RequiresApproval)),
@@ -131,10 +120,6 @@ mod tests {
             route(RefState::Unreadable, Some(Decision::AutoApprove)),
             Route::Pass
         );
-        assert_eq!(
-            route(RefState::Unreadable, Some(Decision::AutoKill)),
-            Route::Kill
-        );
     }
 
     #[test]
@@ -147,7 +132,6 @@ mod tests {
             None,
             Some(Decision::AutoApprove),
             Some(Decision::RequiresApproval),
-            Some(Decision::AutoKill),
         ];
 
         let decided = states

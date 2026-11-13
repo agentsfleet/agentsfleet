@@ -121,7 +121,7 @@ export const apiKeyCreateEffectFromArgs = (
     const token = yield* resolveAuthToken;
     const name = yield* requireValue(
       args.name,
-      "api-key create requires --name <name>",
+      "api-keys create requires --name <name>",
       "pass --name <key_name>",
     );
 

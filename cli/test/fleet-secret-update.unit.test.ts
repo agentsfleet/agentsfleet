@@ -1,4 +1,4 @@
-// `agentsfleet secret update` — whole-body replace over one PUT.
+// `agentsfleet secrets update` — whole-body replace over one PUT.
 //
 // The value under test is a credential, so the assertions are as much about
 // what does NOT happen as what does: no request on a rejected invocation, no
@@ -190,7 +190,7 @@ describe("test_secret_update_body_sources_and_validation", () => {
     if (Exit.isFailure(exit)) {
       const err = Option.getOrNull(Cause.findErrorOption(exit.cause));
       expect(err).toBeInstanceOf(ValidationError);
-      expect((err as ValidationError).suggestion).toMatch(/secret update/);
+      expect((err as ValidationError).suggestion).toMatch(/secrets update/);
     }
     expect(sent).toEqual([]);
   });
@@ -273,7 +273,7 @@ describe("test_secret_update_renders_missing_secret", () => {
             status: 404,
             code: "UZ-VAULT-003",
             detail: "secret not found in this workspace",
-            suggestion: "list available with: agentsfleet secret list",
+            suggestion: "list available with: agentsfleet secrets list",
             requestId: null,
           }),
         ),

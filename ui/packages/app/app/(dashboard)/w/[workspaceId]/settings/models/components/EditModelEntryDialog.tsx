@@ -40,7 +40,7 @@ const REPLACE_ACTION = "replace the credential";
 const KEY_REQUIRED_TO_REPLACE =
   "Re-enter the API key. Replacing resends the whole credential, and a stored key can never be read back — leaving it blank would delete it.";
 const CUSTOM_SECRET_HINT =
-  "This entry uses an opaque secret the dashboard cannot recompose. Replace its value with: agentsfleet secret update";
+  "This entry uses an opaque secret the dashboard cannot recompose. Replace its value with: agentsfleet secrets update";
 
 // Rendered only while `target` is non-null (see the Dialog body below), so
 // every field here takes `target` directly — no null branch to guard. Keyed

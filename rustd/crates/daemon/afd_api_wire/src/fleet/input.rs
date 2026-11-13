@@ -88,12 +88,10 @@ pub struct PatchFleetRequest {
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PatchStatus {
-    /// Activate or resume checked setup.
+    /// Activate checked setup, or retry it while the fleet is installing.
     Active,
-    /// Stop an activated fleet.
-    Stopped,
-    /// Kill the fleet or cancel its unfinished setup.
-    Killed,
+    /// Archive the fleet, or cancel its unfinished setup. Terminal.
+    Archived,
 }
 
 impl PatchStatus {
@@ -102,8 +100,7 @@ impl PatchStatus {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Active => "active",
-            Self::Stopped => "stopped",
-            Self::Killed => "killed",
+            Self::Archived => "archived",
         }
     }
 }

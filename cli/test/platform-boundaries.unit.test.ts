@@ -8,7 +8,7 @@ beforeEach(() => {fixture = new PlatformFixture();});
 afterEach(() => fixture.dispose());
 
 test.each(["http://example.test", "https://"])("refuses a malformed platform provider URL %s before a request", async baseUrl => {
-  const result = await fixture.run(["keys", "set", "--provider", "openai-compatible", "--workspace", RUNNER_ID,
+  const result = await fixture.run(["keys", "use", "--provider", "openai-compatible", "--workspace", RUNNER_ID,
     "--model", "remote-model", "--base-url", baseUrl]);
   expect(result.code).toBe(4);
   expect(result.stderr).toContain("must be an https URL");
@@ -17,12 +17,12 @@ test.each(["http://example.test", "https://"])("refuses a malformed platform pro
 
 test("uses the common HTTPS provider URL flag and URL metavar", async () => {
   fixture.respond = () => Response.json({provider: "openai-compatible", model: "remote-model", active: true});
-  const result = await fixture.run(["keys", "set", "--provider", "openai-compatible", "--workspace", RUNNER_ID,
+  const result = await fixture.run(["keys", "use", "--provider", "openai-compatible", "--workspace", RUNNER_ID,
     "--model", "remote-model", "--base-url", "https://example.test/v1"]);
   expect(result.code).toBe(0);
   expect(fixture.calls).toHaveLength(1);
   expect(fixture.calls[0]?.body).toMatchObject({base_url: "https://example.test/v1"});
-  const help = await fixture.run(["keys", "set", "--help"]);
+  const help = await fixture.run(["keys", "use", "--help"]);
   expect(help.stdout).toContain("--base-url <url>");
 });
 
@@ -81,7 +81,7 @@ test.each(["missing", "oversized", "terminal"])("refuses %s policy input before 
 });
 
 test("refuses a provider key requested from an interactive input", async () => {
-  const result = await fixture.run(["keys", "set", "--provider", "example", "--workspace", RUNNER_ID,
+  const result = await fixture.run(["keys", "use", "--provider", "example", "--workspace", RUNNER_ID,
     "--model", "reasoning-model", "--api-key-stdin", "--json"], "", false, true);
   expect(result.code).toBe(4); expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT"); expect(fixture.calls).toEqual([]);
 });

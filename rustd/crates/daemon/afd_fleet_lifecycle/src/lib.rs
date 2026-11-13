@@ -46,13 +46,14 @@ use afd_db::Db;
 /// statements stay `pub(crate)`.
 #[cfg(feature = "test-util")]
 pub mod purge_statements {
-    /// See `crate::sql::LOCK_FLEET`.
-    pub const LOCK_FLEET: &str = crate::sql::LOCK_FLEET;
-    /// See `crate::sql::DELETE_FLEET_IN_STATUS`.
-    pub const DELETE_FLEET_IN_STATUS: &str = crate::sql::DELETE_FLEET_IN_STATUS;
+    /// See `crate::sql::DELETE_FLEET`.
+    pub const DELETE_FLEET: &str = crate::sql::DELETE_FLEET;
+    /// See `crate::sql::DELETE_ACTIVE_LEASES`.
+    pub const DELETE_ACTIVE_LEASES: &str = crate::sql::DELETE_ACTIVE_LEASES;
 }
 
 pub use self::error::{Error, Result};
+pub use self::purge::delete_locked;
 pub use self::read::{After, FleetPage, FleetRow, Triggers};
 
 /// The workspace's fleets, as one store.
@@ -91,13 +92,10 @@ pub enum FleetStatus {
     Installing,
     /// Leasable. The only status the runner's candidate query admits.
     Active,
-    /// Held by the platform's anomaly gate. Never reachable through the API.
-    Paused,
-    /// Stopped by an operator, and resumable.
-    Stopped,
-    /// Terminal. A killed fleet answers 404 to every further edit, and is the
-    /// only status a purge will delete from.
-    Killed,
+    /// Terminal. Reached by an operator's archive or by the platform gate's
+    /// trip; history stays readable, every further transition is refused, and
+    /// nothing returns it to `active`.
+    Archived,
 }
 
 impl FleetStatus {
@@ -105,13 +103,7 @@ impl FleetStatus {
     ///
     /// What [`FleetStatus::parse`] searches and what the census label set is
     /// held equal to; a member added here without its label fails that test.
-    pub const ALL: [Self; 5] = [
-        Self::Installing,
-        Self::Active,
-        Self::Paused,
-        Self::Stopped,
-        Self::Killed,
-    ];
+    pub const ALL: [Self; 3] = [Self::Installing, Self::Active, Self::Archived];
 
     /// The stored spelling — the bytes in the column, and on the wire.
     #[must_use]
@@ -119,16 +111,14 @@ impl FleetStatus {
         match self {
             Self::Installing => "installing",
             Self::Active => "active",
-            Self::Paused => "paused",
-            Self::Stopped => "stopped",
-            Self::Killed => "killed",
+            Self::Archived => "archived",
         }
     }
 
     /// Whether this fleet will take new work.
     ///
     /// `active` and nothing else, exactly as `isRunnable`. The distinction is
-    /// load-bearing on the steer: a message accepted for a stopped fleet is a
+    /// load-bearing on the steer: a message accepted for an archived fleet is a
     /// 202 whose run never happens, so the surface refuses loudly instead —
     /// see the ingress refusal in `handler::fleet::message_steer`.
     #[must_use]

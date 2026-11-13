@@ -1,4 +1,4 @@
-// Unit test for `agentsfleet status` table rendering. Confirms statusEffect
+// Unit test for `agentsfleet fleet status` table rendering. Confirms statusEffect
 // projects each fleet's events_processed and formats budget_used_nanos as USD
 // via the shared billing formatter — guarding the field contract with the
 // server's GET /fleets aggregates (events_processed + budget_used_nanos).
@@ -6,7 +6,7 @@
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
 
-import { statusEffect, stopEffectFromId } from "../src/commands/fleet/fleet.ts";
+import { archiveEffectFromId, statusEffect } from "../src/commands/fleet/fleet.ts";
 import { FLEET, FLEET_ID } from "./chat/fixture.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
@@ -21,7 +21,7 @@ const NANOS_3_USD = 3_000_000_000; // $3.00 in nanos — pin test: literal is th
 const LIST_RESPONSE = {
   items: [
     { id: "01900000-0000-7000-8000-00000000a1fa", name: "alpha", status: "active", events_processed: "7", budget_used_nanos: String(NANOS_3_USD) },
-    { id: "01900000-0000-7000-8000-00000000be7a", name: "beta", status: "stopped", events_processed: "0", budget_used_nanos: "0" },
+    { id: "01900000-0000-7000-8000-00000000be7a", name: "beta", status: "archived", events_processed: "0", budget_used_nanos: "0" },
   ],
 };
 
@@ -65,17 +65,17 @@ const credentialsLayer = (): Layer.Layer<Credentials> =>
     clearAccessToken: Effect.die("unused"),
   });
 
-describe("agentsfleet status — per-fleet events + budget", () => {
+describe("agentsfleet fleet status — per-fleet events + budget", () => {
   test("a status mutation reports the server's actual outcome", async () => {
     const messages: string[] = [];
-    const http = Layer.succeed(HttpClient, { request: <T,>() => Effect.succeed({ ...FLEET, status: "killed" } as T) });
-    await Effect.runPromise(stopEffectFromId(FLEET_ID).pipe(
+    const http = Layer.succeed(HttpClient, { request: <T,>() => Effect.succeed({ ...FLEET, status: "archived" } as T) });
+    await Effect.runPromise(archiveEffectFromId(FLEET_ID).pipe(
       Effect.provide(configLayer()), Effect.provide(credentialsLayer()), Effect.provide(workspacesLayer()),
       Effect.provide(http), Effect.provide(Layer.succeed(Output, {
         ...outputDouble(), success: message => Effect.sync(() => { messages.push(message); }),
       })),
     ));
-    expect(messages).toEqual([`${FLEET_ID} killed.`]);
+    expect(messages).toEqual([`${FLEET_ID} archived.`]);
   });
 
   test("projects events_processed and formats budget_used_nanos as USD", async () => {
@@ -100,7 +100,7 @@ describe("agentsfleet status — per-fleet events + budget", () => {
     });
     expect(rows[1]).toMatchObject({
       Name: "beta",
-      Status: "stopped",
+      Status: "archived",
       Events: "0",
       Budget: "$0.00",
     });

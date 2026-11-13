@@ -13,6 +13,7 @@
 // Each scan stops at `--`, so a value after the end-of-flags marker is an
 // argument and never mistaken for the flag it is spelled like.
 
+import type { LogLevel } from "effect/LogLevel";
 import type { WritableStreamLike } from "../../output/capability.ts";
 import { printJson } from "../io.ts";
 import { printVersion } from "../banner.ts";
@@ -84,11 +85,86 @@ export const resolveGlobalApiUrl = (
   return flagged || env[API_URL_ENV] || null;
 };
 
-const flaggedApiUrl = (argv: ReadonlyArray<string>): string | null => {
+/**
+ * The target `--api` named, ignoring the environment.
+ *
+ * Distinct from `resolveGlobalApiUrl` because the two sources carry different
+ * consent: `AGENTSFLEET_API_URL` is configuration the operator set up, while
+ * `--api` on a copied one-liner can name any host. Identity discovery sends an
+ * environment key only when this is null.
+ */
+export const flaggedApiUrl = (argv: ReadonlyArray<string>): string | null => {
   for (const [index, token] of argv.entries()) {
     if (token === END_OF_FLAGS) return null;
     if (token === FLAG_API) return argv[index + 1] ?? null;
     if (token.startsWith(FLAG_API_INLINE)) return token.slice(FLAG_API_INLINE.length);
   }
   return null;
+};
+
+const HELP_FLAG = "--help" as const;
+const HELP_COMMAND = "help" as const;
+
+// Global flags taking a value in the `--flag value` form. The `--flag=value`
+// spelling carries its own, so it never consumes the token after it.
+const VALUE_TAKING_GLOBAL_FLAGS: ReadonlySet<string> = new Set([
+  "--api",
+  "--completions",
+  "--log-level",
+]);
+
+/**
+ * Where the command name starts, skipping leading global flags and their values.
+ *
+ * `help` is a verb this CLI accepts and the tree has no subcommand for it, so
+ * the entry point rewrites it. Recognising it at position zero alone meant
+ * `agentsfleet --json help grant list` left `help` in the argv and failed as an
+ * unknown command, while the same line without `--json` printed the document.
+ * A flag before the verb is the ordinary shape for `--api` and `--json`.
+ */
+const firstCommandIndex = (argv: readonly string[]): number => {
+  let index = 0;
+  while (index < argv.length) {
+    const token = argv[index];
+    if (token === undefined || !token.startsWith("-")) return index;
+    index += !token.includes("=") && VALUE_TAKING_GLOBAL_FLAGS.has(token) ? 2 : 1;
+  }
+  return argv.length;
+};
+
+// `[]` → `--help`, and `<flags> help x y` → `<flags> x y --help`. Any other
+// argv is its own.
+export function helpArgv(argv: readonly string[]): string[] {
+  if (argv.length === 0) return [HELP_FLAG];
+  const at = firstCommandIndex(argv);
+  if (argv[at] !== HELP_COMMAND) return [...argv];
+  return [...argv.slice(0, at), ...argv.slice(at + 1), HELP_FLAG];
+}
+
+const FLAG_LOG_LEVEL = "--log-level" as const;
+const FLAG_LOG_LEVEL_INLINE = "--log-level=" as const;
+// The parser's spellings, mapped to Effect's levels; `warning` is the parser's
+// alias for `warn`.
+const LOG_LEVELS: Readonly<Record<string, LogLevel>> = {
+  all: "All", trace: "Trace", debug: "Debug", info: "Info", warn: "Warn",
+  warning: "Warn", error: "Error", fatal: "Fatal", none: "None",
+};
+
+/**
+ * The `--log-level` argv names, for work that runs before the parser does.
+ *
+ * Identity discovery happens ahead of `Command.runWith`, which is where the
+ * parsed level is applied; without this, a debug record discovery made would
+ * be filtered at the default level and a test asserting its absence could not
+ * fail. An unknown value is left to the parser to refuse.
+ */
+export const scanLogLevel = (argv: ReadonlyArray<string>): LogLevel | undefined => {
+  for (const [index, token] of argv.entries()) {
+    if (token === END_OF_FLAGS) return undefined;
+    const value = token === FLAG_LOG_LEVEL ? argv[index + 1]
+      : token.startsWith(FLAG_LOG_LEVEL_INLINE) ? token.slice(FLAG_LOG_LEVEL_INLINE.length) : undefined;
+    // Own keys only: `constructor` or `__proto__` must not resolve through the prototype.
+    if (value !== undefined) return Object.hasOwn(LOG_LEVELS, value) ? LOG_LEVELS[value] : undefined;
+  }
+  return undefined;
 };

@@ -20,7 +20,7 @@ describe("logs (paginated event tail)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["logs", FLEET_ID],
+          ["fleet", "logs", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -51,7 +51,7 @@ describe("logs (paginated event tail)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["logs", FLEET_ID],
+          ["fleet", "logs", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -90,7 +90,7 @@ describe("logs (paginated event tail)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["logs", FLEET_ID],
+          ["fleet", "logs", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         // The command completed cleanly instead of throwing.
@@ -116,7 +116,7 @@ describe("logs (paginated event tail)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["logs"],
+          ["fleet", "logs"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         // Effect-shape contract: ValidationError → exit 4 (EXIT_CODE.ValidationError).

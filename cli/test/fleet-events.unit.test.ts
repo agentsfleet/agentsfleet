@@ -77,7 +77,7 @@ describe("eventsEffectFromFlags — ValidationError guard", () => {
       expect(err).toBeInstanceOf(ValidationError);
       if (err instanceof ValidationError) {
         expect(err.detail).toMatch(/fleet_id is required/i);
-        expect(err.suggestion).toMatch(/agentsfleet events/);
+        expect(err.suggestion).toMatch(/agentsfleet fleet events/);
       }
     }
   });

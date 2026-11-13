@@ -89,7 +89,7 @@ impl Operator {
         Self::answer(response).await
     }
 
-    pub(super) async fn kill(&self, run: &Scenario) -> TestResult {
+    pub(super) async fn archive(&self, run: &Scenario) -> TestResult {
         let url = format!(
             "{}/v1/workspaces/{}/fleets/{}",
             run.base, run.workspace, run.fleet
@@ -112,12 +112,12 @@ impl Operator {
             .bearer_auth(self.token.expose())
             .header(reqwest::header::IF_MATCH, etag)
             .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .body(serde_json::to_vec(&json!({"status":"killed"}))?)
+            .body(serde_json::to_vec(&json!({"status":"archived"}))?)
             .send()
             .await?;
         assert_eq!(
             crate::wire::pointer(&Self::answer(response).await?, "/status"),
-            "killed"
+            "archived"
         );
         Ok(())
     }

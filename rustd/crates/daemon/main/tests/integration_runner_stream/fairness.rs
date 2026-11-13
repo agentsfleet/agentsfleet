@@ -110,10 +110,12 @@ struct Population {
 
 impl Population {
     async fn seed(run: &Scenario) -> Self {
+        // Parked as `archived` (not leasable, and nothing sweeps it) until the
+        // population is ready, then flipped to `active` by statement below.
         set_status(
             &run.booted.database,
             std::slice::from_ref(&run.fleet),
-            FleetStatus::Stopped,
+            FleetStatus::Archived,
         )
         .await;
         let common = e2e_seed::scenario_tag(&run.fleet);
@@ -182,7 +184,7 @@ async fn seed_fleet(run: &Scenario, common: &str) -> (Uuid7, Uuid7) {
         .insert(&mut *connection)
         .await
         .expect("workspace");
-    FleetSeed::new(&fleet, &workspace, &tenant, FleetStatus::Stopped.as_str())
+    FleetSeed::new(&fleet, &workspace, &tenant, FleetStatus::Archived.as_str())
         .name("Pull request review")
         .tags(&[common])
         .at(now)

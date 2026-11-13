@@ -1,4 +1,4 @@
-// `agentsfleet secret list` — the workspace vault's index.
+// `agentsfleet secrets list` — the workspace vault's index.
 //
 // Split from fleet_secret.ts to keep that file inside the 350-line cap once the
 // list grew a real table. It renders names, kinds and creation times only; the
@@ -32,7 +32,7 @@ const FIELD_NAME = "name" as const;
 const FIELD_KIND = "kind" as const;
 const SECRETS_LISTED = "Workspace secrets" as const;
 const EMPTY_VAULT =
-  "No secrets stored. Create one with: agentsfleet secret create <name> --data=@- (pipe JSON on stdin)" as const;
+  "No secrets stored. Create one with: agentsfleet secrets create <name> --data=@- (pipe JSON on stdin)" as const;
 
 export const secretListEffect: Effect.Effect<
   void,

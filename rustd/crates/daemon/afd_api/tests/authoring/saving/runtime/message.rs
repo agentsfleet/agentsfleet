@@ -1,4 +1,4 @@
-//! A message's operation id across a stop and across a workspace boundary, on
+//! A message's operation id across an archive and across a workspace boundary, on
 //! a fleet created through Save.
 
 use af_core::error_code;
@@ -11,7 +11,7 @@ use super::Saved;
 /// The operation id a client repeats across its retries.
 const OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0b01";
 
-/// A second operation id, for new work the stopped fleet must still refuse.
+/// A second operation id, for new work the archived fleet must still refuse.
 const FRESH_OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0b02";
 
 /// The message the operation first carried.
@@ -51,7 +51,7 @@ async fn test_a_fleet_with_no_trigger_accepts_a_steer() {
 
 /// The 202 says whether it answered an earlier send: `false` for the send that
 /// admitted the message, `true` for a repeat while the fleet runs and after it
-/// stopped.
+/// is archived.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_steer_202_names_a_replay() {
@@ -62,16 +62,16 @@ async fn test_steer_202_names_a_replay() {
     assert_eq!(replayed(&fresh), Some(false), "{fresh}");
     let (_, repeat) = saved.steer(&saved.thread, OPERATION, MESSAGE).await;
     assert_eq!(replayed(&repeat), Some(true), "{repeat}");
-    saved.stop().await;
-    let (_, stopped) = saved.steer(&saved.thread, OPERATION, MESSAGE).await;
-    assert_eq!(replayed(&stopped), Some(true), "{stopped}");
-    assert_eq!(fresh.get("event_id"), stopped.get("event_id"));
+    saved.archive().await;
+    let (_, archived) = saved.steer(&saved.thread, OPERATION, MESSAGE).await;
+    assert_eq!(replayed(&archived), Some(true), "{archived}");
+    assert_eq!(fresh.get("event_id"), archived.get("event_id"));
 
     saved.case.cleanup().await;
 }
 
 /// A retry of an admitted message is answered with its event even after the
-/// fleet stops taking work; new work and a changed message are refused.
+/// fleet is archived; new work and a changed message are refused.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_replay_bypasses_ingress_refusal() {
@@ -83,13 +83,13 @@ async fn test_replay_bypasses_ingress_refusal() {
         .as_str()
         .expect("a 202 names its event")
         .to_owned();
-    saved.stop().await;
+    saved.archive().await;
 
     let (status, retried) = saved.steer(&saved.thread, OPERATION, MESSAGE).await;
     assert_eq!(
         status,
         StatusCode::ACCEPTED,
-        "answered, stopped or not: {retried}"
+        "answered, archived or not: {retried}"
     );
     assert_eq!(retried["event_id"].as_str(), Some(event.as_str()));
 
@@ -107,7 +107,7 @@ async fn test_replay_bypasses_ingress_refusal() {
     assert_eq!(status, StatusCode::CONFLICT, "{fresh}");
     assert_eq!(
         code(&fresh),
-        Some(error_code::AGENTSFLEET_PAUSED_INGRESS.as_str())
+        Some(error_code::AGENTSFLEET_NOT_ACTIVE.as_str())
     );
 
     assert_keyless_message_refused(&saved).await;
@@ -129,7 +129,7 @@ async fn assert_keyless_message_refused(saved: &Saved) {
     assert_eq!(unnamed.status(), StatusCode::CONFLICT);
     assert_eq!(
         code(&json_body(unnamed).await),
-        Some(error_code::AGENTSFLEET_PAUSED_INGRESS.as_str())
+        Some(error_code::AGENTSFLEET_NOT_ACTIVE.as_str())
     );
 }
 

@@ -1,17 +1,15 @@
 /**
- * Shared selectors + action helpers for KillSwitch lifecycle transitions.
+ * Shared selectors + action helpers for Fleet actions lifecycle transitions.
  *
- * The Stop / Resume / Kill flow is the same Radix AlertDialog wiring across
- * every spec that drives it: lifecycle, kill, and the two full-lifecycle
- * scenarios. Each action is a menu item in Fleet actions + a confirm
- * button inside an alertdialog role. Without a shared helper the four specs
- * duplicate the same getByRole pattern, and a future ConfirmDialog refactor
- * (button label, copy, dialog role) has to be tracked across four files.
+ * Archive is the same Radix AlertDialog wiring across every spec that drives
+ * it: a menu item in Fleet actions + a confirm button inside an alertdialog
+ * role. Without a shared helper the four specs duplicate the same getByRole
+ * pattern, and a future ConfirmDialog refactor (button label, copy, dialog
+ * role) has to be tracked across four files.
  *
  * State assertions key on the wall tile anchor (FleetTile) `data-state`
- * attribute (canonical mapping in
- * app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx:
- * active → live, paused/stopped → parked, killed/errored → failed).
+ * attribute (canonical mapping in lib/wall/tile-liveness.ts `fleetRowState`:
+ * active → live, installing → installing, archived → archived).
  * Actions live in the detail header ("Fleet lifecycle actions"), visible
  * from every rail view — the old Settings rail destination is gone.
  */
@@ -19,9 +17,9 @@ import { expect, type Page } from "@playwright/test";
 
 const ROW_STATE_TIMEOUT_MS = 15_000;
 
-type RowState = "live" | "parked" | "failed";
+type RowState = "live" | "installing" | "archived";
 
-async function confirmAction(page: Page, label: "Stop" | "Resume" | "Kill"): Promise<void> {
+async function confirmAction(page: Page, label: "Archive"): Promise<void> {
   await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
   await page.getByRole("menuitem", {name: label, exact: true}).click();
   const dialog = page.getByRole("alertdialog");
@@ -41,16 +39,8 @@ async function confirmAction(page: Page, label: "Stop" | "Resume" | "Kill"): Pro
   await expect(dialog).toBeHidden({ timeout: ROW_STATE_TIMEOUT_MS });
 }
 
-export async function stopFleet(page: Page): Promise<void> {
-  await confirmAction(page, "Stop");
-}
-
-export async function resumeFleet(page: Page): Promise<void> {
-  await confirmAction(page, "Resume");
-}
-
-export async function killFleet(page: Page): Promise<void> {
-  await confirmAction(page, "Kill");
+export async function archiveFleet(page: Page): Promise<void> {
+  await confirmAction(page, "Archive");
 }
 
 export async function expectRowState(
@@ -80,11 +70,14 @@ export async function expectRowState(
   });
 }
 
-// A killed fleet exposes only its terminal cleanup action in the detail header.
-export async function expectDetailKilled(page: Page): Promise<void> {
-  await expect(page.getByRole("button", { name: "Delete fleet", exact: true })).toBeVisible({
+// An archived fleet reads archived in the detail header, and Fleet actions
+// offers only Delete: nothing returns an archived fleet to work.
+export async function expectDetailArchived(page: Page): Promise<void> {
+  await expect(page.getByLabel("Fleet status: archived", { exact: true })).toBeVisible({
     timeout: ROW_STATE_TIMEOUT_MS,
   });
-  await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Kill" })).toHaveCount(0);
+  await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
+  await expect(page.getByRole("menuitem", { name: "Delete fleet", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Archive", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 }

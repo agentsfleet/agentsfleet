@@ -7,21 +7,21 @@ use serde_json::json;
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_fleet_killed_during_the_turn_cannot_be_changed_or_reactivated() {
+async fn a_fleet_archived_during_the_turn_cannot_be_changed_or_reactivated() {
     let mut case = Case::create().await;
     case.fund().await;
     let (item, tag, draft_item, created) = start_improvement(&case).await;
     let (path, token, report) = finish_request(&mut case, &created).await;
-    let killed = send_with_headers(
+    let archived = send_with_headers(
         &case.router,
         Method::PATCH,
         &item,
         Some(&case.base.token),
-        r#"{"status":"killed"}"#,
+        r#"{"status":"archived"}"#,
         &[(http::header::IF_MATCH, &tag)],
     )
     .await;
-    assert_eq!(killed.status(), StatusCode::OK);
+    assert_eq!(archived.status(), StatusCode::OK);
     report_once(&case, &path, &token, &report).await;
     super::refusals::assert_refused(
         &case,
@@ -30,7 +30,7 @@ async fn a_fleet_killed_during_the_turn_cannot_be_changed_or_reactivated() {
     )
     .await;
     let after = read(&case, &item).await;
-    assert_eq!(after["status"], "killed");
+    assert_eq!(after["status"], "archived");
     assert_eq!(after["setup_revision"], "1");
     let events = read(&case, &format!("{item}/messages?event_type=activity")).await;
     assert_eq!(

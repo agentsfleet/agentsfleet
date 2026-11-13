@@ -142,7 +142,7 @@ reconcileServerRows(fleetId: string, rows: EventRow[]): void {
 }
 
 // A server render's word on the fleet, as the page just read it. It overwrites
-// what the tail last said — a kill from the header reaches the strip this way,
+// what the tail last said — an archive from the header reaches the strip this way,
 // since no frame announces a PATCH — and the next frame overwrites it back.
 // Whether a render is older than a frame that landed while it was in flight
 // is the caller's to decide, from `factsSeq`; `factsSeq` never moves here.

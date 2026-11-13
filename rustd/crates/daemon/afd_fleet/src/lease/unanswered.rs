@@ -19,7 +19,7 @@ pub(crate) fn failed_run(fleet: &Uuid7, reason: Option<&str>) -> String {
     let named = reason.map_or_else(String::new, |label| format!(" ({label})"));
     format!(
         "This run ended before it could answer{named}. A workspace member can read what \
-         happened with `agentsfleet events {fleet}`."
+         happened with `agentsfleet fleet events {fleet}`."
     )
 }
 
@@ -27,7 +27,7 @@ pub(crate) fn failed_run(fleet: &Uuid7, reason: Option<&str>) -> String {
 pub(crate) fn refused(fleet: &Uuid7, reason: &str) -> String {
     format!(
         "This request was not run ({reason}). A workspace member can read why with \
-         `agentsfleet events {fleet}`."
+         `agentsfleet fleet events {fleet}`."
     )
 }
 
@@ -53,7 +53,7 @@ mod tests {
         assert_eq!(
             failed_run(&fleet(), Some("timeout_kill")),
             "This run ended before it could answer (timeout_kill). A workspace member can read \
-             what happened with `agentsfleet events 019feca5-bc9b-72e8-b71f-e2714f6b0120`."
+             what happened with `agentsfleet fleet events 019feca5-bc9b-72e8-b71f-e2714f6b0120`."
         );
     }
 
@@ -62,7 +62,7 @@ mod tests {
         assert_eq!(
             failed_run(&fleet(), None),
             "This run ended before it could answer. A workspace member can read what happened \
-             with `agentsfleet events 019feca5-bc9b-72e8-b71f-e2714f6b0120`."
+             with `agentsfleet fleet events 019feca5-bc9b-72e8-b71f-e2714f6b0120`."
         );
     }
 
@@ -71,7 +71,7 @@ mod tests {
         assert_eq!(
             refused(&fleet(), af_core::event::label::BALANCE_EXHAUSTED),
             "This request was not run (balance_exhausted). A workspace member can read why with \
-             `agentsfleet events 019feca5-bc9b-72e8-b71f-e2714f6b0120`."
+             `agentsfleet fleet events 019feca5-bc9b-72e8-b71f-e2714f6b0120`."
         );
     }
 }

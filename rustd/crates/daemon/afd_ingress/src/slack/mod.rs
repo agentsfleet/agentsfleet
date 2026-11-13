@@ -35,15 +35,10 @@ const CONTEXT_MENTION_SUBSCRIBERS: &str = "resolve mention subscribers";
 
 /// The statuses a subscriber can be read in.
 ///
-/// Paused and stopped fleets are read, not skipped: a person who addresses one
-/// by name is owed a notice saying so, and a fleet the read silently dropped
-/// would earn "no such fleet" instead. Installing and killed fleets are not
-/// attached to anything yet, or any longer.
-const READABLE: [FleetStatus; 3] = [
-    FleetStatus::Active,
-    FleetStatus::Paused,
-    FleetStatus::Stopped,
-];
+/// Archived fleets are read, not skipped: a person who addresses one by name
+/// is owed a notice saying so, and a fleet the read silently dropped would earn
+/// "no such fleet" instead. Installing fleets are not attached to anything yet.
+const READABLE: [FleetStatus; 2] = [FleetStatus::Active, FleetStatus::Archived];
 
 /// One fleet attached to a channel, as routing reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +47,7 @@ pub struct Subscriber {
     pub fleet: Uuid7,
     /// The name a person addresses it by.
     pub name: String,
-    /// Whether it can run now; a paused or stopped fleet earns a notice.
+    /// Whether it can run now; an archived fleet earns a notice.
     pub runnable: bool,
     /// Whether it takes only mentions addressed to it by name. A fleet that
     /// can write to a repository never receives an unaddressed mention.

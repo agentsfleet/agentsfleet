@@ -34,7 +34,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Multi-replica gauges | counters exact via `sum by`; `active_leases` approximate | the `+1` grant and `−1` release can land on different replicas | §Multi-replica |
 | Sandbox tiers | 3 (`landlock_full` · `container_nested` · `dev_none`) | the daemon reconciles each against the host's report; tier is orthogonal to egress policy | §Sandbox tiers |
 | Egress policies | 3 (`allow_all` · `deny_all_egress` · `allow_list_egress`) | host-side default-deny nf_tables rules on a veth pair; port 53 dropped; IPv4 only | §Egress model |
-| Cancel latency | none: a running lease is never cancelled | the heartbeat answers `ok` and names no lease; kill and pause stop new leases only | §Steer, kill, pause |
+| Cancel latency | the runner's next Cancel message | archive and delete send Cancel to each live lease's runner; a gate trip stops new leases only; the heartbeat names no lease | §Steer, archive, delete |
 | Config freshness | named by the claim | the claim returns the head revision id and a replica holds the parsed definition under that id, so the next lease sees the change; no reload signal | §Config |
 | Debit point | the run's usage, per renewal | the issued lease's hold is reserved; each `/renew` and the report log the slice as a usage line that the biller settles after commit | §Money gates |
 | Production shape | 3 `agentsfleetd` machines | set and verified by the release workflow; runner verbs load-balance across replicas | §Multi-replica |
@@ -773,13 +773,11 @@ The dashboard opens streams through authenticated, same-origin Next.js `/live/*`
 The daemon serves asynchronous response bodies through the shared hub, with a separate stream admission ceiling.
 [Data Flow's WATCH section](./data_flow.md#d-watch--user-side-how-the-live-tail-surfaces) owns authentication, recovery limits, and the per-hop HTTP topology.
 
-## Steer, kill, pause
+## Steer, archive, delete
 
-All three are decided by `agentsfleetd`, which owns both `fleet.fleets.status` and lease issuance. None cancels a lease already running: the heartbeat answers `ok` and names no lease.
+`agentsfleetd` decides all three, because it owns both `fleet.fleets.status` and lease issuance. A fleet is `installing`, `active` or `archived`; there is no stop, resume or pause.
 
-Renewal reads the fleet's stored config whatever its status (`afd_fleet`'s lease coverage read). A paused or killed fleet's run so still stops at the fleet's stored budget ceiling.
-
-Each renewal reads that ceiling afresh. A paused or stopped fleet's config can be edited mid-run and the next renewal obeys the edit. A killed fleet's config cannot be edited.
+Renewal reads the fleet's stored config whatever its status (`afd_fleet`'s lease coverage read). A run on an archived fleet therefore still stops at the fleet's stored budget ceiling. An archived fleet's config cannot be edited.
 
 - **Steer** — a message to a fleet. The send answers one of three dispositions: `started`, `folded` or `queued`. With no run live and nothing waiting, the message starts a run of its own.
 
@@ -791,11 +789,13 @@ That message is a barrier, and nothing after it folds. The model call in flight 
 
   When the run reports succeeded, each folded message's own event gets the run's reply. Anything else waits its turn as `queued`. Not an interrupt.
 
-- **Pause** — `agentsfleetd` sets `status=paused` and stops issuing leases for the fleet. A lease in flight runs on as under Kill, below: to its own end, its fleet's budget ceiling, or `MAX_RUNTIME`.
+- **Archive** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: archived` (`agentsfleet fleet archive`) sets `status=archived` and stops issuing leases. It cancels setup grants, marks live leases `cancel_requested_at` and sends each runner a Cancel (`afd_authoring`'s creation patch). History stays readable, and archive is terminal.
 
-- **Kill** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: killed` sets `status=killed` and stops issuing leases for the fleet. It writes nothing to `runner.leases` (`afd_fleet_lifecycle`'s statements). A lease in flight runs to its own end, its fleet's budget ceiling, or `MAX_RUNTIME`, and its report settles like any other.
+- **Gate trip** — a tripped anomaly rule archives the fleet (`afd_gate`'s gate archive), and the event that tripped it ends as `fleet_archived`. A matching gate rule never archives; it always asks a person. It writes only the status: a lease in flight runs to its own end, its fleet's budget ceiling, or `MAX_RUNTIME`.
 
-No cancel channel exists. A revocation carried on the heartbeat, or a dedicated low-latency channel, is unbuilt.
+- **Delete** — `DELETE` on the fleet (`agentsfleet fleet delete`) removes it in any status. It first does what archive does to live work (`afd_authoring`'s creation release), then purges the rows. A runner that reads the Cancel after its lease row is gone stops at its next renewal, which answers `RUN_LEASE_NOT_FOUND`.
+
+Archive and delete reach a running lease only through the runner Cancel message; the heartbeat still names no lease.
 
 ## Cold and warm execution
 

@@ -206,7 +206,7 @@ async fn test_the_problem_schema_is_the_envelope_the_daemon_writes() {
         error_code::AUTH_UNAUTHORIZED,
         "d",
         "r",
-        "paused",
+        "archived",
     ))
     .await;
     let precondition = wire_keys(ProblemResponse::precondition_failed(

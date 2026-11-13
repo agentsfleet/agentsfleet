@@ -4,7 +4,7 @@
 // because a schedule belongs to a Fleet and a Fleet belongs to a workspace —
 // the argument order says the same thing the paths do.
 
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { Command } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import {
@@ -15,35 +15,16 @@ import {
   scheduleSyncEffectFromArgs,
   scheduleUpdateEffectFromArgs,
 } from "../../commands/schedule/schedule.ts";
-import {
-  cronFlag,
-  cronOptionalFlag,
-  fleetIdArgument,
-  messageFlag,
-  messageOptionalFlag,
-  scheduleIdArgument,
-  scheduleStatusFlag,
-  timezoneDefaultFlag,
-  timezoneFlag,
-  workspaceFlag,
-} from "./flags.ts";
+import { cronFlag, cronOptionalFlag, fleetIdArgument, messageFlag, messageOptionalFlag, opt, scheduleIdArgument, scheduleStatusFlag, timezoneDefaultFlag, timezoneFlag, VERB, workspaceFlag } from "./flags.ts";
 import { stdoutIsTty } from "./tty.ts";
-
-const opt = Option.getOrUndefined;
 
 // `schedule` spoke a private dialect: add where every other collection says
 // create, rm where the rest says delete, and status where a single-resource
 // read is called show. No alias is kept for the retired spellings — a
 // compatibility verb is what the rules forbid at this version, and a retired
 // spelling answers as the unknown subcommand it now is.
-const CREATE = "create" as const;
-const DELETE = "delete" as const;
-const SHOW = "show" as const;
-const LIST = "list" as const;
-const UPDATE = "update" as const;
-const SYNC = "sync" as const;
 
-const scheduleCreateCommand = Command.make(CREATE, {
+const scheduleCreateCommand = Command.make(VERB.create, {
   fleetId: fleetIdArgument,
   cron: cronFlag,
   message: messageFlag,
@@ -65,7 +46,7 @@ const scheduleCreateCommand = Command.make(CREATE, {
   ),
 );
 
-const scheduleListCommand = Command.make(LIST, {
+const scheduleListCommand = Command.make(VERB.list, {
   fleetId: fleetIdArgument,
   workspace: workspaceFlag,
 }).pipe(
@@ -81,7 +62,7 @@ const scheduleListCommand = Command.make(LIST, {
   ),
 );
 
-const scheduleUpdateCommand = Command.make(UPDATE, {
+const scheduleUpdateCommand = Command.make(VERB.update, {
   fleetId: fleetIdArgument,
   scheduleId: scheduleIdArgument,
   cron: cronOptionalFlag,
@@ -106,7 +87,7 @@ const scheduleUpdateCommand = Command.make(UPDATE, {
   ),
 );
 
-const scheduleDeleteCommand = Command.make(DELETE, {
+const scheduleDeleteCommand = Command.make(VERB.delete, {
   fleetId: fleetIdArgument,
   scheduleId: scheduleIdArgument,
   workspace: workspaceFlag,
@@ -123,7 +104,7 @@ const scheduleDeleteCommand = Command.make(DELETE, {
   ),
 );
 
-const scheduleShowCommand = Command.make(SHOW, {
+const scheduleShowCommand = Command.make(VERB.show, {
   fleetId: fleetIdArgument,
   scheduleId: scheduleIdArgument,
   workspace: workspaceFlag,
@@ -140,7 +121,7 @@ const scheduleShowCommand = Command.make(SHOW, {
   ),
 );
 
-const scheduleSyncCommand = Command.make(SYNC, {
+const scheduleSyncCommand = Command.make(VERB.sync, {
   fleetId: fleetIdArgument,
   scheduleId: scheduleIdArgument,
   workspace: workspaceFlag,
@@ -157,7 +138,7 @@ const scheduleSyncCommand = Command.make(SYNC, {
   ),
 );
 
-export const scheduleCommand = Command.make("schedule").pipe(
+export const scheduleCommand = () => Command.make("schedule").pipe(
   Command.withDescription("Manage hosted Fleet schedules"),
   Command.withSubcommands([
     scheduleCreateCommand,
