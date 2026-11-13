@@ -492,3 +492,5 @@ Full acceptance remains blocked by this Cloud host's missing securityfs support.
 ✅ Follow-up P2: an unchanged wake-up closes without a PATCH or refresh. Both schedule types and stale-version recovery pass in the 44-test focused run.
 
 ✅ Approval ownership now expires during unmount commit. The existing revoked-access test continues to reject late receipts and analytics; no assertion or timeout changes.
+
+✅ Fresh adversarial review repaired secret action alignment and field focus clearance, Usage filter labels, menu fill/radii/weight, GitHub glyph and phone archive status.
