@@ -1087,41 +1087,30 @@ Comparison captures label top-of-thread and latest positions separately.
 
 ### Evidence and interaction corrections, Nov 13, 2026
 
-Form dialogs focus the first enabled, editable field. If the field arrives after
-loading, Radix retains focus until that initial field is available. Keyboard or
-pointer interaction cancels that delayed focus opportunity. Confirmation dialogs
-focus Cancel. Preserve native trapping and return focus to the invoking control.
-Capture keyboard modality consistently and record the active element and
-`:focus-visible`; an unfocused input alone does not describe dialog focus.
+Form dialogs focus the first enabled, editable field. If the field arrives after loading, Radix retains focus until that initial field is available.
 
-The Changes flap is a centred, content-width raised pill: 38px high, 16px
-corners, 1px standard border, 12px text and an 8px gap above the composer.
-Show confirmed file counts; omit line totals without recorded evidence.
-Conversation and New fleet composers measure 740 × 139px and 760 × 183px at
-the approved desktop viewport. Intermediate New fleet layouts retain 32px side
-padding. Activity tool rows have a 36px desktop pitch; coarse pointers retain
-44px targets. Secret rows use 69px desktop height.
+Keyboard or pointer interaction cancels that delayed focus opportunity. Confirmation dialogs focus Cancel.
 
-Menu labels use sentence case. Account navigation uses 40px rows beside the
-rail; workspace switching retains native Radix submenu keyboard behavior.
-Archived fleets retain history and disable composer, approval, schedule and task
-mutations. Deletion evidence shows the destination after deletion, not a toast
-over the former conversation.
+Preserve native trapping and return focus to the invoking control. Capture keyboard modality consistently and record the active element and `:focus-visible`; an unfocused input alone does not describe dialog focus.
 
-Before packaging, render the unchanged approved proposal and candidate at the
-same widths and compare computed geometry. Capture 1480px and 390px in both
-themes, plus Conversation, Models, Security and New fleet at 696px and 900px.
-Every evidence file identifies a clean candidate revision, source-tree digest
-and UTC capture time. Motion evidence includes lossless frame pairs for both
-themes and sizes; reduced-motion pairs remain byte-identical. The bundle
-manifest hashes every payload, including reports and its index. Report each
-pre-submission check as PASS, FAIL or NOT RUN with measurements and filenames;
-unresolved failures prevent packaging.
+The Changes flap is a centred, content-width raised pill: 38px high, 16px corners, 1px standard border, 12px text and an 8px gap above the composer. Show confirmed file counts; omit line totals without recorded evidence.
 
-The owner-approved account menu has Team, API Keys, Usage, Models, Appearance
-and Sign out beneath the identity header. The header's native submenu switches
-and creates workspaces. API Keys combines keys, sessions and access to the
-native account/sign-in controls; no separate Personal account destination is
-shown. Keep password and verified-email operations in the authenticated provider
-facade in an always-mounted named section. The header action scrolls/focuses it without
-changing native verification hashes; do not add an enclosing dialog.
+Conversation and New fleet composers measure 740 × 139px and 760 × 183px at the approved desktop viewport. Intermediate New fleet layouts retain 32px side padding.
+
+Activity tool rows have a 36px desktop pitch; coarse pointers retain 44px targets. Secret rows use 69px desktop height.
+
+Menu labels use sentence case. Account navigation uses 40px rows beside the rail; workspace switching retains native Radix submenu keyboard behavior.
+
+Archived fleets retain history and disable composer, approval, schedule and task mutations. Deletion evidence shows the destination after deletion, not a toast over the former conversation.
+
+Before packaging, render the unchanged approved proposal and candidate at the same widths and compare computed geometry. Capture 1480px and 390px in both themes, plus Conversation, Models, Security and New fleet at 696px and 900px.
+
+Every evidence file identifies a clean candidate revision, source-tree digest and UTC capture time. Motion evidence includes lossless frame pairs for both themes and sizes; reduced-motion pairs remain byte-identical.
+
+The bundle manifest hashes every payload, including reports and its index. Report each pre-submission check as PASS, FAIL or NOT RUN with measurements and filenames; unresolved failures prevent packaging.
+
+The owner-approved account menu has Team, API Keys, Usage, Models, Appearance and Sign out beneath the identity header. The header's native submenu switches and creates workspaces.
+
+API Keys combines keys, sessions and access to the native account/sign-in controls; no separate Personal account destination is shown. Keep password and verified-email operations in the authenticated provider facade in an always-mounted named section.
+
+The header action scrolls/focuses it without changing native verification hashes; do not add an enclosing dialog.
