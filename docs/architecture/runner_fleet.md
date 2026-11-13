@@ -777,7 +777,7 @@ The daemon serves asynchronous response bodies through the shared hub, with a se
 
 `agentsfleetd` decides all three, because it owns both `fleet.fleets.status` and lease issuance. A fleet is `installing`, `active` or `archived`; there is no stop, resume or pause.
 
-Renewal reads the fleet's stored config whatever its status (`afd_fleet`'s lease coverage read), so a run on an archived fleet still stops at the fleet's stored budget ceiling. An archived fleet's config cannot be edited.
+Renewal reads the fleet's stored config whatever its status (`afd_fleet`'s lease coverage read). A run on an archived fleet therefore still stops at the fleet's stored budget ceiling. An archived fleet's config cannot be edited.
 
 - **Steer** — a message to a fleet. The send answers one of three dispositions: `started`, `folded` or `queued`. With no run live and nothing waiting, the message starts a run of its own.
 
@@ -789,7 +789,7 @@ That message is a barrier, and nothing after it folds. The model call in flight 
 
   When the run reports succeeded, each folded message's own event gets the run's reply. Anything else waits its turn as `queued`. Not an interrupt.
 
-- **Archive** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: archived` (`agentsfleet fleet archive`) sets `status=archived`, stops issuing leases, cancels setup grants, marks live leases `cancel_requested_at` and sends each runner a Cancel (`afd_authoring`'s creation patch). History stays readable. Archive is terminal.
+- **Archive** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: archived` (`agentsfleet fleet archive`) sets `status=archived` and stops issuing leases. It cancels setup grants, marks live leases `cancel_requested_at` and sends each runner a Cancel (`afd_authoring`'s creation patch). History stays readable, and archive is terminal.
 
 - **Gate trip** — a tripped anomaly rule or an `auto_kill` rule archives the fleet (`afd_gate`'s gate archive). It writes only the status: a lease in flight runs to its own end, its fleet's budget ceiling, or `MAX_RUNTIME`.
 
