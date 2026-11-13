@@ -52,7 +52,7 @@ const NOT_JSON: &str = "invoice.paid in_1QfixtureA";
 const ACTOR_CLERK: &str = "webhook:clerk";
 
 /// The reason a delivery to a fleet that is not runnable is dropped.
-const REASON_PAUSED: &str = "fleet_paused";
+const REASON_FLEET_NOT_ACTIVE: &str = "fleet_not_active";
 
 /// A second delivery identifier, for the retry-versus-new-delivery case.
 const OTHER_DELIVERY: &str = "msg_2fJk8Lq0PsWzXbYtRnVdEcHgMb";
@@ -208,7 +208,7 @@ async fn a_delivery_carrying_no_identifier_is_refused_by_the_wall() {
 #[tokio::test]
 async fn a_delivery_to_a_fleet_that_is_not_runnable_is_acknowledged_and_dropped() {
     for (case, body) in [("a document", PAYLOAD), ("not a document", NOT_JSON)] {
-        let ingress = fleet_in("paused");
+        let ingress = fleet_in("archived");
         let answered = deliver(&ingress, signed::SVIX_DELIVERY, body).await;
 
         let status = answered.status();
@@ -216,7 +216,7 @@ async fn a_delivery_to_a_fleet_that_is_not_runnable_is_acknowledged_and_dropped(
         assert_eq!(status, StatusCode::OK, "{case}: {document}");
         assert_eq!(
             document.get("ignored").and_then(Value::as_str),
-            Some(REASON_PAUSED),
+            Some(REASON_FLEET_NOT_ACTIVE),
             "{case}"
         );
         assert!(

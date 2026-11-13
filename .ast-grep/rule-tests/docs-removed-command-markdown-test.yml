@@ -3,7 +3,7 @@ valid:
   - |
     Run `agentsfleet secrets create`.
   - |
-    Run `agentsfleet fleet kill x`.
+    Run `agentsfleet fleet archive x`.
 invalid:
   - |
     Run `agentsfleet secret add`.
@@ -13,3 +13,5 @@ invalid:
     ```
   - |
     Run `agentsfleet kill x`.
+  - |
+    Run `agentsfleet fleet kill x`.

@@ -172,14 +172,6 @@ pub const AGENTSFLEET_INVALID_CONFIG: ErrorCode = ErrorCode::declare("UZ-AGT-008
 /// [`AUTH_FORBIDDEN`]; the two axes are separate and both are checked.
 pub const AGENTSFLEET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-009");
 
-/// The fleet's current status does not permit the requested transition.
-///
-/// A 409, and it covers both halves of the same refusal: a transition the
-/// status machine does not allow from where the row stands, and a delete of a
-/// fleet that has not been killed first. Both are "the state refuses you", and
-/// a client acts identically on either — read the current status, then decide.
-pub const AGENTSFLEET_ALREADY_TERMINAL: ErrorCode = ErrorCode::declare("UZ-AGT-010");
-
 /// The install could not be finished, and nothing was kept.
 ///
 /// The promise this code carries is the one the caller can act on: retrying is

@@ -8,18 +8,11 @@ use super::{Error, ErrorKind, detail};
 
 #[test]
 fn data_only_refusals_have_stable_codes_details_and_no_causes() {
-    let errors = [
-        expected(
-            ErrorKind::NotFound.into(),
-            error_code::AGENTSFLEET_NOT_FOUND,
-            detail::NOT_FOUND,
-        ),
-        expected(
-            ErrorKind::MustKillFirst.into(),
-            error_code::AGENTSFLEET_ALREADY_TERMINAL,
-            detail::MUST_KILL_FIRST,
-        ),
-    ];
+    let errors = [expected(
+        ErrorKind::NotFound.into(),
+        error_code::AGENTSFLEET_NOT_FOUND,
+        detail::NOT_FOUND,
+    )];
 
     for expected in &errors {
         assert_error(expected, false);

@@ -32,7 +32,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_fleet_lifecycle::FleetStatus;
 use afd_fleet_lifecycle::purge_statements as statements;
 
 use crate::integration_purge_ledger_identity::{
@@ -80,10 +79,9 @@ async fn the_purge_statements_all_run_as_api_runtime() {
         "api_runtime must hold UPDATE on fleet.fleets to lock it: {:?}",
         locked.err()
     );
-    let deleted = sqlx::query(statements::DELETE_FLEET_IN_STATUS)
+    let deleted = sqlx::query(statements::DELETE_FLEET)
         .bind(fleet)
         .bind(&lane.workspace)
-        .bind(FleetStatus::Killed.as_str())
         .execute(&mut *connection)
         .await;
     assert!(
@@ -153,7 +151,7 @@ async fn the_purge_itself_runs_as_api_runtime() {
     let lane = Lane::create().await;
     let fleet = lane.fleet().await;
     seed_everything_the_purge_destroys(&lane, &fleet).await;
-    let tag = lane.kill(&fleet).await;
+    let tag = lane.archive(&fleet).await;
 
     lane.fleets
         .purge_tagged(&lane.workspace, &fleet, &tag)

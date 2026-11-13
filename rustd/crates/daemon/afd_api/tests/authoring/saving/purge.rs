@@ -24,18 +24,18 @@ async fn retrying_save_after_purge_returns_gone_without_allocating_another_fleet
         .to_str()
         .expect("fleet tag")
         .to_owned();
-    let killed = send_with_headers(
+    let archived = send_with_headers(
         &case.router,
         Method::PATCH,
         &item,
         Some(&case.base.token),
-        r#"{"status":"killed"}"#,
+        r#"{"status":"archived"}"#,
         &[(header::IF_MATCH, &tag)],
     )
     .await;
-    assert_eq!(killed.status(), StatusCode::OK);
-    let killed = json_body(killed).await;
-    let current = killed["etag"].as_str().expect("killed tag");
+    assert_eq!(archived.status(), StatusCode::OK);
+    let archived = json_body(archived).await;
+    let current = archived["etag"].as_str().expect("archived tag");
     assert_delete_refusals(&case, &item, &tag, current).await;
     assert_eq!(
         remove(&case, &item, Some(current)).await.status(),
@@ -97,7 +97,7 @@ async fn assert_retained_identity(case: &Case, key: &af_core::id::Uuid7) {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_current_tag_does_not_authorize_purging_a_live_or_foreign_fleet() {
+async fn delete_removes_a_fleet_in_any_status() {
     let case = Case::create().await;
     case.fund().await;
     let (_, request) = case.request().await;
@@ -111,14 +111,6 @@ async fn a_current_tag_does_not_authorize_purging_a_live_or_foreign_fleet() {
         .to_str()
         .expect("fleet tag")
         .to_owned();
-    let refusal = remove(&case, &item, Some(&tag)).await;
-    assert_eq!(refusal.status(), StatusCode::CONFLICT);
-    let refusal = json_body(refusal).await;
-    assert_eq!(
-        refusal["error_code"],
-        error_code::AGENTSFLEET_ALREADY_TERMINAL.as_str()
-    );
-    assert_eq!(refusal["current_state"], "kill_required");
     let foreign = remove(
         &case,
         &format!("{}/{}", case.collection(), mint()),
@@ -130,9 +122,31 @@ async fn a_current_tag_does_not_authorize_purging_a_live_or_foreign_fleet() {
         json_body(foreign).await["error_code"],
         error_code::AGENTSFLEET_NOT_FOUND.as_str()
     );
-    let current =
+    let status = json_body(
+        super::super::send(&case.router, Method::GET, &item, Some(&case.base.token), "").await,
+    )
+    .await["status"]
+        .clone();
+    assert!(
+        status == "active" || status == "installing",
+        "a live fleet, never archived first: {status}"
+    );
+    assert_eq!(
+        remove(&case, &item, Some(&tag)).await.status(),
+        StatusCode::NO_CONTENT,
+        "delete takes a live fleet without an archive first"
+    );
+    let gone =
         super::super::send(&case.router, Method::GET, &item, Some(&case.base.token), "").await;
-    assert_eq!(current.status(), StatusCode::OK);
-    assert_eq!(json_body(current).await["status"], "active");
+    assert_eq!(gone.status(), StatusCode::NOT_FOUND);
+    let fleet = item.rsplit('/').next().expect("fleet id");
+    let live: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM runner.leases WHERE fleet_id = $1::uuid AND status = 'active'",
+    )
+    .bind(fleet)
+    .fetch_one(&mut *case.base.db.acquire().await.expect("lease census"))
+    .await
+    .expect("lease census");
+    assert_eq!(live, 0, "no live lease outlives the deleted fleet");
     case.cleanup().await;
 }

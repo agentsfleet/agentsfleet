@@ -96,7 +96,7 @@ export const booleanFlagNames = (root: CommandNode): ReadonlySet<string> => {
 };
 
 /** Where the walk ended: the path it reached, and the positional it stopped on. */
-export interface CommandWalk {
+interface CommandWalk {
   readonly path: ReadonlyArray<string>;
   readonly node: CommandNode;
   // The first positional token that named no child of `node`, or undefined

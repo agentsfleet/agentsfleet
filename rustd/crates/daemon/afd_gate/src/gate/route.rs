@@ -32,7 +32,7 @@ pub enum Route {
     EvaluateRecorded,
     /// The event runs.
     Pass,
-    /// The fleet is paused and the event ends.
+    /// The fleet is archived and the event ends.
     Kill,
     /// Policy wants a gate and none is recorded — raise one.
     RequestNew,

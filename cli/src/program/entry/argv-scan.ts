@@ -107,7 +107,7 @@ const HELP_COMMAND = "help" as const;
 
 // Global flags taking a value in the `--flag value` form. The `--flag=value`
 // spelling carries its own, so it never consumes the token after it.
-export const VALUE_TAKING_GLOBAL_FLAGS: ReadonlySet<string> = new Set([
+const VALUE_TAKING_GLOBAL_FLAGS: ReadonlySet<string> = new Set([
   "--api",
   "--completions",
   "--log-level",
@@ -122,7 +122,7 @@ export const VALUE_TAKING_GLOBAL_FLAGS: ReadonlySet<string> = new Set([
  * unknown command, while the same line without `--json` printed the document.
  * A flag before the verb is the ordinary shape for `--api` and `--json`.
  */
-export const firstCommandIndex = (argv: readonly string[]): number => {
+const firstCommandIndex = (argv: readonly string[]): number => {
   let index = 0;
   while (index < argv.length) {
     const token = argv[index];

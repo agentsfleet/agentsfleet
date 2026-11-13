@@ -1,6 +1,6 @@
 //! Replay precedes idle/tag checks so a lost successful answer remains recoverable.
 
-use super::super::{CONTEXT, Creations, KILLED, etag, read, source::Captured};
+use super::super::{ARCHIVED, CONTEXT, Creations, etag, read, source::Captured};
 use crate::{
     Access, Result, access, draft,
     error::{ErrorKind, raise::query},
@@ -145,8 +145,11 @@ fn validate(
     if expected.ok_or(ErrorKind::Precondition)? != current {
         return Err(ErrorKind::Stale { etag: current }.into());
     }
-    if row.status == KILLED {
-        return Err(ErrorKind::State { current: "killed" }.into());
+    if row.status == ARCHIVED {
+        return Err(ErrorKind::State {
+            current: "archived",
+        }
+        .into());
     }
     super::target(captured, &row.id, row.head_revision)?;
     captured.candidate.definition.validate_for_save()?;

@@ -1,9 +1,9 @@
-//! Stopping a fleet, when the gate decides no further work of its may run.
+//! Archiving a fleet, when the gate decides no further work of its may run.
 //!
-//! # Two auto-kill paths, one stop
+//! # Two auto-kill paths, one archive
 //!
 //! A tripped anomaly rule and an `auto_kill` gate rule reach the same place: the
-//! fleet stops, and the event that triggered it ends. They differ only in what
+//! fleet is archived, and the event that triggered it ends. They differ only in what
 //! an operator is told, which is why the trigger travels as a value rather than
 //! as two copies of this function.
 //!
@@ -15,12 +15,12 @@ use crate::error::{Result, query};
 use crate::gate::store::Gates;
 
 /// Statement name, for the context a query failure carries.
-const CONTEXT_PAUSE: &str = "fleet pause";
+const CONTEXT_ARCHIVE: &str = "fleet archive";
 
-/// A fleet was stopped by the gate.
-const EVENT_FLEET_PAUSED: &str = "gate_fleet_paused";
+/// A fleet was archived by the gate.
+const EVENT_FLEET_ARCHIVED: &str = "gate_fleet_archived";
 
-/// What stopped the fleet.
+/// What archived the fleet.
 ///
 /// Two triggers and not a boolean: an operator reading the line wants to know
 /// whether a human's policy said stop or a runaway pattern did, and those lead
@@ -45,32 +45,38 @@ impl Trigger {
 }
 
 impl Gates {
-    /// Pause `fleet_id` so candidate discovery excludes it.
+    /// Archive `fleet_id` so candidate discovery excludes it for good.
+    ///
+    /// Archive is terminal (`M249_002` §6): nothing returns the fleet to
+    /// `active`, so a false positive is accepted as permanent. Live leases are
+    /// not cancelled here, as the pause before it did not: the candidate query
+    /// admits no new one, and the archive path that cancels leases lives in
+    /// `afd_authoring`, which this crate does not reach.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer the pause. The caller absorbs
+    /// Reports a datastore that would not answer the archive. The caller absorbs
     /// it — the EVENT is killed by policy whether or not the fleet's own row
     /// could be flipped — but absorbing it is the caller's visible decision
     /// rather than something swallowed here.
     ///
     /// The row is stamped on the database clock.
-    pub async fn pause(&self, fleet_id: &Uuid7, trigger: Trigger) -> Result<()> {
+    pub async fn archive(&self, fleet_id: &Uuid7, trigger: Trigger) -> Result<()> {
         let mut connection = self.database().acquire().await?;
-        sqlx::query(sql::PAUSE_FLEET)
-            .bind(FleetStatus::Paused.as_str())
+        sqlx::query(sql::ARCHIVE_FLEET)
+            .bind(FleetStatus::Archived.as_str())
             .bind(fleet_id)
             .execute(&mut *connection)
             .await
-            .map_err(query(CONTEXT_PAUSE))?;
+            .map_err(query(CONTEXT_ARCHIVE))?;
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let fleet = fleet_id.as_str();
         let trigger_word = trigger.as_str();
         tracing::warn!(
-            event = EVENT_FLEET_PAUSED,
+            event = EVENT_FLEET_ARCHIVED,
             fleet_id = fleet,
             trigger = trigger_word,
-            "the fleet is stopped; no further work of its is admitted"
+            "the fleet is archived; no further work of its is admitted"
         );
 
         Ok(())

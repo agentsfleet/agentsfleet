@@ -147,7 +147,7 @@ async fn heartbeat_refused(native: &mut Native) -> TestResult {
 async fn a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers() -> TestResult {
     for transport in [Transport::H2, Transport::H3] {
         let fixture = Fixture::start().await?;
-        status(&fixture, "stopped").await?;
+        status(&fixture, "archived").await?;
         let mut old = Native::connect(&fixture.run, transport).await;
         old.heartbeat().await;
         old.ready().await;

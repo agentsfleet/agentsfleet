@@ -9,12 +9,11 @@ import { Command, Flag } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import { OPT_TTY } from "../../constants/cli-flags.ts";
 import {
+  activateEffectFromId,
+  archiveEffectFromId,
   deleteEffectFromId,
-  killEffectFromId,
-  resumeEffectFromId,
   statusEffect,
   fleetShowEffectFromId,
-  stopEffectFromId,
 } from "../../commands/fleet/fleet.ts";
 import { listEffectFromFlags } from "../../commands/fleet/list.ts";
 import { logsEffectFromFlags } from "../../commands/fleet/logs.ts";
@@ -76,23 +75,18 @@ const statusCommand = Command.make("status").pipe(
   guardedHandler(() => statusEffect),
 );
 
-const stopCommand = Command.make("stop", { fleetId: fleetIdArgument }).pipe(
-  Command.withDescription("Halt the running session (resumable)"),
-  guardedHandler(({ fleetId }) => stopEffectFromId(fleetId)),
+const activateCommand = Command.make("activate", { fleetId: fleetIdArgument }).pipe(
+  Command.withDescription("Re-check setup and activate once every check passes"),
+  guardedHandler(({ fleetId }) => activateEffectFromId(fleetId)),
 );
 
-const resumeCommand = Command.make("resume", { fleetId: fleetIdArgument }).pipe(
-  Command.withDescription("Resume from stopped or auto-paused"),
-  guardedHandler(({ fleetId }) => resumeEffectFromId(fleetId)),
-);
-
-const killCommand = Command.make("kill", { fleetId: fleetIdArgument }).pipe(
-  Command.withDescription("Mark terminal (irreversible)"),
-  guardedHandler(({ fleetId }) => killEffectFromId(fleetId)),
+const archiveCommand = Command.make("archive", { fleetId: fleetIdArgument }).pipe(
+  Command.withDescription("Archive: cancel its work and keep its history (irreversible)"),
+  guardedHandler(({ fleetId }) => archiveEffectFromId(fleetId)),
 );
 
 const deleteCommand = Command.make(DELETE, { fleetId: fleetIdArgument }).pipe(
-  Command.withDescription("Hard-delete a killed fleet"),
+  Command.withDescription("Delete the fleet in any status (irreversible)"),
   guardedHandler(({ fleetId }) => deleteEffectFromId(fleetId)),
 );
 
@@ -162,9 +156,8 @@ export const fleetCommand = () => Command.make("fleet").pipe(
     listCommand,
     fleetShowCommand,
     statusCommand,
-    stopCommand,
-    resumeCommand,
-    killCommand,
+    activateCommand,
+    archiveCommand,
     deleteCommand,
     steerCommand,
     logsCommand,

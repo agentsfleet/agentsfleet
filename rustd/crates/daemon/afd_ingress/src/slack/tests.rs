@@ -110,14 +110,14 @@ fn a_subscriber_carries_its_name_status_and_reach() {
 
     let write_bound = subscribed(
         fleet(),
-        FleetStatus::Paused.as_str(),
+        FleetStatus::Archived.as_str(),
         &stored("repairer", CHANNEL, Some("write")),
         SLACK,
         &channel(CHANNEL),
     )
     .expect("a readable row")
     .expect("attached to the channel");
-    assert!(!write_bound.runnable, "a paused fleet cannot run now");
+    assert!(!write_bound.runnable, "an archived fleet cannot run now");
     assert!(
         write_bound.addressed_only,
         "a fleet that can write never takes an unaddressed mention"

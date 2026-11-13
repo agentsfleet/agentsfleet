@@ -43,7 +43,7 @@ describe("resolveCommandPath", () => {
   });
 
   test("positionals after the verb are not commands", () => {
-    expect(resolve(["fleet", "stop", VALID_ID])).toEqual(["fleet", "stop"]);
+    expect(resolve(["fleet", "archive", VALID_ID])).toEqual(["fleet", "archive"]);
   });
 
   test("an unknown verb resolves to nothing", () => {

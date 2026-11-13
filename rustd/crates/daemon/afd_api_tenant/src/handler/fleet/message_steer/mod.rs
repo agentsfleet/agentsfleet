@@ -16,7 +16,7 @@
 //!
 //! A caller that names its operation and never saw the 202 sends again. If the
 //! first send was admitted, the answer is that send's event, even when the
-//! fleet has stopped or paused since, because the message is already on its
+//! fleet was archived since, because the message is already on its
 //! way to run. The statement reads the key before it checks the status, and its
 //! own insert answers a repeat, so no lookup runs ahead of it
 //! (`afd_events::steer`).
@@ -155,7 +155,7 @@ pub(crate) async fn steer<D: Services>(
     let steering = services.steering();
     // One ledger statement decides ownership, a repeat, the fleet's status and
     // the ceiling: a foreign fleet is a 404 before any operation id is read, and
-    // a retry of a message admitted before the fleet stopped is still answered
+    // a retry of a message admitted before the fleet was archived is still answered
     // with its event.
     let appended = steering
         .append(fleet, workspace, &actor, &request_json, operation_id)

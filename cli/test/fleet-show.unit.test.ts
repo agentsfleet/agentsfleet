@@ -26,7 +26,7 @@ const routes: MockRoutes = {
     jsonResponse(200, {
       items: [
         { id: WANTED, name: "reviewer", status: "active", events_processed: "0", budget_used_nanos: "0" },
-        { id: OTHER, name: "responder", status: "stopped", events_processed: "0", budget_used_nanos: "0" },
+        { id: OTHER, name: "responder", status: "archived", events_processed: "0", budget_used_nanos: "0" },
       ],
     }),
   [DETAIL_ROUTE]: () => jsonResponse(200, FLEET_ROW),

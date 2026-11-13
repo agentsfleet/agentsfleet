@@ -56,7 +56,7 @@ describe("status", () => {
           jsonResponse(200, {
             items: [
               { id: FLEET_ID, name: "my-bot", status: "active", events_processed: "42", budget_used_nanos: "1230000000" },
-              { id: IDLE_ID, name: "idle-bot", status: "stopped", events_processed: "0", budget_used_nanos: "0" },
+              { id: IDLE_ID, name: "idle-bot", status: "archived", events_processed: "0", budget_used_nanos: "0" },
             ],
           }),
       };
@@ -198,9 +198,8 @@ const run = (apiUrl: string, argv: ReadonlyArray<string>) => {
 };
 
 const LIFECYCLE = [
-  ["stop", AGENTSFLEET_STATUS.STOPPED, "stopped"],
-  ["resume", AGENTSFLEET_STATUS.ACTIVE, "resumed"],
-  ["kill", AGENTSFLEET_STATUS.KILLED, "killed"],
+  ["activate", AGENTSFLEET_STATUS.ACTIVE, "active"],
+  ["archive", AGENTSFLEET_STATUS.ARCHIVED, "archived"],
 ] as const;
 
 for (const [verb, target, pastTense] of LIFECYCLE) {
@@ -248,28 +247,13 @@ for (const [verb, target, pastTense] of LIFECYCLE) {
   });
 }
 
-test("stop on an installing fleet reports that setup is still waiting", async () => {
-  await authedScope(async () => {
-    const routes: MockRoutes = {
-      [`GET ${FLEET_PATH}`]: () => jsonResponse(200, fleetWith(AGENTSFLEET_STATUS.INSTALLING)),
-      [`PATCH ${FLEET_PATH}`]: () => jsonResponse(200, fleetWith(AGENTSFLEET_STATUS.INSTALLING)),
-    };
-    await withMockApi(routes, async (apiUrl) => {
-      const result = await run(apiUrl, ["fleet", "stop", FLEET_ID]);
-      expect(result.code).toBe(0);
-      expect(result.out).toContain("setup is still waiting");
-      expect(result.out).toContain(`agentsfleet fleet show ${FLEET_ID}`);
-    });
-  });
-});
-
 test("a fleet read that does not match the API shape refuses before any mutation", async () => {
   await authedScope(async () => {
     const routes: MockRoutes = {
       [`GET ${FLEET_PATH}`]: () => jsonResponse(200, { fleet_id: FLEET_ID, status: "active" }),
     };
     await withMockApi(routes, async (apiUrl, calls) => {
-      const result = await run(apiUrl, ["fleet", "stop", FLEET_ID]);
+      const result = await run(apiUrl, ["fleet", "archive", FLEET_ID]);
       expect(result.code).not.toBe(0);
       expect(result.err).toContain("CHAT_RESPONSE_INVALID");
       expect(calls.map((c) => c.method)).toEqual(["GET"]);
@@ -279,7 +263,7 @@ test("a fleet read that does not match the API shape refuses before any mutation
 
 describe("delete", () => {
   const routes = (remove: MockRoutes[string]): MockRoutes => ({
-    [`GET ${FLEET_PATH}`]: () => jsonResponse(200, fleetWith(AGENTSFLEET_STATUS.KILLED)),
+    [`GET ${FLEET_PATH}`]: () => jsonResponse(200, fleetWith(AGENTSFLEET_STATUS.ACTIVE)),
     [`DELETE ${FLEET_PATH}`]: remove,
   });
   const gone = () => new Response(null, { status: 204 });
@@ -310,11 +294,11 @@ describe("delete", () => {
 
   test("API 4xx exits non-zero and surfaces the error code", async () => {
     await authedScope(async () => {
-      const refusal = () => jsonResponse(409, errorEnvelope("UZ-AGT-010", "Kill the fleet first"));
+      const refusal = () => jsonResponse(412, errorEnvelope("UZ-AGT-014", "The fleet changed; read it again"));
       await withMockApi(routes(refusal), async (apiUrl) => {
         const result = await run(apiUrl, ["fleet", "delete", FLEET_ID]);
         expect(result.code).not.toBe(0);
-        expect(result.err).toContain("UZ-AGT-010");
+        expect(result.err).toContain("UZ-AGT-014");
         expect(result.out).not.toContain("deleted");
       });
     });

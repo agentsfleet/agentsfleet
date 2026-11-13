@@ -37,7 +37,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Server-Sent Events (SSE) sequence ids | not durable | per-connection counter, resets to 0; `Last-Event-ID` ignored; backfill via the events list | §D. WATCH |
 | Client gap recovery | reconnect, or `catching_up` on either stream | bounded `fleet.events` list `since` last delivery minus 2 s overlap, merged by event id; a lost server subscription arrives as `catching_up` with `dropped: 0` | §Two streams + one pub/sub channel |
 | Cron authority | QStash | signature verified at ingress; replay suppressed atomically; the runner owns no timer | §B. TRIGGER |
-| Cancel latency | none: a running lease is never cancelled | kill and pause write only `fleet.fleets.status`; the run ends on its own, at its fleet's stored budget ceiling, or at `MAX_RUNTIME` | [`runner_fleet.md`](./runner_fleet.md) §"Steer, kill, pause" |
+| Cancel latency | the runner's next Cancel message | archive and delete send Cancel to each live lease's runner; a gate trip writes only `fleet.fleets.status`, and that run ends on its own, at its fleet's stored budget ceiling, or at `MAX_RUNTIME` | [`runner_fleet.md`](./runner_fleet.md) §"Steer, archive, delete" |
 | Lease ownership | at most one active lease per fleet | atomic `runner.fleet_slots` claim + monotonic `fencing_token` | §One active lease per fleet |
 | Provider `api_key` | never in `secrets_map` | rides `ExecutionPolicy.provider` + `.api_key`; injected for the inference call only | §"C. EXECUTE" step 8 |
 | Tenant isolation | application-enforced + namespacing | every workspace route passes an ownership check before its handler runs; NATS subjects carry the unguessable fleet UUID. This repository declares no `ROW LEVEL SECURITY` policy | §Multi-tenancy boundary |
@@ -359,7 +359,7 @@ No product statement sets its own override. A statement that hits either bound a
 
 Canonical: [`runner_fleet.md` §Config](./runner_fleet.md). The claim reads the head revision id from `fleet.fleets` on every `lease`, and a replica holds the parsed definition under that id. A `PATCH` takes effect on the next lease with no signal.
 
-What is specific to this flow: status works the same way. The assignment scan filters `fleet.fleets.status = 'active'`, so a paused Fleet drops out on the next scan and a resumed one re-enters.
+What is specific to this flow: status works the same way. The assignment scan filters `fleet.fleets.status = 'active'`, so an archived Fleet drops out on the next scan and never re-enters.
 
 ## End-to-end sequence
 
@@ -401,7 +401,7 @@ Stop raises the draft's accepted-message watermark before Save. It cancels queue
 
 A fresh Send refuses uncancelled unknown provider usage after checking exact replay. Stop allows a higher-sequence message to run subject to ordinary capacity and balance checks.
 
-Save keeps the watermark while the draft enters `saving`; activation closes it. A setup Kill that restores `editing` also keeps the watermark, so old proposals and answers stay fenced. Old reports may still settle their original attempt.
+Save keeps the watermark while the draft enters `saving`; activation closes it. An archive during setup that restores `editing` also keeps the watermark, so old proposals and answers stay fenced. Old reports may still settle their original attempt.
 
 Already accepted candidate edits stay available for the person's review; Stop does not undo them. `afd_authoring` owns the Stop implementation, the publication guard, and the creation regression tests that define these boundaries.
 
@@ -439,19 +439,19 @@ A schedule push failure leaves an active fleet with `sync:"failed"` and Retry sy
 
 GET fleet and CLI expose both independently from required activation checks.
 
-#### Explicit retry and Kill
+#### Retry, archive and delete
 
-Same-key POST or `PATCH fleet {status:"active"}` with the current resource `If-Match` resumes missing setup checks. PATCH stays status/name only. Concurrent setup requests share the same guarded stages and initial admission identity.
+Same-key POST or `PATCH fleet {status:"active"}` with the current resource `If-Match` resumes missing setup checks. Approving a setup grant runs the same step, so a fleet whose last grant is approved activates with no further request (`afd_api_tenant`'s approval resolve). PATCH stays status/name only. Concurrent setup requests share the same guarded stages and initial admission identity.
 
 A name edit during installing invalidates the pending review and refuses activation until a newly reviewed revision is applied. It cannot silently change accepted creation inputs.
 
-Kill uses existing fleet:write authority. The transaction changes fleet state and setup cancellation generation before a late activation can commit. The linked draft returns to `editing`.
+Archive uses existing fleet:write authority. The transaction changes fleet state and setup cancellation generation before a late activation can commit. The linked draft returns to `editing`.
 
-Pending approval requests are cancelled under the fleet lifecycle guard. Setup resources stay owned by the killed fleet until ordinary fleet:admin purge; no new cleanup or creation worker is assumed. Killed state prevents any new lease or grant use.
+Pending approval requests are cancelled under the fleet lifecycle guard. An archived fleet takes no new lease or grant use, and its history stays readable.
 
-If activation already won and advanced the resource tag, the stale setup Kill receives 412. The person must refetch before deciding to Kill the active fleet. Another Save has a fresh key and fleet ID, and the cancelled key keeps referring to the killed fleet.
+If activation already won and advanced the resource tag, a stale archive receives 412. The person must refetch before deciding to archive the active fleet. Another Save has a fresh key and fleet ID, and the cancelled key keeps referring to the archived fleet.
 
-Fleet DELETE still requires fleet:admin and killed state. Deleting private draft text is not permission to delete the shared fleet. Draft removal cancels private work and hides its prefix; shared installing checks stay recoverable through the fleet by authorized members.
+Fleet DELETE requires fleet:admin and works in any status: it releases live work as archive does, then purges. Deleting private draft text is not permission to delete the shared fleet. Draft removal cancels private work and hides its prefix; shared installing checks stay recoverable through the fleet by authorized members.
 
 #### Applying an improvement
 
@@ -473,7 +473,7 @@ Both purposes share the [provider reader and browser chat implementation](shared
 
 #### CLI partial success
 
-The CLI displays `Fleet created: installing`, each missing check and its action, and the fleet ID. It adds a copyable resume command that reads the fresh tag then PATCHes active. It exits nonzero, keeping the creation replay key for explicit retry.
+The CLI displays `Fleet created: installing`, each missing check and its action, and the fleet ID. Approving a missing grant retries setup on its own; after fixing any other check, `agentsfleet fleet activate <FLEET_ID>` retries it. It exits nonzero, keeping the creation replay key for explicit retry.
 
 An active fleet with a blocked initial run prints the partial outcome and an actionable retry. So does any schedule not `synced` (`failed`, `syncing`, or a status the CLI does not know). The CLI exits nonzero rather than claiming all requested work succeeded.
 
@@ -810,7 +810,7 @@ One PR through one lease: its records and timers in [lease_flow.md §1](./lease_
 record key + normalized body + retained installing fleet -> commit
 checks or grants incomplete -> installing + missing checks
 same key + same body -> resume same fleet and setup revision
-Kill wins activation guard -> killed fleet; linked draft returns to editing
+Archive wins activation guard -> archived fleet; linked draft returns to editing
 activation + initial admission -> commit together
 read back the same initial event -> Accepted
 read-back unavailable -> Pending; retry confirms the same event

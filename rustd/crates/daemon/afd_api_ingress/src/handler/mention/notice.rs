@@ -9,7 +9,7 @@ use std::borrow::Cow;
 
 use super::{
     Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, REASON_CHANNEL_NOT_CONFIGURED,
-    REASON_NOTICE_OWNER_KILLED, address,
+    REASON_NOTICE_OWNER_ARCHIVED, address,
 };
 use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _};
@@ -31,8 +31,8 @@ pub(super) async fn owe<D: Services>(
     let Some(owner) = owner(services, provider, workspace, asked, notice).await? else {
         return Ok(Outcome::Dropped(REASON_CHANNEL_NOT_CONFIGURED));
     };
-    if owner.status == FleetStatus::Killed {
-        return Ok(Outcome::Dropped(REASON_NOTICE_OWNER_KILLED));
+    if owner.status == FleetStatus::Archived {
+        return Ok(Outcome::Dropped(REASON_NOTICE_OWNER_ARCHIVED));
     }
     let address = address(&asked.thread())?;
     let text = notice_text(notice);
@@ -110,7 +110,9 @@ async fn owner<D: Services>(
 
 fn candidate<'a>(notice: &'a Notice<'a>) -> Option<&'a Subscriber> {
     match notice {
-        Notice::Paused { fleet } => Some(*fleet),
+        // An archived fleet never becomes a channel's notice carrier: it could
+        // not carry the obligation (see the owner check in `owe`).
+        Notice::Archived { .. } => None,
         Notice::Ambiguous { fleets } | Notice::Choose { fleets } | Notice::AddressIt { fleets } => {
             fleets
                 .iter()

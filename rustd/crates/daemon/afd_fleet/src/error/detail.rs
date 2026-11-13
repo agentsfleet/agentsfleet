@@ -108,7 +108,7 @@ pub const DETAIL_LEASE_LOST: &str = "Lease was reassigned before this renewal; t
 
 /// Durable cancellation refuses another execution slice while accepting the final report.
 pub const DETAIL_LEASE_CANCELLED: &str =
-    "Fleet was killed; stop this lease and report its final result";
+    "Fleet was archived; stop this lease and report its final result";
 
 /// The renewal refusal at the hard runtime ceiling.
 pub const DETAIL_LEASE_MAX_RUNTIME: &str = "Lease reached the hard max runtime; not renewed";

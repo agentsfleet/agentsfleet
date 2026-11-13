@@ -23,8 +23,8 @@ use std::sync::Arc;
     tag = afd_http::openapi::tag::FLEETS, summary = "Change fleet lifecycle or name",
     description = concat!(
         "Updates lifecycle state or name. Send the current `ETag` in `If-Match`. Setting an ",
-        "installing fleet to active resumes setup checks. Killing it cancels setup and ",
-        "makes its private draft editable again.",
+        "installing fleet to active resumes setup checks. Archiving it cancels setup, ",
+        "ends its live work and makes its private draft editable again. Archive is terminal.",
     ),
     params(afd_http::openapi::path::Fleet, ("If-Match" = String, Header, description = "Required current strong resource tag.")),
     request_body = afd_api_wire::fleet::PatchFleetRequest,

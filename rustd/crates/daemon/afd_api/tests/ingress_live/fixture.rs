@@ -50,8 +50,8 @@ const SUBJECT_PREFIX: &str = "user_live_ingress_";
 pub(super) enum Runnable {
     /// The ordinary state: a delivery runs the fleet.
     Active,
-    /// Paused on purpose — a delivery is acknowledged and dropped.
-    Paused,
+    /// Archived — a delivery is acknowledged and dropped.
+    Archived,
 }
 
 impl Runnable {
@@ -59,7 +59,7 @@ impl Runnable {
     const fn stored(self) -> &'static str {
         match self {
             Self::Active => "active",
-            Self::Paused => "paused",
+            Self::Archived => "archived",
         }
     }
 }

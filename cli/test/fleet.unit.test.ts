@@ -7,7 +7,7 @@
 import { describe, test, expect } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 
-import { deleteEffectFromId, stopEffectFromId } from "../src/commands/fleet/fleet.ts";
+import { archiveEffectFromId, deleteEffectFromId } from "../src/commands/fleet/fleet.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
@@ -90,7 +90,7 @@ describe("fleet mutation guards — requireFleetId", () => {
     await expectRequiredIdFailure(deleteEffectFromId(""));
   });
 
-  test("stopEffectFromId fails with ValidationError when id is undefined", async () => {
-    await expectRequiredIdFailure(stopEffectFromId(undefined));
+  test("archiveEffectFromId fails with ValidationError when id is undefined", async () => {
+    await expectRequiredIdFailure(archiveEffectFromId(undefined));
   });
 });

@@ -47,7 +47,7 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { saveProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
-import { killFleet, resumeFleet, stopFleet, expectStatus, TOMBSTONE_REFUSAL } from "./fixtures/lifecycle.ts";
+import { archiveFleet, expectStatus, TOMBSTONE_REFUSAL } from "./fixtures/lifecycle.ts";
 import { CLI_ROOT, isLive, type ValidateModule, randomUuidv7 } from "./helpers-lifecycle-with-token.ts";
 
 let validateModule: ValidateModule;
@@ -193,31 +193,17 @@ if (!isLive) {
         assert.ok("balance_nanos" in parsed, `billing response missing balance_nanos: ${result.stdout}`);
       });
 
-      it("stop → resume → kill walks state", async () => {
-        await stopFleet(env, fleetId);
-        await expectStatus(env, fleetId, ["paused", "stopped"]);
-        await resumeFleet(env, fleetId);
-        await expectStatus(env, fleetId, ["active", "running", "starting"]);
-        await killFleet(env, fleetId);
-        await expectStatus(env, fleetId, ["killed", "errored", "terminated"]);
+      it("archive leaves the fleet archived", async () => {
+        await archiveFleet(env, fleetId);
+        await expectStatus(env, fleetId, TERMINAL_STATUSES);
       }, 30_000);
 
-      it("kill is idempotent on a terminal fleet", async () => {
-        const result = await runWithEnv(["fleet", "kill", fleetId, "--json"]);
-        // Either succeed silently or report the tombstone: `edit.rs`'s
-        // `explain` answers UZ-AGT-009 for a killed row, so a second kill reads
-        // as not-found rather than as a refused transition. Matching the 010
-        // refusal here too would accept the daemon calling a tombstone a
-        // live-state conflict, the one thing this test is placed to notice. Nor
-        // is re-emitting `status: active` later; the assertion below catches it.
-        if (result.code !== 0) {
-          assert.match(
-            result.stderr + result.stdout,
-            TOMBSTONE_REFUSAL,
-            `a second kill must name the 009 tombstone: ${result.stdout}${result.stderr}`,
-          );
-        }
-        await expectStatus(env, fleetId, ["killed", "errored", "terminated"]);
+      it("a second archive is refused as a tombstone", async () => {
+        const result = await runWithEnv(["fleet", "archive", fleetId, "--json"]);
+        assert.notEqual(result.code, 0, `expected non-zero archiving an archived fleet: ${result.stdout}`);
+        assert.match(result.stderr + result.stdout, TOMBSTONE_REFUSAL,
+          `a second archive must name the tombstone: ${result.stdout}${result.stderr}`);
+        await expectStatus(env, fleetId, TERMINAL_STATUSES);
       });
     });
 
@@ -241,8 +227,8 @@ if (!isLive) {
 
     // Prefix-scoped post-teardown emptiness — shared DEV tenants carry
     // residual fleets, so the contract is "none of MY run's fleets
-    // remain alive", not "the workspace is globally empty". Terminal
-    // (killed/errored/terminated) rows still surface in the list and
+    // remain alive", not "the workspace is globally empty". Archived
+    // rows still surface in the list and
     // prove teardown worked — filter them out before asserting.
     describe("post-teardown emptiness (prefix-scoped)", () => {
       beforeAll(async () => {

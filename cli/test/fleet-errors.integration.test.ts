@@ -18,13 +18,13 @@ const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
 // ---------------------------------------------------------------------------
 
 describe("fleet id validation — invalid format", () => {
-  test("`stop` with a non-uuidv7 id exits non-zero and prints the format hint", async () => {
+  test("`archive` with a non-uuidv7 id exits non-zero and prints the format hint", async () => {
     await authedScope(async () => {
       await withMockApi({}, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["fleet", "stop", "not-a-uuid"],
+          ["fleet", "archive", "not-a-uuid"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -34,29 +34,13 @@ describe("fleet id validation — invalid format", () => {
     });
   });
 
-  test("`resume` with a non-uuidv7 id exits non-zero and prints the format hint", async () => {
+  test("`delete` with a non-uuidv7 id exits non-zero and no API request is made", async () => {
     await authedScope(async () => {
       await withMockApi({}, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["fleet", "resume", "bad-id-string"],
-          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
-        );
-        expect(code).not.toBe(0);
-        expect(err.read()).toContain("fleet_id");
-        expect(calls).toHaveLength(0);
-      });
-    });
-  });
-
-  test("`kill` with a non-uuidv7 id exits non-zero and no API request is made", async () => {
-    await authedScope(async () => {
-      await withMockApi({}, async (apiUrl, calls) => {
-        const out = bufferStream();
-        const err = bufferStream();
-        const code = await runCli(
-          ["fleet", "kill", "12345-not-valid"],
+          ["fleet", "delete", "12345-not-valid"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);

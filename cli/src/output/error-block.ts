@@ -26,7 +26,7 @@ export const BLOCK_LABEL = {
   request: "request",
 } as const;
 
-export type BlockLabel = (typeof BLOCK_LABEL)[keyof typeof BLOCK_LABEL];
+type BlockLabel = (typeof BLOCK_LABEL)[keyof typeof BLOCK_LABEL];
 
 // Order a reader scans in: what it is, how to fix it, then the trace id.
 const LABEL_ORDER: ReadonlyArray<BlockLabel> = [
@@ -41,7 +41,7 @@ const LABEL_WIDTH = Math.max(...LABEL_ORDER.map((label) => label.length));
 const INDENT = "  " as const;
 const GAP = "  " as const;
 const VALUE_COLUMN = INDENT.length + LABEL_WIDTH + GAP.length;
-export const DEFAULT_BLOCK_WIDTH = 80;
+const DEFAULT_BLOCK_WIDTH = 80;
 // Below this a wrapped value would be a column of single words; stop wrapping.
 const MIN_VALUE_WIDTH = 20;
 /** Where every label's value begins, counted from column 1. */
@@ -55,7 +55,7 @@ const UNWRAPPED = Number.POSITIVE_INFINITY;
 const FIX_SEPARATOR = " — " as const;
 
 export const BLOCK_SEVERITY = { error: "error", warning: "warning" } as const;
-export type BlockSeverity = (typeof BLOCK_SEVERITY)[keyof typeof BLOCK_SEVERITY];
+type BlockSeverity = (typeof BLOCK_SEVERITY)[keyof typeof BLOCK_SEVERITY];
 
 export interface ErrorBlock {
   readonly severity: BlockSeverity;
@@ -64,7 +64,7 @@ export interface ErrorBlock {
   readonly fields: Partial<Record<BlockLabel, string | undefined>>;
 }
 
-export interface BlockStyle {
+interface BlockStyle {
   // Renders the whole first line, glyph included, e.g. `ui.err` / `ui.warn`.
   readonly head: (severity: BlockSeverity, text: string) => string;
   readonly label: (text: string) => string;
@@ -99,7 +99,7 @@ export const renderErrorBlock = (
 };
 
 /** The house style: the glyph and colour every other line of output uses. */
-export const HOUSE_STYLE: BlockStyle = {
+const HOUSE_STYLE: BlockStyle = {
   head: (severity, text) => (severity === BLOCK_SEVERITY.error ? ui.err(text) : ui.warn(text)),
   label: (text) => ui.dim(text),
 };

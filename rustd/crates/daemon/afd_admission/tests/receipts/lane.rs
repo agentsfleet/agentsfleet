@@ -1,4 +1,4 @@
-//! A stopped fleet and its owned parents isolate each ledger test.
+//! A archived fleet and its owned parents isolate each ledger test.
 
 use af_core::id::Uuid7;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
@@ -11,9 +11,9 @@ use super::Fallible;
 const SEEDED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// The status that keeps every lease path off the fixture fleet.
-const FLEET_STOPPED: &str = "stopped";
+const FLEET_ARCHIVED: &str = "archived";
 
-/// One fleet, stopped so no lease path picks it up, and the rows above it.
+/// One fleet, archived so no lease path picks it up, and the rows above it.
 pub(crate) struct Lane {
     handle: TestDatabase,
     pub(super) database: Db,
@@ -23,7 +23,7 @@ pub(crate) struct Lane {
 }
 
 impl Lane {
-    /// Seeds a tenant, a workspace and a stopped fleet on the lane's database.
+    /// Seeds a tenant, a workspace and a archived fleet on the lane's database.
     pub(crate) async fn seed() -> Fallible<Self> {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
@@ -49,7 +49,7 @@ impl Lane {
     }
 
     async fn seed_fleet(&self) -> Fallible {
-        FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_STOPPED)
+        FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_ARCHIVED)
             .name("admission-fixture-fleet")
             .at(SEEDED_AT)
             .native_setup()

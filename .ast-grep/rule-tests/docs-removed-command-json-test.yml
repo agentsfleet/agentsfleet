@@ -3,9 +3,11 @@ valid:
   - |
     {"description": "Run agentsfleet secrets create."}
   - |
-    {"description": "Run agentsfleet fleet kill x."}
+    {"description": "Run agentsfleet fleet archive x."}
 invalid:
   - |
     {"description": "Run agentsfleet secret add."}
   - |
     {"description": "Run agentsfleet kill x."}
+  - |
+    {"description": "Run agentsfleet fleet kill x."}

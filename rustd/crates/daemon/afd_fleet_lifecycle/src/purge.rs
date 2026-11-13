@@ -1,12 +1,12 @@
-//! Removing a fleet: kill first, then purge.
+//! Removing a fleet, in whatever status it holds.
 //!
-//! # Why deleting takes two steps
+//! # Why one step
 //!
-//! A running fleet cannot be deleted. An operator marks it `killed`, which is
-//! terminal and reversible by nothing, and only then may purge it. That is not
-//! ceremony: the purge takes the fleet's memories and its approval history with
-//! it, and a one-step delete puts an irreversible loss one mis-typed identifier
-//! away.
+//! Delete and archive are independent (`M249_002` §6): a delete takes the fleet
+//! from any status, including `active`. The caller ends the fleet's live work
+//! first through the teardown an archive runs (`Creations::release`), so the
+//! runner is told; a live lease that still survives that is deleted here, and
+//! its runner learns at its next renewal, which answers `RUN_LEASE_NOT_FOUND`.
 //!
 //! # What goes, and what stays
 //!
@@ -38,21 +38,21 @@ use af_core::id::Uuid7;
 use afd_state::sql::LEASE_STATUS_ACTIVE;
 
 use crate::error::{self, ErrorKind, Result};
-use crate::{FleetStatus, Fleets, sql};
+use crate::{Fleets, sql};
 
 /// The contexts a failed statement on this path reports under.
-const CONTEXT_PROBE: &str = "read fleet status before purge";
+const CONTEXT_PROBE: &str = "lock fleet before purge";
 const CONTEXT_BEGIN: &str = "open fleet purge transaction";
 const CONTEXT_PARENT: &str = "purge fleet row";
 const CONTEXT_LEASES: &str = "purge fleet live leases";
 const CONTEXT_COMMIT: &str = "commit fleet purge";
 
 impl Fleets {
-    /// Purges one killed fleet and everything keyed to it, under the same
-    /// current resource version native reads return.
+    /// Purges one fleet and everything keyed to it, under the same current
+    /// resource version native reads return.
     ///
     /// # Errors
-    /// Refuses stale tags, foreign fleets, live fleets and datastore failures.
+    /// Refuses stale tags, foreign fleets and datastore failures.
     pub async fn purge_tagged(
         &self,
         workspace: &Uuid7,
@@ -70,16 +70,14 @@ impl Fleets {
             .execute(&mut *transaction)
             .await
             .map_err(error::query(CONTEXT_LEASES))?;
-        let purged = sqlx::query_scalar::<_, Uuid7>(sql::DELETE_FLEET_IN_STATUS)
+        // The row is locked by `guard`, so it cannot have gone in between.
+        sqlx::query_scalar::<_, Uuid7>(sql::DELETE_FLEET)
             .bind(fleet)
             .bind(workspace)
-            .bind(FleetStatus::Killed.as_str())
             .fetch_optional(&mut *transaction)
             .await
-            .map_err(error::query(CONTEXT_PARENT))?;
-        if purged.is_none() {
-            return Err(ErrorKind::MustKillFirst.into());
-        }
+            .map_err(error::query(CONTEXT_PARENT))?
+            .ok_or(ErrorKind::NotFound)?;
         transaction
             .commit()
             .await
@@ -89,8 +87,8 @@ impl Fleets {
     }
 }
 
-/// Locks the row and checks the tag and the status under the lock, so no
-/// concurrent edit lands between the check and the delete.
+/// Locks the row and checks the tag under the lock, so no concurrent edit
+/// lands between the check and the delete.
 async fn guard(
     connection: &mut sqlx::PgConnection,
     workspace: &Uuid7,
@@ -108,15 +106,11 @@ async fn guard(
     if expected != current {
         return Err(error::source_stale(current));
     }
-    if FleetStatus::parse(&locked.status) != Some(FleetStatus::Killed) {
-        return Err(ErrorKind::MustKillFirst.into());
-    }
     Ok(())
 }
 
 /// The row [`sql::LOCK_FLEET`] holds while the tag is compared.
 #[derive(Debug, sqlx::FromRow)]
 struct LockedFleet {
-    status: String,
     resource_version: i64,
 }

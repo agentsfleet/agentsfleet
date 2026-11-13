@@ -10,7 +10,7 @@ use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::json;
 use std::sync::Arc;
 
-async fn requiring_github(c: &Case) -> afd_authoring::types::SaveFleet {
+pub(super) async fn requiring_github(c: &Case) -> afd_authoring::types::SaveFleet {
     let mut bytes = [0; 8];
     Entropy::new()
         .fill(&mut bytes)
@@ -59,7 +59,10 @@ async fn requiring_github(c: &Case) -> afd_authoring::types::SaveFleet {
     request
 }
 
-async fn cards(c: &Case, fleet: &af_core::id::Uuid7) -> Vec<(af_core::id::Uuid7, String)> {
+pub(super) async fn cards(
+    c: &Case,
+    fleet: &af_core::id::Uuid7,
+) -> Vec<(af_core::id::Uuid7, String)> {
     sqlx::query_as(
         "SELECT action_id,status FROM fleet.approval_gates WHERE fleet_id=$1 ORDER BY id",
     )
@@ -151,25 +154,25 @@ async fn a_denied_grant_blocks_setup_and_a_retry_opens_no_second_card() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn kill_closes_setup_cards_and_late_grant_work_cannot_reopen_them() {
+async fn archive_closes_setup_cards_and_late_grant_work_cannot_reopen_them() {
     let c = Case::create().await;
     c.fund().await;
     let request = requiring_github(&c).await;
     let key = mint();
     let saved = c.save(&key, request.clone()).await;
-    let killed = c
+    let archived = c
         .creations
         .patch(
             c.base.access(),
             &saved.id,
             Some(&saved.etag),
-            Some("killed"),
+            Some("archived"),
             None,
             now(),
         )
         .await
-        .expect("Kill");
-    assert_eq!(killed.status, "killed");
+        .expect("Archive");
+    assert_eq!(archived.status, "archived");
     let ended = cards(&c, &saved.id).await;
     assert_eq!(ended.len(), 1);
     assert_eq!(ended[0].1, "auto_killed");
@@ -188,7 +191,7 @@ async fn kill_closes_setup_cards_and_late_grant_work_cannot_reopen_them() {
         .expect("late work");
     assert!(late.is_none());
     assert_eq!(cards(&c, &saved.id).await, ended);
-    assert_eq!(c.save(&key, request).await.status, "killed");
+    assert_eq!(c.save(&key, request).await.status, "archived");
     c.cleanup().await;
 }
 

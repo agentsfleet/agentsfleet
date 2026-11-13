@@ -34,7 +34,7 @@ use af_core::id::Uuid7;
 use af_fleet_runtime::FleetConfig;
 use jiff::Timestamp;
 
-use crate::gate::pause::Trigger;
+use crate::gate::archive::Trigger;
 use crate::gate::pending::{Evaluation, GateRef, Recorded};
 use crate::gate::route::RefState;
 use crate::gate::store::Gates;

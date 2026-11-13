@@ -31,7 +31,7 @@ const FAILURES: ReadonlyArray<Failure> = [
   { name: "server error", argv: ["fleet", "show", FLEET_ID], signedIn: true, reply: "forbidden" },
   { name: "network error", argv: ["fleet", "show", FLEET_ID], signedIn: true, reply: "unreachable" },
   { name: "guard refusal", argv: ["fleet", "list"], signedIn: false, reply: "forbidden" },
-  { name: "usage error", argv: ["fleet", "kill", "abc"], signedIn: true, reply: "forbidden" },
+  { name: "usage error", argv: ["fleet", "archive", "abc"], signedIn: true, reply: "forbidden" },
   { name: "unknown command", argv: ["workspace", "lsit"], signedIn: false, reply: "forbidden" },
   { name: "invalid completions shell", argv: ["--completions", "tcsh"], signedIn: false, reply: "forbidden" },
 ];

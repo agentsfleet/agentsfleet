@@ -29,7 +29,7 @@ import { UNKNOWN_VISIBILITY, knownVisibility } from "../tree/visibility.ts";
 import { flaggedApiUrl, helpArgv } from "./argv-scan.ts";
 import { consoleForStreams } from "./console-bridge.ts";
 
-export interface DiscoveryInput {
+interface DiscoveryInput {
   readonly argv: ReadonlyArray<string>;
   readonly tree: CommandNode;
   // The resolved target, normalized.
@@ -68,7 +68,7 @@ const ScopesBody = Schema.Struct({ scopes: Schema.Array(Schema.String) });
  * stopped on, so it discovers; a reached platform leaf runs, so it discovers
  * only when asked for its own help.
  */
-export const isDiscoveryRequest = (argv: ReadonlyArray<string>, tree: CommandNode): boolean => {
+const isDiscoveryRequest = (argv: ReadonlyArray<string>, tree: CommandNode): boolean => {
   const effective = helpArgv(argv);
   const flags = beforeEndOfFlags(effective);
   if (asksForCompletions(flags)) return true;

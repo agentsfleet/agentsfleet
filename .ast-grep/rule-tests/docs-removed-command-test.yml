@@ -3,7 +3,7 @@ valid:
   - |
     const hint = "agentsfleet secrets create";
   - |
-    const kill = "agentsfleet fleet kill x";
+    const archive = "agentsfleet fleet archive x";
   - |
     const vault = "agentsfleet secrets list";
   - |
@@ -19,5 +19,7 @@ invalid:
     const t = `agentsfleet fleet update ${id}`;
   - |
     const hint = "agentsfleet kill x";
+  - |
+    const hint = "agentsfleet fleet kill x";
   - |
     // agentsfleet api-key list

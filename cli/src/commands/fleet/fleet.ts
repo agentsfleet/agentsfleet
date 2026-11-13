@@ -1,5 +1,4 @@
-// Fleet CLI top-level command Effects — status / stop / resume / kill /
-// delete. Creation and improvement use terminal chat; list/logs/events/
+// Fleet CLI top-level command Effects — status / activate / archive / delete. Creation and improvement use terminal chat; list/logs/events/
 // steer/secret leaves live in sibling files (fleet_list.ts,
 // fleet_logs.ts, fleet_events.ts, fleet_steer.ts, fleet_secret.ts).
 //
@@ -19,10 +18,7 @@ import { wsFleetsPath, wsFleetPath } from "../../lib/api-paths.ts";
 import { validateRequiredId } from "../../lib/id.ts";
 import { ui, EMPTY_CELL } from "../../output/index.ts";
 import { pendingGateCounts } from "../approvals/pending.ts";
-import {
-  AGENTSFLEET_STATUS,
-  type FleetMutationStatus,
-} from "../../constants/fleet-status.ts";
+import { AGENTSFLEET_STATUS } from "../../constants/fleet-status.ts";
 import { formatDollars } from "../../constants/billing.ts";
 import { decode, FleetSchema } from "../chat/protocol.ts";
 import { decodeFleetList, type FleetsRead } from "./read.ts";
@@ -34,17 +30,9 @@ import {
 
 const FLEET_SHOW_USAGE = "agentsfleet fleet show <fleet_id>" as const;
 
-const STATUS_PAST_TENSE: Record<FleetMutationStatus, string> = {
-  [AGENTSFLEET_STATUS.STOPPED]: "stopped",
-  [AGENTSFLEET_STATUS.ACTIVE]: "resumed",
-  [AGENTSFLEET_STATUS.KILLED]: "killed",
-};
-
-const STATUS_VERB: Record<FleetMutationStatus, string> = {
-  [AGENTSFLEET_STATUS.STOPPED]: "stop",
-  [AGENTSFLEET_STATUS.ACTIVE]: "resume",
-  [AGENTSFLEET_STATUS.KILLED]: "kill",
-};
+const FLEET_ACTIVATE_USAGE = "agentsfleet fleet activate <fleet_id>" as const;
+const FLEET_ARCHIVE_USAGE = "agentsfleet fleet archive <fleet_id>" as const;
+const FLEET_DELETE_USAGE = "agentsfleet fleet delete <fleet_id>" as const;
 
 const requireFleetId = (
   fleetId: string | undefined,
@@ -145,20 +133,22 @@ export const fleetShowEffectFromId = (
   CliConfig | Credentials | HttpClient | Output | Workspaces
 > => statusEffectFromId(fleetId);
 
+type FleetServices = CliConfig | Credentials | HttpClient | Output | Workspaces;
+type LifecycleTarget = typeof AGENTSFLEET_STATUS.ACTIVE | typeof AGENTSFLEET_STATUS.ARCHIVED;
+
+// One PATCH under the tag the GET just read. The line reports the status the
+// server answered, never the one asked for: activate leaves a fleet whose
+// setup still waits `installing`, and the reader needs the next step for that.
 const setStatusEffect = (
   fleetId: string | undefined,
-  status: FleetMutationStatus,
-): Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output | Workspaces
-> =>
+  status: LifecycleTarget,
+  usage: string,
+): Effect.Effect<void, CliError, FleetServices> =>
   Effect.gen(function* () {
     const output = yield* Output;
     const http = yield* HttpClient;
-    const verb = STATUS_VERB[status];
     const wsId = yield* requireWorkspaceId;
-    const id = yield* requireFleetId(fleetId, `agentsfleet fleet ${verb} <fleet_id>`);
+    const id = yield* requireFleetId(fleetId, usage);
     const token = yield* resolveAuthToken;
     const path = wsFleetPath(wsId, id);
     const observed = yield* http.request<unknown>({ path, token }).pipe(
@@ -172,36 +162,26 @@ const setStatusEffect = (
       token,
       retry: null,
     }).pipe(Effect.flatMap((body) => decode(FleetSchema, body)));
-
-    const outcome = res.status === status ? STATUS_PAST_TENSE[status]
-      : res.status === AGENTSFLEET_STATUS.INSTALLING ? "setup is still waiting; inspect with agentsfleet fleet show " + id
-      : res.status;
-    yield* output.success(`${id} ${outcome}.`, { ...res });
+    const line = res.status === AGENTSFLEET_STATUS.INSTALLING
+      ? `${id} ${res.status}; setup is still waiting. See what it needs with: agentsfleet fleet show ${id}`
+      : `${id} ${res.status}.`;
+    yield* output.success(line, { ...res });
   });
 
-export const stopEffectFromId = (
+// Activate re-checks a fleet's setup and activates it once every check
+// passes: the step to take after fixing a missing secret, connector, model or
+// balance. An approved grant runs the same step on its own.
+export const activateEffectFromId = (
   fleetId: string | undefined,
-): Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output | Workspaces
-> => setStatusEffect(fleetId, AGENTSFLEET_STATUS.STOPPED);
+): Effect.Effect<void, CliError, FleetServices> =>
+  setStatusEffect(fleetId, AGENTSFLEET_STATUS.ACTIVE, FLEET_ACTIVATE_USAGE);
 
-export const resumeEffectFromId = (
+// Archive is terminal: the server cancels the fleet's live work and keeps its
+// history, and the fleet never runs again.
+export const archiveEffectFromId = (
   fleetId: string | undefined,
-): Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output | Workspaces
-> => setStatusEffect(fleetId, AGENTSFLEET_STATUS.ACTIVE);
-
-export const killEffectFromId = (
-  fleetId: string | undefined,
-): Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output | Workspaces
-> => setStatusEffect(fleetId, AGENTSFLEET_STATUS.KILLED);
+): Effect.Effect<void, CliError, FleetServices> =>
+  setStatusEffect(fleetId, AGENTSFLEET_STATUS.ARCHIVED, FLEET_ARCHIVE_USAGE);
 
 export const deleteEffectFromId = (
   fleetId: string | undefined,
@@ -214,7 +194,7 @@ export const deleteEffectFromId = (
     const output = yield* Output;
     const http = yield* HttpClient;
     const wsId = yield* requireWorkspaceId;
-    const id = yield* requireFleetId(fleetId, "agentsfleet fleet delete <fleet_id>");
+    const id = yield* requireFleetId(fleetId, FLEET_DELETE_USAGE);
     const token = yield* resolveAuthToken;
 
     const path = wsFleetPath(wsId, id);

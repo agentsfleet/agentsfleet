@@ -6,6 +6,7 @@ mod conversations;
 mod patch;
 mod progress;
 mod read;
+mod release;
 mod reserve;
 mod revision;
 mod schedules;
@@ -65,7 +66,7 @@ impl Creations {
 const CONTEXT: &str = "advance reviewed fleet setup";
 const INSTALLING: &str = "installing";
 const ACTIVE: &str = "active";
-const KILLED: &str = "killed";
+const ARCHIVED: &str = "archived";
 const INITIAL_VERSION: i64 = 1;
 /// How long a closed draft's private transcript outlives activation.
 const PRIVATE_RETENTION: std::time::Duration = af_core::timing::DAY.saturating_mul(30);

@@ -175,7 +175,8 @@ const sourceFiles = async (dir: string): Promise<ReadonlyArray<string>> =>
 describe("cli_hint_strings_name_real_commands", () => {
   test("a stale spelling is detected (positive control)", () => {
     expect(unresolved('const hint = "run agentsfleet kill <fleet_id>";')).toEqual(["agentsfleet kill"]);
-    expect(unresolved('const hint = "run agentsfleet fleet kill <fleet_id>";')).toEqual([]);
+    expect(unresolved('const hint = "run agentsfleet fleet archive <fleet_id>";')).toEqual([]);
+    expect(unresolved('const hint = "run agentsfleet fleet kill <fleet_id>";')).toEqual(["agentsfleet fleet kill"]);
     expect(unresolved('const hint = "run agentsfleet fleet list extra words";')).toEqual(["agentsfleet fleet list extra words"]);
     expect(unresolved('const hint = "run agentsfleet secrets show github";')).toEqual([]);
     expect(unresolved('detail: "api-key create requires --name <name>"')).toEqual(['"api-key create requires --']);
