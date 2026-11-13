@@ -9,7 +9,7 @@ use afd_authoring::{SavedFleet, types::Start};
 
 const FINISHED: &str = "fleet_setup_finished";
 const CANCELLED: &str = "fleet_setup_cancelled";
-const ARCHIVED: &str = "archived";
+const ARCHIVED: &str = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
 
 /// Asserts `event` is the owner's step about `saved`.
 fn about(c: &Case, event: &Telemetry, saved: &SavedFleet) {
@@ -88,7 +88,12 @@ async fn should_report_setup_cancelled_once_and_not_for_a_refused_archive() {
             )
             .await
             .expect_err("an archived fleet is a tombstone for every edit");
-        assert_eq!(refused.code(), error_code::AGENTSFLEET_NOT_FOUND);
+        assert_eq!(
+            refused.code(),
+            error_code::AGENTSFLEET_ARCHIVED,
+            "{status:?}"
+        );
+        assert_eq!(refused.current_state(), Some("archived"), "{status:?}");
     }
     let unchanged = c
         .creations

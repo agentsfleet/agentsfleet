@@ -40,8 +40,8 @@ af_core::error_lifts!(Error, ErrorKind:
 /// What a refusal of an archived fleet's edit tells the caller.
 const DETAIL_ARCHIVED: &str =
     "This fleet is archived and cannot change; delete it or set up a new fleet";
-/// The state an archived fleet's refusal names.
-const CURRENT_ARCHIVED: &str = "archived";
+/// The state an archived fleet's refusal names: the fleet's stored status.
+const CURRENT_ARCHIVED: &str = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
 
 impl Error {
     /// Stable registry classification; foreign failures retain their own codes.

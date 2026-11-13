@@ -25,7 +25,8 @@ pub(crate) struct Gates {
     pub(crate) anomaly_rules: Option<Vec<AnomalyRule>>,
 }
 
-/// One rule for when a tool action needs a person.
+/// One rule for when a tool action needs a person: a matching action always
+/// waits for a person's answer.
 #[derive(Debug, Deserialize, Validate)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionGateRule))]
 pub(crate) struct GateRule {
@@ -40,10 +41,6 @@ pub(crate) struct GateRule {
     /// A condition that narrows when the rule applies.
     #[garde(inner(length(chars, max = MAX_REFERENCE_LEN)))]
     pub(crate) condition: Option<String>,
-    /// What happens when the rule applies.
-    #[serde(default)]
-    #[garde(skip)]
-    pub(crate) behavior: Behavior,
     /// The kind of decision the person is asked to make.
     // Refused, not merely bounded, when it names a kind the DAEMON owns. The
     // kind travels verbatim from here onto the approval card
@@ -64,18 +61,6 @@ pub(crate) struct GateRule {
     #[serde(default)]
     #[garde(length(chars, max = MAX_REFERENCE_LEN))]
     pub(crate) blast_radius: String,
-}
-
-/// What happens when an approval rule applies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionGateBehavior))]
-#[serde(rename_all = "snake_case")]
-pub enum Behavior {
-    /// Ask a person and wait.
-    #[default]
-    Approve,
-    /// Stop the run without asking.
-    AutoKill,
 }
 
 /// One repeated-action pattern that stops a run.

@@ -119,10 +119,6 @@ async fn saved(case: &Case, funded: bool) -> (String, String, String) {
     (item, tag, status)
 }
 
-fn fleet_of(item: &str) -> af_core::id::Uuid7 {
-    af_core::id::Uuid7::parse(item.rsplit('/').next().expect("fleet id")).expect("fleet id")
-}
-
 /// Deletes `item` under `tag` and proves the row and its live work are gone.
 async fn assert_deleted(case: &Case, item: &str, tag: &str, lease: Option<&af_core::id::Uuid7>) {
     assert_eq!(
@@ -153,7 +149,7 @@ async fn delete_removes_a_fleet_in_any_status() {
     let mut active = Case::create().await;
     let (item, tag, status) = saved(&active, true).await;
     assert_eq!(status, "active");
-    let (runner, lease) = active.live_lease(&fleet_of(&item)).await;
+    let (runner, lease) = active.live_lease(&super::fixture::fleet_of(&item)).await;
     let mut commands = active
         .bus
         .subscribe(&afd_bus::Subject::RunnerCommand(runner))

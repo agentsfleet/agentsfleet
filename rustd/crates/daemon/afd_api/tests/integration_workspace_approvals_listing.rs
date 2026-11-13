@@ -140,13 +140,13 @@ async fn assert_filters_narrow(
         "with an all-pending fixture the two pages hold the same rows"
     );
 
-    // The killer's verdict is a state a row is really in, and this listing is
+    // An archived fleet's closed gate is a state a row is really in, and this listing is
     // the only place it shows. A filter that could not name it left those
     // gates unreachable rather than merely unfiltered.
-    let killed = read(router, &fixture.token, collection, "?status=auto_killed").await;
+    let archived = read(router, &fixture.token, collection, "?status=archived").await;
     assert!(
-        ids(&killed).is_empty(),
-        "nothing was auto-killed in this fixture: {killed}"
+        ids(&archived).is_empty(),
+        "no fleet was archived in this fixture: {archived}"
     );
 }
 

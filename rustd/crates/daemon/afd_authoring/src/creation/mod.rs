@@ -64,9 +64,11 @@ impl Creations {
 }
 
 const CONTEXT: &str = "advance reviewed fleet setup";
-const INSTALLING: &str = "installing";
-const ACTIVE: &str = "active";
-const ARCHIVED: &str = "archived";
+// Spelled by the lifecycle's own enum, so the authoring checks and the fleet
+// row can never name a status two ways.
+const INSTALLING: &str = afd_fleet_lifecycle::FleetStatus::Installing.as_str();
+const ACTIVE: &str = afd_fleet_lifecycle::FleetStatus::Active.as_str();
+const ARCHIVED: &str = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
 const INITIAL_VERSION: i64 = 1;
 /// How long a closed draft's private transcript outlives activation.
 const PRIVATE_RETENTION: std::time::Duration = af_core::timing::DAY.saturating_mul(30);

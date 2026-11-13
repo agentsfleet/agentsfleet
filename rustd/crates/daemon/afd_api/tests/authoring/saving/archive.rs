@@ -45,8 +45,7 @@ async fn fleet_lifecycle_is_activate_archive_delete() {
         "active",
         "archive starts from a live fleet"
     );
-    let fleet =
-        af_core::id::Uuid7::parse(item.rsplit('/').next().expect("fleet id")).expect("fleet id");
+    let fleet = super::fixture::fleet_of(&item);
     let (_, lease) = case.live_lease(&fleet).await;
     for status in REMOVED {
         let body = format!(r#"{{"status":"{status}"}}"#);

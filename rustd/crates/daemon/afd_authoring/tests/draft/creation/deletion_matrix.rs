@@ -15,7 +15,6 @@ use af_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
 use afd_authoring::types::{Source, Start};
 use afd_billing::Posture;
 use afd_billing::sql::work::{AUTHORING_ATTEMPT, FLEET_LEASE};
-use afd_fleet_lifecycle::Fleets;
 
 /// The private output a dispatch holds until an erasure root scrubs it.
 const PRIVATE_RESULT: &str = r#"{"text":"private model output"}"#;
@@ -24,7 +23,7 @@ const PRIVATE_RESULT: &str = r#"{"text":"private model output"}"#;
 const FLEET_CHARGE_NANOS: i64 = 1_700;
 
 /// The status a setup fleet holds until its activation is funded.
-const INSTALLING: &str = "installing";
+const INSTALLING: &str = afd_fleet_lifecycle::FleetStatus::Installing.as_str();
 
 /// A terminal report that settles one runtime millisecond.
 fn settling_report() -> Report {
@@ -150,9 +149,8 @@ async fn fleet_charge(c: &Case, fleet: &Uuid7) -> Uuid7 {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_deletion_matrix_keeps_money() {
     let c = Case::create().await;
-    let fleets = Fleets::new(c.base.db.clone());
     let (attempt, money) = the_draft_root_keeps_money(&c).await;
-    the_fleet_root_keeps_money(&c, &fleets).await;
+    the_fleet_root_keeps_money(&c).await;
     assert_eq!(
         attempt_money(&c, &attempt).await,
         money,
@@ -206,8 +204,8 @@ async fn the_draft_root_keeps_money(c: &Case) -> (Uuid7, (i64, i64, i64)) {
     (a.id, money)
 }
 
-/// Purges an archived setup fleet with a settled charge.
-async fn the_fleet_root_keeps_money(c: &Case, fleets: &Fleets) {
+/// Deletes an archived setup fleet with a settled charge.
+async fn the_fleet_root_keeps_money(c: &Case) {
     let (_, request) = c.request("matrix-purged", Start::None).await;
     let saved = c.save(&mint(), request).await;
     assert_eq!(saved.status, INSTALLING);
@@ -224,10 +222,10 @@ async fn the_fleet_root_keeps_money(c: &Case, fleets: &Fleets) {
         )
         .await
         .expect("the setup fleet is archived");
-    fleets
-        .purge_tagged(&c.base.workspace, &saved.id, &archived.etag)
+    c.creations
+        .delete(c.base.access(), &saved.id, &archived.etag)
         .await
-        .expect("an archived fleet purges");
+        .expect("an archived fleet deletes");
     assert_eq!(rows(c, "fleet.fleets", &saved.id).await, 0);
     assert_eq!(
         id_column(

@@ -98,10 +98,10 @@ fn weight(_workspace: &String, set: &Arc<BTreeSet<String>>) -> u32 {
 impl Fleets {
     /// Expires one cached workspace enumeration.
     ///
-    /// A writer that removes a fleet outside [`Fleets::purge_tagged`], such as
-    /// a delete committed by another crate through [`crate::delete_locked`],
-    /// calls this after its commit; a fixture that inserts a row directly uses
-    /// it to prove the refresh without sleeping out the production TTL.
+    /// A delete committed through [`crate::delete_locked`] calls this after its
+    /// commit, so the next enumeration no longer lists the fleet; a fixture
+    /// that inserts a row directly uses it to prove the refresh without
+    /// sleeping out the production TTL.
     pub async fn invalidate_live_set(&self, workspace: &Uuid7) {
         self.live_sets.invalidate(workspace.as_str()).await;
     }

@@ -791,7 +791,7 @@ That message is a barrier, and nothing after it folds. The model call in flight 
 
 - **Archive** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: archived` (`agentsfleet fleet archive`) sets `status=archived` and stops issuing leases. It cancels setup grants, marks live leases `cancel_requested_at` and sends each runner a Cancel (`afd_authoring`'s creation patch). History stays readable, and archive is terminal.
 
-- **Gate trip** — a tripped anomaly rule or an `auto_kill` rule archives the fleet (`afd_gate`'s gate archive). It writes only the status: a lease in flight runs to its own end, its fleet's budget ceiling, or `MAX_RUNTIME`.
+- **Gate trip** — a tripped anomaly rule archives the fleet (`afd_gate`'s gate archive), and the event that tripped it ends as `fleet_archived`. A matching gate rule never archives; it always asks a person. It writes only the status: a lease in flight runs to its own end, its fleet's budget ceiling, or `MAX_RUNTIME`.
 
 - **Delete** — `DELETE` on the fleet (`agentsfleet fleet delete`) removes it in any status. It first does what archive does to live work (`afd_authoring`'s creation release), then purges the rows. A runner that reads the Cancel after its lease row is gone stops at its next renewal, which answers `RUN_LEASE_NOT_FOUND`.
 

@@ -12,7 +12,6 @@ use crate::{
     error::{ErrorKind, raise::query},
 };
 use af_core::id::Uuid7;
-use af_observability::AuthoringStep;
 use sqlx::Connection as _;
 
 impl Creations {
@@ -40,10 +39,7 @@ impl Creations {
         tx.commit().await.map_err(query(CONTEXT))?;
         self.announce_cancellations(cancelled).await;
         if row.status == INSTALLING {
-            let step = AuthoringStep::SetupCancelled {
-                fleet_id: fleet.clone(),
-            };
-            self.setup.drafts.reached(access, step);
+            self.setup_cancelled(access, fleet);
         }
         Ok(())
     }

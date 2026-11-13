@@ -11313,7 +11313,7 @@
           {
             "name": "status",
             "in": "query",
-            "description": "Narrows to one state: \"pending\", \"approved\", \"denied\", \"timed_out\" or \"auto_killed\". Omit it for every state.",
+            "description": "Narrows to one state: \"pending\", \"approved\", \"denied\", \"timed_out\" or \"archived\". Omit it for every state.",
             "required": false,
             "schema": {
               "type": "string"
@@ -24561,17 +24561,9 @@
         },
         "additionalProperties": false
       },
-      "DefinitionGateBehavior": {
-        "type": "string",
-        "description": "What happens when an approval rule applies.",
-        "enum": [
-          "approve",
-          "auto_kill"
-        ]
-      },
       "DefinitionGateRule": {
         "type": "object",
-        "description": "One rule for when a tool action needs a person.",
+        "description": "One rule for when a tool action needs a person: a matching action always\nwaits for a person's answer.",
         "required": [
           "tool",
           "action"
@@ -24582,10 +24574,6 @@
             "description": "The action on that tool.",
             "maxLength": 128,
             "minLength": 1
-          },
-          "behavior": {
-            "$ref": "#/components/schemas/DefinitionGateBehavior",
-            "description": "What happens when the rule applies."
           },
           "blast_radius": {
             "type": "string",

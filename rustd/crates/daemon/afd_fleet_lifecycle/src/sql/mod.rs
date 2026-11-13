@@ -50,12 +50,6 @@ pub(crate) const SELECT_FLEET_PAGE: &str = include_str!("select_fleet_page.sql")
 /// `$1` fleet · `$2` workspace.
 pub(crate) const SELECT_FLEET_STATUS: &str = include_str!("select_fleet_status.sql");
 
-/// Locks the fleet row before its purge, reading the resource version the tag
-/// check compares against.
-///
-/// `$1` fleet · `$2` workspace.
-pub(crate) const LOCK_FLEET: &str = include_str!("lock_fleet.sql");
-
 /// Deletes the fleet in any status, reporting whether a row went.
 ///
 /// `$1` fleet · `$2` workspace.

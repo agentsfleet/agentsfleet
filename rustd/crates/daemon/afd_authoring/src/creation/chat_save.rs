@@ -113,10 +113,7 @@ impl Creations {
             let row = read::lock(connection, &locked.workspace_id, fleet_id).await?;
             revision::target(&captured, fleet_id, row.head_revision)?;
             if row.status == ARCHIVED {
-                return Err(ErrorKind::State {
-                    current: "archived",
-                }
-                .into());
+                return Err(ErrorKind::State { current: ARCHIVED }.into());
             }
             self.write_improvement(
                 connection,

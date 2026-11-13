@@ -9,9 +9,6 @@
 use crate::lease::admit::{Admission, Refusal, Transient};
 use afd_gate::gate::{Refused, Verdict};
 
-/// The gate that archived a fleet, for a transient's `at`.
-const STOPPED: &str = "gate_auto_kill";
-
 /// The gate that could not be raised, for a transient's `at`.
 const GATE: &str = "approval_gate";
 
@@ -22,11 +19,10 @@ impl Admission {
     /// it — which is what lets the caller write `if let Some(stop) = …` beside
     /// the money gates that answer the same shape.
     ///
-    /// [`Verdict::Killed`] becomes a [`Admission::Retry`] and not a refusal,
-    /// which reads backwards until you see what was archived: the FLEET
-    /// changed state, and the event was written nothing. Ending the event as
-    /// well would record a refusal against one delivery for a fleet-level
-    /// decision it happens to have triggered.
+    /// [`Verdict::Archived`] ends the event under
+    /// [`af_core::event::label::FLEET_ARCHIVED`], through the same refusal a
+    /// human's no takes. Archive is terminal, so a retry would leave the event
+    /// waiting forever on a fleet that never runs again.
     #[must_use]
     pub const fn of_gate(verdict: Verdict) -> Option<Self> {
         match verdict {
@@ -39,7 +35,9 @@ impl Admission {
             Verdict::Refuse(Refused::Expired) => Some(Self::Refuse(Refusal::labelled(
                 af_core::event::label::APPROVAL_EXPIRED,
             ))),
-            Verdict::Killed(_) => Some(Self::Retry(Transient { at: STOPPED })),
+            Verdict::Archived => Some(Self::Refuse(Refusal::labelled(
+                af_core::event::label::FLEET_ARCHIVED,
+            ))),
             Verdict::Unavailable => Some(Self::Retry(Transient { at: GATE })),
         }
     }
@@ -48,7 +46,7 @@ impl Admission {
 #[cfg(test)]
 mod tests {
     use crate::lease::admit::Admission;
-    use afd_gate::gate::{Refused, Trigger, Verdict, Waiting};
+    use afd_gate::gate::{Refused, Verdict, Waiting};
 
     /// Every verdict the gate can answer, so the table below is walked in full
     /// rather than sampled — a new arm shows up here as a missing row.
@@ -59,7 +57,7 @@ mod tests {
         Verdict::Await(Waiting::Unreadable),
         Verdict::Refuse(Refused::Denied),
         Verdict::Refuse(Refused::Expired),
-        Verdict::Killed(Trigger::Anomaly),
+        Verdict::Archived,
         Verdict::Unavailable,
     ];
 
@@ -75,10 +73,10 @@ mod tests {
     }
 
     #[test]
-    fn only_a_human_decision_ends_the_event() {
+    fn only_a_terminal_answer_ends_the_event() {
         // A terminal row is a one-way door, so which verdicts write one is the
-        // sharpest question in this mapping. Two do: a refusal and a lapse —
-        // both of them a human's answer, one given and one not given in time.
+        // sharpest question in this mapping. Three do: a human's refusal, a
+        // lapse, and an archived fleet that will never run the event.
         let ends: Vec<_> = EVERY_VERDICT
             .into_iter()
             .filter(|verdict| matches!(Admission::of_gate(*verdict), Some(Admission::Refuse(_))))
@@ -88,7 +86,8 @@ mod tests {
             ends,
             vec![
                 Verdict::Refuse(Refused::Denied),
-                Verdict::Refuse(Refused::Expired)
+                Verdict::Refuse(Refused::Expired),
+                Verdict::Archived
             ]
         );
     }
@@ -112,20 +111,15 @@ mod tests {
     }
 
     #[test]
-    fn an_archived_fleet_does_not_end_the_delivery_that_archived_it() {
-        // The arm that reads backwards until you see what was archived: the
-        // FLEET changed state, and this delivery was written nothing. A
-        // refusal here would record against one event a fleet-level decision
-        // it happened to trigger.
-        for trigger in [Trigger::Anomaly, Trigger::Policy] {
-            assert!(
-                matches!(
-                    Admission::of_gate(Verdict::Killed(trigger)),
-                    Some(Admission::Retry(_))
-                ),
-                "{trigger:?}"
-            );
-        }
+    fn an_archived_fleet_ends_the_delivery_that_archived_it() {
+        // Archive is terminal: a retry would leave this delivery waiting on a
+        // fleet that never runs again, so it ends under its own label.
+        assert_eq!(
+            Admission::of_gate(Verdict::Archived),
+            Some(Admission::Refuse(crate::lease::admit::Refusal::labelled(
+                af_core::event::label::FLEET_ARCHIVED
+            )))
+        );
     }
 
     #[test]

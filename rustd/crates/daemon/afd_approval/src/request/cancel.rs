@@ -29,7 +29,7 @@ impl IntegrationGrants {
     ) -> Result<()> {
         sqlx::query(grant_sql::CANCEL_SETUP_CARDS)
             .bind(fleet)
-            .bind(status::AUTO_KILLED)
+            .bind(status::ARCHIVED)
             .bind(CANCELLED_BY)
             .bind(CANCELLED_DETAIL)
             .bind(super::KIND_INTEGRATION_GRANT)

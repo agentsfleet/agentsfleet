@@ -146,9 +146,9 @@ const LEASE_POLICY: RunnerPolicy<'static> = RunnerPolicy {
     network_policy: "deny_all_egress",
 };
 /// A runner that may hold leases.
-const RUNNER_STATUS_ACTIVE: &str = "active";
+const RUNNER_STATUS_ACTIVE: &str = afd_runner::sql::RUNNER_STATUS_ACTIVE;
 /// A lease still in flight.
-const LEASE_STATUS_ACTIVE: &str = "active";
+const LEASE_STATUS_ACTIVE: &str = afd_state::sql::LEASE_STATUS_ACTIVE;
 /// One live lease, expiring a lease TTL from now.
 const LIVE_LEASE: &str = "INSERT INTO runner.leases \
     (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at, \
@@ -173,6 +173,11 @@ pub(super) async fn cancel_heard(commands: &mut afd_bus::Subscription, lease: &U
     })
     .await
     .expect("the runner is told to cancel its lease");
+}
+
+/// The fleet a saved item's location names.
+pub(super) fn fleet_of(item: &str) -> Uuid7 {
+    Uuid7::parse(item.rsplit('/').next().expect("fleet id")).expect("fleet id")
 }
 
 /// What a seeded lease looks like afterwards: still live, and whether a

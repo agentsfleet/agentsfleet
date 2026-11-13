@@ -38,7 +38,7 @@ use crate::gate::store::Gates;
 pub(crate) const ANOMALY_KEYS_MAX: usize = 10_000;
 
 /// A repetition crossed its threshold.
-const EVENT_AUTO_KILL: &str = "gate_anomaly_auto_kill";
+const EVENT_ARCHIVE: &str = "gate_anomaly_archive";
 
 /// What the counters make of one action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +46,7 @@ pub enum Anomaly {
     /// Nothing has crossed a threshold.
     Normal,
     /// A repetition tripped a rule; the fleet is archived.
-    AutoKill,
+    Archive,
 }
 
 /// One rule's window for one action. The rule's position, not its window,
@@ -178,7 +178,7 @@ impl Gates {
         };
         let fleet = fleet_id.as_str();
         tracing::warn!(
-            event = EVENT_AUTO_KILL,
+            event = EVENT_ARCHIVE,
             fleet_id = fleet,
             tool,
             action,
@@ -186,7 +186,7 @@ impl Gates {
             threshold,
             "one action repeated past its threshold; the fleet is archived"
         );
-        Anomaly::AutoKill
+        Anomaly::Archive
     }
 }
 

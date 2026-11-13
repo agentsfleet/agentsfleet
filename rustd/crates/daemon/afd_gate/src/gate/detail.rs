@@ -100,7 +100,7 @@ mod tests {
     use std::time::Duration;
 
     use super::Stated;
-    use af_fleet_runtime::config::{Behavior, GateRule};
+    use af_fleet_runtime::config::GateRule;
 
     /// A rule's timeout, as a fixture authors one.
     const FIFTEEN_MINUTES: Duration = Duration::from_mins(15);
@@ -110,7 +110,6 @@ mod tests {
             tool: "*".into(),
             action: "*".into(),
             condition: None,
-            behavior: Behavior::Approve,
             gate_kind: kind.into(),
             blast_radius: radius.into(),
         }

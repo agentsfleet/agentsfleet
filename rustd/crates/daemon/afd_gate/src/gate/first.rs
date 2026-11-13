@@ -20,7 +20,6 @@ use af_core::error_code::{Coded as _, Logged};
 use jiff::Timestamp;
 use serde_json::Value;
 
-use crate::gate::archive::Trigger;
 use crate::gate::claim::Claim;
 use crate::gate::detail::Stated;
 use crate::gate::park::{Park, Parked};
@@ -58,9 +57,9 @@ impl Gates {
             request.event_type,
             request.actor,
             policy.anomaly_rules(),
-        ) == Anomaly::AutoKill
+        ) == Anomaly::Archive
         {
-            return self.stop(request, Trigger::Anomaly).await;
+            return self.stop(request).await;
         }
 
         let context = parse_context(request.request_json);
@@ -68,7 +67,6 @@ impl Gates {
 
         match route(state, Some(Decision::of(matched))) {
             Route::Pass => Verdict::Pass,
-            Route::Kill => self.stop(request, Trigger::Policy).await,
             // An unreadable lookup must not become a SECOND card for this
             // event: wait a poll rather than re-notify a human who may already
             // hold one.
@@ -133,28 +131,27 @@ impl Gates {
         }
     }
 
-    /// Archive the fleet, and say which trigger did it.
+    /// Archive the fleet the anomaly rule caught.
     ///
     /// A failed archive does NOT change the verdict: the gate decided this fleet
     /// should stop, and reporting that it did not while also admitting the
-    /// event would be the worst of both. The event stays leasable either way,
-    /// so a fleet that could not be archived re-decides on the next poll.
-    async fn stop(&self, request: &Check<'_>, trigger: Trigger) -> Verdict {
-        if let Err(fault) = self.archive(request.fleet_id, trigger).await {
+    /// event would be the worst of both. The event that ran away ends either
+    /// way, and the next repeat trips the same rule against a fleet still
+    /// active.
+    async fn stop(&self, request: &Check<'_>) -> Verdict {
+        if let Err(fault) = self.archive(request.fleet_id).await {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
             let fleet = request.fleet_id.as_str();
-            let trigger_word = trigger.as_str();
             let Logged { error_code, reason } = fault.logged();
             tracing::error!(
                 error_code,
                 event = EVENT_ARCHIVE_FAILED,
                 fleet_id = fleet,
-                trigger = trigger_word,
                 reason,
                 "the gate archived this fleet and the row would not flip; it stays active"
             );
         }
-        Verdict::Killed(trigger)
+        Verdict::Archived
     }
 }
 
@@ -215,7 +212,7 @@ mod tests {
         use crate::gate::store::Gates;
 
         /// A fleet whose only rule names another tool, so policy passes a chat outright.
-        const APPROVE_EVERY_CHAT: &str = r#"{"name":"gate-unit","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"gates":{"rules":[{"tool":"shell","action":"user:other","behavior":"approve"}]}}}"#;
+        const APPROVE_EVERY_CHAT: &str = r#"{"name":"gate-unit","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"gates":{"rules":[{"tool":"shell","action":"user:other"}]}}}"#;
 
         const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee2";
 
