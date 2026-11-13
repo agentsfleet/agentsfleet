@@ -75,7 +75,7 @@ function WorkspacePlugins({workspace, onSelect}: Props) {
     {!error && page && !page.items.length ? <LibraryEmpty workspace={workspace} paged={!!(cursor || page.next_cursor)} /> : null}
     {cursor ? <Button variant="outline" onClick={() => { setCursor(null); setSelected(null); }}>First page</Button> : null}
     {page?.next_cursor ? <Button variant="outline" onClick={() => { setCursor(page.next_cursor); setSelected(null); }}>Next page</Button> : null}
-    <p className="text-eyebrow text-text-dim">Each new fleet keeps its own setup and history. Changing or deleting a Plugin does not change fleets already created from it.</p>
+    <p className="text-eyebrow leading-eyebrow text-text-dim">Each new fleet keeps its own setup and history. Changing or deleting a Plugin does not change fleets already created from it.</p>
     <Dialog open={selected !== null} onOpenChange={() => {setSelected(null); setEntry(null);}}><DialogContent>
       <DialogHeader><DialogTitle>{selected?.name ?? "Plugin"}</DialogTitle><DialogDescription>{selected?.description}</DialogDescription></DialogHeader>
     {error && selected ? <UnavailableState title="This plugin could not be loaded" description={error}

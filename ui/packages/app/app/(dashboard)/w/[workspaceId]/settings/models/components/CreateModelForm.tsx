@@ -79,7 +79,7 @@ export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChang
         <ModelCredentialFields id={id} values={values} secrets={secrets} onChange={change} />
         <div className="flex items-start gap-lg">
           <Checkbox id={`${id}-active`} checked={values.activate} onCheckedChange={activate => change({activate: activate === true})} />
-          <div className="space-y-xs"><Label htmlFor={`${id}-active`}>Make active</Label><p className="text-eyebrow text-text-dim">Use this as your default model for new work.</p></div>
+          <div className="space-y-xs"><Label htmlFor={`${id}-active`} className="text-sm font-semibold">Make active</Label><p className="text-eyebrow leading-eyebrow text-muted-foreground">Use this as your default model for new work.</p></div>
         </div>
       </fieldset>
       {error && !creation.pending ? <Alert className="mt-xl" variant={creation.state.stage.endsWith("unconfirmed") ? "warning" : "destructive"}>{error}</Alert> : null}

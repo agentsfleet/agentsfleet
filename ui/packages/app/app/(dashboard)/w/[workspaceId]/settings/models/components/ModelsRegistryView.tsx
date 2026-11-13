@@ -38,7 +38,7 @@ export function ModelsRegistryView(props: Props) {
 }
 
 function Active() {
-  return <span className="inline-flex items-center gap-md text-label font-semibold text-success"><span className="size-1.5 rounded-full bg-success" aria-hidden="true" />Active</span>;
+  return <span className="inline-flex items-center gap-md text-label font-title text-success"><span className="size-1.5 rounded-full bg-success" aria-hidden="true" />Active</span>;
 }
 
 function ModelRow({entry, ...props}: Props & {entry: TenantModelEntry}) {
