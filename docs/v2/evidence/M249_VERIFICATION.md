@@ -208,16 +208,25 @@ Final required checks must report their actual results, including failures, befo
 | Website JavaScript | 109.71 kB / 128 kB | Pass |
 | Website CSS | 19.17 kB / 20 kB | Pass |
 
-App evidence: `refresh-app-bundle-size-v113.log`; website evidence: `refresh-website-bundle-size-v104.log`.
-Indy approved only the shared dashboard cap from 270 KiB to 288 KiB:
-"Approve shared cap of 288 KiB". He also requested further reductions where possible.
-Every route and website limit remains unchanged. The size check must pass against the approved cap.
+App evidence: `refresh-app-bundle-size-v113.log`; website evidence: `refresh-website-bundle-size-v104.log`. Indy approved only the shared dashboard cap from 270 KiB to 288 KiB: "Approve shared cap of 288 KiB".
 
-The additional bounded source review found no concrete defect in the conditional native setup/lifecycle boundaries and no further clear low-risk eager-shell reduction. Existing menu/history/analytics boundaries are already deferred. The reverted mobile-dialog experiment shifted bytes into the constrained saved-fleet route; it is not part of the delivered source. The approved cap passed in `refresh-app-bundle-size-v113.log`.
+He also requested further reductions where possible. Every route and website limit remains unchanged.
+
+The size check must pass against the approved cap.
+
+The additional bounded source review found no concrete defect in the conditional native setup/lifecycle boundaries and no further clear low-risk eager-shell reduction. Existing menu/history/analytics boundaries are already deferred.
+
+The reverted mobile-dialog experiment shifted bytes into the constrained saved-fleet route; it is not part of the delivered source. The approved cap passed in `refresh-app-bundle-size-v113.log`.
 
 ## Final full-lane rerun
 
-`make lint-all` passed (`refresh-root-lint-v111.log`). `make test-unit-all` passed runner 1,731, daemon 172 and library 3,670 tests, then reported one app test failure: the first lazy lifecycle dialog was queried synchronously before it appeared. Its helper now waits for the visible alert dialog; the cancellation/no-write assertions are unchanged. The full focused file passes 17 tests (`refresh-lifecycle-lazy-wait-v115.log`). The complete repository/package rerun, dry lane and actual full Linux acceptance remain required.
+`make lint-all` passed (`refresh-root-lint-v111.log`). `make test-unit-all` passed runner 1,731, daemon 172 and library 3,670 tests.
+
+The app reported one failure: the first lazy lifecycle dialog was queried synchronously before it appeared.
+
+Its helper now waits for the visible alert dialog; the cancellation/no-write assertions are unchanged. The full focused file passes 17 tests (`refresh-lifecycle-lazy-wait-v115.log`).
+
+The complete repository/package rerun, dry lane and actual full Linux acceptance remain required.
 
 
 ## Runner handshake cause preservation
@@ -277,64 +286,59 @@ images are explicitly debug-only and cannot enter the final package.
 
 ### Latest code verification before candidate capture
 
-`make lint-app lint-design-system test-unit-design-system` passed app and shared
-component lint/type checks and 511 design-system tests. The scoped archive and
-workspace-creation regression files pass 33 tests. The full app coverage run
-passed 4,565 tests, with 100% statements, functions and lines; branch coverage
-was 99.98% because the private account menu retained an external-link branch
-after those entries were removed. That dead branch is now removed. The complete
-100% coverage target must pass again; no threshold was lowered.
+`make lint-app lint-design-system test-unit-design-system` passed app and shared component lint/type checks and 511 design-system tests. The scoped archive and workspace-creation regression files pass 33 tests.
 
-The adversarial review found a late-focus race during Radix's closing animation.
-Both closing-state and outside-pointer regressions failed before repair. The
-helper now observes native `data-state` and cancels on closing or document-level
-interaction. Its ten regressions and the existing Dialog tests pass 23 tests.
-Source review closed this finding and confirmed both affected functions meet
-the function-length limit. Evidence: `refresh-closing-focus-red-v151.log`,
-`refresh-closing-focus-green-v152.log`, `refresh-ui-checks-v149.log`,
-`refresh-lifecycle-tests-v147.log`, `refresh-typescript-coverage-v150.log`.
+The full app coverage run passed 4,565 tests, with 100% statements, functions and lines.
+Branch coverage was 99.98% because the private account menu retained an external-link branch after those entries were removed. That dead branch is now removed.
+
+The complete 100% coverage target must pass again; no threshold was lowered.
+
+The adversarial review found a late-focus race during Radix's closing animation. Both closing-state and outside-pointer regressions failed before repair.
+
+The helper now observes native `data-state` and cancels on closing or document-level interaction. Its ten regressions and the existing Dialog tests pass 23 tests.
+
+Source review closed this finding and confirmed both affected functions meet the function-length limit. Evidence: `refresh-closing-focus-red-v151.log`, `refresh-closing-focus-green-v152.log`, `refresh-ui-checks-v149.log`, `refresh-lifecycle-tests-v147.log`, `refresh-typescript-coverage-v150.log`.
 
 ### Owner-approved account navigation revision
 
-Owner quotes: “The workspace is  fine”; “The Personal account and Security must
-be merged, and renamed may be to API Keys?”; “SEcurity renamed to API Keys”.
+Owner quotes:
 
-The menu retains the identity-header workspace submenu and offers Team,
-API Keys, Usage, Models, Appearance and Sign out. The separate Personal account
-entry and route are removed. The existing Security destination is labelled
-API Keys and retains API-key creation/revocation and signed-in sessions.
-The Profile and sign-in settings action scrolls to an always-mounted native account section through the auth facade
-for name/photo, verified email and sign-in operations. Password controls follow
-the existing Clerk configuration. No new Clerk key, credential endpoint,
-backend permission or secret storage is introduced.
+> The workspace is  fine
 
-Visible differences from the immutable proposal are the approved API Keys menu
-and page name, the Profile and sign-in settings section and its scroll/focus action, and
-the identity workspace submenu. The existing `/settings/security` page path
+> The Personal account and Security must be merged, and renamed may be to API Keys?
+
+> SEcurity renamed to API Keys
+
+The menu retains the identity-header workspace submenu and offers Team, API Keys, Usage, Models, Appearance and Sign out. The separate Personal account entry and route are removed.
+
+The existing Security destination is labelled API Keys and retains API-key creation/revocation and signed-in sessions. The Profile and sign-in settings action scrolls to an always-mounted native account section through the auth facade for name/photo, verified email and sign-in operations.
+
+Password controls follow the existing Clerk configuration. No new Clerk key, credential endpoint, backend permission or secret storage is introduced.
+
+The approved API Keys menu and page name differ from the immutable proposal.
+Other differences include the Profile and sign-in settings section, its scroll/focus action and the identity workspace submenu.
+
+The existing `/settings/security` page path
 continues to own these operations; no compatibility route or backfill is added.
 Fresh authenticated captures must exercise profile editing/cancel, password
 editing/cancel when configured, sessions and keys on this combined destination.
 
 
 
-The native profile/sign-in form remains embedded in an always-mounted named
-section on API Keys. Its supported hash routing handles verification return
-links on that same page; the section heading persists while native panels
-change. Key the native widget by existing subject/session so account changes
-clear unsubmitted data. The header action scrolls and focuses the section without
-rewriting the hash. There is no enclosing application dialog or separate profile
-route. This also preserves the earlier verified accessibility fix for native
-password editing. Sample fixtures label the native forms as authenticated-only;
-real authenticated captures supply those forms.
+The native profile/sign-in form remains embedded in an always-mounted named section on API Keys. Its supported hash routing handles verification return links on that same page; the section heading stays while native panels change.
+
+Key the native widget by existing subject/session so account changes clear unsubmitted data. The header action scrolls and focuses the section without rewriting the hash.
+
+There is no enclosing application dialog or separate profile route. This also preserves the earlier verified accessibility fix for native password editing.
+
+Sample fixtures label the native forms as authenticated-only; real authenticated captures supply those forms.
 
 ### Final tooltip consistency sweep
 
-The source sweep removed the duplicate tool-group title, the visible secret
-submit tooltip, and native titles on labelled Copy controls. Expanded navigation
-keeps the same button mounted while suppressing its redundant hint; icon-only
-navigation still shows its tooltip. A focus-preservation regression and the
-existing clipboard tests pass 12 tests. App and design-system lint/type checks
-pass. The complete dry-app target passed 4,564 unit tests and all 90 browser
-checks before this final tooltip repair; the final candidate must repeat the
-required full verification. Evidence: `refresh-root-dry-v177.log`,
-`refresh-tooltip-tests-v179.log`, `refresh-tooltip-lint-v180.log`.
+The source sweep removed the duplicate tool-group title, the visible secret submit tooltip, and native titles on labelled Copy controls. Expanded navigation keeps the same button mounted while suppressing its redundant hint; icon-only navigation still shows its tooltip.
+
+A focus-preservation regression and the existing clipboard tests pass 12 tests. App and design-system lint/type checks pass.
+
+The complete dry-app target passed 4,564 unit tests and all 90 browser checks before this final tooltip repair.
+The final candidate must repeat the required full verification.
+ Evidence: `refresh-root-dry-v177.log`, `refresh-tooltip-tests-v179.log`, `refresh-tooltip-lint-v180.log`.
