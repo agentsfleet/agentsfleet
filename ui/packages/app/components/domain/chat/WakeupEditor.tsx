@@ -18,6 +18,7 @@ export function WakeupEditor({schedule, pending, error, onClose, onReload, onSav
         for (const name of ["cron", "timezone", "message"] as const) {
           if (values[name] !== schedule[name]) changed[name] = values[name];
         }
+        if (Object.keys(changed).length === 0) {onClose(); return;}
         onSave(changed);
       }}>
         <div className="space-y-md"><Label htmlFor={`${id}-cron`}>Schedule</Label><Input id={`${id}-cron`} name="cron" required maxLength={256} defaultValue={schedule.cron} disabled={pending} />
