@@ -224,6 +224,7 @@ export const scheduleStatusFlag = textFlag("status", "active or paused", METAVAR
 
 export const sortFlag = Flag.Literals("sort", API_KEY_SORTS).pipe(
   Flag.withDescription("Sort order"),
+  Flag.withMetavar(`<${API_KEY_SORTS.join("|")}>`),
   Flag.optional,
 );
 
