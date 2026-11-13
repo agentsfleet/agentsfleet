@@ -40,7 +40,7 @@ export const readLibraryPage = Effect.fn("library.readPage")(function* (
   if (options.startingAfter !== undefined) query.set(QUERY_STARTING_AFTER, options.startingAfter);
   const body = yield* http.request<unknown>({ path: `${path}?${query}`, token });
   return yield* Schema.decodeUnknownEffect(page)(body).pipe(Effect.mapError(() => new ServerError({
-    detail: "The Library response did not match the supported API shape",
+    detail: "The plugin response did not match the supported API shape",
     suggestion: "verify that the terminal client targets the matching daemon build",
     code: "LIBRARY_RESPONSE_INVALID", status: 502, requestId: null,
   })));
