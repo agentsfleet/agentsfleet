@@ -2,7 +2,7 @@
 
 import type { ApprovalDecision } from "@/lib/api/approvals-types";
 import type { ResolveOutcome } from "@/lib/api/approvals";
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { approveApprovalAction, denyApprovalAction } from "@/lib/actions/fleet-approvals";
 import { APPROVAL_DECISION } from "@/lib/api/approvals-types";
 import { confirmedApprovalResolution } from "@/lib/api/approval-resolution";
@@ -16,7 +16,8 @@ export function useApprovalDecision(workspaceId: string, gateId: string, onResol
   const [error, setError] = useState<string | null>(null);
   const busy = useRef(false);
   const generation = useRef(0);
-  useEffect(() => () => {generation.current += 1;}, []);
+  // Revoke ownership at unmount commit, before a late response's microtask.
+  useLayoutEffect(() => () => {generation.current += 1;}, []);
 
   async function resolve(decision: ApprovalDecision, reason = "") {
     if (busy.current) return;
