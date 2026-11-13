@@ -42,7 +42,7 @@ function OwnedWakeups({workspace, schedules}: {workspace: string; schedules: rea
       return changeSchedule(workspace, current, {status: schedule.status === "paused" ? "active" : "paused"}, signal);
     }, value => updated(schedule, value));}} />;
   return <>
-    {next ? <div className="mx-5 rounded-t-md border border-b-0 border-border bg-muted px-lg py-1">
+    {next ? <div className="mx-5 rounded-t-md border border-b-0 border-border bg-muted pl-lg pr-md py-1">
       {row(next)}{rest.length ? <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="eyebrow">{rest.length} more wake-ups</Button></CollapsibleTrigger>
         <CollapsibleContent className="max-h-40 overflow-y-auto">{rest.map(row)}</CollapsibleContent></Collapsible> : null}
       {control.error && !editing && !deleting ? <p role="alert" className="text-label text-destructive">{control.error}<Button variant="link" onClick={control.refresh}>Refresh schedule</Button></p> : null}
