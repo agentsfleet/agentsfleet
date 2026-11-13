@@ -1117,3 +1117,10 @@ themes and sizes; reduced-motion pairs remain byte-identical. The bundle
 manifest hashes every payload, including reports and its index. Report each
 pre-submission check as PASS, FAIL or NOT RUN with measurements and filenames;
 unresolved failures prevent packaging.
+
+The owner-approved account menu has Team, API Keys, Usage, Models, Appearance
+and Sign out beneath the identity header. The header's native submenu switches
+and creates workspaces. API Keys combines keys, sessions and access to the
+native account/sign-in controls; no separate Personal account destination is
+shown. Keep password and verified-email operations in the authenticated provider
+facade and retain the shared dialog's keyboard and focus behavior.

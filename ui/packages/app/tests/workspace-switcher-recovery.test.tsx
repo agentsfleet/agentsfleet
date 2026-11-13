@@ -28,7 +28,7 @@ it("refreshes stale shell workspace data once per missing workspace without a re
 it("does not refresh a resolved workspace or an account page", () => {
   const workspaces = [{ id: "new", name: "New workspace", created_at: "2026-10-19T00:00:00Z", ...OWN_ACCOUNT }];
   const view = render(<WorkspaceSwitcher workspaces={workspaces} />);
-  route.path = "/settings/account";
+  route.path = "/settings/security";
   view.rerender(<WorkspaceSwitcher workspaces={workspaces} />);
   expect(refresh).not.toHaveBeenCalled();
 });

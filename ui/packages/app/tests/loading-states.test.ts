@@ -8,7 +8,6 @@ describe("shared page loading", () => {
     { name: "loading.tsx", load: () => import("../app/loading") },
     { name: "(dashboard)/loading.tsx", load: () => import("../app/(dashboard)/loading") },
     { name: "(dashboard)/invites/loading.tsx", load: () => import("../app/(dashboard)/invites/loading") },
-    { name: "(dashboard)/settings/account/loading.tsx", load: () => import("../app/(dashboard)/settings/account/loading") },
     { name: "(dashboard)/settings/billing/loading.tsx", load: () => import("../app/(dashboard)/settings/billing/loading") },
     { name: "(dashboard)/settings/members/loading.tsx", load: () => import("../app/(dashboard)/settings/members/loading") },
     { name: "(dashboard)/w/[workspaceId]/events/loading.tsx", load: () => import("../app/(dashboard)/w/[workspaceId]/events/loading") },

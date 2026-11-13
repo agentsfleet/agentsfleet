@@ -104,8 +104,3 @@ describe("app layouts and pages", () => {
     expect(signUpMarkup).toContain("colorPrimary");
   });
 });
-
-it("redirects former embedded-profile security links to account Security", async () => {
-  const { default: AccountPage } = await import("../app/(dashboard)/settings/account/[[...account]]/page");
-  await expect(AccountPage({params: Promise.resolve({account: ["security"]})})).rejects.toThrow("redirect:/settings/security");
-});
