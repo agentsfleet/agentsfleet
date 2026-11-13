@@ -85,7 +85,9 @@ See M249_EXCEPTIONS.md for the nine accepted decisions. No external review ZIP i
 
 ## Measured closures after chat integration
 
-Evidence: `/workspace/artifacts/fleet-refresh-v2/backlog-points-v253/point-measurements.json` and `finding-results.json`. Revision `11f2d4ffd`; proposal SHA-256 remains unchanged. Both themes and all four widths were measured. The test fixture matches the reference review-bar height; product content styles are unchanged.
+Evidence: `/workspace/artifacts/fleet-refresh-v2/backlog-points-v253/point-measurements.json` and `finding-results.json`. Revision `11f2d4ffd`; proposal SHA-256 remains unchanged.
+
+Both themes and all four widths were measured. The test fixture matches the reference review-bar height; product content styles are unchanged.
 
 | Finding | Result | Measured evidence |
 |---|---|---|
@@ -108,13 +110,15 @@ Evidence: `/workspace/artifacts/fleet-refresh-v2/backlog-points-v253/point-measu
 | ✅ 34 | PASS | Every measured dialog footer is aligned with equal button heights and 8px gaps. |
 | ✅ 4 | PASS | PencilSimple for Edit; NotePencil for New fleet; distinct 16px rendered glyphs. |
 
-The remaining findings were measured after these repairs: subtitle weight 500, metadata line height 16px, Sources row padding, phone composer width, wake-up glyph alignment and phone Usage filter width. No native final-gate result is claimed here.
+Later measurements cover subtitle weight, metadata line height, Sources padding, phone composer width, wake-up glyph alignment and phone Usage filter width. No native final-gate result is claimed here.
 
 ## Final finding-specific checks
 
 Evidence: `backlog-points-v259/point-measurements.json` and `finding-results.json` under `/workspace/artifacts/fleet-refresh-v2/`. The run contains 76 records, both themes and desktop/touch phone contexts, with no browser errors. Revision: `37de4e308`.
 
-The last Usage filter repair was checked separately at all four widths in `filter-fit-v262/point-measurements.json`: eight records, revision `7b308451b`. Keyboard focus uses `model-focus-v264/point-measurements.json`: four records at the same revision. The logo check uses `logo-ink-v260/point-measurements.json`: eight source/reference records with equal ink bounds. No screenshots or ZIPs were delivered.
+The last Usage filter repair was checked separately at all four widths in `filter-fit-v262/point-measurements.json`: eight records, revision `7b308451b`. Keyboard focus uses `model-focus-v264/point-measurements.json`: four records at the same revision.
+
+The logo check uses `logo-ink-v260/point-measurements.json`: eight source/reference records with equal ink bounds. No screenshots or ZIPs were delivered.
 
 | Finding | Result | Measured evidence |
 |---|---|---|
@@ -133,7 +137,9 @@ The last Usage filter repair was checked separately at all four widths in `filte
 
 The logo measurement compares actual ray ink bounds and tile geometry, rather than asserting byte equality between two rasterization paths. Both use the approved ray/tile colours. Full font asset bytes match the reference.
 
-Archive and Deleted measurements use explicit sample states with production components. They verify read-only presentation and landing-page chrome, not authenticated writes. The real mutation journeys remain a separate acceptance gate. Phone composer flow and compact wake-up controls follow the accepted decisions.
+Archive and Deleted measurements use explicit sample states with production components. They verify read-only presentation and landing-page chrome, not authenticated writes.
+
+The real mutation checks remain a separate acceptance gate. Phone composer flow and compact wake-up controls follow the accepted decisions.
 
 ## Verified finding evidence
 
