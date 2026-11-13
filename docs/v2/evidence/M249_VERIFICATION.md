@@ -6,7 +6,9 @@ The UI refresh incorporates the CLI/API work merged in PR #839.
 
 ## Current result
 
-M249_001 moves to done at Indy's explicit implementation-closeout request. All 14 Dimensions and 32 visual findings are complete. Remaining verification is listed below without a green claim.
+M249_001 moves to done at Indy's explicit implementation-closeout request. All 14 implementation Dimensions are complete. A fresh adversarial capture pass found residual presentation defects; its repairs and new evidence follow below.
+
+Remaining verification is listed below without a green claim.
 
 ## Final publication checkpoint
 
@@ -57,6 +59,20 @@ Stale-version recovery tests now submit actual changes before expecting PATCH. T
 ✅ Approval disposal race: the decision hook invalidates its response generation during unmount commit, before passive cleanup. Late receipts cannot announce or track a revoked decision.
 
 The existing denied-access assertion is retained. Approval, decision-hook and real-client continuation diagnostics pass (`refresh-pr840-approval-disposal-v346.log`).
+
+## Requested fresh review bundle
+
+Indy requested a new Claude-format ZIP before his preview review. Fresh same-revision captures replace the earlier no-ZIP delivery instruction.
+
+The independent pass found five concrete residual presentation issues: split Manage secret actions, cramped replacement-field focus, Usage filter labels, menu styling and a GitHub glyph.
+
+✅ Manage secret uses one shared footer. Named-field rows use the standard 12px gap, leaving 6px beyond the focus halo.
+
+✅ Usage filter labels use secondary text and the proposal's 20px line height. Shared menus use panel fill, control radii and 500-weight item text.
+
+✅ Connected apps uses GitBranch; archived header status follows the existing phone visibility rule. Read-only history remains visible below.
+
+The focused app run passes 64 tests (`refresh-visual-repairs-v352.log`). The new bundle identifies fixture-only evidence and unresolved rubric ambiguities explicitly.
 
 ## PR #839 integration review
 

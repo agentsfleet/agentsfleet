@@ -36,7 +36,7 @@
   --foreground: var(--text);
   --card: var(--surface-1);
   --card-foreground: var(--text);
-  --popover: var(--surface-2);
+  --popover: var(--surface-1);
   --popover-foreground: var(--text);
   --muted: var(--surface-2);
   --muted-foreground: var(--text-muted);

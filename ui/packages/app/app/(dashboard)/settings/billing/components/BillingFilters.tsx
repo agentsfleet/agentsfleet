@@ -55,7 +55,7 @@ function Filter({ label, value, choices, onChange, disabled }: {
   label: string; value: string; choices: Choice[]; onChange: (value: string) => void; disabled: boolean;
 }) {
   return <div className="flex min-w-0 items-center gap-md">
-    <Label className="mb-0 block font-sans text-eyebrow font-normal leading-eyebrow">{label}</Label>
+    <Label className="mb-0 block font-sans text-eyebrow font-normal leading-label text-muted-foreground">{label}</Label>
     <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger aria-label={label} className="ml-auto h-10 min-h-10 w-56 max-w-[75%] font-sans text-label font-normal sm:ml-0 sm:w-52 sm:max-w-none [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"><SelectValue /></SelectTrigger>
       <SelectContent className="font-sans">{choices.map(choice => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}</SelectContent>

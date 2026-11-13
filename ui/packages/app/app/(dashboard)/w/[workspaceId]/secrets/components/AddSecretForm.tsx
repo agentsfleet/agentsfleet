@@ -201,7 +201,7 @@ function SecretFields({form}: {form: SecretForm}) {
   const {fields, append, remove} = useFieldArray({control: form.control, name: "fields"});
   return <div className="space-y-2">
     <span className="block text-label font-medium">Named fields</span>
-    <div className="space-y-2">{fields.map((row, index) =>
+    <div className="space-y-lg">{fields.map((row, index) =>
       <SecretFieldRow key={row.id} form={form} index={index} canRemove={fields.length > 1} onRemove={() => remove(index)} />
     )}</div>
     <Button type="button" variant="link" size="sm" onClick={() => append({...EMPTY_FIELD})}>+ {ADD_FIELD_LABEL}</Button>
@@ -209,7 +209,7 @@ function SecretFields({form}: {form: SecretForm}) {
 }
 
 function SecretFieldRow({form, index, canRemove, onRemove}: {form: SecretForm; index: number; canRemove: boolean; onRemove: () => void}) {
-  return <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+  return <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-lg sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
     <FormField control={form.control} name={`fields.${index}.key`} render={({field}) => <FormItem className="min-w-0">
       <FormControl><Input aria-label={`Field ${index + 1} name`} placeholder="api_key" className="font-mono" spellCheck={false} autoComplete="off" {...field} /></FormControl>
       <FormMessage />

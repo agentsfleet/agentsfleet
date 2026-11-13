@@ -4,7 +4,7 @@ import type { ComponentType } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Spinner } from "@agentsfleet/design-system";
-import { BriefcaseIcon, GitPullRequestIcon, SquaresFourIcon, HashIcon, PlugsConnectedIcon, TicketIcon } from "@phosphor-icons/react/ssr";
+import { BriefcaseIcon, GitBranchIcon, SquaresFourIcon, HashIcon, PlugsConnectedIcon, TicketIcon } from "@phosphor-icons/react/ssr";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
 import { disconnectConnectorAction, startConnectAction } from "../connector-actions";
 import { presentErrorString, unexpectedErrorMessage } from "@/lib/errors";
@@ -38,7 +38,7 @@ const NOT_CONFIGURED_DESCRIPTION = "A platform admin needs to enable this connec
 // id with an icon. An unknown id falls back to a generic plug, so a newly
 // registered connector still renders — just without a bespoke glyph.
 const PROVIDER_ICON: Record<string, ComponentType<{ size?: number }>> = {
-  github: GitPullRequestIcon,
+  github: GitBranchIcon,
   slack: HashIcon,
   zoho: BriefcaseIcon,
   jira: TicketIcon,
