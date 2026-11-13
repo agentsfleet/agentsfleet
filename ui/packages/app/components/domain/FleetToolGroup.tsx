@@ -17,17 +17,6 @@ type Props = {
   children: ReactNode;
 };
 
-/** What this group owns of the run: its whole duration, and the one figures entry. */
-function ownership({content, indices, running}: Pick<Props, "content" | "indices" | "running">) {
-  const calls = content.flatMap((part, index) => part.type === "tool-call" ? [index] : []);
-  return {
-    // A run's duration belongs to a group only when it holds every call of the run.
-    wholeRun: !running && calls.length === indices.length,
-    // A split run keeps one figures entry, in the last group, once the run settles.
-    footer: !running && indices.at(-1) === calls.at(-1),
-  };
-}
-
 export const FleetToolGroup = memo(function FleetToolGroup(props: Props) {
   const {content, indices, running, wallMs, figures, activity, children} = props;
   const {wholeRun, footer} = ownership(props);
@@ -48,4 +37,15 @@ function sameToolGroup(previous: Props, next: Props): boolean {
         before.toolCallId === after.toolCallId && before.toolName === after.toolName && before.args === after.args &&
         before.argsText === after.argsText && before.result === after.result && before.isError === after.isError && before.timing === after.timing;
     });
+}
+
+/** What this group owns of the run: its whole duration, and the one figures entry. */
+function ownership({content, indices, running}: Pick<Props, "content" | "indices" | "running">) {
+  const calls = content.flatMap((part, index) => part.type === "tool-call" ? [index] : []);
+  return {
+    // A run's duration belongs to a group only when it holds every call of the run.
+    wholeRun: !running && calls.length === indices.length,
+    // A split run keeps one figures entry, in the last group, once the run settles.
+    footer: !running && indices.at(-1) === calls.at(-1),
+  };
 }
