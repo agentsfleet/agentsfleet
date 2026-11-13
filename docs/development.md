@@ -103,6 +103,22 @@ These settings override the generated defaults:
 | `ACCEPTANCE_LOCAL_SIGNING_VAULT` | Vault containing `toolbox-release-key`; required if metadata discovery is ambiguous |
 | `ACCEPTANCE_LOCAL_CONNECTOR_VAULT` | Development vault containing `github-app`; required if metadata discovery is ambiguous |
 
+#### Recover after an intentional acceptance database reset
+
+The local database, its saved `PLATFORM_ADMIN_WORKSPACE_ID`, and the registration file selected by `ACCEPTANCE_LOCAL_RUNNER_RECORD` belong to the same fixture. Normal `make acceptance-codex` retries reuse all three. Do not reset the database alone.
+
+When deliberately recreating this worktree’s acceptance database:
+
+1. Stop its daemon with `make down`. This stops the process; it does not erase the database.
+2. Back up the private settings file and runner registration with their restricted permissions. The settings file is `AGENTSFLEET_LOCAL_ACCEPTANCE_ENV_FILE` when selected, otherwise `<WORKTREE_STATE>/acceptance.env`.
+3. Recreate only the intended worktree database using the development teardown procedure. Check ownership before a shared-stack teardown.
+4. Remove the locally generated `PLATFORM_ADMIN_WORKSPACE_ID` assignment from that settings file and move aside the runner registration selected by `ACCEPTANCE_LOCAL_RUNNER_RECORD`. Resolve a path containing `$DEV_STATE` against this worktree’s state directory. Preserve the encryption key, Clerk/provider credentials and signed toolbox. Preserve operator-managed settings that do not belong to this fixture.
+5. Run `make acceptance-codex` with the same settings file. Bootstrap creates the replacement workspace configuration and runner registration together.
+
+This recovery applies only after a database reset you deliberately initiated. An unexpected `401`, `403`, missing registration file or unfinished enrollment is not proof of a reset. Keep the existing refusal and credential-recovery checks; do not automatically enroll another runner or replace an existing platform workspace.
+
+
+
 The machine environment and `AGENTSFLEET_UI_ENV_FILE` supply development Clerk credentials.
 Initial setup uses the machine's `FIREWORKS_API_KEY` and the existing development GitHub App item to populate the local encrypted vault.
 It also seeds the `qstash` bag from the local scheduler emulator.

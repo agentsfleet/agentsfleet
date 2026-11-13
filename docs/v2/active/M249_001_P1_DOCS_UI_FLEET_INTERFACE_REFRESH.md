@@ -42,6 +42,7 @@ Each table row groups up to four exact paths. Actions and roles follow the same 
 
 | File | Action | Why |
 |---|---|---|
+| `docs/development.md` | EDIT | Record fixture recovery after an intentional worktree database reset, preserving credentials and existing refusal checks |
 | `/workspace/docs/changelog.mdx`<br>`/workspace/docs/docs.json`<br>`/workspace/docs/fleets/model-providers.mdx`<br>`bun.lock` | EDIT<br>EDIT<br>EDIT<br>EDIT | Describe the visible interface and credential-workspace changes with upgrade requirements<br>Replace retired runner HTTP entries with the admin and stream operations already shipped on main<br>Explain inline model creation and explicit credential workspace selection<br>Apply the approved interface and preserve current request and scope ownership |
 | `cli/src/commands/tenant/tenant.ts`<br>`cli/src/program/tree/workspace.command.ts`<br>`cli/test/helpers-tenant-effect.ts`<br>`cli/test/tenant-provider-read-write.unit.test.ts` | EDIT<br>EDIT<br>EDIT<br>EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety<br>Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety<br>Preserve the exact credential namespace through model clients and integration fixtures<br>Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
 | `deploy/local/codex-compose.yml`<br>`docs/AUTH.md`<br>`docs/DESIGN_SYSTEM.md`<br>`docs/architecture/billing_and_provider_keys.md` | EDIT<br>EDIT<br>EDIT<br>EDIT | Keep the official local acceptance proxy and TLS setup coherent<br>Document current-person profile/session adapters and retained verification behavior<br>Apply the approved interface and preserve current request and scope ownership<br>Record the approved behavior, evidence and implementation boundaries |
@@ -244,8 +245,8 @@ Use Manrope 13px/20px regular for desktop reading, 12px/16px metadata, and 16px/
 Use Phosphor 20px rail, 16px action and 18px composer glyphs; preserve 48px desktop rail and 44px phone targets. Use 10px, 16px and 22px rounded surfaces and zero tracking.
 Use Manrope across website and app, including display headings; retain Commit Mono for technical content. Import Manrope once through shared `tokens.css` and remove Instrument Sans and Bricolage packages. Keep website display sizes separate from application reading sizes. Retain Radix unless a concrete primitive defect justifies a separate change.
 
-- **Dimension 1.1** — Browser-computed fonts and sizes match approved roles → Test `conversation and composer use the approved Manrope scale` (browser): desktop/phone and light/dark render expected sizes.
-- **Dimension 1.2** — Labels and focus targets remain reachable in narrow layouts → Test `tool disclosures remain reachable inside the conversation at 320px` (browser): long names wrap and no controls overflow.
+- **Dimension 1.1** — **DONE** — Browser-computed fonts and sizes match approved roles → Test `conversation and composer use the approved Manrope scale` (browser): desktop/phone and light/dark render expected sizes. Evidence: `refresh-final-dry-app-v269.log`.
+- **Dimension 1.2** — **DONE** — Labels and focus targets remain reachable in narrow layouts → Test `tool disclosures remain reachable inside the conversation at 320px` (browser): long names wrap and no controls overflow. Evidence: `refresh-final-dry-app-v269.log`.
 
 ### §2 — Navigation and resource pages
 
@@ -255,9 +256,9 @@ Team remains account-wide. Preserve Owner/Member roles, pending invitations and 
 Account Models keeps one form for new or saved provider credentials and optional Make active. Reuse a saved credential without replacing its bytes; preserve partial-success retries.
 Platform defaults stay under the existing `agentsfleet platform keys` commands. No Admin page is created. The served credit balance remains available beside Usage in the account menu after removal of the global header; opening the menu must not fetch it again.
 
-- **Dimension 2.1** — New fleet is reachable from empty and active views → Test `names the compact New fleet icon and exposes its tooltip on keyboard focus` (unit): keyboard focus exposes the label and the writing-pad action links to New fleet.
-- **Dimension 2.2** — Resource pages retain actual scope → Test `keeps fleet and resource destinations and moves settings off the canvas` (unit): account Team and workspace secrets use their existing routes.
-- **Dimension 2.3** — Saved-key reuse and partial creation preserve resources → Test `retries only a refused activation after model registration succeeds` (unit): a registered model survives an activation refusal; retry repeats only activation.
+- **Dimension 2.1** — **DONE** — New fleet is reachable from empty and active views → Test `names the compact New fleet icon and exposes its tooltip on keyboard focus` (unit): keyboard focus exposes the label and the writing-pad action links to New fleet. Evidence: `refresh-final-coverage-v266.log`.
+- **Dimension 2.2** — **DONE** — Resource pages retain actual scope → Test `keeps fleet and resource destinations and moves settings off the canvas` (unit): account Team and workspace secrets use their existing routes. Evidence: `refresh-final-coverage-v266.log`.
+- **Dimension 2.3** — **DONE** — Saved-key reuse and partial creation preserve resources → Test `retries only a refused activation after model registration succeeds` (unit): a registered model survives an activation refusal; retry repeats only activation. Evidence: `refresh-final-coverage-v266.log`.
 
 #### Models implementation decisions
 
@@ -292,14 +293,14 @@ After confirmed fleet creation, replace the setup URL with the fleet URL without
 Keep setup and runtime drafts separate. Creator-private authoring history never becomes shared conversation history.
 Handoff reads `savedSetupRevision` and the returned fleet identity from the existing DraftClient. A preview or pending save is not sufficient. Once its owner finishes the save request, a confirmed new fleet or newer applied revision replaces the setup URL with that fleet’s conversation URL exactly once. A fleet page refreshes its current route instead. A later transient history or activation failure does not discard the created fleet; its existing recovery surface keeps the same identity. Authorization loss still blocks the handoff. No authoring message is submitted to runtime, and the runtime composer starts from its own buffer.
 
-- **Dimension 3.1** — Summary needs no toggle or drawer → Test `fleet Summary is inline and the composer keeps the approved horizontal alignment` (browser): relevant content is visible in the page flow.
-- **Dimension 3.2** — Saved identity drives navigation → Test `retains the save identity after a lost response and hands off once confirmation arrives` (unit): a lost save response preserves its identity; confirmation navigates exactly once.
-- **Dimension 3.3** — State labels remain evidence-based → Test `recorded actions stay visible and distinguish every terminal outcome` (browser): incomplete work never receives a succeeded label.
+- **Dimension 3.1** — **DONE** — Summary needs no toggle or drawer → Test `fleet Summary is inline and the composer keeps the approved horizontal alignment` (browser): relevant content is visible in the page flow. Evidence: `refresh-final-dry-app-v269.log`.
+- **Dimension 3.2** — **DONE** — Saved identity drives navigation → Test `retains the save identity after a lost response and hands off once confirmation arrives` (unit): a lost save response preserves its identity; confirmation navigates exactly once. Evidence: `refresh-final-coverage-v266.log`.
+- **Dimension 3.3** — **DONE** — State labels remain evidence-based → Test `recorded actions stay visible and distinguish every terminal outcome` (browser): incomplete work never receives a succeeded label. Evidence: `refresh-final-dry-app-v269.log`.
 
 Working-status text starts muted and a darker tone moves left to right across the glyphs. Use one paint-only sweep, no bounce, pulse in font size, or bright flash. Only active recorded status labels animate. Completed, failed, interrupted and unconfirmed labels are static. Reduced-motion and forced-color modes keep a readable solid label. Check both themes.
 The working icon remains steady while the text sweeps. Use a short still interval between sweeps and a smooth transit, keeping the text bounds unchanged. The visual review includes desktop/phone screenshots and a short motion capture before further resource-page work.
 
-- **Dimension 3.4** — Working text has a muted-to-darker sweep without layout shifts → Test `setup and fleet status text has a muted darker sweep with accessible motion fallbacks` in `chat-typography.spec.ts` (browser): computed gradient and motion samples, stable bounds, no animation after completion, reduced-motion and forced-colors fallbacks.
+- **Dimension 3.4** — **DONE** — Working text has a muted-to-darker sweep without layout shifts → Test `setup and fleet status text has a muted darker sweep with accessible motion fallbacks` in `chat-typography.spec.ts` (browser): computed gradient and motion samples, stable bounds, no animation after completion, reduced-motion and forced-colors fallbacks. Evidence: `refresh-final-dry-app-v269.log`.
 
 Failed chat work stays beside its original item with a quiet underlined Try again control and optional details. A compact dismissible error notice is supplemental; it never removes the durable inline failure. Retain draft text and operation identity, gate duplicate retries, and use a sign-in/access/configuration action when repeating the operation cannot resolve the error. Existing `tests/chat-failure.test.tsx` verifies refusal, in-flight exclusion and disabled recovery; browser review checks the compact styling.
 
@@ -337,9 +338,9 @@ Use the approved compact notice: Fleet archived with View history, or Fleet perm
 
 Lifecycle recovery keeps a typed checkpoint: read current state, confirm terminal stop, delete, or reconcile an uncertain write. A confirmed stop is retained when deletion fails, and Retry deletion never repeats the stop. An uncertain stop first reads state; a nonterminal result requires an explicit retry. An uncertain DELETE succeeds only after a successful authenticated read confirms absence; 401, 403, timeout, malformed responses and server errors never count as deletion. The fleet GET handler extracts `WorkspaceContext` and `PersonIdentity` before reading the resource (`afd_api_tenant/src/handler/fleet/native/read.rs`); an unauthorized read cannot become a successful missing-resource result. Keep every mutation's observed ETag. Canceling the mounted owner discards late results and prevents the next write. Account changes clear notice state. Archived conversations expose history without a composer or Restore.
 
-- **Dimension 4.1** — Direct deletion uses one user confirmation → Test `uses one confirmation for an active fleet and carries the stop response ETag to DELETE` (unit): stop then delete completes without another dialog.
-- **Dimension 4.2** — Partial deletion remains recoverable → Test `retains history after deletion fails and never repeats the confirmed stop` (unit): stop success/delete failure shows durable recovery and retries only delete.
-- **Dimension 4.3** — Notices announce confirmed outcomes → Test `announces a confirmed result politely, preserves focus and dismisses after eight seconds` (unit): polite announcement, no focus theft, pause dismissal on focus/hover, read-only history.
+- **Dimension 4.1** — **DONE** — Direct deletion uses one user confirmation → Test `uses one confirmation for an active fleet and carries the stop response ETag to DELETE` (unit): stop then delete completes without another dialog. Evidence: `refresh-final-coverage-v266.log`.
+- **Dimension 4.2** — **DONE** — Partial deletion remains recoverable → Test `retains history after deletion fails and never repeats the confirmed stop` (unit): stop success/delete failure shows durable recovery and retries only delete. Evidence: `refresh-final-coverage-v266.log`.
+- **Dimension 4.3** — **DONE** — Notices announce confirmed outcomes → Test `announces a confirmed result politely, preserves focus and dismisses after eight seconds` (unit): polite announcement, no focus theft, pause dismissal on focus/hover, read-only history. Evidence: `refresh-final-coverage-v266.log`.
 
 ### §5 — Verification and visual finish
 
@@ -349,8 +350,8 @@ Run targeted tests for changed behavior, then repository work/verify checks. Run
 Review spacing, borders, fonts, icon scale, long names, empty states and failures at the approved widths, both themes and 200 percent zoom.
 The prototype's passing checks do not substitute for implementation checks.
 
-- **Dimension 5.1** — Converted surfaces match the approved visual scale → Manual check `M249_VISUAL_BACKLOG.md` (browser/manual): all 32 findings have computed geometry, type, focus or ink evidence; final native gates remain separate.
-- **Dimension 5.2** — Existing request ownership survives → Test `incoming progress preserves the draft and reading position until the reader jumps to latest` (browser): incoming updates preserve unsent text and reading position; Jump to latest restores following.
+- **Dimension 5.1** — **DONE** — Converted surfaces match the approved visual scale → Manual check `M249_VISUAL_BACKLOG.md` (browser/manual): all 32 findings have computed geometry, type, focus or ink evidence; final native gates remain separate. Evidence: `M249_VISUAL_BACKLOG.md`.
+- **Dimension 5.2** — **DONE** — Existing request ownership survives → Test `incoming progress preserves the draft and reading position until the reader jumps to latest` (browser): incoming updates preserve unsent text and reading position; Jump to latest restores following. Evidence: `refresh-final-dry-app-v269.log`.
 
 ## Interfaces
 
@@ -403,9 +404,9 @@ Preserve existing coarse product events and server outcome records. Add no crede
 
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
-| R1 | UI behavior and recovery (§1–§4) | `make test-unit-app` | exit 0 | P0 | |
-| R2 | Shared components (§1) | `make test-unit-design-system` | exit 0 | P0 | |
-| R3 | Rendered flows and spacing (§5) | `make dry-app` | exit 0 and saved visual evidence | P0 | |
+| R1 | UI behavior and recovery (§1–§4) | `make dry-app` | exit 0 | P0 | ✅ 4,562 app tests; v269 |
+| R2 | Shared components (§1) | `make test-coverage-all` | exit 0 | P0 | ✅ 514 design-system tests; 100% floors; v266 |
+| R3 | Rendered flows and spacing (§5) | `make dry-app` | exit 0 and saved visual evidence | P0 | ✅ 90 browser cases; 32 visual findings; v269 |
 | S1 | Work gate | `orly gate work` | exit 0 | P0 | |
 | S2 | Verification gate | `orly gate verify` | exit 0 | P0 | |
 | R4 | Repository lint | `make lint-all` | exit 0 | P0 | |
@@ -413,7 +414,7 @@ Preserve existing coarse product events and server outcome records. Add no crede
 | R6 | Backend integration | `make test-integration-rustd` | exit 0 | P0 | |
 | R7 | Version consistency | `make check-version` | exit 0 | P0 | |
 | R8 | Full Linux acceptance, requested by Indy | `make acceptance-codex` | exit 0; unchanged suites and admission checks | P0 | |
-| R9 | App and website bundle sizes | Existing package `build` then `size` commands | Existing limits pass; any excess requires owner sign-off | P0 | |
+| R9 | App and website bundle sizes | Existing package `build` then `size` commands | Existing limits pass; any excess requires owner sign-off | P0 | ✅ All caps; app v281 / website v283 |
 | S4 | PR gate (explicit owner publishing instruction) | `orly gate pr` | recorded before merge | P0 | |
 | S3 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
 
