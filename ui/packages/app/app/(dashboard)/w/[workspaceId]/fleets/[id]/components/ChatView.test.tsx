@@ -27,7 +27,8 @@ import { useFleetRunSummary } from "@/components/domain/useFleetRunSummary";
 import FleetStatusLine from "./FleetStatusLine";
 
 const STATUS_ACTIVE = "active";
-const STATUS_PAUSED = "paused";
+const STATUS_INSTALLING = "installing";
+const STATUS_ARCHIVED = "archived";
 const WORKSPACE_ID = "ws_1";
 const FLEET_ID = "agt_1";
 const APPROVALS_HREF = "/w/ws_1/approvals?fleetId=agt_1";
@@ -163,22 +164,23 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
   });
 
   it("a revisit whose cached status the server has overtaken does not refresh", async () => {
-    // First visit: a completion pauses the fleet, and the page refreshes once.
-    const first = render(view(summary()));
+    // First visit: the server renders an installing fleet, a completion
+    // reports it active, and the page refreshes once.
+    const first = render(view(summary({ status: STATUS_INSTALLING })));
     emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*" });
-    emit(completion({ fleet_status: STATUS_PAUSED }));
-    expect(await screen.findByText(STATUS_PAUSED)).toBeTruthy();
+    emit(completion({ fleet_status: STATUS_ACTIVE }));
+    expect(await screen.findByText(STATUS_ACTIVE)).toBeTruthy();
     expect(refreshMock).toHaveBeenCalledTimes(1);
     first.unmount();
     refreshMock.mockReset();
 
-    // Within the idle window the entry is still cached, holding "paused". The
-    // operator resumed the fleet from the CLI and comes back: the server
-    // renders "active", which is newer than the cached frame — and no refresh
-    // is owed for a status the server itself just rendered.
-    render(view(summary({ status: STATUS_ACTIVE })));
+    // Within the idle window the entry is still cached, holding "active". The
+    // operator archived the fleet from the CLI and comes back: the server
+    // renders "archived", which is newer than the cached frame — and no
+    // refresh is owed for a status the server itself just rendered.
+    render(view(summary({ status: STATUS_ARCHIVED })));
     await act(async () => {});
-    expect(screen.getByText(STATUS_ACTIVE)).toBeTruthy();
+    expect(screen.getByText(STATUS_ARCHIVED)).toBeTruthy();
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
@@ -207,31 +209,31 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
     render(view(summary()));
 
     emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*" });
-    emit(completion({ fleet_status: STATUS_PAUSED }));
+    emit(completion({ fleet_status: STATUS_ARCHIVED }));
 
     // The header's lifecycle controls render from the fleet status on the
-    // server, so a run that paused the fleet re-runs that tree exactly once;
-    // the strip itself shows the daemon's word at once.
-    expect(await screen.findByText(STATUS_PAUSED)).toBeTruthy();
+    // server, so a run whose gate trip archived the fleet re-runs that tree
+    // exactly once; the strip itself shows the daemon's word at once.
+    expect(await screen.findByText(STATUS_ARCHIVED)).toBeTruthy();
     expect(refreshMock).toHaveBeenCalledTimes(1);
 
     // A second completion with the same status is not a second refresh.
-    emit(completion({ event_id: "evt_next", fleet_status: STATUS_PAUSED }));
+    emit(completion({ event_id: "evt_next", fleet_status: STATUS_ARCHIVED }));
     await act(async () => {});
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
-  it("a server render resets the facts to its own — a kill from the header is not shadowed by an older frame", async () => {
+  it("a server render resets the facts to its own — an archive from the header is not shadowed by an older frame", async () => {
     const { rerender } = render(view(summary()));
     emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*" });
     emit(completion());
     expect(await screen.findByText("1,200")).toBeTruthy();
 
-    // The kill switch refreshed the page: the server says killed, and the
+    // Fleet actions refreshed the page: the server says archived, and the
     // figures it rendered are newer than the frame's.
-    rerender(view(summary({ status: "killed", latest: { ...summary().latest!, tokens: RERENDERED_TOKENS } })));
+    rerender(view(summary({ status: STATUS_ARCHIVED, latest: { ...summary().latest!, tokens: RERENDERED_TOKENS } })));
     await act(async () => {});
-    expect(screen.getByText("killed")).toBeTruthy();
+    expect(screen.getByText(STATUS_ARCHIVED)).toBeTruthy();
     // No refresh: the server tree is what just rendered.
     expect(refreshMock).not.toHaveBeenCalled();
   });

@@ -1,14 +1,14 @@
 /**
  * Shared protocol constants for the auth e2e harness.
  *
- * Inline string literals like "active" / "paused" / "killed" / "regular" /
+ * Inline string literals like "active" / "archived" / "regular" /
  * "admin" / "api" sit on cross-module wire boundaries (agentsfleetd state machine,
  * Clerk JWT template, fixture-pool keying). Centralising them surfaces a
  * rename as a type error rather than silent drift between seed/teardown/spec
  * code paths (RULE UFS).
  *
  * Canonical agentsfleetd state values live at
- * `ui/packages/app/lib/api/fleets.ts:AGENTSFLEET_STATUS`. The harness mirrors
+ * `ui/packages/app/lib/api/fleets-types.ts:AGENTSFLEET_STATUS`. The harness mirrors
  * them (lowercased keys so teardown / specs read naturally; values match
  * exactly).
  */
@@ -23,11 +23,9 @@ export const HTTP_REQUEST = "http_request";
 export const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
 export const AGENTSFLEET_STATUS = {
+  installing: "installing",
   active: "active",
-  paused: "paused",
-  stopped: "stopped",
-  killed: "killed",
-  errored: "errored",
+  archived: "archived",
 } as const;
 
 export type FleetStatus = (typeof AGENTSFLEET_STATUS)[keyof typeof AGENTSFLEET_STATUS];

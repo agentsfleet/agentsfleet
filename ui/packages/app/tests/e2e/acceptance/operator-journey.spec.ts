@@ -9,11 +9,9 @@ import { cleanWorkspaceFleets, purgeFixtureFleet } from "./fixtures/teardown";
 import { gotoWorkspace, openSettingsDestination, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
-  expectDetailKilled,
+  archiveFleet,
+  expectDetailArchived,
   expectRowState,
-  killFleet,
-  resumeFleet,
-  stopFleet,
 } from "./fixtures/lifecycle";
 import {
   cliEnv,
@@ -253,21 +251,14 @@ test.describe("operator journey", () => {
     const cliList = JSON.parse(cli.stdout) as CliFleetListResponse;
     expect(cliList.items?.some((fleet) => fleet.id === fleetId && (fleet.name ?? "").startsWith(JOURNEY_FLEET_PREFIX))).toBe(true);
 
-    await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
-    await stopFleet(page);
     await clickSidebarLink(page, "/settings/billing", /\/settings\/billing(\?|$)/);
     await expect(page.getByLabel("Period totals")).toBeVisible();
 
     await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
-    await resumeFleet(page);
+    await archiveFleet(page);
+    await expectDetailArchived(page);
     await page.goto(workspaceHref(wsId, "fleets"));
-    await expectRowState(page, fleetId, "live");
-
-    await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
-    await killFleet(page);
-    await expectDetailKilled(page);
-    await page.goto(workspaceHref(wsId, "fleets"));
-    await expectRowState(page, fleetId, "failed");
+    await expectRowState(page, fleetId, "archived");
     await deleteFleetWithApiKey(apiUrl, rawApiKey, wsId, fleetId);
 
     await page.goto("/settings/api-keys");

@@ -12,7 +12,7 @@
  *
  * Why this spec exists: the persistent-fixture suite covers each lifecycle
  * slice individually but no spec walks a fresh operator from "I just signed
- * up" through to "I just killed a fleet I observed running." The dashboard's
+ * up" through to "I just archived a fleet I observed running." The dashboard's
  * route-guard chain (workspace auto-provision, starter credit, empty-state →
  * populated transition) only runs on a brand-new tenant — that surface is
  * uncovered without this spec.
@@ -22,11 +22,9 @@ import { expect, test } from "@playwright/test";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
 import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
-  expectDetailKilled,
+  archiveFleet,
+  expectDetailArchived,
   expectRowState,
-  killFleet,
-  resumeFleet,
-  stopFleet,
 } from "./fixtures/lifecycle";
 import { signUpAs } from "./fixtures/signup";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
@@ -119,21 +117,11 @@ test.describe("signup → install → lifecycle", () => {
     await page.goto("/settings/billing");
     await expect(page.getByLabel("Period totals")).toBeVisible();
 
-    // Lifecycle: Stop → Resume → Kill, each via the AlertDialog confirm.
+    // Lifecycle: Archive via the AlertDialog confirm — terminal, history kept.
     await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
-    await stopFleet(page);
+    await archiveFleet(page);
+    await expectDetailArchived(page);
     await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectRowState(page, fleetId, "parked");
-
-    await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
-    await resumeFleet(page);
-    await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectRowState(page, fleetId, "live");
-
-    await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
-    await killFleet(page);
-    await expectDetailKilled(page);
-    await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectRowState(page, fleetId, "failed");
+    await expectRowState(page, fleetId, "archived");
   });
 });

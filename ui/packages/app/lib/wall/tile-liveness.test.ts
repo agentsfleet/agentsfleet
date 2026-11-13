@@ -11,16 +11,10 @@ import {
 } from "./tile-liveness";
 
 describe("deriveTileLiveness — the tile is always exactly one kind (Inv. 1)", () => {
-  it("parked, paused, and killed fleets are drained regardless of connection", () => {
-    for (const status of [
-      AGENTSFLEET_STATUS.STOPPED,
-      AGENTSFLEET_STATUS.PAUSED,
-      AGENTSFLEET_STATUS.KILLED,
-    ]) {
-      // Even if a connection were somehow live, a drained fleet stays drained.
-      expect(deriveTileLiveness(status, CONNECTION_STATUS.LIVE).kind).toBe("drained");
-      expect(tileShouldStream(status)).toBe(false);
-    }
+  it("an archived fleet is drained regardless of connection", () => {
+    // Even if a connection were somehow live, a drained fleet stays drained.
+    expect(deriveTileLiveness(AGENTSFLEET_STATUS.ARCHIVED, CONNECTION_STATUS.LIVE).kind).toBe("drained");
+    expect(tileShouldStream(AGENTSFLEET_STATUS.ARCHIVED)).toBe(false);
   });
 
   it("an active fleet with a live or connecting stream is live (2.1)", () => {
@@ -72,9 +66,9 @@ describe("fleetRowState — lifecycle state for the tile link (e2e data-state)",
   it("maps each status to its row state", () => {
     expect(fleetRowState(AGENTSFLEET_STATUS.ACTIVE)).toBe("live");
     expect(fleetRowState(AGENTSFLEET_STATUS.INSTALLING)).toBe("installing");
-    expect(fleetRowState(AGENTSFLEET_STATUS.KILLED)).toBe("failed");
-    expect(fleetRowState(AGENTSFLEET_STATUS.STOPPED)).toBe("parked");
-    expect(fleetRowState(AGENTSFLEET_STATUS.PAUSED)).toBe("parked");
+    expect(fleetRowState(AGENTSFLEET_STATUS.ARCHIVED)).toBe("archived");
+    // The retired lifecycle values are no longer statuses the wall knows.
+    expect(fleetRowState("stopped")).toBe("parked");
     // An unrecognized status falls back to parked (the neutral, non-live default).
     expect(fleetRowState("who_knows")).toBe("parked");
   });

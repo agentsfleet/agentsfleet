@@ -26,7 +26,6 @@ const UNLISTED_NAMES = ["console-ab12", "pulse-cd34", "nav-ef56"] as const;
 const ENTRIES_PATH = "/fleet-libraries";
 const OWNED_ENTRIES_PATH = `${ENTRIES_PATH}/owned`;
 const FLEET_IDS = [FLEET_ID, DRAFT_ID, CANDIDATE_ID] as const;
-const KILLED_ETAG = '"killed-fleet"';
 
 /** Entries a leaked run leaves in a fixture workspace's own library. */
 const LEAKED_ENTRIES = [
@@ -62,7 +61,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXT_PUBLIC_API_URL = DEV_API_URL;
   del.mockResolvedValue(undefined);
-  patch.mockResolvedValue({...FLEET, status: AGENTSFLEET_STATUS.KILLED, etag: KILLED_ETAG});
   get.mockResolvedValue({...FLEET, status: AGENTSFLEET_STATUS.ACTIVE});
 });
 
@@ -97,9 +95,9 @@ describe("sweepLeakedFixtureFleets", () => {
     const fixtureUsers = listWorkspaces.mock.calls.length;
     expect(counts.removed).toBe(UNLISTED_NAMES.length * fixtureUsers);
     expect(counts.failed).toBe(0);
-    expect(patch).toHaveBeenCalledWith(expect.stringContaining(FLEET_ID),
-      {status: AGENTSFLEET_STATUS.KILLED}, {"If-Match": FLEET.etag});
-    expect(del).toHaveBeenCalledWith(expect.stringContaining(FLEET_ID), {"If-Match": KILLED_ETAG});
+    // DELETE ends live work itself: the sweep never archives first.
+    expect(patch).not.toHaveBeenCalled();
+    expect(del).toHaveBeenCalledWith(expect.stringContaining(FLEET_ID), {"If-Match": FLEET.etag});
     // Assert each individual fleet reached a delete, not just that the total
     // adds up — a count can be right while the wrong rows were removed.
     const deleted = del.mock.calls.map(([path]) => String(path));
@@ -286,10 +284,10 @@ describe("cleanWorkspaceFleets", () => {
     // The behaviour §1 must NOT break: parallel workers share one fixture
     // workspace, so a per-spec afterEach that stopped scoping would delete a
     // sibling spec's fleet mid-test.
-    listFleets.mockResolvedValue(fleets("kill-aaa", "count-bbb", "kill-ccc"));
+    listFleets.mockResolvedValue(fleets("sweep-aaa", "count-bbb", "sweep-ccc"));
 
     const { cleanWorkspaceFleets } = await loadSweep();
-    const counts = await cleanWorkspaceFleets("regular", "ws-1", "kill-");
+    const counts = await cleanWorkspaceFleets("regular", "ws-1", "sweep-");
 
     expect(counts).toEqual({ removed: 2, failed: 0 });
     const deleted = del.mock.calls.map(([path]) => String(path));

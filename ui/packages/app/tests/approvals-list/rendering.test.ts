@@ -134,8 +134,8 @@ describe("ApprovalsTable — states this build has no arm for", () => {
   });
 
   it("renders a settled row that carries neither a decision instant nor a decider", () => {
-    // `timed_out` and `auto_killed` are nobody's verdict — the sweeper and the
-    // daemon close these — so the Decided cell has to survive both fields being
+    // `timed_out` and `archived` are nobody's verdict — the sweeper and the
+    // fleet's archive or delete close these — so the Decided cell has to survive both fields being
     // absent rather than rendering an empty Time or a blank person.
     render(
       React.createElement(ApprovalsList, {
