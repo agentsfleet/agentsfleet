@@ -27,6 +27,5 @@ it("tracks supported emphasis and resets without leaking unsupported extended co
     expect(text(`${ESC}[${code}mvisible`)).toBe("visible");
   }
   expect(text(`a${ESC}[0mb${ESC}[0mc`)).toBe("abc");
-  expect(ansiColor(31, false)).toContain("text-red");
-  expect(ansiColor(31, true)).toContain("text-red");
+  expect(ansiColor(31)).toContain("text-red");
 });

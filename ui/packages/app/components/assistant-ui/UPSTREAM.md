@@ -1,10 +1,9 @@
 # assistant-ui component sources
 
-The terminal, ANSI parser, diff and range helpers are adapted from the official assistant-ui shadcn registry. CodeHeader uses its documented Markdown code-header slot and source composition. Snapshot fetched November 11, 2026.
+The terminal, ANSI parser and diff helpers are adapted from the official assistant-ui shadcn registry. CodeHeader uses its documented Markdown code-header slot and source composition. Snapshot fetched November 11, 2026.
 
 - `https://r.assistant-ui.com/elements-terminal-block.json`, SHA-256 `b027d64cd326b58343b53b979d41c22bf6ed52d84d15245b4c7907e1970fdca0`
 - `https://r.assistant-ui.com/elements-code-diff.json`, SHA-256 `8f4a16c8bf93b0f8e42f38eaa9dab84768e39bc93ae93de6e5b1533c3710eac5`
-- `https://r.assistant-ui.com/elements-range.json`, SHA-256 `6d3305f7fc3821666fb943d1bcb3a1ac3cae32188c7562ce3590101c6ffd2d1b`
 - `https://r.assistant-ui.com/markdown-text.json`, SHA-256 `3f02f9655eb1fea45824e300ca7a40fef0db67fc7f8e2378755f85e403465701`
 
 Local adaptations: shared design-system imports, Manrope/Commit Mono tokens, Phosphor icons, compact spacing, accessible diff side labels, static recorded output and reduced motion. Terminal outcomes retain unknown/interrupted results and never assume exit code zero when it was not recorded. The shared copy control reports clipboard failures.

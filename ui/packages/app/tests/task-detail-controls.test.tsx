@@ -2,13 +2,23 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { TaskDetail } from "@/components/domain/chat/TaskDetail";
+import type { TaskSummary } from "@/lib/api/tasks";
+import { useCallback } from "react";
+import { TaskDetailView } from "@/components/domain/chat/TaskDetail";
+import { useTaskRead } from "@/components/domain/chat/use-task-read";
 import { readTask, controlTask, adoptTaskGoal } from "@/lib/api/tasks";
 import { setupRequest } from "@/lib/api/draft-request";
 import { detail, summary, TASK_IDS } from "./helpers/task-reads";
 vi.mock("@/lib/api/tasks", async original => ({...await original<typeof import("@/lib/api/tasks")>(), readTask: vi.fn(), controlTask: vi.fn(), adoptTaskGoal: vi.fn()}));
 vi.mock("@/lib/api/draft-request", () => ({setupRequest: vi.fn()}));
 afterEach(() => {cleanup(); vi.resetAllMocks();});
+
+// The owner a panel provides in production: one read, retried when a change is confirmed.
+function OwnedTaskDetail({task, onChanged}: {task: TaskSummary; onChanged: () => void}) {
+  const load = useCallback((signal: AbortSignal) => readTask("w", "f", task.id, signal), [task]);
+  const {resource, retry} = useTaskRead(load, task.resource_version);
+  return <TaskDetailView workspaceId="w" fleetId="f" task={task} onChanged={() => {retry(); onChanged();}} resource={resource} retry={retry} />;
+}
 
 it("refreshes both saved task details and the parent after confirmed control and criteria changes", async () => {
   const task = summary();
@@ -19,7 +29,7 @@ it("refreshes both saved task details and the parent after confirmed control and
   const policy: unknown = JSON.parse(readFileSync(resolve(process.cwd(), "../../../tests/fixtures/fleets/goal-repair/decision-policy.json"), "utf8"));
   vi.mocked(setupRequest).mockResolvedValue({setup_revision_id: TASK_IDS[1], setup_revision: "3", definition: {config: {"x-agentsfleet": {decision_policy: policy}}}});
   const changed = vi.fn();
-  render(<TaskDetail workspaceId="w" fleetId="f" task={task} onChanged={changed} />);
+  render(<OwnedTaskDetail task={task} onChanged={changed} />);
   await screen.findByRole("button", {name: "Pause"});
   fireEvent.click(screen.getByRole("button", {name: "Pause"}));
   await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));

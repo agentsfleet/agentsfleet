@@ -23,11 +23,14 @@ export type FleetTaskProps = {
 };
 export type FleetTaskReadState = {scope: string; resource: TaskResource<TaskPage>; details: TaskDetails; references: readonly TaskReference[]; retry: () => void; retryDetails: () => void};
 type ViewState = FleetTaskProps & {read: FleetTaskReadState | null};
+/** What a linked-work card needs; stream events and schedules do not reach it. */
+type LinkedWorkState = {subject: string | null; read: FleetTaskReadState | null};
 const EMPTY_DETAILS: TaskDetails = new Map();
 const EMPTY_TASKS: readonly TaskSummary[] = [];
 const EMPTY_EVENTS: readonly FleetEvent[] = [];
 const DetailContext = createContext<TaskDetails>(EMPTY_DETAILS);
 const ViewContext = createContext<ViewState | null>(null);
+const LinkedWorkContext = createContext<LinkedWorkState | null>(null);
 
 /** Key only the data owner: revocation must not remount the conversation draft. */
 export function FleetTaskProvider({children, workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, readOnly = false}: FleetTaskProps & {children: ReactNode}) {
@@ -39,14 +42,16 @@ export function FleetTaskProvider({children, workspaceId, fleetId, subject, revi
   useEffect(() => {if (!subject) publish(null);}, [subject]);
   const view = useMemo<ViewState>(() => ({workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, readOnly, read: owned}),
     [workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, readOnly, owned]);
-  return <DetailContext value={details}><ViewContext value={view}>
+  const linked = useMemo<LinkedWorkState>(() => ({subject, read: owned}), [subject, owned]);
+  return <DetailContext value={details}><LinkedWorkContext value={linked}><ViewContext value={view}>
     {props.subject ? <TaskReadOwner key={scope} {...props} scope={scope} publish={publish} /> : null}
     {children}
-  </ViewContext></DetailContext>;
+  </ViewContext></LinkedWorkContext></DetailContext>;
 }
 
 export const useFleetTaskDetails = () => useContext(DetailContext);
 export const useFleetTaskView = () => useContext(ViewContext);
+export const useFleetLinkedWork = () => useContext(LinkedWorkContext);
 
 function TaskReadOwner({workspaceId, fleetId, revision, events = EMPTY_EVENTS, scope, publish}: FleetTaskProps & {scope: string; publish: (read: FleetTaskReadState) => void}) {
   const load = useCallback((signal: AbortSignal) => readTasks(workspaceId, fleetId, signal), [workspaceId, fleetId]);

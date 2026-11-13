@@ -1,6 +1,7 @@
 import type { TaskActivityHistory } from "@/lib/task-activity";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import * as taskActivity from "@/lib/task-activity";
 import { FleetTaskProvider } from "@/components/domain/chat/FleetTaskProvider";
 import { NativeTaskPrBadge } from "@/components/domain/chat/NativeTaskPrBadge";
 import { TaskPanel } from "@/components/domain/chat/TaskPanel";
@@ -27,7 +28,7 @@ function network() {
   return fetcher;
 }
 
-it("shows a standard PR badge before the mobile drawer opens, sharing reads and preserving draft on revocation", async () => {
+it("shows the linked PR card before the mobile drawer opens, sharing reads and preserving draft on revocation", async () => {
   const fetcher = network();
   function View({subject = "indy"}: {subject?: string | null}) {
     return <FleetTaskProvider {...SCOPE} subject={subject}><textarea aria-label="Draft" defaultValue="Keep this direction" />
@@ -36,7 +37,7 @@ it("shows a standard PR badge before the mobile drawer opens, sharing reads and 
   }
   const view = render(<View />);
   const badge = await screen.findByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"});
-  expect(badge.textContent).toBe("#803");
+  expect(badge.textContent).toContain("Pull request #803 · a/b");
   expect(badge.classList.contains("ph-no-capture")).toBe(true);
   expect(badge.classList.contains("ph-no-record")).toBe(true);
   expect(badge.getAttribute("href")).toBe("https://github.com/a/b/pull/803");
@@ -63,7 +64,7 @@ it("omits ambiguous, truncated, malformed, or unassociated activity instead of i
   expect(screen.getByRole("link")).toBeTruthy();
 });
 
-it("withholds badge through an unauthorized list read and pending retry", async () => {
+it("withholds the card through an unauthorized list read and pending retry", async () => {
   const fetcher = network();
   const props = {children: <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} />};
   const view = render(<FleetTaskProvider {...SCOPE} {...props} />);
@@ -78,11 +79,11 @@ it("withholds badge through an unauthorized list read and pending retry", async 
   pending.resolve(Response.json(response()));
 });
 
-it("marks retained PR evidence stale during a failed refresh, then clears the badge when the native task is missing", async () => {
+it("marks retained PR evidence stale during a failed refresh, then clears the card when the native task is missing", async () => {
   const fetcher = network();
   const content = <><NativeTaskPrBadge activity={activity([TASK_IDS[0]])} /><TaskPanel {...SCOPE} /></>;
   const view = render(<FleetTaskProvider {...SCOPE}>{content}</FleetTaskProvider>);
-  expect((await screen.findByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"})).getAttribute("title")).toBe("Repair login redirect · a/b");
+  expect((await screen.findByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"})).textContent).not.toContain("last confirmed");
   fireEvent.click(screen.getByRole("button", {name: /^Tasks/}));
   fireEvent.click(screen.getByRole("button", {name: /PR #123 repair/}));
   let status = 503;
@@ -92,7 +93,7 @@ it("marks retained PR evidence stale during a failed refresh, then clears the ba
   });
   view.rerender(<FleetTaskProvider {...SCOPE} revision={1}>{content}</FleetTaskProvider>);
   await screen.findByText(/Last confirmed details are shown/);
-  await waitFor(() => expect(screen.getByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"}).getAttribute("title")).toBe("Repair login redirect · a/b · last confirmed"));
+  await waitFor(() => expect(screen.getByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"}).textContent).toContain("last confirmed"));
   status = 404;
   view.rerender(<FleetTaskProvider {...SCOPE} revision={2}>{content}</FleetTaskProvider>);
   await waitFor(() => expect(screen.queryByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"})).toBeNull());
@@ -101,7 +102,7 @@ it("marks retained PR evidence stale during a failed refresh, then clears the ba
 
 it("presents the explicitly associated native target as a result card with retained evidence", async () => {
   const fetcher = network();
-  const content = <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} appearance="card" />;
+  const content = <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} />;
   const view = render(<FleetTaskProvider {...SCOPE}>{content}</FleetTaskProvider>);
   const card = await screen.findByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"});
   expect(card.textContent).toContain("Repair login redirect");
@@ -124,7 +125,7 @@ it("reserves linked-result space while the native detail is pending and withhold
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     return path.includes("?limit=") ? Response.json({items: [summary()], next_cursor: null}) : pending.promise;
   });
-  const content = <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} appearance="card" />;
+  const content = <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} />;
   const view = render(<FleetTaskProvider {...SCOPE}>{content}</FleetTaskProvider>);
   expect(await screen.findByRole("status", {name: "Reading linked work"})).toBeTruthy();
   pending.resolve(Response.json(response()));
@@ -143,7 +144,7 @@ it("reserves linked-result space while the native detail is pending and withhold
 });
 
 it("does not claim to read linked results without an identity-owned reader", () => {
-  render(<NativeTaskPrBadge activity={activity([TASK_IDS[0]])} appearance="card" />);
+  render(<NativeTaskPrBadge activity={activity([TASK_IDS[0]])} />);
   expect(screen.queryByRole("status")).toBeNull();
   expect(screen.queryByRole("link")).toBeNull();
 });
@@ -152,7 +153,7 @@ it("does not claim to read linked results without an identity-owned reader", () 
 it.each([503, 200])("stops reserving a result after the first list read fails or is invalid (%s)", async status => {
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => status === 503 ? new Response(null, {status}) : Response.json({items: "invalid"}));
   vi.stubGlobal("fetch", fetcher);
-  render(<FleetTaskProvider {...SCOPE}><NativeTaskPrBadge activity={activity([TASK_IDS[0]])} appearance="card" /></FleetTaskProvider>);
+  render(<FleetTaskProvider {...SCOPE}><NativeTaskPrBadge activity={activity([TASK_IDS[0]])} /></FleetTaskProvider>);
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull());
   expect(screen.queryByRole("link")).toBeNull();
@@ -166,7 +167,7 @@ it("does not leave an older result loading outside the reader's bounded history 
   });
   vi.stubGlobal("fetch", fetcher);
   render(<FleetTaskProvider {...SCOPE} events={[evt({taskActivity: activity(ids)})]}>
-    <NativeTaskPrBadge activity={activity([ids[0]!])} appearance="card" />
+    <NativeTaskPrBadge activity={activity([ids[0]!])} />
   </FleetTaskProvider>);
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(17));
   expect(fetcher.mock.calls.some(([input]) => {
@@ -175,4 +176,19 @@ it("does not leave an older result loading outside the reader's bounded history 
   })).toBe(false);
   expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull();
   expect(screen.queryByRole("link")).toBeNull();
+});
+
+it("does not re-render a stable linked-work card for stream events it does not read", async () => {
+  network();
+  const reads = vi.spyOn(taskActivity, "readTaskActivityHistory");
+  // One element, reused: only a context change can re-render the card.
+  const card = <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} />;
+  const events = (count: number) => Array.from({length: count}, (_, index) => evt({id: `text-${index}`, reply: `chunk ${index}`}));
+  const view = render(<FleetTaskProvider {...SCOPE} events={events(0)}>{card}</FleetTaskProvider>);
+  await screen.findByRole("link");
+  const settled = reads.mock.calls.length;
+  for (let count = 1; count <= 20; count++) view.rerender(<FleetTaskProvider {...SCOPE} events={events(count)}>{card}</FleetTaskProvider>);
+  expect(reads.mock.calls.length).toBe(settled);
+  expect(screen.getByRole("link")).toBeTruthy();
+  reads.mockRestore();
 });

@@ -66,7 +66,7 @@ export function FleetReply({
       {errored && !running && !recovering ? <FleetReplyFailure message={message} /> : null}
       {answer.length === 0 && !running && !errored ? <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p> : null}
       {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
-      <NativeTaskPrBadge activity={message.metadata.custom.taskActivity} appearance="card" />
+      <NativeTaskPrBadge activity={message.metadata.custom.taskActivity} />
       {!running && !errored && !recovering && !message.content.some(part => part.type === "tool-call") ? <FleetReplyFigures figures={figures} activity={message.metadata.custom.taskActivity} summary /> : null}
       <FleetReplyActions answer={answer} settled={!running && !errored && !recovering} />
     </FleetMessageRow>

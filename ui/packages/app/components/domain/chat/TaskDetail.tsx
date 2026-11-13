@@ -2,25 +2,16 @@
 
 import type { TaskSummary, TaskDetail as NativeTaskDetail } from "@/lib/api/tasks";
 import type { TaskResource } from "./use-task-read";
-import { useCallback } from "react";
 import { Button } from "@agentsfleet/design-system";
-import { readTask } from "@/lib/api/tasks";
 import { TaskNextStep } from "./TaskNextStep";
 import { useFleetTaskView } from "./FleetTaskProvider";
 import { TaskGoalAdoption } from "./TaskGoalAdoption";
 import { TaskControls } from "./TaskControls";
 import { TaskRepositoryProgress } from "./TaskRepositoryProgress";
 import { QuestionDetails } from "./SetupQuestions";
-import { confirmed, useTaskRead } from "./use-task-read";
+import { confirmed } from "./use-task-read";
 
 type Props = {workspaceId: string; fleetId: string; task: TaskSummary; onChanged: () => void};
-
-export function TaskDetail({workspaceId, fleetId, task, onChanged}: Props) {
-  // A refreshed summary must reread dependency observations even when its task version is unchanged.
-  const load = useCallback((signal: AbortSignal) => readTask(workspaceId, fleetId, task.id, signal), [workspaceId, fleetId, task]);
-  const {resource, retry} = useTaskRead(load, task.resource_version);
-  return <TaskDetailView workspaceId={workspaceId} fleetId={fleetId} task={task} onChanged={() => {retry(); onChanged();}} resource={resource} retry={retry} />;
-}
 
 export function TaskDetailView({workspaceId, fleetId, task, onChanged, resource, retry}: Props & {resource: TaskResource<NativeTaskDetail>; retry: () => void}) {
   const detail = confirmed(resource);
