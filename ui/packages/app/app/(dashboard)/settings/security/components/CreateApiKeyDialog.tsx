@@ -106,22 +106,24 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={(e) => { void form.handleSubmit(onSubmit)(e); }} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="key_name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="ci-runner" autoComplete="off" {...field} />
-                      </FormControl>
-                      <FormDescription>Name must be unique across your account.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
+              <form onSubmit={(e) => { void form.handleSubmit(onSubmit)(e); }}>
+                <div className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="key_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="ci-runner" autoComplete="off" {...field} />
+                        </FormControl>
+                        <FormDescription>Name must be unique across your account.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
+                </div>
                 <DialogFooter>
                   <Button
                     type="button"

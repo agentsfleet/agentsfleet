@@ -333,6 +333,16 @@ There is no enclosing application dialog or separate profile route. This also pr
 
 Sample fixtures label the native forms as authenticated-only; real authenticated captures supply those forms.
 
+### Clean-candidate measurements before final verification
+
+The first clean-candidate run captured 192 states without browser errors. It found footer gaps of 16, 32 and 40px against the proposal’s 24px.
+
+The shared footer now owns that gap; form bodies keep their internal spacing. Long secret titles retain a 40px row and full accessible names.
+
+Phone page actions and the New fleet icon/button sizing follow the rendered proposal. Final recapture and repository checks remain required.
+
+The four-thread integration attempt also failed the unchanged wall-stream timing test. The final native run must pass; no test assertion or deadline changed.
+
 ### Final tooltip consistency sweep
 
 The source sweep removed the duplicate tool-group title, the visible secret submit tooltip, and native titles on labelled Copy controls. Expanded navigation keeps the same button mounted while suppressing its redundant hint; icon-only navigation still shows its tooltip.

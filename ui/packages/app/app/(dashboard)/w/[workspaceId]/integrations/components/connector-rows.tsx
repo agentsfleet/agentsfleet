@@ -155,10 +155,10 @@ export function OAuthConnectorRow({
     {error && !managing ? <Alert className="mt-lg" variant="destructive">{error}</Alert> : null}
     <Dialog open={managing} onOpenChange={open => {if (!pending) setManaging(open);}}>
       <DialogContent closeDisabled={pending} onOpenAutoFocus={event => {event.preventDefault(); done.current?.focus({preventScroll: true});}}>
-        <DialogHeader><DialogTitle>{entry.display_name}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
-        {Object.hasOwn(PROVIDER_CAPABILITIES, entry.id) ? <p className="text-label text-muted-foreground">{PROVIDER_CAPABILITIES[entry.id]}</p> : null}
-        {error ? <Alert variant="destructive">{error}</Alert> : null}
-        <DialogFooter className="pt-3xl"><Button variant="outline" disabled={pending} aria-busy={disconnecting || undefined} aria-label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`} onClick={() => void disconnect()}>
+        <DialogHeader className="pb-0"><DialogTitle>{entry.display_name}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
+        {Object.hasOwn(PROVIDER_CAPABILITIES, entry.id) ? <p className="mt-xl text-label text-muted-foreground">{PROVIDER_CAPABILITIES[entry.id]}</p> : null}
+        {error ? <Alert className="mt-xl" variant="destructive">{error}</Alert> : null}
+        <DialogFooter><Button variant="outline" disabled={pending} aria-busy={disconnecting || undefined} aria-label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`} onClick={() => void disconnect()}>
             {disconnecting ? <Spinner size="sm" /> : null}{disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
           </Button><Button ref={done} disabled={pending} onClick={() => setManaging(false)}>Done</Button></DialogFooter>
       </DialogContent>

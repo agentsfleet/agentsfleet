@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Button,
+  DialogFooter,
   Form,
   FormControl,
   FormField,
@@ -115,24 +116,26 @@ export default function AddSecretForm(props: Props) {
   const [namedFields, setNamedFields] = useState(props.mode === SECRET_FORM_MODE.REPLACE || Boolean(props.initialFields?.length));
   const submitLabel = props.mode === SECRET_FORM_MODE.REPLACE ? "Replace value" : ADD_SECRET_LABEL;
   return <Form {...form}>
-    <form onSubmit={event => {void form.handleSubmit(onSubmit)(event);}} className="space-y-xl">
-      <SecretNameField form={form} readOnly={props.mode === SECRET_FORM_MODE.REPLACE} />
-      {props.initialHost !== undefined ? <SecretHostField form={form} /> : null}
-      {namedFields ? <SecretFields form={form} /> : <>
-        <FormField control={form.control} name="fields.0.value" render={({field}) => <FormItem>
-          <FormLabel>Value</FormLabel><FormControl><Input type="password" autoComplete="off" spellCheck={false} {...field} /></FormControl><FormMessage />
-        </FormItem>} />
-        <Button type="button" variant="ghost" className="px-0 text-muted-foreground" onClick={() => {form.setValue("fields.0.key", ""); setNamedFields(true);}}>Use named fields<CaretDownIcon size={16} aria-hidden="true" /></Button>
-      </>}
-      {props.showValueNotice !== false ? <p className="text-eyebrow text-text-dim">Secret values are hidden after saving.</p> : null}
-      <div className="flex justify-end gap-2">
+    <form onSubmit={event => {void form.handleSubmit(onSubmit)(event);}}>
+      <div className="space-y-xl">
+        <SecretNameField form={form} readOnly={props.mode === SECRET_FORM_MODE.REPLACE} />
+        {props.initialHost !== undefined ? <SecretHostField form={form} /> : null}
+        {namedFields ? <SecretFields form={form} /> : <>
+          <FormField control={form.control} name="fields.0.value" render={({field}) => <FormItem>
+            <FormLabel>Value</FormLabel><FormControl><Input type="password" autoComplete="off" spellCheck={false} {...field} /></FormControl><FormMessage />
+          </FormItem>} />
+          <Button type="button" variant="ghost" className="px-0 text-muted-foreground" onClick={() => {form.setValue("fields.0.key", ""); setNamedFields(true);}}>Use named fields<CaretDownIcon size={16} aria-hidden="true" /></Button>
+        </>}
+        {props.showValueNotice !== false ? <p className="text-eyebrow text-text-dim">Secret values are hidden after saving.</p> : null}
+        {apiError ? <p className="text-body-sm text-destructive">{apiError}</p> : null}
+      </div>
+      <DialogFooter>
         {props.onCancel ? <Button type="button" variant="outline" disabled={pending} onClick={props.onCancel}>Cancel</Button> : null}
         <Button type="submit" disabled={pending} aria-busy={pending || undefined} aria-label={submitLabel}
           >
           {pending ? <Spinner size="sm" srLabel="Saving" /> : null}{submitLabel}
         </Button>
-      </div>
-      {apiError ? <p className="text-body-sm text-destructive">{apiError}</p> : null}
+      </DialogFooter>
     </form>
   </Form>;
 }

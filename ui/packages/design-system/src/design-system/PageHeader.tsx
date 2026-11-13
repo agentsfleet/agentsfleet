@@ -23,7 +23,7 @@ export function PageHeader({
         {children}
         {description != null ? <PageDescription>{description}</PageDescription> : null}
       </div>
-      {actions != null ? <div className="flex max-w-full flex-none flex-wrap gap-2">{actions}</div> : null}
+      {actions != null ? <div className="flex max-w-full flex-none flex-wrap gap-2 max-[42.5rem]:[&_button]:min-h-11 max-[42.5rem]:[&_a]:min-h-11">{actions}</div> : null}
     </div>
   );
 }

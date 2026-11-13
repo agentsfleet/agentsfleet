@@ -124,22 +124,24 @@ function InviteForm({ error, pending, onSend, onCancel }: InviteFormProps) {
       </DialogHeader>
       <Form {...form}>
         {/* The schema's message, not the browser's bubble, explains a bad address. */}
-        <ActionForm onSubmit={(e) => { void form.handleSubmit((values) => onSend(values.email))(e); }} noValidate>
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email address</FormLabel>
-                <FormControl>
-                  <Input type="email" placeholder="teammate@example.com" autoComplete="off" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <div className="flex items-start gap-lg rounded-md border border-border p-xl"><UsersIcon size={20} className="mt-xs shrink-0 text-muted-foreground" aria-hidden="true" /><p className="text-label text-muted-foreground">They’ll join as a <strong className="font-semibold text-foreground">Member</strong> and can open <strong className="font-semibold text-foreground">every workspace in this account</strong>.</p></div>
-          {error ? <Alert variant="destructive">{error}</Alert> : null}
+        <ActionForm className="space-y-0" onSubmit={(e) => { void form.handleSubmit((values) => onSend(values.email))(e); }} noValidate>
+          <div className="space-y-4">
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email address</FormLabel>
+                  <FormControl>
+                    <Input type="email" placeholder="teammate@example.com" autoComplete="off" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="flex items-start gap-lg rounded-md border border-border p-xl"><UsersIcon size={20} className="mt-xs shrink-0 text-muted-foreground" aria-hidden="true" /><p className="text-label text-muted-foreground">They’ll join as a <strong className="font-semibold text-foreground">Member</strong> and can open <strong className="font-semibold text-foreground">every workspace in this account</strong>.</p></div>
+            {error ? <Alert variant="destructive">{error}</Alert> : null}
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" disabled={pending} onClick={onCancel}>
               Cancel
@@ -180,7 +182,7 @@ const READY_COPY: Record<EmailStatus, { title: string; lead: (email: string) => 
 function InviteReady({ invite, onDone }: { invite: InviteSummary; onDone: () => void }) {
   const copy = READY_COPY[invite.email_status];
   return (
-    <div className="space-y-4" data-testid="invite-ready">
+    <div data-testid="invite-ready">
       <DialogHeader>
         <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>
