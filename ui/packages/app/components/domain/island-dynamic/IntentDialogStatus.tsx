@@ -38,7 +38,7 @@ export function IntentDialogStatus({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent aria-busy={!failed}>
-        <DialogHeader>
+        <DialogHeader className="pb-0">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription role={failed ? "alert" : undefined}>
             {failed ? errorMessage : "This should only take a moment."}
@@ -64,7 +64,7 @@ export function IntentDialogStatus({
             </Button>
           </DialogFooter>
         ) : (
-          <div className="flex min-h-24 items-center justify-center">
+          <div className="mt-xl flex min-h-24 items-center justify-center">
             <Spinner size="md" label={description} />
           </div>
         )}

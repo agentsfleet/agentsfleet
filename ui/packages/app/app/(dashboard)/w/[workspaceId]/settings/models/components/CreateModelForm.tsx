@@ -64,7 +64,7 @@ export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChang
   }
 
   return (
-    <form action={submit} className="space-y-2xl" aria-busy={creation.pending}>
+    <form action={submit} aria-busy={creation.pending}>
       <fieldset disabled={locked} className="min-w-0 space-y-xl border-0 p-0">
         <div className="grid min-w-0 grid-cols-1 gap-xl sm:grid-cols-2">
           <div className="space-y-md">
@@ -82,7 +82,7 @@ export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChang
           <div className="space-y-xs"><Label htmlFor={`${id}-active`}>Make active</Label><p className="text-eyebrow text-text-dim">Use this as your default model for new work.</p></div>
         </div>
       </fieldset>
-      {error && !creation.pending ? <Alert variant={creation.state.stage.endsWith("unconfirmed") ? "warning" : "destructive"}>{error}</Alert> : null}
+      {error && !creation.pending ? <Alert className="mt-xl" variant={creation.state.stage.endsWith("unconfirmed") ? "warning" : "destructive"}>{error}</Alert> : null}
       <DialogFooter>
         <Button type="button" variant="outline" disabled={creation.pending} onClick={onCancel}>Cancel</Button>
         <Button type="submit" disabled={creation.pending || (creation.state.stage === "editing" && !canCreate)}>

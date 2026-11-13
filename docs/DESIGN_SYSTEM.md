@@ -1088,6 +1088,12 @@ Comparison captures label top-of-thread and latest positions separately.
 
 ### Evidence and interaction corrections, Nov 13, 2026
 
+Dialog footers own a 24px gap after the body. Keep field spacing inside a body wrapper, with the footer inside its form.
+Headers that directly precede actions have no trailing padding.
+
+Keep the 40px title row; long names truncate visually while retaining the full accessible title.
+Phone page-header actions use 44px targets; dialog footer controls retain their specified sizing.
+
 Form dialogs focus the first enabled, editable field. If the field arrives after loading, Radix retains focus until that initial field is available.
 
 Keyboard or pointer interaction cancels that delayed focus opportunity. Confirmation dialogs focus Cancel.

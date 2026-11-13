@@ -111,13 +111,15 @@ export function DialogHeader({ className, ...props }: HTMLAttributes<HTMLDivElem
 
 export type DialogTitleProps = ComponentProps<typeof DialogPrimitive.Title>;
 
-export function DialogTitle({ className, ref, ...props }: DialogTitleProps) {
+export function DialogTitle({ className, children, ref, ...props }: DialogTitleProps) {
   return (
     <DialogPrimitive.Title
       ref={ref}
       className={cn("flex min-h-10 items-center pr-3xl font-sans text-heading font-title leading-heading tracking-display-md", className)}
       {...props}
-    />
+    >
+      <span className="min-w-0 truncate">{children}</span>
+    </DialogPrimitive.Title>
   );
 }
 
@@ -134,5 +136,5 @@ export function DialogDescription({ className, ref, ...props }: DialogDescriptio
 }
 
 export function DialogFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-wrap justify-end gap-md pt-xl", className)} {...props} />;
+  return <div data-slot="dialog-footer" className={cn("flex flex-wrap justify-end gap-md pt-2xl", className)} {...props} />;
 }

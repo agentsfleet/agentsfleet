@@ -92,14 +92,14 @@ export function ConfirmDialog({
         closeDisabled={pending}
         onOpenAutoFocus={event => {event.preventDefault(); cancel.current?.focus({preventScroll: true});}}
       >
-        <DialogHeader>
+        <DialogHeader className="pb-0">
           <DialogTitle>{title}</DialogTitle>
           {description ? (
             <DialogDescription id={descId}>{description}</DialogDescription>
           ) : null}
         </DialogHeader>
         {errorMessage ? (
-          <Alert variant="destructive">{errorMessage}</Alert>
+          <Alert variant="destructive" className="mt-xl">{errorMessage}</Alert>
         ) : null}
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
           <Button
