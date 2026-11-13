@@ -67,7 +67,7 @@ it("keeps exactly one reachable run-details entry, with the whole run's figures,
 });
 
 it("moves the entry to the newest group without remounting an open one", () => {
-  const nativeCall = (id: string): MessageState["content"][number] => ({type: "tool-call", toolCallId: id,
+  const nativeCall = (id: string): Extract<MessageState["content"][number], {type: "tool-call"}> => ({type: "tool-call", toolCallId: id,
     toolName: "file_read", args: {path: `src/${id}.ts`}, argsText: JSON.stringify({path: `src/${id}.ts`}), result: {status: "succeeded"}});
   const firstCalls = [nativeCall("a"), nativeCall("b")];
   function Groups({content}: {content: MessageState["content"]}) {
