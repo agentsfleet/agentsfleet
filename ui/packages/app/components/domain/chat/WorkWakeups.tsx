@@ -31,7 +31,7 @@ function WakeupRows({schedules, compact}: {schedules: readonly Schedule[]; compa
       <ClockIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <div className="min-w-0 break-words text-label leading-label">
         {compact ? null : <p>{schedule.description}</p>}<WakeupState schedule={schedule} compact={compact} />
-        {compact ? <p className="mt-xs text-eyebrow leading-label text-text-dim">{schedule.description}</p> : null}
+        {compact ? <p className="mt-xs text-eyebrow leading-eyebrow text-text-dim">{schedule.description}</p> : null}
       </div>
     </li>)}
   </ul>;

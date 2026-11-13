@@ -6,7 +6,7 @@ The UI refresh and the pending CLI work ship in separate PRs.
 
 ## Current result
 
-M249_001 remains active. Two backlog findings have verified functional evidence; the other 30 retained rows still need their specific closure checks.
+M249_001 remains active. The visual backlog now has 20 verified findings and 12 open findings. The measured closures are recorded in M249_VISUAL_BACKLOG.md.
 
 The latest native `make dry-app` passed 4,564 app unit tests and all 90 desktop/phone browser checks. Evidence: `refresh-dry-app-v237.log`.
 

@@ -28,7 +28,7 @@ export function NativeTaskPrBadge({activity}: {activity: unknown}) {
       <GitPullRequestIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-label font-medium leading-label" title={detail.title}>{detail.title}</span>
-        <span className="mt-sm block min-w-0 break-words text-eyebrow leading-eyebrow text-muted-foreground">
+        <span className="mt-sm block min-w-0 break-words text-eyebrow font-medium leading-eyebrow text-muted-foreground">
           <span className="shrink-0">Pull request #{target.number}</span><span aria-hidden="true"> · </span>
           <span title={target.repository}>{target.repository}</span>
           {resource.kind !== "ready" ? <span className="shrink-0"> · last confirmed</span> : null}
