@@ -28,7 +28,7 @@ The PR delegates final Rust checks to CI. The final combined local PR gate is no
 
 This explicit closeout changes the spec location, not its recorded test outcomes. Full `acceptance-codex` remains host-blocked by missing securityfs; no sandbox admission check is bypassed.
 
-The latest integrated changes after visual signoff affect acceptance tests and documentation. They update supported navigation, preserve lifecycle/recovery assertions, and disable artifacts for a real-key journey.
+The latest integrated changes after visual signoff affect acceptance tests and documentation. They update supported navigation, preserve lifecycle/recovery assertions, and disable recordings for a real-key acceptance test.
 
 ## PR #839 integration review
 
