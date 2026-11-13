@@ -180,8 +180,9 @@ Its first step requires a fresh source inventory and reviewed spec before implem
 | Focused catalogue/secret recovery | 55 tests passed across five files | Passed before latest main merge |
 | Focused shared merge/Button behavior | 32 tests passed across two files | Passed before latest main merge |
 | Native authenticated Personal account/menu | Two browser journeys passed, 27.4s; real development provider | Passed before latest main merge |
-| Final UI lint/coverage/dry | `make lint-app lint-design-system test-coverage-all dry-app` | Running on merged candidate |
-| Required repository checks | Lint passed. Rust unit shards passed 5,573 tests. App first-load dialog lookup fixed; full package/PR rerun pending | In progress |
+| TypeScript coverage | App 4,564; website 133; CLI 2,223 plus 17 existing live-lane skips; design system 502; all enforced metrics 100 percent | Passed; `make test-coverage-all` and the surviving full unit command |
+| Final rendered flows | `make dry-app` | Pending after the complete repository gate |
+| Required repository checks | Full unit command passed before the final transport repair; nine focused transport regressions now pass | Full pushed-candidate gate pending |
 | Current authenticated resource journeys | Real development API/provider, isolated fresh task database | Pending rerun |
 | Owner eyeball approval | Indy requested further corrections | Not claimed |
 | UI implementation PR | Not open at preparation | Pending |
@@ -212,3 +213,18 @@ The additional bounded source review found no concrete defect in the conditional
 ## Final full-lane rerun
 
 `make lint-all` passed (`refresh-root-lint-v111.log`). `make test-unit-all` passed runner 1,731, daemon 172 and library 3,670 tests, then reported one app test failure: the first lazy lifecycle dialog was queried synchronously before it appeared. Its helper now waits for the visible alert dialog; the cancellation/no-write assertions are unchanged. The full focused file passes 17 tests (`refresh-lifecycle-lazy-wait-v115.log`). The complete repository/package rerun, dry lane and actual full Linux acceptance remain required.
+
+
+## Runner handshake cause preservation
+
+✅ Reproduced the competing-error race with a deterministic test before repair. The opaque QUIC handshake wrapper incorrectly hid a typed receiver failure.
+
+✅ Preserve the receiver's actual cause only before key-exchange publication, with the native lifetime cancelled and an erased handshake wrapper.
+
+✅ Preserve typed TLS, crypto, protocol and identity refusals. The existing watch also protects erased identity and H3 initialization failures after publication.
+
+✅ Nine focused tests pass, covering both error races, successful receiver completion, a live lifetime, cancellation and the original deadline.
+
+The fix changes no endpoint, authority, retry policy, timeout or test assertion. The source review closed its security finding. Full repository and acceptance verification remain pending.
+
+Evidence: `refresh-handshake-race-red-v131.log`, `refresh-handshake-security-red-v133.log`, `refresh-handshake-security-green-v135.log`. The earlier interrupted unit command passed all Rust and TypeScript checks (`refresh-interrupted-unit-v126-result.json`). It does not substitute for the complete PR gate.
