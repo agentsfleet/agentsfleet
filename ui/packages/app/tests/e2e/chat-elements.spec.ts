@@ -134,6 +134,9 @@ test("a native upload submission stays visible and a refusal returns its draft",
 });
 
 test("archive and deletion confirmations lead to distinct readable sample states", async ({page, chatProbe}, info) => {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("The archive render check requires a fixed viewport");
+  const headerStatusVisible = viewport.width >= 680;
   await page.goto(`${chatProbe}?visual=1`);
   await page.getByRole("button", {name: "Completed", exact: true}).click();
   for (const [action, title, filename] of [["Archive", "Archive fleet?", "archive"], ["Permanently delete", "Permanently delete fleet?", "delete"]] as const) {
@@ -150,7 +153,7 @@ test("archive and deletion confirmations lead to distinct readable sample states
   for (const [outcome, message] of [["archived", "Fleet archived"], ["deleted", "Fleet permanently deleted"]] as const) {
     await page.goto(`${chatProbe}?${outcome === "archived" ? "visual=1&state=completed&archived=1" : "resourcePages=1&resource=new&notice=deleted"}`);
     if (outcome === "archived") {
-      await expect(page.getByLabel("Fleet status: archived")).toBeVisible();
+      await expect(page.getByLabel("Fleet status: archived")).toBeVisible({visible: headerStatusVisible});
       await expect(page.getByRole("textbox")).toHaveCount(0);
       await expect(page.getByRole("heading", {name: "Ready for your review", exact: true})).toBeVisible();
       for (const name of ["Approve", "Deny"]) await expect(page.getByRole("button", {name, exact: true})).toHaveCount(0);
@@ -166,7 +169,9 @@ test("archive and deletion confirmations lead to distinct readable sample states
     expect((await notice.boundingBox())!.width).toBeLessThanOrEqual(page.viewportSize()!.width - 24);
     await page.screenshot({path: info.outputPath(`${outcome}-state.png`), scale: "css", animations: "disabled"});
     await notice.getByRole("button", {name: "Dismiss notification"}).click();
-    if (outcome === "archived") await expect(page.getByLabel("Fleet status: archived")).toBeVisible();
-    else await expect(page.getByRole("heading", {name: "New fleet", exact: true})).toBeVisible();
+    if (outcome === "archived") {
+      await expect(page.getByLabel("Fleet status: archived")).toBeVisible({visible: headerStatusVisible});
+      await expect(page.getByText("Archived · This fleet is permanently stopped. Its history is available to read.", {exact: true})).toBeVisible();
+    } else await expect(page.getByRole("heading", {name: "New fleet", exact: true})).toBeVisible();
   }
 });
