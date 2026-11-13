@@ -38,7 +38,7 @@ export function SecretActions({secret, pending, protectedFromDelete, onEdit, onD
       </DialogDescription></DialogHeader>
       <p className="text-label text-muted-foreground">{secretType(secret)} · Value hidden</p>
       {protectedFromDelete ? <p className="text-eyebrow text-text-dim">This key is used by your active model. Choose another model before deleting it.</p> : null}
-      <DialogFooter>
+      <DialogFooter className="flex-wrap">
         <Button variant="outline" className="px-lg" disabled={pending} onClick={() => handoff(onEdit)}>Replace value</Button>
         <Button variant="outline" className="px-lg" disabled={pending || protectedFromDelete} onClick={() => handoff(onDelete)}>Delete secret</Button>
         <Button onClick={() => setOpen(false)}>Done</Button>
