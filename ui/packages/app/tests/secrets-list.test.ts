@@ -190,7 +190,8 @@ describe("SecretsList component", () => {
     // asks the user to re-enter the secret rather than displaying the stored one.
     await user.click(screen.getByRole("button", {name: "Manage openai-key"}));
     await user.click(screen.getByRole("button", {name: "Replace value"}));
-    await waitFor(() => expect(screen.getByText(/Replace secret .*openai-key/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("dialog", {name: "Replace secret"})).toBeTruthy());
+    expect(screen.getByText("“openai-key”")).toBeTruthy();
     expect(screen.getByRole("button", { name: /^replace value$/i })).toBeTruthy();
     expect(screen.getByText(/re-enter every field you want to keep/i)).toBeTruthy();
     // There is no "reveal"/"show" control that would expose the stored value.
@@ -271,12 +272,13 @@ describe("SecretsList component", () => {
     await renderList();
     await user.click(screen.getByRole("button", {name: "Manage fly"}));
     await user.click(screen.getByRole("button", {name: "Replace value"}));
-    await waitFor(() => expect(screen.getByText(/Replace secret .*fly/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("dialog", {name: "Replace secret"})).toBeTruthy());
+    expect(screen.getByText("“fly”")).toBeTruthy();
     expect(screen.getByRole("button", { name: /^replace value$/i })).toBeTruthy();
     // Editing keeps the reference name fixed.
     expect(screen.queryByRole("button", { name: /rename/i })).toBeNull();
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Replace secret .*fly/i })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Replace secret" })).toBeNull());
   });
 
 

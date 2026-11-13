@@ -35,7 +35,7 @@ export function SelectTrigger({
         // (Button.tsx:11). Without it the "Rows per page" combobox was the one
         // interactive element in <main> under the 44px touch minimum.
         "pointer-coarse:min-h-11 pointer-coarse:min-w-11",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-[var(--control-focus-surface)]",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "data-[placeholder]:text-text-dim",
         className,

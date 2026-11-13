@@ -17,7 +17,7 @@ type Props = {
 
 export function ModelsRegistryView(props: Props) {
   return <Section className="gap-3xl">
-    <DashboardPanel className="flex flex-wrap items-center gap-xl p-2xl" aria-label="Platform default">
+    <DashboardPanel className="flex flex-wrap items-center gap-xl p-xl sm:p-2xl" aria-label="Platform default">
       <div className="flex min-w-0 basis-full flex-col gap-xl sm:flex-1 sm:basis-auto sm:flex-row sm:items-center"><CpuIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
         <div className="min-w-0"><h2 className="text-label font-semibold">Platform default</h2>
         <p className="mt-sm text-description text-muted-foreground">{props.platformDefault ? `${props.platformDefault.display_name ?? props.platformDefault.model} · No provider key needed.` : "No platform default is configured."}</p></div></div>
@@ -43,7 +43,7 @@ function Active() {
 
 function ModelRow({entry, ...props}: Props & {entry: TenantModelEntry}) {
   const workspaceId = entry.workspace_id;
-  return <li aria-label={entry.model_id} className="flex min-w-0 flex-wrap items-center gap-xl p-5">
+  return <li aria-label={entry.model_id} className="flex min-w-0 flex-wrap items-center gap-xl p-xl sm:p-5">
     <span className="hidden size-10 shrink-0 items-center justify-center rounded-control border border-border sm:flex" aria-hidden="true"><CpuIcon size={16} /></span>
     <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto"><p title={entry.model_id} className="break-words text-label font-medium">{entry.display_name ?? entry.model_id}</p>
       <p className="mt-sm text-label text-muted-foreground">{entry.provider ? providerLabel(entry.provider) : "Unknown provider"}</p>

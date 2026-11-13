@@ -21,7 +21,7 @@ export function SidebarExpandControl({collapsed}: {collapsed: boolean}) {
   const label = collapsed ? "Expand navigation" : "Collapse navigation";
   return <TooltipButton type="button" variant="ghost" tooltip={collapsed ? label : null} aria-label={label}
     aria-expanded={!collapsed} aria-controls="app-sidebar-nav" onClick={shellSidebarState.toggle}
-    className={cn("hidden h-11 min-h-11 w-full items-center gap-lg md:inline-flex hover:bg-muted hover:text-foreground [&_svg]:size-5", collapsed ? "justify-center px-0" : "justify-start px-lg")}>
+    className={cn("hidden h-12 min-h-12 w-full items-center gap-lg md:inline-flex hover:bg-muted hover:text-foreground [&_svg]:size-5", collapsed ? "justify-center px-0" : "justify-start px-lg")}>
     <SidebarSimpleIcon size={20} className="size-5" aria-hidden="true" />{collapsed ? null : label}
   </TooltipButton>;
 }

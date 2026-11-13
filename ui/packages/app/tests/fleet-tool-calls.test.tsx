@@ -78,13 +78,14 @@ describe("FleetThread — tool cells", () => {
     expect(screen.getAllByRole("list", { name: TOOL_CALLS_LABEL })).toHaveLength(1);
     const [done, live] = cells();
     expect(done?.getAttribute("data-done")).toBe("true");
-    expect(headerOf(done!)).toContain(" · 0.7s");
+    expect(done?.querySelector("[data-tool-duration]")?.textContent).toContain("Duration 700ms");
+    expect(headerOf(done!)).not.toMatch(/\d+[ms]/);
     expect(live?.getAttribute("data-done")).toBeNull();
-    expect(headerOf(live!)).toContain("2.0s");
+    expect(live?.querySelector("[data-tool-duration]")?.textContent).toContain("Elapsed 2.0s");
     act(() => {
       vi.advanceTimersByTime(TICK_MS);
     });
-    expect(headerOf(live!)).toContain("3.0s");
+    expect(live?.querySelector("[data-tool-duration]")?.textContent).toContain("Elapsed 3.0s");
     // The ticking clock is hidden from assistive tech; a finished one is read.
     const clockOf = (cell: Element) => cell.querySelector(".tabular-nums")!;
     expect(clockOf(live!).getAttribute("aria-hidden")).toBe("true");
@@ -95,25 +96,25 @@ describe("FleetThread — tool cells", () => {
     mockStream([{ ...working, status: PROCESSED, reply: "Found it." }]);
     view.rerender(threadElement());
     const stranded = cells()[1]!;
-    expect(headerOf(stranded)).toContain("Interrupted: using search_repo Interrupted");
+    expect(headerOf(stranded)).toContain("Interrupted: using tool Interrupted");
   });
 
   it("test_tool_cell_names_verb_and_target", () => {
     renderCalls(HEADERS.map(([name, args]) => running({ name, args })), RECEIVED);
-    expect(cells().map(headerOf)).toEqual(HEADERS.map(([, , running]) => `${running} Running · 2.0s`));
+    expect(cells().map(headerOf)).toEqual(HEADERS.map(([, , running]) => `${running} Running`));
     cleanup();
     renderCalls(HEADERS.map(([name, args]) => call({ name, args })));
-    expect(cells().map(headerOf)).toEqual(HEADERS.map(([, , , done]) => `${done} Success · 0.7s`));
+    expect(cells().map(headerOf)).toEqual(HEADERS.map(([, , , done]) => `${done} Success`));
   });
 
   it("test_unknown_tool_cell_calls_by_name", () => {
     renderCalls([running({ name: "fly_status", args: { app: "x" } })], RECEIVED);
-    expect(headerOf(cells()[0]!)).toContain("Using fly_status Running");
+    expect(headerOf(cells()[0]!)).toContain("Using tool Running");
     cleanup();
     renderCalls([call({ name: "fly_status", args: { app: "x" } }), call({ name: "fly_apps" })]);
-    expect(headerOf(cells()[0]!)).toContain("Used fly_status Success");
+    expect(headerOf(cells()[0]!)).toContain("Used tool Success");
     // No arguments: no parentheses, and no arguments disclosure.
-    expect(headerOf(cells()[1]!)).toMatch(/^Used fly_apps Success · /);
+    expect(headerOf(cells()[1]!)).toMatch(/^Used tool Success$/);
     expect(within(cells()[1]!).queryByText("Details")).toBeNull();
     expect(within(cells()[0]!).getByText("Input")).toBeTruthy();
   });
@@ -128,7 +129,7 @@ describe("FleetThread — tool cells", () => {
     expect(bulletOf(ok!).getAttribute("class")).toContain("text-muted-foreground");
     expect(bulletOf(bad!).getAttribute("class")).toContain(DESTRUCTIVE);
     // A failure says so in words, never by colour alone.
-    expect(headerOf(bad!)).toContain("Failed: making request GET https://x/ Failed");
+    expect(headerOf(bad!)).toContain("Failed: making request Failed");
     expect(bulletOf(cut!).getAttribute("class")).toContain("text-warning");
     expect(headerOf(cut!)).toContain("Interrupted");
     // An older runner's call settled without saying how: no colour claims success.
@@ -180,13 +181,13 @@ describe("FleetThread — tool cells", () => {
       call({ name: TOOL_NAME.SHELL, args: { command: "ls" }, exitCode: 0, outputHead: "a.md", outputLineCount: 1 }),
     ]);
     const [ran, shell] = cells();
-    expect(headerOf(ran!)).toMatch(/^Failed: running command echo one Failed · /);
+    expect(headerOf(ran!)).toMatch(/^Failed: running command Failed$/);
     // The exit code says how it failed; "(failed)" would repeat it.
     expect(headerOf(ran!)).not.toContain("(failed)");
     expect(within(ran!).getByText("(exit 2)", { exact: false }).closest("[data-command-outcome]")?.className).toContain(DESTRUCTIVE);
     expect(ran!.textContent).toContain("echo two");
     expect(within(ran!).getByText("boom")).toBeTruthy();
-    expect(headerOf(shell!)).toMatch(/^Ran command ls Success · /);
+    expect(headerOf(shell!)).toMatch(/^Ran command Success$/);
     expect(headerOf(shell!)).not.toContain("exit");
   });
 
@@ -196,7 +197,7 @@ describe("FleetThread — tool cells", () => {
       call({ name: TOOL_NAME.FILE_EDIT_HASHED, args: { path: "big.md", old_text: "x".repeat(300), new_text: "y" }, callId: CALL_ID }),
     ]);
     const [edit, clipped] = cells();
-    expect(headerOf(edit!)).toMatch(/^Edited deploy.yaml Success · /);
+    expect(headerOf(edit!)).toMatch(/^Edited file Success$/);
     const rows = [...edit!.querySelectorAll("[data-diff]")];
     expect(rows.map((row) => [row.getAttribute("data-diff"), row.textContent])).toEqual([
       ["context", "a"], ["removed", "-removed: b"], ["added", "+added: c"], ["added", "+added: d"],
@@ -206,7 +207,7 @@ describe("FleetThread — tool cells", () => {
     // The diff is input; the returned output has its own empty state.
     expect(edit!.textContent).toContain(EMPTY_OUTPUT);
     // Arguments the runner may have cut short draw no diff and no counts.
-    expect(headerOf(clipped!)).toMatch(/^Edited big.md Success · /);
+    expect(headerOf(clipped!)).toMatch(/^Edited file Success$/);
     expect(clipped!.querySelector("[data-diff]")).toBeNull();
     expect(within(clipped!).getByText(CLIPPED_EDIT_NOTE, { exact: false })).toBeTruthy();
     expect(within(clipped!).getByRole("button", { name: SHOW_ALL_LABEL })).toBeTruthy();
@@ -285,7 +286,8 @@ describe("FleetThread — tool cells", () => {
     // Pin test: the reloaded turn reads exactly as it did live.
     expect(toolRegion()).toEqual(liveCells);
     expect(liveCells).toHaveLength(3);
-    expect(liveCells[1]).toContain("Failed: making request POST https://x/ Failed");
+    expect(liveCells[1]).toContain("Failed: making request Failed");
+    expect(liveCells[1]).toContain('"method":"POST","url":"https://x"');
   });
 
   it("test_cells_claim_only_what_they_hold", () => {

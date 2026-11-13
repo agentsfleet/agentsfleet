@@ -21,7 +21,7 @@ test("setup and fleet status text has a muted darker sweep with accessible motio
     for (const theme of ["light", "dark"]) {
       await page.locator("html").evaluate((node, value) => node.setAttribute("data-theme", value), theme);
       const gradient = await label.evaluate(node => getComputedStyle(node).backgroundImage);
-      expect(gradient).toContain(theme === "dark" ? "rgb(194, 199, 208)" : "rgb(94, 104, 118)");
+      expect(gradient).toContain(theme === "dark" ? "rgb(194, 199, 208)" : "rgb(73, 83, 97)");
       expect(gradient).toContain(theme === "dark" ? "rgb(143, 152, 166)" : "rgb(48, 58, 72)");
     }
     const before = await label.boundingBox();
@@ -275,9 +275,8 @@ async function expectActivityGeometry(page: Page, action: Locator, tools: Locato
     await expect(logo).toHaveCSS("height", "18px");
     await expect(logo).toHaveCSS("padding", "2px");
   }
-  await expect(action).toHaveCSS("outline-style", "solid");
-  await expect(action).toHaveCSS("outline-width", "2px");
-  await expect(action).toHaveCSS("outline-offset", "-2px");
+  await expect(action).toHaveCSS("--tw-ring-offset-width", "4px");
+  await expect(action).toHaveCSS("box-shadow", /0px 0px 0px 6px/);
   await expect(action).toHaveCSS("border-top-width", "0px");
   await expect(action).toHaveCSS("padding-left", "8px");
   await expect(action).toHaveCSS("padding-right", "8px");
@@ -286,11 +285,12 @@ async function expectActivityGeometry(page: Page, action: Locator, tools: Locato
   }
   const heading = action.locator("[data-command-heading]");
   await expect(heading.getByText("Opening pull request", {exact: true})).toHaveCSS("font-size", "13px");
-  const verb = await heading.getByText("Opening pull request", {exact: true}).boundingBox();
-  const target = await heading.getByText("agentsfleet/linkwarden", {exact: true}).boundingBox();
-  expect(verb).not.toBeNull(); expect(target).not.toBeNull();
-  if (mobile) expect(target!.y).toBeGreaterThan(verb!.y);
-  else expect(Math.abs(target!.y + target!.height / 2 - verb!.y - verb!.height / 2)).toBeLessThan(1);
+  await expect(heading.getByText("agentsfleet/linkwarden", {exact: true})).toHaveCount(0);
+  if (await action.getAttribute("aria-expanded") !== "true") await action.click();
+  const row = action.locator("xpath=ancestor::li[@data-tool]");
+  await expect(row.locator("pre").filter({hasText: "agentsfleet/linkwarden"}).first()).toBeVisible();
+  await expect(row.locator("[data-tool-duration]")).toBeVisible();
+
 }
 
 async function expectSourceHierarchy(panel: Locator) {

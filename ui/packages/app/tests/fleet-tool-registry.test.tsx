@@ -31,7 +31,9 @@ it.each(["new_backend_tool", "constructor", "__proto__"])("keeps %s readable thr
   fireEvent.click(screen.getByRole("button", {name: /^Tool activity:/}));
   const cell = document.querySelector('[data-tool]');
   expect(cell?.getAttribute("data-tool")).toBe(name);
-  expect(cell?.textContent).toContain(name);
+  expect(cell?.textContent).toContain("Used tool");
+  fireEvent.click(screen.getByRole("button", {name: /^Used tool/}));
+  expect(screen.getByText(`Action · ${name}`)).toBeTruthy();
   expect(screen.queryByText(/not supported|unsupported/i)).toBeNull();
 });
 

@@ -41,6 +41,12 @@
 
 | File | Action | Why |
 |---|---|---|
+| `docs/v2/evidence/M249_VISUAL_GATE.md` | CREATE | Preserve the owner’s final visual rubric and open findings |
+| `docs/v2/evidence/M249_VISUAL_BACKLOG.md` | CREATE | Track every original and follow-up visual finding until measured closure |
+| `docs/v2/evidence/M249_EXCEPTIONS.md` | CREATE | Record the owner’s nine accepted visual decisions |
+| `ui/packages/app/components/domain/chat/ApprovalRequestDetails.tsx` | CREATE | Inspect the recorded action in a shared dialog while decisions remain inline |
+| `ui/packages/app/tests/e2e/visual-gate/*` | CREATE | Capture the full state matrix, render the immutable reference and report individual measured checks |
+| `ui/packages/app/tests/e2e/fixtures/visual-fixture-data.ts` | CREATE | Separate proposal strings, realistic sample data and long-name cases |
 | `ui/packages/app/components/domain/chat/AuthoringPrompt.tsx` | CREATE | Keep the native composer hook inside the existing lazy conversation boundary |
 | `ui/packages/app/components/domain/chat/AuthoringIntent.tsx` | CREATE | Keep shared navigation intent React-only |
 | `ui/packages/app/tests/authoring-intent.test.tsx` | CREATE | Preserve an existing conversation and unsent text while prefilling an explicit starter once |

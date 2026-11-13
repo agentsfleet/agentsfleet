@@ -365,3 +365,42 @@ A focus-preservation regression and the existing clipboard tests pass 12 tests. 
 The complete dry-app target passed 4,564 unit tests and all 90 browser checks before this final tooltip repair.
 The final candidate must repeat the required full verification.
  Evidence: `refresh-root-dry-v177.log`, `refresh-tooltip-tests-v179.log`, `refresh-tooltip-lint-v180.log`.
+
+## Claude preliminary continuation on ed7c4032b
+
+The continued review adds findings 10–24 and updates selected earlier findings. The final attached gate supplies the complete findings 1–28, its decision list and the required measurement method.
+
+Source corrections now cover phone control floors, balanced secret actions, full secret names, Summary rows, header gaps, wake-up controls and menu alignment.
+Rail sizing, phone card insets, 900px padding, setup wrapping, filter width and archived presentation also have source repairs. Rendered measurements remain pending.
+
+The new long-name fixture exercises Manage, Replace and Delete with one complete technical name. Existing permission checks and mutation ownership stay in place.
+
+Indy answered “Accept all nine recommendations” on Nov 13. The normal conversation omits the Changes flap; expanding native tool activity shows it. The phone composer scrolls with the transcript. See M249_EXCEPTIONS.md.
+
+No Ready-to-review status is invented without a backend fact. Small transcript/card offsets remain open until measured against the reference.
+
+The previous dry run failed two expectations for the retired inset tool outline. The browser assertion now checks the shared 2px accent ring and 4px offset.
+
+Final light, intermediate-width, loader and authenticated checks remain pending. This source-repair record is not a completed visual sign-off.
+
+## Owner visual gate, Nov 13
+
+The owner ended the external review ZIP loop. Use M249_VISUAL_GATE.md as the gate and keep captures internal. A final claim requires the complete matrix, a clean candidate revision, reference measurements from the unchanged proposal, and a fresh adversarial pass. The owner will review the final result and review again after deployment.
+
+The first diagnostic run on the current repairs recorded 332 states across all four widths with zero browser errors. A later 49-state diagnostic added full long names and toasts without the review bar. Neither run is clean-commit evidence or a visual pass.
+
+The cost label was 12px/400; it now uses the proposal’s 13px/20px/500 role. Diagnostic corner readings are 10px for attachments, 22/22/6/22px for the user bubble, and 22px on every Summary/composer corner. The final run must repeat these readings.
+
+Checks changed: phone footer height comes from the reference (44px), rather than the previous incorrect 40px expectation. Wide-form actions use the accepted 44px size. Source measurements compare shell-relative coordinates because the reference review bar can grow to fit its navigation. Tolerances stay unchanged.
+
+### Owner typography follow-up
+
+The proposal’s embedded Latin Manrope font and the installed shared font are byte-identical: SHA-256 `a30ddcd349703aff7464c34bef3fffdff405ee50c113440d7c8693c02d210972`. Main paragraphs are 13px/20px at weight 400; the approval action and Summary row titles are weight 500 in both diagnostic renders. The app forced grayscale font smoothing while the proposal uses the browser default. Remove that override and compare the new captures.
+
+View exact action replaces the inline Action details disclosure. It opens the shared dialog for recorded tool/action, scope, evidence, expiry and optional reason. Approve and Deny keep their existing decision owner in the conversation. No separate approval page returns. The request dialog is added to the capture matrix.
+
+The owner’s follow-up puts raw commands, targets, tool identifiers and per-call duration inside each fold. Activity uses the shared disclosure, connecting line, generic action label and recorded outcome. Open groups omit their surrounding horizontal rules. Tests still assert the raw input, literal output, native timing and reload equivalence after opening details.
+
+Secrets scope: Indy wrote, “this is not a priority but i plan ti revamp and change.” The refresh retains named secret fields required by the current API. The later Secrets editor redesign remains separate; this pass fixes its shared dialog layout, full-name readability and footer.
+
+`make lint-app test-unit-app` completed on the source repairs: 478 test files and 4,564 tests passed (`refresh-visual-gate-v220.log`). This is the app lane, not the final repository gate. Tests explicitly open disclosures to verify tool identity and literal input/output instead of requiring those details in the collapsed line.

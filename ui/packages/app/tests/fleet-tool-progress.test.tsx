@@ -36,10 +36,10 @@ it("groups calls behind one disclosure with keyboard-accessible individual comma
   group.focus(); await user.keyboard("{Enter}");
   const [shell, request, custom] = rows();
   expect(rows()).toHaveLength(3);
-  expect(command(shell!).textContent).toContain("Ran command nproc; cat /proc/loadavg Success");
+  expect(command(shell!).textContent).toContain("Ran command Success");
   expect(command(request!).textContent).toContain("Failed: making request");
   expect(within(command(request!)).getByText("Failed: making request").className).not.toContain("sr-only");
-  expect(command(custom!).textContent).toContain("Used custom_check Success");
+  expect(command(custom!).textContent).toContain("Used tool Success");
   expect(screen.queryByText(/0.08/)).toBeNull();
   const first = command(shell!);
   first.focus(); await user.keyboard("{Enter}");
@@ -59,7 +59,7 @@ it("keeps open details and row identity stable while another call streams and se
   const second = call({callId: "second", name: TOOL_NAME.HTTP_REQUEST, done: false, status: undefined, ms: null});
   show([first, second], "received");
   const view = renderThread();
-  expect(screen.getByRole("button", {name: /^Tool activity:/}).textContent).toContain("Making request (arguments not recorded)");
+  expect(screen.getByRole("button", {name: /^Tool activity:/}).textContent).toContain("Making request");
   openGroup();
   const [finished, streaming] = rows();
   expect(streaming!.getAttribute("data-state")).toBe("running");
@@ -84,7 +84,7 @@ it("keeps repeated failures separate and reveals only the command the reader ope
   renderThread(); openGroup();
   const [first, second] = rows();
   expect(screen.queryByText(/refusal/)).toBeNull();
-  expect(command(first!).textContent).toContain(`Failed: making request GET ${url}`);
+  expect(command(first!).textContent).toContain("Failed: making request");
   await userEvent.setup().click(command(second!));
   expect(second!.textContent).toContain("second refusal");
   expect(second!.querySelector('[data-command-outcome]')?.textContent).toBe("Failed(exit 9)");
@@ -95,7 +95,7 @@ it("keeps repeated failures separate and reveals only the command the reader ope
 it("does not show commands running while the model continues after their results", () => {
   show([call()], "received");
   renderThread();
-  expect(screen.getByRole("button", {name: /^Tool activity:/}).textContent).toContain(`Ran command ${COMMAND}`);
+  expect(screen.getByRole("button", {name: /^Tool activity:/}).textContent).toContain("Ran command");
   expect(screen.getByRole("button", {name: /^Tool activity:/}).hasAttribute("title")).toBe(false);
   openGroup();
   expect(rows()[0]!.getAttribute("data-state")).toBe("succeeded");
@@ -117,9 +117,11 @@ it.each([
 it("names unknown tools without inspecting arguments and shows recorded output literally", async () => {
   show([call({name: "custom_check", args: {internal_path: "/tmp/check.py"}, outputHead: "1309 tests passed; suite still running"})]);
   renderThread(); openGroup();
-  expect(within(rows()[0]!).getByText("custom_check")).toBeTruthy();
+  expect(command(rows()[0]!).textContent).toContain("Used tool");
+  expect(within(rows()[0]!).queryByText("Action · custom_check")).toBeNull();
   expect(screen.queryByText(/1309|\/tmp\/check/)).toBeNull();
   await userEvent.setup().click(command(rows()[0]!));
+  expect(screen.getByText("Action · custom_check")).toBeTruthy();
   expect(screen.getByText(/1309 tests passed/)).toBeTruthy();
   expect(screen.queryByText(/suite completed|Steps completed/i)).toBeNull();
 });

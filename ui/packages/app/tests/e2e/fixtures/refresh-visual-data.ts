@@ -36,13 +36,13 @@ export function visualEvents(scenario: VisualScenario, started: number, includeC
       phase: "recorded" as const, provider: null, model: null, completed: 1, total: 1}}]}} : {})}];
 }
 
-export function visualTaskPage(scenario: VisualScenario, started: number): TaskPage {
+export function visualTaskPage(scenario: VisualScenario, started: number, parity = false): TaskPage {
   return {items: scenario === "empty" ? [] : [{...summary(undefined, scenario === "running" ? "running" : scenario === "error" ? "blocked" : "waiting"),
-    title: "Release readiness", created_at: new Date(started - 138_000).toISOString()}], next_cursor: null};
+    title: parity ? "Update runner image" : "Release readiness", created_at: new Date(started - 138_000).toISOString()}], next_cursor: null};
 }
 
-export function visualTaskDetail(scenario: VisualScenario, started: number) {
-  const task = visualTaskPage(scenario, started).items[0] ?? summary();
+export function visualTaskDetail(scenario: VisualScenario, started: number, parity = false) {
+  const task = visualTaskPage(scenario, started, parity).items[0] ?? summary();
   const saved = detail(task);
   return {...saved, publication: (scenario === "completed" || scenario === "activity") ? {effect_id: TASK_IDS[1], ordinal: 1, state: "confirmed", expected_head: "a".repeat(40), tested_tree: "b".repeat(40), commit: "c".repeat(40), pull_request_url: "https://github.com/agentsfleet/platform-images/pull/58"} : null, context: {...saved.context, objective: "Update the runner image, run the scans, and ask before publishing.",
     target: (scenario === "completed" || scenario === "activity") ? {kind: "existing_pr" as const, repository: "agentsfleet/platform-images", number: 58,

@@ -60,7 +60,7 @@ export default function WorkspaceSwitcherMenu({ open, collapsed = false, workspa
             firstItemRef.current?.focus();
           }}>
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger ref={firstItemRef} aria-label={`Switch workspace: ${menu.activeLabel}`} className="mb-md min-h-16 gap-lg px-lg py-lg">
+            <DropdownMenuSubTrigger ref={firstItemRef} aria-label={`Switch workspace: ${menu.activeLabel}`} className="mb-md min-h-16 gap-lg px-xl py-lg">
               <AccountIdentity workspace={menu.activeLabel} />
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent portalContainer={portalContainer} aria-label="Switch workspace" className="w-61 max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto p-md">

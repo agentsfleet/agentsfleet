@@ -75,8 +75,8 @@ it("lists a confirmed publication only as an output while retaining other relate
   render(<WorkOutputs details={new Map([
     ["published", {kind: "ready", value: published}], ["earlier", {kind: "ready", value: related}], ["other", {kind: "ready", value: other}],
   ])} />);
-  expect(within(screen.getByRole("region", {name: "Outputs"})).getByRole("link", {name: "Pull request #123"})).toBeTruthy();
-  expect(within(screen.getByRole("region", {name: "Pull requests"})).getByRole("link", {name: "Pull request #124"})).toBeTruthy();
+  expect(within(screen.getByRole("region", {name: "Outputs"})).getByRole("link", {name: /^Pull request #123/})).toBeTruthy();
+  expect(within(screen.getByRole("region", {name: "Pull requests"})).getByRole("link", {name: /^Pull request #124/})).toBeTruthy();
   expect(screen.getAllByRole("link")).toHaveLength(2);
 });
 

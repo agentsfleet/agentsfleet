@@ -126,9 +126,9 @@ function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef
       <Button
         type="submit"
         variant="default"
-        size="icon"
+        size="icon-row"
         aria-label={SEND_LABEL}
-        className="size-9 shrink-0 self-end rounded-full disabled:border-transparent disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 [&_svg]:size-4.5"
+        className="shrink-0 self-end rounded-full disabled:border-transparent disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 [&_svg]:size-4.5"
         onClick={() => draftRef.current?.focus({preventScroll: true})}
         {...(tooLong || modelChanging ? { disabled: true } : {})}
       >

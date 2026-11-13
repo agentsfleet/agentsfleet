@@ -1,3 +1,4 @@
+import {visualMembers, visualInvites, visualModels, visualCatalogueModel, visualParity} from "./visual-fixture-data";
 import type {ActionResult} from "@/lib/actions/with-token";
 import type {MemberSummary} from "@/lib/api/tenant-members";
 import type {InviteSummary} from "@/lib/api/invites";
@@ -19,10 +20,10 @@ export const SAMPLE_MODELS: TenantModelEntryPageResult = {models: [{id: "model",
   platform_default_available: true, platform_default: {context_cap_tokens: CATALOGUE_MODEL.context_cap_tokens, provider: "fireworks", model: CATALOGUE_MODEL.id, display_name: CATALOGUE_MODEL.display_name}, next_cursor: null, total: 1};
 
 /** Visual reads have sample data; a fixture can never send a real mutation. */
-export async function getModelLibraryAction() {return {ok: true, data: {version: "sample", models: [CATALOGUE_MODEL], total: 1, next_cursor: null}};}
-export async function listSecretsAction() {return {ok: true, data: {secrets: SECRETS}};}
-export async function listModelEntriesAction() {return {ok: true, data: SAMPLE_MODELS};}
-export async function loadTeamAction() {return {ok: true, data: {members: SAMPLE_MEMBERS, invites: SAMPLE_INVITES}};}
+export async function getModelLibraryAction() {return {ok: true, data: {version: "sample", models: [visualCatalogueModel()], total: 1, next_cursor: null}};}
+export async function listSecretsAction() {return {ok: true, data: {secrets: visualParity() ? SECRETS.map(secret => ({...secret, name: "OpenAI workspace", provider: "openai"})) : SECRETS}};}
+export async function listModelEntriesAction() {return {ok: true, data: visualModels(SAMPLE_MODELS)};}
+export async function loadTeamAction() {return {ok: true, data: {members: visualMembers(SAMPLE_MEMBERS), invites: visualInvites(SAMPLE_INVITES)}};}
 export async function listApprovalsAction() {return {ok: true, data: {items: new URLSearchParams(location.search).get("state") === "completed" ? [{gate_id: "sample-release-approval", workspace_id: WORKSPACE, fleet_id: FLEET_ID,
   status: "pending", proposed_action: "Publish runner image", tool_name: "registry", action_name: "publish", blast_radius: "Production registry · Release tag"}] : [], next_cursor: null}};}
 async function refuse(): Promise<ActionResult<never>> {return {ok: false, status: 503, error: "Read-only component fixture. No changes were sent."};}

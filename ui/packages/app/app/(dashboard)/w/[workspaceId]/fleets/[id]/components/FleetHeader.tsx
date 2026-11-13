@@ -1,5 +1,7 @@
-import { StackIcon } from "@phosphor-icons/react/ssr";
-import { Badge, PageTitle } from "@agentsfleet/design-system";
+import Link from "next/link";
+import { workspacePath } from "@/lib/workspace-routes";
+import { StackIcon, NotePencilIcon } from "@phosphor-icons/react/ssr";
+import { Badge, Button, PageTitle } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetDetail } from "@/lib/types";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
@@ -25,9 +27,10 @@ export function FleetHeader({
 }) {
   return (
     <header className="fleet-chat-heading flex min-h-16 shrink-0 items-center justify-between gap-lg border-b border-border-subtle px-lg summary-medium:px-xl summary-wide:px-2xl">
-      <div className="flex min-w-0 items-center gap-lg">
-        <StackIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-        <PageTitle size="chat" className="truncate font-title">{fleet.name}</PageTitle>
+      <div className="flex min-w-0 items-center gap-xl">
+        <div className="flex min-w-0 items-center gap-md summary-medium:gap-lg">
+        <StackIcon data-app-header-icon="" size={16} className="hidden shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
+        <PageTitle data-app-header-title="" size="chat" className="truncate font-semibold">{fleet.name}</PageTitle></div>
         <FleetActions workspaceId={workspaceId} fleet={fleet}>
           {fleet.status !== AGENTSFLEET_STATUS.KILLED ? <>
             <EditSetupMenuItem workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision} />
@@ -36,13 +39,13 @@ export function FleetHeader({
         </FleetActions>
         {fleet.status !== AGENTSFLEET_STATUS.KILLED ? <FleetHeaderStatus workspaceId={workspaceId} fleetId={fleet.id} initial={fleet.pending_approvals} schedules={fleet.schedules} latestRun={latestRun} /> : null}
         {fleet.status === AGENTSFLEET_STATUS.INSTALLING || fleet.status === AGENTSFLEET_STATUS.ACTIVE ? null : fleet.status === AGENTSFLEET_STATUS.KILLED ? (
-          <Badge aria-label="Fleet status: archived">Archived</Badge>
+          <span aria-label="Fleet status: archived" className="inline-flex items-center gap-md text-eyebrow text-muted-foreground"><span aria-hidden="true" className="size-1.5 rounded-full bg-current" />Archived</span>
         ) : <Badge aria-label={`Fleet status: ${fleet.status}`}>{fleet.status}</Badge>}
       </div>
-      <div className="flex shrink-0 items-center gap-md">
+      <div className="flex shrink-0 items-center gap-5">
         <FleetRunCost workspaceId={workspaceId} fleetId={fleet.id} initial={latestRun} />
         {exhaustedAt !== undefined ? <ExhaustionBadge exhaustedAt={exhaustedAt} /> : null}
-        {fleet.status !== AGENTSFLEET_STATUS.KILLED ? <EditSetupButton workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision} appearance="header" /> : null}
+        {fleet.status !== AGENTSFLEET_STATUS.KILLED ? <EditSetupButton workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision} appearance="header" /> : <Button asChild variant="ghost" size="icon" aria-label="New fleet"><Link href={workspacePath(workspaceId, "fleets/new")}><NotePencilIcon size={16} /></Link></Button>}
       </div>
     </header>
   );

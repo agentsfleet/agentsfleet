@@ -2,6 +2,7 @@
 
 import { memo, useCallback, type ReactNode } from "react";
 import { ThreadPrimitive } from "@assistant-ui/react";
+import { ArchiveIcon } from "@phosphor-icons/react/ssr";
 import { Skeleton } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream";
 import { SteerComposer, type SteerComposerProps } from "./SteerComposer";
@@ -33,7 +34,7 @@ export const FleetThreadViewport = memo(function FleetThreadViewport({
 }: FleetThreadViewportProps) {
   return <ChatThread testId="fleet-thread-root" label="Fleet chat" footer={<>
     <FleetConnectionNotice status={connectionStatus} onRetry={onRetry} />
-    {archived ? <p className="py-xl text-center text-label text-muted-foreground">Archived · This fleet is permanently stopped. Its history is available to read.</p>
+    {archived ? <p className="flex items-center justify-center gap-md border-t border-border py-xl text-center text-label text-muted-foreground"><ArchiveIcon size={16} aria-hidden="true" />Archived · This fleet is permanently stopped. Its history is available to read.</p>
       : <><ChangesStrip /><WakeupStrip /><SteerComposer modelLabel={modelLabel} pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} /></>}
   </>}>
     <SettledReplyStatus><ChatHistory setup={setup} setupEventId={setupEventId} eventsCount={eventsCount} connectionStatus={connectionStatus} /></SettledReplyStatus>
@@ -76,7 +77,7 @@ function ChatHistory({ eventsCount, connectionStatus, setup, setupEventId }: Pic
       // never covers its newest rows. Top-aligned, as the viewport's top
       // anchor expects: a bottom-aligned short thread slid down by the height
       // of every Thought that folded above the composer.
-      className="mx-auto flex w-full max-w-chat flex-1 flex-col justify-start py-lg"
+      className="mx-auto flex w-full max-w-chat flex-1 flex-col justify-start py-md"
     >
       {setupEventId ? null : setup}
       {isAwaitingFirstFrames ? <BackfillSkeleton /> : null}

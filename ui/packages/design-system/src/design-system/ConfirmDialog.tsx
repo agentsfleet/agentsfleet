@@ -101,7 +101,7 @@ export function ConfirmDialog({
         {errorMessage ? (
           <Alert variant="destructive" className="mt-xl">{errorMessage}</Alert>
         ) : null}
-        <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
+        <DialogFooter className="flex-nowrap">
           <Button
             ref={cancel}
             type="button"

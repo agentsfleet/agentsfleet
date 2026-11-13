@@ -2,7 +2,7 @@
 
 import type { Source } from "@/lib/api/draft-types";
 import type { Library, LibraryCard } from "@/lib/api/draft-library";
-import { CaretDownIcon, DotsThreeIcon, NotePencilIcon, PuzzlePieceIcon } from "@phosphor-icons/react/ssr";
+import { CaretDownIcon, DotsThreeIcon, NotePencilIcon, PencilSimpleIcon, PuzzlePieceIcon } from "@phosphor-icons/react/ssr";
 import { useCallback, useEffect, useState } from "react";
 import { workspacePath } from "@/lib/workspace-routes";
 import { Badge, Button, Collapsible, CollapsibleContent, CollapsibleTrigger, DashboardPanel, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, List, ListItem, Spinner, UnavailableState } from "@agentsfleet/design-system";
@@ -66,7 +66,7 @@ function WorkspacePlugins({workspace, onSelect}: Props) {
     return () => controller.abort();
   }, [workspace, selected, revision, attempt, inspectionAttempt, selectionFailed]);
   return <div className="space-y-lg">
-    <div className="flex items-center justify-between gap-xl"><h2 className="text-label font-semibold">Your plugins {page && !cursor && !page.next_cursor ? <Badge className="ml-md">{page.items.length}</Badge> : null}</h2><span className="text-eyebrow text-text-dim">Current account</span></div>
+    <div className="flex items-center justify-between gap-xl"><h2 className="text-label font-semibold">Your plugins {page && !cursor && !page.next_cursor ? <Badge className="ml-md">{page.items.length}</Badge> : null}</h2><span className="text-label text-muted-foreground">Current account</span></div>
     {error && !selected ? <UnavailableState title={LIBRARY_UNAVAILABLE_TITLE} description={error}
       actions={<Button variant="outline" onClick={() => setAttempt((value) => value + 1)}>Retry plugins</Button>} /> : null}
     {!page && !error ? <Spinner label="Loading published setups" /> : null}
@@ -95,7 +95,7 @@ function LibraryEmpty({workspace, paged}: {workspace: string; paged: boolean}) {
 }
 
 function LibraryChoices({page, onInspect}: {page: Page | null; onInspect: (card: LibraryCard) => void}) {
-  return <DashboardPanel padding="none"><List variant="plain" className="space-y-0 divide-y divide-border">{page?.items.map(card => <ListItem key={card.id} className="flex flex-wrap items-center gap-xl p-5">
+  return <DashboardPanel padding="none"><List variant="plain" className="space-y-0 divide-y divide-border">{page?.items.map(card => <ListItem key={card.id} className="flex flex-wrap items-center gap-xl p-xl sm:p-5">
     <span aria-hidden="true" className="hidden size-10 shrink-0 items-center justify-center rounded-control border border-border sm:flex"><PuzzlePieceIcon size={16} /></span>
     <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto"><p className="break-words text-label font-medium">{card.name}</p><p className="mt-sm text-label text-muted-foreground">{card.description}</p></div>
     <span className="text-eyebrow text-text-dim">Published setup</span>
@@ -134,7 +134,7 @@ function LibraryHistory({workspace, library, onSelect, onError}: {workspace: str
 function LibraryInspection({entry, onUse}: {entry: Library; onUse: (intent: "edit" | "new") => void}) {
   return <div className="mt-md space-y-md">
     <p className="text-eyebrow text-text-dim">Version {entry.head.revision}</p>
-    {entry.card.visibility === "tenant" ? <Button variant="outline" className="min-h-11 w-full justify-start gap-md" onClick={() => onUse("edit")}><NotePencilIcon size={16} /><span>Edit setup</span></Button> : null}
+    {entry.card.visibility === "tenant" ? <Button variant="outline" className="min-h-11 w-full justify-start gap-md" onClick={() => onUse("edit")}><PencilSimpleIcon size={16} /><span>Edit setup</span></Button> : null}
     <Button variant="outline" className="min-h-11 w-full justify-start gap-md" onClick={() => onUse("new")}><NotePencilIcon size={16} /><span>Use for new fleet</span></Button>
     <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" className="px-0">Inspect setup<CaretDownIcon size={16} aria-hidden="true" /></Button></CollapsibleTrigger>
       <CollapsibleContent className="pt-lg"><FleetSetupDetails review={entry.review} /></CollapsibleContent></Collapsible>

@@ -14,6 +14,7 @@ import { accessLost, confirmed } from "./use-task-read";
 import { FleetTaskProvider, useFleetTaskView } from "./FleetTaskProvider";
 import { workActivity } from "./WorkActivity";
 import { WorkApprovals, WorkChanges, WorkOutputs, WorkSources } from "./WorkContextSections";
+import { WorkSection } from "./WorkSection";
 import { WorkWakeups } from "./WorkWakeups";
 
 type RowsProps = {workspaceId: string; fleetId: string; tasks: readonly TaskSummary[]; details: TaskDetails; events: readonly FleetEvent[]; retry: () => void; retryDetails: () => void; expandedTask: string; onExpand: (id: string) => void};
@@ -37,6 +38,7 @@ function CurrentWork() {
   const tasks = page?.items ?? EMPTY_TASKS;
   const needsAttention = tasks.some(task => task.status === "blocked" || task.status === "exhausted");
   return <Section asChild className="block gap-0"><section aria-label="Current work" className="ph-no-capture ph-no-record min-w-0 space-y-md">
+    {view.readOnly ? <WorkSection title="Status"><p className="text-label">Archived</p><p className="text-eyebrow text-muted-foreground">Permanently stopped. This fleet cannot resume.</p></WorkSection> : null}
     {!view.readOnly && (!read || !accessLost(read.resource)) ? <WorkApprovals approvals={approvals} scope={{workspaceId, fleetId, subject: view.subject, revision: view.approvalRevision ?? 0}} /> : null}
     {read ? <WorkReadStatus resource={read.resource} retry={read.retry} /> : <WorkLoading />}
     {read && page ? <>

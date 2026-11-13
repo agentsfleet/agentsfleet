@@ -3,7 +3,7 @@ import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import type { TaskDetails } from "./use-task-details";
 import Link from "next/link";
 import { Button } from "@agentsfleet/design-system";
-import { ArrowUpRightIcon, CaretDownIcon, FileTextIcon, GitBranchIcon, GitDiffIcon, GitPullRequestIcon, ShieldCheckIcon } from "@phosphor-icons/react/ssr";
+import { ArrowUpRightIcon, CaretDownIcon, FileTextIcon, GitBranchIcon, GitDiffIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { TOOL_NAME } from "../tool-call-shape";
 import { confirmed } from "./use-task-read";
@@ -37,10 +37,11 @@ export function WorkOutputs({details, expectedDetails = details.size, hideEmpty 
 type PullRequestRecord = {target: {url: string; number: number; repository: string}; published: boolean; stale: boolean};
 function PullRequestSection({title, records}: {title: string; records: PullRequestRecord[]}) {
   return <WorkSection title={title}><ul className="space-y-sm">{records.map(({target, published, stale}) => <li key={target.url}>
-    <a className="flex items-start gap-1.5 break-words text-label font-medium leading-label hover:underline" href={target.url} target="_blank" rel="noopener noreferrer">
-      <GitPullRequestIcon size={16} className="mt-xs shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1">Pull request #{target.number}</span>
-      <ArrowUpRightIcon size={10} className="mt-xs shrink-0 text-muted-foreground" aria-hidden="true" /></a>
-    <p className="mt-xs pl-5.5 text-eyebrow text-muted-foreground">{published ? "Changes published" : target.repository}{stale ? " · last confirmed" : ""}</p>
+    <a className="flex min-h-9 items-center gap-md py-sm break-words text-label font-medium leading-label hover:underline" href={target.url} target="_blank" rel="noopener noreferrer">
+      <GitPullRequestIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 flex-1"><span className="block">Pull request #{target.number}</span>
+        <span className="mt-xs block text-eyebrow font-normal leading-label text-text-dim">{published ? "Changes published" : target.repository}{stale ? " · last confirmed" : ""}</span></span>
+      <ArrowUpRightIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /></a>
   </li>)}</ul></WorkSection>;
 }
 
@@ -72,11 +73,10 @@ export function WorkSources({sources}: {sources?: FleetSources}) {
   return <WorkSection title="Sources">
       {sources?.repositories.length ? <details className="group">
         <summary className="flex min-h-11 cursor-pointer items-center gap-sm rounded-sm text-label leading-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring summary:min-h-9">
-          <GitBranchIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 break-words" title={sources.repositories.join(", ")}>{sources.repositories.length === 1 ? sources.repositories[0] : `${sources.repositories.length} repositories`}</span>
+          <GitBranchIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 break-words" title={sources.repositories.join(", ")}><span className="block">{sources.repositories.length === 1 ? sources.repositories[0] : `${sources.repositories.length} repositories`}</span><span className="mt-xs block text-eyebrow text-muted-foreground">Saved fleet policy{sources.access ? ` · ${sources.access} access` : " · access not specified"}{sources.publication ? ` · ${sources.publication === "existing_pr" ? "existing PRs" : "draft PRs"}` : ""}</span></span>
           <CaretDownIcon size={16} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
         </summary>
         <ul className="mt-sm space-y-sm">{sources.repositories.map(repository => <li key={repository} className="break-words text-label leading-label"><a href={`https://github.com/${repository}`} target="_blank" rel="noopener noreferrer" className="hover:underline">{repository}</a></li>)}</ul>
-        <p className="mt-sm flex items-start gap-xs text-eyebrow text-muted-foreground"><ShieldCheckIcon size={16} className="shrink-0 text-evidence" aria-hidden="true" /><span>Saved fleet policy{sources.access ? ` · ${sources.access} access` : " · access not specified"}{sources.publication ? ` · ${sources.publication === "existing_pr" ? "existing PRs" : "draft PRs"}` : ""}</span></p>
       </details> : <p className="text-eyebrow leading-eyebrow text-muted-foreground">No sources configured.</p>}
   </WorkSection>;
 }

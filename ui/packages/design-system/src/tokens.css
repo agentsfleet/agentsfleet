@@ -10,6 +10,8 @@
 @import "./interactions.css";
 
 :root {
+  --control-height: 40px;
+  --control-focus-surface: var(--bg);
   --max-w-new-fleet: 760px;
   --new-fleet-input-height: 100px;
   --fs-new-fleet-title: 34px;
@@ -130,8 +132,8 @@
   --sp-6xl: 6rem;
 
   /* How far a focus ring paints outside its control. Must equal Button's
-     `ring-2` + `ring-offset-2` (2px + 2px); a clipping surface reserves it. */
-  --focus-ring-reach: 4px;
+     `ring-2` + `ring-offset-4` (2px + 4px); a clipping surface reserves it. */
+  --focus-ring-reach: 6px;
 
   --easing-snap: ease-out;
   --motion-duration-snap: 120ms;
@@ -218,4 +220,8 @@
   --table-row-alternate: color-mix(in srgb, var(--surface-1) 55%, var(--bg));
   --table-row-hover: color-mix(in srgb, var(--pulse) 7%, var(--surface-1));
   --table-divider: color-mix(in srgb, var(--border) 55%, var(--surface-1));
+}
+
+@media (max-width: 42.5rem) {
+  :root { --control-height: 44px; }
 }

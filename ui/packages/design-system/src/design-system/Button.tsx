@@ -10,7 +10,7 @@ export const buttonVariants = cva(
     "rounded-control border font-sans font-control",
     "pointer-coarse:min-h-11 pointer-coarse:min-w-11",
     "control-motion transition-colors duration-snap ease-snap",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-[var(--control-focus-surface)]",
     "disabled:cursor-not-allowed disabled:bg-muted disabled:text-text-dim disabled:border-border-subtle disabled:opacity-100",
     "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   ].join(" "),
@@ -26,18 +26,20 @@ export const buttonVariants = cva(
         secondary:
           "border-border bg-card text-foreground hover:bg-muted [&_a]:text-foreground [&_a]:no-underline",
         ghost:
-          "border-transparent bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-primary",
+          "border-transparent bg-transparent disabled:bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-primary",
         link:
           "border-transparent bg-transparent text-pulse underline-offset-4 hover:underline min-h-0 p-0 h-auto",
         "double-border":
           "border-2 border-primary bg-transparent font-semibold text-primary hover:bg-primary/10 hover:text-primary [&_a]:text-primary [&_a]:no-underline [&_a:hover]:text-primary",
       },
       size: {
-        default: "min-h-10 px-xl py-sm text-label leading-label",
-        sm: "min-h-10 px-xl py-sm text-label leading-label",
+        default: "min-h-[var(--control-height)] px-xl py-sm text-label leading-label",
+        sm: "min-h-[var(--control-height)] px-xl py-sm text-label leading-label",
         lg: "h-11 px-xl py-sm text-body",
         card: "h-auto min-h-16 p-lg text-body-sm",
-        icon: "h-10 w-10 shrink-0 p-0",
+        icon: "size-[var(--control-height)] shrink-0 p-0",
+        "icon-row": "size-9 shrink-0 p-0 pointer-coarse:min-h-9 pointer-coarse:min-w-9",
+        compact: "min-h-9 px-md py-sm text-label leading-label",
         "icon-compact": "h-8 w-8 shrink-0 p-0",
         "icon-sm": "h-8 w-8 shrink-0 p-0",
         // A control that sits on the eyebrow line — a collapsible nav group's

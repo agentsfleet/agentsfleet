@@ -20,7 +20,6 @@ body {
   line-height: var(--lh-body);
   font-weight: 400;
   letter-spacing: 0;
-  -webkit-font-smoothing: antialiased;
 }
 
 .app-surface {
@@ -40,6 +39,7 @@ body {
 @media (min-width: 96rem) { :root { --app-canvas-gutter: 3rem; } }
 
 .app-dashboard-canvas {
+  position: relative;
   background: var(--bg);
   padding-inline: var(--app-canvas-gutter);
   padding-block: var(--app-canvas-block);
@@ -199,3 +199,13 @@ code, pre, kbd { font-family: var(--ff-mono); }
     padding-block: var(--sp-4xl);
   }
 }
+
+@media (min-width: 48rem) and (max-width: 68.75rem) {
+  .app-dashboard-canvas:has(> [data-resource-header]) > div:not([data-resource-header]) { padding-block: var(--sp-3xl); }
+}
+@media (max-width: 42.5rem) {
+  .fleet-chat-heading > svg, .fleet-chat-heading > div > svg { display: none; }
+}
+
+/* The native tool disclosure selects the activity presentation. */
+[data-testid="fleet-thread-root"]:not(:has([data-activity-group][data-state="open"])) [data-changes-strip] { display: none; }

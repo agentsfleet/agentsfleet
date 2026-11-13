@@ -57,7 +57,7 @@ function MessageContent({sender, children}: {sender: string; children: ReactNode
 function SenderLine({sender, timestamp, annotation}: MessageIdentity) {
   return (
     <div className="flex min-h-5 w-full min-w-0 items-center gap-sm" data-testid="chat-message-header">
-      <span aria-hidden="true" data-testid="fleet-message-sender" className="inline-flex min-w-0 items-center gap-md text-label leading-label text-muted-foreground">
+      <span aria-hidden="true" data-testid="fleet-message-sender" className="inline-flex min-w-0 items-center gap-md text-eyebrow leading-eyebrow text-muted-foreground">
         <BrandMark className="size-4.5 shrink-0 rounded-brand bg-brand-tile p-xs text-brand-ray" /><span className="truncate font-semibold">{sender}</span>
       </span>
       <MessageTime>{timestamp}</MessageTime>
@@ -69,7 +69,7 @@ function SenderLine({sender, timestamp, annotation}: MessageIdentity) {
 function MessageMetadata({sender, timestamp, annotation, showSender}: MessageIdentity & {showSender?: boolean}) {
   if (!timestamp && !annotation && !showSender) return null;
   return (
-    <div className="inline-flex items-center gap-sm px-sm text-eyebrow leading-eyebrow text-muted-foreground">
+    <div className="inline-flex items-center gap-sm px-sm text-eyebrow leading-eyebrow text-text-dim">
       <span aria-hidden="true" data-testid="fleet-message-sender">{sender}</span><MessageTime>{timestamp}</MessageTime>{annotation}
     </div>
   );
@@ -77,5 +77,5 @@ function MessageMetadata({sender, timestamp, annotation, showSender}: MessageIde
 
 function MessageTime({children}: {children?: ReactNode}) {
   if (!children) return null;
-  return <span className="inline-flex items-center gap-sm text-eyebrow text-muted-foreground"><span aria-hidden="true">·</span>{children}</span>;
+  return <span className="inline-flex items-center gap-sm text-eyebrow text-text-dim"><span aria-hidden="true">·</span>{children}</span>;
 }

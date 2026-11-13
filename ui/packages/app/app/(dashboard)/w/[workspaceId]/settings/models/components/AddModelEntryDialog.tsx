@@ -48,7 +48,7 @@ export default function AddModelEntryDialog({workspaceId, secrets, secretsLoad, 
           {secondary ? null : <PlusIcon size={16} aria-hidden="true" />}{triggerLabel}{secondary ? <ArrowUpRightIcon size={16} aria-hidden="true" /> : null}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-model-dialog" onEscapeKeyDown={event => { if (pending.current) event.preventDefault(); }} onInteractOutside={event => { if (pending.current) event.preventDefault(); }}>
+      <DialogContent size="wide" onEscapeKeyDown={event => { if (pending.current) event.preventDefault(); }} onInteractOutside={event => { if (pending.current) event.preventDefault(); }}>
         <DialogHeader>
           <DialogTitle>Create model</DialogTitle>
           <DialogDescription>Choose a model and connect its provider. You can add the key without leaving this form.</DialogDescription>
