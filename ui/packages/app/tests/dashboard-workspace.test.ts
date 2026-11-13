@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -221,7 +222,7 @@ describe("WorkspaceSwitcher component", () => {
     const user = userEvent.setup({ delay: null });
     usePathname.mockReturnValue("/w/ws_1/fleets");
     await renderSwitcher();
-    const items = screen.getAllByRole("menuitem");
+    const items = within(screen.getByTestId("workspace-list-scroll")).getAllByRole("menuitem");
     await user.click(items[1]!);
     await waitFor(() =>
       expect(routerPush).toHaveBeenCalledWith("/w/ws_2/fleets"),
@@ -239,7 +240,7 @@ describe("WorkspaceSwitcher component", () => {
     const user = userEvent.setup({ delay: null });
     usePathname.mockReturnValue("/w/ws_1/fleets/fleet_abc");
     await renderSwitcher();
-    const items = screen.getAllByRole("menuitem");
+    const items = within(screen.getByTestId("workspace-list-scroll")).getAllByRole("menuitem");
     await user.click(items[1]!);
     await waitFor(() =>
       expect(routerPush).toHaveBeenCalledWith("/w/ws_2/fleets"),
@@ -250,7 +251,7 @@ describe("WorkspaceSwitcher component", () => {
     const user = userEvent.setup({ delay: null });
     usePathname.mockReturnValue("/settings/billing");
     await renderSwitcher();
-    const items = screen.getAllByRole("menuitem");
+    const items = within(screen.getByTestId("workspace-list-scroll")).getAllByRole("menuitem");
     await user.click(items[0]!);
     await waitFor(() =>
       expect(routerPush).toHaveBeenCalledWith("/w/ws_1/fleets/new"),
@@ -265,7 +266,7 @@ describe("WorkspaceSwitcher component", () => {
         { id: "ws_no_name", name: null, ...OWN_ACCOUNT },
       ],
     });
-    const items = screen.getAllByRole("menuitem");
+    const items = within(screen.getByTestId("workspace-list-scroll")).getAllByRole("menuitem");
     await user.click(items[1]!);
     await waitFor(() =>
       expect(
@@ -285,7 +286,7 @@ describe("WorkspaceSwitcher component", () => {
   it("clears the workspace switch toast after the notice timeout", async () => {
     vi.useFakeTimers();
     await renderSwitcher();
-    const items = screen.getAllByRole("menuitem");
+    const items = within(screen.getByTestId("workspace-list-scroll")).getAllByRole("menuitem");
     fireEvent.click(items[1]!);
     expect(screen.getByText("Workspace changed to Beta.")).toBeTruthy();
     await act(async () => {
@@ -304,7 +305,7 @@ describe("WorkspaceSwitcher component", () => {
   it("picking the active workspace is a no-op", async () => {
     const user = userEvent.setup({ delay: null });
     await renderSwitcher();
-    const items = screen.getAllByRole("menuitem");
+    const items = within(screen.getByTestId("workspace-list-scroll")).getAllByRole("menuitem");
     await user.click(items[0]!);
     await new Promise((r) => setTimeout(r, 10));
     expect(routerPush).not.toHaveBeenCalled();

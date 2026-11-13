@@ -6,6 +6,7 @@ import { useCallback } from "react";
 import { Button } from "@agentsfleet/design-system";
 import { readTask } from "@/lib/api/tasks";
 import { TaskNextStep } from "./TaskNextStep";
+import { useFleetTaskView } from "./FleetTaskProvider";
 import { TaskGoalAdoption } from "./TaskGoalAdoption";
 import { TaskControls } from "./TaskControls";
 import { TaskRepositoryProgress } from "./TaskRepositoryProgress";
@@ -23,6 +24,7 @@ export function TaskDetail({workspaceId, fleetId, task, onChanged}: Props) {
 
 export function TaskDetailView({workspaceId, fleetId, task, onChanged, resource, retry}: Props & {resource: TaskResource<NativeTaskDetail>; retry: () => void}) {
   const detail = confirmed(resource);
+  const readOnly = useFleetTaskView()?.readOnly;
   return <div className="space-y-md pb-md text-body-sm" aria-label={`${task.title} details`}>
     {resource.kind === "loading" ? <output data-chat-loading="true" className="inline-flex items-center gap-xs text-muted-foreground">Reading saved progress…</output> : null}
     {resource.kind === "failed" ? <div className="flex items-center justify-between gap-sm text-muted-foreground">
@@ -31,12 +33,12 @@ export function TaskDetailView({workspaceId, fleetId, task, onChanged, resource,
     </div> : null}
     {detail ? <>
       <TaskNextStep detail={detail} />
-      <TaskControls workspaceId={workspaceId} fleetId={fleetId} detail={detail} enabled={resource.kind === "ready"} onChanged={onChanged} />
+      {!readOnly ? <TaskControls workspaceId={workspaceId} fleetId={fleetId} detail={detail} enabled={resource.kind === "ready"} onChanged={onChanged} /> : null}
       <TaskRepositoryProgress detail={detail} />
       <div className="space-y-sm">
         <h3 className="font-medium">What counts as done?</h3>
         <p className="text-eyebrow text-muted-foreground">Uses the success criteria saved in setup v{detail.setup_revision}.</p>
-        <TaskGoalAdoption workspaceId={workspaceId} fleetId={fleetId} detail={detail} enabled={resource.kind === "ready"} onChanged={onChanged} />
+        {!readOnly ? <TaskGoalAdoption workspaceId={workspaceId} fleetId={fleetId} detail={detail} enabled={resource.kind === "ready"} onChanged={onChanged} /> : null}
         {detail.context.questions.map(({name, question}, index) => <QuestionDetails key={name} number={index + 1} question={{question: question.instructions, criteria: question.criteria}} />)}
       </div>
       <p className="text-eyebrow text-muted-foreground">{detail.context.usage.leases} of {detail.context.limits.leases} attempts used. {detail.context.checkpoint_id ? "Saved recovery point available." : "No recovery point has been saved."}</p>

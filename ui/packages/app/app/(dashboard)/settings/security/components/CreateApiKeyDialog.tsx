@@ -23,7 +23,6 @@ import {
   FormMessage,
   Input,
   Spinner,
-  TooltipButton,
 } from "@agentsfleet/design-system";
 import { InfoIcon, PlusIcon } from "@phosphor-icons/react/ssr";
 import { type CreatedApiKey } from "@/lib/api/api_keys";
@@ -40,7 +39,6 @@ const schema = z.object({
     .regex(KEY_NAME_REGEX, "1–64 characters: letters, digits, hyphen, underscore only"),
 });
 type FormValues = z.infer<typeof schema>;
-const CREATE_KEY_TOOLTIP = "Create an agentsfleet API key.";
 
 export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
@@ -87,10 +85,10 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <TooltipButton type="button" size="sm" tooltip={CREATE_KEY_TOOLTIP}>
+        <Button type="button" size="sm">
           <PlusIcon size={16} />
           Create API key
-        </TooltipButton>
+        </Button>
       </DialogTrigger>
       <DialogContent
         closeDisabled={creating}
@@ -133,10 +131,10 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
                   >
                     Cancel
                   </Button>
-                  <TooltipButton type="submit" disabled={pending} tooltip={CREATE_KEY_TOOLTIP}>
+                  <Button type="submit" disabled={pending}>
                     {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
                     Create
-                  </TooltipButton>
+                  </Button>
                 </DialogFooter>
               </form>
             </Form>

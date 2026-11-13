@@ -6,7 +6,7 @@ import { signInAs } from "./fixtures/auth";
 import { clientFor } from "./fixtures/api-client";
 import { ensureSecondWorkspace, getDefaultWorkspaceId, waitForFleetActive } from "./fixtures/seed";
 import { saveFleetViaUI } from "./fixtures/install-ui";
-import { expectDetailArchived, expectRowState, archiveFleet } from "./fixtures/lifecycle";
+import { expectDetailArchived, expectRowState, archiveFleet, captureLifecycleReview } from "./fixtures/lifecycle";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
@@ -19,7 +19,7 @@ const SEED_PREFIX = "Workspace lifecycle";
 test.describe("multi-workspace + fleet lifecycle", () => {
   test.setTimeout(FLOW_TIMEOUT_MS);
 
-  test("operator switches workspace, installs, then archives the fleet", async ({ page }) => {
+  test("operator switches workspace, installs, then archives the fleet", async ({ page }, info) => {
     const primary = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
     expect(secondary.id).not.toEqual(primary);
@@ -31,8 +31,9 @@ test.describe("multi-workspace + fleet lifecycle", () => {
 
     const switcher = page.getByTestId("workspace-switcher");
     await switcher.click();
+    await page.getByRole("menuitem", {name: /^Switch workspace:/}).click();
     await page.getByRole("menuitem", { name: secondary.name ?? secondary.id }).click();
-    await expect(switcher).toHaveAttribute("title", secondary.name ?? "Unnamed workspace", {
+    await expect(switcher).toHaveAttribute("aria-label", new RegExp(`${secondary.name ?? "Unnamed workspace"}$`), {
       timeout: SWITCH_TIMEOUT_MS,
     });
 
@@ -50,13 +51,14 @@ test.describe("multi-workspace + fleet lifecycle", () => {
     await page.goto(workspaceHref(secondary.id, `fleets/${fleetId}`));
     await archiveFleet(page);
     await expectDetailArchived(page);
+    await captureLifecycleReview(page, info, "archived");
 
     // Archive retains the history row in the same workspace.
     await page.goto(workspaceHref(secondary.id, "fleets"));
     await expectRowState(page, fleetId, "failed");
   });
 
-  test("an active fleet can be permanently deleted with one confirmation", async ({page}) => {
+  test("an active fleet can be permanently deleted with one confirmation", async ({page}, info) => {
     const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
     await signInAs(page, FIXTURE_KEY.regular);
     const fleetId = await saveFleetViaUI(page, `${SEED_PREFIX} deletion`, {
@@ -75,6 +77,7 @@ test.describe("multi-workspace + fleet lifecycle", () => {
     await expect(page.getByRole("alertdialog")).toHaveCount(0);
     await expect(clientFor(FIXTURE_KEY.regular).get(`/v1/workspaces/${secondary.id}/fleets/${fleetId}`))
       .rejects.toMatchObject({status: 404});
+    await captureLifecycleReview(page, info, "deleted");
     await page.getByRole("navigation", {name: "Primary", exact: true})
       .getByRole("link", {name: "Your fleets", exact: true}).click();
     await expect(page).toHaveURL(workspaceHref(secondary.id, "fleets"));

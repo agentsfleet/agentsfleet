@@ -10,10 +10,10 @@ export function ChangesStrip() {
   const view = useFleetTaskView();
   const changes = view?.subject ? recordedChanges(view.events ?? [], {includeRunning: false}) : [];
   if (!changes.length) return null;
-  return <Dialog>
-    <DialogTrigger asChild><Button variant="secondary" className="mx-5 w-auto justify-start rounded-b-none border-b-0 px-lg">
+  return <div className="flex justify-center pb-md"><Dialog>
+    <DialogTrigger asChild><Button variant="secondary" className="h-9.5 min-h-9.5 w-fit gap-md rounded-md bg-muted px-lg py-md text-eyebrow text-muted-foreground [&_svg]:size-[15px]">
       <GitDiffIcon size={16} aria-hidden="true" />
-      <span className="flex-1 text-left">{changes.length} {changes.length === 1 ? "file changed" : "files changed"}</span>
+      <span className="font-medium">{changes.length} {changes.length === 1 ? "file changed" : "files changed"}</span>
       <CaretUpIcon size={16} aria-hidden="true" />
     </Button></DialogTrigger>
     <DialogContent className="ph-no-capture ph-no-record">
@@ -22,5 +22,5 @@ export function ChangesStrip() {
         <FileTextIcon size={16} className="mt-xs shrink-0 text-muted-foreground" aria-hidden="true" /><span className="break-all font-mono">{change.path}</span>
       </li>)}</ul>
     </DialogContent>
-  </Dialog>;
+  </Dialog></div>;
 }

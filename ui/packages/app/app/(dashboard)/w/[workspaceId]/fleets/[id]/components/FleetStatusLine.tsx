@@ -72,7 +72,7 @@ export default function FleetStatusLine({
     >
       <StatusLineItem
         tone={status === AGENTSFLEET_STATUS.ACTIVE ? "pulse" : "neutral"}
-        className="uppercase"
+        className="normal-case"
       >
         <span className="size-2 shrink-0 rounded-full bg-current" aria-hidden="true" />
         <HiddenLabel>{METRICS_STATUS_LABEL}</HiddenLabel>

@@ -44,5 +44,5 @@ function workspaceMenuData(workspaces: TenantWorkspace[], created: readonly Crea
   const menuWorkspaces = sections.flatMap((section) => section.workspaces);
   const active = menuWorkspaces.find((workspace) => workspace.id === activeId);
   const activeLabel = active ? active.name ?? WORKSPACE_LABEL.unnamed : WORKSPACE_LABEL.none;
-  return { sections, menuWorkspaces, firstMenuId: menuWorkspaces[0]?.id ?? null, activeLabel };
+  return { sections, menuWorkspaces, activeLabel };
 }

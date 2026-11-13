@@ -9,7 +9,7 @@ const SECTION_LABEL_STYLE = {
 
 /*
  * SectionLabel — eyebrow text above a section (e.g. "Pipeline", "Recent runs",
- * "Artifacts"). Mono, uppercase, muted. React Server Component-safe. Shares
+ * "Artifacts"). Compact, sentence case, muted. React Server Component-safe. Shares
  * EYEBROW_CLASS with every other eyebrow (table headers, nav groups, card
  * micro-labels) so the whole family stays one size. Navigation labels use a
  * quieter, sentence-case variant while retaining the same heading semantics.

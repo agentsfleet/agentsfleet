@@ -23,7 +23,7 @@ export function ToolCallList({children, activity, footer}: {children: ReactNode;
           <span className="block sm:inline" data-chat-loading={running}>{activity.label}</span>{activity.target ? <> <span className="block truncate font-mono text-label text-text-dim sm:inline sm:text-inherit">{activity.target}</span></> : null}
         </span>
       </AccordionTrigger>
-      <AccordionContent className="pb-0"><List variant="plain" aria-label={TOOL_CALLS_LABEL} className="flex flex-col gap-xs space-y-0">{children}</List>{footer}</AccordionContent>
+      <AccordionContent className="pb-0"><List variant="plain" aria-label={TOOL_CALLS_LABEL} className="flex flex-col gap-xs space-y-0 sm:gap-0">{children}</List>{footer}</AccordionContent>
     </AccordionItem>
   </Accordion>;
 }

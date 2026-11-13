@@ -1,7 +1,7 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Spinner } from "@agentsfleet/design-system";
 import { BriefcaseIcon, GitPullRequestIcon, SquaresFourIcon, HashIcon, PlugsConnectedIcon, TicketIcon } from "@phosphor-icons/react/ssr";
@@ -71,6 +71,7 @@ export function OAuthConnectorRow({
   const router = useRouter();
   const Icon = providerIcon(entry.id);
   const [managing, setManaging] = useState(false);
+  const done = useRef<HTMLButtonElement>(null);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -153,13 +154,13 @@ export function OAuthConnectorRow({
     </div>
     {error && !managing ? <Alert className="mt-lg" variant="destructive">{error}</Alert> : null}
     <Dialog open={managing} onOpenChange={open => {if (!pending) setManaging(open);}}>
-      <DialogContent closeDisabled={pending}>
+      <DialogContent closeDisabled={pending} onOpenAutoFocus={event => {event.preventDefault(); done.current?.focus({preventScroll: true});}}>
         <DialogHeader><DialogTitle>{entry.display_name}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
         {Object.hasOwn(PROVIDER_CAPABILITIES, entry.id) ? <p className="text-label text-muted-foreground">{PROVIDER_CAPABILITIES[entry.id]}</p> : null}
         {error ? <Alert variant="destructive">{error}</Alert> : null}
-        <DialogFooter><Button variant="outline" disabled={pending} aria-busy={disconnecting || undefined} aria-label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`} onClick={() => void disconnect()}>
+        <DialogFooter className="pt-3xl"><Button variant="outline" disabled={pending} aria-busy={disconnecting || undefined} aria-label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`} onClick={() => void disconnect()}>
             {disconnecting ? <Spinner size="sm" /> : null}{disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
-          </Button><Button disabled={pending} onClick={() => setManaging(false)}>Done</Button></DialogFooter>
+          </Button><Button ref={done} disabled={pending} onClick={() => setManaging(false)}>Done</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </div>;

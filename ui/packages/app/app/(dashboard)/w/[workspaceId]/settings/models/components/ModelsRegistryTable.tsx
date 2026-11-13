@@ -244,7 +244,7 @@ export default function ModelsRegistryTable({ workspaceId, workspaces, initialPa
             setRemoveTarget(null);
             setRemoveError(null);
           }}
-          title={`Remove "${removeTarget?.model_id ?? ""}"?`}
+          title={`Remove “${removeTarget?.model_id ?? ""}”?`}
           description="This removes the model entry only — the stored key and any sibling entry sharing it are untouched."
           confirmLabel="Remove"
           intent="destructive"
