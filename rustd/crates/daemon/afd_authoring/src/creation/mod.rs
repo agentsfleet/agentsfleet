@@ -3,10 +3,10 @@
 mod activate;
 mod chat_save;
 mod conversations;
+mod delete;
 mod patch;
 mod progress;
 mod read;
-mod release;
 mod reserve;
 mod revision;
 mod schedules;

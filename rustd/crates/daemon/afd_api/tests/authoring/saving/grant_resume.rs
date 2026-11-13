@@ -1,6 +1,8 @@
-//! Dimension 6.5 (`M249_002`): approving a setup grant through the approvals
-//! route restarts setup, so an installing fleet becomes active with no PATCH;
-//! a denial leaves it installing (Indy, Nov 13, 2026).
+//! Approving a setup grant through the approvals route restarts setup, so an
+//! installing fleet whose last grant was approved becomes active, and its
+//! trigger schedules sync, with no further request; a denial leaves it
+//! installing. Approving is the person's whole answer, so the fleet must not
+//! wait on a second request.
 
 use super::{
     super::{json_body, mint, send},
@@ -39,7 +41,10 @@ async fn jira_credential(case: &Case) {
 async fn installing(case: &Case) -> (String, Uuid7) {
     case.fund().await;
     jira_credential(case).await;
-    let (_, request) = case.request_with(json!({"credentials":["jira"]})).await;
+    let (_, request) = case
+        .request_with(json!({"credentials":["jira"],
+            "triggers":[{"type":"cron","schedule":"0 9 * * *","timezone":"UTC","message":"Daily check"}]}))
+        .await;
     let saved = case.save(mint().as_str(), &request).await;
     assert_eq!(saved.status(), StatusCode::CREATED);
     let item = saved.headers()[header::LOCATION]
@@ -69,9 +74,21 @@ async fn installing(case: &Case) -> (String, Uuid7) {
     (item, cards[0].0.clone())
 }
 
-/// Answers the card through the HTTP approvals route, then reads the fleet.
-async fn decided(case: &Case, decision: &str) -> String {
+/// The fleet's one schedule row version; every sync claim bumps it.
+async fn schedule_version(case: &Case, item: &str) -> i64 {
+    let fleet = Uuid7::parse(item.rsplit('/').next().expect("fleet id")).expect("fleet id");
+    sqlx::query_scalar("SELECT resource_version FROM fleet.schedules WHERE fleet_id=$1")
+        .bind(&fleet)
+        .fetch_one(&mut *case.base.db.acquire().await.expect("schedule connection"))
+        .await
+        .expect("the fleet's one schedule")
+}
+
+/// Answers the card through the HTTP approvals route; answers the fleet's
+/// status and whether its schedule was synced since Save.
+async fn decided(case: &Case, decision: &str) -> (String, bool) {
     let (item, gate) = installing(case).await;
+    let saved = schedule_version(case, &item).await;
     let route = format!(
         "/v1/workspaces/{}/approvals/{}/{decision}",
         case.base.workspace,
@@ -88,10 +105,11 @@ async fn decided(case: &Case, decision: &str) -> String {
     assert_eq!(answered.status(), StatusCode::OK, "{decision}");
     let read = send(&case.router, Method::GET, &item, Some(&case.base.token), "").await;
     assert_eq!(read.status(), StatusCode::OK);
-    json_body(read).await["status"]
+    let status = json_body(read).await["status"]
         .as_str()
         .expect("fleet status")
-        .to_owned()
+        .to_owned();
+    (status, schedule_version(case, &item).await > saved)
 }
 
 #[tokio::test]
@@ -100,16 +118,16 @@ async fn approving_a_setup_grant_through_the_route_activates_the_fleet() {
     let approved = Case::create().await;
     assert_eq!(
         decided(&approved, "approve").await,
-        "active",
-        "the approval alone activates: no PATCH, no second Save"
+        ("active".to_owned(), true),
+        "the approval alone activates and syncs: no PATCH, no second Save"
     );
     approved.cleanup().await;
 
     let denied = Case::create().await;
     assert_eq!(
         decided(&denied, "deny").await,
-        "installing",
-        "a denial never activates"
+        ("installing".to_owned(), false),
+        "a denial neither activates nor syncs"
     );
     denied.cleanup().await;
 }

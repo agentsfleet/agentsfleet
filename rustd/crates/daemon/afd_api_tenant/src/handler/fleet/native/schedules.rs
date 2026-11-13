@@ -13,7 +13,7 @@ const EVENT_READ: &str = "fleet_setup_schedules_read_failed";
 /// A setup's schedules saved locally while their upstream sync is still owed.
 const EVENT_SYNC_PENDING: &str = "fleet_setup_schedule_sync_pending";
 
-pub(super) async fn after_activation<D: Services>(
+pub(crate) async fn after_activation<D: Services>(
     services: &D,
     workspace: &Uuid7,
     fleet: &Uuid7,

@@ -100,6 +100,28 @@ describe("removed_root_verbs_are_rejected", () => {
   });
 });
 
+// Spellings removed inside a group, with no alias: each is refused before any
+// request but the scope read a typo makes for its suggestions.
+const REMOVED_GROUP_SPELLINGS: ReadonlyArray<readonly [ReadonlyArray<string>, string]> = [
+  [["fleet", "stop", FLEET_ID], "UNKNOWN_COMMAND"],
+  [["fleet", "resume", FLEET_ID], "UNKNOWN_COMMAND"],
+  [["fleet", "kill", FLEET_ID], "UNKNOWN_COMMAND"],
+  [["library"], "UNKNOWN_COMMAND"],
+  [["secrets", "open"], "UNKNOWN_COMMAND"],
+  [["platform", "keys", "set"], "UNKNOWN_COMMAND"],
+  [["chat", "--library", FLEET_ID], "UNKNOWN_OPTION"],
+  [["chat", "delete", FLEET_ID, "--yes"], "UNKNOWN_OPTION"],
+];
+
+describe("removed_group_spellings_are_refused", () => {
+  test.each(REMOVED_GROUP_SPELLINGS)("%p is refused as %s", async (argv, code) => {
+    const json = await record(["--json", ...argv]);
+    expect(json.code).toBe(EXIT_USAGE);
+    expect(JSON.parse(json.err).error.code).toBe(code);
+    expect(json.calls.filter((call) => call !== "GET /v1/users/me")).toEqual([]);
+  });
+});
+
 describe("setup_chat_never_calls_runtime_steer", () => {
   const drafts = `/v1/workspaces/${WORKSPACE_ID}/drafts`;
   const messages = `/v1/workspaces/${WORKSPACE_ID}/fleets/${FLEET_ID}/messages`;

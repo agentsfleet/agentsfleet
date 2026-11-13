@@ -1,10 +1,10 @@
-//! What a delete ends before the row goes: the same teardown an archive runs.
+//! Deleting a fleet: the teardown an archive runs, then the row, in one
+//! transaction.
 //!
-//! Delete admits a fleet in any status (`M249_002` §6), so a fleet can be
-//! deleted while it still holds setup grants, live leases and a saving draft.
-//! An archive already ends exactly those, so a delete runs that teardown first
-//! and then purges; it writes no status, so the purge's tag check still sees
-//! the version the caller read.
+//! A delete takes a fleet in any status, so it can meet one that still holds
+//! setup grants, live leases and a saving draft. An archive already ends
+//! exactly those; a delete runs that teardown and removes the row under one
+//! lock and one tag check, so a refused or failed delete changes nothing.
 
 use super::{CONTEXT, Creations, INSTALLING, etag, read};
 use crate::{
@@ -16,16 +16,17 @@ use af_observability::AuthoringStep;
 use sqlx::Connection as _;
 
 impl Creations {
-    /// Cancels `fleet`'s setup grants and live leases and returns its saving
-    /// draft to editing, ahead of a purge.
+    /// Ends `fleet`'s setup grants and live leases, returns its saving draft
+    /// to editing and deletes the fleet, all under the tag `expected`.
     ///
-    /// Checked under the same tag the purge will check, so a stale delete
-    /// ends no work it then fails to remove.
+    /// Runners hear their Cancel only after the commit, so no runner stops for
+    /// a delete that rolled back. After it, the caller owes the fleet store's
+    /// live-set invalidation.
     ///
     /// # Errors
     /// Refuses a caller who is not a current member, a fleet outside the
     /// workspace, a stale tag, and datastore failures.
-    pub async fn release(&self, access: Access<'_>, fleet: &Uuid7, expected: &str) -> Result<()> {
+    pub async fn delete(&self, access: Access<'_>, fleet: &Uuid7, expected: &str) -> Result<()> {
         let mut connection = self.setup.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         access::current(&mut tx, access).await?;
@@ -35,6 +36,7 @@ impl Creations {
             return Err(ErrorKind::Stale { etag: current }.into());
         }
         let cancelled = self.cancel(&mut tx, fleet).await?;
+        afd_fleet_lifecycle::delete_locked(&mut tx, access.workspace, fleet).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
         self.announce_cancellations(cancelled).await;
         if row.status == INSTALLING {

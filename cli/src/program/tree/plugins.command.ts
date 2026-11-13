@@ -1,5 +1,5 @@
 // Plugins: reusable fleet setups this workspace can browse, publish and remove.
-// The API still names them `fleet-libraries` until M249_003 renames it.
+// The API routes still say `fleet-libraries`; only the command reads `plugins`.
 
 import { Option } from "effect";
 import { Command } from "effect/cli";

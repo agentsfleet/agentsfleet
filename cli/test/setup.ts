@@ -39,7 +39,7 @@ if (process.env.AGENTSFLEET_TELEMETRY_DISABLED === undefined) {
 // An exported value is overridden, not inherited. A developer's shell exports
 // one for the live local lanes, and it holds a real login; inherited, a help
 // test would read the caller's scopes from that login's deployment, so a unit
-// test would dial a real server with a real credential (Indy, Nov 13, 2026).
+// test would dial a real server with a real credential.
 //
 // The spawned-CLI acceptance specs do NOT inherit this — they compose a clean
 // child env via `composeEnv`, so they inject the same knob directly.

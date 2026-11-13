@@ -26,11 +26,10 @@ export interface FleetRow {
 
 export class FleetNotFoundError extends Error {}
 
-// An archived fleet refuses every further transition. `edit.rs`'s `explain`
-// re-reads the row a zero-row UPDATE left behind, and an archived row is a
-// tombstone that answers `ErrorKind::NotFound` (UZ-AGT-009, a 404); the
-// mapping lives in `afd_fleet_lifecycle/src/error/mod.rs`. Delete has no
-// status precondition, so it has no refusal of its own to classify.
+// An archived fleet refuses every further transition: `transition` in
+// `afd_authoring/src/creation/patch.rs` answers it as a missing fleet
+// (UZ-AGT-009, a 404). Delete has no status precondition, so it has no
+// refusal of its own to classify.
 //
 // The pattern carries the sentence alongside its code because that is the
 // half a person reads, and it is the half that moved: the CLI now renders the

@@ -10,7 +10,7 @@
 //!
 //! # Every drop here is a 200, and that is the assertion
 //!
-//! A green build, an event outside the allow-list, a paused fleet: real
+//! A green build, an event outside the allow-list, an archived fleet: real
 //! deliveries, correctly signed, none of them waking anything. GitHub retries
 //! non-2xx for three days and retrying changes none of them, so the reason
 //! travels in the BODY and the status stays 200. A test that only checked "not

@@ -203,7 +203,7 @@ async fn a_delivery_carrying_no_identifier_is_refused_by_the_wall() {
     );
 }
 
-/// A paused fleet acknowledges and drops a delivery, a document or not: the
+/// An archived fleet acknowledges and drops a delivery, a document or not: the
 /// fleet's state is read before the body is parsed.
 #[tokio::test]
 async fn a_delivery_to_a_fleet_that_is_not_runnable_is_acknowledged_and_dropped() {

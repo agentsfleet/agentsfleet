@@ -16,7 +16,7 @@ const CONTEXT_BIND: &str = "bind channel notice owner";
 pub struct NoticeOwner {
     /// The notice owner fleet.
     pub fleet: Uuid7,
-    /// Lifecycle status; killed owners cannot acquire new notice obligations.
+    /// Lifecycle status; an archived owner cannot acquire new notice obligations.
     pub status: FleetStatus,
 }
 

@@ -13,6 +13,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# A delete ends setup and live work and removes the row in one transaction.
+afd_fleet_lifecycle.workspace = true
 # The draft's credential inspection reads the vault on the review transaction.
 afd_vault.workspace = true
 afd_bus.workspace = true

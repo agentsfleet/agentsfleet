@@ -31,7 +31,7 @@ impl LeaseService {
     /// The installed fleet behind a claim, or the answer that ends the pass.
     ///
     /// Three of the four arms end it, which is why this is a
-    /// [`Step`](super::step::Step) rather than an `Option`: a paused fleet, an
+    /// [`Step`](super::step::Step) rather than an `Option`: an archived fleet, an
     /// unreadable document and a datastore outage are different endings, and
     /// the caller should not have to tell them apart to know the pass is over.
     pub(super) async fn resolve_installed(
@@ -42,9 +42,9 @@ impl LeaseService {
         match self.leases.installed_claimed(&acquired.opened).await {
             Ok(Some(installed)) => Ok(Step::Go(installed)),
             // The selection pass filters on status, so reaching here with a
-            // stopped fleet means an operator paused it in the window between
-            // selection and this read. The pass frees the claim; the pause
-            // already cleared the mark.
+            // fleet that is not active means it was archived in the window
+            // between selection and this read. The pass frees the claim; the
+            // archive already cleared the mark.
             Ok(None) => {
                 no_work(runner_id, FLEET_ARCHIVED);
                 Ok(Step::Stop)

@@ -228,8 +228,8 @@ async fn status_of(fixture: &Fixture) -> String {
         .expect("the archived fleet stays readable")
 }
 
-/// Dimension 6.3 (`M249_002`) — a trip archives the fleet, whichever trigger
-/// fired: archive is terminal, so nothing returns it to `active`.
+/// A trip archives the fleet, whichever trigger fired: archive is terminal, so
+/// nothing returns it to `active`, and a runaway cannot restart itself.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn gate_trip_archives_the_fleet() {

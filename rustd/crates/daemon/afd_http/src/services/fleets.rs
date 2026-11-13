@@ -82,17 +82,9 @@ pub trait WorkspaceFleets: Send + Sync + std::fmt::Debug + 'static {
         fleets: &[String],
     ) -> impl Future<Output = FleetResult<BTreeMap<String, FleetCounters>>> + Send;
 
-    /// Purges one killed fleet and everything keyed to it.
-    ///
-    /// # Errors
-    /// Refuses an id naming no fleet this workspace holds, and one nobody
-    /// killed first. Reports a datastore that would not answer.
-    fn purge_tagged(
-        &self,
-        workspace: &Uuid7,
-        fleet: &Uuid7,
-        expected: &str,
-    ) -> impl Future<Output = FleetResult<()>> + Send;
+    /// Expires the workspace's cached live set after a delete committed
+    /// elsewhere, so the next enumeration no longer lists the fleet.
+    fn invalidate_live_set(&self, workspace: &Uuid7) -> impl Future<Output = ()> + Send;
 }
 
 /// The production store answers it directly.
@@ -129,12 +121,7 @@ impl WorkspaceFleets for afd_fleet_lifecycle::Fleets {
         Self::counters(self, workspace, fleets)
     }
 
-    fn purge_tagged(
-        &self,
-        workspace: &Uuid7,
-        fleet: &Uuid7,
-        expected: &str,
-    ) -> impl Future<Output = FleetResult<()>> + Send {
-        Self::purge_tagged(self, workspace, fleet, expected)
+    fn invalidate_live_set(&self, workspace: &Uuid7) -> impl Future<Output = ()> + Send {
+        Self::invalidate_live_set(self, workspace)
     }
 }

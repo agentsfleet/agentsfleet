@@ -215,14 +215,14 @@ pub(crate) async fn runs<D: Services>(
 /// Refuses a run-now the scheduler's own fire would not make, or one a
 /// schedule's run asked for.
 ///
-/// The fleet first, as the `QStash` callback orders it: a stopped fleet halts
-/// everything, whatever its schedules say.
+/// The fleet first, as the `QStash` callback orders it: a fleet that is not
+/// active runs nothing, whatever its schedules say.
 fn runnable(lease: &Standing, target: &FireTarget) -> Result<(), Refusal> {
     let fleet = FleetStatus::parse(&target.fleet_status);
     if !fleet.is_some_and(FleetStatus::is_runnable) {
-        log_refused(lease, error_code::AGENTSFLEET_PAUSED_INGRESS);
+        log_refused(lease, error_code::AGENTSFLEET_NOT_ACTIVE);
         return Err(Refusal::conflict(
-            error_code::AGENTSFLEET_PAUSED_INGRESS,
+            error_code::AGENTSFLEET_NOT_ACTIVE,
             DETAIL_FLEET_NOT_RUNNABLE,
             fleet.map_or(STATE_FLEET_UNREADABLE, FleetStatus::as_str),
         ));

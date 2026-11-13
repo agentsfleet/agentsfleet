@@ -2,11 +2,13 @@
 //!
 //! # Why one step
 //!
-//! Delete and archive are independent (`M249_002` §6): a delete takes the fleet
-//! from any status, including `active`. The caller ends the fleet's live work
-//! first through the teardown an archive runs (`Creations::release`), so the
-//! runner is told; a live lease that still survives that is deleted here, and
-//! its runner learns at its next renewal, which answers `RUN_LEASE_NOT_FOUND`.
+//! Archive and delete are separate operations a person picks between: archive
+//! keeps the history, delete removes it, and neither waits on the other, so a
+//! delete takes the fleet from any status, including `active`. A delete that
+//! also ends the fleet's setup and live work runs [`delete_locked`] inside the
+//! transaction that does that teardown (`Creations::delete`), so all of it
+//! commits or none does. A live lease that survives is deleted here, and its
+//! runner learns at its next renewal, which answers `RUN_LEASE_NOT_FOUND`.
 //!
 //! # What goes, and what stays
 //!
@@ -64,20 +66,7 @@ impl Fleets {
             .await
             .map_err(error::query(CONTEXT_BEGIN))?;
         guard(&mut transaction, workspace, fleet, expected).await?;
-        sqlx::query(sql::DELETE_ACTIVE_LEASES)
-            .bind(fleet)
-            .bind(LEASE_STATUS_ACTIVE)
-            .execute(&mut *transaction)
-            .await
-            .map_err(error::query(CONTEXT_LEASES))?;
-        // The row is locked by `guard`, so it cannot have gone in between.
-        sqlx::query_scalar::<_, Uuid7>(sql::DELETE_FLEET)
-            .bind(fleet)
-            .bind(workspace)
-            .fetch_optional(&mut *transaction)
-            .await
-            .map_err(error::query(CONTEXT_PARENT))?
-            .ok_or(ErrorKind::NotFound)?;
+        delete_locked(&mut transaction, workspace, fleet).await?;
         transaction
             .commit()
             .await
@@ -85,6 +74,37 @@ impl Fleets {
         self.live_sets.invalidate(workspace.as_str()).await;
         Ok(())
     }
+}
+
+/// Deletes `fleet`'s live leases, then its row, inside the caller's
+/// transaction.
+///
+/// The caller already holds the row lock and has checked the tag, so a
+/// delete that also ends the fleet's setup and work commits all of it or none
+/// of it. It commits nothing itself; after the caller commits, it owes
+/// [`Fleets::invalidate_live_set`].
+///
+/// # Errors
+/// Reports a fleet that is not in `workspace` and datastore failures.
+pub async fn delete_locked(
+    connection: &mut sqlx::PgConnection,
+    workspace: &Uuid7,
+    fleet: &Uuid7,
+) -> Result<()> {
+    sqlx::query(sql::DELETE_ACTIVE_LEASES)
+        .bind(fleet)
+        .bind(LEASE_STATUS_ACTIVE)
+        .execute(&mut *connection)
+        .await
+        .map_err(error::query(CONTEXT_LEASES))?;
+    sqlx::query_scalar::<_, Uuid7>(sql::DELETE_FLEET)
+        .bind(fleet)
+        .bind(workspace)
+        .fetch_optional(connection)
+        .await
+        .map_err(error::query(CONTEXT_PARENT))?
+        .ok_or(ErrorKind::NotFound)?;
+    Ok(())
 }
 
 /// Locks the row and checks the tag under the lock, so no concurrent edit

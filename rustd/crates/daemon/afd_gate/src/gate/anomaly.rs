@@ -184,7 +184,7 @@ impl Gates {
             action,
             count,
             threshold,
-            "one action repeated past its threshold; the fleet is stopped"
+            "one action repeated past its threshold; the fleet is archived"
         );
         Anomaly::AutoKill
     }

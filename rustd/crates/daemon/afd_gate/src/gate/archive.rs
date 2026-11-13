@@ -47,9 +47,9 @@ impl Trigger {
 impl Gates {
     /// Archive `fleet_id` so candidate discovery excludes it for good.
     ///
-    /// Archive is terminal (`M249_002` §6): nothing returns the fleet to
-    /// `active`, so a false positive is accepted as permanent. Live leases are
-    /// not cancelled here, as the pause before it did not: the candidate query
+    /// Archive is terminal: nothing returns the fleet to `active`, so a false
+    /// positive is permanent, the price of a trip that the runaway it stopped
+    /// cannot undo. Live leases are not cancelled here: the candidate query
     /// admits no new one, and the archive path that cancels leases lives in
     /// `afd_authoring`, which this crate does not reach.
     ///

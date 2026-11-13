@@ -87,10 +87,9 @@ impl Leases {
     ///
     /// `None` means the fleet is no longer `active`. That is not an error and
     /// not a missing row: the selection pass filters on status, so reaching
-    /// here with a stopped fleet means an operator paused it in the window
-    /// between selection and this read. The caller answers no-work and the
-    /// claim lapses on its own — which is the same thing that happens to every
-    /// other fleet an operator stops.
+    /// here with a fleet that is not active means it was archived in the
+    /// window between selection and this read. The caller answers no-work and
+    /// the claim lapses on its own, as it does for every archived fleet.
     ///
     /// A fleet whose row is gone answers `None` for the same reason: there is
     /// nothing to run and nothing for an operator to fix.

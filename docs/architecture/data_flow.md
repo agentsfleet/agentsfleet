@@ -441,7 +441,7 @@ GET fleet and CLI expose both independently from required activation checks.
 
 #### Retry, archive and delete
 
-Same-key POST or `PATCH fleet {status:"active"}` with the current resource `If-Match` resumes missing setup checks. Approving a setup grant runs the same step (`afd_api_tenant`'s approval resolve). A fleet whose last grant is approved then activates with no further request.
+Same-key POST or `PATCH fleet {status:"active"}` with the current resource `If-Match` resumes missing setup checks. Approving a setup grant through the dashboard's approval route (`afd_api_tenant`'s approval resolve) runs the same step and syncs the fleet's trigger schedules, so a fleet whose last grant is approved activates with no further request. The signed approval webhook (`POST /v1/webhooks/{fleet_id}/approval`) resolves the gate but carries no person to run setup as, so after an approval there the next Save or `PATCH` `active` activates the fleet.
 
 PATCH stays status/name only. Concurrent setup requests share the same guarded stages and initial admission identity.
 

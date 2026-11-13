@@ -124,7 +124,7 @@ async fn an_archived_bound_carrier_drops_notices_even_with_active_subscribers() 
     let answer = json_body(deliver(&fixture.router(), &body).await).await;
     assert_eq!(
         answer.get("ignored").and_then(Value::as_str),
-        Some("notice_owner_archived")
+        Some("no_active_notice_carrier")
     );
     assert_eq!(fixture.admissions().await, 0);
     assert!(owed(&fixture).await.is_empty());

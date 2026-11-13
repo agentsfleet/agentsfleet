@@ -12,7 +12,7 @@
 //! 404 before any operation id is read, and a fleet that takes no work is a
 //! 409 naming its status.
 //!
-//! # A repeat is answered even by a fleet that stopped taking work
+//! # A repeat is answered even by a fleet that was archived
 //!
 //! A caller that names its operation and never saw the 202 sends again. If the
 //! first send was admitted, the answer is that send's event, even when the
@@ -211,7 +211,7 @@ fn stored_payload(message: &str) -> Result<String, Refusal> {
 /// The 409 a new message meets on a fleet that will not take work.
 fn not_runnable(status: FleetStatus) -> Refusal {
     Refusal::conflict(
-        error_code::AGENTSFLEET_PAUSED_INGRESS,
+        error_code::AGENTSFLEET_NOT_ACTIVE,
         DETAIL_NOT_ACTIVE,
         status.as_str(),
     )

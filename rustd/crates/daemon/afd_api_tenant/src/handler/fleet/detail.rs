@@ -10,8 +10,6 @@ use axum::response::{IntoResponse as _, Response};
 use http::{HeaderMap, StatusCode};
 use std::sync::Arc;
 
-const EVENT_PURGE: &str = "fleet_purge_failed";
-
 /// `DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}` — purge a fleet in any status.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
@@ -56,11 +54,11 @@ pub(crate) async fn purge<D: Services>(
             "Send the current fleet If-Match tag",
         )
     })?;
-    // The teardown an archive runs, so a fleet deleted while it works stops
-    // working; it writes no status, so the purge's tag check is unchanged.
+    // One transaction: the teardown an archive runs, then the row, under one
+    // tag check, so a refused delete changes nothing.
     services
         .creations()
-        .release(
+        .delete(
             afd_authoring::Access {
                 workspace: &owned.workspace,
                 subject: person.subject(),
@@ -72,11 +70,7 @@ pub(crate) async fn purge<D: Services>(
         .map_err(authoring_refusal)?;
     services
         .fleets()
-        .purge_tagged(&owned.workspace, &fleet, expected)
-        .await
-        .map_err(|error| match error.stale_tag() {
-            Some(etag) => Refusal::preconditioned(error.code(), error.detail(), etag),
-            None => Refusal::at(EVENT_PURGE)(error),
-        })?;
+        .invalidate_live_set(&owned.workspace)
+        .await;
     Ok(StatusCode::NO_CONTENT.into_response())
 }

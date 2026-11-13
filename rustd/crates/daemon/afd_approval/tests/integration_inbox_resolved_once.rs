@@ -155,7 +155,7 @@ async fn an_auto_killed_gate_owes_its_run_nothing() {
     assert!(standing.event_id.is_some(), "the gate held a run");
     assert_eq!(
         standing.continuation_event_id, None,
-        "a stopped fleet's run is owed no continuation"
+        "an archived fleet's run is owed no continuation"
     );
     assert_eq!(lane.status_of(&action).await, status::AUTO_KILLED);
 }

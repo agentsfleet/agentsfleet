@@ -37,8 +37,8 @@ async fn a_stale_tag_purges_nothing_and_answers_the_current_tag() {
     lane.cleanup().await;
 }
 
-/// An active fleet purges under its current tag: delete takes any status
-/// (`M249_002` §6).
+/// An active fleet purges under its current tag: delete and archive are
+/// separate operations, so a delete takes any status.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]
 async fn an_active_fleet_purges_without_an_archive_first() {

@@ -107,7 +107,7 @@ async fn test_replay_bypasses_ingress_refusal() {
     assert_eq!(status, StatusCode::CONFLICT, "{fresh}");
     assert_eq!(
         code(&fresh),
-        Some(error_code::AGENTSFLEET_PAUSED_INGRESS.as_str())
+        Some(error_code::AGENTSFLEET_NOT_ACTIVE.as_str())
     );
 
     assert_keyless_message_refused(&saved).await;
@@ -129,7 +129,7 @@ async fn assert_keyless_message_refused(saved: &Saved) {
     assert_eq!(unnamed.status(), StatusCode::CONFLICT);
     assert_eq!(
         code(&json_body(unnamed).await),
-        Some(error_code::AGENTSFLEET_PAUSED_INGRESS.as_str())
+        Some(error_code::AGENTSFLEET_NOT_ACTIVE.as_str())
     );
 }
 
