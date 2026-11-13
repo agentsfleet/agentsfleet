@@ -72,5 +72,5 @@ function ModelOption({ model }: { model: LibraryModel }) {
 function ModelValue({ modelId, option }: { modelId: string; option: LibraryModel | undefined }) {
   const name = modelLabel(modelId, option?.display_name);
   if (name === modelId) return modelId;
-  return <>{name} <span className={MODEL_ID_CLASS}>{modelId}</span></>;
+  return <span className="inline-flex min-w-0 items-center gap-md"><span>{name}</span>{" "}<span className={MODEL_ID_CLASS}>{modelId}</span></span>;
 }

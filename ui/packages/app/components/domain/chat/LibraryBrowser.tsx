@@ -132,7 +132,7 @@ function LibraryHistory({workspace, library, onSelect, onError}: {workspace: str
 }
 
 function LibraryInspection({entry, onUse}: {entry: Library; onUse: (intent: "edit" | "new") => void}) {
-  return <div className="space-y-md">
+  return <div className="mt-md space-y-md">
     <p className="text-eyebrow text-text-dim">Version {entry.head.revision}</p>
     {entry.card.visibility === "tenant" ? <Button variant="outline" className="min-h-11 w-full justify-start gap-md" onClick={() => onUse("edit")}><NotePencilIcon size={16} /><span>Edit setup</span></Button> : null}
     <Button variant="outline" className="min-h-11 w-full justify-start gap-md" onClick={() => onUse("new")}><NotePencilIcon size={16} /><span>Use for new fleet</span></Button>

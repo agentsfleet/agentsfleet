@@ -343,6 +343,19 @@ Phone page actions and the New fleet icon/button sizing follow the rendered prop
 
 The four-thread integration attempt also failed the unchanged wall-stream timing test. The final native run must pass; no test assertion or deadline changed.
 
+### Independent Astra visual review
+
+Astra inspected the frozen 192-state candidate against the unchanged proposal. The principal page layouts, type, icons, borders and responsive composition looked aligned.
+
+The review found four remaining defects: pricing-disclosure focus, truncated secret identification, crowded version help and joined model labels. Shared focus styling and inline/field spacing now address them.
+
+Delete confirmation shows a short heading and the complete wrapping quoted name in its description. A regression checks that name before any deletion occurs.
+
+Fresh captures and the focused Astra follow-up remain required. Authenticated evidence and repository verification remain separate pending checks.
+
+Owner: “so this can be reviewed in parallel by claude”. A visual-review candidate can support that review while full repository and authenticated checks continue.
+It carries its measured results and pending evidence; the final submission bundle still requires the complete pre-submission check.
+
 ### Final tooltip consistency sweep
 
 The source sweep removed the duplicate tool-group title, the visible secret submit tooltip, and native titles on labelled Copy controls. Expanded navigation keeps the same button mounted while suppressing its redundant hint; icon-only navigation still shows its tooltip.
