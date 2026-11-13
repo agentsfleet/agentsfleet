@@ -54,6 +54,10 @@ The first Rust daemon-libraries job failed in an unchanged launcher port test be
 
 Stale-version recovery tests now submit actual changes before expecting PATCH. The focused suite passes 44 tests (`refresh-pr840-noop-v343.log`).
 
+✅ Approval disposal race: the decision hook invalidates its response generation during unmount commit, before passive cleanup. Late receipts cannot announce or track a revoked decision.
+
+The existing denied-access assertion is retained. Approval, decision-hook and real-client continuation diagnostics pass (`refresh-pr840-approval-disposal-v346.log`).
+
 ## PR #839 integration review
 
 ✅ Preserve the refresh header and its CSS classes. Only its wire-state comparisons change from `killed` to `archived`.

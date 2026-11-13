@@ -490,3 +490,5 @@ Full acceptance remains blocked by this Cloud host's missing securityfs support.
 ✅ Website gallery checks now assert the approved panel fill, 40px controls and unfilled labels. Strict app/website lint passes; focused checks pass 42 app tests and 31 Chromium cases.
 
 ✅ Follow-up P2: an unchanged wake-up closes without a PATCH or refresh. Both schedule types and stale-version recovery pass in the 44-test focused run.
+
+✅ Approval ownership now expires during unmount commit. The existing revoked-access test continues to reject late receipts and analytics; no assertion or timeout changes.
