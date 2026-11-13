@@ -83,7 +83,7 @@ function WorkspacePlugins({workspace, onSelect}: Props) {
     {selected ? <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" className="px-0">Choose a saved version<CaretDownIcon size={16} aria-hidden="true" /></Button></CollapsibleTrigger><CollapsibleContent><LibraryHistory key={selected.id} workspace={workspace} library={selected.id} onError={selectionFailed} onSelect={(id) => { setEntry(null); setRevision(id); setError(null); setInspectionAttempt((value) => value + 1); }} /></CollapsibleContent></Collapsible> : null}
     {selected && !entry && !error ? <Spinner label="Loading selected revision" /> : null}
     {entry && selected && !error ? <LibraryInspection entry={entry} onUse={intent => { onSelect({kind: SOURCE_KIND.library, library_id: entry.card.id, revision_id: entry.head.id}, intent); }} /> : null}
-    {selected?.visibility === "tenant" ? <LibraryRemoval workspace={workspace} card={selected} onRemoved={() => {setSelected(null); setCursor(null); setAttempt(value => value + 1);}} /> : null}
+    {selected?.visibility === "tenant" ? <div className="pt-md"><LibraryRemoval workspace={workspace} card={selected} onRemoved={() => {setSelected(null); setCursor(null); setAttempt(value => value + 1);}} /></div> : null}
     </DialogContent></Dialog>
   </div>;
 }

@@ -434,6 +434,10 @@ Manage opens the secret actions. Named-target dialogs show the complete name in 
 
 ### Compact density
 
+Header icon actions are 40px tall, with 40px width above 680px and 32px width below. Coarse pointers retain the 44px target minimum.
+
+Compact text actions omit the border. Their padding and measured text determine width.
+
 Default and small text buttons use `--control-height`: 40px above 680px and 44px at phone widths, independently of pointer type. Large actions and form fields are 44px.
 
 Usage toolbar selects are 40px on larger screens. Icon controls share the responsive size; compact icon actions are 32px, and `icon-row` actions are 36px.

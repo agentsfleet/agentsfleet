@@ -26,7 +26,7 @@ export function FleetHeader({
 }) {
   return (
     <header className="fleet-chat-heading flex min-h-16 shrink-0 items-center justify-between gap-lg border-b border-border-subtle px-lg summary-medium:px-xl summary-wide:px-2xl">
-      <div className="flex min-w-0 items-center gap-xl">
+      <div className="flex min-w-0 items-center gap-md summary-medium:gap-lg">
         <div className="flex min-w-0 items-center gap-md summary-medium:gap-lg">
         <StackIcon data-app-header-icon="" size={16} className="hidden shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
         <PageTitle data-app-header-title="" size="chat" className="truncate font-semibold">{fleet.name}</PageTitle></div>
