@@ -47,7 +47,7 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { saveProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
-import { archiveFleet, expectStatus, TOMBSTONE_REFUSAL } from "./fixtures/lifecycle.ts";
+import { archiveFleet, expectStatus, ARCHIVED_REFUSAL } from "./fixtures/lifecycle.ts";
 import { CLI_ROOT, isLive, type ValidateModule, randomUuidv7 } from "./helpers-lifecycle-with-token.ts";
 
 let validateModule: ValidateModule;
@@ -198,11 +198,11 @@ if (!isLive) {
         await expectStatus(env, fleetId, TERMINAL_STATUSES);
       }, 30_000);
 
-      it("a second archive is refused as a tombstone", async () => {
+      it("a second archive is refused as archived", async () => {
         const result = await runWithEnv(["fleet", "archive", fleetId, "--json"]);
         assert.notEqual(result.code, 0, `expected non-zero archiving an archived fleet: ${result.stdout}`);
-        assert.match(result.stderr + result.stdout, TOMBSTONE_REFUSAL,
-          `a second archive must name the tombstone: ${result.stdout}${result.stderr}`);
+        assert.match(result.stderr + result.stdout, ARCHIVED_REFUSAL,
+          `a second archive must name the archived conflict: ${result.stdout}${result.stderr}`);
         await expectStatus(env, fleetId, TERMINAL_STATUSES);
       });
     });

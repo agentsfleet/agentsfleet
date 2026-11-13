@@ -22,7 +22,7 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
   archiveFleet,
   expectStatus,
-  TOMBSTONE_REFUSAL,
+  ARCHIVED_REFUSAL,
 } from "./fixtures/lifecycle.ts";
 import { resolveFleetName, applyReviewedImprovement } from "./fixtures/improvement-ops.ts";
 
@@ -133,7 +133,7 @@ if (!isLive) {
       }, 30_000);
     });
 
-    // Scenario 2: install → archive → archive again → refused as a tombstone.
+    // Scenario 2: install → archive → archive again → refused as archived (409).
     describe("archive is terminal", () => {
       let fleetId: string = "";
 
@@ -147,8 +147,8 @@ if (!isLive) {
       it("archive <archived-id> is refused — an archived fleet never changes again", async () => {
         const result = await runWithEnv(["fleet", "archive", fleetId, "--json"]);
         assert.notEqual(result.code, 0, `expected non-zero archiving an archived fleet; stdout=${result.stdout}`);
-        assert.match(result.stderr + result.stdout, TOMBSTONE_REFUSAL,
-          `an archived fleet is a tombstone; stdout=${result.stdout} stderr=${result.stderr}`);
+        assert.match(result.stderr + result.stdout, ARCHIVED_REFUSAL,
+          `an archived fleet answers the archived conflict; stdout=${result.stdout} stderr=${result.stderr}`);
         await expectStatus(env, fleetId, TERMINAL_STATUSES);
       });
 

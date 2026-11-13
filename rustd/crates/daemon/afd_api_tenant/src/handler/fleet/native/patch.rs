@@ -30,8 +30,9 @@ use std::sync::Arc;
     request_body = afd_api_wire::fleet::PatchFleetRequest,
     responses((status = 200, body = afd_api_wire::fleet::FleetResponse, description = "Current fleet", headers(("ETag" = String))),
         (status = 400, description = "Invalid mutation"), (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"), (status = 404, description = "Fleet unavailable"),
-        (status = 409, description = "Lifecycle refuses mutation"), (status = 412, description = "Stale tag"),
+        (status = 403, description = "Forbidden"), (status = 404, description = "No such fleet in this workspace"),
+        (status = 409, description = "The fleet is archived (`UZ-AGT-020`, `current_state: archived`), or setup refuses the transition"),
+        (status = 412, description = "Stale tag"),
         (status = 428, description = "Missing tag"), (status = 413, description = "Body too large"),
         (status = 429, description = "Too many requests"), (status = 500, description = "Internal failure"),
         (status = 503, description = "Dependency unavailable"))

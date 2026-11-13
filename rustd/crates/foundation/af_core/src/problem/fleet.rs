@@ -254,6 +254,15 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::AGENTSFLEET_ARCHIVED,
+        status: 409,
+        title: "Fleet is archived",
+        hint: "This fleet is archived, and archive is terminal: no status or name change applies. Delete it with `agentsfleet fleet delete <fleet_id>`, or set up a new fleet.",
+        user_message: Some(
+            "This Fleet is archived and can't change. Delete it, or set up a new Fleet.",
+        ),
+    },
+    Problem {
         code: error_code::AGENTSFLEET_OPERATION_CONFLICT,
         status: 409,
         title: "Operation already used",

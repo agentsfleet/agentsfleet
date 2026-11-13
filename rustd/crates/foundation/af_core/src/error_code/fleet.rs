@@ -227,6 +227,16 @@ pub const AGENTSFLEET_OPERATION_CONFLICT: ErrorCode = ErrorCode::declare("UZ-AGT
 /// disclose across a tenant boundary.
 pub const TOOL_CALL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-017");
 
+/// The fleet is archived, so no lifecycle change applies to it.
+///
+/// A 409 with `current_state: "archived"`, not the 404 of a fleet that is not
+/// there: an archived fleet still reads, so answering "not found" to its edit
+/// while its read succeeds would tell a client two different things about one
+/// row. Archive is terminal, so the client's next step is delete or a new
+/// fleet, never a retry. `UZ-AGT-018` and `UZ-AGT-019` are reserved for the
+/// fleet-to-fleet steer refusals, so this takes the next free number.
+pub const AGENTSFLEET_ARCHIVED: ErrorCode = ErrorCode::declare("UZ-AGT-020");
+
 /// The fleet a memory request names is not one this workspace holds.
 ///
 /// A 404 collapsing the same two cases [`AGENTSFLEET_NOT_FOUND`] collapses, for

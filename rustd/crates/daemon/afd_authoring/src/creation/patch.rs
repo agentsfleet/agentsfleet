@@ -123,7 +123,7 @@ impl Creations {
 
 fn transition(row: &Stored, requested: Option<&str>) -> Result<()> {
     if row.status == ARCHIVED {
-        return Err(ErrorKind::FleetMissing.into());
+        return Err(ErrorKind::Archived.into());
     }
     if requested.is_some_and(|status| !matches!(status, ACTIVE | ARCHIVED)) {
         return Err(ErrorKind::State {

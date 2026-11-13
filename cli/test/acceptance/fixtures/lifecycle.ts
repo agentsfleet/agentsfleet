@@ -26,21 +26,16 @@ export interface FleetRow {
 
 export class FleetNotFoundError extends Error {}
 
-// An archived fleet refuses every further transition: `transition` in
-// `afd_authoring/src/creation/patch.rs` answers it as a missing fleet
-// (UZ-AGT-009, a 404). Delete has no status precondition, so it has no
-// refusal of its own to classify.
+// An archived fleet refuses every further transition as a state conflict:
+// `transition` in `afd_authoring/src/creation/patch.rs` answers UZ-AGT-020, a
+// 409 carrying `current_state: archived`, while a GET still returns the fleet.
+// Delete has no status precondition, so it has no refusal of its own.
 //
 // The pattern carries the sentence alongside its code because that is the
-// half a person reads, and it is the half that moved: the CLI now renders the
-// daemon's `user_message` ("We couldn't find that Fleet") where it used to
-// print the log-side `detail` ("fleet not found"). A regex that knew only the
-// old wording went red on a rendering change and named nothing about the
-// product.
+// half a person reads: the CLI renders the daemon's `user_message`.
 
-/** An archived fleet refuses every further transition, as a tombstone. */
-export const TOMBSTONE_REFUSAL =
-  /UZ-AGT-009|couldn't find that Fleet|HTTP_404|Not Found/i;
+/** An archived fleet refuses every further transition. */
+export const ARCHIVED_REFUSAL = /UZ-AGT-020|Fleet is archived|HTTP_409/i;
 
 async function lifecycleAction(verb: string, fleetId: string, env: Env): Promise<unknown> {
   const result = await runFleetctl(["fleet", verb, fleetId, "--json"], { env });
