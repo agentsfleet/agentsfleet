@@ -298,7 +298,7 @@ The installed SDK's message attachment client does not support removal during su
 
 Display concise progress facts and outcomes; do not present hidden model reasoning as an activity feed.
 
-### Models, Security, and Team
+### Models, API Keys, and Team
 
 Models offers one Create model dialog with Provider, Model, credential choice, and optional Make active.
 The credential choice offers Add new key or Use saved key. Filter saved keys by provider and show their names without stored values.
@@ -324,10 +324,10 @@ Account Models retains Create model and Make active.
 Its choices never grant platform administration.
 Preserve model, platform credential, and vault access checks when renaming or regrouping other surfaces.
 
-Security lists personal browser sessions. API keys remain a separate account page; provider credentials belong under Models and Secrets.
-Keep profile information available through the account identity and custom profile controls backed by the auth adapter.
+API Keys combines API keys, signed-in browser sessions and Profile and sign-in settings.
+Provider credentials belong under Models and Secrets.
 
-Sign-in methods opens `/settings/account/sign-in`, with a persistent page title and a labelled secure-controls region.
+The Profile and sign-in settings action scrolls to an always-mounted named section on API Keys.
 The auth facade embeds the supported provider widget; native password, email and verification flows remain provider-owned.
 
 Changing the subject or session clears the widget. Keep its draft intact during ordinary resource refreshes.
@@ -388,7 +388,8 @@ Team groups native lists inside shared panels. Its search remains, with names, i
 
 Invite delivery status must reflect the backend, including a retained invite whose email was not delivered.
 
-Security contains API keys and signed-in sessions on one page. The avatar's Personal account entry opens native identity-provider controls behind the auth facade. It is not a second custom Profile page.
+API Keys contains keys, signed-in sessions and native identity-provider controls behind the auth facade.
+The avatar menu opens this combined destination. The header action scrolls to Profile and sign-in settings.
 
 Keys use resource rows and one-time reveal; sessions support individual and all-other-session sign-out. Read all session pages before bulk revocation and exclude this device.
 
@@ -940,7 +941,7 @@ Destructive actions retain their existing confirmation behavior.
 5. Inspect app and website in dark, light, narrow, keyboard, and reduced-motion states.
 
 Finish the converted app with a rendered visual review, after real data and fonts load.
-Review conversation, activity, errors, wake-ups, empty state, Models, Create model, Plugins, Secrets, Usage, Security, Team, and invitations.
+Review conversation, activity, errors, wake-ups, empty state, Models, Create model, Plugins, Secrets, Usage, API Keys, Team, and invitations.
 
 | Check | Required observation |
 |---|---|
@@ -1103,7 +1104,7 @@ Menu labels use sentence case. Account navigation uses 40px rows beside the rail
 
 Archived fleets retain history and disable composer, approval, schedule and task mutations. Deletion evidence shows the destination after deletion, not a toast over the former conversation.
 
-Before packaging, render the unchanged approved proposal and candidate at the same widths and compare computed geometry. Capture 1480px and 390px in both themes, plus Conversation, Models, Security and New fleet at 696px and 900px.
+Before packaging, render the unchanged approved proposal and candidate at the same widths and compare computed geometry. Capture 1480px and 390px in both themes, plus Conversation, Models, API Keys and New fleet at 696px and 900px.
 
 Every evidence file identifies a clean candidate revision, source-tree digest and UTC capture time. Motion evidence includes lossless frame pairs for both themes and sizes; reduced-motion pairs remain byte-identical.
 
