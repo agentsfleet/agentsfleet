@@ -38,7 +38,7 @@ function PullRequestSection({title, records}: {title: string; records: PullReque
     <a className="flex min-h-9 items-center gap-md py-sm break-words text-label font-medium leading-label hover:underline" href={target.url} target="_blank" rel="noopener noreferrer">
       <GitPullRequestIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1"><span className="block">Pull request #{target.number}</span>
-        <span className="mt-xs block text-eyebrow font-normal leading-label text-text-dim">{published ? "Changes published" : target.repository}{stale ? " · last confirmed" : ""}</span></span>
+        <span className="mt-xs block text-eyebrow font-normal leading-eyebrow text-text-dim">{published ? "Changes published" : target.repository}{stale ? " · last confirmed" : ""}</span></span>
       <ArrowUpRightIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /></a>
   </li>)}</ul></WorkSection>;
 }
@@ -58,7 +58,7 @@ export function WorkSources({sources}: {sources?: FleetSources}) {
   return <WorkSection title="Sources">
       {sources?.repositories.length ? <details className="group">
         <summary className="flex min-h-11 cursor-pointer items-center gap-sm rounded-sm text-label leading-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring summary:min-h-9">
-          <GitBranchIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 break-words" title={sources.repositories.join(", ")}><span className="block">{sources.repositories.length === 1 ? sources.repositories[0] : `${sources.repositories.length} repositories`}</span><span className="mt-xs block text-eyebrow text-muted-foreground">Saved fleet policy{sources.access ? ` · ${sources.access} access` : " · access not specified"}{sources.publication ? ` · ${sources.publication === "existing_pr" ? "existing PRs" : "draft PRs"}` : ""}</span></span>
+          <GitBranchIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 break-words" title={sources.repositories.join(", ")}><span className="block">{sources.repositories.length === 1 ? sources.repositories[0] : `${sources.repositories.length} repositories`}</span><span className="mt-xs block text-eyebrow leading-eyebrow text-muted-foreground">Saved fleet policy{sources.access ? ` · ${sources.access} access` : " · access not specified"}{sources.publication ? ` · ${sources.publication === "existing_pr" ? "existing PRs" : "draft PRs"}` : ""}</span></span>
           <CaretDownIcon size={16} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
         </summary>
         <ul className="mt-sm space-y-sm">{sources.repositories.map(repository => <li key={repository} className="break-words text-label leading-label"><a href={`https://github.com/${repository}`} target="_blank" rel="noopener noreferrer" className="hover:underline">{repository}</a></li>)}</ul>
