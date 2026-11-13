@@ -6,7 +6,7 @@ The UI refresh and the pending CLI work ship in separate PRs.
 
 ## Current result
 
-M249_001 remains active. The visual backlog now has 20 verified findings and 12 open findings. The measured closures are recorded in M249_VISUAL_BACKLOG.md.
+M249_001 remains active. All 32 visual backlog findings now have measured closure evidence in M249_VISUAL_BACKLOG.md. Final native coverage, dry-app, authenticated acceptance, bundle checks and the PR gate remain due.
 
 The latest native `make dry-app` passed 4,564 app unit tests and all 90 desktop/phone browser checks. Evidence: `refresh-dry-app-v237.log`.
 

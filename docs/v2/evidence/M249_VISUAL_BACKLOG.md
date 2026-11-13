@@ -14,7 +14,7 @@ Backend data differences belong to [M249_004](../pending/M249_004_P1_API_DOCS_UI
 
 ## Current verification status
 
-✅ 20 of 32 findings are verified. The remaining 12 are: 8, 9, 10, 11, 14, 15, 17, 18, 23, 24, 29, 33.
+✅ All 32 visual findings have closure evidence. Final native repository checks, authenticated lifecycle checks and the PR gate remain due; visual closure does not imply those gates passed.
 
 The native v237 run passed 4,564 app tests and all 90 browser checks. Model details now uses its native accessible button and expanded state.
 
@@ -32,7 +32,7 @@ Fix each item, add its regression check, and show the measured row. "Proposal" v
 |---|---|---|---|---|
 | ✅ 1 | Confirmation dialogs at 390: revoke API key, sign out session, sign out other sessions, delete secret, archive fleet, delete fleet | Cancel and the action inline, right-aligned, 8px apart | Two stacked full-width 308px buttons | F5 |
 | ✅ 2 | Every dialog footer at 390 | Buttons 44px | 40px | E2 |
-| 10 | In-page buttons at 390 on API Keys, Connected apps, Models, Team | 44px (`Create API key`, `Revoke`, `Sign out`, `Sign out other sessions`, `Manage`, `Make active`, `Add another model`, `Use this prompt`); row menus 44 × 44 | 40px; row menus 40 × 40 | E2, K5 |
+| ✅ 10 | In-page buttons at 390 on API Keys, Connected apps, Models, Team | 44px (`Create API key`, `Revoke`, `Sign out`, `Sign out other sessions`, `Manage`, `Make active`, `Add another model`, `Use this prompt`); row menus 44 × 44 | 40px; row menus 40 × 40 | E2, K5 |
 
 ### P3
 
@@ -42,22 +42,22 @@ Fix each item, add its regression check, and show the measured row. "Proposal" v
 | ✅ 4 | Plugin details | Edit setup uses the simple pencil; Use for new fleet uses the note-pencil | Both use the note-pencil | D1, D4 |
 | ✅ 5 | Plugin details | 8px between stacked items | Inspect setup to Delete Plugin is 0px | F6 |
 | ✅ 6 | Manage secret at 390 | One footer row | Done wraps alone to a second row | F5 |
-| 8 | Rail | Navigation toggle 48 × 48 at y876; logo ink y72 to 87 | 48 × 44 at y880; logo y73 to 90 | G1 |
-| 9 | Edit model | Ring clear of the next control | 8px gap leaves 2px between ring and toggle | F7 |
-| 11 | Summary rows | About 20px from label to row; icon and arrow centred on two lines; arrow about 10px | Outputs 15px, Sources 14px, Next wake-up 9px; icon on the first line; arrow about 6px at the top | I9, D3 |
+| ✅ 8 | Rail | Navigation toggle 48 × 48 at y876; logo ink y72 to 87 | 48 × 44 at y880; logo y73 to 90 | G1 |
+| ✅ 9 | Edit model | Ring clear of the next control | 8px gap leaves 2px between ring and toggle | F7 |
+| ✅ 11 | Summary rows | About 20px from label to row; icon and arrow centred on two lines; arrow about 10px | Outputs 15px, Sources 14px, Next wake-up 9px; icon on the first line; arrow about 6px at the top | I9, D3 |
 | ✅ 12 | Conversation header | Menu x242, status dot x279, status text x293; cost ends x1386; title weight 600 | x239, x272, x286; x1398; weight 650 | G3, C8 |
 | ✅ 13 | Conversation | Day marker top y146; file chip ends x492; output card title top y568 | y150; x500; y571 | I5, I8 |
-| 14 | Wake-up strip | Action icons at x865, 901, 937 | x855, 895, 935 | I4 |
-| 15 | Account menu | Usage uses the bar chart; item icon x102, label x129; avatar x101 | Line chart; x96, x119; x97 | D1, G5 |
+| ✅ 14 | Wake-up strip | Action icons at x865, 901, 937 | x855, 895, 935 | I4 |
+| ✅ 15 | Account menu | Usage uses the bar chart; item icon x102, label x129; avatar x101 | Line chart; x96, x119; x97 | D1, G5 |
 | ✅ 16 | Plugins | "Current account" 13px, secondary colour | 12px, muted colour | C11 |
-| 17 | Archived | Dot and "Archived" text in the header; footer notice with divider and archive icon; archive icon in the toast | Bordered chip; no divider or icon; check icon; New fleet shortcut missing; Quote has a filled background | J5, G4, I10 |
-| 18 | Archived and Deleted toasts at 1480 | About y51 to 90, in the header band | About y6 to 47, above the shell | G6 |
+| ✅ 17 | Archived | Dot and "Archived" text in the header; footer notice with divider and archive icon; archive icon in the toast | Bordered chip; no divider or icon; check icon; New fleet shortcut missing; Quote has a filled background | J5, G4, I10 |
+| ✅ 18 | Archived and Deleted toasts at 1480 | About y51 to 90, in the header band | About y6 to 47, above the shell | G6 |
 | ✅ 19 | Cards at 390 | Text inset 16px (x90) | 20px in list rows (x94); 24px in Platform default (x98) | H4 |
 | ✅ 20 | New fleet at 390 | Model label in full; button wraps below; no leading header icon | "Authoring mod…"; leading icon shown (also on Conversation, Working, Wake-up) | I11, G2 |
 | ✅ 21 | Pages at 900 | Page heading y143 | y159 | H2 |
 | ✅ 22 | Shell header at 900 and 696 | Icon and title x90 / x117 and x86 / x109 | x98 / x125 at every width; New fleet title x121 at every width; Conversation title x113 at 696 | G2 |
-| 23 | Usage | Fleet filter shows its label | "All fleets & setup…" in a 160px select | H7 |
-| 24 | Team at 1480 | Row menu 36 × 36 at x1235 | 40 × 40 at x1231; Role and Date columns 4px left | E3 |
+| ✅ 23 | Usage | Fleet filter shows its label | "All fleets & setup…" in a 160px select | H7 |
+| ✅ 24 | Team at 1480 | Row menu 36 × 36 at x1235 | 40 × 40 at x1231; Role and Date columns 4px left | E3 |
 | ✅ 26 | Output card at 696 and 390 | Subtitle wraps | Cut with an ellipsis | H6, I8 |
 
 ### To confirm
@@ -74,11 +74,11 @@ Fix each item, add its regression check, and show the measured row. "Proposal" v
 
 | Item | Scope | Required evidence | Status |
 | --- | --- | --- | --- |
-| 29 | Text weight, role colour and browser font smoothing across chat and Summary | Same-run computed styles, matching font asset hashes and pixel/ink checks | ◻ Verification pending |
+| 29 | Text weight, role colour and browser font smoothing across chat and Summary | Same-run computed styles, matching font asset hashes and pixel/ink checks | ✅ Verified — v259 |
 | 30 | Four corner radii and header cost type | Per-component radii; 13px/20px/500 cost label and baseline | ✅ Verified — v253 |
 | 31 | Exact action inspection | Shared dialog, preserved reason, inline approval decisions | ✅ Verified — v237 |
 | 32 | Generic activity summaries | Targets, raw commands, tool names and duration appear inside folds | ✅ Verified — v237 |
-| 33 | Activity connectors and separators | Vertical connectors in open details; no outer horizontal rules in open activity | ◻ Verification pending |
+| 33 | Activity connectors and separators | Vertical connectors in open details; no outer horizontal rules in open activity | ✅ Verified — v259 |
 | 34 | Cancel alignment | Every footer: same height/baseline, right alignment and 8px gap | ✅ Verified — v253 |
 
 See M249_EXCEPTIONS.md for the nine accepted decisions. No external review ZIP is required.
@@ -108,7 +108,32 @@ Evidence: `/workspace/artifacts/fleet-refresh-v2/backlog-points-v253/point-measu
 | ✅ 34 | PASS | Every measured dialog footer is aligned with equal button heights and 8px gaps. |
 | ✅ 4 | PASS | PencilSimple for Edit; NotePencil for New fleet; distinct 16px rendered glyphs. |
 
-Finding 8 is only partly measured: the toggle is 48 × 48 at y876; the logo ink check remains open. Findings 29 and 11 remain open while their typography repairs are verified. No native final-gate result is claimed here.
+The remaining findings were measured after these repairs: subtitle weight 500, metadata line height 16px, Sources row padding, phone composer width, wake-up glyph alignment and phone Usage filter width. No native final-gate result is claimed here.
+
+## Final finding-specific checks
+
+Evidence: `backlog-points-v259/point-measurements.json` and `finding-results.json` under `/workspace/artifacts/fleet-refresh-v2/`. The run contains 76 records, both themes and desktop/touch phone contexts, with no browser errors. Revision: `37de4e308`.
+
+The last Usage filter repair was checked separately at all four widths in `filter-fit-v262/point-measurements.json`: eight records, revision `7b308451b`. Keyboard focus uses `model-focus-v264/point-measurements.json`: four records at the same revision. The logo check uses `logo-ink-v260/point-measurements.json`: eight source/reference records with equal ink bounds. No screenshots or ZIPs were delivered.
+
+| Finding | Result | Measured evidence |
+|---|---|---|
+| ✅ 8 | PASS | Source/reference logo ink occupies x 4–19,y 4–19 inside the same 24px tile; desktop toggle 48 by 48 at y876 from v253. |
+| ✅ 9 | PASS | Model field to advanced toggle 16px; after the 6px ring, 10px remains; Source and description values align right. |
+| ✅ 10 | PASS | Both themes: Models, Team, API Keys, Connected apps and Use this prompt all 44px; row menus 44 by44. |
+| ✅ 11 | PASS | Output, Sources and wake-up rows use shared 16px glyphs; output/source arrows share the leading-icon centre; metadata 12px/ 16px. |
+| ✅ 14 | PASS | Glyph x863,899,935 in both source and reference; accepted 36px controls; strip 700 by45 at x270. |
+| ✅ 15 | PASS | Bar-chart glyph; icon x101, label ink x129, identity avatar x101; menu rows 40px; approved workspace header retained. |
+| ✅ 17 | PASS | Visual sample state passes at both widths and themes; real authenticated Archive/Delete remains a separate final gate. |
+| ✅ 18 | PASS | Without the review bar, toast top 3px and bottom 53px are inside the 64px header; Deleted lands on New fleet sample state. |
+| ✅ 23 | PASS | All fleets & setup chats uses 170px of 170px at390; phone 16px text retained; all four widths and both themes pass. |
+| ✅ 24 | PASS | Menu 36 by36 at x1235; role x979; date x1071; touch menus stay 44px. |
+| ✅ 29 | PASS | Manrope font bytes identical; Summary titles 13px/500; approval label 12px/500; heading 19px/650; card subtitle 12px/500; smoothing auto in both. |
+| ✅ 33 | PASS | Four desktop/touch/theme cases: 1px solid connector; zero outer top/bottom borders; collapsed desktop tool rows 36px. |
+
+The logo measurement compares actual ray ink bounds and tile geometry, rather than asserting byte equality between two rasterization paths. Both use the approved ray/tile colours. Full font asset bytes match the reference.
+
+Archive and Deleted measurements use explicit sample states with production components. They verify read-only presentation and landing-page chrome, not authenticated writes. The real mutation journeys remain a separate acceptance gate. Phone composer flow and compact wake-up controls follow the accepted decisions.
 
 ## Verified finding evidence
 
