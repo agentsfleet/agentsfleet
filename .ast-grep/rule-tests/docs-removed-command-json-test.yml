@@ -10,4 +10,8 @@ invalid:
   - |
     {"description": "Run agentsfleet kill x."}
   - |
+    {"description": "Run agentsfleet library list."}
+  - |
+    {"description": "Run agentsfleet platform keys set."}
+  - |
     {"description": "Run agentsfleet fleet kill x."}

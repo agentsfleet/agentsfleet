@@ -49,16 +49,10 @@ import { AGE_KEY, EMPTY_CELL } from "../../output/index.ts";
 
 const WORKSPACE_SHOWN = "Workspace" as const;
 const WORKSPACES_LISTED = "Workspaces" as const;
-const WORKSPACE_SECRETS_REDIRECT = "Workspace secrets" as const;
 const WORKSPACE_STATUS_ACTIVE = "active" as const;
 
 const WORKSPACE_ID_FIELD = "workspace_id";
 const WORKSPACE_LOCAL_REMOVAL_FIELD = "removed_from_local_state";
-// The real, registered top-level command group (program/tree/secrets.command.ts). One const
-// so the JSON-mode and human-readable redirects can never re-diverge onto a
-// phantom `agentsfleet agent secret` that has no CLI registration.
-const SECRET_COMMAND = "agentsfleet secrets" as const;
-
 const validateWorkspaceId = (
   workspaceId: string,
 ): Effect.Effect<string, ValidationError> => {
@@ -284,25 +278,6 @@ export const workspaceShowEffectFromArgs = (
       name: detail.name ?? EMPTY_CELL,
     });
   });
-
-export const workspaceSecretsEffect: Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Output
-> = Effect.gen(function* () {
-  const output = yield* Output;
-  if (output.format !== OUTPUT_FORMAT.text) {
-    yield* output.success(WORKSPACE_SECRETS_REDIRECT, {
-      status: "redirect",
-      message: `use \`${SECRET_COMMAND}\` from the CLI, or manage workspace secrets at /secrets in the dashboard`,
-    });
-    return;
-  }
-  yield* output.printSection("Workspace secrets");
-  yield* output.info(
-    `Manage secrets at /secrets in the dashboard, or run: ${SECRET_COMMAND}`,
-  );
-});
 
 export const workspaceDeleteEffectFromArgs = (
   positional: string | undefined,

@@ -48,7 +48,6 @@ test("--help lists the workspace group; its subcommands appear under `workspace 
   assert.ok(listsRow(text, "use"), "workspace use subcommand missing");
   assert.ok(listsRow(text, "show"), "workspace show subcommand missing");
   assert.ok(!listsRow(text, "secrets"), "workspace still lists the moved secrets verb");
-  assert.ok(listsRow(await helpText(["secrets"]), "open"), "secrets open subcommand missing");
 });
 
 test("--help lists the memory group under fleet; its read verbs appear under `fleet memory --help`", async () => {
@@ -178,39 +177,6 @@ test("workspace show errors when no active workspace and no --workspace", async 
     });
     assert.equal(code, 5);
     assert.ok(err.read().includes("no active workspace"));
-  });
-});
-
-// ── workspace secrets redirect ───────────────────────────────────────
-
-test("workspace secrets prints the redirect message", async () => {
-  await withFreshStateDir(async () => {
-    const out = bufferStream();
-    const err = bufferStream();
-    const code = await runCli(["secrets", "open"], {
-      stdout: out.stream,
-      stderr: err.stream,
-      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
-    });
-    assert.equal(code, 0);
-    // The dashboard route is `/secrets` (Secrets & ENVs standalone page) —
-    // the CLI's redirect message points at the real, live URL.
-    assert.ok(out.read().includes("/secrets"));
-  });
-});
-
-test("workspace secrets --json returns status=redirect", async () => {
-  await withFreshStateDir(async () => {
-    const out = bufferStream();
-    const err = bufferStream();
-    await runCli(["--json", "secrets", "open"], {
-      stdout: out.stream,
-      stderr: err.stream,
-      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
-    });
-    const parsed = JSON.parse(out.read());
-    assert.equal(parsed.status, "redirect");
-    assert.ok(parsed.message.includes("/secrets"));
   });
 });
 

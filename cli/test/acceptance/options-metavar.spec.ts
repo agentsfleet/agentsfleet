@@ -124,7 +124,7 @@ describe("--help bodies use angle-bracket metavar convention", () => {
     ["agentsfleet fleet list --help",                 ["fleet", "list", "--help"],                 ["--limit <n>", "--starting-after <id>", "--workspace <id>"]],
     ["agentsfleet fleet logs --help",                 ["fleet", "logs", "--help"],                 ["--limit <n>", "--cursor <token>", "--fleet <id>"]],
     ["agentsfleet fleet events --help",               ["fleet", "events", "--help"],               ["--limit <n>", "--since <when>", "--actor <glob>", "--cursor <token>"]],
-    ["agentsfleet chat --help", ["chat", "--help"], ["--model <ref>", "--library <id>", "--review-digest <digest>"]],
+    ["agentsfleet chat --help", ["chat", "--help"], ["--model <ref>", "--plugin <id>", "--review-digest <digest>"]],
     ["agentsfleet login --help",                ["login", "--help"],                ["--token-name <label>"]],
     ["agentsfleet usage show --help",         ["usage", "show", "--help"],      ["--limit <n>", "--cursor <token>"]],
     ["agentsfleet models use --help",  ["models", "use", "--help"], ["--secret <name>", "--model <name>"]],

@@ -119,7 +119,7 @@ for (const [label, make, detail] of UNUSABLE) {
 const CONFLICTS: ReadonlyArray<readonly [string, ReadonlyArray<string>, string]> = [
   ["a resumed draft", [DRAFT_ID, "--no-input"], "A resumed draft keeps its source"],
   ["--fleet", ["--fleet", FLEET_ID, "--setup-revision", "1", "--model", MODEL, "--no-input"], "Choose one source"],
-  ["--library", ["--library", LIBRARY_ID, "--revision", REVISION_ID, "--model", MODEL, "--no-input"], "Choose one source"],
+  ["--plugin", ["--plugin", LIBRARY_ID, "--revision", REVISION_ID, "--model", MODEL, "--no-input"], "Choose one source"],
 ];
 
 for (const [label, args, detail] of CONFLICTS) {

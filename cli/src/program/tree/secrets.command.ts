@@ -1,7 +1,6 @@
 // The workspace secret vault.
 //
 // Every verb names a secret by its vault name, and none echoes secret bytes.
-// `open` points at the dashboard's vault page for the same workspace.
 
 import { Option } from "effect";
 import { Command } from "effect/cli";
@@ -13,7 +12,6 @@ import {
   secretUpdateEffectFromFlags,
 } from "../../commands/secret/secret.ts";
 import { secretListEffect } from "../../commands/secret/list.ts";
-import { workspaceSecretsEffect } from "../../commands/workspace/workspace.ts";
 import {
   apiKeyFlag,
   baseUrlFlag,
@@ -94,11 +92,6 @@ const secretDeleteCommand = Command.make(DELETE, { name: secretNameArgument }).p
   guardedHandler(({ name }) => secretDeleteEffectFromName(name)),
 );
 
-const secretOpenCommand = Command.make("open").pipe(
-  Command.withDescription("Open the workspace secret vault in the dashboard"),
-  guardedHandler(() => workspaceSecretsEffect),
-);
-
 export const secretsCommand = () => Command.make("secrets").pipe(
   Command.withDescription("Workspace secret vault"),
   Command.withSubcommands([
@@ -107,6 +100,5 @@ export const secretsCommand = () => Command.make("secrets").pipe(
     secretShowCommand,
     secretListCommand,
     secretDeleteCommand,
-    secretOpenCommand,
   ]),
 );

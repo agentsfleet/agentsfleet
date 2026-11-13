@@ -56,7 +56,6 @@ export const COMMAND_PARITY: ReadonlyArray<ParityRow> = [
   { argv: ["secrets", "create", "my-key", "--data", "{\"api_key\":\"x\"}"], calls: [`POST ${WS}/secrets`] },
   { argv: ["secrets", "update", "my-key", "--data", "{\"api_key\":\"x\"}"], calls: [`PUT ${WS}/secrets/my-key`] },
   { argv: ["secrets", "delete", "my-key"], calls: [`DELETE ${WS}/secrets/my-key`] },
-  { argv: ["secrets", "open"], calls: [] },
   { argv: ["connections", "list"], calls: [`GET ${WS}/connectors`] },
   { argv: ["connections", "show", "github"], calls: [`GET ${WS}/connectors`] },
   { argv: ["api-keys", "list"], calls: [`GET /v1/api-keys`] },

@@ -30,7 +30,7 @@ SUBCOMMANDS
   workspace      Manage workspaces
   chat           Create, resume, and review a private workspace chat
   fleet          Run, steer and inspect fleets
-  library        Browse this workspace's Fleet library gallery
+  plugins        Browse this workspace's plugins
   models         Browse the model catalogue and choose the tenant's provider
   secrets        Workspace secret vault
   connections    Inspect workspace connectors

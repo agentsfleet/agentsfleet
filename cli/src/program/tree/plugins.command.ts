@@ -1,4 +1,5 @@
-// Reusable fleet setups this workspace can browse, publish and remove.
+// Plugins: reusable fleet setups this workspace can browse, publish and remove.
+// The API still names them `fleet-libraries` until M249_003 renames it.
 
 import { Option } from "effect";
 import { Command } from "effect/cli";
@@ -6,7 +7,7 @@ import { guardedHandler } from "./guarded-handler.ts";
 import { libraryEffectFromOptions } from "../../commands/library/library.ts";
 import { libraryListEffectFromOptions } from "../../commands/library/list.ts";
 import { libraryDeleteEffectFromArgs } from "../../commands/library/delete.ts";
-import { entryIdArgument, libraryLimitFlag, startingAfterFlag } from "./flags.ts";
+import { pluginIdArgument, libraryLimitFlag, startingAfterFlag } from "./flags.ts";
 
 const opt = Option.getOrUndefined;
 
@@ -20,21 +21,21 @@ const LIST = "list" as const;
 const DELETE = "delete" as const;
 const libraryPaging = { startingAfter: startingAfterFlag, limit: libraryLimitFlag };
 const libraryListCommand = Command.make(LIST, libraryPaging).pipe(
-  Command.withDescription("List this workspace's published Fleet libraries"),
+  Command.withDescription("List this workspace's published plugins"),
   guardedHandler(({ startingAfter, limit }) => libraryListEffectFromOptions({
     startingAfter: opt(startingAfter), limit: optNum(limit),
   })),
 );
 
 const libraryDeleteCommand = Command.make(DELETE, {
-  entryId: entryIdArgument,
+  pluginId: pluginIdArgument,
 }).pipe(
-  Command.withDescription("Remove a published Fleet library owned by this workspace"),
-  guardedHandler(({ entryId }) => libraryDeleteEffectFromArgs(entryId)),
+  Command.withDescription("Remove a published plugin owned by this workspace"),
+  guardedHandler(({ pluginId }) => libraryDeleteEffectFromArgs(pluginId)),
 );
 
-export const libraryCommand = () => Command.make("library", libraryPaging).pipe(
-  Command.withDescription("Browse this workspace's Fleet library gallery"),
+export const pluginsCommand = () => Command.make("plugins", libraryPaging).pipe(
+  Command.withDescription("Browse this workspace's plugins"),
   guardedHandler(({ startingAfter, limit }) => libraryEffectFromOptions({
     startingAfter: opt(startingAfter), limit: optNum(limit),
   })),

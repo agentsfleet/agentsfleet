@@ -76,7 +76,7 @@ describe("rendered failure — which string reaches the terminal", () => {
     await withMockApi(routes, async (apiUrl) => {
       const out = bufferStream();
       const err = bufferStream();
-      const code = await runCli(["library", "delete", LIBRARY_ID], {
+      const code = await runCli(["plugins", "delete", LIBRARY_ID], {
         stdout: out.stream,
         stderr: err.stream,
         env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
