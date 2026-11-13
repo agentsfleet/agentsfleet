@@ -49,8 +49,8 @@ function MemberRow({member, pending, onRemove}: Pick<Props, "pending" | "onRemov
   const name = memberName(member);
   const initials = name.split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase();
   return <li aria-label={name} className={ROW}>
-    <span className={AVATAR} aria-hidden="true">{initials}</span>
-    <div className="min-w-0"><p className="break-words text-label font-semibold"><span>{name}</span>{self ? <span className="ml-md text-eyebrow font-normal text-text-dim">You</span> : null}</p>
+    <span className={`${AVATAR} ${self ? "" : "text-success"}`} aria-hidden="true">{initials}</span>
+    <div className="min-w-0"><p className="break-words text-label font-semibold"><span>{name}</span>{self ? <span className="ml-md text-eyebrow font-normal leading-eyebrow text-text-dim">You</span> : null}</p>
       {name !== member.email ? <p className="mt-sm break-all text-label text-muted-foreground">{member.email}</p> : null}</div>
     <span className={`${META} text-label capitalize text-muted-foreground`}>{member.role}</span>
     <span className={`${META} text-eyebrow text-text-dim`}>Joined <Time value={member.joined_at} format="date" tooltip /></span>
