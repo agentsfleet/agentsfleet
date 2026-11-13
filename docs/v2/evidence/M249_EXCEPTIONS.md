@@ -18,3 +18,9 @@ commit that implements them; the run records that revision and source digest.
 
 The exact answer approves only these choices. It does not approve a visual
 result, missing evidence, a failed check, or opening a PR before the gates pass.
+
+## Owner review delivery, Nov 13
+
+Indy wrote: “i dont need you capture now”, followed by “internal capture is needed if you need it, indy doesnt need it.” He will eyeball “in the deploy” or “preview in PR”.
+
+Stop the full capture/delivery loop. Fix the findings in the matrix and use targeted internal comparisons when needed. No ZIP or gallery delivery is requested. This changes the evidence delivery; it does not approve any unresolved visual defect or waive repository tests.

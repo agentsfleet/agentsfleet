@@ -1,8 +1,9 @@
+import { recordedChanges } from "@/components/domain/chat/recorded-changes";
 import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { fleetSources } from "@/lib/fleet-sources";
-import { WorkChanges, WorkOutputs, WorkSources, recordedChanges } from "@/components/domain/chat/WorkContextSections";
+import { WorkChanges, WorkOutputs, WorkSources } from "@/components/domain/chat/WorkContextSections";
 import { evt } from "./helpers/fleet-stream-fixtures";
 import { detail, TASK_IDS } from "./helpers/task-reads";
 afterEach(cleanup);
@@ -41,8 +42,11 @@ it("changes contain recorded writes, exclude reads and failed or unconfirmed mut
   expect(screen.queryByRole("region", {name: "Changes"})).toBeNull();
   view.rerender(<WorkChanges events={events} />);
   fireEvent.click(screen.getByText("2 files"));
-  expect(screen.getByText("Write in progress")).toBeTruthy();
-  expect(screen.getByText("Local write recorded")).toBeTruthy();
+  const changes = within(screen.getByRole("dialog", {name: "Recorded changes"}));
+  expect(changes.getByText("Write in progress")).toBeTruthy();
+  expect(changes.getByText("src/repair.ts")).toBeTruthy();
+  expect(changes.getByText("src/test.ts")).toBeTruthy();
+  expect(changes.getByText(/Publication and line totals are not available here/)).toBeTruthy();
   expect(screen.queryByRole("link")).toBeNull();
   view.rerender(<WorkChanges events={[evt({tools: [tool({})]})]} />);
   expect(screen.getByText("1 file")).toBeTruthy();

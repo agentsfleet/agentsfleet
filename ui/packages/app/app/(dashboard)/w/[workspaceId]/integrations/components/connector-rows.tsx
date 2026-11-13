@@ -141,7 +141,7 @@ export function OAuthConnectorRow({
         : CONNECTED_DESCRIPTION
       : "Choose Connect to authorize access with your provider.";
   const pending = connecting || disconnecting;
-  return <div data-testid={`integration-${entry.id}`} className="p-5">
+  return <div data-testid={`integration-${entry.id}`} className="p-xl sm:p-5">
     <div className="flex min-w-0 flex-wrap items-center gap-xl">
       <span className="hidden size-10 shrink-0 items-center justify-center rounded-control border border-border sm:flex" aria-hidden="true"><Icon size={16} /></span>
       <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto"><h2 className="text-label font-medium">{entry.display_name}</h2>

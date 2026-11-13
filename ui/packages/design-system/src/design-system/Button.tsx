@@ -26,7 +26,7 @@ export const buttonVariants = cva(
         secondary:
           "border-border bg-card text-foreground hover:bg-muted [&_a]:text-foreground [&_a]:no-underline",
         ghost:
-          "border-transparent bg-transparent disabled:bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-primary",
+          "border-transparent bg-transparent disabled:bg-transparent disabled:border-transparent text-muted-foreground hover:text-foreground hover:bg-muted [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-primary",
         link:
           "border-transparent bg-transparent text-pulse underline-offset-4 hover:underline min-h-0 p-0 h-auto",
         "double-border":

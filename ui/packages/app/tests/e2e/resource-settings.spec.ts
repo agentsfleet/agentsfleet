@@ -101,7 +101,8 @@ test("remaining resource pages and empty setup retain the approved frame", async
           return box.left >= 0 && box.right <= innerWidth && box.width >= 32;
         }))).toBe(true);
         await actions.click();
-        const management = page.getByRole("dialog", {name: "Release service", exact: true});
+        const management = page.getByRole("dialog", {name: "Manage secret", exact: true});
+        await expect(management.getByText("“Release service”", {exact: true})).toBeVisible();
         await expect(management.getByRole("button", {name: "Replace value"})).toBeVisible();
         await expect(management.getByRole("button", {name: "Delete secret"})).toBeVisible();
         await management.getByRole("button", {name: "Done", exact: true}).click();

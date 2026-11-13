@@ -1,7 +1,8 @@
 "use client";
 
+import { CaretDownIcon } from "@phosphor-icons/react/ssr";
 import { useState } from "react";
-import { Input, Label, Select, SelectContent, SelectTrigger, SelectValue, SelectItem } from "@agentsfleet/design-system";
+import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Input, Label, Select, SelectContent, SelectTrigger, SelectValue, SelectItem } from "@agentsfleet/design-system";
 import { modelsForProvider, uniqueModelIds, type LibraryModel } from "@/lib/api/model-library-types";
 import { modelLabel } from "@/lib/models/display";
 import { CatalogueModelDetails } from "@/components/domain/CatalogueModelDetails";
@@ -31,10 +32,10 @@ export default function ProviderModelSelect({ id, provider, model, onModelChange
     <ModelControl id={id} label={label} model={model} onModelChange={onModelChange}
       options={options} selected={selected} status={status} />
     <div className="pt-md"><CatalogueBrowseControls id={`${id}-advanced`} advanced={showAdvanced} onAdvancedChange={setShowAdvanced} /></div>
-    {selected ? details === "disclosure" ? <details className="text-label">
-      <summary className="min-h-11 cursor-pointer rounded-sm py-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9">Model details</summary>
-      <CatalogueModelDetails model={selected} />
-    </details> : <CatalogueModelDetails model={selected} /> : null}
+    {selected ? details === "disclosure" ? <Collapsible className="group text-label">
+      <CollapsibleTrigger asChild><Button variant="ghost" size="compact" className="w-full justify-between px-0">Model details<CaretDownIcon size={16} className="group-data-[state=open]:rotate-180" aria-hidden="true" /></Button></CollapsibleTrigger>
+      <CollapsibleContent><CatalogueModelDetails model={selected} /></CollapsibleContent>
+    </Collapsible> : <CatalogueModelDetails model={selected} /> : null}
   </div>;
 }
 

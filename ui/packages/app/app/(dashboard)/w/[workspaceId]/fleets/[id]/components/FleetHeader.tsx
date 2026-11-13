@@ -1,14 +1,13 @@
-import Link from "next/link";
-import { workspacePath } from "@/lib/workspace-routes";
-import { StackIcon, NotePencilIcon } from "@phosphor-icons/react/ssr";
-import { Badge, Button, PageTitle } from "@agentsfleet/design-system";
+import { StackIcon } from "@phosphor-icons/react/ssr";
+import { Badge, PageTitle } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetDetail } from "@/lib/types";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import { FleetActions } from "./FleetActions";
 import { MemoryMenu } from "./MemoryMenu";
-import { EditSetupButton, EditSetupMenuItem } from "@/components/domain/chat/FleetSetupWorkspace";
+import { EditSetupMenuItem } from "@/components/domain/chat/FleetSetupWorkspace";
 import { FleetHeaderStatus } from "@/components/domain/FleetHeaderStatus";
+import { NewFleetShortcut } from "@/components/layout/ResourceHeader";
 import { FleetRunCost } from "@/components/domain/FleetRunCost";
 import type { RunFigures } from "@/lib/events/run-summary";
 
@@ -45,7 +44,7 @@ export function FleetHeader({
       <div className="flex shrink-0 items-center gap-5">
         <FleetRunCost workspaceId={workspaceId} fleetId={fleet.id} initial={latestRun} />
         {exhaustedAt !== undefined ? <ExhaustionBadge exhaustedAt={exhaustedAt} /> : null}
-        {fleet.status !== AGENTSFLEET_STATUS.KILLED ? <EditSetupButton workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision} appearance="header" /> : <Button asChild variant="ghost" size="icon" aria-label="New fleet"><Link href={workspacePath(workspaceId, "fleets/new")}><NotePencilIcon size={16} /></Link></Button>}
+        <NewFleetShortcut workspaceId={workspaceId} />
       </div>
     </header>
   );

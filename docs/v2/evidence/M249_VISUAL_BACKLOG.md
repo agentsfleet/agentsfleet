@@ -1,6 +1,16 @@
 # M249 visual repair backlog
 
-All items require measurements from the final clean candidate. Source repairs and diagnostic captures do not close an item.
+The ledger has 32 retained rows, numbered up to 34. Item 25 was folded into 22; item 7 is absent from the supplied list.
+
+These identifiers are not a count of outstanding source changes. Repairs already implemented still need verification before their rows close.
+
+Every retained finding requires closure before M249_001 moves to done. Accepted decisions are recorded in M249_EXCEPTIONS.md.
+
+Source repairs and diagnostic results are recorded in M249_VERIFICATION.md. They do not imply final verification has passed.
+
+Indy stopped additional ZIPs and full capture delivery. Use targeted internal measurements and native regression checks; Indy reviews the PR preview or deployment.
+
+Backend data differences belong to [M249_004](../pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md), not this visual backlog.
 
 ## Owner findings
 

@@ -3,15 +3,13 @@ import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import type { TaskDetails } from "./use-task-details";
 import Link from "next/link";
 import { Button } from "@agentsfleet/design-system";
-import { ArrowUpRightIcon, CaretDownIcon, FileTextIcon, GitBranchIcon, GitDiffIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
-import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
-import { TOOL_NAME } from "../tool-call-shape";
+import { ArrowUpRightIcon, CaretDownIcon, GitBranchIcon, GitDiffIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
 import { confirmed } from "./use-task-read";
 import { FleetApprovalSummary } from "./FleetApprovalSummary";
 import { WorkSection } from "./WorkSection";
-export { WorkSection } from "./WorkSection";
+import { RecordedChangesDialog } from "./RecordedChangesDialog";
+import { recordedChanges } from "./recorded-changes";
 
-const WRITES: ReadonlySet<string> = new Set([TOOL_NAME.FILE_WRITE, TOOL_NAME.FILE_EDIT, TOOL_NAME.FILE_EDIT_HASHED, TOOL_NAME.FILE_APPEND, TOOL_NAME.FILE_DELETE]);
 
 
 export function WorkOutputs({details, expectedDetails = details.size, hideEmpty = false}: {details: TaskDetails; expectedDetails?: number; hideEmpty?: boolean}) {
@@ -45,28 +43,15 @@ function PullRequestSection({title, records}: {title: string; records: PullReque
   </li>)}</ul></WorkSection>;
 }
 
-export function recordedChanges(events: readonly FleetEvent[], {includeRunning = true}: {includeRunning?: boolean} = {}): {path: string; running: boolean}[] {
-  const paths = new Map<string, {path: string; running: boolean}>();
-  for (const event of events) for (const tool of event.tools ?? []) {
-    const path = tool.args?.path;
-    if (!WRITES.has(tool.name) || typeof path !== "string" || !path.trim()) continue;
-    const running = !tool.done && !tool.status;
-    if (running && !includeRunning) continue;
-    if (!running && tool.status !== TOOL_CALL_STATUS.SUCCEEDED) continue;
-    paths.delete(path);
-    paths.set(path, {path, running});
-  }
-  return [...paths.values()].reverse();
-}
 
 export function WorkChanges({events}: {events: readonly FleetEvent[]}) {
   const changes = recordedChanges(events);
   if (!changes.length) return null;
-  return <WorkSection title="Changes">
-    <details className="group"><summary className="flex min-h-11 cursor-pointer items-center gap-sm rounded-sm text-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring summary:min-h-9"><GitDiffIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 font-medium">{changes.length} {changes.length === 1 ? "file" : "files"}</span><CaretDownIcon size={16} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" /></summary>
-      <ul className="mt-sm space-y-sm">{changes.map(change => <li key={change.path} className="break-all text-eyebrow"><span className="flex items-start gap-sm"><FileTextIcon size={16} className={`mt-xs shrink-0 ${change.running ? "text-info" : "text-success"}`} aria-hidden="true" />{change.path}</span><span className="block text-muted-foreground">{change.running ? "Write in progress" : "Local write recorded"}</span></li>)}</ul>
-    </details>
-  </WorkSection>;
+  return <WorkSection title="Changes"><RecordedChangesDialog changes={changes}>
+    <Button variant="ghost" size="compact" className="w-full justify-start gap-md px-0 text-left text-foreground">
+      <GitDiffIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="font-medium">{changes.length} {changes.length === 1 ? "file" : "files"}</span>
+    </Button>
+  </RecordedChangesDialog></WorkSection>;
 }
 
 export function WorkSources({sources}: {sources?: FleetSources}) {
