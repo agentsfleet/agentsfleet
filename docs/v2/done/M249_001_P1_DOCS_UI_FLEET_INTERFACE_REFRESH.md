@@ -181,6 +181,7 @@ Each row groups up to five exact paths; actions and purposes follow the same ord
 | `ui/packages/design-system/src/design-system/time-reporting.test.ts`<br>`ui/packages/design-system/src/design-system/time-utils.test.ts`<br>`ui/packages/design-system/src/design-system/time-utils.ts`<br>`ui/packages/design-system/src/index.ts`<br>`ui/packages/design-system/src/interactions.css` | EDIT<br>EDIT<br>EDIT<br>EDIT<br>EDIT | Verify existing ownership, recovery and approved presentation at the public boundary<br>Verify existing ownership, recovery and approved presentation at the public boundary<br>Preserve shared formatting while supporting explicit timezones<br>Apply the approved interface and preserve current request and scope ownership<br>Match approved working-status motion and compact glyph scale |
 | `ui/packages/design-system/src/theme.css`<br>`ui/packages/design-system/src/tokens.css`<br>`ui/packages/design-system/src/utils.test.ts`<br>`ui/packages/design-system/src/utils.ts`<br>`ui/packages/website/src/pages/DesignSystemGallery.tsx` | EDIT<br>EDIT<br>EDIT<br>EDIT<br>EDIT | Apply the approved interface and preserve current request and scope ownership<br>Apply the approved interface and preserve current request and scope ownership<br>Preserve font family, weight, size and foreground when utilities merge<br>Preserve font family, weight, size and foreground when utilities merge<br>Keep shared Manrope roles and modal footer/cancel styling consistent |
 | `ui/packages/website/src/pages/Privacy.tsx`<br>`ui/packages/website/tests/e2e/content-accessibility.spec.ts`<br>`ui/packages/website/tests/e2e/design-system-motion.spec.ts`<br>`ui/packages/website/tests/e2e/design-system-ownership.spec.ts`<br>`ui/packages/website/tests/e2e/design-system-status-smoke.spec.ts` | EDIT<br>EDIT<br>EDIT<br>EDIT<br>EDIT | Remove stale font documentation<br>Verify keyboard entry through the actual home-to-example route, responsive layout and zoom<br>Assert shared Manrope faces and independently overridable display, interface and technical roles<br>Verify Manrope ownership in the website<br>Verify Manrope in rendered shared controls |
+| `ui/packages/website/tests/e2e/design-system-smoke.spec.ts` | EDIT | Verify the approved shared panel fill, 40px controls and unfilled label chips in Chromium |
 
 ## Applicable Rules
 
@@ -383,7 +384,7 @@ Preserve existing coarse product events and server outcome records. Add no crede
 | R6 | Backend integration | `make test-integration-rustd` | exit 0 | P0 | ❌ Local full lane exceeded gate budget; isolated workspace fencing retry passed; final full lane delegated to CI |
 | R7 | Version consistency | `make check-version` | exit 0 | P0 | ✅ cmd.verify.version: 1 invocation(s) exit 0; 0.77.0; v315 |
 | R8 | Full Linux acceptance, requested by Indy | `make acceptance-codex` | exit 0; unchanged suites and admission checks | P0 | ❌ Host kernel lacks securityfs; runner admission blocked; no sandbox check bypassed |
-| R9 | App and website bundle sizes | Existing package `build` then `size` commands | Existing limits pass; any excess requires owner sign-off | P0 | ✅ All caps; app v281 / website v283 |
+| R9 | App and website bundle sizes | Existing package `build` then `size` commands | Existing limits pass; any excess requires owner sign-off | P0 | ✅ PR #840 CI passes: shared app 291.28/294.91 kB; website JS 109.83/128 kB and CSS 19.65/20 kB |
 | S4 | PR gate (explicit owner publishing instruction) | `orly gate pr` | recorded before merge | P0 | ❌ Prior run recorded v315; not rerun because it launches Rust again; owner requests PR and CI instead |
 | S3 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | ✅ No leaks found across 64 branch commits; staged content also scanned by pre-commit |
 
@@ -479,3 +480,11 @@ All 14 implementation Dimensions are DONE. The spec moves to done at Indy's expl
 CI owns the final Rust unit and integration results. Keep those checks required for merge; no workflow, test selection, timeout or coverage floor changes.
 
 Full acceptance remains blocked by this Cloud host's missing securityfs support. A suitable host must run it; a passed unit lane cannot replace it.
+
+## PR #840 review repairs
+
+✅ Wake-up edits now send only changed fields. Existing trigger overrides remain intact, so editing the message cannot freeze inherited scheduling values.
+
+✅ A successful saved-setup read advances the approval refresh signal. A newly opened approval becomes visible even when activity and focus counts stay unchanged.
+
+✅ Website gallery checks now assert the approved panel fill, 40px controls and unfilled labels. Strict app/website lint passes; focused checks pass 42 app tests and 31 Chromium cases.

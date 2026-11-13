@@ -41,6 +41,25 @@ function SetupConversation() {
     </DraftConversation></>;
 }
 
+it("discovers a newly opened approval after readiness refresh with unchanged setup history", async () => {
+  const gate = {gate_id: "new-setup-gate", workspace_id: WORKSPACE, fleet_id: FLEET_ID, status: "pending",
+    proposed_action: "Allow GitHub access", tool_name: "github", action_name: "access", blast_radius: "Selected repositories"};
+  approvals.list.mockReset().mockResolvedValueOnce({ok: true, data: {items: [], next_cursor: null}})
+    .mockResolvedValue({ok: true, data: {items: [gate], next_cursor: null}});
+  fixture.draft = {...DRAFT, state: DRAFT_STATE.closed, linked_fleet_id: FLEET_ID};
+  await client.resume(DRAFT.id);
+  render(<SetupConversation />);
+  await waitFor(() => expect(approvals.list).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("button", {name: "Approve"})).toBeNull();
+  const previous = client.getSnapshot();
+  await act(async () => client.refreshFleetSetup(true));
+  expect(await screen.findByRole("button", {name: "Approve"})).toBeTruthy();
+  expect(client.getSnapshot().activities).toEqual(previous.activities);
+  expect(client.getSnapshot().focusRevision).toBe(previous.focusRevision);
+  expect(approvals.list).toHaveBeenCalledTimes(2);
+  expect(fixture.writes()).toEqual([]);
+});
+
 // Value: protects=approval-to-setup continuation; fails_when=approval leaves stale readiness or starts the fleet automatically;
 // why_new=summary tests stop at the decision receipt; seam=network and Server Actions; no_claim=backend grant persistence.
 it.each(["ready", "unavailable"])("keeps the decision in chat when the readiness read is %s", async result => {

@@ -43,12 +43,14 @@ export type DraftView = {
   readonly notice: string | null;
   readonly truncated: boolean;
   readonly focusRevision: number;
+  /** Successful saved-setup reads invalidate approvals even with unchanged history. */
+  readonly readinessRevision: number;
 };
 export type DrawerEdit = {readonly definition: Definition; readonly instanceName: string; readonly runtimeModel?: string};
 
 export const EMPTY_DRAFT_VIEW: DraftView = {draft: null, messages: [], models: [], cards: [], moreModels: false, moreChats: false, listStatus: DRAFT_LIST_STATUS.loading,
   model: "", fleet: null, schedules: [], busy: false, pending: false, inaccessible: false, error: null, notice: null,
-  truncated: false, preview: null, savedSetupRevision: null, focusRevision: 0};
+  truncated: false, preview: null, savedSetupRevision: null, focusRevision: 0, readinessRevision: 0};
 
 /** Keep the view interface stable while one request state owns its lifecycle flags. */
 export function draftRequestView(request: DraftRequestState): Pick<DraftView, "busy" | "pending" | "inaccessible" | "setupAction"> {

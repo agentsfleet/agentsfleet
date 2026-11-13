@@ -13,6 +13,26 @@ beforeEach(() => {mocks.refresh.mockClear(); mocks.view = {subject: "user", work
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 function mount() {return render(<WakeupStrip />, {wrapper: TooltipProvider});}
 
+it.each(["trigger", "api"])("changes only edited fields and preserves existing %s overrides", async source => {
+  const saved = {...current, source, timezone: "Europe/London", override: {timezone: "Europe/London", status: "active"}};
+  const fetcher = vi.fn().mockImplementation(async () => Response.json(saved));
+  vi.stubGlobal("fetch", fetcher); mount();
+  for (const [label, value, field] of [
+    ["What should the fleet do?", "Check the deployment", "message"],
+    ["Schedule", "17 5 * * 1", "cron"],
+    ["Timezone", "America/New_York", "timezone"],
+  ] as const) {
+    fireEvent.click(screen.getByRole("button", {name: "Edit wake-up"}));
+    fireEvent.change(await screen.findByLabelText(label), {target: {value}});
+    fireEvent.click(screen.getByRole("button", {name: "Save"}));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const request = fetcher.mock.calls.at(-1)![1];
+    const changed = {[field]: value};
+    expect(JSON.parse(request.body)).toEqual(source === "trigger" ? {override: {...saved.override, ...changed}} : changed);
+    expect(request.headers["If-Match"]).toBe(saved.etag);
+  }
+});
+
 // Value: protects=editable concurrency-safe wake-up controls; fails_when=a stale form overwrites another edit or a late read opens in another account;
 // why_new=the approved composer exposes these actions; seam=HTTP; no_claim=live cron delivery.
 it("keeps a stale form visible and reloads its saved version before retrying", async () => {

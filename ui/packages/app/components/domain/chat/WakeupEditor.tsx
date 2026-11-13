@@ -5,7 +5,7 @@ import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogT
 import type { ScheduleDetail, ScheduleEdit } from "@/lib/api/schedule-controls";
 
 export function WakeupEditor({schedule, pending, error, onClose, onReload, onSave}: {
-  schedule: ScheduleDetail; pending: boolean; error: string | null; onClose: () => void; onReload: () => void; onSave: (edit: ScheduleEdit) => void;
+  schedule: ScheduleDetail; pending: boolean; error: string | null; onClose: () => void; onReload: () => void; onSave: (edit: Partial<ScheduleEdit>) => void;
 }) {
   const id = useId();
   return <Dialog open onOpenChange={() => {if (!pending) onClose();}}>
@@ -13,7 +13,12 @@ export function WakeupEditor({schedule, pending, error, onClose, onReload, onSav
       <DialogDescription>Change when this fleet wakes and what it should check.</DialogDescription></DialogHeader>
       <form key={schedule.etag} className="space-y-xl" onSubmit={event => {
         event.preventDefault(); const form = new FormData(event.currentTarget);
-        onSave({cron: field(form, "cron").trim(), timezone: field(form, "timezone").trim(), message: field(form, "message")});
+        const values: ScheduleEdit = {cron: field(form, "cron").trim(), timezone: field(form, "timezone").trim(), message: field(form, "message")};
+        const changed: Partial<ScheduleEdit> = {};
+        for (const name of ["cron", "timezone", "message"] as const) {
+          if (values[name] !== schedule[name]) changed[name] = values[name];
+        }
+        onSave(changed);
       }}>
         <div className="space-y-md"><Label htmlFor={`${id}-cron`}>Schedule</Label><Input id={`${id}-cron`} name="cron" required maxLength={256} defaultValue={schedule.cron} disabled={pending} />
           <p className="text-eyebrow text-text-dim">Five-field cron expression. Current schedule: {schedule.description}</p></div>
