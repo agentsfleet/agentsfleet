@@ -9,7 +9,7 @@ const built = await Bun.build({
     build.onResolve({filter: /^\.\.\/(actions|connector-actions)$|^@\/app\/\(dashboard\)\/w\/\[workspaceId\]\/secrets\/actions$/}, args => {
       if (/settings\/(members|models|security)\/components\/|\/(secrets|integrations)\/components\//.test(args.importer)) return {path: path.join(import.meta.dirname, "resource-settings-actions.ts")};
     });
-    build.onResolve({filter: /^@\/lib\/auth\/(client|account-client)$/},
+    build.onResolve({filter: /^@\/lib\/auth\/(client|account-client|account-controls)$/},
       () => ({path: path.join(import.meta.dirname, "visual-auth-fixture.tsx")}));
     build.onResolve({filter: /^@\/lib\/auth\/credential$/},
       () => ({path: path.join(import.meta.dirname, "visual-auth-fixture.tsx")}));

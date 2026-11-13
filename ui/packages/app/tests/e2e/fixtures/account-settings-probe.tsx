@@ -7,6 +7,7 @@ import { Button, TooltipProvider } from "@agentsfleet/design-system";
 import { ShellFrame } from "@/components/layout/ShellFrame";
 import ApiKeysView from "@/app/(dashboard)/settings/security/components/ApiKeysView";
 import { SecurityLayout } from "@/app/(dashboard)/settings/security/components/SecurityLayout";
+import {AccountSettingsSection} from "@/components/account/AccountSettingsSection";
 import { SessionSettingsView } from "@/components/account/SessionSettings";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 import { WORKSPACE } from "@/tests/helpers/draft-fixtures";
@@ -35,6 +36,7 @@ export function AccountSettingsFixture() {
         <SecurityLayout>
           <ApiKeysView operatorOnly={false} initial={{items: [{id: "sample-key", key_name: "Deploy automation", active: true, created_at: "2026-11-04T10:00:00Z", revoked_at: null}], total: 1, next_cursor: null}} />
           <SessionSettingsView key={String(failed)} client={client} />
+          <AccountSettingsSection />
         </SecurityLayout>
       </ShellFrame>
     </TooltipProvider></SearchParamsContext.Provider>

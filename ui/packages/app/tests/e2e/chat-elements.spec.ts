@@ -133,7 +133,7 @@ test("a native upload submission stays visible and a refusal returns its draft",
   await expect(page.getByText("notes.txt", {exact: true})).toHaveCount(0);
 });
 
-test("archive and deletion confirmations and notices fit the current conversation", async ({page, chatProbe}, info) => {
+test("archive and deletion confirmations lead to distinct readable sample states", async ({page, chatProbe}, info) => {
   await page.goto(`${chatProbe}?visual=1`);
   await page.getByRole("button", {name: "Completed", exact: true}).click();
   for (const [action, title, filename] of [["Archive", "Archive fleet?", "archive"], ["Permanently delete", "Permanently delete fleet?", "delete"]] as const) {
@@ -148,12 +148,25 @@ test("archive and deletion confirmations and notices fit the current conversatio
     await dialog.getByRole("button", {name: "Cancel", exact: true}).click();
   }
   for (const [outcome, message] of [["archived", "Fleet archived"], ["deleted", "Fleet permanently deleted"]] as const) {
-    await page.getByRole("button", {name: `Sample ${outcome} notice`, exact: true}).click();
+    await page.goto(`${chatProbe}?${outcome === "archived" ? "visual=1&state=completed&archived=1" : "resourcePages=1&resource=new&notice=deleted"}`);
+    if (outcome === "archived") {
+      await expect(page.getByLabel("Fleet status: archived")).toBeVisible();
+      await expect(page.getByRole("textbox")).toHaveCount(0);
+      await expect(page.getByRole("heading", {name: "Ready for your review", exact: true})).toBeVisible();
+      for (const name of ["Approve", "Deny"]) await expect(page.getByRole("button", {name, exact: true})).toHaveCount(0);
+      await expect(page.getByRole("button", {name: "Quote reply", exact: true})).toBeDisabled();
+    } else {
+      await expect(page.getByRole("heading", {name: "New fleet", exact: true})).toBeVisible();
+      await expect(page.getByRole("textbox")).toBeVisible();
+      await expect(page.getByTestId("fleet-thread-root")).toHaveCount(0);
+    }
     const notice = page.getByTestId("fleet-notice");
     await expect(notice).toContainText(message);
     await expect(notice).toHaveAttribute("aria-hidden", "false");
     expect((await notice.boundingBox())!.width).toBeLessThanOrEqual(page.viewportSize()!.width - 24);
-    await page.screenshot({path: info.outputPath(`${outcome}-notice.png`), scale: "css", animations: "disabled"});
+    await page.screenshot({path: info.outputPath(`${outcome}-state.png`), scale: "css", animations: "disabled"});
     await notice.getByRole("button", {name: "Dismiss notification"}).click();
+    if (outcome === "archived") await expect(page.getByLabel("Fleet status: archived")).toBeVisible();
+    else await expect(page.getByRole("heading", {name: "New fleet", exact: true})).toBeVisible();
   }
 });

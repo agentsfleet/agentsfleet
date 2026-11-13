@@ -9,7 +9,7 @@ export const PROFILE_APPEARANCE = {
     cardBox: {
       ...AUTH_APPEARANCE.elements.cardBox,
       width: "100%", maxWidth: "none", boxShadow: "none", backgroundColor: "var(--surface-1)",
-      height: "auto", minHeight: 0,
+      height: "auto", minHeight: 0, border: "1px solid var(--border)",
     },
     scrollBox: { borderRadius: "var(--r-lg)", boxShadow: "none" },
     pageScrollBox: {
@@ -28,10 +28,10 @@ export const PROFILE_APPEARANCE = {
       ...AUTH_APPEARANCE.elements.navbarButton,
       fontSize: "var(--fs-body-sm)", fontWeight: 500, borderRadius: "var(--r-md)",
     },
-    headerTitle: { ...AUTH_APPEARANCE.elements.headerTitle, fontSize: "var(--fs-heading)" },
+    headerTitle: { ...AUTH_APPEARANCE.elements.headerTitle, fontSize: "var(--fs-heading)", fontWeight: 650 },
     profileSectionTitleText: {
       ...AUTH_APPEARANCE.elements.profileSectionTitleText,
-      fontSize: "var(--fs-body-sm)", fontWeight: 500,
+      fontSize: "var(--fs-body-sm)", fontWeight: 600,
     },
     formFieldInput: {
       ...AUTH_APPEARANCE.elements.formFieldInput,

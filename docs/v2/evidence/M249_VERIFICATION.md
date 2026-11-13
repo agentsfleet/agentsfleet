@@ -303,14 +303,26 @@ The menu retains the identity-header workspace submenu and offers Team,
 API Keys, Usage, Models, Appearance and Sign out. The separate Personal account
 entry and route are removed. The existing Security destination is labelled
 API Keys and retains API-key creation/revocation and signed-in sessions.
-A shared dialog opens the existing Clerk account widget through the auth facade
+The Profile and sign-in settings action scrolls to an always-mounted native account section through the auth facade
 for name/photo, verified email and sign-in operations. Password controls follow
 the existing Clerk configuration. No new Clerk key, credential endpoint,
 backend permission or secret storage is introduced.
 
 Visible differences from the immutable proposal are the approved API Keys menu
-and page name, the account/sign-in launcher and its native-provider dialog, and
+and page name, the Profile and sign-in settings section and its scroll/focus action, and
 the identity workspace submenu. The existing `/settings/security` page path
 continues to own these operations; no compatibility route or backfill is added.
 Fresh authenticated captures must exercise profile editing/cancel, password
 editing/cancel when configured, sessions and keys on this combined destination.
+
+
+
+The native profile/sign-in form remains embedded in an always-mounted named
+section on API Keys. Its supported hash routing handles verification return
+links on that same page; the section heading persists while native panels
+change. Key the native widget by existing subject/session so account changes
+clear unsubmitted data. The header action scrolls and focuses the section without
+rewriting the hash. There is no enclosing application dialog or separate profile
+route. This also preserves the earlier verified accessibility fix for native
+password editing. Sample fixtures label the native forms as authenticated-only;
+real authenticated captures supply those forms.
