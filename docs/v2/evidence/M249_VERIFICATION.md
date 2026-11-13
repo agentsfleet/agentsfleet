@@ -6,17 +6,17 @@ The UI refresh and the pending CLI work ship in separate PRs.
 
 ## Current result
 
-Claude's subsequent V22 review found additional defects in the Changes flap,
-account menu and lifecycle evidence. That review supersedes the earlier visual
-readiness assessment. The refresh remains in progress; V22 is not final evidence.
+M249_001 remains active. Two backlog findings have verified functional evidence; the other 30 retained rows still need their specific closure checks.
 
-The latest repairs have internal development measurements. Clean-candidate
-captures, the full pre-submission self-check, authenticated lifecycle evidence,
-repository checks and owner visual approval remain open. No V23 bundle is
-approved for packaging while any required check fails or has not run.
+The latest native `make dry-app` passed 4,564 app unit tests and all 90 desktop/phone browser checks. Evidence: `refresh-dry-app-v237.log`.
 
-Historical green ticks below describe the stated source repair and its named
-evidence. They do not establish that the latest candidate passes all gates.
+That run included the repaired Model details selectors. Production source matched `f12b9e326`; test and documentation edits were uncommitted during the run.
+
+Claude owns the separate chat cleanup in issue #838. Aiwa owns the remaining visual checks, integration, final coverage, authenticated acceptance, bundles and PR gates.
+
+No further ZIP or gallery delivery is required. Use targeted internal measurements against the unchanged proposal; Indy reviews the PR preview or deployment.
+
+Earlier review bundles and green ticks below are historical evidence. They do not establish that the final integrated candidate passes every gate.
 
 ## Reference and comparison method
 
