@@ -6,6 +6,7 @@ import { SessionSettings } from "@/components/account/SessionSettings";
 import { requireCredential } from "@/lib/auth/credential";
 import { ApiError } from "@/lib/api/errors";
 import { listApiKeys } from "@/lib/api/api_keys";
+import {AccountSettingsSection} from "@/components/account/AccountSettingsSection";
 import ApiKeysView from "./components/ApiKeysView";
 
 export const dynamic = "force-dynamic";
@@ -24,5 +25,6 @@ export default async function SecurityPage() {
   return <SecurityLayout>
     {unavailable ? <Alert variant="warning">API keys could not be loaded.<RouteRetryButton label="Retry API keys" /></Alert> : <ApiKeysView initial={initial} operatorOnly={operatorOnly} />}
     <SessionSettings />
+    <AccountSettingsSection />
   </SecurityLayout>;
 }

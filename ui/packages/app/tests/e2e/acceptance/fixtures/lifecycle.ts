@@ -17,6 +17,7 @@
  */
 import { expect, type Page, type TestInfo } from "@playwright/test";
 import {writeFile} from "node:fs/promises";
+import {measureVisualState} from "../../fixtures/visual-measurement";
 import {visualProvenance} from "../../fixtures/visual-provenance";
 
 const ROW_STATE_TIMEOUT_MS = 15_000;
@@ -112,9 +113,10 @@ export async function captureLifecycleReview(page: Page, info: TestInfo, outcome
       await expect(page.getByTestId("fleet-thread-root")).toHaveCount(0);
     }
     const name = `authenticated-fleet-${outcome}-${width}-${theme}`;
+    const geometry = await measureVisualState(page);
     await page.screenshot({path: info.outputPath(`${name}.png`), animations: "disabled"});
     await writeFile(info.outputPath(`${name}-evidence.json`), JSON.stringify({...source,
-      captureTimeUtc: new Date().toISOString(), evidenceKind: "authenticated-lifecycle", outcome, width, theme, url: page.url()}, null, 2));
+      captureTimeUtc: new Date().toISOString(), evidenceKind: "authenticated-lifecycle", outcome, width, theme, geometry, url: page.url()}, null, 2));
   }
   const after = await visualProvenance();
   expect(after.revision).toBe(source.revision);

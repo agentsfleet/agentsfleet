@@ -1123,4 +1123,5 @@ and Sign out beneath the identity header. The header's native submenu switches
 and creates workspaces. API Keys combines keys, sessions and access to the
 native account/sign-in controls; no separate Personal account destination is
 shown. Keep password and verified-email operations in the authenticated provider
-facade and retain the shared dialog's keyboard and focus behavior.
+facade in an always-mounted named section. The header action scrolls/focuses it without
+changing native verification hashes; do not add an enclosing dialog.

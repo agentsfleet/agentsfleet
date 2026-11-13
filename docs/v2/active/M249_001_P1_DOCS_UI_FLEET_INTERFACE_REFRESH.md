@@ -462,7 +462,7 @@
 | `ui/packages/app/components/account/SessionSettings.tsx` | CREATE | Custom browser-session list, paging, confirmed sign-out and durable errors |
 | `ui/packages/app/components/account/use-account-sessions.ts` | CREATE | Own session reads and mutations per signed-in identity; discard stale completions |
 | `ui/packages/app/components/account/AccountAccess.tsx` | CREATE | Loading and signed-out settings presentation shared by account screens |
-| `ui/packages/app/app/(dashboard)/settings/account/[[...account]]/page.tsx` | EDIT | Replace the embedded profile page and preserve the security deep link |
+| `ui/packages/app/app/(dashboard)/settings/account/[[...account]]/page.tsx` | DELETE | Merge native controls into API Keys; no separate profile route or compatibility alias |
 | `ui/packages/app/app/(dashboard)/settings/security/page.tsx` | CREATE | Account-scoped browser-session Security route |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/security/page.tsx` | EDIT | Redirect the old placeholder to account Security |
 | `ui/packages/app/components/layout/account-menu-data.ts` | EDIT | Make account Security discoverable while keeping API keys separate |
@@ -669,11 +669,11 @@ Keep existing fleet, draft, message, event, secret, membership and billing inter
 
 All callers and companion documentation must move together. Existing credential bytes, model IDs, scope checks and setup/model decision records remain unchanged.
 The coordinated public Plugins and archived-status vocabulary changes have their own implementation specification.
-Security combines account API keys and browser sessions. Personal account controls use the identity provider's native widget through the auth facade.
+API Keys combines account keys, browser sessions and the identity provider’s native profile/sign-in controls through the auth facade.
 
-### Personal account and browser-session adapter
+### Account controls and browser-session adapter
 
-The approved proposal has no separate Profile page. The avatar's Personal account action opens the provider's native controls through the app-owned auth facade; remove the custom profile form. Preserve the existing subject strings used by chat, pending sends and caches. No person/tenant mapping or token format changes. Keep identity edits, email verification, passwords, passkeys and multi-factor setup in the provider's secure controls, under its existing instance policies. Do not replace those flows with privileged unchecked backend writes.
+The approved proposal has no separate Profile page. The combined API Keys page hosts the provider's native controls through the app-owned auth facade; remove the custom profile form. Its header action scrolls and focuses the always-mounted Profile and sign-in settings section without changing Clerk's hash. Preserve the existing subject strings used by chat, pending sends and caches. No person/tenant mapping or token format changes. Keep identity edits, email verification, passwords, passkeys and multi-factor setup in the provider's secure controls, under its existing instance policies. Do not replace those flows with privileged unchecked backend writes.
 
 Read browser sessions fresh through an app-owned server action, since the provider browser SDK caches `user.getSessions()` for the lifetime of its resource. Resolve the current subject/session only inside `credential.ts`; accept an expected subject as a stale-tab guard, never as authority. List only that subject's active sessions, in bounded pages, mapping device/browser/location/last-active/current-device into app-owned data. Unknown times remain unknown. API keys and CLI device credentials remain separate resources.
 
@@ -857,9 +857,9 @@ Typography and icon work was explicitly cleared. Code/account re-reviews clear t
 
 | File | Action | Purpose |
 |---|---|---|
-| `ui/packages/app/components/account/AccountMethodsSettings.tsx` | CREATE | Host native verified controls on a named app page and clear its widget when account/session changes |
+| `ui/packages/app/components/account/AccountSettingsSection.tsx` | CREATE | Keep a named native-control section mounted on API Keys; clear its widget when account/session changes |
 
-- **Supported native-control repair** — The installed `UserProfileModalProps` exposes profile options and portal container, with no accessible-name override. Use the supported embedded `UserProfile` with hash routing on `/settings/account/sign-in`, reached through the existing guarded neutral client method. Keep a persistent app page title/region and key the live native widget by the existing subject/session context. This preserves native verification portals without adding a second modal focus trap or DOM patch. The account reviewer cleared this direction read-only; fresh tests remain due.
+- **Supported native-control repair** — The installed `UserProfileModalProps` exposes profile options and portal container, with no accessible-name override. Use the supported embedded `UserProfile` with hash routing on `/settings/security`, inside its always-mounted named Profile and sign-in settings section. Keep a persistent app page title/region and key the live native widget by the existing subject/session context. This preserves native verification portals without adding a second modal focus trap or DOM patch. The account reviewer cleared this direction read-only; fresh tests remain due.
 
 | `ui/packages/app/tests/e2e/acceptance/integrations-nav.spec.ts` | EDIT | Retain purpose-based menu selection while the native accessible name includes its visible account/workspace labels |
 
@@ -1300,10 +1300,16 @@ Owner: “The workspace is  fine”; “The Personal account and Security must b
 merged, and renamed may be to API Keys?”; “SEcurity renamed to API Keys”.
 Retain workspace switching/creation in the identity submenu. Remove the separate
 Personal account route/menu item. Label the existing keys/sessions destination
-API Keys and retain its existing operations. A shared account/sign-in dialog
-hosts the existing native provider controls through the auth facade; password
+API Keys and retain its existing operations. A Profile and sign-in settings action scrolls to the always-mounted native-control section
+on the combined page through the existing auth facade; password
 availability follows the existing provider configuration. Additional inventory:
-`components/account/ManageAccountDialog.tsx`, account controls and authentication
+`components/account/AccountSettingsAction.tsx`, account controls and authentication
 accessibility journeys; remove the former account catch-all page/loading route.
 Record the changed title, menu entry and sign-in launcher as explicit approved
 differences from the immutable proposal. No backend API or access-scope change.
+
+Native account settings use the supported embedded `UserProfile` with hash
+routing on the combined page. Its heading and region remain mounted during
+verification. Do not nest it in another application modal or restore the earlier
+native profile modal whose password editor lost its accessible name. The header
+action only scrolls/focuses this section, preserving native verification hashes.
