@@ -129,7 +129,7 @@ export function DialogDescription({ className, ref, ...props }: DialogDescriptio
   return (
     <DialogPrimitive.Description
       ref={ref}
-      className={cn("font-sans text-body-sm leading-dialog-description text-muted-foreground", className)}
+      className={cn("break-words font-sans text-body-sm leading-dialog-description text-muted-foreground", className)}
       {...props}
     />
   );

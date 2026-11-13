@@ -180,12 +180,19 @@ describe("the approved secret rows", () => {
     expect(screen.getByText("Access details unavailable")).toBeTruthy();
   });
 
-  it("keeps the complete long reference readable and its management action reachable", () => {
+  it("keeps the complete long reference readable in its row and delete confirmation", async () => {
     const name = "billing-warehouse-replica-read-only-credentials-for-the-nightly-export";
     renderList([{...providerSecret(CREATED_AT), name}]);
     expect(screen.getByText(name).className).toContain("break-words");
     expect(screen.getByRole("button", {name: `Manage ${name}`})).toBeTruthy();
     expect(screen.queryByRole("button", {name: /Rename secret/})).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: `Manage ${name}`}));
+    fireEvent.click(screen.getByRole("button", {name: "Delete secret"}));
+    const dialog = await screen.findByRole("alertdialog");
+    const target = within(dialog).getByText(`“${name}”`, {exact: true});
+    expect(dialog.getAttribute("aria-describedby")?.split(/\s+/)).toContain(target.closest("p")?.id);
+    expect(within(dialog).getByRole("heading", {name: "Delete secret?"})).toBeTruthy();
+    expect(deleteSecretActionMock).not.toHaveBeenCalled();
   });
 });
 

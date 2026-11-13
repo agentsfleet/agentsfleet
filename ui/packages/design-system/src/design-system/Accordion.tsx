@@ -41,8 +41,9 @@ export function AccordionTrigger({ className, children, ref, ...props }: Accordi
       <AccordionPrimitive.Trigger
         ref={ref}
         className={cn(
-          "flex flex-1 items-center justify-between py-4 text-sm font-medium",
-          "transition-all hover:underline text-left motion-reduce:transition-none",
+          "flex flex-1 items-center justify-between rounded-control py-4 text-sm font-medium",
+          "transition-all hover:text-foreground text-left motion-reduce:transition-none",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background",
           "[&[data-state=open]>svg]:rotate-180",
           className,
         )}

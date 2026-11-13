@@ -81,8 +81,8 @@ function SecretDialogs({
       <ConfirmDialog
         open={target !== null}
         onOpenChange={onDeleteClose}
-        title={`Delete secret “${target ?? ""}”?`}
-        description={connection ? deleteConnectionDescription(connection) : DELETE_SECRET_DESCRIPTION}
+        title="Delete secret?"
+        description={<><span className="mb-md block font-medium text-foreground">“{target}”</span>{connection ? deleteConnectionDescription(connection) : DELETE_SECRET_DESCRIPTION}</>}
         confirmLabel={connection ? DELETE_CONNECTION_CONFIRM : DELETE_SECRET_CONFIRM}
         intent="destructive"
         errorMessage={error}
