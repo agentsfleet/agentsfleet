@@ -6,7 +6,7 @@ The UI refresh and the pending CLI work ship in separate PRs.
 
 ## Current result
 
-M249_001 remains active. All 32 visual backlog findings now have measured closure evidence in M249_VISUAL_BACKLOG.md. Native coverage now passes all package floors. Final dry-app, authenticated acceptance, bundle checks and the PR gate remain due.
+M249_001 remains active. All 32 visual backlog findings now have measured closure evidence in M249_VISUAL_BACKLOG.md. Native coverage now passes all package floors. Final dry-app passes; authenticated acceptance, bundle checks and the PR gate remain due.
 
 The latest native `make dry-app` passed 4,564 app unit tests and all 90 desktop/phone browser checks. Evidence: `refresh-dry-app-v237.log`.
 
@@ -31,7 +31,7 @@ Four review findings were repaired before final verification:
 
 Focused package diagnostics passed 16 tests: split groups, task controls, attachment rendering and dashboard notice placement. Logs: `refresh-838-integrated-diagnostic-v250.log` and `refresh-attachments-diagnostic-v251.log`. These diagnostics do not satisfy the final repository gate.
 
-The notice test exercises its dashboard portal. Attachment rendering no longer contains an unreachable styling condition. Full coverage has not yet been rerun; the reported 99.96% branch result remains unresolved until the native coverage lane proves otherwise.
+The notice test exercises its dashboard portal. Attachment rendering no longer contains an unreachable styling condition. The native v266 coverage lane now proves 100 percent app branch coverage; the reported 99.96 percent gap is resolved.
 
 Claude measured 20 extra settled-card renders for 20 unrelated text events before the context change, and zero after it. This is a render-count result, not a latency measurement. His final report is [on #838](https://github.com/agentsfleet/agentsfleet/issues/838#issuecomment-6851308911).
 
@@ -42,6 +42,12 @@ Claude measured 20 extra settled-card renders for 20 unrelated text events befor
 Log: `/workspace/scratch/refresh-final-coverage-v266.log`, ending “All package coverage gates passed”. The only uncommitted change during this run was specification maintenance; production and test source remained unchanged. No coverage exclusion, threshold or timeout changed.
 
 The spec now fits 497 lines and lists all 676 repository paths plus three companion-doc paths. Review confirmed the inventory and found two incorrect failure-mode test references; both now name tests that inject the stated failure. Historical authoring and intermediate checks remain available at commit `8353a97d5`.
+
+## Integrated rendered-flow result
+
+✅ `make dry-app` passed on `fb41614af`: 478 files / 4,562 app tests and all 90 desktop/phone browser checks. Log: `/workspace/scratch/refresh-final-dry-app-v269.log`, ending “Dry lane passed”. No assertion or timeout changed.
+
+The benchmark records the working tree as dirty because Next.js rewrote its generated `next-env.d.ts` imports to the development types directory. After the dev server exited, the file was compared with HEAD and only that generated rewrite was restored. Production source remained unchanged throughout the run.
 
 ## Reference and comparison method
 
