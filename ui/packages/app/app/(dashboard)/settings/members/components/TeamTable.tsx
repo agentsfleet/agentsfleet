@@ -17,7 +17,7 @@ type Props = {
   onResend: (invite: InviteSummary) => void;
 };
 const ROW = "grid min-w-0 grid-cols-[minmax(0,1fr)_40px] items-center gap-x-xl gap-y-sm px-xl sm:px-5 py-4.5 min-[680px]:grid-cols-[36px_minmax(0,1fr)_40px] min-[900px]:grid-cols-[36px_minmax(0,1fr)_76px_148px_36px]";
-const AVATAR = "hidden size-9 shrink-0 items-center justify-center rounded-full bg-muted text-eyebrow font-bold min-[680px]:flex";
+const AVATAR = "hidden size-9 shrink-0 items-center justify-center rounded-full text-eyebrow font-bold min-[680px]:flex";
 const META = "col-start-1 min-[680px]:col-start-2 min-[900px]:col-auto";
 const ACTION = "col-start-2 row-start-1 min-[680px]:col-start-3 min-[900px]:col-auto min-[900px]:row-auto";
 
@@ -49,7 +49,7 @@ function MemberRow({member, pending, onRemove}: Pick<Props, "pending" | "onRemov
   const name = memberName(member);
   const initials = name.split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase();
   return <li aria-label={name} className={ROW}>
-    <span className={`${AVATAR} ${self ? "" : "text-success"}`} aria-hidden="true">{initials}</span>
+    <span className={`${AVATAR} ${self ? "bg-muted" : "bg-pulse/15 text-success"}`} aria-hidden="true">{initials}</span>
     <div className="min-w-0"><p className="break-words text-label font-semibold"><span>{name}</span>{self ? <span className="ml-md text-eyebrow font-normal leading-eyebrow text-text-dim">You</span> : null}</p>
       {name !== member.email ? <p className="mt-sm break-all text-label text-muted-foreground">{member.email}</p> : null}</div>
     <span className={`${META} text-label capitalize text-muted-foreground`}>{member.role}</span>
