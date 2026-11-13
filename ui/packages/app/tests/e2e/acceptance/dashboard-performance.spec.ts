@@ -5,6 +5,7 @@ import { getDefaultWorkspaceId, seedFleet } from "./fixtures/seed";
 import {
   gotoWorkspace,
   openSettingsDestination,
+  openWorkspaceMenu,
   workspaceUrlPattern,
 } from "./fixtures/nav";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
@@ -109,14 +110,14 @@ test.describe("authenticated dashboard fluidity", () => {
       await expect(page.getByRole("heading", {name: CHAT_ENTRANCE, exact: true})).toBeVisible();
       await installBlankFrameAudit(page);
 
-      await openSettingsDestination(page, "Activity");
-      await expect(page).toHaveURL(workspaceUrlPattern("events"), {
+      await openSettingsDestination(page, "API Keys");
+      await expect(page).toHaveURL(/\/settings\/security(?:\?|$)/, {
         timeout: ROUTE_TIMEOUT_MS,
       });
-      await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "API Keys", exact: true })).toBeVisible();
 
       const switcher = page.getByTestId("workspace-switcher");
-      await switcher.click();
+      await openWorkspaceMenu(page);
       await page.getByTestId("workspace-new").click();
       let createDialog = page.getByRole("dialog", {
         name: "Create workspace",
@@ -127,26 +128,20 @@ test.describe("authenticated dashboard fluidity", () => {
       await expect(createDialog).toBeHidden();
       await expect(switcher).toBeFocused();
 
-      await switcher.click();
+      await openWorkspaceMenu(page);
       await page.getByTestId("workspace-new").click();
       createDialog = page.getByRole("dialog", { name: "Create workspace" });
       await expect(createDialog.getByLabel("Name")).toHaveValue("");
       await createDialog.getByRole("button", { name: "Cancel" }).click();
 
       await page.setViewportSize({ width: 390, height: 844 });
-      const mobileTrigger = page.getByRole("button", {
-        name: "Open navigation",
-      });
-      await mobileTrigger.click();
-      const mobileNavigation = page.getByRole("dialog", {
-        name: "Navigation",
-      });
+      const mobileNavigation = page.getByRole("navigation", {name: "Primary", exact: true});
       await expect(mobileNavigation).toBeVisible();
       await mobileNavigation.getByRole("link", { name: "Your fleets", exact: true }).click();
       await expect(page).toHaveURL(workspaceUrlPattern("fleets"), {
         timeout: ROUTE_TIMEOUT_MS,
       });
-      await expect(mobileNavigation).toBeHidden();
+      await expect(mobileNavigation).toBeVisible();
       await expect(page.locator("main")).toBeVisible();
       expect(pageErrors).toEqual([]);
       expect(await blankFrameCount(page)).toBe(0);
@@ -166,24 +161,23 @@ test.describe("authenticated dashboard fluidity", () => {
       await signInAs(page, FIXTURE_KEY.regular);
       await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
       await expect(page.getByRole("heading", {name: CHAT_ENTRANCE, exact: true})).toBeVisible();
-      await page.getByRole("button", { name: "Workspace and account menu" }).click();
-      await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Activity", exact: true }).hover();
+      await page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ }).click();
+      await page.getByRole("menuitem", { name: "Models", exact: true }).hover();
       await expect.poll(
         () =>
-          prefetchedRoutes.some((url) => url.includes("/events")),
+          prefetchedRoutes.some((url) => url.includes("/settings/models")),
         { timeout: ROUTE_TIMEOUT_MS },
       ).toBe(true);
       await page.keyboard.press("Escape");
       await expect(page.getByRole("menu")).toBeHidden();
       await installBlankFrameAudit(page);
 
-      await openSettingsDestination(page, "Approvals");
-      await openSettingsDestination(page, "Activity");
-      await expect(page).toHaveURL(workspaceUrlPattern("events"), {
+      await openSettingsDestination(page, "Models");
+      await openSettingsDestination(page, "API Keys");
+      await expect(page).toHaveURL(/\/settings\/security(?:\?|$)/, {
         timeout: ROUTE_TIMEOUT_MS,
       });
-      await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "API Keys", exact: true })).toBeVisible();
       expect(await blankFrameCount(page)).toBe(0);
     },
   );
@@ -235,8 +229,8 @@ test.describe("authenticated dashboard fluidity", () => {
       ).toBeGreaterThan(0);
 
       const navigation = page.getByRole("navigation", { name: "Primary" });
-      await openSettingsDestination(page, "Activity");
-      await expect(page).toHaveURL(workspaceUrlPattern("events"));
+      await openSettingsDestination(page, "API Keys");
+      await expect(page).toHaveURL(/\/settings\/security(?:\?|$)/);
       await navigation.getByRole("link", { name: "Your fleets" }).click();
       await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
 

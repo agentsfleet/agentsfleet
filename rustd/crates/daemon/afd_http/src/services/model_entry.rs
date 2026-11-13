@@ -30,6 +30,7 @@
 
 use af_core::id::Uuid7;
 use afd_credential::Result as CredentialResult;
+use afd_credential::provider::KeyRef;
 use afd_credential::provider::{Added, Boundary, Providers, RegistryPage, Removed, Retargeted};
 use jiff::Timestamp;
 
@@ -59,7 +60,7 @@ pub trait TenantModelEntries: Send + Sync + std::fmt::Debug + 'static {
         &self,
         tenant: &Uuid7,
         model_id: &str,
-        secret_ref: &str,
+        credential: KeyRef<'_>,
         now: Timestamp,
     ) -> impl Future<Output = CredentialResult<Added>> + Send;
 
@@ -104,10 +105,10 @@ impl TenantModelEntries for Providers {
         &self,
         tenant: &Uuid7,
         model_id: &str,
-        secret_ref: &str,
+        credential: KeyRef<'_>,
         now: Timestamp,
     ) -> impl Future<Output = CredentialResult<Added>> + Send {
-        Self::add_entry(self, tenant, model_id, secret_ref, now)
+        Self::add_entry(self, tenant, model_id, credential, now)
     }
 
     fn set_entry_model(

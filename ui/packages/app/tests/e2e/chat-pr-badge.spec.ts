@@ -1,8 +1,8 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
 import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 
-test("late native PR badges stay on the sender line without moving a draft or visible reply", async ({page, chatProbe}) => {
+test("late native PR result cards retain their association without moving a draft or visible reply", async ({page, chatProbe}) => {
   await page.emulateMedia({reducedMotion: "reduce"});
   for (const width of [1280, 390]) {
     await page.setViewportSize({width, height: 844});
@@ -18,25 +18,36 @@ test("late native PR badges stay on the sender line without moving a draft or vi
       expect(await page.getByRole("link", {name: /^Pull request #123 ·/}).count()).toBe(0);
       const header = page.locator('[data-role="assistant"] [data-testid="chat-message-header"]');
       await expect(header).toHaveCount(1);
-      const viewport = page.locator('[data-testid="fleet-thread-root"] [role="presentation"]');
-      const readingPoint = await viewport.evaluate(node => node.scrollTop);
       expect(reads()).toBe(2);
-      const before = await Promise.all([paragraph.boundingBox(), composer.boundingBox(), header.boundingBox()]);
+      const before = await readingGeometry(paragraph);
       ready.resolve();
       const badge = page.getByRole("link", {name: /^Pull request #123 ·/});
       await expect(badge).toBeVisible();
       expect(await badge.evaluate(node => node.closest('[aria-hidden="true"]'))).toBeNull();
-      const after = await Promise.all([paragraph.boundingBox(), composer.boundingBox(), header.boundingBox()]);
-      for (const [index, box] of before.entries()) {
-        expect(box).not.toBeNull(); expect(after[index]).not.toBeNull();
-        expect(Math.abs(box!.y - after[index]!.y)).toBeLessThanOrEqual(1);
-        expect(Math.abs(box!.height - after[index]!.height)).toBeLessThanOrEqual(1);
+      const after = await readingGeometry(paragraph);
+      for (const [index, box] of before.boxes.entries()) {
+        expect(box).not.toBeNull(); expect(after.boxes[index]).not.toBeNull();
+        expect(Math.abs(box!.y - after.boxes[index]!.y)).toBeLessThanOrEqual(1);
+        expect(Math.abs(box!.height - after.boxes[index]!.height)).toBeLessThanOrEqual(1);
       }
       const badgeBox = await badge.boundingBox();
-      expect(badgeBox!.y).toBeGreaterThanOrEqual(after[2]!.y);
-      expect(badgeBox!.y + badgeBox!.height).toBeLessThanOrEqual(after[2]!.y + after[2]!.height + 1);
+      const identifier = badge.getByText("Pull request #123", {exact: true});
+      const identifierBox = await identifier.boundingBox();
+      expect(identifierBox).not.toBeNull();
+      expect(identifierBox!.x + identifierBox!.width).toBeLessThanOrEqual(badgeBox!.x + badgeBox!.width + 1);
+      expect(await identifier.evaluate(node => getComputedStyle(node).flexShrink)).toBe("0");
+      expect(badgeBox!.y).toBeGreaterThanOrEqual(after.boxes[0]!.y + after.boxes[0]!.height);
+      const replyBox = await paragraph.locator('xpath=ancestor::*[@data-role="assistant"]').boundingBox();
+      expect(replyBox).not.toBeNull();
+      expect(badgeBox!.x).toBeGreaterThanOrEqual(replyBox!.x - 1);
+      expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(replyBox!.x + replyBox!.width + 1);
       await expect(composer).toHaveValue(composing ? "Keep the callback checks intact." : "");
-      expect(Math.abs(await viewport.evaluate(node => node.scrollTop) - readingPoint)).toBeLessThanOrEqual(1);
+      // Inline phone Summary grows before the transcript in the same viewport.
+      // Its independently measured growth must be compensated exactly; the
+      // visible reply, header and composer retain their one-pixel bounds above.
+      const viewportShift = after.origin - before.origin;
+      const precedingGrowth = after.precedingSummaryHeight - before.precedingSummaryHeight;
+      expect(Math.abs(after.scrollTop - before.scrollTop - viewportShift - precedingGrowth)).toBeLessThanOrEqual(1);
       expect(reads()).toBe(2);
       if (composing) await expect(composer).toBeFocused();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -62,4 +73,23 @@ async function holdTaskDetail(page: Page) {
       branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/linkwarden/linkwarden/pull/123", workflows: []}}}});
   });
   return {ready, requested, reads: () => reads};
+}
+
+/** Read layout and its scroll offset in one browser turn, after the same layout flush. */
+function readingGeometry(paragraph: Locator) {
+  return paragraph.evaluate(node => {
+    const root = node.closest('[data-testid="fleet-thread-root"]');
+    const viewport = root?.querySelector<HTMLElement>('[role="presentation"]');
+    const composer = viewport?.querySelector('textarea');
+    const header = node.closest('[data-role="assistant"]')?.querySelector('[data-testid="chat-message-header"]');
+    if (!viewport || !composer || !header) throw new Error("The visible chat geometry is unavailable");
+    const boxes = [node, composer, header].map(element => {
+      const {x, y, width, height} = element.getBoundingClientRect();
+      return {x, y, width, height};
+    });
+    const origin = viewport.getBoundingClientRect().y;
+    const summary = viewport.querySelector('[aria-label="Summary"]');
+    const precedingSummaryHeight = summary && getComputedStyle(summary).order === "-1" ? summary.getBoundingClientRect().height : 0;
+    return {boxes, origin, scrollTop: viewport.scrollTop, precedingSummaryHeight};
+  });
 }

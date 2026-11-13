@@ -6,8 +6,8 @@ import { LibraryBrowser } from "./LibraryBrowser";
 
 export function LibraryWorkspace({ workspace }: { workspace: string }) {
   const router = useRouter();
-  return <LibraryBrowser workspace={workspace} onSelect={(source) => {
-    const query = new URLSearchParams({ library: source.library_id, revision: source.revision_id });
+  return <LibraryBrowser workspace={workspace} onSelect={(source, intent) => {
+    const query = new URLSearchParams({ library: source.library_id, revision: source.revision_id, intent });
     router.push(`${workspacePath(workspace, "fleets/new")}?${query}`);
   }} />;
 }

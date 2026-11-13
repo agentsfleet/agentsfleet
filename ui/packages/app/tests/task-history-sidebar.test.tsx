@@ -2,6 +2,8 @@ import type { TaskActivity } from "@/lib/task-activity";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
+import {FleetTaskProvider} from "@/components/domain/chat/FleetTaskProvider";
+import {TaskDetailView} from "@/components/domain/chat/TaskDetail";
 import { TaskPanel } from "@/components/domain/chat/TaskPanel";
 import { recentTaskIds } from "@/components/domain/chat/task-references";
 import { loadTaskDetails } from "@/components/domain/chat/task-detail-reader";
@@ -30,22 +32,23 @@ it("retains Outputs when current work finishes and recovers them after reload fr
   vi.stubGlobal("fetch", network);
   const events = history(TASK_IDS[0]);
   const view = render(<TaskPanel {...SCOPE} events={events} />);
-  await screen.findByRole("region", {name: "Outputs"});
-  const outputs = () => within(screen.getByRole("region", {name: "Outputs"}));
-  await screen.findByRole("region", {name: "Outputs"});
+  await screen.findByRole("region", {name: "Pull requests"});
+  const outputs = () => within(screen.getByRole("region", {name: "Pull requests"}));
+  await screen.findByRole("region", {name: "Pull requests"});
   expect(await outputs().findByRole("link")).toHaveProperty("href", TARGET.url);
   expect(network).toHaveBeenCalledTimes(2);
   view.rerender(<TaskPanel {...SCOPE} events={events.map(event => ({...event, reply: "More streamed words"}))} />);
   expect(network).toHaveBeenCalledTimes(2);
   unfinished = false;
   view.rerender(<TaskPanel {...SCOPE} revision={1} events={events} />);
-  await screen.findByText("No unfinished tasks.");
-  expect(outputs().getByRole("link")).toHaveProperty("href", TARGET.url);
   await waitFor(() => expect(network).toHaveBeenCalledTimes(4));
+  expect(screen.queryByRole("button", {name: /^Tasks/})).toBeNull();
+  expect(outputs().getByRole("link")).toHaveProperty("href", TARGET.url);
   view.unmount();
   render(<TaskPanel {...SCOPE} events={events} />);
-  await screen.findByText("No unfinished tasks.");
-  await screen.findByRole("region", {name: "Outputs"});
+  await waitFor(() => expect(network).toHaveBeenCalledTimes(6));
+  expect(screen.queryByRole("button", {name: /^Tasks/})).toBeNull();
+  await screen.findByRole("region", {name: "Pull requests"});
   expect(await outputs().findByRole("link")).toHaveProperty("href", TARGET.url);
   expect(screen.queryByRole("button", {name: /PR #123 repair/})).toBeNull();
   expect(network).toHaveBeenCalledTimes(6);
@@ -60,7 +63,7 @@ it("hides all metadata until list authorization, including loading after access 
   const events = history(TASK_IDS[0]);
   const view = render(<TaskPanel {...SCOPE} events={events} sources={SOURCES} />);
   expect(screen.queryByRole("region", {name: "Sources"})).toBeNull();
-  expect(screen.queryByRole("region", {name: "Durable tasks"})).toBeNull();
+  expect(screen.queryByRole("region", {name: "Tasks"})).toBeNull();
   expect(network).toHaveBeenCalledTimes(1);
   first.resolve(Response.json({items: [], next_cursor: null}));
   await screen.findByRole("region", {name: "Sources"});
@@ -71,7 +74,7 @@ it("hides all metadata until list authorization, including loading after access 
   await screen.findByText("Current work is unavailable.");
   const pending = Promise.withResolvers<Response>(); network.mockReturnValue(pending.promise);
   await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
-  for (const name of ["Sources", "Outputs", "Changes", "Durable tasks"]) expect(screen.queryByRole("region", {name})).toBeNull();
+  for (const name of ["Sources", "Outputs", "Changes", "Tasks"]) expect(screen.queryByRole("region", {name})).toBeNull();
   expect(network).toHaveBeenCalledTimes(4);
   pending.resolve(Response.json({items: [], next_cursor: null}));
   view.unmount();
@@ -94,4 +97,23 @@ it("validates historical task identity without inventing a minimum resource vers
   const observe = vi.fn();
   await loadTaskDetails("workspace", "fleet", [{kind: "historical", id: TASK_IDS[0]}], new AbortController().signal, observe);
   expect(observe).toHaveBeenLastCalledWith({kind: "historical", id: TASK_IDS[0]}, {kind: "ready", value: detail()});
+});
+
+it("keeps archived task history readable without stale approval or task mutation controls", async () => {
+  const task = summary(TASK_IDS[0], "running");
+  const saved = detail(task);
+  const network = vi.fn<typeof fetch>().mockImplementation(async input =>
+    Response.json(path(input).includes("?limit=") ? {items: [task], next_cursor: null} : saved));
+  vi.stubGlobal("fetch", network);
+  render(<FleetTaskProvider {...SCOPE} readOnly approvals={{count: 1, href: "/old-approvals"}}>
+    <TaskPanel {...SCOPE} />
+    <TaskDetailView workspaceId={SCOPE.workspaceId} fleetId={SCOPE.fleetId} task={task}
+      resource={{kind: "ready", value: saved}} retry={vi.fn()} onChanged={vi.fn()} />
+  </FleetTaskProvider>);
+  await screen.findByRole("button", {name: /^Tasks/});
+  expect(screen.getByText("What counts as done?")).toBeTruthy();
+  expect(screen.getByText(saved.context.objective)).toBeTruthy();
+  for (const name of ["Approve", "Deny", "Pause", "Resume", "Stop", "Review latest saved criteria"])
+    expect(screen.queryByRole("button", {name})).toBeNull();
+  expect(network.mock.calls.every(([input]) => path(input).includes("/tasks"))).toBe(true);
 });

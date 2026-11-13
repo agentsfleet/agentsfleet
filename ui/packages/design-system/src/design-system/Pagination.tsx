@@ -139,7 +139,7 @@ function PageNavigation({ page, total, totalPages, totalLabel, canAdvance, onPag
           <Spinner size="sm" label="Loading…" className="border-0 bg-transparent p-0" />
         ) : null}
       </div>
-      <Button
+      <div className="flex shrink-0 items-center gap-md"><Button
         type="button"
         variant="ghost"
         size="sm"
@@ -160,7 +160,7 @@ function PageNavigation({ page, total, totalPages, totalLabel, canAdvance, onPag
       >
         Next
         <span aria-hidden="true">›</span>
-      </Button>
+      </Button></div>
     </div>
   );
 }

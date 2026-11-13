@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { BookOpenIcon, ChevronRightIcon } from "lucide-react";
+import { BookOpenIcon, CaretRightIcon } from "@phosphor-icons/react/ssr";
 import nextDynamic from "next/dynamic";
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, SwitchIndicator } from "@agentsfleet/design-system";
@@ -25,7 +25,7 @@ export function MemoryMenu({workspaceId, fleetId, access, canGrant}: Props) {
     <DropdownMenuLabel variant="name">Workspace memory</DropdownMenuLabel>
     {access && canGrant ? <MemorySharing key={fleetId} workspaceId={workspaceId} fleetId={fleetId} initial={access} /> : null}
     <DropdownMenuItem onSelect={event => {event.preventDefault(); setOpen(true);}}>
-      <BookOpenIcon aria-hidden="true" /><span className="flex-1">{SAVED_MEMORIES}</span><ChevronRightIcon aria-hidden="true" />
+      <BookOpenIcon aria-hidden="true" /><span className="flex-1">{SAVED_MEMORIES}</span><CaretRightIcon aria-hidden="true" />
     </DropdownMenuItem>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="ph-no-capture ph-no-record max-w-2xl overflow-y-auto">

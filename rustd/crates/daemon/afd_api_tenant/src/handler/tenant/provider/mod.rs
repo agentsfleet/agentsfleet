@@ -76,7 +76,10 @@ pub const DETAIL_SECRET_DATA_MALFORMED: &str =
 pub const DETAIL_MODEL_NOT_IN_CATALOGUE: &str = "model not in cached caps catalogue";
 
 /// The sentence a tenant with no workspace earns.
-pub const DETAIL_NO_PRIMARY_WORKSPACE: &str = "Tenant has no primary workspace configured";
+pub const DETAIL_NO_PRIMARY_WORKSPACE: &str = "Account has no workspace configured";
+
+pub(super) const DETAIL_WORKSPACE_REQUIRED: &str = "workspace_id required when mode=self_managed";
+pub(super) const DETAIL_WORKSPACE_INVALID: &str = "workspace_id must be a canonical UUIDv7";
 
 /// The refusal a body this daemon cannot read earns.
 pub const DETAIL_MALFORMED_BODY: &str = "Malformed JSON";
@@ -150,6 +153,7 @@ pub(super) fn from_own(
         model: &own.model,
         context_cap_tokens: own.context_cap_tokens,
         secret_ref: Some(&own.secret_ref),
+        workspace_id: own.workspace_id.as_ref().map(af_core::id::Uuid7::as_str),
         platform_default_available,
     }
 }
@@ -165,6 +169,7 @@ pub(super) fn from_default(
         model: &fallback.model,
         context_cap_tokens: fallback.context_cap_tokens,
         secret_ref: None,
+        workspace_id: None,
         platform_default_available,
     }
 }
@@ -177,6 +182,7 @@ const fn empty_view() -> TenantProviderResponse<'static> {
         model: NOT_CONFIGURED,
         context_cap_tokens: 0,
         secret_ref: None,
+        workspace_id: None,
         platform_default_available: false,
     }
 }

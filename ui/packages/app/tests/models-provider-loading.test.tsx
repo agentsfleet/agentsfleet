@@ -17,6 +17,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   createModelEntryAction: vi.fn(), replaceSecretAction: vi.fn(), setProviderSelfManagedAction: vi.fn(),
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({ createSecretAction: vi.fn() }));
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "model-owner"})}));
 
 import AddModelEntryDialog from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog";
 
@@ -43,7 +44,7 @@ describe("provider picker during catalogue loading", () => {
       const user = userEvent.setup();
       await user.click(screen.getByRole("button", { name: "Create model" }));
       const dialog = within(screen.getByRole("dialog"));
-      await user.type(dialog.getByLabelText("Name"), "my-provider");
+      await user.type(dialog.getByLabelText("Key name"), "my-provider");
       const provider = dialog.getByRole("combobox", { name: "Provider" });
       expect(provider).toHaveProperty("disabled", true);
       expect(provider.textContent).toContain("Loading providers");
@@ -54,7 +55,7 @@ describe("provider picker during catalogue loading", () => {
       view.rerender(<AddModelEntryDialog {...props} />);
       expect(dialog.getByRole("combobox", { name: "Provider" })).toBe(provider);
       expect(provider).toHaveProperty("disabled", false);
-      expect(dialog.getByLabelText("Name")).toHaveProperty("value", "my-provider");
+      expect(dialog.getByLabelText("Key name")).toHaveProperty("value", "my-provider");
       await user.click(provider);
       await user.click(screen.getByRole("option", { name: "Anthropic" }));
       expect(provider.textContent).toContain("Anthropic");

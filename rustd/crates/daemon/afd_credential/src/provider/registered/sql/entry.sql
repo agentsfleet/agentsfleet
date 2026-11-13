@@ -6,12 +6,7 @@ WITH locked AS MATERIALIZED (
            r.resource_version, s.workspace_id AS workspace_id, s.key_name,
            m.inference
       FROM model.tenant_models e
-      JOIN LATERAL (
-            SELECT id FROM identity.workspaces
-             WHERE tenant_id = e.tenant_id
-             ORDER BY created_at, id LIMIT 1
-           ) w ON true
-      JOIN vault.secrets s ON s.workspace_id = w.id AND s.key_name = e.secret_ref
+      JOIN vault.secrets s ON s.workspace_id = e.workspace_id AND s.key_name = e.secret_ref
       JOIN model.platform_models m ON m.provider = s.meta_provider AND m.model_name = e.model_name
      CROSS JOIN model.catalogue_version r
      WHERE e.tenant_id = $1 AND e.id = $2

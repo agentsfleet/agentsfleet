@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TooltipButton } from "./TooltipButton";
 import { TooltipProvider } from "./Tooltip";
 
@@ -60,4 +60,18 @@ describe("TooltipButton", () => {
     fireEvent.click(button);
     expect(onClick).not.toHaveBeenCalled();
   });
+});
+
+it("removes a redundant hint without remounting the focused navigation control", async () => {
+  const onClick = vi.fn();
+  const view = renderButton(<TooltipButton tooltip="Expand navigation" aria-label="Expand navigation" onClick={onClick}>↔</TooltipButton>);
+  const button = screen.getByRole("button", {name: "Expand navigation"});
+  act(() => button.focus());
+  expect(await screen.findByRole("tooltip")).toBeTruthy();
+  view.rerender(<TooltipProvider><TooltipButton tooltip={null} aria-label="Collapse navigation" onClick={onClick}>Collapse navigation</TooltipButton></TooltipProvider>);
+  await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+  expect(document.activeElement).toBe(button);
+  expect(screen.getByRole("button", {name: "Collapse navigation"})).toBe(button);
+  fireEvent.click(button);
+  expect(onClick).toHaveBeenCalledOnce();
 });

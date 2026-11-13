@@ -139,7 +139,10 @@ test.describe("tokens derive from one declaration and the spinner steps in CSS",
     const family = async (className: string) => (await styleOf(page, {}, ["font-family"], className))["font-family"] ?? "";
     const roles = ["font-display", "font-sans", "font-mono"];
     const before = await Promise.all(roles.map(family));
-    expect(new Set(before).size).toBe(roles.length);
+    expect(before[0]).toContain("Manrope");
+    expect(before[1]).toBe(before[0]);
+    expect(before[2]).toContain("Commit Mono");
+    expect(before[2]).not.toBe(before[1]);
     await setRootProperty(page, FONT_DISPLAY_TOKEN, PROBE_FONT);
     const after = await Promise.all(roles.map(family));
     expect(after[0]).toBe(PROBE_FONT);

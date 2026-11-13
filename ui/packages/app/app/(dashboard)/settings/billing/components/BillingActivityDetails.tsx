@@ -37,7 +37,7 @@ export function BillingActivityDetails({ activity, detail, modelNames }: Props) 
   };
   const paged = detail.page > 1 || detail.charges.next_cursor !== null;
   const providerNote = providerLabel(activity.postures);
-  return <div className="font-system text-eyebrow font-normal" aria-busy={pending}>
+  return <div className="font-sans text-eyebrow font-normal" aria-busy={pending}>
     <div className="mb-sm flex items-baseline justify-between gap-lg font-medium">
       <span>{activity.activity_type === BILLING_ACTIVITY_SETUP ? "Setup chat" : "Fleet run"} charge details</span>
       <span className="max-w-1/2 break-words text-right">{activity.models.map(model => modelNames[model] ?? model).join(", ")}</span>

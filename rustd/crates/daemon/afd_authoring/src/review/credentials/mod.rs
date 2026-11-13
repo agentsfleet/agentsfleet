@@ -98,10 +98,13 @@ async fn grant(
             Some("revoked" | "denied") => CheckState::Blocked,
             _ => CheckState::Missing,
         },
-        Some(Action {
+        draft.linked_fleet_id.as_ref().map(|fleet_id| Action {
             kind: ActionKind::Approvals,
-            label: "Open workspace approvals".to_owned(),
-            href: format!("/w/{}/approvals", draft.workspace_id),
+            label: "Open fleet approval".to_owned(),
+            href: format!(
+                "/w/{}/fleets/{fleet_id}#fleet-approvals",
+                draft.workspace_id
+            ),
         }),
     );
     Ok(())

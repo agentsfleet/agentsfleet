@@ -1,0 +1,133 @@
+/* Dashboard theme: import after tokens.css. Values only; theme.css owns utilities.
+ * The website imports the shared defaults without this dashboard profile. */
+:root {
+  color-scheme: dark;
+  --fs-body: 0.8125rem;
+  --fs-body-sm: 0.8125rem;
+  --fs-ui-sm: 0.8125rem;
+  --fs-body-lg: 0.8125rem;
+  --fs-label: 0.8125rem;
+  --fs-eyebrow: 0.75rem;
+  --fs-heading: 1.125rem;
+  --fs-conversation-heading: 1.1875rem;
+  --lh-conversation-heading: 1.3;
+  --fs-description: 0.875rem;
+  --fs-display-md: 1.25rem;
+  --fs-chat-title: 0.8125rem;
+  --fs-conversation: 0.8125rem;
+  --fs-composer: var(--fs-conversation);
+  --lh-body: 1.25rem;
+  --lh-body-sm: 1.25rem;
+  --lh-body-lg: 1.25rem;
+  --lh-label: 1.25rem;
+  --lh-eyebrow: 1rem;
+  --lh-heading: 1.5rem;
+  --lh-display-md: 1.625rem;
+  --lh-conversation: 1.25rem;
+  --lh-composer: var(--lh-conversation);
+  --letter-spacing-display-md: 0;
+  --letter-spacing-label: 0;
+  --letter-spacing-eyebrow: 0;
+  --fw-title: 650;
+  --fw-control: 500;
+  --table-cell-inline: 20px;
+  --table-cell-block: 16px;
+  --table-row: var(--surface-1);
+  --table-row-alternate: var(--surface-1);
+  --table-row-hover: var(--surface-2);
+
+  --surface-deep: #101114;
+  --bg: #181a1e;
+  --surface-1: #202328;
+  --surface-2: #2b2e35;
+  --surface-3: #2b2e35;
+  --border: #3d424b;
+  --border-subtle: #30343c;
+  --border-strong: #828e9e;
+  --text: #f5f6f8;
+  --text-chat: #f5f6f8;
+  --text-muted: #c2c7d0;
+  --text-subtle: #a3abb7;
+  --text-dim: #a3abb7;
+  --chat-loading-base: #c2c7d0;
+  --chat-loading-sweep: #8f98a6;
+  --pulse: #c1f0d6;
+  --pulse-dim: #afe4c7;
+  --pulse-glow: rgb(193 240 214 / 15%);
+  --on-pulse: #153d29;
+  --success: #b6e4c8;
+  --warn: #f3cb87;
+  --error: #ffb3b6;
+  --error-surface: #302126;
+  --brand-tile: #151716;
+  --brand-ray: #b8f0ce;
+  --avatar-bg: #d5d0e9;
+  --avatar-text: #302744;
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-control: 10px;
+  --overlay: #0009;
+  --elevation-dialog: 0 20px 80px #0006;
+  --summary-width: 248px;
+  --max-w-chat: 740px;
+  --chat-input-height: 60px;
+  --chat-inset: 32px;
+}
+
+@media (min-width: 42.5625rem) and (max-width: 68.75rem) {
+  :root { --summary-width: 228px; --chat-inset: 24px; }
+}
+
+@media (min-width: 42.5625rem) and (max-width: 50rem) {
+  :root { --summary-width: 216px; --chat-inset: 16px; }
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --surface-deep: #e9ebee;
+  --bg: #fafbfc;
+  --surface-1: #f0f2f5;
+  --surface-2: #e3e7ec;
+  --surface-3: #e3e7ec;
+  --border: #bdc5ce;
+  --border-subtle: #d7dce2;
+  --border-strong: #697586;
+  --text: #20242b;
+  --text-chat: #20242b;
+  --text-muted: #495361;
+  --text-subtle: #5e6876;
+  --text-dim: #5e6876;
+  --chat-loading-base: #495361;
+  --chat-loading-sweep: #303a48;
+  --pulse: #24593d;
+  --pulse-dim: #1d4c33;
+  --pulse-glow: rgb(36 89 61 / 15%);
+  --on-pulse: #fff;
+  --success: #286644;
+  --warn: #765017;
+  --error: #a42938;
+  --error-surface: #fff0f1;
+  --overlay: #0009;
+  --elevation-dialog: 0 20px 80px #0006;
+  --cta: var(--pulse);
+  --cta-hover: var(--pulse-dim);
+}
+
+@media (max-width: 42.5rem) {
+  :root {
+    --table-cell-inline: 16px;
+    --fs-conversation: 1rem;
+    --lh-conversation: 1.625rem;
+    --fs-composer: 1rem;
+    --lh-composer: 1.5rem;
+  }
+}
+
+@media (pointer: coarse) {
+  :root { --fs-composer: 1rem; --lh-composer: 1.5rem; }
+}
+
+
+@media (max-width: 50rem) { :root { --fs-new-fleet-title: 28px; --lh-new-fleet-title: 36px; --fs-usage-total: 26px; } }
+@media (max-width: 42.5rem) { :root { --fs-new-fleet-title: 26px; --lh-new-fleet-title: 34px; --fs-new-fleet-description: 14px; --fs-usage-total: 28px; } }

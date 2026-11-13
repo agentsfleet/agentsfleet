@@ -91,7 +91,7 @@ test("records five production output-opening and native-scroll samples", async (
 async function measureOutput(page: Page, url: string): Promise<OutputSample> {
   await page.goto(url);
   expect(await page.evaluate(async () => (await document.fonts.load('14px "Commit Mono"', "line0001")).length)).toBeGreaterThan(0);
-  expect(await page.evaluate(async () => (await document.fonts.load('14px "Instrument Sans Variable"', "Open output")).length)).toBeGreaterThan(0);
+  expect(await page.evaluate(async () => (await document.fonts.load('14px "Manrope Variable"', "Open output")).length)).toBeGreaterThan(0);
   await page.getByRole("button", {name: "Open output"}).click();
   await expect.poll(() => page.evaluate(() => window.outputMeasurement.openingMs)).not.toBeNull();
   const opening = await page.evaluate(() => window.outputMeasurement);

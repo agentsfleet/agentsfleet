@@ -15,7 +15,7 @@ export function BillingSpending({ report, modelNames }: Props) {
   if (report.spending.by_fleet.length === 0 && report.spending.by_model.length === 0) {
     return <EmptyState title="No settled spending" description="Matching charges will appear here after settlement." surface={EMPTY_STATE_SURFACE.plain} />;
   }
-  return <div className="space-y-xl pt-lg font-system">
+  return <div className="space-y-xl pt-lg font-sans">
     <SpendingList title={BY_FLEET_LABEL} rows={report.spending.by_fleet} label={row => row.label ?? row.key ?? SETUP_LABEL} />
     <SpendingList title={BY_MODEL_LABEL} rows={report.spending.by_model} label={row => row.key ? modelNames[row.key] ?? row.key : "Unknown model"} />
   </div>;
@@ -27,7 +27,7 @@ function SpendingList({ title, rows, label }: { title: string; rows: BillingBrea
     return amount > maximum ? amount : maximum;
   }, 0n);
   return <Section className="space-y-lg">
-    <SectionLabel variant="navigation" className="mb-0 font-system text-body-sm font-medium text-foreground">{title}</SectionLabel>
+    <SectionLabel variant="navigation" className="mb-0 font-sans text-body-sm font-medium text-foreground">{title}</SectionLabel>
     {rows.length === 0 ? <EmptyState title="No settled spending" description="Matching charges will appear here after settlement." surface={EMPTY_STATE_SURFACE.plain} /> :
       <List variant="plain" aria-label={title} className="space-y-lg">{rows.map(row => <ListItem key={row.key ?? SETUP_LABEL}
         className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-lg">

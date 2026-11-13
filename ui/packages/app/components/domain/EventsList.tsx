@@ -12,7 +12,7 @@ import {
   PAGINATION_KIND,
   Time,
 } from "@agentsfleet/design-system";
-import { ActivityIcon, ChevronRightIcon } from "lucide-react";
+import { PulseIcon, CaretRightIcon } from "@phosphor-icons/react/ssr";
 import { compareNanos, formatDollars } from "@/lib/money";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { senderLabelFor } from "@/lib/events/event-summary";
@@ -159,7 +159,7 @@ function createEventColumns(
           onClick={() => onInspect(row)}
         >
           Inspect
-          <ChevronRightIcon size={14} aria-hidden="true" />
+          <CaretRightIcon size={14} aria-hidden="true" />
         </Button>
       ),
     },
@@ -259,7 +259,7 @@ export function EventsList({ initial, pageSize, fleetId }: EventsListProps) {
         }}
         empty={
           <EmptyState
-            icon={<ActivityIcon size={28} />}
+            icon={<PulseIcon size={28} />}
             title={EVENTS_EMPTY_TITLE}
             description={EVENTS_EMPTY_DESCRIPTION}
           />

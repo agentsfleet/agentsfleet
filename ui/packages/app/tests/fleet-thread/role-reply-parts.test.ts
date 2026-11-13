@@ -59,7 +59,8 @@ describe("FleetThread — reply parts", () => {
     fireEvent.click(within(reply).getByRole("button", { name: /^Tool activity:/ }));
     const tools = within(reply).getByRole("list", { name: TOOL_CALLS });
     const answer = within(reply).getByText("Opened the PR.");
-    expect(within(tools).getByText("search_repo")).toBeTruthy();
+    fireEvent.click(within(tools).getByRole("button", {name: /using tool/i}));
+    expect(within(tools).getByText("Action · search_repo")).toBeTruthy();
     // Reasoning, then tools, then the answer — the library's grouping order.
     expect(chip.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(tools.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -113,7 +114,8 @@ describe("FleetThread — reply parts", () => {
     expect(screen.getByText("PR opened")).toBeTruthy();
     fireEvent.click(within(replyRow()).getByRole("button", { name: /^Tool activity:/ }));
     const calls = within(replyRow()).getByRole("list", { name: TOOL_CALLS });
-    expect(within(calls).getByText("read_file")).toBeTruthy();
+    fireEvent.click(within(calls).getByRole("button", {name: /using tool/i}));
+    expect(within(calls).getByText("Action · read_file")).toBeTruthy();
   });
 
   it("preserves a partial answer and shows a separate actionable failure", () => {

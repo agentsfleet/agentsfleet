@@ -15,6 +15,7 @@ use af_core::error_code;
 use afd_api_wire::tenant_provider::TenantProviderResponse;
 use afd_api_wire::tenant_provider::{ProviderMode, TenantProviderRequest};
 use afd_credential::provider::Activation;
+use afd_credential::provider::KeyRef;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -28,7 +29,8 @@ use crate::services::{Services, TenantProviders as _};
 use super::{
     DETAIL_MALFORMED_BODY, DETAIL_MODEL_NOT_IN_CATALOGUE, DETAIL_NO_PRIMARY_WORKSPACE,
     DETAIL_PLATFORM_KEY_MISSING, DETAIL_SECRET_DATA_MALFORMED, DETAIL_SECRET_NOT_FOUND,
-    DETAIL_SECRET_REF_REQUIRED, EVENT_APPLY, EVENT_RESET, EVENT_TENANT, from_default, from_own,
+    DETAIL_SECRET_REF_REQUIRED, DETAIL_WORKSPACE_INVALID, DETAIL_WORKSPACE_REQUIRED, EVENT_APPLY,
+    EVENT_RESET, EVENT_TENANT, from_default, from_own,
 };
 
 /// `DELETE /v1/tenants/me/provider` — back to the platform default, explicitly.
@@ -96,8 +98,8 @@ pub(crate) async fn reset<D: Services>(
     summary = "Set account model provider",
     description = concat!(
         "Sets your account's provider mode and model. Self-managed mode requires an ",
-        "existing secret named by `credential_ref`. Creates the model entry if it is ",
-        "missing.",
+        "existing secret named by `secret_ref` in the supplied `workspace_id`. ",
+        "The workspace must belong to your account. Creates the model entry if missing.",
     ),
     request_body = TenantProviderRequest,
     responses(
@@ -132,6 +134,11 @@ pub(crate) async fn apply<D: Services>(
             DETAIL_SECRET_REF_REQUIRED,
         )
     })?;
+    let workspace = request
+        .workspace_id
+        .as_deref()
+        .ok_or_else(|| Refusal::malformed(DETAIL_WORKSPACE_REQUIRED))
+        .and_then(|raw| afd_http::handler::parse_id(raw, DETAIL_WORKSPACE_INVALID))?;
 
     let person = identity.person();
     let tenant = tenant_of(&services, person, DETAIL_TENANT_REQUIRED, EVENT_TENANT).await?;
@@ -140,7 +147,10 @@ pub(crate) async fn apply<D: Services>(
     let outcome = store
         .activate(
             &tenant,
-            secret_ref,
+            KeyRef {
+                workspace_id: &workspace,
+                name: secret_ref,
+            },
             request.model.as_deref(),
             services.now(),
         )

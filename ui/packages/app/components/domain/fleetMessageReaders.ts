@@ -1,8 +1,8 @@
 import type { MessageState } from "@assistant-ui/react";
+import { z } from "zod";
 
 import { REASONING_SPAN, REPLY_FIGURE } from "./fleetReplyMessage";
 import { GROUP_META, RENDER_KIND_KEY } from "./useFleetThreadEntries";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { readNanos } from "@/lib/api/nanos";
 
 // The custom-metadata accessors a rendered message reads. Pure and JSX-free,
@@ -92,10 +92,23 @@ export function readOutcome(message: MessageState): string {
   return typeof raw === "string" ? raw : "";
 }
 
-/** Present only on a grouped message; null means this row stands for itself. */
-export function readGroupMembers(message: MessageState): FleetEvent[] | null {
+const recordedActivitySchema = z.object({
+  id: z.string().min(1), role: z.literal("system"), actor: z.string(), text: z.string(), status: z.string(), createdAt: z.date(),
+  outcome: z.string().default(""), failureLabel: z.string().nullable().default(null),
+  failureDetail: z.string().nullable().default(null),
+  custom: z.object({requestJson: z.string().nullable().optional()}).optional(),
+});
+export type RecordedActivity = z.infer<typeof recordedActivitySchema>;
+const groupedActivitySchema = z.tuple([recordedActivitySchema]).rest(recordedActivitySchema)
+  .refine(members => new Set(members.map(member => member.id)).size === members.length);
+
+/** Malformed members cannot become rows or duplicate React identities.
+ * The message root memoizes adaptation for each immutable message snapshot. */
+export function readGroupMembers(message: MessageState): [RecordedActivity, ...RecordedActivity[]] | null {
   const raw = message.metadata.custom[GROUP_META.MEMBERS];
-  return Array.isArray(raw) && raw.length > 0 ? (raw as FleetEvent[]) : null;
+  if (!Array.isArray(raw)) return null;
+  const parsed = groupedActivitySchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
 }
 
 export function readFailureLabel(message: MessageState): string | null {

@@ -48,6 +48,19 @@ describe("native fleet chat entry", () => {
     renderToStaticMarkup(await page({fleet: DRAFT, setup_revision: "2"}));
     expect(chat.mock.calls[0]?.[0]).toMatchObject({source: {kind: "fleet", fleet_id: DRAFT, setup_revision: "2"}});
   });
+  it("requires explicit edit intent before setting a plugin publication destination", async () => {
+    renderToStaticMarkup(await page({library: "checkout-watch", revision: DRAFT, intent: "edit"}));
+    expect(chat.mock.calls[0]?.[0]).toMatchObject({publicationTarget: "checkout-watch", prompt: "Update this plugin’s setup."});
+    chat.mockClear();
+    renderToStaticMarkup(await page({library: "checkout-watch", revision: DRAFT, intent: "new"}));
+    expect(chat.mock.calls[0]?.[0].publicationTarget).toBeUndefined();
+    expect(chat.mock.calls[0]?.[0].prompt).toContain("Start a new fleet from this plugin");
+  });
+  it("prefills the plugin starter without allocating a publication destination", async () => {
+    renderToStaticMarkup(await page({starter: "plugin"}));
+    expect(chat.mock.calls[0]?.[0].prompt).toMatch(/plugin/i);
+    expect(chat.mock.calls[0]?.[0].publicationTarget).toBeUndefined();
+  });
   it.each([{library: "checkout-watch"}, {library: "", revision: DRAFT}, {library: "checkout-watch", revision: "bad"}, {library: "checkout-watch", revision: DRAFT, draft: DRAFT}])("refuses incomplete or mixed library selections", async (query) => {
     await expect(page(query)).rejects.toThrow("not-found");
     expect(chat).not.toHaveBeenCalled();

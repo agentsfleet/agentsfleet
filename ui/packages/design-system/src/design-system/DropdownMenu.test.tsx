@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,6 +8,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "./DropdownMenu";
 
 const UPPERCASE = "uppercase";
@@ -60,7 +63,7 @@ describe("DropdownMenu", () => {
     expect([...screen.getByTestId("label").classList]).toEqual(expect.arrayContaining(indent));
   });
 
-  it("a name label drops the uppercase eyebrow the default label carries", () => {
+  it("keeps section labels and proper names in sentence case", () => {
     render(
       <DropdownMenu open>
         <DropdownMenuContent>
@@ -71,7 +74,22 @@ describe("DropdownMenu", () => {
         </DropdownMenuContent>
       </DropdownMenu>,
     );
-    expect(screen.getByTestId("default").className.split(" ")).toContain(UPPERCASE);
+    expect(screen.getByTestId("default").className.split(" ")).not.toContain(UPPERCASE);
     expect(screen.getByTestId("name").className.split(" ")).not.toContain(UPPERCASE);
   });
+});
+
+it("keeps native submenu keyboard entry and returns focus to its identity trigger", async () => {
+  render(<DropdownMenu open><DropdownMenuContent>
+    <DropdownMenuSub><DropdownMenuSubTrigger>Switch workspace</DropdownMenuSubTrigger>
+      <DropdownMenuSubContent><DropdownMenuItem>Release workspace</DropdownMenuItem></DropdownMenuSubContent>
+    </DropdownMenuSub>
+  </DropdownMenuContent></DropdownMenu>);
+  const trigger = screen.getByRole("menuitem", {name: "Switch workspace"});
+  trigger.focus();
+  fireEvent.keyDown(trigger, {key: "ArrowRight"});
+  const item = await screen.findByRole("menuitem", {name: "Release workspace"});
+  await waitFor(() => expect(document.activeElement).toBe(item));
+  fireEvent.keyDown(item, {key: "ArrowLeft"});
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
 });

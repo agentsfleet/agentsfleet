@@ -32,6 +32,9 @@ export const updateModelEntryActionMock = vi.fn();
 export const deleteModelEntryActionMock = vi.fn();
 export const replaceSecretActionMock = vi.fn();
 export const createSecretActionMock = vi.fn();
+export const findRegisteredModelActionMock = vi.fn();
+export const readModelActivationActionMock = vi.fn();
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "model-owner"})}));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   getModelLibraryAction: getModelLibraryActionMock,
@@ -43,6 +46,8 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   updateModelEntryAction: updateModelEntryActionMock,
   deleteModelEntryAction: deleteModelEntryActionMock,
   replaceSecretAction: replaceSecretActionMock,
+  findRegisteredModelAction: findRegisteredModelActionMock,
+  readModelActivationAction: readModelActivationActionMock,
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: createSecretActionMock,
@@ -53,29 +58,13 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
 export const routerMock = { push: vi.fn() };
 vi.mock("next/navigation", () => ({ useRouter: () => routerMock }));
 
-// A transparent DataTable wrapper that also exposes the live onSortChange
-// prop — DataTable's own type accepts any string key (any column could opt
-// in), but only "model"/"provider" are marked sortable below, so the real
-// header never sends anything else. One test drives that boundary directly,
-// the way a future column misconfiguration would.
-export let capturedOnSortChange: ((key: string) => void) | undefined;
-vi.mock("@agentsfleet/design-system", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@agentsfleet/design-system")>();
-  return {
-    ...actual,
-    DataTable: (props: Record<string, unknown>) => {
-      capturedOnSortChange = props.onSortChange as ((key: string) => void) | undefined;
-      return React.createElement(actual.DataTable, props as never);
-    },
-  };
-});
-
 export function entry(overrides: Partial<TenantModelEntry>): TenantModelEntry {
   return {
     id: "0190aaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa",
     model_id: "claude-sonnet-5",
     display_name: "Sonnet 5",
     secret_ref: "anthropic-prod",
+    workspace_id: "ws_1",
     provider: "anthropic",
     kind: "provider_key",
     has_key: true,
@@ -110,11 +99,11 @@ export const LIBRARY: ModelLibrary = {
   ],
 };
 
-export async function renderTable(initial: TenantModelEntryList) {
+export async function renderTable(initial: TenantModelEntryList, workspaces?: ReadonlyArray<{id: string; name: string | null}>) {
   const { default: ModelsRegistryTable } = await import(
     "../../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
   );
-  render(withTooltipProvider(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initialPage: { ...initial, next_cursor: null, total: null }, initialError: null } as never)));
+  render(withTooltipProvider(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", workspaces, initialPage: { ...initial, next_cursor: null, total: null }, initialError: null })));
 }
 
 /** Render with explicit paging fields (cursor/total) or a typed read failure. */
@@ -166,7 +155,7 @@ export async function renderTableWithLibrary(initial: TenantModelEntryList, libr
   // Create-model trigger — which is the only catalogue-consuming affordance
   // such a page has, and carries the same focus intent.
   const intentTarget =
-    screen.queryAllByRole("button", { name: /^Edit / })[0] ??
+    screen.queryAllByRole("button", { name: /^Manage / })[0] ??
     screen.queryByRole("button", { name: /create model/i });
   if (intentTarget) {
     intentTarget.focus();

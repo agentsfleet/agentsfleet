@@ -15,8 +15,7 @@ for (const width of WIDTHS) {
     await signInAs(page, "regular");
     await page.goto(`/w/${workspaceId}/fleets`);
     await expect(page.getByRole("heading", { level: 1, name: "What should your fleet do?" })).toBeVisible();
-    const opener = page.getByRole("button", { name: "Workspace and account menu" });
-    if (!await opener.isVisible()) await page.getByRole("button", { name: "Open navigation" }).click();
+    const opener = page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ });
     await expect(opener).toBeVisible();
     await opener.focus();
     await page.keyboard.press("Enter");
@@ -41,19 +40,24 @@ for (const width of WIDTHS) {
 }
 
 for (const width of [390, 320]) {
-  test(`mobile navigation exposes destinations and restores keyboard focus at ${width}px`, async ({ page }) => {
+  test(`mobile rail exposes destinations and supports keyboard navigation at ${width}px`, async ({ page }) => {
     const workspaceId = await getDefaultWorkspaceId("regular");
     await page.setViewportSize({ width, height: 900 });
     await signInAs(page, "regular");
     await page.goto(`/w/${workspaceId}/fleets`);
     await expect(page.getByRole("heading", { level: 1, name: "What should your fleet do?" })).toBeVisible();
-    const opener = page.getByRole("button", { name: "Open navigation" });
-    await opener.focus();
+    const rail = page.getByRole("navigation", {name: "Primary", exact: true});
+    await expect(rail).toBeVisible();
+    for (const name of ["New fleet", "Your fleets", "Plugins", "Secrets", "Connected apps"]) {
+      await expect(rail.getByRole("link", {name, exact: true})).toBeVisible();
+    }
+    const fleets = rail.getByRole("link", {name: "Your fleets", exact: true});
+    await fleets.focus();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("link", { name: "Your fleets", exact: true })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/fleets$`));
+    await expect(fleets).toHaveAttribute("aria-current", "page");
     await expectAccessible(page, "Mobile navigation");
     await expectNoPageOverflow(page);
-    await page.keyboard.press("Escape");
-    await expect(opener).toBeFocused();
+    await expect(rail).toBeVisible();
   });
 }

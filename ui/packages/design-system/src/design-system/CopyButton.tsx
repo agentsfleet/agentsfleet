@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { CircleCheckIcon, CopyIcon, XIcon } from "lucide-react";
+import { useState, type ComponentProps } from "react";
+import { CheckCircleIcon, CopyIcon, XIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "./Button";
 import { cn } from "../utils";
 import { useResettableTimeout } from "./use-resettable-timeout";
@@ -28,7 +28,7 @@ const FAILED_LABEL = "Copy failed — select the value and copy it manually";
 
 type CopyOutcome = "idle" | "copied" | "failed";
 
-export interface CopyButtonProps {
+export interface CopyButtonProps extends Omit<ComponentProps<typeof Button>, "value" | "children"> {
   /** Text written to the clipboard. */
   value: string;
   /** Accessible name, e.g. "Copy workspace ID". */
@@ -49,7 +49,7 @@ export interface CopyButtonProps {
   className?: string;
 }
 
-export function CopyButton({ value, label, showLabel = false, onOutcomeChange, className }: CopyButtonProps) {
+export function CopyButton({ value, label, showLabel = false, onOutcomeChange, className, onClick, ...props }: CopyButtonProps) {
   const [outcome, setOutcome] = useState<CopyOutcome>("idle");
   const reset = useResettableTimeout();
 
@@ -75,7 +75,7 @@ export function CopyButton({ value, label, showLabel = false, onOutcomeChange, c
 
   const icon =
     outcome === "copied" ? (
-      <CircleCheckIcon size={14} className="text-success" aria-hidden="true" />
+      <CheckCircleIcon size={14} className="text-success" aria-hidden="true" />
     ) : outcome === "failed" ? (
       <XIcon size={14} className="text-destructive" aria-hidden="true" />
     ) : (
@@ -84,14 +84,16 @@ export function CopyButton({ value, label, showLabel = false, onOutcomeChange, c
 
   return (
     <Button
+      {...props}
       type="button"
       variant={showLabel ? "secondary" : "ghost"}
       size={showLabel ? "sm" : "icon-sm"}
-      onClick={() => {
+      onClick={event => {
+        onClick?.(event);
         void copy();
       }}
       aria-label={accessibleName}
-      title={accessibleName}
+      title={showLabel ? undefined : accessibleName}
       // Icon-only keeps its 24px visuals; the ::after overlay widens the
       // interactive area vertically, where the row's own padding leaves room.
       // A labelled button already clears the floor on its own.

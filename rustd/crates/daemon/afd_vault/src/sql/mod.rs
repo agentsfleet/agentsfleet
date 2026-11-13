@@ -90,6 +90,10 @@ pub(crate) const SELECT_SECRET_PROJECTIONS: &str = include_str!("select_secret_p
 /// guarantee nothing consumes.
 pub(crate) const SELECT_SECRET_DESCRIPTORS: &str = include_str!("select_secret_descriptors.sql");
 
+/// Metadata for explicit workspace/name pairs; no ciphertext is projected.
+pub(crate) const SELECT_SCOPED_SECRET_DESCRIPTORS: &str =
+    include_str!("select_scoped_secret_descriptors.sql");
+
 /// The sealed envelope of one secret, for the daemon's own use.
 ///
 /// `$1` workspace · `$2` name.

@@ -14,7 +14,7 @@ export function FleetRunDetails({eventId, status}: {eventId: string; status: str
   const [open, setOpen] = useState(false);
   if (!scope || !Object.values(EVENT_STATUS).some(value => value === status)) return null;
   return <>
-    <Button variant="link" size="sm" className="min-h-11 px-sm text-conversation sm:min-h-9" onClick={() => setOpen(true)}>Run details</Button>
+    <Button variant="link" size="sm" className="min-h-11 px-sm text-conversation text-muted-foreground sm:min-h-9" onClick={() => setOpen(true)}>Run details</Button>
     {open ? <EventDetailsDialog row={{workspace_id: scope.workspaceId, fleet_id: scope.fleetId, event_id: eventId}}
       refresh={status} onOpenChange={setOpen} /> : null}
   </>;

@@ -77,7 +77,7 @@ it.each([false, true])("shows the new-fleet entrance only before an empty draft 
       onContinue={() => {}} onRetrySchedule={() => {}} /> : null}
   </DraftConversation>);
   const entrance = screen.queryByRole("heading", {name: "What should your fleet do?"});
-  const suggestion = screen.queryByRole("button", {name: /Review pull requests/});
+  const suggestion = screen.queryByRole("button", {name: /Watch a pull request/});
   if (saved) {
     expect(entrance).toBeNull();
     expect(suggestion).toBeNull();
@@ -149,7 +149,7 @@ it("loads more eligible authoring models and removes the control when the list e
 it("does not offer more models after losing access, even when an older view had a cursor", () => {
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), moreModels: true, inaccessible: true}} />);
   expect(screen.queryByRole("button", {name: "Load more models"})).toBeNull();
-  expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", true);
+  expect(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/})).toHaveProperty("disabled", true);
 });
 
 it("keeps the selected model available when loading the next page fails", async () => {

@@ -12,6 +12,10 @@ function renderTime(node: React.ReactElement) {
 }
 
 describe("Time", () => {
+  it("renders the UTC creation date across an offset midnight boundary", () => {
+    render(<Time value="2026-11-04T23:30:00-08:00" format="date" />);
+    expect(screen.getByText("Nov 5, 2026")).toHaveAttribute("datetime", "2026-11-05T07:30:00.000Z");
+  });
   it("renders datetime attr from a string value", () => {
     const { container } = renderTime(<Time value={ISO} tooltip={false} />);
     const t = container.querySelector("time");
@@ -31,6 +35,20 @@ describe("Time", () => {
       <Time value={ISO} format="absolute" tooltip={false} />,
     );
     expect(container.querySelector("time")?.textContent).toBe(expected);
+  });
+
+  it("formats a named schedule timezone while retaining the canonical instant", () => {
+    const {container} = renderTime(<Time value={ISO} timeZone="America/New_York" tooltip={false} />);
+    expect(container.querySelector("time")?.textContent).toContain("06:00 AM");
+    expect(container.querySelector("time")?.getAttribute("datetime")).toBe(ISO);
+    const server = renderToString(<Time value={ISO} timeZone="America/New_York" tooltip={false} />);
+    expect(server).toContain("06:00 AM");
+  });
+
+  it("keeps an invalid timezone from crashing the surrounding surface", () => {
+    const {container} = renderTime(<Time value={ISO} timeZone="unknown/timezone" tooltip={false} />);
+    expect(container.querySelector("time")?.textContent).toBe("—");
+    expect(container.querySelector("time")?.getAttribute("datetime")).toBe(ISO);
   });
 
   it("relative format renders 'X ago' for a past value", () => {

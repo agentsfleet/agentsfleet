@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
+import type { TenantBilling } from "@/lib/types";
 import { workspaceIdFromPath } from "@/lib/workspace-routes";
 import {
   createIntentModuleLoader,
@@ -16,6 +17,7 @@ import { WORKSPACE_LABEL } from "./workspace-groups";
 
 type Props = {
   workspaces: TenantWorkspace[];
+  billing?: TenantBilling | null;
 
   collapsed?: boolean;
 };
@@ -24,7 +26,7 @@ const workspaceSwitcherLoader = createIntentModuleLoader(
   () => import("./WorkspaceSwitcherMenu"),
 );
 
-export default function WorkspaceSwitcher({ workspaces, collapsed = false }: Props) {
+export default function WorkspaceSwitcher({ workspaces, collapsed = false, billing }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const refreshed = useRef<string | null>(null);
@@ -81,6 +83,7 @@ export default function WorkspaceSwitcher({ workspaces, collapsed = false }: Pro
         collapsed={collapsed}
         open={open}
         workspaces={workspaces}
+        billing={billing}
         onOpenChange={setOpen}
       />
     );

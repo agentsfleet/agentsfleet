@@ -7,39 +7,42 @@ import { cn } from "../utils";
 export const buttonVariants = cva(
   [
     "inline-flex items-center justify-center gap-2 whitespace-nowrap",
-    "rounded-md border font-sans font-semibold",
+    "rounded-control border font-sans font-control",
     "pointer-coarse:min-h-11 pointer-coarse:min-w-11",
     "control-motion transition-colors duration-snap ease-snap",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-    "disabled:cursor-not-allowed disabled:opacity-50",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-[var(--control-focus-surface)]",
+    "disabled:cursor-not-allowed disabled:bg-muted disabled:text-text-dim disabled:border-border-subtle disabled:opacity-100",
     "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   ].join(" "),
   {
     variants: {
       variant: {
         default:
-          "border-cta bg-cta text-cta-foreground hover:bg-cta-hover hover:border-cta-hover [&_a]:text-cta-foreground [&_a]:no-underline [&_a:hover]:text-cta-foreground",
+          "border-0 bg-cta text-cta-foreground disabled:ring-1 disabled:ring-inset disabled:ring-border-subtle enabled:hover:brightness-[var(--control-hover)] [&_a]:text-cta-foreground [&_a]:no-underline [&_a:hover]:text-cta-foreground",
         destructive:
           "border-transparent bg-destructive text-on-pulse hover:opacity-90 [&_a]:text-on-pulse [&_a]:no-underline",
         outline:
-          "border-border-strong bg-transparent text-foreground hover:border-primary/40 hover:bg-primary/10 hover:text-primary",
+          "border-border bg-card text-foreground hover:bg-muted",
         secondary:
-          "border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 hover:border-primary/50 [&_a]:text-primary [&_a]:no-underline",
+          "border-border bg-card text-foreground hover:bg-muted [&_a]:text-foreground [&_a]:no-underline",
         ghost:
-          "border-transparent bg-transparent text-muted-foreground hover:text-primary hover:bg-primary/10 [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-primary",
+          "border-transparent bg-transparent disabled:bg-transparent disabled:border-transparent text-muted-foreground hover:text-foreground hover:bg-muted [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-primary",
         link:
           "border-transparent bg-transparent text-pulse underline-offset-4 hover:underline min-h-0 p-0 h-auto",
         "double-border":
           "border-2 border-primary bg-transparent font-semibold text-primary hover:bg-primary/10 hover:text-primary [&_a]:text-primary [&_a]:no-underline [&_a:hover]:text-primary",
       },
       size: {
-        default: "h-9 px-lg py-xs text-body-sm",
-        sm: "h-8 px-md py-xs text-label",
+        default: "min-h-[var(--control-height)] px-xl py-sm text-label leading-label",
+        sm: "min-h-[var(--control-height)] px-xl py-sm text-label leading-label",
         lg: "h-11 px-xl py-sm text-body",
         card: "h-auto min-h-16 p-lg text-body-sm",
-        icon: "h-9 w-9 p-0",
+        icon: "size-[var(--control-height)] shrink-0 p-0",
+        "icon-header": "h-10 w-8 shrink-0 p-0 min-[681px]:w-10",
+        "icon-row": "size-9 shrink-0 p-0 pointer-coarse:min-h-9 pointer-coarse:min-w-9",
+        compact: "min-h-9 px-md py-sm text-label leading-label",
         "icon-compact": "h-8 w-8 shrink-0 p-0",
-        "icon-sm": "h-6 w-6 shrink-0 p-0",
+        "icon-sm": "h-8 w-8 shrink-0 p-0",
         // A control that sits on the eyebrow line — a collapsible nav group's
         // label, say. Geometry only; the caller adds EYEBROW_CLASS for the
         // type, exactly as a plain eyebrow does, so the two never drift. A
@@ -50,6 +53,7 @@ export const buttonVariants = cva(
       },
       wrap: { true: "h-auto max-w-full whitespace-normal", false: "" },
     },
+    compoundVariants: [{variant: "ghost", size: "compact", className: "border-0"}],
     defaultVariants: {
       variant: "default",
       size: "default",

@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "@agentsfleet/design-system/tokens.css";
 @import "@agentsfleet/design-system/theme.css";
+@import "@agentsfleet/design-system/app-tokens.css";
 
 /* Tailwind scans the sibling design-system package for utility classes used
  * in shared primitives. Without this, Button/Card/etc. ship unstyled. */
@@ -17,7 +18,8 @@ body {
   color: var(--text);
   font-size: var(--fs-body);
   line-height: var(--lh-body);
-  -webkit-font-smoothing: antialiased;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 .app-surface {
@@ -37,15 +39,16 @@ body {
 @media (min-width: 96rem) { :root { --app-canvas-gutter: 3rem; } }
 
 .app-dashboard-canvas {
+  position: relative;
   background: var(--bg);
   padding-inline: var(--app-canvas-gutter);
   padding-block: var(--app-canvas-block);
   scrollbar-gutter: stable both-edges;
 }
 
-.app-dashboard-canvas:has(.billing-page) {
-  --app-canvas-gutter: var(--sp-xl);
-  --app-canvas-block: var(--sp-xl);
+.app-dashboard-canvas:has(#fleet-chat-transcript) {
+  --app-canvas-gutter: 0px;
+  --app-canvas-block: 0px;
   scrollbar-gutter: auto;
 }
 
@@ -106,22 +109,18 @@ body {
 
 code, pre, kbd { font-family: var(--ff-mono); }
 
+/* Prevent mobile browser zoom without enlarging desktop form text. */
+@media (max-width: 42.5rem), (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]), textarea, select, [role="combobox"]:not([data-composer-part]) {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+}
+
 ::-webkit-scrollbar { width: var(--app-scrollbar); height: var(--app-scrollbar); }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
-}
 
 /* Keep final values visible without animating their arrival. */
 @media (prefers-reduced-motion: reduce) {
@@ -143,6 +142,28 @@ code, pre, kbd { font-family: var(--ff-mono); }
 .app-dashboard-canvas:has([data-fleet-authoring]) > div { height: 100%; min-height: 0; }
 .app-sidebar { overflow: hidden; }
 
+.fleet-summary {
+  order: -1;
+  max-height: none;
+  overflow: visible;
+  margin: var(--sp-lg);
+}
+.app-shell:not(:has([data-fleet-workspace], [data-fleet-authoring])) .app-dashboard-canvas .page-entrance { width: 100%; max-width: 65rem; margin-inline: auto; }
+@media (min-width: 42.5625rem) {
+  .fleet-summary {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    order: 0;
+    width: var(--summary-width);
+    position: sticky;
+    top: var(--sp-2xl);
+    max-height: min(36rem, calc(100dvh - 12rem));
+    overflow-y: auto;
+    align-self: flex-start;
+    margin: var(--sp-2xl) 0;
+  }
+}
+
 /* Fleet workspaces share the approved edge-to-edge chat frame. */
 .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) .app-dashboard-canvas {
   padding: 0;
@@ -157,26 +178,34 @@ code, pre, kbd { font-family: var(--ff-mono); }
   padding-inline: var(--chat-inset);
   margin: 0;
 }
+
+/* Resource chrome and content follow the approved title-bar/body hierarchy. */
+.app-dashboard-canvas:has(> [data-resource-header]) {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+.app-dashboard-canvas:has(> [data-resource-header]) > div:not([data-resource-header]) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: auto;
+  padding: var(--sp-2xl) var(--app-canvas-gutter);
+}
 @media (min-width: 48rem) {
-  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) {
-    grid-template-rows: 60px minmax(0, 1fr);
-  }
-  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > header {
-    grid-column: 1;
-    grid-row: 1;
-    background: var(--card);
-  }
-  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > header::after,
-  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) .app-shell-trailing {
-    display: none;
-  }
-  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > .app-sidebar {
-    grid-column: 1;
-    grid-row: 2;
-  }
-  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > main {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    border-left: 1px solid var(--border);
+  .app-dashboard-canvas:has(> [data-resource-header]) > div:not([data-resource-header]) {
+    padding-block: var(--sp-4xl);
   }
 }
+
+@media (min-width: 48rem) and (max-width: 68.75rem) {
+  .app-dashboard-canvas:has(> [data-resource-header]) > div:not([data-resource-header]) { padding-block: var(--sp-3xl); }
+}
+@media (max-width: 42.5rem) {
+  .fleet-chat-heading > svg, .fleet-chat-heading > div > svg { display: none; }
+}
+
+/* The native tool disclosure selects the activity presentation. */
+[data-testid="fleet-thread-root"]:not(:has([data-activity-group][data-state="open"])) [data-changes-strip] { display: none; }

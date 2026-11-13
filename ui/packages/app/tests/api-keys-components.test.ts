@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { ApiKeyListResponse, ApiKeyRow } from "@/lib/api/api_keys";
@@ -18,7 +18,7 @@ const createApiKeyActionMock = vi.fn();
 const revokeApiKeyActionMock = vi.fn();
 const deleteApiKeyActionMock = vi.fn();
 
-vi.mock("@/app/(dashboard)/settings/api-keys/actions", () => ({
+vi.mock("@/app/(dashboard)/settings/security/actions", () => ({
   listApiKeysAction: listApiKeysActionMock,
   createApiKeyAction: createApiKeyActionMock,
   revokeApiKeyAction: revokeApiKeyActionMock,
@@ -31,7 +31,7 @@ vi.mock("@/app/(dashboard)/settings/api-keys/actions", () => ({
 vi.mock("@/components/domain/island-dynamic/CreateApiKeyDialogDynamic", async () => ({
   default: (
     await vi.importActual<{ default: unknown }>(
-      "@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog",
+      "@/app/(dashboard)/settings/security/components/CreateApiKeyDialog",
     )
   ).default,
 }));
@@ -69,43 +69,55 @@ afterEach(() => {
 describe("ApiKeyList component", () => {
   async function renderList(initial: ApiKeyListResponse) {
     const { default: ApiKeyList } = await import(
-      "../app/(dashboard)/settings/api-keys/components/ApiKeyList"
+      "../app/(dashboard)/settings/security/components/ApiKeyList"
     );
     render(withTooltipProvider(React.createElement(ApiKeyList, { initial } as never)));
   }
 
   it("renders the empty-state message when there are no keys", async () => {
     await renderList(listResponse([]));
-    expect(screen.getByText(/Connect your first tool/i)).toBeTruthy();
+    expect(screen.getByText(/Create one when you need to connect a tool/i)).toBeTruthy();
   });
 
   it("hides the sortable table while the list is empty (only the empty state shows)", async () => {
     await renderList(listResponse([]));
     expect(screen.queryByRole("table")).toBeNull();
-    expect(screen.getByText(/Connect your first tool/i)).toBeTruthy();
+    expect(screen.getByText(/Create one when you need to connect a tool/i)).toBeTruthy();
   });
 
-  it("renders Name and Created as clickable, sortable column headers once keys exist", async () => {
+  it("renders each key's identity, created date and a specific action", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
-    expect(screen.getByRole("button", { name: /^name$/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^created$/i })).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "Name" }).getAttribute("aria-sort")).toBe("none");
-    expect(screen.getByRole("columnheader", { name: "Created" }).getAttribute("aria-sort")).toBe("none");
-    expect(screen.getByRole("button", { name: /^created$/i }).querySelector(".lucide-chevrons-up-down")).toBeTruthy();
+    const rows = screen.getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.querySelector("time")?.dateTime).toBe(new Date(ACTIVE.created_at).toISOString());
+    expect(within(rows[0]!).getByRole("button", {name: `Revoke API key ${ACTIVE.key_name}`})).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
-  it("renders active and revoked badges in a separate Status column", async () => {
+  it("shows a revoked key explicitly without inventing last-use data", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
-    expect(screen.getByRole("columnheader", { name: "Status" })).toBeTruthy();
-    expect(screen.getByText("ci-runner")).toBeTruthy();
-    expect(screen.getByText("old-zapier")).toBeTruthy();
-    const activeRow = screen.getByText(ACTIVE.key_name).closest("tr")!;
-    const revokedRow = screen.getByText(REVOKED.key_name).closest("tr")!;
-    expect(within(activeRow).getByRole("cell", { name: "Active" })).toBeTruthy();
-    expect(within(revokedRow).getByRole("cell", { name: "Revoked" })).toBeTruthy();
-    expect(within(activeRow).getAllByRole("cell").at(2)?.textContent).toBe("Active");
-    expect(within(revokedRow).getAllByRole("cell").at(2)?.textContent).toBe("Revoked");
+    const [active, revoked] = screen.getAllByRole("listitem");
+    expect(active?.textContent).not.toContain("Revoked");
+    expect(revoked?.textContent).toContain("Revoked");
     expect(screen.queryByText(/never used/i)).toBeNull();
+  });
+
+  it("keeps a revoked key readable when its revocation timestamp is unavailable", async () => {
+    await renderList(listResponse([{...REVOKED, revoked_at: null}]));
+    const row = screen.getByRole("listitem");
+    expect(row.textContent).toContain("Revoked");
+    expect(row.querySelectorAll("time")).toHaveLength(1);
+  });
+
+  it("keeps an uncertain revoke open and reconciles the server list", async () => {
+    revokeApiKeyActionMock.mockRejectedValue(new Error("Response lost"));
+    listApiKeysActionMock.mockResolvedValue({ok: true, data: listResponse([ACTIVE])});
+    const user = userEvent.setup();
+    await renderList(listResponse([ACTIVE]));
+    await user.click(screen.getByLabelText(/Revoke API key ci-runner/i));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", {name: "Revoke key"}));
+    await waitFor(() => expect(screen.getByRole("alertdialog").textContent).toContain("The key change could not be confirmed"));
+    expect(listApiKeysActionMock).toHaveBeenCalled();
   });
 
   it("active rows expose Revoke; revoked rows expose Delete", async () => {
@@ -124,7 +136,7 @@ describe("ApiKeyList component", () => {
     await renderList(listResponse([ACTIVE]));
 
     await user.click(screen.getByLabelText(/Revoke API key ci-runner/i));
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^revoke$/i }));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^Revoke key$/i }));
 
     await waitFor(() => expect(revokeApiKeyActionMock).toHaveBeenCalled());
     // Mid-flight: the row action is disabled.
@@ -137,15 +149,7 @@ describe("ApiKeyList component", () => {
     await waitFor(() => expect(screen.getByLabelText(/Delete API key old-zapier/i)).toBeTruthy());
   });
 
-  it("renders rows through the standard DataTable primitive, not a hand-rolled list", async () => {
-    // Pins the DataTable migration — a regression back to a bespoke row-list
-    // (no `role=table`, no column headers) must fail this test.
-    await renderList(listResponse([ACTIVE, REVOKED]));
-    expect(screen.getByRole("table")).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "Name" })).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "Created" })).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeTruthy();
-  });
+
 
   it("revoke happy path: confirm → revokeApiKeyAction(id) → list re-fetched", async () => {
     revokeApiKeyActionMock.mockResolvedValue({ ok: true, data: { id: ACTIVE.id, active: false, revoked_at: "1970-01-01T00:00:00.001Z" } });
@@ -153,7 +157,8 @@ describe("ApiKeyList component", () => {
     await renderList(listResponse([ACTIVE]));
     await user.click(screen.getByLabelText(/Revoke API key ci-runner/i));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^revoke$/i }));
+    expect(screen.getByRole("alertdialog").textContent).toContain(`Tools using “${ACTIVE.key_name}” will lose access`);
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^Revoke key$/i }));
     await waitFor(() => expect(revokeApiKeyActionMock).toHaveBeenCalledWith(ACTIVE.id));
     await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalled());
   });
@@ -163,7 +168,7 @@ describe("ApiKeyList component", () => {
     const user = userEvent.setup();
     await renderList(listResponse([ACTIVE]));
     await user.click(screen.getByLabelText(/Revoke API key ci-runner/i));
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^revoke$/i }));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^Revoke key$/i }));
     await waitFor(() => expect(screen.getByText(/already revoked/i)).toBeTruthy());
     await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalled());
   });
@@ -176,7 +181,7 @@ describe("ApiKeyList component", () => {
     const user = userEvent.setup();
     await renderList(listResponse([ACTIVE]));
     await user.click(screen.getByLabelText(/Revoke API key ci-runner/i));
-    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^revoke$/i }));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^Revoke key$/i }));
     await waitFor(() => expect(revokeApiKeyActionMock).toHaveBeenCalledWith(ACTIVE.id));
     await waitFor(() => expect(screen.getByText("ci-runner")).toBeTruthy());
   });
@@ -186,6 +191,7 @@ describe("ApiKeyList component", () => {
     const user = userEvent.setup();
     await renderList(listResponse([REVOKED]));
     await user.click(screen.getByLabelText(/Delete API key old-zapier/i));
+    expect(screen.getByRole("alertdialog").textContent).toContain(`revoked key “${REVOKED.key_name}”`);
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^delete$/i }));
     await waitFor(() => expect(deleteApiKeyActionMock).toHaveBeenCalledWith(REVOKED.id));
     await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalled());
@@ -208,58 +214,19 @@ describe("ApiKeyList component", () => {
     await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalled());
   });
 
-  it("uses the shared pagination footer for the complete key list", async () => {
-    await renderList(listResponse([ACTIVE, REVOKED]));
-    expect(screen.getByRole("button", { name: /next page/i })).toHaveProperty("disabled", true);
-    expect(screen.getByRole("button", { name: /previous page/i })).toHaveProperty("disabled", true);
-    expect(screen.getByRole("combobox", { name: /rows per page/i })).toBeTruthy();
-    expect(screen.getByText("ci-runner")).toBeTruthy();
-    expect(screen.getByText("old-zapier")).toBeTruthy();
-  });
 
-  /** The key names in the order the table shows them. */
-  function shownNames(): string[] {
-    return screen
-      .getAllByRole("row")
-      .slice(1)
-      .map((row) => row.querySelector("td")?.textContent ?? "")
-      .map((cell) => ["ci-runner", "old-zapier", "twin"].find((name) => cell.includes(name)) ?? cell);
-  }
 
-  it("clicking Name sorts the loaded keys at once, with no fetch", async () => {
-    await renderList(listResponse([REVOKED, ACTIVE]));
-    fireEvent.click(screen.getByRole("button", { name: /^name$/i }));
-    expect(shownNames()).toEqual(["ci-runner", "old-zapier"]);
-    expect(screen.getByRole("columnheader", { name: "Name" }).getAttribute("aria-sort")).toBe("ascending");
 
-    fireEvent.click(screen.getByRole("button", { name: /^name$/i }));
-    expect(shownNames()).toEqual(["old-zapier", "ci-runner"]);
-    expect(listApiKeysActionMock).not.toHaveBeenCalled();
-  });
 
-  it("clicking Created selects ascending order and toggles in place", async () => {
-    await renderList(listResponse([ACTIVE, REVOKED]));
-    expect(shownNames()).toEqual(["ci-runner", "old-zapier"]);
-    fireEvent.click(screen.getByRole("button", { name: /^created$/i }));
-    expect(shownNames()).toEqual(["old-zapier", "ci-runner"]);
-    expect(screen.getByRole("columnheader", { name: "Created" }).getAttribute("aria-sort")).toBe("ascending");
-    fireEvent.click(screen.getByRole("button", { name: /^created$/i }));
-    expect(shownNames()).toEqual(["ci-runner", "old-zapier"]);
-    expect(screen.getByRole("columnheader", { name: "Created" }).getAttribute("aria-sort")).toBe("descending");
-    expect(listApiKeysActionMock).not.toHaveBeenCalled();
-  });
 
-  it("keys created in the same millisecond keep one order in both directions", async () => {
-    const twin = { ...ACTIVE, id: "0190cccc-cccc-7ccc-cccc-cccccccccccc", key_name: "twin" };
-    await renderList(listResponse([twin, ACTIVE]));
-    expect(shownNames()).toEqual(["ci-runner", "twin"]);
-    fireEvent.click(screen.getByRole("button", { name: /^created$/i }));
-    expect(shownNames()).toEqual(["ci-runner", "twin"]);
-  });
+
+
+
+
 
   it("a failed reload after a create says so and keeps the list", async () => {
     const { default: ApiKeyList } = await import(
-      "../app/(dashboard)/settings/api-keys/components/ApiKeyList"
+      "../app/(dashboard)/settings/security/components/ApiKeyList"
     );
     const handle = React.createRef<{ refresh: () => void }>();
     render(withTooltipProvider(React.createElement(ApiKeyList, { initial: listResponse([ACTIVE]), ref: handle } as never)));
@@ -274,7 +241,7 @@ describe("ApiKeyList component", () => {
   it("re-fetches the list after a key is minted and the reveal is closed", async () => {
     const user = userEvent.setup();
     const { default: ApiKeysView } = await import(
-      "../app/(dashboard)/settings/api-keys/components/ApiKeysView"
+      "../app/(dashboard)/settings/security/components/ApiKeysView"
     );
     render(
       withTooltipProvider(
@@ -289,7 +256,7 @@ describe("ApiKeyList component", () => {
       data: { id: "k", key_name: "ci-runner", key: "agt_tnew", created_at: "1970-01-01T00:00:00.001Z" },
     });
         // The dialog submit is just "Create"; the trigger keeps the noun.
-    await user.click(screen.getByRole("button", { name: /create key/i }));
+    await user.click(screen.getByRole("button", { name: /create API key/i }));
     await user.type(screen.getByLabelText(/^name$/i), "ci-runner");
     // Once open, scope to the dialog to disambiguate the submit from the
     // still-mounted trigger.

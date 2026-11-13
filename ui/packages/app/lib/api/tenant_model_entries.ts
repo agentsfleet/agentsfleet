@@ -56,7 +56,7 @@ export async function listTenantModelEntries(
 }
 
 export async function createTenantModelEntry(
-  body: { model_id: string; secret_ref: string },
+  body: { workspace_id: string; model_id: string; secret_ref: string },
   token: string,
 ): Promise<TenantModelEntryWriteResult> {
   return storedModelEntrySchema.parse(await request<unknown>(

@@ -32,13 +32,13 @@ export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, resu
   const canShowAll = scope !== null && callId !== undefined && settled;
   if (shown && !canShowAll) setShown(false);
   return <ListItem data-tool={name} data-done={outcome !== undefined || undefined} data-state={state}
-    className="flex min-w-0 flex-col gap-xs text-body-sm text-text-subtle">
+    className="flex min-w-0 flex-col gap-xs text-body-sm text-muted-foreground">
     <Accordion type="single" collapsible>
       <AccordionItem value={COMMAND} className="border-0">
         <AccordionTrigger className={TRIGGER_CLASS}>
           <ToolCallHeader name={name} args={named} state={state} />
         </AccordionTrigger>
-        <AccordionContent className="pb-sm">
+        <AccordionContent className="ml-md border-l border-border pb-lg pl-2xl pt-sm">
           <ToolCallDetails name={name} args={named} argsText={named === undefined ? undefined : argsText} outcome={outcome} state={state}
             onShowAll={canShowAll ? () => setShown(true) : undefined} />
         </AccordionContent>

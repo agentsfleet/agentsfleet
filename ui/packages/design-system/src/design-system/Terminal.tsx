@@ -9,7 +9,7 @@ import {
   useState,
   useCallback,
 } from "react";
-import { CircleCheckIcon } from "lucide-react";
+import { CheckCircleIcon } from "@phosphor-icons/react/ssr";
 import { cn } from "../utils";
 import { Button } from "./Button";
 
@@ -147,7 +147,7 @@ export default function Terminal({ label, green, copyable, copyText, onCopyClick
               copied && "border-success text-success",
             )}
           >
-            {copied ? <><CircleCheckIcon className="size-3.5" aria-hidden="true" />Copied</> : "Copy"}
+            {copied ? <><CheckCircleIcon className="size-3.5" aria-hidden="true" />Copied</> : "Copy"}
           </Button>
         )}
       </div>

@@ -140,16 +140,9 @@ describe("approveApproval", () => {
     await expect(approveApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toThrow(/ECONNRESET/);
   });
 
-  it("tolerates a non-JSON 200 body — the .json() catch yields an empty object", async () => {
-    // A 200 with a body that isn't valid JSON (truncated stream, proxy
-    // injecting HTML). `res.json()` rejects; resolveAction's `.catch(() => ({}))`
-    // swallows it so a successful status still resolves rather than throwing.
-    fetchMock.mockResolvedValueOnce(new Response("<<not json", { status: 200 }));
-    const result = await approveApproval(WORKSPACE_ID, GATE_ID, TOKEN);
-    expect(result.kind).toBe("resolved");
-    if (result.kind === "resolved") {
-      expect(result.data).toEqual({});
-    }
+  it("refuses a non-JSON success response instead of confirming a decision", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("<<not json", {status: 200}));
+    await expect(approveApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toMatchObject({status: 502, message: expect.stringContaining("could not be confirmed")});
   });
 });
 

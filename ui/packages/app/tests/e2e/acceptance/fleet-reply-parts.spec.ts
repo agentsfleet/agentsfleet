@@ -30,7 +30,7 @@ const REQUEST_TOOL = "http_request";
 const REQUEST_URL = "https://status.example.test/health";
 const REQUEST_CALL_ID = "f1:0";
 const REQUEST_OUTPUT = "200 OK\n{\"ok\":true}\n";
-const SHIMMER = "tool-shimmer";
+const STATUS_SWEEP = "chat-status-sweep";
 const LIVE_REASONING = "Checking whether delivery 1 is signed before trusting it.";
 const INTERLEAVED_CHUNKS = 6;
 const INTERLEAVED_SAMPLE_MS = 2_500;
@@ -62,7 +62,7 @@ test("test_slack_received_uses_readable_label_without_empty_details", async ({pa
     await expect(chat.getByText("Slack", {exact: true})).toBeVisible();
     await expect(chat.getByText("Message received", {exact: true})).toBeVisible();
     await expect(chat.getByRole("button", {name: "View event"})).toHaveCount(0);
-    await expect(chat.locator("svg.lucide-braces")).toHaveCount(0);
+    await expect(chat.getByRole("button", {name: "View message", exact: true})).toHaveCount(0);
   });
 });
 
@@ -77,7 +77,7 @@ test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
     await expect(live).toContainText(LIVE_REASONING.slice(0, -1));
 
     await stream.send([toolFrame(FRAME_KIND.TOOL_CALL_STARTED, { call_id: TOOL_CALL_ID, args_redacted: { path: TOOL_PATH } })]);
-    await chat.getByRole("button", {name: TOOL_CALLS_LABEL, exact: true}).click();
+    await chat.getByRole("button", {name: /^Tool activity:/}).click();
     const call = chat.getByRole("list", {name: TOOL_CALLS_LABEL}).locator(`[data-tool="${TOOL_NAME}"]`);
     await expect(call).toContainText(RUNNING_LABEL);
     await call.locator("button").first().click();
@@ -97,32 +97,36 @@ test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
   });
 });
 
-// A call as Codex draws it, live: the bullet breathes while the request runs,
-// then settles green with its recorded name, outcome and expandable output.
+// The tool icon stays steady while its status label sweeps during the request.
+// It settles green with its recorded name, outcome and expandable output.
 // The animation is read from the browser's computed style, which no unit lane
 // can see.
 test("test_live_tool_cell_settles_green", async ({ page }) => {
+  await page.emulateMedia({reducedMotion: "no-preference"});
   await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     await stream.send([
       opening(Date.now()),
       callFrame(REQUEST_TOOL, FRAME_KIND.TOOL_CALL_STARTED, { call_id: REQUEST_CALL_ID, args_redacted: { method: "GET", url: REQUEST_URL } }),
     ]);
-    await chat.getByRole("button", {name: TOOL_CALLS_LABEL, exact: true}).click();
+    await chat.getByRole("button", {name: /^Tool activity:/}).click();
     const cell = chat.getByRole("list", { name: TOOL_CALLS_LABEL }).locator(`[data-tool="${REQUEST_TOOL}"]`);
-    const bullet = cell.locator("[data-tool-shimmer]");
+    const bullet = cell.locator("[data-tool-bullet]");
+    const activity = cell.locator("[data-chat-loading]");
     await expect(cell).toContainText(RUNNING_LABEL);
     await cell.locator("button").first().click();
     await expect(cell.getByRole("heading", {name: INPUT_LABEL, exact: true})).toBeVisible();
     await expect(cell).toContainText(REQUEST_URL);
     await expect(cell.getByRole("heading", {name: OUTPUT_LABEL, exact: true})).toHaveCount(0);
-    await expect(bullet).toHaveAttribute("data-tool-shimmer", "true");
-    await expect.poll(() => bullet.evaluate((el) => getComputedStyle(el).animationName)).toBe(SHIMMER);
+    await expect(bullet).toHaveCSS("animation-name", "none");
+    await expect(activity).toHaveAttribute("data-chat-loading", "true");
+    await expect(activity).toHaveCSS("animation-name", STATUS_SWEEP);
 
     await stream.send([callFrame(REQUEST_TOOL, FRAME_KIND.TOOL_CALL_COMPLETED, {
       call_id: REQUEST_CALL_ID, ms: TOOL_WALL_MS, status: "succeeded", output_head: REQUEST_OUTPUT, output_line_count: 2,
     })]);
     await expect(cell).toContainText(DONE_LABEL);
-    await expect(bullet).toHaveAttribute("data-tool-shimmer", "false");
+    await expect(activity).toHaveAttribute("data-chat-loading", "false");
+    await expect(activity).toHaveCSS("animation-name", "none");
     await expect(bullet).toHaveClass(/\btext-success\b/);
     await expect.poll(() => bullet.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
     await expect(cell.getByRole("heading", {name: OUTPUT_LABEL, exact: true})).toBeVisible();

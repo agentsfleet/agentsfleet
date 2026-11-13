@@ -49,6 +49,10 @@ pub struct ModelEntryRow<'a> {
     pub model_id: &'a str,
     /// The vault key name backing it.
     pub secret_ref: &'a str,
+    /// The workspace holding the credential. Absent if that workspace is unavailable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(extensions(("x-stability" = json!("stable")))))]
+    pub workspace_id: Option<&'a str>,
     /// The provider label, for the credential kinds that carry one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<&'a str>,
@@ -161,6 +165,10 @@ pub struct StoredModelEntry<'a> {
     pub model_id: &'a str,
     /// The vault key name backing it.
     pub secret_ref: &'a str,
+    /// The workspace holding the credential. Absent if that workspace is unavailable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(extensions(("x-stability" = json!("stable")))))]
+    pub workspace_id: Option<&'a str>,
     /// When it was first stored.
     #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
@@ -168,12 +176,14 @@ pub struct StoredModelEntry<'a> {
 
 /// Registers a model against a stored credential.
 ///
-/// agentsfleet ignores fields it does not know, instead of refusing the
-/// request.
+/// Unknown request fields are refused.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CreateModelEntryRequest {
+    /// The workspace holding the credential. Must belong to your account.
+    #[garde(skip)]
+    pub workspace_id: String,
     /// The model to register.
     #[garde(
         length(bytes, min = 1, max = MODEL_ID_MAX_BYTES),
@@ -237,7 +247,7 @@ mod tests {
         .validate()
         .expect("a clean id passes");
         let create: CreateModelEntryRequest =
-            serde_json::from_str(r#"{"model_id":"a\u0000b","secret_ref":"k"}"#).expect("decodes");
+            serde_json::from_str(r#"{"model_id":"a\u0000b","workspace_id":"0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b","secret_ref":"k"}"#).expect("decodes");
         assert!(
             create
                 .validate()
@@ -253,6 +263,7 @@ mod tests {
             id: "0195b4ba-8d3a-7f13-8abc-cd0000000002",
             model_id: "claude-opus-5",
             secret_ref: "anthropic-prod",
+            workspace_id: Some("0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b"),
             provider: None,
             kind: "custom_secret",
             base_url: None,
@@ -276,7 +287,7 @@ mod tests {
 
         assert_eq!(
             body,
-            r#"{"id":"0195b4ba-8d3a-7f13-8abc-cd0000000002","model_id":"claude-opus-5","secret_ref":"anthropic-prod","kind":"custom_secret","has_key":false,"active":false,"created_at":"2026-04-30T00:00:00Z"}"#
+            r#"{"id":"0195b4ba-8d3a-7f13-8abc-cd0000000002","model_id":"claude-opus-5","secret_ref":"anthropic-prod","workspace_id":"0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b","kind":"custom_secret","has_key":false,"active":false,"created_at":"2026-04-30T00:00:00Z"}"#
         );
     }
 
@@ -333,7 +344,7 @@ mod tests {
     #[test]
     fn a_create_body_refuses_a_field_this_daemon_does_not_know() {
         let refused = serde_json::from_str::<CreateModelEntryRequest>(
-            r#"{"model_id":"claude-opus-5","secret_ref":"anthropic-prod","nickname":"prod"}"#,
+            r#"{"model_id":"claude-opus-5","workspace_id":"0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b","secret_ref":"anthropic-prod","nickname":"prod"}"#,
         )
         .expect_err("a closed request refuses a key it does not carry");
 
@@ -348,7 +359,7 @@ mod tests {
     #[test]
     fn a_create_body_this_daemon_does_carry_still_parses() {
         let parsed: CreateModelEntryRequest =
-            serde_json::from_str(r#"{"model_id":"claude-opus-5","secret_ref":"anthropic-prod"}"#)
+            serde_json::from_str(r#"{"model_id":"claude-opus-5","workspace_id":"0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b","secret_ref":"anthropic-prod"}"#)
                 .expect("every field is one this build carries");
 
         assert_eq!(parsed.model_id, "claude-opus-5");

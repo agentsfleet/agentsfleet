@@ -1,7 +1,6 @@
 "use client";
 
-import { TIME_LABEL } from "@/lib/time-labels";
-import { useDeferredValue, useMemo, useOptimistic, useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ConfirmDialog,
@@ -9,14 +8,13 @@ import {
   EmptyState,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
-import { KeyRoundIcon } from "lucide-react";
-import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
+import { KeyIcon } from "@phosphor-icons/react/ssr";
 import { deleteSecretAction } from "../actions";
 import type { Secret } from "@/lib/api/secrets";
 import { isDefiniteRefusal } from "@/lib/api/errors";
 import { presentErrorString } from "@/lib/errors";
 import EditSecretDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
-import { SecretActions, SecretCreatedCell, SecretNameCell } from "./secret-row-cells";
+import { SecretActions, SecretNameCell, secretType } from "./secret-row-cells";
 import {
   DELETE_CONNECTION_CONFIRM,
   DELETE_SECRET_CONFIRM,
@@ -44,33 +42,12 @@ function buildColumns({
   onDelete: (name: string) => void;
 }): DataTableColumn<Secret>[] {
   return [
-    {
-      key: "name", primary: true,
-      header: "Name",
-      sortValue: (c) => c.name,
-      cell: (c) => <SecretNameCell secret={c} />,
-    },
-    {
-      key: "created_at",
-      header: TIME_LABEL.created,
-      hideOnMobile: true,
-      sortValue: (c) => c.created_at,
-      cell: (c) => <SecretCreatedCell secret={c} />,
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      numeric: true,
-      cell: (c) => (
-        <SecretActions
-          secret={c}
-          pending={pending}
-          protectedFromDelete={protectedSecretName === c.name}
-          onEdit={onEdit}
-          onDelete={onDelete}
-        />
-      ),
-    },
+    {key: "name", primary: true, header: "Name", cell: secret => <SecretNameCell secret={secret} />},
+    {key: "type", header: "Type", cell: secret => secretType(secret)},
+    {key: "value", header: "Value", cell: () => <span className="text-text-dim">Hidden</span>},
+    {key: "scope", header: "Available to", cell: () => <span className="text-text-dim">Access details unavailable</span>},
+    {key: "actions", header: <span className="sr-only">Actions</span>, numeric: true, cell: secret => <SecretActions secret={secret} pending={pending}
+      protectedFromDelete={protectedSecretName === secret.name} onEdit={onEdit} onDelete={onDelete} />},
   ];
 }
 
@@ -104,8 +81,8 @@ function SecretDialogs({
       <ConfirmDialog
         open={target !== null}
         onOpenChange={onDeleteClose}
-        title={`Delete secret "${target ?? ""}"?`}
-        description={connection ? deleteConnectionDescription(connection) : DELETE_SECRET_DESCRIPTION}
+        title="Delete secret?"
+        description={<><span className="mb-md block font-medium text-foreground">“{target}”</span>{connection ? deleteConnectionDescription(connection) : DELETE_SECRET_DESCRIPTION}</>}
         confirmLabel={connection ? DELETE_CONNECTION_CONFIRM : DELETE_SECRET_CONFIRM}
         intent="destructive"
         errorMessage={error}
@@ -130,25 +107,9 @@ function SecretTable({
   onEdit: (name: string) => void;
   onDelete: (name: string) => void;
 }) {
-  const [search, setSearch] = useState("");
-  const query = useDeferredValue(search.trim().toLowerCase());
-  const matches = useMemo(() => secrets.filter((secret) => secret.name.toLowerCase().includes(query)), [secrets, query]);
-  const columns = buildColumns({ pending, protectedSecretName, onEdit, onDelete });
-  return (
-    <div className="flex min-h-0 flex-col gap-xl">
-      <CollectionToolbar label="Search secrets" value={search} onChange={setSearch} summary={`${matches.length} of ${secrets.length} secrets`} />
-      <DataTable
-        className="flex min-h-0 flex-col"
-        columns={columns}
-        rows={matches}
-        isLoading={pending}
-        empty={<EmptyState title="No matching secrets" description="Try another name or clear your search." />}
-        rowKey={(c) => c.name}
-        caption="Stored secrets"
-        viewportClassName="min-h-0"
-      />
-    </div>
-  );
+  return <DataTable columns={buildColumns({pending, protectedSecretName, onEdit, onDelete})}
+    rows={secrets} isLoading={pending} rowKey={secret => secret.name} caption="Stored secrets"
+    className="[&_table]:min-w-160" pagination={false} />;
 }
 
 export default function SecretsList({
@@ -214,7 +175,7 @@ export default function SecretsList({
           status region never announces an emptiness the server may retract. */}
       {secrets.length === 0 ? (
         <EmptyState
-          icon={<KeyRoundIcon size={28} />}
+          icon={<KeyIcon size={28} />}
           title="Keep your credentials in one place"
           description="Create a secret for the services your fleets need. Saved values are encrypted and stay hidden; you can replace them whenever needed."
         />
@@ -233,6 +194,7 @@ export default function SecretsList({
           }}
         />
       )}
+      <p className="text-eyebrow leading-eyebrow text-text-dim">Secret values are hidden after saving.</p>
       <SecretDialogs
         workspaceId={workspaceId}
         editTarget={editTarget}

@@ -24,8 +24,8 @@ async fn every_saved_revision_notifies_but_a_replayed_save_stays_quiet() {
         .expect("the lane's NATS subscribes");
     let other = Fixture::create().await;
     let selected = mint();
-    sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) SELECT $1,$2,model_name,'authoring-model',now(),now() FROM model.tenant_models WHERE id=$3")
-        .bind(&selected).bind(&fleet.case.base.tenant).bind(&other.model)
+    sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,workspace_id,created_at,updated_at) SELECT $1,$2,model_name,'authoring-model',$4,now(),now() FROM model.tenant_models WHERE id=$3")
+        .bind(&selected).bind(&fleet.case.base.tenant).bind(&other.model).bind(&fleet.case.base.workspace)
         .execute(&mut *fleet.case.base.db.acquire().await.expect("model connection"))
         .await.expect("second runtime choice");
     let (draft, _) = fleet.improvement().await;
@@ -212,8 +212,8 @@ async fn a_failed_live_notice_keeps_the_model_save_committed_and_replayable() {
     let other = Fixture::create().await;
     let (draft, _) = fleet.improvement().await;
     let selected = mint();
-    sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) SELECT $1,$2,model_name,'authoring-model',now(),now() FROM model.tenant_models WHERE id=$3")
-        .bind(&selected).bind(&fleet.case.base.tenant).bind(&other.model)
+    sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,workspace_id,created_at,updated_at) SELECT $1,$2,model_name,'authoring-model',$4,now(),now() FROM model.tenant_models WHERE id=$3")
+        .bind(&selected).bind(&fleet.case.base.tenant).bind(&other.model).bind(&fleet.case.base.workspace)
         .execute(&mut *fleet.case.base.db.acquire().await.expect("model connection"))
         .await.expect("second runtime choice");
     let request = select_model(&fleet, &draft, selected.as_str()).await;

@@ -9,7 +9,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetPendingCh
 }));
 
 describe("fleets routes — detail lifecycle states", () => {
-  it("labels an archived fleet and keeps Archive and Delete inside Fleet actions", async () => {
+  it("shows archived history and keeps destructive controls in the action menu", async () => {
     mockFetchBilling(happyBilling, {fleet: {status: "archived"}});
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
@@ -21,8 +21,7 @@ describe("fleets routes — detail lifecycle states", () => {
 
     expect(markup).toContain('aria-label="Fleet status: archived"');
     expect(markup).toContain('aria-label="Fleet actions"');
-    // Delete lives in the closed Fleet actions menu, never as a header button.
-    expect(markup).not.toContain("Delete fleet");
+    expect(markup).not.toContain('aria-label="Chat composer"');
     expect(markup).not.toContain(">Stop<");
     expect(markup).not.toContain(">Resume<");
     expect(markup).not.toContain(">Kill<");

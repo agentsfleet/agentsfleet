@@ -1,7 +1,8 @@
 /*
  * @agentsfleet/design-system — semantic theme bridge (Layer 1 + Layer 2)
  *
- * Layer 0 (tokens.css) — palette + spacing + typography primitives.
+ * Layer 0 (tokens.css) — shared palette + spacing + typography defaults.
+ *                       app-tokens.css overrides dashboard values only.
  * Layer 1 (:root)      — semantic names mapping to Layer 0 (--background,
  *                        --primary, --card, …). One indirection so a
  *                        product surface change (re-pointing --primary)
@@ -23,13 +24,19 @@
 
 @custom-variant light (&:is([data-theme="light"] *));
 
+@theme {
+  --breakpoint-summary: 42.5625rem;
+  --breakpoint-summary-medium: 50.0625rem;
+  --breakpoint-summary-wide: 68.8125rem;
+}
+
 :root, [data-theme] {
   /* Surfaces */
   --background: var(--bg);
   --foreground: var(--text);
   --card: var(--surface-1);
   --card-foreground: var(--text);
-  --popover: var(--surface-2);
+  --popover: var(--surface-1);
   --popover-foreground: var(--text);
   --muted: var(--surface-2);
   --muted-foreground: var(--text-muted);
@@ -58,10 +65,20 @@
 }
 
 @theme inline {
+  /* Compact interface sizes keep the website defaults and follow app overrides. */
+  --text-sm: var(--fs-ui-sm);
+  --text-sm--line-height: var(--lh-ui-sm);
+  --text-xs: var(--fs-ui-xs);
+  --text-xs--line-height: var(--lh-ui-xs);
+
   /* Color surface — the Tailwind utility names. */
   --color-background: var(--background);
   --color-overlay: var(--overlay);
   --color-foreground: var(--foreground);
+  --color-brand-tile: var(--brand-tile, var(--card));
+  --color-brand-ray: var(--brand-ray, var(--primary));
+  --color-avatar: var(--avatar-bg, var(--muted));
+  --color-avatar-foreground: var(--avatar-text, var(--foreground));
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-table-header: var(--table-header);
@@ -79,6 +96,8 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-error-surface: var(--error-surface);
+  --color-error-border: var(--error-border);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
 
@@ -108,6 +127,7 @@
 
   /* Borders + inputs + ring */
   --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
   --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -124,13 +144,29 @@
   --color-text-subtle: var(--text-subtle);
   --color-text-dim: var(--text-dim);
 
+  --font-weight-title: var(--fw-title, 600);
+  --font-weight-control: var(--fw-control, 600);
+  --text-composer: var(--fs-composer, var(--fs-conversation));
+  --leading-composer: var(--lh-composer, var(--lh-conversation));
+
   /* Text scale — extras beyond Tailwind's defaults; consumers can write
    * `text-display-xl`, `text-eyebrow`, `text-mono`, etc. */
+  --text-new-fleet-title: var(--fs-new-fleet-title);
+  --leading-new-fleet-title: var(--lh-new-fleet-title);
+  --tracking-new-fleet-title: var(--letter-spacing-new-fleet-title);
+  --text-new-fleet-description: var(--fs-new-fleet-description);
   --text-display-xl: var(--fs-display-xl);
   --text-display-lg: var(--fs-display-lg);
   --text-display-md: var(--fs-display-md);
   --text-heading: var(--fs-heading);
+  --text-conversation-heading: var(--fs-conversation-heading, var(--fs-heading));
+  --leading-conversation-heading: var(--lh-conversation-heading, var(--lh-heading));
+  --text-description: var(--fs-description, var(--fs-body));
   --text-eyebrow: var(--fs-eyebrow);
+  --text-usage-total: var(--fs-usage-total);
+  --text-usage-total--line-height: var(--lh-usage-total);
+  --leading-usage-total: var(--lh-usage-total);
+  --tracking-usage-total: var(--letter-spacing-usage-total);
   --text-body-lg: var(--fs-body-lg);
   --text-body: var(--fs-body);
   --text-body-sm: var(--fs-body-sm);
@@ -182,6 +218,11 @@
   --leading-conversation: var(--lh-conversation);
   --text-chat-title: var(--fs-chat-title);
   --container-form: var(--max-w-form);
+  --container-dialog: var(--max-w-dialog);
+  --container-model-dialog: var(--max-w-model-dialog);
+  --container-search: var(--max-w-search);
+  --radius-chip: var(--r-chip);
+  --leading-dialog-description: var(--lh-dialog-description);
   --container-wide: var(--max-w-wide);
   --container-content: var(--max-w-content);
   --container-tagline: var(--max-w-tagline);
@@ -193,9 +234,11 @@
   --grid-template-columns-footer: var(--grid-footer);
 
   /* Radius */
+  --radius-brand: var(--r-brand);
   --radius-sm: var(--r-sm);
   --radius-md: var(--r-md);
   --radius-lg: var(--r-lg);
+  --radius-control: var(--r-control, var(--r-md));
   --shadow-floating: var(--elevation-floating);
   --shadow-dialog: var(--elevation-dialog);
   --spacing-table-inline: var(--table-cell-inline);
@@ -203,8 +246,6 @@
 
   /* Fonts — forward Layer 0 --ff-* to Tailwind --font-* utilities. */
   --font-sans: var(--ff-sans);
-  --font-system: var(--ff-system);
-  --font-serif: var(--ff-serif);
   --font-display: var(--ff-display);
   --font-mono: var(--ff-mono);
 

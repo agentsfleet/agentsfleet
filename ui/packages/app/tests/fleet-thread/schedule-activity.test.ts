@@ -8,7 +8,7 @@ it("keeps schedule messages and confirmed outcomes readable through a queued-to-
   const queued = serverEvent({...SCHEDULE_EVENT, status: "queued"});
   mockStream([rowToEvent(queued)]);
   const view = renderThread();
-  const headline = "Schedule At 9:00 AM (Asia/Kolkata) fired: Review support failures — 東京 🦉";
+  const headline = "Scheduled wake-up: Review support failures — 東京 🦉";
   expect(screen.getByText(headline)).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Run details"})).toBeNull();
   expect(screen.queryByRole("button", {name: "View event"})).toBeNull();

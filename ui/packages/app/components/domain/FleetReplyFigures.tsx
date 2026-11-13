@@ -9,6 +9,9 @@ import {
 import { formatDollars } from "@/lib/money";
 import { formatCompactCount, formatElapsed, formatRunDuration, runFigure } from "@/lib/events/run-figures-format";
 import type { ReplyFigures } from "./fleetMessageReaders";
+import { readTaskActivityHistory } from "@/lib/task-activity";
+import { TaskActivityTimeline } from "./TaskActivityTimeline";
+import {CheckCircleIcon} from "@phosphor-icons/react/ssr";
 
 export const WORKING_LABEL = "Working";
 export const QUEUED_LABEL = "Queued";
@@ -21,21 +24,26 @@ const ELAPSED_TICK_MS = 1_000;
  * Optional run information stays outside the transcript layout. Missing figures
  * remain absent; a run reporting nothing gets no details control.
  */
-export function FleetReplyFigures({ figures }: { figures: ReplyFigures }) {
+export function FleetReplyFigures({ figures, activity, summary = false }: { figures: ReplyFigures; activity?: unknown; summary?: boolean }) {
   const rows = [
     { label: "Duration", value: runFigure(figures.wallMs, formatRunDuration) },
     { label: "Tokens", value: runFigure(figures.tokens, formatCompactCount) },
     { label: "Reported cost", value: runFigure(figures.costNanos, formatDollars) },
   ].filter(row => row.value !== null);
-  if (rows.length === 0) return null;
+  const hasActivity = !!readTaskActivityHistory(activity)?.items.length;
+  if (rows.length === 0 && !hasActivity) return null;
   return <Popover>
     <PopoverTrigger asChild>
-      <Button variant="ghost" size="sm" data-testid={REPLY_FIGURES_TEST_ID}>{RUN_DETAILS_LABEL}</Button>
+      <Button variant="ghost" size={summary ? "default" : "sm"} aria-label={RUN_DETAILS_LABEL} data-testid={REPLY_FIGURES_TEST_ID}
+        className={summary ? "my-5 min-h-11 w-full justify-start gap-md rounded-none border-x-0 border-y border-border px-0 text-muted-foreground" : undefined}>
+        {summary ? <><CheckCircleIcon size={16} className="text-success" aria-hidden="true" />{figures.wallMs === null ? "Work completed" : `Worked for ${formatRunDuration(figures.wallMs)}`}</> : RUN_DETAILS_LABEL}
+      </Button>
     </PopoverTrigger>
     <PopoverContent side="top" align="start" aria-label={RUN_DETAILS_LABEL}>
       <DescriptionList className="tabular-nums">
         {rows.map(row => <div key={row.label}><DescriptionTerm>{row.label}</DescriptionTerm><DescriptionDetails>{row.value}</DescriptionDetails></div>)}
       </DescriptionList>
+      {hasActivity ? <TaskActivityTimeline value={activity} running={false} /> : null}
     </PopoverContent>
   </Popover>;
 }

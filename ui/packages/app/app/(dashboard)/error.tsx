@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { Button, EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
-import { AlertTriangleIcon } from "lucide-react";
+import { WarningIcon } from "@phosphor-icons/react/ssr";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { RetryCountdownRing } from "./RetryCountdownRing";
@@ -61,7 +61,7 @@ export default function DashboardError({
         <PageTitle>Something went wrong</PageTitle>
       </PageHeader>
       <EmptyState
-        icon={<AlertTriangleIcon size={32} />}
+        icon={<WarningIcon size={32} />}
         title={ERROR_TITLE}
         description={exhausted ? ERROR_DESCRIPTION_EXHAUSTED : ERROR_DESCRIPTION_RETRYING}
         action={

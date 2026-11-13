@@ -33,7 +33,7 @@ export function matchSetupRoute(workspace: string, parts: readonly string[], met
   if (parts.length === 3 && child === SUFFIX.authoringContext && method === SETUP_METHOD.get) return {stream: false, query: ["starting_after"]};
   if (parts.length === 3 && child === SUFFIX.revisions && method === SETUP_METHOD.post) return ORDINARY;
   if (parts.length === 4 && child === SUFFIX.schedules && uuid.safeParse(member).success
-    && [SETUP_METHOD.get, SETUP_METHOD.patch].some((allowed) => allowed === method)) return ORDINARY;
+    && [SETUP_METHOD.get, SETUP_METHOD.patch, SETUP_METHOD.delete].some((allowed) => allowed === method)) return ORDINARY;
   // A schedule's `:sync` retry (`FleetRoute::ScheduleSync`): a POST with no body.
   if (parts.length === 5 && child === SUFFIX.schedules && uuid.safeParse(member).success
     && parts[4] === SUFFIX.sync && method === SETUP_METHOD.post) return BODYLESS_ACTION;

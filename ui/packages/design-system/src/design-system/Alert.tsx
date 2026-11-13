@@ -4,25 +4,7 @@ import { type ComponentProps } from "react";
 import { cn } from "../utils";
 import { Button } from "./Button";
 
-/* Inline X — design-system avoids lucide-react as a transitive dep. */
-function DismissIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M18 6 6 18" />
-      <path d="m6 6 12 12" />
-    </svg>
-  );
-}
+import { XIcon } from "@phosphor-icons/react/ssr";
 
 /*
  * Alert — page-level status banner. Variants map to semantic theme
@@ -112,7 +94,7 @@ export function Alert({
         // The shared icon button: a 24 px target (WCAG 2.2 target size), 44 px
         // on a coarse pointer, and the button's own focus ring.
         <Button type="button" variant="ghost" size="icon-sm" aria-label="Dismiss" onClick={onDismiss} className="ml-auto">
-          <DismissIcon />
+          <XIcon size={16} aria-hidden="true" />
         </Button>
       ) : null}
     </div>

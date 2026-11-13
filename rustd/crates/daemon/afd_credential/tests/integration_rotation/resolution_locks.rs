@@ -82,7 +82,7 @@ async fn seeded(fixture: &Fixture) -> Seeded {
         .await
         .expect("the catalogue row seeds");
     let Added::Stored(entry) = providers(fixture)
-        .add_entry(&fixture.tenant, &model, CREDENTIAL, NOW)
+        .add_entry(&fixture.tenant, &model, fixture.key(CREDENTIAL), NOW)
         .await
         .expect("an entry over a stored credential is an outcome")
     else {

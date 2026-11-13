@@ -1,9 +1,9 @@
 "use client";
 
 import type { DraftView } from "@/lib/api/draft-state";
-import type { LucideIcon } from "lucide-react";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import Link from "next/link";
-import { ArrowRightIcon, BookOpenIcon, CircleCheckIcon, CircleAlertIcon, CircleHelpIcon, ClockIcon, PencilIcon, SaveIcon, SparklesIcon, UploadIcon } from "lucide-react";
+import { ArrowRightIcon, BookOpenIcon, CheckCircleIcon, WarningCircleIcon, QuestionIcon, ClockIcon, PencilSimpleIcon, FloppyDiskIcon, SparkleIcon, UploadSimpleIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@agentsfleet/design-system";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
@@ -12,8 +12,8 @@ import { setupActivity } from "@/lib/api/draft-activity";
 import { ACTIVITY_KIND, saveDoneText } from "@/lib/events/fleet-activity";
 import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
 
-type Status = {label: string; icon: LucideIcon; busy?: boolean; queued?: boolean; confirmed?: boolean; link?: {href: string; label: string}};
-const ACTIONS = {reading: {label: "Reading setup", icon: BookOpenIcon}, sending: {label: "Sending request", icon: UploadIcon}, saving: {label: "Saving", icon: SaveIcon}, publishing: {label: "Publishing", icon: UploadIcon}};
+type Status = {label: string; icon: PhosphorIcon; busy?: boolean; queued?: boolean; confirmed?: boolean; link?: {href: string; label: string}};
+const ACTIONS = {reading: {label: "Reading setup", icon: BookOpenIcon}, sending: {label: "Sending request", icon: UploadSimpleIcon}, saving: {label: "Saving", icon: FloppyDiskIcon}, publishing: {label: "Publishing", icon: UploadSimpleIcon}};
 
 /** Only accepted fleet revisions and publication receipts receive a success tick. */
 export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet, modelsHref}: {view: DraftView; workspace: string; dirty?: boolean; onOpenFleet?: () => void; modelsHref?: string}) {
@@ -27,43 +27,43 @@ export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet, mo
   return <div className="mb-sm flex justify-center">
     <output aria-label="Setup status" aria-live="polite" aria-atomic="true" data-setup-status={status.busy ? "working" : status.confirmed ? "confirmed" : "attention"}
       className="flex max-w-full flex-wrap items-center justify-center gap-x-sm gap-y-xs rounded-full border border-border bg-card px-lg py-sm text-label text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-stream">
-      <Icon className={`size-3.5 shrink-0 ${status.confirmed ? "text-success" : ""}`} aria-hidden="true" />
+      <Icon className={`size-4 shrink-0 ${status.confirmed ? "text-success" : ""}`} aria-hidden="true" />
       <span data-chat-loading={status.busy && !status.queued}>{status.label}</span>
       {status.confirmed && view.fleet ? onOpenFleet
-        ? <Button variant="link" size="eyebrow" className="gap-xs px-0" onClick={onOpenFleet}>Open fleet<ArrowRightIcon className="size-3.5" aria-hidden="true" /></Button>
-        : <Link className="inline-flex items-center gap-xs hover:underline" href={`/w/${workspace}/fleets/${view.fleet.id}`}>Open fleet<ArrowRightIcon className="size-3.5" aria-hidden="true" /></Link> : null}
-      {status.link ? <Link className="inline-flex items-center gap-xs hover:underline" href={status.link.href}>{status.link.label}<ArrowRightIcon className="size-3.5" aria-hidden="true" /></Link> : null}
-      {status.confirmed && query ? <Link className="inline-flex items-center gap-xs hover:underline" href={`/w/${workspace}/fleets/new?${query}`}>New fleet<ArrowRightIcon className="size-3.5" aria-hidden="true" /></Link> : null}
+        ? <Button variant="link" size="eyebrow" className="gap-xs px-0" onClick={onOpenFleet}>Open fleet<ArrowRightIcon className="size-4" aria-hidden="true" /></Button>
+        : <Link className="inline-flex items-center gap-xs hover:underline" href={`/w/${workspace}/fleets/${view.fleet.id}`}>Open fleet<ArrowRightIcon className="size-4" aria-hidden="true" /></Link> : null}
+      {status.link ? <Link className="inline-flex items-center gap-xs hover:underline" href={status.link.href}>{status.link.label}<ArrowRightIcon className="size-4" aria-hidden="true" /></Link> : null}
+      {status.confirmed && query ? <Link className="inline-flex items-center gap-xs hover:underline" href={`/w/${workspace}/fleets/new?${query}`}>New fleet<ArrowRightIcon className="size-4" aria-hidden="true" /></Link> : null}
     </output>
   </div>;
 }
 
 function setupStatus(view: DraftView, dirty: boolean, modelsHref?: string): Status | null {
-  if (view.error) return {label: view.pending ? "Update not confirmed" : "Setup needs attention", icon: view.pending ? CircleHelpIcon : CircleAlertIcon};
+  if (view.error) return {label: view.pending ? "Update not confirmed" : "Setup needs attention", icon: view.pending ? QuestionIcon : WarningCircleIcon};
   if (view.saveOperation) return {...ACTIONS.saving, busy: true};
   if (view.setupAction) return {...ACTIONS[view.setupAction], busy: true};
-  if (view.optimistic) return {label: "Sending request", icon: UploadIcon, busy: true};
+  if (view.optimistic) return {label: "Sending request", icon: UploadSimpleIcon, busy: true};
   if (chatRecovery(view).pending) {
     const refining = view.messages.some(message => message.state === MESSAGE_STATE.running);
-    return {label: refining ? "Refining setup" : "Waiting to refine setup", icon: refining ? SparklesIcon : ClockIcon, busy: true, queued: !refining};
+    return {label: refining ? "Refining setup" : "Waiting to refine setup", icon: refining ? SparkleIcon : ClockIcon, busy: true, queued: !refining};
   }
   const unusableModels = modelStatus(view, modelsHref);
   if (unusableModels) return unusableModels;
-  if (dirty) return {label: "Unsaved setup changes", icon: PencilIcon};
+  if (dirty) return {label: "Unsaved setup changes", icon: PencilSimpleIcon};
   const revision = view.fleet?.setup_revision;
   if (revision && (!view.draft || savedDraft(view))) {
     const receipt = view.activities?.map(setupActivity).find(activity => activity?.kind === ACTIVITY_KIND.setupSaved && activity.revision === revision);
-    return {label: saveDoneText(revision, receipt?.kind === ACTIVITY_KIND.setupSaved ? receipt.origin : undefined), icon: CircleCheckIcon, confirmed: true};
+    return {label: saveDoneText(revision, receipt?.kind === ACTIVITY_KIND.setupSaved ? receipt.origin : undefined), icon: CheckCircleIcon, confirmed: true};
   }
-  if (view.draft?.publication && view.draft.publication.canonical_digest === view.draft.candidate?.canonical_digest) return {label: "Setup published", icon: CircleCheckIcon, confirmed: true};
-  if (view.draft?.candidate) return {label: revision ? "Unsaved setup changes" : "Setup ready to save", icon: PencilIcon};
+  if (view.draft?.publication && view.draft.publication.canonical_digest === view.draft.candidate?.canonical_digest) return {label: "Setup published", icon: CheckCircleIcon, confirmed: true};
+  if (view.draft?.candidate) return {label: revision ? "Unsaved setup changes" : "Setup ready to save", icon: PencilSimpleIcon};
   return null;
 }
 
 /** Explains the disabled composer, and only once a successful list proves no model can author. */
 function modelStatus(view: DraftView, modelsHref?: string): Status | null {
   if (view.listStatus !== DRAFT_LIST_STATUS.ready || view.models.some(model => model.eligibility.authoring)) return null;
-  if (view.moreModels) return {label: "Load more models to find one for chat", icon: CircleAlertIcon};
+  if (view.moreModels) return {label: "Load more models to find one for chat", icon: WarningCircleIcon};
   const link = modelsHref ? {href: modelsHref, label: "Set up model"} : undefined;
-  return {label: view.models.length > 0 ? "No chat model available" : "No chat model yet", icon: CircleAlertIcon, link};
+  return {label: view.models.length > 0 ? "No chat model available" : "No chat model yet", icon: WarningCircleIcon, link};
 }

@@ -2,6 +2,7 @@ INSERT INTO model.tenant_selections (tenant_id, tenant_model_id, created_at, upd
 SELECT m.tenant_id, m.id, now(), now()
   FROM model.tenant_models m
  WHERE m.tenant_id = $1 AND m.model_name = $3 AND m.secret_ref = $4
+   AND m.workspace_id = $5
    AND EXISTS (SELECT 1 FROM model.platform_models
                 WHERE provider = $2 AND model_name = $3)
 ON CONFLICT (tenant_id) DO UPDATE SET

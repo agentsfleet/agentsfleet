@@ -143,7 +143,7 @@ export class DraftClient {
       this.#idle(); const signal = AbortSignal.any([this.#owner.signal, this.#view.signal]);
       const patch = await readFleetSetup(this.#base, this.#source, this.#snapshot, signal, readinessOnly, currentRevision);
       if (currentRevision && patch.fleet) this.#source = {kind: SOURCE_KIND.fleet, fleet_id: patch.fleet.id, setup_revision: patch.fleet.setup_revision};
-      this.#update(patch);
+      this.#update({...patch, readinessRevision: this.#snapshot.readinessRevision + 1});
       if (readinessOnly && this.#snapshot.draft) await this.#read(this.#snapshot.draft.id);
       if (!readinessOnly && patch.draft) this.#history.seed(this.#snapshot.messages, patch.messagesStartingAfter ?? undefined, this.#snapshot.truncated);
       this.#startWatching();
@@ -206,11 +206,11 @@ export class DraftClient {
       this.#update({notice: appliedNotice(this.#snapshot.schedules)});
     }, "saving");
   }
-  publish(label: string, append: boolean): Promise<void> {
+  publish(label: string, append: boolean, selectedTarget?: string): Promise<void> {
     return this.#requests.run(async () => {
       this.#idle();
       const {draft} = await this.#readySetup();
-      const publication = await this.#publication.prepare(draft, label, append);
+      const publication = await this.#publication.prepare(draft, label, append, selectedTarget);
       await this.#operation.run({publish: publication}, async key => {
         this.#update({notice: await this.#publication.publish(publication, key)});
         await this.#read(draft.id); await this.#refreshSummary(draft.id);

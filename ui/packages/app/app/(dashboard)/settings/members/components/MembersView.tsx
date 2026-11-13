@@ -1,14 +1,16 @@
 "use client";
 
-import { type TransitionStartFunction, useEffect, useRef, useState, useTransition } from "react";
-import { Alert, PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agentsfleet/design-system";
+import { type TransitionStartFunction, useDeferredValue, useEffect, useRef, useState, useTransition } from "react";
+import { Alert, Badge, EmptyState, PageHeader, PageLayout, PageTitle, Section } from "@agentsfleet/design-system";
+import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
+import { UsersIcon } from "@phosphor-icons/react/ssr";
 import type { InviteSummary } from "@/lib/api/invites";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import { presentErrorString } from "@/lib/errors";
 import InviteDialogDynamic from "@/components/domain/island-dynamic/InviteDialogDynamic";
 import { loadTeamAction, removeMemberAction, revokeInviteAction, sendInviteEmailAction } from "../actions";
 import { MEMBERS_DESCRIPTION, MEMBERS_TITLE } from "../copy";
-import { CONFIRM_KIND, TeamConfirm, type ConfirmTarget, type ConfirmTargetActive } from "./TeamConfirm";
+import { CONFIRM_KIND, TeamConfirm, memberName, type ConfirmTarget, type ConfirmTargetActive } from "./TeamConfirm";
 import { TEAM_CAPTION, TeamTable } from "./TeamTable";
 
 type Props = {
@@ -118,26 +120,35 @@ function useFocusAfterRemoval() {
 export function MembersView(props: Props) {
   const { regionRef, onRemoved } = useFocusAfterRemoval();
   const team = useTeam(props, onRemoved);
+  const [search, setSearch] = useState("");
+  const query = useDeferredValue(search.trim().toLowerCase());
+  const members = team.members.filter(member => `${memberName(member)} ${member.email}`.toLowerCase().includes(query));
+  const invites = team.invites.filter(invite => invite.email.toLowerCase().includes(query));
+  const ownerName = team.members.find(member => member.role === "owner")?.display_name;
   return (
-    <PageLayout>
-      <PageHeader description={MEMBERS_DESCRIPTION}>
+    <PageLayout className="gap-2xl">
+      <PageHeader className="sm:items-center" description={MEMBERS_DESCRIPTION} actions={<InviteDialogDynamic onSettled={team.refresh} />}>
         <PageTitle>{MEMBERS_TITLE}</PageTitle>
       </PageHeader>
       {/* Reachable by script only, for the focus a removal hands back. A screen
           reader announces it by its label; no outline marks it for a mouse. */}
-      <Section ref={regionRef} tabIndex={-1} aria-label={TEAM_CAPTION} className="focus:outline-none">
-        <SectionHeader as="p" actions={<InviteDialogDynamic onSettled={team.refresh} />}>
-          {TEAM_CAPTION}
-        </SectionHeader>
+      <Section ref={regionRef} tabIndex={-1} aria-label={TEAM_CAPTION} className="gap-2xl focus:outline-none">
+        <div className="flex flex-wrap items-center gap-xl border-b border-border pb-2xl pt-5">
+          <UsersIcon size={24} className="mt-xs shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="min-w-0 flex-1 space-y-sm"><p className="text-label font-semibold">{ownerName ? `${ownerName}’s account` : "Your account"}</p><p className="text-label text-muted-foreground">Members can open every workspace in this account.</p></div><div className="basis-full pl-10 sm:basis-auto sm:pl-0"><Badge>You’re the owner</Badge></div>
+        </div>
+        <CollectionToolbar label="Search name or email" value={search} onChange={setSearch} summary="Account-wide access" />
+        {members.length === 0 && invites.length === 0 ? <EmptyState title="No matching people" description="Try another name or email, or clear your search." /> : null}
         <TeamTable
-          members={team.members}
-          invites={team.invites}
+          members={members}
+          invites={invites}
           pending={team.pending}
           onRemove={(member) => team.setTarget({ kind: CONFIRM_KIND.remove, member })}
           onRevoke={(invite) => team.setTarget({ kind: CONFIRM_KIND.revoke, invite })}
           onResend={team.resend}
         />
       </Section>
+      <p className="text-eyebrow leading-eyebrow text-text-dim">Members share access to this account’s workspaces. Removing someone ends that access.</p>
       {team.error && team.target === null ? <Alert variant="destructive">{team.error}</Alert> : null}
       <TeamConfirm target={team.target} error={team.error} onOpenChange={team.dismiss} onConfirm={team.confirm} />
     </PageLayout>

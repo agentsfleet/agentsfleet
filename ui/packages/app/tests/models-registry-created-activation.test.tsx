@@ -14,6 +14,7 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: async () => ({ getToken: async () => "unit-test-bearer" }),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "model-owner"})}));
 
 const WORKSPACE_ID = "ws-created-model";
 const SECRET_REF = "created-model-key";
@@ -27,10 +28,10 @@ const PATH = {
   secrets: `/v1/workspaces/${WORKSPACE_ID}/secrets`,
 } as const;
 const COPY = {
-  active: "Active", create: "Create model", saveActive: "Save & make active",
+  active: "Active", create: "Create model",
   activationRefused: "Activation refused", registrationRefused: "Registration refused",
 } as const;
-const SWITCH_LABEL = `Switch to ${MODEL_ID}`;
+const SWITCH_LABEL = `Make active: ${MODEL_ID}`;
 const STATUS_CONFLICT = 409;
 const STATUS_UNPROCESSABLE = 422;
 
@@ -46,7 +47,7 @@ class ModelBoundary {
   entry(): TenantModelEntry {
     return {
       id: "created-model-entry", model_id: MODEL_ID, display_name: CATALOGUE_MODEL.display_name,
-      provider: CATALOGUE_MODEL.provider, secret_ref: SECRET_REF, kind: SECRET_KIND.provider_key,
+      provider: CATALOGUE_MODEL.provider, secret_ref: SECRET_REF, workspace_id: WORKSPACE_ID, kind: SECRET_KIND.provider_key,
       has_key: true, active: this.active, created_at: VERIFIED_AT,
     };
   }
@@ -75,14 +76,14 @@ class ModelBoundary {
       return Response.json({ name: SECRET_REF });
     }
     if (path === PATH.registry && method === POST) {
-      expect(requestBody(init)).toEqual({ model_id: MODEL_ID, secret_ref: SECRET_REF });
+      expect(requestBody(init)).toEqual({ workspace_id: WORKSPACE_ID, model_id: MODEL_ID, secret_ref: SECRET_REF });
       if (this.refuseRegistration) return Response.json({ error_code: "UZ-MODELS-003", detail: COPY.registrationRefused }, { status: STATUS_CONFLICT });
       this.registered = true;
       return Response.json(this.entry());
     }
     if (path === PATH.registry && method === HTTP_METHOD.GET) return Response.json(this.page());
     if (path === PATH.provider && method === HTTP_METHOD.PUT) {
-      expect(requestBody(init)).toEqual({ mode: PROVIDER_MODE.self_managed, model: MODEL_ID, secret_ref: SECRET_REF });
+      expect(requestBody(init)).toEqual({ mode: PROVIDER_MODE.self_managed, workspace_id: WORKSPACE_ID, model: MODEL_ID, secret_ref: SECRET_REF });
       return this.activation.promise;
     }
     this.unexpected.push(`${method} ${path}`);
@@ -103,7 +104,8 @@ function requestBody(init?: RequestInit): unknown {
 }
 
 function rowFor(model: string): HTMLElement {
-  const rows = within(screen.getByRole("table", { hidden: true })).getAllByRole("row", { hidden: true });
+  if (model === PLATFORM_MODEL) return screen.getByLabelText("Platform default");
+  const rows = screen.getAllByRole("listitem", { hidden: true });
   const row = rows.find((candidate) => candidate.textContent?.includes(model) ||
     Array.from(candidate.querySelectorAll("[aria-label]")).some((control) => control.getAttribute("aria-label")?.includes(model)));
   if (!row) throw new Error(`Missing model row: ${model}`);
@@ -118,13 +120,14 @@ async function openAndSubmit(boundary: ModelBoundary) {
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: COPY.create }));
   const dialog = within(screen.getByRole("dialog"));
-  await user.type(dialog.getByLabelText(/^name$/i), SECRET_REF);
+  await user.type(dialog.getByLabelText("Key name"), SECRET_REF);
   await user.click(dialog.getByLabelText(/^provider$/i));
   await user.click(await screen.findByRole("option", { name: /fireworks/i }));
   await user.click(dialog.getByLabelText(/^model$/i));
   await user.click(await screen.findByRole("option", { name: new RegExp(MODEL_ID, "i") }));
   await user.type(dialog.getByLabelText(/^api key$/i), crypto.randomUUID());
-  await user.click(dialog.getByRole("button", { name: COPY.saveActive }));
+  await user.click(dialog.getByRole("checkbox", {name: "Make active"}));
+  await user.click(dialog.getByRole("button", { name: COPY.create }));
   return user;
 }
 
@@ -140,14 +143,14 @@ describe("created model activation through the registry and HTTP boundary", () =
     // Force the registration read to render before activation commits.
     await waitFor(() => expect(within(rowFor(MODEL_ID)).queryByText(COPY.active)).toBeNull());
     expect(within(rowFor(PLATFORM_MODEL)).getByText(COPY.active)).toBeTruthy();
-    expect(within(rowFor(MODEL_ID)).getByLabelText(SWITCH_LABEL)).toBeTruthy();
+    expect(within(rowFor(MODEL_ID)).getByRole("button", {name: SWITCH_LABEL, hidden: true})).toBeTruthy();
     expect(boundary.calls).toContain(`${HTTP_METHOD.PUT} ${PATH.provider}`);
 
     await act(async () => boundary.completeActivation(true));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await waitFor(() => expect(within(rowFor(MODEL_ID)).getByText(COPY.active)).toBeTruthy());
-    expect(within(rowFor(MODEL_ID)).queryByLabelText(SWITCH_LABEL)).toBeNull();
+    expect(within(rowFor(MODEL_ID)).queryByRole("button", {name: SWITCH_LABEL, hidden: true})).toBeNull();
     expect(within(rowFor(PLATFORM_MODEL)).queryByText(COPY.active)).toBeNull();
     expect(boundary.registered).toBe(true);
     expect(boundary.active).toBe(true);
@@ -158,14 +161,14 @@ describe("created model activation through the registry and HTTP boundary", () =
   it("retains the committed inactive entry and dialog error when activation is refused", async () => {
     const boundary = new ModelBoundary();
     await openAndSubmit(boundary);
-    await waitFor(() => expect(within(rowFor(MODEL_ID)).getByLabelText(SWITCH_LABEL)).toBeTruthy());
+    await waitFor(() => expect(within(rowFor(MODEL_ID)).getByRole("button", {name: SWITCH_LABEL, hidden: true})).toBeTruthy());
 
     await act(async () => boundary.completeActivation(false));
 
     const dialog = await screen.findByRole("dialog");
-    await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toBe(`Couldn't activate this model — ${COPY.activationRefused}.`));
+    await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toBe(`Model created. Couldn't activate this model — ${COPY.activationRefused}.`));
     expect(within(rowFor(MODEL_ID)).queryByText(COPY.active)).toBeNull();
-    expect(within(rowFor(MODEL_ID)).getByLabelText(SWITCH_LABEL)).toBeTruthy();
+    expect(within(rowFor(MODEL_ID)).getByRole("button", {name: SWITCH_LABEL, hidden: true})).toBeTruthy();
     expect(within(rowFor(PLATFORM_MODEL)).getByText(COPY.active)).toBeTruthy();
     expect(boundary.saved).toBe(true);
     expect(boundary.registered).toBe(true);
@@ -180,8 +183,8 @@ describe("created model activation through the registry and HTTP boundary", () =
     await openAndSubmit(boundary);
 
     const dialog = screen.getByRole("dialog");
-    await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toBe(`Couldn't register the model entry — ${COPY.registrationRefused}.`));
-    expect(within(screen.getByRole("table", { hidden: true })).queryByText(CATALOGUE_MODEL.display_name)).toBeNull();
+    await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toBe(`Credential retained. Couldn't register the model entry — ${COPY.registrationRefused}.`));
+    expect(within(screen.getByRole("region", { name: "Models", hidden: true })).queryByText(CATALOGUE_MODEL.display_name)).toBeNull();
     expect(within(rowFor(PLATFORM_MODEL)).getByText(COPY.active)).toBeTruthy();
     // Credential storage precedes registration and survives its refusal.
     expect(boundary.saved).toBe(true);

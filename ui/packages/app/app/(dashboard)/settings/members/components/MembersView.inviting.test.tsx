@@ -34,6 +34,8 @@ import {
   SEND_INVITE,
   UNSENT,
   hiddenButton,
+  chooseTeamAction,
+  manageLabel,
   openInvite,
   renderView,
   revokeFor,
@@ -58,8 +60,8 @@ describe("a request in flight", () => {
     actions.loadTeamAction.mockResolvedValue({ ok: true, data: { members: [JOHN], invites: [UNSENT] } });
     renderView([JOHN], [UNSENT]);
     const user = userEvent.setup();
-    const button = () => screen.getByRole("button", { name: sendAgain(UNSENT) }) as HTMLButtonElement;
-    await user.click(button());
+    const button = () => hiddenButton(manageLabel(sendAgain(UNSENT)));
+    await chooseTeamAction(sendAgain(UNSENT));
     await waitFor(() => expect(button().disabled).toBe(true));
     await user.click(button());
     expect(actions.sendInviteEmailAction).toHaveBeenCalledExactlyOnceWith(UNSENT.id);
@@ -79,18 +81,18 @@ describe("a request in flight", () => {
     action.mockReturnValue(answer.promise);
     renderView();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: rowButton }));
+    await chooseTeamAction(rowButton);
     const dialog = await screen.findByRole("alertdialog");
     const confirmButton = within(dialog).getByRole("button", { name: confirmLabel }) as HTMLButtonElement;
     await user.click(confirmButton);
     await waitFor(() => expect(confirmButton.disabled).toBe(true));
-    await waitFor(() => expect(hiddenButton(rowButton).disabled).toBe(true));
+    await waitFor(() => expect(hiddenButton(manageLabel(rowButton)).disabled).toBe(true));
     await user.click(confirmButton);
     expect(action).toHaveBeenCalledExactlyOnceWith(arg);
 
     answer.resolve(DONE);
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    await waitFor(() => expect((screen.getByRole("button", { name: rowButton }) as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect((screen.getByRole("button", { name: manageLabel(rowButton) }) as HTMLButtonElement).disabled).toBe(false));
     expect(action).toHaveBeenCalledOnce();
   });
 
@@ -141,7 +143,7 @@ describe("inviting", () => {
 
     // The dialog holds while the list reload its create started is running, and
     // the table opened with no invites, so this row can only come from the reload.
-    await waitFor(() => expect(hiddenButton(revokeFor(INVITE)).disabled).toBe(false));
+    await waitFor(() => expect(hiddenButton(manageLabel(revokeFor(INVITE))).disabled).toBe(false));
     await user.click(within(ready).getByRole("button", { name: "Done" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(within(rowOf(INVITE.email)).getByText(INVITED_BADGE)).toBeTruthy();

@@ -34,13 +34,13 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     expect(screen.getByText("reviewed it")).toBeTruthy();
   });
 
-  it("keeps conversation rows free of sender and timestamp chrome", () => {
+  it("keeps conversation metadata compact and retains the recorded timestamp", () => {
     mockStream([
       ev({ role: "assistant", actor: "fleet", text: "reviewed it" }),
     ]);
     const { container } = renderThread();
     expect(container.querySelector("[data-chip]")).toBeNull();
-    expect(container.querySelector("time")).toBeNull();
+    expect(container.querySelector("time")?.hasAttribute("datetime")).toBe(true);
   });
 
   it("renders an assistant reply", () => {
@@ -51,7 +51,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     expect(screen.getByText(/snapshot taken/)).toBeTruthy();
   });
 
-  it("renders a system meta-row with the actor as the chip label", () => {
+  it("renders a schedule activity with a readable wake-up label", () => {
     mockStream([
       ev({
         role: "system",
@@ -60,7 +60,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
       }),
     ]);
     renderThread();
-    expect(screen.getByText("Schedule")).toBeTruthy();
+    expect(screen.getByText("Woke up on schedule")).toBeTruthy();
     expect(screen.getByText(/tick/)).toBeTruthy();
   });
 

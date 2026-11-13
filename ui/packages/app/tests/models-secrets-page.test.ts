@@ -16,6 +16,8 @@ const redirect = vi.fn((path: string) => {
 });
 const auth = vi.fn();
 const listTenantModelEntriesCached = vi.fn();
+const listTenantWorkspacesCached = vi.fn();
+vi.mock("@/lib/workspace", () => ({listTenantWorkspacesCached}));
 
 vi.mock("next/navigation", () => ({
   redirect,
@@ -45,16 +47,19 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegi
     workspaceId,
     initialPage,
     initialError,
+    workspaces,
   }: {
     workspaceId: string;
     initialPage: { models: unknown[] } | null;
     initialError: { kind: string } | null;
+    workspaces: {id: string; name: string | null}[];
   }) =>
     React.createElement("div", {
       "data-testid": "models-registry-table",
       "data-workspace": workspaceId,
       "data-entry-count": initialPage ? initialPage.models.length : -1,
       "data-error-kind": initialError ? initialError.kind : "",
+      "data-workspace-labels": JSON.stringify(workspaces),
     }),
 }));
 
@@ -81,6 +86,7 @@ function registryList(count: number) {
 beforeEach(() => {
   vi.clearAllMocks();
   auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("token_123") });
+  listTenantWorkspacesCached.mockResolvedValue({items: [{id: "ws_1", name: "Main"}, {id: "ws_2", name: "Staging"}]});
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -149,6 +155,29 @@ describe("Models page", () => {
 
     expect(markup).toContain('data-testid="models-registry-table"');
     expect(markup).toContain('data-entry-count="1"');
+  });
+
+  it("keeps the registry when workspace labels are unavailable", async () => {
+    listTenantModelEntriesCached.mockResolvedValue(registryList(1));
+    listTenantWorkspacesCached.mockRejectedValueOnce(new Error("Labels unavailable"));
+    const {ModelsRegistryData} = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(await ModelsRegistryData({workspaceId: WORKSPACE_ID}));
+    const table = within(host).getByTestId("models-registry-table");
+    expect(table.getAttribute("data-entry-count")).toBe("1");
+    expect(table.getAttribute("data-workspace-labels")).toBe("[]");
+    expect(table.getAttribute("data-error-kind")).toBe("");
+  });
+
+  it("passes workspace labels for display without using the selected workspace to read the account registry", async () => {
+    listTenantModelEntriesCached.mockResolvedValue(registryList(1));
+    const {ModelsRegistryData} = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(await ModelsRegistryData({workspaceId: "ws_2"}));
+    const table = within(host).getByTestId("models-registry-table");
+    expect(JSON.parse(table.getAttribute("data-workspace-labels")!)).toEqual([{id: "ws_1", name: "Main"}, {id: "ws_2", name: "Staging"}]);
+    expect(listTenantModelEntriesCached).toHaveBeenCalledExactlyOnceWith("token_123");
+    expect(listTenantWorkspacesCached).toHaveBeenCalledExactlyOnceWith("token_123");
   });
 
   it("redirects to /sign-in when unauthenticated", async () => {

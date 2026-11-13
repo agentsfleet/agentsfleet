@@ -1,6 +1,19 @@
+import type { ActionResult } from "@/lib/actions/with-token";
+import type { AccountSession, AccountSessionPage } from "./account-types";
+import type { IdentitySession } from "./account-provider";
+import { z } from "zod";
 import { cache } from "react";
-import { auth } from "@clerk/nextjs/server";
+import { auth, reverificationError } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { readProviderSessions, readProviderSession, revokeProviderSession } from "./account-provider";
+
+const ownerSchema = z.string().min(1).max(256);
+const pageSchema = z.number().int().min(0).max(10_000);
+const sessionIdSchema = z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/);
+const ACCOUNT_REQUEST_TIMEOUT_MS = 10_000;
+const ENDED = new Set(["revoked", "ended", "removed", "expired", "abandoned"]);
+const CHANGED = "Your signed-in account changed. Reload this page before continuing.";
+
 
 /**
  * The one place the dashboard resolves a credential.
@@ -62,6 +75,14 @@ export const credential = cache(async (): Promise<string | null> => {
   return getToken();
 });
 
+/** App-owned identity for personal settings; never use a caller-supplied user as authority. */
+export const accountSessionIdentity = cache(async () => {
+  const identity = await auth();
+  if (!identity.userId || !identity.sessionId) return null;
+  return {subject: identity.userId, sessionId: identity.sessionId,
+    recentlyVerified: identity.has({reverification: "strict"}), impersonating: Boolean(identity.actor)};
+});
+
 /**
  * The bearer, or a redirect to sign-in.
  *
@@ -97,6 +118,53 @@ export const claims = cache(async (): Promise<Record<string, unknown> | null> =>
     return null;
   }
 });
+
+export async function readAccountSessions(expectedSubject: string, offset: number): Promise<ActionResult<AccountSessionPage>> {
+  const identity = await accountSessionIdentity();
+  if (!identity) return failure(401, "Sign in to view your sessions.");
+  if (identity.impersonating) return failure(403, "Personal sessions are unavailable while impersonating another account.");
+  if (!ownerSchema.safeParse(expectedSubject).success || identity.subject !== expectedSubject) return failure(409, CHANGED);
+  if (!pageSchema.safeParse(offset).success) return failure(400, "Invalid session page.");
+  try {
+    const page = await readProviderSessions(identity.subject, offset, AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS));
+    if (page.data.some(session => session.user_id !== identity.subject)) return failure(503, "Your sessions could not be loaded.");
+    const more = offset + page.data.length < page.total_count;
+    if (more && page.data.length === 0) return failure(503, "Your session page could not be confirmed.");
+    return {ok: true, data: {sessions: page.data.filter(session => session.status === "active").map(session => sessionView(session, identity.sessionId)),
+      nextOffset: more ? offset + page.data.length : null}};
+  } catch {return failure(503, "Your sessions could not be loaded. Try again.");}
+}
+
+/** Strict recent verification and target ownership precede the privileged provider write. */
+export async function revokeAccountSession(expectedSubject: string, id: string) {
+  const identity = await accountSessionIdentity();
+  if (!identity) return failure(401, "Sign in to manage your sessions.");
+  if (identity.impersonating) return failure(403, "Personal sessions are unavailable while impersonating another account.");
+  if (!ownerSchema.safeParse(expectedSubject).success || identity.subject !== expectedSubject) return failure(409, CHANGED);
+  if (!sessionIdSchema.safeParse(id).success) return failure(400, "Invalid session.");
+  if (id === identity.sessionId) return failure(409, "Use Sign out to end the session on this device.");
+  if (!identity.recentlyVerified) return reverificationError("strict");
+  try {
+    const signal = AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS);
+    const session = await readProviderSession(id, signal);
+    if (session.user_id !== identity.subject || session.id !== id) return failure(404, "This session is not available.");
+    if (ENDED.has(session.status)) return {ok: true as const, data: {id}};
+    if (session.status !== "active") return failure(409, "Refresh the session list before trying again.");
+    const result = await revokeProviderSession(id, signal);
+    if (result.id === id && result.user_id === identity.subject && ENDED.has(result.status)) return {ok: true as const, data: {id}};
+  } catch { /* A lost response cannot establish whether revocation completed. */ }
+  return failure(503, "Session sign-out could not be confirmed. Refresh the list before trying again.");
+}
+
+function sessionView(session: IdentitySession, currentId: string): AccountSession {
+  const activity = session.latest_activity;
+  const instant = typeof session.last_active_at === "number" ? new Date(session.last_active_at) : null;
+  return {id: session.id, browser: activity?.browser_name || "Unknown browser", device: activity?.device_type || "Unknown device",
+    location: [activity?.city, activity?.country].filter(Boolean).join(", ") || null, mobile: activity?.is_mobile ?? false,
+    current: session.id === currentId, lastActiveAt: instant && Number.isFinite(instant.getTime()) ? instant.toISOString() : null};
+}
+
+function failure(status: number, error: string) {return {ok: false as const, status, error};}
 
 /**
  * Whether a readable session carries no tenant: the signup webhook has not

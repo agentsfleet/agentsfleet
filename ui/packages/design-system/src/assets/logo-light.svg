@@ -4,5 +4,5 @@
     <path d="M12 2v6m0 8v6M2 12h6m8 0h6M4.93 4.93l4.24 4.24m5.66 5.66 4.24 4.24M4.93 19.07l4.24-4.24m5.66-5.66 4.24-4.24"/>
     <circle cx="12" cy="12" r="1.5" fill="#06695e" stroke="none"/>
   </g>
-  <text x="48" y="30" font-family="Instrument Sans, system-ui, sans-serif" font-size="26" font-weight="500" letter-spacing="-.5" fill="#14251f">agentsfleet</text>
+  <text x="48" y="30" font-family="Manrope Variable, system-ui, sans-serif" font-size="26" font-weight="500" letter-spacing="-.5" fill="#14251f">agentsfleet</text>
 </svg>

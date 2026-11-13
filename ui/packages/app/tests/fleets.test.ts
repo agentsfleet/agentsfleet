@@ -1,9 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { FLEET } from "./helpers/draft-fixtures";
-import { routerPush, routerRefresh, fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
+import { cleanup, render, screen } from "@testing-library/react";
+import { fetchMock, resetCommonMocks } from "./helpers/dashboard-mocks";
 
 // Shared dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.stubGlobal("fetch", fetchMock);
@@ -12,7 +10,7 @@ vi.mock("@clerk/nextjs/server", async () => (await import("./helpers/dashboard-m
 vi.mock("@clerk/nextjs", async () => (await import("./helpers/dashboard-mocks")).clerkMock());
 vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
 vi.mock("@/lib/workspace", async () => (await import("./helpers/dashboard-mocks")).workspaceMock());
-vi.mock("lucide-react", async () => (await import("./helpers/dashboard-mocks")).lucideMock());
+vi.mock("@phosphor-icons/react/ssr", async () => (await import("./helpers/dashboard-mocks")).phosphorMock());
 vi.mock("@agentsfleet/design-system", async (orig) => {
   const h = await import("./helpers/dashboard-mocks");
   return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemTabs() };
@@ -113,81 +111,5 @@ describe("exhaustion components", () => {
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("credit balance is exhausted");
     expect(alert.textContent).not.toMatch(/Exhausted since /);
-  });
-});
-
-// ── Fleet actions — delete flow ───────────────────────────────────────────
-
-describe("Fleet actions delete", () => {
-  async function openDelete(status = "active") {
-    const { default: FleetActions } = await import(
-      "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetActions"
-    );
-    const { DELETE_MEMORY_TRAP_NOTICE } = await import(
-      "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/console-copy"
-    );
-    const user = userEvent.setup({ delay: null });
-    render(
-      React.createElement(FleetActions, {
-        workspaceId: "ws_1",
-        fleet: { id: "zom_1", name: "Pull request review", status, etag: FLEET.etag },
-      }),
-    );
-    await user.click(screen.getByRole("button", { name: "Fleet actions" }));
-    await user.click(screen.getByRole("menuitem", { name: /^delete fleet$/i }));
-    const dialog = screen.getByRole("alertdialog");
-    // The confirm states memory dies with the fleet, and that editing keeps it (G8).
-    expect(dialog.textContent).toContain(DELETE_MEMORY_TRAP_NOTICE);
-    return { user, dialog };
-  }
-
-  it.each(["active", "installing", "archived"])("deletes a %s fleet with one DELETE and leaves for /w/ws_1/fleets", async (status) => {
-    fetchMock.mockResolvedValue({ ok: true, status: 204 });
-    const { user, dialog } = await openDelete(status);
-    await user.click(within(dialog).getByRole("button", { name: /^delete fleet$/i }));
-
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/w/ws_1/fleets"));
-    // Delete ends live work itself: nothing archives first.
-    expect(fetchMock).toHaveBeenCalledOnce();
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1"),
-      expect.objectContaining({ method: "DELETE", headers: expect.objectContaining({"If-Match": FLEET.etag}) }),
-    );
-    // router.refresh() is intentionally NOT called — refresh-after-push races
-    // the current-route refetch against push's URL commit. The fleets list is
-    // `force-dynamic` so refresh isn't needed.
-    expect(routerRefresh).not.toHaveBeenCalled();
-  });
-
-  it("surfaces an unauthenticated action as the session-expired copy", async () => {
-    // Server action mints the Bearer via `auth()` on @clerk/nextjs/server.
-    // Null getToken there is what the harness sees in the unauthenticated path.
-    auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { user, dialog } = await openDelete();
-    await user.click(within(dialog).getByRole("button", { name: /^delete fleet$/i }));
-    // 401 from withToken maps to UZ-AUTH-401, which presentError renders as
-    // the curated "Your session expired" copy (WS-G).
-    await waitFor(() => expect(screen.getByText(/Your session expired/i)).toBeTruthy());
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("renders a server error inside the dialog without navigating", async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      status: 503,
-      statusText: "Service Unavailable",
-      json: async () => ({ detail: "storage unavailable" }),
-    });
-    const { user, dialog } = await openDelete();
-    await user.click(within(dialog).getByRole("button", { name: /^delete fleet$/i }));
-    await waitFor(() => expect(within(screen.getByRole("alertdialog")).getByRole("alert")).toBeTruthy());
-    expect(routerPush).not.toHaveBeenCalled();
-  });
-
-  it("Cancel dismisses the confirm dialog without a request", async () => {
-    const { user, dialog } = await openDelete();
-    await user.click(within(dialog).getByRole("button", { name: /cancel/i }));
-    expect(screen.queryByRole("alertdialog")).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { cn } from "../utils";
 import { Button, type ButtonProps } from "./Button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
@@ -16,6 +16,7 @@ export function TooltipButton({
   disabled,
   ...rest
 }: TooltipButtonProps) {
+  const [open, setOpen] = useState(false);
   const button = (
     <Button
       className={cn(disabled ? "pointer-events-none" : null, className)}
@@ -28,7 +29,7 @@ export function TooltipButton({
 
   return (
     <TooltipProvider>
-      <Tooltip>
+      <Tooltip open={tooltip == null ? false : open} onOpenChange={setOpen}>
         <TooltipTrigger asChild>
           {disabled ? <span className="inline-flex cursor-not-allowed">{button}</span> : button}
         </TooltipTrigger>

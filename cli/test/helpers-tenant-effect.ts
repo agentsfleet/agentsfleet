@@ -5,6 +5,7 @@ import { AGE_KEY, ago } from "../src/output/index.ts";
 
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { CliConfig } from "../src/services/config.ts";
+import { Workspaces } from "../src/services/workspaces.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output, OUTPUT_FORMAT, type OutputFormat } from "../src/services/output.ts";
@@ -114,3 +115,10 @@ export const expectFailure = <E extends CliError>(
   if (failure === null) throw new Error("no typed failure in cause");
   return failure;
 };
+
+export const MODEL_WORKSPACE = "0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b";
+export const modelWorkspaceLayer = (workspaceId: string | null = MODEL_WORKSPACE): Layer.Layer<Workspaces> =>
+  Layer.succeed(Workspaces, {
+    load: Effect.succeed({current_workspace_id: workspaceId, items: []}),
+    save: () => Effect.die("model activation must not change the selected workspace"),
+  });

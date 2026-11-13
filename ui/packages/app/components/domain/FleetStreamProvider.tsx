@@ -17,3 +17,8 @@ export function useFleetStreams(): FleetStreams {
   if (!streams) throw new Error("Fleet chat requires an identity-owned stream provider.");
   return streams;
 }
+
+/** Presentation can keep its server-rendered value outside a live fleet. */
+export function useOptionalFleetStreams(): FleetStreams | null {
+  return useContext(StreamContext);
+}

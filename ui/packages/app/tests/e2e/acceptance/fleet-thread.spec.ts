@@ -18,7 +18,7 @@ import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { SSE_CONTENT_TYPE, sseFrame } from "./fixtures/sse";
 import { auditStream, documentIsMarked, markDocument, streamCount } from "./fixtures/soft-navigation";
 import { FRAME_KIND, streamFleetEventsUrl } from "@/lib/api/events-types";
-import { editSetupLink } from "./fixtures/private-chat";
+import { expectEditSetupAvailable } from "./fixtures/private-chat";
 
 const CHAT_LABEL = "Fleet chat";
 const COMPOSER_LABEL = "Chat composer";
@@ -82,10 +82,7 @@ test.describe("fleet thread surface", () => {
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
 
-    // Breadcrumb rendered server-side without duplicating the fleet name in a
-    // second oversized title row.
-    // Scope to the breadcrumb — the sidebar carries its own Fleets link, so
-    // the bare role query became ambiguous when the breadcrumb shipped.
+    // The persistent Primary rail keeps the return route reachable beside the conversation.
     await expect(
       page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Your fleets", exact: true }),
     ).toBeVisible();
@@ -97,7 +94,7 @@ test.describe("fleet thread surface", () => {
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
     await expect(page.getByRole("navigation", { name: "Fleet sections" })).toHaveCount(0);
-    await expect(editSetupLink(page)).toBeVisible();
+    await expectEditSetupAvailable(page);
     await expect(threadCard.getByRole("link", { name: "Steer" })).toHaveCount(0);
 
     // The conversation carries role="log" + aria-live=polite.

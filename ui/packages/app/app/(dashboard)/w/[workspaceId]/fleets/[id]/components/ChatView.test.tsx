@@ -18,9 +18,10 @@ vi.mock("next/navigation", () => ({
 }));
 // The thread is a sibling view over the same stream and plays no part in the
 // strip; the strip's own subscription is what these tests drive.
-vi.mock("@/components/domain/FleetThreadDynamic", () => ({
-  default: () => null,
-}));
+vi.mock("@/components/domain/FleetThreadDynamic", async () => {
+  const {WorkApprovals} = await import("@/components/domain/chat/WorkContextSections");
+  return {default: ({approvals}: {approvals?: {count: number; href: string}}) => <WorkApprovals approvals={approvals} />};
+});
 
 import { ChatView } from "./ChatView";
 import { useFleetRunSummary } from "@/components/domain/useFleetRunSummary";
@@ -31,7 +32,7 @@ const STATUS_INSTALLING = "installing";
 const STATUS_ARCHIVED = "archived";
 const WORKSPACE_ID = "ws_1";
 const FLEET_ID = "agt_1";
-const APPROVALS_HREF = "/w/ws_1/approvals?fleetId=agt_1";
+const APPROVALS_HREF = "/w/ws_1/fleets/agt_1#fleet-approvals";
 const SEED_AT = 1_700_000_000_000;
 const INITIAL_TOKENS = 1500;
 const COMPLETED_TOKENS = 1200;
@@ -164,23 +165,15 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
   });
 
   it("a revisit whose cached status the server has overtaken does not refresh", async () => {
-    // First visit: the server renders an installing fleet, a completion
-    // reports it active, and the page refreshes once.
-    const first = render(view(summary({ status: STATUS_INSTALLING })));
-    emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*" });
-    emit(completion({ fleet_status: STATUS_ACTIVE }));
+    const first = render(view(summary({status: STATUS_INSTALLING})));
+    emit({kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*"});
+    emit(completion({fleet_status: STATUS_ACTIVE}));
     expect(await screen.findByText(STATUS_ACTIVE)).toBeTruthy();
-    expect(refreshMock).toHaveBeenCalledTimes(1);
-    first.unmount();
-    refreshMock.mockReset();
-
-    // Within the idle window the entry is still cached, holding "active". The
-    // operator archived the fleet from the CLI and comes back: the server
-    // renders "archived", which is newer than the cached frame — and no
-    // refresh is owed for a status the server itself just rendered.
-    render(view(summary({ status: STATUS_ARCHIVED })));
+    expect(refreshMock).toHaveBeenCalledOnce();
+    first.unmount(); refreshMock.mockReset();
+    render(view(summary({status: STATUS_ARCHIVED})));
     await act(async () => {});
-    expect(screen.getByText(STATUS_ARCHIVED)).toBeTruthy();
+    expect(screen.getByText("Archived")).toBeTruthy();
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
@@ -212,9 +205,9 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
     emit(completion({ fleet_status: STATUS_ARCHIVED }));
 
     // The header's lifecycle controls render from the fleet status on the
-    // server, so a run whose gate trip archived the fleet re-runs that tree
-    // exactly once; the strip itself shows the daemon's word at once.
-    expect(await screen.findByText(STATUS_ARCHIVED)).toBeTruthy();
+    // server, so a run that archived the fleet re-runs that tree exactly once;
+    // the strip itself shows the daemon's word at once.
+    expect(await screen.findByText("Archived")).toBeTruthy();
     expect(refreshMock).toHaveBeenCalledTimes(1);
 
     // A second completion with the same status is not a second refresh.
@@ -223,7 +216,7 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
-  it("a server render resets the facts to its own — an archive from the header is not shadowed by an older frame", async () => {
+  it("a server render resets the facts to its own — a kill from the header is not shadowed by an older frame", async () => {
     const { rerender } = render(view(summary()));
     emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*" });
     emit(completion());
@@ -231,9 +224,9 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
 
     // Fleet actions refreshed the page: the server says archived, and the
     // figures it rendered are newer than the frame's.
-    rerender(view(summary({ status: STATUS_ARCHIVED, latest: { ...summary().latest!, tokens: RERENDERED_TOKENS } })));
+    rerender(view(summary({ status: "archived", latest: { ...summary().latest!, tokens: RERENDERED_TOKENS } })));
     await act(async () => {});
-    expect(screen.getByText(STATUS_ARCHIVED)).toBeTruthy();
+    expect(screen.getByText("Archived")).toBeTruthy();
     // No refresh: the server tree is what just rendered.
     expect(refreshMock).not.toHaveBeenCalled();
   });
@@ -279,7 +272,8 @@ it("keeps ordinary chat free of the metrics strip and reveals approvals when att
   render(view(summary(), [turn()], ChatView));
   expect(screen.queryByLabelText("Fleet summary")).toBeNull();
   emit(completion({pending_approvals: 2}));
-  expect(screen.getByRole("link", {name: /2 approvals/}).getAttribute("href")).toBe(APPROVALS_HREF);
+  expect(screen.getByRole("heading", {name: "Needs your approval 2"})).toBeTruthy();
+  expect(screen.getByRole("link", {name: "Open fleet with 2 pending approvals"}).getAttribute("href")).toBe(APPROVALS_HREF);
   emit(completion({pending_approvals: 0}));
   expect(screen.queryByRole("link", {name: /approvals/})).toBeNull();
   expect(fetchSpy).not.toHaveBeenCalled();

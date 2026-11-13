@@ -21,16 +21,18 @@ test.describe("settings navigation — Models + Integrations", () => {
     await page.goto("/");
 
     // Integrations — nav click lands on /w/<id>/integrations and renders connectors.
-    await page.getByRole("button", { name: "Workspace and account menu" }).click();
-    await page.getByRole("menuitem", { name: "Connect apps", exact: true }).click();
+    await page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ }).click();
+    await page.getByRole("menuitem", { name: "Connected apps", exact: true }).click();
     await expect(page).toHaveURL(workspaceUrlPattern("integrations"));
-    await expect(page.getByRole("heading", { name: /^connect apps$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Connected apps", exact: true })).toBeVisible();
     await expect(page.getByTestId("integrations-connectors")).toBeVisible();
 
     // Models — sibling nav item lands on /w/<id>/settings/models and renders the registry.
     await openSettingsDestination(page, "Models");
     await expect(page).toHaveURL(workspaceUrlPattern("settings/models"));
     await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
-    await expect(page.getByRole("table", { name: "Models" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Models", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Your models", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Platform default", exact: true })).toBeVisible();
   });
 });

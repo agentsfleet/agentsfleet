@@ -48,9 +48,8 @@ function spokenFacts(entry: Entry, patch: Partial<FleetFacts>): Partial<FleetStr
   return { fleet, factsSeq: entry.snapshot.factsSeq + 1 };
 }
 
-// A gate frame moves the count and no row. Nothing is notified when nothing
-// changed, so a frame restating the count does not wake anyone.
-export function patchSpokenFacts(entry: Entry, patch: Partial<FleetFacts>): void {
+// A different gate can replace the pending one without changing the count.
+export function patchGateFacts(entry: Entry, patch: Partial<FleetFacts>): void {
   const spoken = spokenFacts(entry, patch);
-  if (spoken.fleet !== undefined) patchSnapshot(entry, spoken);
+  patchSnapshot(entry, {...spoken, approvalsSeq: entry.snapshot.approvalsSeq + 1});
 }

@@ -1,6 +1,6 @@
 import { useId, type MouseEvent, type ReactNode } from "react";
 import type { ReactTable } from "@tanstack/react-table";
-import { ChevronRight } from "lucide-react";
+import { CaretRightIcon } from "@phosphor-icons/react/ssr";
 import { cn } from "../utils";
 import { Button } from "./Button";
 import type { DataTableFeatures } from "./DataTableModel";
@@ -54,7 +54,7 @@ function DataTableRow<T extends DataTableRowData>({row, columnsByKey, onRowClick
       <DataTableCells row={row} columnsByKey={columnsByKey} disclosure={rowDisclosure ? {
         buttonId, contentId, expanded, toggle, label: rowDisclosure.label(row.original), disabled: isLoading,
       } : undefined} />
-      {onRowClick ? <td role={DATA_TABLE_ROLE.cell} className="w-10 pr-table-inline text-muted-foreground group-hover/row:text-pulse group-focus-within/row:text-pulse"><ChevronRight size={16} aria-hidden="true" /></td> : null}
+      {onRowClick ? <td role={DATA_TABLE_ROLE.cell} className="w-10 pr-table-inline text-muted-foreground group-hover/row:text-pulse group-focus-within/row:text-pulse"><CaretRightIcon size={16} aria-hidden="true" /></td> : null}
     </tr>
     {rowDisclosure ? <tr role={DATA_TABLE_ROLE.row} hidden={!expanded} className="border-b border-table-divider">
       <td role={DATA_TABLE_ROLE.cell} colSpan={row.getAllCells().length + (onRowClick ? 1 : 0)}>
@@ -82,7 +82,7 @@ function DataTableCells<T extends DataTableRowData>({row, columnsByKey, disclosu
       <Button type="button" variant="ghost" size="icon-sm" className="text-muted-foreground"
         id={disclosure.buttonId} aria-controls={disclosure.contentId} aria-expanded={disclosure.expanded}
         aria-label={disclosure.label} disabled={disclosure.disabled} onClick={disclosure.toggle}>
-        <ChevronRight className={cn("size-3.5 transition-transform motion-reduce:transition-none", disclosure.expanded && "rotate-90")} aria-hidden="true" />
+        <CaretRightIcon className={cn("size-3.5 transition-transform motion-reduce:transition-none", disclosure.expanded && "rotate-90")} aria-hidden="true" />
       </Button><div className="min-w-0">{content}</div>
     </div> : content}</td>;
   });

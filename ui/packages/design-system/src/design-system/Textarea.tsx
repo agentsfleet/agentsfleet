@@ -20,7 +20,7 @@ export function Textarea({ appearance = "default", className, ref, ...props }: T
         "px-lg py-md text-foreground font-sans",
         "placeholder:text-muted-foreground",
         appearance === "composer"
-          ? "text-conversation leading-conversation border-0 bg-transparent shadow-none focus:outline-none focus:ring-0"
+          ? "text-composer leading-composer border-0 bg-transparent shadow-none focus:outline-none focus:ring-0"
           : "text-body-sm enabled:hover:border-ring focus:outline-none focus:ring-2 focus:ring-ring focus:border-border-strong",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "transition-colors duration-snap ease-snap",

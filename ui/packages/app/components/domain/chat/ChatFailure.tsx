@@ -2,8 +2,8 @@
 
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
-import { CircleAlertIcon } from "lucide-react";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button } from "@agentsfleet/design-system";
+import { WarningCircleIcon } from "@phosphor-icons/react/ssr";
+import { Alert, Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button } from "@agentsfleet/design-system";
 
 /** Setup and saved-fleet failures use the same quiet, actionable message. */
 export function ChatFailure({title, description, note, details, onRetry, disabled}: {
@@ -21,14 +21,14 @@ export function ChatFailure({title, description, note, details, onRetry, disable
     try { await send(); } catch { setRetryError(true); }
     finally { pending.current = false; setRetrying(false); }
   };
-  return <div className="space-y-sm rounded-md border border-border px-md py-sm text-body-sm leading-prose">
-    <output aria-label={title} className="block space-y-sm">
-      <span className="flex items-center gap-sm font-medium"><CircleAlertIcon className="size-3.5 shrink-0 text-warning" aria-hidden="true" />{title}</span>
+  return <Alert variant="destructive" aria-label={title} className="block space-y-md rounded-md border-error-border bg-error-surface p-5 text-body-sm leading-body-sm text-muted-foreground">
+    <div className="block space-y-md">
+      <span className="flex items-center gap-md text-base font-semibold text-destructive"><WarningCircleIcon className="size-4 shrink-0 text-destructive" aria-hidden="true" />{title}</span>
       <span className="block">{description}</span>
-    </output>
+    </div>
     {note ? <p className="text-eyebrow text-muted-foreground">{note}</p> : null}
-    <div className="flex flex-wrap items-start gap-md">
-      {onRetry ? <Button variant="outline" size="sm" disabled={disabled || retrying} onClick={() => {void retry(onRetry);}}>{retrying ? "Trying again…" : "Try again"}</Button> : null}
+    <div className="space-y-lg">
+      {onRetry ? <Button disabled={disabled || retrying} onClick={() => {void retry(onRetry);}}>{retrying ? "Trying again…" : "Try again"}</Button> : null}
       {details ? <Accordion type="single" collapsible className="min-w-0">
         <AccordionItem value="details" className="border-0">
           <AccordionTrigger className="min-h-9 w-fit flex-none gap-sm py-0 text-eyebrow text-muted-foreground">View details</AccordionTrigger>
@@ -36,6 +36,6 @@ export function ChatFailure({title, description, note, details, onRetry, disable
         </AccordionItem>
       </Accordion> : null}
     </div>
-    {retryError ? <p role="alert" className="text-label text-destructive">Couldn’t retry this request. Try again.</p> : null}
-  </div>;
+    {retryError ? <p className="text-label text-destructive">Couldn’t retry this request. Try again.</p> : null}
+  </Alert>;
 }

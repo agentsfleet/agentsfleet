@@ -32,8 +32,6 @@ import {
 const PAGE_TITLE = "Setting up your workspace";
 const WAITING_TITLE = "Creating your account";
 const STALLED_TITLE = "This is taking longer than usual";
-/** The loader's class, matched as a whole token so a bare `animate-spin` does not pass. */
-const SPINNER = '[class~="motion-safe:animate-spin"]';
 
 /** Lets the awaited token refresh settle before the router refresh is read. */
 async function tick(ms: number): Promise<void> {
@@ -147,11 +145,12 @@ describe("AccountSetup", () => {
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe(STALLED_TITLE);
   });
 
-  it("turns the loader only while waiting, and only for people who allow motion", async () => {
-    const { container } = render(<AccountSetup />);
-    expect(container.querySelector(SPINNER)).not.toBeNull();
+  it("uses the shared decorative loader only while waiting", async () => {
+    const {container} = render(<AccountSetup />);
+    expect(container.querySelector("[data-signal-spinner]")?.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getAllByRole("status")).toHaveLength(1);
 
     await tick(ACCOUNT_SETUP_GIVE_UP_MS);
-    expect(container.querySelector(SPINNER)).toBeNull();
+    expect(container.querySelector("[data-signal-spinner]")).toBeNull();
   });
 });

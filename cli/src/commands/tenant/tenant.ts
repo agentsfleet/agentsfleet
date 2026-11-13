@@ -11,7 +11,8 @@ import { CliConfig } from "../../services/config.ts";
 import { Credentials } from "../../services/credentials.ts";
 import { HttpClient } from "../../services/http-client.ts";
 import { OUTPUT_FORMAT, Output } from "../../services/output.ts";
-import { resolveAuthToken } from "../workspace/guards.ts";
+import { resolveAuthToken, resolveWorkspaceId, WORKSPACE_FLAG } from "../workspace/guards.ts";
+import { Workspaces } from "../../services/workspaces.ts";
 import { isSignedNanos } from "../../lib/nanos.ts";
 import { isNumber, isString } from "../../lib/guards.ts";
 import {
@@ -40,6 +41,7 @@ interface ProviderResponse {
   readonly model?: string;
   readonly context_cap_tokens?: number;
   readonly secret_ref?: string | null;
+  readonly workspace_id?: string;
   readonly synthesised_default?: boolean;
   readonly error?: string;
 }
@@ -49,6 +51,7 @@ interface BillingResponse {
 }
 
 interface ProviderAddBody {
+  readonly workspace_id: string;
   readonly mode: string;
   readonly secret_ref: string;
   readonly model?: string;
@@ -121,10 +124,11 @@ export const tenantProviderShowEffect: Effect.Effect<
 export const tenantProviderAddEffectFromArgs = (
   secretRef: string | undefined,
   modelOverride: string | undefined,
+  workspaceOverride?: string,
 ): Effect.Effect<
   void,
   CliError,
-  CliConfig | Credentials | HttpClient | Output
+  CliConfig | Credentials | HttpClient | Output | Workspaces
 > =>
   Effect.gen(function* () {
     const output = yield* Output;
@@ -140,15 +144,18 @@ export const tenantProviderAddEffectFromArgs = (
       );
     }
 
+    const workspaceId = yield* resolveWorkspaceId(workspaceOverride, WORKSPACE_FLAG);
     const token = yield* resolveAuthToken;
     const body: ProviderAddBody = modelOverride
       ? {
           mode: PROVIDER_MODE.self_managed,
+          workspace_id: workspaceId,
           secret_ref: secretRef,
           model: modelOverride,
         }
       : {
           mode: PROVIDER_MODE.self_managed,
+          workspace_id: workspaceId,
           secret_ref: secretRef,
         };
 

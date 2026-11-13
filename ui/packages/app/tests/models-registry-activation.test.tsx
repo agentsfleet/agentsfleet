@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { TenantModelEntry, TenantModelEntryList } from "@/lib/types";
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "model-owner"})}));
 
 const WORKSPACE_ID = "ws_1";
 const MODEL_ID = "claude-sonnet-5";
@@ -45,6 +46,7 @@ function entry(active = false): TenantModelEntry {
     model_id: MODEL_ID,
     display_name: null,
     secret_ref: SECRET_REF,
+    workspace_id: WORKSPACE_ID,
     provider: PROVIDER,
     kind: MODEL_KIND.providerKey,
     has_key: true,
@@ -97,6 +99,7 @@ describe("ModelsRegistryTable saved model activation", () => {
         model: MODEL_ID,
         context_cap_tokens: CONTEXT_CAP_TOKENS,
         secret_ref: SECRET_REF,
+    workspace_id: WORKSPACE_ID,
         platform_default_available: true,
       },
     });
@@ -104,9 +107,9 @@ describe("ModelsRegistryTable saved model activation", () => {
     await renderTable();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /switch to claude-sonnet-5/i }));
+    await user.click(screen.getByRole("button", { name: /make active: claude-sonnet-5/i }));
     await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalledOnce());
-    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ secret_ref: SECRET_REF, model: MODEL_ID });
+    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ workspace_id: WORKSPACE_ID, secret_ref: SECRET_REF, model: MODEL_ID });
 
   });
 
@@ -120,9 +123,9 @@ describe("ModelsRegistryTable saved model activation", () => {
     await renderTable();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /switch to claude-sonnet-5/i }));
+    await user.click(screen.getByRole("button", { name: /make active: claude-sonnet-5/i }));
     await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalledOnce());
-    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ secret_ref: SECRET_REF, model: MODEL_ID });
+    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ workspace_id: WORKSPACE_ID, secret_ref: SECRET_REF, model: MODEL_ID });
 
     expect(await screen.findByText(/rejected/i)).toBeTruthy();
   });

@@ -60,7 +60,8 @@ describe("FleetThread — runner tool cells", () => {
     // A hashed edit that names its line by tag carries no old text to diff.
     renderCalls([call(TOOL_NAME.FILE_EDIT_HASHED, { path: "/workspace/a.md", target: "L10:abc", new_text: "b" })]);
     const edit = cell(TOOL_NAME.FILE_EDIT_HASHED);
-    expect(edit.firstElementChild?.textContent).toContain("Edited a.md");
+    expect(edit.querySelector("[data-command-heading]")?.textContent).toBe("Edited file Success");
+    expect(edit.textContent).toContain('"path":"/workspace/a.md"');
     expect(edit.querySelector("[data-diff]")).toBeNull();
     cleanup();
 

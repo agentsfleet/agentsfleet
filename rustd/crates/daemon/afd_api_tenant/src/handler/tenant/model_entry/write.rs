@@ -14,6 +14,7 @@ use af_core::error_code;
 #[cfg(feature = "openapi")]
 use afd_api_wire::tenant_model_entry::StoredModelEntry;
 use afd_api_wire::tenant_model_entry::{CreateModelEntryRequest, UpdateModelEntryRequest};
+use afd_credential::provider::KeyRef;
 use afd_credential::provider::{Added, Removed, Retargeted};
 use axum::Json;
 use axum::body::Bytes;
@@ -46,8 +47,9 @@ use super::{
     operation_id = "create_tenant_model_entry",
     summary = "Register a model entry",
     description = concat!(
-        "Adds a `(model_id, secret_ref)` entry. First store the secret in your account's ",
-        "primary workspace through `/v1/workspaces/{workspace_id}/secrets`. Select the new ",
+        "Adds a `(workspace_id, model_id, secret_ref)` entry. First store the secret ",
+        "through `/v1/workspaces/{workspace_id}/secrets`. The workspace must belong to ",
+        "your account. Select the new ",
         "model through `PUT /v1/tenants/me/provider`; adding it does not activate it.",
     ),
     request_body = CreateModelEntryRequest,
@@ -75,6 +77,7 @@ pub(crate) async fn create<D: Services>(
         .validate()
         .map_err(|report| bound_refusal(&report, &request.model_id))?;
     let model = request.model_id.as_str();
+    let workspace = afd_http::handler::parse_id(&request.workspace_id, DETAIL_MALFORMED_BODY)?;
 
     let tenant = tenant_of(
         &services,
@@ -86,7 +89,15 @@ pub(crate) async fn create<D: Services>(
 
     let outcome = services
         .tenant_providers()
-        .add_entry(&tenant, model, &request.secret_ref, services.now())
+        .add_entry(
+            &tenant,
+            model,
+            KeyRef {
+                workspace_id: &workspace,
+                name: &request.secret_ref,
+            },
+            services.now(),
+        )
         .await
         .map_err(Refusal::at(EVENT_CREATE))?;
 

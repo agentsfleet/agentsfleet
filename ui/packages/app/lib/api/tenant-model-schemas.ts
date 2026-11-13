@@ -7,7 +7,7 @@ const rates = {
   output_nanos_per_mtok: nanosSchema.nullable().optional(),
 };
 export const tenantModelEntrySchema = z.object({
-  id: z.string(), model_id: z.string(), display_name: z.string().nullable().optional(), secret_ref: z.string(),
+  id: z.string(), model_id: z.string(), display_name: z.string().nullable().optional(), secret_ref: z.string(), workspace_id: z.string().optional(),
   provider: z.string().optional(), kind: z.enum(SECRET_KIND), base_url: z.string().optional(),
   has_key: z.boolean(), context_cap_tokens: z.uint32().optional(), ...rates,
   active: z.boolean(), created_at: instantSchema,
@@ -19,4 +19,4 @@ export const tenantModelPageSchema = z.object({
   models: z.array(tenantModelEntrySchema), total: z.number().int().nonnegative().nullable(), next_cursor: z.string().nullable(),
   platform_default_available: z.boolean(), platform_default: tenantPlatformDefaultSchema.optional(),
 });
-export const storedModelEntrySchema = z.object({ id: z.string(), model_id: z.string(), secret_ref: z.string(), created_at: instantSchema });
+export const storedModelEntrySchema = z.object({ id: z.string(), model_id: z.string(), secret_ref: z.string(), workspace_id: z.string().optional(), created_at: instantSchema });

@@ -1,11 +1,8 @@
 // Load states for the workspace's stored-secret list.
 //
-// The list is LOAD-BEARING for the Add-model dialog, not decoration: submit
-// resolves rotate-vs-create against it and refuses a name owned by a
-// different provider, and the secrets POST is a server-side upsert — so
-// submitting against a list that never arrived silently overwrites whatever
-// already holds that name. The dialog therefore fails closed: Save stays
-// disabled unless the list is `ready`.
+// The form needs metadata for compatible saved-key choices and held-name
+// validation. Keep creation disabled until the list arrives. Storage itself
+// is create-if-absent; rotation uses the explicit replacement action.
 //
 // `ready` is sticky by design (see ModelsRegistryTable.refreshSecrets): a
 // failed REFRESH keeps the last good list live rather than locking a form

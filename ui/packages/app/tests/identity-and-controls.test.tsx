@@ -24,6 +24,14 @@ describe("AgentLabel — a fleet that no longer exists", () => {
 });
 
 describe("RefreshButton — repeated refreshes", () => {
+  it("unmounts an unused control without invoking its refresh action", () => {
+    const onRefresh = vi.fn();
+    const view = render(<RefreshButton onRefresh={onRefresh} />);
+    expect(screen.getByRole("button", {name: "Refresh"})).toHaveProperty("disabled", false);
+    view.unmount();
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
+
   // The acknowledgement is a timer. A second refresh inside its window has to
   // clear the first, or the earlier timeout fires mid-way through the new read
   // and wipes the tick off a refresh that has not finished.

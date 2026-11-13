@@ -13,7 +13,7 @@ import { Skeleton } from "@agentsfleet/design-system";
 const InnerCreateApiKeyDialog = nextDynamic(
   () =>
     import(
-      "@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog"
+      "@/app/(dashboard)/settings/security/components/CreateApiKeyDialog"
     ).then((mod) => ({ default: mod.default })),
   { ssr: false, loading: () => <Skeleton className="h-8 w-32 rounded-md" /> },
 );

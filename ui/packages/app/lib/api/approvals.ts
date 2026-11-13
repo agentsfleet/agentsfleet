@@ -9,6 +9,7 @@ import {
 import { ApiError } from "./errors";
 import { APPROVAL_DECISION } from "./approvals-types";
 import type { ApprovalDecision } from "./approvals-types";
+import { confirmedApprovalResolution } from "./approval-resolution";
 
 // Mirrors the server's inbox gate row
 // (`GateRow` in rustd/crates/daemon/afd_approval/src/inbox/row.rs)
@@ -150,11 +151,10 @@ async function resolveAction(
     if (isTransportInterrupt(cause)) throw classifyTransportFailure(cause, url);
     return {};
   });
-  if (res.status === 200) {
-    return { kind: "resolved", data: json as ResolveResponse };
-  }
-  if (res.status === 409) {
-    return { kind: "already_resolved", data: json as AlreadyResolvedResponse };
+  if (res.status === 200 || res.status === 409) {
+    const outcome = confirmedApprovalResolution({kind: res.status === 200 ? "resolved" : "already_resolved", data: json}, gateId, decision);
+    if (outcome) return outcome;
+    throw new ApiError("The decision could not be confirmed. Review the request's current status before trying again.", 502, "UZ-UNKNOWN");
   }
   // RFC 7807 problem+json, same shape `request()` throws on — see client.ts.
   // A bare `Error` here would discard `error_code` before `presentErrorString`

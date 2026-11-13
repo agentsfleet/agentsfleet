@@ -138,7 +138,7 @@ async fn register_and_refuse_the_repeats(
         reqwest::Method::POST,
         &run.base,
         "/v1/tenants/me/models",
-        &json!({ "model_id": MODEL, "secret_ref": WALK_KEY }),
+        &json!({ "workspace_id": run.workspace, "model_id": MODEL, "secret_ref": WALK_KEY }),
     )
     .await;
     assert_eq!(status, 201, "the entry stores: {created}");
@@ -155,7 +155,7 @@ async fn register_and_refuse_the_repeats(
         reqwest::Method::POST,
         &run.base,
         "/v1/tenants/me/models",
-        &json!({ "model_id": MODEL, "secret_ref": WALK_KEY }),
+        &json!({ "workspace_id": run.workspace, "model_id": MODEL, "secret_ref": WALK_KEY }),
     )
     .await;
     assert_eq!(
@@ -168,7 +168,7 @@ async fn register_and_refuse_the_repeats(
         reqwest::Method::POST,
         &run.base,
         "/v1/tenants/me/models",
-        &json!({ "model_id": MODEL, "secret_ref": "never-stored" }),
+        &json!({ "workspace_id": run.workspace, "model_id": MODEL, "secret_ref": "never-stored" }),
     )
     .await;
     assert_eq!(unknown_ref["error_code"], "UZ-MODELS-002", "{unknown_ref}");
@@ -193,7 +193,7 @@ async fn walk_the_keyset_over_two_entries(
         reqwest::Method::POST,
         &run.base,
         "/v1/tenants/me/models",
-        &json!({ "model_id": SECOND_MODEL, "secret_ref": WALK_KEY }),
+        &json!({ "workspace_id": run.workspace, "model_id": SECOND_MODEL, "secret_ref": WALK_KEY }),
     )
     .await;
     assert_eq!(
@@ -305,7 +305,7 @@ async fn activate_after_the_ladder_refuses(
         reqwest::Method::PUT,
         &run.base,
         "/v1/tenants/me/provider",
-        &json!({ "mode": "self_managed", "secret_ref": "never-stored", "model": SECOND_MODEL }),
+        &json!({ "workspace_id": run.workspace, "mode": "self_managed", "secret_ref": "never-stored", "model": SECOND_MODEL }),
     )
     .await;
     assert_eq!(missing["error_code"], "UZ-PROVIDER-002", "{missing}");
@@ -317,7 +317,7 @@ async fn activate_after_the_ladder_refuses(
         reqwest::Method::PUT,
         &run.base,
         "/v1/tenants/me/provider",
-        &json!({ "mode": "self_managed", "secret_ref": UNPROJECTED_KEY, "model": SECOND_MODEL }),
+        &json!({ "workspace_id": run.workspace, "mode": "self_managed", "secret_ref": UNPROJECTED_KEY, "model": SECOND_MODEL }),
     )
     .await;
     assert_eq!(unlabelled["error_code"], "UZ-PROVIDER-003", "{unlabelled}");
@@ -327,7 +327,7 @@ async fn activate_after_the_ladder_refuses(
         reqwest::Method::PUT,
         &run.base,
         "/v1/tenants/me/provider",
-        &json!({ "mode": "self_managed", "secret_ref": WALK_KEY, "model": "not-in-catalogue" }),
+        &json!({ "workspace_id": run.workspace, "mode": "self_managed", "secret_ref": WALK_KEY, "model": "not-in-catalogue" }),
     )
     .await;
     assert_eq!(
@@ -343,7 +343,7 @@ async fn activate_after_the_ladder_refuses(
         reqwest::Method::PUT,
         &run.base,
         "/v1/tenants/me/provider",
-        &json!({ "mode": "self_managed", "secret_ref": WALK_KEY, "model": SECOND_MODEL }),
+        &json!({ "workspace_id": run.workspace, "mode": "self_managed", "secret_ref": WALK_KEY, "model": SECOND_MODEL }),
     )
     .await;
     assert_eq!(

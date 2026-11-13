@@ -58,7 +58,7 @@ async function requestSave(): Promise<void> {
   const input = screen.getByRole("textbox");
   await waitFor(() => expect(input).toHaveProperty("disabled", false));
   fireEvent.change(input, {target: {value: SAVE}});
-  fireEvent.click(screen.getByRole("button", {name: "Send message"}));
+  fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
   await screen.findByText(SAVING, {exact: true});
 }
 
@@ -104,9 +104,9 @@ it("keeps chatting available after the save message is refused", async () => {
   await screen.findByRole("alert");
   await waitFor(() => expect(screen.queryByText(SAVING, {exact: true})).toBeNull());
   fireEvent.change(screen.getByRole("textbox"), {target: {value: "Which apps can it watch?"}});
-  expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", false);
+  expect(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/})).toHaveProperty("disabled", false);
   fixture.messageResponse = undefined;
-  fireEvent.click(screen.getByRole("button", {name: "Send message"}));
+  fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
   await screen.findByText("Which apps can it watch?");
   await act(async () => fixture.finishModel());
   await screen.findByText("The instructions now include your latest decisions.");

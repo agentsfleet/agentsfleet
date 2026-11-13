@@ -13,6 +13,7 @@ import { FleetReplyFigures } from "./FleetReplyFigures";
 export const FleetReplyFailure = memo(function FleetReplyFailure({message}: {message: MessageState}) {
   const aui = useAui();
   const running = useAuiState(state => state.thread.isRunning);
+  const disabled = useAuiState(state => state.thread.isDisabled);
   const {userId} = useCurrentUser();
   const actor = message.metadata.custom.requestActor;
   const json = readRequestJson(message);
@@ -26,7 +27,7 @@ export const FleetReplyFailure = memo(function FleetReplyFailure({message}: {mes
     ? outcome : "Your fleet couldn’t complete this request. You can try again.";
   return <ChatFailure title="Couldn’t complete this request" description={description}
     note={figures.tokens === null || figures.costNanos === null ? "Final usage isn’t available for this request." : undefined}
-    onRetry={retry} disabled={running}
+    onRetry={disabled ? undefined : retry} disabled={running}
     details={<>{reason ? <p>Reason: {reason}</p> : null}{detail ? <p>{detail}</p> : null}
       {!reason && !detail && Object.values(figures).every(value => value === null) ? <p>No further details were reported.</p> : null}
       <FleetReplyFigures figures={figures} /></>} />;

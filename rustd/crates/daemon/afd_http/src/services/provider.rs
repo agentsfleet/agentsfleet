@@ -25,6 +25,7 @@
 
 use af_core::id::Uuid7;
 use afd_credential::Result as CredentialResult;
+use afd_credential::provider::KeyRef;
 use afd_credential::provider::{Activation, PlatformDefault, Providers, Selection};
 use jiff::Timestamp;
 
@@ -86,7 +87,7 @@ pub trait TenantProviders: Send + Sync + std::fmt::Debug + 'static {
     fn activate(
         &self,
         tenant: &Uuid7,
-        secret_ref: &str,
+        credential: KeyRef<'_>,
         model: Option<&str>,
         now: Timestamp,
     ) -> impl Future<Output = CredentialResult<Activation>> + Send;
@@ -114,10 +115,10 @@ impl TenantProviders for Providers {
     fn activate(
         &self,
         tenant: &Uuid7,
-        secret_ref: &str,
+        credential: KeyRef<'_>,
         model: Option<&str>,
         now: Timestamp,
     ) -> impl Future<Output = CredentialResult<Activation>> + Send {
-        Self::activate(self, tenant, secret_ref, model, now)
+        Self::activate(self, tenant, credential, model, now)
     }
 }

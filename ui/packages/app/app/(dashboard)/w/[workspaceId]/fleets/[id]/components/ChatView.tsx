@@ -1,6 +1,7 @@
 "use client";
 
 import type { FleetSources } from "@/lib/fleet-sources";
+import type { Schedule } from "@/lib/api/draft-types";
 import type { EventDetail } from "@/lib/api/events";
 import type { ReactNode } from "react";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
@@ -10,6 +11,7 @@ import type { SenderName } from "@/lib/events/sender-names";
 import FleetStatusLine from "./FleetStatusLine";
 
 type Props = {
+  schedules?: readonly Schedule[];
   sources?: FleetSources;
   modelLabel?: string;
   setupRevision?: string;
@@ -43,13 +45,14 @@ export function ChatView({
   initialSummary,
   approvalsHref,
   viewer,
-  senderNames, modelLabel, setupRevision, setup, sources,
+  senderNames, modelLabel, setupRevision, setup, sources, schedules,
 }: Props) {
   const summary = useFleetRunSummary(workspaceId, fleetId, initial, initialSummary);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-xs overflow-clip">
-      <FleetThreadDynamic sources={sources} modelLabel={modelLabel} setupRevision={setupRevision} setup={setup}
+      <FleetThreadDynamic sources={sources} schedules={schedules} approvals={{count: summary.pendingApprovals, href: approvalsHref}} modelLabel={modelLabel} setupRevision={setupRevision} setup={summary.status === "archived" ? undefined : setup}
+        archived={summary.status === "archived"}
         workspaceId={workspaceId}
         fleetId={fleetId}
         senderLabel={senderLabel}
@@ -57,11 +60,11 @@ export function ChatView({
         viewer={viewer}
         senderNames={senderNames}
       />
-      {summary.pendingApprovals > 0 || !summary.latestAvailable ? <div className="mx-auto w-full max-w-chat shrink-0 px-md">
+      {!summary.latestAvailable ? <div className="mx-auto w-full max-w-chat shrink-0 px-md">
         <FleetStatusLine
           status={summary.status}
           latest={summary.latest}
-          pendingApprovals={summary.pendingApprovals}
+          pendingApprovals={0}
           approvalsHref={approvalsHref}
           summaryAvailable={summary.latestAvailable}
         />
