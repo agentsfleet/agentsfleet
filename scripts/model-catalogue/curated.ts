@@ -1,11 +1,11 @@
 import type { Model } from "./catalogue";
 import allowlist from "../model-library-allowlist.json";
 
-const MINIMAX_FREE_IDENTITY = "openrouter/minimax/minimax-m3.1-flash:free";
-
 const curated = new Set(allowlist.models.map((model) => `${model.provider}/${model.model_name}`));
 export const catalogueModelNames: ReadonlySet<string> = new Set(allowlist.models.map((model) => model.model_name));
-const FREE_MODELS = new Set([MINIMAX_FREE_IDENTITY]);
+// Zero prices need an explicit free identity. None is curated: OpenRouter retired its free MiniMax
+// slug (404, free launch period ended Oct 22, 2026). Add "provider/model_name" here to curate one.
+const FREE_MODELS: ReadonlySet<string> = new Set();
 type Provider = Model["provider"];
 const PRICE_HOSTS: Record<Provider, string> = {
   anthropic: "platform.claude.com", openai: "developers.openai.com", fireworks: "fireworks.ai",
