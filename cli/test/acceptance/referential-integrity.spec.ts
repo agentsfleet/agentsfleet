@@ -54,6 +54,7 @@ const isLive = target.startsWith("https://");
 // --- command / flag / key wire literals (RULE UFS) -------------------------
 const CMD_SECRET = "secrets" as const;
 const CMD_WORKSPACE = "workspace" as const;
+const CMD_FLEET = "fleet" as const;
 const CMD_LIST = "list" as const;
 const SUB_CREATE = "create" as const;
 const SUB_DELETE = "delete" as const;
@@ -216,11 +217,11 @@ if (!isLive) {
           );
 
           // Server side is unaffected: the fleet is still listable by id even
-          // though the local workspace pointer was removed. `list --workspace`
+          // though the local workspace pointer was removed. `fleet list --workspace`
           // takes the explicit override without requiring the (now-deleted) local
           // store entry (per cli/src/commands/fleet/list.ts).
-          const listed = await run([CMD_LIST, FLAG_WORKSPACE, deletedWorkspaceId, FLAG_JSON]);
-          assert.equal(listed.code, 0, `list --workspace exited ${listed.code}: ${listed.stderr}`);
+          const listed = await run([CMD_FLEET, CMD_LIST, FLAG_WORKSPACE, deletedWorkspaceId, FLAG_JSON]);
+          assert.equal(listed.code, 0, `fleet list --workspace exited ${listed.code}: ${listed.stderr}`);
           const rows = parseJson<FleetListEnvelope>(listed.stdout, "ws-fleets").items ?? [];
           const survived = rows.some((r) => r.id === fleetId || r.fleet_id === fleetId);
           assert.ok(survived,
