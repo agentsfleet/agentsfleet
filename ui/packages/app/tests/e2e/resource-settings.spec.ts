@@ -9,6 +9,9 @@ test("Models and Team use actual components at the approved scale", async ({page
     await expect(page.getByRole("heading", {name: "Models", exact: true})).toBeVisible();
     await page.getByRole("button", {name: "Create model", exact: true}).click();
     const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("switch", {name: "Show advanced models"})).toHaveCount(0);
+    await expect(dialog.getByRole("combobox", {name: "Model", exact: true})).toBeEnabled();
+    await page.screenshot({path: info.outputPath(`create-model-default-${theme}.png`), scale: "css", animations: "disabled"});
     await dialog.getByRole("combobox", {name: "Provider", exact: true}).click();
     await page.getByRole("option", {name: "Fireworks", exact: true}).click();
     await dialog.getByRole("combobox", {name: "Model", exact: true}).click();

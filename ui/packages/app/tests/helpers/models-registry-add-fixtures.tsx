@@ -34,6 +34,7 @@ const { catalogueState: catalogueMock } = vi.hoisted(() => ({
     models: [] as LibraryModel[],
     status: "ready" as const,
     preload: vi.fn(),
+    preloadAdvanced: vi.fn(),
   },
 }));
 export const catalogueState = catalogueMock;

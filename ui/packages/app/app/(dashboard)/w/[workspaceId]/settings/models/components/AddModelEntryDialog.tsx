@@ -36,7 +36,7 @@ export default function AddModelEntryDialog({workspaceId, secrets, secretsLoad, 
 
   function changeOpen(next: boolean) {
     if (!next && pending.current) return;
-    if (next) { catalogue.preload(); onSecretsNeeded(); }
+    if (next) { catalogue.preloadAdvanced(); onSecretsNeeded(); }
     setOpen(next);
   }
 

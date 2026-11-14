@@ -26,7 +26,7 @@ const FALLBACK_STATE: ModelCatalogueState = {
 const ModelCatalogueContext = createContext<ModelCatalogueState | null>(null);
 const LOAD_ERROR = "Could not load models. Try again.";
 
-/** Authenticated reads start on intent; advanced entries require explicit opt-in. */
+/** Authenticated reads start on intent; ordinary and complete queries retain their own cursors. */
 export function ModelCatalogueProvider({ children }: { children: ReactNode }) {
   const state = useCatalogueState();
   return <ModelCatalogueContext.Provider value={state}>{children}</ModelCatalogueContext.Provider>;

@@ -208,4 +208,22 @@ The browser fixture uses production components with sample identity and records;
 
 The original proposal contains no `platform-priming` entry. A new fixture displays that key name but does not reproduce the owner's unspecified defect.
 
-Dimension 5.6 remains pending clarification. The proposal's masked-key suffix and Last used values are sample data absent from the current key response; they are not fabricated in the UI.
+Dimension 5.6 was pending clarification at this review. The owner's later screenshot identifies the masked-key suffix and Last used fields.
+Both need recorded backend metadata; the design proposal uses sample data and makes no implementation claim.
+
+## Nov 14 model picker refinement
+
+The owner requested removal of Show advanced models because it was absent from the approved design.
+Create and edit now request the complete model catalogue when opened, and their picker includes all returned provider choices.
+Paging, retry and selected identifiers retain their existing behavior.
+
+The revised regression assertions failed on the parent implementation: four failed and 20 passed in `remove-advanced-red.log`.
+`bun run --cwd ui/packages/app test tests/models- tests/model- tests/provider-model-select.test.tsx` then passed 199 tests across 23 files.
+One duplicated retry case was removed because it differed only by the deleted switch state.
+
+`bun run --cwd ui/packages/app test:e2e tests/e2e/resource-settings.spec.ts` passed six browser checks, covering both themes on desktop and phone.
+Reviewed default-dialog captures are `/workspace/artifacts/m249-polish/desktop-create-model-default-dark.png` and `phone-create-model-default-light.png` beside it.
+
+Logs are under `/workspace/artifacts/m249-followup/`, using the `remove-advanced-` prefix.
+`orly gate verify` and `orly gate work` passed; their logs are `remove-advanced-verify.log` and `remove-advanced-work.log`.
+The replacement fleet setup page still awaits the owner's requested design approval.
