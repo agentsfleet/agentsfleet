@@ -6,14 +6,14 @@
  * `ACCEPTANCE_RUN_PREFIX`. The only safe rule is: capture the baseline
  * before mutating, and restore it (PUT back to the captured self-managed
  * config, or DELETE back to the platform default) in `afterAll` even on
- * failure. These helpers wrap `tenant provider show` so the spec can snapshot
+ * failure. These helpers wrap `models current` so the spec can snapshot
  * and compare without re-implementing the JSON probe in each test.
  *
- * The CLI surface is confirmed against `cli/src/program/cli-tree.ts`:
- *   tenant provider show            (GET  /v1/tenants/me/provider)
- *   tenant provider create --secret <name> [--model <name>]
+ * The CLI surface is confirmed against `cli/src/program/tree/models.command.ts`:
+ *   models current                  (GET  /v1/tenants/me/provider)
+ *   models use --secret <name> [--model <name>]
  *                                   (PUT, mode=self_managed)
- *   tenant provider delete          (DELETE → platform default)
+ *   models reset                    (DELETE → platform default)
  *
  * JSON keys mirror `ProviderResponse` in `cli/src/commands/tenant/tenant.ts`:
  *   mode, provider, model, context_cap_tokens, secret_ref,
@@ -32,7 +32,7 @@ type Env = Readonly<Record<string, string>>;
 // Custom-endpoint secret argv heads — the typed secret-create form
 // (`--provider openai-compatible --base-url <url> --api-key <key>`). UFS: the
 // flag literals live once here, reused by the provider-set scenario.
-const CMD_SECRET = "secret" as const;
+const CMD_SECRET = "secrets" as const;
 const SUB_CREATE = "create" as const;
 const SUB_DELETE = "delete" as const;
 export const FLAG_PROVIDER = "--provider" as const;
@@ -48,9 +48,9 @@ export interface CustomSecretOptions {
 }
 
 /**
- * `secret create <name> --provider openai-compatible --base-url <url>
+ * `secrets create <name> --provider openai-compatible --base-url <url>
  * --api-key <key> --model <model> --json`. Stores a custom OpenAI-compatible secret so a
- * subsequent `tenant provider create --secret <name>` can target it. Returns
+ * subsequent `models use --secret <name>` can target it. Returns
  * the raw run result; the secret-leak regression fires against the JWT.
  */
 export async function createCustomEndpointSecret(
@@ -97,15 +97,17 @@ export const TENANT_PROVIDER_MODE = {
 
 // Subcommand argv heads — every occurrence is the same literal, so UFS
 // pins them here rather than scattering string arrays through the spec.
-// The shared `tenant provider` base is hoisted once and spread into each
-// command so neither head literal is repeated (UFS: no string used twice).
-const TENANT_PROVIDER_BASE: ReadonlyArray<string> = ["models", "list"];
-const SUBCOMMAND_SHOW = "show" as const;
-const SUBCOMMAND_CREATE = "create" as const;
-const SUBCOMMAND_DELETE = "delete" as const;
-export const TENANT_PROVIDER_SHOW_ARGS: ReadonlyArray<string> = [...TENANT_PROVIDER_BASE, SUBCOMMAND_SHOW];
-export const TENANT_PROVIDER_CREATE_ARGS: ReadonlyArray<string> = [...TENANT_PROVIDER_BASE, SUBCOMMAND_CREATE];
-export const TENANT_PROVIDER_DELETE_ARGS: ReadonlyArray<string> = [...TENANT_PROVIDER_BASE, SUBCOMMAND_DELETE];
+// The shared `models` base is hoisted once and spread into each command so
+// the head literal is not repeated (UFS: no string used twice). `current`
+// reads the posture, `use` selects a self-managed secret and `reset` returns
+// to the platform default (`cli/src/program/tree/models.command.ts`).
+const MODELS_BASE: ReadonlyArray<string> = ["models"];
+const SUBCOMMAND_CURRENT = "current" as const;
+const SUBCOMMAND_USE = "use" as const;
+const SUBCOMMAND_RESET = "reset" as const;
+export const TENANT_PROVIDER_SHOW_ARGS: ReadonlyArray<string> = [...MODELS_BASE, SUBCOMMAND_CURRENT];
+export const TENANT_PROVIDER_CREATE_ARGS: ReadonlyArray<string> = [...MODELS_BASE, SUBCOMMAND_USE];
+export const TENANT_PROVIDER_DELETE_ARGS: ReadonlyArray<string> = [...MODELS_BASE, SUBCOMMAND_RESET];
 
 export const FLAG_JSON = "--json" as const;
 export const FLAG_SECRET = "--secret" as const;
@@ -128,18 +130,18 @@ export interface ProviderSnapshot {
 
 function parseProvider(stdout: string): ProviderSnapshot {
   const trimmed = stdout.trim();
-  assert.ok(trimmed.length > 0, "tenant provider show --json produced empty stdout");
+  assert.ok(trimmed.length > 0, "models current --json produced empty stdout");
   return JSON.parse(trimmed) as ProviderSnapshot;
 }
 
 /**
- * `tenant provider show --json` → parsed snapshot. Asserts a clean exit and
+ * `models current --json` → parsed snapshot. Asserts a clean exit and
  * runs the secret-leak regression against the supplied JWT.
  */
 export async function showProvider(env: Env, sessionJwt: string): Promise<ProviderSnapshot> {
   const result = await runFleetctl([...TENANT_PROVIDER_SHOW_ARGS, FLAG_JSON], { env });
   assertNoSecretLeak(result, sessionJwt);
-  assert.equal(result.code, 0, `tenant provider show exited ${result.code}: ${result.stderr}`);
+  assert.equal(result.code, 0, `models current exited ${result.code}: ${result.stderr}`);
   return parseProvider(result.stdout);
 }
 
@@ -149,7 +151,7 @@ export interface CreateProviderOptions {
 }
 
 /**
- * `tenant provider create --secret <name> [--model <name>] --json`. Returns
+ * `models use --secret <name> [--model <name>] --json`. Returns
  * the raw run result so the caller can branch on exit code (the backend may
  * accept the PUT and report `credential_missing`, or reject an unknown
  * secret outright — both are legitimate and the spec handles each).
@@ -168,13 +170,13 @@ export async function createProvider(
 }
 
 /**
- * `tenant provider delete --json` → parsed snapshot of the post-reset state.
+ * `models reset --json` → parsed snapshot of the post-reset state.
  * Asserts a clean exit; the reset always lands on the platform default.
  */
 export async function deleteProvider(env: Env, sessionJwt: string): Promise<ProviderSnapshot> {
   const result = await runFleetctl([...TENANT_PROVIDER_DELETE_ARGS, FLAG_JSON], { env });
   assertNoSecretLeak(result, sessionJwt);
-  assert.equal(result.code, 0, `tenant provider delete exited ${result.code}: ${result.stderr}`);
+  assert.equal(result.code, 0, `models reset exited ${result.code}: ${result.stderr}`);
   return parseProvider(result.stdout);
 }
 

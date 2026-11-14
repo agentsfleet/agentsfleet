@@ -22,7 +22,7 @@ export const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 export const isLive = target.startsWith("https://");
 
 // --- command/flag/key constants (RULE UFS) ---------------------------------
-export const CMD_SECRET = "secret" as const;
+export const CMD_SECRET = "secrets" as const;
 export const SUB_CREATE = "create" as const;
 export const SUB_SHOW = "show" as const;
 export const SUB_LIST = "list" as const;
