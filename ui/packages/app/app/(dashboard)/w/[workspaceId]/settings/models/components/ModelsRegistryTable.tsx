@@ -67,7 +67,7 @@ export default function ModelsRegistryTable({ workspaceId, workspaces, initialPa
   const [removeError, setRemoveError] = useState<string | null>(null);
 
   // The catalogue warms on dialog intent; rows already carry their own rates.
-  const { status: catalogueStatus, preload: preloadCatalogue } = useModelCatalogue();
+  const { status: catalogueStatus, preload: preloadCatalogue, preloadAdvanced: preloadAllModels } = useModelCatalogue();
 
   const hasActiveEntry = entries.some((e) => e.active);
   // An absent default must never be presented as active.
@@ -202,7 +202,7 @@ export default function ModelsRegistryTable({ workspaceId, workspaces, initialPa
           isDefaultLive={isDefaultLive} platformDefaultAvailable={platformDefaultAvailable} pending={pending}
           onSwitchDefault={onSwitchDefault} onSwitchEntry={onSwitchEntry}
           onView={entry => {preloadCatalogue(); setDetailsTarget(entry);}}
-          onEdit={entry => {preloadCatalogue(); setEditTarget(entry);}} onRemove={setRemoveTarget}
+          onEdit={entry => {preloadAllModels(); setEditTarget(entry);}} onRemove={setRemoveTarget}
           onIntent={() => {if (catalogueStatus !== CATALOGUE_STATUS.error && maySpeculateOnHover()) preloadCatalogue();}}
           footerAction={<AddModelEntryDialog workspaceId={workspaceId} secrets={secrets} secretsLoad={secretsLoad} onCreated={refresh} onSecretsChanged={refreshSecrets} onSecretsNeeded={refreshSecrets} triggerLabel="Add another model" secondary />}
           onLoadMore={nextCursor ? () => loadMore(nextCursor) : undefined} />}

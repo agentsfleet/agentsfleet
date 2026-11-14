@@ -301,6 +301,8 @@ Display concise progress facts and outcomes; do not present hidden model reasoni
 ### Models, API Keys, and Team
 
 Models offers one Create model dialog with Provider, Model, credential choice, and optional Make active.
+Model choices include the provider's complete catalogue without an advanced-model visibility switch. Keep paging and failed-read recovery reachable.
+
 The credential choice offers Add new key or Use saved key. Filter saved keys by provider and show their names without stored values.
 
 Use Key name for a new credential. Reusing a key must not rotate or replace it.

@@ -1,14 +1,13 @@
 "use client";
 
 import { CaretDownIcon } from "@phosphor-icons/react/ssr";
-import { useState } from "react";
 import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Input, Label, Select, SelectContent, SelectTrigger, SelectValue, SelectItem } from "@agentsfleet/design-system";
 import { modelsForProvider, uniqueModelIds, type LibraryModel } from "@/lib/api/model-library-types";
 import { modelLabel } from "@/lib/models/display";
 import { CatalogueModelDetails } from "@/components/domain/CatalogueModelDetails";
 import { CATALOGUE_STATUS, type CatalogueStatus } from "./catalogue-status";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
-import { CatalogueBrowseControls } from "./CatalogueBrowseControls";
+import { CatalogueReadControls } from "./CatalogueReadControls";
 
 const CATALOGUE_LOADING_PLACEHOLDER = "Loading models…";
 const SELECT_PLACEHOLDER = "Select a model";
@@ -23,15 +22,13 @@ export type ProviderModelSelectProps = {
 /** Names, evidence and exact identifiers, scoped to the selected provider. */
 export default function ProviderModelSelect({ id, provider, model, onModelChange, label = "Model", details = "inline" }: ProviderModelSelectProps) {
   const { models, status } = useModelCatalogue();
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const available = provider ? modelsForProvider(models, provider) : uniqueModelIds(models);
-  const options = available.filter((option) => showAdvanced || !option.advanced);
-  const selected = available.find((option) => option.id === model);
+  const options = provider ? modelsForProvider(models, provider) : uniqueModelIds(models);
+  const selected = options.find((option) => option.id === model);
   return <div className="min-w-0 space-y-md">
     <Label htmlFor={id}>{label}</Label>
     <ModelControl id={id} label={label} model={model} onModelChange={onModelChange}
       options={options} selected={selected} status={status} />
-    <div className="pt-md"><CatalogueBrowseControls id={`${id}-advanced`} advanced={showAdvanced} onAdvancedChange={setShowAdvanced} /></div>
+    <CatalogueReadControls includeAdvanced />
     {selected ? details === "disclosure" ? <Collapsible className="group text-label">
       <CollapsibleTrigger asChild><Button variant="ghost" size="compact" className="w-full justify-between px-0">Model details<CaretDownIcon size={16} className="group-data-[state=open]:rotate-180" aria-hidden="true" /></Button></CollapsibleTrigger>
       <CollapsibleContent><CatalogueModelDetails model={selected} /></CollapsibleContent>

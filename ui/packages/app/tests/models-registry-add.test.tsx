@@ -38,7 +38,7 @@ describe("AddModelEntryDialog — unified form shape", () => {
     expect(props.onSecretsNeeded).toHaveBeenCalledOnce();
   });
 
-  it("keeps advanced model visibility beside Model in the tab-free form", async () => {
+  it("keeps the approved form fields without an advanced-model switch", async () => {
     await renderDialog();
     const dialog = screen.getByRole("dialog");
 
@@ -46,8 +46,9 @@ describe("AddModelEntryDialog — unified form shape", () => {
     expect(within(dialog).queryByLabelText(/base url/i)).toBeNull();
 
     const labels = Array.from(dialog.querySelectorAll("label")).map((l) => l.textContent);
-    expect(labels).toEqual(["Provider", "Model", "Show advanced models", "Add new key", "Use saved key", "Key name", "API key", "Make active"]);
-    expect(within(dialog).getByRole("switch", { name: "Show advanced models" }).getAttribute("aria-checked")).toBe("false");
+    expect(labels).toEqual(["Provider", "Model", "Add new key", "Use saved key", "Key name", "API key", "Make active"]);
+    expect(within(dialog).queryByRole("switch", { name: "Show advanced models" })).toBeNull();
+    expect(catalogueState.preloadAdvanced).toHaveBeenCalledOnce();
   });
 
   it("typing an API key or a provider never mutates the free-form Name", async () => {

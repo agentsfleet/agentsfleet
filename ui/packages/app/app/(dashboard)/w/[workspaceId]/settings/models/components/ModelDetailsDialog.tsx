@@ -17,7 +17,7 @@ import {
 } from "@agentsfleet/design-system";
 import { OLLAMA_PROVIDER, providerLabel } from "@/lib/api/model-library-types";
 import { CatalogueEvidence, ModelPriceSchedule } from "@/components/domain/ModelPriceSchedule";
-import { CatalogueReadControls } from "./CatalogueBrowseControls";
+import { CatalogueReadControls } from "./CatalogueReadControls";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import { libraryRateFor, rowRateFor } from "./registry-view";
 import { CATALOGUE_STATUS } from "./catalogue-status";
