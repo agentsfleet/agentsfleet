@@ -39,6 +39,7 @@ import {
   WORKSPACE_LOCAL_REMOVAL_FIELD,
 } from "./fixtures/workspace-ops.ts";
 import {
+  TENANT_PROVIDER_CREATE_ARGS,
   TENANT_PROVIDER_MODE,
   restoreProviderBaseline,
   showProvider,
@@ -51,9 +52,7 @@ const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
 
 // --- command / flag / key wire literals (RULE UFS) -------------------------
-const CMD_SECRET = "secret" as const;
-const CMD_TENANT = "tenant" as const;
-const CMD_PROVIDER = "provider" as const;
+const CMD_SECRET = "secrets" as const;
 const CMD_WORKSPACE = "workspace" as const;
 const CMD_LIST = "list" as const;
 const SUB_CREATE = "create" as const;
@@ -171,7 +170,7 @@ if (!isLive) {
         //    (possibly flagging credential_missing) or reject an unknown
         //    secret — only treat an accepted PUT as a real reference.
         const linked = await run([
-          CMD_TENANT, CMD_PROVIDER, SUB_CREATE, FLAG_SECRET, secretName,
+          ...TENANT_PROVIDER_CREATE_ARGS, FLAG_SECRET, secretName,
           FLAG_MODEL, PROBE_MODEL, FLAG_JSON,
         ]);
         if (linked.code === 0) {
