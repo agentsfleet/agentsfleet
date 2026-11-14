@@ -22,7 +22,8 @@ async function converse(): Promise<void> {
 async function setup() {
   const region = await screen.findByRole("region", {name: "Fleet setup"});
   expect(within(region).queryByRole("button", {name: "Save fleet"})).toBeNull();
-  expect(screen.queryByRole("button", {name: "Review setup"})).toBeNull();
+  expect(await screen.findByRole("button", {name: "Review setup"})).toBeTruthy();
+  expect(screen.queryByRole("dialog", {name: "Fleet setup"})).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
   return region;
 }

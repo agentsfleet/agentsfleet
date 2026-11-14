@@ -324,14 +324,10 @@ Account Models retains Create model and Make active.
 Its choices never grant platform administration.
 Preserve model, platform credential, and vault access checks when renaming or regrouping other surfaces.
 
-API Keys combines API keys, signed-in browser sessions and Profile and sign-in settings.
+API Keys opens with a compact identity card: avatar, name and primary email. API keys and signed-in browser sessions follow it.
 Provider credentials belong under Models and Secrets.
 
-The Profile and sign-in settings action scrolls to an always-mounted named section on API Keys.
-The auth facade embeds the supported provider widget; native password, email and verification flows remain provider-owned.
-
-Changing the subject or session clears the widget. Keep its draft intact during ordinary resource refreshes.
-Sign out remains in the avatar menu.
+The owner’s Nov 14 refinement removes the repeated Profile button and embedded provider widget. Sign out remains in the avatar menu.
 
 The app owns profile and session data shapes; Clerk supplies the current implementation through a dedicated adapter.
 Keep Clerk-specific objects and errors out of product components. A component re-export alone does not make the provider replaceable.
@@ -340,7 +336,7 @@ Use Last active for activity timestamps and Signed in only for recorded session 
 Keep an absent activity time unknown.
 
 Require confirmation and recent verification before signing out another device, and reconcile an uncertain response before repeating the request.
-Retain edited profile names after a failed save. Photo, email and authentication-factor changes use the provider's verified account controls behind the adapter.
+Do not add unverified profile or authentication-factor mutations to the identity card.
 
 Keep **Avatar → Team**. Current membership gives access to every workspace in the account; do not label this workspace-only access.
 Preserve Owner and Member roles, owner protection, pending invitations, and member removal.
@@ -388,14 +384,14 @@ Team groups native lists inside shared panels. Its search remains, with names, i
 
 Invite delivery status must reflect the backend, including a retained invite whose email was not delivered.
 
-API Keys contains keys, signed-in sessions and native identity-provider controls behind the auth facade.
-The avatar menu opens this combined destination. The header action scrolls to Profile and sign-in settings.
+API Keys contains a compact identity card, keys and signed-in sessions behind the auth facade.
+The avatar menu opens this combined destination; there is no repeated Profile action or embedded identity-provider widget.
 
 Keys use resource rows and one-time reveal; sessions support individual and all-other-session sign-out. Read all session pages before bulk revocation and exclude this device.
 
-Usage restores the period toolbar, shared metric strip, daily-spend section and By fleet table. Charge details remain in a closed native disclosure, opening for an explicitly selected activity. Do not draw daily bars from a partial activities page: the current report has no daily buckets.
+Usage restores the period toolbar, shared metric strip, daily-spend section and By fleet table. Charge details remain in a closed native disclosure, opening for an explicitly selected activity. Draw daily bars from the report's complete daily buckets, never a partial activities page.
 
-Preserve that section with its unavailable state until one authoritative aggregate is available.
+Preserve that section with its unavailable state when the report cannot be loaded.
 
 Secrets use Name, Type, hidden Value, Available to and Manage. The current API does not return per-secret fleet access. State that absence; never derive effective authorization from references or show an unbacked access checkbox.
 
@@ -1133,9 +1129,7 @@ The bundle manifest hashes every payload, including reports and its index. Repor
 
 The owner-approved account menu has Team, API Keys, Usage, Models, Appearance and Sign out beneath the identity header. The header's native submenu switches and creates workspaces.
 
-API Keys combines keys, sessions and access to the native account/sign-in controls; no separate Personal account destination is shown. Keep password and verified-email operations in the authenticated provider facade in an always-mounted named section.
-
-The header action scrolls/focuses it without changing native verification hashes; do not add an enclosing dialog.
+API Keys shows an identity card followed by keys and signed-in sessions. The owner’s Nov 14 refinement removes the embedded account/sign-in widget and its repeated header action.
 
 ### Conversation shape and header cost
 
@@ -1146,3 +1140,13 @@ Summary and composer panels use 22px corners on all sides. Record all four radii
 The reported run cost uses Manrope at 13px/20px and weight 500 in the secondary text colour. It aligns with the header title baseline. Amounts retain their reported precision.
 
 The header shortcut starts a new fleet through the shared navigation intent on resource pages and saved conversations, including archived fleets. Edit setup remains in Fleet actions.
+
+### Fleet setup review
+
+Keep the setup Summary concise: fleet name, proposed/saved state, purpose and run triggers. Review setup opens a scrollable panel with grouped identity, runtime model, source revision, access, repositories, secrets/connections, spending and instructions.
+
+Secret values never appear. Unavailable review fields remain unconfirmed.
+
+Saved schedule registration, next run and retry controls stay separate from proposed trigger changes. Opening the review preserves the composer. Configuration changes continue through the existing setup chat and instructions editor.
+
+Team counts share their heading’s center line. The Fleets rail section can collapse; its list retains paging and account/workspace ownership.

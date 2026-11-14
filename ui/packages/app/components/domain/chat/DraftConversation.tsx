@@ -24,7 +24,7 @@ import { chatMessageText } from "@/lib/chat-message-text";
 import { SetupApprovalSummary } from "./SetupApprovalSummary";
 import { AuthoringPrompt } from "./AuthoringPrompt";
 
-const SetupSummary = nextDynamic(() => import("./SetupSummary").then(module => module.SetupSummary), {ssr: false});
+const SetupReview = nextDynamic(() => import("./SetupReview").then(module => module.SetupReview), {ssr: false});
 
 export function DraftConversation({client, view, workspace, subject, children, unfinished, instructionsDirty = false, onOpenFleet, modelsHref}: {client: DraftClient; view: DraftView; workspace: string; subject?: string; children?: ReactNode; unfinished?: ReactNode; instructionsDirty?: boolean; onOpenFleet?: () => void; modelsHref?: string}) {
   const recovery = chatRecovery(view);
@@ -80,7 +80,7 @@ function SetupConversationLayout({client, view, workspace, subject, children}: {
   const resolved = (fleet: string) => setRefresh({client, fleet, subject});
   return <FleetConversationLayout work={view.draft || view.preview || view.fleet ? <div className="space-y-lg">
     <SetupApprovalSummary view={view} workspace={workspace} subject={subject} onResolved={resolved} />
-    <SetupSummary definition={view.draft?.candidate?.definition ?? view.preview?.definition ?? view.fleet?.definition} requirements={view.draft?.review?.requirements} />
+    <SetupReview client={client} view={view} />
   </div> : undefined}>
     {children}
   </FleetConversationLayout>;

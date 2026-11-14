@@ -1,5 +1,5 @@
 import React from "react";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { reload, useUser } = vi.hoisted(() => ({
@@ -15,7 +15,7 @@ vi.mock("@clerk/nextjs", () => ({
   useUser,
 }));
 
-import { AuthSessionKeeper } from "./client";
+import { AuthSessionKeeper, useCurrentUser } from "./client";
 
 const USER_ID = "user_session_keeper_fixture";
 
@@ -65,6 +65,17 @@ describe("AuthSessionKeeper", () => {
     vi.advanceTimersByTime(90_000);
     window.dispatchEvent(new Event("focus"));
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("projects the current account photo and clears identity after sign-out", () => {
+    const imageUrl = "https://images.example.test/avatar.png";
+    useUser.mockReturnValue({isLoaded: true, isSignedIn: true,
+      user: {id: USER_ID, fullName: "Kishore", primaryEmailAddress: {emailAddress: "you@example.test"}, imageUrl}});
+    const {result, rerender} = renderHook(useCurrentUser);
+    expect(result.current).toMatchObject({displayName: "Kishore", emailAddress: "you@example.test", imageUrl});
+    useUser.mockReturnValue({isLoaded: true, isSignedIn: false, user: null});
+    rerender();
+    expect(result.current).toMatchObject({userId: null, displayName: null, emailAddress: null, imageUrl: null});
   });
 
   it("test_keeper_single_refresh_despite_identity_churn", async () => {

@@ -66,6 +66,14 @@ test("resource cards match the approved viewport and retain readable phone conte
     }))).toBe(true);
     await page.screenshot({path: info.outputPath(`matched-team-${theme}.png`), scale: "css", animations: "disabled"});
     await page.getByRole("region", {name: "Pending invitations", exact: true}).scrollIntoViewIfNeeded();
+    const heading = page.getByRole("heading", {name: "Pending invitations 1", exact: true});
+    expect(await heading.evaluate(element => {
+      const count = element.lastElementChild;
+      if (!count) return false;
+      const row = element.getBoundingClientRect();
+      const badge = count.getBoundingClientRect();
+      return Math.abs(row.y + row.height / 2 - badge.y - badge.height / 2) < 1;
+    })).toBe(true);
     await page.screenshot({path: info.outputPath(`matched-invitations-${theme}.png`), scale: "css", animations: "disabled"});
   }
 });

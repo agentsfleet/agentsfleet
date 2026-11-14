@@ -23,8 +23,8 @@ export default async function SecurityPage() {
     else unavailable = true;
   }
   return <SecurityLayout>
+    <AccountSettingsSection />
     {unavailable ? <Alert variant="warning">API keys could not be loaded.<RouteRetryButton label="Retry API keys" /></Alert> : <ApiKeysView initial={initial} operatorOnly={operatorOnly} />}
     <SessionSettings />
-    <AccountSettingsSection />
   </SecurityLayout>;
 }

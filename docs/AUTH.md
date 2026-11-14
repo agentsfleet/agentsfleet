@@ -636,7 +636,9 @@ sequenceDiagram
 
 ### Personal profile and browser sessions
 
-API Keys combines keys, browser sessions and native profile/sign-in controls.
+API Keys shows the signed-in person’s avatar, name and primary email above API keys and browser sessions.
+The identity card uses the existing neutral `useCurrentUser` facade. It contains no embedded profile widget or duplicate navigation button.
+
 Session controls consume app-owned types from `ui/packages/app/lib/auth/account-types.ts`.
 `account-client.ts` isolates provider hooks and native recent verification.
 
@@ -644,10 +646,8 @@ Email, password, passkey and multi-factor controls retain the provider's existin
 
 No application view receives a provider resource. The existing subject used by chat, pending sends and caches is unchanged.
 
-The Profile and sign-in settings action scrolls to an always-mounted named section on API Keys.
-`account-controls.tsx` embeds the supported provider widget with hash routing and retains its native verification flows.
-
-Subject/session changes remount that widget; ordinary resource refreshes retain it.
+Identity updates follow the provider resource; absent name, email or avatar use explicit fallbacks.
+The avatar remounts when the signed-in person changes, so an old photo cannot remain.
 
 Browser-session reads and remote sign-out use `account-actions.ts`, resolving the verified current person/session in `credential.ts`. A caller-supplied expected subject is only a stale-tab guard. It never selects another person's account.
 
@@ -665,7 +665,7 @@ Responses are limited to one MiB and parsed with runtime schemas. Mutations are 
 
 Mounted settings state belongs to one subject/session generation. Changing identities, including an A → B → A round trip, invalidates pending native challenge callbacks and discards late read results. Ordinary resource refreshes do not change that owner.
 
-A confirmed remote sign-out remains visible even if the following refresh fails. The provider widget owns profile drafts and verification state.
+A confirmed remote sign-out remains visible even if the following refresh fails. Native verification remains in the auth adapter.
 
 ### SSE stream: Next Route Handler injects Bearer
 
