@@ -6,7 +6,7 @@ use jiff::Timestamp;
 /// A bounded reporting window, in stored millisecond precision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Window {
-    /// Inclusive beginning of the selected UTC day or month.
+    /// Inclusive beginning of the selected UTC day, week or month.
     pub from: Timestamp,
     /// Inclusive capture time; pending and later settlements stay out.
     pub through: Timestamp,
@@ -64,6 +64,8 @@ pub mod dimension {
     pub const FLEET: i32 = 1;
     /// Selected-period spending by model.
     pub const MODEL: i32 = 2;
+    /// Selected-period spending by UTC ledger creation date.
+    pub const DAY: i32 = 3;
 }
 
 /// Exact filtered sums for every group present in the unfiltered period.
@@ -76,6 +78,10 @@ pub struct Aggregate {
     pub key: Option<String>,
     /// The fleet-name snapshot, when present.
     pub label: Option<String>,
+    /// UTC ledger creation date, present only for a daily group.
+    pub day: Option<jiff::civil::Date>,
+    /// Sorted distinct nonempty model identifiers in this filtered fleet group.
+    pub models: Vec<String>,
     /// Integer nanodollars actually charged.
     pub charged_nanos: i64,
     /// Recorded input tokens, including the cached subset.
@@ -100,6 +106,8 @@ pub(super) struct AggregateRow {
     fleet_key: Option<Uuid7>,
     model_key: Option<String>,
     label: Option<String>,
+    day: Option<jiff_sqlx::Date>,
+    models: Vec<String>,
     charged_nanos: i64,
     input_tokens: i64,
     output_tokens: i64,
@@ -115,6 +123,8 @@ impl From<AggregateRow> for Aggregate {
             dimension: row.dimension,
             key: row.fleet_key.map(String::from).or(row.model_key),
             label: row.label,
+            day: row.day.map(Into::into),
+            models: row.models,
             charged_nanos: row.charged_nanos,
             input_tokens: row.input_tokens,
             output_tokens: row.output_tokens,

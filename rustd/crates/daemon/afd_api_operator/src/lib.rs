@@ -43,10 +43,6 @@ pub fn runner_ops_handler_for<D: Services>(verb: RunnerOpsRoute) -> Option<Metho
 /// Selects the handler for a platform-administration route.
 pub fn admin_handler_for<D: Services>(verb: AdminRoute) -> MethodRouter<Arc<D>> {
     match verb {
-        AdminRoute::FleetLibrary => get(handler::admin::libraries::list::<D>)
-            .merge(post(handler::admin::library_stage::create::<D>)),
-        AdminRoute::FleetLibraryEntry => patch(handler::admin::libraries::patch::<D>)
-            .merge(delete(handler::admin::libraries::delete::<D>)),
         AdminRoute::PlatformKeys => get(handler::admin::platform_keys::list::<D>)
             .merge(put(handler::admin::platform_keys::set::<D>)),
         AdminRoute::PlatformKey => delete(handler::admin::platform_keys::deactivate::<D>),

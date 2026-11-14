@@ -42,10 +42,10 @@ pub enum AuthoringStep {
         /// The fleet whose setup was cancelled.
         fleet_id: Uuid7,
     },
-    /// A new Library revision was committed.
-    LibraryPublished {
-        /// The Library entry.
-        library_id: Uuid7,
+    /// A new Plugin revision was committed.
+    PluginPublished {
+        /// The Plugin entry.
+        plugin_id: Uuid7,
         /// The revision this publication committed.
         revision_id: Uuid7,
         /// `entry` for a first publication, `revision` for a later one.
@@ -63,7 +63,7 @@ impl AuthoringStep {
             Self::MessageFinished { .. } => "draft_message_finished",
             Self::SetupFinished { .. } => "fleet_setup_finished",
             Self::SetupCancelled { .. } => "fleet_setup_cancelled",
-            Self::LibraryPublished { .. } => "fleet_library_published",
+            Self::PluginPublished { .. } => "fleet_plugin_published",
         }
     }
 }

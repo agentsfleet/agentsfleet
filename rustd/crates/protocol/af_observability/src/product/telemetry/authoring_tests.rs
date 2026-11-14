@@ -71,13 +71,13 @@ fn every_step() -> [(&'static str, AuthoringStep, &'static [&'static str]); 5] {
             &[WORKSPACE_ID, FLEET_ID],
         ),
         (
-            "fleet_library_published",
-            AuthoringStep::LibraryPublished {
-                library_id: resource(),
+            "fleet_plugin_published",
+            AuthoringStep::PluginPublished {
+                plugin_id: resource(),
                 revision_id: revision(),
                 kind: "entry",
             },
-            &[WORKSPACE_ID, "library_id", "revision_id", "kind"],
+            &[WORKSPACE_ID, "plugin_id", "revision_id", "kind"],
         ),
     ]
 }
@@ -138,8 +138,8 @@ fn should_carry_the_state_and_kind_as_written() {
         finished.properties().get("state"),
         Some(&Value::from("timed_out"))
     );
-    let published = reported(AuthoringStep::LibraryPublished {
-        library_id: resource(),
+    let published = reported(AuthoringStep::PluginPublished {
+        plugin_id: resource(),
         revision_id: revision(),
         kind: "revision",
     })

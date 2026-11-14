@@ -4,9 +4,9 @@ import { request } from "./client";
 import { Instant } from "./decode";
 import { nanosSchema } from "./nanos";
 import { HTTP_METHOD } from "./retry";
-import { BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_CHARGE_KIND, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY } from "./billing-report-values";
+import { BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_CHARGE_KIND, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK } from "./billing-report-values";
 
-export { BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY } from "./billing-report-values";
+export { BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK } from "./billing-report-values";
 
 const Count = z.number().int().nonnegative();
 const Totals = z.object({
@@ -26,6 +26,8 @@ const Charge = z.object({
   runtime_ms: Count, unpriced_tokens: Count, requested_at: Instant, settled_at: Instant,
 });
 const Breakdown = z.object({ key: z.string().nullable(), label: z.string().nullable(), totals: Totals });
+const FleetBreakdown = Breakdown.extend({ models: z.array(z.string().min(1)) });
+const Daily = z.object({ day: z.iso.date(), totals: Totals });
 const ActivityPage = z.object({
   items: z.array(Activity), total: Count.nullable(), next_cursor: z.string().nullable(),
 });
@@ -33,9 +35,9 @@ const ChargePage = z.object({
   items: z.array(Charge), total: Count.nullable(), next_cursor: z.string().nullable(),
 });
 const Report = z.object({
-  period: z.enum([BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY]), from_at: Instant, through_at: Instant,
-  totals: Totals,
-  spending: z.object({ by_fleet: z.array(Breakdown), by_model: z.array(Breakdown) }),
+  period: z.enum([BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK]), from_at: Instant, through_at: Instant,
+  totals: Totals, daily: z.array(Daily),
+  spending: z.object({ by_fleet: z.array(FleetBreakdown), by_model: z.array(Breakdown) }),
   filters: z.object({
     fleets: z.array(z.object({ id: z.string().nullable(), name: z.string().nullable() })),
     models: z.array(z.string()),
@@ -48,6 +50,7 @@ export type BillingActivity = z.infer<typeof Activity>;
 export type BillingCharge = z.infer<typeof Charge>;
 export type BillingChargePage = z.infer<typeof ChargePage>;
 export type BillingBreakdown = z.infer<typeof Breakdown>;
+export type BillingFleetBreakdown = z.infer<typeof FleetBreakdown>;
 export type BillingTotals = z.infer<typeof Totals>;
 export type BillingReportOptions = {
   period?: string; fleet_id?: string; model?: string; activity_type?: string;

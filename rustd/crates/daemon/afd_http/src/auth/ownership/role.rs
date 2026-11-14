@@ -48,7 +48,7 @@ mod tests {
             Scope::ConnectorRead,
             Scope::ScheduleWrite,
             Scope::ApprovalResolve,
-            Scope::LibraryWrite,
+            Scope::PluginsWrite,
         ] {
             assert!(!withholds(MEMBER, &[shared]), "{}", shared.wire());
         }

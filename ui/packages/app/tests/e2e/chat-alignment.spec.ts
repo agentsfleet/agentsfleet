@@ -47,6 +47,8 @@ test("saved setup has the same composer placement, pencil, summary and return ro
   await input.fill("Preserve the existing regression assertions");
   await page.screenshot({path: info.outputPath("fleet-setup.png"), scale: "css", animations: "disabled"});
   await expect(page.getByRole("region", {name: "Fleet purpose"})).toBeVisible();
+  const purposeSize = await page.getByRole("region", {name: "Fleet purpose"}).locator("p").evaluate(element => getComputedStyle(element).fontSize);
+  await expect(page.getByRole("region", {name: "Access and spending limits"}).getByRole("list")).toHaveCSS("font-size", purposeSize);
   await expect(page.getByRole("button", {name: "Work context"})).toHaveCount(0);
   await expect(input).toHaveValue("Preserve the existing regression assertions");
 });

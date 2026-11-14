@@ -74,9 +74,9 @@ test("remaining resource pages and empty setup retain the approved frame", async
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize(info.project.name === "chromium" ? {width: 1480, height: 1000} : {width: 390, height: 844});
-  await page.route("**/live/v1/workspaces/*/fleet-libraries/owned?*", route => route.fulfill({json: {items: [{
-    id: "release-watch", name: "Release watch", description: "A saved setup for checking image builds and release readiness.",
-    visibility: "tenant", head_revision_id: "01924f4e-0000-7000-8000-00000000c4a1", etag: "sample", requirements: {},
+  await page.route("**/live/v1/workspaces/*/plugins?*", route => route.fulfill({json: {items: [{
+    id: "01924f4e-0000-7000-8000-00000000c4a2", name: "Release watch", description: "A saved setup for checking image builds and release readiness.",
+    head_revision_id: "01924f4e-0000-7000-8000-00000000c4a1", etag: "sample", requirements: {},
     created_at: "2026-11-11T10:00:00Z", required_credentials_reasons: {},
   }], next_cursor: null}}));
   for (const theme of ["dark", "light"]) {

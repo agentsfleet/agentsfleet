@@ -23,15 +23,7 @@ export const SCOPE = {
   MODEL_ADMIN: "model:admin",
   /** Edit a fleet — among others, its shared-memory grants (`PATCH …/memory-access`). */
   FLEET_WRITE: "fleet:write",
-  /**
-   * Onboard an entry into the platform fleet-library catalogue —
-   * `POST /v1/admin/fleet-libraries`. Independent of the workspace-tier
-   * `library:write`: the backend grants tenants that one by default and this
-   * one never, so it is provisioned only on the operator bundle in Clerk
-   * (`docs/AUTH.md` §Manually-provisioned). It has no `:read` rung — there is
-   * no platform-catalogue GET route — so it appears in no closure below.
-   */
-  PLATFORM_LIBRARY_WRITE: "platform-library:write",
+
 } as const;
 
 export type Scope = (typeof SCOPE)[keyof typeof SCOPE];

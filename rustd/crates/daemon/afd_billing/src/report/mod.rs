@@ -17,6 +17,8 @@ pub use test_util::{activities_query, aggregates_query, charges_query};
 pub const BILLING_PERIOD_MONTH: &str = "month";
 /// The selected UTC calendar day through the reporting cutoff.
 pub const BILLING_PERIOD_TODAY: &str = "today";
+/// Seven UTC calendar days ending at the reporting cutoff.
+pub const BILLING_PERIOD_WEEK: &str = "week";
 /// A billed fleet lease, as the reporting API names it.
 pub const BILLING_ACTIVITY_RUNTIME: &str = "runtime";
 /// A private setup attempt, as the reporting API names it.

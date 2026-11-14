@@ -1,7 +1,7 @@
 WITH locked AS MATERIALIZED (
     SELECT id, workspace_id, tenant_id, user_id, title, status, tenant_model_id,
-           head_candidate_id, source_type, source_library_revision_id,
-           source_fleet_revision_id, instance_name, fleet_id, library_revision_id,
+           head_candidate_id, source_type, source_plugin_revision_id,
+           source_fleet_revision_id, instance_name, fleet_id, plugin_revision_id,
            last_message_sequence, cancelled_through_sequence, resource_version,
            closed_at, expires_at
       FROM authoring.drafts
@@ -27,19 +27,19 @@ SELECT d.id AS id,
        d.user_id AS user_id,
        d.instance_name,
        d.source_type,
-       COALESCE(sl.platform_slug, sl.id::text) AS source_library_id,
-       sr.id AS source_library_revision_id,
+       sl.id AS source_plugin_id,
+       sr.id AS source_plugin_revision_id,
        sf.fleet_id AS source_fleet_id,
        sf.revision AS source_fleet_revision,
-       COALESCE(pl.platform_slug, pl.id::text) AS publication_library_id,
+       pl.id AS publication_plugin_id,
        pr.id AS publication_revision_id,
        pr.canonical_digest AS publication_digest
   FROM locked d
  CROSS JOIN clock
   LEFT JOIN authoring.candidates c ON c.id = d.head_candidate_id
-  LEFT JOIN authoring.library_revisions sr ON sr.id = d.source_library_revision_id
-  LEFT JOIN authoring.library_entries sl ON sl.id = sr.library_entry_id
+  LEFT JOIN authoring.plugin_revisions sr ON sr.id = d.source_plugin_revision_id
+  LEFT JOIN authoring.plugin_entries sl ON sl.id = sr.plugin_entry_id
   LEFT JOIN fleet.revisions sf ON sf.id = d.source_fleet_revision_id
-  LEFT JOIN authoring.library_revisions pr ON pr.id = d.library_revision_id
-  LEFT JOIN authoring.library_entries pl ON pl.id = pr.library_entry_id
+  LEFT JOIN authoring.plugin_revisions pr ON pr.id = d.plugin_revision_id
+  LEFT JOIN authoring.plugin_entries pl ON pl.id = pr.plugin_entry_id
  WHERE d.expires_at IS NULL OR d.expires_at > clock.locked_at

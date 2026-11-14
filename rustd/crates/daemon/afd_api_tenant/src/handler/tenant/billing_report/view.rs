@@ -23,6 +23,23 @@ pub(super) fn report<'a>(
         .find(|row| row.dimension == dimension::SUMMARY)
         .ok_or_else(stored_refusal)?;
     let (spending, filters) = groups(&rows.aggregates);
+    Ok(wire::Report {
+        period: Cow::Owned(input.scope.period.clone()),
+        from_at: input.request.window.from,
+        through_at: input.request.window.through,
+        totals: totals(summary),
+        daily: daily(&rows.aggregates, input.request.window),
+        spending,
+        filters,
+        activities: activity_page(rows, input, summary.activity_count)?,
+    })
+}
+
+fn activity_page<'a>(
+    rows: &'a store::Report,
+    input: &Input,
+    activity_count: i64,
+) -> Result<wire::Page<'a, wire::Activity<'a>>, Refusal> {
     let count = usize::try_from(input.scope.limit).map_err(|_range| stored_refusal())?;
     let items = rows
         .activities
@@ -44,19 +61,29 @@ pub(super) fn report<'a>(
     } else {
         None
     };
-    Ok(wire::Report {
-        period: Cow::Owned(input.scope.period.clone()),
-        from_at: input.request.window.from,
-        through_at: input.request.window.through,
-        totals: totals(summary),
-        spending,
-        filters,
-        activities: wire::Page {
-            items,
-            total: Some(summary.activity_count),
-            next_cursor,
-        },
+    Ok(wire::Page {
+        items,
+        total: Some(activity_count),
+        next_cursor,
     })
+}
+
+fn daily(rows: &[store::Aggregate], window: store::Window) -> Vec<wire::Daily> {
+    let days: std::collections::BTreeMap<_, _> = rows
+        .iter()
+        .filter_map(|row| row.day.map(|day| (day, row)))
+        .collect();
+    let from = window.from.to_zoned(jiff::tz::TimeZone::UTC).date();
+    let through = window.through.to_zoned(jiff::tz::TimeZone::UTC).date();
+    from.series(jiff::Span::new().days(1))
+        .take_while(|day| *day <= through)
+        .map(|day| wire::Daily {
+            day: day.to_string(),
+            totals: days
+                .get(&day)
+                .map_or_else(wire::Totals::default, |row| totals(row)),
+        })
+        .collect()
 }
 
 fn groups(rows: &[store::Aggregate]) -> (wire::Spending<'_>, wire::Choices<'_>) {
@@ -75,7 +102,14 @@ fn groups(rows: &[store::Aggregate]) -> (wire::Spending<'_>, wire::Choices<'_>) 
                     name: bucket.label.clone(),
                 });
                 if row.line_count > 0 {
-                    spending.by_fleet.push(bucket);
+                    spending.by_fleet.push(wire::FleetBreakdown {
+                        group: bucket,
+                        models: row
+                            .models
+                            .iter()
+                            .map(|model| Cow::Borrowed(model.as_str()))
+                            .collect(),
+                    });
                 }
             }
             dimension::MODEL => {
@@ -89,23 +123,25 @@ fn groups(rows: &[store::Aggregate]) -> (wire::Spending<'_>, wire::Choices<'_>) 
             _ => {}
         }
     }
+    sort_groups(&mut spending, &mut choices);
+    (spending, choices)
+}
+
+fn sort_groups(spending: &mut wire::Spending<'_>, choices: &mut wire::Choices<'_>) {
     choices.fleets.sort_by(|left, right| left.id.cmp(&right.id));
     choices.models.sort();
-    spending.by_fleet.sort_by(|left, right| {
-        right
-            .totals
-            .charged_nanos
-            .cmp(&left.totals.charged_nanos)
-            .then(left.key.cmp(&right.key))
-    });
-    spending.by_model.sort_by(|left, right| {
-        right
-            .totals
-            .charged_nanos
-            .cmp(&left.totals.charged_nanos)
-            .then(left.key.cmp(&right.key))
-    });
-    (spending, choices)
+    spending
+        .by_fleet
+        .sort_by(|left, right| spending_order(&left.group, &right.group));
+    spending.by_model.sort_by(spending_order);
+}
+
+fn spending_order(left: &wire::Breakdown<'_>, right: &wire::Breakdown<'_>) -> std::cmp::Ordering {
+    right
+        .totals
+        .charged_nanos
+        .cmp(&left.totals.charged_nanos)
+        .then(left.key.cmp(&right.key))
 }
 
 const fn totals(row: &store::Aggregate) -> wire::Totals {

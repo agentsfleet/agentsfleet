@@ -38,14 +38,11 @@ pub enum SaveSource {
         #[garde(skip)]
         draft_candidate_id: Uuid7,
     },
-    /// Exactly this accessible Library revision.
-    Library {
-        /// Selected opaque entry identifier.
-        #[garde(
-            length(bytes, min = 1, max = 128),
-            custom(af_validate::rules::nul_free)
-        )]
-        library_id: String,
+    /// Exactly this accessible Plugin revision.
+    Plugin {
+        /// Selected account-owned entry `UUIDv7`.
+        #[garde(skip)]
+        plugin_id: Uuid7,
         /// Selected immutable revision.
         #[garde(skip)]
         revision_id: Uuid7,
@@ -74,7 +71,7 @@ pub struct SaveFleet {
     #[serde(default, skip_serializing)]
     #[garde(skip)]
     pub origin: Option<SaveOrigin>,
-    /// Candidate or pinned Library source.
+    /// Candidate or pinned Plugin source.
     #[garde(dive)]
     pub source: SaveSource,
     /// Validated instance slug, independent of the recipe name.

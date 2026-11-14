@@ -2,6 +2,7 @@
 
 import { Effect, Schema } from "effect";
 import { instant } from "../../lib/instant.ts";
+import { isValidId } from "../../lib/id.ts";
 import { ServerError } from "../../errors/index.ts";
 
 export const DRAFT_STATE = { editing: "editing", saving: "saving", closed: "closed" } as const;
@@ -17,6 +18,7 @@ const DECIMAL = /^(0|[1-9][0-9]*)$/;
 /** A daemon counter or revision: a decimal string, because nanos outgrow a JavaScript number. */
 export const decimal = Schema.String.check(Schema.isPattern(DECIMAL));
 const object = Schema.Record(Schema.String, Schema.Unknown);
+const identifier = Schema.String.check(Schema.makeFilter(isValidId));
 
 export const DefinitionSchema = Schema.Struct({
   schema_version: Schema.Literal(1),
@@ -76,7 +78,7 @@ export const FleetSchema = Schema.Struct({
   start: object, schedules: Schema.Array(ScheduleSchema),
 });
 export const PublishedSchema = Schema.Struct({
-  library_id: Schema.String, revision_id: Schema.String, head_revision_id: Schema.String, etag: Schema.String,
+  plugin_id: identifier, revision_id: identifier, head_revision_id: identifier, etag: Schema.String,
 });
 export const AppliedSchema = Schema.Struct({
   fleet_id: Schema.String, setup_revision: decimal, setup_etag: Schema.String, etag: Schema.String,

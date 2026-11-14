@@ -1,14 +1,14 @@
 # Billing reporting
 
-The Billing page shows settled spending for the account across its workspaces. The existing header keeps the available credit balance.
+The Usage page shows settled spending for the account across its workspaces. The existing header keeps the available credit balance.
 
-The page adds period, fleet and model filters, settled totals, expandable billed activities and a spending breakdown. Add credits keeps the existing support-email action.
+The page shows period and fleet controls, settled totals, daily spending, a Fleet/Model/Activities/Charged table and expandable billed activities. Add credits keeps the existing support-email action.
 
 ## Read flow and ownership
 
 ```text
 Signed-in account member
-  → Billing page and shared controls
+  → Usage page and shared controls
   → tenant reporting handlers, requiring billing:read
   → TenantBilling service
   → afd_billing report module
@@ -25,7 +25,7 @@ Runtime labels use the ledger's fleet-name snapshot and survive fleet deletion.
 
 ## Time, filters and amounts
 
-- Month to date and Today use Coordinated Universal Time (UTC). A request captures an upper timestamp. The lower bound is inclusive, and the upper bound is inclusive at stored millisecond precision.
+- Month to date, Today and Last 7 days use Coordinated Universal Time (UTC). Last 7 days starts at midnight six calendar days before the cutoff date. Both bounds are inclusive at stored millisecond precision.
 - Only records settled by the upper timestamp contribute.
 - Totals cover the whole selected period and filters, never only the displayed activity page. One read transaction gives the report's totals, breakdowns and activity page a consistent image.
 - A continuation carries the original time bounds, tenant, filters and page size. Reusing it with different filters or another tenant is refused. The next boundary includes every ordering key, so tied timestamps cannot skip activities.
@@ -36,9 +36,23 @@ Runtime labels use the ledger's fleet-name snapshot and survive fleet deletion.
 - Compaction's metered calls contribute to ordinary settled totals.
 - A customer's own provider key means that provider charges the model usage; the page distinguishes it from credits charged here. Missing provider usage does not mean free usage. Unsettled or unknown usage can arrive later and is excluded from settled totals.
 
+## Daily spending and recorded models
+
+The required `daily` array includes every UTC calendar date from `from_at` through `through_at`, ascending. Days without matching settled lines have zero totals.
+Each line belongs to its `created_at` date and must have settled by `through_at`.
+
+Daily `activity_count` counts distinct work items on that date. An activity spanning midnight counts on both days and once for the period.
+Every other daily total adds exactly to the corresponding period total.
+
+Each `spending.by_fleet` item includes sorted, distinct, nonempty recorded model identifiers in `models`.
+These models come from all matching ledger rows, including deleted fleets and setup charges. Current fleet definitions and the activity cursor do not affect them.
+
+The chart keeps nanodollars as integers until formatting or bounded display scaling. Accessible labels name each day and charge; an unavailable report never displays authoritative zero usage.
+
 ## Shared presentation
 
-The page uses the shared title, three equal-width filters, a UTC period label and unboxed period totals.
+The page uses the shared title, primary period/fleet controls, a UTC period label and unboxed period totals. Model and setup filters remain available in secondary controls.
+
 Activity uses DataTable's plain surface, keeping its column headings and pagination when empty.
 Controlled row disclosure reads details only for the selected visible activity; native buttons expose the expanded state and support keyboard activation.
 
@@ -69,7 +83,7 @@ Responses declare private, no-store caching.
 
 ## Query bounds and evidence
 
-Report predicates select one tenant and one day or month. The existing tenant/time index supports those bounds; PostgreSQL may choose a sequential scan for a small table. The database groups and orders the scoped rows for totals and activity pagination.
+Report predicates select one tenant and one day, seven days or month. The existing tenant/time index supports those bounds; PostgreSQL may choose a sequential scan for a small table. The database groups and orders the scoped rows for totals and activity pagination.
 
 Activity grouping precedes keyset pagination; display lookups never run once per result in application code. Detail reads use the existing unique work/sequence index. No new table, materialized report or reporting daemon is required.
 
@@ -85,7 +99,7 @@ The dashboard page under `ui/packages/app` validates the responses, keeps the ca
 
 ## Acceptance
 
-The real Billing route must be viewable in the local acceptance deployment with ordinary authentication. Existing settled local usage may populate it; an empty account gets an honest empty state. The illustrative design preview stays labeled separately and is never proof of account data or served API behavior.
+The real Usage route must be viewable in the local acceptance deployment with ordinary authentication. Existing settled local usage may populate it; an empty account gets an honest empty state. The illustrative design preview stays labeled separately and is never proof of account data or served API behavior.
 
 Prove complete-period totals beyond one page, equal-time activity boundaries, filter and tenant cursor mismatches, and exclusion of pending rows.
 Also test deleted-fleet labels, setup privacy, customer-key wording, exact tiny amounts, detail failure and retry.

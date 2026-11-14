@@ -17,10 +17,7 @@ export const EVENTS = {
   provider_reset: "provider_reset",
   platform_default_set: "platform_default_set",
   secret_added: "secret_added",
-  fleet_library_onboarded: "fleet_library_onboarded",
-  platform_library_onboarded: "platform_library_onboarded",
-  platform_library_published: "platform_library_published",
-  platform_library_source_changed: "platform_library_source_changed",
+  fleet_plugin_onboarded: "fleet_plugin_onboarded",
   fleet_viewed: "fleet_viewed",
   // A platform operator opened one runner's detail page (once per mount,
   // mirroring fleet_viewed). Props carry the runner id and the coarse states
@@ -55,37 +52,9 @@ export type EventProps = {
   [EVENTS.provider_reset]: { from_provider: string };
   [EVENTS.platform_default_set]: { provider: string; model: string; is_custom: boolean };
   [EVENTS.secret_added]: { secret_name: string };
-  [EVENTS.fleet_library_onboarded]: {
+  [EVENTS.fleet_plugin_onboarded]: {
     workspace_id: string;
-    visibility: string;
     source_kind: string;
-    outcome: string;
-  };
-  // Platform-tier onboarding. No workspace_id — the platform catalog has no
-  // workspace segment. `entry_id` is the catalog slug the importer derived from
-  // the saved setup, present only when the entry was saved;
-  // the repository the operator typed is never sent as free text.
-  [EVENTS.platform_library_onboarded]: {
-    source_kind: string;
-    outcome: string;
-    entry_id?: string;
-  };
-  // Publishing is the moment a fleet becomes available to EVERY tenant — the one
-  // state change on the catalog surface with a decision riding on it. `entry_id`
-  // is the catalog slug the importer derived, never operator free text.
-  [EVENTS.platform_library_published]: {
-    entry_id: string;
-    action: string;
-    outcome: string;
-  };
-  // Repointing a catalog entry's source is the one operator edit that silently
-  // withdraws a fleet from every workspace gallery (the server discards the
-  // saved setup and drafts the row). `field` names which half moved (repo|ref);
-  // `was_published` says whether a live fleet was withdrawn by it.
-  [EVENTS.platform_library_source_changed]: {
-    entry_id: string;
-    field: string;
-    was_published: boolean;
     outcome: string;
   };
   [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
@@ -126,10 +95,7 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.provider_reset]: ["from_provider"],
   [EVENTS.platform_default_set]: ["provider", "model", "is_custom"],
   [EVENTS.secret_added]: ["secret_name"],
-  [EVENTS.fleet_library_onboarded]: ["workspace_id", "visibility", "source_kind", "outcome"],
-  [EVENTS.platform_library_onboarded]: ["source_kind", "outcome", "entry_id"],
-  [EVENTS.platform_library_published]: ["entry_id", "action", "outcome"],
-  [EVENTS.platform_library_source_changed]: ["entry_id", "field", "was_published", "outcome"],
+  [EVENTS.fleet_plugin_onboarded]: ["workspace_id", "source_kind", "outcome"],
   [EVENTS.fleet_viewed]: ["fleet_id", "status"],
   [EVENTS.runner_viewed]: ["runner_id", "liveness", "admin_state"],
   [EVENTS.fleet_source_saved]: ["fleet_id", "field", "outcome"],

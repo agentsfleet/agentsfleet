@@ -51,7 +51,7 @@ export const DraftSchema = z.object({
   id: z.uuidv7(), state: z.enum(DRAFT_STATE), title: z.string(), etag: z.string(),
   authoring_model_ref: z.string(), cancelled_through: decimal,
   candidate: CandidateSchema.optional(), review: ReviewSchema.optional(), linked_fleet_id: z.uuidv7().optional(),
-  publication: z.object({library_id: z.string(), revision_id: z.uuidv7(), canonical_digest: z.string()}).optional(),
+  publication: z.object({plugin_id: z.uuidv7(), revision_id: z.uuidv7(), canonical_digest: z.string()}).optional(),
 });
 export const CreatedMessageSchema = DraftSchema.extend({accepted: AcceptedSchema});
 export const MessageSchema = z.object({
@@ -79,7 +79,7 @@ export const FleetSchema = z.object({
   schedules: z.array(ScheduleSchema),
 });
 export const PublishedSchema = z.object({
-  library_id: z.string(), revision_id: z.uuidv7(), head_revision_id: z.uuidv7(), etag: z.string(),
+  plugin_id: z.uuidv7(), revision_id: z.uuidv7(), head_revision_id: z.uuidv7(), etag: z.string(),
 });
 export const AppliedSchema = z.object({fleet_id: z.uuidv7(), setup_revision: decimal, setup_etag: z.string(), etag: z.string(),
   schedules: z.array(ScheduleSchema)});
@@ -104,7 +104,7 @@ export type Schedule = z.infer<typeof ScheduleSchema>;
 export type WorkspaceModel = z.infer<typeof ModelsSchema>["items"][number];
 export type DraftCard = z.infer<typeof DraftCardsSchema>["items"][number];
 export type Source = {kind: typeof SOURCE_KIND.blank} | {kind: typeof SOURCE_KIND.definition; definition: Definition}
-  | {kind: typeof SOURCE_KIND.library; library_id: string; revision_id: string}
+  | {kind: typeof SOURCE_KIND.plugin; plugin_id: string; revision_id: string}
   | {kind: typeof SOURCE_KIND.fleet; fleet_id: string; setup_revision: string};
 export type Start = {kind: typeof START_KIND.none} | {kind: typeof START_KIND.runNow; message: string};
 

@@ -45,7 +45,7 @@ export class ChatFixture {
       return response({...FLEET, definition: REVIEW.effective.definition, status: "active", setup: {state: "ready", checks: []}}, 201);
     }
     if (path.endsWith(`/fleets/${FLEET_ID}`)) return response({...FLEET, definition: REVIEW.effective.definition, status: "active", setup: {state: "ready", checks: []}});
-    if (path.endsWith("/fleet-libraries") && call.method === "POST") {
+    if (path.endsWith("/plugins") && call.method === "POST") {
       this.draft = {...this.draft, publication: {...PUBLICATION, canonical_digest: this.draft.candidate?.canonical_digest ?? ""}};
       return response(PUBLICATION, 201);
     }

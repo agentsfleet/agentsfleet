@@ -108,6 +108,6 @@ test("publication is separate from Save and never creates a runtime instance", a
     await Effect.runPromise(actions.review());
     await Effect.runPromise(actions.publish("Argo"));
     expect(posts).toHaveLength(1);
-    expect(posts[0]).toEndWith("/fleet-libraries");
+    expect(posts[0]).toEndWith("/plugins");
   });
 });

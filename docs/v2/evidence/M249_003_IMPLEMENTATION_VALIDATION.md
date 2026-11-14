@@ -1,0 +1,177 @@
+# M249_003 implementation validation
+
+The implementation uses account-owned Plugins throughout the API, command-line interface (CLI), browser and current documentation.
+Auth pages share the refreshed theme; Usage shows complete daily charges and recorded models.
+The workstream remains active until its remaining verification completes.
+
+## Candidate and baseline
+
+| Item | Value |
+|---|---|
+| Branch | `feat/m249-plugin-vocabulary-ui-followup` |
+| Base | `646fc536e9e504d0bda2db1742aab21e3e3896a8` |
+| Dependencies | M249_001: `646fc536e`; M249_002: `baa26abed` |
+| Candidate checkout | `/workspace/agentsfleet-m249` |
+| Isolated baseline checkout | `/workspace/agentsfleet-m249-baseline`, detached at the exact base |
+| Logs and screenshots | `/workspace/artifacts/m249-followup/` |
+
+Continuous Integration (CI) did not run the full verification lanes on this base.
+The local baseline therefore measures those lanes at the exact commit.
+[The successful smoke run](https://github.com/agentsfleet/agentsfleet/actions/runs/43482399100) and [cache warm-up](https://github.com/agentsfleet/agentsfleet/actions/runs/43482250358) supply no full unit or integration counts.
+
+## Repository checks
+
+| Command | Exact base | Candidate | Evidence file |
+|---|---|---|---|
+| `make dry-app` | PASS: 478 files, 4,563 unit tests, 90 browser tests | PASS: 479 files, 4,575 unit tests, 94 browser tests | `baseline-dry-app.log`, `dry-app-final.log` |
+| `make lint-all` | PASS | PASS through `orly gate verify` | `baseline-lint-all.log`, `gate-verify-complete.log` |
+| `make test-unit-all` | Initial run failed in the container; all component reruns later passed separately | PASS: runner 1,731; daemon 172; libraries 3,674; four package coverage gates passed | `baseline-test-unit-all.log`, `baseline-test-unit-all-init.log`, `test-unit-all-schema-final.log` |
+| `make test-unit-rustd-runner` | PASS: 1,731 tests with corrected mask | Passed within the full unit target | `baseline-rust-final.log`, `test-unit-all-schema-final.log` |
+| `make test-coverage-all` | Four gates passed within the unit target | Four gates passed within the full unit target, each at 100% | `baseline-test-unit-all-init.log`, `test-unit-all-schema-final.log` |
+| `make test-integration-rustd` | FAIL: 339 passed before one wall-stream timing failure; later suites not reached | PASS: 1,779 regular tests and 2 exclusive tests | `baseline-rust-final.log`, `test-integration-complete.log` |
+| `make check-version` | PASS: all versions match 0.77.0 | PASS: all versions match 0.77.0 | `baseline-version.log`, `gate-verify-complete.log` |
+| `orly gate work` | Not repeated | PASS: four commands declared | `gate-work-complete.log` |
+| `orly gate verify` | Not repeated | PASS: configuration, documentation, lint and version | `gate-verify-complete.log` |
+| `orly gate pr` | Not run | Not run: cloud shipping rule | Owner opens the Pull Request from the app |
+| `make acceptance-local SUITE=cli` | Linux host cannot run the macOS adapter | Same host limitation | `acceptance-local.log` |
+| `make acceptance-codex SUITE=cli` | BLOCKED: unexpected shared service | BLOCKED: unexpected shared service | `acceptance-codex.log`, `acceptance-codex-branch.log` |
+| `gitleaks detect --redact --no-banner` | Not repeated | PASS: 8,108 commits; no leaks | `gitleaks.log` |
+| `gitleaks protect --staged --redact --no-banner` | Not repeated | PASS: no leaks in the final staged candidate | `gitleaks-staged-final.log` |
+
+The container's PID 1 does not reap orphaned processes.
+The first baseline unit run failed two runner cleanup tests; both pass under `/usr/local/bin/docker-init -s` without changing tests.
+
+A second environment mismatch produced mode `0400` where the toolbox test expects `0444`, because the inherited file-creation mask is `077`.
+Final unit invocations use the init wrapper and mask `022` in both checkouts; no test changes apply.
+
+The initial candidate coverage process received `SIGKILL` before returning a result; the container's memory counters recorded no out-of-memory kill.
+The full candidate unit run uses a separate process session, with its process identifier and exit status recorded beside its log.
+The interrupted `coverage-all.log` supplies no passing coverage claim.
+
+The first candidate unit run passed 1,731 runner tests, then reused a baseline telemetry dependency from the shared Cargo directory.
+Its daemon compile therefore rejected the new `PluginPublished` variant despite that variant existing in the candidate source.
+Cargo cleaned all 59 workspace packages; each checkout now owns its build directory and reuses only copied external dependency outputs.
+
+Baseline TypeScript coverage measured 4,563 app tests, 133 website tests, 2,336 CLI tests and 514 design-system tests.
+The CLI reported 17 skipped tests; every configured coverage gate reported 100%.
+
+The final candidate unit command exited successfully on November 14, 2026.
+Its coverage gates measured 4,576 app tests, 133 website tests, 2,335 CLI tests and 514 design-system tests.
+The CLI again reported 17 skipped tests; every configured coverage gate reported 100%.
+
+The candidate's OpenAPI assertion found missing UUID formats on revision path and query parameters.
+Both annotations now match the existing UUIDv7 validation; the targeted standards recheck found no issue.
+The killed coverage process also left a lock; cleanup removed only that lock after confirming its owner had exited.
+
+The generated-schema sweep then found the delete endpoint's missing Plugin identifier format.
+That endpoint now uses the shared parameter type; the assertion checks all seven Plugin and revision identifiers across every operation.
+The final full unit rerun passed, including the expanded assertion; this correction changes metadata rather than runtime validation.
+
+Coverage then found an untested setup-charge label and malformed JSON path after the catalogue tests were removed.
+The new checks verify the chart's setup label and exact amount, and refusal of malformed runner policy input before HTTP.
+No coverage threshold or test guard changed.
+
+The exact-base integration run timed out in `a_second_lag_inside_a_tick_re_announces_when_the_tick_ends`.
+Its two-second wall-transition assertion failed; the candidate changes neither that test nor its stream helper.
+The failed run does not establish a complete baseline integration count.
+
+The candidate passed that same test and completed both integration groups.
+
+The full repository lanes ran before the final test-only proof additions.
+A fresh-schema focused run passed all ten Plugin API tests, including those additions.
+The same run passed 11 authoring and 11 billing checks, for 32 focused checks in total.
+
+Production code remains unchanged.
+
+The first final gate found one Rust formatting mismatch and ten documentation language findings.
+The corrections change formatting and prose only; the direct language scan now reports no findings.
+The next gate required checked JSON access in the schema test; that assertion now uses `get` and `pointer`.
+
+The final gate passed configuration, documentation, lint and version checks.
+The separately rerun schema assertion also passed after its checked-access correction.
+
+## Focused checks
+
+These checks support individual changes; they do not replace repository lanes.
+
+| Command and working directory | Result | Evidence file |
+|---|---|---|
+| `rustd/`: `cargo test -p afd_api --all-features --test tenant_plane authoring::plugin -- --ignored` | 10 passed, including the final proof additions | `plugin-integration-proof-final.log` |
+| `rustd/`: `cargo test -p afd_authoring --all-features --test authoring_suite draft::plugin -- --ignored` | 11 passed | `plugin-integration-proof-final.log` |
+| `rustd/`: `cargo test -p afd_billing --all-features --test integration_reports daily -- --ignored` | 3 passed | `plugin-integration-proof-final.log` |
+| `rustd/`: `cargo test -p afd_api --all-features --test tenant_plane integration_billing_report -- --ignored` | 8 passed | `plugin-integration-proof-final.log` |
+| `node /tmp/m249-grant-transition.mjs` | 8 transformation fixtures and 6 malformed-input checks passed; no live writes | `grant-transition.log` |
+| `rustd/`: `cargo run --all-features --bin agentsfleetd -- --no-banner openapi` | PASS: four Plugin paths; seven UUID identifiers; required daily and fleet models | `openapi-complete.log`, `openapi-validation.log` |
+| `rustd/`: `cargo test -p afd_api --all-features --test tenant_plane input_bounds::published_plugin_parameters_are_uuid_identifiers -- --exact` | 1 passed after checked-access correction | `openapi-assertion-checked-access.log` |
+| `cli/`: `bun run lint` and `bun run build` | PASS | `cli-lint-build.log` |
+| `cli/`: `bun run test` | PASS: 2,335 passed, 17 skipped; function and line coverage 100% | `cli-coverage-complete.log` |
+| `ui/packages/app/`: `bun run lint` | PASS | `app-lint.log` |
+| `/workspace/docs`: `make test` | 25 passed | `docs-test.log` |
+
+The focused integration commands ran through a temporary make helper after `_reset-test-db` and `_migrate-test-db`, using make's exported test environment.
+
+Plugin checks cover private account access, narrowed authority, removed routes, immutable revisions, conflicts and revoked permissions.
+Daily billing checks cover midnight, late settlement, exact sums, cursor independence and historical model attribution.
+The browser suite covers filtered Usage, both themes, narrow widths, exact large amounts, authoritative zero and unavailable reports.
+
+## Visual review
+
+Screenshots use production components at 1,480-pixel and 390-pixel widths in both themes.
+The uploaded proposal supplies layout guidance; its sample numbers never become production defaults.
+
+The sign-in copy emphasizes tasks, connected tools and reviewable results.
+Public copy references include [Groq](https://groq.com), [Capy](https://capy.ai) and [OpenBots](https://openbots.ai), read on November 13, 2026.
+
+| Surface | Evidence |
+|---|---|
+| Sign-in and signup | `sign-in-{1480,390}-{light,dark}.png`, `sign-up-{1480,390}-{light,dark}.png`, `auth-measurements.json` |
+| Setup summary | `setup-summary-{1480,390}-{light,dark}.png`, `summary-measurements.json` |
+| Usage | `usage-final-{desktop,mobile}-{light,dark}.png` |
+| Team and Security | `team-{1480,390}-{light,dark}.png`, `security-{1480,390}-{light,dark}.png`, `settings-measurements.json` |
+| Security Profile | `profile-section-{1480,390}-{light,dark}.png`; the design system requires this section |
+
+## Reviews and vocabulary audit
+
+The standards reviewer checked all 363 rules.
+A final evidence check found inaccurate test names and missing assertions for saving a pinned draft and retaining installed copies after refused publication.
+The test-only corrections add those assertions and cite the actual CLI tests and source scan.
+
+The targeted standards recheck found no remaining issues.
+Three native implementation reviews found no grounded production defects; the final pass covered every changed production file.
+
+The final implementation reviewer summarized 127 test and fixture paths rather than reviewing every test line.
+An outside-provider review was unavailable, and the core review remains incomplete while required verification is outstanding.
+
+The core review stopped after three editing cycles without a complete pass requiring no edits.
+It records zero unresolved findings; the corrected schema metadata and blocked acceptance checks prevent a completed review claim.
+
+Gate review covered all 263 eligible hunks from the 288-hunk inventory, including the saved listing beyond the scanner's 50-hunk display limit.
+The change weakens no hooks, coverage floors or assertions for retained behavior.
+
+The frozen blast inventory records 967 files at the base, including unrelated model terminology and history.
+The source audit classifies every remaining removed public spelling; none may remain an active caller or declaration.
+The current scan classifies 194 matches, with no active callers or declarations and no unclassified matches.
+
+See `M249_003_BLAST_INVENTORY.tsv` and `M249_003_SOURCE_AUDIT.tsv` beside this file.
+
+## Outstanding environment and deployment work
+
+The Linux acceptance adapter finds an older shared stack containing Dragonfly where the current adapter expects NATS.
+That stack belongs to shared development state; this task has not removed it.
+
+The required signed toolbox also cannot download: the network proxy refuses GitHub's blob destination with HTTP 403.
+The cached toolbox supports version 0.73; the candidate requires 0.77.
+These are incomplete acceptance checks, not waived checks.
+
+Clerk grants remain unchanged.
+The approved exact replacement still requires paused development traffic, verified token expiry and fresh-session authorization checks before deployment resumes.
+
+The companion docs branch is `chore/m249-plugin-vocabulary-changelog` in `/workspace/docs`.
+Its local schema checks pass, but Mintlify still loads the old remote OpenAPI document from main.
+
+Repository instructions require committing those API pages after the application Pull Request merges.
+This task keeps the companion branch together until that merge.
+
+The owner withdrew the deleted fleet URL: "i will give you a nother one later".
+No live-fleet success claim applies to that deleted draft.
+Cloud shipping instructions prohibit pushing and running `orly gate pr` here; the owner opens the Pull Request from the app.

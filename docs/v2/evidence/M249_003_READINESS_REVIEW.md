@@ -76,6 +76,7 @@ No Team or Security data behavior was changed.
 
 Usage's daily-spending card remains unavailable because its current response has no whole-period daily projection.
 M249_004 §2 originally owned the missing data. The owner-requested follow-up now moves that Usage slice into M249_003 §6.
+
 The reference has been rendered at desktop and phone widths in both themes under `/workspace/artifacts/m249-reference/`.
 
 ### Local validation
@@ -109,7 +110,9 @@ No pull request, deployment, backend rename, database reset or live identity cha
 
 The uploaded archive is extracted under `/workspace/artifacts/m249-proposal/` and its Usage view was rendered in a fresh browser context.
 The Vercel bypass reached the application's normal sign-in screen. No authenticated fleet data was inspected or changed.
-Indy then stated that the database was torn down and the URL was invalid: "i will give you a nother one later" and "so move on to the next".
+
+Indy then stated that the database was torn down and the URL was invalid.
+He added: "i will give you a nother one later" and "so move on to the next".
 
 The old URL is no longer a review target. Its reported failure remains unverified until a replacement is provided.
 

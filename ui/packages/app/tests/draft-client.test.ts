@@ -263,10 +263,10 @@ describe("private browser chat", () => {
     await expect(instance.refreshSetup()).rejects.toMatchObject({status: 409}); expect(mutations()).toEqual([]);
   });
   it("retains a publication revision tag after a lost answer", async () => {
-    fixture.current = {...DRAFT, publication: {library_id: PUBLICATION.library_id, revision_id: PUBLICATION.revision_id, canonical_digest: "prior"}};
+    fixture.current = {...DRAFT, publication: {plugin_id: PUBLICATION.plugin_id, revision_id: PUBLICATION.revision_id, canonical_digest: "prior"}};
     let attempted = false;
     fixture.override = ({path, method}) => {
-      if (path.endsWith(`/fleet-libraries/${PUBLICATION.library_id}`)) return response({etag: '"original-library"'});
+      if (path.endsWith(`/plugins/${PUBLICATION.plugin_id}`)) return response({etag: '"original-plugin"'});
       if (path.endsWith("/revisions") && method === "POST") {
         if (!attempted) {attempted = true; return response({}, 503);} return response(PUBLICATION, 201);
       }
@@ -274,9 +274,9 @@ describe("private browser chat", () => {
     };
     const instance = await ready(true); await instance.refreshSetup();
     await expect(instance.publish("Recipe", true)).rejects.toMatchObject({status: 503}); await instance.retry();
-    expect(mutations()[1]?.headers.get("If-Match")).toBe('"original-library"');
+    expect(mutations()[1]?.headers.get("If-Match")).toBe('"original-plugin"');
     expect(mutations()[1]?.headers.get("Idempotency-Key")).toBe(mutations()[0]?.headers.get("Idempotency-Key"));
-    expect(calls.filter((call) => call.path.endsWith(`/fleet-libraries/${PUBLICATION.library_id}`))).toHaveLength(1);
+    expect(calls.filter((call) => call.path.endsWith(`/plugins/${PUBLICATION.plugin_id}`))).toHaveLength(1);
   });
   it("clears private data and cancels future I/O on disposal", async () => {
     const instance = await ready(true); instance.dispose(); const before = calls.length;

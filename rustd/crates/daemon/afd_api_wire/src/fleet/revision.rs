@@ -1,4 +1,4 @@
-//! Revision application carries no implicit Library publication or runtime message.
+//! Revision application carries no implicit Plugin publication or runtime message.
 
 use crate::schedule::View;
 use serde::{Deserialize, Serialize};

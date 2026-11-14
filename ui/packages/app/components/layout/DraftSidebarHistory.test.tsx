@@ -254,7 +254,7 @@ it("requires confirmation and keeps a chat available after a refused deletion", 
     render(tree(initial));
     fireEvent.click(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`}));
     const dialog = await screen.findByRole("alertdialog", {name: "Delete setup chat?"});
-    expect(dialog.textContent).toContain("Saved fleets and published library versions stay available");
+    expect(dialog.textContent).toContain("Saved fleets and published plugin versions stay available");
     fireEvent.click(within(dialog).getByRole("button", {name: "Cancel"}));
     expect(fetcher).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`}));

@@ -64,7 +64,7 @@ pub struct Draft<D = Value, R = Value> {
 #[derive(Debug, Serialize)]
 pub struct Publication {
     /// Reusable entry identity.
-    pub library_id: String,
+    pub plugin_id: String,
     /// Immutable published snapshot.
     pub revision_id: String,
     /// Content identity that Save can verify and reuse.
@@ -122,7 +122,7 @@ pub struct DraftCard {
     pub candidate_revision: Option<i64>,
     /// The saved fleet's current setup revision; null while no fleet is saved.
     pub setup_revision: Option<i64>,
-    /// The Library revision this chat published; null until it publishes.
+    /// The Plugin revision this chat published; null until it publishes.
     pub publication_revision: Option<i64>,
 }
 

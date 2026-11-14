@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { matchSetupRoute } from "@/lib/api/setup-proxy/path";
 import { SETUP_BODY_LIMIT_BYTES } from "@/lib/api/setup-proxy/body";
 import { SETUP_PROXY_DETAIL, SETUP_REQUEST_ID_HEADER } from "@/lib/api/setup-proxy/response";
-import { APP_ORIGIN, DRAFT_ID, FLEET_ID, LIBRARY_ID, REVISION_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { APP_ORIGIN, DRAFT_ID, FLEET_ID, PLUGIN_ID, REVISION_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 const {credential} = vi.hoisted(() => ({credential: vi.fn()}));
 vi.mock("@/lib/auth/credential", () => ({credential}));
@@ -185,16 +185,19 @@ describe("setup route whitelist", () => {
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.patch],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.delete],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"], METHOD.post],
-    [["fleet-libraries"], METHOD.get], [["fleet-libraries"], METHOD.post], [["fleet-libraries", "owned"], METHOD.get],
-    [["fleet-libraries", LIBRARY_ID], METHOD.get], [["fleet-libraries", "platform-recipe"], METHOD.get], [["fleet-libraries", LIBRARY_ID], METHOD.delete],
-    [["fleet-libraries", LIBRARY_ID, "revisions"], METHOD.get], [["fleet-libraries", LIBRARY_ID, "revisions"], METHOD.post], [["fleet-libraries", LIBRARY_ID, "revisions", REVISION_ID], METHOD.get],
+    [["plugins"], METHOD.get], [["plugins"], METHOD.post],
+    [["plugins", PLUGIN_ID], METHOD.get], [["plugins", PLUGIN_ID], METHOD.delete],
+    [["plugins", PLUGIN_ID, "revisions"], METHOD.get], [["plugins", PLUGIN_ID, "revisions"], METHOD.post], [["plugins", PLUGIN_ID, "revisions", REVISION_ID], METHOD.get],
   ] as const;
   it.each(allowed)("matches %s %s", (path, method) => {expect(matchSetupRoute(WORKSPACE, path, method)).toBeDefined();});
   it.each([
     ["models", DRAFT_ID], ["drafts", ".."], ["drafts", DRAFT_ID, "messages", "extra"], ["fleets", FLEET_ID, "secrets"],
     ["fleets", FLEET_ID, "authoring-context", "extra"],
-    ["fleet-libraries", "owned", "revisions"], ["fleet-libraries", ".."], ["fleet-libraries", "x".repeat(129)],
-    ["fleet-libraries", LIBRARY_ID, "revisions", "invalid"], ["fleet-libraries", LIBRARY_ID, "other"],
+    ["plugins", "owned"], ["plugins", "platform-recipe"],
+    ["fleet-libraries"], ["fleet-libraries", "owned"], ["fleet-libraries", PLUGIN_ID],
+    ["fleet-libraries", PLUGIN_ID, "revisions"], ["fleet-libraries", PLUGIN_ID, "revisions", REVISION_ID],
+    ["plugins", "owned", "revisions"], ["plugins", ".."], ["plugins", "x".repeat(129)],
+    ["plugins", PLUGIN_ID, "revisions", "invalid"], ["plugins", PLUGIN_ID, "other"],
   ])("rejects unsupported path %s", (...path) => {expect(matchSetupRoute(WORKSPACE, path, METHOD.get)).toBeUndefined();});
   it("rejects a malformed workspace", () => {expect(matchSetupRoute("..", ["models"], METHOD.get)).toBeUndefined();});
   it.each([
@@ -204,9 +207,9 @@ describe("setup route whitelist", () => {
     [["fleets", FLEET_ID, "schedules", "invalid", "sync"], METHOD.post],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "other"], METHOD.post],
     [["drafts", DRAFT_ID, "messages"], METHOD.patch],
-    [["fleet-libraries"], METHOD.patch], [["fleet-libraries", LIBRARY_ID], METHOD.patch],
-    [["fleet-libraries", ""], METHOD.get], [["fleet-libraries", LIBRARY_ID, "revisions"], METHOD.patch],
-    [["fleet-libraries", LIBRARY_ID, "revisions", REVISION_ID], METHOD.post],
+    [["plugins"], METHOD.patch], [["plugins", PLUGIN_ID], METHOD.patch],
+    [["plugins", ""], METHOD.get], [["plugins", PLUGIN_ID, "revisions"], METHOD.patch],
+    [["plugins", PLUGIN_ID, "revisions", REVISION_ID], METHOD.post],
   ] as const)("rejects an unsupported method/path pair %s %s", (path, method) => {
     expect(matchSetupRoute(WORKSPACE, path, method)).toBeUndefined();
   });

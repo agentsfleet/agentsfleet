@@ -22,7 +22,6 @@ const MATRIX: ReadonlyArray<{ readonly scopes: ReadonlyArray<string>; readonly f
     scopes: ["runner:write", "runner:read"],
     families: { runners: ["list", "show", "update", "rotate-token", "delete", "events", "leases", "cordon", "drain", "revoke", "self-test"] },
   },
-  { scopes: ["platform-library:write"], families: { "fleet-library": ["list", "show", "stage", "update", "publish", "unpublish", "delete"] } },
   { scopes: ["workspace:any"], families: {} },
 ];
 

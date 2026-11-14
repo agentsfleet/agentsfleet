@@ -19,7 +19,7 @@
  *    (rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs), so
  *    the swept user's tenant and workspace rows stay in Postgres.
  *
- * 3. Leaked-fleet and leaked-library sweeps. Per-spec afterEach cleanup misses whenever a run
+ * 3. Leaked-fleet and leaked-plugin sweeps. Per-spec afterEach cleanup misses whenever a run
  *    crashes or CI is interrupted, and a leaked fixture fleet is not inert:
  *    its seeded cron trigger keeps waking runners until the row is deleted.
  *    sweepLeakedFixtureFleets (fixtures/teardown.ts) empties every workspace
@@ -42,7 +42,7 @@ import { loadWorktreeEnv } from "./fixtures/env-loader";
 import {
   sweepLeakedFixtureFleets,
   sweepLeakedFixtureKeys,
-  sweepLeakedFixtureLibraries,
+  sweepLeakedFixturePlugins,
 } from "./fixtures/teardown";
 import { revokeBrowserSessions } from "./fixtures/browser-sessions";
 import { JWT_CACHE_PATH, TEST_INBOX_DOMAIN } from "./fixtures/constants";
@@ -143,16 +143,16 @@ export default async function globalTeardown(): Promise<void> {
   }
   try {
     // Beside the fleet sweep, not inside it: the two answer for different rows
-    // and either can fail without the other needing to. A leaked library entry
+    // and either can fail without the other needing to. A leaked plugin entry
     // is inert but cumulative — it sits in the install gallery forever, and
     // enough of them push the seeded card off the first page.
     if (fs.existsSync(JWT_CACHE_PATH)) {
-      await sweepLeakedFixtureLibraries();
+      await sweepLeakedFixturePlugins();
     } else {
-      console.log("[e2e:sweep] fixture JWT cache missing — skipping leaked-library sweep");
+      console.log("[e2e:sweep] fixture JWT cache missing — skipping leaked-plugin sweep");
     }
   } catch (err) {
-    console.error("[e2e:sweep] leaked-library sweep failed:", err);
+    console.error("[e2e:sweep] leaked-plugin sweep failed:", err);
   }
   try {
     // Last, and the only sweep whose leak is a live credential rather than a

@@ -34,9 +34,17 @@ export function billingCharge(overrides: Partial<BillingCharge> = {}): BillingCh
 }
 
 export function billingReport(overrides: Partial<BillingReport> = {}): BillingReport {
-  const totals = billingTotals();
-  return { period: BILLING_PERIOD_MONTH, from_at: "2026-10-01T00:00:00Z", through_at: BILLING_AT,
-    totals, spending: { by_fleet: [{ key: BILLING_FLEET, label: "Payment alerts", totals }],
+  const totals = overrides.totals ?? billingTotals();
+  const from = overrides.from_at ?? "2026-10-01T00:00:00Z";
+  const through = overrides.through_at ?? BILLING_AT;
+  const start = Date.parse(`${from.slice(0, 10)}T00:00:00Z`);
+  const end = Date.parse(`${through.slice(0, 10)}T00:00:00Z`);
+  const dayMs = 86_400_000;
+  const count = (end - start) / dayMs + 1;
+  return { period: BILLING_PERIOD_MONTH, from_at: from, through_at: through,
+    totals, daily: Array.from({length: count}, (_, index) => ({day: new Date(start + index * dayMs).toISOString().slice(0, 10),
+      totals: index === count - 1 ? totals : billingTotals({charged_nanos: "0", input_tokens: 0, output_tokens: 0, runtime_ms: 0, line_count: 0, activity_count: 0})})),
+    spending: { by_fleet: [{ key: BILLING_FLEET, label: "Payment alerts", models: [BILLING_MODEL], totals }],
       by_model: [{ key: BILLING_MODEL, label: null, totals }] },
     filters: { fleets: [{ id: BILLING_FLEET, name: "Payment alerts" }], models: [BILLING_MODEL] },
     activities: { items: [billingActivity()], total: 1, next_cursor: null }, ...overrides };

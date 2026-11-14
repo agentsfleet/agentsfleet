@@ -8,10 +8,6 @@ use afd_api::route::{AdminRoute, RunnerOpsRoute, Verb};
 type Endpoint = (&'static str, Verb);
 
 const EXPECTED: &[Endpoint] = &[
-    ("/v1/admin/fleet-libraries", Verb::Get),
-    ("/v1/admin/fleet-libraries", Verb::Post),
-    ("/v1/admin/fleet-libraries/{id}", Verb::Patch),
-    ("/v1/admin/fleet-libraries/{id}", Verb::Delete),
     ("/v1/admin/platform-keys", Verb::Get),
     ("/v1/admin/platform-keys", Verb::Put),
     ("/v1/admin/platform-keys/{provider}", Verb::Delete),

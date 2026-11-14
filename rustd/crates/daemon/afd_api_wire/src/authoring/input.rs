@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Native initial setup. A Library or fleet source pins a revision explicitly.
+/// Native initial setup. A Plugin or fleet source pins a revision explicitly.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -11,9 +11,9 @@ pub enum Source<D = Value> {
     /// Start without a candidate.
     Blank,
     /// Capture a published immutable revision.
-    Library {
+    Plugin {
         /// Entry identity.
-        library_id: String,
+        plugin_id: String,
         /// Selected revision identity.
         revision_id: String,
     },

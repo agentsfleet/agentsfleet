@@ -12,7 +12,7 @@ pub(crate) const LOCK: &str = include_str!("lock.sql");
 
 /// `$1` id, `$2` workspace, `$3` tenant, `$4` creator, `$5` title, `$6` status,
 /// `$7` tenant model (NULL for the platform default), `$8` source type,
-/// `$9` source Library revision, `$10` source fleet revision, `$11` instance
+/// `$9` source Plugin revision, `$10` source fleet revision, `$11` instance
 /// name, `$12` linked fleet, `$13` the initial counter.
 pub(crate) const CREATE: &str = include_str!("create.sql");
 

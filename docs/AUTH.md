@@ -165,8 +165,7 @@ The `read < write < admin` ladder is stored as data. Holding a higher scope sati
 | `approval:read` / `approval:resolve` | view the approval inbox / decide (approve or deny) an approval gate. The one pair here with a ladder: `approval:resolve` includes `approval:read` (`HIERARCHY`, `scope.rs`) |
 | `billing:read` | Read the tenant balance, raw charges, settled report and activity charges. [Billing reporting](architecture/billing_reporting.md#public-reads) lists the reporting paths. Balance and raw charges retain `/v1/tenants/me/billing` and `/v1/tenants/me/billing/charges`. |
 | `workspace:admin` | create workspaces; list the tenant's workspaces; manage the account's invites and members (§Invites) |
-| `library:write` | mutate the Fleet library catalogue — tenant-tier onboarding, held by a workspace owner (consumed by M103) |
-| `platform-library:write` | mutate the Fleet library catalogue — platform-tier onboarding (`POST /v1/admin/fleet-libraries`), held by a platform operator. Independent of `library:write` — no hierarchy between the two |
+| `plugins:write` | publish, revise and delete account-owned Plugins; held independently of fleet write authority |
 
 **Runner credential** (machine identity, minted onto the `agt_r` token and never granted to a human):
 
@@ -198,7 +197,7 @@ See §"CLI credential: resolved, not granted" below for the resolver's failure m
 
 | Constant | Scopes | Why it exists in code |
 |---|---|---|
-| `TENANT_OWNER_GRANT` | `fleet:admin`, `schedule:write`, `secret:write`, `apikey:admin`, `grant:write`, `connector:write`, `billing:read`, `workspace:admin`, `library:write`, `approval:resolve` | WRITTEN once into a new owner's `public_metadata.scopes` at signup, rendered space-delimited by `signup_owner_claim()` (`rustd/crates/daemon/afd_auth/src/scope.rs`). The writeback runs from the ingress plane's identity-events handler (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`), not the tenant one. A seed, not an authority: the provider owns the value from that instant, and an operator's edit wins permanently. No platform/cross-tenant scope, preserving "an admin cannot enroll a runner" |
+| `TENANT_OWNER_GRANT` | `fleet:admin`, `schedule:write`, `secret:write`, `apikey:admin`, `grant:write`, `connector:write`, `billing:read`, `workspace:admin`, `plugins:write`, `approval:resolve` | WRITTEN once into a new owner's `public_metadata.scopes` at signup, rendered space-delimited by `signup_owner_claim()` (`rustd/crates/daemon/afd_auth/src/scope.rs`). The writeback runs from the ingress plane's identity-events handler (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`), not the tenant one. A seed, not an authority: the provider owns the value from that instant, and an operator's edit wins permanently. No platform/cross-tenant scope, preserving "an admin cannot enroll a runner" |
 | `RUNNER_SCOPES` | `runner:self` | DERIVED for every `agt_r` runner principal by `Principal::scopes` (`rustd/crates/daemon/afd_auth/src/principal.rs`), never stored on it — the one credential class with no identity at the provider to resolve against, because it names a machine, not a person |
 
 **Approving follows the person, not the credential class (M160_002 §6, Indy's call, Aug 13, 2026)**. An earlier revision authored a machine grant in code (the owner set minus `approval:resolve`). This kept a Fleet holding an `agt_t` key from approving the gate guarding its own next action.
@@ -211,7 +210,7 @@ The gate is scoped to the person. Keeping an automation out of the approval surf
 
 | Recommended for | Scope set |
 |---|---|
-| platform operator (almost no one) | `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `platform-library:write`, `workspace:any` |
+| platform operator (almost no one) | `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `workspace:any` |
 | read-only collaborator | `fleet:read`, `schedule:read`, `grant:read`, `connector:read`, `billing:read`, `approval:read` |
 
 ### CLI credential: resolved, not granted
@@ -280,7 +279,7 @@ The result is not cached. A deletion is permanent and needs no cache, while a tr
 
 This requires the Clerk **session-token claims** to project `public_metadata.scopes` into the top-level `scopes` claim, and `public_metadata.tenant_id` into `metadata.tenant_id` (`playbooks/founding/03_priming_infra/001_playbook.md`, step "Configure Clerk claims"). Setting Public metadata alone does nothing if the claims do not map it.
 
-Grant the full platform-operator bundle only to a development user who needs write and admin actions. The bundle is `runner:enroll runner:write stream:read model:admin platform-key:admin platform-library:write workspace:any`.
+Grant the full platform-operator bundle only to a development user who needs write and admin actions. The bundle is `runner:enroll runner:write stream:read model:admin platform-key:admin workspace:any`.
 
 It includes platform key rotation and access across tenants. Read-only inspection needs neither permission.
 
@@ -981,7 +980,7 @@ Missing, foreign and creator-private drafts return the same nondisclosing 404.
 |---|---|---|
 | Read, edit, message or stream a private draft | `fleet:write` | Current membership and creator identity |
 | Save or Apply a reviewed setup | `fleet:write` | Current membership; a private candidate must belong to the caller |
-| Publish a private candidate to Library | `library:write` | Current membership and creator identity |
+| Publish a private candidate as a Plugin | `plugins:write` | Current membership and creator identity |
 
 The route scopes live in `afd_http/src/route/{workspace,fleet}.rs`.
 `afd_authoring/src/access.rs` and `sql/draft/lock.sql` enforce the inner identity boundary.
@@ -1078,7 +1077,9 @@ This is why the SSE path uses a Next Route Handler instead of forwarding the coo
 
 Per-template audience isolation: a Token-B leak via agentsfleetd logs cannot be replayed against `storage-svc` because the `aud` doesn't match. Each microservice strict-checks only its own audience; cross-service replay is structurally prevented by the JWT verifier, not by application logic.
 
-Templates can also be scope-gated (e.g. "only users whose `scopes` claim carries `library:write` can mint the `fleets` template") via Clerk dashboard configuration. Adding a new microservice = create a new JWT template in Clerk + add a new strict `OIDC_AUDIENCE` value on that service. No new auth code in `agentsfleetd` (or any sibling service); the existing session-token path serves every future Bearer-audience service with config alone.
+Clerk dashboard configuration can restrict templates by scope, such as requiring `plugins:write` for the `fleets` template.
+For a new microservice, create its JWT template in Clerk and set its strict `OIDC_AUDIENCE` value.
+The existing session-token path serves future Bearer-audience services through configuration, without new auth code in `agentsfleetd` or sibling services.
 
 ---
 

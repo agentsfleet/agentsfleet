@@ -253,35 +253,27 @@ pub struct Draft {
     pub draft_id: String,
 }
 
-/// One Library entry a workspace can see.
+/// One Plugin entry a workspace can see.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
-pub struct Library {
+pub struct Plugin {
     /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// Library identifier: a platform slug or your Library entry's version 7 universally
-    /// unique identifier (UUID).
-    pub library_id: String,
+    /// Plugin identifier (version 7 universally unique identifier, or UUID).
+    #[param(format = "uuid")]
+    pub plugin_id: String,
 }
 
-/// One immutable revision of a Library entry.
+/// One immutable revision of a Plugin entry.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
-pub struct LibraryRevision {
+pub struct PluginRevision {
     /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
-    /// Library identifier: a platform slug or your Library entry's version 7 universally
-    /// unique identifier (UUID).
-    pub library_id: String,
+    /// Plugin identifier (version 7 universally unique identifier, or UUID).
+    #[param(format = "uuid")]
+    pub plugin_id: String,
     /// Revision identifier (version 7 universally unique identifier, or UUID).
+    #[param(format = "uuid")]
     pub revision_id: String,
-}
-
-/// One platform Library entry, addressed by its stable slug.
-#[derive(Debug, IntoParams)]
-#[into_params(parameter_in = Path)]
-pub struct PlatformLibrary {
-    /// Platform Library slug, 1 to 128 characters.
-    #[param(min_length = 1, max_length = 128)]
-    pub id: String,
 }

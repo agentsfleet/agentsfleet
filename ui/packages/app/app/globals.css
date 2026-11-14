@@ -109,6 +109,15 @@ body {
 
 code, pre, kbd { font-family: var(--ff-mono); }
 
+/* Provider-generated input styles otherwise outrank the shared phone scale. */
+@media (max-width: 42.5rem), (pointer: coarse) {
+  [data-surface="auth"] .cl-formFieldInput.cl-formFieldInput,
+  [data-surface="auth"] .cl-otpCodeFieldInput.cl-otpCodeFieldInput {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+}
+
 /* Prevent mobile browser zoom without enlarging desktop form text. */
 @media (max-width: 42.5rem), (pointer: coarse) {
   input:not([type="checkbox"]):not([type="radio"]), textarea, select, [role="combobox"]:not([data-composer-part]) {

@@ -25,10 +25,6 @@ afd_http::plane_collector! {
     /// The collector. Private: [`document`] is the whole of what this module offers.
     struct Plane;
     paths(
-        crate::handler::admin::libraries::delete,
-        crate::handler::admin::libraries::list,
-        crate::handler::admin::libraries::patch,
-        crate::handler::admin::library_stage::create,
         crate::handler::admin::models::create,
         crate::handler::admin::models::delete,
         crate::handler::admin::models::list,

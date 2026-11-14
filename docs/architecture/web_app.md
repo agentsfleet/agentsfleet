@@ -23,7 +23,7 @@ The [chat workspace design](../designs/chat-within-a-workspace.md) applies these
 It retains assistant-ui, keys private draft/shared fleet adapters by account/workspace/subject, and loads configuration details on intent.
 
 **Save fleet** and **Save changes** follow the [single resource reference](api_resources.md).
-**Publish to Library** remains an explicit action in the chat menu.
+**Publish plugin** remains an explicit action in the chat menu.
 
 The authoring API and workspace chat adapters are implemented. The [original API proposal](../reviews/workspace-setup/api.md) records design history; [API resources](api_resources.md) describes the current routes.
 
@@ -230,7 +230,7 @@ The proxies forward `Last-Event-ID` unchanged. Private setup reconnects retain t
 
 A shared Definition powers instruction edits, model proposals and checked saves. Save retains one fleet identity with visible setup checks and keeps authoring open. When an initial run is requested, Pending remains until its committed admission is confirmed with its expected event identity.
 
-Save does not publish a Library entry. Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Edit fleet starts a private draft against a pinned setup revision.
+Save does not publish a Plugin. Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Edit fleet starts a private draft against a pinned setup revision.
 
 Runtime controls and shared fleet history retain their existing authority. See [fleet_definitions.md](fleet_definitions.md#validated-definition), [data_flow.md](data_flow.md#fleet-creation-and-setup-recovery), and [API resources](api_resources.md).
 

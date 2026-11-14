@@ -14,13 +14,10 @@ pub enum Source {
     /// Start with no candidate; the first proposal may initialize one.
     Blank,
     /// Capture an explicitly selected immutable published revision.
-    Library {
-        /// Selected opaque entry identifier.
-        #[garde(
-            length(bytes, min = 1, max = 128),
-            custom(af_validate::rules::nul_free)
-        )]
-        library_id: String,
+    Plugin {
+        /// Selected account-owned entry `UUIDv7`.
+        #[garde(skip)]
+        plugin_id: Uuid7,
         /// Selected revision; never inferred from mutable head.
         #[garde(skip)]
         revision_id: Uuid7,

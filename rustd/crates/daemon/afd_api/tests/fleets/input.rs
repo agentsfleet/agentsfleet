@@ -141,7 +141,7 @@ async fn creation_requires_one_header_key_and_refuses_file_sources() {
     .await;
     assert_eq!(missing.status(), StatusCode::BAD_REQUEST);
     for invalid in [
-        r#"{"platform_library_id":"daily-digest"}"#,
+        r#"{"platform_plugin_id":"daily-digest"}"#,
         r#"{"source":{"kind":"file","path":"setup.json"},"name":"file","review_digest":"review","start":{"kind":"none"}}"#,
     ] {
         let response = harness::send_with_headers(

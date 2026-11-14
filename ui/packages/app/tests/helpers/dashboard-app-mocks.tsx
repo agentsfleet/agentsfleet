@@ -30,8 +30,6 @@ export const resetTenantProviderMock = vi.fn();
 export const listSecretsMock = vi.fn();
 export const createSecretMock = vi.fn();
 export const deleteSecretMock = vi.fn();
-export const listWorkspaceFleetLibraryMock = vi.fn();
-export const onboardWorkspaceFleetLibraryMock = vi.fn();
 
 export const setFleetStatusActionMock = vi.fn<
   (ws: string, zid: string, status: string, ifMatch: string) => Promise<ActionResult<unknown>>
@@ -125,17 +123,6 @@ export function secretsApiMock() {
   };
 }
 
-// Mocks the fleet-template gallery client (`@/lib/api/fleet-library`). Both the
-// raw reader and its React cache() wrapper resolve to the same vi.fn so a test
-// can drive either entry point through one mock.
-export function fleetLibraryMock() {
-  return {
-    listWorkspaceFleetLibrary: listWorkspaceFleetLibraryMock,
-    listWorkspaceFleetLibraryCached: listWorkspaceFleetLibraryMock,
-    onboardWorkspaceFleetLibrary: onboardWorkspaceFleetLibraryMock,
-  };
-}
-
 export function addSecretFormMock() {
   return { default: ({ workspaceId }: { workspaceId: string }) => React.createElement("div", { "data-add-secret-form": workspaceId }) };
 }
@@ -178,12 +165,5 @@ export function resetDashboardMocks() {
   listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
   listFleetEventsMock.mockResolvedValue({ items: [], next_cursor: null });
   setFleetStatusMock.mockResolvedValue(undefined);
-  listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
-  onboardWorkspaceFleetLibraryMock.mockResolvedValue({
-    id: "tmpl_1",
-    name: "Template",
-    visibility: "tenant",
-    content_hash: "sha256:abc",
-    requirements: { credentials: [], tools: [], network_hosts: [], trigger_present: true },
-  });
+
 }

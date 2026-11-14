@@ -8,7 +8,6 @@ use afd_auth::Scope;
 
 use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
-const PLATFORM_LIBRARY_WRITE: &[Scope] = &[Scope::PlatformLibraryWrite];
 const PLATFORM_KEY_READ: &[Scope] = &[Scope::PlatformKeyRead];
 const PLATFORM_KEY_ADMIN: &[Scope] = &[Scope::PlatformKeyAdmin];
 const MODEL_READ: &[Scope] = &[Scope::ModelRead];
@@ -17,10 +16,6 @@ const MODEL_ADMIN: &[Scope] = &[Scope::ModelAdmin];
 /// The platform-tier surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AdminRoute {
-    /// The platform fleet-library catalogue.
-    FleetLibrary,
-    /// One platform library entry.
-    FleetLibraryEntry,
     /// The platform default provider keys.
     PlatformKeys,
     /// One platform key, by provider.
@@ -34,8 +29,6 @@ pub enum AdminRoute {
 impl AdminRoute {
     /// Every admin route.
     pub const ALL: &'static [Self] = &[
-        Self::FleetLibrary,
-        Self::FleetLibraryEntry,
         Self::PlatformKeys,
         Self::PlatformKey,
         Self::Models,
@@ -50,8 +43,8 @@ impl AdminRoute {
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
-            Self::FleetLibrary | Self::Models => &[Verb::Get, Verb::Post],
-            Self::FleetLibraryEntry | Self::Model => &[Verb::Patch, Verb::Delete],
+            Self::Models => &[Verb::Get, Verb::Post],
+            Self::Model => &[Verb::Patch, Verb::Delete],
             Self::PlatformKeys => &[Verb::Get, Verb::Put],
             Self::PlatformKey => &[Verb::Delete],
         }
@@ -63,14 +56,6 @@ impl AdminRoute {
     #[must_use]
     pub const fn meta(self) -> RouteMeta {
         let (template, scopes) = match self {
-            Self::FleetLibrary => (
-                "/v1/admin/fleet-libraries",
-                Scopes::Always(PLATFORM_LIBRARY_WRITE),
-            ),
-            Self::FleetLibraryEntry => (
-                "/v1/admin/fleet-libraries/{id}",
-                Scopes::Always(PLATFORM_LIBRARY_WRITE),
-            ),
             Self::PlatformKeys => (
                 "/v1/admin/platform-keys",
                 Scopes::rw(PLATFORM_KEY_READ, PLATFORM_KEY_ADMIN),

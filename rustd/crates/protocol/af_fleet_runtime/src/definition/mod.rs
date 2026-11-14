@@ -153,7 +153,7 @@ impl Definition {
         self.config.runtime()
     }
 
-    /// Checks the stronger boundary for Save and explicit Library publication.
+    /// Checks the stronger boundary for Save and explicit Plugin publication.
     ///
     /// # Errors
     /// Editing may be empty; publication and runnable setup may not.

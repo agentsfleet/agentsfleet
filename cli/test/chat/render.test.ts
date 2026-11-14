@@ -19,7 +19,7 @@ function streams(format: typeof OUTPUT_FORMAT[keyof typeof OUTPUT_FORMAT] = OUTP
 }
 
 describe("scriptable chat output", () => {
-  test.each([OUTPUT_FORMAT.text, OUTPUT_FORMAT.json])("review identifies the candidate you can stage in the platform library (%s)", async format => {
+  test.each([OUTPUT_FORMAT.text, OUTPUT_FORMAT.json])("review identifies the candidate you can stage in the platform plugin (%s)", async format => {
     await withApi(() => Response.json(DRAFT), async transport => {
       const {output, stdout} = streams(format);
       const actions = new ChatActions(new DraftSession(transport, MODEL, {kind: DRAFT_SOURCE.blank}, DRAFT.id),

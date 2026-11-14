@@ -8,7 +8,6 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
@@ -35,7 +34,7 @@ const EVERY_SCOPE: ScopeSet = ScopeSet::from_scopes(&[
     Scope::FleetWrite,
     Scope::ApprovalRead,
     Scope::PlatformKeyAdmin,
-    Scope::PlatformLibraryWrite,
+    Scope::PluginsWrite,
 ]);
 
 /// The malformed-request code.
@@ -52,10 +51,6 @@ const EVENT_ID_MAX_LEN: usize = 256;
 
 /// The longest provider a platform-key path may name.
 const KEY_PROVIDER_MAX_BYTES: usize = 32;
-
-/// A platform Library entry id: native slugs and opaque identifiers share one
-/// byte bound.
-const PLATFORM_LIBRARY_ID_MAX_BYTES: usize = 128;
 
 /// The longest actor glob or prefix.
 const MAX_ACTOR_FILTER_BYTES: usize = 256;
@@ -131,24 +126,6 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
         INVALID_REQUEST,
     )
     .await;
-
-    // A platform Library entry id is bounded before acquiring a datastore, on
-    // both verbs that name one.
-    let library = "n".repeat(PLATFORM_LIBRARY_ID_MAX_BYTES + 1);
-    for method in [Method::PATCH, Method::DELETE] {
-        assert_refused(
-            method,
-            &format!("/v1/admin/fleet-libraries/{library}"),
-            INVALID_REQUEST,
-        )
-        .await;
-    }
-    let at_bound = "n".repeat(PLATFORM_LIBRARY_ID_MAX_BYTES);
-    assert_accepted(
-        Method::DELETE,
-        &format!("/v1/admin/fleet-libraries/{at_bound}"),
-    )
-    .await;
 }
 
 #[tokio::test]
@@ -187,33 +164,55 @@ async fn test_provider_filter_shares_the_catalogue_bound() {
     assert_accepted(Method::GET, &format!("/v1/models?provider={at_bound}")).await;
 }
 
-/// The generated document bounds the platform Library entry id the way the
-/// handler does: a 1 to [`PLATFORM_LIBRARY_ID_MAX_BYTES`] byte slug on both
-/// routes that take one, never a UUID.
+#[tokio::test]
+async fn plugin_paths_reject_non_uuid_identifiers_before_storage() {
+    let base = format!("/v1/workspaces/{OWNED_WORKSPACE}/plugins");
+    for id in ["example", "owned", "01924f4e-0000-4000-8000-00000000b0de"] {
+        for method in [Method::GET, Method::DELETE] {
+            assert_refused(method, &format!("{base}/{id}"), INVALID_REQUEST).await;
+        }
+        assert_refused(
+            Method::GET,
+            &format!("{base}/{FLEET}/revisions/{id}"),
+            INVALID_REQUEST,
+        )
+        .await;
+    }
+    assert_accepted(Method::GET, &format!("{base}/{FLEET}")).await;
+}
+
 #[test]
-fn test_the_published_platform_library_id_bound_is_the_enforced_one() {
+fn published_plugin_parameters_are_uuid_identifiers() {
     let document = serde_json::to_value(afd_api::openapi::document())
         .expect("the generated document serializes");
-    for verb in ["patch", "delete"] {
-        let id = document
-            .pointer(&format!(
-                "/paths/~1v1~1admin~1fleet-libraries~1{{id}}/{verb}/parameters"
-            ))
-            .and_then(Value::as_array)
-            .and_then(|parameters| {
-                parameters
-                    .iter()
-                    .find(|parameter| parameter.get("name").and_then(Value::as_str) == Some("id"))
-            })
-            .and_then(|parameter| parameter.get("schema"))
-            .unwrap_or_else(|| panic!("{verb} publishes an id parameter with a schema"));
-        assert_eq!(
-            (
-                id.get("minLength").and_then(Value::as_u64),
-                id.get("maxLength").and_then(Value::as_u64),
-            ),
-            (Some(1), u64::try_from(PLATFORM_LIBRARY_ID_MAX_BYTES).ok()),
-            "{verb}: {id}"
-        );
+    let paths = document
+        .get("paths")
+        .and_then(Value::as_object)
+        .expect("document paths");
+    let mut checked = 0;
+    for (path, route) in paths.iter().filter(|(path, _)| path.contains("/plugins/")) {
+        for operation in route.as_object().expect("path operations").values() {
+            let parameters = operation
+                .get("parameters")
+                .and_then(Value::as_array)
+                .expect("parameters");
+            for parameter in parameters {
+                if matches!(
+                    parameter.get("name").and_then(Value::as_str),
+                    Some("plugin_id" | "revision_id")
+                ) {
+                    assert_eq!(
+                        parameter.pointer("/schema/format").and_then(Value::as_str),
+                        Some("uuid"),
+                        "{path}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
     }
+    assert_eq!(
+        checked, 7,
+        "every Plugin operation declares its identifiers"
+    );
 }

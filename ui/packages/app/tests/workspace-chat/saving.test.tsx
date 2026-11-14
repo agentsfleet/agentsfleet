@@ -68,7 +68,7 @@ describe("private chat Save", () => {
     expect(chatRouter.push).not.toHaveBeenCalled();
     await waitFor(() => expect(chatRouter.replace).toHaveBeenCalledExactlyOnceWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`, {scroll: false}));
     expect((await screen.findByRole("link", {name: "Open fleet"})).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
-    expect(fixture.writes().filter((call) => call.path.endsWith("/fleet-libraries"))).toHaveLength(0);
+    expect(fixture.writes().filter((call) => call.path.endsWith("/plugins"))).toHaveLength(0);
     const save = fixture.writes().find((call) => call.path.endsWith("/fleets"));
     expect(save?.headers.get("Idempotency-Key")).toBeTruthy();
     expect(save?.body).toMatchObject({review_digest: "review-one", start: {kind: "none"}});
@@ -94,9 +94,9 @@ describe("private chat Save", () => {
     await openPublication();
     const dialog = screen.getByRole("dialog", {name: "Publish plugin"});
     fireEvent.click(await within(dialog).findByRole("button", {name: "Publish new entry"}));
-    await waitFor(() => expect(fixture.writes().filter((call) => call.path.endsWith("/fleet-libraries"))).toHaveLength(1));
+    await waitFor(() => expect(fixture.writes().filter((call) => call.path.endsWith("/plugins"))).toHaveLength(1));
     expect(fixture.saveAttempts).toBe(0);
-    expect(fixture.writes().find((call) => call.path.endsWith("/fleet-libraries"))?.body).toMatchObject({label: "repairer"});
+    expect(fixture.writes().find((call) => call.path.endsWith("/plugins"))?.body).toMatchObject({label: "repairer"});
   });
 
   it("edits instructions through the menu and keeps saving the fleet explicit", async () => {

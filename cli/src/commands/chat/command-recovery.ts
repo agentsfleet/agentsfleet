@@ -33,7 +33,7 @@ export function recoverSetup(setup: SetupSession, options: ChatOptions, output: 
       return schedulesOwed(applied.schedules) ? 1 : 0;
     }
     if (!options.publish) return yield* missing("one explicit --save, --apply or --publish action");
-    const target = options.publishTo && options.libraryEtag ? {id: options.publishTo, etag: options.libraryEtag} : undefined;
+    const target = options.publishTo && options.pluginEtag ? {id: options.publishTo, etag: options.pluginEtag} : undefined;
     const published = yield* setup.publishCandidate(candidate, options.publish, target);
     yield* renderResult(output, `Published plugin revision ${published.revision_id}`, published);
     return 0;

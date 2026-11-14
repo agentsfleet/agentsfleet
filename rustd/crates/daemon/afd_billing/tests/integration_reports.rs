@@ -17,6 +17,8 @@ use std::collections::HashSet;
 
 #[path = "report/concurrency.rs"]
 mod concurrency;
+#[path = "report/daily.rs"]
+mod daily;
 #[path = "report/failures.rs"]
 mod failures;
 #[path = "report/fixture.rs"]

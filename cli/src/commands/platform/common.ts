@@ -9,7 +9,6 @@ import { resolveAuthToken } from "../workspace/guards.ts";
 export const ADMIN_RUNNERS_PATH = "/v1/admin/runners";
 export const ADMIN_MODELS_PATH = "/v1/admin/models";
 export const ADMIN_KEYS_PATH = "/v1/admin/platform-keys";
-export const ADMIN_LIBRARY_PATH = "/v1/admin/fleet-libraries";
 const INPUT_MAX_BYTES = 1024 * 1024;
 const INPUT_HINT = "use the JSON shape documented by `agentsfleet platform --help`";
 const RESPONSE_DETAIL = "The platform response did not match the supported API shape";

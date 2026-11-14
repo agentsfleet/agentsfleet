@@ -3,10 +3,9 @@
 mod creation;
 mod failure;
 mod input;
-mod library;
 mod models;
 mod output;
-mod platform;
+mod plugin;
 mod review;
 mod revision;
 mod source;
@@ -15,7 +14,6 @@ pub(crate) use creation::InitialStart;
 pub use creation::{SaveFleet, SaveOrigin, SaveSource, Start, StartOutcome, StartState};
 pub use failure::{Failure, FailureCause};
 pub use models::{ModelEligibility, ModelPricing, ModelPurpose, ModelsQuery, WorkspaceModel};
-pub use platform::{PlatformLibrary, PlatformPatch};
 pub use review::{
     Action, ActionKind, Check, CheckKind, CheckState, Effective, Requirements, Review,
 };
@@ -23,14 +21,14 @@ pub use revision::{AppliedRevision, ApplyRevision};
 pub(crate) use source::{PinColumns, SourcePin};
 
 pub use input::{CreateDraft, DraftPatch, ListQuery, MessageQuery, SendMessage, Source};
-pub use library::{
-    Library, LibraryCard, LibraryQuery, LibraryRevision, Publication, PublishLibrary,
-    PublishRevision, Published, RevisionSummary,
-};
 pub use output::{
     Accepted, Candidate, Created, Draft, DraftCard, DraftState, Message, MessageState, Page,
 };
 pub(crate) use output::{CANCELLED, EDITING, QUEUED, RUNNING};
+pub use plugin::{
+    Plugin, PluginCard, PluginQuery, PluginRevision, Publication, PublishPlugin, PublishRevision,
+    Published, RevisionSummary,
+};
 
 /// Upper bound on a chat message's UTF-8 bytes.
 pub const MAX_MESSAGE_BYTES: usize = 32 * 1024;

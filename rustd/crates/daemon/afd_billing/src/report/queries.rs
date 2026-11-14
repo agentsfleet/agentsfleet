@@ -29,6 +29,7 @@ where
         .bind(dimension::SUMMARY)
         .bind(dimension::FLEET)
         .bind(dimension::MODEL)
+        .bind(dimension::DAY)
 }
 
 /// Grouped activity paging, with every tie-breaking key in its boundary.

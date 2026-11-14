@@ -1,4 +1,4 @@
-// A pinned Library revision or fleet setup revision opens its draft without a
+// A pinned Plugin revision or fleet setup revision opens its draft without a
 // first message, so `--no-input` can review and act on it with no prompt.
 
 import { expect, test } from "bun:test";
@@ -8,14 +8,14 @@ import { START } from "../../src/commands/chat/setup-session.ts";
 import { HTTP_METHOD } from "../../src/constants/http-method.ts";
 import { isRecord } from "../../src/lib/guards.ts";
 import { bufferStream, cliEnv, withAuthedStateDir } from "../helpers-cli-state.ts";
-import { CANDIDATE_ID, DRAFT, DRAFT_ID, FLEET, FLEET_ID, LIBRARY_ID, MODEL, PRIVATE_TEXT, REVIEW, REVISION_ID,
+import { CANDIDATE_ID, DRAFT, DRAFT_ID, FLEET, FLEET_ID, PLUGIN_ID, MODEL, PRIVATE_TEXT, REVIEW, REVISION_ID,
   WORKSPACE, withApi, problem } from "./fixture.ts";
 
 const DRAFTS = `/v1/workspaces/${WORKSPACE}/drafts`;
 const FLEETS = `/v1/workspaces/${WORKSPACE}/fleets`;
-const LIBRARY_ARGS = ["--plugin", LIBRARY_ID, "--revision", REVISION_ID, "--model", MODEL, "--no-input"];
+const PLUGIN_ARGS = ["--plugin", PLUGIN_ID, "--revision", REVISION_ID, "--model", MODEL, "--no-input"];
 const FLEET_ARGS = ["--fleet", FLEET_ID, "--setup-revision", FLEET.setup_revision, "--model", MODEL, "--no-input"];
-const LIBRARY_SOURCE = {kind: DRAFT_SOURCE.library, library_id: LIBRARY_ID, revision_id: REVISION_ID};
+const PLUGIN_SOURCE = {kind: DRAFT_SOURCE.plugin, plugin_id: PLUGIN_ID, revision_id: REVISION_ID};
 const FLEET_SOURCE = {kind: DRAFT_SOURCE.fleet, fleet_id: FLEET_ID, setup_revision: FLEET.setup_revision};
 // A fleet-sourced draft names its fleet and the setup revision it improves, so
 // review reads that fleet to capture the setup tag Apply must send.
@@ -46,17 +46,17 @@ function operationOf(body: unknown): string {
   return key;
 }
 
-test("a pinned Library revision is reviewed and saved with no first message and no prompt", async () => {
+test("a pinned Plugin revision is reviewed and saved with no first message and no prompt", async () => {
   const calls: Call[] = [];
   await withApi(async (request) => {
     await record(request, calls);
     return Response.json(new URL(request.url).pathname === FLEETS ? FLEET : DRAFT);
   }, async (_, origin) => {
-    const result = await invoke(origin, [...LIBRARY_ARGS, "--review", "--save", "--review-digest", REVIEW.review_digest]);
+    const result = await invoke(origin, [...PLUGIN_ARGS, "--review", "--save", "--review-digest", REVIEW.review_digest]);
     expect(result.code).toBe(0);
     expect(calls.map(({method, path}) => `${method} ${path}`))
       .toEqual([`POST ${DRAFTS}`, `GET ${DRAFTS}/${DRAFT_ID}`, `POST ${FLEETS}`]);
-    expect(calls[0]?.body).toEqual({source: LIBRARY_SOURCE, authoring_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
+    expect(calls[0]?.body).toEqual({source: PLUGIN_SOURCE, authoring_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
     expect(calls[2]?.body).toEqual({source: {kind: "draft", draft_candidate_id: CANDIDATE_ID},
       name: REVIEW.effective.instance_name, review_digest: REVIEW.review_digest, start: {kind: START.none}, origin: "cli"});
     expect(result.out).toContain(`"draft_id":"${DRAFT_ID}"`);
@@ -81,28 +81,28 @@ test("a fleet setup revision is reviewed and applied under its observed setup ta
   });
 });
 
-test("a Library first message still travels with its source in one atomic creation", async () => {
+test("a Plugin first message still travels with its source in one atomic creation", async () => {
   const calls: Call[] = [];
   await withApi(async (request) => {
     await record(request, calls);
     return problem(503);
   }, async (_, origin) => {
-    await invoke(origin, [...LIBRARY_ARGS, "--message", PRIVATE_TEXT]);
-    expect(calls[0]?.body).toEqual({source: LIBRARY_SOURCE, authoring_model_ref: MODEL, message: PRIVATE_TEXT,
+    await invoke(origin, [...PLUGIN_ARGS, "--message", PRIVATE_TEXT]);
+    expect(calls[0]?.body).toEqual({source: PLUGIN_SOURCE, authoring_model_ref: MODEL, message: PRIVATE_TEXT,
       operation_id: operationOf(calls[0]?.body)});
     expect(calls).toHaveLength(1);
   });
 });
 
 const CONFLICTS: ReadonlyArray<readonly [string, ReadonlyArray<string>, string]> = [
-  ["--plugin with --fleet", [...LIBRARY_ARGS, "--fleet", FLEET_ID, "--setup-revision", "1"], "Choose one source: --fleet, --plugin or --definition"],
-  ["--plugin on a resumed draft", [DRAFT_ID, "--plugin", LIBRARY_ID, "--revision", REVISION_ID, "--no-input"],
+  ["--plugin with --fleet", [...PLUGIN_ARGS, "--fleet", FLEET_ID, "--setup-revision", "1"], "Choose one source: --fleet, --plugin or --definition"],
+  ["--plugin on a resumed draft", [DRAFT_ID, "--plugin", PLUGIN_ID, "--revision", REVISION_ID, "--no-input"],
     "A resumed draft keeps its source"],
   ["--fleet on a resumed draft", [DRAFT_ID, "--fleet", FLEET_ID, "--setup-revision", "1", "--no-input"],
     "A resumed draft keeps its source"],
-  ["--plugin without --revision", ["--plugin", LIBRARY_ID, "--model", MODEL, "--no-input", "--review"],
+  ["--plugin without --revision", ["--plugin", PLUGIN_ID, "--model", MODEL, "--no-input", "--review"],
     "--plugin requires --revision"],
-  ["--operation-id with --review", [...LIBRARY_ARGS, "--review", "--operation-id", DRAFT_ID], "--operation-id recovers"],
+  ["--operation-id with --review", [...PLUGIN_ARGS, "--review", "--operation-id", DRAFT_ID], "--operation-id recovers"],
 ];
 
 for (const [label, args, detail] of CONFLICTS) {
@@ -127,7 +127,7 @@ test("a blank draft still needs a message outside an interactive terminal", asyn
   });
 });
 
-for (const [label, args] of [["Library", LIBRARY_ARGS], ["fleet", FLEET_ARGS]] as const) {
+for (const [label, args] of [["Plugin", PLUGIN_ARGS], ["fleet", FLEET_ARGS]] as const) {
   test(`an unknown ${label} creation is recovered by a later invocation with its reported identity`, async () => {
     const calls: Call[] = [];
     await withApi(async (request) => {

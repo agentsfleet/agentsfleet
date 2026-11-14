@@ -72,4 +72,15 @@ describe("validated settled billing reads", () => {
     respond({ detail: "Forbidden", error_code: "UZ-AUTH-002" }, 403);
     await expect(getBillingReport("fixture-token", { limit: 25 })).rejects.toBeInstanceOf(ApiError);
   });
+
+  it.each([undefined, [{day: "2026-02-30", totals: billingReport().totals}]])("rejects absent or invalid daily projections", async daily => {
+    respond({...billingReport(), daily});
+    await expect(getBillingReport("fixture-token", {limit: 25})).rejects.toThrow(/daily/);
+  });
+
+  it("rejects a fleet projection without recorded models", async () => {
+    const report = billingReport();
+    respond({...report, spending: {...report.spending, by_fleet: report.spending.by_fleet.map(row => ({...row, models: undefined}))}});
+    await expect(getBillingReport("fixture-token", {limit: 25})).rejects.toThrow(/models/);
+  });
 });

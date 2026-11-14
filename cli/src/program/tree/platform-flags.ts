@@ -13,7 +13,6 @@ export const PLATFORM_SCOPE = {
   runnerRead: "runner:read",
   runnerEnroll: "runner:enroll",
   runnerWrite: "runner:write",
-  libraryWrite: "platform-library:write",
 } as const;
 
 const PAGE_MIN = 1;
