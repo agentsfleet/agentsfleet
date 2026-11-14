@@ -13,7 +13,8 @@ executable: false
 Issue [#771](https://github.com/agentsfleet/agentsfleet/issues/771) declares 17 default entries and one advanced entry for `agentsfleet`.
 The [catalogue data](../../../scripts/model-library-allowlist.json) now holds 20 identities and 26 dated price rows.
 MiniMax M3.1 Flash and Kimi K3.1 Pro were added after the 2026-10-18 verification.
-The OpenRouter free MiniMax M3.1 Flash row was removed after OpenRouter ended the free endpoint (404, free launch period ended Oct 22, 2026).
+OpenRouter ended its free MiniMax M3.1 Flash endpoint on Oct 22, 2026, and the free slug now answers HTTP 404, so the catalogue no longer lists it.
+On 2026-11-14 the [OpenRouter models API](https://openrouter.ai/api/v1/models) lists `minimax/minimax-m3.1-flash` and no `:free` variant.
 The section remains in progress; this document records verified inputs, not a completed deployed picker.
 
 ## Why it exists

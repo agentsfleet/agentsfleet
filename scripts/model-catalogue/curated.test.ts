@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { catalogueModelNames, isCuratedModel, isFreeModel, isOfficialPriceSource } from "./curated";
+import { catalogueModelNames, isCuratedModel, isOfficialPriceSource } from "./curated";
 import { CATALOGUE_URL, parseCatalogue, readCatalogue } from "./catalogue";
 import { catalogueFixture, modelFixture, priceFixture } from "./test-fixtures";
 
@@ -15,15 +15,10 @@ describe("curated catalogue bounds", () => {
         prices: [{input: "0.15", cached_input: "0.015", output: "0.60"}]});
   });
 
-  test("no model is free while no free identity is curated", async () => {
-    const catalogue = await readCatalogue(new URL("../model-library-allowlist.json", import.meta.url));
-    expect(catalogue.models.filter(isFreeModel)).toEqual([]);
-  });
-
   test.each(["input", "cached_input", "output", "cache_write", "cache_write_5m", "cache_write_1h"])(
-    "paid models refuse decimal zero in %s", (field) => {
+    "models refuse decimal zero in %s", (field) => {
       const subject = modelFixture({ prices: [priceFixture({ [field]: "0.0" })] });
-      expect(() => parseCatalogue(catalogueFixture([subject]))).toThrow("zero prices are reserved for free models");
+      expect(() => parseCatalogue(catalogueFixture([subject]))).toThrow("zero prices are not allowed in the curated catalogue");
     });
 
   test("the allowlist includes native and routed Gemini independently", () => {
