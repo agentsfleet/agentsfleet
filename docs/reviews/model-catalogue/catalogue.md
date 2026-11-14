@@ -11,8 +11,9 @@ executable: false
 ## What it is
 
 Issue [#771](https://github.com/agentsfleet/agentsfleet/issues/771) declares 17 default entries and one advanced entry for `agentsfleet`.
-The [catalogue data](../../../scripts/model-library-allowlist.json) now holds 21 identities and 27 dated price rows.
-MiniMax M3.1 Flash, MiniMax M3.1 Flash (Free) and Kimi K3.1 Pro were added after the 2026-10-18 verification.
+The [catalogue data](../../../scripts/model-library-allowlist.json) now holds 20 identities and 26 dated price rows.
+MiniMax M3.1 Flash and Kimi K3.1 Pro were added after the 2026-10-18 verification.
+The OpenRouter free MiniMax M3.1 Flash row was removed after OpenRouter ended the free endpoint (404, free launch period ended Oct 22, 2026).
 The section remains in progress; this document records verified inputs, not a completed deployed picker.
 
 ## Why it exists
@@ -40,7 +41,6 @@ A provider's own models API supplies each context integer when it answers withou
 | openrouter | `meta/muse-wonder` | Muse Wonder | Default | 1,048,576 · [models API](https://openrouter.ai/api/v1/models#meta/muse-wonder) · 2026-10-18T13:32:07Z |
 | openrouter | `google/gemini-4-argon` | Gemini 4 Argon | Default | 1,048,576 · [models API](https://openrouter.ai/api/v1/models#google/gemini-4-argon) · 2026-10-18T13:32:07Z |
 | openrouter | `qwen/qwen3.8-max-0902` | Qwen3.8 Max 0902 | Default | 1,000,000 · [models API](https://openrouter.ai/api/v1/models#qwen/qwen3.8-max-0902) · 2026-10-18T13:32:07Z |
-| openrouter | `minimax/minimax-m3.1-flash:free` | MiniMax M3.1 Flash (Free) | Default | 1,000,000 · [models API](https://openrouter.ai/api/v1/models#minimax/minimax-m3.1-flash:free) · 2026-10-20T10:14:45Z |
 | groq | `openai/gpt-oss-120b` | GPT OSS 120B | Default | 131,072 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/openai/gpt-oss-120b/endpoints#groq) · 2026-10-19T03:15:54Z |
 | mistral | `mistral-large-4` | Mistral Large 4 | Default | 1,048,576 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/mistralai/mistral-large-4-0/endpoints#mistral) · 2026-10-19T03:15:54Z |
 | mistral | `mistral-small-2603` | Mistral Small 4 | Default | 262,144 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/mistralai/mistral-small-2603/endpoints#mistral) · 2026-10-19T03:15:54Z |
@@ -74,7 +74,6 @@ An unknown write rate is absent evidence, never a free rate.
 | openrouter / `meta/muse-wonder` | 0 | 2026-10-18T00:00:00Z → open | 4 | 0.20 | unknown | unknown | unknown | 20 | [price source](https://openrouter.ai/api/v1/models) |
 | openrouter / `google/gemini-4-argon` | 0 | 2026-10-18T00:00:00Z → open | 2 | 0.10 | 0.1875 | unknown | unknown | 10 | [price source](https://openrouter.ai/api/v1/models) |
 | openrouter / `qwen/qwen3.8-max-0902` | 0 | 2026-10-18T00:00:00Z → open | 2 | 0.25 | unknown | unknown | unknown | 6 | [price source](https://openrouter.ai/api/v1/models) |
-| openrouter / `minimax/minimax-m3.1-flash:free` | 0 | 2026-10-19T00:00:00Z → open | 0 | 0 | unknown | unknown | unknown | 0 | [price source](https://openrouter.ai/api/v1/models) |
 | groq / `openai/gpt-oss-120b` | 0 | 2026-10-18T00:00:00Z → open | 0.15 | 0.075 | unknown | unknown | unknown | 0.60 | [price source](https://console.groq.com/docs/prompt-caching) |
 | mistral / `mistral-large-4` | 0 | 2026-10-18T00:00:00Z → open | 0.68 | 0.07 | unknown | unknown | unknown | 2.09 | [price source](https://docs.mistral.ai/inference/pricing) |
 | mistral / `mistral-small-2603` | 0 | 2026-10-18T00:00:00Z → open | 0.15 | 0.015 | unknown | unknown | unknown | 0.60 | [price source](https://docs.mistral.ai/inference/pricing) |

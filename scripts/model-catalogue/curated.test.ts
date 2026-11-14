@@ -15,14 +15,9 @@ describe("curated catalogue bounds", () => {
         prices: [{input: "0.15", cached_input: "0.015", output: "0.60"}]});
   });
 
-  test("free models refuse a nonzero price", async () => {
+  test("no model is free while no free identity is curated", async () => {
     const catalogue = await readCatalogue(new URL("../model-library-allowlist.json", import.meta.url));
-    const free = catalogue.models.filter(isFreeModel);
-    expect(free).toHaveLength(1);
-    expect(free[0]).toMatchObject({ provider: "openrouter", model_name: "minimax/minimax-m3.1-flash:free" });
-    expect(() => parseCatalogue({ ...catalogue, models: free.map((model) => ({ ...model,
-      prices: model.prices.map((price) => ({ ...price, output: "0.01" })),
-    })) })).toThrow("free model prices must remain zero");
+    expect(catalogue.models.filter(isFreeModel)).toEqual([]);
   });
 
   test.each(["input", "cached_input", "output", "cache_write", "cache_write_5m", "cache_write_1h"])(
@@ -40,7 +35,7 @@ describe("curated catalogue bounds", () => {
 
   test("membership and safe diagnostic names come from the allowlist", async () => {
     const catalogue = await readCatalogue(CATALOGUE_URL);
-    expect(catalogue.models).toHaveLength(21);
+    expect(catalogue.models).toHaveLength(20);
     expect(catalogue.models.every(isCuratedModel)).toBe(true);
     expect([...catalogueModelNames]).toEqual([...new Set(catalogue.models.map((model) => model.model_name))]);
     expect(() => parseCatalogue(catalogueFixture([modelFixture(), modelFixture()])))
