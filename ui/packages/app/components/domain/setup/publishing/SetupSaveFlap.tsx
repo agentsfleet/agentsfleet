@@ -34,7 +34,7 @@ function FleetSaveFlap({client, view, dirty, ...statusProps}: Props) {
     try {
       const source = client.getSnapshot();
       if (source.preview && !source.draft) {
-        await client.edit({definition: source.preview.definition, instanceName: source.preview.instanceName});
+        await client.prepareSave();
         await client.refreshSetup();
       }
       const current = client.getSnapshot();

@@ -156,13 +156,19 @@ export class DraftClient {
     });
   }
   edit(input: DrawerEdit): Promise<void> {
+    return this.#edit(input);
+  }
+  /** Create from the selected source without replacing server-resolved runtime settings. */
+  prepareSave(): Promise<void> { return this.#edit(); }
+  #edit(input?: DrawerEdit): Promise<void> {
     return this.#requests.run(async () => {
       this.#idle();
       await this.#continueAuthoring();
       const draft = this.#snapshot.draft;
       if (!draft) {
+        if (!input && this.#source.kind === SOURCE_KIND.blank) throw new SetupUnavailable("Review a setup before saving.", 409);
         if (!this.#snapshot.model) throw new SetupUnavailable("Choose an authoring model first.", 400);
-        const source = this.#source.kind === SOURCE_KIND.blank ? {kind: SOURCE_KIND.definition, definition: input.definition} : this.#source;
+        const source = this.#source.kind === SOURCE_KIND.blank && input ? {kind: SOURCE_KIND.definition, definition: input.definition} : this.#source;
         const model = this.#snapshot.model;
         let selectionTag: string | undefined;
         await this.#operation.run({input, source, model}, async (operation_id) => {
@@ -171,10 +177,10 @@ export class DraftClient {
           this.#update({draft: created});
           this.#update(await this.#lists.refreshDraft(created.id, AbortSignal.any([this.#owner.signal, this.#view.signal])));
           selectionTag ??= created.etag;
-          const patch = createdDrawerPatch(created, input);
+          const patch = input ? createdDrawerPatch(created, input) : undefined;
           if (patch) await this.#patch(patch, selectionTag);
         });
-      } else {
+      } else if (input) {
         if (!draft.candidate) throw new SetupUnavailable("Continue chatting until the first setup is proposed before editing it.", 409);
         await this.#patch(drawerPatch(draft.candidate.definition, input));
       }

@@ -362,3 +362,21 @@ The owner authorized merging only after every Continuous Integration (CI) job pa
 This branch changes the API-key schema and retained Plugin schema. It must remain unmerged under that authorization.
 
 Companion pages are prepared on the separate documentation branch. Repository instructions defer their commit until the application PR merges.
+
+## PR 844 review corrections
+
+Greptile found that saving an existing preview could replace its frozen model with the current account default.
+The regression test reproduced that switch, then passed after the native preparation change.
+
+`DraftClient.prepareSave()` creates a selected-source draft without applying stale preview edits. The server's resolved runtime settings remain intact.
+
+Explicit editing retains its existing behavior. Both the active save flap and preserved publication tree use this preparation path.
+
+Native guards refuse preparation without a source or authoring model. Repeating preparation leaves an existing proposal intact.
+
+The browser job also found a billing fixture importing the HTTP adapter during test collection. Constants now come from the existing value-only module.
+
+No workflow or API-origin guard changed. Without an API URL, collection now finds all 114 browser tests.
+
+Focused save, model, continuation, recovery and publication checks passed 103 tests across seven files. Type-aware lint passed for the changed code and fixtures.
+The red and green logs use the `pr-844-` prefix under `/workspace/artifacts/m249-followup/`.

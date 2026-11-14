@@ -1,7 +1,6 @@
 import type { BillingActivity, BillingCharge, BillingReport, BillingTotals } from "@/lib/api/billing_report";
 import { PROVIDER_MODE } from "@/lib/types";
-import { BILLING_ACTIVITY_RUNTIME, BILLING_PERIOD_MONTH } from "@/lib/api/billing_report";
-import { BILLING_CHARGE_KIND } from "@/lib/api/billing-report-values";
+import { BILLING_ACTIVITY_RUNTIME, BILLING_PERIOD_MONTH, BILLING_CHARGE_KIND } from "@/lib/api/billing-report-values";
 
 export const BILLING_AT = "2026-10-25T12:00:00Z";
 export const BILLING_MODEL = "accounts/fireworks/models/minimax-m3p1-flash";
