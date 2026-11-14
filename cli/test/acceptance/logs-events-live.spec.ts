@@ -1,5 +1,5 @@
 /**
- * logs-events-live — live `logs` + `events` read paths against a freshly
+ * logs-events-live — live `fleet logs` + `fleet events` read paths against a freshly
  * installed fleet (seeded-credentials session, mirrors
  * lifecycle-with-token.spec.ts).
  *
@@ -9,10 +9,10 @@
  *     hydrates inside the login flow)
  *   - install the platform-ops bundle (prefix-scoped name) — the install
  *     itself generates the first events on the fleet's timeline
- *   - `logs --fleet <id> --json` returns a bounded, parseable
+ *   - `fleet logs --fleet <id> --json` returns a bounded, parseable
  *     `{items, next_cursor}` envelope; the read is time-bounded via
  *     `runFleetctl`'s `timeoutMs` so a wedged backend can't hang the suite
- *   - `events <id> --json` cursor walk: page across the paginator until it
+ *   - `fleet events <id> --json` cursor walk: page across the paginator until it
  *     stops returning `next_cursor`, asserting (a) no infinite loop — the
  *     walk is capped at MAX_PAGES, (b) cursor monotonicity — a re-emitted
  *     cursor aborts the walk, (c) every page is exit-0 with a parseable
@@ -24,8 +24,8 @@
  *     assertion would flake the moment the timeline is served newest-first.
  *
  * Negative paths (no network residue / structured errors):
- *   - `events` with a missing `<fleet_id>` rejected by the parser
- *   - `logs --limit` out of bounds rejected client-side (EVENTS_LIMIT_BOUNDS)
+ *   - `fleet events` with a missing `<fleet_id>` rejected by the parser
+ *   - `fleet logs --limit` out of bounds rejected client-side (EVENTS_LIMIT_BOUNDS)
  *
  * Teardown: prefix-scoped `cleanWorkspaceFleets` — only this run's fleets
  * are killed; shared-tenant residue from other runs is left untouched and
@@ -157,9 +157,9 @@ if (!isLive) {
     });
 
     describe("logs tail (bounded)", () => {
-      it("logs --fleet <id> --json returns a parseable {items,next_cursor} envelope", async () => {
+      it("fleet logs --fleet <id> --json returns a parseable {items,next_cursor} envelope", async () => {
         const result = await runWithEnv(
-          [LOGS_COMMAND, AGENT_FLAG, fleetId, JSON_FLAG],
+          [...LOGS_COMMAND, AGENT_FLAG, fleetId, JSON_FLAG],
           LOGS_READ_TIMEOUT_MS,
         );
         assert.equal(result.code, 0, `logs exited ${result.code}: ${result.stderr}`);
@@ -176,10 +176,10 @@ if (!isLive) {
         }
       });
 
-      it("logs honours --limit and never overruns the cap", async () => {
+      it("fleet logs honours --limit and never overruns the cap", async () => {
         const limit = 3;
         const result = await runWithEnv(
-          [LOGS_COMMAND, AGENT_FLAG, fleetId, LIMIT_FLAG, String(limit), JSON_FLAG],
+          [...LOGS_COMMAND, AGENT_FLAG, fleetId, LIMIT_FLAG, String(limit), JSON_FLAG],
           LOGS_READ_TIMEOUT_MS,
         );
         assert.equal(result.code, 0, `logs --limit exited ${result.code}: ${result.stderr}`);
@@ -219,7 +219,7 @@ if (!isLive) {
 
       it("a supplied cursor is accepted and re-paginates deterministically", async () => {
         const first = await runWithEnv(
-          [EVENTS_COMMAND, fleetId, LIMIT_FLAG, CURSOR_PROBE_LIMIT, JSON_FLAG],
+          [...EVENTS_COMMAND, fleetId, LIMIT_FLAG, CURSOR_PROBE_LIMIT, JSON_FLAG],
           CURSOR_ROUNDTRIP_TIMEOUT_MS,
         );
         assert.equal(first.code, 0, `events first page exited ${first.code}: ${first.stderr}`);
@@ -227,7 +227,7 @@ if (!isLive) {
         const cursor = typeof firstParsed.next_cursor === "string" ? firstParsed.next_cursor : null;
         if (!cursor) return; // single-page fixture — nothing further to assert.
         const second = await runWithEnv(
-          [EVENTS_COMMAND, fleetId, LIMIT_FLAG, CURSOR_PROBE_LIMIT, CURSOR_FLAG, cursor, JSON_FLAG],
+          [...EVENTS_COMMAND, fleetId, LIMIT_FLAG, CURSOR_PROBE_LIMIT, CURSOR_FLAG, cursor, JSON_FLAG],
           CURSOR_ROUNDTRIP_TIMEOUT_MS,
         );
         assert.equal(second.code, 0, `events --cursor exited ${second.code}: ${second.stderr}`);
@@ -238,14 +238,14 @@ if (!isLive) {
     });
 
     describe("negative paths (no residue)", () => {
-      it("events with no <fleet_id> is rejected before any request", async () => {
-        const result = await expectMissingArg([EVENTS_COMMAND], env);
+      it("fleet events with no <fleet_id> is rejected before any request", async () => {
+        const result = await expectMissingArg([...EVENTS_COMMAND], env);
         assertNoSecretLeak(result, sessionJwt);
       });
 
-      it("logs --limit out of bounds is rejected client-side", async () => {
+      it("fleet logs --limit out of bounds is rejected client-side", async () => {
         const result = await runWithEnv(
-          [LOGS_COMMAND, AGENT_FLAG, fleetId, LIMIT_FLAG, OUT_OF_BOUNDS_LIMIT, JSON_FLAG],
+          [...LOGS_COMMAND, AGENT_FLAG, fleetId, LIMIT_FLAG, OUT_OF_BOUNDS_LIMIT, JSON_FLAG],
         );
         assert.notEqual(result.code, 0,
           `expected non-zero for out-of-bounds --limit; stdout=${result.stdout} stderr=${result.stderr}`);
