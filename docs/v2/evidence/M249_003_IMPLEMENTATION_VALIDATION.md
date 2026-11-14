@@ -387,6 +387,7 @@ The clean native integration retry passed 1,780 regular checks and 2 exclusive c
 The earlier wall-tick failure remains recorded; its unchanged test passed on retry.
 
 Acceptance tests now check hidden Plugin navigation and refused source links while the UI is paused. They retain their original enabled flows for the shared switch.
+
 The paused path also checks retained API revision access and conditional deletion. No tests were marked skipped.
 
 The three acceptance files passed type-aware lint and collected with their preflight dependencies: 17 tests across four files.
