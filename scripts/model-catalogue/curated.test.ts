@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { catalogueModelNames, isCuratedModel, isFreeModel, isOfficialPriceSource } from "./curated";
+import { catalogueModelNames, isCuratedModel, isOfficialPriceSource } from "./curated";
 import { CATALOGUE_URL, parseCatalogue, readCatalogue } from "./catalogue";
 import { catalogueFixture, modelFixture, priceFixture } from "./test-fixtures";
 
@@ -15,20 +15,10 @@ describe("curated catalogue bounds", () => {
         prices: [{input: "0.15", cached_input: "0.015", output: "0.60"}]});
   });
 
-  test("free models refuse a nonzero price", async () => {
-    const catalogue = await readCatalogue(new URL("../model-library-allowlist.json", import.meta.url));
-    const free = catalogue.models.filter(isFreeModel);
-    expect(free).toHaveLength(1);
-    expect(free[0]).toMatchObject({ provider: "openrouter", model_name: "minimax/minimax-m3.1-flash:free" });
-    expect(() => parseCatalogue({ ...catalogue, models: free.map((model) => ({ ...model,
-      prices: model.prices.map((price) => ({ ...price, output: "0.01" })),
-    })) })).toThrow("free model prices must remain zero");
-  });
-
   test.each(["input", "cached_input", "output", "cache_write", "cache_write_5m", "cache_write_1h"])(
-    "paid models refuse decimal zero in %s", (field) => {
+    "models refuse decimal zero in %s", (field) => {
       const subject = modelFixture({ prices: [priceFixture({ [field]: "0.0" })] });
-      expect(() => parseCatalogue(catalogueFixture([subject]))).toThrow("zero prices are reserved for free models");
+      expect(() => parseCatalogue(catalogueFixture([subject]))).toThrow("zero prices are not allowed in the curated catalogue");
     });
 
   test("the allowlist includes native and routed Gemini independently", () => {
@@ -40,7 +30,7 @@ describe("curated catalogue bounds", () => {
 
   test("membership and safe diagnostic names come from the allowlist", async () => {
     const catalogue = await readCatalogue(CATALOGUE_URL);
-    expect(catalogue.models).toHaveLength(21);
+    expect(catalogue.models).toHaveLength(20);
     expect(catalogue.models.every(isCuratedModel)).toBe(true);
     expect([...catalogueModelNames]).toEqual([...new Set(catalogue.models.map((model) => model.model_name))]);
     expect(() => parseCatalogue(catalogueFixture([modelFixture(), modelFixture()])))

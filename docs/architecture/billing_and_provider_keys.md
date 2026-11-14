@@ -662,7 +662,7 @@ Read shape: API reference › Model Library (keyset-paged; `version` moves on ev
 
 The curated identities and prices are declared in `scripts/model-library-allowlist.json`.
 The Bun validator checks the exact curated set, official sources, exact decimal rates, date ranges and context evidence.
-Zero rates require an explicitly free model.
+The validator refuses zero rates.
 
 The [operator playbook](../../playbooks/operations/model_catalogue/001_playbook.md) reviews a diff before an explicitly approved apply.
 The seeder writes identities, dated prices, deletions and one generation increment in one transaction.
