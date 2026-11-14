@@ -1,6 +1,6 @@
 //! Both listeners feed the same typed service factory, once per connection.
 
-use std::{convert::Infallible, fmt, net::SocketAddr};
+use std::{convert::Infallible, fmt, io, net::SocketAddr};
 
 use http::{Request, Response};
 use tokio::{
@@ -11,6 +11,11 @@ use tokio_util::sync::CancellationToken;
 use tower::Service;
 
 use crate::{Incoming, Outgoing, Result, Transport, tls::Identity};
+
+/// Extra draws port zero gets when the port TCP picked is already held by another UDP socket.
+/// The kernel hands out TCP and UDP ephemeral ports independently, so concurrent listeners on
+/// one host collide now and then; each retry draws a fresh pair.
+const PORT_ZERO_RETRIES: usize = 15;
 
 /// Server-owned identity for one native connection, shared by its four streams.
 #[derive(Clone, Debug)]
@@ -41,14 +46,14 @@ impl fmt::Debug for Listener {
 }
 
 impl Listener {
-    /// Binding port zero chooses TCP's port and binds UDP to that same port.
+    /// Binding port zero chooses TCP's port and binds UDP to that same port, drawing a fresh
+    /// port when another socket already holds that UDP port. A fixed port is bound once.
     ///
     /// # Errors
     /// Returns an invalid server identity or failure to bind either socket.
     pub async fn bind(address: SocketAddr, identity: Identity) -> Result<Self> {
         let _checked = identity.h2()?;
-        let tcp = TcpListener::bind(address).await?;
-        let udp = UdpSocket::bind(tcp.local_addr()?).await?;
+        let (tcp, udp) = bind_pair(address, UdpSocket::bind::<SocketAddr>).await?;
         Ok(Self {
             tcp,
             udp,
@@ -134,6 +139,32 @@ impl Listener {
     }
 }
 
+/// TCP on `address`, then UDP on the port TCP got. Only port zero retries, and only when UDP
+/// reports the port taken, so a fixed port another process holds still fails at once.
+/// `bind_udp` is the system boundary, passed in so the collision can be staged.
+async fn bind_pair<U, F>(address: SocketAddr, mut bind_udp: U) -> Result<(TcpListener, UdpSocket)>
+where
+    U: FnMut(SocketAddr) -> F,
+    F: Future<Output = io::Result<UdpSocket>>,
+{
+    let retries = if address.port() == 0 {
+        PORT_ZERO_RETRIES
+    } else {
+        0
+    };
+    for _ in 0..retries {
+        let tcp = TcpListener::bind(address).await?;
+        let udp = match bind_udp(tcp.local_addr()?).await {
+            Err(error) if error.kind() == io::ErrorKind::AddrInUse => continue,
+            bound => bound?,
+        };
+        return Ok((tcp, udp));
+    }
+    let tcp = TcpListener::bind(address).await?;
+    let udp = bind_udp(tcp.local_addr()?).await?;
+    Ok((tcp, udp))
+}
+
 pub(crate) fn observe(result: Result<()>, transport: Transport) {
     if let Err(error) = result {
         let transport = transport.as_str();
@@ -168,3 +199,6 @@ pub(crate) async fn finish(
         () = abort.cancelled() => workers.shutdown().await,
     }
 }
+
+#[cfg(test)]
+mod tests;
