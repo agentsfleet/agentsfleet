@@ -85,6 +85,7 @@ Point the CLI and refreshed UI adapters at the renamed routes. Indy permits rese
 | Billing integration tests, API report tests, wire/OpenAPI registration and browser fixtures | EDIT | Exact sums, filters, paging, historical names and visual evidence |
 | `docs/v2/pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md` | EDIT | Separate completed chart work from new one-call Usage and Plugin data work; define parallel ownership |
 | Plugin content, version-binding, composition and application modules identified in §7's source inventory | PLAN before EDIT | New capability behavior needs an exact inventory after product choices; no runtime implementation is implied by the rename |
+| `docs/v2/evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md` | ADD/EDIT | User-driven examples, alternatives and adversarial checks before capability implementation |
 
 **Current blast inventory:** [`M249_003_BLAST_INVENTORY.tsv`](../evidence/M249_003_BLAST_INVENTORY.tsv) records every matching file at fetched base `646fc536e9e504d0bda2db1742aab21e3e3896a8`, its production/test role, semantic classification and intended action. The case-insensitive `library|libraries` scan includes identifier substrings, filenames represented in source, current documentation and historical records.
 
@@ -281,15 +282,22 @@ It supersedes the earlier exclusion of capability design; behavior-changing impl
 The source example is [the earlier capability discussion](../pending/M239_001_P1_API_DOCS_INFRA_UI_FLEET_TO_FLEET_STEER_AND_ACTIVITY.md#deferred-plugin-capabilities-revisit-with-m239).
 An Operations fleet adds a reviewed deployment-check procedure. Work runs inside Operations rather than creating or contacting a replacement fleet.
 
+The owner's newer examples are AgentPhone, AgentCreditCard and AgentEmail. They require actions, incoming events and resource bindings beyond an instruction-only procedure.
+The [product reassessment](../evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md) describes concrete experiences, alternative models and adversarial cases.
+
 Proposed boundaries:
 
 - A fleet owns its identity, conversation, runs, model, spending limit, schedule and approved access.
-- A Plugin provides a reusable procedure, declared inputs, instructions, supported tool requirements and required secret names. It contains no secret values or standing grants.
-- Several fleets can use the same immutable Plugin revision. One fleet can use several Plugins; a binding records the selected revision and local inputs.
+- A Plugin packages declared actions, incoming events, supported resource types and optional reusable procedures. It contains no secret values or standing grants.
+- Connections retain provider authentication. A binding selects an immutable Plugin revision, local inputs, resources and allowed actions for one fleet.
+- Several fleets can use the same Plugin revision. One fleet can use several Plugins; granting one inbox, phone number or card does not grant every provider resource.
 - Applying a Plugin previews its contributions, conflicts and access requirements before saving an ordinary validated fleet setup version.
 - Adding or updating a Plugin never starts work, creates a fleet, grants access or installs a schedule implicitly.
 - Existing runs retain their pinned setup. Updating or removing one Plugin preserves unrelated fleet settings, other Plugins and local edits.
 - Prefer composition when applying a revision, using the existing runtime. A second executor, a marketplace and fleet-to-fleet delegation are outside this amendment.
+- Backend and provider controls enforce allowed actions and resource access. Incoming messages and model instructions cannot widen those grants.
+- Model/runtime charges, provider service costs and card purchases have distinct sources. A model budget is not a card spending limit.
+- Available packages, provider connections and fleet bindings remain distinct. Managing a Plugin package does not grant its runtime actions.
 
 The proposed golden path is publish a capability → choose an existing fleet → select a pinned revision and inputs → review changes → save → invoke through that fleet → inspect its recorded result.
 An unavailable secret, denied tool or incompatible contribution blocks application without a partial binding or setup update.
@@ -300,7 +308,12 @@ Product choices awaiting the owner's answers:
 |---|---|---|
 | Publication | Save and publish creates a capability; whole-fleet saving remains private | Keep separately named Fleet templates as well |
 | Invocation | An installed capability is available during fleet work and explicitly invokable in chat | Explicit invocation only, or triggered work only |
-| Reference use case | Review a GitHub pull request inside an existing fleet | Deployment check with Slack notification, or Slack support triage |
+| Reference use cases | The owner selected all three: GitHub PR review, deployment checks with Slack notification, and Slack support triage | They can reuse shared capabilities rather than requiring one Plugin per workflow |
+| New service scope | Email, phone and card examples inform the product model | Which provider actions must ship within M249 remains open |
+| Package creation and discovery | Installing a curated provider package does not require personal publication | Whether custom package authoring also ships in M249 remains open |
+
+The publication and invocation questions remain unanswered. The owner asked what is saved now and requested experience-driven examples instead of selecting invocation syntax.
+Derive invocation from the agreed workflows before choosing an `@plugin` language. Live voice and card authorization need explicit provider timing and fallback decisions.
 
 Before implementation, replace the whole-setup assumptions in §§1–2b, Interfaces and Invariants with the chosen content, binding and application shapes.
 Update create, inspect, apply, revise, remove, CLI and UI flows together. Do not leave a capability named Plugin that still only creates another fleet.
@@ -309,7 +322,10 @@ Update create, inspect, apply, revise, remove, CLI and UI flows together. Do not
 - **Dimension 7.2** — PENDING — Composition preserves fleet ownership → Test `plugin_application_preserves_fleet_policy_and_other_bindings` (integration): model, budget, schedules, history, local edits and unrelated bindings survive.
 - **Dimension 7.3** — PENDING — Versions and removal remain explicit → Test `plugin_update_and_removal_preserve_pinned_runs` (integration): updates require review, running work retains its setup and removal deletes only that Plugin's contributions.
 - **Dimension 7.4** — PENDING — Refusals and uncertain replies cannot partially apply → Test `plugin_application_is_scoped_atomic_and_replay_safe` (integration): foreign access, missing secrets, conflicts, concurrent updates and lost replies preserve authorization and operation identity.
-- **Dimension 7.5** — PENDING — The selected reference use case closes end to end → Test `plugin_reference_use_case_matches_published_revision` (browser/acceptance): publish, apply, invoke, inspect, update and remove work through the real authorized interfaces.
+- **Dimension 7.5** — PENDING — All three selected workflows close end to end → Test `plugin_reference_use_case_matches_published_revision` (browser/acceptance): GitHub PR review, deployment checks with Slack notification and Slack triage use the real authorized capability flow.
+- **Dimension 7.6** — PENDING — Actions and resources are independently scoped → Test `plugin_grant_intersects_action_resource_and_provider_permissions` (integration): one granted resource cannot authorize another; read-only access cannot send, call or purchase.
+- **Dimension 7.7** — PENDING — External actions retain truthful outcomes → Test `plugin_external_operation_reconciles_uncertain_and_duplicate_events` (integration): duplicate callbacks and lost replies preserve one operation identity without inventing success or repeating a side effect.
+- **Dimension 7.8** — PENDING — Discovery does not depend on personal publication → Test `plugin_catalog_connection_and_fleet_binding_have_distinct_states` (integration/browser): available packages, configured connections and applied bindings remain separate; an outage cannot become a false empty catalogue.
 
 M249_004 consumes the resulting Plugin identities, bindings and recorded outcomes. It does not invent a second Plugin model or implement composition independently.
 
@@ -345,6 +361,7 @@ Rename only fleet-setup publication events and their properties under `af_observ
 | R2 | Unit gates | `make test-unit-all` | exit 0 | P0 | ✅ All unit lanes passed |
 | R3 | Refreshed UI callers | `make dry-app` | exit 0 | P0 | ✅ 94 passed |
 | R4 | CLI acceptance | `make acceptance-local SUITE=cli` | exit 0 | P0 | ❌ local acceptance requires macOS with a dedicated OrbStack Linux machine |
+| R5 | Actual capability Plugins (§7) | Named integration/browser tests in §7 | All three selected workflows run inside existing fleets with scoped actions and resources | P0 | NOT RUN; product choices and implementation remain open |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | ✅ make lint-all exited 0 |
 | S2 | Version | `make check-version` | exit 0 | P0 | ✅ all versions match 0.77.0 |
 | S3 | Gates | `orly gate work`; `verify`; `pr` | exit 0 | P0 | ❌ work and verify passed; pr not run under the cloud shipping rule |
@@ -387,6 +404,7 @@ Remove the admin catalogue handlers, `publish/platform.rs`, the platform CLI fam
 - **Owner-requested follow-up (Nov 13, 2026):** The original request includes auth theme/copy, Usage alignment, Team/Security review and a live fleet check. Indy supplied the requested visual-review ZIP and then stated the database was torn down: "i will give you a nother one later" and "so move on to the next". The deleted draft is no longer a live-review target.
 - **Owner-requested reassessment (Nov 14, 2026):** "both M249_003 and M249_004 to be thought through again with the notion of a Plugin (not a replacement of a fleet, but an actual Plugin with an use case and fix them)". Section 7 reopens the earlier Flow 1-only decision; the existing implementation is not evidence of capability completion.
 - **Parallel work request (Nov 14, 2026):** "claude able to run this and fix in parallel while your UI fix". M249_003 owns Plugin semantics and behavior; M249_004 owns read projections and one-call Usage; the current UI work retains its approved visual scope.
+- **Experience-driven clarification (Nov 14, 2026):** "I am think plugins can be agentphone, agentcreditcard, agentemail" and "prove me wrong with adversarial thought". The owner selected "1, 2, 3" for the earlier reference scenarios; they did not approve an instruction-only model or invocation syntax.
 
 > Owner decision (Indy, Nov 12, 2026: 11:55 PM): selected "Split into two PRs (my call)" — PR B is "the Plugin + archived rename across Rust, SQL, OpenAPI, CLI flags, UI adapters and docs, rebased onto A".
 

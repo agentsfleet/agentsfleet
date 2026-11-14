@@ -16,7 +16,7 @@ const TimingSchema = z.object({triggers: z.array(FleetTriggerSchema).default([])
 export function SetupWakeups({client, view, workspace}: {client: DraftClient; view: DraftView; workspace: string}) {
   if (view.inaccessible) return null;
   const schedules = view.fleet?.schedules ?? view.schedules;
-  if (schedules?.length) return <RecordedWakeups key={view.fleet?.id ?? view.draft?.id} workspace={workspace} schedules={schedules}
+  if (schedules.length) return <RecordedWakeups key={view.fleet?.id ?? view.draft?.id} workspace={workspace} schedules={schedules}
     onRefresh={() => {void client.refreshSetup().catch(() => undefined);}} />;
   const candidate = !savedDraft(view) ? view.draft?.candidate : undefined;
   const timing = TimingSchema.safeParse(candidate?.definition.config["x-agentsfleet"]);

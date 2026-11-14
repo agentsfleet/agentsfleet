@@ -71,6 +71,7 @@ Paths reflect UI candidate `1bebcb701` plus its working changes. Re-inventory af
 | `ui/packages/app/lib/api/billing_report.ts` | EDIT | Decode and validate complete projections |
 | `ui/packages/app/app/(dashboard)/settings/billing/components/{BillingReportView.tsx,BillingSpending.tsx}` | EDIT | Chart and complete fleet/model facts |
 | `ui/packages/app/app/(dashboard)/settings/billing/{page.tsx,loading.tsx,lib/load-report.ts,components/**}` and billing tests | EDIT | One report request, streamed data region and charge details loaded on intent |
+| `ui/packages/app/app/(dashboard)/layout.tsx` and shell read boundaries | REVIEW; EDIT only for confirmed blocking reads | First-load profiling must include parent layout reads, not only the report component |
 | `model.platform_models` metadata lookup and its existing read owner | PLAN before EDIT | Resolve only report model labels, with provider/model identity and no full-catalogue read |
 | `rustd/crates/daemon/afd_api_wire/src/tenant.rs` and `afd_api_tenant/src/handler/tenant/api_key.rs` | EDIT | Safe account-key metadata |
 | `ui/packages/app/lib/api/api_keys.ts` and `app/(dashboard)/settings/security/components/ApiKeyList.tsx` | EDIT | Metadata without credential exposure |
@@ -84,6 +85,7 @@ Paths reflect UI candidate `1bebcb701` plus its working changes. Re-inventory af
 | `public/openapi.json` | GENERATE | Generated contract, never hand-edited |
 | Existing tests for each changed producer, handler and component | EDIT | Complete data, refusals, races and unavailable states |
 | `docs/v2/evidence/M249_VERIFICATION.md` and `docs/DESIGN_SYSTEM.md` | EDIT | Update resolved data differences and retained unknowns |
+| `docs/v2/evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md` | EDIT | Ground Plugin data requirements in the selected experiences and resource/action boundaries |
 | Separate `agentsfleet/docs` branch and changelog | EDIT | Public contract and visible behaviour |
 
 Resolve family entries to exact files during PLAN. Unidentified producers block their implementation Section.
@@ -170,6 +172,9 @@ Wire types, generated OpenAPI, strict UI decoding and public documentation chang
 Remove `getModelLibrary` from the Usage loader and consume `report.model_labels` directly. The initial Usage-specific service read is one report request, regardless of whether four or more fleets appear.
 Common authenticated-shell reads remain separately measured; do not misreport them as per-fleet Usage requests.
 
+The current dashboard layout awaits workspace, balance and invite reads before returning its frame. A page-level Suspense boundary cannot bypass a blocked parent layout.
+Include this path in the cold-load profile. Stream confirmed optional blockers with explicit loading states; do not substitute false empty workspace or zero-balance data.
+
 Keep individual charge requests behind an explicit activity disclosure. Pagination and filter changes request the corresponding report page; they preserve the existing snapshot rules.
 Render the Usage frame before its data region resolves, using the existing loading indicator and Suspense. Defer collapsed charge-detail code with a client dynamic import.
 
@@ -178,7 +183,7 @@ Use the shared local-time utilities for displayed instants. Accounting bucket id
 - **Dimension 2a.1** — One initial report request → Test `usage_first_load_has_one_report_request` (browser): four fleets require one report call, no model-catalogue call, no fleet-detail calls and no charge call before disclosure.
 - **Dimension 2a.2** — Labels are complete or explicitly unavailable → Test `billing_model_labels_preserve_recorded_identity` (integration/unit): known, advanced, retired, absent and provider-ambiguous models retain correct identifiers and amounts.
 - **Dimension 2a.3** — Paging and filters retain accounting → Test `billing_labels_do_not_change_snapshot_totals` (integration): labels, cursors and filter changes preserve the existing complete aggregates and exact cutoff behavior.
-- **Dimension 2a.4** — Slow data does not hide the frame → Test `usage_shell_streams_before_report_and_details_load_on_intent` (server-render/browser): a delayed report leaves the heading and loading state visible; details load only when opened.
+- **Dimension 2a.4** — Slow data does not hide the frame → Test `usage_shell_streams_before_report_and_details_load_on_intent` (server-render/browser): delayed report and optional parent-shell reads retain truthful loading states; details load only when opened.
 - **Dimension 2a.5** — Performance evidence identifies the wait → Test `usage_four_fleet_request_waterfall` (browser/profile): record first and repeat load, service duration, response size, browser rendering and query plans; separate local controlled delay from live machine evidence.
 - **Dimension 2a.6** — Failure remains recoverable → Test `usage_single_report_failure_retains_filters_and_retry` (unit/browser): timeout, malformed JSON, empty data and denied access preserve truthful error or empty states and existing recovery.
 
@@ -209,6 +214,14 @@ Consume the Plugin content and application model agreed in M249_003 §7. Preserv
 Project readiness from confirmed required inputs, effective access and secret availability. A listed secret name does not prove access; an installed binding does not prove a successful invocation.
 Use recorded fleet work for Plugin outputs and provenance. Do not create separate Plugin runs, budgets or schedules merely to populate the UI.
 
+The owner's email, phone and card examples distinguish an installed Plugin, a provider connection and a granted resource. Their read states must remain distinct.
+Show only authorized resource metadata and confirmed action permissions. Private credentials and sensitive payment details never become model or chat metadata.
+
+Available package metadata is not the customer's personal publication list. Follow M249_003's agreed discovery model; distinguish zero installations from an unavailable or empty package catalogue.
+
+Read operation state from provider receipts and stored facts. Accepted, in progress, completed, failed and unconfirmed are not interchangeable outcomes.
+Keep model/runtime charges, external provider costs and financial transactions separate. Per-Plugin cost attribution requires a real recorded producer rather than inference from installed tools.
+
 Inspect event producers for changed paths, line totals and publication receipts. Add fields only with a confirmed producer and workspace/fleet/run identity.
 
 Local writes are changes, not publication. A related PR URL does not prove this run published an output.
@@ -218,6 +231,8 @@ Local writes are changes, not publication. A related PR URL does not prove this 
 - **Dimension 4.3** — Reload preserves facts → Test `recorded_summary_survives_reload` (browser): stream and persisted replay render the same confirmed changes and outputs.
 - **Dimension 4.4** — Head and applied versions stay distinct → Test `plugin_read_model_distinguishes_head_applied_and_run_revision` (integration/browser): a new head never rewrites an installed binding or a historical result.
 - **Dimension 4.5** — Readiness and results require evidence → Test `plugin_read_model_never_infers_access_or_success` (integration/unit): missing inputs, denied access, absent secrets and failed or partial work cannot appear ready or successful.
+- **Dimension 4.6** — Resource and action access stays explicit → Test `plugin_read_model_separates_connection_binding_and_resource_grant` (integration/browser): a connected account cannot imply access to every inbox, number or card.
+- **Dimension 4.7** — Different spending sources stay distinct → Test `plugin_usage_never_confuses_model_budget_and_external_spend` (integration/unit): model charges, service fees and card transactions keep their source, currency and availability semantics.
 
 ### §6 — Parallel implementation boundaries
 
@@ -327,6 +342,7 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 - **Staggered work:** Independent data Sections may run alongside M249_003. Final Plugin wiring and M249_004's merge follow M249_003.
 - **One-call Usage request (Nov 14, 2026):** "why the getModelLib is called and we combine the billingreport to just 1 api call? and udpate the spec?" The owner corrected the target to M249_004 and requested this change in the UI PR.
 - **Plugin reassessment (Nov 14, 2026):** "not a replacement of a fleet, but an actual Plugin with an use case and fix them". M249_003 defines that behavior; this workstream supplies the corresponding recorded data.
+- **Service examples (Nov 14, 2026):** "agentphone, agentcreditcard, agentemail". The owner requested use-case-driven and adversarial thinking; provider scope and invocation remain product decisions rather than implemented facts.
 - **Parallel work (Nov 14, 2026):** "claude able to run this and fix in parallel while your UI fix". Section 6 separates independent work from interfaces awaiting product decisions.
 
 > Owner (Indy): "claude to works from your PR merged on the UI refresh you did with gaps delta on api needed on the backend and wire it into the ui you created (post your PR merge)."
