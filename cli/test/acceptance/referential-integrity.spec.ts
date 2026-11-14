@@ -160,11 +160,11 @@ if (!isLive) {
       it("create secret → provider references it → delete is refused OR cascades", async () => {
         // 1. Store the secret.
         const added = await run([CMD_SECRET, SUB_CREATE, secretName, FLAG_DATA, secretPayload(), FLAG_JSON]);
-        assert.equal(added.code, 0, `secret create exited ${added.code}: ${added.stderr}`);
+        assert.equal(added.code, 0, `secrets create exited ${added.code}: ${added.stderr}`);
         assert.equal(
           parseJson<Record<string, unknown>>(added.stdout, "secret-create")[KEY_STATUS],
           STATUS_STORED,
-          `unexpected secret create status: ${added.stdout}`,
+          `unexpected secrets create status: ${added.stdout}`,
         );
 
         // 2. Point the tenant provider at it. The PUT may accept the posture

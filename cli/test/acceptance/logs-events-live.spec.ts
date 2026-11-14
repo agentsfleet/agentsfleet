@@ -24,8 +24,8 @@
  *     assertion would flake the moment the timeline is served newest-first.
  *
  * Negative paths (no network residue / structured errors):
- *   - `events` with a missing `<fleet_id>` rejected by the parser
- *   - `logs --limit` out of bounds rejected client-side (EVENTS_LIMIT_BOUNDS)
+ *   - `fleet events` with a missing `<fleet_id>` rejected by the parser
+ *   - `fleet logs --limit` out of bounds rejected client-side (EVENTS_LIMIT_BOUNDS)
  *
  * Teardown: prefix-scoped `cleanWorkspaceFleets` — only this run's fleets
  * are killed; shared-tenant residue from other runs is left untouched and
@@ -157,7 +157,7 @@ if (!isLive) {
     });
 
     describe("logs tail (bounded)", () => {
-      it("logs --fleet <id> --json returns a parseable {items,next_cursor} envelope", async () => {
+      it("fleet logs --fleet <id> --json returns a parseable {items,next_cursor} envelope", async () => {
         const result = await runWithEnv(
           [...LOGS_COMMAND, AGENT_FLAG, fleetId, JSON_FLAG],
           LOGS_READ_TIMEOUT_MS,
@@ -176,7 +176,7 @@ if (!isLive) {
         }
       });
 
-      it("logs honours --limit and never overruns the cap", async () => {
+      it("fleet logs honours --limit and never overruns the cap", async () => {
         const limit = 3;
         const result = await runWithEnv(
           [...LOGS_COMMAND, AGENT_FLAG, fleetId, LIMIT_FLAG, String(limit), JSON_FLAG],
@@ -238,12 +238,12 @@ if (!isLive) {
     });
 
     describe("negative paths (no residue)", () => {
-      it("events with no <fleet_id> is rejected before any request", async () => {
+      it("fleet events with no <fleet_id> is rejected before any request", async () => {
         const result = await expectMissingArg([...EVENTS_COMMAND], env);
         assertNoSecretLeak(result, sessionJwt);
       });
 
-      it("logs --limit out of bounds is rejected client-side", async () => {
+      it("fleet logs --limit out of bounds is rejected client-side", async () => {
         const result = await runWithEnv(
           [...LOGS_COMMAND, AGENT_FLAG, fleetId, LIMIT_FLAG, OUT_OF_BOUNDS_LIMIT, JSON_FLAG],
         );
