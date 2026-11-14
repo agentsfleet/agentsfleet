@@ -39,6 +39,7 @@ import {
   WORKSPACE_LOCAL_REMOVAL_FIELD,
 } from "./fixtures/workspace-ops.ts";
 import {
+  TENANT_PROVIDER_CREATE_ARGS,
   TENANT_PROVIDER_MODE,
   restoreProviderBaseline,
   showProvider,
@@ -51,10 +52,9 @@ const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
 
 // --- command / flag / key wire literals (RULE UFS) -------------------------
-const CMD_SECRET = "secret" as const;
-const CMD_TENANT = "tenant" as const;
-const CMD_PROVIDER = "provider" as const;
+const CMD_SECRET = "secrets" as const;
 const CMD_WORKSPACE = "workspace" as const;
+const CMD_FLEET = "fleet" as const;
 const CMD_LIST = "list" as const;
 const SUB_CREATE = "create" as const;
 const SUB_DELETE = "delete" as const;
@@ -160,18 +160,18 @@ if (!isLive) {
       it("create secret → provider references it → delete is refused OR cascades", async () => {
         // 1. Store the secret.
         const added = await run([CMD_SECRET, SUB_CREATE, secretName, FLAG_DATA, secretPayload(), FLAG_JSON]);
-        assert.equal(added.code, 0, `secret create exited ${added.code}: ${added.stderr}`);
+        assert.equal(added.code, 0, `secrets create exited ${added.code}: ${added.stderr}`);
         assert.equal(
           parseJson<Record<string, unknown>>(added.stdout, "secret-create")[KEY_STATUS],
           STATUS_STORED,
-          `unexpected secret create status: ${added.stdout}`,
+          `unexpected secrets create status: ${added.stdout}`,
         );
 
         // 2. Point the tenant provider at it. The PUT may accept the posture
         //    (possibly flagging credential_missing) or reject an unknown
         //    secret — only treat an accepted PUT as a real reference.
         const linked = await run([
-          CMD_TENANT, CMD_PROVIDER, SUB_CREATE, FLAG_SECRET, secretName,
+          ...TENANT_PROVIDER_CREATE_ARGS, FLAG_SECRET, secretName,
           FLAG_MODEL, PROBE_MODEL, FLAG_JSON,
         ]);
         if (linked.code === 0) {
@@ -217,11 +217,11 @@ if (!isLive) {
           );
 
           // Server side is unaffected: the fleet is still listable by id even
-          // though the local workspace pointer was removed. `list --workspace`
+          // though the local workspace pointer was removed. `fleet list --workspace`
           // takes the explicit override without requiring the (now-deleted) local
           // store entry (per cli/src/commands/fleet/list.ts).
-          const listed = await run([CMD_LIST, FLAG_WORKSPACE, deletedWorkspaceId, FLAG_JSON]);
-          assert.equal(listed.code, 0, `list --workspace exited ${listed.code}: ${listed.stderr}`);
+          const listed = await run([CMD_FLEET, CMD_LIST, FLAG_WORKSPACE, deletedWorkspaceId, FLAG_JSON]);
+          assert.equal(listed.code, 0, `fleet list --workspace exited ${listed.code}: ${listed.stderr}`);
           const rows = parseJson<FleetListEnvelope>(listed.stdout, "ws-fleets").items ?? [];
           const survived = rows.some((r) => r.id === fleetId || r.fleet_id === fleetId);
           assert.ok(survived,
