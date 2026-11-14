@@ -148,17 +148,17 @@ export async function sweepLeakedFixtureFleets(): Promise<SweepCounts> {
 }
 
 /** How many entries one sweep pass asks for. */
-const LIBRARY_SWEEP_PAGE_SIZE = 100;
+const PLUGIN_SWEEP_PAGE_SIZE = 100;
 
 /** How many passes the drain makes before giving up and reporting what it has. */
-const LIBRARY_SWEEP_PASS_CEILING = 50;
+const PLUGIN_SWEEP_PASS_CEILING = 50;
 
 /**
- * One workspace's own Fleet library entries, removed.
+ * One workspace's own Fleet plugin entries, removed.
  *
  * The other half of what a leaked run leaves behind. A leaked FLEET is not
  * inert — its seeded cron trigger keeps waking runners until the row is gone —
- * and a leaked library ENTRY is inert but cumulative: it stays in the install
+ * and a leaked plugin ENTRY is inert but cumulative: it stays in the install
  * gallery forever, because until M204 there was no verb that could remove it.
  * The pile-up is what pushed the seeded card off the gallery's first page and
  * made `saveFleetViaUI` miss it.
@@ -169,11 +169,10 @@ const LIBRARY_SWEEP_PASS_CEILING = 50;
  * and both should go. A prefix would also be the hand-maintained list that
  * `sweepLeakedFixtureFleets` records falling behind the specs.
  *
- * Only the workspace's OWN entries: the read is the owned collection, which
- * never carries a platform row, so the platform catalogue cannot be reached
- * from here even by mistake.
+ * The ordinary Plugin collection contains only the workspace account’s
+ * entries. The server enforces that ownership boundary for reads and deletes.
  */
-export async function cleanWorkspaceLibraryEntries(
+export async function cleanWorkspacePluginEntries(
   handle: ClientHandle,
   workspaceId: string,
 ): Promise<SweepCounts> {
@@ -188,16 +187,16 @@ export async function cleanWorkspaceLibraryEntries(
   // Re-reading the FIRST page each pass rather than following a cursor: the
   // rows are being deleted underneath the walk, so a keyset boundary would
   // seek past rows that shifted forward. Deleting from the front converges.
-  for (let pass = 0; pass < LIBRARY_SWEEP_PASS_CEILING; pass += 1) {
+  for (let pass = 0; pass < PLUGIN_SWEEP_PASS_CEILING; pass += 1) {
     const page = await c.get<{ items?: Array<{ id: string; name?: string }> }>(
-      `/v1/workspaces/${workspaceId}/fleet-libraries/owned?limit=${LIBRARY_SWEEP_PAGE_SIZE}`,
+      `/v1/workspaces/${workspaceId}/plugins?limit=${PLUGIN_SWEEP_PAGE_SIZE}`,
     );
     const entries = page.items ?? [];
     if (entries.length === 0) break;
     const removedBefore = counts.removed;
     for (const entry of entries) {
       try {
-        await c.delete(`/v1/workspaces/${workspaceId}/fleet-libraries/${encodeURIComponent(entry.id)}`);
+        await c.delete(`/v1/workspaces/${workspaceId}/plugins/${encodeURIComponent(entry.id)}`);
         counts.removed++;
       } catch (err) {
         // Counted, not swallowed — the same reason the fleet sweep gives. A
@@ -205,7 +204,7 @@ export async function cleanWorkspaceLibraryEntries(
         // defect this sweep exists to prevent.
         counts.failed++;
         console.error(
-          `[e2e:teardown] remove failed for library entry ${entry.id} in workspace ${workspaceId}:`,
+          `[e2e:teardown] remove failed for plugin entry ${entry.id} in workspace ${workspaceId}:`,
           err,
         );
       }
@@ -218,7 +217,7 @@ export async function cleanWorkspaceLibraryEntries(
 }
 
 /**
- * Backstop sweep for global-teardown: reap every tenant library entry in every
+ * Backstop sweep for global-teardown: reap every tenant plugin entry in every
  * workspace a persistent fixture user owns.
  *
  * Deliberately the same shape, the same guard and the same blast radius as
@@ -226,7 +225,7 @@ export async function cleanWorkspaceLibraryEntries(
  * It runs beside that sweep rather than inside it because the two answer for
  * different rows and either can fail without the other needing to.
  */
-export async function sweepLeakedFixtureLibraries(): Promise<SweepCounts> {
+export async function sweepLeakedFixturePlugins(): Promise<SweepCounts> {
   assertDestructiveTargetIsSafe();
   const total: SweepCounts = { removed: 0, failed: 0 };
   for (const key of FIXTURE_KEYS) {
@@ -237,19 +236,19 @@ export async function sweepLeakedFixtureLibraries(): Promise<SweepCounts> {
     });
     for (const workspace of workspaces) {
       try {
-        const counts = await cleanWorkspaceLibraryEntries(key, workspace.id);
+        const counts = await cleanWorkspacePluginEntries(key, workspace.id);
         total.removed += counts.removed;
         total.failed += counts.failed;
       } catch (err) {
         console.error(
-          `[e2e:sweep] library sweep failed in workspace ${workspace.id} ('${key}'):`,
+          `[e2e:sweep] plugin sweep failed in workspace ${workspace.id} ('${key}'):`,
           err,
         );
         total.failed++;
       }
     }
   }
-  const summary = `[e2e:sweep] done — ${total.removed} fixture library entr(ies) removed, ${total.failed} failed`;
+  const summary = `[e2e:sweep] done — ${total.removed} fixture plugin entr(ies) removed, ${total.failed} failed`;
   if (total.failed > 0) console.error(summary);
   else console.log(summary);
   return total;
@@ -264,10 +263,9 @@ export const CLI_KEY_PREFIX = "acc-cli-key-";
 /**
  * Revoke and delete every API key this suite left behind.
  *
- * Unlike a leaked fleet or library entry, a leaked key is not inert: it is a
+ * Unlike a leaked fleet or plugin entry, a leaked key is not inert: it is a
  * live `agt_t` tenant credential sitting in the account until somebody notices.
- * `workspace-library.spec.ts` deletes its own in a `finally`, which covers a
- * thrown assertion and does NOT cover the run being killed — a cancelled
+ * Even cleanup in a `finally` block cannot cover the run being killed — a cancelled
  * workflow, a runner reclaimed mid-test, an `--exit-on-first-failure`. That gap
  * is the whole reason this exists.
  *

@@ -27,17 +27,17 @@ const CENT_DIGITS = 2;
 export function SetupSummary({definition, requirements}: {definition?: Definition; requirements?: Review["requirements"]}) {
   const config = ConfigSchema.safeParse(definition?.config);
   const triggers = config.success ? config.data["x-agentsfleet"].triggers ?? [] : null;
-  return <div className="space-y-lg">
+  return <div className="min-w-0 space-y-lg text-label leading-label [overflow-wrap:anywhere]">
     <Section className="gap-sm" aria-label="Fleet purpose">
       <h3 className="flex items-center gap-md text-label font-medium text-muted-foreground"><TargetIcon size={16} aria-hidden="true" />Purpose</h3>
       <p className="break-words text-label leading-label">{definition?.description ?? "Your fleet’s purpose will appear here as you build its setup."}</p>
     </Section>
     <Section className="gap-sm" aria-label="How runs start">
       <h3 className="flex items-center gap-md text-label font-medium text-muted-foreground"><ClockIcon size={16} aria-hidden="true" />When it runs</h3>
-      {triggers === null ? <p className="text-sm">Automatic triggers could not be confirmed. Check the fleet’s Setup before relying on automatic runs.</p>
-        : triggers.length === 0 ? <p className="text-sm">When you send it a message. No automatic triggers are configured.</p>
-        : <><p className="text-sm">When you send it a message, or automatically:</p><List variant="plain" className="space-y-sm">
-          {triggers.map((trigger, index) => <ListItem key={index} className="break-words text-sm"><FleetTriggerSummary trigger={trigger} /></ListItem>)}
+      {triggers === null ? <p>Automatic triggers could not be confirmed. Check the fleet’s Setup before relying on automatic runs.</p>
+        : triggers.length === 0 ? <p>When you send it a message. No automatic triggers are configured.</p>
+        : <><p>When you send it a message, or automatically:</p><List variant="plain" className="space-y-sm text-label leading-label">
+          {triggers.map((trigger, index) => <ListItem key={index} className="break-words"><FleetTriggerSummary trigger={trigger} /></ListItem>)}
         </List></>}
     </Section>
     {requirements ? <AccessSummary requirements={requirements} /> : null}
@@ -47,18 +47,18 @@ export function SetupSummary({definition, requirements}: {definition?: Definitio
 
 function AccessSummary({requirements}: {requirements: Review["requirements"]}) {
   const parsed = RequirementsSchema.safeParse(requirements);
-  if (!parsed.success) return <p className="text-sm text-muted-foreground">Access and spending limits could not be summarized. Resolve the setup checks before saving.</p>;
+  if (!parsed.success) return <p className="text-muted-foreground">Access and spending limits could not be summarized. Resolve the setup checks before saving.</p>;
   const {credentials, repositories, tools, network, budget} = parsed.data;
   return <Section className="gap-sm" aria-label="Access and spending limits">
-    <h3 className="flex items-center gap-sm font-semibold"><ShieldCheckIcon size={14} className="text-evidence" aria-hidden="true" />Access and spending limits</h3>
-    <List variant="plain" className="space-y-sm text-sm">
+    <h3 className="flex items-center gap-md font-medium text-muted-foreground"><ShieldCheckIcon size={16} className="shrink-0" aria-hidden="true" />Access and spending limits</h3>
+    <List variant="plain" className="space-y-sm text-label leading-label">
       <ListItem><span className="font-medium">Tools: </span>{tools.length ? tools.join(", ") : "No tools requested."}</ListItem>
       <ListItem><span className="font-medium">Connected accounts: </span>{credentials.length ? credentials.join(", ") : "None requested."}</ListItem>
       <ListItem><span className="font-medium">Repositories: </span>{repositories.length ? repositories.join(", ") : "None requested."}</ListItem>
       <ListItem><span className="font-medium">Internet access: </span>{networkDescription(network)}</ListItem>
       <ListItem><span className="font-medium">Spending limit: </span>{dollars(budget.daily_nanos)} per day{budget.monthly_nanos ? `; ${dollars(budget.monthly_nanos)} per month` : "; no monthly limit"}.</ListItem>
     </List>
-    <p className="text-xs text-muted-foreground">These are limits, not a fixed charge. Actual spending depends on usage.</p>
+    <p className="text-eyebrow leading-eyebrow text-muted-foreground">These are limits, not a fixed charge. Actual spending depends on usage.</p>
   </Section>;
 }
 

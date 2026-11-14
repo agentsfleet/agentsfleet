@@ -95,18 +95,17 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
         WorkspaceRoute::ApprovalResolve => Some(post(handler::approval::resolve::resolve::<D>)),
         WorkspaceRoute::Events => Some(get(handler::event::workspace_list::<D>)),
         WorkspaceRoute::EventsStream => Some(get(handler::stream::workspace::<D>)),
-        WorkspaceRoute::FleetLibrary => Some(
-            get(handler::library::list::gallery::<D>).post(handler::library::publish::create::<D>),
+        WorkspaceRoute::Plugin => Some(
+            get(handler::plugin::list::gallery::<D>).post(handler::plugin::publish::create::<D>),
         ),
-        WorkspaceRoute::FleetLibraryOwned => Some(get(handler::library::list::owned::<D>)),
-        WorkspaceRoute::FleetLibraryItem => {
-            Some(get(handler::library::read::one::<D>).delete(handler::library::remove::one::<D>))
+        WorkspaceRoute::PluginItem => {
+            Some(get(handler::plugin::read::one::<D>).delete(handler::plugin::remove::one::<D>))
         }
-        WorkspaceRoute::FleetLibraryRevisions => Some(
-            get(handler::library::list::history::<D>)
-                .post(handler::library::publish_revision::revision::<D>),
+        WorkspaceRoute::PluginRevisions => Some(
+            get(handler::plugin::list::history::<D>)
+                .post(handler::plugin::publish_revision::revision::<D>),
         ),
-        WorkspaceRoute::FleetLibraryRevision => Some(get(handler::library::read::revision::<D>)),
+        WorkspaceRoute::PluginRevision => Some(get(handler::plugin::read::revision::<D>)),
         WorkspaceRoute::Members => Some(get(tenant::member::in_workspace::<D>)),
     }
 }
@@ -127,11 +126,10 @@ fn draft_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<A
         WorkspaceRoute::DraftMessages => Some(get(message::list::<D>).post(message::send::<D>)),
         WorkspaceRoute::DraftStream => Some(get(stream::open::<D>)),
         WorkspaceRoute::DraftCancellations => Some(post(message::cancel::<D>)),
-        WorkspaceRoute::FleetLibrary
-        | WorkspaceRoute::FleetLibraryOwned
-        | WorkspaceRoute::FleetLibraryItem
-        | WorkspaceRoute::FleetLibraryRevisions
-        | WorkspaceRoute::FleetLibraryRevision
+        WorkspaceRoute::Plugin
+        | WorkspaceRoute::PluginItem
+        | WorkspaceRoute::PluginRevisions
+        | WorkspaceRoute::PluginRevision
         | WorkspaceRoute::Fleets
         | WorkspaceRoute::Secrets
         | WorkspaceRoute::Secret

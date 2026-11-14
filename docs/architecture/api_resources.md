@@ -6,19 +6,19 @@ product_version: 0.75.0
 executable: false
 ---
 
-# API resources — workspace setup, fleets, Library and runner
+# API resources — workspace setup, fleets, Plugin and runner
 
 ## Synopsis
 
 This reference describes the implemented private setup and shared fleet APIs. The [verification ledger](shared_chat_verification.md#historical-verification-evidence) records observed checks and remaining live proof; implementation alone does not establish deployment success.
 
-Prefixes: `W=/v1/workspaces/{workspace_id}`, `D=W/drafts/{draft_id}`, `F=W/fleets/{fleet_id}`, `G=W/fleet-libraries/{library_id}`. Workspace, draft, candidate, fleet, revision and lease identifiers are UUIDv7.
+Prefixes: `W=/v1/workspaces/{workspace_id}`, `D=W/drafts/{draft_id}`, `F=W/fleets/{fleet_id}`, `G=W/plugins/{plugin_id}`. Workspace, draft, candidate, fleet, revision and lease identifiers are UUIDv7.
 
-Authoring operation identifiers are UUIDv7; fleet-message keys follow C4. Library identifiers are opaque: platform slugs and owned UUIDs are both valid; literal `owned` is mounted before a member path.
+Authoring operation identifiers are UUIDv7; fleet-message keys follow C4. Plugin and revision identifiers are UUIDv7. Every Plugin belongs to one account; reads, reuse and mutations enforce that account through the requesting workspace.
 
 Person authorization uses workspace ownership resolved by the existing layer. Draft reads and writes additionally require the authenticated creator; workspace membership alone does not expose another person's draft.
 
-Draft access requires `fleet:write`. Library reads require `fleet:read`, writes and deletes require `library:write`; fleet reads and writes retain `fleet:read` and `fleet:write`. Fleet deletion retains `fleet:admin` and the killed-state rule.
+Draft access requires `fleet:write`. Plugin reads require `fleet:read`, writes and deletes require `plugins:write`; fleet reads and writes retain `fleet:read` and `fleet:write`. Fleet deletion retains `fleet:admin` in every lifecycle state.
 
 Revalidate current access on every read, write, stream reconnect, and setup step.
 
@@ -61,17 +61,17 @@ A candidate/review is absent until there is a validated candidate. A queued mess
 
 - An entity tag (ETag) is a strong opaque version. GET D/F/G returns its resource tag in `ETag` and `etag`. Compression may weaken the response header to `W/"value"`; the body retains the strong `"value"` tag.
 
-- Fleet and platform Library clients accept that header only when its opaque value matches the strong body tag. Conditional writes retain the strong body tag.
+- Fleet and Plugin clients accept that header only when its opaque value matches the strong body tag. Conditional writes retain the strong body tag.
 
 - GET F additionally exposes `setup_etag`. Fleet revision writes use the setup tag; status/name PATCH uses the fleet resource tag. A creation retry may advance progress but preserves identity and original accepted inputs.
 
-- Draft creation and both conversation sends use **only** body `operation_id`; reject an `Idempotency-Key` header on those routes. Setup creation, fleet revision application, and Library create/revision use **only** `Idempotency-Key` (UUIDv7); reject body replay keys there. PATCH uses `If-Match`; Stop uses its monotone cutoff.
+- Draft creation and both conversation sends use **only** body `operation_id`; reject an `Idempotency-Key` header on those routes. Setup creation, fleet revision application, and Plugin create/revision use **only** `Idempotency-Key` (UUIDv7); reject body replay keys there. PATCH uses `If-Match`; Stop uses its monotone cutoff.
 
 - Authoring creation keys bind actor, workspace, operation type and parent collection. Member keys bind workspace, operation type and resource, with the accepting actor recorded. Authorization runs before replay.
 
 - The same authoring key, normalized body and actor recover the accepted result. Changed body or member-resource actor conflicts. Protection lasts 24 hours from receipt creation; deletion within that window returns 410.
 
-- After expiry, inspect the draft, fleet or Library before another write. The old authoring key no longer prevents duplication.
+- After expiry, inspect the draft, fleet or Plugin before another write. The old authoring key no longer prevents duplication.
 
 ### Definition, candidate, review, and common types
 
@@ -83,12 +83,12 @@ Required daily ceiling is `1..1000000000000` nanos; optional monthly ceiling is 
 
 ```text
 {kind:"blank"}
-{kind:"library",library_id,revision_id}
+{kind:"plugin",plugin_id,revision_id}
 {kind:"fleet",fleet_id,setup_revision}
 {kind:"definition",definition:Definition}
 ```
 
-Resolve and authorize the source before allocating a row. Library and fleet sources pin immutable Definitions.
+Resolve and authorize the source before allocating a row. Plugin and fleet sources pin immutable Definitions.
 
 The typed definition source accepts native JSON, including the CLI's `--definition <PATH>` input and the browser drawer. Repository and template-bundle imports remain unsupported.
 
@@ -109,13 +109,13 @@ next_action = {kind:"account_models"|"billing"|"workspace_connections"|"approval
 
 Requirements are derived immutable setup, not readiness results. Review digest excludes observation timestamps and includes candidate, selections, source/target revisions, policy marker, and effective access/model resolution versions.
 
-Effective setup changes →409 plus fresh `review_digest`; missing live checks instead appear in `installing` setup progress. GET library Inspect computes equivalent review context without pretending the Library's requirements changed.
+Effective setup changes →409 plus fresh `review_digest`; missing live checks instead appear in `installing` setup progress. GET plugin Inspect computes equivalent review context without pretending the Plugin's requirements changed.
 
 Save and Apply accept optional `origin` display metadata, with values `cli`, `dashboard` or `chat`. The field grants no access. The first accepted revision records the origin in its immutable `setup_saved` activity.
 
 Retries exclude `origin` when comparing request bodies and retain the original receipt. Changing only the origin with the same operation key creates no additional fleet, revision or receipt. Older clients may omit the field; older receipts retain their generic saved-version label.
 
-`Draft = {id,state,title,etag,authoring_model_ref,cancelled_through,candidate?,review?,linked_fleet_id?,publication?,closed_at?,expires_at?}`. States: `editing|saving|closed`; message state is separate. `publication={library_id,revision_id,canonical_digest}` is a verified explicit publication receipt.
+`Draft = {id,state,title,etag,authoring_model_ref,cancelled_through,candidate?,review?,linked_fleet_id?,publication?,closed_at?,expires_at?}`. States: `editing|saving|closed`; message state is separate. `publication={plugin_id,revision_id,canonical_digest}` is a verified explicit publication receipt.
 
 Closing sets expiry 30 days later; linked active authoring/setup blocks expiry. Cancelled setup returns `editing`, removing close/expiry fields. Active authoring blocks PATCH and Save.
 
@@ -180,7 +180,7 @@ GET reports current prerequisites in `setup.checks`; changes to a saved review d
 
 An idle `instance_name` draft selection chooses the validated instance slug independently of the recipe. It changes the review digest without creating a new candidate revision. An unresolved account default has a null `effective.runtime_model_ref` and a missing model readiness check.
 
-`LibraryCard = {id,name,description,visibility:"platform"|"tenant",created_at,requirements,required_credentials_reasons,head_revision_id,etag}` keeps the gallery meaning of `afd_api_wire`'s library `Card`. `Library = {card,head:LibraryRevision,review,etag}`. `LibraryRevision = {id,library_id,revision,definition,canonical_digest,requirements,policy_semantics,created_at}`.
+`PluginCard = {id,name,description,created_at,requirements,required_credentials_reasons,head_revision_id,etag}` keeps the gallery meaning of `afd_api_wire`'s plugin `Card`. `Plugin = {card,head:PluginRevision,review,etag}`. `PluginRevision = {id,plugin_id,revision,definition,canonical_digest,requirements,policy_semantics,created_at}`.
 
 Revision list items omit instructions, returning `{id,revision,canonical_digest,created_at}`. Member reads include definition and context review; no secret values.
 
@@ -192,7 +192,7 @@ The serialized Definition or edit batch is bounded at 448 KiB; setup HTTP bodies
 
 The next two tables preserve the workspace-chat cutover's 17 new and seven changed person routes. Subsequent fleet editor and history reads are listed separately below.
 
-### New person routes: 17
+### New person routes: 16
 
 | # | Method and resource | Exact input / preconditions | Success output | Specific failures |
 |---|---|---|---|---|
@@ -207,12 +207,11 @@ The next two tables preserve the workspace-chat cutover's 17 new and seven chang
 | N9 | POST D/cancellations | `{through_sequence}` decimal string, at most current last accepted sequence; no If-Match | 200 `{cancelled_through,stopped:[{sequence,state:"cancelled"}]}`; lower repeated cutoff returns standing watermark | INPUT, HIDDEN, DEPENDENCY |
 | N10 | GET D/events/stream | Creator; `Last-Event-ID` optional ephemeral hint; no body | 200 `text/event-stream`; typed progress described below; reconnect reconciles GET D/messages and GET D | HIDDEN, AUTH, DEPENDENCY |
 | N11 | POST F/revisions | If-Match setup tag + Idempotency-Key; `{draft_candidate_id,review_digest,origin?}`; own authorized idle improvement draft targets this fleet | 201 `{fleet_id,setup_revision,setup_etag,etag,review_digest,schedules[]}`; Location F, ETag resource tag | PRECONDITION, STALE, REVIEW, POLICY, REPLAY, HIDDEN, STATE |
-| N12 | GET W/fleet-libraries/owned | No tier/owned query; ordinary limit/starting_after allowed; fleet:read | 200 Page of LibraryCard, tenant visibility only | INPUT, CURSOR, AUTH, DEPENDENCY |
-| N13 | GET G | No body; optional `revision_id` to Inspect a pinned revision; fleet:read | 200 Library; selected revision and review; ETag | HIDDEN, INPUT, DEPENDENCY |
-| N14 | DELETE G | No body; library:write; owned only | 204 deletes entry and Library history; installed fleets retain independent fleet revisions | HIDDEN (platform or foreign), AUTH, DEPENDENCY |
-| N15 | POST G/revisions | If-Match Library tag + Idempotency-Key; `{draft_candidate_id}`; owned only; candidate valid for Save and idle | 201 `{library_id,revision_id,head_revision_id,etag}`; Location G/revisions/{revision_id}, ETag | PRECONDITION, STALE, REPLAY, POLICY, HIDDEN, STATE |
+| N13 | GET G | No body; optional `revision_id` to Inspect a pinned revision; fleet:read | 200 Plugin; selected revision and review; ETag | HIDDEN, INPUT, DEPENDENCY |
+| N14 | DELETE G | No body; plugins:write; owned only | 204 deletes entry and Plugin history; installed fleets retain independent fleet revisions | HIDDEN (foreign), AUTH, DEPENDENCY |
+| N15 | POST G/revisions | If-Match Plugin tag + Idempotency-Key; `{draft_candidate_id}`; owned only; candidate valid for Save and idle | 201 `{plugin_id,revision_id,head_revision_id,etag}`; Location G/revisions/{revision_id}, ETag | PRECONDITION, STALE, REPLAY, POLICY, HIDDEN, STATE |
 | N16 | GET G/revisions | No body; fleet:read; list paging | 200 Page of revision summary | HIDDEN, INPUT, CURSOR, DEPENDENCY |
-| N17 | GET G/revisions/{revision_id} | No body; fleet:read | 200 `{revision:LibraryRevision,review}`; immutable content plus live context readiness | HIDDEN, AUTH, DEPENDENCY |
+| N17 | GET G/revisions/{revision_id} | No body; fleet:read | 200 `{revision:PluginRevision,review}`; immutable content plus live context readiness | HIDDEN, AUTH, DEPENDENCY |
 
 GET D has a complete review only when a candidate exists. Queue acceptance can succeed before wallet admission: balance/model failure becomes a visible failed message rather than silent queued work. Draft creation with a first message atomically records both or neither.
 
@@ -224,13 +223,13 @@ Title is a human display name, independent of validated definition slugs. Runtim
 
 | # | Method and resource | Exact target input | Target success output | Specific failures |
 |---|---|---|---|---|
-| C1 | POST W/fleets | Idempotency-Key; `{source:{kind:"draft",draft_candidate_id}|{kind:"library",library_id,revision_id},name,review_digest,start:Start,origin?}`; draft must be creator-owned/idle, Library install can bypass drafts | 201 Fleet with `status:active|installing`, setup checks, start outcome, schedules; Location F and ETag; key retry resumes same identity | REPLAY, GONE, REVIEW, HIDDEN, INPUT, POLICY, DEPENDENCY |
+| C1 | POST W/fleets | Idempotency-Key; `{source:{kind:"draft",draft_candidate_id}|{kind:"plugin",plugin_id,revision_id},name,review_digest,start:Start,origin?}`; draft must be creator-owned/idle, Plugin install can bypass drafts | 201 Fleet with `status:active|installing`, setup checks, start outcome, schedules; Location F and ETag; key retry resumes same identity | REPLAY, GONE, REVIEW, HIDDEN, INPUT, POLICY, DEPENDENCY |
 | C2 | GET F | No body; fleet:read | 200 Fleet including current setup/start and both resource/setup tags | existing fleet404 `UZ-AGT-009`, AUTH, DEPENDENCY |
 | C3 | PATCH F | Required If-Match resource tag; `{status?,name?}` only; at least one. `active` on installing retries checks, `archived` cancels setup and live work | 200 Fleet and ETag; cancelled linked draft returns editing | PRECONDITION, STALE, STATE, INPUT, AUTH, DEPENDENCY; an archived fleet returns 409 `UZ-AGT-020` with `current_state: archived` after write preconditions pass; a fleet that does not exist returns 404 `UZ-AGT-009` |
 | C4 | POST F/messages | `{message,operation_id?}`; message 1..8,192 bytes; operation_id 1..200 bytes when supplied; neither permits NUL; no header key | 202 `{status:"accepted",event_id,replayed,disposition,folded_into_event_id?}`; `disposition` is `started`, `folded` or `queued`, and `folded_into_event_id` names the live run a folded message joined; Location F/messages; recovery through existing message read/stream | INPUT, REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
 | C5 | PATCH F/schedules/{schedule_id} | Required If-Match schedule tag; `{override:ScheduleOverride|null}` for inherited recipe; independent schedule uses `{cron?,timezone?,message?,status?}` and cannot Restore | 200 Schedule and ETag; tag covers recipe revision + instance setup revision + override revision; null restores exact inherited setup | PRECONDITION, STALE, INPUT, STATE, existing schedule404 `UZ-SCHED-002`, DEPENDENCY |
-| C6 | POST W/fleet-libraries | Idempotency-Key; `{draft_candidate_id,label}`; creator-owned valid idle candidate; library:write | 201 `{library_id,revision_id,head_revision_id,etag}`; Location G; explicit publication receipt on linked draft | INPUT, REPLAY, GONE, POLICY, STATE, AUTH, DEPENDENCY |
-| C7 | GET W/fleet-libraries | Existing gallery filters/paging; no body | 200 Page of LibraryCard (platform + owned), now head_revision_id and etag | existing library input/cursor errors, AUTH, DEPENDENCY |
+| C6 | POST W/plugins | Idempotency-Key; `{draft_candidate_id,label}`; creator-owned valid idle candidate; plugins:write | 201 `{plugin_id,revision_id,head_revision_id,etag}`; Location G; explicit publication receipt on linked draft | INPUT, REPLAY, GONE, POLICY, STATE, AUTH, DEPENDENCY |
+| C7 | GET W/plugins | Bounded limit/starting_after paging; no body | 200 Page of account-owned PluginCard, including head_revision_id and etag | existing plugin input/cursor errors, AUTH, DEPENDENCY |
 
 ### Fleet editor and history reads
 
@@ -253,7 +252,7 @@ A message that folded into a live run keeps its own event. Once the run's report
 
 This is an internal read change, not another route. Retry after an uncertain acceptance reuses the original operation ID.
 
-C1 accepts a reviewed private candidate or a pinned Library revision. A selected Slack trigger must be part of the reviewed setup. Changed install name/model choices open a private draft before Save.
+C1 accepts a reviewed private candidate or a pinned Plugin revision. A selected Slack trigger must be part of the reviewed setup. Changed install name/model choices open a private draft before Save.
 
 No hidden trigger mutation or preview route is retained.
 
@@ -261,11 +260,11 @@ C4 uses the fleet admission ledger, separately from authoring replay receipts. R
 
 A message sent while the fleet's run is live folds into that run (`disposition: folded`). The running lease claims it at its next model call, and the run's answer is its reply. A parked (approval-gated) or task-bound message ahead of it is a barrier, so the message queues instead.
 
-C6 publishes only a draft candidate. Native JSON can initialize that draft; GitHub/template-bundle import and Markdown/bundle export remain unsupported. Operator Library source writes also resolve an authorized creator-owned draft candidate; operator publication retains its separate platform scope.
+C6 publishes only a draft candidate. Native JSON can initialize that draft; GitHub/template-bundle import and Markdown/bundle export remain unsupported. Account Plugin writes resolve an authorized creator-owned draft candidate and require `plugins:write`.
 
 Source-repository fields, upload/import/re-import routes, bundle delivery and retired bundle flags are removed with their dedicated implementations. GitHub runtime triggers and repository tools remain independent capabilities.
 
-The terminal client starts or resumes a private draft, sends text through N7, follows N8/N10 and reviews N4. It explicitly invokes C1 to Save. It can publish through C6/N15 or install a pinned Library revision through C1.
+The terminal client starts or resumes a private draft, sends text through N7, follows N8/N10 and reviews N4. It explicitly invokes C1 to Save. It can publish through C6/N15 or install a pinned Plugin revision through C1.
 
 Browser and terminal use the same authorization, replay, validation, billing and readiness rules. Terminal conversation text is the authoring input; scripts may submit text but cannot skip review or grant checks.
 
@@ -273,8 +272,10 @@ Browser and terminal use the same authorization, replay, validation, billing and
 
 | # | Removed method and resource | Replacement |
 |---|---|---|
-| R1 | GET W/library-entries | GET W/fleet-libraries/owned |
+| R1 | GET W/library-entries | GET W/plugins |
 | R2 | DELETE W/library-entries/{entry_id} | DELETE G |
+| R3 | /v1/admin/fleet-libraries and its members | Removed; Plugins belong to accounts |
+| R4 | W/fleet-libraries and its members, including /owned | W/plugins and its members; no aliases |
 
 Removal is immediate; there is no alias. The following are absent:
 
@@ -286,7 +287,7 @@ Removal is immediate; there is no alias. The following are absent:
 
 - Publication/deletion resources and definition-update resources.
 
-- Schedule-overrides resources, fleet revision reads, and a second Library collection.
+- Schedule-overrides resources, fleet revision reads, and a second Plugin collection.
 
 ### Private Server-Sent Events (SSE)
 

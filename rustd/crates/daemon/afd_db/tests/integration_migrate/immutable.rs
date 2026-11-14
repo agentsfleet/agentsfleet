@@ -11,7 +11,7 @@ const IMMUTABLE: [&str; 21] = [
     "authoring.activity_receipts",
     "authoring.answer_receipts",
     "authoring.candidates",
-    "authoring.library_revisions",
+    "authoring.plugin_revisions",
     "authoring.replay_receipts",
     "billing.authoring_report_receipts",
     "connector.oauth_nonces",

@@ -2,7 +2,7 @@
 
 import {useEffect, useId, useState} from "react";
 import {Button, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner} from "@agentsfleet/design-system";
-import {libraryPage, type LibraryCard} from "@/lib/api/draft-library";
+import {pluginPage, type PluginCard} from "@/lib/api/draft-plugin";
 
 /** Selecting a destination is explicit intent, independent of a draft's source. */
 export function PluginPublicationTarget({workspace, disabled, value, onChange}: {
@@ -11,13 +11,13 @@ export function PluginPublicationTarget({workspace, disabled, value, onChange}: 
   const id = useId();
   const [cursor, setCursor] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [page, setPage] = useState<{items: LibraryCard[]; next_cursor: string | null} | null>(null);
+  const [page, setPage] = useState<{items: PluginCard[]; next_cursor: string | null} | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setPage(null); setError(false);
-    void libraryPage(workspace, true, cursor, controller.signal).then(result => {
-      if (!controller.signal.aborted) setPage({...result, items: result.items.filter(item => item.visibility === "tenant")});
+    void pluginPage(workspace, cursor, controller.signal).then(result => {
+      if (!controller.signal.aborted) setPage(result);
     }).catch(() => {if (!controller.signal.aborted) setError(true);});
     return () => controller.abort();
   }, [workspace, cursor, attempt]);

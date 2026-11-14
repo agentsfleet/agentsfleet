@@ -45,8 +45,8 @@ const KEY_REPLY: &str = "reply";
 const KEY_DRAFT_ID: &str = "draft_id";
 /// The terminal state an accepted message reached.
 const KEY_STATE: &str = "state";
-/// The Library entry a publication committed to.
-const KEY_LIBRARY_ID: &str = "library_id";
+/// The Plugin entry a publication committed to.
+const KEY_PLUGIN_ID: &str = "plugin_id";
 /// The revision a publication committed.
 const KEY_REVISION_ID: &str = "revision_id";
 /// Whether a publication was an entry's first or a later revision.
@@ -229,12 +229,12 @@ impl AuthoringStep {
             Self::SetupFinished { fleet_id } | Self::SetupCancelled { fleet_id } => {
                 put(KEY_FLEET_ID, fleet_id.as_str().into());
             }
-            Self::LibraryPublished {
-                library_id,
+            Self::PluginPublished {
+                plugin_id,
                 revision_id,
                 kind,
             } => {
-                put(KEY_LIBRARY_ID, library_id.as_str().into());
+                put(KEY_PLUGIN_ID, plugin_id.as_str().into());
                 put(KEY_REVISION_ID, revision_id.as_str().into());
                 put(KEY_KIND, (*kind).into());
             }

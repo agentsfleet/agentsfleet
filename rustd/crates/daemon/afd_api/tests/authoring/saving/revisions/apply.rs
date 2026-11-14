@@ -87,9 +87,9 @@ async fn an_improvement_advances_only_setup_and_replays_after_the_private_draft_
     assert_eq!(json_body(replay).await["setup_revision"], "2");
     assert_eq!(fleet.revision_count().await, 2);
     assert_eq!(
-        library_count(&fleet).await,
+        plugin_count(&fleet).await,
         0,
-        "Apply has no implicit Library publication"
+        "Apply has no implicit Plugin publication"
     );
     fleet.case.cleanup().await;
 }
@@ -101,9 +101,9 @@ async fn original_instructions(fleet: &Fleet) -> String {
         .await.expect("immutable original setup")
 }
 
-/// How many Library rows the fleet's tenant owns.
-async fn library_count(fleet: &Fleet) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.library_entries WHERE tenant_id=$1")
+/// How many Plugin rows the fleet's tenant owns.
+async fn plugin_count(fleet: &Fleet) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM authoring.plugin_entries WHERE tenant_id=$1")
         .bind(&fleet.case.base.tenant)
         .fetch_one(
             &mut *fleet

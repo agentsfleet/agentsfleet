@@ -57,8 +57,8 @@ describe("Billing report filters and details preserve period totals", () => {
   it("retains unattributed setup charges and a deleted fleet's identifier without inventing a name", () => {
     const report = billingReport();
     view({...report, spending: {...report.spending, by_fleet: [
-      {key: null, label: null, totals: billingTotals()},
-      {key: "deleted-fleet", label: null, totals: billingTotals()},
+      {key: null, label: null, models: [], totals: billingTotals()},
+      {key: "deleted-fleet", label: null, models: ["retired-model"], totals: billingTotals()},
     ]}});
     const section = screen.getByRole("region", {name: "By fleet"});
     expect(within(section).getByText("Setup chats")).toBeTruthy();
@@ -81,10 +81,11 @@ describe("Billing report filters and details preserve period totals", () => {
   });
   it("renders full-period totals independently of the single displayed activity", () => {
     view(billingReport({ totals: billingTotals({ charged_nanos: "5200000000", activity_count: 52, line_count: 150 }) }));
-    expect(screen.getByText("$5.20")).toBeTruthy();
-    expect(screen.getByText("52")).toBeTruthy();
-    expect(screen.getByText("Tokens")).toBeTruthy();
-    expect(screen.getByText("50")).toBeTruthy();
+    const totals = within(screen.getByLabelText("Period totals"));
+    expect(totals.getByText("$5.20")).toBeTruthy();
+    expect(totals.getByText("52")).toBeTruthy();
+    expect(totals.getByText("Tokens")).toBeTruthy();
+    expect(totals.getByText("50")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Charge details"}));
     expect(screen.getAllByRole("button", { name: /Payment alerts/ })).toHaveLength(1);
     expect(screen.getByText(/Totals exclude pending or unavailable provider usage/)).toBeTruthy();
@@ -92,15 +93,16 @@ describe("Billing report filters and details preserve period totals", () => {
 
   it("an empty successful report has an honest empty state and a disabled next page", () => {
     view(billingReport({ totals: billingTotals({ charged_nanos: "0", activity_count: 0, line_count: 0 }),
+      daily: [{day: "2026-10-25", totals: billingTotals({charged_nanos: "0"})}],
       activities: { items: [], total: 0, next_cursor: null }, spending: { by_fleet: [], by_model: [] }, filters: { fleets: [], models: [] } }));
-    expect(screen.getByText("Daily spending is not available yet.")).toBeTruthy();
+    expect(screen.getByText("No settled charges for this period.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Charge details"}));
     expect(screen.getByText("No settled activity")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
     expect(screen.getAllByText("No settled spending")).toHaveLength(1);
   });
 
-  it.each([["Period", "Today", "period", "today"], ["Fleet", "Setup chat", "fleet", "setup"], ["Model", BILLING_MODEL_NAME, "model", BILLING_MODEL]])(
+  it.each([["Period", "Last 7 days", "period", "week"], ["Period", "Today", "period", "today"], ["Fleet", "Setup chat", "fleet", "setup"], ["Model", BILLING_MODEL_NAME, "model", BILLING_MODEL]])(
     "changing %s resets paging while retaining the selected period", async (label, choice, key, expected) => {
       current.params = new URLSearchParams("c=old&cps=25&through_at=old&activity=old&dc=old");
       view();
@@ -200,7 +202,7 @@ describe("Billing report filters and details preserve period totals", () => {
   it("spending groups retain opaque labels and private setup when names are absent", () => {
     const totals = billingTotals();
     render(<BillingSpending modelNames={{}} report={billingReport({ spending: {
-      by_fleet: [{ key: null, label: null, totals }, { key: "retained-fleet", label: null, totals }],
+      by_fleet: [{ key: null, label: null, models: [], totals }, { key: "retained-fleet", label: null, models: [], totals }],
       by_model: [{ key: BILLING_MODEL, label: null, totals }, { key: null, label: null, totals }],
     } })} />, { wrapper: TooltipProvider });
     expect(screen.getByText("Setup chat")).toBeTruthy();
@@ -211,7 +213,7 @@ describe("Billing report filters and details preserve period totals", () => {
 
   it("a zero-charge group keeps a zero bar and the other breakdown's empty state", () => {
     render(<BillingSpending modelNames={names} report={billingReport({ spending: {
-      by_fleet: [{ key: null, label: null, totals: billingTotals({ charged_nanos: "0" }) }], by_model: [],
+      by_fleet: [{ key: null, label: null, models: [], totals: billingTotals({ charged_nanos: "0" }) }], by_model: [],
     } })} />);
     const group = screen.getByRole("list", { name: BY_FLEET_LABEL });
     expect(within(group).getByText("$0.00")).toBeTruthy();
@@ -222,8 +224,8 @@ describe("Billing report filters and details preserve period totals", () => {
   it("preserves exact money and proportional bars above safe JavaScript integers", () => {
     render(<BillingSpending modelNames={names} report={billingReport({ spending: {
       by_fleet: [
-        { key: "large", label: "Large charge", totals: billingTotals({ charged_nanos: "10000000000000000100000" }) },
-        { key: "small", label: "Smaller charge", totals: billingTotals({ charged_nanos: "2500000000000000025000" }) },
+        { key: "large", label: "Large charge", models: [], totals: billingTotals({ charged_nanos: "10000000000000000100000" }) },
+        { key: "small", label: "Smaller charge", models: [], totals: billingTotals({ charged_nanos: "2500000000000000025000" }) },
       ], by_model: [],
     } })} />);
     const group = screen.getByRole("list", { name: BY_FLEET_LABEL });

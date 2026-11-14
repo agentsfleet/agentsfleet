@@ -81,7 +81,7 @@ Each table's columns live in its `schema/` slot, the only copy kept.
 | Schema | Owns |
 |---|---|
 | `identity` | Accounts, people, membership, credentials, preferences |
-| `authoring` | The private setup chat, its runner work, and the fleet Library |
+| `authoring` | The private setup chat, its runner work, and the fleet Plugin |
 | `fleet` | Deployed fleets, their frozen setup history, and their work |
 | `runner` | Enrolled hosts, the leases they hold, per-fleet claim slots |
 | `connector` | Outside accounts, channel bindings, fleet-to-service grants |
@@ -103,7 +103,7 @@ Until the first production deploy, a change to a table edits its file; after it,
 ## Runtime SQL
 
 Every static statement lives in a `.sql` file beside the use case that runs it (for example
-`library/sql/page.sql`). A typed Rust function loads it with `include_str!` and states its
+`plugin/sql/page.sql`). A typed Rust function loads it with `include_str!` and states its
 parameters, authorization and locks. Rows decode into named `FromRow` types; `Json<T>` is for
 real JSON columns only.
 
@@ -143,13 +143,13 @@ there is no generic repository trait.
 ```
  identity.workspaces/users ◀── drafts ──▶ fleet.fleets (fleet_id)
                                  │ head_candidate_id ──▶ candidates
-                                 │ library_revision_id ──▶ library_revisions
+                                 │ plugin_revision_id ──▶ plugin_revisions
                                  │ source_fleet_revision_id ──▶ fleet.revisions
               messages ──▶ drafts; candidate_id ──▶ candidates
  attempts ──▶ runner.runners   ON DELETE SET NULL: a revoked runner's record goes, its charges stay
           (no FK to drafts/messages: a charge outlives chat text)
    ◀── dispatches, activity_receipts, answer_receipts
- library_entries ◀── library_revisions (ON DELETE CASCADE)
+ plugin_entries ◀── plugin_revisions (ON DELETE CASCADE)
  replay_receipts (no FKs: a retry key outlives erasure)
 ```
 
@@ -164,16 +164,16 @@ there is no generic repository trait.
 | `activity_receipts` | Replay proof for "runner posted a setup" | append-only |
 | `answer_receipts` | Replay proof for "runner posted an answer" | append-only |
 | `replay_receipts` | Every authoring retry key: create draft, send message, publish | append-only, swept at a fixed age |
-| `library_entries` | Gallery card; NULL tenant = platform card |  |
-| `library_revisions` | A frozen published version | append-only |
+| `plugin_entries` | Account-owned card; tenant is required |  |
+| `plugin_revisions` | A frozen published version | append-only |
 
 - **Model pointers.** `drafts.tenant_model_id` and `messages.tenant_model_id` are NULL for the
   platform default and otherwise reference a `model.tenant_models` row of the same tenant. The wire
   keeps today's string: `platform-default` maps to NULL, a tenant model id maps to the row.
 - **Chat save intent.** `messages.save_requested` records the accepted request to save after a completed turn. The report writer saves the setup with the answer. A checked save refusal keeps the answer and records its safe code in `save_error_code`.
-- **Source and publication are separate facts**. `source_type` (blank, definition, library, fleet)
-  plus `source_library_revision_id` or `source_fleet_revision_id` record where the chat started.
-  `library_revision_id` records what it published, so a draft can start from Library revision A and
+- **Source and publication are separate facts**. `source_type` (blank, definition, plugin, fleet)
+  plus `source_plugin_revision_id` or `source_fleet_revision_id` record where the chat started.
+  `plugin_revision_id` records what it published, so a draft can start from Plugin revision A and
   publish revision B.
 
   All three references are `ON DELETE SET NULL`, so deleting a card or purging
@@ -240,7 +240,7 @@ there is no generic repository trait.
 
 The live setup is read from `revisions` only; `fleets` keeps no config copy.
 `revisions.review_context` is the frozen review subject (creator, source pin, instance name) that
-activation re-reviews against. A Library install has no draft, and a swept draft cannot supply it.
+activation re-reviews against. A Plugin install has no draft, and a swept draft cannot supply it.
 
 `revisions.runtime_model_ref` is the model resolved at Save or Apply, kept because a definition may
 omit its model and review then resolves the tenant default.
@@ -331,7 +331,7 @@ that reads them (rule 7).
 |---|---|---|---|
 | Draft (user delete or 30-day sweep) | messages, candidates, answer receipts, draft context checkpoint | attempts, dispatches, usage lines, receipts | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, attempts, usage lines | `dispatches.result` and `dispatches.native_reply` of their attempts |
-| Library card | its revisions | fleets installed from it; drafts started from it (`source_library_revision_id` set NULL) | none |
+| Plugin card | its revisions | fleets installed from it; drafts started from it (`source_plugin_revision_id` set NULL) | none |
 | Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runner leases for their 30-day window; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
 | Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | attempts, usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Authoring private results; each removed object first records its location and charged bytes for remote cleanup |
 | Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, usage lines (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
@@ -405,5 +405,5 @@ Added by this milestone:
 - The runner protocol carries no `deletion_generation` (lease payload, activity, model calls, renew, report); a spooled report written before the change still decodes.
   The one development runner restarts on the new release; no fleets exist when it does.
 - `agentsfleet models use` writes through `model.tenant_models`; its output is unchanged.
-- Closed-draft retention, the 24-hour retry window and Library-card deletion (history goes with the
+- Closed-draft retention, the 24-hour retry window and Plugin-card deletion (history goes with the
   card) are documented in the public docs.

@@ -9,7 +9,7 @@ import { DraftConversation } from "@/components/domain/chat/DraftConversation";
 import { FleetSetup } from "@/components/domain/chat/FleetSetup";
 import { SetupStatusFlap } from "@/components/domain/chat/SetupStatusFlap";
 import { ChatFixture, CHAT_PROPS, chatRouter, chooseSetupAction } from "./fixture";
-import { DRAFT, FLEET, FLEET_ID, LIBRARY_CARD, PUBLICATION, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET, FLEET_ID, PLUGIN_CARD, PUBLICATION, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
 
 const approvals = vi.hoisted(() => ({list: vi.fn(), approve: vi.fn(), deny: vi.fn()}));
@@ -198,7 +198,7 @@ it("keeps publishing in its own explicit menu action", async () => {
   fireEvent.click(screen.getByRole("button", {name: "Publish new entry"}));
   await screen.findByText("Setup published");
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.getByRole("link", {name: "New fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?library=${PUBLICATION.library_id}&revision=${PUBLICATION.revision_id}`);
+  expect(screen.getByRole("link", {name: "New fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?plugin=${PUBLICATION.plugin_id}&revision=${PUBLICATION.revision_id}`);
   expect(fixture.writes()[0]?.body).toMatchObject({label: "Checked recipe"});
   expect(fixture.saveAttempts).toBe(0);
 });
@@ -208,11 +208,11 @@ it("requires an explicit owned-plugin selection when a resumed draft has no publ
   const writes: {path: string; init: RequestInit | undefined}[] = [];
   fixture.fetch.mockImplementation((input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.includes("/fleet-libraries/owned?")) return Promise.resolve(response({items: [{...LIBRARY_CARD, visibility: "tenant"}], next_cursor: null}));
-    if (path.endsWith(`/fleet-libraries/${LIBRARY_CARD.id}`)) return Promise.resolve(response({etag: '"selected-version"'}));
-    if (path.endsWith(`/fleet-libraries/${LIBRARY_CARD.id}/revisions`)) {
+    if (path.includes("/plugins?")) return Promise.resolve(response({items: [{...PLUGIN_CARD}], next_cursor: null}));
+    if (path.endsWith(`/plugins/${PLUGIN_CARD.id}`)) return Promise.resolve(response({etag: '"selected-version"'}));
+    if (path.endsWith(`/plugins/${PLUGIN_CARD.id}/revisions`)) {
       writes.push({path, init});
-      fixture.draft = {...fixture.draft, publication: {library_id: PUBLICATION.library_id, revision_id: PUBLICATION.revision_id, canonical_digest: fixture.draft.candidate?.canonical_digest ?? ""}};
+      fixture.draft = {...fixture.draft, publication: {plugin_id: PUBLICATION.plugin_id, revision_id: PUBLICATION.revision_id, canonical_digest: fixture.draft.candidate?.canonical_digest ?? ""}};
       return Promise.resolve(response(PUBLICATION));
     }
     return normal(input, init);
@@ -221,7 +221,8 @@ it("requires an explicit owned-plugin selection when a resumed draft has no publ
   expect(screen.queryByRole("button", {name: "Publish next revision"})).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Update an existing plugin"}));
   fireEvent.click(await screen.findByRole("combobox", {name: "Plugin to update"}));
-  fireEvent.click(await screen.findByRole("option", {name: LIBRARY_CARD.name}));
+  fireEvent.click(await screen.findByRole("option", {name: PLUGIN_CARD.name}));
+  expect(fixture.fetch).toHaveBeenCalledWith(expect.stringContaining(`/workspaces/${WORKSPACE}/plugins?`), expect.anything());
   expect(writes).toHaveLength(0);
   fireEvent.click(screen.getByRole("button", {name: "Publish next revision"}));
   await screen.findByText("Setup published");
@@ -232,22 +233,22 @@ it("requires an explicit owned-plugin selection when a resumed draft has no publ
 });
 
 // Value: protects=publication version conflicts; fails_when=a refused next revision reports success or saves the fleet instead;
-// why_new=existing menu publication tests create a new Library entry; seam=none; no_claim=backend optimistic concurrency enforcement.
-it("retains a refused next Library revision without claiming publication or changing the fleet", async () => {
-  fixture.draft = {...DRAFT, publication: {library_id: PUBLICATION.library_id,
+// why_new=existing menu publication tests create a new Plugin entry; seam=none; no_claim=backend optimistic concurrency enforcement.
+it("retains a refused next Plugin revision without claiming publication or changing the fleet", async () => {
+  fixture.draft = {...DRAFT, publication: {plugin_id: PUBLICATION.plugin_id,
     revision_id: PUBLICATION.revision_id, canonical_digest: "previous-revision"}};
   await client.resume(DRAFT.id);
   const normal = fixture.fetch.getMockImplementation()!;
   fixture.fetch.mockImplementation((input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith(`/fleet-libraries/${PUBLICATION.library_id}`)) return Promise.resolve(response({etag: PUBLICATION.etag}));
-    if (path.endsWith("/revisions")) return Promise.resolve(response({user_message: "Library revision changed"}, 412));
+    if (path.endsWith(`/plugins/${PUBLICATION.plugin_id}`)) return Promise.resolve(response({etag: PUBLICATION.etag}));
+    if (path.endsWith("/revisions")) return Promise.resolve(response({user_message: "Plugin revision changed"}, 412));
     return normal(input, init);
   });
   render(<LiveSetup />);
   await chooseSetupAction("Publish plugin");
   fireEvent.click(await screen.findByRole("button", {name: "Publish next revision"}));
-  await screen.findAllByText("Library revision changed");
+  await screen.findAllByText("Plugin revision changed");
   expect(screen.queryByText(/Setup published/)).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(client.getSnapshot().draft?.publication?.revision_id).toBe(PUBLICATION.revision_id);

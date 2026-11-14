@@ -1,4 +1,4 @@
-# Fleet definitions, revisions, and Library
+# Fleet definitions, revisions, and Plugin
 
 Read this when changing reusable setup, fleet setup revisions, or Definition validation. Exact wire types live in [API resources](api_resources.md). Creation and recovery live in [data flow](data_flow.md#fleet-creation-and-setup-recovery).
 
@@ -6,7 +6,7 @@ Read this when changing reusable setup, fleet setup revisions, or Definition val
 |---|---|
 | Private draft | Creator-owned chat and mutable candidate selection; only its creator can read private text. |
 | Candidate | Immutable normalized Definition with a daemon-derived identity, revision and digest. |
-| Library entry | Explicitly published reusable revisions, visible to its workspace or platform audience. |
+| Plugin entry | Explicitly published reusable revisions, visible to its owning account. |
 | Fleet | Independent runtime instance with its own setup revision, approvals, history, memory and schedules. |
 
 ## Setup authority
@@ -24,38 +24,38 @@ A DT freezes its accepted goal revision.
 Applying fleet setup does not silently replace an unfinished objective.
 Explicit revision adoption invalidates prior goal decisions.
 
-One validated Definition serves browser chat, terminal chat, review, Library publication and runtime setup. The typed implementation is `af_fleet_runtime`'s `definition` module. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#historical-verification-evidence).
+One validated Definition serves browser chat, terminal chat, review, Plugin publication and runtime setup. The typed implementation is `af_fleet_runtime`'s `definition` module. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#historical-verification-evidence).
 
-Customers supply the job through chat or an editable Library copy, such as a pull-request review starter.
+Customers supply the job through chat or an editable Plugin copy, such as a pull-request review starter.
 
 The New fleet suggestion buttons load editable user-message text from `ui/packages/app/public/fleet-starters.json`.
 Review pull requests includes suggested completion questions and yes/no criteria; selecting it sends nothing and creates no fleet.
 The owner edits and submits that text through ordinary setup chat; Rust supplies no PR-review canned reply or default completion question.
 
-Library links select an immutable revision through the existing new-fleet page; copying grants no runtime authority.
+Plugin links select an immutable revision through the existing new-fleet page; copying grants no runtime authority.
 Conversation compaction retains context separately; saved instructions and accepted questions remain the authoritative setup.
 
-### Drafts, Library and fleets
+### Drafts, Plugin and fleets
 
-A draft may publish V1 of a Library entry and continue editing. Publishing to that entry appends V2; publishing as a new entry creates a separate Library identity.
+A draft may publish V1 of a Plugin entry and continue editing. Publishing to that entry appends V2; publishing as a new entry creates a separate Plugin identity.
 
 A fleet created from V1 keeps V1 until an authorized person explicitly applies a reviewed improvement. A new install may select V2.
 
-Save creates a fleet and closes its setup draft after successful activation. Save never publishes to Library.
+Save creates a fleet and closes its setup draft after successful activation. Save never publishes to Plugin.
 
 Improve starts a new private draft pinned to the fleet's current setup. Cancelling setup returns its linked draft to editing; retry uses the recovery rules in data flow.
 
-### Explicit Library publication
+### Explicit Plugin publication
 
-Publishing creates a Library entry or appends an immutable revision to a selected entry. Retry the same key and body within the [authoring replay window](api_resources.md#shared-wire-rules). Publication creates no fleet, leaves its draft open and changes no installed fleet.
+Publishing creates a Plugin entry or appends an immutable revision to a selected entry. Retry the same key and body within the [authoring replay window](api_resources.md#shared-wire-rules). Publication creates no fleet, leaves its draft open and changes no installed fleet.
 
 ## Storage and runtime reads
 
-Postgres stores normalized Definitions, immutable candidate/Library/fleet revisions, and content-free replay identities. Runtime leases receive instructions and parsed policy from the fleet's pinned revision.
+Postgres stores normalized Definitions, immutable candidate/Plugin/fleet revisions, and content-free replay identities. Runtime leases receive instructions and parsed policy from the fleet's pinned revision.
 
 Setup saves, readiness, access storage and memory-sharing changes add history-only receipts to `fleet.events` in their mutation's transaction. Their `recorded` status creates no admission and stays outside runtime model history; the browser displays permitted metadata in chronological order.
 
-Library removal deletes the entry and its Library history. Installed fleets retain their own frozen revisions; draft source and publication references become null.
+Plugin removal deletes the entry and its Plugin history. Installed fleets retain their own frozen revisions; draft source and publication references become null.
 
 No object-store bundle is needed for this path.
 
@@ -151,21 +151,21 @@ One `model_changed` event commits with the revision and appears as “Model chan
 
 Saved fleets use current readiness checks when activating or resuming. A different review digest, including catalogue or price changes, does not add a repeat-review hold. Explicit new saves still validate their review digest and setup tag before writing.
 
-A Library revision holds reusable setup and immutable requirements. A fleet separately owns its setup revision, approvals, history, memory, sessions, overrides, and schedules.
+A Plugin revision holds reusable setup and immutable requirements. A fleet separately owns its setup revision, approvals, history, memory, sessions, overrides, and schedules.
 
-Applying an improvement does not publish it. Publishing a Library revision is an explicit separate action.
+Applying an improvement does not publish it. Publishing a Plugin revision is an explicit separate action.
 
 ### Native storage and terminal chat
 
-Private drafts are the authoring path in browser and terminal. [Source selection](user_flow.md#80-the-wedge-surface) covers blank, native JSON, Library and fleet inputs. The daemon stores typed setup and instructions in native revisions.
+Private drafts are the authoring path in browser and terminal. [Source selection](user_flow.md#80-the-wedge-surface) covers blank, native JSON, Plugin and fleet inputs. The daemon stores typed setup and instructions in native revisions.
 
 Authoring does not load `SKILL.md`, `TRIGGER.md`, bundle manifests or tar snapshots. Paste older prompts into chat or supply native JSON, then review before publication. Runtime repository access remains separate and requires grants.
 
 Serialization round trips cover the description, gates, anomaly rules, network read_only/read_post_paths, repository writes/base, context, trigger options, monthly budgets, and the runtime model reference. A missing description and uppercase/spaced slugs fail. Initialize → edit → edit, lost acknowledgements, stale/reordered proposals, and a small edit to 32,768-character instructions must work without retransmitting the definition.
 
-The terminal client creates or resumes a private draft and sends ordinary chat messages. It displays the same reviewed candidate and readiness checks before explicit Save or Library publication.
+The terminal client creates or resumes a private draft and sends ordinary chat messages. It displays the same reviewed candidate and readiness checks before explicit Save or Plugin publication.
 
-Reusing a Library revision creates an independent fleet with that revision pinned. Library updates never propagate to existing fleets without Improve and explicit Apply.
+Reusing a Plugin revision creates an independent fleet with that revision pinned. Plugin updates never propagate to existing fleets without Improve and explicit Apply.
 
 Budget fields are positive checked integer nanos with the daily/monthly ceiling limits, carried as decimal strings on the wire. The parser refuses the retired dollar keys. Frozen migration history and completed milestone records stay as historical evidence.
 

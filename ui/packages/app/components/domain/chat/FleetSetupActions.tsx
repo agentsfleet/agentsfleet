@@ -17,7 +17,7 @@ export function PublicationActions({client, view, setup, workspace, dirty, onPub
   const inputId = useId();
   const [label, setLabel] = useState(setup.effective.instance_name);
   const [selected, setSelected] = useState<string | undefined>();
-  const target = selected ?? publicationTarget ?? view.draft?.publication?.library_id;
+  const target = selected ?? publicationTarget ?? view.draft?.publication?.plugin_id;
   const disabled = dirty || view.busy || view.pending || view.messages.some(isRunning) || view.draft?.state !== DRAFT_STATE.editing;
   const publish = (append: boolean): void => {const request = client.publish(label.trim(), append, target); onPublish(); void request.catch(ignore);};
   return <div className="space-y-sm">

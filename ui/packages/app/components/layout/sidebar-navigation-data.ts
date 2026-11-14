@@ -18,7 +18,7 @@ export const NAV_ICON_SIZE = 16;
 export const PRIMARY_NAV: NavEntry[] = [
   { label: "New fleet", path: "fleets/new", icon: NotePencilIcon, workspaceScoped: true },
   { label: "Your fleets", path: "fleets", icon: StackIcon, workspaceScoped: true },
-  { label: "Plugins", path: "library", icon: PuzzlePieceIcon, workspaceScoped: true },
+  { label: "Plugins", path: "plugins", icon: PuzzlePieceIcon, workspaceScoped: true },
   { label: "Secrets", path: "secrets", icon: KeyIcon, workspaceScoped: true },
   { label: "Connected apps", path: "integrations", icon: PlugsConnectedIcon, workspaceScoped: true },
 ];

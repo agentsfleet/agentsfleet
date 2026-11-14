@@ -28,10 +28,6 @@ export const MODEL = {
     input_nanos_per_mtok: "1000000000", cached_input_nanos_per_mtok: "0", output_nanos_per_mtok: "2000000000",
     source_url: "https://example.com/prices", verified_at: INSTANT, conditions: ""}],
 };
-export const LIBRARY_ENTRY = {card: {
-  id: RUNNER_ID, name: "Support triage", description: "Sort incoming requests", visibility: "platform_draft",
-  head_revision_id: WORKSPACE_ID, etag: '"inspected"', requirements: {}, created_at: INSTANT, required_credentials_reasons: {},
-}, published: false, updated_at: INSTANT};
 export type PlatformCall = {url: URL; method: string; body: unknown; headers: Headers};
 
 /** Capture only the HTTP boundary; argument parsing and runtime services remain real. */

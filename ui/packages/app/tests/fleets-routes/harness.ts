@@ -8,7 +8,6 @@ import {
   authMock as auth,
 } from "../helpers/dashboard-mocks";
 import {
-  listWorkspaceFleetLibraryMock,
   listSecretsMock,
 } from "../helpers/dashboard-app-mocks";
 
@@ -47,9 +46,6 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
     ...h.designSystemTabs(),
   };
 });
-vi.mock("@/lib/api/fleet-library", async () =>
-  (await import("../helpers/dashboard-app-mocks")).fleetLibraryMock(),
-);
 vi.mock("@/lib/api/secrets", async () =>
   (await import("../helpers/dashboard-app-mocks")).secretsApiMock(),
 );
@@ -57,11 +53,7 @@ vi.mock("@/lib/api/secrets", async () =>
 beforeEach(() => {
   vi.clearAllMocks();
   resetCommonMocks({ pathname: "/w/ws_1/fleets" });
-  // The /fleets/new install page fetches the template gallery; default it to an
-  // empty catalog so tests that don't care about templates don't crash on the
-  // unmocked promise (individual tests override as needed). The Fleets list
-  // empty-state no longer fetches — it routes to /fleets/new instead.
-  listWorkspaceFleetLibraryMock.mockResolvedValue({ items: [] });
+
 });
 afterEach(() => {
   cleanup();

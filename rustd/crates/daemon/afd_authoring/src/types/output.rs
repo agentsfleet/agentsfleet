@@ -95,7 +95,7 @@ pub struct DraftCard {
     pub candidate_revision: Option<i64>,
     /// The saved fleet's current setup revision, while a fleet is saved.
     pub setup_revision: Option<i64>,
-    /// The Library revision this chat published, once it has.
+    /// The Plugin revision this chat published, once it has.
     pub publication_revision: Option<i64>,
 }
 

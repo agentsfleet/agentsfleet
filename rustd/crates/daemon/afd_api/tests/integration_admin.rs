@@ -53,25 +53,6 @@ async fn exercise_admin(fixture: &Fixture) {
         PlatformDefault::adopt(&fixture.database, &fixture.provider, &fixture.workspace).await;
     exercise_platform_keys(&router, fixture).await;
     drop(platform_default);
-
-    // The platform library list answers over the live authoring store; what
-    // it holds is every suite's, so the claim is the shape, not the rows.
-    let libraries = send(
-        &router,
-        Method::GET,
-        "/v1/admin/fleet-libraries",
-        Some(&fixture.token),
-        "",
-    )
-    .await;
-    assert_eq!(libraries.status(), StatusCode::OK);
-    assert!(
-        json_body(libraries)
-            .await
-            .get("entries")
-            .is_some_and(Value::is_array),
-        "the list carries an entries array"
-    );
 }
 
 async fn exercise_platform_keys(router: &axum::Router, fixture: &Fixture) {

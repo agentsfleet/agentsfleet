@@ -29,11 +29,11 @@ pub(super) fn create(bytes: &[u8]) -> Result<CreateDraft, Refusal> {
         wire::Source::Definition { definition } => Source::Definition {
             definition: Box::new(definition),
         },
-        wire::Source::Library {
-            library_id,
+        wire::Source::Plugin {
+            plugin_id,
             revision_id,
-        } => Source::Library {
-            library_id,
+        } => Source::Plugin {
+            plugin_id: uuid(&plugin_id)?,
             revision_id: uuid(&revision_id)?,
         },
         wire::Source::Fleet {

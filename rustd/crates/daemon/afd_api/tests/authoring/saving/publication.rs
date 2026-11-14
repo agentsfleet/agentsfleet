@@ -14,7 +14,7 @@ async fn explicit_publication_is_reused_by_save_and_deletion_preserves_the_insta
     let mut case = Case::create().await;
     case.fund().await;
     let (_, request) = case.request().await;
-    let (library, published) = publish_candidate(&mut case, &request).await;
+    let (plugin, published) = publish_candidate(&mut case, &request).await;
     let saved = case.save(mint().as_str(), &request).await;
     assert_eq!(saved.status(), StatusCode::CREATED);
     let item = saved.headers()[header::LOCATION]
@@ -27,7 +27,7 @@ async fn explicit_publication_is_reused_by_save_and_deletion_preserves_the_insta
         installed_pin(&case, &crate::authoring::id_field(&saved["id"])).await,
         crate::authoring::id_field(&published["revision_id"])
     );
-    assert_library_deletion_hides_it(&case, &library).await;
+    assert_plugin_deletion_hides_it(&case, &plugin).await;
     let retained = send(&case.router, Method::GET, &item, Some(&case.base.token), "").await;
     assert_eq!(retained.status(), StatusCode::OK);
     let retained = json_body(retained).await;
@@ -37,14 +37,14 @@ async fn explicit_publication_is_reused_by_save_and_deletion_preserves_the_insta
     case.cleanup().await;
 }
 
-/// Publishes the Save request's candidate as a Library entry the fixture then
+/// Publishes the Save request's candidate as a Plugin entry the fixture then
 /// owns, and answers the entry's location and body.
 async fn publish_candidate(case: &mut Case, request: &Value) -> (String, Value) {
-    let libraries = format!("/v1/workspaces/{}/fleet-libraries", case.base.workspace);
+    let plugins = format!("/v1/workspaces/{}/plugins", case.base.workspace);
     let published = send_with_headers(
         &case.router,
         Method::POST,
-        &libraries,
+        &plugins,
         Some(&case.base.token),
         &json!({"draft_candidate_id":request["source"]["draft_candidate_id"],"label":"ARGO"})
             .to_string(),
@@ -55,32 +55,32 @@ async fn publish_candidate(case: &mut Case, request: &Value) -> (String, Value) 
     )
     .await;
     assert_eq!(published.status(), StatusCode::CREATED);
-    let library = published.headers()[header::LOCATION]
-        .to_str()
-        .expect("entry location")
-        .to_owned();
     let published = json_body(published).await;
+    let plugin = format!(
+        "{plugins}/{}",
+        published["plugin_id"].as_str().expect("Plugin identity")
+    );
     case.base
-        .own_library(published["library_id"].as_str().expect("Library identity"));
-    (library, published)
+        .own_plugin(published["plugin_id"].as_str().expect("Plugin identity"));
+    (plugin, published)
 }
 
-/// The Library revision the setup chat that saved `fleet` published: the
+/// The Plugin revision the setup chat that saved `fleet` published: the
 /// publication Save reused rather than minting a second one.
 async fn installed_pin(case: &Case, fleet: &Uuid7) -> Uuid7 {
-    sqlx::query_scalar("SELECT library_revision_id FROM authoring.drafts WHERE fleet_id=$1")
+    sqlx::query_scalar("SELECT plugin_revision_id FROM authoring.drafts WHERE fleet_id=$1")
         .bind(fleet)
         .fetch_one(&mut *case.base.db.acquire().await.expect("pin connection"))
         .await
         .expect("installed publication pin")
 }
 
-/// Deletes the Library entry and proves it no longer reads back.
-async fn assert_library_deletion_hides_it(case: &Case, library: &str) {
+/// Deletes the Plugin entry and proves it no longer reads back.
+async fn assert_plugin_deletion_hides_it(case: &Case, plugin: &str) {
     let removed = send(
         &case.router,
         Method::DELETE,
-        library,
+        plugin,
         Some(&case.base.token),
         "",
     )
@@ -90,7 +90,7 @@ async fn assert_library_deletion_hides_it(case: &Case, library: &str) {
         send(
             &case.router,
             Method::GET,
-            library,
+            plugin,
             Some(&case.base.token),
             ""
         )

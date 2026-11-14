@@ -11,6 +11,7 @@ import Page from "../../app/(dashboard)/w/[workspaceId]/fleets/new/page";
 
 const WORKSPACE = "0199a801-1000-7000-8000-000000000001";
 const DRAFT = "0199a801-1000-7000-8000-000000000002";
+const PLUGIN = "0199a801-1000-7000-8000-000000000006";
 const ACCOUNT = "account-owner";
 
 beforeEach(() => {
@@ -40,19 +41,19 @@ describe("native fleet chat entry", () => {
     renderToStaticMarkup(await page({draft: DRAFT}));
     expect(chat.mock.calls[0]?.[0]).toMatchObject({draft: DRAFT});
   });
-  it("starts from the selected published revision, including named platform recipes", async () => {
-    renderToStaticMarkup(await page({library: "checkout-watch", revision: DRAFT}));
-    expect(chat.mock.calls[0]?.[0]).toMatchObject({source: {kind: "library", library_id: "checkout-watch", revision_id: DRAFT}});
+  it("starts from the selected published revision, using a UUIDv7 Plugin", async () => {
+    renderToStaticMarkup(await page({plugin: PLUGIN, revision: DRAFT}));
+    expect(chat.mock.calls[0]?.[0]).toMatchObject({source: {kind: "plugin", plugin_id: PLUGIN, revision_id: DRAFT}});
   });
   it("pins improvement to the selected fleet and setup revision", async () => {
     renderToStaticMarkup(await page({fleet: DRAFT, setup_revision: "2"}));
     expect(chat.mock.calls[0]?.[0]).toMatchObject({source: {kind: "fleet", fleet_id: DRAFT, setup_revision: "2"}});
   });
   it("requires explicit edit intent before setting a plugin publication destination", async () => {
-    renderToStaticMarkup(await page({library: "checkout-watch", revision: DRAFT, intent: "edit"}));
-    expect(chat.mock.calls[0]?.[0]).toMatchObject({publicationTarget: "checkout-watch", prompt: "Update this plugin’s setup."});
+    renderToStaticMarkup(await page({plugin: PLUGIN, revision: DRAFT, intent: "edit"}));
+    expect(chat.mock.calls[0]?.[0]).toMatchObject({publicationTarget: PLUGIN, prompt: "Update this plugin’s setup."});
     chat.mockClear();
-    renderToStaticMarkup(await page({library: "checkout-watch", revision: DRAFT, intent: "new"}));
+    renderToStaticMarkup(await page({plugin: PLUGIN, revision: DRAFT, intent: "new"}));
     expect(chat.mock.calls[0]?.[0].publicationTarget).toBeUndefined();
     expect(chat.mock.calls[0]?.[0].prompt).toContain("Start a new fleet from this plugin");
   });
@@ -61,7 +62,7 @@ describe("native fleet chat entry", () => {
     expect(chat.mock.calls[0]?.[0].prompt).toMatch(/plugin/i);
     expect(chat.mock.calls[0]?.[0].publicationTarget).toBeUndefined();
   });
-  it.each([{library: "checkout-watch"}, {library: "", revision: DRAFT}, {library: "checkout-watch", revision: "bad"}, {library: "checkout-watch", revision: DRAFT, draft: DRAFT}])("refuses incomplete or mixed library selections", async (query) => {
+  it.each([{library: PLUGIN, revision: DRAFT}, {plugin: "checkout-watch", revision: DRAFT}, {plugin: PLUGIN}, {plugin: "", revision: DRAFT}, {plugin: PLUGIN, revision: "bad"}, {plugin: PLUGIN, revision: DRAFT, draft: DRAFT}])("refuses incomplete or mixed plugin selections", async (query) => {
     await expect(page(query)).rejects.toThrow("not-found");
     expect(chat).not.toHaveBeenCalled();
   });

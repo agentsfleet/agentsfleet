@@ -11,7 +11,6 @@ const MODELS_FAMILY = "Manage the shared model catalogue";
 const HIDDEN_FAMILIES = [
   "Manage vault-backed platform defaults",
   "Manage platform execution hosts",
-  "Manage the platform fleet library",
 ] as const;
 const PLATFORM_GROUP = "Administer platform resources with your existing operator scopes";
 const WRITE_ONLY_LEAVES = ["rotate-token", "cordon", "self-test"] as const;
@@ -28,7 +27,7 @@ describe("scoped_help_suggestions_and_four_shell_completions_agree", () => {
     const bash = await script(scopes, "bash");
     expect(bash).toContain("_agentsfleet_platform()");
     expect(bash).toContain("_agentsfleet_platform_models()");
-    for (const hidden of ["_agentsfleet_platform_keys()", "_agentsfleet_platform_runners()", "_agentsfleet_platform_fleet_library()"]) {
+    for (const hidden of ["_agentsfleet_platform_keys()", "_agentsfleet_platform_runners()"]) {
       expect(bash).not.toContain(hidden);
     }
     for (const shell of DESCRIBED_SHELLS) {
@@ -54,4 +53,14 @@ describe("scoped_help_suggestions_and_four_shell_completions_agree", () => {
     expect(await script([], "bash")).not.toContain("_agentsfleet_platform");
     for (const shell of DESCRIBED_SHELLS) expect(await script([], shell)).not.toContain(PLATFORM_GROUP);
   });
+});
+
+// Removed claims must not revive a removed command family in cached completions.
+test("removed platform catalogue scope advertises no commands", async () => {
+  for (const shell of SHELLS) {
+    const text = await script(["platform-library:write"], shell);
+    expect(text).not.toContain("fleet-library");
+    expect(text).not.toContain("platform_fleet_library");
+    expect(text).not.toContain(PLATFORM_GROUP);
+  }
 });

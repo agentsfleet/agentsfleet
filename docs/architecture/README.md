@@ -93,9 +93,9 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | What order does shutdown happen in? | [`concurrency.md`](./concurrency.md) §"Shutdown choreography" |
 | How do I add a connector provider? | [`connectors.md`](./connectors.md) §"Adding a provider (the recipe)" |
 | How does a GitHub event find its fleet? | [`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs" |
-| How do drafts, Library revisions and installed fleets relate? | [Fleet definitions and revisions](fleet_definitions.md#drafts-library-and-fleets) |
+| How do drafts, Plugin revisions and installed fleets relate? | [Fleet definitions and revisions](fleet_definitions.md#drafts-plugin-and-fleets) |
 | What does one lease write, end to end, and when is its sandbox destroyed? | [`lease_flow.md`](./lease_flow.md) — one lease walked end to end against the Rust source, with its open gaps |
-| How does a definition become reusable in Library? | [Explicit publication](fleet_definitions.md#explicit-library-publication) |
+| How does a definition become reusable as a Plugin? | [Explicit publication](fleet_definitions.md#explicit-plugin-publication) |
 | What is the proposed chat-to-fleet flow? | [`docs/architecture/high_level.md#fleet-authoring-and-runtime`](high_level.md#fleet-authoring-and-runtime) |
 | Where is the complete workspace chat review packet? | [`docs/reviews/workspace-setup/review-packet.md`](../reviews/workspace-setup/review-packet.md) |
 | Which documents changed in the chat cutover rewrite? | [Rewrite report](../reviews/workspace-setup/rewrite-report.md) |
@@ -137,7 +137,7 @@ After that, dip into whichever of these matches the change you're making:
 | 📐 [`direction.md`](./direction.md) | Design constants every spec must fit. |
 | 🧑‍💻 [`user_flow.md`](./user_flow.md) | How a user installs, triggers and supervises Fleets. |
 | 🔄 [`data_flow.md`](./data_flow.md) | Where a webhook, steer or cron fire lands. |
-| 📦 [`fleet_definitions.md`](./fleet_definitions.md) | Native Definition, immutable revisions and explicit Library publication. |
+| 📦 [`fleet_definitions.md`](./fleet_definitions.md) | Native Definition, immutable revisions and explicit Plugin publication. |
 | 🏃 [`runner_fleet.md`](./runner_fleet.md) | Control plane and runner: leasing, fencing, recovery. |
 | ⚙️ [`runner_execution.md`](./runner_execution.md) | How the runner runs one lease. |
 | 🎟️ [`lease_flow.md`](./lease_flow.md) | One lease, from install to sandbox teardown. |

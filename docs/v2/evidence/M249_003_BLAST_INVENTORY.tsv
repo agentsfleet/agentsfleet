@@ -2,7 +2,7 @@ base	646fc536e9e504d0bda2db1742aab21e3e3896a8
 file	role	meaning	action
 cli/README.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 cli/src/cli.ts	production/docs	model/software library	retain
-cli/src/commands/chat/command-recovery.ts	production/docs	model/software library	retain
+cli/src/commands/chat/command-recovery.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 cli/src/commands/chat/commands.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 cli/src/commands/chat/protocol.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 cli/src/commands/chat/session.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
@@ -346,9 +346,9 @@ rustd/crates/daemon/afd_api_tenant/src/handler/library/render.rs	production/docs
 rustd/crates/daemon/afd_api_tenant/src/handler/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 rustd/crates/daemon/afd_api_tenant/src/handler/paging.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 rustd/crates/daemon/afd_api_tenant/src/handler/tenant/model_entry/input.rs	production/docs	model/software library	retain
-rustd/crates/daemon/afd_api_tenant/src/handler/tenant/model_entry/mod.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_api_tenant/src/handler/tenant/model_entry/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 rustd/crates/daemon/afd_api_tenant/src/handler/tenant/models/input.rs	production/docs	model/software library	retain
-rustd/crates/daemon/afd_api_tenant/src/handler/tenant/models/mod.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_api_tenant/src/handler/tenant/models/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 rustd/crates/daemon/afd_api_tenant/src/lib.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 rustd/crates/daemon/afd_api_tenant/src/openapi.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 rustd/crates/daemon/afd_api_wire/src/admin_library_native.rs	production/docs	fleet-setup or mixed	delete platform catalogue implementation
@@ -506,13 +506,13 @@ rustd/crates/harness/af_providers/src/retry/mod.rs	production/docs	model/softwar
 rustd/crates/protocol/af_fleet_runtime/src/definition/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 rustd/crates/protocol/af_inference/src/count/mod.rs	production/docs	model/software library	retain
 rustd/crates/protocol/af_inference/src/tests/codecs.rs	test	model/software library	retain
-rustd/crates/protocol/af_observability/src/metrics/declared/library.rs	production/docs	model/software library	retain
+rustd/crates/protocol/af_observability/src/metrics/declared/library.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 rustd/crates/protocol/af_observability/src/metrics/declared/mod.rs	production/docs	model/software library	retain
 rustd/crates/protocol/af_observability/src/metrics/label/library.rs	production/docs	model/software library	retain
 rustd/crates/protocol/af_observability/src/metrics/label/mod.rs	production/docs	model/software library	retain
 rustd/crates/protocol/af_observability/src/metrics/label/spelling_tests.rs	test	model/software library	retain
 rustd/crates/protocol/af_observability/src/metrics/label/tests.rs	test	model/software library	retain
-rustd/crates/protocol/af_observability/src/producers/library.rs	production/docs	model/software library	retain
+rustd/crates/protocol/af_observability/src/producers/library.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 rustd/crates/protocol/af_observability/src/producers/mod.rs	production/docs	model/software library	retain
 rustd/crates/protocol/af_observability/src/product/properties.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
 rustd/crates/protocol/af_observability/src/product/telemetry/authoring.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses

@@ -9,7 +9,7 @@ afterEach(cleanup);
 
 it.each([
   ["/settings/members", "Team"], ["/w/workspace/settings/models", "Models"],
-  ["/settings/billing", "Usage"], ["/w/workspace/library", "Plugins"],
+  ["/settings/billing", "Usage"], ["/w/workspace/plugins", "Plugins"],
 ])("labels the current resource at %s", (pathname, label) => {
   route.pathname = pathname;
   render(<ResourceHeader />);

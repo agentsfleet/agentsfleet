@@ -101,7 +101,7 @@ it("offers a New fleet pinned to the confirmed publication", () => {
   render(<SetupStatusFlap view={{...EMPTY_DRAFT_VIEW, draft: PUBLISHED}} workspace={WORKSPACE} />);
   expect(screen.getByRole("status").textContent).toContain("Setup published");
   const link = within(screen.getByRole("status")).getByRole("link", {name: "New fleet"});
-  expect(link.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?library=${PUBLICATION.library_id}&revision=${PUBLICATION.revision_id}`);
+  expect(link.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?plugin=${PUBLICATION.plugin_id}&revision=${PUBLICATION.revision_id}`);
   expect(screen.queryByRole("link", {name: "Open fleet"})).toBeNull();
 });
 

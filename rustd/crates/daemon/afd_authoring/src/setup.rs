@@ -8,7 +8,7 @@ use afd_vault::Vault;
 
 use crate::Drafts;
 
-/// Human-reviewed setup and Library operations over native immutable candidates.
+/// Human-reviewed setup and Plugin operations over native immutable candidates.
 #[derive(Debug, Clone)]
 pub struct Setup {
     pub(crate) drafts: Drafts,

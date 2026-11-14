@@ -28,10 +28,10 @@ const ROLE_NAMED: [(&str, &str); 2] = [
     ("active_grant_id", "integration_grants"),
     // A card's live revision: the counter table names every live pointer
     // `head_revision_id`, whichever revision table it points into.
-    ("head_revision_id", "library_revisions"),
+    ("head_revision_id", "plugin_revisions"),
 ];
 
-/// The singular a pointer column is named for: `library_entries` → `library_entry`.
+/// The singular a pointer column is named for: `plugin_entries` → `plugin_entry`.
 fn singular(table: &str) -> String {
     if let Some(stem) = table.strip_suffix("ies") {
         format!("{stem}y")
@@ -79,7 +79,7 @@ async fn test_table_and_key_names_follow_rules() {
 
 #[test]
 fn test_singular_reads_the_pointer_name_a_table_takes() {
-    assert_eq!(singular("library_entries"), "library_entry");
+    assert_eq!(singular("plugin_entries"), "plugin_entry");
     assert_eq!(singular("revisions"), "revision");
     assert_eq!(singular("fleet_slots"), "fleet_slot");
 }

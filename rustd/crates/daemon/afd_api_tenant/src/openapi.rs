@@ -113,14 +113,13 @@ afd_http::plane_collector! {
         crate::handler::tenant::provider::write::reset,
         crate::handler::tenant::workspace::create,
         crate::handler::tenant::workspace::list,
-        crate::handler::library::list::gallery,
-        crate::handler::library::list::owned,
-        crate::handler::library::list::history,
-        crate::handler::library::read::one,
-        crate::handler::library::read::revision,
-        crate::handler::library::publish::create,
-        crate::handler::library::publish_revision::revision,
-        crate::handler::library::remove::one,
+        crate::handler::plugin::list::gallery,
+        crate::handler::plugin::list::history,
+        crate::handler::plugin::read::one,
+        crate::handler::plugin::read::revision,
+        crate::handler::plugin::publish::create,
+        crate::handler::plugin::publish_revision::revision,
+        crate::handler::plugin::remove::one,
     )
 }
 

@@ -20,7 +20,6 @@
 pub mod activity;
 pub mod admin;
 mod admin_catalogue;
-pub mod admin_library_native;
 pub mod approval;
 pub mod auth;
 pub mod authoring;
@@ -32,9 +31,9 @@ pub mod grant;
 pub mod health;
 pub mod identity;
 pub mod ingress;
-pub mod library;
 pub mod models;
 pub mod operator;
+pub mod plugin;
 pub mod preference;
 mod redact;
 pub mod schedule;

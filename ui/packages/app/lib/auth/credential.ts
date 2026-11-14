@@ -62,8 +62,7 @@ const CLAIM_METADATA = "metadata";
  * Rendering the approvals page resolves a bearer FOUR times: the dashboard
  * layout, the workspace layout, and the page twice. Twenty-seven scattered
  * `auth()` calls cannot be collapsed — there is nothing to collapse them at.
- * One function can be, and `cache()` does it, the same primitive
- * `listWorkspaceFleetLibraryCached` already uses a few files over.
+ * One function can be, and React’s `cache()` collapses its calls within the request.
  *
  * React's `cache()` is scoped to ONE server request and torn down with it. That
  * distinction is load-bearing: a module-level `let token` would survive between

@@ -44,7 +44,7 @@ const LIVE_ACCEPTANCE_FILES: ReadonlyArray<string> = [
   "test/acceptance/grant-approval-live.spec.ts",
   "test/acceptance/chat-negatives.spec.ts",
   "test/acceptance/lifecycle-after-login.spec.ts",
-  "test/acceptance/library-publication-live.spec.ts",
+  "test/acceptance/plugin-publication-live.spec.ts",
   "test/acceptance/lifecycle-with-token.spec.ts",
   "test/acceptance/login-negatives.spec.ts",
   "test/acceptance/logs-events-live.spec.ts",

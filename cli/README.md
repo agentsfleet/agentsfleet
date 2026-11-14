@@ -47,7 +47,7 @@ and is versioned with each release:
 |------|--------|
 | [Install](https://docs.agentsfleet.net/cli/install) | Install, upgrade, supported runtimes |
 | [Commands](https://docs.agentsfleet.net/cli/agentsfleet) | Every command and its flags |
-| [Platform administration](https://docs.agentsfleet.net/cli/platform) | Runner, model, provider, and library commands; required operator permissions |
+| [Platform administration](https://docs.agentsfleet.net/cli/platform) | Runner, model, and provider commands; required operator permissions |
 | [Global flags](https://docs.agentsfleet.net/cli/flags) | `--api`, `--json` — and where the per-command flags live |
 | [Configuration](https://docs.agentsfleet.net/cli/configuration) | Environment variables, config paths, precedence |
 

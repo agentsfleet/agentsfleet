@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { AUTH_INPUT_APPEARANCE } from "@/lib/auth-control-appearance";
 
 const AUTH_ROUTES = ["/sign-in", "/sign-up"];
 const INPUT_SELECTOR = 'input[name="identifier"], input[name="emailAddress"]';
@@ -34,9 +35,12 @@ for (const route of AUTH_ROUTES) {
     await expect(page.locator('.cl-rootBox img[src="/brand.svg"]')).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
     const pulse = await tokenColor(page, "--pulse");
-    const strongBorder = await tokenColor(page, "--border-strong");
+    const border = await tokenColor(page, "--border");
+    const radius = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--r-control").trim());
     await expect(input).toHaveCSS("border-width", "1px");
-    await expect(input).toHaveCSS("border-color", strongBorder);
+    await expect(input).toHaveCSS("border-color", border);
+    await expect(input).toHaveCSS("border-radius", radius);
+    await expect(input).toHaveCSS("min-height", AUTH_INPUT_APPEARANCE["&&"].minHeight);
     await expect(input).toHaveCSS("font-family", /Manrope Variable/);
     await input.hover();
     await expect(input).toHaveCSS("border-color", pulse);
@@ -44,10 +48,15 @@ for (const route of AUTH_ROUTES) {
     await page.keyboard.press("Tab");
     await page.keyboard.press("Shift+Tab");
     await expect(input).toBeFocused();
-    await expect(input).toHaveCSS("box-shadow", `${pulse} 0px 0px 0px 2px`);
+    await expect(input).toHaveCSS("outline-color", pulse);
+    await expect(input).toHaveCSS("outline-width", "2px");
+    await expect(input).toHaveCSS("outline-offset", "4px");
     const button = page.locator(".cl-formButtonPrimary");
     await expect(button).toHaveCSS("background-color", await tokenColor(page, "--cta"));
     await expect(button).toHaveCSS("color", await tokenColor(page, "--cta-foreground"));
+    await expect(button).toHaveCSS("border-radius", radius);
+    const controlHeight = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--control-height").trim());
+    await expect(button).toHaveCSS("min-height", controlHeight);
     expect(await visibleGradients(page)).toEqual([]);
     const card = await page.locator(".cl-cardBox").boundingBox();
     expect(card).not.toBeNull();

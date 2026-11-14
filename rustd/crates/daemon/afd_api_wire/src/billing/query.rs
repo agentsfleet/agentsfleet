@@ -4,7 +4,7 @@
 #[derive(Debug, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct Filters {
-    /// month (default) or today, in Coordinated Universal Time (UTC).
+    /// month (default), week (seven calendar days) or today, in Coordinated Universal Time (UTC).
     pub period: Option<String>,
     /// Exact runtime fleet identifier.
     pub fleet_id: Option<String>,

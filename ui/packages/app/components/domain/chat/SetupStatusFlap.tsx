@@ -22,7 +22,7 @@ export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet, mo
   if (!status) return null;
   const publication = view.draft?.publication;
   const published = publication && publication.canonical_digest === view.draft.candidate?.canonical_digest;
-  const query = published ? new URLSearchParams({library: publication.library_id, revision: publication.revision_id}) : null;
+  const query = published ? new URLSearchParams({plugin: publication.plugin_id, revision: publication.revision_id}) : null;
   const Icon = status.icon;
   return <div className="mb-sm flex justify-center">
     <output aria-label="Setup status" aria-live="polite" aria-atomic="true" data-setup-status={status.busy ? "working" : status.confirmed ? "confirmed" : "attention"}
