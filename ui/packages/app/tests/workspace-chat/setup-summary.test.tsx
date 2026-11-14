@@ -86,7 +86,7 @@ it("shows declared access and exact daily and monthly limits without rounding la
   render(<SetupSummary requirements={{credentials: [SOURCE], repositories: ["owner/repo"], tools: ["read_file"],
     network: {allow: ["api.github.com"], read_only: true},
     budget: {daily_nanos: "1", monthly_nanos: "9223372036854775807"}}} />);
-  expect(screen.getByText(/Connected accounts:/).closest("li")?.textContent).toContain(SOURCE);
+  expect(screen.getByText(/Secrets and connections:/).closest("li")?.textContent).toContain(SOURCE);
   expect(screen.getByText(/Repositories:/).closest("li")?.textContent).toContain("owner/repo");
   expect(screen.getByText(/Tools:/).closest("li")?.textContent).toContain("read_file");
   expect(screen.getByText(/Internet access:/).closest("li")?.textContent).toContain("Read-only policy enabled.");

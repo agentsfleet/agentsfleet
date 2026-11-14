@@ -1,16 +1,25 @@
 "use client";
 
-import { Section, SectionHeader } from "@agentsfleet/design-system";
-import { AccountControls } from "@/lib/auth/account-controls";
-import { useAccountSettings } from "@/lib/auth/account-client";
+import * as Avatar from "@radix-ui/react-avatar";
+import { DashboardPanel, Section } from "@agentsfleet/design-system";
+import { UserIcon } from "@phosphor-icons/react/ssr";
+import { useCurrentUser } from "@/lib/auth/client";
 import { AccountAccess } from "./AccountAccess";
-import { ACCOUNT_SETTINGS_ID } from "./AccountSettingsAction";
 
-/** Keep the named region mounted across verification panels and auth changes. */
 export function AccountSettingsSection() {
-  const access = useAccountSettings();
-  return <Section id={ACCOUNT_SETTINGS_ID} aria-label="Profile and sign-in settings" tabIndex={-1} className="scroll-mt-2xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
-    <SectionHeader description="Manage your name, email addresses and sign-in methods.">Profile and sign-in settings</SectionHeader>
-    {access.status === "ready" ? <AccountControls key={access.contextKey} /> : <AccountAccess status={access.status} />}
+  const user = useCurrentUser();
+  return <Section aria-label="Your account">
+    {!user.isLoaded || !user.isSignedIn ? <AccountAccess status={user.isLoaded ? "signed-out" : "loading"} /> :
+      <DashboardPanel className="flex min-w-0 items-center gap-xl">
+        <Avatar.Root key={user.userId} className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted" aria-hidden="true">
+          <Avatar.Image src={user.imageUrl ?? undefined} alt="" className="size-full object-cover" />
+          <Avatar.Fallback><UserIcon size={24} /></Avatar.Fallback>
+        </Avatar.Root>
+        <div className="min-w-0 space-y-xs">
+          <p className="text-eyebrow text-muted-foreground">Signed in as</p>
+          <h2 className="break-words text-body font-semibold">{user.displayName || "Your account"}</h2>
+          <p className="break-all text-label text-muted-foreground">{user.emailAddress || "No primary email address"}</p>
+        </div>
+      </DashboardPanel>}
   </Section>;
 }

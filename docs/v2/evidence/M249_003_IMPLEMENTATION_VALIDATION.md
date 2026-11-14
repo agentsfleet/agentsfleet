@@ -175,3 +175,37 @@ This task keeps the companion branch together until that merge.
 The owner withdrew the deleted fleet URL: "i will give you a nother one later".
 No live-fleet success claim applies to that deleted draft.
 Cloud shipping instructions prohibit pushing and running `orly gate pr` here; the owner opens the Pull Request from the app.
+
+## Nov 14 account and fleet setup polish
+
+The owner requested aligned Team counts and an identity card above keys and sessions, replacing the repeated Profile button and provider widget.
+They also requested fleet-list expansion and a fuller fleet setup design.
+The screenshots supply grouped-row inspiration; their environment-variable, privacy and VPN controls are not added to the product.
+
+API Keys now shows avatar, name and primary email through the existing auth facade. The existing session reader, confirmation, recent verification and sign-out actions remain.
+
+Team counts share the heading's center line. The Fleets disclosure retains loaded pages when closed and reopened.
+
+The setup Summary opens a grouped review panel. It presents name, available source revision and runtime model, purpose, instructions, access, secret names, spending and timing.
+Current saved schedules retain registration errors and retry controls separately from proposed triggers.
+
+An older closed draft cannot supply the contents labelled as the current saved revision. A missing runtime-model field in a saved response is unavailable, not evidence of an unresolved default.
+
+The implementation review found four projection/feedback issues and confirmed their corrections. The standards reviewer checked 220 applicable rules and closed with no remaining findings after the corrections.
+These are targeted reviews of the polish diff; the earlier core-review limitation above remains.
+
+Verification is recorded in `/workspace/artifacts/m249-followup/dry-app-polish-final.log`, `gate-work-polish.log` and `gate-verify-polish.log`.
+`make dry-app` passed: 480 files, 4,582 app tests and 96 browser checks. A later coverage run includes the additional account-photo, stale-proposal and incomplete-proposal regression cases.
+
+`make test-coverage-all` passed: app 4,585 tests, website 133, command-line client 2,335 passed with 17 existing acceptance skips, and design system 514. All four package coverage gates remain at 100%.
+The fleet disclosure also passed a final rerun at 1480px and 390px through the native desktop rail and phone navigation dialog.
+
+`orly gate work` and `orly gate verify` passed, including repository lint, version checks and documentation language checks.
+The final chat/setup browser rerun passed all six checks after stabilizing fixture timestamps; see `polish-chat-final.log` beside the verification logs.
+
+Reviewed screenshots are in `/workspace/artifacts/m249-polish/`, covering Team, API Keys and setup review in both themes and phone/desktop layouts, plus fleet expansion at both widths.
+The browser fixture uses production components with sample identity and records; it does not prove authenticated development behavior.
+
+The original proposal contains no `platform-priming` entry. A new fixture displays that key name but does not reproduce the owner's unspecified defect.
+
+Dimension 5.6 remains pending clarification. The proposal's masked-key suffix and Last used values are sample data absent from the current key response; they are not fabricated in the UI.

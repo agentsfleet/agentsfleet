@@ -86,6 +86,7 @@ export function useCurrentUser(): {
   userId: string | null;
   emailAddress: string | null;
   displayName: string | null;
+  imageUrl: string | null;
 } {
   const { isLoaded, isSignedIn, user } = useUser();
   return {
@@ -94,6 +95,7 @@ export function useCurrentUser(): {
     userId: user?.id ?? null,
     emailAddress: user?.primaryEmailAddress?.emailAddress ?? null,
     displayName: user?.fullName ?? user?.username ?? null,
+    imageUrl: user?.imageUrl ?? null,
   };
 }
 

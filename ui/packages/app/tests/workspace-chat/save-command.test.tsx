@@ -72,7 +72,8 @@ it("shows saving through model finalization and confirms only after the write su
   await screen.findByRole("heading", {name: ACKNOWLEDGEMENT});
   await waitFor(() => expect(screen.queryByText(SAVING, {exact: true})).toBeNull());
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.queryByRole("button", {name: "Review setup"})).toBeNull();
+  expect(await screen.findByRole("button", {name: "Review setup"})).toBeTruthy();
+  expect(screen.queryByRole("dialog", {name: "Fleet setup"})).toBeNull();
   expect(screen.getByRole("textbox")).toHaveProperty("disabled", false);
   expect(chatRouter.push).not.toHaveBeenCalled();
 });

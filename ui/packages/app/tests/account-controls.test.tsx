@@ -1,50 +1,34 @@
-import type { AccountAccess } from "@/lib/auth/account-types";
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { AccountSettingsSection } from "@/components/account/AccountSettingsSection";
-import { AccountSettingsAction } from "@/components/account/AccountSettingsAction";
 
-const access = vi.hoisted(() => ({current: {status: "loading"} as AccountAccess}));
-vi.mock("@/lib/auth/account-client", () => ({useAccountSettings: () => access.current}));
-vi.mock("@clerk/nextjs", () => ({UserProfile: ({routing}: {routing: string}) => <div data-routing={routing}><input aria-label="Native account draft" /></div>}));
+type Identity = ReturnType<typeof import("@/lib/auth/client").useCurrentUser>;
+const identity = vi.hoisted((): {current: Identity} => ({current: {
+  isLoaded: false, isSignedIn: false, userId: null, displayName: null, emailAddress: null, imageUrl: null,
+}}));
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => identity.current}));
 afterEach(cleanup);
 
-it("keeps the section named across loading and signed-out recovery", () => {
-  access.current = {status: "loading"};
+it("keeps identity loading and signed-out recovery explicit", () => {
+  identity.current = {...identity.current, isLoaded: false, isSignedIn: false};
   const view = render(<AccountSettingsSection />);
-  expect(screen.getByRole("region", {name: "Profile and sign-in settings"})).toBeTruthy();
-  expect(screen.queryByLabelText("Native account draft")).toBeNull();
-  access.current = {status: "signed-out"};
+  expect(screen.getByRole("region", {name: "Your account"})).toBeTruthy();
+  expect(screen.queryByText("Signed in as")).toBeNull();
+  identity.current = {...identity.current, isLoaded: true};
   view.rerender(<AccountSettingsSection />);
   expect(screen.getByRole("link", {name: "Sign in"}).getAttribute("href")).toBe("/sign-in");
 });
 
-it("keeps native hash routing mounted and clears drafts on account or session change", () => {
-  access.current = {status: "ready", contextKey: "owner:one", client: {listSessions: vi.fn(), revokeSession: vi.fn()}};
+it("shows current identity without duplicate profile controls and replaces it when the person changes", () => {
+  identity.current = {isLoaded: true, isSignedIn: true, userId: "one", displayName: "Kishore", emailAddress: "you@example.test", imageUrl: "https://example.test/avatar.png"};
   const view = render(<AccountSettingsSection />);
-  const draft = screen.getByLabelText("Native account draft");
-  expect(draft.parentElement?.getAttribute("data-routing")).toBe("hash");
-  fireEvent.change(draft, {target: {value: "Unsubmitted verification draft"}});
+  expect(screen.getByRole("heading", {name: "Kishore"})).toBeTruthy();
+  expect(screen.getByText("you@example.test")).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Profile and sign-in settings"})).toBeNull();
+  identity.current = {...identity.current, userId: "two", displayName: null, emailAddress: null, imageUrl: null};
   view.rerender(<AccountSettingsSection />);
-  expect(screen.getByLabelText("Native account draft")).toHaveProperty("value", "Unsubmitted verification draft");
-  access.current = {...access.current, contextKey: "owner:two"};
-  view.rerender(<AccountSettingsSection />);
-  expect(screen.getByLabelText("Native account draft")).toHaveProperty("value", "");
-});
-
-it("scrolls and focuses the section without changing the provider's verification hash", () => {
-  history.replaceState({}, "", "#/verify");
-  access.current = {status: "loading"};
-  const view = render(<><AccountSettingsAction /><AccountSettingsSection /></>);
-  const section = screen.getByRole("region", {name: "Profile and sign-in settings"});
-  const scroll = vi.fn();
-  section.scrollIntoView = scroll;
-  fireEvent.click(screen.getByRole("button", {name: "Profile and sign-in settings"}));
-  expect(document.activeElement).toBe(section);
-  expect(scroll).toHaveBeenCalledWith({block: "start"});
-  expect(location.hash).toBe("#/verify");
-  view.rerender(<AccountSettingsAction />);
-  fireEvent.click(screen.getByRole("button", {name: "Profile and sign-in settings"}));
-  expect(location.hash).toBe("#/verify");
-  history.replaceState({}, "", "/");
+  expect(screen.queryByText("Kishore")).toBeNull();
+  expect(screen.queryByText("you@example.test")).toBeNull();
+  expect(screen.getByRole("heading", {name: "Your account"})).toBeTruthy();
+  expect(screen.getByText("No primary email address")).toBeTruthy();
 });

@@ -42,7 +42,7 @@ vi.mock("@/components/domain/island-dynamic/CreateApiKeyDialogDynamic", () => ({
 
 // Server-rendering precedes client authentication hydration. Keep the real named
 // account section while isolating its provider-bound hook.
-vi.mock("@/lib/auth/account-client", () => ({useAccountSettings: () => ({status: "loading"})}));
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: false, isSignedIn: false})}));
 vi.mock("@/components/account/SessionSettings", () => ({SessionSettings: () => React.createElement("section", null, "Active sessions")}));
 
 function mockAuth(token: string | null = "tok") {
@@ -66,7 +66,8 @@ describe("api-keys page", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/security/page");
     const html = renderToStaticMarkup(await Page());
     expect(html).toMatch(/API keys need admin access/i);
-    expect(html).toContain("Profile and sign-in settings");
+    expect(html).toContain("Your account");
+    expect(html).not.toContain("Profile and sign-in settings");
     expect(html).toContain("Active sessions");
     expect(redirect).not.toHaveBeenCalled();
   });
@@ -84,7 +85,8 @@ describe("api-keys page", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/security/page");
     const html = renderToStaticMarkup(await Page());
     expect(html).toContain("API keys could not be loaded.");
-    expect(html).toContain("Profile and sign-in settings");
+    expect(html).toContain("Your account");
+    expect(html).not.toContain("Profile and sign-in settings");
     expect(html).toContain("Active sessions");
     expect(redirect).not.toHaveBeenCalled();
   });
