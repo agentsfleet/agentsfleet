@@ -274,11 +274,13 @@ The final coverage correction removed an unreachable optional fallback from a re
 Earlier stale assertions expected hidden memory rows or forced UTC labels; their replacements check the requested visible behavior.
 
 The Rust lane uses the scoped init wrapper and file mask described above. Integration needed a task-owned runtime override for the cloud certificate and NATS proxy environment.
+
 The normal localhost health probe returned `403` through that proxy; clearing the proxy for NATS returned `{"status":"ok"}`. No repository test or service configuration changed.
 
 ### Current behavior and edge cases
 
 Setup Summary uses the separate 320px token, one-line package label and no internal internet-policy divider. Next wake-up appears only above the composer.
+
 Compaction has one quiet progress row; routine memory bookkeeping stays outside conversation rows and disclosures. Run and Read use distinct terminal and open-book icons.
 
 All visible clocks, date labels, ranges and relative labels use shared time utilities. Browser readiness prevents server-time flashes; wire timestamps and accounting month identities retain their established meanings.
@@ -299,7 +301,9 @@ The test labels describe browser timezone settings, not separate product display
 ### Refactor and initial-load review
 
 The Appsmith reference and installed Next.js guides informed feature boundaries and imports. Next dynamic imports defer inspection, history and selection editors until their controls open.
+
 The final static import graph is `/workspace/artifacts/m249-refactor/imports-final.json`. WorkspaceChat reaches 52 local modules, versus 80 before; PluginWorkspace reaches 18, versus 49.
+
 Those counts measure source dependencies, not transferred bytes or page-load time.
 
 The production output emits Plugin inspection, revision history and selection editors into separate client chunks. The Plugin entry's initial chunk list excludes inspection and history.
@@ -309,10 +313,18 @@ The domain audit examined 164 production files and found no byte-identical dupli
 
 The controlled four-fleet loader review returned its report in 40ms but waited 1,217ms when catalogue delay was 1,200ms.
 Both reads started together; no per-fleet request loop occurred. These are injected local delays, not live Fly.io measurements.
+
 See `billing-four-fleet-load-review.json`; M249_004 §2a specifies the single-call remedy and required live evidence.
 
 The single visual reference remains `/workspace/artifacts/m249-proposal/visual-review-candidate-ed7c4032b-desktop-a68d0c18f6e545dd94f5ad4161786bd3/proposal.html`.
-Latest native evidence includes `india-wake-up.png`, `india-usage.png`, `new-york-midnight.png` and `summary-policy-desktop.png` in the artifact directory.
+Latest native evidence includes `india-wake-up.png`, `india-usage.png`, `new-york-midnight.png` and `summary-policy-desktop.png` in the capture directory.
 
-Final repository gates and staged secret scanning remain pending after the new specification amendments. Independent final review could not complete because the review agents reached their usage limit.
+The test counts above describe the UI checkpoint `2099754ae`, before integrating `origin/main` at `c4da9a861`.
+Changes from main include catalogue cleanup and the stream socket test fix; they need the integrated revision's Continuous Integration (CI) checks.
+
+Subsequent source corrections remove a redundant optional chain and narrow a mock request body before JSON parsing.
+Final gate and staged-scanning outcomes are recorded in their command logs and Pull Request Session Notes.
+
+Independent final review could not complete because the review agents reached their usage limit.
+
 Live authentication and acceptance limitations remain as recorded above. No development deployment or identity-grant mutation occurred.

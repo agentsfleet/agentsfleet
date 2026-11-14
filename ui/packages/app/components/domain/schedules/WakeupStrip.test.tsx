@@ -210,7 +210,8 @@ it.each([
   const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
     if (init?.method === "PATCH") {
       writes++;
-      expect(JSON.parse(String(init.body))).toEqual({override: {timezone: "Asia/Kolkata", status: scenario.after}});
+      if (typeof init.body !== "string") throw new Error("Expected a JSON request body");
+      expect(JSON.parse(init.body)).toEqual({override: {timezone: "Asia/Kolkata", status: scenario.after}});
       saved = {...saved, status: scenario.after, etag: '"committed"', override: {...saved.override, status: scenario.after}};
       throw new TypeError("response lost after commit");
     }
