@@ -17,5 +17,6 @@ export async function sourcePreview(base: string, source: Source, signal: AbortS
   const query = new URLSearchParams({revision_id: source.revision_id});
   const plugin = await setupRequest({path: `${base}/plugins/${encodeURIComponent(source.plugin_id)}?${query}`}, PluginSchema, signal);
   if (plugin.card.id !== source.plugin_id || plugin.head.plugin_id !== source.plugin_id || plugin.head.id !== source.revision_id) throw new SetupUnavailable("The selected Plugin revision could not be confirmed.", 409);
-  return {definition: plugin.head.definition, instanceName: plugin.review.effective.instance_name, revision: plugin.head.id};
+  return {definition: plugin.head.definition, instanceName: plugin.review.effective.instance_name, revision: plugin.head.id,
+    sourceLabel: `${plugin.card.name} · v${plugin.head.revision}`};
 }

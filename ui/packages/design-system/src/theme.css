@@ -212,6 +212,7 @@
   --container-narrow: var(--max-w-narrow);
   --container-measure: var(--max-w-measure);
   --container-chat: var(--max-w-chat);
+  --container-setup-summary: var(--setup-summary-width);
   --spacing-chat-input: var(--chat-input-height);
   --spacing-chat-inset: var(--chat-inset);
   --text-conversation: var(--fs-conversation);

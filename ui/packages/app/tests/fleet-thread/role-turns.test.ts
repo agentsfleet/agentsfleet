@@ -2,8 +2,8 @@ import { FLEET_NAME, ev, mockStream, renderThread, threadElement } from "./harne
 import { describe, expect, it } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import { OUTCOME, RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
-import { FleetThread } from "@/components/domain/FleetThread";
-import { CONNECTION_STATUS } from "@/components/domain/useFleetEventStream";
+import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
+import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetEventStream";
 
 describe("FleetThread — role rendering: turns and connection", () => {
   it("renders an operator steer and the fleet's reply as separate conversation turns", () => {
@@ -162,22 +162,21 @@ describe("FleetThread — role rendering: turns and connection", () => {
     // "Still working." reads the same at one second and at five minutes.
     expect(screen.getByTestId("fleet-working")).toBeTruthy();
     // The accessible name stays "Working"; the visible words are one waiting verb.
-    const label = screen.getByRole("status", { name: "Working" }).querySelector("[data-waiting-verb]")?.textContent ?? "";
-    expect(label).toBe("Working…");
+    const label = screen.getByRole("status", { name: "Working" }).querySelector("[data-chat-loading]")?.textContent ?? "";
+    expect(label).toBe("Working");
     expect(screen.queryByText(OUTCOME.WORKING)).toBeNull();
   });
 
-  it("test_wait_verb_is_not_announced", () => {
+  it("keeps the waiting clock out of announcements", () => {
     const waiting = (clientTimestamp: boolean) =>
       ev({ role: "user", actor: "steer:user_abc", text: "Howdy", reply: "", status: "received", clientTimestamp });
     for (const [queued, name] of [[false, "Working"], [true, "Queued"]] as const) {
       mockStream([waiting(queued)]);
       const view = renderThread();
-      // Named for what it is; the visible verb is hidden from assistive tech.
+      // The status is named once; the visual clock never changes its spoken name.
       const status = screen.getByRole("status", { name });
-      expect(status.lastElementChild?.getAttribute("aria-hidden")).toBe("true");
-      // A live region reads its text, not its name: the name is also its words.
-      expect(status.querySelector(".sr-only")?.textContent).toBe(name);
+      expect(status.querySelector("[data-waiting-elapsed]")?.getAttribute("aria-hidden")).toBe("true");
+      expect(status.getAttribute("aria-label")).toBe(name);
       expect(status.textContent).toContain(name);
       view.unmount();
     }

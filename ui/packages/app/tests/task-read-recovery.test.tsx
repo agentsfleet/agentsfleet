@@ -1,8 +1,8 @@
 import type { TaskRead } from "@/lib/api/tasks";
-import { recoverTaskRead } from "@/components/domain/chat/task-read-recovery";
+import { recoverTaskRead } from "@/components/domain/tasks/task-read-recovery";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { useTaskRead } from "@/components/domain/chat/use-task-read";
+import { useTaskRead } from "@/components/domain/tasks/use-task-read";
 afterEach(() => {cleanup(); vi.useRealTimers(); vi.restoreAllMocks();});
 
 it("retries transient read failures on a bounded cadence and cancels recovery on unmount", async () => {

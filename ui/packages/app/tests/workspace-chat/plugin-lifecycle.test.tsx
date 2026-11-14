@@ -1,7 +1,7 @@
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
-import {act, cleanup, fireEvent, render, screen} from "@testing-library/react";
+import {act, cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
 import {flushSync} from "react-dom";
-import {PluginBrowser} from "@/components/domain/chat/PluginBrowser";
+import {PluginBrowser} from "@/components/domain/plugins/PluginBrowser";
 import {PLUGIN, PLUGIN_CARD, WORKSPACE, response} from "@/tests/helpers/draft-fixtures";
 
 const HISTORY = {items: [], next_cursor: null};
@@ -21,6 +21,7 @@ it.each(["another-user", "signed-out"])("discards loaded private plugins and pen
   const onSelect = vi.fn();
   const view = render(<PluginBrowser workspace={WORKSPACE} onSelect={onSelect} />);
   fireEvent.click(await screen.findByRole("button", {name: `Manage ${PLUGIN_CARD.name}`}));
+  await waitFor(() => expect(fetcher.mock.calls.length).toBe(2));
   identity.userId = next; identity.isSignedIn = next !== "signed-out";
   view.rerender(<PluginBrowser workspace={WORKSPACE} onSelect={onSelect} />);
   expect(screen.queryByText(PLUGIN_CARD.name)).toBeNull();
@@ -46,7 +47,7 @@ it.each(["list", "inspection", "history"])("keeps the selected collection when a
     }));
     const view = render(<PluginBrowser workspace={WORKSPACE} onSelect={onSelect} />);
     if (target !== "list") fireEvent.click(await screen.findByRole("button", {name: `Manage ${PLUGIN_CARD.name}`}));
-    if (target === "history") fireEvent.click(screen.getByRole("button", {name: "Choose a saved version"}));
+    if (target === "history") fireEvent.click(await screen.findByRole("button", {name: "Choose a saved version"}));
     await act(async () => {
       pending.resolve(response(target === "list" ? {items: [PLUGIN_CARD], next_cursor: null} : target === "history" ? HISTORY : PLUGIN));
       for (let step = 0; step < delay; step += 1) await Promise.resolve();

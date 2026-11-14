@@ -22,7 +22,7 @@ let streamState = {
   helloReceived: true,
   catchingUp: false,
 };
-vi.mock("@/components/domain/useWorkspaceStream", () => ({
+vi.mock("@/components/domain/conversation/stream/useWorkspaceStream", () => ({
   WorkspaceStreamProvider: ({ children }: React.PropsWithChildren) =>
     React.createElement(React.Fragment, null, children),
   useWorkspaceStream: () => streamState,

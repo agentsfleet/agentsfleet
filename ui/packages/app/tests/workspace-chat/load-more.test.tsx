@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { DraftLoadMore, LOAD_MORE_COPY } from "@/components/domain/chat/DraftLoadMore";
-import { RouteRetryButton } from "@/components/domain/RouteRetryButton";
+import { DraftLoadMore, LOAD_MORE_COPY } from "@/components/domain/setup/conversation/DraftLoadMore";
+import { RouteRetryButton } from "@/components/domain/shared/navigation/RouteRetryButton";
 
 const { refresh } = vi.hoisted(() => ({refresh: vi.fn()}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));

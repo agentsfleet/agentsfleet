@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import { cleanup, renderHook } from "@testing-library/react";
-import { useFleetStreams } from "@/components/domain/FleetStreamProvider";
+import { useFleetStreams } from "@/components/domain/conversation/stream/FleetStreamProvider";
 
 afterEach(cleanup);
 

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { DraftSchema } from "@/lib/api/draft-types";
-import { CHAT_PLACEHOLDER } from "@/components/domain/chat/chat-defaults";
+import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";

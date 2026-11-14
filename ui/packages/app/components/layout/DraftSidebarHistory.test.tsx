@@ -4,12 +4,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
 import { DRAFT, FLEET_ID, MESSAGE, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
-import { UnfinishedSetups } from "@/components/domain/chat/UnfinishedSetups";
+import { UnfinishedSetups } from "@/components/domain/setup/conversation/UnfinishedSetups";
 import { DraftSidebarHistory } from "./DraftSidebarHistory";
 import { DraftSidebarItem } from "./DraftSidebarItem";
 import { useDraftSidebarBridge } from "./use-draft-sidebar-bridge";
 import { DraftSidebarProvider, useFreshFleetChat, removeSidebarDraft, type DraftSidebarState } from "./draft-sidebar-state";
-import { LOAD_MORE_COPY } from "@/components/domain/chat/DraftLoadMore";
+import { LOAD_MORE_COPY } from "@/components/domain/setup/conversation/DraftLoadMore";
 import { Button } from "@agentsfleet/design-system";
 
 const { identity, replace } = vi.hoisted(() => ({ identity: { userId: "reader" }, replace: vi.fn() }));

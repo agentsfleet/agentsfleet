@@ -1,4 +1,4 @@
-import { TOOL_NAME } from "@/components/domain/tool-call-shape";
+import { TOOL_NAME } from "@/components/domain/activity/tools/presentation/tool-call-shape";
 import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 
 // Pin the public action wording independently of the presenter.
@@ -8,6 +8,4 @@ export const HEADERS: ReadonlyArray<readonly [FleetToolCall["name"], FleetToolCa
   [TOOL_NAME.FILE_DELETE, {path: "/workspace/old.md"}, "Deleting file", "Deleted file"],
   [TOOL_NAME.HTTP_REQUEST, {method: "POST", url: "https://api.example/run"}, "Making request", "Made request"],
   [TOOL_NAME.HTTP_REQUEST, {url: "https://api.example/run"}, "Making request", "Made request"],
-  [TOOL_NAME.MEMORY_STORE, {key: "deploy"}, "Saving memory", "Saved memory"],
-  [TOOL_NAME.MEMORY_FORGET, {key: "deploy"}, "Forgetting memory", "Forgot memory"],
 ];

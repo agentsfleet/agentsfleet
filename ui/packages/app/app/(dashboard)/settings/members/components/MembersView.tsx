@@ -2,12 +2,12 @@
 
 import { type TransitionStartFunction, useDeferredValue, useEffect, useRef, useState, useTransition } from "react";
 import { Alert, Badge, EmptyState, PageHeader, PageLayout, PageTitle, Section } from "@agentsfleet/design-system";
-import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
+import { CollectionToolbar } from "@/components/domain/shared/navigation/CollectionToolbar";
 import { UsersIcon } from "@phosphor-icons/react/ssr";
 import type { InviteSummary } from "@/lib/api/invites";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import { presentErrorString } from "@/lib/errors";
-import InviteDialogDynamic from "@/components/domain/island-dynamic/InviteDialogDynamic";
+import InviteDialogDynamic from "@/components/domain/shared/dialogs/InviteDialogDynamic";
 import { loadTeamAction, removeMemberAction, revokeInviteAction, sendInviteEmailAction } from "../actions";
 import { MEMBERS_DESCRIPTION, MEMBERS_TITLE } from "../copy";
 import { CONFIRM_KIND, TeamConfirm, memberName, type ConfirmTarget, type ConfirmTargetActive } from "./TeamConfirm";

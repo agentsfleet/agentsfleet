@@ -11,7 +11,7 @@ import {
   Button,
 } from "@agentsfleet/design-system";
 import { PlusIcon } from "@phosphor-icons/react/ssr";
-import AddSecretFormDynamic from "@/components/domain/island-dynamic/AddSecretFormDynamic";
+import AddSecretFormDynamic from "@/components/domain/shared/dialogs/AddSecretFormDynamic";
 import { SecretValueNotice } from "./SecretValueNotice";
 
 const ADD_SECRET_TRIGGER_LABEL = "Add secret";

@@ -22,8 +22,8 @@ Stack facts this page assumes:
 The [chat workspace design](../designs/chat-within-a-workspace.md) applies these server/client boundaries to one authoring-and-runtime conversation.
 It retains assistant-ui, keys private draft/shared fleet adapters by account/workspace/subject, and loads configuration details on intent.
 
-**Save fleet** and **Save changes** follow the [single resource reference](api_resources.md).
-**Publish plugin** remains an explicit action in the chat menu.
+Private chat **Save** and editor **Save changes** follow the [single resource reference](api_resources.md).
+The **Save and publish** flap publishes the reviewed setup directly, with elapsed progress and native retry.
 
 The authoring API and workspace chat adapters are implemented. The [original API proposal](../reviews/workspace-setup/api.md) records design history; [API resources](api_resources.md) describes the current routes.
 
@@ -244,8 +244,9 @@ The saved response supplies the Definition when present; otherwise the view reta
 ### One fleet workspace
 
 New fleet keeps the private setup conversation open across multiple messages.
-The header exposes **Save fleet** when the reviewed candidate can be saved.
-Successful Save keeps authoring open; **Open fleet** navigates to the fleet conversation.
+The header shows the reviewed fleet name and the **Edit instructions** pencil.
+
+The **Save and publish** flap publishes a reusable Plugin. Sending **Save** in chat saves the private fleet and opens its conversation.
 
 The sidebar's **Fleets** list shows authorized saved fleets.
 Private drafts appear under **Unfinished setups** on **New fleet**.
@@ -254,7 +255,8 @@ Active fleet dots use the brand color; hover or keyboard focus reveals the delet
 
 Fleet **Edit setup** opens the authoring page at its latest saved revision. **Archive** and permanent **Delete** live in **Fleet actions**.
 
-While authoring a saved fleet, the header offers **Save changes**. **Instructions** opens a tall editor from the chat menu.
+The **Edit instructions** pencil opens the tall instruction editor. Its **Save changes** action applies the reviewed edit.
+
 Saving a revision keeps authoring open. An explicit chat Save shows `Saving setup...` through model finalization and the checked write, then `Save done vN`.
 
 Existing runs keep their pinned revision; new runs use the saved version.

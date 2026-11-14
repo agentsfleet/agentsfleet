@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { PluginBrowser } from "@/components/domain/chat/PluginBrowser";
-import { PluginWorkspace } from "@/components/domain/chat/PluginWorkspace";
+import { PluginBrowser } from "@/components/domain/plugins/PluginBrowser";
+import { PluginWorkspace } from "@/components/domain/plugins/PluginWorkspace";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { FLEET_ID, PLUGIN, PLUGIN_CARD, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 
@@ -28,7 +28,7 @@ it("waits for the signed-in account before reading its plugins", async () => {
   expect(fetcher).not.toHaveBeenCalled();
   identity.isSignedIn = true;
   view.rerender(<PluginBrowser {...PROPS} />);
-  await screen.findByText(/No published setups are available yet/);
+  await screen.findByText("No plugins yet");
   expect(fetcher).toHaveBeenCalledOnce();
 });
 
@@ -81,9 +81,9 @@ it("shows loading until the list proves it is empty", async () => {
   vi.stubGlobal("fetch", vi.fn(() => list.promise));
   render(<PluginBrowser {...PROPS} />);
   expect(screen.getByText("Loading published setups")).not.toBeNull();
-  expect(screen.queryByText(/No (published setups are available yet|setups have been published by this workspace)/)).toBeNull();
+  expect(screen.queryByText("No plugins yet")).toBeNull();
   await act(async () => list.resolve(response({items: [], next_cursor: null})));
-  await screen.findByText(/No (published setups are available yet|setups have been published by this workspace)/);
+  await screen.findByText("No plugins yet");
   expect(screen.queryByText("Loading published setups")).toBeNull();
 });
 
@@ -104,7 +104,7 @@ it.each([404, 503, 200])("keeps a refused or incompatible plugin read separate f
   render(<PluginBrowser {...PROPS} />);
   await screen.findByText("Plugins are unavailable right now");
   expect(screen.getByRole("alert").getAttribute("data-slot")).toBe("unavailable-state");
-  expect(screen.queryByText(/No (published setups are available yet|setups have been published by this workspace)/)).toBeNull();
+  expect(screen.queryByText("No plugins yet")).toBeNull();
   expect(screen.queryByText(/This published setup is no longer available/)).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Retry plugins"}));
   await screen.findByText(PLUGIN_CARD.name);
@@ -123,7 +123,7 @@ it("removes stale actions while inspecting history and uses the selected immutab
   render(<PluginBrowser {...PROPS} />);
   fireEvent.click(await screen.findByRole("button", {name: `Manage ${PLUGIN_CARD.name}`}));
   await screen.findByRole("button", {name: "Use for new fleet"});
-  fireEvent.click(screen.getByRole("button", {name: "Choose a saved version"}));
+  fireEvent.click(await screen.findByRole("button", {name: "Choose a saved version"}));
   fireEvent.click(await screen.findByRole("button", {name: "Inspect revision 0"}));
   expect(screen.queryByRole("button", {name: "Use for new fleet"})).toBeNull();
   expect(screen.getByText("Loading selected revision")).not.toBeNull();
@@ -205,7 +205,7 @@ it("can page recipes and revision history and inspect the same historical revisi
   fireEvent.click(await screen.findByRole("button", {name: "Next page"}));
   await waitFor(() => expect(screen.queryByRole("button", {name: "Next page"})).toBeNull());
   fireEvent.click(screen.getByRole("button", {name: `Manage ${PLUGIN_CARD.name}`}));
-  fireEvent.click(screen.getByRole("button", {name: "Choose a saved version"}));
+  fireEvent.click(await screen.findByRole("button", {name: "Choose a saved version"}));
   fireEvent.click(await screen.findByRole("button", {name: "Older revisions"}));
   await waitFor(() => expect(screen.queryByRole("button", {name: "Older revisions"})).toBeNull());
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -226,7 +226,7 @@ it.each([403, 503])("handles revision history refusal %i with the correct recove
   }));
   render(<PluginBrowser {...PROPS} />);
   fireEvent.click(await screen.findByRole("button", {name: `Manage ${PLUGIN_CARD.name}`}));
-  fireEvent.click(screen.getByRole("button", {name: "Choose a saved version"}));
+  fireEvent.click(await screen.findByRole("button", {name: "Choose a saved version"}));
   const alert = await screen.findByRole("alert");
   expect(alert.getAttribute("data-slot")).toBe("unavailable-state");
   if (status === 403) {
@@ -251,7 +251,7 @@ it("retains a removal failure inside the dialog and removes the row after succes
   fireEvent.click(screen.getByRole("button", {name: "Remove"}));
   await screen.findByText("Removal could not be confirmed. Refresh the Plugin before trying again.");
   fireEvent.click(screen.getByRole("button", {name: "Remove"}));
-  await screen.findByText(/No (published setups are available yet|setups have been published by this workspace)/);
+  await screen.findByText("No plugins yet");
   expect(screen.queryByRole("alertdialog")).toBeNull();
 
 });
@@ -260,7 +260,19 @@ it("retains a removal failure inside the dialog and removes the row after succes
 it("offers a new fleet from an empty owned plugin list", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => response(EMPTY_HISTORY)));
   render(<PluginBrowser {...PROPS} />);
-  expect(screen.getByText("Current account")).toBeTruthy();
-  const link = await screen.findByRole("link", {name: "New fleet"});
-  expect(link.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new`);
+  const link = await screen.findByRole("link", {name: "Create a plugin"});
+  expect(link.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?starter=plugin`);
+  expect(screen.queryByRole("link", {name: "New fleet"})).toBeNull();
+});
+
+it("loads complete setup inspection only after it is requested", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: string) => response(new URL(input, "https://app.test").pathname.endsWith("/plugins")
+    ? {items: [PLUGIN_CARD], next_cursor: null} : PLUGIN)));
+  render(<PluginBrowser {...PROPS} />);
+  fireEvent.click(await screen.findByRole("button", {name: `Manage ${PLUGIN_CARD.name}`}));
+  const inspect = await screen.findByRole("button", {name: "Inspect setup"});
+  expect(screen.queryByRole("region", {name: "Fleet identity"})).toBeNull();
+  fireEvent.click(inspect);
+  expect(await screen.findByRole("region", {name: "Fleet identity"})).toBeTruthy();
+  expect(screen.getByText("Instructions", {selector: "summary"})).toBeTruthy();
 });

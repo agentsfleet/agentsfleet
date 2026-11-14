@@ -2,8 +2,8 @@ import { ev, mockStream, renderThread, useFleetEventStreamMock } from "./harness
 import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import { OUTCOME } from "@/lib/events/event-summary";
-import { FleetThread } from "@/components/domain/FleetThread";
-import { CONNECTION_STATUS, type FleetEvent } from "@/components/domain/useFleetEventStream";
+import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
+import { CONNECTION_STATUS, type FleetEvent } from "@/components/domain/conversation/stream/useFleetEventStream";
 
 describe("FleetThread — robustness against malformed metadata", () => {
   it("does not throw when an event's custom.actor is a non-string", () => {

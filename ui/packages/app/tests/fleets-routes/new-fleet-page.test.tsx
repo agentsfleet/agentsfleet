@@ -6,7 +6,7 @@ vi.mock("@/lib/auth/platform", () => ({hasScope: () => Promise.resolve(false)}))
 vi.mock("@/lib/auth/credential", () => ({requireCredential: credential}));
 vi.mock("@/lib/workspace", () => ({listTenantWorkspacesCached: workspaces}));
 vi.mock("next/navigation", () => ({notFound: () => { throw new Error("not-found"); }}));
-vi.mock("@/components/domain/chat/WorkspaceChat", () => ({WorkspaceChat: chat}));
+vi.mock("@/components/domain/setup/conversation/WorkspaceChat", () => ({WorkspaceChat: chat}));
 import Page from "../../app/(dashboard)/w/[workspaceId]/fleets/new/page";
 
 const WORKSPACE = "0199a801-1000-7000-8000-000000000001";

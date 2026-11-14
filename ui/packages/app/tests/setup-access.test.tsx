@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { SetupAccess } from "@/components/domain/chat/SetupAccess";
-import { FleetSetup } from "@/components/domain/chat/FleetSetup";
+import { SetupAccess } from "@/components/domain/setup/editor/SetupAccess";
+import { FleetSetup } from "@/components/domain/setup/conversation/FleetSetup";
 import { FleetRecoveryContent } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetRecoveryContent";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
 import { DRAFT, FLEET_DETAIL, FLEET_ID, REVIEW, WORKSPACE } from "./helpers/draft-fixtures";

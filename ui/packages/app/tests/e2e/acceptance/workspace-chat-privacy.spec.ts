@@ -19,7 +19,7 @@ import { createFixtureDraft, deleteFixtureDraft } from "./fixtures/native-setup"
 import { workspaceHref } from "./fixtures/nav";
 import { uniqueTag } from "./fixtures/observation";
 import {
-  CHAT_COPY, NEW_FLEET, chatUnavailable, draftHref, expectPrivateTextAbsent, historyEntry, openDraft, saveSetupButton,
+  CHAT_COPY, NEW_FLEET, chatUnavailable, draftHref, expectPrivateTextAbsent, historyEntry, openDraft, privateSaveButton,
   sendFromComposer,
 } from "./fixtures/private-chat";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
@@ -141,7 +141,7 @@ async function aRevokedTeammateLosesTheChatUntilRejoining(invitee: Invitee, work
   const chat = await writePrivateChat(invitee, workspaceId);
   await openDraft(invitee.page, workspaceId, chat.draftId);
   await revokeMembership(email);
-  await (await saveSetupButton(invitee.page)).click();
+  await (await privateSaveButton(invitee.page)).click();
   await expect(chatUnavailable(invitee.page)).toBeVisible();
   await expect(historyEntry(invitee.page, chat.draftId)).toHaveCount(0);
   await expectNoPrivateText(invitee.page, chat, "revoked teammate");

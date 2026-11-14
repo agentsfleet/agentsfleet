@@ -10,7 +10,7 @@ import {
   PageTitle,
 } from "@agentsfleet/design-system";
 import { FolderIcon } from "@phosphor-icons/react/ssr";
-import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
+import CreateWorkspaceDialogDynamic from "@/components/domain/shared/dialogs/CreateWorkspaceDialogDynamic";
 import { DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
 import { useWorkspaceCreation } from "@/components/layout/WorkspaceCreationProvider";
 

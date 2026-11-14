@@ -3,8 +3,8 @@ import { useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { CHAT_PROPS, chatRouter, chooseSetupAction } from "./fixture";
-import { DefinitionEditor } from "@/components/domain/chat/DefinitionEditor";
-import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
+import { DefinitionEditor } from "@/components/domain/setup/editor/DefinitionEditor";
+import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { DraftClientFixture } from "@/tests/helpers/draft-client-fixture";
 import { DRAFT_ID, FLEET_ID, REVIEW, REVISION_ID, response } from "@/tests/helpers/draft-fixtures";
 

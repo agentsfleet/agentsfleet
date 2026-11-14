@@ -20,7 +20,7 @@ const CREATED_AT = Date.UTC(2026, 0, 2, 3, 4, 5); // 2026-01-02T03:04:05.000Z
 function makeResponse(row: Partial<ApiKeyRow> = {}): ApiKeyListResponse {
   const item: ApiKeyRow = {
     id: "key_1",
-    key_name: "ci-token",
+    key_name: "ci-token", display_suffix: null,
     active: true,
     created_at: new Date(CREATED_AT).toISOString(),
     revoked_at: null,
@@ -48,13 +48,13 @@ describe("ApiKeyList timestamps", () => {
     expect(times).toContain(new Date(CREATED_AT).toISOString());
     expect(times).toContain(new Date(revoked).toISOString());
     expect(container.textContent).toContain("Revoked");
-    expect(container.textContent).not.toMatch(/last used|never used/i);
+    expect(container.textContent).toContain("Last used: unavailable");
   });
   it("shows created time alone for an active key", () => {
     const {container} = renderList(makeResponse());
     expect(Array.from(container.querySelectorAll("time")).map((node) => node.getAttribute("dateTime")))
       .toEqual([new Date(CREATED_AT).toISOString()]);
-    expect(container.textContent).not.toMatch(/last used|never used/i);
+    expect(container.textContent).toContain("Last used: unavailable");
   });
 });
 
@@ -63,4 +63,16 @@ it("keeps the key and its revoke action together in Security", () => {
   expect(screen.getByText("ci-token")).toBeTruthy();
   expect(screen.getByRole("button", {name: "Revoke API key ci-token"})).toBeTruthy();
   expect(screen.queryByRole("searchbox")).toBeNull();
+});
+
+// Value: protects=recognizing a key without revealing credential material;
+// fails_when=the list uses a digest or prints an unvalidated suffix; seam=API row; no_claim=authentication or last-use tracking.
+it("shows the real public suffix with the tenant-key prefix", () => {
+  renderList(makeResponse({display_suffix: "7f2a"}));
+  expect(screen.getByText("agt_t••••••••7f2a")).toBeTruthy();
+});
+it.each([null, "too-long", "<img>"])("does not invent an identifier for legacy or malformed suffix %s", display_suffix => {
+  renderList(makeResponse({display_suffix}));
+  expect(screen.getByText("Identifier unavailable")).toBeTruthy();
+  expect(screen.queryByText(/agt_t/)).toBeNull();
 });

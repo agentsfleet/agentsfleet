@@ -3,7 +3,7 @@ import { ACCEPTED, OPERATION_ID, composerInput, send } from "./steer-helpers";
 import { SEND_LABEL } from "./steer-copy";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, renderHook, screen, waitFor } from "@testing-library/react";
-import { useFleetSteerQueue } from "@/components/domain/useFleetSteerQueue";
+import { useFleetSteerQueue } from "@/components/domain/conversation/delivery/useFleetSteerQueue";
 import { ACTOR } from "@/lib/events/event-summary";
 import { AGENTSFLEET_EVENT_STATUS, type FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
 

@@ -1,6 +1,6 @@
 import { streamWrapper } from "./fleet-streams";
 import { renderHook } from "@testing-library/react";
-import { useFleetEventStream } from "@/components/domain/useFleetEventStream";
+import { useFleetEventStream } from "@/components/domain/conversation/stream/useFleetEventStream";
 import type { EventDetail, EventRow } from "@/lib/api/events";
 
 export function row(over: Partial<EventDetail> = {}): EventDetail {

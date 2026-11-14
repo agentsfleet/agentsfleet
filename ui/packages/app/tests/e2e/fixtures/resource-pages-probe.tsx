@@ -6,8 +6,8 @@ import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared
 import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { Button, PageHeader, PageLayout, PageTitle, TooltipProvider } from "@agentsfleet/design-system";
 import { ShellFrame } from "@/components/layout/ShellFrame";
-import { DraftConversation } from "@/components/domain/chat/DraftConversation";
-import { DraftChatHeading } from "@/components/domain/chat/DraftChatHeading";
+import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
+import { DraftChatHeading } from "@/components/domain/setup/conversation/DraftChatHeading";
 import { DraftClient } from "@/lib/api/drafts";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { UsageLayout } from "@/app/(dashboard)/settings/billing/components/UsageLayout";

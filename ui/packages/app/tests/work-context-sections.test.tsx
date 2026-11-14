@@ -1,9 +1,9 @@
-import { recordedChanges } from "@/components/domain/chat/recorded-changes";
+import { recordedChanges } from "@/components/domain/conversation/summary/recorded-changes";
 import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { fleetSources } from "@/lib/fleet-sources";
-import { WorkChanges, WorkOutputs, WorkSources } from "@/components/domain/chat/WorkContextSections";
+import { WorkChanges, WorkOutputs, WorkSources } from "@/components/domain/conversation/summary/WorkContextSections";
 import { evt } from "./helpers/fleet-stream-fixtures";
 import { detail, TASK_IDS } from "./helpers/task-reads";
 afterEach(cleanup);

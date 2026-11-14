@@ -1,0 +1,22 @@
+"use client";
+
+import { WarningIcon } from "@phosphor-icons/react/ssr";
+import { Badge, formatTimeAbsolute, useClientTimeReady } from "@agentsfleet/design-system";
+
+type Props = { exhaustedAt: string | null };
+
+export default function ExhaustionBadge({ exhaustedAt }: Props) {
+  const ready = useClientTimeReady();
+  const when = exhaustedAt && ready ? formatTimeAbsolute(exhaustedAt) : null;
+  return (
+    <Badge
+      variant="destructive"
+      role="status" // oxlint-disable-line jsx-a11y/prefer-tag-over-role -- Badge is the design-system primitive; <output> drops icon children in happy-dom@20.
+      aria-label="Balance exhausted"
+      title={when ? `Exhausted since ${when}` : "Balance exhausted"}
+    >
+      <WarningIcon size={12} aria-hidden="true" />
+      Balance exhausted
+    </Badge>
+  );
+}

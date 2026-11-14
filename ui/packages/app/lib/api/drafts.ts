@@ -219,7 +219,10 @@ export class DraftClient {
   }
   retry(): Promise<void> {
     return this.#requests.run(async () => {
-      if (this.#operation.pending) await this.#operation.retry();
+      if (this.#operation.pending) {
+        await this.#operation.retry();
+        if (this.#snapshot.optimistic && this.#snapshot.draft) await this.#read(this.#snapshot.draft.id);
+      }
       else if (this.#continueSave) await this.#continueSave();
       else await retrySavedSetup(this.#base, this.#snapshot, AbortSignal.any([this.#owner.signal, this.#view.signal]), (id, fleet) => this.#savedSetup(id, fleet), id => this.#read(id));
       this.#startWatching();

@@ -35,7 +35,7 @@ export function AccountSettingsFixture() {
       <ShellFrame workspaces={[{id: WORKSPACE, name: "Release workspace", created_at: "2026-01-01T00:00:00Z", ...OWN_ACCOUNT}]}>
         <SecurityLayout>
           <AccountSettingsSection />
-          <ApiKeysView operatorOnly={false} initial={{items: [{id: "sample-key", key_name: "platform-priming", active: true, created_at: "2026-11-04T10:00:00Z", revoked_at: null}], total: 1, next_cursor: null}} />
+          <ApiKeysView operatorOnly={false} initial={{items: [{id: "sample-key", key_name: "platform-priming", display_suffix: "7f2a", active: true, created_at: "2026-11-04T10:00:00Z", revoked_at: null}], total: 1, next_cursor: null}} />
           <SessionSettingsView key={String(failed)} client={client} />
         </SecurityLayout>
       </ShellFrame>

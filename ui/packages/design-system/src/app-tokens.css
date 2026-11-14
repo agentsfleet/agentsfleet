@@ -49,8 +49,8 @@
   --text-muted: #c2c7d0;
   --text-subtle: #a3abb7;
   --text-dim: #a3abb7;
-  --chat-loading-base: #c2c7d0;
-  --chat-loading-sweep: #8f98a6;
+  --chat-loading-base: var(--text-dim);
+  --chat-loading-sweep: var(--text);
   --pulse: #c1f0d6;
   --pulse-dim: #afe4c7;
   --pulse-glow: rgb(193 240 214 / 15%);
@@ -70,6 +70,7 @@
   --overlay: #0009;
   --elevation-dialog: 0 20px 80px #0006;
   --summary-width: 248px;
+  --setup-summary-width: 320px;
   --max-w-chat: 740px;
   --chat-input-height: 60px;
   --chat-inset: 32px;
@@ -98,8 +99,8 @@
   --text-muted: #495361;
   --text-subtle: #5e6876;
   --text-dim: #5e6876;
-  --chat-loading-base: #495361;
-  --chat-loading-sweep: #303a48;
+  --chat-loading-base: var(--text-dim);
+  --chat-loading-sweep: var(--text);
   --pulse: #24593d;
   --pulse-dim: #1d4c33;
   --pulse-glow: rgb(36 89 61 / 15%);

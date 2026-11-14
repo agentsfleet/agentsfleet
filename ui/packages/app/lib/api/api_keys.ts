@@ -14,10 +14,11 @@ import type { ApiKeySort } from "./api-keys-types";
 export interface ApiKeyRow {
   id: string;
   key_name: string;
+  /** Public recognition metadata; never a usable credential. */
+  display_suffix: string | null;
   active: boolean;
   /** Epoch milliseconds. */
   created_at: string;
-  /** Epoch milliseconds, or null when the key has never authenticated a call. */
   /** Epoch milliseconds, or null while the key is still active. */
   revoked_at: string | null;
 }

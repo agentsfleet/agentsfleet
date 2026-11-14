@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ChatFixture, CHAT_PROPS, chooseSetupAction } from "./fixture";
-import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
-import { DRAFT, MESSAGE, REVISION_ID, response } from "@/tests/helpers/draft-fixtures";
+import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
+import { DRAFT, REVIEW, MESSAGE, REVISION_ID, response } from "@/tests/helpers/draft-fixtures";
 
 const requestPath = (input: string | URL | Request): string => typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 let fixture: ChatFixture;
@@ -26,7 +26,7 @@ it("drops the previous conversation immediately when a different chat is selecte
   const view = render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
   await screen.findByText("Your setup is ready.");
   const done = Promise.withResolvers<Response>();
-  const next = {...DRAFT, id: REVISION_ID, title: "Morning brief"};
+  const next = {...DRAFT, id: REVISION_ID, title: "Morning brief", review: {...REVIEW, effective: {...REVIEW.effective, instance_name: "Morning brief"}}};
   const base = fixture.fetch.getMockImplementation();
   if (!base) throw new Error("Chat fetch fixture is not installed");
   fixture.messages = [{...MESSAGE, text: "Prepare a morning brief"}];
@@ -41,7 +41,7 @@ it("drops the previous conversation immediately when a different chat is selecte
 it("shows the owning cached conversation while its refresh is still in flight", async () => {
   const mounted = render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
   await screen.findByText("Your setup is ready.");
-  fixture.draft = {...DRAFT, id: REVISION_ID, title: "Morning brief"};
+  fixture.draft = {...DRAFT, id: REVISION_ID, title: "Morning brief", review: {...REVIEW, effective: {...REVIEW.effective, instance_name: "Morning brief"}}};
   fixture.messages = [{...MESSAGE, text: "Prepare a morning brief"}];
   mounted.rerender(<WorkspaceChat {...CHAT_PROPS} draft={REVISION_ID} />);
   await screen.findByRole("heading", {name: "Morning brief"});
@@ -71,7 +71,9 @@ it("renames a chat with a conditional patch and retains the editor on a refusal"
   fixture.fetch.mockResolvedValueOnce(response({...DRAFT, title: "Build repair"}));
   fireEvent.click(screen.getByRole("button", {name: "Save name"}));
   await waitFor(() => expect(screen.queryByLabelText("Chat name")).toBeNull());
-  expect(screen.getByRole("heading", {name: "Build repair"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: REVIEW.effective.instance_name})).toBeTruthy();
+  await chooseSetupAction("Rename chat");
+  expect(screen.getByLabelText("Chat name")).toHaveProperty("value", "Build repair");
   const patch = fixture.fetch.mock.calls.at(-1)?.[1];
   expect(patch?.method).toBe("PATCH");
   expect(new Headers(patch?.headers).get("If-Match")).toBe(DRAFT.etag);

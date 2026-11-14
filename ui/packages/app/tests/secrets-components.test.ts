@@ -28,7 +28,7 @@ vi.mock("@/lib/analytics/posthog", () => ({
 
 // Dialog tests own dialog/form wiring; island-dynamic.test covers next/dynamic,
 // so this suite renders the real form without the framework loader race.
-vi.mock("@/components/domain/island-dynamic/AddSecretFormDynamic", async () => {
+vi.mock("@/components/domain/shared/dialogs/AddSecretFormDynamic", async () => {
   const ReactModule = await import("react");
   const { default: AddSecretForm } = await import(
     "@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm"

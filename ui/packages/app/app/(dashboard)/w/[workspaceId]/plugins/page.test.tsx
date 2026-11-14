@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 const { credential, browser } = vi.hoisted(() => ({ credential: vi.fn(), browser: vi.fn() }));
 vi.mock("@/lib/auth/credential", () => ({ requireCredential: credential }));
-vi.mock("@/components/domain/chat/PluginWorkspace", () => ({ PluginWorkspace: browser }));
+vi.mock("@/components/domain/plugins/PluginWorkspace", () => ({ PluginWorkspace: browser }));
 import PluginPage from "./page";
 beforeEach(() => { vi.resetAllMocks(); credential.mockResolvedValue("session"); browser.mockReturnValue(<p>Recipes</p>); });
 it("requires authentication before opening the native Plugin for this workspace", async () => {

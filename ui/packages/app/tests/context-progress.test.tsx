@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { ContextProgressStatus } from "@/components/domain/ContextProgressStatus";
+import { ContextProgressStatus } from "@/components/domain/usage/ContextProgressStatus";
 import { CONTEXT_STATE } from "@/lib/context-progress";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { applyLiveFrame, parseLiveFrame } from "@/lib/streaming/fleet-stream-frames";
@@ -21,13 +21,14 @@ function status(progress: unknown = start, event = "e0") {
 }
 
 it.each([
-  [CONTEXT_STATE.summarizing, "Context summarizing…"],
-  [CONTEXT_STATE.resuming, "Context summarized, resuming…"],
-  [CONTEXT_STATE.interrupted, "Context summarization interrupted."],
+  [CONTEXT_STATE.summarizing, "Compacting context · This can take a few minutes"],
+  [CONTEXT_STATE.resuming, "Context compacted · Continuing…"],
+  [CONTEXT_STATE.interrupted, "Context compaction interrupted."],
 ])("announces %s through an accessible live status", (state, label) => {
   render(<ContextProgressStatus value={{...start, state}} />);
   expect(screen.getByRole("status").textContent).toContain(label);
   expect(screen.getByRole("status").getAttribute("aria-live")).toBe("polite");
+  expect(screen.getByText(label).getAttribute("data-chat-loading")).toBe(String(state === CONTEXT_STATE.summarizing));
 });
 
 it.each([null, {}, {...start, notes: "private summary"}, {...start, generation: 0}, {...start, state: "complete"}])(

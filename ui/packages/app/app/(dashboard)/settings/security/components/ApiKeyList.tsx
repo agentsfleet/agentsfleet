@@ -4,7 +4,7 @@ import { type Ref, useImperativeHandle, useState, useTransition } from "react";
 import { Button, DashboardPanel, EmptyState, Time } from "@agentsfleet/design-system";
 import { KeyIcon } from "@phosphor-icons/react/ssr";
 import { type ApiKeyListResponse, type ApiKeyRow } from "@/lib/api/api_keys";
-import { DEFAULT_SORT } from "@/lib/api/api-keys-types";
+import { DEFAULT_SORT, KEY_PREFIX, KEY_SUFFIX_REGEX } from "@/lib/api/api-keys-types";
 import { presentErrorString } from "@/lib/errors";
 import { listApiKeysAction, revokeApiKeyAction, deleteApiKeyAction } from "../actions";
 import RevokeConfirm, { type ConfirmTarget, type ConfirmTargetActive } from "./RevokeConfirm";
@@ -80,7 +80,8 @@ export default function ApiKeyList({
         {items.map(key => <li key={key.id} className="flex min-w-0 flex-wrap items-center gap-xl p-xl sm:p-5">
           <span aria-hidden="true" className="hidden size-10 items-center sm:flex justify-center rounded-control border border-border"><KeyIcon size={16} /></span>
           <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto"><p className="break-words text-label font-medium">{key.key_name}</p>
-            <p className="mt-sm text-label text-muted-foreground">Created <Time value={key.created_at} format="date" tooltip />{key.active ? null : <> · Revoked{key.revoked_at ? <> <Time value={key.revoked_at} format="date" tooltip /></> : null}</>}</p></div>
+            <p className="mt-sm text-label text-muted-foreground"><KeyIdentifier suffix={key.display_suffix} /> · Created <Time value={key.created_at} format="date" tooltip />{key.active ? null : <> · Revoked{key.revoked_at ? <> <Time value={key.revoked_at} format="date" tooltip /></> : null}</>}</p></div>
+          <span className="text-eyebrow text-text-dim">Last used: unavailable</span>
           <Button variant="outline" disabled={pending || mutating} onClick={() => setTarget({...key, mode: key.active ? "revoke" : "delete"})}
             aria-label={`${key.active ? "Revoke" : "Delete"} API key ${key.key_name}`}>{key.active ? "Revoke" : "Delete"}</Button>
         </li>)}
@@ -92,5 +93,11 @@ export default function ApiKeyList({
       <RevokeConfirm target={target} error={error} onOpenChange={() => { setTarget(null); setError(null); }} onConfirm={onConfirm} />
     </div>
   );
+}
+
+function KeyIdentifier({suffix}: {suffix: string | null}) {
+  return typeof suffix === "string" && KEY_SUFFIX_REGEX.test(suffix)
+    ? <code className="font-mono text-mono">{KEY_PREFIX}••••••••{suffix}</code>
+    : <span>Identifier unavailable</span>;
 }
 

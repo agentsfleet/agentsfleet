@@ -7,10 +7,10 @@ import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } fr
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { formatCompactCount, formatRunDuration } from "@/lib/events/run-figures-format";
 import { formatDollars } from "@/lib/money";
-import { FleetToolGroup } from "@/components/domain/FleetToolGroup";
-import { renderFleetMessage } from "@/components/domain/fleetMessageRenderers";
-import { toReplyMessage } from "@/components/domain/fleetReplyMessage";
-import { convertEvent } from "@/components/domain/useFleetEventStream";
+import { FleetToolGroup } from "@/components/domain/activity/tools/FleetToolGroup";
+import { renderFleetMessage } from "@/components/domain/activity/messages/fleetMessageRenderers";
+import { toReplyMessage } from "@/components/domain/activity/replies/fleetReplyMessage";
+import { convertEvent } from "@/components/domain/conversation/stream/useFleetEventStream";
 
 // The event stream orders every tool before the answer. Native parts can still
 // arrive as [tool, text, tool], so the order is set on the converted message.

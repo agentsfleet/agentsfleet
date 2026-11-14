@@ -64,11 +64,18 @@ describe("private setup editing and recovery boundaries", () => {
     expect(mutations()).toHaveLength(1);
   });
 
-  it.each(["", "x".repeat(32_769), "🌱".repeat(8_193)])("rejects invalid message input before creating an operation (%#)", async (text) => {
+  it.each(["", "   ", "\n\t", "x".repeat(32_769), "🌱".repeat(8_193)])("rejects invalid message input before creating an operation (%#)", async (text) => {
     const instance = await ready();
     await expect(instance.send(text)).rejects.toMatchObject({status: 400});
     expect(instance.getSnapshot()).toMatchObject({pending: false, busy: false, error: "Messages must contain 1 to 32,768 bytes of text."});
     expect(mutations()).toEqual([]);
+  });
+
+  it("preserves meaningful indentation and line breaks when admitting a message", async () => {
+    const instance = await ready();
+    const message = "  Check the callback\n\n    Keep the regression assertions.\n";
+    await instance.send(message);
+    expect(mutations()[0]?.body).toMatchObject({message});
   });
 
   it("requires an authoring model and an existing conversation for applicable actions", async () => {

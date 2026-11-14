@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import Markdown from "react-markdown";
 import { useAuiState } from "@assistant-ui/react";
 import type { ComponentProps } from "react";
-import { DraftConversation } from "@/components/domain/chat/DraftConversation";
+import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
 import { DraftClient } from "@/lib/api/drafts";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { DRAFT, MESSAGE, WORKSPACE } from "./helpers/draft-fixtures";

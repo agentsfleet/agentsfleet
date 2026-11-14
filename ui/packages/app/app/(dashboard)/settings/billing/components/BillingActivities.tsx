@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { formatCompactCount } from "@/lib/events/run-figures-format";
 import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { DATA_TABLE_SURFACE, DataTable, EMPTY_STATE_SURFACE, EmptyState, PAGINATION_KIND, Time, formatTimeCompactUtc, type DataTableColumn } from "@agentsfleet/design-system";
+import { DATA_TABLE_SURFACE, DataTable, EMPTY_STATE_SURFACE, EmptyState, PAGINATION_KIND, Time, type DataTableColumn } from "@agentsfleet/design-system";
 import { useUrlCursorPages } from "@/lib/pagination/use-url-cursor-pages";
 import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/pagination/cursor-trail";
 import { formatBalance } from "@/lib/money";
@@ -44,7 +44,7 @@ function activityColumns(modelNames: Record<string, string>): DataTableColumn<Bi
   return [
     {key: "activity", header: COLUMN.activity, primary: true, cell: activity => <div>
       <p className="font-medium">{activityLabel(activity)}</p><p className="text-eyebrow font-normal text-muted-foreground">
-        <Time value={activity.recorded_at} label={formatTimeCompactUtc(activity.recorded_at)} /> · {activity.activity_type === BILLING_ACTIVITY_SETUP ? "Setup turn" : "Fleet run"}
+        <Time value={activity.recorded_at} format="compact" /> · {activity.activity_type === BILLING_ACTIVITY_SETUP ? "Setup turn" : "Fleet run"}
       </p></div>},
     {key: "model", header: COLUMN.model, cell: activity => mobileValue(COLUMN.model, activity.models.map(model => modelNames[model] ?? model).join(", "))},
     {key: "tokens", header: COLUMN.tokens, numeric: true,

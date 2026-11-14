@@ -19253,6 +19253,13 @@
             "format": "date-time",
             "description": "When it was minted."
           },
+          "display_suffix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Final four hexadecimal characters for recognition only. Never authenticates a request.\nNull when no suffix was recorded; the original credential cannot be recovered."
+          },
           "id": {
             "type": "string",
             "description": "The key's identifier."
@@ -27560,6 +27567,13 @@
                   "type": "string",
                   "format": "date-time",
                   "description": "When it was minted."
+                },
+                "display_suffix": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Final four hexadecimal characters for recognition only. Never authenticates a request.\nNull when no suffix was recorded; the original credential cannot be recovered."
                 },
                 "id": {
                   "type": "string",

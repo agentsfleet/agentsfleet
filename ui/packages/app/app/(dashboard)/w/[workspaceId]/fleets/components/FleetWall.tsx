@@ -8,7 +8,7 @@ import {
 } from "@agentsfleet/design-system";
 import { type Fleet } from "@/lib/api/fleets";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
-import { WorkspaceStreamProvider } from "@/components/domain/useWorkspaceStream";
+import { WorkspaceStreamProvider } from "@/components/domain/conversation/stream/useWorkspaceStream";
 import { listFleetsAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
 import FleetTile from "./FleetTile";

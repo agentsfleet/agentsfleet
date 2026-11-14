@@ -240,7 +240,9 @@ Archived history is read-only. Pending operations, failures, and uncertain outco
 Never show a success notification while a request is pending or when only the stop portion of deletion succeeded.
 
 
-Summary occupies a 248px column on wide desktops. Use 228px at 801–1100px and 216px at 681–800px; stack at 680px and below. Use a 16px inner inset, 12px at the narrow intermediate step, and 12/16/32px conversation gutters at 681/801/1101px.
+Conversation Summary occupies a 248px column on wide desktops. Use 228px at 801–1100px and 216px at 681–800px; stack at 680px and below. Use a 16px inner inset, 12px at the narrow intermediate step, and 12/16/32px conversation gutters at 681/801/1101px.
+
+Setup Summary uses its separate 320px desktop token so policy labels fit on one line.
 
 Phone shell edges are 4px and Summary outer insets 12px; transcript insets stay 16px.
 
@@ -256,7 +258,7 @@ Loading and unavailable reads must not appear as confirmed empty outputs.
 
 Section labels use 12px/16px, with 4px label-to-content spacing, 8px between sections and 8px after each divider. Keep 36px desktop and 44px phone disclosure targets without adding a second spacer row. Conversation input starts at 60px; a 100px empty setup field is a separate composition.
 
-The header edit action opens the existing setup editor. User attachments precede prose in lighter bubbles; calendar boundaries and compact clocks use the same UTC frame and retain exact accessible instants.
+The header edit action opens the existing setup editor. User attachments precede prose in lighter bubbles; calendar boundaries and compact clocks follow the viewer's timezone and retain exact accessible instants.
 
 On phones, place Summary before the transcript inside the native assistant-ui viewport. Keep its complete content in the page flow, with no height cap or nested scroll area. The native viewport footer stays in the scroll flow and sticks to the bottom while reading.
 
@@ -351,7 +353,7 @@ Keep delivery status separate from invitation status. Never show an empty member
 Call the resource **Plugins**. Flow 1 is approved: each Plugin contains a complete fleet setup with immutable revisions and existing account access.
 Use Plugin starts a new private setup; it never attaches capabilities to an existing fleet.
 
-Save as Plugin remains separate from Save fleet.
+Save and publish creates a reusable Plugin; sending Save in chat saves a private fleet.
 Defer capability composition and plugin mentions to the revisit note in M239; they are outside this refresh.
 Keep existing Secrets.
 
@@ -409,7 +411,7 @@ The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** ope
 
 Fleet messages, setup receipts, and integration activity share one chronological conversation.
 
-**Save fleet** sits beside the authoring chat title. Authoring a saved fleet shows **Save changes** in that position.
+**Save and publish** sits on the flap above the composer. The header keeps the fleet name and **Edit instructions** pencil.
 **Archive** and **Permanently Delete** live in **Fleet actions**.
 
 Archive and deletion use separate confirmations.
@@ -484,9 +486,11 @@ Only the selected row renders detail content.
 
 Keep navigation and disclosure behavior in the shared component rather than recreating it in a page.
 
-Date formatting belongs in `ui/packages/design-system/src/design-system/time-utils.ts` for both the app and shared components. Render visible timestamps through `Time`; use the exported helpers for plain-text labels and server-side formatting. Reporting periods use `formatTimeRangeUtc`, and their activity labels use `formatTimeCompactUtc` so both share Coordinated Universal Time (UTC).
+Date formatting belongs in `ui/packages/design-system/src/design-system/time-utils.ts` for both the app and shared components. Render visible timestamps through `Time` and ranges through `TimeRange`. Use the exported helpers for plain-text labels.
 
-Use `Time format="date"` for joined, expiry and creation dates and `Time format="month"` for a selected reporting month. These use UTC and keep the canonical instant.
+Schedule times, billing activity, date labels and range endpoints follow the viewer's timezone. Client readiness prevents a server-time flash before the browser resolves its timezone. Relative labels use the shared elapsed-time formatter.
+
+Use `Time format="date"` for joined, expiry and creation dates and `Time format="month"` for a selected reporting month. Month identifiers and API cutoffs retain their accounting calendar; they do not determine displayed activity times. Canonical timestamps remain unchanged.
 
 The helpers return the shared invalid-date fallback for malformed inputs; ranges also reject an end before the start.
 Extend these shared helpers when a reusable format is missing. Do not add a page-local formatter.
@@ -633,7 +637,7 @@ Appsmith's [widget registration](https://github.com/appsmithorg/appsmith/blob/65
 
 ### Shared composer controls
 
-Fleet chat and setup chat compose the same controls from `components/domain/chat/ChatComposerFrame.tsx` in the app package.
+Fleet chat and setup chat compose the same controls from `components/domain/shared/chat/ChatComposerFrame.tsx` in the app package.
 `ChatComposerFrame` owns the input, boundary, spacing, height limits, and focus behavior.
 Place the model and contextual controls at the left of the footer, with the circular Send action at the right, matching the approved layout.
 
@@ -669,9 +673,10 @@ The saved setup editor returns to its fleet conversation. Use the rail's fleet p
 ### Setup-to-conversation transition
 
 Keep one visual shell through setup, confirmed save, and the fleet conversation. Preserve the title, reading width, composer position, and inline Summary.
-Label the authoring state Setup and its action Save fleet.
 
-Show goal, model, access, and trigger requirements beside the conversation.
+Label the authoring state Fleet setup. Its flap action is Save and publish.
+
+Show model, spending limit, repositories, internet access and secrets in Summary. Show Next wake-up only in the composer flap.
 
 After the server confirms the fleet identity, open its conversation without an extra Open fleet action. Replace the draft URL with the saved fleet URL.
 Show confirmed readiness separately from saving.
@@ -866,7 +871,7 @@ Show **Saving setup...** through chat finalization and saving, then one white **
 
 Saving changes updates the version from the server response. New runs use the saved setup, while runs already started keep their version. Accepted work can still be running.
 
-**Save fleet** requests no first run. Configured automatic triggers can start work once setup is ready.
+Sending **Save** in chat requests no first run. Configured automatic triggers can start work once setup is ready.
 
 Keep unfinished setup and first-run recovery, schedule registration warnings, and retry actions visible. Successful setup does not add an expandable report to the conversation.
 Show the saved acknowledgement and recovery actions within the conversation on narrow screens and short windows.
@@ -1073,6 +1078,10 @@ Use a compact, dismissible error notice for immediate feedback, with a small err
 
 Keep retries scoped to the original operation and prevent duplicate submissions. Errors needing access, configuration or sign-in show that specific recovery instead of a retry loop. This follows Indy's November 11, 2026 error reference.
 
+Setup-chat failures flash for six seconds, pausing while hovered or focused. Quiet recovery stays beside the composer after dismissal; private-data access refusals retain their lock and reload action.
+
+Identify failed model and chat-history reads separately, and retain safe backend guidance. A failed read never establishes that a workspace has no configured model.
+
 
 ### Review corrections, Nov 12, 2026
 
@@ -1145,10 +1154,44 @@ The header shortcut starts a new fleet through the shared navigation intent on r
 
 ### Fleet setup review
 
-Keep the setup Summary concise: fleet name, proposed/saved state, purpose and run triggers. Review setup opens a scrollable panel with grouped identity, runtime model, source revision, access, repositories, secrets/connections, spending and instructions.
+Use the original flat Summary rows and dividers. Model and spending limit appear at the top; optional Plugin provenance is one quiet line.
 
-Secret values never appear. Unavailable review fields remain unconfirmed.
+The broader sections are Repositories, Public internet access and Secrets. Tools sit in a small row with repositories. Remove Purpose, repeated recurrence prose and the separate Review setup panel.
 
-Saved schedule registration, next run and retry controls stay separate from proposed trigger changes. Opening the review preserves the composer. Configuration changes continue through the existing setup chat and instructions editor.
+Public internet access has Allow all and Enable package manager domains, without an internal divider. Keep the package label on one line with the same row spacing. When Allow all is enabled, disable the package option while preserving its selection.
+
+The setup Summary uses a 320px desktop width so its policy label and controls fit. Conversation summaries retain their existing width. Keep existing domain rules in configuration; no additional domain editor appears in this Summary.
+
+Edits use the native creator-owned draft and preserve unrelated policy.
+
+Secret names may appear; values never do. A missing review stays unknown. Before a candidate exists, show only “Your setup will appear here as you chat.”
+
+The desktop Summary scrolls only when the viewport requires it; phone layouts place it inline.
+
+The composer flap owns Next wake-up and its edit, pause and removal controls. Display recorded instants in the viewer's timezone. Registration, pause and removal failures stay explicit with native retry.
+
+Proposed schedules remain pending until saved and registered. Omit the flap when a completed read confirms no schedules. Summary contains no duplicate wake-up row or “Not scheduled” label.
+
+Save and publish is the flap above the composer. It uses the reviewed fleet name and native publication target, without a popup or a separate Save fleet button.
+
+While pending it shows a spinner, a muted-to-bright label and whole seconds. Only confirmed native receipts show success.
+
+Unconfirmed writes retain Retry and the original operation identity. Natural chat Save remains available for private fleet saving.
+
+Queued, Thinking and working rows share the same progress label. Only the visual clock ticks; the accessible label stays stable.
+
+Reduced motion disables spinner rotation and the sweep. The clock unmounts when work finishes or the row disappears.
+
+Context compaction uses one quiet row: “Compacting context · This can take a few minutes”. Show a text glyph and the shared muted-to-bright sweep. Replace the ordinary working indicator until the next reply or compaction state.
+
+Internal memory recall, storage, listing and removal never appear as conversation tool rows or disclosures. Keep recorded traces and run figures intact; visible file, command and other tool actions retain their original identities.
 
 Team counts share their heading’s center line. The Fleets rail section can collapse; its list retains paging and account/workspace ownership.
+
+### Domain feature organization
+
+Group components under activity, approvals, conversation, events, models, plugins, schedules, setup, shared, tasks and usage. Setup editors and Plugin inspection/history load on intent.
+
+Keep stream ownership in its existing provider and native requests in DraftClient. Avoid compatibility barrels that pull unrelated features into a route.
+
+A directory's file count does not establish page-load cost. Compare static imports and production chunks before claiming a loading improvement. Appsmith's route/page loader structure informed this split; its state management and bundler are not transplanted into Next.js.

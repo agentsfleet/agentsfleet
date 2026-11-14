@@ -83,6 +83,8 @@ pub struct KeyRow {
     pub id: String,
     /// What it is called.
     pub name: String,
+    /// Final credential characters, or absent for a key minted before metadata was recorded.
+    pub display_suffix: Option<String>,
     /// When it was minted.
     pub created_at: Timestamp,
     /// When it stopped working, if it has.
@@ -110,6 +112,7 @@ struct MarkerRow {
 struct ListedRow {
     id: Uuid7,
     name: String,
+    display_suffix: Option<String>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
     revoked_at: Option<jiff_sqlx::Timestamp>,
@@ -120,6 +123,7 @@ impl From<ListedRow> for KeyRow {
         Self {
             id: row.id.into(),
             name: row.name,
+            display_suffix: row.display_suffix,
             created_at: row.created_at,
             revoked_at: row.revoked_at.map(jiff_sqlx::Timestamp::to_jiff),
         }

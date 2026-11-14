@@ -3,9 +3,9 @@ import { StrictMode } from "react";
 import { expect, it, vi } from "vitest";
 import { act, render, renderHook, screen } from "@testing-library/react";
 import { appendMessage, capturedOnNew, clientUser, ev, mockStream, postSteerMock, renderThread, SUBJECT, threadElement, WS, ZID, FLEET_NAME } from "./fleet-thread/harness";
-import {FleetThread} from "@/components/domain/FleetThread";
+import {FleetThread} from "@/components/domain/conversation/thread/FleetThread";
 import { ACCEPTED } from "./fleet-thread/steer-helpers";
-import {useFleetUploadPreviews} from "@/components/domain/useFleetUploadPreviews";
+import {useFleetUploadPreviews} from "@/components/domain/conversation/composer/useFleetUploadPreviews";
 
 const attachment: CompleteAttachment = {id: "upload-preview", type: "file", name: "notes.txt", status: {type: "complete"},
   content: [{type: "text", text: "Upload preview accepted. The file was not read, stored, or analyzed."}]};

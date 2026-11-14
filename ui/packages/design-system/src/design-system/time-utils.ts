@@ -6,7 +6,7 @@
  * bundle.
  */
 
-export type TimeFormat = "absolute" | "relative" | "datetime" | "clock" | "date" | "month";
+export type TimeFormat = "absolute" | "relative" | "datetime" | "clock" | "date" | "month" | "compact" | "minute";
 
 const DEFAULT_LOCALE = "en-US";
 
@@ -39,14 +39,14 @@ export const TIME_INVALID_FALLBACK = "—";
  * names another locale pays for one. */
 const ABSOLUTE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, ABSOLUTE_OPTIONS);
 const CLOCK_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, CLOCK_OPTIONS);
-const UTC_DATE_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", year: "numeric", timeZone: "UTC"};
-const UTC_COMPACT_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC"};
-const UTC_CLOCK_OPTIONS: Intl.DateTimeFormatOptions = {hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC"};
-const UTC_DATE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_DATE_OPTIONS);
+const DATE_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", year: "numeric"};
+const COMPACT_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"};
+const MINUTE_OPTIONS: Intl.DateTimeFormatOptions = {hour: "numeric", minute: "2-digit"};
+const DATE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, DATE_OPTIONS);
+const COMPACT_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, COMPACT_OPTIONS);
+const MINUTE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, MINUTE_OPTIONS);
 const UTC_MONTH_OPTIONS: Intl.DateTimeFormatOptions = {month: "long", year: "numeric", timeZone: "UTC"};
 const UTC_MONTH_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_MONTH_OPTIONS);
-const UTC_COMPACT_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_COMPACT_OPTIONS);
-const UTC_CLOCK_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_CLOCK_OPTIONS);
 
 function formatterFor(
   locale: string,
@@ -69,45 +69,41 @@ export function formatTimeAbsolute(
   locale: string = DEFAULT_LOCALE,
   timeZone?: string,
 ): string {
-  const d = coerceDate(value);
-  if (Number.isNaN(d.getTime())) return TIME_INVALID_FALLBACK;
-  if (timeZone) {
-    try { return new Intl.DateTimeFormat(locale, {...ABSOLUTE_OPTIONS, timeZone}).format(d); }
-    catch { return TIME_INVALID_FALLBACK; }
-  }
-  return formatterFor(locale, ABSOLUTE_FORMAT, ABSOLUTE_OPTIONS).format(d);
+  return formatLocalDate(value, locale, timeZone, ABSOLUTE_OPTIONS, ABSOLUTE_FORMAT);
 }
 
 export function formatTimeClock(
   value: string | Date,
   locale: string = DEFAULT_LOCALE,
+  timeZone?: string,
 ): string {
-  const d = coerceDate(value);
-  if (Number.isNaN(d.getTime())) return TIME_INVALID_FALLBACK;
-  return formatterFor(locale, CLOCK_FORMAT, CLOCK_OPTIONS).format(d);
+  return formatLocalDate(value, locale, timeZone, CLOCK_OPTIONS, CLOCK_FORMAT);
 }
 
-/** A reporting period in UTC, independent of server and browser timezones. */
-export function formatTimeRangeUtc(from: string | Date, through: string | Date, locale: string = DEFAULT_LOCALE): string {
-  const start = coerceDate(from);
-  const end = coerceDate(through);
+/** A report's instants in the reader's calendar, including local date rollovers. */
+export function formatTimeRange(from: string | Date, through: string | Date, locale = DEFAULT_LOCALE, timeZone?: string): string {
+  const start = coerceDate(from), end = coerceDate(through);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return TIME_INVALID_FALLBACK;
-  // Intl versions differ on thin spaces; server and browser labels must agree.
-  return formatterFor(locale, UTC_DATE_FORMAT, UTC_DATE_OPTIONS).formatRange(start, end).replace(/\s/g, " ");
+  try {
+    const formatter = timeZone ? new Intl.DateTimeFormat(locale, {...DATE_OPTIONS, timeZone}) : formatterFor(locale, DATE_FORMAT, DATE_OPTIONS);
+    return formatter.formatRange(start, end).replace(/\s/g, " ");
+  } catch {return TIME_INVALID_FALLBACK;}
 }
 
-/** Compact activity timestamp in the same UTC timezone as its report period. */
-export function formatTimeCompactUtc(value: string | Date, locale: string = DEFAULT_LOCALE): string {
-  const date = coerceDate(value);
-  if (Number.isNaN(date.getTime())) return TIME_INVALID_FALLBACK;
-  return formatterFor(locale, UTC_COMPACT_FORMAT, UTC_COMPACT_OPTIONS).format(date);
+export function formatTimeCompact(value: string | Date, locale = DEFAULT_LOCALE, timeZone?: string): string {
+  return formatLocalDate(value, locale, timeZone, COMPACT_OPTIONS, COMPACT_FORMAT);
 }
 
-/** Conversation clock: minute precision, with its exact UTC instant in Time. */
-export function formatTimeClockUtc(value: string | Date, locale: string = DEFAULT_LOCALE): string {
+export function formatTimeMinute(value: string | Date, locale = DEFAULT_LOCALE, timeZone?: string): string {
+  return formatLocalDate(value, locale, timeZone, MINUTE_OPTIONS, MINUTE_FORMAT);
+}
+
+function formatLocalDate(value: string | Date, locale: string, timeZone: string | undefined, options: Intl.DateTimeFormatOptions, built: Intl.DateTimeFormat): string {
   const date = coerceDate(value);
   if (Number.isNaN(date.getTime())) return TIME_INVALID_FALLBACK;
-  return formatterFor(locale, UTC_CLOCK_FORMAT, UTC_CLOCK_OPTIONS).format(date);
+  try {
+    return (timeZone ? new Intl.DateTimeFormat(locale, {...options, timeZone}) : formatterFor(locale, built, options)).format(date);
+  } catch {return TIME_INVALID_FALLBACK;}
 }
 
 /* The unit factors the relative label steps through. A month is 30 days and a
@@ -148,16 +144,42 @@ export function visibleTimeLabel(
   format: TimeFormat,
   locale: string,
   iso: string,
+  timeZone?: string,
 ): string {
   if (format === "datetime") return iso;
   if (format === "relative") return formatTimeRelative(value);
-  if (format === "clock") return formatTimeClock(value, locale);
-  if (format === "date" || format === "month") {
+  if (format === "clock") return formatTimeClock(value, locale, timeZone);
+  if (format === "compact") return formatTimeCompact(value, locale, timeZone);
+  if (format === "minute") return formatTimeMinute(value, locale, timeZone);
+  if (format === "date") return formatLocalDate(value, locale, timeZone, DATE_OPTIONS, DATE_FORMAT);
+  if (format === "month") {
     const date = coerceDate(value);
-    const formatter = format === "month" ? formatterFor(locale, UTC_MONTH_FORMAT, UTC_MONTH_OPTIONS) : formatterFor(locale, UTC_DATE_FORMAT, UTC_DATE_OPTIONS);
+    const formatter = formatterFor(locale, UTC_MONTH_FORMAT, UTC_MONTH_OPTIONS);
     return Number.isNaN(date.getTime()) ? TIME_INVALID_FALLBACK : formatter.format(date);
   }
-  return formatTimeAbsolute(value, locale);
+  return formatTimeAbsolute(value, locale, timeZone);
 }
 
 export { DEFAULT_LOCALE as TIME_DEFAULT_LOCALE };
+
+/** Calendar grouping follows the reader's day rather than the timestamp's spelling. */
+export function sameCalendarDay(left: string | Date, right: string | Date): boolean {
+  const a = coerceDate(left), b = coerceDate(right);
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/** Local midnight uses calendar arithmetic so daylight-saving days can vary in length. */
+export function nextLocalMidnight(now: number): number {
+  const date = new Date(now);date.setHours(24, 0, 0, 0);return date.getTime();
+}
+
+/** Billing period identities follow the API's calendar, independent of display timezone. */
+export function previousReportingMonthEnd(value: string | Date): string {
+  const date = coerceDate(value);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1) - 1).toISOString();
+}
+
+export function formatTimeAbsoluteWithZone(value: string | Date, locale = DEFAULT_LOCALE): string {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local time";
+  return `${formatTimeAbsolute(value, locale)} · ${zone}`;
+}

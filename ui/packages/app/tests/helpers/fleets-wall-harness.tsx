@@ -6,7 +6,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import {
   WorkspaceStreamProvider,
   useWorkspaceFleetStream,
-} from "@/components/domain/useWorkspaceStream";
+} from "@/components/domain/conversation/stream/useWorkspaceStream";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { __resetWorkspaceRegistryForTests } from "@/lib/streaming/workspace-stream";

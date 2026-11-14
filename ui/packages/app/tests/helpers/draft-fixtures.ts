@@ -15,7 +15,9 @@ export const MODEL_REF = "model:authoring";
 export const REVIEW: Review = {effective: {definition: {schema_version: 1,
   description: "Investigate failures", instructions_md: "Investigate failures.\n",
   config: {name: "repairer", "x-agentsfleet": {triggers: [], tools: [], budget: {daily_nanos: String(NANOS_PER_USD)}}}},
-  instance_name: "repairer", runtime_model_ref: MODEL_REF}, requirements: {}, readiness: [], review_digest: "review-one", policy_semantics: "native-setup-1", observed_at: "1970-01-01T00:00:00Z"};
+  instance_name: "repairer", runtime_model_ref: MODEL_REF}, requirements: {credentials: [], repositories: [], tools: [],
+    network: {http_egress: "restricted", package_manager_domains: false, allow: []}, budget: {daily_nanos: String(NANOS_PER_USD)}},
+  readiness: [], review_digest: "review-one", policy_semantics: "native-setup-1", observed_at: "1970-01-01T00:00:00Z"};
 export const DRAFT: Draft = {id: DRAFT_ID, state: DRAFT_STATE.editing, title: "Investigate failures", etag: '"draft-one"',
   authoring_model_ref: MODEL_REF, cancelled_through: "0", review: REVIEW,
   candidate: {id: CANDIDATE_ID, revision: "1", definition: REVIEW.effective.definition, canonical_digest: "candidate-one", policy_semantics: REVIEW.policy_semantics}};

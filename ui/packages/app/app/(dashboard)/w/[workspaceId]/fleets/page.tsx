@@ -3,7 +3,7 @@ import { credential, requireCredential } from "@/lib/auth/credential";
 import { PageLayout, Section } from "@agentsfleet/design-system";
 import { listFleets } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
-import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
+import ExhaustionBanner from "@/components/domain/usage/ExhaustionBanner";
 import FleetWall from "./components/FleetWall";
 import { NewFleetEntrance } from "./components/NewFleetEntrance";
 import FleetsLoading from "./loading";

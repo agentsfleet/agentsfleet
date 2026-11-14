@@ -22,7 +22,7 @@ const DECIMAL = /^(0|[1-9][0-9]*)$/;
 const decimal = z.string().regex(DECIMAL);
 const summaryRevision = z.number().int().positive().safe().nullable();
 const encoder = new TextEncoder();
-export const MessageInputSchema = z.string().min(1).refine((text) => encoder.encode(text).byteLength <= MESSAGE_MAX_BYTES);
+export const MessageInputSchema = z.string().min(1).refine(text => text.trim().length > 0).refine((text) => encoder.encode(text).byteLength <= MESSAGE_MAX_BYTES);
 const record = z.record(z.string(), z.unknown());
 
 export const DefinitionSchema = z.object({

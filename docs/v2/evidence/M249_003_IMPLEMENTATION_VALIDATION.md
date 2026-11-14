@@ -227,3 +227,92 @@ Reviewed default-dialog captures are `/workspace/artifacts/m249-polish/desktop-c
 Logs are under `/workspace/artifacts/m249-followup/`, using the `remove-advanced-` prefix.
 `orly gate verify` and `orly gate work` passed; their logs are `remove-advanced-verify.log` and `remove-advanced-work.log`.
 The replacement fleet setup page still awaits the owner's requested design approval.
+
+## Nov 14 compact chat errors and model-load diagnosis
+
+The owner reported the live error disappeared after switching to a working model: "i flipped the model to a good one that works".
+The original provider response was not captured. No claim identifies a missing credential, provider outage or deleted model.
+
+The replacement URL reaches Vercel protection from this runtime; its task API credential receives `401 UZ-AUTH-002`.
+That task-credential refusal does not establish the signed-in browser's failure.
+
+Chat errors now flash for six seconds, pausing on hover or focus. Dismissal retains quiet recovery beside the composer and the current unsent text.
+An uncertain save retains its original request key and body after the notice is dismissed.
+
+Startup failures identify a failed model or chat-history read and retain only safe backend guidance.
+Raw problem details remain hidden. Successful empty-model reads still show model configuration recovery; access refusals retain the private-data lock.
+
+The initial regression run had three failed and eight passed checks in `chat-error-red.log`.
+Targeted chat and transport checks then passed 631 tests across 65 files in `chat-error-unit.log`.
+`make dry-app` passed 4,594 app tests and 98 browser checks in `chat-error-dry-app.log`.
+
+The standards review found spacing, tooltip and pending-save proof gaps. Corrections use the existing spacing token and TooltipButton and extend the uncertain-save dismissal test.
+Its targeted recheck closed without remaining findings across 220 applicable review-checked rules.
+
+Final coverage, focused browser and gate results remain pending after those review corrections.
+Logs are under `/workspace/artifacts/m249-followup/`, using the `chat-error-` prefix.
+
+## Nov 14 final interface and shared-time verification
+
+This batch supersedes the earlier grouped-review proposal and pending Summary approval. The owner approved the flat Summary, direct publication and live progress.
+The latest Plugin capability reassessment is separate design work in M249_003 §7; these results do not establish capability implementation.
+
+| Command | Result | Evidence under `/workspace/artifacts/m249-followup/` |
+|---|---|---|
+| `make test-unit-rustd` | 5,577 passed; 1,791 ignored integration cases | `final-unit-rustd.log` |
+| `make test-integration-rustd` | 1,780 regular and 2 exclusive passed | `final-integration-rustd.log` |
+| `make test-coverage-all` | App 4,631; website 133; CLI 2,335 passed, 17 existing skips; design system 516 | `final-coverage-all.log` |
+| All four package coverage gates | Each package meets its configured 100% coverage floors | `final-coverage-all.log` |
+| `ui/packages/app`: `bun run build` | Production build and type checks passed | `final-production-build.log` |
+| Focused shared-time tests | 75 passed across three files | `final-shared-time-tests.log` |
+| Focused native chat, schedule, typography, local-time and Usage browser checks | 44 passed across desktop and phone | `final-time-layout-browser.log` |
+| Empty and invalid schedule browser checks | 2 passed, desktop and phone | `final-invalid-schedule-browser.log` |
+| Focused send, retry, save, publication and ownership checks | 131 passed across ten files | `final-robust-recovery-tests.log` |
+| Canonical proposal browser sweep | 16 checks passed across both themes and widths | `final-proposal-review.log` |
+
+The final coverage correction removed an unreachable optional fallback from a required schedule array. No threshold, exclusion, assertion guard or harness changed.
+Earlier stale assertions expected hidden memory rows or forced UTC labels; their replacements check the requested visible behavior.
+
+The Rust lane uses the scoped init wrapper and file mask described above. Integration needed a task-owned runtime override for the cloud certificate and NATS proxy environment.
+The normal localhost health probe returned `403` through that proxy; clearing the proxy for NATS returned `{"status":"ok"}`. No repository test or service configuration changed.
+
+### Current behavior and edge cases
+
+Setup Summary uses the separate 320px token, one-line package label and no internal internet-policy divider. Next wake-up appears only above the composer.
+Compaction has one quiet progress row; routine memory bookkeeping stays outside conversation rows and disclosures. Run and Read use distinct terminal and open-book icons.
+
+All visible clocks, date labels, ranges and relative labels use shared time utilities. Browser readiness prevents server-time flashes; wire timestamps and accounting month identities retain their established meanings.
+The source audit found no page-local `Intl.DateTimeFormat` or forced UTC display outside the shared utility's accounting-month formatter.
+
+Browser tests set Asia/Kolkata and America/New_York explicitly. They verify India's 7:00 PM wake-up, local billing activity and a date rollover near New York midnight.
+The test labels describe browser timezone settings, not separate product display modes.
+
+| Edge case | Confirmed behavior | Test source |
+|---|---|---|
+| Empty, whitespace-only, oversized and multibyte messages | Refused before writing; meaningful indentation remains unchanged | `tests/draft-client.test.ts` and draft input tests |
+| Partial responses, cancelled reads and ownership changes | Original operation identity and scope remain authoritative | Draft request, recovery and ownership tests |
+| Lost save or publication response | Retry retains the original request identity and body | Workspace saving and publication tests |
+| Lost pause/resume acknowledgment | Retry reads committed state; one server write | `components/domain/schedules/WakeupStrip.test.tsx` |
+| Empty or rejected schedule edit | No empty write; typed values and unsent chat survive refusal | `tests/e2e/chat-schedules.spec.ts` |
+| Invalid dates, named timezones and daylight-saving boundaries | Shared fallback or correct local calendar result | Design-system time tests and timestamp server-render tests |
+
+### Refactor and initial-load review
+
+The Appsmith reference and installed Next.js guides informed feature boundaries and imports. Next dynamic imports defer inspection, history and selection editors until their controls open.
+The final static import graph is `/workspace/artifacts/m249-refactor/imports-final.json`. WorkspaceChat reaches 52 local modules, versus 80 before; PluginWorkspace reaches 18, versus 49.
+Those counts measure source dependencies, not transferred bytes or page-load time.
+
+The production output emits Plugin inspection, revision history and selection editors into separate client chunks. The Plugin entry's initial chunk list excludes inspection and history.
+The recorded chunk inventory is `/workspace/artifacts/m249-refactor/production-lazy-chunks.json`.
+
+The domain audit examined 164 production files and found no byte-identical duplicate group. Remaining old chat-folder references outside implementation history describe historical review records.
+
+The controlled four-fleet loader review returned its report in 40ms but waited 1,217ms when catalogue delay was 1,200ms.
+Both reads started together; no per-fleet request loop occurred. These are injected local delays, not live Fly.io measurements.
+See `billing-four-fleet-load-review.json`; M249_004 §2a specifies the single-call remedy and required live evidence.
+
+The single visual reference remains `/workspace/artifacts/m249-proposal/visual-review-candidate-ed7c4032b-desktop-a68d0c18f6e545dd94f5ad4161786bd3/proposal.html`.
+Latest native evidence includes `india-wake-up.png`, `india-usage.png`, `new-york-midnight.png` and `summary-policy-desktop.png` in the artifact directory.
+
+Final repository gates and staged secret scanning remain pending after the new specification amendments. Independent final review could not complete because the review agents reached their usage limit.
+Live authentication and acceptance limitations remain as recorded above. No development deployment or identity-grant mutation occurred.

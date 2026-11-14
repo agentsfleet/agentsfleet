@@ -28,7 +28,7 @@ vi.mock("@/app/(dashboard)/settings/security/actions", () => ({
 // The "Create key" trigger ships behind a next/dynamic shim (M101 §5). For
 // these interaction tests, alias the shim back to the real dialog so the
 // trigger + form mount synchronously instead of behind the loading skeleton.
-vi.mock("@/components/domain/island-dynamic/CreateApiKeyDialogDynamic", async () => ({
+vi.mock("@/components/domain/shared/dialogs/CreateApiKeyDialogDynamic", async () => ({
   default: (
     await vi.importActual<{ default: unknown }>(
       "@/app/(dashboard)/settings/security/components/CreateApiKeyDialog",
@@ -38,14 +38,14 @@ vi.mock("@/components/domain/island-dynamic/CreateApiKeyDialogDynamic", async ()
 
 const ACTIVE: ApiKeyRow = {
   id: "0190aaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa",
-  key_name: "ci-runner",
+  key_name: "ci-runner", display_suffix: null,
   active: true,
   created_at: "2024-05-18T02:40:00Z",
   revoked_at: null,
 };
 const REVOKED: ApiKeyRow = {
   id: "0190bbbb-bbbb-7bbb-bbbb-bbbbbbbbbbbb",
-  key_name: "old-zapier",
+  key_name: "old-zapier", display_suffix: null,
   active: false,
   created_at: "2024-05-06T12:53:20Z",
   revoked_at: "2024-05-16T22:53:20Z",

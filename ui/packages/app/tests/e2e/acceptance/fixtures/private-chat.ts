@@ -22,8 +22,6 @@ export const CHAT_COPY = {
   editSetup: "Instructions",
   instructions: "Instructions",
   updateInstructions: "Save changes",
-  save: "Save fleet",
-  apply: "Save changes",
   openFleet: "Open fleet",
   improve: "Edit setup",
   composer: "Setup chat composer",
@@ -42,8 +40,7 @@ export function historyEntry(page: Page, draftId: string): Locator {
 }
 
 export async function setupAction(page: Page, name: string): Promise<Locator> {
-  await page.getByRole("button", {name: "Setup chat actions", exact: true}).click();
-  return page.getByRole("menuitem", {name, exact: true});
+  return page.getByRole("button", {name: name === CHAT_COPY.editSetup ? "Edit instructions" : name, exact: true});
 }
 
 /** Exercise the runtime header menu rather than bypassing it through the footer. */
@@ -60,8 +57,9 @@ export async function expectEditSetupAvailable(page: Page): Promise<void> {
   await expect(trigger).toBeFocused();
 }
 
-export async function saveSetupButton(page: Page): Promise<Locator> {
-  return page.getByRole("button", {name: CHAT_COPY.save, exact: true});
+export async function privateSaveButton(page: Page): Promise<Locator> {
+  await page.getByLabel(CHAT_COPY.composer, {exact: true}).getByRole("textbox").fill("Save");
+  return page.getByRole("button", {name: CHAT_COPY.send, exact: true});
 }
 
 /** A confirmed save navigates to the same workspace's durable fleet and revision. */

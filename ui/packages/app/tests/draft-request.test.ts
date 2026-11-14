@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { definiteRefusal, losesAccess, setupErrorMessage, setupRequest, SetupUnavailable } from "@/lib/api/draft-request";
 import { response } from "./helpers/draft-fixtures";
+import { DRAFT_LIST } from "@/lib/api/draft-list-types";
 
 const Shape = z.object({value: z.string()});
 const OVERSIZED_RESPONSE_BYTES = 4 * 1024 * 1024 + 1;
@@ -10,8 +11,30 @@ const signal = (): AbortSignal => new AbortController().signal;
 afterEach(() => vi.unstubAllGlobals());
 
 describe("bounded private setup transport", () => {
+  it.each([
+    {list: DRAFT_LIST.models, message: "We couldn’t load your model choices. The selected model is unavailable. Choose another model."},
+    {list: DRAFT_LIST.chats, message: "We couldn’t load your chats. The selected model is unavailable. Choose another model."},
+  ])("identifies a failed $list read and preserves safe model guidance without raw diagnostics", async ({list, message}) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({user_message: "The selected model is unavailable. Choose another model.",
+      error_code: "model_unavailable", detail: "private-internal-trace"}, 503)));
+    let failure: unknown;
+    try {await setupRequest({path: "/live/test", list}, Shape, signal());} catch (cause) {failure = cause;}
+    expect(failure).toMatchObject({status: 503, code: "model_unavailable", list});
+    expect(setupErrorMessage(failure, true)).toBe(message);
+    expect(setupErrorMessage(failure, true)).not.toContain("private-internal-trace");
+  });
+  it("identifies a network failure while keeping sign-in refusal distinct from a missing model", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("private-network-details"))
+      .mockResolvedValueOnce(response({user_message: ""}, 401)));
+    let failure: unknown;
+    try {await setupRequest({path: "/live/test", list: DRAFT_LIST.models}, Shape, signal());} catch (cause) {failure = cause;}
+    expect(setupErrorMessage(failure, true)).toBe("We couldn’t load your model choices. Try again in a moment.");
+    try {await setupRequest({path: "/live/test", list: DRAFT_LIST.models}, Shape, signal());} catch (cause) {failure = cause;}
+    expect(losesAccess(failure)).toBe(true);
+    expect(setupErrorMessage(failure, true)).toContain("Your sign-in session has expired");
+  });
   it("shows curated refusals but never exposes raw problem detail", async () => {
-    expect.assertions(4);
+    expect.assertions(6);
     const fetch = vi.fn().mockResolvedValueOnce(response({detail: "private-internal-trace", user_message: "Choose a model first.", error_code: "model_required"}, 409))
       .mockResolvedValueOnce(response({detail: "private-internal-trace"}, 502));
     vi.stubGlobal("fetch", fetch);
@@ -21,6 +44,8 @@ describe("bounded private setup transport", () => {
       expect(setupErrorMessage(cause)).toContain("Refresh the page");
     }
     expect(setupErrorMessage(new Error("private-internal-trace"))).not.toContain("private-internal-trace");
+    expect(setupErrorMessage(new Error("private-internal-trace"), true)).toBe("We couldn’t load fleet setup. Try again in a moment.");
+    expect(setupErrorMessage(new SetupUnavailable("private-internal-trace", 503), true)).toBe("We couldn’t load fleet setup. Try again in a moment.");
   });
   it("uses same-origin cookies and preserves conditional mutation headers", async () => {
     const fetch = vi.fn().mockResolvedValue(response({value: "ok"})); vi.stubGlobal("fetch", fetch);

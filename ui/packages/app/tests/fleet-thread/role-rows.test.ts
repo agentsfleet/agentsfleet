@@ -2,7 +2,7 @@ import { FLEET_NAME, WS, ZID, ev, mockStream, renderThread } from "./harness";
 import React from "react";
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { FleetThread } from "@/components/domain/FleetThread";
+import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
 import { RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
 
 describe("FleetThread — role rendering: row kinds and badges", () => {
@@ -150,10 +150,10 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     renderThread();
     expect(screen.getByText(/investigate the spike/)).toBeTruthy();
     const working = screen.getByRole("status", { name: "Queued" });
-    // Queued is static; only work that has started receives the loading sheen.
+    // Queued retains visible activity while it waits for work to start.
     expect(working.querySelector("[data-signal-spinner]")).toBeNull();
-    expect(working.querySelector('[data-chat-loading="true"]')).toBeNull();
-    expect(working.querySelector("[data-waiting-verb]")?.textContent).toBe("Queued…");
+    expect(working.querySelector('[data-chat-loading="true"]')).toBeTruthy();
+    expect(working.querySelector("[data-chat-loading]")?.textContent).toBe("Queued");
     expect(working.closest('[data-role="assistant"]')).toBeTruthy();
     expect(screen.queryByText(/^sending$/i)).toBeNull();
   });

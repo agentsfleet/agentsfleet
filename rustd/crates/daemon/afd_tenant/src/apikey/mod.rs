@@ -43,6 +43,7 @@ pub use self::sort::ApiKeySort;
 /// Must equal the name in `schema/20261108120700_identity_api_keys.sql`: a key-hash or
 /// primary-key collision is unique too, and is not a name the caller can change.
 const NAME_CONSTRAINT: &str = "uq_api_keys_tenant_id_name";
+const DISPLAY_SUFFIX_CHARS: usize = 4;
 
 /// A tenant's api-keys.
 #[derive(Debug, Clone)]
@@ -65,6 +66,15 @@ impl ApiKeys {
     /// entropy and a datastore that would not answer.
     pub async fn mint(&self, request: &MintRequest<'_>, now: Timestamp) -> Result<Revealed> {
         let credential = Minted::draw(CredentialKind::TenantApiKey, &self.entropy)?;
+        let display_suffix: String = credential
+            .expose()
+            .chars()
+            .rev()
+            .take(DISPLAY_SUFFIX_CHARS)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
         let id = self.entropy.uuid7(now)?;
 
         let mut connection = self.database.acquire().await?;
@@ -74,6 +84,7 @@ impl ApiKeys {
             .bind(request.name.as_str())
             .bind(request.description.as_str())
             .bind(credential.digest().as_str())
+            .bind(&display_suffix)
             .bind(request.created_by)
             .fetch_one(connection.as_mut())
             .await

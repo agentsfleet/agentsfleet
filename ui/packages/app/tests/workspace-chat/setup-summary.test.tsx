@@ -1,137 +1,93 @@
 import type { Definition } from "@/lib/api/draft-types";
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
-import { SetupSummary } from "@/components/domain/chat/SetupSummary";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { SetupSummary } from "@/components/domain/setup/summary/SetupSummary";
 import { REVIEW } from "@/tests/helpers/draft-fixtures";
 
-const PURPOSE = "Investigate failures";
-const POLICY = "x-agentsfleet";
-const MANUAL = /No automatic triggers/;
-const UNKNOWN = /Automatic triggers could not be confirmed/;
-const ACCESS_UNKNOWN = /Access and spending limits could not be summarized/;
-const EMPTY_REQUIREMENTS = {credentials: [], repositories: [], tools: [], network: {allow: []}, budget: {daily_nanos: "1000000000"}};
-const UTC = "UTC";
-const SCHEDULE = "0 9 * * *";
-const SOURCE = "github";
+const REQUIREMENTS = {credentials: ["github-token"], repositories: ["agentsfleet/web"], tools: ["shell"],
+  network: {http_egress: "restricted", package_manager_domains: true, allow: ["api.github.com"]}, budget: {daily_nanos: "1000000000"}};
+vi.mock("next/navigation", () => ({useRouter: () => ({refresh: vi.fn()})}));
+afterEach(cleanup);
 
-afterEach(() => {cleanup(); vi.useRealTimers();});
-
-function definition(triggers?: unknown): Definition {
-  return {...REVIEW.effective.definition, config: {[POLICY]: triggers === undefined ? {} : {triggers}}};
-}
-
-it("distinguishes a manual fleet from one with automatic triggers", () => {
-  render(<SetupSummary definition={definition([])} />);
-  expect(screen.getByText(PURPOSE)).toBeTruthy();
-  expect(screen.getByText(MANUAL).textContent).toMatch(/When you send it a message/);
-  expect(screen.queryByText(/automatically:/)).toBeNull();
+it("uses the approved flat grouping and real model and spending metadata", () => {
+  render(<SetupSummary definition={REVIEW.effective.definition} requirements={REQUIREMENTS} modelLabel="MiniMax M3.1 Flash" sourceLabel="Deploy check · v3" />);
+  expect(screen.getByText("MiniMax M3.1 Flash")).toBeTruthy();
+  expect(screen.getByText("$1.00 / day")).toBeTruthy();
+  expect(screen.queryByText("Next wake-up")).toBeNull();
+  expect(screen.getByText("From Deploy check · v3")).toBeTruthy();
+  expect(within(screen.getByRole("region", {name: "Repositories"})).getByText("agentsfleet/web")).toBeTruthy();
+  expect(screen.getByText("shell")).toBeTruthy();
+  expect(within(screen.getByRole("region", {name: "Secrets"})).getByText("github-token")).toBeTruthy();
+  expect(screen.queryByText("Purpose")).toBeNull();
+  expect(screen.queryByText("Source and model")).toBeNull();
+  expect(screen.queryByText(/Runs every/)).toBeNull();
 });
 
-it("treats an omitted triggers list as manual, matching runtime defaults", () => {
-  render(<SetupSummary definition={definition()} />);
-  expect(screen.getByText(MANUAL)).toBeTruthy();
-});
-
-it("does not infer manual operation when the saved definition is unavailable", () => {
+it("keeps the before-setup state quiet without inventing permissions or a model", () => {
   render(<SetupSummary />);
-  expect(screen.getByText(/purpose will appear here/)).toBeTruthy();
-  expect(screen.getByText(UNKNOWN)).toBeTruthy();
-  expect(screen.queryByText(MANUAL)).toBeNull();
+  expect(screen.getByText("Your setup will appear here as you chat.")).toBeTruthy();
+  expect(screen.queryByRole("switch")).toBeNull();
+  expect(screen.queryByRole("region")).toBeNull();
 });
 
-it.each([
-  {triggers: "not a list"},
-  {triggers: [{type: "unknown-source"}]},
-  {triggers: [{type: "webhook"}]},
-  {triggers: [{type: "mention", source: SOURCE, channels: null}]},
-])("keeps malformed trigger data unknown: $triggers", ({triggers}) => {
-  render(<SetupSummary definition={definition(triggers)} />);
-  expect(screen.getByText(UNKNOWN)).toBeTruthy();
-  expect(screen.queryByText(MANUAL)).toBeNull();
+it("distinguishes reviewed empty selections from unknown requirements", () => {
+  const {rerender} = render(<SetupSummary requirements={{...REQUIREMENTS, repositories: [], credentials: [], tools: []}} />);
+  expect(screen.getByText("No repositories selected")).toBeTruthy();
+  expect(screen.getByText("No secrets selected")).toBeTruthy();
+  rerender(<SetupSummary requirements={{}} />);
+  expect(screen.getByText("Network policy not reviewed")).toBeTruthy();
+  expect(screen.queryByText("No secrets selected")).toBeNull();
+  expect(screen.queryByRole("switch")).toBeNull();
 });
 
-it("explains event and mention sources without implying that delivery is connected", () => {
-  render(<SetupSummary definition={definition([
-    {type: "webhook", source: SOURCE, events: ["push", "pull_request"]},
-    {type: "webhook", source: "linear"},
-    {type: "webhook", source: "slack", events: []},
-    {type: "mention", source: "slack", channels: ["C123"]},
-  ])} />);
-  expect(screen.getByText(/When github sends push, pull_request/).textContent).toMatch(/Connect the source/);
-  expect(screen.getByText(/When linear sends an event/)).toBeTruthy();
-  expect(screen.getByText(/When slack sends an event/)).toBeTruthy();
-  expect(screen.getByText(/When mentioned in slack: C123/).textContent).toMatch(/Connect the source/);
-  expect(screen.queryByText(MANUAL)).toBeNull();
+it("changes only the chosen policy and disables package domains while Allow all is on", () => {
+  const change = vi.fn();
+  const {rerender} = render(<SetupSummary requirements={REQUIREMENTS} onNetworkChange={change} />);
+  fireEvent.click(screen.getByRole("switch", {name: "Allow all public internet access"}));
+  expect(change).toHaveBeenLastCalledWith({http_egress: "public"});
+  rerender(<SetupSummary requirements={{...REQUIREMENTS, network: {...REQUIREMENTS.network, http_egress: "public"}}} onNetworkChange={change} />);
+  const packages = screen.getByRole("switch", {name: "Enable package manager domains"});
+  expect(packages.getAttribute("data-state")).toBe("checked");
+  expect(packages).toHaveProperty("disabled", true);
+  fireEvent.click(packages);
+  expect(change).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("switch", {name: "Allow all public internet access"}));
+  expect(change).toHaveBeenLastCalledWith({http_egress: "restricted"});
+  rerender(<SetupSummary requirements={REQUIREMENTS} onNetworkChange={change} />);
+  fireEvent.click(screen.getByRole("switch", {name: "Enable package manager domains"}));
+  expect(change).toHaveBeenLastCalledWith({package_manager_domains: false});
 });
 
-it.each([
-  {schedule: SCHEDULE, timezone: UTC},
-  {schedule: "invalid schedule", timezone: "Unknown/Timezone"},
-])("shows schedule intent without predicting scheduler behavior: $schedule", (trigger) => {
-  render(<SetupSummary definition={definition([{type: "cron", ...trigger}])} />);
-  expect(screen.getByText(`Schedule: ${trigger.schedule} (${trigger.timezone}). Check registration in the fleet chat.`)).toBeTruthy();
-  expect(screen.queryByText(/Next scheduled time|Timing could not be previewed/)).toBeNull();
+it("keeps controls read-only without an edit owner and while a request is pending", () => {
+  const {rerender} = render(<SetupSummary requirements={REQUIREMENTS} />);
+  for (const control of screen.getAllByRole("switch")) expect(control).toHaveProperty("disabled", true);
+  rerender(<SetupSummary requirements={REQUIREMENTS} onNetworkChange={vi.fn()} onManage={vi.fn()} disabled />);
+  for (const control of [...screen.getAllByRole("switch"), ...screen.getAllByRole("button", {name: /Manage/})]) expect(control).toHaveProperty("disabled", true);
 });
 
-it("makes absent access and network permissions explicit and describes a ceiling rather than a fee", () => {
-  render(<SetupSummary definition={definition([])} requirements={EMPTY_REQUIREMENTS} />);
-  expect(screen.getByText(/No tools requested/)).toBeTruthy();
-  expect(screen.getAllByText(/None requested/)).toHaveLength(2);
-  expect(screen.getByText(/Restricted access. No domains allowed/)).toBeTruthy();
-  expect(screen.getByText(/\$1\.00 per day; no monthly limit/)).toBeTruthy();
-  expect(screen.getByText(/limits, not a fixed charge/)).toBeTruthy();
+it("keeps next wake-up in the composer and can show an incomplete saved setup", () => {
+  render(<SetupSummary ready />);
+  expect(screen.queryByText("Next wake-up")).toBeNull();
+  expect(screen.getByText("Network policy not reviewed")).toBeTruthy();
 });
 
-it("shows declared access and exact daily and monthly limits without rounding large amounts", () => {
-  render(<SetupSummary requirements={{credentials: [SOURCE], repositories: ["owner/repo"], tools: ["read_file"],
-    network: {allow: ["api.github.com"], read_only: true},
-    budget: {daily_nanos: "1", monthly_nanos: "9223372036854775807"}}} />);
-  expect(screen.getByText(/Secrets and connections:/).closest("li")?.textContent).toContain(SOURCE);
-  expect(screen.getByText(/Repositories:/).closest("li")?.textContent).toContain("owner/repo");
-  expect(screen.getByText(/Tools:/).closest("li")?.textContent).toContain("read_file");
-  expect(screen.getByText(/Internet access:/).closest("li")?.textContent).toContain("Read-only policy enabled.");
-  // Pin test: exact decimal limits must survive values beyond Number.MAX_SAFE_INTEGER.
-  expect(screen.getByText(/Spending limit:/).closest("li")?.textContent).toContain("$0.000000001 per day; $9223372036.854775807 per month.");
+it("retains exact nanos above Number.MAX_SAFE_INTEGER", () => {
+  render(<SetupSummary requirements={{...REQUIREMENTS, budget: {daily_nanos: "1", monthly_nanos: "9223372036854775807"}}} />);
+  expect(screen.getByText("$0.000000001 / day")).toBeTruthy();
+  expect(screen.getByText("$9,223,372,036.854775807 / month")).toBeTruthy();
 });
 
-it("does not infer a read-only policy for an allowed host", () => {
-  render(<SetupSummary requirements={{...EMPTY_REQUIREMENTS, network: {allow: ["example.com"]}}} />);
-  expect(screen.getByText(/Allowed domains: example.com/)).toBeTruthy();
-  expect(screen.queryByText(/Read-only policy enabled/)).toBeNull();
+it.each([{}, {...REQUIREMENTS, credentials: null}, {...REQUIREMENTS, budget: {daily_nanos: "0"}},
+  {...REQUIREMENTS, budget: {daily_nanos: "-1"}}, {...REQUIREMENTS, budget: {daily_nanos: "01"}},
+  {...REQUIREMENTS, network: {http_egress: "unknown"}}, {...REQUIREMENTS, network: {package_manager_domains: "true"}},
+])("keeps malformed review requirements unknown instead of falling back to saved defaults: %s", requirements => {
+  const definition: Definition = {...REVIEW.effective.definition, config: {"x-agentsfleet": REQUIREMENTS}};
+  render(<SetupSummary definition={definition} requirements={requirements} />);
+  expect(screen.getByText("Network policy not reviewed")).toBeTruthy();
+  expect(screen.queryByText("$1.00 / day")).toBeNull();
 });
 
-it.each([undefined, {}])("does not invent network restrictions when the allow list is absent: %s", (network) => {
-  render(<SetupSummary requirements={{...EMPTY_REQUIREMENTS, network}} />);
-  expect(screen.getByText(/Internet access could not be confirmed/)).toBeTruthy();
-  expect(screen.queryByText(/Restricted access. No domains allowed/)).toBeNull();
-});
-
-it.each([
-  {network: {http_egress: "public"}, description: "Public internet access. HTTPS requests to public destinations."},
-  {network: {http_egress: "public", allow: [], read_only: true}, description: "Public internet access. HTTPS requests to public destinations. Read-only policy enabled."},
-  {network: {http_egress: "restricted", allow: []}, description: "Restricted access. No domains allowed."},
-  {network: {package_manager_domains: true}, description: "Restricted access. Standard package registry domains."},
-  {network: {package_manager_domains: true, allow: []}, description: "Restricted access. Standard package registry domains."},
-  {network: {package_manager_domains: true, allow: ["example.com"], read_only: true},
-    description: "Restricted access. Standard package registry domains. Additional domains: example.com. Read-only policy enabled."},
-  {network: {http_egress: "public", package_manager_domains: true, allow: ["example.com"]}, description: "Public internet access. HTTPS requests to public destinations."},
-])("describes reviewed HTTP destination scope: $network", ({network, description}) => {
-  render(<SetupSummary requirements={{...EMPTY_REQUIREMENTS, network}} />);
-  expect(screen.getByText(/Internet access:/).closest("li")?.textContent).toBe(`Internet access: ${description}`);
-});
-
-it.each([
-  {},
-  {...EMPTY_REQUIREMENTS, credentials: null},
-  {...EMPTY_REQUIREMENTS, budget: {daily_nanos: "0"}},
-  {...EMPTY_REQUIREMENTS, budget: {daily_nanos: "-1"}},
-  {...EMPTY_REQUIREMENTS, budget: {daily_nanos: "01"}},
-  {...EMPTY_REQUIREMENTS, budget: {daily_nanos: "invalid"}},
-  {...EMPTY_REQUIREMENTS, network: {http_egress: "unknown", allow: []}},
-  {...EMPTY_REQUIREMENTS, network: {package_manager_domains: "true", allow: []}},
-])("does not describe unvalidated requirements as safe or free: %s", (requirements) => {
-  render(<SetupSummary requirements={requirements} />);
-  expect(screen.getByText(ACCESS_UNKNOWN)).toBeTruthy();
-  expect(screen.queryByText(/No tools requested/)).toBeNull();
-  expect(screen.queryByText(/Spending limit:/)).toBeNull();
+it.each([{allow: []}, {package_manager_domains: false}, {}])("does not turn an incomplete network policy into public access: %j", network => {
+  render(<SetupSummary requirements={{...REQUIREMENTS, network}} />);
+  expect(screen.queryByRole("switch", {name: "Allow all public internet access"})?.getAttribute("aria-checked") ?? "false").toBe("false");
 });

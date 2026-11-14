@@ -11,9 +11,9 @@ export function scheduleOwed(schedule: Schedule): boolean {
 /** Describe stored intent separately from confirmed scheduler registration. */
 export function scheduleStateText(schedule: Pick<Schedule, "status" | "sync">): string {
   switch (schedule.status) {
-    case "active": return schedule.sync === SCHEDULE_SYNC.synced ? "Active" : "Registration pending";
-    case "paused": return schedule.sync === SCHEDULE_SYNC.synced ? "Paused" : "Pause requested; scheduler sync pending";
-    case "deleting": return "Removal requested";
+    case "active": return schedule.sync === SCHEDULE_SYNC.synced ? "Active" : schedule.sync === SCHEDULE_SYNC.failed ? "Registration failed" : "Registration pending";
+    case "paused": return schedule.sync === SCHEDULE_SYNC.synced ? "Paused" : schedule.sync === SCHEDULE_SYNC.failed ? "Pause failed" : "Pause requested; scheduler sync pending";
+    case "deleting": return schedule.sync === SCHEDULE_SYNC.failed ? "Removal failed" : "Removal requested";
     case "removed": return "Removed";
     case "expired": return "Expired without firing";
     default: return "Status unavailable";
