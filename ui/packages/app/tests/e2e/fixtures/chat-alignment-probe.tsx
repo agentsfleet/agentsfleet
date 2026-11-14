@@ -55,9 +55,9 @@ export function ChatAlignmentFixture() {
 
 
 const setupClient = new DraftClient({account: "fixture-owner", workspace: WORKSPACE, subject: "creator"});
-export function ChatErrorFixture() {
+export function ChatErrorFixture({draft}: {draft?: string}) {
   return <AppRouterContext value={router}><ChatFixtureShell setup>
-    <WorkspaceChat account="fixture-owner" workspace={WORKSPACE} />
+    <WorkspaceChat account="fixture-owner" workspace={WORKSPACE} draft={draft} />
   </ChatFixtureShell></AppRouterContext>;
 }
 

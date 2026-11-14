@@ -1,11 +1,19 @@
 # M249 Plugin product reassessment
 
+**Status:** DEFERRED discussion; revisit in a separate session.
+
 This is a proposed product model for discussion, not an approved implementation plan. It incorporates the owner's email, phone and card examples.
 The owner selected all three earlier scenarios: pull-request review, deployment checks with Slack notification, and Slack support triage.
 
-## What Save and publish does today
+The owner later asked to finish the current work and preserve this reasoning for a separate session. These notes add no capability implementation to the UI PR.
 
-Chat Save saves the reviewed fleet setup privately. Save and publish publishes an immutable version of that complete setup.
+| Owner decision | Verbatim record |
+|---|---|
+| Separate session | "Lets finish the current work you are on, and you update the relevant files in the docs/v2/evindence and rethink the fleet to templates to plugin with more concrete cases in a separte session." |
+
+## Retained publication behavior before the UI pause
+
+Chat Save saves the reviewed fleet setup privately. Before the UI pause, Save and publish published an immutable version of that complete setup.
 That version includes instructions and configuration, with credential references but no secret values or private conversation.
 
 Using a published setup starts private authoring and can create an independent fleet. It does not add email, phone or card capabilities to an existing fleet.
@@ -15,7 +23,9 @@ That behavior is useful as a fleet template. Calling it Plugin does not supply t
 
 ## Proposed definition
 
-A Plugin is a versioned, installable bundle that adds specific capabilities to a fleet. It can provide actions, incoming events, resource types and reusable instructions.
+One candidate definition: a Plugin is a versioned, installable bundle that adds capabilities to a fleet. It can provide actions, incoming events, resource types and reusable instructions.
+
+That definition remains open. An independent fleet, a template or existing connected tools may better serve some of the same examples.
 
 A Plugin can package several of these together. It neither becomes another fleet nor takes ownership of the fleet's model, history or schedule.
 
@@ -69,6 +79,29 @@ A fleet's model budget cannot serve as a card limit. Provider charges, card purc
 
 Live voice and real-time card authorization also have time limits. A general model queue cannot be their only decision mechanism.
 Provider-enforced controls and explicit fallback behavior must hold when the model or callback service is unavailable.
+
+## Why a Plugin instead of another fleet?
+
+There is no universal answer. Choose from the user's goal and the required ownership, history, policy and lifetime, rather than the service's name.
+
+| Concrete request | Fleet alternative | Capability alternative | Question that decides |
+|---|---|---|---|
+| Answer support calls throughout the day | A dedicated Phone support fleet owns the job, persona, history and budget | Existing Support desk gains phone access | Does phone support need an independently managed job and history? |
+| Call a courier for the delivery estimate | A separate Phone fleet receives delegated work | Operations calls using an approved phone action | Does another actor help, or merely add context transfer and result routing? |
+| Triage an email inbox | An Email triage fleet owns that continuing task | Existing Support desk reads its selected inbox | Is email a separate mission or another channel for the same mission? |
+| Purchase a replacement part | Procurement owns purchasing as a separate fleet | Operations uses a bounded card action | Should a distinct team or policy owner control the purchasing job? |
+| Reuse a configured phone agent | Create a new fleet from its saved template | Add phone capability to an existing fleet | Does the user want another independent worker or more ability in the current worker? |
+
+AgentPhone can therefore be a fleet. The phone number remains a resource; the provider connection and calling tools still need an implementation.
+A real-time voice path needs appropriate provider or audio support whichever product label is chosen.
+
+A dedicated fleet makes sense for an independent purpose, context, ownership, budget or schedule. Another fleet also brings communication, routing and coordination work.
+The [fleet-to-fleet discussion](../pending/M239_001_P1_API_DOCS_INFRA_UI_FLEET_TO_FLEET_STEER_AND_ACTIVITY.md) is an alternative to capability composition, not evidence that composition is required.
+
+If the existing fleet only needs another permitted action or input channel, a connector and tools might already suffice.
+A Plugin earns an additional concept only when reusable packaging, scoped resources, event routing or versioned distribution improves that experience.
+
+The next session should try to disprove the need for another Plugin entity before designing one. It must also test whether template is the clearer name for current whole-fleet reuse.
 
 ## All three selected reference scenarios
 
@@ -124,26 +157,28 @@ The earlier removal of the Save fleet button still stands. This discussion does 
 Recommended starting point: define the product independently of its transport, then prove it with a bounded capability set using existing infrastructure.
 Do not make completion of the UI depend on building live audio, card issuing and a universal extension engine simultaneously.
 
-That is a scope recommendation, not an owner-approved deferral. The owner must choose which new provider actions must actually ship within M249.
+That was an initial scope recommendation. The owner later moved these product choices to a separate discussion, as recorded below.
 
 ## M249 scope and parallel work
 
-M249_003 owns Plugin meaning, package content, resource bindings, action grants, versions, application, update/removal and the agreed user experience.
-The current rename is groundwork; it does not establish this behavior.
+The following is a possible future work split, not an implementation assignment. The owner moved product reassessment to a separate session.
 
-M249_004 owns the corresponding read projections, readiness, applied-version labels and recorded results. It also owns the independent one-call Usage change.
+If capability Plugins are selected later, their behavior and data projections must agree before parallel wiring begins.
+M249_003 is parked. M249_004 retains its recorded-data follow-up and one-call Usage requirement.
+
 Usage-specific data comes from one report response; model labels do not require a separate catalogue request.
 
 One request removes an avoidable dependency; it does not prove the page is fast. The [dashboard layout](../../../ui/packages/app/app/(dashboard)/layout.tsx) also awaits workspace, balance and invite reads.
 
 Profile that cold-load path and the backend queries. A page-level loading boundary cannot bypass its blocked parent layout.
 
-Claude can start the Usage work independently from a tested pushed checkpoint. Plugin read wiring follows an agreed write model and response shape.
+Claude can start the Usage work independently from a tested pushed checkpoint. New Plugin bindings or provider adapters require the separate product decision.
 The UI work retains the approved presentation, feature-folder refactor and shared time/progress behavior.
 
-Milestone closure needs the selected real use cases and their failure paths. Renamed endpoints and attractive empty states alone cannot establish completion.
+The discussed candidate was all three GitHub/Slack workflows plus a real Email Plugin, with phone/card examples shaping the model.
+The owner replied "Yes agreed", then clarified "I am still thinking loudly here" and requested the separate session. This is not a frozen shipping commitment.
 
-## Decisions still needed
+## Questions for the separate session
 
 1. Choose the first working experience: an inbox handles email, a number handles calls, a card funds purchases, or GitHub/Slack workflows work.
 2. Choose which of those provider actions must ship in M249, and which are examples that the design must accommodate later.
@@ -151,6 +186,9 @@ Milestone closure needs the selected real use cases and their failure paths. Ren
 4. Define whether a shared incoming resource wakes one selected fleet or several explicitly selected fleets.
 5. Choose the default for side effects such as sending, calling and purchasing: reviewed approval or an explicitly configured standing permission.
 6. Decide whether M249 includes creating custom Plugin packages, installing curated packages, or both.
+
+Start with the owner's question: "more to reason on why plugin, why not i create a fleet?"
+Also test: "how about an agentphone being a fleet? is it possible i need to think more here."
 
 Invocation syntax follows those experiences. A useful email event or scheduled deployment check should not require inventing an `@plugin` language first.
 
@@ -170,3 +208,11 @@ Invocation syntax follows those experiences. A useful email event or scheduled d
 | [Claude Code plugins](https://code.claude.com/docs/en/plugins) | Plugins package capabilities; skills and tool servers can also exist independently |
 
 Phone and card sources illustrate capability requirements. They do not select a provider or claim that an AgentPhone or AgentCreditCard integration already exists.
+
+## Latest owner decisions
+
+M249_003 is parked as the rename workstream. Only Section 5 of M249_004 is parked; its other sections remain valid.
+
+The Plugin UI and backend implementation must stay reusable. The active UI hides Plugin entry points and no longer publishes a library copy when saving a fleet.
+
+The Save and publish label remains above the composer. It saves the fleet setup through the native fleet path, with its version confirmation.

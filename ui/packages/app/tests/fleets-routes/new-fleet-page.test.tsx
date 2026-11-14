@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-const {credential, workspaces, chat} = vi.hoisted(() => ({credential: vi.fn(), workspaces: vi.fn(), chat: vi.fn()}));
+const {credential, workspaces, chat, feature} = vi.hoisted(() => ({credential: vi.fn(), workspaces: vi.fn(), chat: vi.fn(), feature: {enabled: true}}));
+vi.mock("@/lib/plugin-ui", () => ({pluginsUiEnabled: () => feature.enabled}));
 vi.mock("@/lib/auth/platform", () => ({hasScope: () => Promise.resolve(false)}));
 vi.mock("@/lib/auth/credential", () => ({requireCredential: credential}));
 vi.mock("@/lib/workspace", () => ({listTenantWorkspacesCached: workspaces}));
@@ -15,7 +16,7 @@ const PLUGIN = "0199a801-1000-7000-8000-000000000006";
 const ACCOUNT = "account-owner";
 
 beforeEach(() => {
-  vi.resetAllMocks();
+  vi.resetAllMocks();feature.enabled = true;
   credential.mockResolvedValue("synthetic-session");
   workspaces.mockResolvedValue({items: [{id: WORKSPACE, account: {tenant_id: ACCOUNT}}]});
   chat.mockReturnValue(<p>Private chat</p>);
@@ -78,4 +79,9 @@ describe("native fleet chat entry", () => {
     await expect(page()).rejects.toThrow("workspace dependency unavailable");
     expect(chat).not.toHaveBeenCalled();
   });
+});
+
+it.each([{plugin: PLUGIN, revision: DRAFT}, {starter: "plugin"}])("refuses retained Plugin entry points while the UI tree is paused", async query => {
+  feature.enabled = false;
+  await expect(page(query)).rejects.toThrow("not-found");expect(chat).not.toHaveBeenCalled();
 });

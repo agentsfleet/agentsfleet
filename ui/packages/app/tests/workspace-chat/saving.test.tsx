@@ -5,8 +5,10 @@ import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceC
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
+const plugins = vi.hoisted(() => ({enabled: false}));
+vi.mock("@/lib/plugin-ui", () => ({pluginsUiEnabled: () => plugins.enabled}));
 let fixture: ChatFixture;
-beforeEach(() => { fixture = new ChatFixture(); fixture.mount(); });
+beforeEach(() => { plugins.enabled = false; fixture = new ChatFixture(); fixture.mount(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 async function converse(): Promise<void> {
@@ -29,17 +31,27 @@ async function setup() {
 }
 
 describe("private chat Save", () => {
+  it("restores the editable Plugin starter only when the preserved UI tree is enabled", async () => {
+    plugins.enabled = true;
+    render(<WorkspaceChat {...CHAT_PROPS} />);
+    const starter = await screen.findByRole("button", {name: "Create a plugin"});
+    await waitFor(() => expect(starter).toHaveProperty("disabled", false));
+    fireEvent.click(starter);
+    expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toHaveProperty("value", expect.stringContaining("reusable fleet setup"));
+    expect(fixture.writes()).toEqual([]);
+    expect(fixture.calls.some(call => call.path.includes("/plugins"))).toBe(false);
+  });
   it("loads editable starters and sends the reviewed questions only after the user submits", async () => {
     render(<WorkspaceChat {...CHAT_PROPS} />);
     const suggestion = await screen.findByRole("button", {name: /Watch a pull request/});
     await waitFor(() => expect(suggestion).toHaveProperty("disabled", false));
     for (const [title, text] of [
       ["Check a deploy", "Check a deployment and tell me whether it is healthy. Ask which environment and release to check, and which evidence should count as success."],
-      ["Create a plugin", "Help me create a reusable fleet setup that I can save as a plugin. Ask what work it should do and what access it needs."],
     ]) {
       fireEvent.click(screen.getByRole("button", {name: title}));
       expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toHaveProperty("value", text);
     }
+    expect(screen.queryByRole("button", {name: "Create a plugin"})).toBeNull();
     fireEvent.click(suggestion);
     const input = screen.getByLabelText(CHAT_PLACEHOLDER);
     if (!(input instanceof HTMLTextAreaElement)) throw new Error("The setup composer must expose editable text");
@@ -93,14 +105,15 @@ describe("private chat Save", () => {
     expect(attempts[1]?.body).toMatchObject({operation_id: expect.any(String), save: true});
   });
 
-  it("publishes explicitly without creating a running fleet", async () => {
+  it("saves a fleet version from the flap without publishing a Plugin or starting a run", async () => {
     await converse();
     await setup();
     fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
     expect(screen.queryByRole("dialog")).toBeNull();
-    await waitFor(() => expect(fixture.writes().filter((call) => call.path.endsWith("/plugins"))).toHaveLength(1));
-    expect(fixture.saveAttempts).toBe(0);
-    expect(fixture.writes().find((call) => call.path.endsWith("/plugins"))?.body).toMatchObject({label: "repairer"});
+    await screen.findByRole("heading", {name: "Setup saved · v1"});
+    expect(fixture.calls.some(call => /plugins|fleet-librar/.test(call.path))).toBe(false);
+    expect(fixture.saveAttempts).toBe(1);
+    expect(fixture.writes().find(call => call.path.endsWith("/fleets"))?.body).toMatchObject({name: "repairer", start: {kind: "none"}});
   });
 
   it("edits instructions through the menu and keeps saving the fleet explicit", async () => {

@@ -17,12 +17,12 @@ type Status = {label: string; icon: PhosphorIcon; busy?: boolean; confirmed?: bo
 const ACTIONS = {reading: {label: "Reading setup", icon: BookOpenIcon}, sending: {label: "Sending request", icon: UploadSimpleIcon}, saving: {label: "Saving", icon: FloppyDiskIcon}, publishing: {label: "Publishing", icon: UploadSimpleIcon}};
 
 /** Only accepted fleet revisions and publication receipts receive a success tick. */
-export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet, modelsHref}: {view: DraftView; workspace: string; dirty?: boolean; onOpenFleet?: () => void; modelsHref?: string}) {
+export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet, modelsHref, showPublication = false}: {view: DraftView; workspace: string; dirty?: boolean; onOpenFleet?: () => void; modelsHref?: string; showPublication?: boolean}) {
   if (view.inaccessible) return null;
-  const status = setupStatus(view, dirty, modelsHref);
+  const status = setupStatus(view, dirty, modelsHref, showPublication);
   if (!status) return null;
   const publication = view.draft?.publication;
-  const published = publication && publication.canonical_digest === view.draft.candidate?.canonical_digest;
+  const published = showPublication && publication && publication.canonical_digest === view.draft.candidate?.canonical_digest;
   const query = published ? new URLSearchParams({plugin: publication.plugin_id, revision: publication.revision_id}) : null;
   const Icon = status.icon;
   return <div className="mb-sm flex justify-center">
@@ -38,7 +38,7 @@ export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet, mo
   </div>;
 }
 
-function setupStatus(view: DraftView, dirty: boolean, modelsHref?: string): Status | null {
+function setupStatus(view: DraftView, dirty: boolean, modelsHref: string | undefined, showPublication: boolean): Status | null {
   if (view.error) return {label: view.pending ? "Update not confirmed" : "Setup needs attention", icon: view.pending ? QuestionIcon : WarningCircleIcon};
   if (view.saveOperation) return {...ACTIONS.saving, busy: true};
   if (view.setupAction) return {...ACTIONS[view.setupAction], busy: true};
@@ -55,7 +55,7 @@ function setupStatus(view: DraftView, dirty: boolean, modelsHref?: string): Stat
     const receipt = view.activities?.map(setupActivity).find(activity => activity?.kind === ACTIVITY_KIND.setupSaved && activity.revision === revision);
     return {label: saveDoneText(revision, receipt?.kind === ACTIVITY_KIND.setupSaved ? receipt.origin : undefined), icon: CheckCircleIcon, confirmed: true};
   }
-  if (view.draft?.publication && view.draft.publication.canonical_digest === view.draft.candidate?.canonical_digest) return {label: "Setup published", icon: CheckCircleIcon, confirmed: true};
+  if (showPublication && view.draft?.publication && view.draft.publication.canonical_digest === view.draft.candidate?.canonical_digest) return {label: "Setup published", icon: CheckCircleIcon, confirmed: true};
   if (view.draft?.candidate) return {label: revision ? "Unsaved setup changes" : "Setup ready to save", icon: PencilSimpleIcon};
   return null;
 }

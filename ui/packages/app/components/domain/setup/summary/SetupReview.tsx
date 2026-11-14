@@ -11,6 +11,7 @@ import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
 import { setupRequirements } from "@/lib/setup-requirements";
+import {pluginsUiEnabled} from "@/lib/plugin-ui";
 import { SetupSummary } from "./SetupSummary";
 import { ScheduleSync } from "../../schedules/ScheduleSync";
 
@@ -43,7 +44,7 @@ export function SetupReview({view, client, workspace}: {view: DraftView; client:
   } : undefined;
   const editable = Boolean(apply && requirements && !view.inaccessible);
   return <>
-    <SetupSummary definition={definition} requirements={review?.requirements} modelLabel={modelLabel} sourceLabel={preview?.sourceLabel}
+    <SetupSummary definition={definition} requirements={review?.requirements} modelLabel={modelLabel} sourceLabel={pluginsUiEnabled() ? preview?.sourceLabel : undefined}
       ready={Boolean(view.fleet)} disabled={locked}
       scheduleRecovery={unsynced.length ? <ScheduleSync compact schedules={unsynced} busy={locked} onRetry={schedule => {void client.syncSchedule(schedule).catch(() => undefined);}} /> : undefined}
       onManage={editable ? setSelection : undefined}

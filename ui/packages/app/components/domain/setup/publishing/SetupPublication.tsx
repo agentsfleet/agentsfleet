@@ -51,5 +51,5 @@ export function SetupPublication({client, view, dirty, ...statusProps}: Props) {
     <Button variant="outline" className="rounded-full bg-card px-xl" onClick={() => {void publish();}}>Save and publish<CaretRightIcon size={16} className="text-muted-foreground" aria-hidden="true" /></Button>
     {view.fleet ? statusProps.onOpenFleet ? <Button variant="link" size="eyebrow" onClick={statusProps.onOpenFleet}>Open fleet</Button>
       : <Link className="text-eyebrow text-muted-foreground hover:underline" href={`/w/${statusProps.workspace}/fleets/${view.fleet.id}`}>Open fleet</Link> : null}
-  </div> : <SetupStatusFlap view={view} dirty={dirty} {...statusProps} />;
+  </div> : <SetupStatusFlap view={view} dirty={dirty} showPublication {...statusProps} />;
 }

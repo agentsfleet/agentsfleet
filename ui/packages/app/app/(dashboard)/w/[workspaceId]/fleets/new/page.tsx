@@ -7,6 +7,7 @@ import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceC
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { PLUGIN_CREATE_PROMPT } from "@/components/domain/setup/chat-defaults";
 import type { AuthoringIntent } from "@/components/domain/setup/AuthoringIntent";
+import {pluginsUiEnabled} from "@/lib/plugin-ui";
 
 export const dynamic = "force-dynamic";
 const SearchSchema = z.union([
@@ -27,6 +28,7 @@ export default async function NewFleetPage({params, searchParams}: {
   if (!workspace) notFound();
   const query = SearchSchema.safeParse(await searchParams);
   if (!query.success) notFound();
+  if (("plugin" in query.data || "starter" in query.data) && !pluginsUiEnabled()) notFound();
   const source = "plugin" in query.data ? {kind: SOURCE_KIND.plugin, plugin_id: query.data.plugin, revision_id: query.data.revision} : "fleet" in query.data ? {kind: SOURCE_KIND.fleet, fleet_id: query.data.fleet, setup_revision: query.data.setup_revision} : undefined;
   const intent = authoringIntent(query.data);
   return <PageLayout fullHeight className="flex min-h-0 flex-1 flex-col">

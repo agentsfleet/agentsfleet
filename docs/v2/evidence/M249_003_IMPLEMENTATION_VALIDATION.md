@@ -1,8 +1,8 @@
 # M249_003 implementation validation
 
-The implementation uses account-owned Plugins throughout the API, command-line interface (CLI), browser and current documentation.
-Auth pages share the refreshed theme; Usage shows complete daily charges and recorded models.
-The workstream remains active until its remaining verification completes.
+The retained API and command-line interface (CLI) use account-owned Plugins. The Plugin UI tree is disabled; Save and publish saves the fleet setup only.
+
+Auth pages share the refreshed theme; Usage shows complete daily charges and recorded models. M249_003 is parked at the owner's request.
 
 ## Candidate and baseline
 
@@ -254,8 +254,10 @@ Logs are under `/workspace/artifacts/m249-followup/`, using the `chat-error-` pr
 
 ## Nov 14 final interface and shared-time verification
 
-This batch supersedes the earlier grouped-review proposal and pending Summary approval. The owner approved the flat Summary, direct publication and live progress.
-The latest Plugin capability reassessment is separate design work in M249_003 §7; these results do not establish capability implementation.
+This batch supersedes the earlier grouped-review proposal and pending Summary approval. The owner approved the flat Summary and live progress.
+The later fleet-only save decision below replaces direct Plugin publication.
+
+The owner moved the Fleet/template/Plugin reassessment to a separate session. Its evidence notes preserve both Plugin and independent-fleet alternatives without expanding this implementation.
 
 | Command | Result | Evidence under `/workspace/artifacts/m249-followup/` |
 |---|---|---|
@@ -328,3 +330,35 @@ Final gate and staged-scanning outcomes are recorded in their command logs and P
 Independent final review could not complete because the review agents reached their usage limit.
 
 Live authentication and acceptance limitations remain as recorded above. No development deployment or identity-grant mutation occurred.
+
+## Fleet-only saving and parked work
+
+The owner retained the Save and publish label but removed its library-publication side effect. The flap now saves a new fleet or updates its existing setup revision.
+
+`pluginsUiEnabled()` disables Plugin navigation, routes, starters and publication UI through one switch. The underlying UI and API code remain reusable.
+
+M249_003 and M249_004 Section 5 are deferred records linked from `docs/v2/parked/README.md`. Other M249_004 data work remains valid, including performant single-call Usage.
+
+### Fleet-only save verification
+
+| Check | Result | Evidence under `/workspace/artifacts/m249-followup/` |
+|---|---|---|
+| Native save and recovery components | 21 passed, including v1 creation, existing-fleet v2, lost replies and duplicate clicks | `fleet-only-save-recheck.log` |
+| Reversible Plugin starter | 7 passed; enabling restores editable text without sending or publishing | `fleet-save-starter-proof.log` |
+| Native desktop and phone browser checks | 6 passed for saving, Summary and fleet disclosure; final save captures passed 2 | `fleet-only-save-browser.log`, `fleet-save-browser-final.log` |
+| Canonical proposal | 17 checks passed across both themes, two widths and four setup states; no page errors or horizontal overflow | `proposal-fleet-only-review.json` |
+| Production app build | Compilation, TypeScript and page generation passed | `final-fleet-save-production-build.log` |
+| Installed setup | `orly doctor` passed both checks | `final-fleet-save-doctor.log` |
+
+The first coverage pass passed all 4,652 app tests but missed one retained starter-icon branch. The additional re-enable test covers that behavior without sending a request.
+The complete pushed-candidate gate output belongs in `final-fleet-save-gate-pr.log`; the Pull Request records its final counts and outcome.
+
+The latest native captures are `fleet-save-progress-chromium.png` and `fleet-save-confirmed-mobile-chromium.png`. Their fixture timestamps use the current time.
+The canonical proposal remains the single editable visual reference; its fleet-only screenshots use the `proposal-fleet-only-` prefix.
+
+### Merge condition
+
+The owner authorized merging only after every Continuous Integration (CI) job passes, Greptile findings are resolved, and no `schema/*.sql` changes remain.
+This branch changes the API-key schema and retained Plugin schema. It must remain unmerged under that authorization.
+
+Companion pages are prepared on the separate documentation branch. Repository instructions defer their commit until the application PR merges.

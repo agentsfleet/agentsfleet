@@ -18,6 +18,6 @@ it("opens scoped navigation in the shared dialog, closes on Escape and on route 
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(document.activeElement).toBe(trigger);
   await act(async () => {fireEvent.click(trigger);});
-  fireEvent.click(screen.getByRole("link", {name: "Plugins"}));
+  fireEvent.click(screen.getByRole("link", {name: "Secrets"}));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
