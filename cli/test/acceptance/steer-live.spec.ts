@@ -1,12 +1,12 @@
 /**
- * steer-live — one-shot `steer` against a freshly-installed live fleet.
+ * steer-live — one-shot `fleet steer` against a freshly-installed live fleet.
  *
  * Scenario (seeded-credentials session, mirrors lifecycle-with-token.spec.ts):
  *   - mint a Clerk session JWT via the admin path
  *   - hydrate workspaces.json directly from the API (the CLI only
  *     hydrates inside the login flow)
  *   - install the platform-ops bundle (prefix-scoped name)
- *   - drive `steer <fleet_id> <message> --json` non-interactively — the
+ *   - drive `fleet steer <fleet_id> <message> --json` non-interactively — the
  *     spawned child's stdin is a pipe AND a positional message is
  *     supplied, so `shouldEnterSteerRepl` (message===undefined && tty)
  *     stays false and the command runs a single turn (no REPL drive)
@@ -160,7 +160,7 @@ if (!isLive) {
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    it("steer <id> <message> --json returns a processed terminal result", async () => {
+    it("fleet steer <id> <message> --json returns a processed terminal result", async () => {
       assert.ok(fleetId, "fleet was not installed in beforeAll");
       const result = await runWithEnv([...STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE, JSON_FLAG]);
       const diagnostics = result.code === 0
@@ -169,7 +169,7 @@ if (!isLive) {
       assertSteerProcessed(result, diagnostics);
     }, STEER_TIMEOUT_MS);
 
-    it("steer without the JSON flag renders a readable fleet conversation", async () => {
+    it("fleet steer without the JSON flag renders a readable fleet conversation", async () => {
       assert.ok(fleetId, "fleet was not installed in beforeAll");
       const result = await runWithEnv([...STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE]);
       assert.equal(result.code, 0, `conversation failed: stdout=${result.stdout} stderr=${result.stderr}`);
@@ -178,7 +178,7 @@ if (!isLive) {
       assert.doesNotMatch(result.stdout, /"event_id"\s*:/u, "ordinary conversation must not print the machine envelope");
     }, STEER_TIMEOUT_MS);
 
-    it("steer <id> with a whitespace-only message is rejected client-side", async () => {
+    it("fleet steer <id> with a whitespace-only message is rejected client-side", async () => {
       assert.ok(fleetId, "fleet was not installed in beforeAll");
       const result = await runWithEnv([...STEER_COMMAND, fleetId, WHITESPACE_MESSAGE, JSON_FLAG]);
       assert.notEqual(result.code, 0, `expected non-zero; stdout=${result.stdout} stderr=${result.stderr}`);
@@ -199,7 +199,7 @@ if (!isLive) {
       assert.equal(blocked.start.event_id, undefined, "incomplete setup must not start an execution");
     }, STEER_TIMEOUT_MS);
 
-    it("steer with no <fleet_id> exits non-zero with a usage stem", async () => {
+    it("fleet steer with no <fleet_id> exits non-zero with a usage stem", async () => {
       const result = await runWithEnv([...STEER_COMMAND, JSON_FLAG]);
       assert.notEqual(result.code, 0, `expected non-zero; stdout=${result.stdout} stderr=${result.stderr}`);
       assert.match(`${result.stderr}\n${result.stdout}`.toLowerCase(), /missing|required|usage|expected/,
