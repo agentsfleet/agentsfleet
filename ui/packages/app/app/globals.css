@@ -166,7 +166,7 @@ code, pre, kbd { font-family: var(--ff-mono); }
     width: var(--summary-width);
     position: sticky;
     top: var(--sp-2xl);
-    max-height: min(36rem, calc(100dvh - 12rem));
+    max-height: calc(100dvh - 12rem);
     overflow-y: auto;
     align-self: flex-start;
     margin: var(--sp-2xl) 0;

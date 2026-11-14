@@ -105,6 +105,9 @@ pub struct ApiKeySummary<'a> {
     pub id: Cow<'a, str>,
     /// What it is called.
     pub key_name: Cow<'a, str>,
+    /// Final four hexadecimal characters for recognition only. Never authenticates a request.
+    /// Null when no suffix was recorded; the original credential cannot be recovered.
+    pub display_suffix: Option<Cow<'a, str>>,
     /// Whether it still authenticates.
     pub active: bool,
     /// When it was minted.

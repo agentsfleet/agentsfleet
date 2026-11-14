@@ -1,0 +1,15 @@
+import type { ReactNode } from "react";
+import { ClockIcon, CheckCircleIcon, WarningCircleIcon, QuestionIcon, BookOpenIcon, GitPullRequestIcon, GlobeIcon, ListIcon, PencilSimpleIcon, TerminalWindowIcon, WrenchIcon, XIcon } from "@phosphor-icons/react/ssr";
+import { CELL_STATE, type CellState } from "../copy/tool-call-copy";
+
+export const TRIGGER_CLASS = "min-h-11 w-full min-w-0 justify-start gap-sm rounded-sm px-md py-md text-body-sm text-muted-foreground hover:no-underline sm:min-h-9 [&>svg:last-child]:ml-0 [&>svg:last-child]:size-3 [&>svg:last-child]:opacity-0 hover:[&>svg:last-child]:opacity-100 focus-visible:[&>svg:last-child]:opacity-100 [&[data-state=open]>svg:last-child]:opacity-100";
+export const CELL_COPY: Record<CellState, {label: string; tone: string; icon: ReactNode}> = {
+  [CELL_STATE.RUNNING]: {label: "Running", tone: "text-info", icon: <ClockIcon className="size-4" aria-hidden="true" />},
+  [CELL_STATE.SUCCEEDED]: {label: "Success", tone: "text-success", icon: <CheckCircleIcon className="size-4" aria-hidden="true" />},
+  [CELL_STATE.FAILED]: {label: "Failed", tone: "text-destructive", icon: <XIcon className="size-4" aria-hidden="true" />},
+  [CELL_STATE.INTERRUPTED]: {label: "Interrupted", tone: "text-warning", icon: <WarningCircleIcon className="size-4" aria-hidden="true" />},
+  [CELL_STATE.SETTLED]: {label: "Outcome unavailable", tone: "text-text-dim", icon: <QuestionIcon className="size-4" aria-hidden="true" />},
+};
+
+export const ACTIVITY_ICONS = {read: BookOpenIcon, write: PencilSimpleIcon, list: ListIcon, command: TerminalWindowIcon,
+  request: GlobeIcon, "pull-request": GitPullRequestIcon, check: CheckCircleIcon, tool: WrenchIcon};

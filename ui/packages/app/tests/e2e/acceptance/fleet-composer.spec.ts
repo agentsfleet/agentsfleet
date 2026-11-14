@@ -34,14 +34,14 @@ for (const scenario of CASES) {
       expect(modelStyle.fontSize).toBe(SIZES.model);
       expect(hintStyle.fontSize).toBe(SIZES.hint);
       expect(inputStyle.fontFamily).toContain("Manrope");
-      await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(1);
+      await expect(page.getByRole("button", { name: "Save fleet", exact: true })).toHaveCount(0);
       await setupInput.fill("Keep my unsent setup edit");
       await (await setupAction(page, CHAT_COPY.editSetup)).click();
       const editor = page.getByRole("dialog", {name: CHAT_COPY.instructions, exact: true});
       await expect(editor.getByLabel(CHAT_COPY.instructions, {exact: true})).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(editor).toBeHidden();
-      const opener = page.getByRole("button", {name: "Setup chat actions", exact: true});
+      const opener = page.getByRole("button", {name: "Edit instructions", exact: true});
       await expect(opener).toBeFocused();
       await expect(setupInput).toHaveValue("Keep my unsent setup edit");
       await (await setupAction(page, CHAT_COPY.editSetup)).click();

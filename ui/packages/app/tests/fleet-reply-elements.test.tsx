@@ -2,8 +2,8 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import { afterEach, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
-import { renderFleetMessage } from "@/components/domain/fleetMessageRenderers";
-import {readDefaultReplyContent} from "@/components/domain/fleet-reply-content";
+import { renderFleetMessage } from "@/components/domain/activity/messages/fleetMessageRenderers";
+import {readDefaultReplyContent} from "@/components/domain/activity/replies/fleet-reply-content";
 
 afterEach(cleanup);
 

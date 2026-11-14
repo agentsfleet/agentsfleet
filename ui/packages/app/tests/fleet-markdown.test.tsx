@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { FleetMarkdown } from "@/components/domain/FleetMarkdown";
+import { FleetMarkdown } from "@/components/domain/shared/chat/FleetMarkdown";
 
 afterEach(cleanup);
 

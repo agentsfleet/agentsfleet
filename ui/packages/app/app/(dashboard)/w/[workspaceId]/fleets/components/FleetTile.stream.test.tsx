@@ -15,7 +15,7 @@ import {
   toolStarted,
   WORKSPACE_ID,
 } from "@/tests/helpers/workspace-store-harness";
-import { WorkspaceStreamProvider } from "@/components/domain/useWorkspaceStream";
+import { WorkspaceStreamProvider } from "@/components/domain/conversation/stream/useWorkspaceStream";
 import FleetTile from "./FleetTile";
 
 vi.mock("next/link", () => ({

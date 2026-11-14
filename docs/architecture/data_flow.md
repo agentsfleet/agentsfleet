@@ -368,7 +368,7 @@ What is specific to this flow: status works the same way. The assignment scan fi
 ```text
 person -> private draft/messages -> validated Definition -> reviewed candidate
                                       |                         |
-                                explicit Plugin publish   Save fleet
+                                explicit Plugin publish   chat Save
                                       |                         |
                                 pinned Plugin revision -> retained installing fleet
                                                                 |
@@ -469,10 +469,10 @@ A name/status resource change does not falsely make setup content change; inheri
 
 In the browser, **Edit setup** opens that private draft beside the current fleet conversation.
 Multiple messages and manual instruction edits update the same candidate.
-Explicit **Save changes** applies the reviewed revision and returns focus to the fleet conversation.
+The instruction editor’s **Save changes** applies the reviewed revision and returns focus to the fleet conversation.
 
 A stale setup tag keeps the proposed edits for review.
-Initial **Save fleet** opens the same fleet Chat workspace.
+An initial chat **Save** opens the same fleet Chat workspace.
 Both purposes share the [provider reader and browser chat implementation](shared_chat_verification.md).
 
 #### CLI partial success

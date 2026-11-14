@@ -3,7 +3,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 import { DRAFT } from "@/tests/helpers/draft-fixtures";
 
-test("setup and fleet status text has a muted darker sweep with accessible motion fallbacks", async ({page, chatProbe}) => {
+test("setup and fleet status text has a muted-to-foreground sweep with accessible motion fallbacks", async ({page, chatProbe}) => {
   for (const route of ["?loading=1", "?activity=1"]) {
     await page.emulateMedia({reducedMotion: "no-preference", forcedColors: "none"});
     await page.goto(`${chatProbe}${route}`);
@@ -21,8 +21,8 @@ test("setup and fleet status text has a muted darker sweep with accessible motio
     for (const theme of ["light", "dark"]) {
       await page.locator("html").evaluate((node, value) => node.setAttribute("data-theme", value), theme);
       const gradient = await label.evaluate(node => getComputedStyle(node).backgroundImage);
-      expect(gradient).toContain(theme === "dark" ? "rgb(194, 199, 208)" : "rgb(73, 83, 97)");
-      expect(gradient).toContain(theme === "dark" ? "rgb(143, 152, 166)" : "rgb(48, 58, 72)");
+      expect(gradient).toContain(theme === "dark" ? "rgb(163, 171, 183)" : "rgb(94, 104, 118)");
+      expect(gradient).toContain(theme === "dark" ? "rgb(245, 246, 248)" : "rgb(32, 36, 43)");
     }
     const before = await label.boundingBox();
     const position = await label.evaluate(element => getComputedStyle(element).backgroundPosition);
@@ -317,7 +317,7 @@ async function expectSourceHierarchy(panel: Locator) {
   await disclosure.click();
 }
 
-test("Summary retains full inline phone content and the approved desktop width", async ({page, chatProbe}, info) => {
+test("setup Summary retains full inline phone content and room for policy labels", async ({page, chatProbe}, info) => {
   await page.setViewportSize(info.project.name === "chromium" ? {width: 1480, height: 1000} : {width: 390, height: 844});
   for (const theme of ["dark", "light"]) {
     await page.goto(chatProbe);
@@ -326,7 +326,7 @@ test("Summary retains full inline phone content and the approved desktop width",
     await expect(summary).toBeVisible();
     const layout = await summary.evaluate(node => ({width: node.getBoundingClientRect().width,
       scroll: node.scrollHeight, client: node.clientHeight, maxHeight: getComputedStyle(node).maxHeight}));
-    if (info.project.name === "chromium") expect(layout.width).toBe(248);
+    if (info.project.name === "chromium") expect(layout.width).toBe(320);
     else {expect(layout.maxHeight).toBe("none"); expect(layout.scroll).toBeLessThanOrEqual(layout.client + 1);}
     const footer = page.getByTestId("fleet-chat-footer");
     expect(await footer.evaluate(node => {

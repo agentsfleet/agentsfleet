@@ -4,10 +4,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { Alert } from "@agentsfleet/design-system";
 import { DraftClient } from "@/lib/api/drafts";
 import { SetupUnavailable } from "@/lib/api/draft-request";
-import { DraftChatHeading } from "@/components/domain/chat/DraftChatHeading";
-import { DraftConversation } from "@/components/domain/chat/DraftConversation";
-import { FleetSetup } from "@/components/domain/chat/FleetSetup";
-import { SetupStatusFlap } from "@/components/domain/chat/SetupStatusFlap";
+import { DraftChatHeading } from "@/components/domain/setup/conversation/DraftChatHeading";
+import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
+import { FleetSetup } from "@/components/domain/setup/conversation/FleetSetup";
+import { SetupPublication } from "@/components/domain/setup/publishing/SetupPublication";
+import { AuthoringIntentContext } from "@/components/domain/setup/AuthoringIntent";
 import { ChatFixture, CHAT_PROPS, chatRouter, chooseSetupAction } from "./fixture";
 import { DRAFT, FLEET, FLEET_ID, PLUGIN_CARD, PUBLICATION, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
@@ -23,13 +24,13 @@ beforeEach(async () => {
   await client.initialize(); await client.resume(DRAFT.id);
 });
 afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
-function LiveSetup() {
+function LiveSetup({target}: {target?: string}) {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
   const [dirty, setDirty] = useState(false);
   return <>{view.error ? <Alert variant="destructive">{view.error}</Alert> : null}
     <DraftChatHeading client={client} view={view} workspace={WORKSPACE} onDirtyChange={setDirty} />
     <FleetSetup client={client} view={view} workspace={WORKSPACE} />
-    <SetupStatusFlap view={view} workspace={WORKSPACE} dirty={dirty} />
+    <AuthoringIntentContext.Provider value={{publicationTarget: target}}><SetupPublication client={client} view={view} workspace={WORKSPACE} dirty={dirty} /></AuthoringIntentContext.Provider>
     {dirty ? <output>Manual changes pending</output> : null}</>;
 }
 
@@ -178,32 +179,30 @@ it.each(["client", "fleet", "subject", "access"])("discards the queued readiness
   replacement.dispose();
 });
 
-it("saves once from the heading without opening a review or starting a run", async () => {
+it("keeps native private saving separate from direct publication without starting a run", async () => {
   render(<LiveSetup />);
-  expect(screen.getAllByRole("button", {name: "Save fleet"})).toHaveLength(1);
+  expect(screen.queryByRole("button", {name: "Save fleet"})).toBeNull();
   expect(screen.queryByRole("button", {name: "Review setup"})).toBeNull();
-  await chooseSetupAction("Save fleet");
+  await act(async () => {await client.save().catch(() => undefined);});
   await screen.findByRole("heading", {name: "Setup saved · v1"});
   expect(fixture.writes()).toHaveLength(1);
   expect(fixture.writes()[0]?.body).toMatchObject({review_digest: REVIEW.review_digest, start: {kind: "none"}});
   expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
 });
 
-it("keeps publishing in its own explicit menu action", async () => {
+it("publishes directly from the flap with the reviewed name", async () => {
   render(<LiveSetup />);
   expect(screen.queryByRole("button", {name: "Publish new entry"})).toBeNull();
-  await chooseSetupAction("Publish plugin");
-  fireEvent.change(await screen.findByLabelText("Plugin name"), {target: {value: "Checked recipe"}});
   expect(fixture.writes()).toEqual([]);
-  fireEvent.click(screen.getByRole("button", {name: "Publish new entry"}));
+  fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
   await screen.findByText("Setup published");
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.getByRole("link", {name: "New fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?plugin=${PUBLICATION.plugin_id}&revision=${PUBLICATION.revision_id}`);
-  expect(fixture.writes()[0]?.body).toMatchObject({label: "Checked recipe"});
+  expect(fixture.writes()[0]?.body).toMatchObject({label: REVIEW.effective.instance_name});
   expect(fixture.saveAttempts).toBe(0);
 });
 
-it("requires an explicit owned-plugin selection when a resumed draft has no publication target", async () => {
+it("appends only to an explicitly chosen Plugin with its current ETag", async () => {
   const normal = fixture.fetch.getMockImplementation()!;
   const writes: {path: string; init: RequestInit | undefined}[] = [];
   fixture.fetch.mockImplementation((input, init) => {
@@ -217,14 +216,9 @@ it("requires an explicit owned-plugin selection when a resumed draft has no publ
     }
     return normal(input, init);
   });
-  render(<LiveSetup />); await chooseSetupAction("Publish plugin");
-  expect(screen.queryByRole("button", {name: "Publish next revision"})).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Update an existing plugin"}));
-  fireEvent.click(await screen.findByRole("combobox", {name: "Plugin to update"}));
-  fireEvent.click(await screen.findByRole("option", {name: PLUGIN_CARD.name}));
-  expect(fixture.fetch).toHaveBeenCalledWith(expect.stringContaining(`/workspaces/${WORKSPACE}/plugins?`), expect.anything());
+  render(<LiveSetup target={PLUGIN_CARD.id} />);
   expect(writes).toHaveLength(0);
-  fireEvent.click(screen.getByRole("button", {name: "Publish next revision"}));
+  fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
   await screen.findByText("Setup published");
   expect(writes).toHaveLength(1);
   expect(new Headers(writes[0]?.init?.headers).get("If-Match")).toBe('"selected-version"');
@@ -246,8 +240,7 @@ it("retains a refused next Plugin revision without claiming publication or chang
     return normal(input, init);
   });
   render(<LiveSetup />);
-  await chooseSetupAction("Publish plugin");
-  fireEvent.click(await screen.findByRole("button", {name: "Publish next revision"}));
+  fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
   await screen.findAllByText("Plugin revision changed");
   expect(screen.queryByText(/Setup published/)).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -259,7 +252,7 @@ it("cancels manual editing without saving or exposing advanced run options", asy
   render(<LiveSetup />); await chooseSetupAction("Instructions");
   fireEvent.change(screen.getByRole("textbox", {name: "Instructions"}), {target: {value: "Unsaved manual instructions"}});
   expect(await screen.findByText("Manual changes pending")).toBeTruthy();
-  expect(screen.getByRole("button", {name: "Save fleet", hidden: true})).toHaveProperty("disabled", true);
+  expect(screen.queryByRole("button", {name: "Save and publish", hidden: true})).toBeNull();
   expect(screen.queryByRole("button", {name: "Review and run options"})).toBeNull();
   expect(screen.queryByRole("button", {name: "Advanced settings"})).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
@@ -270,7 +263,7 @@ it("cancels manual editing without saving or exposing advanced run options", asy
 it("refuses saving a newer proposal that the person has not seen", async () => {
   render(<LiveSetup />);
   fixture.draft = {...DRAFT, review: {...REVIEW, review_digest: "changed"}};
-  await chooseSetupAction("Save fleet");
+  await act(async () => {await client.save().catch(() => undefined);});
   await screen.findByText(/The setup changed/);
   expect(fixture.saveAttempts).toBe(0);
   expect(fixture.writes()).toEqual([]);
@@ -279,7 +272,7 @@ it("refuses saving a newer proposal that the person has not seen", async () => {
 it.each([403, 422, 503])("keeps a refused validation visible without creating a fleet (%i)", async status => {
   render(<LiveSetup />);
   fixture.fetch.mockResolvedValueOnce(response({user_message: "Setup could not be validated"}, status));
-  await chooseSetupAction("Save fleet");
+  await act(async () => {await client.save().catch(() => undefined);});
   await screen.findByText(status === 403 ? "Your account doesn’t have access here. Switch workspace or ask the workspace owner for access." : "Setup could not be validated");
   expect(fixture.saveAttempts).toBe(0);
 });
@@ -294,8 +287,8 @@ it("keeps a refused improvement editable and never claims another revision was s
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     return path.endsWith("/revisions") ? Promise.resolve(response({user_message: "The saved fleet changed"}, 409)) : base(input, init);
   });
-  render(<LiveSetup />); await chooseSetupAction("Save changes");
+  render(<LiveSetup />); await act(async () => {await client.apply().catch(() => undefined);});
   await screen.findByText("The saved fleet changed");
   expect(screen.queryByRole("heading", {name: "Setup saved · v2"})).toBeNull();
-  expect(screen.getByRole("button", {name: "Save changes"})).toHaveProperty("disabled", false);
+  expect(client.getSnapshot().draft?.state).toBe(DRAFT_STATE.editing);
 });

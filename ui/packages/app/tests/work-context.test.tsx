@@ -1,9 +1,9 @@
 import type { TaskActivity } from "@/lib/task-activity";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { FleetWorkSidebar } from "@/components/domain/FleetWorkSidebar";
-import { WorkAction, workActivity } from "@/components/domain/chat/WorkActivity";
-import { TaskNextStep } from "@/components/domain/chat/TaskNextStep";
+import { FleetWorkSidebar } from "@/components/domain/shared/summary/FleetWorkSidebar";
+import { WorkAction, workActivity } from "@/components/domain/conversation/summary/WorkActivity";
+import { TaskNextStep } from "@/components/domain/tasks/TaskNextStep";
 import { evt } from "./helpers/fleet-stream-fixtures";
 import { detail, TASK_IDS } from "./helpers/task-reads";
 afterEach(() => {cleanup(); vi.restoreAllMocks();});

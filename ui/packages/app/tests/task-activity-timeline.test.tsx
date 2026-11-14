@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
-import { TaskActivityTimeline } from "@/components/domain/TaskActivityTimeline";
+import { TaskActivityTimeline } from "@/components/domain/tasks/TaskActivityTimeline";
 import { TASK_IDS } from "./helpers/task-reads";
 afterEach(cleanup);
 const progress = {activity_id: TASK_IDS[0], task_id: TASK_IDS[0], source_admission_id: null,

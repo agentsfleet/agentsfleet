@@ -1,7 +1,7 @@
 import type { Schedule } from "@/lib/api/draft-types";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { ScheduleSync } from "@/components/domain/chat/ScheduleSync";
+import { ScheduleSync } from "@/components/domain/schedules/ScheduleSync";
 import { FAILED_SCHEDULE, PENDING_SCHEDULE, SCHEDULE } from "./helpers/draft-fixtures";
 
 afterEach(cleanup);
@@ -29,6 +29,8 @@ it("keeps pause, removal, unknown and incomplete timing states non-predictive", 
   const retry = vi.fn();
   const cases: {schedule: Schedule; state: string; action: string | null}[] = [
     {schedule: {...SCHEDULE, status: "paused", run_state: "paused", next_run_at: null}, state: "Paused", action: null},
+    {schedule: {...FAILED_SCHEDULE, status: "paused", run_state: "paused"}, state: "Pause failed", action: "Retry sync"},
+    {schedule: {...FAILED_SCHEDULE, status: "deleting", run_state: "next_run_unavailable"}, state: "Removal failed", action: "Retry sync"},
     {schedule: {...PENDING_SCHEDULE, status: "paused", run_state: "paused"}, state: "Pause requested; scheduler sync pending", action: "Retry sync"},
     {schedule: {...PENDING_SCHEDULE, status: "deleting", run_state: "next_run_unavailable"}, state: "Removal requested", action: "Retry sync"},
     {schedule: {...SCHEDULE, status: "future_state", run_state: "future_state", next_run_at: null}, state: "Status unavailable", action: null},
@@ -48,4 +50,16 @@ it("keeps pause, removal, unknown and incomplete timing states non-predictive", 
     expect(screen.queryByText(/Save the fleet to activate it/)).toBeNull();
   }
   expect(retry).not.toHaveBeenCalled();
+});
+
+it("keeps failed pause and removal retries with their own schedule names in compact Summary", () => {
+  const retry = vi.fn();
+  const paused = {...FAILED_SCHEDULE, schedule_id: "paused", status: "paused", description: "Release check"};
+  const removal = {...FAILED_SCHEDULE, schedule_id: "removal", status: "deleting", description: "Merge check", last_error: "Scheduler refused"};
+  render(<ScheduleSync compact schedules={[paused, removal]} busy={false} onRetry={retry} />);
+  expect(screen.getByText(paused.description)).toBeTruthy();
+  expect(screen.getByText(removal.description)).toBeTruthy();
+  expect(screen.getByText(removal.last_error)).toBeTruthy();
+  for (const button of screen.getAllByRole("button", {name: "Retry sync"})) fireEvent.click(button);
+  expect(retry.mock.calls).toEqual([[paused], [removal]]);
 });

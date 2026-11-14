@@ -4,7 +4,7 @@ import { CaretDownIcon } from "@phosphor-icons/react/ssr";
 import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Input, Label, Select, SelectContent, SelectTrigger, SelectValue, SelectItem } from "@agentsfleet/design-system";
 import { modelsForProvider, uniqueModelIds, type LibraryModel } from "@/lib/api/model-library-types";
 import { modelLabel } from "@/lib/models/display";
-import { CatalogueModelDetails } from "@/components/domain/CatalogueModelDetails";
+import { CatalogueModelDetails } from "@/components/domain/models/CatalogueModelDetails";
 import { CATALOGUE_STATUS, type CatalogueStatus } from "./catalogue-status";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import { CatalogueReadControls } from "./CatalogueReadControls";

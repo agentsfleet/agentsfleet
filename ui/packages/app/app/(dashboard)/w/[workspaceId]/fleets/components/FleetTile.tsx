@@ -19,7 +19,7 @@ import { workspacePath } from "@/lib/workspace-routes";
 import {
   useWorkspaceFleetStream,
   type TileCounters,
-} from "@/components/domain/useWorkspaceStream";
+} from "@/components/domain/conversation/stream/useWorkspaceStream";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
 import { deriveFleetIdentity, type FleetIdentity } from "@/lib/fleets/identity";
 import { agentDisplayName } from "@/lib/fleets/agent-label";

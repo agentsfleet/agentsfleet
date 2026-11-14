@@ -36,7 +36,7 @@ vi.mock("@/app/(dashboard)/settings/security/components/ApiKeyList", () => ({
 
 // The "Create key" trigger ships behind a next/dynamic shim — stub
 // it out so the page test stays focused on page-level behaviour.
-vi.mock("@/components/domain/island-dynamic/CreateApiKeyDialogDynamic", () => ({
+vi.mock("@/components/domain/shared/dialogs/CreateApiKeyDialogDynamic", () => ({
   default: () => React.createElement("button", { type: "button" }, "Create key"),
 }));
 
@@ -95,8 +95,8 @@ describe("api-keys page", () => {
     mockAuth();
     listApiKeysMock.mockResolvedValueOnce({
       items: [
-        { id: "a", key_name: "ci-runner", active: true, created_at: "1970-01-01T00:00:00.002Z", revoked_at: null },
-        { id: "b", key_name: "old-zapier", active: false, created_at: "1970-01-01T00:00:00.001Z", revoked_at: "1970-01-01T00:00:00.001Z" },
+        { id: "a", key_name: "ci-runner", display_suffix: null, active: true, created_at: "1970-01-01T00:00:00.002Z", revoked_at: null },
+        { id: "b", key_name: "old-zapier", display_suffix: null, active: false, created_at: "1970-01-01T00:00:00.001Z", revoked_at: "1970-01-01T00:00:00.001Z" },
       ],
       total: 2,
       next_cursor: null,

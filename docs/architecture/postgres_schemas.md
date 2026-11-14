@@ -129,7 +129,7 @@ there is no generic repository trait.
 | `users` | One person, bound to a sign-in subject; `tenant_id` is the personal account made at signup |  |
 | `memberships` | Person ↔ tenant with a role; a role change is delete + insert |  |
 | `invites` | Emailed offer to join a tenant |  |
-| `api_keys` | Tenant automation tokens, hash only; outlive the admin who made them |  |
+| `api_keys` | Tenant automation tokens, digest plus nullable public display suffix; outlive the admin who made them |  |
 | `cli_credentials` | One live CLI login per machine, hash only | (metadata columns are in §Settled) |
 | `user_preferences` | Small dashboard settings per (user, workspace) |  |
 | `device_sessions` | One CLI device login in flight; ciphertext sealed to the CLI, code kept as a peppered HMAC | no foreign key: a session exists before any user does; operator roles revoked (M244) |

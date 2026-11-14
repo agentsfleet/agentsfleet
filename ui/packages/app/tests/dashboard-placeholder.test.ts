@@ -137,7 +137,7 @@ describe("placeholder pages", () => {
     const { EventsData } =
       await import("../app/(dashboard)/w/[workspaceId]/events/page");
     const { WORKSPACE_EVENTS_LABEL } =
-      await import("../components/domain/EventsList");
+      await import("../components/domain/events/EventsList");
     const m = renderToStaticMarkup(await EventsData({ workspaceId: "ws_1" }));
     // The page's landmark region and the events table caption share one name —
     // this pin keeps the page's aria-label from drifting off the constant.

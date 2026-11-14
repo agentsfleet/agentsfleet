@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { z } from "zod";
 import { steerMessagesUrl } from "@/lib/api/fleets-types";
-import { REPLY_ID_SUFFIX } from "@/components/domain/useFleetThreadEntries";
+import { REPLY_ID_SUFFIX } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { type ApiClient } from "./api-client";
 import { runtimeHistory, threadPage, type SoakEvent } from "./soak-history";
 import { SOAK, runtimeMessage } from "./soak-scenario";

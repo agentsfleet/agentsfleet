@@ -1,5 +1,5 @@
 export const PLUGIN_PAGE_TITLE = "Plugins";
-export const PLUGIN_PAGE_DESCRIPTION = "Reuse a complete fleet setup.\nChoose a saved version, adapt it, and start a new fleet.";
+export const PLUGIN_PAGE_DESCRIPTION = "A Plugin is a reusable fleet setup. Publish one from chat, then use it to start new fleets.";
 
 // The removal confirmation. It names the entry, says what survives, and says
 // what does not — someone reading it should not have to guess whether a

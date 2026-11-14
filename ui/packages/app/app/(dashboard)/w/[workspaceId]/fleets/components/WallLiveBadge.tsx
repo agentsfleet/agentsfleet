@@ -2,8 +2,8 @@
 
 import { cn, EYEBROW_CLASS, WakePulse } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
-import { useWorkspaceStream } from "@/components/domain/useWorkspaceStream";
-import { ACCESS_REVOKED_LABEL } from "@/components/domain/FleetConnectionIndicator";
+import { useWorkspaceStream } from "@/components/domain/conversation/stream/useWorkspaceStream";
+import { ACCESS_REVOKED_LABEL } from "@/components/domain/conversation/chrome/FleetConnectionIndicator";
 
 /**
  * The wall's one honest answer to "is this page still telling me the truth?"

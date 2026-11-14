@@ -43,7 +43,7 @@ test("Usage renders recorded daily bars and model sets while filters request com
     await page.getByRole("combobox", {name: "Fleet", exact: true}).click();
     await page.getByRole("option", {name: "Payment alerts", exact: true}).click();
     await expect(page.getByText("Daily high $5.50", {exact: true})).toBeVisible();
-    await expect(chart.getByText("2026-11-05 UTC: $2.50", {exact: true})).toHaveCount(1);
+    await expect(chart.getByText("2026-11-05: $2.50", {exact: true})).toHaveCount(1);
     await expect(page.locator('[aria-label="Period totals"]').getByText("$28.00", {exact: true})).toBeVisible();
   }
   expect(errors).toEqual([]);

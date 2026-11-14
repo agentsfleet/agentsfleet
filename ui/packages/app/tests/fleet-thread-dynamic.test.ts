@@ -4,7 +4,7 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 
 // Stub the heavy inner component (it pulls in @assistant-ui/react) so the
 // dynamic import factory resolves to a light module.
-vi.mock("@/components/domain/FleetThread", () => ({
+vi.mock("@/components/domain/conversation/thread/FleetThread", () => ({
   FleetThread: () => null,
 }));
 
@@ -39,7 +39,7 @@ vi.mock("next/dynamic", () => {
   };
 });
 
-import FleetThreadDynamic from "@/components/domain/FleetThreadDynamic";
+import FleetThreadDynamic from "@/components/domain/conversation/thread/FleetThreadDynamic";
 
 afterEach(() => cleanup());
 

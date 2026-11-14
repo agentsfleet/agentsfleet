@@ -29,7 +29,7 @@ Small signal icons connect welcome, assistant replies, and the working loader.
 ## What the animation shows
 
 ```text
-Describe the job --> clarify --> /schedule --> review setup --> Save fleet
+Describe the job --> clarify --> /schedule --> review setup --> chat Save
        |
        +--> created fleet
                      |
@@ -41,7 +41,7 @@ Describe the job --> clarify --> /schedule --> review setup --> Save fleet
                      |
                  loop the example
 
-Separate explicit action: Publish plugin --> reusable Plugin revision
+Separate explicit action: Save and publish --> reusable Plugin revision
 Ordinary Save creates the fleet; it makes no Plugin-publication claim.
 ```
 

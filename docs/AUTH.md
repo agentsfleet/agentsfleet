@@ -757,7 +757,9 @@ Two keys in one tenant now differ exactly when their creators do. Minting a read
 
 Its sibling for `afc_` is the *Known gap* under §"CLI credential: resolved, not granted". If either lands, both should, and by the same mechanism.
 
-`agt_t` authentication is one read-only lookup (`SELECT_TENANT_API_KEY`, `rustd/crates/daemon/afd_state/src/sql/mod.rs`). Nothing is written on the request path. The backend stores and compares only the SHA-256 digest.
+`agt_t` authentication is one read-only lookup (`SELECT_TENANT_API_KEY`, `rustd/crates/daemon/afd_state/src/sql/mod.rs`). Nothing is written on the request path. Authentication compares only the SHA-256 digest.
+
+New keys also store the final four characters in `display_suffix`, public recognition metadata returned by the key list. Historical rows return null; the digest cannot recover their suffix. No last-used timestamp is recorded.
 
 The raw key is returned once at creation and never saved. The minted value lives in a `SecretString`, wiped once the response that revealed it is written (`Minted`, `rustd/crates/daemon/afd_auth/src/minted.rs`). Runner tokens and command-line credentials are minted by the same type.
 

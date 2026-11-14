@@ -5,7 +5,7 @@ import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, 
 import { ArrowUpRightIcon, PlusIcon } from "@phosphor-icons/react/ssr";
 import type { Secret } from "@/lib/api/secrets";
 import { useCurrentUser } from "@/lib/auth/client";
-import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-module-loader";
+import { maySpeculateOnHover } from "@/components/domain/shared/dialogs/intent-module-loader";
 import { CATALOGUE_STATUS } from "./catalogue-status";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import { SECRETS_LOAD, type SecretsLoad } from "./secrets-load";

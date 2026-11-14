@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
-import { FleetRunDetails } from "@/components/domain/FleetRunDetails";
-import { FleetScopeProvider } from "@/components/domain/FleetScope";
+import { FleetRunDetails } from "@/components/domain/conversation/chrome/FleetRunDetails";
+import { FleetScopeProvider } from "@/components/domain/conversation/stream/FleetScope";
 import { SCHEDULE_EVENT } from "./helpers/schedule-activity";
 
 const read = vi.hoisted(() => vi.fn());

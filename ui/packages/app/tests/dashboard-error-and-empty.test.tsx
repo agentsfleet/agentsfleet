@@ -31,7 +31,7 @@ vi.mock("@/app/(dashboard)/actions", async () =>
 // island; stub it to a marker that renders only when `open`, so the click →
 // open wiring is observable without pulling next/dynamic into the test.
 vi.mock(
-  "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic",
+  "@/components/domain/shared/dialogs/CreateWorkspaceDialogDynamic",
   () => ({
     default: ({
       open,

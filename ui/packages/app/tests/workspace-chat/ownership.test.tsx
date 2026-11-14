@@ -1,7 +1,7 @@
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
 import {ChatFixture, CHAT_PROPS, chooseSetupAction} from "./fixture";
-import {WorkspaceChat} from "@/components/domain/chat/WorkspaceChat";
+import {WorkspaceChat} from "@/components/domain/setup/conversation/WorkspaceChat";
 import {DRAFT, FAILED_SCHEDULE, FLEET, FLEET_ID, REVIEW, SCHEDULE, response} from "@/tests/helpers/draft-fixtures";
 
 let fixture: ChatFixture;
@@ -70,7 +70,12 @@ it.each(["saved", "updated"])("recovers failed schedule registration from the ow
     return base(input, init);
   });
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
-  if (source === "updated") await chooseSetupAction("Save changes");
+  if (source === "updated") {
+    await chooseSetupAction("Instructions");
+    fireEvent.change(screen.getByRole("textbox", {name: "Instructions"}), {target: {value: "Review releases and preserve the schedule"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  }
   fireEvent.click(await screen.findByRole("button", {name: "Retry registration"}));
   await screen.findByText("Registration retry unavailable");
   const retry = screen.getByRole("button", {name: "Retry registration"});

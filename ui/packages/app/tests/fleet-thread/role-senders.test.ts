@@ -2,7 +2,7 @@ import { FLEET_NAME, SUBJECT, WS, ZID, ev, mockStream } from "./harness";
 import React from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { FleetThread } from "@/components/domain/FleetThread";
+import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
 import { ACTOR } from "@/lib/events/event-summary";
 import { OWN_SENDER } from "@/lib/events/sender-names";
 import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";

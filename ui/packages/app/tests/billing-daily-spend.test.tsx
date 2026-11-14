@@ -17,8 +17,8 @@ it("renders complete daily amounts independently of the activity page and scales
   ];
   render(<BillingDailySpend report={billingReport({daily, activities: {items: [], total: 100, next_cursor: "more"}})} />, {wrapper: TooltipProvider});
   const chart = screen.getByRole("list", {name: "Daily settled charges"});
-  expect(within(chart).getByText("2026-10-24 UTC: $0.00")).toBeTruthy();
-  expect(within(chart).getByText("2026-10-25 UTC: $9,007,199,254.741")).toBeTruthy();
+  expect(within(chart).getByText("2026-10-24: $0.00")).toBeTruthy();
+  expect(within(chart).getByText("2026-10-25: $9,007,199,254.741")).toBeTruthy();
   expect(screen.getByText("Daily high $9,007,199,254.741")).toBeTruthy();
   expect(Array.from(chart.querySelectorAll<HTMLElement>('[aria-hidden="true"]'), bar => bar.style.height)).toEqual(["0%", "100%"]);
 });
@@ -37,6 +37,6 @@ it("labels setup-only charges without attributing them to a fleet", () => {
   render(<BillingDailySpend report={billingReport({from_at: "2026-10-25T00:00:00Z", totals})} />, {wrapper: TooltipProvider});
   expect(screen.getByText("Daily spend · Setup chat")).toBeTruthy();
   const chart = screen.getByRole("list", {name: "Daily settled charges"});
-  expect(within(chart).getByText("2026-10-25 UTC: $7.00")).toBeTruthy();
+  expect(within(chart).getByText("2026-10-25: $7.00")).toBeTruthy();
   expect(screen.getByText("Daily high $7.00")).toBeTruthy();
 });

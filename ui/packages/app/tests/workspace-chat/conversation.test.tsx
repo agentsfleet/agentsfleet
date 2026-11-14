@@ -4,9 +4,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { DraftClient } from "@/lib/api/drafts";
 import type { DraftView } from "@/lib/api/draft-state";
-import { DraftConversation } from "@/components/domain/chat/DraftConversation";
-import { SetupProgress } from "@/components/domain/chat/SetupProgress";
-import { LOAD_MORE_COPY } from "@/components/domain/chat/DraftLoadMore";
+import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
+import { SetupProgress } from "@/components/domain/setup/summary/SetupProgress";
+import { LOAD_MORE_COPY } from "@/components/domain/setup/conversation/DraftLoadMore";
 import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
 import { ChatFixture, CHAT_PROPS } from "./fixture";
 import { DRAFT, FLEET, MESSAGE, MODEL, response } from "@/tests/helpers/draft-fixtures";
@@ -56,7 +56,7 @@ it.each([ACTIVITY_KIND.setupSaved, ACTIVITY_KIND.setupReady])("keeps the saved o
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view}><p>Configuration readiness</p></DraftConversation>);
   const saved = screen.getByText(kind === ACTIVITY_KIND.setupSaved ? "Setup saved · v1" : "Setup done · v1");
   const checks = screen.getByText("Configuration readiness");
-  const working = screen.getByRole("status", {name: "Refining setup"});
+  const working = screen.getByRole("status", {name: "Thinking"});
   expect(saved.compareDocumentPosition(checks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(checks.compareDocumentPosition(working) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
@@ -100,11 +100,11 @@ it("stops authoring at the durable watermark and replaces Working with the termi
     return base(input, init);
   });
   await client.resume(DRAFT.id); render(<LiveConversation />);
-  expect(screen.getByRole("status", {name: "Refining setup"})).toBeTruthy();
+  expect(screen.getByRole("status", {name: "Thinking"})).toBeTruthy();
   fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
   expect(await screen.findByText("Request stopped.")).toBeTruthy();
   await waitFor(() => expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull());
-  expect(screen.queryByRole("status", {name: "Refining setup"})).toBeNull();
+  expect(screen.queryByRole("status", {name: "Thinking"})).toBeNull();
 });
 
 it.each([

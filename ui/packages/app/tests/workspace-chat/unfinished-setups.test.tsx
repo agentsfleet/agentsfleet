@@ -1,7 +1,7 @@
 import type { DraftSidebarState } from "@/components/layout/draft-sidebar-state";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { UnfinishedSetups } from "@/components/domain/chat/UnfinishedSetups";
+import { UnfinishedSetups } from "@/components/domain/setup/conversation/UnfinishedSetups";
 import { HistoryContext } from "@/components/layout/draft-sidebar-state";
 import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
 import { CHAT_ACTIVITY } from "@/lib/api/draft-summary";

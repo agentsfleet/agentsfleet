@@ -13,7 +13,7 @@ import { deleteSecretAction } from "../actions";
 import type { Secret } from "@/lib/api/secrets";
 import { isDefiniteRefusal } from "@/lib/api/errors";
 import { presentErrorString } from "@/lib/errors";
-import EditSecretDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
+import EditSecretDialogDynamic from "@/components/domain/shared/dialogs/EditSecretDialogDynamic";
 import { SecretActions, SecretNameCell, secretType } from "./secret-row-cells";
 import {
   DELETE_CONNECTION_CONFIRM,

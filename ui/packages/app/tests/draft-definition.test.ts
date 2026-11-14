@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { DefinitionSchema, FleetSchema } from "@/lib/api/draft-types";
 import { FLEET } from "./helpers/draft-fixtures";
-import { DEFAULT_DAILY_NANOS, initialDefinition } from "@/components/domain/chat/chat-defaults";
+import { DEFAULT_DAILY_NANOS, initialDefinition } from "@/components/domain/setup/chat-defaults";
 import { fixtureDefinition } from "./e2e/acceptance/fixtures/definition";
 
 it.each([undefined, null, "", 7])("refuses a missing, empty or non-string description (%s)", (description) => {

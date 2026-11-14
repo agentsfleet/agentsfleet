@@ -3,10 +3,10 @@ import { z } from "zod";
 import { PageLayout } from "@agentsfleet/design-system";
 import { requireCredential } from "@/lib/auth/credential";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
-import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
+import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
-import { PLUGIN_CREATE_PROMPT } from "@/components/domain/chat/chat-defaults";
-import type { AuthoringIntent } from "@/components/domain/chat/AuthoringIntent";
+import { PLUGIN_CREATE_PROMPT } from "@/components/domain/setup/chat-defaults";
+import type { AuthoringIntent } from "@/components/domain/setup/AuthoringIntent";
 
 export const dynamic = "force-dynamic";
 const SearchSchema = z.union([

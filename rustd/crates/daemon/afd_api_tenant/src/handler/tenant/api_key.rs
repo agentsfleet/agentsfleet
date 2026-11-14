@@ -307,6 +307,7 @@ fn summary(key: &KeyRow) -> ApiKeySummary<'_> {
     ApiKeySummary {
         id: Cow::Borrowed(&key.id),
         key_name: Cow::Borrowed(&key.name),
+        display_suffix: key.display_suffix.as_deref().map(Cow::Borrowed),
         active: key.active(),
         created_at: key.created_at,
         revoked_at: key.revoked_at,

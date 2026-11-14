@@ -133,6 +133,6 @@ describe("FleetThread — reply parts", () => {
     const working = within(replyRow()).getByRole("status", { name: "Working" });
     expect(working.querySelector('[data-chat-loading="true"]')).toBeTruthy();
     expect(working.querySelector("[data-signal-spinner]")).toBeNull();
-    expect(working.textContent).toContain("Working…");
+    expect(working.textContent).toContain("Working");
   });
 });

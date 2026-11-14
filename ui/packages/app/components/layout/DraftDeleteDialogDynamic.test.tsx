@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { IntentModuleSnapshot } from "@/components/domain/island-dynamic/intent-module-loader";
+import type { IntentModuleSnapshot } from "@/components/domain/shared/dialogs/intent-module-loader";
 import { DRAFT, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { DraftDeleteDialogDynamic } from "./DraftDeleteDialogDynamic";
 
@@ -10,7 +10,7 @@ const state = vi.hoisted(() => {
   const importer: {load: (() => Promise<DialogModule>) | null} = {load: null};
   return {snapshot, importer, preload: vi.fn(), retry: vi.fn()};
 });
-vi.mock("@/components/domain/island-dynamic/intent-module-loader", () => ({
+vi.mock("@/components/domain/shared/dialogs/intent-module-loader", () => ({
   INTENT_MODULE_STATUS: {error: "error"},
   createIntentModuleLoader: (load: () => Promise<DialogModule>) => {
     state.importer.load = load;

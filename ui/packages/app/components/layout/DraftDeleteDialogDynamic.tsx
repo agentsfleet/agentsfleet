@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { createIntentModuleLoader, useIntentModule } from "@/components/domain/island-dynamic/intent-module-loader";
-import { IntentDialogStatus } from "@/components/domain/island-dynamic/IntentDialogStatus";
+import { createIntentModuleLoader, useIntentModule } from "@/components/domain/shared/dialogs/intent-module-loader";
+import { IntentDialogStatus } from "@/components/domain/shared/dialogs/IntentDialogStatus";
 import type { DraftDeleteDialogProps } from "./DraftDeleteDialog";
 
 const draftDeleteDialogLoader = createIntentModuleLoader(() => import("./DraftDeleteDialog"));

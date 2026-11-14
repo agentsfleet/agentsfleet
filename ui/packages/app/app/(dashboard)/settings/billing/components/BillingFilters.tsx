@@ -46,7 +46,6 @@ export function BillingFilters({ report, modelNames }: Props) {
     </fieldset>
       </PopoverContent>
     </Popover>
-    <p className="ml-auto text-eyebrow text-text-dim">All times UTC</p>
     {pending ? <span className="absolute right-0 top-0"><Spinner size="sm" label="Updating report…" /></span> : null}
   </div>;
 }

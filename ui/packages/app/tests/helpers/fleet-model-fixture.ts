@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { FleetModelOwner } from "@/components/domain/chat/useFleetModel";
+import type { FleetModelOwner } from "@/components/domain/models/useFleetModel";
 import { DraftClientFixture } from "./draft-client-fixture";
 import { CANDIDATE_ID, DRAFT, DRAFT_ID, FLEET_DETAIL, FLEET_ID, MODEL, MODEL_REF, REVIEW, WORKSPACE, response } from "./draft-fixtures";
 

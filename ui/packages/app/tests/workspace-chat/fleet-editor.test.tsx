@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { ChatFixture, CHAT_PROPS } from "./fixture";
-import { FleetSetupWorkspace, EditSetupButton } from "@/components/domain/chat/FleetSetupWorkspace";
+import { FleetSetupWorkspace } from "@/components/domain/setup/FleetSetupWorkspace";
+import { EditSetupButton } from "@/components/domain/setup/EditSetupControls";
 import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 let fixture: ChatFixture;

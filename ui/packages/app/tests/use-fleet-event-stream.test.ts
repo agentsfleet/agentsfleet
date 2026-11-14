@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { CONNECTION_STATUS, useFleetEventStream } from "../components/domain/useFleetEventStream";
+import { CONNECTION_STATUS, useFleetEventStream } from "../components/domain/conversation/stream/useFleetEventStream";
 import { __resetRegistryForTests } from "@/tests/helpers/fleet-streams";
 import { OUTCOME } from "@/lib/events/event-summary";
 import { FRAME_KIND } from "@/lib/api/events-types";

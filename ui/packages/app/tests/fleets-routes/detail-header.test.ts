@@ -5,7 +5,7 @@ import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { fetchMock } from "../helpers/dashboard-mocks";
-import { FleetSetupWorkspace } from "@/components/domain/chat/FleetSetupWorkspace";
+import { FleetSetupWorkspace } from "@/components/domain/setup/FleetSetupWorkspace";
 import { chatProps } from "./page-parts";
 
 const FLEET_TITLE_MARKUP = ">platform-ops</h1>";
