@@ -62,7 +62,7 @@ const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
 
 // Wire/output literals (RULE UFS — each crosses a boundary or repeats).
-const STEER_COMMAND = "steer" as const;
+const STEER_COMMAND = ["fleet", "steer"] as const;
 const JSON_FLAG = "--json" as const;
 const ENVELOPE_EVENT_ID_KEY = "event_id" as const;
 const ENVELOPE_KIND_KEY = "kind" as const;
@@ -162,7 +162,7 @@ if (!isLive) {
 
     it("steer <id> <message> --json returns a processed terminal result", async () => {
       assert.ok(fleetId, "fleet was not installed in beforeAll");
-      const result = await runWithEnv([STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE, JSON_FLAG]);
+      const result = await runWithEnv([...STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE, JSON_FLAG]);
       const diagnostics = result.code === 0
         ? ""
         : ` events=${JSON.stringify(await runWithEnv(["fleet", "events", fleetId, JSON_FLAG]))}`;
@@ -171,7 +171,7 @@ if (!isLive) {
 
     it("steer without the JSON flag renders a readable fleet conversation", async () => {
       assert.ok(fleetId, "fleet was not installed in beforeAll");
-      const result = await runWithEnv([STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE]);
+      const result = await runWithEnv([...STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE]);
       assert.equal(result.code, 0, `conversation failed: stdout=${result.stdout} stderr=${result.stderr}`);
       assert.match(result.stdout, /Final reply:\s*\S/u, "the terminal must show the fleet's answer");
       assert.match(result.stdout, /event [\da-f-]+ processed/u, "the terminal must confirm the completed turn");
@@ -180,7 +180,7 @@ if (!isLive) {
 
     it("steer <id> with a whitespace-only message is rejected client-side", async () => {
       assert.ok(fleetId, "fleet was not installed in beforeAll");
-      const result = await runWithEnv([STEER_COMMAND, fleetId, WHITESPACE_MESSAGE, JSON_FLAG]);
+      const result = await runWithEnv([...STEER_COMMAND, fleetId, WHITESPACE_MESSAGE, JSON_FLAG]);
       assert.notEqual(result.code, 0, `expected non-zero; stdout=${result.stdout} stderr=${result.stderr}`);
       assert.match(`${result.stderr}\n${result.stdout}`, /message is required/i,
         `expected "message is required" stem; got stdout=${result.stdout} stderr=${result.stderr}`);
@@ -200,7 +200,7 @@ if (!isLive) {
     }, STEER_TIMEOUT_MS);
 
     it("steer with no <fleet_id> exits non-zero with a usage stem", async () => {
-      const result = await runWithEnv([STEER_COMMAND, JSON_FLAG]);
+      const result = await runWithEnv([...STEER_COMMAND, JSON_FLAG]);
       assert.notEqual(result.code, 0, `expected non-zero; stdout=${result.stdout} stderr=${result.stderr}`);
       assert.match(`${result.stderr}\n${result.stdout}`.toLowerCase(), /missing|required|usage|expected/,
         `expected a missing-arg stem; got stdout=${result.stdout} stderr=${result.stderr}`);

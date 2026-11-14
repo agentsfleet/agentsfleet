@@ -47,14 +47,14 @@ const STATE_DIR_PREFIX = "agentsfleet-grant-" as const;
 const GRANT_WORKSPACE = "fixture-cli-connector-grants";
 const NO_COLOR = "1" as const;
 const JSON_FLAG = "--json" as const;
-const STEER_COMMAND = "steer" as const;
+const STEER_COMMAND = ["fleet", "steer"] as const;
 const BILLING_ARGS = ["usage", "show", JSON_FLAG] as const;
 const BALANCE_FIELD = "balance_nanos" as const;
 const ONE_SHOT_MESSAGE = "respond with a single short acknowledgement and stop" as const;
 const ENVELOPE_STATUS_KEY = "status" as const;
 const STATUS_PROCESSED = "processed" as const;
-const GRANT_COMMAND = "grant" as const;
-const DELETE_VERB = "delete" as const;
+const GRANT_COMMAND = ["fleet", "grants"] as const;
+const REVOKE_VERB = "revoke" as const;
 const FLEET_FLAG = "--fleet" as const;
 const CHAT_COMMAND = "chat";
 const SAVE_FLAG = "--save";
@@ -211,7 +211,7 @@ if (!isLive) {
 
     it("the granted fleet answers a steer, and the tenant balance falls", async () => {
       assert.ok(fleetId, "the fleet was not installed in beforeAll");
-      const result = await runWithEnv([STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE, JSON_FLAG]);
+      const result = await runWithEnv([...STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE, JSON_FLAG]);
       assert.equal(result.code, 0,
         `a granted fleet's steer must exit 0; stdout=${result.stdout} stderr=${result.stderr}`);
       const envelope = trailingJson(result.stdout) as Record<string, unknown>;
@@ -232,11 +232,11 @@ if (!isLive) {
 
     // Last, and deliberately so: revoking the standing grant is what stops the
     // fleet reaching the provider, so every step that needs it has run by here.
-    it("`grant delete` revokes the standing permission the install wrote", async () => {
+    it("`fleet grants revoke` revokes the standing permission the install wrote", async () => {
       const grantId = installGrant?.id;
       assert.ok(grantId, `the install-time grant carried no id: ${JSON.stringify(installGrant)}`);
-      const deleted = await runWithEnv([GRANT_COMMAND, DELETE_VERB, grantId, FLEET_FLAG, fleetId]);
-      assert.equal(deleted.code, 0, `grant delete exited ${deleted.code}: ${deleted.stderr}`);
+      const revoked = await runWithEnv([...GRANT_COMMAND, REVOKE_VERB, grantId, FLEET_FLAG, fleetId]);
+      assert.equal(revoked.code, 0, `fleet grants revoke exited ${revoked.code}: ${revoked.stderr}`);
 
       const grants = await listGrants(env, fleetId);
       const mine = grants.filter((row) => row.service === CONNECTOR_SERVICE_LINEAR);
