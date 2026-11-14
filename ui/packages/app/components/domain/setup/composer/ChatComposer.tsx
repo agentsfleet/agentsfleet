@@ -11,7 +11,7 @@ import { savedDraft } from "@/lib/api/draft-continuation";
 import { CHAT_PLACEHOLDER } from "../chat-defaults";
 import { ChatToolbar } from "./ChatToolbar";
 import { ChatComposerFrame, ChatComposerHint } from "../../shared/chat/ChatComposerFrame";
-import { SetupPublication } from "../publishing/SetupPublication";
+import { SetupSaveFlap } from "../publishing/SetupSaveFlap";
 import { SetupWakeups } from "./SetupWakeups";
 
 // DraftClient records this failure in view.error before rejecting the request.
@@ -22,7 +22,7 @@ export function ChatComposer({ client, view, workspace, canStop, blocked, dirty,
   const disabled = stopDisabled || !view.model || blocked;
   const input = useRef<HTMLTextAreaElement>(null);
   return <>
-    <SetupPublication client={client} view={view} workspace={workspace} dirty={dirty} onOpenFleet={onOpenFleet} modelsHref={modelsHref} />
+    <SetupSaveFlap client={client} view={view} workspace={workspace} dirty={dirty} onOpenFleet={onOpenFleet} modelsHref={modelsHref} />
     <SetupWakeups client={client} view={view} workspace={workspace} />
     <ChatComposerFrame stackActions={empty} label="Setup chat composer" placeholder={view.fleet || view.preview?.setupRevision ? "Ask a question or change the setup…" : CHAT_PLACEHOLDER} inputRef={input} disabled={disabled} focusKey={view.focusRevision}
       toolbar={<ChatToolbar client={client} view={view} />}

@@ -1,6 +1,7 @@
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { StackIcon, NotePencilIcon, PuzzlePieceIcon, KeyIcon, PlugsConnectedIcon } from "@phosphor-icons/react/ssr";
 import { workspacePath } from "@/lib/workspace-routes";
+import {pluginsUiEnabled} from "@/lib/plugin-ui";
 
 export type NavEntry = {
   label: string;
@@ -22,6 +23,10 @@ export const PRIMARY_NAV: NavEntry[] = [
   { label: "Secrets", path: "secrets", icon: KeyIcon, workspaceScoped: true },
   { label: "Connected apps", path: "integrations", icon: PlugsConnectedIcon, workspaceScoped: true },
 ];
+
+export function primaryNavigation(): NavEntry[] {
+  return PRIMARY_NAV.filter(entry => entry.path !== "plugins" || pluginsUiEnabled());
+}
 
 export function resolveHref(entry: NavEntry, workspaceId: string | null): string {
   if (entry.external || !entry.workspaceScoped) return entry.path;

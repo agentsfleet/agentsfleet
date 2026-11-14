@@ -350,11 +350,11 @@ The current invite flow accepts one email and creates a recipient-specific invit
 If email delivery fails after invitation creation, keep the invitation visible with resend and copy-link recovery.
 Keep delivery status separate from invitation status. Never show an empty membership list when its read failed.
 
-Call the resource **Plugins**. Flow 1 is approved: each Plugin contains a complete fleet setup with immutable revisions and existing account access.
-Use Plugin starts a new private setup; it never attaches capabilities to an existing fleet.
+The retained Plugin implementation stores complete fleet setups with immutable revisions and existing account access. Its UI tree is disabled pending the separate Fleet/template/Plugin discussion.
 
-Save and publish creates a reusable Plugin; sending Save in chat saves a private fleet.
-Defer capability composition and plugin mentions to the revisit note in M239; they are outside this refresh.
+Save and publish saves or updates the fleet setup through the native save path. It makes no Plugin or Fleet-library publication request.
+
+Keep the reusable Plugin UI and backend APIs behind this boundary.
 Keep existing Secrets.
 
 A separate readable environment-variable feature is outside this delivery.
@@ -694,7 +694,7 @@ Keep the creator's setup transcript private.
 Other members see only setup facts and activity already authorized for them.
 
 Saving does not replay the setup prompt as a first run. Run now requires an explicit instruction; configured triggers retain their existing behavior.
-Save as Plugin publishes a reusable complete setup through a separate action.
+The retained Plugin publication action stays outside the active UI.
 
 ### Chat state and activity
 
@@ -720,8 +720,7 @@ The compact setup status shows actual reading, sending, saving and publishing pr
 Show a success tick only for a confirmed saved version or publication.
 A new authoring request replaces the previous confirmation and its fleet action.
 
-Confirmed saving opens the fleet conversation. Publishing a Plugin separately offers New fleet pinned to the published revision.
-Flow 1 is approved: Plugins preserve full-fleet reuse.
+Confirmed saving opens the fleet conversation. The disabled Plugin tree retains its publication confirmation and pinned-revision start for possible reuse.
 
 Attachable capabilities are deferred to the M239 discussion.
 Keep those navigation actions separate from the Save changes control.
@@ -823,8 +822,9 @@ Foreground surfaces stay readable. Use the shared palette and purposeful depth w
 
 The conversation types a problem, refines setup, shows a reviewed save, and continues into scheduled work.
 Save creates an independent fleet from the reviewed setup. It does not publish to the Library.
-Save to Library is a separate, explicit action that publishes an immutable version.
-Choose a Library version before creating a new private setup; show the selected version throughout review.
+
+Plugin publication and reuse remain available through the retained APIs. Their dashboard navigation, source routes and publication actions are paused.
+
 Improve and Apply revise an existing fleet through a new review rather than creating another fleet.
 Use native setup records throughout. Do not offer file imports, bundle exports, `SKILL.md`, or `TRIGGER.md` authoring.
 
@@ -885,7 +885,7 @@ Keep the original history.
 If compaction fails or pinned input still cannot fit, show the recorded failure and recovery action.
 [Conversation compaction](architecture/context_lifecycle.md) owns the shared behavior and limits.
 
-These boundaries follow the [model instructions](../rustd/crates/daemon/afd_authoring/src/model/provider/prompt.rs), [publication implementation](../rustd/crates/daemon/afd_authoring/src/library/publish/persist.rs), and [resource reference](architecture/api_resources.md).
+These boundaries follow the [model instructions](../rustd/crates/daemon/afd_authoring/src/model/provider/prompt.rs), [publication implementation](../rustd/crates/daemon/afd_authoring/src/plugin/publish/persist.rs), and [resource reference](architecture/api_resources.md).
 
 ### Example playback
 
@@ -1154,7 +1154,7 @@ The header shortcut starts a new fleet through the shared navigation intent on r
 
 ### Fleet setup review
 
-Use the original flat Summary rows and dividers. Model and spending limit appear at the top; optional Plugin provenance is one quiet line.
+Use the original flat Summary rows and dividers. Model and spending limit appear at the top. Plugin provenance stays hidden while its UI is paused.
 
 The broader sections are Repositories, Public internet access and Secrets. Tools sit in a small row with repositories. Remove Purpose, repeated recurrence prose and the separate Review setup panel.
 
@@ -1172,11 +1172,13 @@ The composer flap owns Next wake-up and its edit, pause and removal controls. Di
 
 Proposed schedules remain pending until saved and registered. Omit the flap when a completed read confirms no schedules. Summary contains no duplicate wake-up row or “Not scheduled” label.
 
-Save and publish is the flap above the composer. It uses the reviewed fleet name and native publication target, without a popup or a separate Save fleet button.
+Save and publish is the flap above the composer, without a popup or a separate Save fleet button. It saves a fleet or updates its existing setup revision.
+
+The flap never publishes a Plugin or starts a first run. Configured triggers retain their native behavior.
 
 While pending it shows a spinner, a muted-to-bright label and whole seconds. Only confirmed native receipts show success.
 
-Unconfirmed writes retain Retry and the original operation identity. Natural chat Save remains available for private fleet saving.
+Unconfirmed writes retain Retry and the original operation identity. Natural chat Save remains available through the same native fleet-saving path.
 
 Queued, Thinking and working rows share the same progress label. Only the visual clock ticks; the accessible label stays stable.
 

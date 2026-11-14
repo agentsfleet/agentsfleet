@@ -1,3 +1,5 @@
+// Exercise the preserved Plugin tree with its UI switch explicitly enabled.
+vi.mock("@/lib/plugin-ui", () => ({pluginsUiEnabled: () => true}));
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {act, cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
 import {flushSync} from "react-dom";

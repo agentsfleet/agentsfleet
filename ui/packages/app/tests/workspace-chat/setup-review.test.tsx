@@ -8,6 +8,7 @@ import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { DRAFT, FLEET, REVIEW, SCHEDULE, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { DRAFT_STATE, SCHEDULE_RUN_STATE, SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
 
+vi.mock("@/lib/plugin-ui", () => ({pluginsUiEnabled: () => true}));
 let client: DraftClient;
 beforeEach(() => {client = new DraftClient({account: "account", workspace: WORKSPACE, subject: "reviewer"});});
 afterEach(() => {cleanup(); client.dispose(); vi.restoreAllMocks();});

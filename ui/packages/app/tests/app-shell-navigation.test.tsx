@@ -112,7 +112,7 @@ describe("conversation-first app navigation", () => {
     expect(screen.getByRole("link", {name: "Your fleets"}).textContent).toBe("");
     expect(screen.getByRole("link", { name: "Your fleets" })).toBeTruthy();
     expect(screen.getByRole("button", { name: MENU })).toBeTruthy();
-    expect(screen.getByRole("link", {name: "Plugins"})).toBeTruthy();
+    expect(screen.queryByRole("link", {name: "Plugins"})).toBeNull();
     expect(screen.getByRole("button", {name: "Open navigation"}).getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
