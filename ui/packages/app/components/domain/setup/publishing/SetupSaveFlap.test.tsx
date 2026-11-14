@@ -1,10 +1,11 @@
 import {useSyncExternalStore} from "react";
 import {act, cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
+import {z} from "zod";
 import type {DraftView} from "@/lib/api/draft-state";
 import {DraftClient} from "@/lib/api/drafts";
 import {ChatFixture, CHAT_PROPS} from "@/tests/workspace-chat/fixture";
-import {DRAFT, FLEET, FLEET_ID, REVIEW, response} from "@/tests/helpers/draft-fixtures";
+import {DRAFT, FLEET, FLEET_ID, MODEL, REVIEW, response} from "@/tests/helpers/draft-fixtures";
 import {SetupSaveFlap} from "./SetupSaveFlap";
 
 const feature = vi.hoisted(() => ({enabled: false}));
@@ -95,6 +96,44 @@ it("updates an existing fleet to v2 without cloning it or publishing a Plugin", 
   await screen.findByText("Setup saved · v2");
   expect(writes).toBe(1);expect(fixture.saveAttempts).toBe(0);expect(fixture.publicationAttempts).toBe(0);
   expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toContain(FLEET_ID);
+});
+
+// Value: protects=the fleet's frozen model when legacy stored JSON omits it;
+// fails_when=preparing a save patches stale JSON over the server model; seam=native client; no_claim=server model resolution.
+it("preserves the server-created frozen model when the account default differs", async () => {
+  const frozen = "model:frozen";let appliedModel: unknown;let applied = false;
+  const definition = {...REVIEW.effective.definition, config: {...REVIEW.effective.definition.config,
+    "x-agentsfleet": {...z.record(z.string(), z.unknown()).parse(REVIEW.effective.definition.config["x-agentsfleet"]), model: frozen}}};
+  fixture.draft = {...DRAFT, linked_fleet_id: FLEET_ID, candidate: {...DRAFT.candidate!, definition},
+    review: {...REVIEW, effective: {...REVIEW.effective, definition, runtime_model_ref: frozen, target_setup_revision: "1"}}};
+  const base = fixture.fetch.getMockImplementation()!;
+  fixture.fetch.mockImplementation(async (input, init) => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (path.endsWith(`/drafts/${DRAFT.id}`) && init?.method === "PATCH") {
+      const patch = z.object({config_ops: z.array(z.object({path: z.string(), value: z.unknown().optional()}))})
+        .parse(JSON.parse(typeof init.body === "string" ? init.body : "{}"));
+      const config = patch.config_ops.find(op => op.path === "/config/x-agentsfleet");
+      const values = z.record(z.string(), z.unknown()).parse(config?.value);
+      const edited = {...definition, config: {...definition.config, "x-agentsfleet": values}};
+      fixture.draft = {...fixture.draft, candidate: {...fixture.draft.candidate!, definition: edited},
+        review: {...REVIEW, effective: {...REVIEW.effective, definition: edited, target_setup_revision: "1",
+          runtime_model_ref: typeof values.model === "string" ? values.model : MODEL.ref}}};
+      return response(fixture.draft);
+    }
+    if (path.endsWith(`/fleets/${FLEET_ID}/revisions`) && init?.method === "POST") {
+      const config = z.record(z.string(), z.unknown()).parse(fixture.draft.candidate?.definition.config["x-agentsfleet"]);
+      appliedModel = config.model ?? MODEL.ref;applied = true;
+      return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"two"', schedules: []});
+    }
+    if (path.endsWith(`/fleets/${FLEET_ID}`) && applied) return response({...FLEET, setup_revision: "2"});
+    return base(input, init);
+  });
+  client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});await client.refreshFleetSetup();
+  expect(client.getSnapshot().preview?.definition.config["x-agentsfleet"]).not.toHaveProperty("model");
+  expect(client.getSnapshot().model).not.toBe(frozen);
+  render(<Flap />);fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
+  await screen.findByText("Setup saved · v2");
+  expect(appliedModel).toBe(frozen);
 });
 
 it.each([

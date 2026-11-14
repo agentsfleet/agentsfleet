@@ -32,6 +32,27 @@ describe("private setup editing and recovery boundaries", () => {
     expect(mutations()).toEqual([]);
   });
 
+  it("prepares a source without applying edits and leaves an existing proposal intact", async () => {
+    const instance = await ready();
+    instance.fresh({kind: "definition", definition: REVIEW.effective.definition});
+    await instance.prepareSave();
+    expect(mutations()).toHaveLength(1);
+    expect(mutations()[0]?.body).toMatchObject({source: {kind: "definition", definition: REVIEW.effective.definition}});
+    const proposal = instance.getSnapshot().draft;
+    await instance.prepareSave();
+    expect(instance.getSnapshot().draft).toBe(proposal);
+    expect(mutations()).toHaveLength(1);
+  });
+
+  it("refuses preparation without a source or authoring model before creating a draft", async () => {
+    fixture.override = ({path}) => path.endsWith("/models") ? response({items: [], next_cursor: null}) : undefined;
+    const instance = await ready();
+    await expect(instance.prepareSave()).rejects.toMatchObject({status: 409});
+    instance.fresh({kind: "definition", definition: REVIEW.effective.definition});
+    await expect(instance.prepareSave()).rejects.toMatchObject({status: 400});
+    expect(mutations()).toEqual([]);
+  });
+
   it.each(["same", "rename", "definition"])("creates an editable blank source then applies a %s edit", async (kind) => {
     const instance = await ready(); const input = edit();
     if (kind === "rename") input.instanceName = "new-name";
