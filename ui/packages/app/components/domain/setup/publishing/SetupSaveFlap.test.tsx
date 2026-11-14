@@ -82,7 +82,7 @@ it("updates an existing fleet to v2 without cloning it or publishing a Plugin", 
     review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
   const base = fixture.fetch.getMockImplementation()!;let applied = false;let writes = 0;
   fixture.fetch.mockImplementation(async (input, init) => {
-    const path = String(input);
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (path.endsWith(`/fleets/${FLEET_ID}/revisions`) && init?.method === "POST") {
       applied = true;writes++;
       return response({fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"two"', etag: '"two"', schedules: []});
