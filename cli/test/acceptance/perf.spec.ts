@@ -82,6 +82,7 @@ const REMOTE_SETUP_TIMEOUT_MS = 120_000;
 const FLAG_JSON = "--json" as const;
 const FLAG_CURSOR = "--cursor" as const;
 const FLAG_LIMIT = "--limit" as const;
+const COMMAND_FLEET = "fleet" as const;
 const COMMAND_LIST = "list" as const;
 const COMMAND_DOCTOR = "doctor" as const;
 const COMMAND_EVENTS = "events" as const;
@@ -100,7 +101,7 @@ interface MeasuredCommand {
 }
 
 const MEASURED_COMMANDS: ReadonlyArray<MeasuredCommand> = [
-  { label: "fleet list --json", args: [COMMAND_LIST, FLAG_JSON], requiredKey: KEY_ITEMS, isList: true },
+  { label: "fleet list --json", args: [COMMAND_FLEET, COMMAND_LIST, FLAG_JSON], requiredKey: KEY_ITEMS, isList: true },
   { label: "doctor --json", args: [COMMAND_DOCTOR, FLAG_JSON], requiredKey: KEY_CHECKS },
 ];
 
@@ -127,6 +128,7 @@ function p50Of(samples: ReadonlyArray<number>): number {
 
 function eventsArgs(fleetId: string, cursor: string | null): ReadonlyArray<string> {
   return [
+    COMMAND_FLEET,
     COMMAND_EVENTS,
     fleetId,
     FLAG_LIMIT,

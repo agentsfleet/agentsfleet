@@ -1,6 +1,6 @@
 /**
  * Owned fixture for the `logs-events-live` slice — a bounded cursor walk
- * over the `events <fleet_id> --json` paginator.
+ * over the `fleet events <fleet_id> --json` paginator.
  *
  * The shared fixtures (cli.js, teardown.ts, lifecycle.ts) stay untouched;
  * the cursor-walk loop and its envelope shape live here because no other
@@ -19,8 +19,10 @@ import { runFleetctl } from "./cli.js";
 
 type Env = Readonly<Record<string, string>>;
 
-export const EVENTS_COMMAND = "events" as const;
-export const LOGS_COMMAND = "logs" as const;
+// Both verbs live under `fleet`, so each constant is the whole argv head.
+export const FLEET_COMMAND = "fleet" as const;
+export const EVENTS_COMMAND = [FLEET_COMMAND, "events"] as const;
+export const LOGS_COMMAND = [FLEET_COMMAND, "logs"] as const;
 export const JSON_FLAG = "--json" as const;
 export const AGENT_FLAG = "--fleet" as const;
 export const LIMIT_FLAG = "--limit" as const;
@@ -72,7 +74,7 @@ export async function fetchEventsPage(
   fleetId: string,
   cursor: string | null,
 ): Promise<EventsEnvelope> {
-  const args = [EVENTS_COMMAND, fleetId, LIMIT_FLAG, String(PAGE_LIMIT)];
+  const args = [...EVENTS_COMMAND, fleetId, LIMIT_FLAG, String(PAGE_LIMIT)];
   if (cursor) args.push(CURSOR_FLAG, cursor);
   args.push(JSON_FLAG);
   const result = await runFleetctl(args, { env });
