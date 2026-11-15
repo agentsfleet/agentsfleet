@@ -8,6 +8,11 @@ import { defineConfig } from 'vitest/config'
 // budget instead of flaking only outside `bun run test`.
 const TEST_TIMEOUT_MS = 60_000
 
+// Time tests assert the calendar of the UTC runners CI uses. Pinning the zone
+// here, before any worker starts, grades them the same on a developer machine
+// in IST or New York instead of failing on the machine's own clock.
+process.env.TZ = "UTC";
+
 export default defineConfig({
   cacheDir: '.tmp/vite',
   resolve: {
