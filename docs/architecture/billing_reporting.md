@@ -26,9 +26,21 @@ The report reads two tables the settle transaction maintains, never the raw ledg
 - `billing.usage_daily`: settled money and quantities per tenant, UTC day, work type, fleet and model.
 - `billing.runs_daily`: settled runs per tenant, UTC day, work type and fleet.
 
-`ledger/settle.rs` runs four statements in one transaction and one fixed order. `settle_lines.sql` stamps the lines settled, guarded by `settled_at IS NULL`, and returns them. `add_usage_daily.sql` adds exactly those lines to their day rows, written in key order. `count_run.sql` counts the run, and `debit_wallet.sql` debits the wallet last. The rollup reads only the lines the guard just stamped, so it moves exactly once with the charge: a repeat pass, a rolled-back settle or a second relay adds nothing. No statement takes an explicit lock, and every settle takes its row locks in the same order.
+`ledger/settle.rs` runs four statements in one transaction and one fixed order.
+`settle_lines.sql` stamps the lines settled, guarded by `settled_at IS NULL`, and returns them.
+`add_usage_daily.sql` adds exactly those lines to their day rows, written in key order.
 
-A run counts once, on the UTC day of its first runtime line, in the transaction that settles that line. Lease runtime slices are numbered by their start, so no smaller slice can arrive later. A setup attempt writes one runtime line. Two relays settling different lines of the same run therefore count it once.
+`count_run.sql` counts the run, and `debit_wallet.sql` debits the wallet last.
+The rollup reads only the newly stamped lines, so each charge enters it once.
+A repeat pass, a rolled-back settle or a second relay adds nothing.
+
+No statement takes an explicit lock, and every settle takes its row locks in the same order.
+
+A run counts once, on the UTC day of its first runtime line, in the transaction that settles that line.
+Lease runtime slices are numbered by their start, so no smaller slice can arrive later.
+
+A setup attempt writes one runtime line.
+Two relays settling different lines of the same run therefore count it once.
 
 The ledger stays the source of truth: the rollup is derived and can be rebuilt from settled `billing.usage_lines`.
 
@@ -36,7 +48,7 @@ The ledger stays the source of truth: the rollup is derived and can be rebuilt f
 
 - Month to date, Today and Last 7 days use Coordinated Universal Time (UTC). The report covers every whole UTC day from the period's first day through the cutoff's day.
 - A line belongs to the UTC day it was created. A line created just before midnight and settled seconds after it counts on its creation day.
-- All fleets includes runtime and setup. Setup chat selects setup attempts. A specific fleet selects its runtime usage. Filter choices come from the whole unfiltered period.
+- All Fleets includes runtime and setup; Setup chat selects setup attempts. A specific fleet selects its runtime usage. Filter choices come from the whole unfiltered period.
 - The report no longer filters by model; a request that sends `model` is refused rather than answered with a wider report.
 - Amounts stay integer nanodollar strings over the API and use the existing exact-small-amount formatter. A combined stored charge is never recomputed from today's rates.
 - A customer's own provider key means that provider charges the model usage; the page distinguishes it from credits charged here. Missing provider usage does not mean free usage. Unsettled usage is excluded until the relay settles it.
@@ -84,3 +96,16 @@ Integration tests prove each of these through the real settle path:
 - two concurrent settles of one run count it once, and settles in opposite orders finish without a deadlock;
 - a line settled after month end counts in the month it was created;
 - the report and the rollup equal the settled ledger.
+
+
+## Dashboard presentation
+
+The Period control lists named months and sends their existing inclusive reporting cutoffs.
+All Fleets includes Setup and saved fleets; individual fleet choices follow it.
+Control changes clear obsolete URL state and retain the supported report filters.
+
+The daily chart uses CSS bars inside the shared dashboard panel.
+It adds no chart library, observer or extra report request.
+The shared model-label store names the fleet rows; delayed labels hold only that table's boundary.
+
+The [rendered review](../v2/evidence/M249_DESIGN_REVIEW.md) and [UI cleanup](../v2/evidence/M249_UI_CLEANUP.md) record the reference, measurements and validation limits.

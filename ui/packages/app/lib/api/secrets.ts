@@ -1,5 +1,5 @@
 import { request } from "./client";
-import { SECRET_KIND } from "./secrets-types";
+import type { SECRET_KIND } from "./secrets-types";
 
 // Workspace secret vault. The plaintext body stays opaque — never returned
 // on read — but the list now carries a non-secret metadata *projection* the
@@ -73,31 +73,6 @@ export interface SecretData {
 
 export interface SecretListResponse {
   secrets: Secret[];
-}
-
-// Classification helpers — the single place the union narrows by kind, so no
-// caller re-implements the discriminator check. Each returns the narrowed
-// variant type so consumers read `provider`/`model`/`base_url` without a cast.
-
-/** Stored named-provider keys (anthropic, openai, …) — the switch-list rows. */
-export function providerKeysOf(secrets: Secret[]): ProviderKeySecret[] {
-  return secrets.filter(
-    (c): c is ProviderKeySecret => c.kind === SECRET_KIND.provider_key,
-  );
-}
-
-/** Stored OpenAI-compatible custom endpoints — carry a `base_url`. */
-export function customEndpointsOf(secrets: Secret[]): CustomEndpointSecret[] {
-  return secrets.filter(
-    (c): c is CustomEndpointSecret => c.kind === SECRET_KIND.custom_endpoint,
-  );
-}
-
-/** Opaque named secrets fleet tools read by field path. */
-export function customSecretsOf(secrets: Secret[]): CustomSecret[] {
-  return secrets.filter(
-    (c): c is CustomSecret => c.kind === SECRET_KIND.custom_secret,
-  );
 }
 
 export async function listSecrets(

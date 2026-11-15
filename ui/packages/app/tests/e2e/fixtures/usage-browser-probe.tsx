@@ -25,7 +25,7 @@ export function UsageBrowserFixture() {
   const [loaded, setLoaded] = useState<Awaited<ReturnType<typeof loadBillingReport>> | null>(null);
   useEffect(() => {
     let current = true;
-    void loadBillingReport("fixture-token", {...Object.fromEntries(query), activity: undefined, dc: undefined}).then(result => {if (current) setLoaded(result);});
+    void loadBillingReport("fixture-token", Object.fromEntries(query)).then(result => {if (current) setLoaded(result);});
     return () => {current = false;};
   }, [query]);
   const router = {bfcacheId: "usage-review", back() {}, forward() {}, refresh() {setQuery(new URLSearchParams(query));},

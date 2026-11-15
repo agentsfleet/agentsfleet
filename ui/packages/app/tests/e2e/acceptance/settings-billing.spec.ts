@@ -11,7 +11,7 @@ import { expectAccessible, expectNoPageOverflow } from "./fixtures/accessibility
 
 const PERIOD_CHARGE = "Settled charges";
 const BILLING_PATH = "/settings/billing";
-const FILTER_LABEL = { period: "Period", fleet: "Fleet", model: "Model" } as const;
+const FILTER_LABEL = { period: "Period", fleet: "Fleet" } as const;
 const ROLE = { combobox: "combobox", button: "button", heading: "heading" } as const;
 const NAVIGATION = { expanded: "expanded", collapsed: "collapsed" } as const;
 const DESKTOP_HEIGHT = 1000;

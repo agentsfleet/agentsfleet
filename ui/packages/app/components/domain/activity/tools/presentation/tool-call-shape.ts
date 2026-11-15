@@ -1,4 +1,3 @@
-import { TOOL_CALL_STATUS, type ToolCallStatus } from "@/lib/streaming/fleet-stream-tool-trace";
 import type { LineDiff } from "../diff/tool-call-diff";
 
 // What a tool cell is made of, shared by every copy map: the tool names, the
@@ -77,23 +76,6 @@ export type ToolBody =
 /** The member of `ToolBody` each kind names, so a table keyed by kind can
  * type its rows by the body they draw. */
 export type ToolBodyOf<K extends ToolBodyKind> = { [B in ToolBody as B["kind"]]: B }[K];
-
-// Whether a kind shows the call's output once the call succeeded. An output
-// or command cell is its output; an edit that worked shows its diff alone, as
-// Codex's does, and a plan its steps.
-const OUTPUT_WHEN_SUCCEEDED: Record<ToolBodyKind, boolean> = {
-  [TOOL_BODY.OUTPUT]: true,
-  [TOOL_BODY.COMMAND]: true,
-  [TOOL_BODY.DIFF]: false,
-  [TOOL_BODY.CLIPPED_EDIT]: false,
-  [TOOL_BODY.PLAN]: false,
-};
-
-/** Whether a settled cell shows what came back: always when the call did not
- * say it succeeded, else as its kind decides. */
-export function showsOutput(body: ToolBody, status: ToolCallStatus | undefined): boolean {
-  return status !== TOOL_CALL_STATUS.SUCCEEDED || OUTPUT_WHEN_SUCCEEDED[body.kind];
-}
 
 export type Verbs = { readonly running: string; readonly done: string };
 

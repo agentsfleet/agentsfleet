@@ -78,43 +78,7 @@ describe("createSecret", () => {
   });
 });
 
-describe("secret narrowing helpers", () => {
-  const MIXED = [
-    { kind: "provider_key", name: "anthropic", created_at: "1970-01-01T00:00:00.001Z", provider: "anthropic", model: "claude-sonnet-4-6" },
-    { kind: "provider_key", name: "openai", created_at: "1970-01-01T00:00:00.002Z", provider: "openai" },
-    { kind: "custom_endpoint", name: "vllm", created_at: "1970-01-01T00:00:00.003Z", provider: "openai-compatible", base_url: "https://vllm.corp/v1" },
-    { kind: "custom_secret", name: "STRIPE", created_at: "1970-01-01T00:00:00.004Z" },
-  ] as const;
 
-  it("providerKeysOf keeps only provider_key rows", async () => {
-    const { providerKeysOf } = await import("./secrets");
-    const keys = providerKeysOf([...MIXED]);
-    expect(keys.map((k) => k.name)).toEqual(["anthropic", "openai"]);
-    expect(keys.every((k) => k.kind === "provider_key")).toBe(true);
-  });
-
-  it("customEndpointsOf keeps only custom_endpoint rows (with base_url)", async () => {
-    const { customEndpointsOf } = await import("./secrets");
-    const endpoints = customEndpointsOf([...MIXED]);
-    expect(endpoints.map((e) => e.name)).toEqual(["vllm"]);
-    expect(endpoints[0]!.base_url).toBe("https://vllm.corp/v1");
-  });
-
-  it("customSecretsOf keeps only custom_secret rows", async () => {
-    const { customSecretsOf } = await import("./secrets");
-    const secrets = customSecretsOf([...MIXED]);
-    expect(secrets.map((s) => s.name)).toEqual(["STRIPE"]);
-    expect(secrets[0]!.kind).toBe("custom_secret");
-  });
-
-  it("each helper returns an empty array when no row matches", async () => {
-    const { providerKeysOf, customEndpointsOf, customSecretsOf } = await import("./secrets");
-    const onlySecret = [{ kind: "custom_secret", name: "X", created_at: "1970-01-01T00:00:00.001Z" }] as const;
-    expect(providerKeysOf([...onlySecret])).toEqual([]);
-    expect(customEndpointsOf([...onlySecret])).toEqual([]);
-    expect(customSecretsOf([])).toEqual([]);
-  });
-});
 
 describe("replaceSecret", () => {
   it("PUTs /secrets/:name with a {data} whole-body payload and URL-encoded name", async () => {

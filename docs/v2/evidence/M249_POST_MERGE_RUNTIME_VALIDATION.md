@@ -441,3 +441,20 @@ The parent API cleanup remains pending at observed tip `ab4fe8937`.
 App and design-system lint/type checks pass, including 44 source tests.
 The corrected native dry lane passes 4,695 unit tests and 134 browser tests, with no failed, flaky or skipped browser case.
 The app production build passes after the final shared breakpoint-token cleanup.
+
+## Nov 15 trimmed-report follow-up
+
+PR #845 now builds on the owner's requested `6edd08d84`, including the daily rollup and removed activity/detail API.
+The visual controls consume its four supported fields without a model filter or hidden charge read.
+This UI delta adds no SQL or table changes against that parent.
+
+The [cleanup evidence](M249_UI_CLEANUP.md) records unused UI removals and the new controlled-browser performance table.
+Its final native dry lane passed 4,575 unit tests and 134 browser tests, with zero failed, flaky or skipped browser cases.
+The production build and every configured bundle budget passed.
+
+A repeated 156-capture matrix preserves the reviewed geometry and rendered fonts after the API update.
+Native standards and Astra source reviews found no remaining actionable issue in the retained UI.
+New scoped Rust boundary checks remain separate from the final repository gate and coverage measurement.
+
+These controlled results do not renew authenticated live acceptance.
+The earlier fresh fixtures were deleted, and the hosted-access limits remain recorded above.

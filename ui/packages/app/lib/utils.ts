@@ -1,10 +1,3 @@
-export function formatDuration(seconds: number): string {
-  if (seconds < SECONDS_PER_MINUTE) return `${seconds}s`;
-  const m = Math.floor(seconds / SECONDS_PER_MINUTE);
-  const s = seconds % SECONDS_PER_MINUTE;
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
-
 export function truncate(str: string, max: number): string {
   return str.length > max ? `${str.slice(0, max)}…` : str;
 }

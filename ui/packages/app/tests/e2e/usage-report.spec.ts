@@ -1,6 +1,6 @@
 import {expect} from "@playwright/test";
 import {test} from "./fixtures/chat-probe";
-import {BILLING_FLEET, BILLING_MODEL, BILLING_MODEL_NAME, billingReport, billingTotals} from "@/tests/helpers/billing-report";
+import {BILLING_FLEET, BILLING_MODEL, BILLING_MODEL_NAME, billingReport, billingRowTotals, billingTotals} from "@/tests/helpers/billing-report";
 import type {BillingReport} from "@/lib/api/billing_report";
 
 function reportFor(query: URLSearchParams): BillingReport {
@@ -10,12 +10,11 @@ function reportFor(query: URLSearchParams): BillingReport {
   const daily = Array.from({length: 12 - first}, (_, index) => {
     const day = first + index;
     const charge = BigInt(day) * 1_000_000_000n / (query.has("fleet_id") ? 2n : 1n);
-    return {day: `${month}-${String(day).padStart(2, "0")}`, totals: billingTotals({charged_nanos: charge.toString()})};
+    return {day: `${month}-${String(day).padStart(2, "0")}`, totals: billingRowTotals({charged_nanos: charge.toString()})};
   });
   const totals = billingTotals({charged_nanos: daily.reduce((sum, item) => sum + BigInt(item.totals.charged_nanos), 0n).toString(), activity_count: daily.length});
   return billingReport({period: week ? "week" : "month", from_at: `${month}-${String(first).padStart(2, "0")}T00:00:00Z`, through_at: `${month}-11T12:00:00Z`,
-    daily, totals, spending: {by_fleet: [{key: BILLING_FLEET, label: "Payment alerts", totals, models: [BILLING_MODEL, "retired-model"]}], by_model: []},
-    activities: {items: [], total: daily.length, next_cursor: "another-page"}});
+    daily, totals, spending: {by_fleet: [{key: BILLING_FLEET, label: "Payment alerts", totals, models: [BILLING_MODEL, "retired-model"]}], by_model: []}});
 }
 
 test("Usage renders recorded daily bars and model sets while filters request complete reports", async ({page, chatProbe}, info) => {
@@ -79,6 +78,9 @@ test("Usage preserves exact large amounts and distinguishes zero from an unavail
   mode = "zero";
   await page.reload();
   await expect(page.getByText("No settled charges for this period.", {exact: true})).toBeVisible();
+  const zeroBars = page.getByRole("list", {name: "Daily settled charges"}).getByRole("listitem").locator('[aria-hidden="true"]');
+  await expect(zeroBars).toHaveCount(1);
+  expect(await zeroBars.first().evaluate(element => element.getBoundingClientRect().height)).toBe(0);
   mode = "oversized";
   await page.reload();
   await expect(page.getByText("Billing report unavailable", {exact: true})).toBeVisible();
@@ -116,20 +118,22 @@ for (const scenario of [
   });
 });
 
-test("existing model-scoped URLs disclose their scope and can clear it", async ({page, chatProbe}) => {
+test("old filter and paging URLs never reach the trimmed report API", async ({page, chatProbe}) => {
   const reads: URLSearchParams[] = [];
   await page.route("**/backend/v1/tenants/me/billing/reports/current?*", route => {
     const query = new URL(route.request().url()).searchParams; reads.push(query);
-    const totals = billingTotals({charged_nanos: query.has("model") ? "1000000000" : "2000000000"});
-    return route.fulfill({json: billingReport({totals})});
+    return route.fulfill({json: billingReport()});
   });
-  await page.goto(`${chatProbe}?usage=1&model=${encodeURIComponent(BILLING_MODEL)}`);
-  await expect(page.getByLabel("Active model filter")).toContainText(BILLING_MODEL);
-  await expect(page.getByLabel("Period totals").getByText("$1.00", {exact: true})).toBeVisible();
-  await page.getByRole("button", {name: "Clear model filter", exact: true}).click();
+  await page.goto(`${chatProbe}?usage=1&model=${encodeURIComponent(BILLING_MODEL)}&limit=25&starting_after=old&activity=old&dc=old`);
+  await expect(page.getByLabel("Period totals").getByText("$0.0001", {exact: true})).toBeVisible();
+  expect(reads).toHaveLength(1);
+  expect(Object.fromEntries(reads[0]!)).toEqual({period: "month"});
+  await expect(page.getByRole("combobox", {name: "Model", exact: true})).toHaveCount(0);
   await expect(page.getByLabel("Active model filter")).toHaveCount(0);
-  await expect(page.getByLabel("Period totals").getByText("$2.00", {exact: true})).toBeVisible();
-  expect(reads.at(-1)?.has("model")).toBe(false);
+  await page.getByRole("combobox", {name: "Fleet", exact: true}).click();
+  await page.getByRole("option", {name: "Payment alerts", exact: true}).click();
+  await expect.poll(() => reads.length).toBe(2);
+  expect(Object.fromEntries(reads[1]!)).toEqual({period: "month", fleet_id: BILLING_FLEET});
 });
 
 test("a slow shared label read keeps the Usage frame visible without another catalogue request", async ({page, chatProbe}, info) => {
@@ -137,7 +141,7 @@ test("a slow shared label read keeps the Usage frame visible without another cat
   const extraReads: string[] = [];
   page.on("request", request => {
     const path = new URL(request.url()).pathname;
-    if (/\/backend\/v1\/(?:models|tenants\/me\/billing\/activities\/)/.test(path)) extraReads.push(path);
+    if (/\/backend\/v1\/(?:models|tenants\/me\/billing\/(?:charges|activities\/))/.test(path)) extraReads.push(path);
   });
   await page.route("**/backend/v1/tenants/me/billing/reports/current?*", route => {
     reports += 1;

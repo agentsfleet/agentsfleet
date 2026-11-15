@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { groupSpan, groupThreadEvents, MIN_GROUP_RUN } from "@/lib/events/event-grouping";
+import { groupThreadEvents, MIN_GROUP_RUN } from "@/lib/events/event-grouping";
 import { OUTCOME } from "@/lib/events/event-summary";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 
@@ -162,23 +162,5 @@ describe("groupThreadEvents", () => {
 
   it("survives an empty thread", () => {
     expect(groupThreadEvents([])).toEqual([]);
-  });
-});
-
-describe("groupSpan", () => {
-  it("reports the earliest and latest a group covers", () => {
-    const early = new Date(Date.UTC(2026, 6, 22, 11, 38, 0));
-    const late = new Date(Date.UTC(2026, 6, 22, 12, 3, 0));
-    const span = groupSpan([evt({ createdAt: early }), evt({ createdAt: late })]);
-    expect(span.first).toEqual(early);
-    expect(span.last).toEqual(late);
-  });
-
-  it("reads the extremes, not the ends, whatever order the members run in", () => {
-    const early = new Date(Date.UTC(2026, 6, 22, 11, 38, 0));
-    const late = new Date(Date.UTC(2026, 6, 22, 12, 3, 0));
-    const span = groupSpan([evt({ createdAt: late }), evt({ createdAt: early })]);
-    expect(span.first).toEqual(early);
-    expect(span.last).toEqual(late);
   });
 });

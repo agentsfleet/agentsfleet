@@ -29,7 +29,6 @@ export const OUTPUT_PREVIEW_ROWS = 3;
 export const COMMAND_RAIL_ROWS = 2;
 const DEFAULT_METHOD = "GET";
 
-export const INTERRUPTED_VERB = "Interrupted";
 export const EMPTY_OUTPUT = "(no output)";
 export const OUTPUT_UNAVAILABLE = "(output unavailable)";
 

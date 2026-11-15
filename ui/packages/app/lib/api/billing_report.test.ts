@@ -81,6 +81,6 @@ describe("validated settled billing reads", () => {
     respond({...billingReport(), daily: Array.from({length: 32}, (_, index) => ({
       day: new Date(Date.UTC(2026, 9, index + 1)).toISOString().slice(0, 10), totals: billingReport().totals,
     }))});
-    await expect(getBillingReport("fixture-token", {limit: 25})).rejects.toThrow(/daily/);
+    await expect(getBillingReport("fixture-token", {})).rejects.toThrow(/daily/);
   });
 });
