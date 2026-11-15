@@ -154,17 +154,23 @@ pub(super) async fn read(
         .execute(&mut *ordered)
         .await
         .map_err(query(CONTEXT))?;
-    let row = match &entry {
-        Some(entry) => sqlx::query_as::<_, RegisteredRow>(statement)
-            .bind(owner)
-            .bind(entry),
-        None => sqlx::query_as::<_, RegisteredRow>(statement)
-            .bind(owner)
-            .bind(afd_billing::nanos::MS_PER_SEC),
-    }
-    .fetch_optional(&mut *ordered)
-    .await
-    .map_err(query(CONTEXT))?;
+    let row = entry
+        .as_ref()
+        .map_or_else(
+            || {
+                sqlx::query_as::<_, RegisteredRow>(statement)
+                    .bind(owner)
+                    .bind(afd_billing::nanos::MS_PER_SEC)
+            },
+            |entry| {
+                sqlx::query_as::<_, RegisteredRow>(statement)
+                    .bind(owner)
+                    .bind(entry)
+            },
+        )
+        .fetch_optional(&mut *ordered)
+        .await
+        .map_err(query(CONTEXT))?;
     ordered.commit().await.map_err(query(CONTEXT))?;
     let Some(row) = row else {
         return Ok(None);

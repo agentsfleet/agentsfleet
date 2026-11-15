@@ -118,16 +118,20 @@ impl Providers {
         after: Option<&Boundary>,
     ) -> Result<(Vec<Entry>, Option<Boundary>)> {
         let fetch = i64::from(limit) + 1;
-        let statement = match after {
-            None => sqlx::query_as::<_, EntryRow>(sql::SELECT_FIRST_PAGE)
-                .bind(tenant)
-                .bind(fetch),
-            Some(boundary) => sqlx::query_as::<_, EntryRow>(sql::SELECT_PAGE_AFTER)
-                .bind(tenant)
-                .bind(boundary.created_at.to_sqlx())
-                .bind(&boundary.id)
-                .bind(fetch),
-        };
+        let statement = after.map_or_else(
+            || {
+                sqlx::query_as::<_, EntryRow>(sql::SELECT_FIRST_PAGE)
+                    .bind(tenant)
+                    .bind(fetch)
+            },
+            |boundary| {
+                sqlx::query_as::<_, EntryRow>(sql::SELECT_PAGE_AFTER)
+                    .bind(tenant)
+                    .bind(boundary.created_at.to_sqlx())
+                    .bind(&boundary.id)
+                    .bind(fetch)
+            },
+        );
 
         let mut connection = self.pool().acquire().await?;
         let rows = statement

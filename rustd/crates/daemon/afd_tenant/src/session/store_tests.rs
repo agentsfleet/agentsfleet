@@ -31,7 +31,7 @@ fn assert_unreadable(
     classified: crate::Result<(VerifyOutcome, Option<Write>)>,
     why: &str,
 ) -> TestResult {
-    let error = classified.err().ok_or(why.to_owned())?;
+    let error = classified.err().ok_or_else(|| why.to_owned())?;
     assert_eq!(error.code(), error_code::INTERNAL_DB_QUERY, "{why}");
     assert_eq!(error.detail(), DETAIL_DATABASE_ERROR, "{why}");
     Ok(())

@@ -163,14 +163,16 @@ impl History {
         cursor: Option<&Cursor>,
         limit: i64,
     ) -> Result<Vec<EventDetailRow>> {
-        let scoped = match cursor {
-            None => sqlx::query(SELECT_THREAD_PAGE).bind(workspace).bind(fleet),
-            Some(at) => sqlx::query(SELECT_THREAD_PAGE_AFTER)
-                .bind(workspace)
-                .bind(fleet)
-                .bind(at.created_at.to_sqlx())
-                .bind(&at.event_id),
-        };
+        let scoped = cursor.map_or_else(
+            || sqlx::query(SELECT_THREAD_PAGE).bind(workspace).bind(fleet),
+            |at| {
+                sqlx::query(SELECT_THREAD_PAGE_AFTER)
+                    .bind(workspace)
+                    .bind(fleet)
+                    .bind(at.created_at.to_sqlx())
+                    .bind(&at.event_id)
+            },
+        );
         let bound = limit.clamp(1, THREAD_MAX_LIMIT + 1);
         let mut connection = self.database.acquire().await?;
         let rows = scoped

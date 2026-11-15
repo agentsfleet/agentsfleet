@@ -21,18 +21,22 @@ impl History {
         let Some(event_type) = event_type else {
             return self.thread_page(workspace, fleet, cursor, limit).await;
         };
-        let scoped = match cursor {
-            None => sqlx::query(super::statement::SELECT_THREAD_FILTERED)
-                .bind(workspace)
-                .bind(fleet)
-                .bind(event_type),
-            Some(at) => sqlx::query(super::statement::SELECT_THREAD_FILTERED_AFTER)
-                .bind(workspace)
-                .bind(fleet)
-                .bind(event_type)
-                .bind(at.created_at.to_sqlx())
-                .bind(&at.event_id),
-        };
+        let scoped = cursor.map_or_else(
+            || {
+                sqlx::query(super::statement::SELECT_THREAD_FILTERED)
+                    .bind(workspace)
+                    .bind(fleet)
+                    .bind(event_type)
+            },
+            |at| {
+                sqlx::query(super::statement::SELECT_THREAD_FILTERED_AFTER)
+                    .bind(workspace)
+                    .bind(fleet)
+                    .bind(event_type)
+                    .bind(at.created_at.to_sqlx())
+                    .bind(&at.event_id)
+            },
+        );
         let mut connection = self.database.acquire().await?;
         scoped
             .bind(limit.clamp(1, THREAD_MAX_LIMIT + 1))

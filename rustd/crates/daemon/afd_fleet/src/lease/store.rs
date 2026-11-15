@@ -90,10 +90,10 @@ impl Leases {
         &'a self,
         runner: &'a af_core::id::Uuid7,
     ) -> (Option<&'a str>, Option<&'a af_core::id::Uuid7>) {
-        let (_runner, digest, connection) = match &self.authority {
-            Some(authority) => afd_runner::capacity::proof((runner, authority)),
-            None => afd_runner::capacity::proof(runner),
-        };
+        let (_runner, digest, connection) = self.authority.as_ref().map_or_else(
+            || afd_runner::capacity::proof(runner),
+            |authority| afd_runner::capacity::proof((runner, authority)),
+        );
         (digest, connection)
     }
 

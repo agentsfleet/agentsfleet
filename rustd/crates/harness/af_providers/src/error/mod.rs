@@ -351,10 +351,7 @@ struct Named<'a>(Option<&'a str>);
 
 impl fmt::Display for Named<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0 {
-            Some(code) => write!(f, " ({code})"),
-            None => Ok(()),
-        }
+        self.0.map_or(Ok(()), |code| write!(f, " ({code})"))
     }
 }
 

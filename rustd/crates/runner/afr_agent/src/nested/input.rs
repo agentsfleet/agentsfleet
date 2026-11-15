@@ -12,8 +12,8 @@ pub(super) fn run(harness: &Harness<'_, '_>, arguments: &Value) -> ToolOutput {
         Ok(input) => input,
         Err(refused) => return refused,
     };
-    match harness.shared.registry.send(child_id, message) {
-        Some(accepted) => json(&Accepted { accepted }),
-        None => not_found(child_id),
-    }
+    harness.shared.registry.send(child_id, message).map_or_else(
+        || not_found(child_id),
+        |accepted| json(&Accepted { accepted }),
+    )
 }

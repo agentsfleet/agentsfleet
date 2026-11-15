@@ -33,11 +33,10 @@ const ROLE_NAMED: [(&str, &str); 2] = [
 
 /// The singular a pointer column is named for: `plugin_entries` → `plugin_entry`.
 fn singular(table: &str) -> String {
-    if let Some(stem) = table.strip_suffix("ies") {
-        format!("{stem}y")
-    } else {
-        table.strip_suffix('s').unwrap_or(table).to_owned()
-    }
+    table.strip_suffix("ies").map_or_else(
+        || table.strip_suffix('s').unwrap_or(table).to_owned(),
+        |stem| format!("{stem}y"),
+    )
 }
 
 #[tokio::test(flavor = "multi_thread")]

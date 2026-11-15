@@ -115,10 +115,10 @@ struct Page<'a> {
 
 /// One schedule under the lease's collection, and a segment beneath it.
 fn member(collection: &str, schedule: &Uuid7, suffix: Option<&str>) -> Cow<'static, str> {
-    Cow::Owned(match suffix {
-        Some(suffix) => format!("{collection}/{schedule}/{suffix}"),
-        None => format!("{collection}/{schedule}"),
-    })
+    Cow::Owned(suffix.map_or_else(
+        || format!("{collection}/{schedule}"),
+        |suffix| format!("{collection}/{schedule}/{suffix}"),
+    ))
 }
 
 /// `path` with the fence, and any page, as its query: encoded, because a page
