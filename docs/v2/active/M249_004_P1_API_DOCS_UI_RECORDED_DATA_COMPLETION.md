@@ -464,4 +464,8 @@ Settled totals and daily bars do not wait for model names. No extra catalogue re
 The UI refuses a report containing more than 31 daily buckets instead of clipping or expanding it.
 The owner requested injected-data, 100-fleet, dropdown and performance evidence; see the [runtime results](../evidence/M249_POST_MERGE_RUNTIME_VALIDATION.md).
 
+The visual implementation and its frontend checks are complete in the stacked UI follow-up.
+Its inherited Secrets helper import now stays in the client-safe types module; the production bundle guard, all route budgets, app lint and 4,691 unit tests pass.
+Overall workstream closure remains active, with the local native timing failure and wider review/acceptance limits recorded in the evidence.
+
 > Owner (Indy): "Yes i need you to optimize and provide performant load, especially when you see multiple calls for something"
