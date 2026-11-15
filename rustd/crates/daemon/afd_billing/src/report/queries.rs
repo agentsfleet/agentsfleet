@@ -6,8 +6,7 @@ use sqlx::postgres::{PgArguments, PgRow};
 use sqlx::query::QueryAs;
 use sqlx::{FromRow, Postgres, SqlSafeStr};
 
-use super::{ChargeBoundary, Request, dimension};
-use crate::biller::WorkKey;
+use super::{Request, dimension};
 
 /// Full-period aggregates and filter choices, with the production bindings.
 pub(super) fn aggregates<'q, O, S>(
@@ -24,64 +23,9 @@ where
         .bind(request.window.from.to_sqlx())
         .bind(request.window.through.to_sqlx())
         .bind(request.filter.fleet.as_ref())
-        .bind(request.filter.model.as_deref())
         .bind(request.filter.work_type)
         .bind(dimension::SUMMARY)
         .bind(dimension::FLEET)
         .bind(dimension::MODEL)
         .bind(dimension::DAY)
-}
-
-/// Grouped activity paging, with every tie-breaking key in its boundary.
-pub(super) fn activities<'q, O, S>(
-    wrap: impl FnOnce(&'static str) -> S,
-    tenant: &'q Uuid7,
-    request: &'q Request,
-) -> QueryAs<'q, Postgres, O, PgArguments>
-where
-    O: for<'r> FromRow<'r, PgRow>,
-    S: SqlSafeStr,
-{
-    sqlx::query_as(wrap(include_str!("sql/activities.sql")))
-        .bind(tenant)
-        .bind(request.window.from.to_sqlx())
-        .bind(request.window.through.to_sqlx())
-        .bind(request.filter.fleet.as_ref())
-        .bind(request.filter.model.as_deref())
-        .bind(request.filter.work_type)
-        .bind(
-            request
-                .after
-                .as_ref()
-                .map(|after| after.recorded_at.to_sqlx()),
-        )
-        .bind(request.after.as_ref().map(|after| &after.work_id))
-        .bind(request.after.as_ref().map(|after| after.work_type))
-        .bind(i64::from(request.limit) + 1)
-}
-
-/// One activity's individual charges, in the order they happened.
-pub(super) fn charges<'q, O, S>(
-    wrap: impl FnOnce(&'static str) -> S,
-    tenant: &'q Uuid7,
-    work: &'q WorkKey,
-    request: &'q Request,
-    after: Option<&'q ChargeBoundary>,
-) -> QueryAs<'q, Postgres, O, PgArguments>
-where
-    O: for<'r> FromRow<'r, PgRow>,
-    S: SqlSafeStr,
-{
-    sqlx::query_as(wrap(include_str!("sql/charges.sql")))
-        .bind(tenant)
-        .bind(work.work_type())
-        .bind(work.id())
-        .bind(request.window.from.to_sqlx())
-        .bind(request.window.through.to_sqlx())
-        .bind(request.filter.model.as_deref())
-        .bind(after.map(|after| after.requested_at.to_sqlx()))
-        .bind(i64::from(request.limit) + 1)
-        .bind(request.filter.fleet.as_ref())
-        .bind(request.filter.work_type)
-        .bind(after.map(|after| &after.line_id))
 }

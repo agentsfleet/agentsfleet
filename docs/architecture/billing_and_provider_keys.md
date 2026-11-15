@@ -259,7 +259,7 @@ A fleet run is charged for what it uses, and only that: no event costs anything 
      issue  → nothing                      the admission gate already checked the floor
      renew  → check(floor)                 once per payer every third tick, before the host's statement
      report → nothing
-   sweeper:billing, the relay, every 2 s: settle(lines)
+   sweeper:billing, the relay, every 5 s: settle(lines)
 ```
 
 `afd_fleet`'s task decision intent module assigns the native decision range before dispatch.
@@ -302,7 +302,7 @@ Every line carries its `kind` (`af_wire::usage::LineKind`): `model` lines keep t
 
 The key includes the kind, so a model line and a runtime line may hold the same number. Two passes never bill one slice twice (`afd_fleet`'s lease billing races suite).
 
-**Settling.** The lease path never settles. The relay, `sweeper:billing`, settles each committed line on its next pass, about 2 s later. After a restart, its first pass settles what the crash left.
+**Settling.** The lease path never settles. The relay, `sweeper:billing`, settles each committed line on its next pass, within about 5 s. After a restart, its first pass settles what the crash left.
 
 `settle` keys on `(work, kind, seq)`, so a retry never charges twice. A balance that cannot cover a line takes it anyway and goes below zero (§11).
 
@@ -703,7 +703,7 @@ They rounded differently, priced cached tokens differently, failed differently d
  work happens ─► usage lines        ─► Rater (pure)              ─► UsageLog (ours, inside the work's transaction)
  (runner, per     {seq, at, prompt,     tier by whole-request         billing.usage_lines, one row per request,
   request;         cached_read,         prompt size, price by `at`,   unique (work, kind, seq); the charges page reads it
-  setup chat       cache_write,         posture, one rounding rule              │ the relay, every 2 s
+  setup chat       cache_write,         posture, one rounding rule              │ the relay, every 5 s
   makes its own)   cache_write_5m,                                              ▼
                    cache_write_1h,                               Arc<dyn Biller>   check / settle / balance
                    output, runtime}                              ├─ LedgerBiller: billing.wallets + billing.usage_lines (built in)
@@ -775,7 +775,7 @@ For each, one transaction moves the lease's cursor to its deadline and logs the 
 
 **Budgets** are a separate `afd_billing::limits::fleet_spend` reader over `billing.usage_lines`, so a budget holds whichever biller moves the money. It counts the fleet's own lines. Setup-chat lines name no fleet; whether a fleet's budget should count the setup chat that authored it is Indy's call.
 
-**The relay and metrics.** `sweeper:billing` runs every 2 seconds, and up to ten passes back to back while a pass fills its batch.
+**The relay and metrics.** `sweeper:billing` runs every 5 seconds, and up to ten passes back to back while a pass fills its batch. A refused line is retried within a minute.
 
 The sweeper bills expired leases' last slices, then settles every unsettled line (`afd_billing::ledger::resettle`). A balance trails the charges a person reads by about one pass.
 

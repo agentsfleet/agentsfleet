@@ -51,6 +51,7 @@ tracing.workspace = true
 test-util = ["af_core/test-util", "afd_db/test-util"]
 
 [dev-dependencies]
+af_observability = { workspace = true, features = ["test-util"] }
 # The integration suite races two reservations on one task.
 futures-util.workspace = true
 serde_json.workspace = true

@@ -2,107 +2,85 @@
 
 The Usage page shows settled spending for the account across its workspaces. The existing header keeps the available credit balance.
 
-The page shows period and fleet controls, settled totals, daily spending, a Fleet/Model/Activities/Charged table and expandable billed activities. Add credits keeps the existing support-email action.
+The page shows period and fleet controls, settled totals, daily spending and a Fleet/Model/Activities/Charged table. The per-run activity list and its charge details were removed; their design will return later from scratch.
 
 ## Read flow and ownership
 
 ```text
-Signed-in account member
-  → Usage page and shared controls
-  → tenant reporting handlers, requiring billing:read
-  → TenantBilling service
-  → afd_billing report module
-  → settled billing.usage_lines for that tenant
+settle transaction (relay, every 5 s)            Usage page
+  settle_lines.sql    stamp lines settled         GET /v1/tenants/me/billing/reports/current
+  add_usage_daily.sql add them to day rows          → tenant reporting handler (billing:read)
+  count_run.sql       count the run once            → TenantBilling service
+  debit_wallet.sql    debit the wallet (last)       → afd_billing report module
+                                                    → billing.usage_daily + billing.runs_daily
 ```
 
 The account comes from the authenticated person; no request chooses another tenant. Every query binds that tenant. Reporting reads cannot mint credits, settle work or change a wallet.
 
 The domain types and queries stay in `afd_billing`, with no HTTP dependency, so another transport can serve the same service seam later.
 
-An activity groups usage by the stored work type and work identifier: one fleet lease or one private setup attempt. Expanding it reads the individual settled lines with bounded pagination. Setup labels reveal no prompt, draft title, private message, checkpoint or summary.
+## The daily rollup
 
-Runtime labels use the ledger's fleet-name snapshot and survive fleet deletion.
+The report reads two tables the settle transaction maintains, never the raw ledger:
+
+- `billing.usage_daily`: settled money and quantities per tenant, UTC day, work type, fleet and model.
+- `billing.runs_daily`: settled runs per tenant, UTC day, work type and fleet.
+
+`ledger/settle.rs` runs four statements in one transaction and one fixed order. `settle_lines.sql` stamps the lines settled, guarded by `settled_at IS NULL`, and returns them. `add_usage_daily.sql` adds exactly those lines to their day rows, written in key order. `count_run.sql` counts the run, and `debit_wallet.sql` debits the wallet last. The rollup reads only the lines the guard just stamped, so it moves exactly once with the charge: a repeat pass, a rolled-back settle or a second relay adds nothing. No statement takes an explicit lock, and every settle takes its row locks in the same order.
+
+A run counts once, on the UTC day of its first runtime line, in the transaction that settles that line. Lease runtime slices are numbered by their start, so no smaller slice can arrive later. A setup attempt writes one runtime line. Two relays settling different lines of the same run therefore count it once.
+
+The ledger stays the source of truth: the rollup is derived and can be rebuilt from settled `billing.usage_lines`.
 
 ## Time, filters and amounts
 
-- Month to date, Today and Last 7 days use Coordinated Universal Time (UTC). Last 7 days starts at midnight six calendar days before the cutoff date. Both bounds are inclusive at stored millisecond precision.
-- Only records settled by the upper timestamp contribute.
-- Totals cover the whole selected period and filters, never only the displayed activity page. One read transaction gives the report's totals, breakdowns and activity page a consistent image.
-- A continuation carries the original time bounds, tenant, filters and page size. Reusing it with different filters or another tenant is refused. The next boundary includes every ordering key, so tied timestamps cannot skip activities.
-- All fleets includes runtime and setup. Setup chat selects setup attempts. A specific fleet selects its runtime ledger rows.
-- Model filtering is exact. Filter choices come from the whole period, independent of the displayed page.
+- Month to date, Today and Last 7 days use Coordinated Universal Time (UTC). The report covers every whole UTC day from the period's first day through the cutoff's day.
+- A line belongs to the UTC day it was created. A line created just before midnight and settled seconds after it counts on its creation day.
+- All fleets includes runtime and setup. Setup chat selects setup attempts. A specific fleet selects its runtime usage. Filter choices come from the whole unfiltered period.
+- The report no longer filters by model; a request that sends `model` is refused rather than answered with a wider report.
 - Amounts stay integer nanodollar strings over the API and use the existing exact-small-amount formatter. A combined stored charge is never recomputed from today's rates.
-- The ledger stores combined charged money with token and runtime quantities. The page shows those quantities and the actual combined charge. It does not invent separate historical inference, runtime or compaction money.
-- Compaction's metered calls contribute to ordinary settled totals.
-- A customer's own provider key means that provider charges the model usage; the page distinguishes it from credits charged here. Missing provider usage does not mean free usage. Unsettled or unknown usage can arrive later and is excluded from settled totals.
+- A customer's own provider key means that provider charges the model usage; the page distinguishes it from credits charged here. Missing provider usage does not mean free usage. Unsettled usage is excluded until the relay settles it.
 
 ## Daily spending and recorded models
 
-The required `daily` array includes every UTC calendar date from `from_at` through `through_at`, ascending. Days without matching settled lines have zero totals.
-Each line belongs to its `created_at` date and must have settled by `through_at`.
+The required `daily` array includes every UTC calendar date from `from_at` through `through_at`, ascending. Days without settled usage have zero totals. Every daily total adds exactly to the corresponding period total.
 
-Daily `activity_count` counts distinct work items on that date. An activity spanning midnight counts on both days and once for the period.
-Every other daily total adds exactly to the corresponding period total.
+Run counts appear on the period totals and on each fleet group. Model and daily groups carry no `activity_count`, because one run spans several models and days.
 
-Each `spending.by_fleet` item includes sorted, distinct, nonempty recorded model identifiers in `models`.
-These models come from all matching ledger rows, including deleted fleets and setup charges. Current fleet definitions and the activity cursor do not affect them.
+Each `spending.by_fleet` item includes sorted, distinct, nonempty recorded model identifiers in `models`, including deleted fleets and setup charges.
 
 The chart keeps nanodollars as integers until formatting or bounded display scaling. Accessible labels name each day and charge; an unavailable report never displays authoritative zero usage.
 
-## Shared presentation
-
-The page uses the shared title, primary period/fleet controls, a UTC period label and unboxed period totals. Model and setup filters remain available in secondary controls.
-
-Activity uses DataTable's plain surface, keeping its column headings and pagination when empty.
-Controlled row disclosure reads details only for the selected visible activity; native buttons expose the expanded state and support keyboard activation.
-
-The disclosure uses the shared DescriptionList, with left-aligned labels and right-aligned values on the card surface.
-Exact positive charge amounts keep up to nine decimal places. The total always covers the whole activity, including undisplayed charge pages.
-
-Inference-only and runtime-only ledger lines receive their fixed labels. Combined lines keep an explicit combined label without inferred price splits.
-
-Spending uses the shared List and UsageBar primitives for full-period fleet and model groups.
-Money stays an exact integer until display; bar ratios are reduced with integer arithmetic before conversion to bounded percentages.
-
-Billing uses the shared `font-system` utility to match its approved mock.
-Activity text uses 12 pixels, names and totals use medium weight, and spending rows use 13 pixels with normal weight.
-
-The app imports date formatting from the design system's `time-utils.ts` exports.
-`Time` keeps each timestamp's canonical value while the shared UTC helpers align period and activity labels.
-The existing app source check rejects page-local date formatters.
-
 ## Public reads
 
-`GET /v1/tenants/me/billing/reports/current` returns the selected period, bounds, full-period summary, spending groups, available filters and a bounded activity page. The page uses the standard `items`, `total`, `next_cursor` envelope inside the report. The existing balance and raw-charge endpoints keep their behavior.
+`GET /v1/tenants/me/billing/reports/current` returns the selected period, bounds, full-period summary, spending groups, daily spend and filter choices. Query parameters are `period`, `fleet_id`, `activity_type` and `through_at`, declared with `garde` before parsing; malformed values return the shared invalid-request response. It requires `billing:read`, and responses declare private, no-store caching.
 
-`GET /v1/tenants/me/billing/activities/{activity_id}/charges` returns the individual settled lines for one work item in the same period and filters. The work type is explicit. Unknown or foreign work produces an empty scoped list without disclosing whether another account owns it.
+The activity page and `GET /v1/tenants/me/billing/activities/{activity_id}/charges` were removed. The raw `GET /v1/tenants/me/billing/charges` route is unchanged.
 
-Both reads require the existing `billing:read` permission. Limits use the shared default and maximum. Query lengths are declared with `garde` before parsing; malformed values and mismatched continuations return the shared invalid-request response.
+## Performance evidence
 
-Responses declare private, no-store caching.
+A load simulation on Postgres 19rc2 with 15-minute runs measured the report read, warm. It used three accounts: 10 fleets (86,400 lines a month), 100 fleets (864,000) and 1,000 fleets (8.64M).
 
-## Query bounds and evidence
+| Read | 10 fleets | 100 fleets | 1,000 fleets |
+|---|---|---|---|
+| Raw ledger, the previous statement | ~465 ms | ~5,030 ms | ~87,900 ms |
+| Daily rollup | ~1.2 ms | ~10 ms | ~170–260 ms |
 
-Report predicates select one tenant and one day, seven days or month. The existing tenant/time index supports those bounds; PostgreSQL may choose a sequential scan for a small table. The database groups and orders the scoped rows for totals and activity pagination.
-
-Activity grouping precedes keyset pagination; display lookups never run once per result in application code. Detail reads use the existing unique work/sequence index. No new table, materialized report or reporting daemon is required.
-
-The database proof prefixes the production statements and bindings with `EXPLAIN (ANALYZE, FORMAT JSON)`. Growing scoped histories and a larger unrelated tenant must keep the intended index conditions and bounded row scans.
-
-Report reads use a fixed number of queries, independent of page size. Concurrent read proofs check isolation, overlap and connection return; an unavailable datastore returns an error without changing money.
+The rollup matched the raw statement row for row (`EXCEPT ALL`, 0 differences). Settling with the rollup cost about 12% throughput when every client hit one account's wallet, and nothing measurable across many accounts. Details are in `docs/v2/evidence/M249_004_SOURCE_INVENTORY.md`.
 
 ## Implementation scope
 
-`afd_billing`'s report module owns the report types, period selection, aggregates, grouped paging and detail reads, with static SQL beside each use case. `afd_api_tenant` holds the bounded input parsing and thin handlers, and `afd_api_wire` the response types. `afd_http` registers both routes behind the bearer and `BillingRead` guards.
+`afd_billing` owns the rollup tables' writes (`ledger/settle.rs`) and the report read (`report/`), with static SQL beside each use case. `afd_api_tenant` holds the bounded input parsing and the thin handler, and `afd_api_wire` the response types. `afd_http` registers the route behind the bearer and `BillingRead` guards.
 
-The dashboard page under `ui/packages/app` makes one report request, validates the response, keeps the captured report cutoff across page moves, and reads an activity's charges only when the page opens it. Model names come from the dashboard's shared label store, not a catalogue read. Shared table, disclosure and UTC date helpers live in the design system.
+The dashboard page under `ui/packages/app` makes one report request and validates the response. Model names come from the dashboard's shared label store, not a catalogue read.
 
 ## Acceptance
 
-The real Usage route must be viewable in the local acceptance deployment with ordinary authentication. Existing settled local usage may populate it; an empty account gets an honest empty state. The illustrative design preview stays labeled separately and is never proof of account data or served API behavior.
+The real Usage route must be viewable in the local acceptance deployment with ordinary authentication; an empty account gets an honest empty state.
 
-Prove complete-period totals beyond one page, equal-time activity boundaries, filter and tenant cursor mismatches, and exclusion of pending rows.
-Also test deleted-fleet labels, setup privacy, customer-key wording, exact tiny amounts, detail failure and retry.
-
-Check query plans on growing real histories, concurrent reads and connection return.
-The unchanged 181-message and ten-fleet continuity scenarios stay independently required for shared compaction.
+Integration tests prove each of these through the real settle path:
+- a duplicate settle adds nothing, and a rolled-back settle leaves nothing behind;
+- a run that crosses midnight splits its money by day and counts once;
+- two concurrent settles of one run count it once, and settles in opposite orders finish without a deadlock;
+- a line settled after month end counts in the month it was created;
+- the report and the rollup equal the settled ledger.

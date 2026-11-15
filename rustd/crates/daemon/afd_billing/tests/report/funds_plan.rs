@@ -5,24 +5,22 @@
 use super::fixture::{self, Fixture, Line};
 use super::plans::{explain, find, root};
 use afd_billing::ledger;
-use afd_db::test_util::{TenantSeed, TestDatabase};
+use afd_db::test_util::TestDatabase;
 use afd_db::{DbRole, Migrator};
 use serde_json::Value;
 
 const INDEX: &str = "idx_usage_lines_tenant_id_unsettled";
 /// The tenant's settled history at each measurement.
 const HISTORY: [u32; 4] = [1_024, 4_096, 16_384, 65_536];
+/// Slices settled per pass: the relay settles a run as its lines arrive, never
+/// a month of them in one statement.
+const CHUNK: usize = HISTORY[0] as usize;
 /// The tenant's lines the relay has not charged yet: a few seconds' worth.
 const UNSETTLED: u32 = 8;
 /// Other tenants with lines of their own: the relay's backlog spans them all.
 const FOREIGN_TENANTS: u32 = 64;
 /// Each other tenant's settled history.
 const FOREIGN_HISTORY: u32 = 64;
-
-/// The tenant's wallet, which the funds read starts from.
-const INSERT_WALLET: &str = "\
-INSERT INTO billing.wallets (tenant_id, balance_nanos, created_at, updated_at)
-VALUES ($1, 0, now(), now())";
 
 #[tokio::test]
 #[ignore = "requires live Postgres: make test-integration-rustd"]
@@ -33,23 +31,28 @@ async fn the_funds_read_scans_only_unsettled_lines_however_long_the_history() {
     Migrator::new().run(&migrator).await.unwrap();
     migrator.close().await;
     let f = Fixture::open(&database).await;
-    wallet(&f).await;
-    let mut pending: Vec<_> = (0..UNSETTLED)
-        .map(|_| unsettled(Line::runtime(&f.tenant, &f.fleet, 1)))
+    let pending: Vec<_> = (0..UNSETTLED)
+        .map(|_| Line::runtime(&f.tenant, &f.fleet, 1))
         .collect();
+    fixture::seed(&f.admin, &pending).await;
     for _ in 0..FOREIGN_TENANTS {
         let other = fixture::id();
-        pending.extend((0..UNSETTLED).map(|_| unsettled(Line::setup(&other, 1))));
-        pending.extend((0..FOREIGN_HISTORY).map(|_| Line::setup(&other, 1)));
+        fixture::fund(&f.admin, &other).await;
+        let backlog: Vec<_> = (0..UNSETTLED).map(|_| Line::setup(&other, 1)).collect();
+        fixture::seed(&f.admin, &backlog).await;
+        fixture::record(&f, &history(&Line::setup(&other, 1), 0, FOREIGN_HISTORY)).await;
     }
-    fixture::seed(&f.admin, &pending).await;
+    // One long run's slices, settled a chunk at a time as the relay meets them.
+    let run = Line::runtime(&f.tenant, &f.fleet, 1);
     let mut previous = 0;
     for size in HISTORY {
-        let history: Vec<_> = (previous..size)
-            .map(|_| Line::runtime(&f.tenant, &f.fleet, 1))
-            .collect();
-        fixture::seed(&f.admin, &history).await;
-        sqlx::query("ANALYZE billing.usage_lines")
+        for from in (previous..size).step_by(CHUNK) {
+            let until = size.min(from + HISTORY[0]);
+            fixture::record(&f, &history(&run, from, until)).await;
+        }
+        // Settling updates a line out of the partial index; its old entry
+        // goes when vacuum reclaims the old version, as autovacuum does.
+        sqlx::query("VACUUM (ANALYZE) billing.usage_lines")
             .execute(&mut *f.admin.acquire().await.unwrap())
             .await
             .unwrap();
@@ -60,22 +63,11 @@ async fn the_funds_read_scans_only_unsettled_lines_however_long_the_history() {
     database.cleanup().await;
 }
 
-async fn wallet(f: &Fixture) {
-    let mut connection = f.admin.acquire().await.unwrap();
-    TenantSeed::new(&f.tenant)
-        .insert(&mut *connection)
-        .await
-        .unwrap();
-    sqlx::query(INSERT_WALLET)
-        .bind(&f.tenant)
-        .execute(&mut *connection)
-        .await
-        .unwrap();
-}
-
-const fn unsettled(mut line: Line) -> Line {
-    line.settled = None;
-    line
+/// Lines `from..until` of `first`'s work, each its own slice.
+fn history(first: &Line, from: u32, until: u32) -> Vec<Line> {
+    (from..until)
+        .map(|sequence| first.next(first.kind, i64::from(sequence), 1))
+        .collect()
 }
 
 async fn assert_reads_unsettled(f: &Fixture, history: u32) {

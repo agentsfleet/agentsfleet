@@ -76,8 +76,8 @@ const POST_PORT_ADDITIONS: usize = 17;
 /// calls, its renewal and its report.
 const CHAT_AUTHORING_ADDITIONS: usize = 15;
 
-/// Settled period reports and one billed activity's individual charge lines.
-const BILLING_REPORT_ADDITIONS: usize = 2;
+/// Settled period reports, read from the daily usage rollup.
+const BILLING_REPORT_ADDITIONS: usize = 1;
 
 /// The creator-private editor read joins the current fleet with bounded history.
 const AUTHORING_CONTEXT_ADDITIONS: usize = 1;

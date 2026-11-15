@@ -4,25 +4,27 @@
 use af_observability::metrics::label::billing::{FundsOutcome, SettleOutcome, WorkType};
 use af_observability::metrics::label::cost::ChargeClass;
 use af_observability::producers::{billing as metrics, cost};
+use af_observability::{Analytics, Telemetry};
 
 use super::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement, WorkKey};
 use crate::Result;
 
 /// `inner`, with every funds check's answer and every settlement's outcome,
-/// spend and unpriced tokens recorded.
+/// spend and unpriced tokens recorded, and a wallet's exhaustion reported.
 ///
 /// Wraps outside [`super::FailOpen`] so a check it admitted is counted as
 /// `unconfirmed` rather than vanishing as an error.
 #[derive(Debug)]
 pub struct Observed<B> {
     inner: B,
+    analytics: Analytics,
 }
 
 impl<B> Observed<B> {
-    /// `inner`, counted.
+    /// `inner`, counted, reporting product events to `analytics`.
     #[must_use]
-    pub const fn new(inner: B) -> Self {
-        Self { inner }
+    pub const fn new(inner: B, analytics: Analytics) -> Self {
+        Self { inner, analytics }
     }
 }
 
@@ -48,6 +50,13 @@ impl<B: Biller> Biller for Observed<B> {
             Ok(receipt) => {
                 metrics::settled(work, SettleOutcome::Ok);
                 record_spend(settlement, receipt);
+                // The settlement committed before `settle` returned, so a
+                // rolled-back debit never reports.
+                if receipt.exhausted {
+                    self.analytics.report(&Telemetry::WalletExhausted {
+                        tenant_id: settlement.payer.tenant.as_str().to_owned(),
+                    });
+                }
             }
             Err(fault) if fault.is_unanswered() => {
                 metrics::settled(work, SettleOutcome::DatastoreUnavailable);
