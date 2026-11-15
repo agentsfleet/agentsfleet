@@ -51,6 +51,8 @@ Equivalence: `EXCEPT ALL` in both directions over the full result returned 48 ro
 
 ## Label design
 
-The first design added `model_labels` to the billing report. The owner moved names to one shared store so billing reports billing alone, and asked that names never visibly swap after paint. The layout therefore reads the labels on the server, once per sign-in or refresh; Next keeps the layout across client navigation (`next/dist/docs/01-app/02-guides/authentication.md:1358`).
+The first design added `model_labels` to the billing report. The owner moved names to one shared store so billing reports billing alone, and asked that names never visibly swap after paint. The layout therefore starts one label read on the server per sign-in or refresh and forwards the pending result through its provider; Next keeps the layout across client navigation (`next/dist/docs/01-app/02-guides/authentication.md:1358`).
+
+The visual follow-up lets the frame, report totals and graph stream while the fleet table waits for names; it preserves the shared read and avoids a visible identifier/name swap.
 
 An identifier gets a name only when every catalogue listing of it agrees on one nonempty name. Retired models are absent from the priced catalogue and show their recorded identifier.

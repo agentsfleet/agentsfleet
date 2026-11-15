@@ -2,7 +2,8 @@
 
 The Usage page shows settled spending for the account across its workspaces. The existing header keeps the available credit balance.
 
-The page shows period and fleet controls, settled totals, daily spending, a Fleet/Model/Activities/Charged table and expandable billed activities. Add credits keeps the existing support-email action.
+The page shows Period and Fleet controls, settled totals, daily spending and a Fleet/Model/Activities/Charged table.
+More filters, Charge details and Add credit remain paused; their reusable APIs and components stay intact.
 
 ## Read flow and ownership
 
@@ -29,7 +30,7 @@ Runtime labels use the ledger's fleet-name snapshot and survive fleet deletion.
 - Only records settled by the upper timestamp contribute.
 - Totals cover the whole selected period and filters, never only the displayed activity page. One read transaction gives the report's totals, breakdowns and activity page a consistent image.
 - A continuation carries the original time bounds, tenant, filters and page size. Reusing it with different filters or another tenant is refused. The next boundary includes every ordering key, so tied timestamps cannot skip activities.
-- All fleets includes runtime and setup. Setup chat selects setup attempts. A specific fleet selects its runtime ledger rows.
+- All Fleets includes saved-fleet and setup usage. Individual fleet choices follow it; a specific fleet selects its runtime ledger rows. Existing explicit Setup URLs keep their scoped label.
 - Model filtering is exact. Filter choices come from the whole period, independent of the displayed page.
 - Amounts stay integer nanodollar strings over the API and use the existing exact-small-amount formatter. A combined stored charge is never recomputed from today's rates.
 - The ledger stores combined charged money with token and runtime quantities. The page shows those quantities and the actual combined charge. It does not invent separate historical inference, runtime or compaction money.
@@ -51,25 +52,23 @@ The chart keeps nanodollars as integers until formatting or bounded display scal
 
 ## Shared presentation
 
-The page uses the shared title, primary period/fleet controls, a UTC period label and unboxed period totals. Model and setup filters remain available in secondary controls.
+The page uses the canonical [UX reference](../ux.html), shared Manrope typography, a named-month Period control and an All Fleets selector.
+The owner deferred timezone changes. A past reporting month uses its inclusive `through_at` cutoff; the current month clears it.
+Partial snapshots show their through date as a separate choice, allowing a return to the full or live month.
+Displayed instants and ranges use shared viewer-local `Time` utilities. Calendar bucket identities stay as supplied by the API.
 
-Activity uses DataTable's plain surface, keeping its column headings and pagination when empty.
-Controlled row disclosure reads details only for the selected visible activity; native buttons expose the expanded state and support keyboard activation.
+The daily plot has a fixed 100px height and at most 31 bars. A decoder refusal handles oversized projections without clipping charges.
+The shared fleet select scrolls within the available viewport height.
+An existing model-filtered URL shows its exact model identity and a clear action; narrowed totals cannot hide behind the removed picker.
 
-The disclosure uses the shared DescriptionList, with left-aligned labels and right-aligned values on the card surface.
-Exact positive charge amounts keep up to nine decimal places. The total always covers the whole activity, including undisplayed charge pages.
+The shared model-label request starts once per document load alongside shell reads.
+Its pending promise stays in `ModelLabelsProvider`; the named fleet table waits inside its own `Suspense` boundary.
+The heading, controls, totals and daily plot can render from the report while labels are pending.
+A failed label read resolves to recorded identifiers; there is no identifier/name swap after the table paints.
 
-Inference-only and runtime-only ledger lines receive their fixed labels. Combined lines keep an explicit combined label without inferred price splits.
-
-Spending uses the shared List and UsageBar primitives for full-period fleet and model groups.
-Money stays an exact integer until display; bar ratios are reduced with integer arithmetic before conversion to bounded percentages.
-
-Billing uses the shared `font-system` utility to match its approved mock.
-Activity text uses 12 pixels, names and totals use medium weight, and spending rows use 13 pixels with normal weight.
-
-The app imports date formatting from the design system's `time-utils.ts` exports.
-`Time` keeps each timestamp's canonical value while the shared UTC helpers align period and activity labels.
-The existing app source check rejects page-local date formatters.
+The active Usage boundary ignores old activity/detail URL parameters so paused charge controls cannot add hidden reads.
+The reusable detail loader still validates visible activity identity, captured cutoff and charge pagination for a later design.
+Exact charge amounts and combined historical lines retain their recorded meanings.
 
 ## Public reads
 
@@ -95,7 +94,9 @@ Report reads use a fixed number of queries, independent of page size. Concurrent
 
 `afd_billing`'s report module owns the report types, period selection, aggregates, grouped paging and detail reads, with static SQL beside each use case. `afd_api_tenant` holds the bounded input parsing and thin handlers, and `afd_api_wire` the response types. `afd_http` registers both routes behind the bearer and `BillingRead` guards.
 
-The dashboard page under `ui/packages/app` makes one report request, validates the response, keeps the captured report cutoff across page moves, and reads an activity's charges only when the page opens it. Model names come from the dashboard's shared label store, not a catalogue read. Shared table, disclosure and UTC date helpers live in the design system.
+The dashboard page under `ui/packages/app` makes one report request, validates it and retains complete filtered aggregates.
+Filter changes reset continuations; fleet changes preserve the reporting cutoff. Model names reuse the shared label store, without a Usage catalogue request.
+The charge API and loader remain reusable; the paused UI makes no charge request.
 
 ## Acceptance
 

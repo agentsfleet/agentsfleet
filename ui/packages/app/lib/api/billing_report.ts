@@ -9,6 +9,7 @@ import { BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_CHARGE_KIND, 
 export { BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK } from "./billing-report-values";
 
 const Count = z.number().int().nonnegative();
+const MAX_DAILY_BUCKETS = 31;
 const Totals = z.object({
   charged_nanos: nanosSchema,
   input_tokens: Count, output_tokens: Count, runtime_ms: Count,
@@ -36,7 +37,7 @@ const ChargePage = z.object({
 });
 const Report = z.object({
   period: z.enum([BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK]), from_at: Instant, through_at: Instant,
-  totals: Totals, daily: z.array(Daily),
+  totals: Totals, daily: z.array(Daily).max(MAX_DAILY_BUCKETS),
   spending: z.object({ by_fleet: z.array(FleetBreakdown), by_model: z.array(Breakdown) }),
   filters: z.object({
     fleets: z.array(z.object({ id: z.string().nullable(), name: z.string().nullable() })),

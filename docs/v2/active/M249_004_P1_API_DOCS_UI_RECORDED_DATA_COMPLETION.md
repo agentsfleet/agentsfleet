@@ -180,8 +180,10 @@ Use the existing `GET /v1/tenants/me/billing/reports/current` route and `billing
 
 The report response is unchanged: totals, daily buckets, fleet/model breakdowns, filter choices and the first activity page. Billing carries no display labels.
 
-Model display names come from one shared label store (owner decision, Nov 15, 2026). The dashboard layout reads the platform catalogue once per sign-in or refresh and hands the labels to a client provider.
-Next does not re-render a layout on client navigation, so the labels stay in the browser for the session. They arrive in the first server render, so no screen swaps an identifier for a name after paint.
+Model display names come from one shared label store (owner decision, Nov 15, 2026). The dashboard layout starts the platform catalogue read once per sign-in or refresh and hands its pending result to the client provider.
+Next retains the layout on client navigation, so the browser keeps the shared names for the session.
+Only name consumers suspend; the Usage totals and daily chart render from the report while its named fleet table waits.
+The table first paints with resolved names or recorded identifiers after a failed label read, without a later identifier/name swap.
 
 Keep the recorded model identifier as every aggregation key and filter value. Display the label when known, otherwise the identifier. A label never rewrites identity or computes money from current catalogue prices.
 If several providers list one identifier, label it only when every listing supplies the same nonempty name. Unknown, retired or ambiguous models show their recorded identifier.
@@ -195,8 +197,10 @@ Common authenticated-shell reads remain separately measured; do not misreport th
 The current dashboard layout awaits workspace, balance and invite reads before returning its frame. A page-level Suspense boundary cannot bypass a blocked parent layout.
 Include this path in the cold-load profile. Stream confirmed optional blockers with explicit loading states; do not substitute false empty workspace or zero-balance data.
 
-Keep individual charge requests behind an explicit activity disclosure. Pagination and filter changes request the corresponding report page; they preserve the existing snapshot rules.
-Render the Usage frame before its data region resolves, using the existing loading indicator and Suspense. Defer collapsed charge-detail code with a client dynamic import.
+The owner paused Charge details, More filters and Add credit in the visual follow-up. Keep the charge API and reusable loader/detail code intact.
+The current Usage boundary ignores legacy activity/disclosure parameters, so hidden details add no request or wait.
+Filter changes read one report; the shared label store is reused.
+Render the Usage frame before its data region resolves, using the existing loading indicator and Suspense.
 
 Use the shared local-time utilities for displayed instants. Accounting bucket identities and stored schedule rules retain their established semantics.
 
@@ -438,3 +442,22 @@ The Plugin UI and backend implementation are retained for reuse. Do not reactiva
 ## Latest implementation boundaries
 
 M249_003 is parked as the rename workstream. Only Section 5 of this workstream is parked; Sections 1, 2, 2a, 3 and 4 remain in scope, and Sections 1–3 retain the performance investigation above.
+
+
+### Codex visual and loading follow-up
+
+Built on Claude checkpoint `cad48e0beb8d09dc8742baf7137d893aabdd4dea`; the report and charges wire fields remain unchanged.
+The named-month selector uses `period=month` and the existing `through_at` cutoff; no timezone or month query field is introduced.
+The owner's timezone deferral quoted above remains in force.
+
+The [uploaded reference](../../ux.html) governs Usage and Security geometry; its sample records are not stored product facts.
+All Fleets includes setup and saved-fleet usage, followed by individual fleets.
+Existing model-filtered URLs disclose their scope and provide a clear action.
+Older month navigation remains reachable with a bounded list.
+
+The shared label request starts alongside the existing shell reads; only the fleet table waits for its promise.
+Settled totals and daily bars do not wait for model names. No extra catalogue read is added to Usage.
+The UI refuses a report containing more than 31 daily buckets instead of clipping or expanding it.
+The owner requested injected-data, 100-fleet, dropdown and performance evidence; see the [runtime results](../evidence/M249_POST_MERGE_RUNTIME_VALIDATION.md).
+
+> Owner (Indy): "Yes i need you to optimize and provide performant load, especially when you see multiple calls for something"

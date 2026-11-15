@@ -68,11 +68,11 @@ describe("conversation-first app navigation", () => {
     await user.click(screen.getAllByRole("link", {name: "New fleet"})[0]!);
     expect(mocks.track).toHaveBeenCalledWith({source: "app_sidebar_fleets_new", surface: "app_sidebar", target: "/w/ws_1/fleets/new"});
     await openMenu();
-    for (const [name, href] of [["Usage", "/settings/billing"], ["Team", "/settings/members"], ["API Keys", "/settings/security"], ["Models", "/w/ws_1/settings/models"]]) {
+    for (const [name, href] of [["Usage", "/settings/billing"], ["Team", "/settings/members"], ["Security", "/settings/security"], ["Models", "/w/ws_1/settings/models"]]) {
       expect(screen.getByRole("menuitem", {name}).getAttribute("href")).toBe(href);
     }
     expect(screen.queryByRole("menuitem", {name: "Learn more"})).toBeNull();
-    await user.click(screen.getByRole("menuitem", {name: "API Keys"}));
+    await user.click(screen.getByRole("menuitem", {name: "Security"}));
     expect(screen.queryByRole("menu")).toBeNull();
     expect(mocks.track).toHaveBeenCalledWith({source: "app_sidebar_settings_security", surface: "app_sidebar", target: "/settings/security"});
   });
@@ -98,7 +98,7 @@ describe("conversation-first app navigation", () => {
   });
   it("keeps all account destinations keyboard accessible in one menu", async () => {
     mount(); const menu = await openMenu();
-    for (const [name, href] of [["Models", "/w/ws_1/settings/models"], ["Team", "/settings/members"], ["API Keys", "/settings/security"]])
+    for (const [name, href] of [["Models", "/w/ws_1/settings/models"], ["Team", "/settings/members"], ["Security", "/settings/security"]])
       expect(within(menu).getByRole("menuitem", {name}).getAttribute("href")).toBe(href);
     expect(within(menu).queryByRole("menuitem", {name: "Profile"})).toBeNull();
     expect(within(menu).queryByRole("menuitem", {name: "API keys"})).toBeNull();

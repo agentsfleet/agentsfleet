@@ -3,8 +3,8 @@ import {test} from "./fixtures/chat-probe";
 import {billingActivity, billingReport} from "@/tests/helpers/billing-report";
 
 for (const scenario of [
-  {zone: "Asia/Kolkata", now: "2026-11-14T13:00:00Z", wake: "7:00 PM", activity: "Nov 14, 6:00 AM", day: "Nov 14, 2026"},
-  {zone: "America/New_York", now: "2026-11-14T04:45:00Z", wake: "Nov 14, 12:15 AM", activity: "Nov 13, 7:30 PM", day: "Nov 13, 2026"},
+  {zone: "Asia/Kolkata", now: "2026-11-14T13:00:00Z", wake: "7:00 PM", day: "Nov 14, 2026"},
+  {zone: "America/New_York", now: "2026-11-14T04:45:00Z", wake: "Nov 14, 12:15 AM", day: "Nov 13, 2026"},
 ]) test.describe(scenario.zone, () => {
   test.use({timezoneId: scenario.zone});
 
@@ -25,8 +25,7 @@ for (const scenario of [
     })}));
     await page.goto(`${chatProbe}?usage=1`);
     await expect(page.getByLabel("Period totals").locator("time")).toHaveText(scenario.day);
-    await page.getByRole("button", {name: "Charge details", exact: true}).click();
-    await expect(page.getByText(scenario.activity, {exact: true})).toBeVisible();
+    await expect(page.getByRole("button", {name: "Charge details", exact: true})).toHaveCount(0);
     await expect(page.getByText(/All times UTC/)).toHaveCount(0);
     await page.screenshot({path: info.outputPath("local-usage.png"), scale: "css", animations: "disabled"});
     expect(errors).toEqual([]);

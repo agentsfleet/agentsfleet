@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useFreshFleetChat } from "./draft-sidebar-state";
 import { workspaceIdFromPath, workspacePath } from "@/lib/workspace-routes";
 import { usePathname } from "next/navigation";
-import { CpuIcon, UsersIcon, ChartBarIcon, KeyIcon, NotePencilIcon } from "@phosphor-icons/react/ssr";
+import { CpuIcon, UsersIcon, ChartBarIcon, ShieldIcon, NotePencilIcon } from "@phosphor-icons/react/ssr";
 import { PageHeader, TooltipButton } from "@agentsfleet/design-system";
 import { primaryNavigation } from "./sidebar-navigation-data";
 
@@ -12,7 +12,7 @@ const ACCOUNT_PAGES = [
   {path: "settings/models", label: "Models", icon: CpuIcon},
   {path: "settings/members", label: "Team", icon: UsersIcon},
   {path: "settings/billing", label: "Usage", icon: ChartBarIcon},
-  {path: "settings/security", label: "API Keys", icon: KeyIcon},
+  {path: "settings/security", label: "Security", icon: ShieldIcon},
 ] as const;
 
 /** Display only: routing, authorization and account selection keep their owners. */

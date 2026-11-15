@@ -5,8 +5,7 @@ import { BILLING_ACTIVITY_SETUP } from "@/lib/api/billing-report-values";
 import { MS_PER_SECOND } from "@/lib/utils";
 
 export const SETUP_LABEL = "Setup chat";
-export const ALL_FLEETS_LABEL = "All fleets & setup chats";
-export const ALL_MODELS_LABEL = "All models";
+export const ALL_FLEETS_LABEL = "All Fleets";
 const NUMBER_LOCALE = "en-US";
 const SECONDS = new Intl.NumberFormat(NUMBER_LOCALE, { maximumFractionDigits: 3 });
 

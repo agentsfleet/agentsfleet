@@ -83,4 +83,11 @@ describe("validated settled billing reads", () => {
     respond({...report, spending: {...report.spending, by_fleet: report.spending.by_fleet.map(row => ({...row, models: undefined}))}});
     await expect(getBillingReport("fixture-token", {limit: 25})).rejects.toThrow(/models/);
   });
+
+  it("refuses more daily bars than any supported reporting period can contain", async () => {
+    respond({...billingReport(), daily: Array.from({length: 32}, (_, index) => ({
+      day: new Date(Date.UTC(2026, 9, index + 1)).toISOString().slice(0, 10), totals: billingReport().totals,
+    }))});
+    await expect(getBillingReport("fixture-token", {limit: 25})).rejects.toThrow(/daily/);
+  });
 });

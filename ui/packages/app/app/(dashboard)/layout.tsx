@@ -31,10 +31,6 @@ function readShell(token: string) {
     // notice. Cached per request, so the Invites page shares this read; a
     // failure hides the notice, and that page reports its own.
     listWaitingInvitesCached(token).catch(() => NO_WAITING_INVITES),
-    // Model display names for every screen below, read once per sign-in or
-    // refresh: client navigation keeps this layout, and the browser keeps the
-    // labels with it. A failure leaves recorded identifiers on screen.
-    modelLabelsCached(token).catch(() => NO_MODEL_LABELS),
   ]);
 }
 
@@ -44,9 +40,12 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const token = await credential();
-  const [listResult, billing, waitingInvites, modelLabels] = token
+  // Start the shared read alongside the shell; only label consumers suspend.
+  // The Usage frame can stream while names load, without an identifier/name swap.
+  const labels = token ? modelLabelsCached(token).catch(() => NO_MODEL_LABELS) : undefined;
+  const [listResult, billing, waitingInvites] = token
     ? await readShell(token)
-    : [{ items: [], total: 0 }, null, NO_WAITING_INVITES, NO_MODEL_LABELS];
+    : [{ items: [], total: 0 }, null, NO_WAITING_INVITES];
 
   // Shell controls derive the active workspace from `/w/<id>/…`; no
   // `activeWorkspaceId` prop or cookie owns navigation state. ShellFrame wraps
@@ -71,7 +70,7 @@ export default async function DashboardLayout({
         billing={billing}
         waitingInvites={waitingInvites}
       >
-        <ModelLabelsProvider labels={modelLabels}>{children}</ModelLabelsProvider>
+        <ModelLabelsProvider labels={NO_MODEL_LABELS} pending={labels}>{children}</ModelLabelsProvider>
       </ShellFrame>
     </TooltipProvider>
   );
