@@ -28,7 +28,17 @@ if ! command -v cargo >/dev/null || ! command -v mmdebstrap >/dev/null || ! comm
   bash "$1/.github/actions/build-toolbox/install-tools.sh" build-essential pkg-config libssl-dev bubblewrap ca-certificates git
 fi
 if ! command -v cargo >/dev/null; then
-  curl --proto '=https' --tlsv1.2 -fsS https://sh.rustup.rs | sh -s -- -y --profile minimal
+  # The installer fetches rustup-init once and never retries, and OrbStack's
+  # network has broken that HTTP/2 transfer mid-stream, so the whole install
+  # retries with a backoff. It runs once per machine; cargo skips it after.
+  for attempt in 1 2 3; do
+    if curl --proto '=https' --tlsv1.2 -fsS --http1.1 --retry 5 --retry-all-errors https://sh.rustup.rs \
+        | sh -s -- -y --profile minimal; then
+      break
+    fi
+    [ "$attempt" -lt 3 ] || exit 1
+    sleep $((attempt * 5))
+  done
 fi
 LINUX
 }
