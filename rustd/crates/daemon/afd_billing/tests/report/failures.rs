@@ -18,7 +18,7 @@ const CONNECTION_BUDGET: Duration = Duration::from_millis(400);
 const CUT_POINTS: [&[u8]; 5] = [
     b"BEGIN",
     b"SET TRANSACTION",
-    b"WITH lines AS",
+    b"WITH scoped AS",
     b"WITH grouped AS",
     b"COMMIT",
 ];
