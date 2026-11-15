@@ -168,15 +168,13 @@ pub fn verify_at(
 
     let mut cause = Rejected::Signature;
     let mut decoded = None;
+    // An unset signing key is skipped: an empty secret is the one key the
+    // crate refuses to build, and it could only ever verify a forged token.
     for key in [keys.current.expose(), keys.next.expose()]
         .into_iter()
-        .filter(|key| !key.is_empty())
+        .filter_map(|key| DecodingKey::from_secret(key.as_bytes()).ok())
     {
-        let attempt = jsonwebtoken::decode::<Claims>(
-            token.0,
-            &DecodingKey::from_secret(key.as_bytes()),
-            &validation,
-        );
+        let attempt = jsonwebtoken::decode::<Claims>(token.0, &key, &validation);
         match attempt {
             Ok(found) => {
                 decoded = Some(found);
