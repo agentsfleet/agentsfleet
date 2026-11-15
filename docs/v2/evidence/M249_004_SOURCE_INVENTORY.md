@@ -38,6 +38,10 @@ Those are injected local delays, not live machine timings.
 
 ## Query plans
 
+These are historical measurements of the earlier aggregate optimization.
+Claude reverted that optimization in `431b2ab62`; the current parent `ab4fe8937` uses the prior scoped-row statement.
+The timings below do not establish a speedup for the current SQL or measure the Usage UI.
+
 The worktree Postgres 19 held 2,240,000 settled lines.
 One account's month contained 224,000 across six fleets, setup work and ten models.
 Times are `EXPLAIN (ANALYZE, BUFFERS)` runtimes in milliseconds.
