@@ -7,9 +7,7 @@ Base: `a1dcc222488e4522f8b92208a4f7df8461fe7fbf`, main containing PR #844.
 
 | Screen fact | Status | Producer and storage | Authorization | Adapter | Requests |
 |---|---|---|---|---|---|
-| Usage totals, daily bars, fleet and model groups | Available | `billing.usage_lines`, read by `afd_billing/src/report/sql/aggregates.sql` in one read-only snapshot | `billing:read`, tenant from the session | `lib/api/billing_report.ts` | One report request |
-| Usage activity page | Available | `afd_billing/src/report/sql/activities.sql`, same snapshot | Same | Same | Same request |
-| Usage charge lines | Available | `afd_billing/src/report/sql/charges.sql` | Same; foreign work answers an empty page | `listBillingActivityCharges` | One request, only for an activity the page opens; none on the first load |
+| Usage totals, daily bars, fleet and model groups | Available | `billing.usage_daily` and `billing.runs_daily`, maintained by the settle transaction and read by `afd_billing/src/report/sql/aggregates.sql` | `billing:read`, tenant from the session | `lib/api/billing_report.ts` | One report request |
 | Model display names | Available | `model.platform_models.display_name`, through `GET /v1/models` | Any signed-in person; the catalogue is platform-wide | `lib/model-labels{,-server}.ts`, `ModelLabelsProvider` | One catalogue walk per sign-in or refresh, in the dashboard layout |
 | API key display suffix | Available | `identity.api_keys.display_suffix`, written at creation (M249_003 §5.6) | `apikey:read` | `lib/api/api_keys.ts` | One bounded page |
 | API key last use | Producer missing | None: authentication is one read-only lookup (`docs/AUTH.md:760-762`) | — | Shows "Last used: unavailable" | — |
@@ -27,7 +25,7 @@ Base: `a1dcc222488e4522f8b92208a4f7df8461fe7fbf`, main containing PR #844.
 |---|---|---|
 | Usage-specific reads on first load | Report and catalogue in `Promise.all`; the page waited for both | One report request |
 | Model names | First catalogue page, non-advanced models only, keyed by identifier alone | Complete catalogue, once per sign-in or refresh, shared by every screen |
-| Charge lines | Requested when a row is opened | Unchanged; never on the first load |
+| Activity list and charge lines | Activity page in every report; charges when a row is opened | Removed with their route; redesigned later |
 | Page frame | Waited for every read | Header and actions stream first; the data region follows under `Suspense` |
 
 The shell's own reads (workspaces, balance, invites, and now model labels) are common to every dashboard page and are not Usage requests.
@@ -54,3 +52,43 @@ Equivalence: `EXCEPT ALL` in both directions over the full result returned 48 ro
 The first design added `model_labels` to the billing report. The owner moved names to one shared store so billing reports billing alone, and asked that names never visibly swap after paint. The layout therefore reads the labels on the server, once per sign-in or refresh; Next keeps the layout across client navigation (`next/dist/docs/01-app/02-guides/authentication.md:1358`).
 
 An identifier gets a name only when every catalogue listing of it agrees on one nonempty name. Retired models are absent from the priced catalogue and show their recorded identifier.
+
+## Load simulation and the daily rollup
+
+A throwaway Postgres 19rc2 container held the real `schema/*.sql` and three accounts. Every fleet billed every 15 minutes through November 2026, with two model lines and one runtime line per run:
+
+| Account | Fleets | Lines in the month | `usage_daily` rows | `runs_daily` rows |
+|---|---|---|---|---|
+| Typical | 10 | 86,400 | 900 | 300 |
+| Mid | 100 | 864,000 | 9,000 | 3,000 |
+| Large | 1,000 | 8,640,000 | 90,000 | 30,000 |
+
+The ledger held 5,545 MB, the rollup 28 MB. Rebuilding the rollup from all 9.59M settled lines took 51 s.
+
+Report reads, warm, `EXPLAIN (ANALYZE)` execution time:
+
+| Statement | 10 fleets | 100 fleets | 1,000 fleets |
+|---|---|---|---|
+| Raw aggregates, main's statement | ~465 ms | ~5,030 ms | ~87,900 ms |
+| Raw aggregates, the pre-group rewrite (reverted) | ~555 ms | — | ~87,000 ms |
+| Raw aggregates, a hash-only prototype | ~87 ms | ~1,060 ms | ~24,000 ms |
+| Activity page (now removed) | ~134 ms | — | ~20,000 ms |
+| Daily rollup read | ~1.2 ms | ~10 ms | ~170–260 ms |
+| Secret access (1,000 fleets × 10 secrets) | — | — | ~12 ms |
+
+One plain pass over the large account's month took 8,545 ms cold. Most of the raw statement's time went to `COUNT(DISTINCT …)` and `ARRAY_AGG(DISTINCT …)` sorting and spilling inside its grouping sets.
+
+Equivalence, `EXCEPT ALL` in both directions: the prototype matched main's statement at 45 and 1,035 rows; the rollup read matched at 135 rows (100 fleets). Each found 0 differences.
+
+Settlement, `pgbench`, 8 clients for 30 s. Each transaction inserted a run's 3 lines, then settled, rolled up and debited:
+
+| Shape | Without rollup | With rollup |
+|---|---|---|
+| Every client on one wallet | 421 tx/s, 19.0 ms | 371 tx/s, 21.6 ms |
+| 1,000 fleets across 100 wallets | 848 tx/s, 9.4 ms | 1,104 tx/s, 7.2 ms (run-order noise) |
+| One client, serial | ~240 tx/s, ~4.2 ms | ~190–250 tx/s, ~4.0–5.2 ms |
+
+Write-ahead log per transaction was ~11–12 KB either way. No transaction failed, so no deadlock aborted any of the ~44,700 runs.
+
+Adversarial checks against the settle statement: a duplicate pass settled 0 and added nothing; a rolled-back settle left nothing; a run across midnight split its money by day and counted once. Two relays settling different lines of one run at the same moment kept money exact but counted the run twice when the count keyed on "the first batch". Counting on the run's smallest runtime slice, which only one transaction can settle, removes that without a lock. The integration suite repeats every one of these checks.
+

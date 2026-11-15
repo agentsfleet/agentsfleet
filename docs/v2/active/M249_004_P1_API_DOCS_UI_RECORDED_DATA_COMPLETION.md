@@ -77,6 +77,13 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `ui/packages/app/lib/model-labels{,-server}.ts`, `components/domain/models/ModelLabels.tsx`, `app/(dashboard)/layout.tsx` and their tests | ADD/EDIT | One shared model-label store, read once per sign-in or refresh, replacing Usage's own catalogue call |
 | `docs/architecture/billing_reporting.md` | EDIT | The one-request loader and the label store |
 | `ui/packages/app/vitest.config.ts`, `ui/packages/design-system/vitest.config.ts` | EDIT | Pin the test zone to UTC so time tests grade the same off a UTC machine (owner approval, Nov 15, 2026) |
+| `schema/20261108124610_billing_usage_daily.sql`, `schema/20261108124620_billing_runs_daily.sql`, `rustd/crates/daemon/afd_db/src/migration.rs` | ADD/EDIT | The daily usage rollup the report reads (owner sign-off, Nov 15, 2026) |
+| `rustd/crates/daemon/afd_billing/src/ledger/{settle.rs,mod.rs,sql/settle_lines.sql,sql/add_usage_daily.sql,sql/count_run.sql}` | EDIT/ADD | The settle transaction maintains the rollup and counts each run once, with no lock |
+| `rustd/crates/daemon/afd_billing/src/report/**`, `afd_billing/src/tenant/mod.rs`, `afd_billing/tests/**` | EDIT/DELETE | The report reads the rollup; the activity page, charge details and model filter are removed |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/billing_report/**`, `afd_api_tenant/src/{lib.rs,openapi.rs}`, `afd_api_wire/src/billing/**`, `afd_http/src/{route/tenant.rs,services/billing.rs}`, `afd_api/tests/**` | EDIT/DELETE | The report response and query lose `activities`, `model`, `limit` and `starting_after`; the activity-charges route is deleted |
+| `rustd/crates/daemon/main/src/sweepers/billing.rs`, `docs/architecture/billing_and_provider_keys.md` | EDIT | The relay settles every 5 s; a refused line still retries within a minute |
+| `ui/packages/app/app/(dashboard)/settings/billing/**`, `ui/packages/app/lib/api/{billing_report.ts,billing-report-values.ts}` and their tests | EDIT/DELETE | The dashboard stops decoding and rendering the removed activity list and charge details |
+| `rustd/Cargo.toml` and the production code of the crates holding an `option_if_let_else` site | EDIT | Hand-written `if let`/`else` on `Option` becomes the combinator; the lint is denied workspace-wide |
 | `docs/v2/evidence/M249_004_SOURCE_INVENTORY.md` | ADD | §1 field inventory, request counts, timings and query plans |
 | `rustd/crates/daemon/afd_billing/src/report/{types.rs,queries.rs,sql/aggregates.sql}` | EDIT | Whole-period daily and fleet/model projections |
 | `rustd/crates/daemon/afd_api_wire/src/billing/mod.rs` | EDIT | Typed report fields |
@@ -428,6 +435,28 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 - **Docs-repository branch deferred (Nov 15, 2026):** the public pages for `SecretSummary.available_to` and `PluginCard.head_revision` wait; no `~/Projects/docs` branch in this PR.
 
 > Owner (Indy): "skip docs-repo for now"
+
+- **Load simulation and rollup (Nov 15, 2026):** a 1,000-fleet account's Usage read took ~87 s on the raw ledger; the owner asked for an adversarial review and then a rollup in this PR. The daily rollup reads the same month in ~170–260 ms and matched the raw statement row for row. The pre-group rewrite of the raw statement was reverted: it was slower on realistic short runs.
+- **No locks (Nov 15, 2026):** the owner rejected an explicit per-run lock. A run is counted when its smallest runtime slice settles, which only one transaction can do; the adversarial cases are integration tests.
+- **Report scope (Nov 15, 2026):** the owner chose to delete the activity list and the charges route, drop the report's `model` filter, keep budget months on UTC with Usage, and move the relay to 5 s.
+- **Combinators and Clippy (Nov 15, 2026):** the owner asked for hand-written `if let`/`match` on `Option`/`Result` to become combinators and for Clippy to hold future code to it. `option_if_let_else` is now denied workspace-wide after its 45 sites were rewritten, and orly's FN-RS rule names the method for each intent (orly branch `feat/fn-rs-option-result-combinators`, commit `309eb32`, not yet released).
+
+> Owner (Indy): "rollup table as its own spec - explain me this in ascii pictorial i want this in this spec and PR."
+
+> Owner (Indy): "I do not like locks its pretty scary and locks can cause deadlocks - have we verified that. What ever adversarial tests you conducted must be part of unit and integration tests."
+
+> Owner (Indy), choosing: "5 s", "Drop it", "Delete both", "Keep UTC", then "Signed off" on the rollup SQL.
+
+> Owner (Indy): "Add 10 crates in this PR rewriting hand-written match/if let on Option and Result into the methods from the table, where Clippy doesn't insist. ... record the ones done, and i want the learning at the end so future crates follow that emphasized via orly. The tests can be skipped."
+
+> Owner (Indy): "i think you can beef up clippy as well so the code is tighter"
+
+- **orly 0.30.0 (Nov 15, 2026):** FN-RS with the method table merged as orly PR #78 (`7ed24be`); this repository picks it up on its next pin bump. Clippy also denies `or_fun_call`, `needless_collect`, `iter_on_single_items` and `useless_let_if_seq`; `afd_api_wire/src/page.rs` carries the one `expect` for utoipa's derive. `parking_lot` 0.13 is blocked by `quiche`'s `libc` cap.
+- **Run count (Nov 15, 2026):** the owner signed off a second `count_run` condition for a slice logged after a later one settled. It never counted a run whose later slice settled before an already-logged earlier one, which is the relay's normal order, and four tests failed. `count_run.sql` is back to the signed-off single condition; slices are numbered by their start, so the case it guarded cannot occur. A marker column would cover it and needs a schema sign-off.
+- **Wallet exhaustion event (Nov 15, 2026):** the owner asked for billing funnel events. No credit purchase path exists, so `credits_purchased` is not sent, and `spend_limit_hit` would fire per refused event. `debit_wallet.sql` returns whether its debit crossed from funded to zero or below (`RETURNING old`/`new`, Postgres 18+, which `uuidv7()` in `insert_fleet_event.sql` already requires), and `Observed` reports `wallet_exhausted` after the commit, carrying the tenant identifier only. The sweepers now share one biller.
+- **Settle-sized test batches (Nov 15, 2026):** `funds_plan` and `plans` settled up to 61,440 slices in one statement and hit the lane's 5 s `statement_timeout` under parallel load. They now settle at most 1,024 slices per run, as the relay does.
+
+> Owner (Indy): "Okay add that." and "Okay fix that, if there ia code clean in that area i want you to clean up duplicates, better way of writing the code sql so its performant, and scales code"
 
 > Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 
