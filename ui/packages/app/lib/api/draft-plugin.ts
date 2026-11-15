@@ -5,7 +5,7 @@ import { setupRequest, SetupUnavailable } from "./draft-request";
 
 export const PluginCardSchema = z.object({
   id: z.uuidv7(), name: z.string(), description: z.string(),
-  head_revision_id: z.uuidv7(), etag: z.string(), requirements: z.record(z.string(), z.unknown()),
+  head_revision_id: z.uuidv7(), head_revision: z.string().regex(/^[1-9]\d*$/), etag: z.string(), requirements: z.record(z.string(), z.unknown()),
   created_at: Instant, required_credentials_reasons: z.record(z.string(), z.string()),
 });
 export const PluginCardsSchema = z.object({items: z.array(PluginCardSchema).max(100), next_cursor: z.string().nullable()});

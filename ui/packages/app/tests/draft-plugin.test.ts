@@ -14,6 +14,15 @@ describe("native Plugin reads", () => {
     expect(String(fetch.mock.calls[0]?.[0])).toContain(`/plugins?limit=25&starting_after=private%2Bcursor`);
     expect(fetch.mock.calls[0]?.[1]).toMatchObject({method: "GET", credentials: "same-origin", cache: "no-store"});
   });
+  it.each([undefined, 1, "0", "01", "v1", ""])("plugin_card_ordinal_matches_pinned_head: refuses a card whose head ordinal is %j", async head_revision => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({items: [{...PLUGIN_CARD, head_revision}], next_cursor: null})));
+    await expect(pluginPage(WORKSPACE, null, signal())).rejects.toBeTruthy();
+  });
+  it("decodes the head ordinal beside the head identity it describes", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({items: [{...PLUGIN_CARD, head_revision: "12"}], next_cursor: null})));
+    const page = await pluginPage(WORKSPACE, null, signal());
+    expect(page.items[0]).toMatchObject({head_revision: "12", head_revision_id: REVISION_ID});
+  });
   it("inspects an explicit immutable revision of an account-owned Plugin", async () => {
     const fetch = vi.fn().mockResolvedValue(response(PLUGIN)); vi.stubGlobal("fetch", fetch);
     expect(await inspectPlugin(WORKSPACE, PLUGIN_CARD, signal())).toEqual(PLUGIN);

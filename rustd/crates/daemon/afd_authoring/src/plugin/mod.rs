@@ -83,6 +83,7 @@ impl Entry {
                     .unwrap_or_else(|| serde_json::json!({}))
             }),
             head_revision_id: self.head_revision_id.clone(),
+            head_revision: head.revision.to_string(),
             etag: self.etag(),
         }
     }
