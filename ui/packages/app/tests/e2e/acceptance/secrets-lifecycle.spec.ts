@@ -15,12 +15,12 @@ import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { gotoWorkspace } from "./fixtures/nav";
 import { saveFleetViaUI } from "./fixtures/install-ui";
-import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { purgeFixtureFleet } from "./fixtures/teardown";
 import { NANOS_PER_USD } from "@/lib/types";
 
 const ACTION_TIMEOUT_MS = 15_000;
 const JOURNEY_TIMEOUT_MS = 240_000;
-const FLEET_PREFIX = "secret-walk";
+const FLEET_NAME = "vendor-api-reader";
 const ACCESS_COLUMN = 3;
 
 const suffix = () => crypto.randomBytes(3).toString("hex");
@@ -46,9 +46,11 @@ async function manage(page: Page, name: string, action: "Replace value" | "Delet
 test.describe("secrets lifecycle", () => {
   let workspaceId = "";
   let secretName: string | null = null;
+  let fleetId: string | null = null;
 
   test.afterEach(async () => {
-    if (workspaceId) await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, FLEET_PREFIX);
+    if (workspaceId && fleetId) await purgeFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
+    fleetId = null;
     if (secretName) {
       await clientFor(FIXTURE_KEY.regular)
         .delete(`/v1/workspaces/${workspaceId}/secrets/${encodeURIComponent(secretName)}`)
@@ -82,12 +84,11 @@ test.describe("secrets lifecycle", () => {
     await expect(row.getByRole("cell").nth(ACCESS_COLUMN)).toHaveText("No active fleets");
 
     // A fleet whose saved setup declares the secret gains access to it.
-    const fleet = `${FLEET_PREFIX}-${suffix()}`;
-    await saveFleetViaUI(page, fleet, { handle: FIXTURE_KEY.regular, workspaceId, config: readerConfig(fleet, name) });
+    fleetId = await saveFleetViaUI(page, FLEET_NAME, { handle: FIXTURE_KEY.regular, workspaceId, config: readerConfig(FLEET_NAME, name) });
     row = await secretRow(page, name);
-    await expect(row.getByRole("cell").nth(ACCESS_COLUMN)).toHaveText(fleet);
+    await expect(row.getByRole("cell").nth(ACCESS_COLUMN)).toHaveText(FLEET_NAME);
     await page.getByRole("button", { name: `Manage ${name}`, exact: true }).click();
-    await expect(page.getByRole("dialog")).toContainText(`Available to ${fleet}.`);
+    await expect(page.getByRole("dialog")).toContainText(`Available to ${FLEET_NAME}.`);
     await page.keyboard.press("Escape");
 
     // Replace keeps the name and hides the value.

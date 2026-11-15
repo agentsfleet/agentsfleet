@@ -25,7 +25,7 @@ import os from "node:os";
 import path from "node:path";
 import { Schema } from "effect";
 
-import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
+import { ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak, refusalCode } from "./fixtures/negatives.ts";
@@ -34,7 +34,7 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { saveNativeFleet } from "./fixtures/native-setup.ts";
 import { waitForFleetActive } from "./fixtures/seed.ts";
-import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
+import { deleteFixtureFleet } from "./fixtures/teardown.ts";
 import { trailingJson } from "./fixtures/steer-envelope.ts";
 import { randomUuidv7 } from "./helpers-lifecycle-with-token.ts";
 import type { DefinitionSchema } from "../../src/commands/chat/protocol.ts";
@@ -58,6 +58,7 @@ const SETUP_TIMEOUT_MS = 180_000;
 const MEMORY_STORE_TOOL = "memory_store" as const;
 const PINNED_CATEGORY = "core" as const;
 const MEMORY_KEY = "release_freeze_owner" as const;
+const FLEET_NAME = "release-freeze-memory";
 const STATUS_PROCESSED = "processed" as const;
 // af_core/src/error_code/fleet.rs: memory asked of a fleet that is not there.
 const CODE_FLEET_NOT_FOUND = "UZ-MEM-002" as const;
@@ -96,7 +97,6 @@ if (!isLive) {
     let sessionJwt = "";
     let stateDir = "";
     let env: Record<string, string> = {};
-    let workspaceId = "";
     let fleetId = "";
     const word = freshWord();
     const fact = `The release freeze owner this week is the ${word} rota.`;
@@ -119,18 +119,14 @@ if (!isLive) {
       sessionJwt = minted.sessionJwt;
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
       env = composeEnv({ AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_STATE_DIR: stateDir, NO_COLOR });
-      workspaceId = (await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir }))
-        .currentWorkspaceId;
-      const name = `${ACCEPTANCE_RUN_PREFIX}-memory-${crypto.randomBytes(3).toString("hex")}`;
-      fleetId = (await saveNativeFleet(env, rememberingFleet(name))).id;
+      await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
+      fleetId = (await saveNativeFleet(env, rememberingFleet(FLEET_NAME))).id;
       await waitForFleetActive(env, fleetId, Date.now() + SETUP_TIMEOUT_MS);
     }, SETUP_TIMEOUT_MS);
 
     afterAll(async () => {
       try {
-        if (workspaceId) {
-          await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
-        }
+        if (fleetId) await deleteFixtureFleet(env, fleetId);
       } finally {
         if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
       }

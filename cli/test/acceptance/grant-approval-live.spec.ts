@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { Schema } from "effect";
 
-import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
+import { ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak, refusalCode } from "./fixtures/negatives.ts";
@@ -28,7 +28,7 @@ import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { addWorkspace, listWorkspaces, useWorkspace } from "./fixtures/workspace-ops.ts";
 import { createNativeDraft, fixtureDefinition, inspectDraft } from "./fixtures/native-setup.ts";
 import { FleetSchema } from "../../src/commands/chat/protocol.ts";
-import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
+import { deleteFixtureFleet } from "./fixtures/teardown.ts";
 import { readAuthContext, type AuthContext } from "./fixtures/native-api.ts";
 import { chargedNanos, readUsagePage, usageTextNaming } from "./fixtures/usage-ops.ts";
 import { EXIT_CODE } from "../../src/errors/index.ts";
@@ -50,6 +50,7 @@ const isLive = target.startsWith("https://");
 
 const STATE_DIR_PREFIX = "agentsfleet-grant-" as const;
 const GRANT_WORKSPACE = "fixture-cli-connector-grants";
+const FLEET_NAME = "linear-issue-triage";
 const NO_COLOR = "1" as const;
 const JSON_FLAG = "--json" as const;
 const STEER_COMMAND = ["fleet", "steer"] as const;
@@ -142,15 +143,15 @@ if (!isLive) {
 
       balanceBeforeNanos = await readBalanceNanos();
       await ensureConnectorHandle(env);
-      const draft = await createNativeDraft(ctx, fixtureDefinition(`${ACCEPTANCE_RUN_PREFIX}-grant-${Date.now()}`, GRANT_CREDENTIAL_NAME));
+      const draft = await createNativeDraft(ctx, fixtureDefinition(FLEET_NAME, GRANT_CREDENTIAL_NAME));
       const review = await inspectDraft(env, draft.id);
       const saved = await runWithEnv([JSON_FLAG, CHAT_COMMAND, draft.id, NO_INPUT_FLAG, SAVE_FLAG,
         REVIEW_DIGEST_FLAG, review.review_digest]);
       assert.equal(saved.code, 1, `unapproved setup must remain partial: ${saved.stderr}`);
       const fleet = saved.stdout.trim().split("\n").map((line): unknown => JSON.parse(line)).find(Schema.is(FleetSchema));
       assert.ok(fleet, "Save returned no fleet");
-      assert.equal(fleet.status, "installing");
       fleetId = fleet.id;
+      assert.equal(fleet.status, "installing");
       recovery = Schema.decodeUnknownSync(recoverySchema)(trailingJson(saved.stderr));
       installGrant = (await listGrants(env, fleetId)).find((row) => row.service === CONNECTOR_SERVICE_LINEAR) ?? null;
     }, SETUP_TIMEOUT_MS);
@@ -158,7 +159,7 @@ if (!isLive) {
     afterAll(async () => {
       try {
         if (workspaceId) {
-          await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
+          if (fleetId) await deleteFixtureFleet(env, fleetId);
           const removed = await runFleetctl(["secrets", "delete", GRANT_CREDENTIAL_NAME, JSON_FLAG], {env});
           assert.equal(removed.code, 0, `synthetic connector cleanup failed: ${removed.stderr}`);
         }

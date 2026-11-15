@@ -32,7 +32,7 @@ import os from "node:os";
 import path from "node:path";
 import { Schema } from "effect";
 
-import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV, AGENTSFLEET_STATUS } from "./fixtures/constants.ts";
+import { ACCEPTANCE_TARGET_ENV, AGENTSFLEET_STATUS } from "./fixtures/constants.ts";
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak, refusalCode } from "./fixtures/negatives.ts";
@@ -42,7 +42,7 @@ import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { addWorkspace, listWorkspaces, useWorkspace } from "./fixtures/workspace-ops.ts";
 import { fixtureDefinition, saveNativeFleet } from "./fixtures/native-setup.ts";
 import { readAuthContext, type AuthContext } from "./fixtures/native-api.ts";
-import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
+import { deleteFixtureFleet } from "./fixtures/teardown.ts";
 import { getStatus } from "./fixtures/lifecycle.ts";
 import { randomUuidv7 } from "./helpers-lifecycle-with-token.ts";
 import {
@@ -65,6 +65,7 @@ const STATE_DIR_PREFIX = "agentsfleet-deny-" as const;
 // connector's name, and grant-approval-live creates and deletes the same name
 // in its workspace while this file runs beside it.
 const DENIAL_WORKSPACE = "fixture-cli-approval-denials";
+const FLEET_NAME = "linear-backlog-digest";
 const NO_COLOR = "1" as const;
 const JSON_FLAG = "--json" as const;
 const APPROVALS = ["fleet", "approvals"] as const;
@@ -135,7 +136,7 @@ if (!isLive) {
 
       await ensureConnectorHandle(env);
       const fleet = await saveNativeFleet(env,
-        fixtureDefinition(`${ACCEPTANCE_RUN_PREFIX}-deny-${Date.now()}`, GRANT_CREDENTIAL_NAME));
+        fixtureDefinition(FLEET_NAME, GRANT_CREDENTIAL_NAME));
       fleetId = fleet.id;
       savedStatus = fleet.status;
     }, SETUP_TIMEOUT_MS);
@@ -143,7 +144,7 @@ if (!isLive) {
     afterAll(async () => {
       try {
         if (workspaceId) {
-          await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
+          if (fleetId) await deleteFixtureFleet(env, fleetId);
           const removed = await runFleetctl(["secrets", "delete", GRANT_CREDENTIAL_NAME, JSON_FLAG], { env });
           assert.equal(removed.code, 0, `synthetic connector cleanup failed: ${removed.stderr}`);
         }

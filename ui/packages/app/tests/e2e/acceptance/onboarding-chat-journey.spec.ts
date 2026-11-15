@@ -7,7 +7,6 @@
  * description is complete and asks for no questions, so a live authoring
  * model has what it needs to propose in one turn.
  */
-import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { signInAs } from "./fixtures/auth";
@@ -16,9 +15,9 @@ import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { workspaceHref } from "./fixtures/nav";
 import { CHAT_COPY, openSavedFleet, privateSaveButton, setupSummary } from "./fixtures/private-chat";
 import { expectRowState } from "./fixtures/lifecycle";
-import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { purgeFixtureFleet } from "./fixtures/teardown";
 
-const NAME_PREFIX = "chat-made";
+const FLEET_NAME = "message-acknowledger";
 const JOURNEY_TIMEOUT_MS = 300_000;
 const PROPOSAL_TIMEOUT_MS = 180_000;
 
@@ -30,15 +29,15 @@ function description(name: string): string {
 
 test.describe("onboarding chat", () => {
   let workspaceId = "";
+  let fleetId: string | null = null;
 
   test.afterAll(async () => {
-    if (workspaceId) await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, NAME_PREFIX);
+    if (workspaceId && fleetId) await purgeFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
   });
 
   test("a user describes a fleet, reviews the proposal under a named model, saves it and sees it live", async ({ page }) => {
     test.setTimeout(JOURNEY_TIMEOUT_MS);
     workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    const name = `${NAME_PREFIX}-${crypto.randomBytes(3).toString("hex")}`;
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspaceId, "fleets/new"));
 
@@ -47,19 +46,20 @@ test.describe("onboarding chat", () => {
     await expect(model).toBeVisible();
     await expect(model).not.toHaveText(/^\s*(Choose model)?\s*$/);
 
-    await page.getByLabel(CHAT_PLACEHOLDER).fill(description(name));
+    await page.getByLabel(CHAT_PLACEHOLDER).fill(description(FLEET_NAME));
     await page.getByRole("button", { name: CHAT_COPY.send, exact: true }).click();
 
     // The proposal arrives as a reviewable setup, with its runtime model named.
     const summary = setupSummary(page);
-    await expect(summary).toContainText(name, { timeout: PROPOSAL_TIMEOUT_MS });
+    await expect(summary).toContainText(FLEET_NAME, { timeout: PROPOSAL_TIMEOUT_MS });
     await expect(summary).toContainText("Model");
     await expect(summary).not.toContainText("Not reviewed");
     await expect(summary).not.toContainText("Not resolved");
 
     await (await privateSaveButton(page)).click();
-    const fleetId = await openSavedFleet(page, { handle: FIXTURE_KEY.regular, workspaceId });
+    const saved = await openSavedFleet(page, { handle: FIXTURE_KEY.regular, workspaceId });
+    fleetId = saved;
     await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectRowState(page, fleetId, "live");
+    await expectRowState(page, saved, "live");
   });
 });

@@ -18,14 +18,14 @@ import os from "node:os";
 import path from "node:path";
 import { Schema } from "effect";
 
-import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
+import { ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
 import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
+import { deleteFixtureFleet } from "./fixtures/teardown.ts";
 import { commandValues, fixtureDefinition, inspectDraft, saveNativeFleet } from "./fixtures/native-setup.ts";
 import { AppliedSchema, CreatedSchema, DraftSchema } from "../../src/commands/chat/protocol.ts";
 
@@ -33,6 +33,7 @@ const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
 
 const STATE_DIR_PREFIX = "agentsfleet-refine-" as const;
+const FLEET_NAME = "daily-status-report";
 const NO_COLOR = "1" as const;
 const SETUP_TIMEOUT_MS = 180_000;
 const CHAT_TIMEOUT_MS = 240_000;
@@ -57,7 +58,6 @@ if (!isLive) {
     let sessionJwt = "";
     let stateDir = "";
     let env: Record<string, string> = {};
-    let workspaceId = "";
     let fleetId = "";
     let savedRevision = "";
     let draftId = "";
@@ -75,15 +75,15 @@ if (!isLive) {
       sessionJwt = minted.sessionJwt;
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
       env = composeEnv({ AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_STATE_DIR: stateDir, NO_COLOR });
-      workspaceId = (await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir })).currentWorkspaceId;
-      const fleet = await saveNativeFleet(env, fixtureDefinition(`${ACCEPTANCE_RUN_PREFIX}refine-${Date.now()}`));
+      await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
+      const fleet = await saveNativeFleet(env, fixtureDefinition(FLEET_NAME));
       fleetId = fleet.id;
       savedRevision = fleet.setup_revision;
     }, SETUP_TIMEOUT_MS);
 
     afterAll(async () => {
       try {
-        if (workspaceId) await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
+        if (fleetId) await deleteFixtureFleet(env, fleetId);
       } finally {
         if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
       }
