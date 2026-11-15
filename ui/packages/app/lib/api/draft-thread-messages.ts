@@ -63,7 +63,7 @@ export function draftThreadMessages(view: DraftView, project: ProjectMessage = t
       content: [{type: "text", text: pending.text}], createdAt: new Date(pending.createdAt)});
     rows.push({id: `pending-answer:${pending.operation}`, role: MESSAGE_ROLE.assistant,
       content: [{type: "text", text: view.liveReply?.text ?? ""}], status: {type: "running"},
-      metadata: {custom: {saving: view.saveOperation === pending.operation && !view.error}}});
+      metadata: {custom: {admitting: true, startedAtMs: Date.parse(pending.createdAt), saving: view.saveOperation === pending.operation && !view.error}}});
   }
   const previousView = {...view, liveReply: null, contextProgress: null, saveOperation: null};
   const previous = (view.previousDrafts ?? []).flatMap(history => history.messages.map(message =>
@@ -90,7 +90,7 @@ function threadMessage(message: Message, view: DraftView, cutoff: string, reques
   const text = [live ?? message.text ?? "",
     message.role === MESSAGE_ROLE.assistant && (message.state === MESSAGE_STATE.cancelled || (stopped && isRunning(message))) ? "Request stopped." : ""].filter(Boolean).join("\n\n");
   return {id: `${prefix}${message.sequence}:${message.role}`, role: message.role, content: [{type: "text", text}], createdAt: new Date(message.created_at),
-    metadata: {custom: {saving, queued: pending && message.state === MESSAGE_STATE.queued,
+    metadata: {custom: {saving, pending, queued: pending && message.state === MESSAGE_STATE.queued,
       contextProgress: compactionFor(message, view, cutoff),
       failure: message.role === MESSAGE_ROLE.assistant ? failure : undefined, retryText: failure ? request : undefined}},
     ...(message.role === MESSAGE_ROLE.assistant ? {status: pending || saving ? {type: "running"} : {type: "complete", reason: "stop"}} : {})};

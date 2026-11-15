@@ -30,7 +30,7 @@ afterEach(() => {
 describe("exhaustion components", () => {
   it("ExhaustionBadge renders with a timestamped tooltip when exhaustedAt set", async () => {
     const { default: ExhaustionBadge } = await import(
-      "../components/domain/ExhaustionBadge"
+      "../components/domain/usage/ExhaustionBadge"
     );
     render(React.createElement(ExhaustionBadge, { exhaustedAt: "2024-04-21T11:46:40Z" }));
     const el = screen.getByRole("status", { name: /balance exhausted/i });
@@ -40,7 +40,7 @@ describe("exhaustion components", () => {
 
   it("ExhaustionBadge renders with generic title when exhaustedAt is null", async () => {
     const { default: ExhaustionBadge } = await import(
-      "../components/domain/ExhaustionBadge"
+      "../components/domain/usage/ExhaustionBadge"
     );
     render(React.createElement(ExhaustionBadge, { exhaustedAt: null }));
     expect(screen.getByRole("status").getAttribute("title")).toBe("Balance exhausted");
@@ -48,7 +48,7 @@ describe("exhaustion components", () => {
 
   it("ExhaustionBanner renders nothing when billing is null", async () => {
     const { default: ExhaustionBanner } = await import(
-      "../components/domain/ExhaustionBanner"
+      "../components/domain/usage/ExhaustionBanner"
     );
     const { container } = render(
       React.createElement(ExhaustionBanner, { billing: null }),
@@ -58,7 +58,7 @@ describe("exhaustion components", () => {
 
   it("ExhaustionBanner renders nothing when not exhausted", async () => {
     const { default: ExhaustionBanner } = await import(
-      "../components/domain/ExhaustionBanner"
+      "../components/domain/usage/ExhaustionBanner"
     );
     const { container } = render(
       React.createElement(ExhaustionBanner, {
@@ -75,7 +75,7 @@ describe("exhaustion components", () => {
 
   it("ExhaustionBanner renders destructive alert with timestamp when exhausted", async () => {
     const { default: ExhaustionBanner } = await import(
-      "../components/domain/ExhaustionBanner"
+      "../components/domain/usage/ExhaustionBanner"
     );
     render(
       React.createElement(ExhaustionBanner, {
@@ -96,7 +96,7 @@ describe("exhaustion components", () => {
 
   it("ExhaustionBanner omits timestamp text when exhausted_at is null", async () => {
     const { default: ExhaustionBanner } = await import(
-      "../components/domain/ExhaustionBanner"
+      "../components/domain/usage/ExhaustionBanner"
     );
     render(
       React.createElement(ExhaustionBanner, {

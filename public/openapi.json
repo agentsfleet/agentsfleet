@@ -76,531 +76,6 @@
         "security": []
       }
     },
-    "/v1/admin/fleet-libraries": {
-      "get": {
-        "tags": [
-          "Fleet library"
-        ],
-        "summary": "List staged and published native platform entries",
-        "operationId": "list_platform_fleet_library",
-        "responses": {
-          "200": {
-            "description": "Platform metadata",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/List"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Platform scope required",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Fleet library"
-        ],
-        "summary": "Stage a private chat candidate in the platform Library",
-        "operationId": "stage_platform_fleet_library",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "description": "Required UUIDv7 replay key",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Stage"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Native revision staged; explicit publication is separate",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Published"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid candidate or label",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Platform scope required",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Creator-owned source unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Busy draft, occupied slug or changed replay",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "410": {
-            "description": "Staged entry purged",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Body too large",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Too many requests",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal failure",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Dependency unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
-    "/v1/admin/fleet-libraries/{id}": {
-      "delete": {
-        "tags": [
-          "Fleet library"
-        ],
-        "summary": "Delete a withdrawn native platform entry",
-        "operationId": "delete_platform_fleet_library",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Platform Library slug, 1 to 128 characters.",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 128,
-              "minLength": 1
-            }
-          },
-          {
-            "name": "If-Match",
-            "in": "header",
-            "description": "Current `ETag` from the resource's GET response. An outdated value returns 412 with\nthe current `etag`; omitting it returns 428.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Entry hidden; installed revision pins retained"
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Platform scope required",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Entry unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Withdraw before deleting",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "412": {
-            "description": "The resource no longer matches your request condition; reload it and try again",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "428": {
-            "description": "A required request condition is missing; check this endpoint's headers",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      },
-      "patch": {
-        "tags": [
-          "Fleet library"
-        ],
-        "summary": "Curate, publish or withdraw native platform setup",
-        "operationId": "update_platform_fleet_library",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Platform Library slug, 1 to 128 characters.",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 128,
-              "minLength": 1
-            }
-          },
-          {
-            "name": "If-Match",
-            "in": "header",
-            "description": "Current `ETag` from the resource's GET response. An outdated value returns 412 with\nthe current `etag`; omitting it returns 428.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlatformLibraryPatch"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Current platform metadata",
-            "headers": {
-              "ETag": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Item"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid patch",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Platform scope required",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Platform entry unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "412": {
-            "description": "The resource no longer matches your request condition; reload it and try again",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "The request body exceeds this endpoint's size limit",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "428": {
-            "description": "A required request condition is missing; check this endpoint's headers",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
     "/v1/admin/models": {
       "get": {
         "tags": [
@@ -8725,7 +8200,7 @@
           {
             "name": "period",
             "in": "query",
-            "description": "month (default) or today, in Coordinated Universal Time (UTC).",
+            "description": "month (default), week (seven calendar days) or today, in Coordinated Universal Time (UTC).",
             "required": false,
             "schema": {
               "type": "string"
@@ -8968,7 +8443,7 @@
           {
             "name": "period",
             "in": "query",
-            "description": "month (default) or today, in Coordinated Universal Time (UTC).",
+            "description": "month (default), week (seven calendar days) or today, in Coordinated Universal Time (UTC).",
             "required": false,
             "schema": {
               "type": "string"
@@ -13661,1130 +13136,6 @@
         ]
       }
     },
-    "/v1/workspaces/{workspace_id}/fleet-libraries": {
-      "get": {
-        "tags": [
-          "Fleet library"
-        ],
-        "summary": "List available Library entries",
-        "operationId": "list_workspace_libraries",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "starting_after",
-            "in": "query",
-            "description": "Use this collection's previous `next_cursor` unchanged.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Page size, 1..100; default 50.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Platform and owned entries",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CursorPage_Card"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid query or cursor",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "The resource was not found or is not accessible to you",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Fleet library"
-        ],
-        "summary": "Publish a chat candidate to Library",
-        "operationId": "publish_workspace_library",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "description": "`UUIDv7` key. The same key and body replay the accepted result; a\nchanged body under the same key conflicts.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Publish"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Explicit publication",
-            "headers": {
-              "ETag": {
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Location": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Published"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid candidate or label",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Private candidate unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Busy or changed operation",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "410": {
-            "description": "The resource is gone and will not return",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "The request body exceeds this endpoint's size limit",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
-    "/v1/workspaces/{workspace_id}/fleet-libraries/owned": {
-      "get": {
-        "tags": [
-          "Fleet library"
-        ],
-        "summary": "List owned Library entries",
-        "operationId": "list_owned_workspace_libraries",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "starting_after",
-            "in": "query",
-            "description": "Use this collection's previous `next_cursor` unchanged.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Page size, 1..100; default 50.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Owned entries",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CursorPage_Card"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid query or cursor",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "The resource was not found or is not accessible to you",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
-    "/v1/workspaces/{workspace_id}/fleet-libraries/{library_id}": {
-      "get": {
-        "tags": [
-          "Fleet library"
-        ],
-        "summary": "Inspect a Library revision",
-        "operationId": "read_workspace_library",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "library_id",
-            "in": "path",
-            "description": "Library identifier: a platform slug or your Library entry's version 7 universally\nunique identifier (UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "revision_id",
-            "in": "query",
-            "description": "Pinned revision UUIDv7; defaults to current head",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Native setup and current readiness",
-            "headers": {
-              "ETag": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Library"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Library or revision unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      },
-      "delete": {
-        "tags": [
-          "Fleet library"
-        ],
-        "summary": "Delete an owned Library entry",
-        "operationId": "delete_workspace_library",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "library_id",
-            "in": "path",
-            "description": "Library identifier",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Entry removed; installed snapshots retained"
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Owned Library unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Too many requests",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal failure",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Dependency unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
-    "/v1/workspaces/{workspace_id}/fleet-libraries/{library_id}/revisions": {
-      "get": {
-        "tags": [
-          "Fleet library"
-        ],
-        "summary": "List immutable Library revisions",
-        "operationId": "list_library_revisions",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "library_id",
-            "in": "path",
-            "description": "Library identifier: a platform slug or your Library entry's version 7 universally\nunique identifier (UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "starting_after",
-            "in": "query",
-            "description": "Use this collection's previous `next_cursor` unchanged.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Page size, 1..100; default 50.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Revision metadata",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CursorPage_RevisionSummary"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid query or cursor",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Library unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Fleet library"
-        ],
-        "summary": "Publish a revision to an owned Library",
-        "operationId": "publish_library_revision",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "library_id",
-            "in": "path",
-            "description": "Library identifier: a platform slug or your Library entry's version 7 universally\nunique identifier (UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "description": "`UUIDv7` key. The same key and body replay the accepted result; a\nchanged body under the same key conflicts.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "If-Match",
-            "in": "header",
-            "description": "Current `ETag` from the resource's GET response. An outdated value returns 412 with\nthe current `etag`; omitting it returns 428.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PublishRevision"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Explicit immutable revision",
-            "headers": {
-              "ETag": {
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Location": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Published"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Entry or candidate unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Busy or changed operation",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "410": {
-            "description": "The resource is gone and will not return",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "412": {
-            "description": "Stale Library tag",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "The request body exceeds this endpoint's size limit",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "428": {
-            "description": "Missing Library tag",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
-    "/v1/workspaces/{workspace_id}/fleet-libraries/{library_id}/revisions/{revision_id}": {
-      "get": {
-        "tags": [
-          "Fleet library"
-        ],
-        "summary": "Inspect an immutable Library revision",
-        "operationId": "read_library_revision",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "library_id",
-            "in": "path",
-            "description": "Library identifier: a platform slug or your Library entry's version 7 universally\nunique identifier (UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "revision_id",
-            "in": "path",
-            "description": "Revision identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Immutable content and live readiness",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RevisionRead"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Library or revision unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
     "/v1/workspaces/{workspace_id}/fleets": {
       "get": {
         "tags": [
@@ -14915,7 +13266,7 @@
           "Fleets"
         ],
         "summary": "Save a reviewed fleet",
-        "description": "Saves a reviewed private draft or selected Library revision as a fleet. Inspect the source's complete `review` before copying `review.review_digest`. For a draft, read `candidate.id` from `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`. Setup progress names missing prerequisites. Retry within 24 hours using the same `Idempotency-Key` and unchanged request to recover the same fleet and initial event. After that window, inspect existing resources before creating again. A requested immediate run must be accepted before Save completes.",
+        "description": "Saves a reviewed private draft or selected Plugin revision as a fleet. Inspect the source's complete `review` before copying `review.review_digest`. For a draft, read `candidate.id` from `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`. Setup progress names missing prerequisites. Retry within 24 hours using the same `Idempotency-Key` and unchanged request to recover the same fleet and initial event. After that window, inspect existing resources before creating again. A requested immediate run must be accepted before Save completes.",
         "operationId": "create_fleet",
         "parameters": [
           {
@@ -18916,6 +17267,1010 @@
         ]
       }
     },
+    "/v1/workspaces/{workspace_id}/plugins": {
+      "get": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "List available Plugin entries",
+        "operationId": "list_workspace_plugins",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Use this collection's previous `next_cursor` unchanged.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, 1..100; default 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account-owned entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_Card"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query or cursor",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Publish a chat candidate to Plugin",
+        "operationId": "publish_workspace_plugin",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "`UUIDv7` key. The same key and body replay the accepted result; a\nchanged body under the same key conflicts.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Publish"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Explicit publication",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Published"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid candidate or label",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Private candidate unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Busy or changed operation",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The resource is gone and will not return",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}": {
+      "get": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Inspect a Plugin revision",
+        "operationId": "read_workspace_plugin",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "description": "Plugin identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "revision_id",
+            "in": "query",
+            "description": "Pinned revision UUIDv7; defaults to current head",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Native setup and current readiness",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plugin"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plugin or revision unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Delete an owned Plugin entry",
+        "operationId": "delete_workspace_plugin",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "description": "Plugin identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Entry removed; installed snapshots retained"
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Owned Plugin unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}/revisions": {
+      "get": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "List immutable Plugin revisions",
+        "operationId": "list_plugin_revisions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "description": "Plugin identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Use this collection's previous `next_cursor` unchanged.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, 1..100; default 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revision metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_RevisionSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query or cursor",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plugin unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Publish a revision to an owned Plugin",
+        "operationId": "publish_plugin_revision",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "description": "Plugin identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "`UUIDv7` key. The same key and body replay the accepted result; a\nchanged body under the same key conflicts.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "Current `ETag` from the resource's GET response. An outdated value returns 412 with\nthe current `etag`; omitting it returns 428.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRevision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Explicit immutable revision",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Published"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entry or candidate unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Busy or changed operation",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The resource is gone and will not return",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Stale Plugin tag",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Missing Plugin tag",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}/revisions/{revision_id}": {
+      "get": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Inspect an immutable Plugin revision",
+        "operationId": "read_plugin_revision",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "description": "Plugin identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "revision_id",
+            "in": "path",
+            "description": "Revision identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Immutable content and live readiness",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionRead"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plugin or revision unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/workspaces/{workspace_id}/preferences/{pref_key}": {
       "put": {
         "tags": [
@@ -19898,6 +19253,13 @@
             "format": "date-time",
             "description": "When it was minted."
           },
+          "display_suffix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Final four hexadecimal characters for recognition only. Never authenticates a request.\nNull when no suffix was recorded; the original credential cannot be recovered."
+          },
           "id": {
             "type": "string",
             "description": "The key's identifier."
@@ -20383,6 +19745,51 @@
           }
         }
       },
+      "BillingDaily": {
+        "type": "object",
+        "description": "Settled totals for one UTC ledger creation date, including empty days.",
+        "required": [
+          "day",
+          "totals"
+        ],
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "description": "UTC calendar date in YYYY-MM-DD form.",
+            "x-stability": "stable"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/BillingTotals",
+            "description": "Additive daily quantities; `activity_count` counts distinct work within this day."
+          }
+        }
+      },
+      "BillingFleetBreakdown": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BillingBreakdown",
+            "description": "Fleet identity and exact filtered totals."
+          },
+          {
+            "type": "object",
+            "required": [
+              "models"
+            ],
+            "properties": {
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "x-stability": "stable"
+                },
+                "description": "Sorted distinct nonempty model identifiers recorded in matching lines."
+              }
+            }
+          }
+        ],
+        "description": "A fleet's complete recorded spending and model attribution."
+      },
       "BillingFleetChoice": {
         "type": "object",
         "description": "A fleet choice independent of the currently selected filters.",
@@ -20606,6 +20013,7 @@
           "from_at",
           "through_at",
           "totals",
+          "daily",
           "spending",
           "filters",
           "activities"
@@ -20614,6 +20022,13 @@
           "activities": {
             "$ref": "#/components/schemas/BillingPage_BillingActivity",
             "description": "Bounded grouped activities, newest first."
+          },
+          "daily": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BillingDaily"
+            },
+            "description": "Every UTC date in the selected interval, ascending. An activity spanning days counts on each day and once in period totals."
           },
           "filters": {
             "$ref": "#/components/schemas/BillingChoices",
@@ -20626,7 +20041,7 @@
           },
           "period": {
             "type": "string",
-            "description": "`month` or `today`, both interpreted in Coordinated Universal Time (UTC)."
+            "description": "`month`, `week` or `today`, interpreted in Coordinated Universal Time (UTC)."
           },
           "spending": {
             "$ref": "#/components/schemas/BillingSpending",
@@ -20686,7 +20101,7 @@
           "by_fleet": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/BillingBreakdown"
+              "$ref": "#/components/schemas/BillingFleetBreakdown"
             },
             "description": "Grouped runtime fleets and private setup."
           },
@@ -20879,7 +20294,6 @@
           "id",
           "name",
           "description",
-          "visibility",
           "created_at",
           "requirements",
           "required_credentials_reasons",
@@ -20898,7 +20312,7 @@
           },
           "etag": {
             "type": "string",
-            "description": "Strong Library version."
+            "description": "Strong Plugin version."
           },
           "head_revision_id": {
             "type": "string",
@@ -20918,10 +20332,6 @@
           "requirements": {
             "type": "object",
             "description": "Declarative needs of the head revision."
-          },
-          "visibility": {
-            "type": "string",
-            "description": "platform or tenant."
           }
         }
       },
@@ -20932,7 +20342,6 @@
           "id",
           "name",
           "description",
-          "visibility",
           "created_at",
           "requirements",
           "required_credentials_reasons",
@@ -20951,7 +20360,7 @@
           },
           "etag": {
             "type": "string",
-            "description": "Strong Library version."
+            "description": "Strong Plugin version."
           },
           "head_revision_id": {
             "type": "string",
@@ -20971,10 +20380,6 @@
           "requirements": {
             "type": "object",
             "description": "Declarative needs of the head revision."
-          },
-          "visibility": {
-            "type": "string",
-            "description": "platform or tenant."
           }
         }
       },
@@ -22523,7 +21928,6 @@
                 "id",
                 "name",
                 "description",
-                "visibility",
                 "created_at",
                 "requirements",
                 "required_credentials_reasons",
@@ -22542,7 +21946,7 @@
                 },
                 "etag": {
                   "type": "string",
-                  "description": "Strong Library version."
+                  "description": "Strong Plugin version."
                 },
                 "head_revision_id": {
                   "type": "string",
@@ -22562,10 +21966,6 @@
                 "requirements": {
                   "type": "object",
                   "description": "Declarative needs of the head revision."
-                },
-                "visibility": {
-                  "type": "string",
-                  "description": "platform or tenant."
                 }
               }
             },
@@ -22646,7 +22046,7 @@
                     "null"
                   ],
                   "format": "int64",
-                  "description": "The Library revision this chat published; null until it publishes."
+                  "description": "The Plugin revision this chat published; null until it publishes."
                 },
                 "setup_revision": {
                   "type": [
@@ -25526,7 +24926,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "The Library revision this chat published; null until it publishes."
+            "description": "The Plugin revision this chat published; null until it publishes."
           },
           "setup_revision": {
             "type": [
@@ -26930,54 +26330,6 @@
           }
         }
       },
-      "Item": {
-        "type": "object",
-        "description": "Platform metadata without instructions or private authoring content.",
-        "required": [
-          "card",
-          "published",
-          "updated_at"
-        ],
-        "properties": {
-          "card": {
-            "$ref": "#/components/schemas/Card_Value",
-            "description": "Immutable head metadata with the current resource tag."
-          },
-          "published": {
-            "type": "boolean",
-            "description": "Whether new tenant discovery and installation are allowed."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Last metadata update timestamp, such as `2026-10-24T05:00:00.000Z`."
-          }
-        }
-      },
-      "Item_Value": {
-        "type": "object",
-        "description": "Platform metadata without instructions or private authoring content.",
-        "required": [
-          "card",
-          "published",
-          "updated_at"
-        ],
-        "properties": {
-          "card": {
-            "$ref": "#/components/schemas/Card_Value",
-            "description": "Immutable head metadata with the current resource tag."
-          },
-          "published": {
-            "type": "boolean",
-            "description": "Whether new tenant discovery and installation are allowed."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Last metadata update timestamp, such as `2026-10-24T05:00:00.000Z`."
-          }
-        }
-      },
       "Knowledge": {
         "type": "string",
         "description": "Whether all reported provider usage is known.",
@@ -27109,50 +26461,6 @@
                 "type": "null"
               }
             ]
-          }
-        }
-      },
-      "Library": {
-        "type": "object",
-        "description": "Selected reusable content and readiness for the current workspace.",
-        "required": [
-          "card",
-          "head",
-          "review",
-          "etag"
-        ],
-        "properties": {
-          "card": {
-            "$ref": "#/components/schemas/Card_Value",
-            "description": "Current entry card."
-          },
-          "etag": {
-            "type": "string",
-            "description": "Strong Library version."
-          },
-          "head": {
-            "$ref": "#/components/schemas/Revision_Value_Value",
-            "description": "Explicitly selected revision or current head."
-          },
-          "review": {
-            "type": "object",
-            "description": "Contextual current readiness."
-          }
-        }
-      },
-      "List": {
-        "type": "object",
-        "description": "Staged and published platform metadata.",
-        "required": [
-          "entries"
-        ],
-        "properties": {
-          "entries": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Item_Value"
-            },
-            "description": "Native platform entries."
           }
         }
       },
@@ -28260,6 +27568,13 @@
                   "format": "date-time",
                   "description": "When it was minted."
                 },
+                "display_suffix": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Final four hexadecimal characters for recognition only. Never authenticates a request.\nNull when no suffix was recorded; the original credential cannot be recovered."
+                },
                 "id": {
                   "type": "string",
                   "description": "The key's identifier."
@@ -28851,46 +28166,33 @@
         },
         "additionalProperties": false
       },
-      "PlatformLibraryPatch": {
+      "Plugin": {
         "type": "object",
-        "description": "Conditional platform-owned metadata edit.",
+        "description": "Selected reusable content and readiness for the current workspace.",
+        "required": [
+          "card",
+          "head",
+          "review",
+          "etag"
+        ],
         "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Curated description."
+          "card": {
+            "$ref": "#/components/schemas/Card_Value",
+            "description": "Current entry card."
           },
-          "name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Display label."
+          "etag": {
+            "type": "string",
+            "description": "Strong Plugin version."
           },
-          "published": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Explicitly publish or withdraw the staged entry."
+          "head": {
+            "$ref": "#/components/schemas/Revision_Value_Value",
+            "description": "Explicitly selected revision or current head."
           },
-          "required_credentials_reasons": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "description": "Credential-name explanations, never credential values.",
-            "additionalProperties": {
-              "type": "string"
-            },
-            "propertyNames": {
-              "type": "string"
-            }
+          "review": {
+            "type": "object",
+            "description": "Contextual current readiness."
           }
-        },
-        "additionalProperties": false
+        }
       },
       "PollSessionResponse": {
         "type": "object",
@@ -29049,7 +28351,7 @@
         "type": "object",
         "description": "The exact reusable snapshot explicitly published by this creator.",
         "required": [
-          "library_id",
+          "plugin_id",
           "revision_id",
           "canonical_digest"
         ],
@@ -29058,7 +28360,7 @@
             "type": "string",
             "description": "Content identity that Save can verify and reuse."
           },
-          "library_id": {
+          "plugin_id": {
             "type": "string",
             "description": "Reusable entry identity."
           },
@@ -29105,7 +28407,7 @@
         "type": "object",
         "description": "Publication receipt retains the original accepted revision on retry.",
         "required": [
-          "library_id",
+          "plugin_id",
           "revision_id",
           "head_revision_id",
           "etag"
@@ -29113,13 +28415,13 @@
         "properties": {
           "etag": {
             "type": "string",
-            "description": "Current Library `ETag` for conditional updates."
+            "description": "Current Plugin `ETag` for conditional updates."
           },
           "head_revision_id": {
             "type": "string",
             "description": "Current head `UUIDv7`."
           },
-          "library_id": {
+          "plugin_id": {
             "type": "string",
             "description": "Entry `UUIDv7`."
           },
@@ -29382,7 +28684,7 @@
         "description": "Immutable reusable setup selected by its revision identifier.",
         "required": [
           "id",
-          "library_id",
+          "plugin_id",
           "revision",
           "definition",
           "canonical_digest",
@@ -29408,7 +28710,7 @@
             "type": "string",
             "description": "Revision `UUIDv7`."
           },
-          "library_id": {
+          "plugin_id": {
             "type": "string",
             "description": "Entry `UUIDv7`."
           },
@@ -30099,9 +29401,9 @@
           },
           {
             "type": "object",
-            "description": "Pinned accessible Library revision.",
+            "description": "Pinned accessible Plugin revision.",
             "required": [
-              "library_id",
+              "plugin_id",
               "revision_id",
               "kind"
             ],
@@ -30109,10 +29411,10 @@
               "kind": {
                 "type": "string",
                 "enum": [
-                  "library"
+                  "plugin"
                 ]
               },
-              "library_id": {
+              "plugin_id": {
                 "type": "string",
                 "description": "Entry identity."
               },
@@ -30548,7 +29850,7 @@
             "type": "object",
             "description": "Capture a published immutable revision.",
             "required": [
-              "library_id",
+              "plugin_id",
               "revision_id",
               "kind"
             ],
@@ -30556,10 +29858,10 @@
               "kind": {
                 "type": "string",
                 "enum": [
-                  "library"
+                  "plugin"
                 ]
               },
-              "library_id": {
+              "plugin_id": {
                 "type": "string",
                 "description": "Entry identity."
               },
@@ -30615,31 +29917,7 @@
             }
           }
         ],
-        "description": "Native initial setup. A Library or fleet source pins a revision explicitly."
-      },
-      "Stage": {
-        "type": "object",
-        "description": "Stage an authorized creator-owned current candidate, initially hidden.",
-        "required": [
-          "workspace_id",
-          "draft_candidate_id",
-          "label"
-        ],
-        "properties": {
-          "draft_candidate_id": {
-            "type": "string",
-            "description": "Exact current candidate, resolved under creator and workspace authority."
-          },
-          "label": {
-            "type": "string",
-            "description": "Human display label; the stable slug comes from validated setup."
-          },
-          "workspace_id": {
-            "type": "string",
-            "description": "Workspace containing the authenticated person's private draft."
-          }
-        },
-        "additionalProperties": false
+        "description": "Native initial setup. A Plugin or fleet source pins a revision explicitly."
       },
       "Start": {
         "oneOf": [

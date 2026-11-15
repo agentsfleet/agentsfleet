@@ -21,7 +21,7 @@ it("reports Saving until the accepted fleet response can be read", async () => {
 it("reports Publishing until the native publication receipt is confirmed", async () => {
   const client = await fixture.ready(true);
   const gate = Promise.withResolvers<Response>();
-  fixture.override = ({path, method}) => method === "POST" && path.endsWith("/fleet-libraries") ? gate.promise : undefined;
+  fixture.override = ({path, method}) => method === "POST" && path.endsWith("/plugins") ? gate.promise : undefined;
   const publishing = client.publish("Reviewed setup", false);
   await vi.waitFor(() => expect(fixture.mutations()).toHaveLength(1));
   expect(client.getSnapshot()).toMatchObject({busy: true, setupAction: "publishing"});
@@ -45,7 +45,7 @@ it("replaces the saved confirmation as soon as the next authoring request starts
 
 it("keeps the original pending action and operation key after a lost publication response", async () => {
   const client = await fixture.ready(true);
-  fixture.override = ({path, method}) => method === "POST" && path.endsWith("/fleet-libraries") ? response({user_message: "Unavailable"}, 503) : undefined;
+  fixture.override = ({path, method}) => method === "POST" && path.endsWith("/plugins") ? response({user_message: "Unavailable"}, 503) : undefined;
   await expect(client.publish("Reviewed setup", false)).rejects.toMatchObject({status: 503});
   expect(client.getSnapshot()).toMatchObject({busy: false, pending: true, setupAction: "publishing"});
   const key = fixture.mutations()[0]?.headers.get("Idempotency-Key");

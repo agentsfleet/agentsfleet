@@ -1106,7 +1106,7 @@ Authoring is creator-private work. Resolve its workspace owner and recheck creat
 
 Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Authoring messages remain a Postgres queue; NATS carries wake and progress hints, not another authoritative message copy.
 
-The authoring schema slots define creator-private `authoring.drafts`, `authoring.messages`, candidates and replay receipts, plus content-free `authoring.attempts` and dispatch and activity receipts. A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup and Library revisions join their existing domains.
+The authoring schema slots define creator-private `authoring.drafts`, `authoring.messages`, candidates and replay receipts, plus content-free `authoring.attempts` and dispatch and activity receipts. A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup and Plugin revisions join their existing domains.
 
 The private progress channel is `draft:{draft_id}:events`.
 The publisher and HTTP reader recheck current access before sending answer previews.

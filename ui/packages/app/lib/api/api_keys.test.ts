@@ -8,7 +8,7 @@ import { DEFAULT_SORT } from "./api-keys-types";
 
 const keyRow = (id: string) => ({
   id,
-  key_name: id,
+  key_name: id, display_suffix: null,
   active: true,
   created_at: "2023-11-14T22:13:20Z",
   revoked_at: null,

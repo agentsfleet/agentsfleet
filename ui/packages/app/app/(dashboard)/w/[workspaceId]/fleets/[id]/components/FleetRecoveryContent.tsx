@@ -9,8 +9,8 @@ import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { ScheduleSchema } from "@/lib/api/draft-types";
 import { scheduleSyncPath } from "@/lib/api/draft-schedules";
 import { REQUEST_METHOD, setupErrorMessage, setupRequest } from "@/lib/api/draft-request";
-import { SetupProgress } from "@/components/domain/chat/SetupProgress";
-import { ScheduleSync } from "@/components/domain/chat/ScheduleSync";
+import { SetupProgress } from "@/components/domain/setup/summary/SetupProgress";
+import { ScheduleSync } from "@/components/domain/schedules/ScheduleSync";
 import { useMounted } from "@/hooks/use-mounted";
 import { setFleetStatusAction } from "../../actions";
 

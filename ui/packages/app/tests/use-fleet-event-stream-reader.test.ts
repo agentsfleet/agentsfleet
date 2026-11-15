@@ -14,7 +14,7 @@ vi.stubGlobal("fetch", fetchSpy);
 
 // Loading the chat hook is what installs the reader. Without it, a reply that
 // lost its final words would never be read back, and nothing else would fail.
-await import("../components/domain/useFleetEventStream");
+await import("../components/domain/conversation/stream/useFleetEventStream");
 
 afterEach(() => {
   vi.unstubAllGlobals();

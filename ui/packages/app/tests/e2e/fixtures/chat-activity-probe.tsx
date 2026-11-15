@@ -2,7 +2,7 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import { AssistantRuntimeProvider, MessagePrimitive, ThreadPrimitive, useAuiState, useExternalStoreRuntime } from "@assistant-ui/react";
 import { useMemo, useState } from "react";
 import { Button } from "@agentsfleet/design-system";
-import { FleetReply } from "@/components/domain/FleetReplyBody";
+import { FleetReply } from "@/components/domain/activity/replies/FleetReplyBody";
 
 const STATES = ["running", "succeeded", "failed", "interrupted", "unconfirmed"] as const;
 type State = (typeof STATES)[number];

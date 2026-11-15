@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ChatFailure } from "@/components/domain/chat/ChatFailure";
+import { ChatFailure } from "@/components/domain/shared/chat/ChatFailure";
 
 const TITLE = "Couldn’t complete this request";
 const DESCRIPTION = "The model did not finish its response.";

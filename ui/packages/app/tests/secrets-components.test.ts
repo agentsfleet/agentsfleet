@@ -28,7 +28,7 @@ vi.mock("@/lib/analytics/posthog", () => ({
 
 // Dialog tests own dialog/form wiring; island-dynamic.test covers next/dynamic,
 // so this suite renders the real form without the framework loader race.
-vi.mock("@/components/domain/island-dynamic/AddSecretFormDynamic", async () => {
+vi.mock("@/components/domain/shared/dialogs/AddSecretFormDynamic", async () => {
   const ReactModule = await import("react");
   const { default: AddSecretForm } = await import(
     "@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm"
@@ -115,7 +115,7 @@ describe("EditSecretDialog dismiss guard", () => {
 // ── AddSecretDialog — trigger open/close wiring ─────────────────────────
 // Trigger, dialog title, and the form's own submit button all share the
 // label "Create secret" (a follow-up: consistent with "Create key" /
-// "Create workspace" / "Create fleet library" elsewhere in the product) —
+// "Create workspace" / "Publish plugin" elsewhere in the product) —
 // once the dialog is open, both the still-mounted trigger and the submit
 // button match by that name, so tests scope to `within(dialog)` to
 // disambiguate the submit, same pattern as api-keys-components.test.ts's

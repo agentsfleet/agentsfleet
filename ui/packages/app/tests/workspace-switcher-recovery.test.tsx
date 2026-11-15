@@ -8,7 +8,7 @@ const { refresh, route, chunk } = vi.hoisted(() => ({ refresh: vi.fn(), route: {
   chunk: {status: "idle", preload: vi.fn(), retry: vi.fn()} }));
 vi.mock("next/navigation", () => ({ usePathname: () => route.path, useRouter: () => ({ refresh }) }));
 vi.mock("@/components/layout/WorkspaceCreationProvider", () => ({ useCreatedWorkspaces: () => [] }));
-vi.mock("@/components/domain/island-dynamic/intent-module-loader", () => ({
+vi.mock("@/components/domain/shared/dialogs/intent-module-loader", () => ({
   createIntentModuleLoader: () => chunk, INTENT_MODULE_STATUS: { error: "error", loading: "loading" },
   useIntentModule: () => chunk, maySpeculateOnHover: () => false,
 }));

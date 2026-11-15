@@ -4,7 +4,7 @@ import { expect, type Page } from "@playwright/test";
 import { fixtureConfig, fixtureDefinition, executionInstructions } from "./definition";
 import { createFixtureDraft } from "./native-setup";
 import { workspaceHref, workspaceUrlPattern } from "./nav";
-import { CHAT_COPY, openSavedFleet, setupAction } from "./private-chat";
+import { CHAT_COPY, privateSaveButton, openSavedFleet, setupAction } from "./private-chat";
 const NEW_FLEET = "fleets/new";
 
 export interface SaveAuth {
@@ -26,6 +26,6 @@ export async function saveFleetViaUI(page: Page, name: string, auth: SaveAuth): 
   await editor.getByLabel(CHAT_COPY.instructions, { exact: true }).fill(auth.instructions ?? executionInstructions());
   await editor.getByRole("button", { name: CHAT_COPY.updateInstructions }).click();
   await expect(editor).toBeHidden();
-  await page.getByRole("button", { name: CHAT_COPY.save, exact: true }).click();
+  await (await privateSaveButton(page)).click();
   return openSavedFleet(page, auth);
 }

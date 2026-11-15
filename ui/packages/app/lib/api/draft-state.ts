@@ -29,7 +29,7 @@ export type DraftView = {
   readonly moreChats: boolean;
   readonly listStatus: typeof DRAFT_LIST_STATUS[keyof typeof DRAFT_LIST_STATUS];
   readonly model: string;
-  readonly preview: {readonly definition: Definition; readonly instanceName: string; readonly revision: string; readonly setupRevision?: string} | null;
+  readonly preview: {readonly definition: Definition; readonly instanceName: string; readonly revision: string; readonly setupRevision?: string; readonly sourceLabel?: string} | null;
   readonly savedSetupRevision: string | null;
   readonly saveOperation?: string | null;
   readonly setupAction?: SetupAction;

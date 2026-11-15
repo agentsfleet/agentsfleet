@@ -15,7 +15,7 @@ const SECRET_READ: &[Scope] = &[Scope::SecretRead];
 const SECRET_WRITE: &[Scope] = &[Scope::SecretWrite];
 const APPROVAL_READ: &[Scope] = &[Scope::ApprovalRead];
 const APPROVAL_RESOLVE: &[Scope] = &[Scope::ApprovalResolve];
-const LIBRARY_WRITE: &[Scope] = &[Scope::LibraryWrite];
+const PLUGINS_WRITE: &[Scope] = &[Scope::PluginsWrite];
 
 /// A route addressed by workspace only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -32,16 +32,14 @@ pub enum WorkspaceRoute {
     DraftCancellations,
     /// Creator-private, currently authorized setup progress.
     DraftStream,
-    /// The workspace's fleet-library catalogue.
-    FleetLibrary,
-    /// Owned reusable entries, excluding the platform catalogue.
-    FleetLibraryOwned,
+    /// The workspace account's Plugins.
+    Plugin,
     /// One reusable native entry.
-    FleetLibraryItem,
+    PluginItem,
     /// Immutable revisions of an entry.
-    FleetLibraryRevisions,
+    PluginRevisions,
     /// One pinned immutable revision.
-    FleetLibraryRevision,
+    PluginRevision,
     /// The workspace's fleets.
     Fleets,
     /// The workspace's secrets.
@@ -75,11 +73,10 @@ impl WorkspaceRoute {
         Self::DraftMessages,
         Self::DraftCancellations,
         Self::DraftStream,
-        Self::FleetLibrary,
-        Self::FleetLibraryOwned,
-        Self::FleetLibraryItem,
-        Self::FleetLibraryRevisions,
-        Self::FleetLibraryRevision,
+        Self::Plugin,
+        Self::PluginItem,
+        Self::PluginRevisions,
+        Self::PluginRevision,
         Self::Fleets,
         Self::Secrets,
         Self::Secret,
@@ -110,18 +107,17 @@ impl WorkspaceRoute {
             | Self::Onboarding
             | Self::Approvals
             | Self::Approval
-            | Self::FleetLibraryOwned
-            | Self::FleetLibraryRevision
+            | Self::PluginRevision
             | Self::Members => &[Verb::Get],
             Self::Preference => &[Verb::Put],
             Self::ApprovalResolve | Self::DraftCancellations => &[Verb::Post],
             Self::Drafts | Self::DraftMessages => &[Verb::Get, Verb::Post],
             Self::Draft => &[Verb::Get, Verb::Patch, Verb::Delete],
-            Self::FleetLibrary | Self::FleetLibraryRevisions | Self::Fleets | Self::Secrets => {
+            Self::Plugin | Self::PluginRevisions | Self::Fleets | Self::Secrets => {
                 &[Verb::Get, Verb::Post]
             }
             Self::Secret => &[Verb::Put, Verb::Delete],
-            Self::FleetLibraryItem => &[Verb::Get, Verb::Delete],
+            Self::PluginItem => &[Verb::Get, Verb::Delete],
         }
     }
 
@@ -141,11 +137,10 @@ impl WorkspaceRoute {
             | Self::Draft
             | Self::DraftMessages
             | Self::DraftCancellations
-            | Self::FleetLibrary
-            | Self::FleetLibraryOwned
-            | Self::FleetLibraryItem
-            | Self::FleetLibraryRevisions
-            | Self::FleetLibraryRevision
+            | Self::Plugin
+            | Self::PluginItem
+            | Self::PluginRevisions
+            | Self::PluginRevision
             | Self::Fleets
             | Self::Secrets
             | Self::Secret
@@ -168,14 +163,13 @@ impl WorkspaceRoute {
             Self::DraftMessages => workspace_path!("/drafts/{draft_id}/messages"),
             Self::DraftCancellations => workspace_path!("/drafts/{draft_id}/cancellations"),
             Self::DraftStream => workspace_path!("/drafts/{draft_id}/events/stream"),
-            Self::FleetLibrary => workspace_path!("/fleet-libraries"),
-            Self::FleetLibraryOwned => workspace_path!("/fleet-libraries/owned"),
-            Self::FleetLibraryItem => workspace_path!("/fleet-libraries/{library_id}"),
-            Self::FleetLibraryRevisions => {
-                workspace_path!("/fleet-libraries/{library_id}/revisions")
+            Self::Plugin => workspace_path!("/plugins"),
+            Self::PluginItem => workspace_path!("/plugins/{plugin_id}"),
+            Self::PluginRevisions => {
+                workspace_path!("/plugins/{plugin_id}/revisions")
             }
-            Self::FleetLibraryRevision => {
-                workspace_path!("/fleet-libraries/{library_id}/revisions/{revision_id}")
+            Self::PluginRevision => {
+                workspace_path!("/plugins/{plugin_id}/revisions/{revision_id}")
             }
             Self::Fleets => workspace_path!("/fleets"),
             Self::Secrets => workspace_path!("/secrets"),
@@ -205,8 +199,7 @@ impl WorkspaceRoute {
     const fn scopes(self) -> Scopes {
         match self {
             Self::Models
-            | Self::FleetLibraryOwned
-            | Self::FleetLibraryRevision
+            | Self::PluginRevision
             | Self::Events
             | Self::EventsStream
             | Self::Members => Scopes::Always(FLEET_READ),
@@ -215,8 +208,8 @@ impl WorkspaceRoute {
             | Self::DraftMessages
             | Self::DraftCancellations
             | Self::DraftStream => Scopes::Always(FLEET_WRITE),
-            Self::FleetLibrary | Self::FleetLibraryItem | Self::FleetLibraryRevisions => {
-                Scopes::rw(FLEET_READ, LIBRARY_WRITE)
+            Self::Plugin | Self::PluginItem | Self::PluginRevisions => {
+                Scopes::rw(FLEET_READ, PLUGINS_WRITE)
             }
             Self::Fleets => Scopes::rw(FLEET_READ, FLEET_WRITE),
             Self::Secrets => Scopes::rw(SECRET_READ, SECRET_WRITE),

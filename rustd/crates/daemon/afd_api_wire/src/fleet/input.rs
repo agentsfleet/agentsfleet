@@ -25,10 +25,10 @@ pub enum SaveSource {
         /// Copy `candidate.id` from `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`.
         draft_candidate_id: String,
     },
-    /// Pinned accessible Library revision.
-    Library {
+    /// Pinned accessible Plugin revision.
+    Plugin {
         /// Entry identity.
-        library_id: String,
+        plugin_id: String,
         /// Immutable revision identity.
         revision_id: String,
     },

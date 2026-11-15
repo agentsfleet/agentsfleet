@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { WorkspaceStreamProvider } from "@/components/domain/useWorkspaceStream";
+import { WorkspaceStreamProvider } from "@/components/domain/conversation/stream/useWorkspaceStream";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import WallLiveBadge from "@/app/(dashboard)/w/[workspaceId]/fleets/components/WallLiveBadge";
 import {

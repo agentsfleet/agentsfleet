@@ -17,7 +17,7 @@ import {
 } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import type { TenantBilling } from "@/lib/types";
-import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
+import CreateWorkspaceDialogDynamic from "@/components/domain/shared/dialogs/CreateWorkspaceDialogDynamic";
 import { useWorkspaceMenu } from "./workspace-menu-state";
 import { type SwitcherSection, WORKSPACE_LABEL } from "./workspace-groups";
 import { AccountMenuNavigation } from "./AccountMenuNavigation";

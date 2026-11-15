@@ -2,9 +2,9 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { AgentLabel } from "@/components/domain/AgentLabel";
+import { AgentLabel } from "@/components/domain/shared/identity/AgentLabel";
 import { DELETED_AGENT_LABEL, agentDisplayName } from "@/lib/fleets/agent-label";
-import { RefreshButton } from "@/components/domain/RefreshButton";
+import { RefreshButton } from "@/components/domain/shared/navigation/RefreshButton";
 
 afterEach(() => {
   cleanup();

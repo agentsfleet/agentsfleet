@@ -66,28 +66,22 @@ describe("ProviderModelSelect", () => {
     fireEvent.click(disclosure);
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
   });
-  it.each(["gpt-6.1-sol", "gpt-5.6-terra"])("retains %s while toggling explicit advanced opt-in", (model) => {
+  it.each(["gpt-6.1-sol", "gpt-5.6-terra"])("offers all model choices while retaining %s without a visibility switch", (model) => {
     const terra = { ...cap("gpt-5.6-terra", "openai", "GPT-5.6 Terra"), advanced: true };
     catalogueState.models = [cap("gpt-6.1-sol", "openai"), terra];
     const onModelChange = vi.fn();
     render(<ProviderModelSelect id="advanced-model" provider="openai" model={model} onModelChange={onModelChange} />);
-    expect(screen.queryByRole("option", { name: /Terra/ }) !== null).toBe(model === terra.id);
-    const toggle = screen.getByRole("switch", { name: "Show advanced models" });
-    fireEvent.click(toggle);
-    expect(catalogueState.preloadAdvanced).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("switch", { name: "Show advanced models" })).toBeNull();
     expect(screen.getByRole("option", { name: /Terra/ })).toBeTruthy();
-    fireEvent.click(toggle);
-    expect(screen.queryByRole("option", { name: /Terra/ }) !== null).toBe(model === terra.id);
     expect(document.querySelector("[data-select]")?.getAttribute("data-value")).toBe(model);
     expect(onModelChange).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])("retries the failed query without clearing the selection (advanced: %s)", (advanced) => {
+  it("retries the failed query without clearing the selection", () => {
     catalogueState.status = CATALOGUE_STATUS.error;
     catalogueState.error = "Catalogue validation failed: invalid price";
     const change = vi.fn();
     render(<ProviderModelSelect id="load-error" model="retained-id" onModelChange={change} />);
-    if (advanced) fireEvent.click(screen.getByRole("switch", { name: "Show advanced models" }));
     expect(screen.getByRole("alert").textContent).toContain(catalogueState.error);
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(catalogueState.retry).toHaveBeenCalledOnce();
@@ -112,19 +106,18 @@ describe("ProviderModelSelect", () => {
     expect(change).not.toHaveBeenCalled();
   });
 
-  it("requests the correct next page and hides advanced pagination after opt-out", () => {
+  it("keeps both catalogue pages reachable without a visibility switch", () => {
     catalogueState.nextCursor = "normal-page";
     const view = render(<ProviderModelSelect id="pages" model="" onModelChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Load more models" }));
-    expect(catalogueState.loadMore).toHaveBeenLastCalledWith(false);
+    expect(catalogueState.loadMore).toHaveBeenLastCalledWith(true);
     catalogueState.nextCursor = null;
     catalogueState.advancedNextCursor = "advanced-page";
     view.rerender(<ProviderModelSelect id="pages" model="" onModelChange={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: "Load more models" })).toBeNull();
-    fireEvent.click(screen.getByRole("switch", { name: "Show advanced models" }));
     fireEvent.click(screen.getByRole("button", { name: "Load more models" }));
     expect(catalogueState.loadMore).toHaveBeenLastCalledWith(true);
-    fireEvent.click(screen.getByRole("switch", { name: "Show advanced models" }));
+    catalogueState.advancedNextCursor = null;
+    view.rerender(<ProviderModelSelect id="pages" model="" onModelChange={vi.fn()} />);
     expect(screen.queryByRole("button", { name: "Load more models" })).toBeNull();
   });
 

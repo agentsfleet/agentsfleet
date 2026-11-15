@@ -1,0 +1,969 @@
+base	646fc536e9e504d0bda2db1742aab21e3e3896a8
+file	role	meaning	action
+cli/README.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/cli.ts	production/docs	model/software library	retain
+cli/src/commands/chat/command-recovery.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/commands/chat/commands.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/commands/chat/protocol.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/commands/chat/session.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/commands/chat/setup-session.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/commands/chat/transport.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/commands/library/delete.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/commands/library/library.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/commands/library/list.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/commands/library/read.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/commands/models/models.ts	production/docs	model/software library	retain
+cli/src/commands/platform/common.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/commands/platform/library.ts	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+cli/src/lib/api-paths.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/lib/exit-flushed.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/lib/model-catalogue-schema.ts	production/docs	model/software library	retain
+cli/src/lib/model-catalogue.ts	production/docs	model/software library	retain
+cli/src/lib/run-effect.ts	production/docs	model/software library	retain
+cli/src/program/entry/argv-scan.ts	production/docs	model/software library	retain
+cli/src/program/entry/console-bridge.ts	production/docs	model/software library	retain
+cli/src/program/entry/exit-code.ts	production/docs	model/software library	retain
+cli/src/program/entry/help-formatter.ts	production/docs	model/software library	retain
+cli/src/program/entry/presenter.ts	production/docs	model/software library	retain
+cli/src/program/entry/rejection.ts	production/docs	model/software library	retain
+cli/src/program/io.ts	production/docs	model/software library	retain
+cli/src/program/tree/chat.command.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/program/tree/flags.ts	production/docs	model/software library	retain
+cli/src/program/tree/fleet.command.ts	production/docs	model/software library	retain
+cli/src/program/tree/global-flags.ts	production/docs	model/software library	retain
+cli/src/program/tree/platform-flags.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/program/tree/platform-library.command.ts	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+cli/src/program/tree/platform.command.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/program/tree/plugins.command.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/src/program/tree/resolve-path.ts	production/docs	model/software library	retain
+cli/src/runtime/exit-code.service.ts	production/docs	model/software library	retain
+cli/test/acceptance/chat-negatives.spec.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/acceptance/fixtures/command-matrix.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/acceptance/fixtures/teardown.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/acceptance/library-publication-live.spec.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/acceptance/platform-operator-live.spec.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/acceptance/run-lane.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/chat/actions.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/chat/command-recovery.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/chat/definition.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/chat/fixture.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/chat/library.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/chat/pinned-source.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/chat/render.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/chat/setup-session.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/command-groups.unit.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/completions.unit.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/entry-console-bridge.unit.test.ts	test	model/software library	retain
+cli/test/entry-flag-validation.unit.test.ts	test	model/software library	retain
+cli/test/entry-help-formatter.unit.test.ts	test	model/software library	retain
+cli/test/error-rendering.unit.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/helpers-catalogue.ts	test	model/software library	retain
+cli/test/helpers-platform.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/json-output-regression.unit.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/model-catalogue.unit.test.ts	test	model/software library	retain
+cli/test/platform-boundaries.unit.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/platform-catalogue.unit.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/platform-output.unit.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+cli/test/read-path-failures.integration.test.ts	test	model/software library	retain
+cli/test/scoped-discovery.unit.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/AUTH.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/AUTH_DEVICE_LOGIN.md	production/docs	model/software library	retain
+docs/DESIGN_SYSTEM.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/RUST_ERROR_STANDARD.md	production/docs	model/software library	retain
+docs/architecture/README.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/api_resources.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/billing_and_provider_keys.md	production/docs	model/software library	retain
+docs/architecture/data_flow.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/direction.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/durable_tasks.md	production/docs	model/software library	retain
+docs/architecture/fleet_definitions.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/high_level.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/observability.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/postgres_schemas.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/product_analytics.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/runner_execution.md	production/docs	model/software library	retain
+docs/architecture/runner_fleet.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/rust-ownership.md	production/docs	model/software library	retain
+docs/architecture/scenarios/README.md	production/docs	model/software library	retain
+docs/architecture/scenarios/github-pr-reviewer.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/shared_chat_verification.md	production/docs	model/software library	retain
+docs/architecture/user_flow.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/web_app.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/architecture/website-job-entrance.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/designs/chat-within-a-workspace.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/designs/workspace-chat-options.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/development.md	production/docs	model/software library	retain
+docs/metrics.census.tsv	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/reviews/admissions-queue.md	production/docs	history	retain
+docs/reviews/dev-acceptance-followup.md	production/docs	history	retain
+docs/reviews/model-catalogue/catalogue.md	production/docs	history	retain
+docs/reviews/model-catalogue/handover.md	production/docs	history	retain
+docs/reviews/pr784-coverage-repair.md	production/docs	history	retain
+docs/reviews/pr784-tokenizer-evaluation.md	production/docs	history	retain
+docs/reviews/pr784-verification-history.json	production/docs	history	retain
+docs/reviews/tokenizer-approach-proposal.md	production/docs	history	retain
+docs/reviews/workspace-setup/README.md	production/docs	history	retain
+docs/reviews/workspace-setup/api.md	production/docs	history	retain
+docs/reviews/workspace-setup/astra-review.md	production/docs	history	retain
+docs/reviews/workspace-setup/chatgpt-review-prompt.md	production/docs	history	retain
+docs/reviews/workspace-setup/checks.md	production/docs	history	retain
+docs/reviews/workspace-setup/claude-review-prompt.md	production/docs	history	retain
+docs/reviews/workspace-setup/codex-modrs-review-prompt.md	production/docs	history	retain
+docs/reviews/workspace-setup/codex-pr-readiness-prompt.md	production/docs	history	retain
+docs/reviews/workspace-setup/codex-response.md	production/docs	history	retain
+docs/reviews/workspace-setup/codex-ui-handoff-prompt.md	production/docs	history	retain
+docs/reviews/workspace-setup/creation.md	production/docs	history	retain
+docs/reviews/workspace-setup/decisions.md	production/docs	history	retain
+docs/reviews/workspace-setup/definition.md	production/docs	history	retain
+docs/reviews/workspace-setup/end-to-end.md	production/docs	history	retain
+docs/reviews/workspace-setup/file-inventory.md	production/docs	history	retain
+docs/reviews/workspace-setup/followup-review-prompt.md	production/docs	history	retain
+docs/reviews/workspace-setup/public-changes.md	production/docs	history	retain
+docs/reviews/workspace-setup/review-packet.md	production/docs	history	retain
+docs/reviews/workspace-setup/rewrite-report.md	production/docs	history	retain
+docs/reviews/workspace-setup/runner.md	production/docs	history	retain
+docs/reviews/workspace-setup/source-findings.md	production/docs	history	retain
+docs/reviews/workspace-setup/ui-completion-review.md	production/docs	history	retain
+docs/v2/done/M105_001_P1_API_CLI_DOCS_INFRA_FLEET_SCHEDULES.md	production/docs	history	retain
+docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md	production/docs	history	retain
+docs/v2/done/M10_005_P2_ZIG_PGQUERY_MIGRATION.md	production/docs	history	retain
+docs/v2/done/M112_001_P1_CLI_DOCS_UI_FLEET_LIBRARY_RENAME.md	production/docs	history	retain
+docs/v2/done/M114_001_P1_API_DOCS_UI_DASHBOARD_UX_POLISH_SWEEP.md	production/docs	history	retain
+docs/v2/done/M116_001_P1_API_DOCS_INFRA_ERROR_REGISTRY_DEMUDBALL.md	production/docs	history	retain
+docs/v2/done/M117_001_P2_UI_DASHBOARD_COPY_AFFORDANCE_POLISH.md	production/docs	history	retain
+docs/v2/done/M120_001_P1_API_UI_MODELS_PAGE_FOUR_ROW_REDESIGN.md	production/docs	history	retain
+docs/v2/done/M120_002_P2_UI_SETTINGS_ACTIONS_ICON_SWEEP.md	production/docs	history	retain
+docs/v2/done/M120_003_P2_API_UI_MODEL_LIBRARY_NAMING_RENAME.md	production/docs	history	retain
+docs/v2/done/M120_004_P1_API_UI_MODEL_LIBRARY_FEEDBACK_BATCH.md	production/docs	history	retain
+docs/v2/done/M120_005_P2_API_DOCS_UI_MODEL_LIBRARY_CAP_JSON_SUNSET.md	production/docs	history	retain
+docs/v2/done/M121_001_P1_API_UI_TENANT_MODELS_REGISTRY.md	production/docs	history	retain
+docs/v2/done/M123_001_P0_API_CLI_DOCS_V2_LAUNCH_DOCUMENTATION.md	production/docs	history	retain
+docs/v2/done/M125_001_P2_UI_MODEL_DETAILS_DATES_AND_ROW_ACTIONS.md	production/docs	history	retain
+docs/v2/done/M126_003_P2_API_INFRA_LEAK_RACE_COVERAGE_GATES.md	production/docs	history	retain
+docs/v2/done/M127_001_P1_UI_PLATFORM_LIBRARY_ONBOARDING.md	production/docs	history	retain
+docs/v2/done/M128_001_P1_API_UI_RUNTIME_PLATFORM_CATALOG.md	production/docs	history	retain
+docs/v2/done/M130_001_P1_API_UI_FLEET_LIBRARY_ROW_EDIT_STATUS_HONESTY.md	production/docs	history	retain
+docs/v2/done/M130_002_P1_UI_RENDER_WHAT_THE_WIRE_CARRIES.md	production/docs	history	retain
+docs/v2/done/M131_001_P1_API_UI_FLEET_CONSOLE.md	production/docs	history	retain
+docs/v2/done/M133_001_P2_API_UI_WORKSPACE_LIVE_STREAM.md	production/docs	history	retain
+docs/v2/done/M134_002_P1_API_INFRA_UI_RUNNER_DELETE_AND_MODEL_CATALOGUE.md	production/docs	history	retain
+docs/v2/done/M135_001_P0_DOCS_INFRA_DEV_CONNECTOR_READINESS.md	production/docs	history	retain
+docs/v2/done/M135_004_P0_INFRA_UI_DEV_RELEASE_ACCEPTANCE_GATE.md	production/docs	history	retain
+docs/v2/done/M138_001_P1_UI_CONSOLE_CHAT_FIDELITY.md	production/docs	history	retain
+docs/v2/done/M139_003_P1_OBS_BOUNDED_SIGNAL_EXPORT.md	production/docs	history	retain
+docs/v2/done/M140_001_P1_UI_SORTABLE_PAGINATED_TABLES.md	production/docs	history	retain
+docs/v2/done/M142_001_P1_API_SQL_HOT_PATH_INDEXES_AND_STATEMENT_MODULES.md	production/docs	history	retain
+docs/v2/done/M143_001_P1_API_CLI_LIBRARY_DATA_SECURITY.md	production/docs	history	retain
+docs/v2/done/M143_002_P1_UI_LIBRARY_SESSION_EXPERIENCE.md	production/docs	history	retain
+docs/v2/done/M143_003_P1_OBS_LIBRARY_PERFORMANCE_EVIDENCE.md	production/docs	history	retain
+docs/v2/done/M143_004_P2_INFRA_ZIG_COVERAGE_AND_TEST_LANES.md	production/docs	history	retain
+docs/v2/done/M143_005_P1_UI_AUTHENTICATED_APP_FLUIDITY.md	production/docs	history	retain
+docs/v2/done/M143_006_P2_INFRA_TEST_LANE_CONCURRENCY_AND_CI_BUDGET.md	production/docs	history	retain
+docs/v2/done/M144_001_P1_API_CLI_DOCS_UI_FLEET_BUBBLES_WORKSPACE_RECONCILIATION.md	production/docs	history	retain
+docs/v2/done/M145_001_P1_API_CLI_DOCS_INFRA_UI_SECRET_FULL_REPLACE.md	production/docs	history	retain
+docs/v2/done/M146_001_P1_API_CLI_UI_RUNNER_LEASE_FIRST_SURFACE.md	production/docs	history	retain
+docs/v2/done/M147_001_P0_DOCS_INFRA_TAILNET_SSH_CI_ACCESS.md	production/docs	history	retain
+docs/v2/done/M151_001_P1_CLI_STEER_SUBSCRIBE_BEFORE_SEND.md	production/docs	history	retain
+docs/v2/done/M152_001_P1_API_AUDIT_LEAK_HYGIENE_REMEDIATION.md	production/docs	history	retain
+docs/v2/done/M153_001_P0_API_JWKS_COMPRESSED_KEYSET_DECODE.md	production/docs	history	retain
+docs/v2/done/M154_001_P1_API_DOCS_SQL_UI_SCHEMA_REBUILD_FOR_SCALE.md	production/docs	history	retain
+docs/v2/done/M154_002_P1_API_SQL_PRIVILEGE_BOUNDARIES_SECRETS_WALLET.md	production/docs	history	retain
+docs/v2/done/M157_001_P1_API_INFRA_OBS_SKILL_INCIDENT_TO_APPROVED_DRAFT_PR.md	production/docs	history	retain
+docs/v2/done/M157_002_P1_API_DOCS_SKILL_REPAIRER_SHIPS_ONE_DRAFT_PR.md	production/docs	history	retain
+docs/v2/done/M157_003_P1_API_INFRA_SKILL_CORRELATED_PRODUCTION_REPAIR.md	production/docs	history	retain
+docs/v2/done/M158_001_P1_DOCS_INFRA_UI_REBUILD_PRIMING_AND_FIXTURE_SWEEP.md	production/docs	history	retain
+docs/v2/done/M158_002_P2_INFRA_Z3_DEPENDENCY_MIRROR.md	production/docs	history	retain
+docs/v2/done/M159_001_P1_API_DOCS_INFRA_OBS_OTLP_RUNTIME_METRICS_SINGLE_EGRESS.md	production/docs	history	retain
+docs/v2/done/M160_001_P1_API_UI_ACCEPTANCE_E2E_DEV_GREEN.md	production/docs	history	retain
+docs/v2/done/M161_001_P2_API_DOCS_OBS_REGISTRY_GENERATED_METRIC_INSTRUMENTS.md	production/docs	history	retain
+docs/v2/done/M163_001_P1_CLI_DOCS_CLOSED_PROVIDER_FLAG_AND_STATE_ENV.md	production/docs	history	retain
+docs/v2/done/M164_002_P0_DOCS_INFRA_COVERAGE_DENOMINATOR_ASSERTION.md	production/docs	history	retain
+docs/v2/done/M165_001_P2_DOCS_ARCHITECTURE_SET_TRUTH_AND_BREVITY.md	production/docs	history	retain
+docs/v2/done/M166_001_P1_INFRA_VERIFICATION_CRITICAL_PATH.md	production/docs	history	retain
+docs/v2/done/M166_002_P1_INFRA_LIVE_DAEMON_SINGLE_OWNER.md	production/docs	history	retain
+docs/v2/done/M167_001_P0_API_UI_RUNNER_SANDBOX_CONTRACT_SELFTEST.md	production/docs	history	retain
+docs/v2/done/M168_001_P1_DOCS_INFRA_MODEL_LIBRARY_RATE_CURATION.md	production/docs	history	retain
+docs/v2/done/M169_001_P1_API_DOCS_UI_RUNNER_DETAIL_POLISH_TMPFS_WRITE_FLOOR.md	production/docs	history	retain
+docs/v2/done/M16_002_P2_ZIG_OBS_COMPTIME_POSTHOG_MOCKS.md	production/docs	history	retain
+docs/v2/done/M170_001_P0_INFRA_ZIG_ZERO_TRUST_LEASE_SANDBOX.md	production/docs	history	retain
+docs/v2/done/M171_001_P1_CLI_ARGUMENT_REJECTION_UNIFORMITY.md	production/docs	history	retain
+docs/v2/done/M172_001_P1_API_UI_READ_PATH_ROUND_TRIP_COLLAPSE.md	production/docs	history	retain
+docs/v2/done/M173_001_P1_API_ERROR_PATH_COVERAGE_SWEEP.md	production/docs	history	retain
+docs/v2/done/M174_001_P2_API_UI_DETERMINISTIC_TIMING_ASSERTIONS.md	production/docs	history	retain
+docs/v2/done/M175_001_P0_INFRA_RUST_WORKSPACE_SCAFFOLD.md	production/docs	history	retain
+docs/v2/done/M176_001_P0_API_INFRA_OBS_RUST_DAEMON_SUBSTRATE.md	production/docs	history	retain
+docs/v2/done/M177_001_P0_API_RUNNER_CONTROL_PLANE_PARITY.md	production/docs	history	retain
+docs/v2/done/M178_001_P1_API_TENANT_WORKSPACE_SURFACE.md	production/docs	history	retain
+docs/v2/done/M179_001_P1_API_ADMIN_OPERATOR_SURFACE.md	production/docs	history	retain
+docs/v2/done/M181_001_P0_DOCS_INFRA_OBS_RUST_CUTOVER_PREPARATION.md	production/docs	history	retain
+docs/v2/done/M181_002_P0_API_DOCS_INFRA_RUST_CUTOVER_SWAP.md	production/docs	history	retain
+docs/v2/done/M181_003_P0_API_DOCS_OPENAPI_COVERAGE_GATE.md	production/docs	history	retain
+docs/v2/done/M181_004_P0_API_OBS_OTLP_EXPORT.md	production/docs	history	retain
+docs/v2/done/M181_006_P0_API_INFRA_OBS_STAGING_SOAK_AND_SWAP.md	production/docs	history	retain
+docs/v2/done/M186_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md	production/docs	history	retain
+docs/v2/done/M187_001_P0_API_CLI_INFRA_UI_FLEET_END_TO_END_ACCEPTANCE.md	production/docs	history	retain
+docs/v2/done/M188_001_P1_API_INFRA_OUTBOUND_AND_LEASE_THROUGHPUT_BENCH.md	production/docs	history	retain
+docs/v2/done/M189_001_P1_DOCS_UI_CLEAR_SIGNAL.md	production/docs	history	retain
+docs/v2/done/M190_001_P1_API_DOCS_UI_DASHBOARD_ROUND_TRIP_DISCIPLINE.md	production/docs	history	retain
+docs/v2/done/M191_001_P2_UI_RETRY_POLICY_ON_EFFECT.md	production/docs	history	retain
+docs/v2/done/M192_001_P0_API_INFRA_OBS_DRAGONFLY_SCALE_REDIS_PARITY.md	production/docs	history	retain
+docs/v2/done/M193_001_P0_INFRA_UI_LIVE_ACCEPTANCE_WALK_AND_VERDICT.md	production/docs	history	retain
+docs/v2/done/M194_001_P0_API_INFRA_UI_INTEGRATION_GRANT_REQUEST_PATH.md	production/docs	history	retain
+docs/v2/done/M195_002_P1_API_UI_WALL_TILE_COUNTERS_FROM_THE_FRAME.md	production/docs	history	retain
+docs/v2/done/M198_001_P0_API_DOCS_OBS_ADMISSION_RECOVERY_AND_DELIVERY_LEDGER_REPAIR.md	production/docs	history	retain
+docs/v2/done/M199_001_P0_CLI_DOCS_LIBRARY_ONBOARDING_AND_APPROVAL_INBOX.md	production/docs	history	retain
+docs/v2/done/M202_001_P0_API_CLI_DOCS_GRANT_COVERS_REPOSITORY_WRITE.md	production/docs	history	retain
+docs/v2/done/M204_001_P1_API_CLI_UI_WORKSPACE_LIBRARY_REMOVAL.md	production/docs	history	retain
+docs/v2/done/M204_002_P1_CLI_UI_ONE_TABLE_SHAPE_EVERY_COMMAND.md	production/docs	history	retain
+docs/v2/done/M205_001_P1_API_CLI_DOCS_UI_CROSS_RUNTIME_CONSTANT_TIES_RETIRED.md	production/docs	history	retain
+docs/v2/done/M206_002_P0_API_CLI_DOCS_SLACK_MENTION_REACHES_ONE_FLEET.md	production/docs	history	retain
+docs/v2/done/M206_004_P1_DOCS_INFRA_SKILL_CI_INCIDENT_DRILL_DEV_THEN_PROD.md	production/docs	history	retain
+docs/v2/done/M207_001_P1_UI_CHAT_REPLY_ON_ASSISTANT_UI_PARTS.md	production/docs	history	retain
+docs/v2/done/M207_005_P1_API_DOCS_INFRA_UI_CHAT_HOLDS_STILL_WHILE_RUNNING.md	production/docs	history	retain
+docs/v2/done/M208_001_P1_API_DOCS_UI_TEAMMATES_JOIN_AN_ACCOUNT.md	production/docs	history	retain
+docs/v2/done/M210_001_P1_API_INFRA_RUST_RUNNER_SUPERVISOR_SANDBOX_FOUNDATION.md	production/docs	history	retain
+docs/v2/done/M210_003_P2_INFRA_RUST_UNIT_LANE_PARALLEL_SHARDS.md	production/docs	history	retain
+docs/v2/done/M210_005_P1_API_INPUT_BOUNDS_DECLARED_WITH_GARDE.md	production/docs	history	retain
+docs/v2/done/M211_001_P1_API_INFRA_RUST_RUNNER_SANDBOX_SIDE_TOOLS.md	production/docs	history	retain
+docs/v2/done/M211_002_P1_API_INFRA_RUST_RUNNER_NESTED_LOOPS.md	production/docs	history	retain
+docs/v2/done/M211_003_P1_API_INFRA_RUST_RUNNER_SANDBOX_SURVIVES_EXHAUSTION.md	production/docs	history	retain
+docs/v2/done/M211_004_P1_API_INFRA_RUST_RUNNER_CHAT_SANDBOX_HOLD.md	production/docs	history	retain
+docs/v2/done/M211_005_P1_API_INFRA_RUST_RUNNER_CHAT_TURNS_IN_PROMPT.md	production/docs	history	retain
+docs/v2/done/M212_001_P1_API_DOCS_RUNNER_VERBS_SCHEDULES_AND_MESSAGES.md	production/docs	history	retain
+docs/v2/done/M213_001_P0_API_DOCS_INFRA_RUST_RUNNER_CUTOVER_ZIG_RETIRED.md	production/docs	history	retain
+docs/v2/done/M213_002_P0_API_DOCS_RUST_SANDBOX_EGRESS_ALLOWLIST.md	production/docs	history	retain
+docs/v2/done/M214_001_P1_DOCS_OBS_RUST_RUNNER_EXPORTS_ITS_TELEMETRY.md	production/docs	history	retain
+docs/v2/done/M215_001_P2_INFRA_RUST_WIRE_SPLIT_BY_CONSUMER.md	production/docs	history	retain
+docs/v2/done/M216_001_P2_DOCS_INFRA_JEV_ASSERTION_REVIEW_PILOT.md	production/docs	history	retain
+docs/v2/done/M217_001_P2_API_CLI_INFRA_UI_TESTS_CALL_CODE_NEVER_READ_SOURCE.md	production/docs	history	retain
+docs/v2/done/M218_001_P2_API_DOCS_SHARED_CRATES_REPLACE_HANDROLLED_RUST.md	production/docs	history	retain
+docs/v2/done/M219_001_P1_API_DOCS_CLAIMED_BOUNDARIES_HOLD_IN_CODE.md	production/docs	history	retain
+docs/v2/done/M219_002_P2_UI_MODEL_TABLES_MATCH_TABS_ANSWER_AT_ONCE.md	production/docs	history	retain
+docs/v2/done/M220_001_P2_DOCS_INFRA_KERNEL_VM_RUNS_DEBIAN_TRIXIE.md	production/docs	history	retain
+docs/v2/done/M221_001_P3_API_INFRA_TOOLBOX_IMAGE_SHRINKS_KEEPING_ITS_TOOLS.md	production/docs	history	retain
+docs/v2/done/M221_002_P3_API_INFRA_TOOLBOX_DROPS_ITS_PACKAGE_MANAGER.md	production/docs	history	retain
+docs/v2/done/M222_001_P2_API_DOCS_OUTBOUND_PROXY_DECLARED_NOT_INHERITED.md	production/docs	history	retain
+docs/v2/done/M223_001_P2_API_DOCS_INFRA_WORKTREES_SHARE_DEVELOPMENT_DATASTORES.md	production/docs	history	retain
+docs/v2/done/M224_001_P0_DOCS_INFRA_FIRST_PRODUCTION_LAUNCH.md	production/docs	history	retain
+docs/v2/done/M224_002_P1_DOCS_UI_APPROVAL_AND_FLEET_ACTIVITY_CLARITY.md	production/docs	history	retain
+docs/v2/done/M225_001_P1_API_OBS_LEASE_PICKUP_WAKE_HINT.md	production/docs	history	retain
+docs/v2/done/M227_001_P0_API_CLI_DOCS_UI_WORKSPACE_CHAT_CUTOVER.md	production/docs	history	retain
+docs/v2/done/M227_002_P1_CLI_DOCS_UI_WEBSITE_BRANDING_BATCH.md	production/docs	history	retain
+docs/v2/done/M229_001_P1_API_DOCS_INFRA_POSTGRES_SCHEMA_CLEAN_SLATE.md	production/docs	history	retain
+docs/v2/done/M230_001_P1_API_DOCS_UI_STOPPED_AUTHORING_RECOVERY.md	production/docs	history	retain
+docs/v2/done/M230_002_P1_API_DOCS_UI_ONE_FLEET_CHAT_ENGINE.md	production/docs	history	retain
+docs/v2/done/M230_003_P1_API_CLI_UI_LOADING_TERMINAL_LOGIN.md	production/docs	history	retain
+docs/v2/done/M233_002_P1_API_INFRA_OBS_UI_CHAT_ROUND_TRIP_STAGE_TIMING.md	production/docs	history	retain
+docs/v2/done/M235_001_P0_API_DOCS_INFRA_CI_EVIDENCE_REACHES_SLACK_AND_DRAFT.md	production/docs	history	retain
+docs/v2/done/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md	production/docs	history	retain
+docs/v2/done/M236_003_P1_API_DOCS_OBS_UI_FLEET_SCHEDULE_ACTIVITY.md	production/docs	history	retain
+docs/v2/done/M238_003_P1_API_INFRA_OBS_FOCUSED_DASHBOARDS.md	production/docs	history	retain
+docs/v2/done/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md	production/docs	history	retain
+docs/v2/done/M244_001_P1_DOCS_INFRA_OBS_CORE_NATS_REPLACES_DRAGONFLY.md	production/docs	history	retain
+docs/v2/done/M249_001_P1_DOCS_UI_FLEET_INTERFACE_REFRESH.md	production/docs	history	retain
+docs/v2/done/M249_002_P1_CLI_DOCS_FLEET_COMMANDS_AND_SCOPED_DISCOVERY.md	production/docs	history	retain
+docs/v2/done/M26_001_P1_API_CLI_REST_CONVENTIONS_AND_AUTH_EXTRACTION.md	production/docs	history	retain
+docs/v2/done/M26_001b_P1_UI_DESIGN_SYSTEM_UNIFICATION.md	production/docs	history	retain
+docs/v2/done/M28_001_P1_API_WEBHOOK_AUTH_MIDDLEWARE.md	production/docs	history	retain
+docs/v2/done/M2_002_P0_SKILL_CLAWHUB_SKILL_FORMAT.md	production/docs	history	retain
+docs/v2/done/M40_001_P1_API_CLI_WORKER_SUBSTRATE.md	production/docs	history	retain
+docs/v2/done/M46_001_P1_SKILL_DOCS_API_FRONTMATTER_SCHEMA.md	production/docs	history	retain
+docs/v2/done/M51_001_P1_DOCS_SITE_REWRITE_AND_ARCH_CROSSREF.md	production/docs	history	retain
+docs/v2/done/M56_001_P2_API_DEAD_CODE_SWEEP_SRC.md	production/docs	history	retain
+docs/v2/done/M60_001_P2_UI_DESIGN_SYSTEM_TIME_LIST_DL.md	production/docs	history	retain
+docs/v2/done/M61_001_P1_API_ZIG_FIREWALL_AND_OTEL_EXPORT_REMOVAL.md	production/docs	history	retain
+docs/v2/done/M62_001_P1_OBSERVABILITY_LOGGING_AND_LIFECYCLE_AUDIT.md	production/docs	history	retain
+docs/v2/done/M64_002_P0_UI_DESIGN_W1_TOKEN_SWAP.md	production/docs	history	retain
+docs/v2/done/M64_005_P1_TESTING_AUTH_E2E_HARNESS_AND_W3_POLISH.md	production/docs	history	retain
+docs/v2/done/M65_001_P1_TESTING_SECURITY_AUTH_E2E_FULL_LIFECYCLE_SCENARIOS.md	production/docs	history	retain
+docs/v2/done/M65_002_P1_TESTING_ZOMBIECTL_E2E_LIFECYCLE.md	production/docs	history	retain
+docs/v2/done/M68_001_P1_API_CLI_UI_DOCS_WEBSITE_TRIGGER_REGISTRATION_AND_FREE_TRIAL.md	production/docs	history	retain
+docs/v2/done/M69_004_P0_API_ZIG_REDIS_POOL_AND_SUBSCRIBER_UNIFY.md	production/docs	history	retain
+docs/v2/done/M71_001_P2_UI_WEBSITE_TRIGGER_PANEL_AND_ONBOARDING_FLOW.md	production/docs	history	retain
+docs/v2/done/M74_001_P1_CLI_EFFECT_TS_MIGRATION.md	production/docs	history	retain
+docs/v2/done/M74_002_P1_API_CLI_UI_CLI_BROWSER_AUTHORIZATION_FLOW.md	production/docs	history	retain
+docs/v2/done/M82_001_P2_API_INFRA_ZIG_016_TOOLCHAIN_MIGRATION.md	production/docs	history	retain
+docs/v2/done/M84_004_P1_API_RUNNER_EGRESS_ALLOWLIST.md	production/docs	history	retain
+docs/v2/done/M93_001_P1_API_INFRA_OIDC_JWKS_DERIVE_FROM_ISSUER.md	production/docs	history	retain
+docs/v2/evidence/M249_VERIFICATION.md	production/docs	history	retain
+docs/v2/pending/M239_001_P1_API_DOCS_INFRA_UI_FLEET_TO_FLEET_STEER_AND_ACTIVITY.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/v2/pending/M249_003_P1_API_CLI_DOCS_UI_PLUGIN_AND_ARCHIVED_VOCABULARY.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/v2/pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+docs/v2/reviews/identity-key-fk-shard-audit-2026-09-20.md	production/docs	history	retain
+docs/v2/reviews/m123-documentation-audit.md	production/docs	history	retain
+docs/v2/reviews/m217-test-audit-findings-2026-10-08.md	production/docs	history	retain
+docs/v2/reviews/m218-rust-duplication-ledger.md	production/docs	history	retain
+docs/v2/reviews/schema-fix-adversarial-review-2026-09-18.md	production/docs	history	retain
+docs/v2/reviews/schema-usage-audit-2026-09-18.md	production/docs	history	retain
+public/agentsfleet-manifest.json	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+public/llms.txt	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+public/openapi.json	production/docs	fleet-setup or mixed	regenerate
+rustd/Cargo.toml	production/docs	model/software library	retain
+rustd/crates/daemon/afd_admin/src/lib.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/Cargo.toml	production/docs	model/software library	retain
+rustd/crates/daemon/afd_api/tests/admin_operator_route_inventory.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/admin_plane/library.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/admin_plane/mod.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/authoring/fixture.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/authoring/library/foreign.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/authoring/library/mod.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/authoring/library/platform/install.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/authoring/library/platform/mod.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/authoring/library/platform/visibility.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/authoring/library/publication.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/authoring/library/removal.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/authoring/mod.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/authoring/saving/publication.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/authoring/saving/revisions/apply.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/fleet_streams.rs	test	model/software library	retain
+rustd/crates/daemon/afd_api/tests/fleets/input.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/harness/readiness.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/input_bounds.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/integration_admin.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/integration_team_routes.rs	test	model/software library	retain
+rustd/crates/daemon/afd_api/tests/list_limits.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/route_inventory.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/route_meta_total.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api/tests/tenant_model_entry_input.rs	test	model/software library	retain
+rustd/crates/daemon/afd_api/tests/tenant_models.rs	test	model/software library	retain
+rustd/crates/daemon/afd_api_operator/src/handler/admin/libraries.rs	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+rustd/crates/daemon/afd_api_operator/src/handler/admin/library_stage.rs	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+rustd/crates/daemon/afd_api_operator/src/handler/admin/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_operator/src/lib.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_operator/src/openapi.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/draft/input.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/draft/render.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/fleet/message_steer/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/fleet/native/create.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/fleet/native/input.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/library/list.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/library/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/library/publish.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/library/publish_revision.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/library/read.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/library/remove.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/library/render.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/paging.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/tenant/model_entry/input.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_api_tenant/src/handler/tenant/model_entry/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/handler/tenant/models/input.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_api_tenant/src/handler/tenant/models/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/lib.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_tenant/src/openapi.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_wire/src/admin_library_native.rs	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+rustd/crates/daemon/afd_api_wire/src/authoring/input.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_wire/src/authoring/output.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_wire/src/fleet/input.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_wire/src/fleet/revision.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_wire/src/lib.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_wire/src/library/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_api_wire/src/library/output.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_approval/tests/support/gate_lane.rs	test	model/software library	retain
+rustd/crates/daemon/afd_auth/src/lib.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_auth/src/scope.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_auth/tests/scope_catalogue.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/candidate/source.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/creation/revision/apply.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/creation/source.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/creation/sql/library.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/creation/sql/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/draft/create.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/draft/read.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/funnel.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/lib.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/history.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/list.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/platform/curate.rs	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+rustd/crates/daemon/afd_authoring/src/library/platform/mod.rs	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+rustd/crates/daemon/afd_authoring/src/library/platform/read.rs	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+rustd/crates/daemon/afd_authoring/src/library/platform/remove.rs	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+rustd/crates/daemon/afd_authoring/src/library/publish/create.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/publish/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/publish/persist.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/publish/platform.rs	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+rustd/crates/daemon/afd_authoring/src/library/publish/revision.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/read.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/remove.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/accepted.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/advance.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/append.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/curate.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/entry.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/history.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/insert.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/insert_platform.sql	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+rustd/crates/daemon/afd_authoring/src/library/sql/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/owned.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/page.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/platform_list.sql	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+rustd/crates/daemon/afd_authoring/src/library/sql/platform_lock.sql	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+rustd/crates/daemon/afd_authoring/src/library/sql/platform_receipt.sql	production/docs	fleet-setup or mixed	delete platform catalogue implementation
+rustd/crates/daemon/afd_authoring/src/library/sql/receipt.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/remove.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/library/sql/revision.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/privacy.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/replay/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/replay/sql/read.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/replay/tests.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/review/context.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/setup.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/sql/candidate/library_source.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/sql/candidate/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/sql/draft/create.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/sql/draft/lock.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/sql/draft/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/sql/draft/page.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/types/creation.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/types/input.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/types/library.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/types/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/types/output.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/types/platform.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/src/types/source.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/tests/draft/fixture.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/tests/draft/library/authority.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/tests/draft/library/funnel.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/tests/draft/library/listing.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/tests/draft/library/mod.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/tests/draft/library/publication.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/tests/draft/library/revisions.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/tests/draft/library/staging.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/tests/draft/mod.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_authoring/tests/draft/races.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_bench/src/allocations/mod.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_bench/src/bin/tail.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_bench/src/error/kind.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_bench/src/statements/mod.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_connector/src/exchange.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_connector/src/github/probe.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_credential/src/provider/cache/tests.rs	test	model/software library	retain
+rustd/crates/daemon/afd_cron/src/recipe/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_db/Cargo.toml	production/docs	model/software library	retain
+rustd/crates/daemon/afd_db/src/error/answer.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_db/src/lib.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_db/src/migration.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_db/src/test_util/platform_default_tests.rs	test	model/software library	retain
+rustd/crates/daemon/afd_db/src/test_util/rows.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_db/tests/integration_migrate/immutable.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_db/tests/integration_migrate/names.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_db/tests/integration_migrate/roles.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_events/Cargo.toml	production/docs	model/software library	retain
+rustd/crates/daemon/afd_fleet/Cargo.toml	production/docs	model/software library	retain
+rustd/crates/daemon/afd_fleet/src/lease/cache/tests.rs	test	model/software library	retain
+rustd/crates/daemon/afd_fleet/src/lib.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_http/src/auth/ownership/role.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_http/src/handler/mod.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_http/src/handler/refusal/mod.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_http/src/openapi/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_http/src/openapi/path.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_http/src/openapi/query.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_http/src/route/admin.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_http/src/route/tenant.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_http/src/route/workspace.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/afd_http/src/services/catalogue.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_identity/Cargo.toml	production/docs	model/software library	retain
+rustd/crates/daemon/afd_identity/src/jwks/source.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_identity/src/lib.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_identity/tests/claim_shapes.rs	test	model/software library	retain
+rustd/crates/daemon/afd_sse/src/lib.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_tenant/src/error/detail.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_tenant/src/error/kind.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_tenant/src/error/mod.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_tenant/src/error/raise.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_tenant/src/error/tests.rs	test	model/software library	retain
+rustd/crates/daemon/afd_tenant/src/models/cursor.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_tenant/src/models/mod.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_tenant/src/sql/models.rs	production/docs	model/software library	retain
+rustd/crates/daemon/afd_tenant/src/team/email.rs	production/docs	model/software library	retain
+rustd/crates/daemon/main/Cargo.toml	production/docs	model/software library	retain
+rustd/crates/daemon/main/src/cli.rs	production/docs	model/software library	retain
+rustd/crates/daemon/main/src/fatal.rs	production/docs	model/software library	retain
+rustd/crates/daemon/main/src/lib.rs	production/docs	model/software library	retain
+rustd/crates/daemon/main/src/main.rs	production/docs	model/software library	retain
+rustd/crates/daemon/main/src/preflight/mod.rs	production/docs	model/software library	retain
+rustd/crates/daemon/main/tests/cli/mod.rs	test	model/software library	retain
+rustd/crates/daemon/main/tests/presentation.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/daemon/main/tests/support/e2e_db.rs	test	model/software library	retain
+rustd/crates/daemon/main/tests/support/mod.rs	test	model/software library	retain
+rustd/crates/daemon/main/tests/tls_posture.rs	test	model/software library	retain
+rustd/crates/foundation/af_core/Cargo.toml	production/docs	model/software library	retain
+rustd/crates/foundation/af_core/src/error_code/fleet.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/foundation/af_core/src/error_code/mod.rs	production/docs	model/software library	retain
+rustd/crates/foundation/af_core/src/error_code/request.rs	production/docs	model/software library	retain
+rustd/crates/foundation/af_core/src/error_shell.rs	production/docs	model/software library	retain
+rustd/crates/foundation/af_core/src/lib.rs	production/docs	model/software library	retain
+rustd/crates/foundation/af_core/src/paging/struct_cursor.rs	production/docs	model/software library	retain
+rustd/crates/foundation/af_core/src/problem/integration.rs	production/docs	model/software library	retain
+rustd/crates/foundation/af_core/src/problem/request.rs	production/docs	model/software library	retain
+rustd/crates/foundation/af_core/src/signal.rs	production/docs	model/software library	retain
+rustd/crates/foundation/af_crypto/src/lib.rs	production/docs	model/software library	retain
+rustd/crates/foundation/af_crypto/tests/envelope.rs	test	model/software library	retain
+rustd/crates/foundation/af_crypto/tests/error_surface.rs	test	model/software library	retain
+rustd/crates/harness/af_providers/src/error/mod.rs	production/docs	model/software library	retain
+rustd/crates/harness/af_providers/src/retry/mod.rs	production/docs	model/software library	retain
+rustd/crates/protocol/af_fleet_runtime/src/definition/mod.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/protocol/af_inference/src/count/mod.rs	production/docs	model/software library	retain
+rustd/crates/protocol/af_inference/src/tests/codecs.rs	test	model/software library	retain
+rustd/crates/protocol/af_observability/src/metrics/declared/library.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/protocol/af_observability/src/metrics/declared/mod.rs	production/docs	model/software library	retain
+rustd/crates/protocol/af_observability/src/metrics/label/library.rs	production/docs	model/software library	retain
+rustd/crates/protocol/af_observability/src/metrics/label/mod.rs	production/docs	model/software library	retain
+rustd/crates/protocol/af_observability/src/metrics/label/spelling_tests.rs	test	model/software library	retain
+rustd/crates/protocol/af_observability/src/metrics/label/tests.rs	test	model/software library	retain
+rustd/crates/protocol/af_observability/src/producers/library.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/protocol/af_observability/src/producers/mod.rs	production/docs	model/software library	retain
+rustd/crates/protocol/af_observability/src/product/properties.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/protocol/af_observability/src/product/telemetry/authoring.rs	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/protocol/af_observability/src/product/telemetry/authoring_tests.rs	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+rustd/crates/protocol/af_observability/src/semconv/mod.rs	production/docs	model/software library	retain
+rustd/crates/protocol/af_observability/src/semconv/provider.rs	production/docs	model/software library	retain
+rustd/crates/protocol/af_observability/tests/producers_drive.rs	test	model/software library	retain
+rustd/crates/protocol/af_webhook/src/test_util.rs	production/docs	model/software library	retain
+rustd/crates/runner/afr_executor/src/server/launch/terminal.rs	production/docs	model/software library	retain
+rustd/crates/runner/afr_sandbox/Cargo.toml	production/docs	model/software library	retain
+rustd/crates/runner/afr_sandbox/src/bubblewrap_engine/parts/mod.rs	production/docs	model/software library	retain
+rustd/crates/runner/afr_sandbox/src/host/mod.rs	production/docs	model/software library	retain
+rustd/crates/runner/afr_supervisor/src/error/mod.rs	production/docs	model/software library	retain
+rustd/crates/runner/afr_supervisor/src/error/raise.rs	production/docs	model/software library	retain
+rustd/crates/runner/afr_supervisor/src/error/tests.rs	test	model/software library	retain
+rustd/crates/runner/afr_supervisor/src/workspace_clone/failure_tests.rs	test	model/software library	retain
+rustd/crates/runner/afr_supervisor/src/workspace_clone/fetch.rs	production/docs	model/software library	retain
+rustd/crates/runner/afr_supervisor/src/workspace_clone/mod.rs	production/docs	model/software library	retain
+rustd/crates/runner/afr_telemetry/src/telemetry/mod.rs	production/docs	model/software library	retain
+rustd/crates/runner/afr_telemetry/src/telemetry/tests.rs	test	model/software library	retain
+rustd/crates/runner/afr_tools/vendor/apply_patch/NOTICE	production/docs	model/software library	retain
+rustd/crates/runner/main/Cargo.toml	production/docs	model/software library	retain
+rustd/crates/runner/main/src/main.rs	production/docs	model/software library	retain
+rustd/crates/runner/main/src/main_tests.rs	test	model/software library	retain
+schema/20261108121700_authoring_library_entries.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+schema/20261108121800_authoring_library_revisions.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+schema/20261108122000_fleet_revisions.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+schema/20261108123600_authoring_drafts.sql	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/.oxlintrc.json	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/invites/components/InvitesView.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/layout.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/settings/billing/lib/load-report.ts	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/settings/members/components/InviteDialog.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/settings/members/components/MembersView.inviting.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/settings/members/components/MembersView.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/settings/members/components/TeamConfirm.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/settings/security/components/ApiKeyList.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/ChatView.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetStatusLine.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/MemoryPanel.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/memory-menu.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.stream.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/FleetWall.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/new/page.tsx	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/scope.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/app/(dashboard)/w/[workspaceId]/library/actions.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/app/(dashboard)/w/[workspaceId]/library/actions.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/app/(dashboard)/w/[workspaceId]/library/components/LibraryContent.tsx	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/app/(dashboard)/w/[workspaceId]/library/copy.ts	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/library/page.test.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/app/(dashboard)/w/[workspaceId]/library/page.tsx	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/EditSecretDialog.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/secret-row-cells.tsx	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/actions.ts	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/CreateModelForm.tsx	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider.tsx	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog.tsx	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable.tsx	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryView.test.tsx	test	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryView.tsx	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderModelSelect.tsx	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view.ts	production/docs	model/software library	retain
+ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/page.tsx	production/docs	model/software library	retain
+ui/packages/app/components.json	production/docs	model/software library	retain
+ui/packages/app/components/assistant-ui/TerminalBlock.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/CatalogueModelDetails.tsx	production/docs	model/software library	retain
+ui/packages/app/components/domain/FleetConnectionIndicator.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetConnectionNotice.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetHeaderStatus.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetLibraryEmptyState.tsx	production/docs	model/software library	retain
+ui/packages/app/components/domain/FleetMarkdown.tsx	production/docs	model/software library	retain
+ui/packages/app/components/domain/FleetMessageRow.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetPayloadDisclosure.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetReplyBody.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetReplyFigures.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetReplyFigures.tsx	production/docs	model/software library	retain
+ui/packages/app/components/domain/FleetRunCost.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetThought.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetThought.tsx	production/docs	model/software library	retain
+ui/packages/app/components/domain/FleetThread.flush.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetThreadViewport.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetTimestamp.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetToolOutputDialog.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetVirtualOutput.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/FleetVirtualOutput.tsx	production/docs	model/software library	retain
+ui/packages/app/components/domain/MessageExpansion.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/ModelCells.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/ModelCells.tsx	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/components/domain/ModelPriceSchedule.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/SteerComposer.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/TaskActivityTimeline.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/approvals/use-approval-decision.test.ts	test	model/software library	retain
+ui/packages/app/components/domain/chat/ChangesStrip.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/chat/ChatQuote.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/chat/ChatSummary.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/chat/FleetApprovalSummary.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/chat/FleetModelSelect.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/chat/FleetSetupActions.tsx	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/components/domain/chat/LibraryBrowser.tsx	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/components/domain/chat/LibraryRemoval.tsx	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/components/domain/chat/LibraryWorkspace.tsx	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/components/domain/chat/PluginPublicationTarget.tsx	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/components/domain/chat/SetupApprovalSummary.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/chat/SetupStatusFlap.test.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/components/domain/chat/SetupStatusFlap.tsx	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/components/domain/chat/TaskPanel.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/chat/WakeupStrip.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/chat/WorkOutputs.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/chat/WorkWakeups.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/chat/use-wakeup-control.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/chat/useFleetModel.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/fleetReplyMessage.test.ts	test	model/software library	retain
+ui/packages/app/components/domain/fleetReplyMessage.ts	production/docs	model/software library	retain
+ui/packages/app/components/domain/island-dynamic/IntentDialogStatus.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/island-dynamic/intent-module-loader.test.ts	test	model/software library	retain
+ui/packages/app/components/domain/island-dynamic/intent-shell-controls.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/useFirstVisiblePaint.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/useFleetMessageDelivery.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/useFleetPendingSends.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/useFleetRunSummary.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/useFleetSteerQueue.ts	production/docs	model/software library	retain
+ui/packages/app/components/domain/useFleetThreadEntries.test.tsx	test	model/software library	retain
+ui/packages/app/components/domain/useWorkspaceStream.test.tsx	test	model/software library	retain
+ui/packages/app/components/layout/DraftDeleteDialog.tsx	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/components/layout/DraftDeleteDialogDynamic.test.tsx	test	model/software library	retain
+ui/packages/app/components/layout/DraftSidebarHistory.test.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/components/layout/FleetNoticeProvider.test.tsx	test	model/software library	retain
+ui/packages/app/components/layout/InviteNotice.test.tsx	test	model/software library	retain
+ui/packages/app/components/layout/MobileNavigation.test.tsx	test	model/software library	retain
+ui/packages/app/components/layout/RecentChats.test.tsx	test	model/software library	retain
+ui/packages/app/components/layout/ResourceHeader.test.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/components/layout/WorkspaceSwitcher.test.tsx	test	model/software library	retain
+ui/packages/app/components/layout/sidebar-navigation-data.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/components/layout/use-delete-draft.test.tsx	test	model/software library	retain
+ui/packages/app/lib/analytics/events.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/lib/api/admin-model-library-types.test.ts	test	model/software library	retain
+ui/packages/app/lib/api/catalogue-types.ts	production/docs	model/software library	retain
+ui/packages/app/lib/api/client.test.ts	test	model/software library	retain
+ui/packages/app/lib/api/draft-library.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/lib/api/draft-publication.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/lib/api/draft-source.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/lib/api/draft-types.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/lib/api/draft-vocabulary.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/lib/api/fleet-library.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/lib/api/fleet-library.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/lib/api/library-types.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/lib/api/library-types.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/lib/api/model-library-types.ts	production/docs	model/software library	retain
+ui/packages/app/lib/api/model_library.test.ts	test	model/software library	retain
+ui/packages/app/lib/api/model_library.ts	production/docs	model/software library	retain
+ui/packages/app/lib/api/setup-proxy/path.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/lib/api/tenant_model_entries.ts	production/docs	model/software library	retain
+ui/packages/app/lib/auth/client.test.tsx	test	model/software library	retain
+ui/packages/app/lib/auth/client.ts	production/docs	model/software library	retain
+ui/packages/app/lib/auth/credential.ts	production/docs	model/software library	retain
+ui/packages/app/lib/auth/scopes.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/lib/errors.test.ts	test	model/software library	retain
+ui/packages/app/lib/library-copy.ts	production/docs	model/software library	retain
+ui/packages/app/lib/models/display.test.ts	test	model/software library	retain
+ui/packages/app/lib/models/display.ts	production/docs	model/software library	retain
+ui/packages/app/lib/pagination/use-url-cursor-pages.test.ts	test	model/software library	retain
+ui/packages/app/lib/streaming/fleet-stream-tool-trace.ts	production/docs	model/software library	retain
+ui/packages/app/package.json	production/docs	model/software library	retain
+ui/packages/app/tests/account-client.test.tsx	test	model/software library	retain
+ui/packages/app/tests/account-controls.test.tsx	test	model/software library	retain
+ui/packages/app/tests/account-session-recovery.test.tsx	test	model/software library	retain
+ui/packages/app/tests/account-settings.test.tsx	test	model/software library	retain
+ui/packages/app/tests/account-setup.test.tsx	test	model/software library	retain
+ui/packages/app/tests/analytics-bootstrap.test.tsx	test	model/software library	retain
+ui/packages/app/tests/api-keys-components.test.ts	test	model/software library	retain
+ui/packages/app/tests/api-keys-create-dialog.test.ts	test	model/software library	retain
+ui/packages/app/tests/app-components.test.ts	test	model/software library	retain
+ui/packages/app/tests/app-shell-frame.test.ts	test	model/software library	retain
+ui/packages/app/tests/app-shell-navigation.test.tsx	test	model/software library	retain
+ui/packages/app/tests/app-shell-team.test.tsx	test	model/software library	retain
+ui/packages/app/tests/appearance-menu.test.tsx	test	model/software library	retain
+ui/packages/app/tests/authoring-intent.test.tsx	test	model/software library	retain
+ui/packages/app/tests/balance-link.test.tsx	test	model/software library	retain
+ui/packages/app/tests/billing-report-view.test.tsx	test	model/software library	retain
+ui/packages/app/tests/chat-context-progress.test.tsx	test	model/software library	retain
+ui/packages/app/tests/chat-failure.test.tsx	test	model/software library	retain
+ui/packages/app/tests/clerk-appearance.test.ts	test	model/software library	retain
+ui/packages/app/tests/cli-auth-approval-transport.test.ts	test	model/software library	retain
+ui/packages/app/tests/cli-auth-page.test.ts	test	model/software library	retain
+ui/packages/app/tests/cli-loopback-approval-errors.test.tsx	test	model/software library	retain
+ui/packages/app/tests/cli-loopback-approval.test.tsx	test	model/software library	retain
+ui/packages/app/tests/connector-completion.test.ts	test	model/software library	retain
+ui/packages/app/tests/context-progress.test.tsx	test	model/software library	retain
+ui/packages/app/tests/coverage-edges.test.ts	test	model/software library	retain
+ui/packages/app/tests/create-workspace-dialog.test.ts	test	model/software library	retain
+ui/packages/app/tests/dashboard-error-and-empty.test.tsx	test	model/software library	retain
+ui/packages/app/tests/dashboard-error-retry.test.tsx	test	model/software library	retain
+ui/packages/app/tests/dashboard-fleet-actions.test.ts	test	model/software library	retain
+ui/packages/app/tests/dashboard-fleets-wall-remount.test.tsx	test	model/software library	retain
+ui/packages/app/tests/dashboard-fleets-wall-revoked.test.tsx	test	model/software library	retain
+ui/packages/app/tests/dashboard-fleets-wall.test.tsx	test	model/software library	retain
+ui/packages/app/tests/dashboard-layout-invites.test.tsx	test	model/software library	retain
+ui/packages/app/tests/dashboard-placeholder.test.ts	test	model/software library	retain
+ui/packages/app/tests/dashboard-workspace.test.ts	test	model/software library	retain
+ui/packages/app/tests/draft-chat-recovery.test.tsx	test	model/software library	retain
+ui/packages/app/tests/draft-client.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/draft-library.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/draft-message-recovery.test.tsx	test	model/software library	retain
+ui/packages/app/tests/draft-setup-progress.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/draft-source.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/draft-stream-rendering.test.tsx	test	model/software library	retain
+ui/packages/app/tests/draft-summary-lifecycle.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/draft-summary-refresh.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/e2e-teardown-sweep.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/e2e/acceptance/fixtures/constants.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/e2e/acceptance/fixtures/native-setup.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/e2e/acceptance/fixtures/teardown.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/e2e/acceptance/fleet-webhook-delivery.spec.ts	test	model/software library	retain
+ui/packages/app/tests/e2e/acceptance/global-setup.ts	test	model/software library	retain
+ui/packages/app/tests/e2e/acceptance/global-teardown.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/e2e/acceptance/login-install-lifecycle.spec.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/e2e/acceptance/measured-layout.spec.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/e2e/acceptance/provider-credential-reference.spec.ts	test	model/software library	retain
+ui/packages/app/tests/e2e/acceptance/template-onboarding.spec.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/e2e/acceptance/workspace-library.spec.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/e2e/fixtures/resource-pages-probe.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/e2e/fixtures/resource-settings-actions.ts	test	model/software library	retain
+ui/packages/app/tests/e2e/resource-settings.spec.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/event-details-dialog-diagnostic.test.tsx	test	model/software library	retain
+ui/packages/app/tests/event-details-dialog-freshness.test.tsx	test	model/software library	retain
+ui/packages/app/tests/event-details-dialog.test.tsx	test	model/software library	retain
+ui/packages/app/tests/events-components-interactions.test.ts	test	model/software library	retain
+ui/packages/app/tests/events-components.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-chat-elements.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-library-scope.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/fleet-lifecycle-boundary.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-markdown-dynamic.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-markdown.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-native-attachments.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-pending-chat.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-reply-elements.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-run-details.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-setup-recovery.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-split-tool-groups.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-stream-provider.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-thread-dynamic.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/context-progress.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/failure-retry.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/harness.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/malformed-metadata.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/role-activity.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/role-links.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/role-reasoning.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/role-reply-parts.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/role-rows.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/role-senders.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/role-turns.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/schedule-activity.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/steer-helpers.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/steer-queue.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/steer-quote-recovery.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/steer-recovery.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/steer-reuse.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/steer-submission.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-thread/surface.test.ts	test	model/software library	retain
+ui/packages/app/tests/fleet-tool-calls.runner.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-tool-calls.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-tool-elements.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-tool-progress.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-tool-registry.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-tool-rendering.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-upload-previews.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleet-viewed-tracker.test.tsx	test	model/software library	retain
+ui/packages/app/tests/fleets-routes/harness.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/fleets-routes/list-and-loading.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/fleets-routes/new-fleet-page.test.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/fleets.test.ts	test	model/software library	retain
+ui/packages/app/tests/helpers/catalogue-fixtures.ts	test	model/software library	retain
+ui/packages/app/tests/helpers/cli-loopback-fixture.tsx	test	model/software library	retain
+ui/packages/app/tests/helpers/dashboard-app-mocks.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/helpers/draft-client-fixture.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/helpers/draft-fixtures.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/helpers/event-details-dialog-fixtures.tsx	test	model/software library	retain
+ui/packages/app/tests/helpers/events-list-harness.tsx	test	model/software library	retain
+ui/packages/app/tests/helpers/fleet-stream-hook-fixtures.ts	test	model/software library	retain
+ui/packages/app/tests/helpers/fleets-wall-harness.tsx	test	model/software library	retain
+ui/packages/app/tests/helpers/members-fixtures.tsx	test	model/software library	retain
+ui/packages/app/tests/helpers/models-registry-add-fixtures.tsx	test	model/software library	retain
+ui/packages/app/tests/helpers/models-registry-edit-fixtures.tsx	test	model/software library	retain
+ui/packages/app/tests/helpers/models-registry-fixtures.tsx	test	model/software library	retain
+ui/packages/app/tests/identity-and-controls.test.tsx	test	model/software library	retain
+ui/packages/app/tests/integrations-connectors.test.ts	test	model/software library	retain
+ui/packages/app/tests/island-dynamic.test.ts	test	model/software library	retain
+ui/packages/app/tests/library-copy.test.ts	test	model/software library	retain
+ui/packages/app/tests/loading-states.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/model-catalogue-details.test.tsx	test	model/software library	retain
+ui/packages/app/tests/model-catalogue-pagination.test.tsx	test	model/software library	retain
+ui/packages/app/tests/model-catalogue-provider.test.tsx	test	model/software library	retain
+ui/packages/app/tests/model-creation-operations.test.tsx	test	model/software library	retain
+ui/packages/app/tests/model-creation-recovery.test.tsx	test	model/software library	retain
+ui/packages/app/tests/model-details-dialog.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-provider-loading.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-activation.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-add-custom.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-add-key.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-add.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-created-activation.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-dialogs.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-edit-remove.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-hover.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-pagination.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-paging.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-prices.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-secrets.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-registry-table.test.tsx	test	model/software library	retain
+ui/packages/app/tests/models-secrets-page.test.ts	test	model/software library	retain
+ui/packages/app/tests/native-task-pr-badge.test.tsx	test	model/software library	retain
+ui/packages/app/tests/not-found.test.tsx	test	model/software library	retain
+ui/packages/app/tests/person-label.test.tsx	test	model/software library	retain
+ui/packages/app/tests/plugin-publication-selection.test.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/provider-actions.test.ts	test	model/software library	retain
+ui/packages/app/tests/provider-model-select.test.tsx	test	model/software library	retain
+ui/packages/app/tests/schedule-sync.test.tsx	test	model/software library	retain
+ui/packages/app/tests/secrets-components.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/secrets-list.test.ts	test	model/software library	retain
+ui/packages/app/tests/setup-access.test.tsx	test	model/software library	retain
+ui/packages/app/tests/setup-proxy.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/task-activity-timeline.test.tsx	test	model/software library	retain
+ui/packages/app/tests/task-controls.test.tsx	test	model/software library	retain
+ui/packages/app/tests/task-detail-controls.test.tsx	test	model/software library	retain
+ui/packages/app/tests/task-goal-adoption.test.tsx	test	model/software library	retain
+ui/packages/app/tests/task-history-sidebar.test.tsx	test	model/software library	retain
+ui/packages/app/tests/task-read-recovery.test.tsx	test	model/software library	retain
+ui/packages/app/tests/task-repository-progress.test.tsx	test	model/software library	retain
+ui/packages/app/tests/use-event-detail.test.ts	test	model/software library	retain
+ui/packages/app/tests/use-fleet-event-stream-frames.test.ts	test	model/software library	retain
+ui/packages/app/tests/use-fleet-event-stream.test.ts	test	model/software library	retain
+ui/packages/app/tests/use-provider-action.test.tsx	test	model/software library	retain
+ui/packages/app/tests/use-stored-secrets.test.ts	test	model/software library	retain
+ui/packages/app/tests/work-context-sections.test.tsx	test	model/software library	retain
+ui/packages/app/tests/work-context.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-activity-recovery.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/chat-navigation.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/compact-setup.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/conversation.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/editor-rebase.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/editor.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/errors.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/fixture.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/workspace-chat/fleet-editor.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/fleet-setup.test.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/workspace-chat/library-lifecycle.test.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/workspace-chat/library.test.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/workspace-chat/load-more.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/ownership.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/revision-recovery.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/save-command.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/save-continuation.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/save-handoff.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/saving.test.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/app/tests/workspace-chat/setup-menu.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/setup-privacy.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/setup-questions.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/setup-status.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/setup-summary.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-chat/unfinished-setups.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-menu-focus.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-menu-grouping.test.tsx	test	model/software library	retain
+ui/packages/app/tests/workspace-switcher-recovery.test.tsx	test	model/software library	retain
+ui/packages/app/vitest.config.ts	production/docs	model/software library	retain
+ui/packages/app/vitest.setup.ts	production/docs	model/software library	retain
+ui/packages/design-system/package.json	production/docs	model/software library	retain
+ui/packages/design-system/src/design-system/Accordion.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/ActionForm.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Alert.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Badge.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/BrandMark.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Button.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Card.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Checkbox.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/ConfirmDialog.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/CopyButton.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/CopyButton.tsx	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/design-system/src/design-system/DashboardPrimitives.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/DashboardShellHeader.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/DataTable.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/DataTableClientPagination.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/DataTableDisclosure.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/DataTableFocus.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/DataTableModel.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/DataTableServerPagination.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/DataTableSorting.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/DescriptionList.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Dialog.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Display.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/DropdownMenu.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/EmptyState.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Form.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Grid.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/IconAction.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Input.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/InstallBlock.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Label.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/List.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Nav.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/NavItem.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/PageHeader.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/PageLayout.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/PageTitle.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Pagination.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Popover.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/RadioGroup.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Section.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/SectionHeader.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/SectionLabel.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Select.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Separator.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Skeleton.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Spinner.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/StatusCard.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/StatusLine.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Switch.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Tabs.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Terminal.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Textarea.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Time.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Toast.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/Tooltip.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/TooltipButton.test.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/design-system/src/design-system/UnavailableState.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/UsageBar.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/WakePulse.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/design-system/dialog-focus.test.ts	test	model/software library	retain
+ui/packages/design-system/src/design-system/use-resettable-timeout.test.tsx	test	model/software library	retain
+ui/packages/design-system/src/test-setup.ts	production/docs	model/software library	retain
+ui/packages/website/package.json	production/docs	model/software library	retain
+ui/packages/website/src/App.production.test.tsx	test	model/software library	retain
+ui/packages/website/src/App.test.tsx	test	model/software library	retain
+ui/packages/website/src/analytics/landing-clicks.test.tsx	test	model/software library	retain
+ui/packages/website/src/components/Footer.test.tsx	test	model/software library	retain
+ui/packages/website/src/components/Hero.test.tsx	test	model/software library	retain
+ui/packages/website/src/components/HowItWorks.test.tsx	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/website/src/components/Pricing.test.tsx	test	model/software library	retain
+ui/packages/website/src/components/StoryMessage.test.tsx	test	model/software library	retain
+ui/packages/website/src/components/motion.test.tsx	test	model/software library	retain
+ui/packages/website/src/components/use-chat-scroll.test.ts	test	model/software library	retain
+ui/packages/website/src/config.test.ts	test	model/software library	retain
+ui/packages/website/src/lib/llms-text.test.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/website/src/lib/llms-text.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/website/src/lib/marketing-copy.ts	production/docs	fleet-setup or mixed	edit relevant setup references; retain unrelated uses
+ui/packages/website/src/pages/DesignSystemDataGallery.test.tsx	test	model/software library	retain
+ui/packages/website/src/pages/Fleets.test.tsx	test	model/software library	retain
+ui/packages/website/src/pages/Home.test.tsx	test	model/software library	retain
+ui/packages/website/src/pages/Privacy.test.tsx	test	model/software library	retain
+ui/packages/website/src/pages/Terms.test.tsx	test	model/software library	retain
+ui/packages/website/src/test-setup.ts	production/docs	model/software library	retain
+ui/packages/website/tests/e2e/home.spec.ts	test	fleet-setup or mixed	edit relevant setup references; retain unrelated uses

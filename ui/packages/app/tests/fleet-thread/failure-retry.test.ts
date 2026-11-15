@@ -1,5 +1,5 @@
 import { clientUser, ev, mockStream, renderThread, postSteerMock, SUBJECT, WS, ZID, FLEET_NAME } from "./harness";
-import {FleetThread} from "@/components/domain/FleetThread";
+import {FleetThread} from "@/components/domain/conversation/thread/FleetThread";
 import {createElement} from "react";
 import { ACCEPTED, OPERATION_ID } from "./steer-helpers";
 import { expect, it } from "vitest";

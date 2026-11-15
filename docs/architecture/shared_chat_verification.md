@@ -226,11 +226,12 @@ Partial answers and unknown usage remain visible after failure.
 
 ### Setup and runtime stay together
 
-New fleet supports multiple setup messages before explicit **Save fleet**.
-Saving keeps authoring open; **Open fleet** navigates to its conversation.
+New fleet supports multiple setup messages before an explicit chat **Save**.
+A confirmed save opens its fleet conversation. **Save and publish** instead publishes the reusable setup from the flap.
+
 **Edit setup** returns to the authoring page with the latest saved revision.
 
-Manual instructions are optional. The authoring header offers **Save changes** for an existing fleet; **Instructions** opens from the chat menu.
+Manual instructions are optional. The header pencil opens **Instructions**; its **Save changes** action applies edits to an existing fleet.
 
 Unapplied manual edits disable the outer Save action. Closing the editor asks before discarding edits; reload or subject disposal loses unsent changes.
 

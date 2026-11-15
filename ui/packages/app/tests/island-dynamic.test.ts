@@ -53,11 +53,11 @@ vi.mock("next/dynamic", () => {
   };
 });
 
-import EditCredentialDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
-import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddSecretFormDynamic";
-import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
-import CreateApiKeyDialogDynamic from "@/components/domain/island-dynamic/CreateApiKeyDialogDynamic";
-import InviteDialogDynamic from "@/components/domain/island-dynamic/InviteDialogDynamic";
+import EditCredentialDialogDynamic from "@/components/domain/shared/dialogs/EditSecretDialogDynamic";
+import AddCredentialFormDynamic from "@/components/domain/shared/dialogs/AddSecretFormDynamic";
+import CreateWorkspaceDialogDynamic from "@/components/domain/shared/dialogs/CreateWorkspaceDialogDynamic";
+import CreateApiKeyDialogDynamic from "@/components/domain/shared/dialogs/CreateApiKeyDialogDynamic";
+import InviteDialogDynamic from "@/components/domain/shared/dialogs/InviteDialogDynamic";
 
 afterEach(() => cleanup());
 

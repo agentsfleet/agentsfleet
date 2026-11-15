@@ -26,7 +26,7 @@ it("reloads complete schedule lifecycle facts as non-runnable readable activity"
     "Schedule At 9:00 AM (Asia/Kolkata) removal requested: Review support failures — 東京 🦉 · Removal requested",
     "Schedule At 9:00 AM (Asia/Kolkata) registered with the scheduler: Review support failures — 東京 🦉 · Active",
     "Schedule At 9:00 AM (Asia/Kolkata) removed from the scheduler: Review support failures — 東京 🦉 · Paused",
-    "Schedule At 9:00 AM (Asia/Kolkata) could not sync: Review support failures — 東京 🦉 · Registration pending. Scheduler refused. Will retry on the next sync.",
+    "Schedule At 9:00 AM (Asia/Kolkata) could not sync: Review support failures — 東京 🦉 · Registration failed. Scheduler refused. Will retry on the next sync.",
     "Schedule At 9:00 AM (Asia/Kolkata) removed: Review support failures — 東京 🦉 · Removed",
     "Schedule At 9:00 AM (Asia/Kolkata) expired without firing: Review support failures — 東京 🦉 · Expired without firing",
   ]);

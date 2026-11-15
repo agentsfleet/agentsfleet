@@ -4,10 +4,10 @@ import { Button } from "@agentsfleet/design-system";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { DraftConversation } from "@/components/domain/chat/DraftConversation";
+import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
 import { DraftClient } from "@/lib/api/drafts";
 import { UNKNOWN_USAGE_REASON } from "@/lib/api/draft-recovery";
-import { CHAT_PLACEHOLDER } from "@/components/domain/chat/chat-defaults";
+import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { ChatFixture, CHAT_PROPS } from "./workspace-chat/fixture";
 import { DRAFT, MESSAGE, MODEL, response } from "./helpers/draft-fixtures";
 
@@ -32,9 +32,9 @@ function RuntimeStop() {
 it.each(["queued", "running"] as const)("chat_recovery_shows_stop_and_queued_state for %s without a durable assistant row", async (state) => {
   fixture.messages = [{...MESSAGE, state}];
   await client.resume(DRAFT.id); render(<Live />);
-  const label = state === "queued" ? "Queued" : "Refining setup";
+  const label = state === "queued" ? "Queued" : "Thinking";
   expect(screen.getByRole("status", {name: label})).toBeTruthy();
-  expect(screen.queryByRole("status", {name: state === "queued" ? "Refining setup" : "Queued"})).toBeNull();
+  expect(screen.queryByRole("status", {name: state === "queued" ? "Thinking" : "Queued"})).toBeNull();
   expect(screen.getByRole("button", {name: "Stop authoring"})).toHaveProperty("disabled", false);
 });
 
@@ -87,7 +87,7 @@ it("persists cancellation requested through the assistant runtime", async () => 
   await client.resume(DRAFT.id); render(<Live><RuntimeStop /></Live>);
   fireEvent.click(screen.getByRole("button", {name: "Cancel from assistant runtime"}));
   await waitFor(() => expect(client.getSnapshot().draft?.cancelled_through).toBe("1"));
-  expect(screen.queryByRole("status", {name: "Refining setup"})).toBeNull();
+  expect(screen.queryByRole("status", {name: "Thinking"})).toBeNull();
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
 });
 

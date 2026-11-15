@@ -2,7 +2,7 @@ import type { ProfilerOnRenderCallback } from "react";
 
 import { act, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { WorkspaceStreamProvider } from "@/components/domain/useWorkspaceStream";
+import { WorkspaceStreamProvider } from "@/components/domain/conversation/stream/useWorkspaceStream";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import {
   activityFrame,

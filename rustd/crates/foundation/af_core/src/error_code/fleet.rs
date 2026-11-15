@@ -144,7 +144,7 @@ pub const AGENTSFLEET_CREDENTIAL_MISSING: ErrorCode = ErrorCode::declare("UZ-AGT
 /// This workspace already holds a fleet under the requested name.
 ///
 /// Only ever answered for a name the CALLER chose. An install that named
-/// nothing takes the library entry's own name, and a collision there is
+/// nothing takes the Plugin entry's own name, and a collision there is
 /// re-drawn with a suffix rather than reported — "taken" would name a conflict
 /// the caller cannot see, on a value they never typed.
 pub const AGENTSFLEET_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-AGT-006");

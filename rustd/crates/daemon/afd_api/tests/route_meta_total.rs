@@ -70,7 +70,7 @@ const POST_PORT_ADDITIONS: usize = 17;
 ///
 /// Fifteen: a creator's drafts, one draft, its messages, its Stop watermark and
 /// its setup-progress stream, and the models a draft may run on; the
-/// workspace's Library entries it owns, one entry, an entry's revisions and one
+/// workspace's Plugin entries it owns, one entry, an entry's revisions and one
 /// pinned revision; applying a reviewed improvement to a fleet; and the four
 /// runner routes an authoring lease works through: its activity, its model
 /// calls, its renewal and its report.
@@ -95,6 +95,9 @@ const RUNNER_STREAM_ADDITIONS: usize = 1;
 /// Six polling and lease-update routes plus four authoring routes now use native frames.
 const RETIRED_RUNNER_HTTP_ROUTES: usize = 10;
 
+/// The two platform catalogue routes and the redundant owned collection were retired.
+const RETIRED_CATALOGUE_ROUTES: usize = 3;
+
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
@@ -106,7 +109,8 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + FOLD_ADDITIONS
     + RUNNER_STREAM_ADDITIONS
     - RETIRED_WEBHOOK_ROUTES
-    - RETIRED_RUNNER_HTTP_ROUTES;
+    - RETIRED_RUNNER_HTTP_ROUTES
+    - RETIRED_CATALOGUE_ROUTES;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.

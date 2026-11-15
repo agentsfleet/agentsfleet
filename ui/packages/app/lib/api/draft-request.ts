@@ -1,5 +1,6 @@
 // Private setup never reaches browser storage, analytics, or a browser bearer.
 
+import type { DraftList } from "./draft-list-types";
 import { z } from "zod";
 import { SetupUnavailable } from "./draft-errors";
 export { SetupUnavailable, losesAccess, setupErrorMessage, definiteRefusal } from "./draft-errors";
@@ -12,7 +13,7 @@ const ProblemSchema = z.object({
   user_message: z.string().optional(), error_code: z.string().optional(),
   review_digest: z.string().optional(),
 });
-export type SetupRequest = {readonly path: string; readonly method?: string; readonly body?: unknown; readonly headers?: Readonly<Record<string, string>>};
+export type SetupRequest = {readonly path: string; readonly method?: string; readonly body?: unknown; readonly headers?: Readonly<Record<string, string>>; readonly list?: DraftList};
 
 export async function setupRequest<T>(request: SetupRequest, schema: z.ZodType<T>, owner: AbortSignal): Promise<T> {
   const signal = AbortSignal.any([owner, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
@@ -30,15 +31,20 @@ export async function setupRequest<T>(request: SetupRequest, schema: z.ZodType<T
       throw new SetupUnavailable(problem.success && problem.data.user_message
         ? problem.data.user_message : "This request couldn’t be completed. Refresh the page before trying again.", response.status,
         {code: problem.success ? problem.data.error_code : undefined,
-          etag: response.headers.get("etag"), reviewDigest: problem.success ? problem.data.review_digest : undefined});
+          etag: response.headers.get("etag"), reviewDigest: problem.success ? problem.data.review_digest : undefined,
+          userMessage: problem.success ? problem.data.user_message : undefined});
     }
     const parsed = schema.safeParse(value);
     if (!parsed.success) throw new SetupUnavailable("We couldn’t load this response. Please try again shortly.", 502, {cause: parsed.error});
     signal.throwIfAborted();
     return parsed.data;
   } catch (cause) {
-    if (cause instanceof SetupUnavailable) throw cause;
-    throw new SetupUnavailable("The request could not be confirmed. Retry the same operation.", 502, {cause});
+    if (cause instanceof SetupUnavailable) {
+      if (!request.list) throw cause;
+      throw new SetupUnavailable(cause.message, cause.status, {cause, code: cause.code, etag: cause.etag,
+        reviewDigest: cause.reviewDigest, userMessage: cause.userMessage, list: request.list});
+    }
+    throw new SetupUnavailable("The request could not be confirmed. Retry the same operation.", 502, {cause, list: request.list});
   }
 }
 

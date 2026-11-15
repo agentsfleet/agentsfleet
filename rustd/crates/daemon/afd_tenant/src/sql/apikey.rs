@@ -53,10 +53,10 @@ pub const SELECT_TENANT_KEY_PAGE_FIRST: &str = "\
 WITH tenant_total AS ( \
     SELECT COUNT(*)::bigint AS total FROM identity.api_keys WHERE tenant_id = $1 \
 ) \
-SELECT p.id, p.name, p.created_at, p.revoked_at, t.total \
+SELECT p.id, p.name, p.display_suffix, p.created_at, p.revoked_at, t.total \
 FROM tenant_total t \
 LEFT JOIN LATERAL ( \
-    SELECT id AS id, name, created_at, revoked_at \
+    SELECT id AS id, name, display_suffix, created_at, revoked_at \
     FROM identity.api_keys \
     WHERE tenant_id = $1 \
     ORDER BY {order} \
@@ -72,10 +72,10 @@ pub const SELECT_TENANT_KEY_PAGE_AFTER_CREATED: &str = "\
 WITH tenant_total AS ( \
     SELECT COUNT(*)::bigint AS total FROM identity.api_keys WHERE tenant_id = $1 \
 ) \
-SELECT p.id, p.name, p.created_at, p.revoked_at, t.total \
+SELECT p.id, p.name, p.display_suffix, p.created_at, p.revoked_at, t.total \
 FROM tenant_total t \
 LEFT JOIN LATERAL ( \
-    SELECT id AS id, name, created_at, revoked_at \
+    SELECT id AS id, name, display_suffix, created_at, revoked_at \
     FROM identity.api_keys \
     WHERE tenant_id = $1 \
       AND (created_at, id) {comparator} ($2::timestamptz, $3) \
@@ -89,10 +89,10 @@ pub const SELECT_TENANT_KEY_PAGE_AFTER_NAME: &str = "\
 WITH tenant_total AS ( \
     SELECT COUNT(*)::bigint AS total FROM identity.api_keys WHERE tenant_id = $1 \
 ) \
-SELECT p.id, p.name, p.created_at, p.revoked_at, t.total \
+SELECT p.id, p.name, p.display_suffix, p.created_at, p.revoked_at, t.total \
 FROM tenant_total t \
 LEFT JOIN LATERAL ( \
-    SELECT id AS id, name, created_at, revoked_at \
+    SELECT id AS id, name, display_suffix, created_at, revoked_at \
     FROM identity.api_keys \
     WHERE tenant_id = $1 \
       AND (name, id) {comparator} ($2::text, $3) \

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { Alert } from "@agentsfleet/design-system";
-import { RouteRetryButton } from "@/components/domain/RouteRetryButton";
+import { RouteRetryButton } from "@/components/domain/shared/navigation/RouteRetryButton";
 import { SecurityLayout } from "./components/SecurityLayout";
 import { SessionSettings } from "@/components/account/SessionSettings";
 import { requireCredential } from "@/lib/auth/credential";
@@ -23,8 +23,8 @@ export default async function SecurityPage() {
     else unavailable = true;
   }
   return <SecurityLayout>
+    <AccountSettingsSection />
     {unavailable ? <Alert variant="warning">API keys could not be loaded.<RouteRetryButton label="Retry API keys" /></Alert> : <ApiKeysView initial={initial} operatorOnly={operatorOnly} />}
     <SessionSettings />
-    <AccountSettingsSection />
   </SecurityLayout>;
 }

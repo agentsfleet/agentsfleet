@@ -76,7 +76,7 @@ describe("fleets routes — list and loading", () => {
     expect(markup).not.toContain("Getting started");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(listSecretsMock).not.toHaveBeenCalled();
-    // Creation starts in private chat without selecting a library revision.
+    // Creation starts in private chat without selecting a Plugin revision.
     expect(markup).toContain('href="/w/ws_1/fleets/new"');
     expect(markup).not.toContain("No fleets yet");
     expect(markup).not.toContain("credit balance is exhausted");

@@ -36,7 +36,7 @@ import {
 import { getDefaultWorkspaceId, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
-// The library converges on one row per body; the fleet is named per run.
+// The plugin converges on one row per body; the fleet is named per run.
 const WEBHOOK_TEMPLATE = "fleet-webhook-delivery";
 const FLEET_PREFIX = "fleet-webhook-";
 // The workspace secret the trigger names. Not `github`: that name is the

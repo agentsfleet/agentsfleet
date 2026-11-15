@@ -14,7 +14,7 @@ const actions = vi.hoisted(() => ({
 vi.mock("../actions", () => actions);
 // The Invite trigger ships behind a next/dynamic shim; alias it back to the
 // real dialog so the trigger and form mount synchronously.
-vi.mock("@/components/domain/island-dynamic/InviteDialogDynamic", async () => ({
+vi.mock("@/components/domain/shared/dialogs/InviteDialogDynamic", async () => ({
   default: (await vi.importActual<{ default: unknown }>("./InviteDialog")).default,
 }));
 

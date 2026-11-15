@@ -14,7 +14,7 @@ export function createTransport(http: HttpClient, workspace: string, token: Reda
   return Object.freeze({
     drafts: `${base}/drafts`,
     fleets: `${base}/fleets`,
-    libraries: `${base}/fleet-libraries`,
+    plugins: `${base}/plugins`,
     call: <T>(input: AuthenticatedRequest, schema: Schema.Codec<T, unknown>) =>
       http.request({...input, token}).pipe(Effect.flatMap((value) => decode(schema, value))),
     empty: (input: AuthenticatedRequest) => http.request({...input, token}).pipe(Effect.asVoid),

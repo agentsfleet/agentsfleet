@@ -96,13 +96,8 @@ pub enum Scope {
     BillingRead,
     /// Create workspaces, and list the tenant's workspaces.
     WorkspaceAdmin,
-    /// Mutate the Fleet library catalogue at the tenant tier.
-    LibraryWrite,
-    /// Mutate the Fleet library catalogue at the platform tier.
-    ///
-    /// Independent of [`Scope::LibraryWrite`] — there is no hierarchy between
-    /// the two, because a workspace owner is not a platform operator.
-    PlatformLibraryWrite,
+    /// Publish, revise and delete account-owned Plugins.
+    PluginsWrite,
     // ── Runner credential (machine identity, minted onto the agt_r token) ──
     /// The runner's own plane. Carried ONLY by a runner-token principal, which
     /// carries only this — so a runner cannot reach a tenant route and a person
@@ -119,7 +114,7 @@ impl Scope {
     ///
     /// Totality is enforced at compile time by `KNOWN_BITS` below, not by
     /// review: a variant missing from here leaves a hole in the union.
-    pub const ALL: [Self; 30] = [
+    pub const ALL: [Self; 29] = [
         Self::FleetRead,
         Self::FleetWrite,
         Self::FleetAdmin,
@@ -146,8 +141,7 @@ impl Scope {
         Self::ApprovalResolve,
         Self::BillingRead,
         Self::WorkspaceAdmin,
-        Self::LibraryWrite,
-        Self::PlatformLibraryWrite,
+        Self::PluginsWrite,
         Self::RunnerSelf,
         Self::WorkspaceAny,
     ];
@@ -187,8 +181,7 @@ impl Scope {
             Self::ApprovalResolve => "approval:resolve",
             Self::BillingRead => "billing:read",
             Self::WorkspaceAdmin => "workspace:admin",
-            Self::LibraryWrite => "library:write",
-            Self::PlatformLibraryWrite => "platform-library:write",
+            Self::PluginsWrite => "plugins:write",
             Self::RunnerSelf => "runner:self",
             Self::WorkspaceAny => "workspace:any",
         }
@@ -217,7 +210,7 @@ impl Scope {
 
 /// The union of every catalogued scope's bit.
 ///
-/// Asserted below to be exactly 30 contiguous bits. That assertion is what
+/// Asserted below to be exactly 29 contiguous bits. That assertion is what
 /// makes [`Scope::ALL`] total: a variant left out of the array clears its bit
 /// here, and a variant sharing another's bit narrows the union.
 const KNOWN_BITS: u32 = {
@@ -234,15 +227,14 @@ const KNOWN_BITS: u32 = {
 };
 
 const _: () = assert!(
-    KNOWN_BITS == (1_u32 << 30) - 1,
+    KNOWN_BITS == (1_u32 << 29) - 1,
     "Scope::ALL must list every variant exactly once, and each must own a distinct bit"
 );
 
 /// `admin` subsumes `write` and `read`; `write` subsumes `read`.
 ///
 /// The full transitive closure per ladder, so expansion is one non-recursive
-/// pass. Data, not string-prefix inference: `platform-library:write` and
-/// `library:write` share a spelling convention and are deliberately unrelated,
+/// pass. Data, not string-prefix inference: `plugins:write` is independent of model catalogue administration,
 /// and a rule reading the string would ladder them.
 const HIERARCHY: [(Scope, &[Scope]); 12] = [
     (Scope::FleetAdmin, &[Scope::FleetWrite, Scope::FleetRead]),
@@ -374,7 +366,7 @@ pub const TENANT_OWNER_GRANT: [Scope; 10] = [
     Scope::ConnectorWrite,
     Scope::BillingRead,
     Scope::WorkspaceAdmin,
-    Scope::LibraryWrite,
+    Scope::PluginsWrite,
     Scope::ApprovalResolve,
 ];
 

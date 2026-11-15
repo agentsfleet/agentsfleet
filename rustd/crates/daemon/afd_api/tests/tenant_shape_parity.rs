@@ -93,6 +93,7 @@ fn an_api_key_summary_never_carries_the_key() {
     let summary = ApiKeySummary {
         id: Cow::Borrowed(TEXT),
         key_name: Cow::Borrowed(TEXT),
+        display_suffix: Some(Cow::Borrowed("a1b2")),
         active: true,
         created_at: WHEN,
         revoked_at: None,
@@ -100,7 +101,14 @@ fn an_api_key_summary_never_carries_the_key() {
     assert_shape(
         &summary,
         "ApiKeySummary",
-        &["id", "key_name", "active", "created_at", "revoked_at"],
+        &[
+            "id",
+            "key_name",
+            "display_suffix",
+            "active",
+            "created_at",
+            "revoked_at",
+        ],
     );
 
     // The listing shape must not be able to grow the secret back.
@@ -115,6 +123,7 @@ fn absent_optionals_stay_on_the_wire_as_null() {
     let live = ApiKeySummary {
         id: Cow::Borrowed(TEXT),
         key_name: Cow::Borrowed(TEXT),
+        display_suffix: None,
         active: true,
         created_at: WHEN,
         revoked_at: None,
@@ -124,6 +133,7 @@ fn absent_optionals_stay_on_the_wire_as_null() {
     // Present AND null, not omitted. A dashboard branching on
     // `"revoked_at" in row` reads the two differently.
     assert_eq!(document.get("revoked_at"), Some(&Value::Null));
+    assert_eq!(document.get("display_suffix"), Some(&Value::Null));
 }
 
 #[test]

@@ -13,11 +13,11 @@ import { runCli } from "../src/cli.ts";
 import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
-const DETAIL = "Library entry is not owned by this workspace";
+const DETAIL = "Plugin entry is not owned by this workspace";
 const USER_MESSAGE =
-  "That Library entry belongs to another workspace, so this workspace cannot remove it.";
-const TITLE = "Library entry not owned";
-const REFUSAL_CODE = "UZ-LIBRARY-004";
+  "That Plugin entry belongs to another workspace, so this workspace cannot remove it.";
+const TITLE = "Plugin entry not owned";
+const REFUSAL_CODE = "UZ-AUTHOR-001";
 
 describe("readProblemDetails — the two refusal strings", () => {
   test("carries both when the daemon sends both", () => {
@@ -61,14 +61,14 @@ describe("readProblemDetails — the two refusal strings", () => {
 
 describe("rendered failure — which string reaches the terminal", () => {
   const WS_ID = "01900000-0000-7000-8000-00000067e210";
-  const LIBRARY_ID = "01900000-0000-7000-8000-00000011b111";
-  const LIBRARY = `/v1/workspaces/${WS_ID}/fleet-libraries/${LIBRARY_ID}`;
+  const PLUGIN_ID = "01900000-0000-7000-8000-00000011b111";
+  const PLUGIN = `/v1/workspaces/${WS_ID}/plugins/${PLUGIN_ID}`;
 
   const scope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
     withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_err" }, fn);
 
   const refuseWith = (status: number, body: Record<string, unknown>): MockRoutes => ({
-    [`DELETE ${LIBRARY}`]: () => jsonResponse(status, body),
+    [`DELETE ${PLUGIN}`]: () => jsonResponse(status, body),
   });
 
   const removeAndReadStderr = async (routes: MockRoutes): Promise<{ code: number; text: string }> => {
@@ -76,7 +76,7 @@ describe("rendered failure — which string reaches the terminal", () => {
     await withMockApi(routes, async (apiUrl) => {
       const out = bufferStream();
       const err = bufferStream();
-      const code = await runCli(["plugins", "delete", LIBRARY_ID], {
+      const code = await runCli(["plugins", "delete", PLUGIN_ID], {
         stdout: out.stream,
         stderr: err.stream,
         env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),

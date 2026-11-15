@@ -4,8 +4,8 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { FleetToolCall, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
-import { TOOL_NAME } from "@/components/domain/tool-call-shape";
-import { TOOL_CALLS_LABEL } from "@/components/domain/FleetToolCalls";
+import { TOOL_NAME } from "@/components/domain/activity/tools/presentation/tool-call-shape";
+import { TOOL_CALLS_LABEL } from "@/components/domain/activity/tools/FleetToolCalls";
 
 const COMMAND = "nproc; cat /proc/loadavg";
 const OUTPUT = "8\n0.08 0.04 0.00 1/199 6";
@@ -126,10 +126,28 @@ it("names unknown tools without inspecting arguments and shows recorded output l
   expect(screen.queryByText(/suite completed|Steps completed/i)).toBeNull();
 });
 
-it("retains the individual calls inside a mixed command group", () => {
+it("retains visible calls in a mixed group without internal memory activity", () => {
   show([call({name: TOOL_NAME.FILE_READ}), call({name: TOOL_NAME.MEMORY_RECALL}), ...Array.from({length: 6}, () => call())]);
   renderThread(); openGroup();
-  expect(rows()).toHaveLength(8);
+  expect(rows()).toHaveLength(7);
   expect(command(rows()[0]!).textContent).toContain("Read file");
-  expect(command(rows()[1]!).textContent).toContain("Recalled memory");
+  expect(command(rows()[1]!).textContent).toContain("Ran command");
+  expect(document.querySelector(`[data-tool="${TOOL_NAME.MEMORY_RECALL}"]`)).toBeNull();
 });
+
+it.each([TOOL_NAME.MEMORY_RECALL, TOOL_NAME.MEMORY_STORE, TOOL_NAME.MEMORY_LIST, TOOL_NAME.MEMORY_FORGET])(
+  "keeps %s out of both live and settled fleet conversations", name => {
+    const tools = [call({name, args: {query: "Private memory query"}, outputHead: "Private memory result", done: false, status: undefined, ms: null})];
+    show(tools, "received");
+    const view = renderThread();
+    expect(screen.getByRole("status", {name: "Working"})).toBeTruthy();
+    expect(screen.queryByRole("button", {name: /^Tool activity:/})).toBeNull();
+    expect(screen.queryByText(/Private memory/)).toBeNull();
+    mockStream([ev({id: "progress-event", role: "user", actor: "operator", text: "Check performance", status: "processed",
+      tools: tools.map(tool => ({...tool, done: true, status: SUCCEEDED, ms: 100})), reply: "The check is complete."})]);
+    view.rerender(threadElement());
+    expect(screen.getByText("The check is complete.")).toBeTruthy();
+    expect(screen.queryByRole("button", {name: /^Tool activity:/})).toBeNull();
+    expect(screen.queryByText(/Private memory/)).toBeNull();
+  },
+);

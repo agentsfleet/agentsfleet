@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
 import { join } from "node:path";
-import { PlatformFixture, INSTANT, LIBRARY_ENTRY, MODEL, POLICY, RUNNER, RUNNER_ID } from "./helpers-platform.ts";
+import { PlatformFixture, INSTANT, MODEL, POLICY, RUNNER, RUNNER_ID } from "./helpers-platform.ts";
 
 let fixture: PlatformFixture;
 beforeEach(() => {fixture = new PlatformFixture();});
@@ -33,13 +33,10 @@ test.each(["runners", "models"])("renders a %s table and its next cursor in a te
   expect(result.stdout).toContain(`Next page: --starting-after ${RUNNER_ID}`);
 });
 
-test("renders provider defaults and Library entries as terminal tables", async () => {
-  fixture.respond = call => Response.json(call.url.pathname.includes("platform-keys")
-    ? {keys: [{provider: "example", source_workspace_id: RUNNER_ID, model: null, active: false, updated_at: INSTANT}]} : {entries: [LIBRARY_ENTRY]});
+test("renders provider defaults as a terminal table", async () => {
+  fixture.respond = () => Response.json({keys: [{provider: "example", source_workspace_id: RUNNER_ID, model: null, active: false, updated_at: INSTANT}]});
   const keys = await fixture.run(["keys", "list"], "", true);
   expect(keys.code).toBe(0); expect(keys.stdout).toContain("example"); expect(keys.stdout).toContain("No");
-  const library = await fixture.run(["fleet-library", "list"], "", true);
-  expect(library.code).toBe(0); expect(library.stdout).toContain("Support triage"); expect(library.stdout).toContain('"inspected"');
 });
 
 test("renders event history and a continuation cursor", async () => {
@@ -73,9 +70,10 @@ test("replaces the complete policy from a file and removes duplicate labels", as
   expect(result.code).toBe(0); expect(fixture.calls[0]?.body).toEqual({assigned_policy: POLICY, labels: ["build", "linux"]});
 });
 
-test.each(["missing", "oversized", "terminal"])("refuses %s policy input before HTTP", async kind => {
+test.each(["missing", "oversized", "terminal", "malformed"])("refuses %s policy input before HTTP", async kind => {
   const file = join(fixture.state, "policy.json");
   if (kind === "oversized") fs.writeFileSync(file, " ".repeat(1024 * 1024 + 1));
+  if (kind === "malformed") await Bun.write(file, "{");
   const result = await fixture.run(["runners", "update", RUNNER_ID, "--policy", kind === "terminal" ? "-" : file, "--json"], "", false, kind === "terminal");
   expect(result.code).toBe(4); expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT"); expect(fixture.calls).toEqual([]);
 });

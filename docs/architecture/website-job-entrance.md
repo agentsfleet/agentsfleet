@@ -29,7 +29,7 @@ Small signal icons connect welcome, assistant replies, and the working loader.
 ## What the animation shows
 
 ```text
-Describe the job --> clarify --> /schedule --> review setup --> Save fleet
+Describe the job --> clarify --> /schedule --> review setup --> chat Save
        |
        +--> created fleet
                      |
@@ -41,12 +41,12 @@ Describe the job --> clarify --> /schedule --> review setup --> Save fleet
                      |
                  loop the example
 
-Separate explicit action: Save to library --> reusable Library revision
-Ordinary Save creates the fleet; it makes no Library-publication claim.
+Separate explicit action: Save and publish --> reusable Plugin revision
+Ordinary Save creates the fleet; it makes no Plugin-publication claim.
 ```
 
-The sample story reports fleet creation after ordinary Save and makes no Library-publication claim.
-The website's machine-readable summaries describe native chat setup and separate, explicit Library publication.
+The sample story reports fleet creation after ordinary Save and makes no Plugin-publication claim.
+The website's machine-readable summaries describe native chat setup and separate, explicit Plugin publication.
 
 Messages type and append to the current history; the caret blinks during typing.
 The signal loader names the current activity, such as understanding the job or preparing the setup.

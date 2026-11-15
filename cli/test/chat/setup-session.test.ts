@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import { SetupSession, START } from "../../src/commands/chat/setup-session.ts";
-import { DRAFT, REVIEW, FLEET, FLEET_ID, PUBLICATION, CANDIDATE_ID, LIBRARY_ID, withApi, problem } from "./fixture.ts";
+import { DRAFT, REVIEW, FLEET, FLEET_ID, PUBLICATION, CANDIDATE_ID, PLUGIN_ID, withApi, problem } from "./fixture.ts";
 
-test("partial Save continues one exact reviewed operation and does not publish a Library entry", async () => {
+test("partial Save continues one exact reviewed operation and does not publish a Plugin entry", async () => {
   const calls: {path: string; key: string | null; body: unknown}[] = [];
   await withApi(async (request) => {
     calls.push({path: new URL(request.url).pathname, key: request.headers.get("Idempotency-Key"), body: await request.json()});
@@ -39,7 +39,7 @@ test("an unknown Save retains its body and key and a changed initial message can
   });
 });
 
-test("publication and owned revision append are explicit and retain their separate key and Library tag", async () => {
+test("publication and owned revision append are explicit and retain their separate key and Plugin tag", async () => {
   const calls: {path: string; key: string | null; tag: string | null; body: unknown}[] = [];
   await withApi(async (request) => {
     calls.push({path: new URL(request.url).pathname, key: request.headers.get("Idempotency-Key"),
@@ -50,8 +50,8 @@ test("publication and owned revision append are explicit and retain their separa
     await Effect.runPromise(Effect.flip(setup.publish(DRAFT, "Argo")));
     expect(await Effect.runPromise(setup.retryPublication())).toEqual(PUBLICATION);
     expect(calls[0]).toEqual(calls[1]);
-    await Effect.runPromise(setup.publish(DRAFT, "", {id: LIBRARY_ID, etag: PUBLICATION.etag}));
-    expect(calls[2]?.path).toEndWith(`/${LIBRARY_ID}/revisions`);
+    await Effect.runPromise(setup.publish(DRAFT, "", {id: PLUGIN_ID, etag: PUBLICATION.etag}));
+    expect(calls[2]?.path).toEndWith(`/${PLUGIN_ID}/revisions`);
     expect(calls[2]?.tag).toBe(PUBLICATION.etag);
     expect(calls[2]?.body).toEqual({draft_candidate_id: CANDIDATE_ID});
     expect(calls[2]?.key).not.toBe(calls[1]?.key);

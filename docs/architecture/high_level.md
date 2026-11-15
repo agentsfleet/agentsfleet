@@ -108,11 +108,11 @@ Three structural pillars carry v2:
 
   Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9, the single source of truth, and there is no vendor lock-in on inference cost.
 
-- **Chat-authored.** Browser or terminal chat produces one validated Definition containing instructions and policy. Save creates an independent fleet; explicit Library publication makes a revision reusable.
+- **Chat-authored.** Browser or terminal chat produces one validated Definition containing instructions and policy. Save creates an independent fleet; explicit Plugin publication makes a revision reusable.
 
 **Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net`, signing users in through Clerk with Open Authorization (OAuth). The architecture admits self-host: the auth substrate, the key-management-service adapter, and process management are the only deployment-specific layers. Validating it on a clean Linux host outside Fly.io is a v3 workstream.
 
-The `agentsfleet` command-line interface (CLI) and dashboard, both over workspace chat, make the v2 pillars reachable from a cold start. So does the Library ([`user_flow.md`](./user_flow.md) §8.0).
+The `agentsfleet` command-line interface (CLI) and dashboard, both over workspace chat, make the v2 pillars reachable from a cold start. So does the Plugin ([`user_flow.md`](./user_flow.md) §8.0).
 
 ### The first problem we solve
 
@@ -328,7 +328,7 @@ M206 built the first hired-agent slice. It is a fleet attached to one channel wh
 
   It wakes unattended and takes **gated** write actions with approval. That is the existing event-driven runtime.
 
-  The Slack surface adds Save from a pinned Library revision, per-integration OAuth connectors and the Slack-user → `approval:resolve` allowlist. It depends on M103 (Fleet library) and M105 (schedules).
+  The Slack surface adds Save from a pinned Plugin revision, per-integration OAuth connectors and the Slack-user → `approval:resolve` allowlist. It depends on M103 (Plugins) and M105 (schedules).
 
 ### 6.3 Security Reviewer: a prebuilt fleet
 
@@ -360,7 +360,7 @@ Captured here because it surfaced as product direction (marketing showcase + cus
 
 ## Fleet authoring and runtime
 
-The same fleet lifecycle begins with privately authored setup. A creator describes the operational outcome, edits the shared validated Definition and reviews policy/access before Save. Save creates one resumable fleet; explicit Library publication creates a reusable immutable revision.
+The same fleet lifecycle begins with privately authored setup. A creator describes the operational outcome, edits the shared validated Definition and reviews policy/access before Save. Save creates one resumable fleet; explicit Plugin publication creates a reusable immutable revision.
 
 Authoring has bounded inference and proposal authority. The saved fleet gains runtime capabilities only through existing model, billing, connection and approval checks.
 

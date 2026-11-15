@@ -63,7 +63,7 @@ it("refreshes a publication's actual ordinal rather than incrementing a local co
   let published = false;
   fixture.override = ({path, method}) => {
     if (path.endsWith("/drafts")) return response({items: [{...CARD, publication_revision: published ? 7 : 1}], next_cursor: "older"});
-    if (path.endsWith("/fleet-libraries") && method === "POST") {
+    if (path.endsWith("/plugins") && method === "POST") {
       published = true;
       fixture.current = {...DRAFT, etag: '"published-seven"', publication: {...NEXT_PUBLICATION, canonical_digest: "seven"}};
       return response(NEXT_PUBLICATION, 201);

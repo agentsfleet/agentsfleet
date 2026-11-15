@@ -14,7 +14,7 @@ import { ZodError } from "zod";
 import { WorkspaceActivityUnavailable } from "./WorkspaceActivityUnavailable";
 // The section aria-label below must equal WORKSPACE_EVENTS_LABEL (the events
 // table caption) — the parity is pinned by the events page test.
-import { EventsList } from "@/components/domain/EventsList";
+import { EventsList } from "@/components/domain/events/EventsList";
 import {
   CURSOR_PAGE_SIZE_PARAM,
   CURSOR_TRAIL_PARAM,

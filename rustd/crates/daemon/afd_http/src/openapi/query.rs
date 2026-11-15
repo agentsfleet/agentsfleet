@@ -48,13 +48,13 @@ pub struct OperatorPage {
     pub limit: Option<String>,
 }
 
-/// A keyset page, as the Library collections spell it.
+/// A keyset page, as the Plugin collections spell it.
 ///
 /// The tenant spelling with this family's bounds, which the sentence states
 /// because a caller sizing a gallery page needs the ceiling.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
-pub struct LibraryPage {
+pub struct PluginPage {
     /// Use this collection's previous `next_cursor` unchanged.
     pub starting_after: Option<String>,
     /// Page size, 1..100; default 50.

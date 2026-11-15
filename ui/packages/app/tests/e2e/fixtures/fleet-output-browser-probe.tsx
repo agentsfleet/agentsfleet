@@ -1,7 +1,7 @@
 import { Profiler, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Button } from "@agentsfleet/design-system";
-import { FleetToolOutputDialog } from "../../../components/domain/FleetToolOutputDialog";
+import { FleetToolOutputDialog } from "../../../components/domain/activity/tools/FleetToolOutputDialog";
 
 export type OutputMeasurement = {startedAt: number; openingMs: number | null; initialRenderMs: number | null; renders: number[]};
 declare global {interface Window {outputMeasurement: OutputMeasurement}}

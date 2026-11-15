@@ -88,7 +88,7 @@ export class SetupSession {
   publishCandidate(candidateId: string, label: string, target?: PublicationTarget) {
     return Effect.suspend<Published, SetupError, never>(() => {
       if (this.#save.pending || this.#apply.pending) return unresolved();
-      const path = target ? `${this.#transport.libraries}/${encodeURIComponent(target.id)}/revisions` : this.#transport.libraries;
+      const path = target ? `${this.#transport.plugins}/${encodeURIComponent(target.id)}/revisions` : this.#transport.plugins;
       const body = target ? {draft_candidate_id: candidateId} : {draft_candidate_id: candidateId, label};
       return this.#publish.run({path, body, target}, (key) => {
         this.#recovery = {action: SETUP_ACTION.publish, operation_id: key, draft_candidate_id: candidateId,

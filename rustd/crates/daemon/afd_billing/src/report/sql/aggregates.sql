@@ -1,5 +1,6 @@
 WITH scoped AS (
     SELECT work_type, work_id, fleet_id, fleet_name, model, charged_nanos,
+           (created_at AT TIME ZONE 'UTC')::date AS day,
            input_token_count, output_token_count, runtime_ms, unpriced_token_count,
            ((fleet_id = $4 OR $4 IS NULL)
              AND ($5::text IS NULL OR model = $5)
@@ -9,10 +10,16 @@ WITH scoped AS (
        AND created_at >= $2 AND created_at <= $3 AND settled_at <= $3
 )
 SELECT CASE WHEN GROUPING(fleet_id) = 0 THEN $8::int
-            WHEN GROUPING(model) = 0 THEN $9::int ELSE $7::int END AS dimension,
+            WHEN GROUPING(model) = 0 THEN $9::int
+            WHEN GROUPING(day) = 0 THEN $10::int ELSE $7::int END AS dimension,
        CASE WHEN GROUPING(fleet_id) = 0 THEN fleet_id END AS fleet_key,
        CASE WHEN GROUPING(fleet_id) <> 0 AND GROUPING(model) = 0 THEN model END AS model_key,
        CASE WHEN GROUPING(fleet_id) = 0 THEN MAX(fleet_name) END AS label,
+       CASE WHEN GROUPING(day) = 0 THEN day END AS day,
+       CASE WHEN GROUPING(fleet_id) = 0 THEN
+           COALESCE(ARRAY_AGG(DISTINCT model ORDER BY model)
+               FILTER (WHERE selected AND model <> ''), ARRAY[]::text[])
+           ELSE ARRAY[]::text[] END AS models,
        COALESCE(SUM(charged_nanos) FILTER (WHERE selected), 0)::bigint AS charged_nanos,
        COALESCE(SUM(input_token_count) FILTER (WHERE selected), 0)::bigint AS input_tokens,
        COALESCE(SUM(output_token_count) FILTER (WHERE selected), 0)::bigint AS output_tokens,
@@ -21,4 +28,4 @@ SELECT CASE WHEN GROUPING(fleet_id) = 0 THEN $8::int
        COUNT(DISTINCT (work_type, work_id)) FILTER (WHERE selected)::bigint AS activity_count,
        COALESCE(SUM(unpriced_token_count) FILTER (WHERE selected), 0)::bigint AS unpriced_tokens
   FROM scoped
- GROUP BY GROUPING SETS ((), (fleet_id), (model))
+ GROUP BY GROUPING SETS ((), (fleet_id), (model), (day))

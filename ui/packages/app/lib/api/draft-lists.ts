@@ -124,23 +124,24 @@ export class DraftLists {
   }
 
   async #modelPage(cursor: string | null, signal: AbortSignal): Promise<Page<WorkspaceModel>> {
-    let page = await this.#page(RESOURCE.models, ModelsSchema, cursor, signal);
+    let page = await this.#page(DRAFT_LIST.models, ModelsSchema, cursor, signal);
     let items = page.items;
     for (let read = 1; !items.some(model => model.eligibility.authoring) && page.next_cursor !== null && read < MAX_MODEL_PAGES_PER_LOAD; read += 1) {
-      page = await this.#page(RESOURCE.models, ModelsSchema, page.next_cursor, signal);
+      page = await this.#page(DRAFT_LIST.models, ModelsSchema, page.next_cursor, signal);
       items = appendNew(items, page.items, model => model.ref);
     }
     return {items, next_cursor:page.next_cursor};
   }
 
   #cardPage(cursor: string | null, signal: AbortSignal): Promise<Page<DraftCard>> {
-    return this.#page(RESOURCE.drafts, DraftCardsSchema, cursor, signal);
+    return this.#page(DRAFT_LIST.chats, DraftCardsSchema, cursor, signal);
   }
 
-  #page<T>(resource: string, schema: z.ZodType<Page<T>>, cursor: string | null, signal: AbortSignal): Promise<Page<T>> {
+  #page<T>(list: DraftList, schema: z.ZodType<Page<T>>, cursor: string | null, signal: AbortSignal): Promise<Page<T>> {
+    const resource = list === DRAFT_LIST.models ? RESOURCE.models : RESOURCE.drafts;
     const query = new URLSearchParams({limit: String(LIST_PAGE_LIMIT)});
     if (cursor !== null) query.set("starting_after", cursor);
-    return setupRequest({path: `${this.#base}/${resource}?${query}`}, schema, signal);
+    return setupRequest({path: `${this.#base}/${resource}?${query}`, list}, schema, signal);
   }
 }
 

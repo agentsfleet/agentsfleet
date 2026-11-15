@@ -51,7 +51,7 @@ impl Fixture {
             &f.workspace,
         );
         f.cleanup.record(
-            "DELETE FROM authoring.library_entries WHERE tenant_id=$1",
+            "DELETE FROM authoring.plugin_entries WHERE tenant_id=$1",
             &f.tenant,
         );
         f.cleanup
@@ -96,18 +96,10 @@ impl Fixture {
             .record("DELETE FROM identity.tenants WHERE id=$1", id);
     }
 
-    pub(super) fn own_library(&mut self, id: &str) {
+    pub(super) fn own_plugin(&mut self, id: &str) {
         self.cleanup.record(
-            "DELETE FROM authoring.library_revisions WHERE library_entry_id=$1",
-            &Uuid7::parse(id).expect("a tenant library is addressed by its id"),
-        );
-    }
-
-    pub(super) fn own_platform_library(&mut self, slug: &str) {
-        self.cleanup.record_text("DELETE FROM authoring.library_revisions WHERE library_entry_id IN (SELECT id FROM authoring.library_entries WHERE platform_slug=$1)", slug);
-        self.cleanup.record_text(
-            "DELETE FROM authoring.library_entries WHERE platform_slug=$1",
-            slug,
+            "DELETE FROM authoring.plugin_revisions WHERE plugin_entry_id=$1",
+            &Uuid7::parse(id).expect("a tenant plugin is addressed by its id"),
         );
     }
 

@@ -76,17 +76,17 @@ vi.mock("@assistant-ui/react", async () => {
   };
 });
 
-vi.mock("@/components/domain/useFleetEventStream", async () => {
+vi.mock("@/components/domain/conversation/stream/useFleetEventStream", async () => {
   const actual = await vi.importActual<
-    typeof import("@/components/domain/useFleetEventStream")
-  >("@/components/domain/useFleetEventStream");
+    typeof import("@/components/domain/conversation/stream/useFleetEventStream")
+  >("@/components/domain/conversation/stream/useFleetEventStream");
   return {
     ...actual,
     useFleetEventStream: useFleetEventStreamMock,
   };
 });
 
-import { FleetThread } from "@/components/domain/FleetThread";
+import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
 import type { EventDetail, EventRow } from "@/lib/api/events";
 // The mocked module spreads the real one, so `convertEvent` is the production
 // converter: a row renders here exactly as the live stream would hand it over.
@@ -94,7 +94,7 @@ import {
   CONNECTION_STATUS,
   convertEvent,
   type FleetEvent,
-} from "@/components/domain/useFleetEventStream";
+} from "@/components/domain/conversation/stream/useFleetEventStream";
 
 // ── Fixture builders ─────────────────────────────────────────────────────
 

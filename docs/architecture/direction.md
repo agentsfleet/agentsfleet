@@ -64,6 +64,6 @@ The runtime keeps only a thin typed envelope:
 
 Everything else stays prompt-driven and is iterated in chat, then applied as a reviewed setup revision.
 
-A Library entry is reusable setup above the runtime, not a second runtime entity. It is an immutable revision a person explicitly published, which a new fleet pins at Save. Prose cannot grant capabilities.
+A Plugin entry is reusable setup above the runtime, not a second runtime entity. It is an immutable revision a person explicitly published, which a new fleet pins at Save. Prose cannot grant capabilities.
 
 Only the reviewed `config` plus approved workspace grants become `ExecutionPolicy` on lease. Runners remain infrastructure capacity; they run Fleets but are not child resources of a customer Fleet.

@@ -13,7 +13,7 @@ use super::{
 };
 use af_core::error_code;
 use af_crypto::secret::Kek;
-use afd_authoring::{Setup, types::PublishLibrary};
+use afd_authoring::{Setup, types::PublishPlugin};
 use sqlx::Connection as _;
 use std::sync::Arc;
 
@@ -77,7 +77,7 @@ async fn two_publications_of_different_drafts_under_one_key_publish_one() {
             .await
             .expect("an idle draft")
             .draft;
-        requests.push(PublishLibrary {
+        requests.push(PublishPlugin {
             draft_candidate_id: draft.candidate.expect("candidate").id,
             label: "ARGO".into(),
         });
@@ -107,7 +107,7 @@ async fn two_publications_of_different_drafts_under_one_key_publish_one() {
         (Ok(published), Err(refused)) | (Err(refused), Ok(published)) => (published, refused),
         other => unreachable_pair(&other),
     };
-    f.own_library(&published.library_id);
+    f.own_plugin(&published.plugin_id);
     assert_eq!(refused.code(), error_code::AUTHORING_REPLAY);
     f.cleanup().await;
 }

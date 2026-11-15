@@ -10,7 +10,7 @@ import {
 } from "@agentsfleet/design-system";
 import type { ApiKeyListResponse } from "@/lib/api/api_keys";
 import ApiKeyList, { type ApiKeyListHandle } from "./ApiKeyList";
-import CreateApiKeyDialogDynamic from "@/components/domain/island-dynamic/CreateApiKeyDialogDynamic";
+import CreateApiKeyDialogDynamic from "@/components/domain/shared/dialogs/CreateApiKeyDialogDynamic";
 
 
 type ApiKeysViewProps = {

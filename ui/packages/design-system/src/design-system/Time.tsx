@@ -1,6 +1,6 @@
 "use client";
 
-import { type ComponentProps, type ReactNode } from "react";
+import { useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./Tooltip";
 import {
   TIME_DEFAULT_LOCALE,
@@ -8,14 +8,17 @@ import {
   formatTimeAbsolute,
   toIso,
   visibleTimeLabel,
+  formatTimeRange,
+  TIME_INVALID_FALLBACK,
   type TimeFormat,
 } from "./time-utils";
 
 /*
  * Time — wraps <time datetime>. The datetime attribute is canonical
  * ISO-8601 and matches byte-for-byte across SSR + CSR. Visible label
- * comes from one of three formats:
- *   - absolute  → Intl.DateTimeFormat(locale).format(d)        (default)
+ * uses the shared formatter:
+ *   - absolute, date, compact, minute, clock → local calendar and clock
+ *   - month     → the report's calendar-month identity
  *   - relative  → "X minutes ago" / "in X hours" (deterministic given now)
  *   - datetime  → the full ISO string
  *
@@ -35,7 +38,7 @@ export interface TimeProps
   format?: TimeFormat;
   tooltip?: boolean;
   locale?: string;
-  /** Named timezone for absolute schedule labels; the datetime stays canonical. */
+  /** Optional named timezone; local browser time is the default. */
   timeZone?: string;
   /** Override the visible label while keeping the canonical datetime attr. */
   label?: string;
@@ -55,12 +58,11 @@ export function Time({
   ref,
   ...rest
 }: TimeProps) {
+  const localReady = useClientTimeReady();
   const d = coerceDate(value);
 
-  // Soft-fail on Invalid Date — preserves the pre-migration behaviour of
-  // `new Date(bad).toLocaleString()` returning a string instead of throwing.
-  // Without this guard `toIso(NaN-Date)` raises RangeError and crashes the
-  // surrounding React subtree (server components → 500).
+  // Invalid instants use the shared fallback before toIso can throw and
+  // take down the surrounding page.
   if (Number.isNaN(d.getTime())) {
     return (
       <time ref={ref} className={className} {...rest}>
@@ -70,13 +72,12 @@ export function Time({
   }
 
   const iso = toIso(d);
-  const label = labelOverride ?? (timeZone && format === "absolute"
-    ? formatTimeAbsolute(value, locale, timeZone) : visibleTimeLabel(value, format, locale, iso));
+  const local = !timeZone && ["absolute", "clock", "date", "compact", "minute"].includes(format);
+  const label = labelOverride ?? (local && !localReady ? TIME_INVALID_FALLBACK : visibleTimeLabel(value, format, locale, iso, timeZone));
   const showTooltip = tooltip ?? format === "relative";
   const isRelative = format === "relative";
-  // `clock` labels depend on the renderer's timezone the same way `relative`
-  // labels depend on Date.now(): a UTC server and a local browser disagree,
-  // so hydration must tolerate the label re-resolving client-side.
+  // Local labels wait for the browser snapshot. Relative labels can move
+  // during hydration as the elapsed clock advances.
   const labelIsEnvironmentDependent = isRelative || format === "clock";
 
   const timeEl = (
@@ -109,3 +110,16 @@ export {
 } from "./time-utils";
 
 export default Time;
+
+const subscribeLocalTime = () => () => undefined;
+const clientTimeReady = () => true;
+const serverTimeReady = () => false;
+export function useClientTimeReady() {
+  return useSyncExternalStore(subscribeLocalTime, clientTimeReady, serverTimeReady);
+}
+
+/** Resolve on the browser after hydration so server time cannot label the report. */
+export function TimeRange({from, through, locale = TIME_DEFAULT_LOCALE}: {from: string | Date; through: string | Date; locale?: string}) {
+  const localReady = useClientTimeReady();
+  return <Time value={through} label={localReady ? formatTimeRange(from, through, locale) : TIME_INVALID_FALLBACK} />;
+}

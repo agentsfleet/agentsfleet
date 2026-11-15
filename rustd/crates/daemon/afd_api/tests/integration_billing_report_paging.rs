@@ -159,3 +159,68 @@ async fn unreadable_stored_work_is_refused_without_disclosing_or_changing_it() {
     assert_ledger(&members, &members.john, 1, 17).await;
     members.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
+async fn served_daily_report_includes_zero_days_and_complete_models() {
+    let members = Members::create().await;
+    seed(&members, &members.john, 3, 17).await;
+    let path = format!("{REPORT}?period=week&limit=1");
+    let body = harness::json_body(get(&members, &members.john, &path).await).await;
+    assert_week_projection(&body);
+    let cursor = body
+        .pointer("/activities/next_cursor")
+        .and_then(Value::as_str)
+        .expect("cursor");
+    let next = harness::json_body(
+        get(
+            &members,
+            &members.john,
+            &format!("{path}&starting_after={cursor}"),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(next.get("daily"), body.get("daily"));
+    assert_eq!(next.get("spending"), body.get("spending"));
+    let empty =
+        harness::json_body(get(&members, &members.john, &format!("{path}&model=missing")).await)
+            .await;
+    assert_eq!(
+        empty.pointer("/daily/6/totals/charged_nanos"),
+        Some(&json!("0"))
+    );
+    assert_eq!(
+        empty.pointer("/daily/6/totals/activity_count"),
+        Some(&json!(0))
+    );
+    members.cleanup().await;
+}
+
+fn assert_week_projection(body: &Value) {
+    let daily = body
+        .get("daily")
+        .and_then(Value::as_array)
+        .expect("daily totals");
+    assert_eq!(daily.len(), 7);
+    assert_eq!(
+        daily.first().expect("first date").get("day"),
+        Some(&json!("2026-10-19"))
+    );
+    assert_eq!(
+        daily.last().expect("last date").get("day"),
+        Some(&json!("2026-10-25"))
+    );
+    for day in daily.iter().take(6) {
+        assert_eq!(day.pointer("/totals/charged_nanos"), Some(&json!("0")));
+        assert_eq!(day.pointer("/totals/activity_count"), Some(&json!(0)));
+    }
+    assert_eq!(
+        daily.last().expect("last date").get("totals"),
+        body.get("totals")
+    );
+    assert_eq!(
+        body.pointer("/spending/by_fleet/0/models"),
+        Some(&json!([MODEL]))
+    );
+}

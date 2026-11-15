@@ -1,10 +1,10 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
-import { RENDER_KIND_KEY, RENDER_KIND } from "@/components/domain/useFleetThreadEntries";
+import { RENDER_KIND_KEY, RENDER_KIND } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { ACTOR } from "@/lib/events/event-summary";
 import { AssistantRuntimeProvider, useExternalStoreRuntime } from "@assistant-ui/react";
 import { useEffect, useState } from "react";
-import { FleetThreadViewport } from "@/components/domain/FleetThreadViewport";
-import { CONNECTION_STATUS } from "@/components/domain/useFleetEventStream";
+import { FleetThreadViewport } from "@/components/domain/conversation/thread/FleetThreadViewport";
+import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetEventStream";
 
 const HISTORY: ThreadMessageLike[] = Array.from({length: 20}, (_, index) => [
   {id: `question-${index}`, role: "user" as const, content: `Explain repair step ${index + 1}.`,

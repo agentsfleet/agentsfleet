@@ -16,6 +16,7 @@
  */
 import type { Appearance } from "@clerk/ui";
 import { dark } from "@clerk/ui/themes";
+import { AUTH_BUTTON_APPEARANCE, AUTH_INPUT_APPEARANCE } from "./auth-control-appearance";
 
 const SURFACE_1 = "var(--surface-1)";
 const SURFACE_2 = "var(--surface-2)";
@@ -31,33 +32,10 @@ const BORDER_STRONG = "var(--border-strong)";
 const ERROR = "var(--error)";
 const SUCCESS = "var(--success)";
 const WARN = "var(--warn)";
-const RADIUS_MD = "var(--r-md)";
+const RADIUS_CONTROL = "var(--r-control)";
 const FONT_SANS = "var(--ff-sans)";
 const BORDER_STYLE = `1px solid ${BORDER}`;
 const BORDER_STRONG_STYLE = `1px solid ${BORDER_STRONG}`;
-const FOCUS_RING = `0 0 0 2px ${PULSE}`;
-
-const AUTH_INPUT_APPEARANCE = {
-  // Clerk's input reset uses state selectors that outrank a single class.
-  // Match that specificity so a configured border is actually painted.
-  "&&": {
-    backgroundColor: SURFACE_1,
-    border: BORDER_STRONG_STYLE,
-    borderWidth: "1px",
-    borderColor: BORDER_STRONG,
-    boxShadow: "none",
-    color: TEXT,
-  },
-  "&&:hover:not(:disabled):not(:focus)": {
-    borderColor: PULSE,
-    backgroundColor: SURFACE_2,
-    boxShadow: "none",
-  },
-  "&&:focus": {
-    borderColor: PULSE,
-    boxShadow: FOCUS_RING,
-  },
-} as const;
 
 const MENU_ACTION_INTERACTION = {
   backgroundColor: SURFACE_3,
@@ -92,7 +70,7 @@ export const AUTH_APPEARANCE = {
     colorDanger: ERROR,
     colorSuccess: SUCCESS,
     colorWarning: WARN,
-    borderRadius: RADIUS_MD,
+    borderRadius: RADIUS_CONTROL,
     fontFamily: FONT_SANS,
     fontFamilyButtons: FONT_SANS,
     fontFamilyMono: "var(--ff-mono)",
@@ -255,26 +233,28 @@ export const AUTH_APPEARANCE = {
     profileSection__danger: {
       display: "none",
     },
+    rootBox: { maxWidth: "100%" },
     cardBox: {
-      // --surface-2 over the page's --bg gives the card real visual lift on
-      // the auth route — at --surface-1 (luminance delta = 3 units) the card
-      // disappears into the background. --border-strong sharpens the edge.
-      backgroundColor: SURFACE_2,
-      border: BORDER_STRONG_STYLE,
+      maxWidth: "100%", boxShadow: "none",
+      backgroundColor: SURFACE_1,
+      border: BORDER_STYLE,
       borderRadius: "var(--r-lg)",
     },
+    card: { backgroundColor: SURFACE_1, boxShadow: "none", padding: "var(--sp-2xl)" },
     headerTitle: {
       color: TEXT,
+      fontSize: "var(--fs-display-md)", lineHeight: "var(--lh-display-md)", fontWeight: 650,
     },
     headerSubtitle: {
       color: TEXT_MUTED,
+      fontSize: "var(--fs-body-sm)", lineHeight: "var(--lh-body-sm)",
     },
     socialButtonsBlockButton: {
+      ...AUTH_BUTTON_APPEARANCE,
       backgroundColor: SURFACE_2,
       border: BORDER_STYLE,
       color: TEXT,
       "&&:hover:not(:disabled)": MENU_ACTION_INTERACTION,
-      "&&:focus-visible": { boxShadow: FOCUS_RING },
     },
     socialButtonsBlockButtonText: {
       color: TEXT,
@@ -289,11 +269,6 @@ export const AUTH_APPEARANCE = {
       color: TEXT,
     },
     formFieldInput: {
-      // Inputs sit ON the --surface-2 card (cardBox above). Filling them
-      // with --surface-2 too left zero luminance delta — the field was
-      // invisible until focused. Drop to --surface-1 (one step toward --bg)
-      // for an inset well, and use --border-strong so the edge reads as a
-      // click target without a focus event.
       ...AUTH_INPUT_APPEARANCE,
       "&::placeholder": {
         color: TEXT_SUBTLE,
@@ -304,11 +279,11 @@ export const AUTH_APPEARANCE = {
     // slot remains visible before focus on the dark card.
     otpCodeFieldInput: AUTH_INPUT_APPEARANCE,
     formButtonPrimary: {
+      ...AUTH_BUTTON_APPEARANCE,
       backgroundColor: CTA,
       color: CTA_FOREGROUND,
       "&&::after": { backgroundImage: "none" },
       "&&:hover:not(:disabled)": { backgroundColor: "var(--cta-hover)" },
-      "&&:focus-visible": { boxShadow: FOCUS_RING },
     },
     footerActionText: {
       color: TEXT_MUTED,

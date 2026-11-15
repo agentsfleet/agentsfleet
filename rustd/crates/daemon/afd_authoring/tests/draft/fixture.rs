@@ -248,20 +248,9 @@ impl Fixture {
         self.lane.cleanup().await;
     }
 
-    /// Removes the platform entry staged under `slug` at cleanup: platform
-    /// entries belong to no tenant, so no fixture cascade reaches them.
-    pub(super) fn own_platform_library(&mut self, slug: &str) {
-        self.cleanup.record_text(
-            "DELETE FROM authoring.library_entries WHERE platform_slug=$1",
-            slug,
-        );
-    }
-
-    pub(super) fn own_library(&mut self, library: &str) {
-        self.cleanup.record(
-            "DELETE FROM authoring.library_entries WHERE id=$1",
-            &Uuid7::parse(library).expect("a tenant library is addressed by its id"),
-        );
+    pub(super) fn own_plugin(&mut self, plugin: &Uuid7) {
+        self.cleanup
+            .record("DELETE FROM authoring.plugin_entries WHERE id=$1", plugin);
     }
 }
 

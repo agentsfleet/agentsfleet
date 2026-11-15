@@ -22,13 +22,13 @@ export interface ChatOptions {
   readonly candidateId?: string | undefined;
   readonly setupEtag?: string | undefined;
   readonly publishTo?: string | undefined;
-  readonly libraryEtag?: string | undefined;
+  readonly pluginEtag?: string | undefined;
   readonly draftId?: string | undefined;
   readonly model?: string | undefined;
   readonly message?: string | undefined;
   readonly fleet?: string | undefined;
   readonly setupRevision?: string | undefined;
-  readonly library?: string | undefined;
+  readonly plugin?: string | undefined;
   readonly revision?: string | undefined;
   readonly definition?: string | undefined;
   readonly noInput: boolean;
@@ -91,7 +91,7 @@ function run(actions: ChatActions, options: ChatOptions, interactive: boolean, i
       if (options.save) yield* actions.save(options.runNow === undefined ? {kind: START.none} : {kind: START.runNow, message: options.runNow});
       if (options.apply) yield* actions.apply();
       if (options.publish) yield* actions.publish(options.publish,
-        options.publishTo && options.libraryEtag ? {id: options.publishTo, etag: options.libraryEtag} : undefined);
+        options.publishTo && options.pluginEtag ? {id: options.publishTo, etag: options.pluginEtag} : undefined);
     }
     if (interactive) return yield* runChatRepl(actions, input, output);
     if (!options.draftId && options.message === undefined && !carriesSetup(options)) return yield* fail("A message is required outside an interactive terminal");
@@ -109,33 +109,35 @@ function validate(options: ChatOptions) {
         : (options.message === undefined && !carriesSetup(options)) || options.save || options.apply || options.publish) return yield* fail("Choose one original message, draft creation or setup action to recover");
     }
     if (options.candidateId) yield* requireValidId(options.candidateId, "draft_candidate_id", USAGE);
+    if (options.publishTo) yield* requireValidId(options.publishTo, "plugin_id", USAGE);
     if (options.candidateId && !options.operationId || options.setupEtag && !(setupRecovery && options.apply)) return yield* fail("Recovery identity fields require their matching --operation-id setup action");
-    if (Boolean(options.publishTo) !== Boolean(options.libraryEtag) || options.publishTo && !options.publish) return yield* fail("Owned revision publication requires --publish, --publish-to and the inspected --plugin-etag");
+    if (Boolean(options.publishTo) !== Boolean(options.pluginEtag) || options.publishTo && !options.publish) return yield* fail("Owned revision publication requires --publish, --publish-to and the inspected --plugin-etag");
     if (options.draftId) yield* requireValidId(options.draftId, "draft_id", USAGE);
     if (!setupRecovery && !options.draftId && !options.model) return yield* fail("Choose an authoring model with --model");
-    if (options.draftId && (options.fleet && !setupRecovery || options.library || options.definition !== undefined || options.model)) return yield* fail("A resumed draft keeps its source and model; use /model for future messages");
-    if (Number(Boolean(options.fleet)) + Number(Boolean(options.library)) + Number(options.definition !== undefined) > 1) return yield* fail("Choose one source: --fleet, --plugin or --definition");
+    if (options.draftId && (options.fleet && !setupRecovery || options.plugin || options.definition !== undefined || options.model)) return yield* fail("A resumed draft keeps its source and model; use /model for future messages");
+    if (Number(Boolean(options.fleet)) + Number(Boolean(options.plugin)) + Number(options.definition !== undefined) > 1) return yield* fail("Choose one source: --fleet, --plugin or --definition");
     if (options.fleet) yield* requireValidId(options.fleet, "fleet_id", USAGE);
+    if (options.plugin) yield* requireValidId(options.plugin, "plugin_id", USAGE);
     if (options.fleet && !setupRecovery && !DECIMAL_REVISION.test(options.setupRevision ?? "")) return yield* fail("--fleet requires --setup-revision <positive-decimal>");
-    if (options.library && !options.revision) return yield* fail("--plugin requires --revision <revision-id>");
+    if (options.plugin && !options.revision) return yield* fail("--plugin requires --revision <revision-id>");
     if (options.revision) yield* requireValidId(options.revision, "revision_id", USAGE);
-    if (options.setupRevision && !options.fleet || options.revision && !options.library) return yield* fail("Revision selection requires its matching source");
+    if (options.setupRevision && !options.fleet || options.revision && !options.plugin) return yield* fail("Revision selection requires its matching source");
     if (options.runNow !== undefined && !options.save) return yield* fail("--run-now requires explicit --save");
     if (Number(options.save) + Number(options.apply) + Number(Boolean(options.publish)) > 1) return yield* fail("Choose one explicit setup action per invocation");
   });
 }
 
-// A Definition, a pinned Library revision and a fleet's setup revision each
+// A Definition, a pinned Plugin revision and a fleet's setup revision each
 // hold a complete setup, so their draft opens without a first message and can
 // be reviewed at once. Only a blank draft needs text before anything exists.
 function carriesSetup(options: ChatOptions): boolean {
-  return options.definition !== undefined || Boolean(options.library) || Boolean(options.fleet);
+  return options.definition !== undefined || Boolean(options.plugin) || Boolean(options.fleet);
 }
 
 function source(options: ChatOptions, definition?: DefinitionDocument): DraftSource {
   if (definition) return {kind: DRAFT_SOURCE.definition, definition};
   if (options.fleet && options.setupRevision) return {kind: DRAFT_SOURCE.fleet, fleet_id: options.fleet, setup_revision: options.setupRevision};
-  if (options.library && options.revision) return {kind: DRAFT_SOURCE.library, library_id: options.library, revision_id: options.revision};
+  if (options.plugin && options.revision) return {kind: DRAFT_SOURCE.plugin, plugin_id: options.plugin, revision_id: options.revision};
   return {kind: DRAFT_SOURCE.blank};
 }
 

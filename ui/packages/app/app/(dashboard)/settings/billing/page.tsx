@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Button, UnavailableState } from "@agentsfleet/design-system";
 import { requireCredential } from "@/lib/auth/credential";
 import { UsageLayout } from "./components/UsageLayout";
-import { RouteRetryButton } from "@/components/domain/RouteRetryButton";
+import { RouteRetryButton } from "@/components/domain/shared/navigation/RouteRetryButton";
 import { BillingReportView } from "./components/BillingReportView";
 import { loadBillingReport } from "./lib/load-report";
 

@@ -29,7 +29,7 @@ afterEach(() => cleanup());
 
 // ── EventsList ─────────────────────────────────────────────────────────────
 
-import { EventsList } from "@/components/domain/EventsList";
+import { EventsList } from "@/components/domain/events/EventsList";
 import { type EventDetail, type EventsPage } from "@/lib/api/events";
 
 // Opening a row fetches its bodies through the Server Action — the list row

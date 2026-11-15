@@ -1,15 +1,16 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { BillingBreakdown, BillingReport } from "@/lib/api/billing_report";
+import type { BillingFleetBreakdown, BillingReport } from "@/lib/api/billing_report";
 import type { BillingDetail } from "../lib/report-detail";
 import { formatCompactCount, formatCount } from "@/lib/events/run-figures-format";
-import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, DashboardPanel, DataTable, Time, formatTimeRangeUtc, type DataTableColumn } from "@agentsfleet/design-system";
+import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, DashboardPanel, List, ListItem, DataTable, TimeRange, type DataTableColumn } from "@agentsfleet/design-system";
 import { CaretDownIcon } from "@phosphor-icons/react/ssr";
 import { formatBalance } from "@/lib/money";
 import { BillingFilters } from "./BillingFilters";
 import { BillingActivities } from "./BillingActivities";
 import { BillingSpending } from "./BillingSpending";
+import { BillingDailySpend } from "./BillingDailySpend";
 
 type Props = {report: BillingReport; pageSize: number; modelNames: Record<string, string>; detail: BillingDetail; selected: string};
 
@@ -18,20 +19,15 @@ export function BillingReportView(props: Props) {
   return <div className="space-y-2xl">
     <BillingFilters report={report} modelNames={modelNames} />
     <DashboardPanel padding="none" className="grid divide-y divide-border summary:grid-cols-[2fr_1fr_1fr] summary:divide-x summary:divide-y-0" aria-label="Period totals">
-      <Metric label="Settled charges" value={formatBalance(report.totals.charged_nanos)} note={<Time value={report.through_at} label={`${formatTimeRangeUtc(report.from_at, report.through_at)} · USD`} />} primary />
+      <Metric label="Settled charges" value={formatBalance(report.totals.charged_nanos)} note={<><TimeRange from={report.from_at} through={report.through_at} /> · USD</>} primary />
       <Metric label="Activities" value={formatCount(report.totals.activity_count)} note="With settled usage" />
       <Metric label="Tokens" value={formatCompactCount(report.totals.input_tokens + report.totals.output_tokens)} note="Input and output combined" />
     </DashboardPanel>
-    <DashboardPanel asChild className="mb-3xl flex min-h-51.5 flex-col bg-background px-2xl py-5">
-      <figure aria-label="Daily spend"><figcaption className="text-eyebrow text-muted-foreground">Daily spend</figcaption>
-        <div className="flex flex-1 items-center justify-center py-3xl text-label text-text-dim">Daily spending is not available yet.</div>
-        <p className="text-eyebrow text-text-dim">Period totals and the fleet breakdown below include all settled charges.</p>
-      </figure>
-    </DashboardPanel>
+    <BillingDailySpend report={report} />
     <section className="space-y-xl" aria-label="By fleet">
       <div className="flex flex-wrap items-center justify-between gap-md"><h2 className="text-label font-semibold">By fleet</h2>
-        <span className="text-eyebrow text-text-dim"><Time value={report.through_at} label={formatTimeRangeUtc(report.from_at, report.through_at)} /></span></div>
-      <DataTable columns={fleetColumns} rows={report.spending.by_fleet} rowKey={row => row.key ?? "setup"} caption="Spending by fleet" pagination={false} />
+        <span className="text-eyebrow text-text-dim"><TimeRange from={report.from_at} through={report.through_at} /></span></div>
+      <DataTable columns={fleetColumns(modelNames)} rows={report.spending.by_fleet} rowKey={row => row.key ?? "setup"} caption="Spending by fleet" pagination={false} />
     </section>
     <Collapsible defaultOpen={Boolean(props.selected)}>
       <CollapsibleTrigger asChild><Button variant="ghost" className="px-0">Charge details<CaretDownIcon size={16} /></Button></CollapsibleTrigger>
@@ -47,8 +43,11 @@ function Metric({label, value, note, primary = false}: {label: string; value: st
     <p className="col-start-1 summary:mt-md text-eyebrow leading-label text-text-dim">{note}</p></div>;
 }
 
-const fleetColumns: DataTableColumn<BillingBreakdown>[] = [
+function fleetColumns(modelNames: Record<string, string>): DataTableColumn<BillingFleetBreakdown>[] {
+  return [
   {key: "fleet", header: "Fleet", primary: true, cell: row => <div><p className="text-label font-semibold">{row.label ?? row.key ?? "Setup chats"}</p><p className="mt-sm text-eyebrow leading-label text-text-dim">{row.key ? "Fleet work" : "Fleet setup"}</p></div>},
+  {key: "models", header: "Model", cell: row => row.models.length === 0 ? "No model usage" : <List variant="plain" className="space-y-sm text-label break-words [overflow-wrap:anywhere]">{row.models.map(model => <ListItem key={model}>{modelNames[model] ?? model}</ListItem>)}</List>},
   {key: "activities", header: "Activities", cell: row => formatCount(row.totals.activity_count)},
   {key: "charged", header: "Charged", numeric: true, cell: row => formatBalance(row.totals.charged_nanos)},
-];
+  ];
+}

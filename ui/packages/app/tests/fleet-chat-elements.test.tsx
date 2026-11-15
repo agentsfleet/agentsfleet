@@ -1,12 +1,12 @@
 import { ev, mockStream, renderThread, useFleetEventStreamMock, WS, ZID } from "./fleet-thread/harness";
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { convertEvent, CONNECTION_STATUS, type FleetEvent } from "@/components/domain/useFleetEventStream";
-import { ApprovalActivityElement } from "@/components/domain/FleetActivityElements";
-import { FleetChatElementView } from "@/components/domain/FleetChatElements";
-import { GROUP_META } from "@/components/domain/useFleetThreadEntries";
+import { convertEvent, CONNECTION_STATUS, type FleetEvent } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { ApprovalActivityElement } from "@/components/domain/activity/messages/FleetActivityElements";
+import { FleetChatElementView } from "@/components/domain/activity/messages/FleetChatElements";
+import { GROUP_META } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { ACTOR, OUTCOME } from "@/lib/events/event-summary";
-import type { ActivityElementData } from "@/components/domain/fleet-chat-elements";
+import type { ActivityElementData } from "@/components/domain/activity/messages/fleet-chat-elements";
 import { ACTIVITY_KIND, FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
 import { SCHEDULE_SNAPSHOT } from "./helpers/schedule-activity";
 

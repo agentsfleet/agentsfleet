@@ -19,12 +19,12 @@
 import { expect, type Page, test } from "@playwright/test";
 import { v7 } from "uuid";
 import { signInAs } from "./fixtures/auth";
-import { FIXTURE_KEY, LIBRARY_LAYOUT_WORKSPACE_NAME } from "./fixtures/constants";
+import { FIXTURE_KEY, PLUGIN_LAYOUT_WORKSPACE_NAME } from "./fixtures/constants";
 import { clientFor } from "./fixtures/api-client";
 import { ensureSecondWorkspace, getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { fixtureDefinition } from "./fixtures/definition";
-import { publishFixtureLibrary } from "./fixtures/native-setup";
+import { publishFixturePlugin } from "./fixtures/native-setup";
 import { workspaceHref } from "./fixtures/nav";
 
 const PHONE_WINDOW = { width: 390, height: 844 };
@@ -39,9 +39,9 @@ const TABLE_VIEWPORT = `${DATA_TABLE} > [role="region"]`;
 // Section padding between the table's frame and the page's bottom edge. A
 // table that collapsed to its rows stops hundreds of pixels short in this window.
 const FILL_GAP_PX = 48;
-// The workspace Library page the inspection test opens.
-const WORKSPACE_LIBRARY = "library";
-// Each test seeds the library entry it reads: on a fresh deployment no other
+// The workspace Plugin page the inspection test opens.
+const WORKSPACE_PLUGIN = "plugins";
+// Each test seeds the plugin entry it reads: on a fresh deployment no other
 // project is guaranteed to have created one before this suite runs.
 const GALLERY_TEMPLATE = "e2e-measured-gallery";
 // Events lists a row only once a fleet has admitted one: one steered fleet gives it.
@@ -85,24 +85,24 @@ async function expectTableEndsAtRows(page: Page, path: string): Promise<void> {
   expect(measured.slack, `${path} stretches its table past its rows`).toBeLessThanOrEqual(LINE_TOLERANCE_PX);
 }
 
-// The workspace no other spec clears library entries from.
+// The workspace no other spec clears plugin entries from.
 async function layoutWorkspaceId(): Promise<string> {
-  return (await ensureSecondWorkspace(FIXTURE_KEY.regular, LIBRARY_LAYOUT_WORKSPACE_NAME)).id;
+  return (await ensureSecondWorkspace(FIXTURE_KEY.regular, PLUGIN_LAYOUT_WORKSPACE_NAME)).id;
 }
 
-// Onboards `name` into `workspaceId`'s own Fleet library.
-async function seedLibraryEntry(workspaceId: string, name: string): Promise<void> {
-  await publishFixtureLibrary(FIXTURE_KEY.regular, workspaceId, fixtureDefinition(name));
+// Onboards `name` into `workspaceId`'s own Fleet plugin.
+async function seedPluginEntry(workspaceId: string, name: string): Promise<void> {
+  await publishFixturePlugin(FIXTURE_KEY.regular, workspaceId, fixtureDefinition(name));
 }
 
 test.describe("measured placement", () => {
-  test("Library inspection stays inside a phone viewport", async ({ page }) => {
+  test("Plugin inspection stays inside a phone viewport", async ({ page }) => {
     await page.setViewportSize(PHONE_WINDOW);
     const workspaceId = await layoutWorkspaceId();
     const name = `${GALLERY_TEMPLATE}-${crypto.randomUUID()}`;
-    await seedLibraryEntry(workspaceId, name);
+    await seedPluginEntry(workspaceId, name);
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(workspaceHref(workspaceId, WORKSPACE_LIBRARY));
+    await page.goto(workspaceHref(workspaceId, WORKSPACE_PLUGIN));
     const row = page.getByRole("listitem").filter({hasText: name});
     await row.getByRole("button", {name: `Manage ${name}`, exact: true}).click();
     const start = page.getByRole("button", {name: "Use for new fleet", exact: true});

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { PlatformFixture, INSTANT, LIBRARY_ENTRY, MODEL, RUNNER_ID, WORKSPACE_ID } from "./helpers-platform.ts";
+import { PlatformFixture, INSTANT, MODEL, RUNNER_ID, WORKSPACE_ID } from "./helpers-platform.ts";
 
 const MODEL_INPUT = {provider: MODEL.provider, model_id: MODEL.model_id, metadata: MODEL.metadata, prices: MODEL.prices};
 
@@ -48,51 +48,11 @@ test("surfaces a scoped model refusal without retrying", async () => {
   expect(result.stdout).toBe(""); expect(fixture.calls).toHaveLength(1);
 });
 
-test("lists and inspects staged Library entries", async () => {
-  fixture.respond = () => Response.json({entries: [LIBRARY_ENTRY]});
-  const listed = await fixture.run(["fleet-library", "list", "--json"]);
-  expect(listed.code).toBe(0); expect(JSON.parse(listed.stdout).entries[0].published).toBe(false);
-  const shown = await fixture.run(["fleet-library", "show", RUNNER_ID, "--json"]);
-  expect(shown.code).toBe(0); expect(JSON.parse(shown.stdout).card.etag).toBe('"inspected"');
-  const missing = await fixture.run(["fleet-library", "show", "missing", "--json"]);
-  expect(missing.code).toBe(4); expect(missing.stderr).toContain("not found");
-});
-
-test("stages a private candidate with an explicit replay identity", async () => {
-  const publication = {library_id: RUNNER_ID, revision_id: WORKSPACE_ID, head_revision_id: WORKSPACE_ID, etag: '"staged"'};
-  fixture.respond = () => Response.json(publication);
-  const result = await fixture.run(["fleet-library", "stage", "--workspace", WORKSPACE_ID,
-    "--candidate-id", RUNNER_ID, "--label", "Support triage", "--operation-id", RUNNER_ID, "--json"]);
-  expect(result.code).toBe(0); expect(JSON.parse(result.stdout)).toEqual(publication);
-  expect(fixture.calls[0]?.headers.get("Idempotency-Key")).toBe(RUNNER_ID);
-  expect(fixture.calls[0]?.body).toEqual({workspace_id: WORKSPACE_ID, draft_candidate_id: RUNNER_ID, label: "Support triage"});
-});
-
-test.each([["publish", true], ["unpublish", false]] as const)("curates %s against the inspected version", async (command, published) => {
-  fixture.respond = () => Response.json({...LIBRARY_ENTRY, published});
-  const result = await fixture.run(["fleet-library", command, RUNNER_ID, "--if-match", '"inspected"', "--json"]);
-  expect(result.code).toBe(0); expect(fixture.calls[0]?.body).toEqual({published});
-  expect(fixture.calls[0]?.headers.get("If-Match")).toBe('"inspected"');
-});
-
-test("updates Library metadata without publishing and deletes conditionally", async () => {
-  fixture.respond = call => call.method === "DELETE" ? new Response(null, {status: 204}) : Response.json(LIBRARY_ENTRY);
-  const result = await fixture.run(["fleet-library", "update", RUNNER_ID, "--file", "-", "--if-match", '"inspected"', "--json"], '{"description":"Reviewed description"}');
-  expect(result.code).toBe(0); expect(fixture.calls[0]?.body).toEqual({description: "Reviewed description"});
-  const deleted = await fixture.run(["fleet-library", "delete", RUNNER_ID, "--if-match", '"inspected"', "--json"]);
-  expect(deleted.code).toBe(0); expect(fixture.calls[1]?.headers.get("If-Match")).toBe('"inspected"');
-});
-
-test.each(["{", "{}", '{"published":true}', '{"name":""}'])("refuses invalid metadata input %s", async input => {
-  const result = await fixture.run(["fleet-library", "update", RUNNER_ID, "--file", "-", "--if-match", '"inspected"', "--json"], input);
-  expect(result.code).toBe(4); expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT"); expect(fixture.calls).toEqual([]);
-});
-
-test("retains the caller's inspected tag on a stale Library refusal", async () => {
-  fixture.respond = () => Response.json({error_code: "UZ-POLICY-001", user_message: "The entry changed"}, {status: 412});
-  const result = await fixture.run(["fleet-library", "publish", RUNNER_ID, "--if-match", '"stale"', "--json"]);
-  expect(result.code).not.toBe(0); expect(result.stderr).toContain("UZ-POLICY-001");
-  expect(fixture.calls).toHaveLength(1); expect(fixture.calls[0]?.headers.get("If-Match")).toBe('"stale"');
+test.each(["list", "show", "stage", "update", "publish", "unpublish", "delete"])("platform_catalogue_routes_and_commands_are_removed: %s", async verb => {
+  const result = await fixture.run(["fleet-library", verb, "--json"]);
+  expect(result.code).toBe(4);
+  expect(JSON.parse(result.stderr).error.code).toBe("UNKNOWN_COMMAND");
+  expect(fixture.calls.map(call => `${call.method} ${call.url.pathname}`)).toEqual(["GET /v1/users/me"]);
 });
 
 test("reads provider defaults without credential material", async () => {

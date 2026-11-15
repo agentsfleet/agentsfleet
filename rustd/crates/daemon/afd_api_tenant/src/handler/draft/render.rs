@@ -16,7 +16,7 @@ pub(crate) fn draft(value: types::Draft) -> wire::Draft<Definition, types::Revie
         review: value.review,
         linked_fleet_id: value.linked_fleet_id.map(|id| id.to_string()),
         publication: value.publication.map(|receipt| wire::Publication {
-            library_id: receipt.library_id,
+            plugin_id: receipt.plugin_id.to_string(),
             revision_id: receipt.revision_id.to_string(),
             canonical_digest: receipt.canonical_digest,
         }),

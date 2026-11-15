@@ -190,14 +190,18 @@ export {
   type SelectLabelProps,
   type SelectSeparatorProps,
 } from "./Select";
-export { Time, type TimeProps } from "./Time";
+export { Time, TimeRange, useClientTimeReady, type TimeProps } from "./Time";
 export {
   formatTimeAbsolute,
   formatTimeClock,
-  formatTimeClockUtc,
-  formatTimeRangeUtc,
-  formatTimeCompactUtc,
   formatTimeRelative,
+  formatTimeRange,
+  formatTimeCompact,
+  formatTimeMinute,
+  formatTimeAbsoluteWithZone,
+  sameCalendarDay,
+  nextLocalMidnight,
+  previousReportingMonthEnd,
   TIME_INVALID_FALLBACK,
   type TimeFormat,
 } from "./time-utils";

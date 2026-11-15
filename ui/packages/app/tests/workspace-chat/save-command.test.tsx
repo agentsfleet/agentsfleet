@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CHAT_PROPS, ChatFixture, chatRouter } from "./fixture";
-import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
+import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { DRAFT_EVENT } from "@/lib/api/draft-events";
 import { REQUEST_METHOD } from "@/lib/api/draft-request";
 import { DRAFT_STATE, MESSAGE_ROLE, MESSAGE_STATE, type Message } from "@/lib/api/draft-types";
@@ -72,7 +72,8 @@ it("shows saving through model finalization and confirms only after the write su
   await screen.findByRole("heading", {name: ACKNOWLEDGEMENT});
   await waitFor(() => expect(screen.queryByText(SAVING, {exact: true})).toBeNull());
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.queryByRole("button", {name: "Review setup"})).toBeNull();
+  expect(await screen.findByRole("region", {name: "Repositories"})).toBeTruthy();
+  expect(screen.queryByRole("dialog", {name: "Fleet setup"})).toBeNull();
   expect(screen.getByRole("textbox")).toHaveProperty("disabled", false);
   expect(chatRouter.push).not.toHaveBeenCalled();
 });

@@ -56,18 +56,18 @@ impl Creations {
                     draft: Some(locked),
                 })
             }
-            SaveSource::Library {
-                library_id,
+            SaveSource::Plugin {
+                plugin_id,
                 revision_id,
-            } => library(connection, access, person, library_id, revision_id).await,
+            } => plugin(connection, access, person, plugin_id, revision_id).await,
         }
     }
 }
 
-/// [`sql::LIBRARY`]'s row, by column name.
+/// [`sql::PLUGIN`]'s row, by column name.
 #[expect(
     clippy::struct_field_names,
-    reason = "`revision` is the `authoring.library_revisions` column it decodes"
+    reason = "`revision` is the `authoring.plugin_revisions` column it decodes"
 )]
 #[derive(sqlx::FromRow)]
 struct Revision {
@@ -78,18 +78,17 @@ struct Revision {
     policy_semantics: String,
 }
 
-async fn library(
+async fn plugin(
     connection: &mut PgConnection,
     access: Access<'_>,
     person: &Person,
-    library: &str,
+    plugin: &Uuid7,
     revision: &Uuid7,
 ) -> Result<Captured> {
-    let row: Option<Revision> = sqlx::query_as(sql::LIBRARY)
-        .bind(library)
+    let row: Option<Revision> = sqlx::query_as(sql::PLUGIN)
+        .bind(plugin)
         .bind(revision)
         .bind(&person.owner)
-        .bind(crate::library::PLATFORM)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -98,8 +97,8 @@ async fn library(
     Ok(Captured {
         origin: None,
         context: review::Context {
-            subject: review::Subject::Library {
-                library_id: library.to_owned(),
+            subject: review::Subject::Plugin {
+                plugin_id: plugin.to_owned(),
                 revision_id: revision.clone(),
             },
             workspace_id: access.workspace.clone(),
@@ -107,8 +106,8 @@ async fn library(
             creator_id: Some(person.id.clone()),
             instance_name: None,
             linked_fleet_id: None,
-            source_pin: Some(SourcePin::Library {
-                library_id: library.to_owned(),
+            source_pin: Some(SourcePin::Plugin {
+                plugin_id: plugin.to_owned(),
                 revision_id: revision.clone(),
             }),
         },

@@ -13,11 +13,10 @@ pub(crate) const INSERT: &str = include_str!("insert.sql");
 /// `$1` draft, `$2` candidate.
 pub(crate) const SELECT_HEAD: &str = include_str!("select_head.sql");
 
-/// A visible Library revision's definition, by its public Library id.
+/// A visible Plugin revision's definition, by its public Plugin id.
 ///
-/// `$1` public Library id, `$2` revision, `$3` owner tenant, `$4` the public
-/// visibility.
-pub(crate) const LIBRARY_SOURCE: &str = include_str!("library_source.sql");
+/// `$1` Plugin `UUIDv7`, `$2` revision `UUIDv7`, `$3` owner tenant.
+pub(crate) const PLUGIN_SOURCE: &str = include_str!("plugin_source.sql");
 
 /// One numbered revision of a fleet in the workspace, with the fleet's name and
 /// the model review settled on.

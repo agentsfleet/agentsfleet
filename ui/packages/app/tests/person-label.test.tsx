@@ -2,7 +2,7 @@ import React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
-import { PersonLabel } from "@/components/domain/PersonLabel";
+import { PersonLabel } from "@/components/domain/shared/identity/PersonLabel";
 
 const SUBJECT = "user_3HizL5hdEfQ9Gy4e6Qsuq9nkKCu";
 const SHORTENED = "user_3HizL…kKCu";

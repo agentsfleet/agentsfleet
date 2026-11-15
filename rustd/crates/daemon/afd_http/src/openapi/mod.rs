@@ -11,7 +11,7 @@
 //!
 //! So the shared half lives here and the per-route half stays at the
 //! annotation. A description that is genuinely about ONE route — what a 409
-//! means for schedules, what a 412 means for a library entry — is written
+//! means for schedules, what a 412 means for a Plugin entry — is written
 //! there, where it can say something a shared sentence could not.
 //!
 //! # Why this module is in the substrate
@@ -157,8 +157,8 @@ pub mod tag {
     pub const WEBHOOKS: &str = "Webhooks";
     /// The approval inbox.
     pub const APPROVALS: &str = "Approvals";
-    /// The fleet library catalogue.
-    pub const FLEET_LIBRARY: &str = "Fleet library";
+    /// Account-owned reusable fleet setups.
+    pub const PLUGIN: &str = "Plugins";
     /// The priced model catalogue.
     pub const MODEL_LIBRARY: &str = "Model Library";
 }

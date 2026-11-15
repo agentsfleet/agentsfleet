@@ -1,14 +1,16 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
-import { RENDER_KIND_KEY, RENDER_KIND } from "@/components/domain/useFleetThreadEntries";
+import { SCHEDULE } from "@/tests/helpers/draft-fixtures";
+import { useState } from "react";
+import { RENDER_KIND_KEY, RENDER_KIND } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { ACTOR } from "@/lib/events/event-summary";
-import { SenderLabelProvider } from "@/components/domain/FleetMessageRow";
+import { SenderLabelProvider } from "@/components/domain/activity/messages/FleetMessageRow";
 import { TASK_IDS } from "@/tests/helpers/task-reads";
-import { FleetTaskProvider } from "@/components/domain/chat/FleetTaskProvider";
+import { FleetTaskProvider } from "@/components/domain/tasks/FleetTaskProvider";
 import { AssistantRuntimeProvider, useExternalStoreRuntime } from "@assistant-ui/react";
-import { FleetThreadViewport } from "@/components/domain/FleetThreadViewport";
-import { FleetConversationLayout } from "@/components/domain/FleetWorkSidebar";
-import { TaskPanel } from "@/components/domain/chat/TaskPanel";
-import { CONNECTION_STATUS } from "@/components/domain/useFleetEventStream";
+import { FleetThreadViewport } from "@/components/domain/conversation/thread/FleetThreadViewport";
+import { FleetConversationLayout } from "@/components/domain/shared/summary/FleetWorkSidebar";
+import { TaskPanel } from "@/components/domain/tasks/TaskPanel";
+import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetEventStream";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { TooltipProvider } from "@agentsfleet/design-system";
 
@@ -23,13 +25,15 @@ const MESSAGES: ThreadMessageLike[] = [
 
 /** Production chat components; Playwright supplies only the task HTTP boundary. */
 export function TaskFixture() {
+  const [schedules] = useState(() => new URLSearchParams(location.search).has("wakeups") ? [{...SCHEDULE, fleet_id: "linkwarden",
+    description: "Every 30 minutes", next_run_at: new Date(Date.now() + 30 * 60_000).toISOString()}] : undefined);
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({messages: MESSAGES,
     convertMessage: message => message, onNew: async () => {}});
   return <AppRouterContext value={router}><TooltipProvider><main className="flex h-dvh flex-col bg-background text-foreground">
     <header className="shrink-0 border-b border-border px-xl py-lg"><h1 className="font-semibold">Linkwarden repairs</h1></header>
     <AssistantRuntimeProvider runtime={runtime}><SenderLabelProvider senderLabel="Linkwarden repair fleet across connected repositories">
-      <FleetTaskProvider workspaceId="workspace" fleetId="linkwarden" subject="fixture-owner" revision={0} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}}>
-      <FleetConversationLayout work={<TaskPanel workspaceId="workspace" fleetId="linkwarden" subject="fixture-owner" revision={0} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}} />}><FleetThreadViewport eventsCount={2} connectionStatus={CONNECTION_STATUS.LIVE}
+      <FleetTaskProvider workspaceId="workspace" fleetId="linkwarden" subject="fixture-owner" revision={0} schedules={schedules} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}}>
+      <FleetConversationLayout work={<TaskPanel workspaceId="workspace" fleetId="linkwarden" subject="fixture-owner" revision={0} schedules={schedules} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}} />}><FleetThreadViewport eventsCount={2} connectionStatus={CONNECTION_STATUS.LIVE}
         pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}}
         onRestored={() => {}} onDraft={() => {}} modelLabel="Selected coding model" /></FleetConversationLayout>
       </FleetTaskProvider>

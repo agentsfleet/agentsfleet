@@ -2,13 +2,13 @@ import { StackIcon } from "@phosphor-icons/react/ssr";
 import { Badge, PageTitle } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetDetail } from "@/lib/types";
-import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
+import ExhaustionBadge from "@/components/domain/usage/ExhaustionBadge";
 import { FleetActions } from "./FleetActions";
 import { MemoryMenu } from "./MemoryMenu";
-import { EditSetupMenuItem } from "@/components/domain/chat/FleetSetupWorkspace";
-import { FleetHeaderStatus } from "@/components/domain/FleetHeaderStatus";
+import { EditSetupMenuItem } from "@/components/domain/setup/EditSetupControls";
+import { FleetHeaderStatus } from "@/components/domain/conversation/chrome/FleetHeaderStatus";
 import { NewFleetShortcut } from "@/components/layout/ResourceHeader";
-import { FleetRunCost } from "@/components/domain/FleetRunCost";
+import { FleetRunCost } from "@/components/domain/activity/replies/FleetRunCost";
 import type { RunFigures } from "@/lib/events/run-summary";
 
 export function FleetHeader({

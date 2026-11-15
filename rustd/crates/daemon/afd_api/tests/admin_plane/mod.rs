@@ -199,7 +199,7 @@ async fn refused_as_an_unusable_pairing(admin: &axum::Router, body: &str) {
     assert_eq!(code(refused).await, Some("UZ-PROVIDER-005"));
 }
 
-mod library;
+mod removed_catalogue;
 
 #[tokio::test]
 async fn model_edits_and_deletion_report_datastore_unavailability() {

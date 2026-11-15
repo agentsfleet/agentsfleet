@@ -6,7 +6,7 @@ import { workspaceIdFromPath, workspacePath } from "@/lib/workspace-routes";
 import { usePathname } from "next/navigation";
 import { CpuIcon, UsersIcon, ChartBarIcon, KeyIcon, NotePencilIcon } from "@phosphor-icons/react/ssr";
 import { PageHeader, TooltipButton } from "@agentsfleet/design-system";
-import { PRIMARY_NAV } from "./sidebar-navigation-data";
+import { primaryNavigation } from "./sidebar-navigation-data";
 
 const ACCOUNT_PAGES = [
   {path: "settings/models", label: "Models", icon: CpuIcon},
@@ -19,7 +19,7 @@ const ACCOUNT_PAGES = [
 export function ResourceHeader({workspaceId: selectedWorkspace = null}: {workspaceId?: string | null}) {
   const pathname = usePathname();
   const workspaceId = workspaceIdFromPath(pathname) ?? selectedWorkspace;
-  const page = [...PRIMARY_NAV, ...ACCOUNT_PAGES].find(entry => entry.path !== "fleets/new" && pathname.endsWith(`/${entry.path}`));
+  const page = [...primaryNavigation(), ...ACCOUNT_PAGES].find(entry => entry.path !== "fleets/new" && pathname.endsWith(`/${entry.path}`));
   if (!page) return null;
   const Icon = page.icon;
   return <PageHeader data-resource-header className="h-16 shrink-0 flex-row items-center gap-lg border-b border-border-subtle px-lg summary-medium:px-xl summary-wide:px-2xl" actions={workspaceId ? <NewFleetShortcut workspaceId={workspaceId} /> : null}>

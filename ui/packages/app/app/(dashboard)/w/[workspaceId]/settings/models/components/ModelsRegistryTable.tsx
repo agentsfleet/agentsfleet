@@ -11,7 +11,7 @@ import {
 import type { TenantModelEntryPageResult } from "@/lib/api/tenant_model_entries";
 import { LIBRARY_ERROR_KIND, readErrorFrom, type LibraryError } from "@/lib/api/library-types";
 import { presentErrorString } from "@/lib/errors";
-import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-module-loader";
+import { maySpeculateOnHover } from "@/components/domain/shared/dialogs/intent-module-loader";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 import { listModelEntriesAction, resetProviderAction, setProviderSelfManagedAction, deleteModelEntryAction } from "../actions";
 import { captureModelActivated, captureProviderReset } from "../lib/track";
@@ -67,7 +67,7 @@ export default function ModelsRegistryTable({ workspaceId, workspaces, initialPa
   const [removeError, setRemoveError] = useState<string | null>(null);
 
   // The catalogue warms on dialog intent; rows already carry their own rates.
-  const { status: catalogueStatus, preload: preloadCatalogue } = useModelCatalogue();
+  const { status: catalogueStatus, preload: preloadCatalogue, preloadAdvanced: preloadAllModels } = useModelCatalogue();
 
   const hasActiveEntry = entries.some((e) => e.active);
   // An absent default must never be presented as active.
@@ -202,7 +202,7 @@ export default function ModelsRegistryTable({ workspaceId, workspaces, initialPa
           isDefaultLive={isDefaultLive} platformDefaultAvailable={platformDefaultAvailable} pending={pending}
           onSwitchDefault={onSwitchDefault} onSwitchEntry={onSwitchEntry}
           onView={entry => {preloadCatalogue(); setDetailsTarget(entry);}}
-          onEdit={entry => {preloadCatalogue(); setEditTarget(entry);}} onRemove={setRemoveTarget}
+          onEdit={entry => {preloadAllModels(); setEditTarget(entry);}} onRemove={setRemoveTarget}
           onIntent={() => {if (catalogueStatus !== CATALOGUE_STATUS.error && maySpeculateOnHover()) preloadCatalogue();}}
           footerAction={<AddModelEntryDialog workspaceId={workspaceId} secrets={secrets} secretsLoad={secretsLoad} onCreated={refresh} onSecretsChanged={refreshSecrets} onSecretsNeeded={refreshSecrets} triggerLabel="Add another model" secondary />}
           onLoadMore={nextCursor ? () => loadMore(nextCursor) : undefined} />}

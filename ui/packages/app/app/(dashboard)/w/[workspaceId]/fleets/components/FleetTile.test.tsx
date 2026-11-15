@@ -14,7 +14,7 @@ vi.mock("next/link", () => ({
 // The streaming hook is the tile's only live dependency; a stub lets each test
 // pin connectionStatus + the last event without a real EventSource.
 const streamMock = vi.fn();
-vi.mock("@/components/domain/useWorkspaceStream", () => ({
+vi.mock("@/components/domain/conversation/stream/useWorkspaceStream", () => ({
   useWorkspaceFleetStream: (...a: unknown[]) => streamMock(...a),
 }));
 
