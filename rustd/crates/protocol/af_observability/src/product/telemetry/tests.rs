@@ -29,6 +29,9 @@ const ENTRY: &str = "1700000000000-0";
 /// The request a fixture event was answered on.
 const REQUEST: &str = "req_2telemetry";
 
+/// A tenant identifier: the payer a wallet event is attributed to.
+const TENANT: &str = "01924f4e-0000-7000-8000-00000000a11e";
+
 /// One event's properties, by key.
 fn properties(telemetry: &Telemetry) -> std::collections::HashMap<String, Value> {
     telemetry.event().properties().clone()
@@ -183,6 +186,26 @@ fn should_attribute_a_persons_event_to_that_person() {
         text(&event, "distinct_id"),
         ACTOR,
         "it is written as a property too, and a dashboard groups by it"
+    );
+}
+
+/// A wallet's exhaustion is the tenant's, which pays, and names it as both the
+/// attribution and the `tenant_id` key the signup event carries.
+#[test]
+fn should_attribute_a_wallet_exhaustion_to_its_tenant() {
+    let exhausted = Telemetry::WalletExhausted {
+        tenant_id: TENANT.to_owned(),
+    };
+    assert_eq!(exhausted.actor(), Some(TENANT));
+    let event = exhausted.event();
+    assert_eq!(event.event_name(), "wallet_exhausted");
+    assert_eq!(event.distinct_id(), TENANT);
+    assert_eq!(text(&event, "tenant_id"), TENANT);
+    assert!(
+        !properties(&exhausted)
+            .keys()
+            .any(|key| key.contains("nanos")),
+        "it carries no amount: money stays in the ledger"
     );
 }
 

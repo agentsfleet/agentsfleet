@@ -192,6 +192,9 @@ impl Telemetry {
                 put("created", (*created).into());
                 put(KEY_REQUEST_ID, request_id.as_str().into());
             }
+            Self::WalletExhausted { tenant_id } => {
+                put(KEY_TENANT_ID, tenant_id.as_str().into());
+            }
             Self::InviteEmail {
                 tenant_id,
                 invite_id,

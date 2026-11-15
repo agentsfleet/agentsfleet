@@ -8170,170 +8170,6 @@
         ]
       }
     },
-    "/v1/tenants/me/billing/activities/{activity_id}/charges": {
-      "get": {
-        "tags": [
-          "Billing"
-        ],
-        "summary": "List an activity's settled charges",
-        "description": "Lists individual settled charges for one billed runtime lease or private setup attempt within the selected period and filters. Foreign or unknown work returns an empty list.",
-        "operationId": "get_tenant_billing_activity_charges",
-        "parameters": [
-          {
-            "name": "activity_id",
-            "in": "path",
-            "description": "Opaque billed activity identifier",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "activity_type",
-            "in": "query",
-            "description": "runtime or setup, required",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "period",
-            "in": "query",
-            "description": "month (default), week (seven calendar days) or today, in Coordinated Universal Time (UTC).",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "fleet_id",
-            "in": "query",
-            "description": "Exact runtime fleet identifier.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "model",
-            "in": "query",
-            "description": "Exact recorded model identifier.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "through_at",
-            "in": "query",
-            "description": "Inclusive cutoff with millisecond precision; defaults to now. Use the report timestamp to preserve its view.",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date-time"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Page size: 1 to 100, default 50.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "starting_after",
-            "in": "query",
-            "description": "Opaque continuation for the same query and page size.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BillingPage_BillingCharge"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
     "/v1/tenants/me/billing/charges": {
       "get": {
         "tags": [
@@ -8437,7 +8273,7 @@
           "Billing"
         ],
         "summary": "Read settled usage report",
-        "description": "Returns complete-period settled totals, spending groups and paginated activities. Month and today use Coordinated Universal Time (UTC). Later or unknown settlements are excluded. Follow starting_after with the same filters.",
+        "description": "Returns settled totals, spending groups, daily spend and filter choices for every whole Coordinated Universal Time (UTC) day of the selected month, week or today. Runs are counted on the period totals and each fleet. Unsettled usage is excluded.",
         "operationId": "get_tenant_billing_report",
         "parameters": [
           {
@@ -8459,42 +8295,13 @@
             }
           },
           {
-            "name": "model",
-            "in": "query",
-            "description": "Exact recorded model identifier.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "through_at",
             "in": "query",
-            "description": "Inclusive cutoff with millisecond precision; defaults to now. Use the report timestamp to preserve its view.",
+            "description": "Inclusive cutoff; defaults to now. The report covers every whole UTC day through it.",
             "required": false,
             "schema": {
               "type": "string",
               "format": "date-time"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Page size: 1 to 100, default 50.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "starting_after",
-            "in": "query",
-            "description": "Opaque continuation for the same query and page size.",
-            "required": false,
-            "schema": {
-              "type": "string"
             }
           },
           {
@@ -19646,81 +19453,6 @@
           }
         }
       },
-      "BillingCharge": {
-        "type": "object",
-        "description": "One physically recorded charge in a billed activity.",
-        "required": [
-          "id",
-          "kind",
-          "sequence",
-          "model",
-          "posture",
-          "charged_nanos",
-          "input_tokens",
-          "output_tokens",
-          "runtime_ms",
-          "unpriced_tokens",
-          "requested_at",
-          "settled_at"
-        ],
-        "properties": {
-          "charged_nanos": {
-            "$ref": "#/components/schemas/Nanos",
-            "description": "Actual combined credit charge, as integer nanodollar text."
-          },
-          "id": {
-            "type": "string",
-            "description": "Opaque ledger row identifier."
-          },
-          "input_tokens": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Recorded input tokens."
-          },
-          "kind": {
-            "type": "string",
-            "description": "What the charge bills: `model` for a model call, `runtime` for sandbox\nrun time, `decision` for a native decision call."
-          },
-          "model": {
-            "type": "string",
-            "description": "Exact model identifier."
-          },
-          "output_tokens": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Recorded output tokens."
-          },
-          "posture": {
-            "type": "string",
-            "description": "Whether the platform or customer supplied the provider key."
-          },
-          "requested_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "When the model request or runtime piece began."
-          },
-          "runtime_ms": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Recorded runtime in milliseconds."
-          },
-          "sequence": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The charge's number within its activity and kind."
-          },
-          "settled_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "When the charge settled."
-          },
-          "unpriced_tokens": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Tokens without a platform price."
-          }
-        }
-      },
       "BillingChoices": {
         "type": "object",
         "description": "Available choices across the entire unfiltered period.",
@@ -19761,7 +19493,7 @@
           },
           "totals": {
             "$ref": "#/components/schemas/BillingTotals",
-            "description": "Additive daily quantities; `activity_count` counts distinct work within this day."
+            "description": "Additive daily quantities; runs are counted on the period and fleet totals only."
           }
         }
       },
@@ -19810,201 +19542,6 @@
           }
         }
       },
-      "BillingPage_BillingActivity": {
-        "type": "object",
-        "description": "A bounded list with the standard envelope.",
-        "required": [
-          "items"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "description": "One billed fleet lease or private setup attempt.",
-              "required": [
-                "id",
-                "activity_type",
-                "workspace_id",
-                "recorded_at",
-                "totals",
-                "models",
-                "postures"
-              ],
-              "properties": {
-                "activity_type": {
-                  "type": "string",
-                  "description": "`runtime` or `setup`."
-                },
-                "fleet_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Runtime fleet identifier, retained after deletion."
-                },
-                "fleet_name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Runtime name captured in the ledger; never private draft text."
-                },
-                "id": {
-                  "type": "string",
-                  "description": "Opaque identifier used to read its individual charges."
-                },
-                "models": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "description": "Model identifiers recorded for this activity."
-                },
-                "postures": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "description": "`platform`, `self_managed`, or both when work used both."
-                },
-                "recorded_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Latest included usage-line timestamp."
-                },
-                "totals": {
-                  "$ref": "#/components/schemas/BillingTotals",
-                  "description": "Exact totals for the selected period and filters."
-                },
-                "workspace_id": {
-                  "type": "string",
-                  "description": "Workspace where the work occurred."
-                }
-              }
-            },
-            "description": "Items on this page."
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Continue with `starting_after`, or null on the final page."
-          },
-          "total": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Full matching count, or null when it was not computed."
-          }
-        }
-      },
-      "BillingPage_BillingCharge": {
-        "type": "object",
-        "description": "A bounded list with the standard envelope.",
-        "required": [
-          "items"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "description": "One physically recorded charge in a billed activity.",
-              "required": [
-                "id",
-                "kind",
-                "sequence",
-                "model",
-                "posture",
-                "charged_nanos",
-                "input_tokens",
-                "output_tokens",
-                "runtime_ms",
-                "unpriced_tokens",
-                "requested_at",
-                "settled_at"
-              ],
-              "properties": {
-                "charged_nanos": {
-                  "$ref": "#/components/schemas/Nanos",
-                  "description": "Actual combined credit charge, as integer nanodollar text."
-                },
-                "id": {
-                  "type": "string",
-                  "description": "Opaque ledger row identifier."
-                },
-                "input_tokens": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "Recorded input tokens."
-                },
-                "kind": {
-                  "type": "string",
-                  "description": "What the charge bills: `model` for a model call, `runtime` for sandbox\nrun time, `decision` for a native decision call."
-                },
-                "model": {
-                  "type": "string",
-                  "description": "Exact model identifier."
-                },
-                "output_tokens": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "Recorded output tokens."
-                },
-                "posture": {
-                  "type": "string",
-                  "description": "Whether the platform or customer supplied the provider key."
-                },
-                "requested_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "When the model request or runtime piece began."
-                },
-                "runtime_ms": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "Recorded runtime in milliseconds."
-                },
-                "sequence": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "The charge's number within its activity and kind."
-                },
-                "settled_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "When the charge settled."
-                },
-                "unpriced_tokens": {
-                  "type": "integer",
-                  "format": "int64",
-                  "description": "Tokens without a platform price."
-                }
-              }
-            },
-            "description": "Items on this page."
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Continue with `starting_after`, or null on the final page."
-          },
-          "total": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Full matching count, or null when it was not computed."
-          }
-        }
-      },
       "BillingReport": {
         "type": "object",
         "description": "The selected account's current settled usage report.",
@@ -20015,24 +19552,19 @@
           "totals",
           "daily",
           "spending",
-          "filters",
-          "activities"
+          "filters"
         ],
         "properties": {
-          "activities": {
-            "$ref": "#/components/schemas/BillingPage_BillingActivity",
-            "description": "Bounded grouped activities, newest first."
-          },
           "daily": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/BillingDaily"
             },
-            "description": "Every UTC date in the selected interval, ascending. An activity spanning days counts on each day and once in period totals."
+            "description": "Every UTC date in the selected interval, ascending."
           },
           "filters": {
             "$ref": "#/components/schemas/BillingChoices",
-            "description": "Unfiltered period choices, never limited to the current page."
+            "description": "Unfiltered period choices."
           },
           "from_at": {
             "type": "string",
@@ -20050,7 +19582,7 @@
           "through_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Inclusive reporting cutoff, retained by continuations."
+            "description": "Inclusive end of the period; the report covers every whole UTC day through it."
           },
           "totals": {
             "$ref": "#/components/schemas/BillingTotals",
@@ -20092,7 +19624,7 @@
       },
       "BillingSpending": {
         "type": "object",
-        "description": "Full-period settled spending, independent of activity pagination.",
+        "description": "Full-period settled spending.",
         "required": [
           "by_fleet",
           "by_model"
@@ -20116,21 +19648,24 @@
       },
       "BillingTotals": {
         "type": "object",
-        "description": "Recorded settled totals over a period, spending group or activity.",
+        "description": "Recorded settled totals over a period, a spending group or a day.",
         "required": [
           "charged_nanos",
           "input_tokens",
           "output_tokens",
           "runtime_ms",
           "line_count",
-          "activity_count",
           "unpriced_tokens"
         ],
         "properties": {
           "activity_count": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64",
-            "description": "Number of billed work items."
+            "description": "Runs counted on their first runtime slice's day. Present on the period\ntotals and each fleet group; absent on model and daily groups, since one\nrun spans several models and days.",
+            "x-stability": "stable"
           },
           "charged_nanos": {
             "$ref": "#/components/schemas/Nanos",

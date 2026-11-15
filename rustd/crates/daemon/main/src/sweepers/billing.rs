@@ -1,5 +1,5 @@
 //! The billing relay: the task that settles logged usage. Renewals and reports
-//! log their usage lines and return; every 2 s this task settles those lines
+//! log their usage lines and return; every 5 s this task settles those lines
 //! through the daemon's [`Biller`]. The expiry sweeper bills the
 //! last slice of a lease that ended unreported, and its lines settle here.
 
@@ -17,11 +17,11 @@ use crate::supervisor::Supervisor;
 
 /// How often a tick runs: how long a committed line waits to be charged, and
 /// how far a balance can trail the charges a person reads.
-const INTERVAL: Duration = Duration::from_secs(2);
+const INTERVAL: Duration = Duration::from_secs(5);
 
 /// Ticks between restarts of the line read at the oldest unsettled line: a
-/// line the biller refused is retried at least this often.
-const LAP_TICKS: u64 = 30;
+/// line the biller refused is retried at least this often, once a minute.
+const LAP_TICKS: u64 = 12;
 
 /// Passes one tick may run back to back. A backlog drains at the biller's
 /// pace, and a sustained one still yields to the next tick.
@@ -39,9 +39,13 @@ const COMPLETED: &str = "billing_sweep_completed";
 /// The biller refused part of a pass; the next pass retries it.
 const REFUSED: &str = "billing_sweep_refused";
 
-pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, tasks: Tasks) {
+pub(super) fn spawn(
+    supervisor: &mut Supervisor,
+    database: &Db,
+    tasks: Tasks,
+    biller: Arc<dyn Biller>,
+) {
     let database = database.clone();
-    let biller: Arc<dyn Biller> = crate::billing::biller(database.clone());
     supervisor.spawn(super::BILLING, async move |stop| {
         let mut decision_cursor = DecisionMaintenanceCursor::default();
         let mut interval = tokio::time::interval(INTERVAL);

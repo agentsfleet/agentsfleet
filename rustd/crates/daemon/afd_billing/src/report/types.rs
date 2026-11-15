@@ -8,7 +8,7 @@ use jiff::Timestamp;
 pub struct Window {
     /// Inclusive beginning of the selected UTC day, week or month.
     pub from: Timestamp,
-    /// Inclusive capture time; pending and later settlements stay out.
+    /// Inclusive end; the report covers every whole UTC day through this one.
     pub through: Timestamp,
 }
 
@@ -17,21 +17,8 @@ pub struct Window {
 pub struct Filter {
     /// A runtime fleet; private setup remains its own category.
     pub fleet: Option<Uuid7>,
-    /// The exact recorded model identifier.
-    pub model: Option<String>,
     /// A stored work type, chosen from `crate::sql::work`.
     pub work_type: Option<&'static str>,
-}
-
-/// The complete ordering key of a grouped activity.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Boundary {
-    /// The group's latest included ledger timestamp.
-    pub recorded_at: Timestamp,
-    /// The work identifier, breaking timestamp ties.
-    pub work_id: Uuid7,
-    /// The stored work type, breaking any remaining tie.
-    pub work_type: &'static str,
 }
 
 /// A report read, already parsed and bounded by its caller.
@@ -41,19 +28,13 @@ pub struct Request {
     pub window: Window,
     /// The exact selected filters.
     pub filter: Filter,
-    /// Maximum returned activities, before the lookahead row.
-    pub limit: u32,
-    /// An exclusive continuation boundary.
-    pub after: Option<Boundary>,
 }
 
-/// A report obtained from one read-only database snapshot.
+/// A report read from the daily usage rollup in one statement.
 #[derive(Debug, Clone)]
 pub struct Report {
     /// Full-period totals, spending groups and unfiltered filter choices.
     pub aggregates: Vec<Aggregate>,
-    /// At most `limit + 1` rows; the caller renders the continuation.
-    pub activities: Vec<Activity>,
 }
 
 /// The aggregate row's role in the report.
@@ -92,8 +73,9 @@ pub struct Aggregate {
     pub runtime_ms: i64,
     /// Number of settled physical usage lines.
     pub line_count: i64,
-    /// Number of billed work items.
-    pub activity_count: i64,
+    /// Runs counted on their first runtime slice's day; only the totals and
+    /// fleet groups carry one, since one run spans several models and days.
+    pub activity_count: Option<i64>,
     /// Tokens for which no platform price was available.
     pub unpriced_tokens: i64,
 }
@@ -113,7 +95,7 @@ pub(super) struct AggregateRow {
     output_tokens: i64,
     runtime_ms: i64,
     line_count: i64,
-    activity_count: i64,
+    activity_count: Option<i64>,
     unpriced_tokens: i64,
 }
 
@@ -134,80 +116,4 @@ impl From<AggregateRow> for Aggregate {
             unpriced_tokens: row.unpriced_tokens,
         }
     }
-}
-
-/// One billed lease or private setup attempt.
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
-pub struct Activity {
-    /// The work's opaque identifier.
-    pub work_id: Uuid7,
-    /// The stored work type.
-    pub work_type: String,
-    /// The owning workspace's opaque identifier.
-    pub workspace_id: Uuid7,
-    /// The runtime fleet, retained after deletion.
-    pub fleet_id: Option<Uuid7>,
-    /// Its recorded name; never a private draft title.
-    pub fleet_name: Option<String>,
-    /// Latest included ledger timestamp.
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    pub recorded_at: Timestamp,
-    /// Actual combined credits charged.
-    pub charged_nanos: i64,
-    /// Recorded input tokens.
-    pub input_tokens: i64,
-    /// Recorded output tokens.
-    pub output_tokens: i64,
-    /// Recorded runtime.
-    pub runtime_ms: i64,
-    /// Number of included physical usage lines.
-    pub line_count: i64,
-    /// Tokens without a published platform price.
-    pub unpriced_tokens: i64,
-    /// Exact model identifiers used by the work.
-    pub models: Vec<String>,
-    /// Whether the platform or customer supplied the provider key.
-    pub postures: Vec<String>,
-}
-
-/// Where an activity's charges page resumes: after this line, in the
-/// `(requested_at, id)` order the page reads.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChargeBoundary {
-    /// The last line's `requested_at`.
-    pub requested_at: Timestamp,
-    /// The last line's identifier, which breaks a tie on the instant.
-    pub line_id: Uuid7,
-}
-
-/// One individually recorded settled line within an activity.
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
-pub struct Charge {
-    /// Ledger row identifier.
-    pub id: Uuid7,
-    /// What the line bills: `model`, `runtime` or `decision`
-    /// (`af_wire::usage::LineKind`).
-    pub kind: String,
-    /// The line's number within its work and kind.
-    pub sequence: i64,
-    /// Model identifier.
-    pub model: String,
-    /// Provider-key ownership.
-    pub posture: String,
-    /// Actual combined charge.
-    pub charged_nanos: i64,
-    /// Input token count.
-    pub input_tokens: i64,
-    /// Output token count.
-    pub output_tokens: i64,
-    /// Recorded runtime.
-    pub runtime_ms: i64,
-    /// Tokens without a platform price.
-    pub unpriced_tokens: i64,
-    /// When the request or runtime piece began.
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    pub requested_at: Timestamp,
-    /// When settlement completed.
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    pub settled_at: Timestamp,
 }

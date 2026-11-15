@@ -7,18 +7,21 @@
 
 use std::sync::Arc;
 
+use af_observability::Analytics;
 use afd_billing::biller::{Biller, FailOpen, Observed};
 use afd_billing::ledger::LedgerBiller;
 use afd_db::Db;
 
 /// The built-in ledger biller over `database`, failing open while it cannot
-/// answer, with every reservation and settlement counted.
+/// answer, with every reservation and settlement counted and a wallet's
+/// exhaustion reported to `analytics`.
 ///
 /// The counting wraps outside the failing-open layer, so a reservation admitted
 /// during an outage is counted as `unconfirmed` rather than lost as an error.
 #[must_use]
-pub fn biller(database: Db) -> Arc<dyn Biller> {
-    Arc::new(Observed::new(FailOpen::new(LedgerBiller::on_system_clock(
-        database,
-    ))))
+pub fn biller(database: Db, analytics: Analytics) -> Arc<dyn Biller> {
+    Arc::new(Observed::new(
+        FailOpen::new(LedgerBiller::on_system_clock(database)),
+        analytics,
+    ))
 }

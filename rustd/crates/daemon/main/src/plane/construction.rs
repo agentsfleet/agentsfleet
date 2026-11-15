@@ -34,7 +34,7 @@ impl Common {
         let github_client = parts.authoring_transport.guarded_client();
         let task_master = Arc::clone(&parts.kek);
         let admissions = Admissions::new(parts.database.clone(), parts.bus.clone(), Entropy::new());
-        let biller = crate::billing::biller(parts.database.clone());
+        let biller = crate::billing::biller(parts.database.clone(), parts.analytics.clone());
         let drafts =
             afd_authoring::Drafts::new(parts.database.clone(), Entropy::new(), Arc::clone(&biller))
                 .with_analytics(parts.analytics.clone());

@@ -4,19 +4,23 @@ use crate::supervisor::Supervisor;
 use af_crypto::entropy::Entropy;
 use af_observability::Analytics;
 use afd_db::Db;
+use std::sync::Arc;
 use std::time::Duration;
+
+use afd_billing::biller::Biller;
 
 const INTERVAL: Duration = Duration::from_secs(10);
 const FAILED: &str = "authoring_maintenance_failed";
 const COMPLETED: &str = "authoring_maintenance_completed";
 
-pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Analytics) {
-    let drafts = afd_authoring::Drafts::new(
-        database.clone(),
-        Entropy::new(),
-        crate::billing::biller(database.clone()),
-    )
-    .with_analytics(analytics.clone());
+pub(super) fn spawn(
+    supervisor: &mut Supervisor,
+    database: &Db,
+    analytics: &Analytics,
+    biller: Arc<dyn Biller>,
+) {
+    let drafts = afd_authoring::Drafts::new(database.clone(), Entropy::new(), biller)
+        .with_analytics(analytics.clone());
     supervisor.spawn(super::AUTHORING, async move |stop| {
         let mut interval = tokio::time::interval(INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -74,7 +78,7 @@ mod tests {
         let drafts = afd_authoring::Drafts::new(
             database.clone(),
             Entropy::new(),
-            crate::billing::biller(database),
+            crate::billing::biller(database, af_observability::Analytics::silent()),
         );
         let capture = Capture::install();
 

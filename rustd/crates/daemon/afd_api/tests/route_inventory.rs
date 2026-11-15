@@ -44,7 +44,6 @@ const INVENTORY: &[&str] = &[
     "/v1/tenants/me/billing",
     "/v1/tenants/me/billing/charges",
     "/v1/tenants/me/billing/reports/current",
-    "/v1/tenants/me/billing/activities/{activity_id}/charges",
     "/v1/tenants/me/workspaces",
     "/v1/tenants/me/provider",
     "/v1/tenants/me/models",

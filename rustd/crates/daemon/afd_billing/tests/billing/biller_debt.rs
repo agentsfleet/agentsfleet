@@ -7,9 +7,10 @@
 )]
 
 use af_crypto::entropy::Entropy;
+use af_observability::{Analytics, Telemetry};
 use afd_billing::Nanos;
 use afd_billing::biller::conformance;
-use afd_billing::biller::{Account, Ask, Biller, Funds, WorkKey};
+use afd_billing::biller::{Account, Ask, Biller, Funds, Observed, WorkKey};
 use afd_billing::ledger::{LedgerBiller, log_lines, resettle};
 use afd_db::test_util::mint_id;
 use jiff::Timestamp;
@@ -116,44 +117,68 @@ async fn a_debt_refuses_checks_until_a_top_up_repays_it() {
     );
 }
 
-/// `exhausted_at` follows the balance through drain, top-up and drain again.
+/// `exhausted_at` follows the balance through drain, top-up and drain again,
+/// and each crossing to zero or below is reported once.
 ///
 /// The debit is the one writer of the flag on the money path: it sets it when
 /// a settlement empties the balance and clears it when one leaves the balance
 /// positive, so a tenant topped up after running dry reads as exhausted only
-/// until its next charge lands with credit to spare.
+/// until its next charge lands with credit to spare. A debit while the balance
+/// stays exhausted crosses nothing and reports nothing.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn exhaustion_follows_the_balance_through_a_top_up() {
     let (lane, payer) = one_line_lane().await;
-    let biller = ledger(&lane);
+    let (analytics, recorded) = Analytics::recording();
+    let biller = Observed::new(ledger(&lane), analytics);
     let work = WorkKey::FleetLease(mint_id());
     let exhausted = |balance: afd_billing::biller::Balance| balance.exhausted_at.is_some();
+    let settle = async |lines| {
+        biller
+            .settle(&settlement(&lane, &payer, &work, lines))
+            .await
+    };
 
-    biller
-        .settle(&settlement(&lane, &payer, &work, vec![rated(0)]))
+    let drained = settle(vec![rated(0)])
         .await
         .expect("the first line drains the balance");
+    assert!(
+        drained.exhausted,
+        "the debit that empties the balance crosses"
+    );
     assert!(exhausted(biller.balance(&payer).await.expect("answers")));
 
-    top_up(&lane, LINE.as_i64() * 2).await;
-    biller
-        .settle(&settlement(&lane, &payer, &work, vec![rated(1)]))
+    let deeper = settle(vec![rated(1)])
+        .await
+        .expect("a line past zero settles");
+    assert!(
+        !deeper.exhausted,
+        "a debit while already exhausted crosses nothing"
+    );
+
+    top_up(&lane, LINE.as_i64() * 3).await;
+    let refilled = settle(vec![rated(2)])
         .await
         .expect("a line after the top-up settles");
+    assert!(!refilled.exhausted);
     assert!(
         !exhausted(biller.balance(&payer).await.expect("answers")),
         "a charge that leaves credit clears the flag"
     );
 
-    biller
-        .settle(&settlement(&lane, &payer, &work, vec![rated(2), rated(3)]))
+    let again = settle(vec![rated(3), rated(4)])
         .await
         .expect("draining again settles");
+    assert!(again.exhausted, "running dry again crosses again");
     assert!(
         exhausted(biller.balance(&payer).await.expect("answers")),
         "running dry again sets it again"
     );
+
+    let reported = Telemetry::WalletExhausted {
+        tenant_id: lane.tenant.as_str().to_owned(),
+    };
+    assert_eq!(recorded.events(), vec![reported.clone(), reported]);
 }
 
 /// Usage that happened settles even for a tenant with no wallet row: there
