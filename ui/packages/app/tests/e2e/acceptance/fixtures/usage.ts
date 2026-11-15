@@ -22,7 +22,7 @@ interface CataloguePage { models: { id: string; display_name: string }[]; next_c
 
 /** The fleet's settled group in this month's report, or null before settlement. */
 export async function fleetUsage(handle: ClientHandle, fleetId: string): Promise<FleetUsage | null> {
-  const query = new URLSearchParams({ fleet_id: fleetId, limit: "25" });
+  const query = new URLSearchParams({ fleet_id: fleetId });
   const report = await clientFor(handle).get<Report>(`${REPORT_PATH}?${query}`);
   const row = report.spending.by_fleet.find(group => group.key === fleetId);
   if (!row || BigInt(row.totals.charged_nanos) === 0n) return null;

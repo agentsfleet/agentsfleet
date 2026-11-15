@@ -1,39 +1,29 @@
-import type { BillingActivity, BillingCharge, BillingReport, BillingTotals } from "@/lib/api/billing_report";
-import { PROVIDER_MODE } from "@/lib/types";
-import { BILLING_ACTIVITY_RUNTIME, BILLING_PERIOD_MONTH, BILLING_CHARGE_KIND } from "@/lib/api/billing-report-values";
+import type { BillingCountedTotals, BillingReport, BillingTotals } from "@/lib/api/billing_report";
+import { BILLING_PERIOD_MONTH } from "@/lib/api/billing-report-values";
 
 export const BILLING_AT = "2026-10-25T12:00:00Z";
 export const BILLING_MODEL = "accounts/fireworks/models/minimax-m3p1-flash";
 export const BILLING_MODEL_NAME = "MiniMax M3.1 Flash";
 export const BILLING_FLEET = "01924f4e-0000-7000-8000-00000000c4a1";
-export const BILLING_WORK = "01924f4e-0000-7000-8000-00000000c4a2";
 
 export const BILLING_CHARGE_NANOS = "100000";
 const BILLING_RUNTIME_MS = 1_000;
 
-export const BILLING_SELECTION = `${BILLING_ACTIVITY_RUNTIME}:${BILLING_WORK}`;
-
-export function billingTotals(overrides: Partial<BillingTotals> = {}): BillingTotals {
+/** Totals for the period or a fleet: the groups the server counts activities in. */
+export function billingTotals(overrides: Partial<BillingCountedTotals> = {}): BillingCountedTotals {
   return { charged_nanos: BILLING_CHARGE_NANOS, input_tokens: 40, output_tokens: 10, runtime_ms: BILLING_RUNTIME_MS,
     line_count: 1, activity_count: 1, unpriced_tokens: 0, ...overrides };
 }
 
-export function billingActivity(overrides: Partial<BillingActivity> = {}): BillingActivity {
-  return { id: BILLING_WORK, activity_type: BILLING_ACTIVITY_RUNTIME, workspace_id: "workspace-1",
-    fleet_id: BILLING_FLEET, fleet_name: "Payment alerts", recorded_at: BILLING_AT,
-    totals: billingTotals(), models: [BILLING_MODEL], postures: [PROVIDER_MODE.platform], ...overrides };
-}
-
-// A line bills one thing: a model line carries tokens and no runtime, a runtime
-// line carries runtime and no tokens. The default is a model line.
-export function billingCharge(overrides: Partial<BillingCharge> = {}): BillingCharge {
-  return { id: "charge-1", kind: BILLING_CHARGE_KIND.model, sequence: 0, model: BILLING_MODEL, posture: PROVIDER_MODE.platform,
-    charged_nanos: BILLING_CHARGE_NANOS, input_tokens: 40, output_tokens: 10, runtime_ms: 0,
-    unpriced_tokens: 0, requested_at: BILLING_AT, settled_at: BILLING_AT, ...overrides };
+/** Totals for a day or a model, which the server serves without an activity count. */
+export function billingRowTotals(overrides: Partial<BillingTotals> = {}): BillingTotals {
+  return { charged_nanos: BILLING_CHARGE_NANOS, input_tokens: 40, output_tokens: 10, runtime_ms: BILLING_RUNTIME_MS,
+    line_count: 1, unpriced_tokens: 0, ...overrides };
 }
 
 export function billingReport(overrides: Partial<BillingReport> = {}): BillingReport {
   const totals = overrides.totals ?? billingTotals();
+  const { activity_count: _counted, ...row } = totals;
   const from = overrides.from_at ?? "2026-10-01T00:00:00Z";
   const through = overrides.through_at ?? BILLING_AT;
   const start = Date.parse(`${from.slice(0, 10)}T00:00:00Z`);
@@ -42,11 +32,10 @@ export function billingReport(overrides: Partial<BillingReport> = {}): BillingRe
   const count = (end - start) / dayMs + 1;
   return { period: BILLING_PERIOD_MONTH, from_at: from, through_at: through,
     totals, daily: Array.from({length: count}, (_, index) => ({day: new Date(start + index * dayMs).toISOString().slice(0, 10),
-      totals: index === count - 1 ? totals : billingTotals({charged_nanos: "0", input_tokens: 0, output_tokens: 0, runtime_ms: 0, line_count: 0, activity_count: 0})})),
+      totals: index === count - 1 ? row : billingRowTotals({charged_nanos: "0", input_tokens: 0, output_tokens: 0, runtime_ms: 0, line_count: 0})})),
     spending: { by_fleet: [{ key: BILLING_FLEET, label: "Payment alerts", models: [BILLING_MODEL], totals }],
-      by_model: [{ key: BILLING_MODEL, label: null, totals }] },
-    filters: { fleets: [{ id: BILLING_FLEET, name: "Payment alerts" }], models: [BILLING_MODEL] },
-    activities: { items: [billingActivity()], total: 1, next_cursor: null }, ...overrides };
+      by_model: [{ key: BILLING_MODEL, label: null, totals: row }] },
+    filters: { fleets: [{ id: BILLING_FLEET, name: "Payment alerts" }], models: [BILLING_MODEL] }, ...overrides };
 }
 
 export const BILLING_CATALOGUE = {

@@ -29,7 +29,7 @@ export function UsageBrowserFixture() {
   return <AppRouterContext value={router}><PathnameContext value="/settings/billing"><SearchParamsContext value={query}><TooltipProvider>
     <ShellFrame workspaces={workspaces}><ModelLabelsProvider labels={LABELS}><UsageLayout>
       {loaded === null ? <output>Loading sample report…</output> : loaded.ok
-        ? <UsageReportView report={loaded.report} pageSize={loaded.pageSize} detail={loaded.detail} selected={loaded.selected} />
+        ? <UsageReportView report={loaded.report} />
         : <UnavailableState title="Billing report unavailable" description="The simulated report request failed." />}
     </UsageLayout></ModelLabelsProvider></ShellFrame>
   </TooltipProvider></SearchParamsContext></PathnameContext></AppRouterContext>;

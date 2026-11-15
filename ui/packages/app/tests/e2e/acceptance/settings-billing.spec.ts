@@ -11,7 +11,7 @@ import { expectAccessible, expectNoPageOverflow } from "./fixtures/accessibility
 
 const PERIOD_CHARGE = "Settled charges";
 const BILLING_PATH = "/settings/billing";
-const FILTER_LABEL = { period: "Period", fleet: "Fleet", model: "Model" } as const;
+const FILTER_LABEL = { period: "Period", fleet: "Fleet" } as const;
 const ROLE = { combobox: "combobox", button: "button", heading: "heading" } as const;
 const NAVIGATION = { expanded: "expanded", collapsed: "collapsed" } as const;
 const DESKTOP_HEIGHT = 1000;
@@ -43,7 +43,7 @@ test.describe("settings billing", () => {
     await expect(page.getByRole(ROLE.combobox, { name: FILTER_LABEL.period, exact: true })).toBeVisible();
     await expect(page.getByRole(ROLE.combobox, { name: FILTER_LABEL.fleet, exact: true })).toBeVisible();
     await page.getByRole(ROLE.button, {name: "More filters", exact: true}).click();
-    await expect(page.getByRole(ROLE.combobox, { name: FILTER_LABEL.model, exact: true })).toBeVisible();
+    await expect(page.getByRole(ROLE.button, { name: "Previous month", exact: true })).toBeVisible();
     await expectAccessible(page, "Usage additional filters");
     await page.keyboard.press("Escape");
     await expect(page.getByRole(ROLE.button, {name: "More filters", exact: true})).toBeFocused();
@@ -52,8 +52,6 @@ test.describe("settings billing", () => {
     await expect(page.getByRole("table", {name: "Spending by fleet", exact: true})
       .getByRole("columnheader")).toHaveText(["Fleet", "Activities", "Charged"]);
     await expect(page.getByRole("figure", {name: "Daily spend"})).toContainText("Daily spending is not available yet.");
-    await page.getByRole(ROLE.button, {name: "Charge details", exact: true}).click();
-    await expect(page.getByRole("table", { name: "Billing activity", exact: true })).toBeVisible();
     await expect(page.getByText(/Charged by fleet or setup chat|No settled spending/)).toBeVisible();
     await expect(page.getByText(/Charged by model|No settled spending/)).toBeVisible();
     await page.getByRole(ROLE.combobox, { name: FILTER_LABEL.period, exact: true }).click();
@@ -69,7 +67,6 @@ test.describe("settings billing", () => {
       await page.goto(BILLING_PATH);
       await expect(page.getByText(PERIOD_CHARGE, { exact: true })).toBeVisible();
       await page.evaluate(value => document.documentElement.setAttribute("data-theme", value), theme);
-      await page.getByRole(ROLE.button, {name: "Charge details", exact: true}).click();
       for (const layout of LAYOUTS) {
         await page.setViewportSize(layout.viewport);
         if (layout.viewport.width >= VIEWPORT.intermediate.width) {
@@ -92,13 +89,6 @@ test.describe("settings billing", () => {
           expect(totals[1]!.top).toBeGreaterThan(totals[0]!.top);
           expect(totals[2]!.top).toBeGreaterThan(totals[1]!.top);
           expect(Math.max(...totals.map(metric => metric.left)) - Math.min(...totals.map(metric => metric.left))).toBeLessThan(1);
-        }
-        const activity = page.getByRole("table", { name: "Billing activity", exact: true });
-        await expect(activity.getByRole("columnheader")).toHaveCount(5);
-        const first = activity.locator("tbody > tr").first().getByRole("cell");
-        if (await first.count() === 5) {
-          await expect(first.nth(2)).toBeVisible();
-          await expect(first.nth(3)).toBeVisible();
         }
         await expectAccessible(page, `Billing ${theme} ${layout.name}`);
         await expectNoPageOverflow(page);
