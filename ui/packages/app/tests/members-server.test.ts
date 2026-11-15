@@ -116,15 +116,17 @@ describe("members server actions", () => {
 describe("members page", () => {
   it("should hand the view both lists from one render", async () => {
     serve({
+      "/v1/users/me": () => json(200, {user_id: OWNER.user_id}),
       [MEMBERS_PATH]: () => json(200, { items: [OWNER], total: 1, next_cursor: null }),
       [INVITES_PATH]: () => json(200, { items: [INVITE], total: 1, next_cursor: null }),
     });
-    const element = (await MembersPage()) as ReactElement<{ initialMembers: unknown; initialInvites: unknown }>;
-    expect(element.props).toEqual({ initialMembers: [OWNER], initialInvites: [INVITE] });
+    const element = (await MembersPage()) as ReactElement<{ initialMembers: unknown; initialInvites: unknown; viewerUserId: string }>;
+    expect(element.props).toEqual({ initialMembers: [OWNER], initialInvites: [INVITE], viewerUserId: OWNER.user_id });
   });
 
   it("should send an expired session to sign in", async () => {
     serve({
+      "/v1/users/me": () => json(200, {user_id: OWNER.user_id}),
       [MEMBERS_PATH]: () => json(401, { title: "unauthorized", status: 401, error_code: "UZ-AUTH-002" }),
       [INVITES_PATH]: () => json(200, { items: [], total: 0, next_cursor: null }),
     });
@@ -133,10 +135,20 @@ describe("members page", () => {
 
   it("should let any other failure reach the error boundary rather than render an empty team", async () => {
     serve({
+      "/v1/users/me": () => json(200, {user_id: OWNER.user_id}),
       [MEMBERS_PATH]: () => json(404, { title: "not found", status: 404, error_code: "UZ-REQ-404" }),
       [INVITES_PATH]: () => json(200, { items: [], total: 0, next_cursor: null }),
     });
     await expect(MembersPage()).rejects.toMatchObject({ status: 404 });
     expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("redirects when the identity read expires even if the team lists succeed", async () => {
+    serve({
+      "/v1/users/me": () => json(401, {status: 401, error_code: "UZ-AUTH-002"}),
+      [MEMBERS_PATH]: () => json(200, {items: [OWNER], total: 1, next_cursor: null}),
+      [INVITES_PATH]: () => json(200, {items: [], total: 0, next_cursor: null}),
+    });
+    await expect(MembersPage()).rejects.toThrow(`NEXT_REDIRECT:${SIGN_IN_PATH}`);
   });
 });

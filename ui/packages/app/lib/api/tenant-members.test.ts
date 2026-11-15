@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "./errors";
-import { listMembers, listWorkspaceMembers, removeMember } from "./tenant-members";
+import { listMembers, listWorkspaceMembers, readCurrentUserId, removeMember } from "./tenant-members";
 import { ACCOUNT_ROLE } from "./workspaces-types";
 
 const TOKEN = "tok_owner";
@@ -17,6 +17,26 @@ function answer(status: number, body?: unknown) {
     }),
   );
 }
+
+describe("readCurrentUserId", () => {
+  it("reads the authenticated application's user identifier", async () => {
+    const id = "0199a801-1000-7000-8000-000000000011";
+    const spy = answer(200, {user_id: id});
+    await expect(readCurrentUserId(TOKEN)).resolves.toBe(id);
+    expect(spy.mock.calls[0]?.[0]).toEqual(expect.stringContaining("/v1/users/me"));
+    expect(new Headers(spy.mock.calls[0]?.[1]?.headers).get("Authorization")).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it.each([null, {}, {user_id: ""}])("refuses an invalid identity instead of guessing (%j)", async body => {
+    answer(200, body);
+    await expect(readCurrentUserId(TOKEN)).rejects.toThrow("current user is invalid");
+  });
+
+  it("retains an identity read's authorization failure", async () => {
+    answer(403, {title: "forbidden", status: 403, error_code: "UZ-AUTH-022"});
+    await expect(readCurrentUserId(TOKEN)).rejects.toMatchObject({status: 403});
+  });
+});
 
 describe("listMembers", () => {
   it("should decode every member, keeping a missing display name as null", async () => {
