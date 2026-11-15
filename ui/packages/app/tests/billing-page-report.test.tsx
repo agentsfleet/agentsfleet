@@ -4,7 +4,7 @@ import { renderToReadableStream } from "react-dom/server";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { ModelLabelsProvider } from "@/components/domain/models/ModelLabels";
 import { mockAuthOnce } from "./helpers/dashboard-mocks";
-import { BILLING_AT, BILLING_MODEL, BILLING_MODEL_NAME, BILLING_SELECTION, BILLING_WORK, billingActivity, billingCharge, billingReport } from "./helpers/billing-report";
+import { BILLING_AT, BILLING_FLEET, BILLING_MODEL, BILLING_MODEL_NAME, BILLING_SELECTION, BILLING_WORK, billingActivity, billingCharge, billingReport } from "./helpers/billing-report";
 import type { BillingSearch } from "@/app/(dashboard)/settings/billing/lib/report-query";
 import { activityKey } from "@/app/(dashboard)/settings/billing/lib/report-query";
 import { BILLING_ACTIVITY_SETUP } from "@/lib/api/billing_report";
@@ -76,6 +76,18 @@ describe("served billing page composition", () => {
     expect(unlabelled).not.toContain(BILLING_MODEL_NAME);
     expect(unlabelled).toContain("$0.0001");
     expect(requests).toHaveLength(1);
+  });
+
+  it("serves an initial period and fleet link through the page with one report read", async () => {
+    backend({report: billingReport({period: "week", from_at: "2026-10-19T00:00:00Z"})});
+    const page = await BillingSettingsPage({searchParams: Promise.resolve({period: "week", fleet: BILLING_FLEET, through_at: BILLING_AT})});
+    const stream = await renderToReadableStream(<TooltipProvider><ModelLabelsProvider labels={LABELS}>{page}</ModelLabelsProvider></TooltipProvider>);
+    await stream.allReady;
+    const html = await new Response(stream).text();
+    expect(html).toContain("Settled charges");
+    expect(html).toContain("Payment alerts");
+    expect(requests).toHaveLength(1);
+    expect(Object.fromEntries(requests[0]!.searchParams)).toMatchObject({period: "week", fleet_id: BILLING_FLEET, through_at: BILLING_AT});
   });
 
   it("usage_shell_streams_before_report: the frame renders while the report is pending", async () => {

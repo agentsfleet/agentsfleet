@@ -54,15 +54,19 @@ The chart keeps nanodollars as integers until formatting or bounded display scal
 
 The page uses the canonical [UX reference](../ux.html), shared Manrope typography, a named-month Period control and an All Fleets selector.
 The owner deferred timezone changes. A past reporting month uses its inclusive `through_at` cutoff; the current month clears it.
+
 Partial snapshots show their through date as a separate choice, allowing a return to the full or live month.
 Displayed instants and ranges use shared viewer-local `Time` utilities. Calendar bucket identities stay as supplied by the API.
 
 The daily plot has a fixed 100px height and at most 31 bars. A decoder refusal handles oversized projections without clipping charges.
 The shared fleet select scrolls within the available viewport height.
+
+
 An existing model-filtered URL shows its exact model identity and a clear action; narrowed totals cannot hide behind the removed picker.
 
 The shared model-label request starts once per document load alongside shell reads.
 Its pending promise stays in `ModelLabelsProvider`; the named fleet table waits inside its own `Suspense` boundary.
+
 The heading, controls, totals and daily plot can render from the report while labels are pending.
 A failed label read resolves to recorded identifiers; there is no identifier/name swap after the table paints.
 
@@ -96,6 +100,8 @@ Report reads use a fixed number of queries, independent of page size. Concurrent
 
 The dashboard page under `ui/packages/app` makes one report request, validates it and retains complete filtered aggregates.
 Filter changes reset continuations; fleet changes preserve the reporting cutoff. Model names reuse the shared label store, without a Usage catalogue request.
+
+
 The charge API and loader remain reusable; the paused UI makes no charge request.
 
 ## Acceptance
