@@ -22,7 +22,7 @@ export function SectionHeader({
     <div
       ref={ref}
       className={cn(
-        "flex min-w-0 flex-wrap items-center justify-between gap-md",
+        "flex min-w-0 flex-wrap items-center justify-between gap-md max-summary:gap-xl",
         className,
       )}
       {...props}
