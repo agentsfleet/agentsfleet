@@ -128,4 +128,24 @@ describe("Billing report filters preserve period totals", () => {
     expect(screen.queryByRole("button", {name: "More filters"})).toBeNull();
     expect(screen.queryByRole("combobox", {name: "Model"})).toBeNull();
   });
+
+  it("keeps an empty scoped fleet labelled and can clear it without changing the period", async () => {
+    current.params = new URLSearchParams({fleet: BILLING_FLEET, period: "month", through_at: BILLING_AT});
+    view(billingReport({totals: billingTotals({charged_nanos: "0", activity_count: 0, line_count: 0}),
+      daily: [], spending: {by_fleet: [], by_model: []}, filters: {fleets: [], models: []}}));
+    expect(screen.getByRole("combobox", {name: "Fleet"}).textContent).toBe(BILLING_FLEET);
+    expect(screen.getByText(`Daily spend · ${BILLING_FLEET}`)).toBeTruthy();
+    expect(screen.getByText("No settled charges for this period.")).toBeTruthy();
+    expect(push).not.toHaveBeenCalled();
+    await choose("Fleet", "All Fleets");
+    expect(Object.fromEntries(pushedParams())).toEqual({period: "month", through_at: BILLING_AT});
+  });
+
+  it("treats an empty fleet query as All Fleets, matching the report request", () => {
+    current.params = new URLSearchParams("fleet=");
+    view();
+    expect(screen.getByRole("combobox", {name: "Fleet"}).textContent).toBe("All Fleets");
+    expect(screen.getByText("Daily spend · All Fleets")).toBeTruthy();
+    expect(push).not.toHaveBeenCalled();
+  });
 });
