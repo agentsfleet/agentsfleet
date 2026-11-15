@@ -2,15 +2,46 @@
 
 Status: IN_PROGRESS
 
+## Completed six-shard measurement
+
+The [aggregate job](https://github.com/agentsfleet/agentsfleet/actions/runs/43761405009/job/132962457601) passed for head `921cf19c41924ec8e9a5feeefe7ef1370ba641cc`.
+It covered 107,249 of 109,432 lines: 98.0052 percent, above the unchanged 98 percent floor.
+Changed-line coverage passed at 1,366 of 1,366, or 100 percent.
+
+All six reports name tested merge `a8b800bc5038067d64bdd59b7a373830cac22f29`.
+Its parents are `5dace1442` and `921cf19c4`; its only difference from the source head is the parent's billing-test helper rename.
+The original archives, verified digests and revision sidecars are retained at `/workspace/artifacts/m249-runtime/ci-lcov-921cf19c4/`.
+
+The latest check returned 48 successful checks and three conditional skips.
+Greptile reviewed that head with confidence 5/5 and no blocking finding; two quiet polls returned zero review threads.
+This documentation follow-up still needs its own final checks before merge.
+
+The first native root gate passed `make lint-all`, `make test-unit-all` and `make check-version`.
+Rust units passed 1,766 runner, 172 daemon and 3,677 daemon-library cases.
+App, website, CLI and design-system units passed 4,577, 133, 2,335 and 516 cases, with all package coverage gates green.
+
+That gate failed six paragraph-formatting checks in this document.
+Its integration command also stopped after verbose daemon logging exceeded the unchanged 64 MiB output cap.
+The raw supervisor result records 67,111,636 bytes and `output limit exceeded`, rather than a passing integration run.
+
+The formatting is repaired, and the gate will repeat with normal logging by unsetting `AFD_TEST_LOG`.
+The existing logger still evaluates tracing fields and writes to a sink.
+No test assertion, deadline, gate setting, coverage floor or exclusion changes for the retry.
+
+Receipts are `recovery-final-pr-gate.log` and `recovery-integration-output-limit/result.json` under `/workspace/artifacts/m249-runtime/`.
+The final result belongs in PR #845's latest Session notes, alongside any remaining live or documentation blockers.
+
 ## Recovery and refusal tests after the rollup rebase
 
 All six shards passed on `a11a0b942aceffce51730ad572c193ab55b79c0c`.
 The [combined job](https://github.com/agentsfleet/agentsfleet/actions/runs/43750366060/job/132928514989) still failed: 106,924 of 109,296 lines covered, or 97.8297 percent against the unchanged 98 percent floor.
+
 Its changed-line grade passed at 1,223 of 1,223, or 100 percent.
 The six original reports and their common revision sidecars remain separate from earlier runs.
 
 The follow-up adds component tests for authenticated recovery cursors, frozen-sandbox ownership, refused preparation, retained receipts, bounded manifests, nonempty history and files, and failed authentication tags.
 Publication tests also cover refused receipt reads, lost replies without duplicate writes, invalid candidates and source replies for another task generation.
+
 Policy tests stop work after unusable assignments or permanent heartbeat failure.
 Authoring observations retain uncertainty and refuse interrupted updates.
 A direct malformed-cost test checks the meter leaf's defensive refusal; the native client normally rejects that input first.
@@ -21,8 +52,9 @@ Provider tests verify refusal classification and retry metadata; they do not est
 
 The scoped instrumented diagnostic passed 208 agent and 473 supervisor tests.
 It exercises 190 formerly missed lines at source positions unchanged from the six-shard report.
+
 That comparison identifies newly exercised code; it is not an overall coverage grade and does not combine reports from different revisions.
-The pushed revision still needs its complete six-shard measurement before merge.
+The complete six-shard measurement is recorded above.
 
 Source review strengthened the failed-thaw test to assert an attempt before refusal and preserve the original restore error when thaw also fails.
 The shared scratch-Git helper now removes inherited `GIT_*` variables.
@@ -30,8 +62,10 @@ Its subprocess regression verifies the sentinel repository's HEAD, index and fil
 
 Receipts include `recovery-native-unit-final.log`, `recovery-reviewed-coverage.log`, `recovery-reviewed.info` and `recovery-reviewed-gain-analysis.json` under `/workspace/artifacts/m249-runtime/`.
 The final native `make lint-rustd` passed source checks, formatting, all-feature/all-target Clippy and the dependency scan; its receipt is `recovery-rust-lint-complete.log`.
+
 Review removed two accepted token-overflow seeds because they exceeded the wire schema's `u32` bound; they provide no native-path proof.
 The earlier diagnostic's mistaken 500-response retry expectation was corrected to the existing provider behavior: only 429 and 529 retain retry-delay metadata.
+
 No production reporting behavior, SQL, schema, threshold, gate selection or workflow changed.
 
 ## Exact parent and local gate limits
@@ -44,17 +78,21 @@ The parent's app coverage run passed 4,630 tests but failed its unchanged statem
 The separate native website, CLI and design-system baselines passed 133, 2,335 and 516 tests respectively.
 The parent's app build passed; its size check failed the existing server-only `effect` import check.
 
-The first local gate on `a11a0b942` passed 1,387 integration cases and failed one: the 100-caller task-decision test exhausted its API connection-pool wait after five seconds.
+The first local gate on `a11a0b942` passed 1,387 integration cases and failed one.
+The 100-caller task-decision test exhausted its API connection-pool wait after five seconds.
 The same case passed in the six-shard CI run.
+
 The superseded gate's unit command was stopped deliberately while implementing the additional coverage tests.
 Its old draft-opening integration override does not establish a passing integration lane or authorize merging a failed result.
-The final native gate remains pending at this checkpoint; no assertion or deadline was relaxed.
+
+The first native gate on `921cf19c4` reached the separate output cap recorded above.
+The corrected final gate remains pending at this checkpoint; no assertion or deadline was relaxed.
 
 Baseline receipts are `rollup-exact-parent-unit-rust.log`, `rollup-exact-parent-integration.log`, `rollup-exact-parent-typescript-coverage.log` and `rollup-exact-parent-other-typescript-units.log`.
 The production-build receipts are `rollup-parent-app-build.log` and `rollup-parent-app-size.log`.
 The interrupted branch gate is retained as `final-rebased-pr-gate.log`.
 
-The remaining merge blocker on PR #845 is Rust line coverage. The owner authorized this repair after the UI checks passed:
+The owner authorized the Rust coverage repair after the UI checks passed:
 
 > "Move the test-integration coverage up, so we could merge"
 
