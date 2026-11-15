@@ -317,3 +317,7 @@ fn recovered_history(
         history: Zeroizing::new(history.expose().to_vec()),
     }
 }
+
+#[cfg(test)]
+#[path = "tests/recovery/ownership.rs"]
+mod ownership_tests;

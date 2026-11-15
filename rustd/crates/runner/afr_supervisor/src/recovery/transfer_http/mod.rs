@@ -5,7 +5,7 @@ use af_wire::task::{
 };
 use axum::http::{Method, StatusCode};
 use std::time::Duration;
-mod server;
+pub(in crate::recovery) mod server;
 use server::Server;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 const CONTENT: &[u8] = b"ciphertext-with-authentication-tag";

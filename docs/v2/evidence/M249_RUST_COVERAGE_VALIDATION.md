@@ -2,6 +2,58 @@
 
 Status: IN_PROGRESS
 
+## Recovery and refusal tests after the rollup rebase
+
+All six shards passed on `a11a0b942aceffce51730ad572c193ab55b79c0c`.
+The [combined job](https://github.com/agentsfleet/agentsfleet/actions/runs/43750366060/job/132928514989) still failed: 106,924 of 109,296 lines covered, or 97.8297 percent against the unchanged 98 percent floor.
+Its changed-line grade passed at 1,223 of 1,223, or 100 percent.
+The six original reports and their common revision sidecars remain separate from earlier runs.
+
+The follow-up adds component tests for authenticated recovery cursors, frozen-sandbox ownership, refused preparation, retained receipts, bounded manifests, nonempty history and files, and failed authentication tags.
+Publication tests also cover refused receipt reads, lost replies without duplicate writes, invalid candidates and source replies for another task generation.
+Policy tests stop work after unusable assignments or permanent heartbeat failure.
+Authoring observations retain uncertainty and refuse interrupted updates.
+A direct malformed-cost test checks the meter leaf's defensive refusal; the native client normally rejects that input first.
+
+The test-only HTTPS fixture supplies its pinned certificate and client to the existing provider client and recovery session helpers.
+It does not replace the production constructors or establish complete object-store acceptance through `LeaseRun`.
+Provider tests verify refusal classification and retry metadata; they do not establish the complete two-attempt logical retry loop.
+
+The scoped instrumented diagnostic passed 208 agent and 473 supervisor tests.
+It exercises 190 formerly missed lines at source positions unchanged from the six-shard report.
+That comparison identifies newly exercised code; it is not an overall coverage grade and does not combine reports from different revisions.
+The pushed revision still needs its complete six-shard measurement before merge.
+
+Source review strengthened the failed-thaw test to assert an attempt before refusal and preserve the original restore error when thaw also fails.
+The shared scratch-Git helper now removes inherited `GIT_*` variables.
+Its subprocess regression verifies the sentinel repository's HEAD, index and files, and requires the scratch repository's own index.
+
+Receipts include `recovery-native-unit-final.log`, `recovery-reviewed-coverage.log`, `recovery-reviewed.info` and `recovery-reviewed-gain-analysis.json` under `/workspace/artifacts/m249-runtime/`.
+The final native `make lint-rustd` passed source checks, formatting, all-feature/all-target Clippy and the dependency scan; its receipt is `recovery-rust-lint-complete.log`.
+Review removed two accepted token-overflow seeds because they exceeded the wire schema's `u32` bound; they provide no native-path proof.
+The earlier diagnostic's mistaken 500-response retry expectation was corrected to the existing provider behavior: only 429 and 529 retain retry-delay metadata.
+No production reporting behavior, SQL, schema, threshold, gate selection or workflow changed.
+
+## Exact parent and local gate limits
+
+At exact parent `6edd08d8402747b3468820c50ce1102bb79fe2fc`, native Rust unit testing passed 1,731 runner, 172 daemon and 3,674 daemon-library tests.
+Its integration lane passed 924 cases and failed the inherited rollup-table grant inventory; later daemon and exclusive selections were not reached.
+The repaired inventory on this branch includes both existing tables and retains all role and verb probes.
+
+The parent's app coverage run passed 4,630 tests but failed its unchanged statement and branch floors at 99.98 percent.
+The separate native website, CLI and design-system baselines passed 133, 2,335 and 516 tests respectively.
+The parent's app build passed; its size check failed the existing server-only `effect` import check.
+
+The first local gate on `a11a0b942` passed 1,387 integration cases and failed one: the 100-caller task-decision test exhausted its API connection-pool wait after five seconds.
+The same case passed in the six-shard CI run.
+The superseded gate's unit command was stopped deliberately while implementing the additional coverage tests.
+Its old draft-opening integration override does not establish a passing integration lane or authorize merging a failed result.
+The final native gate remains pending at this checkpoint; no assertion or deadline was relaxed.
+
+Baseline receipts are `rollup-exact-parent-unit-rust.log`, `rollup-exact-parent-integration.log`, `rollup-exact-parent-typescript-coverage.log` and `rollup-exact-parent-other-typescript-units.log`.
+The production-build receipts are `rollup-parent-app-build.log` and `rollup-parent-app-size.log`.
+The interrupted branch gate is retained as `final-rebased-pr-gate.log`.
+
 The remaining merge blocker on PR #845 is Rust line coverage. The owner authorized this repair after the UI checks passed:
 
 > "Move the test-integration coverage up, so we could merge"

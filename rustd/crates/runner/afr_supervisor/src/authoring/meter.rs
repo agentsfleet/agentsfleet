@@ -97,3 +97,7 @@ impl Observed {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "meter_tests.rs"]
+mod tests;

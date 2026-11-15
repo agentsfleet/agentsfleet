@@ -16,6 +16,7 @@ fn empty_file(path: &str) -> CheckpointEntry {
     })
 }
 
+mod bounds;
 mod success;
 
 #[tokio::test]
