@@ -102,7 +102,7 @@ async fn run_round(f: &Fixture, api: &Db, round: usize) {
 
 async fn observe(admin: &Db) -> i64 {
     loop {
-        let waiting: i64 = sqlx::query_scalar("SELECT COUNT(*)::bigint FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'WITH scoped AS%'")
+        let waiting: i64 = sqlx::query_scalar("SELECT COUNT(*)::bigint FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%WITH lines AS%'")
             .fetch_one(&mut *admin.acquire().await.unwrap()).await.unwrap();
         if usize::try_from(waiting).expect("nonnegative connection count fits usize") == CONNECTIONS
         {
