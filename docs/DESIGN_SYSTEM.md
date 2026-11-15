@@ -30,6 +30,9 @@ The owner deferred timezone changes; accounting months and daily buckets retain 
 No `month` or `timezone` parameter is added.
 More filters, Charge details and Add credit stay absent while their future design is pending.
 
+The [rendered design review](v2/evidence/M249_DESIGN_REVIEW.md) records the page comparisons and approved differences.
+Keep shared header spacing, chart borders and local help disclosures consistent with that reviewed implementation.
+
 Totals and daily bars render from one report request; the shared model-label read only holds the named fleet table behind its own loading boundary.
 
 Security uses a shield in the resource header and contains API keys and signed-in sessions.
