@@ -111,15 +111,24 @@ impl LeaseService {
         let runner_id_field = runner_id.as_str();
         let fleet_id_field = acquired.fleet_id.as_str();
         let event_id_field = acquired.event_id.as_str();
-        tracing::warn!(
-            event = EVENT_REFUSED,
-            runner_id = runner_id_field,
-            fleet_id = fleet_id_field,
-            agentsfleet_event_id = event_id_field,
-            label,
-            reason,
-            "the event was ended at a gate"
-        );
+        {
+            let (event, runner_id, fleet_id, agentsfleet_event_id, message) = (
+                &EVENT_REFUSED,
+                &runner_id_field,
+                &fleet_id_field,
+                &event_id_field,
+                format_args!("the event was ended at a gate"),
+            );
+            tracing::warn!(
+                message,
+                event,
+                runner_id,
+                fleet_id,
+                agentsfleet_event_id,
+                label,
+                reason
+            );
+        };
         no_work(runner_id, label);
         Ok(())
     }
@@ -136,16 +145,27 @@ impl LeaseService {
         let fleet_id_field = acquired.fleet_id.as_str();
         let event_id_field = acquired.event_id.as_str();
         let earlier_leases = acquired.earlier_leases;
-        tracing::warn!(
-            event = EVENT_ABANDONED,
-            runner_id = runner_id_field,
-            fleet_id = fleet_id_field,
-            agentsfleet_event_id = event_id_field,
-            label = label::LEASE_EXPIRED,
-            earlier_leases,
-            reason = DETAIL_LEASES_LAPSED,
-            "the event was ended after its leases kept lapsing"
-        );
+        {
+            let (event, runner_id, fleet_id, agentsfleet_event_id, label, reason, message) = (
+                &EVENT_ABANDONED,
+                &runner_id_field,
+                &fleet_id_field,
+                &event_id_field,
+                &label::LEASE_EXPIRED,
+                &DETAIL_LEASES_LAPSED,
+                format_args!("the event was ended after its leases kept lapsing"),
+            );
+            tracing::warn!(
+                message,
+                event,
+                runner_id,
+                fleet_id,
+                agentsfleet_event_id,
+                label,
+                earlier_leases,
+                reason
+            );
+        };
         no_work(runner_id, label::LEASE_EXPIRED);
         Ok(())
     }
@@ -229,17 +249,29 @@ impl LeaseService {
                     error_code,
                     reason: unrecorded_reason,
                 } = unrecorded.logged();
-                tracing::warn!(
-                    error_code,
-                    fleet_id = fleet_id_field,
-                    agentsfleet_event_id = event_id_field,
-                    reason = unrecorded_reason,
-                    config_error_code,
-                    config_reason = reason,
-                    event = EVENT_CONFIG_REFUSAL_UNRECORDED,
-                    "a fleet with an unreadable config could not be ended; it \
+                {
+                    let (fleet_id, agentsfleet_event_id, reason, config_reason, event, message) = (
+                        &fleet_id_field,
+                        &event_id_field,
+                        &unrecorded_reason,
+                        &reason,
+                        &EVENT_CONFIG_REFUSAL_UNRECORDED,
+                        format_args!(
+                            "a fleet with an unreadable config could not be ended; it \
                      will be offered again"
-                );
+                        ),
+                    );
+                    tracing::warn!(
+                        message,
+                        error_code,
+                        fleet_id,
+                        agentsfleet_event_id,
+                        reason,
+                        config_error_code,
+                        config_reason,
+                        event
+                    );
+                };
                 no_work(runner_id, label::CONFIG_UNREADABLE);
                 Ok(())
             }

@@ -63,14 +63,14 @@ pub(super) async fn charge(
         // `log` fallback no process here runs.
         let (tenant_id, work_type, work_id) =
             (tenant.as_str(), work.work_type(), work.id().as_str());
-        tracing::warn!(
-            tenant_id,
-            work_type,
-            work_id,
-            charged_nanos = total,
-            event = EVENT_SETTLED_WITHOUT_WALLET,
-            "settled usage for a payer with no wallet; nothing was debited"
-        );
+        {
+            let (charged_nanos, event, message) = (
+                &total,
+                &EVENT_SETTLED_WITHOUT_WALLET,
+                format_args!("settled usage for a payer with no wallet; nothing was debited"),
+            );
+            tracing::warn!(message, tenant_id, work_type, work_id, charged_nanos, event);
+        };
     }
     Ok(Receipt {
         settled_lines: charged.len(),

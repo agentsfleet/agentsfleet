@@ -206,18 +206,29 @@ fn record_issued(
     let kind = acquired.kind.as_str();
     let decision_model_id = decision.map(|assigned| assigned.profile.model_id.as_str());
     let decision_revision_id = decision.map(|assigned| assigned.revision_id.as_str());
-    tracing::debug!(
-        event = EVENT_LEASE_ISSUED,
-        lease_id = lease,
-        fleet_id = fleet,
-        runner_id = runner,
-        agentsfleet_event_id = event_id,
-        fencing_token = fence,
-        kind,
-        decision_model_id,
-        decision_revision_id,
-        "a runner now owns this fleet's work"
-    );
+    {
+        let (event, lease_id, fleet_id, runner_id, agentsfleet_event_id, fencing_token, message) = (
+            &EVENT_LEASE_ISSUED,
+            &lease,
+            &fleet,
+            &runner,
+            &event_id,
+            &fence,
+            format_args!("a runner now owns this fleet's work"),
+        );
+        tracing::debug!(
+            message,
+            event,
+            lease_id,
+            fleet_id,
+            runner_id,
+            agentsfleet_event_id,
+            fencing_token,
+            kind,
+            decision_model_id,
+            decision_revision_id
+        );
+    };
 }
 
 /// A lease was written and handed to a runner.

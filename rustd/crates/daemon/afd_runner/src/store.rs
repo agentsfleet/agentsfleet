@@ -188,11 +188,9 @@ impl Runners {
 fn record_enrolled(runner: &Uuid7, host: &str, verdict: Verdict) {
     let runner_id = runner.as_str();
     let degraded = verdict.is_degraded();
-    tracing::debug!(
-        runner_id,
-        host_id = host,
-        degraded,
-        event = "runner_enrolled",
-        "runner enrolled"
-    );
+    {
+        let (host_id, event, message) =
+            (&host, &"runner_enrolled", format_args!("runner enrolled"));
+        tracing::debug!(message, runner_id, host_id, degraded, event);
+    };
 }

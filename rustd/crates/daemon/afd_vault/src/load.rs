@@ -86,11 +86,10 @@ impl Vault {
         // narrowing fact about a key.
         let workspace_id = workspace.as_str();
         let secret_name = name.as_str();
-        tracing::debug!(
-            workspace = workspace_id,
-            name = secret_name,
-            event = "secret_opened",
-        );
+        {
+            let (workspace, name, event) = (&workspace_id, &secret_name, &"secret_opened");
+            tracing::debug!(workspace, name, event);
+        };
         Ok(Some(opened))
     }
 

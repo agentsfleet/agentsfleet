@@ -32,21 +32,22 @@ impl Observation<'_> {
         let elapsed_seconds = elapsed.as_secs_f64();
         let decision_call_id = self.call_id;
         match result {
-            Ok(_) => tracing::info!(
-                event = "dt_decision_transport_completed",
-                decision_call_id,
-                outcome,
-                elapsed_seconds
-            ),
+            Ok(_) => {
+                let event = &"dt_decision_transport_completed";
+                tracing::info!(event, decision_call_id, outcome, elapsed_seconds);
+            }
             Err(error) => {
                 let error_code = error.code().as_str();
-                tracing::warn!(
-                    event = "dt_decision_transport_failed",
-                    decision_call_id,
-                    outcome,
-                    elapsed_seconds,
-                    error_code
-                );
+                {
+                    let event = &"dt_decision_transport_failed";
+                    tracing::warn!(
+                        event,
+                        decision_call_id,
+                        outcome,
+                        elapsed_seconds,
+                        error_code
+                    );
+                };
             }
         }
     }
@@ -65,13 +66,16 @@ impl Drop for Observation<'_> {
             let decision_call_id = self.call_id;
             let elapsed_seconds = elapsed.as_secs_f64();
             let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::warn!(
-                event = "dt_decision_transport_failed",
-                decision_call_id,
-                elapsed_seconds,
-                error_code,
-                outcome = "cancelled"
-            );
+            {
+                let (event, outcome) = (&"dt_decision_transport_failed", &"cancelled");
+                tracing::warn!(
+                    event,
+                    decision_call_id,
+                    elapsed_seconds,
+                    error_code,
+                    outcome
+                );
+            };
         }
     }
 }

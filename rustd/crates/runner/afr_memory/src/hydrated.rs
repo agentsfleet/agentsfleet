@@ -131,11 +131,16 @@ impl<'run> Hydrated<'run> {
             }
             Err(failure) => {
                 let code = failure.code().as_str();
-                tracing::warn!(
-                    error_code = code,
-                    event = EVENT_MISS_FAILED,
-                    "a recall past the window got no answer; the run answers from its window"
-                );
+                {
+                    let (error_code, event, message) = (
+                        &code,
+                        &EVENT_MISS_FAILED,
+                        format_args!(
+                            "a recall past the window got no answer; the run answers from its window"
+                        ),
+                    );
+                    tracing::warn!(message, error_code, event);
+                };
                 None
             }
         }

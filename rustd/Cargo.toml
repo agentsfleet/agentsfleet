@@ -833,11 +833,13 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # `log` record that never runs when a subscriber is installed, and llvm-cov maps
 # both copies to the same source line and reports the DEAD one. The consequence
 # is that `warn!(x = y.z(), ...)` reads as uncovered however many times it runs.
-# Field expressions containing a call are therefore hoisted to a `let` above the
-# macro across this workspace; bare identifiers need no such treatment because
-# they get no coverage region of their own. Isolated in a standalone crate: same
-# code and same versions report 5, adding `features = ["log"]` reports 0.
-# M176 §Coverage decision carries the full measurement.
+# Rust 1.100 also maps named bare values and literals to that dead copy. Bind
+# those values and use tracing's field shorthand at affected emit sites. Keep
+# aliases borrowed and scoped to the emit; a literal message stays format_args!
+# so its value type and position in the field set remain unchanged. Computed
+# fields are hoisted as before. No logging feature or coverage filter changes.
+# The structured reproduction and native measurements are recorded in
+# docs/v2/evidence/M249_RUST_COVERAGE_VALIDATION.md.
 tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"] }
 # The email templates. Variables are checked against a Rust struct at compile
 # time, and HTML escaping is on by default for `.html` templates, so a display

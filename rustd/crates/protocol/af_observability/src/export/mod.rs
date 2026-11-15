@@ -118,13 +118,13 @@ impl<E: SpanExporter> SpanExporter for CountingExporter<E> {
             let reason = failure.to_string();
             let lost = spans;
             let total = self.drops.count();
-            tracing::warn!(
-                reason,
-                lost,
-                total,
-                event = "telemetry_export_failed",
-                "telemetry export failed — spans dropped, requests unaffected"
-            );
+            {
+                let (event, message) = (
+                    &"telemetry_export_failed",
+                    format_args!("telemetry export failed — spans dropped, requests unaffected"),
+                );
+                tracing::warn!(message, reason, lost, total, event);
+            };
         }
         outcome
     }

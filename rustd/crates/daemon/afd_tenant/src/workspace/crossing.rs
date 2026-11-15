@@ -34,15 +34,13 @@ pub fn audit(principal: &Principal, access: &Access, workspace: &Uuid7, method: 
     let acting_tenant = principal.tenant().map(Uuid7::as_str);
     let target_tenant = access.tenant.as_str();
     let target_workspace = workspace.as_str();
-    tracing::warn!(
-        subject,
-        acting_tenant,
-        target_tenant,
-        target_workspace,
-        method,
-        event = %EVENT_CROSSING,
-        "a platform-scoped principal reached another tenant's workspace"
-    );
+    {
+        let (event, message) = (
+            &EVENT_CROSSING,
+            format_args!("a platform-scoped principal reached another tenant's workspace"),
+        );
+        tracing::warn!(message, subject, acting_tenant, target_tenant, target_workspace, method, %event);
+    };
 }
 
 #[cfg(test)]

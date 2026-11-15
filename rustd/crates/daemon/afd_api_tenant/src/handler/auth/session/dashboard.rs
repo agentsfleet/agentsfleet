@@ -164,10 +164,10 @@ pub(crate) async fn verify<D: Services>(
         Ok(redeemed) => {
             // Whether this was the first redemption or a repeat rides the log
             // and never the wire — see `afd_tenant::session::Redeemed`.
-            tracing::debug!(
-                repeated = redeemed.repeated,
-                event = "auth_session_verified",
-            );
+            {
+                let (repeated, event) = (&redeemed.repeated, &"auth_session_verified");
+                tracing::debug!(repeated, event);
+            };
             Json(VerifySessionResponse {
                 dashboard_public_key: Cow::Owned(redeemed.dashboard_public_key),
                 ciphertext: Cow::Owned(redeemed.ciphertext),

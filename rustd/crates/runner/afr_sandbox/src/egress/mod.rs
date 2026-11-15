@@ -68,13 +68,12 @@ pub(crate) fn enforceable() -> bool {
             let Logged { error_code, reason } = error.logged();
             let refusal = error.egress_refusal().map(EgressRefusal::as_str);
             let event = EVENT_PROBE_FAILED;
-            tracing::warn!(
-                error_code,
-                refusal,
-                reason,
-                event,
-                "this host cannot hold a sandbox to an allowlist"
-            );
+            {
+                let (message,) = (format_args!(
+                    "this host cannot hold a sandbox to an allowlist"
+                ),);
+                tracing::warn!(message, error_code, refusal, reason, event);
+            };
             false
         }
     }

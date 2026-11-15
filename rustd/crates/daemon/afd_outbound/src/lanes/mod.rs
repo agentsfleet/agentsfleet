@@ -319,12 +319,9 @@ impl<S: Deliver + 'static> Inner<S> {
         // delivery line that names only the fleet cannot be joined back to the
         // turn a reader is tracing — nor tell two turns of one fleet apart.
         let agentsfleet_event_id = job.outgoing.event_id.as_str();
-        tracing::debug!(
-            provider,
-            fleet_id,
-            agentsfleet_event_id,
-            attempts,
-            event = EVENT_DELIVERED
-        );
+        {
+            let event = &EVENT_DELIVERED;
+            tracing::debug!(provider, fleet_id, agentsfleet_event_id, attempts, event);
+        };
     }
 }

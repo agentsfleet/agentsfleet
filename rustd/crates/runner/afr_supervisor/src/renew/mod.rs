@@ -125,12 +125,10 @@ impl<'a> Renewal<'a> {
         let code = refusal.code().as_str();
         let lease_id = self.lease_id.as_str();
         let event = EVENT_TERMINATED;
-        tracing::warn!(
-            error_code = code,
-            lease_id,
-            event,
-            "the daemon ended the lease"
-        );
+        {
+            let (error_code, message) = (&code, format_args!("the daemon ended the lease"));
+            tracing::warn!(message, error_code, lease_id, event);
+        };
         if refusal.refusal_code() == Some(RUN_BUDGET_EXCEEDED) {
             FailureClass::BudgetBreach
         } else {
@@ -142,12 +140,13 @@ impl<'a> Renewal<'a> {
         let code = error_code::RUN_LEASE_LOST.as_str();
         let lease_id = self.lease_id.as_str();
         let event = EVENT_EXPIRED;
-        tracing::warn!(
-            error_code = code,
-            lease_id,
-            event,
-            "the lease ran out before a renewal landed"
-        );
+        {
+            let (error_code, message) = (
+                &code,
+                format_args!("the lease ran out before a renewal landed"),
+            );
+            tracing::warn!(message, error_code, lease_id, event);
+        };
         FailureClass::RenewalTerminate
     }
 }
@@ -191,13 +190,12 @@ pub(crate) async fn flush(plane: &ControlPlane, lease_id: &Uuid7, meter: &Meter)
         let lease_id = lease_id.as_str();
         let unbilled = meter.backlog().saturating_sub(LINES_MAX);
         let event = EVENT_UNFLUSHED;
-        tracing::error!(
-            error_code,
-            lease_id,
-            unbilled,
-            event,
-            "a renewal did not take the run's usage lines; the report carries the oldest"
-        );
+        {
+            let (message,) = (format_args!(
+                "a renewal did not take the run's usage lines; the report carries the oldest"
+            ),);
+            tracing::error!(message, error_code, lease_id, unbilled, event);
+        };
         return;
     }
 }

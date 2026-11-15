@@ -31,10 +31,11 @@ pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
             touched += 1;
             match one(tasks, &completion).await {
                 Ok(Some(progress)) if !progress.finished => {
-                    tracing::debug!(
-                        event = "dt_completion_signalled",
-                        matched_waits = progress.signalled
-                    );
+                    {
+                        let (event, matched_waits) =
+                            (&"dt_completion_signalled", &progress.signalled);
+                        tracing::debug!(event, matched_waits);
+                    };
                 }
                 Ok(_) => break,
                 Err(fault) => {

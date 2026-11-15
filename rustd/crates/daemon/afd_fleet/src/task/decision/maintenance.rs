@@ -119,13 +119,20 @@ async fn process(
     swept.expired += 1;
     let decision_call_id = written.call.id.as_str();
     let original_lease_id = written.call.original_lease_id.as_str();
-    tracing::debug!(
-        event = "dt_decision_expired_unissued",
-        decision_call_id,
-        original_lease_id,
-        reason = "not_issued_before_deadline",
-        released_reservation_nanos = written.call.reserved_nanos
-    );
+    {
+        let (event, reason, released_reservation_nanos) = (
+            &"dt_decision_expired_unissued",
+            &"not_issued_before_deadline",
+            &written.call.reserved_nanos,
+        );
+        tracing::debug!(
+            event,
+            decision_call_id,
+            original_lease_id,
+            reason,
+            released_reservation_nanos
+        );
+    };
     record::changed(tasks, &written).await?;
     Ok(Outcome::Expired)
 }
@@ -150,34 +157,59 @@ fn failure(
     };
     let outcome_label = outcome.as_str();
     let error_code = fault.code();
-    tracing::debug!(event = "dt_decision_recovery_deferred", decision_call_id = %id,
-        outcome = outcome_label, %error_code, reason);
+    {
+        let (event, decision_call_id, outcome) =
+            (&"dt_decision_recovery_deferred", &id, &outcome_label);
+        tracing::debug!(event, %decision_call_id, outcome, %error_code, reason);
+    };
     Ok(outcome)
 }
 
 fn completed(swept: &DecisionMaintenance, first_failure: Option<af_core::error_code::ErrorCode>) {
     if let Some(error_code) = first_failure {
         let error_code = error_code.as_str();
-        tracing::warn!(
-            event = "dt_decision_maintenance_completed",
-            error_code,
-            scanned = swept.scanned,
-            expired = swept.expired,
-            deferred = swept.deferred,
-            failed = swept.failed,
-            oldest_overdue_ms = swept.oldest_overdue_ms,
-            reason = "candidate_failures"
-        );
+        {
+            let (event, scanned, expired, deferred, failed, oldest_overdue_ms, reason) = (
+                &"dt_decision_maintenance_completed",
+                &swept.scanned,
+                &swept.expired,
+                &swept.deferred,
+                &swept.failed,
+                &swept.oldest_overdue_ms,
+                &"candidate_failures",
+            );
+            tracing::warn!(
+                event,
+                error_code,
+                scanned,
+                expired,
+                deferred,
+                failed,
+                oldest_overdue_ms,
+                reason
+            );
+        };
     } else if swept.scanned > 0 {
-        tracing::info!(
-            event = "dt_decision_maintenance_completed",
-            scanned = swept.scanned,
-            expired = swept.expired,
-            deferred = swept.deferred,
-            failed = swept.failed,
-            oldest_overdue_ms = swept.oldest_overdue_ms,
-            reason = "expired_unissued_reservations"
-        );
+        {
+            let (event, scanned, expired, deferred, failed, oldest_overdue_ms, reason) = (
+                &"dt_decision_maintenance_completed",
+                &swept.scanned,
+                &swept.expired,
+                &swept.deferred,
+                &swept.failed,
+                &swept.oldest_overdue_ms,
+                &"expired_unissued_reservations",
+            );
+            tracing::info!(
+                event,
+                scanned,
+                expired,
+                deferred,
+                failed,
+                oldest_overdue_ms,
+                reason
+            );
+        };
     } else {
         // A pass that scanned nothing and failed nothing has nothing to report.
     }

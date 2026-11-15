@@ -90,11 +90,14 @@ async fn drain<F: Future<Output = bool>>(
 /// One pass over fleet leases from where the last one stopped, logged at both
 /// ends. Answers whether to run again at once.
 async fn sweep_leases(database: &Db, biller: &dyn Biller, resume: &Mutex<Option<Resume>>) -> bool {
-    tracing::debug!(
-        event = STARTED,
-        pass = "leases",
-        "billing relay pass starts"
-    );
+    {
+        let (event, pass, message) = (
+            &STARTED,
+            &"leases",
+            format_args!("billing relay pass starts"),
+        );
+        tracing::debug!(message, event, pass);
+    };
     let after = resume.lock().map_or(None, |at| at.clone());
     let swept =
         afd_fleet::lease::billing_sweep::settle_lines(database, biller, after.as_ref()).await;
@@ -108,11 +111,13 @@ async fn sweep_leases(database: &Db, biller: &dyn Biller, resume: &Mutex<Option<
         }
         Err(error) => {
             let error_code = error.code().as_str();
-            tracing::warn!(
-                event = FAILED,
-                error_code,
-                "billing sweep waits for its datastore"
-            );
+            {
+                let (event, message) = (
+                    &FAILED,
+                    format_args!("billing sweep waits for its datastore"),
+                );
+                tracing::warn!(message, event, error_code);
+            };
             false
         }
     }
@@ -148,20 +153,26 @@ fn log_moved(swept: &LinesSwept) {
     let refused = swept.settle_failures;
     if let (true, Some(code)) = (refused > 0, swept.refused) {
         let error_code = code.as_str();
-        tracing::warn!(
-            event = REFUSED,
-            error_code,
-            refused,
-            "the biller refused part of a billing relay pass; the next pass retries"
-        );
+        {
+            let (event, message) = (
+                &REFUSED,
+                format_args!(
+                    "the biller refused part of a billing relay pass; the next pass retries"
+                ),
+            );
+            tracing::warn!(message, event, error_code, refused);
+        };
     }
-    tracing::debug!(
-        event = COMPLETED,
-        pass = "leases",
-        resettled = swept.resettled,
-        settle_failures = swept.settle_failures,
-        "billing relay pass finished"
-    );
+    {
+        let (event, pass, resettled, settle_failures, message) = (
+            &COMPLETED,
+            &"leases",
+            &swept.resettled,
+            &swept.settle_failures,
+            format_args!("billing relay pass finished"),
+        );
+        tracing::debug!(message, event, pass, resettled, settle_failures);
+    };
 }
 
 #[cfg(test)]

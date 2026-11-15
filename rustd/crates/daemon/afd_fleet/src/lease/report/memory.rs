@@ -82,13 +82,11 @@ impl LeaseService {
         let fleet_id = lease.fleet_id.as_str();
         let lease_id = request.lease_id.as_ref();
         let event = EVENT_CAPTURE_FAILED;
-        tracing::warn!(
-            error_code,
-            fleet_id,
-            lease_id,
-            reason,
-            event,
-            "the run's memory was not written; the report still settles"
-        );
+        {
+            let (message,) = (format_args!(
+                "the run's memory was not written; the report still settles"
+            ),);
+            tracing::warn!(message, error_code, fleet_id, lease_id, reason, event);
+        };
     }
 }

@@ -374,6 +374,13 @@ Greptile reviewed `65019fce7` at confidence 5/5 with no actionable findings; the
 Companion docs [PR #248](https://github.com/agentsfleet/docs/pull/248) merged at `2026-11-15T11:28:09Z`, commit `d5a5e2fbc6c85ca7e1d262cd2fe1dc443930ba93`.
 The shared M249_004 spec remains active; merging this UI follow-up into Claude's branch does not close that workstream.
 
+The final `5c3bd896f` GitHub dry lane passed 4,691 unit tests and 132 browser tests.
+Its Greptile check reviewed 69 files with zero comments; no review thread remains unresolved.
+The remaining Rust aggregate failed at 106,183 of 109,225 covered lines, 97.2149 percent against the 98 percent floor.
+
+The owner then requested raising coverage so the PR could merge.
+The [Rust coverage evidence](M249_RUST_COVERAGE_VALIDATION.md) records the tracing reproduction, source repair, exact scope and subsequent checks.
+
 ## Deployment and access blockers
 
 Development deployment [43669040645](https://github.com/agentsfleet/agentsfleet/actions/runs/43669040645) failed in `fly / deploy-fly`.

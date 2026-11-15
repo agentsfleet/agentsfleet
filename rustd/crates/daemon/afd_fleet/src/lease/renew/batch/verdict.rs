@@ -124,23 +124,29 @@ pub(super) fn log_refused(row: &Found, verdict: &Verdict, refusal: &crate::Error
     let lease = row.id.as_str();
     let code = refusal.code().as_str();
     match verdict {
-        Verdict::OverBudget => tracing::warn!(
-            fleet_id = fleet,
-            lease_id = lease,
-            error_code = code,
-            event = EVENT_BUDGET_BREACH,
-            "the fleet reached a ceiling its author declared; not renewed"
-        ),
+        Verdict::OverBudget => {
+            let (fleet_id, lease_id, error_code, event, message) = (
+                &fleet,
+                &lease,
+                &code,
+                &EVENT_BUDGET_BREACH,
+                format_args!("the fleet reached a ceiling its author declared; not renewed"),
+            );
+            tracing::warn!(message, fleet_id, lease_id, error_code, event);
+        }
         Verdict::Lost | Verdict::Cancelled | Verdict::MaxRuntime => {
             let which = verdict.label();
-            tracing::info!(
-                fleet_id = fleet,
-                lease_id = lease,
-                error_code = code,
-                verdict = which,
-                event = EVENT_REFUSED,
-                "the renewal was refused"
-            );
+            {
+                let (fleet_id, lease_id, error_code, verdict, event, message) = (
+                    &fleet,
+                    &lease,
+                    &code,
+                    &which,
+                    &EVENT_REFUSED,
+                    format_args!("the renewal was refused"),
+                );
+                tracing::info!(message, fleet_id, lease_id, error_code, verdict, event);
+            };
         }
         Verdict::Extended(_) | Verdict::Moved | Verdict::Tasked => {}
     }

@@ -59,19 +59,22 @@ impl InputCount {
             let provider_api = self.api;
             let request_kind = self.kind;
             let measure_us = self.measure_us;
-            tracing::info!(
-                event = "model_input_calibration",
-                correlation_id,
-                route_id,
-                model_id,
-                provider_api,
-                request_kind,
-                method,
-                revision = REVISION,
-                measured_input_tokens,
-                actual_input_tokens,
-                measure_us
-            );
+            {
+                let (event, revision) = (&"model_input_calibration", &REVISION);
+                tracing::info!(
+                    event,
+                    correlation_id,
+                    route_id,
+                    model_id,
+                    provider_api,
+                    request_kind,
+                    method,
+                    revision,
+                    measured_input_tokens,
+                    actual_input_tokens,
+                    measure_us
+                );
+            };
         }
     }
 }

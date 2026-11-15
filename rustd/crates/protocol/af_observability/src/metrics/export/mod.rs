@@ -143,13 +143,16 @@ impl<E: PushMetricExporter> PushMetricExporter for CountingMetricExporter<E> {
         );
         let reason = failure.to_string();
         let total = self.drops.failed();
-        tracing::warn!(
-            reason,
-            consecutive = run,
-            total,
-            event = "metric_export_failed",
-            "metric export failed — a collection cycle was lost, recording unaffected"
-        );
+        {
+            let (consecutive, event, message) = (
+                &run,
+                &"metric_export_failed",
+                format_args!(
+                    "metric export failed — a collection cycle was lost, recording unaffected"
+                ),
+            );
+            tracing::warn!(message, reason, consecutive, total, event);
+        };
         outcome
     }
 

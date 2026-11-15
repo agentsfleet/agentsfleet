@@ -49,11 +49,10 @@ pub(crate) async fn workers(halt: &Halt, workers: &mut JoinSet<()>) {
     if interrupted {
         let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
         let remaining = workers.len();
-        tracing::warn!(
-            event = "runner_shutdown_cleanup_expired",
-            error_code,
-            remaining
-        );
+        {
+            let event = &"runner_shutdown_cleanup_expired";
+            tracing::warn!(event, error_code, remaining);
+        };
         workers.shutdown().await;
     }
 }

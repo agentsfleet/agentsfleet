@@ -153,14 +153,10 @@ impl Fire {
         if !replayed {
             afd_events::activity::announce(&self.admissions.streams(), fleet).await;
         }
-        tracing::info!(
-            fleet_id = %fleet,
-            workspace_id = %workspace_id,
-            schedule_id = %schedule_id,
-            event_id = %event_id,
-            replayed,
-            event = "schedule_fire_appended",
-        );
+        {
+            let (fleet_id, event) = (&fleet, &"schedule_fire_appended");
+            tracing::info!(%fleet_id, %workspace_id, %schedule_id, %event_id, replayed, event);
+        };
 
         Ok(Fired {
             event_id: admitted.stored.id.into(),

@@ -116,12 +116,11 @@ impl Vault {
         let workspace_id = workspace.as_str();
         let secret_name = name.as_str();
         let secret_kind = projection.kind.as_str();
-        tracing::debug!(
-            workspace = workspace_id,
-            name = secret_name,
-            kind = secret_kind,
-            event = "secret_created",
-        );
+        {
+            let (workspace, name, kind, event) =
+                (&workspace_id, &secret_name, &secret_kind, &"secret_created");
+            tracing::debug!(workspace, name, kind, event);
+        };
         Ok(fleets)
     }
 
@@ -195,12 +194,15 @@ impl Vault {
         let workspace_id = workspace.as_str();
         let secret_name = name.as_str();
         let secret_kind = projection.kind.as_str();
-        tracing::debug!(
-            workspace = workspace_id,
-            name = secret_name,
-            kind = secret_kind,
-            event = "secret_replaced",
-        );
+        {
+            let (workspace, name, kind, event) = (
+                &workspace_id,
+                &secret_name,
+                &secret_kind,
+                &"secret_replaced",
+            );
+            tracing::debug!(workspace, name, kind, event);
+        };
         Ok(fleets)
     }
 

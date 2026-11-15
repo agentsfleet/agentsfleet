@@ -166,13 +166,12 @@ impl WorkspaceDisk {
             let Logged { error_code, reason } = leftover.logged();
             let path = mount_point.display();
             let event = EVENT_DISK_LEFT;
-            tracing::warn!(
-                error_code,
-                %path,
-                reason,
-                event,
-                "a failed workspace disk could not be unmounted and removed"
-            );
+            {
+                let (message,) = (format_args!(
+                    "a failed workspace disk could not be unmounted and removed"
+                ),);
+                tracing::warn!(message, error_code, %path, reason, event);
+            };
         }
     }
 

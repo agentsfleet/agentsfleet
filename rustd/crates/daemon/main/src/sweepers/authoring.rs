@@ -37,22 +37,33 @@ async fn maintain(drafts: &afd_authoring::Drafts) {
     // privacy purges and the replay receipts.
     match drafts.housekeep().await {
         Ok(counts) if counts != afd_authoring::Maintenance::default() => {
-            tracing::info!(
-                event = COMPLETED,
-                purged_drafts = counts.purged_drafts,
-                expired_results = counts.expired_results,
-                expired_receipts = counts.expired_receipts,
-                "authoring recovery advanced"
-            );
+            {
+                let (event, purged_drafts, expired_results, expired_receipts, message) = (
+                    &COMPLETED,
+                    &counts.purged_drafts,
+                    &counts.expired_results,
+                    &counts.expired_receipts,
+                    format_args!("authoring recovery advanced"),
+                );
+                tracing::info!(
+                    message,
+                    event,
+                    purged_drafts,
+                    expired_results,
+                    expired_receipts
+                );
+            };
         }
         Ok(_) => {}
         Err(error) => {
             let error_code = error.code().as_str();
-            tracing::warn!(
-                event = FAILED,
-                error_code,
-                "authoring recovery waits for its durable store"
-            );
+            {
+                let (event, message) = (
+                    &FAILED,
+                    format_args!("authoring recovery waits for its durable store"),
+                );
+                tracing::warn!(message, event, error_code);
+            };
         }
     }
 }

@@ -243,21 +243,19 @@ impl Link {
     fn oversized(&mut self, process: u64, bytes: usize) {
         let event = EVENT_OUTPUT_OVERSIZED;
         if std::mem::replace(&mut self.oversized_warned, true) {
-            tracing::debug!(
-                event,
-                process_id = process,
-                bytes,
-                "another oversized chunk"
-            );
+            {
+                let (process_id, message) = (&process, format_args!("another oversized chunk"));
+                tracing::debug!(message, event, process_id, bytes);
+            };
         } else {
             let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::warn!(
-                event,
-                error_code,
-                process_id = process,
-                bytes,
-                "a chunk of output is longer than one read"
-            );
+            {
+                let (process_id, message) = (
+                    &process,
+                    format_args!("a chunk of output is longer than one read"),
+                );
+                tracing::warn!(message, event, error_code, process_id, bytes);
+            };
         }
     }
 
@@ -283,13 +281,12 @@ impl Link {
         } else {
             let event = EVENT_LINK_FAILED;
             let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::warn!(
-                event,
-                error_code,
-                calls,
-                processes,
-                "the executor connection closed under open work"
-            );
+            {
+                let (message,) = (format_args!(
+                    "the executor connection closed under open work"
+                ),);
+                tracing::warn!(message, event, error_code, calls, processes);
+            };
         }
     }
 }
@@ -301,11 +298,8 @@ fn unreadable(failure: &serde_json::Error) {
     let event = EVENT_MESSAGE_UNREADABLE;
     let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let (line, column) = (failure.line(), failure.column());
-    tracing::warn!(
-        event,
-        error_code,
-        line,
-        column,
-        "a message from the executor did not decode"
-    );
+    {
+        let message = format_args!("a message from the executor did not decode");
+        tracing::warn!(message, event, error_code, line, column);
+    };
 }
