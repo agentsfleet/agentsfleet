@@ -8,6 +8,13 @@ import type { AccountRole } from "./workspaces-types";
 
 const MEMBERS_PATH = "/v1/tenants/me/members";
 
+/** The application's identifier, rather than the identity provider's subject. */
+export async function readCurrentUserId(token: string): Promise<string> {
+  const value = await request<unknown>("/v1/users/me", {method: "GET"}, token);
+  if (!isRecord(value) || !isNonEmptyString(value.user_id)) throw new Error("current user is invalid");
+  return value.user_id;
+}
+
 /** One member of the caller's account. */
 export type MemberSummary = {
   user_id: string;

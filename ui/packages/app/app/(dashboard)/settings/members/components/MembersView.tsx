@@ -16,6 +16,7 @@ import { TEAM_CAPTION, TeamTable } from "./TeamTable";
 type Props = {
   initialMembers: MemberSummary[];
   initialInvites: InviteSummary[];
+  viewerUserId: string;
 };
 
 // The two lists, re-read from the backend after every change so the page
@@ -140,6 +141,7 @@ export function MembersView(props: Props) {
         <CollectionToolbar label="Search name or email" value={search} onChange={setSearch} summary="Account-wide access" />
         {members.length === 0 && invites.length === 0 ? <EmptyState title="No matching people" description="Try another name or email, or clear your search." /> : null}
         <TeamTable
+          viewerUserId={props.viewerUserId}
           members={members}
           invites={invites}
           pending={team.pending}

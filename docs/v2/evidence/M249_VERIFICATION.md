@@ -4,6 +4,16 @@ This report tracks the approved proposal, the final Claude review and the implem
 It distinguishes reviewed visuals, source fixes, automated checks and owner approval.
 The UI refresh incorporates the CLI/API work merged in PR #839.
 
+## Post-merge status
+
+PR #844 merged as `a1dcc222488e4522f8b92208a4f7df8461fe7fbf`.
+The [post-merge runtime record](M249_POST_MERGE_RUNTIME_VALIDATION.md) is the current source for authenticated validation and remaining blockers.
+
+The ledgers below preserve earlier checkpoints. Daily Usage totals, fleet model sets, safe key suffixes and frozen-model save preparation already exist in merged source.
+Their earlier missing-data descriptions are historical; remaining M249_004 producers and Usage loading still belong to that workstream.
+
+Plugin UI remains paused, and M249_003 plus M249_004 Section 5 remain parked.
+
 ## Current result
 
 M249_001 moves to done at Indy's explicit implementation-closeout request. All 14 implementation Dimensions are complete. A fresh adversarial capture pass found residual presentation defects; its repairs and new evidence follow below.

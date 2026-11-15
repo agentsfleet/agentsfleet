@@ -11,3 +11,5 @@ The rest of [M249_004](../pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETI
 The [product reasoning](../evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md) preserves concrete examples and competing fleet, template and Plugin models.
 
 The UI keeps the Save and publish flap for native fleet saving. Plugin UI code and backend APIs remain available for reuse; the UI tree is disabled.
+
+[Post-merge runtime validation](../evidence/M249_POST_MERGE_RUNTIME_VALIDATION.md) records fresh saving, schedules and paused-route results without reopening these deferred records.
