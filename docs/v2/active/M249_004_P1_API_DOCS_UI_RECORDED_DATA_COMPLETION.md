@@ -109,10 +109,13 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | Canonical schema files, if new durable facts are needed | EDIT | Fresh-development schema; no migration bridge |
 | `public/openapi.json` | GENERATE | Generated contract, never hand-edited |
 | Existing tests for each changed producer, handler and component | EDIT | Complete data, refusals, races and unavailable states |
+| `rustd/crates/daemon/main/tests/support/e2e_event.rs` | EDIT | Give the unsupported-event fixture the normal post-commit wake; retain its refusal, no-offer and two-second assertions |
+| `rustd/crates/daemon/afd_db/tests/integration_migrate/roles.rs` | EDIT | Probe the two inherited billing rollup tables under every runtime role and verb; preserve the schema grants |
 | `docs/v2/evidence/M249_VERIFICATION.md`, `docs/DESIGN_SYSTEM.md`, `docs/architecture/{api_resources,web_app,billing_reporting,billing_and_provider_keys}.md` | EDIT | Update resolved data differences and retained unknowns; repair parent prose findings without changing billing behavior |
 | `docs/v2/evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md` | EDIT | Preserve the deferred Fleet/template/Plugin questions without adding implementation scope |
 | Separate `agentsfleet/docs` branch and changelog | EDIT | Public contract and visible behaviour |
 | `ui/packages/app/**` confirmed orphaned modules and their isolated tests; `lib/models/display.ts` | REMOVE/EDIT | Owner-requested UI cleanup removes obsolete spending, model cells, action hooks, refresh controls and draft-search state; paused Plugin implementation stays available |
+| `ui/packages/app/app/globals.css` unused activity-table selectors | REMOVE | Remove styles for the deleted activity table without changing the reviewed resource layouts |
 
 Resolve family entries to exact files during PLAN. Unidentified producers block their implementation Section.
 

@@ -155,3 +155,21 @@ No assertion, deadline or retry was changed; the final native gate and new-head 
 
 Receipts include `empty-fleet-regression-before.log`, `blank-fleet-regression-before.log`, `empty-fleet-and-pager-final.log` and `final-empty-fleet-browser.log`.
 The final bundle checks are `final-empty-fleet-build.log` and `final-empty-fleet-size.log`.
+
+## Final stylesheet sweep
+
+A repository search found activity-table selectors remaining after their only component was deleted.
+The cleanup removes those selectors and their mobile labels; the active billing container and shared layout rules remain unchanged.
+Astra confirmed that no retained page uses the removed classes.
+
+The subsequent affected browser run passed 26 cases in 1.2 minutes.
+It covers Usage, scale checks and the retained resource pages across desktop/phone and both themes.
+The reference HTML remains unchanged.
+
+The exact-parent native Rust unit baseline passed 1,731 runner, 172 daemon and 3,674 library tests.
+Its clean integration run stopped after 924 passes at the missing rollup-table grant inventory.
+These baseline results remain separate from the final branch's checks and authenticated acceptance.
+
+Companion docs PR #249 describes the trimmed API and marks it as upcoming.
+Its complete native checks pass against exact API source `6edd08d84`.
+Publication remains blocked until that API branch reaches main, whose current document still exposes the removed activity-charge route.
