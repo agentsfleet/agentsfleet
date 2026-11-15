@@ -47,14 +47,25 @@ test("incoming progress preserves the draft and reading position until the reade
   await page.goto(`${chatProbe}?scroll=1`);
   const input = page.getByRole("textbox");
   const viewport = page.locator('[data-testid="fleet-thread-root"] [role="presentation"]');
+  const updates = page.getByText("New recorded update: the callback regression is still running. Its result has not been confirmed.", {exact: true});
+  await expect(input).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
   const draft = "Keep the login fix in the callback handler. Preserve session expiry.";
   for (const {atBottom, composing} of [{atBottom: true, composing: true}, {atBottom: false, composing: true}, {atBottom: false, composing: false}]) {
     await input.fill(composing ? draft : "");
     if (!composing) await input.blur();
-    await viewport.evaluate((element, bottom) => {
-      element.scrollTop = bottom ? element.scrollHeight : 0;
-    }, atBottom);
     await expect.poll(() => viewport.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+    if (atBottom) {
+      await viewport.evaluate(element => {element.scrollTop = element.scrollHeight;});
+      await expect.poll(() => viewport.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(1);
+    } else {
+      // Let the reader's gesture cancel pending follow before progress arrives.
+      await viewport.hover();
+      await page.mouse.wheel(0, -100_000);
+      await expect.poll(() => viewport.evaluate(element => element.scrollTop)).toBeLessThanOrEqual(1);
+      await expect(page.getByRole("button", {name: "Jump to latest"})).toBeVisible();
+    }
+    const before = await updates.count();
     const samples = await viewport.evaluate(element => new Promise<number[]>(resolve => {
       const positions = [element.scrollTop];
       window.dispatchEvent(new Event("fixture:progress"));
@@ -65,7 +76,9 @@ test("incoming progress preserves the draft and reading position until the reade
       };
       requestAnimationFrame(sample);
     }));
-    expect(Math.max(...samples) - Math.min(...samples)).toBeLessThanOrEqual(1);
+    expect(Math.max(...samples) - Math.min(...samples), `atBottom=${atBottom}, composing=${composing}`).toBeLessThanOrEqual(1);
+    await expect(updates).toHaveCount(before + 1);
+    expect(Math.abs(await viewport.evaluate(element => element.scrollTop) - samples[0]!)).toBeLessThanOrEqual(1);
     await expect(input).toHaveValue(composing ? draft : "");
     if (composing) await expect(input).toBeFocused();
     else await expect(input).not.toBeFocused();
@@ -73,7 +86,6 @@ test("incoming progress preserves the draft and reading position until the reade
   await page.getByRole("button", {name: "Jump to latest"}).click();
   await expect.poll(() => viewport.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(1);
   await expect(input).toHaveValue("");
-  const updates = page.getByText("New recorded update: the callback regression is still running. Its result has not been confirmed.", {exact: true});
   const recorded = await updates.count();
   await page.evaluate(() => window.dispatchEvent(new Event("fixture:progress")));
   await expect(updates).toHaveCount(recorded + 1);
