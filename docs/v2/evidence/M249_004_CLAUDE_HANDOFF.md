@@ -1,10 +1,10 @@
 # Claude handoff: recorded UI data
 
-Implement [M249_004](../pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md) in a separate worktree and PR.
+Implement [M249_004](../active/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md) in a separate worktree and PR.
 
 1. Read repository instructions and the spec. Verify M249_001 and M249_002 are merged; record both SHAs.
 2. Fetch main and create your worktree from that merged main. Do not edit the running UI or CLI worktree.
-3. Work on independent data Sections alongside M249_003. Finish Plugin wiring after its merge; merge M249_003 before M249_004.
+3. M249_003 is parked; do not wait for it or run alongside it. Plugin revision data uses the representation on main, and the Plugin UI stays disabled. Section 5 is parked separately.
 4. Re-inventory source types, ledger queries, authorization, producers and UI adapters. Replace family paths with exact files.
 5. Complete the spec's independent design, comprehension, adversarial and readiness reviews. Resolve producer blockers before implementing the affected Section.
 6. Supply complete Usage projections, safe key metadata, existing effective secret access, revision ordinals and confirmed work/context facts.

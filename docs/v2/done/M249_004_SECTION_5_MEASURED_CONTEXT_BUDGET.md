@@ -27,4 +27,4 @@ Reopen this section when the measurement producer, units and invalidation rules 
 
 ## Parent workstream
 
-[Recorded-data completion](../pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md) retains Usage, key metadata, secret access and recorded-work projections.
+[Recorded-data completion](../active/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md) retains Usage, key metadata, secret access and recorded-work projections.
