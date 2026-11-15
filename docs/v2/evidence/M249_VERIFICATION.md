@@ -271,7 +271,7 @@ Flow 2 capabilities, real upload storage, mention invocation, new secret policy 
 
 ## Post-merge implementation start
 
-The repository follow-up is [M249_004](../pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md), with a [Claude handoff](M249_004_CLAUDE_HANDOFF.md). It remains pending.
+The repository follow-up is [M249_004](../active/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md), with a [Claude handoff](M249_004_CLAUDE_HANDOFF.md). It is in progress.
 
 Its implementation starts after both UI and CLI merges; M249_003 on Claude's branch owns Plugin vocabulary. The historical downloadable prompt below is superseded by that repository handoff.
 

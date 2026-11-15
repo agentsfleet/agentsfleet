@@ -4,11 +4,11 @@
 **Milestone:** M249
 **Workstream:** 004
 **Date:** Nov 13, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1, approved screens need authoritative data
 **Categories:** API, DOCS, UI
-**Batch:** B3, data work follows the UI checkpoint; M249_003 is parked
-**Depends on:** M249_001 and M249_002 before implementation; the final UI checkpoint before adapter wiring; parked M249_003 does not block independent data work
+**Batch:** B3, data work follows the merged UI checkpoint (PR #844); M249_003 is parked
+**Depends on:** M249_001 (PR #840, `646fc536e`), M249_002 (PR #839, `baa26abed`) and the UI checkpoint (PR #844, `a1dcc2224`), all merged. Parked M249_003 blocks nothing here
 **Provenance:** Agent-generated from the UI data inventory and Indy's requested Claude handoff
 **Canonical architecture:** `docs/DESIGN_SYSTEM.md`; `docs/architecture/context_lifecycle.md`; `docs/architecture/api_resources.md`
 
@@ -22,10 +22,10 @@
 
 **Design flow:** Authenticated read → existing account/workspace authorization → stored ledger, policy or event facts → typed response → existing UI adapter → approved component.
 
-This spec ships as documentation in the UI PR. Its implementation uses a separate worktree and PR after the UI checkpoint.
+Implementation runs in its own worktree on `feat/m249-recorded-data-completion`, cut from fetched main `a1dcc222488e4522f8b92208a4f7df8461fe7fbf` (PR #844 merge).
 
 Usage, key metadata, secret access and recorded work remain valid. Measured context budget is parked separately; M249_003 is parked as the rename workstream.
-Use the retained API names and payloads from the UI checkpoint. Keep the Plugin UI dormant until the separate product discussion reopens it.
+Use the retained API names and payloads merged in PR #844. Keep the Plugin UI disabled and its backend APIs intact until the separate product discussion reopens it.
 
 The original daily-chart work moved to M249_003 §6. The new one-call requirement in §2a remains here and must not reimplement those completed aggregates.
 Parked M249_003 §7 records the separate-session product discussion. It does not authorize new capability bindings or provider actions in this workstream.
@@ -60,11 +60,14 @@ Parked M249_003 §7 records the separate-session product discussion. It does not
 
 ## Files Changed (blast radius)
 
-Paths reflect UI checkpoint `2099754ae` plus the later fleet-only save changes. Re-inventory the final UI merge before implementation.
+Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact files each Section touches.
 
 | File or family | Action | Why |
 |---|---|---|
 | This spec and its eventual `done/` path | EDIT/MOVE | Record field decisions, tests and completion |
+| `docs/v2/evidence/M249_004_CLAUDE_HANDOFF.md` | EDIT | Correct stale ordering against parked M249_003 |
+| `docs/v2/evidence/{M249_VISUAL_BACKLOG,M249_VERIFICATION}.md`, `docs/v2/done/M249_004_SECTION_5_MEASURED_CONTEXT_BUDGET.md`, `docs/v2/parked/README.md` | EDIT | Links follow this spec's move to `active/` |
+| `docs/v2/evidence/M249_004_SOURCE_INVENTORY.md` | ADD | §1 field inventory, request counts, timings and query plans |
 | `rustd/crates/daemon/afd_billing/src/report/{types.rs,queries.rs,sql/aggregates.sql}` | EDIT | Whole-period daily and fleet/model projections |
 | `rustd/crates/daemon/afd_api_wire/src/billing/mod.rs` | EDIT | Typed report fields |
 | `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/billing_report/{mod.rs,view.rs}` | EDIT | Existing authorized report response |
@@ -238,17 +241,15 @@ The remaining recorded-data and one-call Usage sections stay valid.
 
 > Owner: "I think you could move the Dimension 5, in the M249_004 to parked, since the rest of the spec is valid"
 
-### §6 — Parallel implementation boundaries
+### §6 — Implementation boundaries
 
-Start independent data work from a tested pushed UI checkpoint in a separate worktree. Record its commit and re-inventory paths after the feature-folder refactor.
-The current UI work owns presentation, auth, shared progress, time utilities and domain-folder moves. Preserve those changes during integration.
+The UI checkpoint merged in PR #844; no parallel UI worktree remains. This workstream starts from that merge and preserves its presentation, auth, shared progress, time utilities and domain-folder layout.
 
-The one-call Usage work in §2a can proceed independently. Reuse the implemented key suffix; identify missing metadata producers before changing them.
+M249_003 is parked, not pending. Nothing here waits for its merge. Plugin revision labels consume the published-setup representation already on main, and the Plugin UI stays disabled.
 
-Plugin revision labels consume the current published-setup representation. The Fleet/template/Plugin reassessment is deferred to a separate session, as recorded in the evidence notes.
-It supplies questions and examples, not new capability fields or provider implementation tasks.
+The Fleet/template/Plugin reassessment belongs to a separate session. It supplies questions and examples, not capability fields or provider implementation tasks.
 
-Generate OpenAPI serially after integration. Do not edit another active worktree, duplicate its component moves or overwrite its generated outputs.
+Generate OpenAPI once, after the backend wire types settle.
 
 ## Interfaces
 
@@ -326,8 +327,8 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 - **Coordination:** `origin/feat/m249-cli-api-discovery` already reserves M249_003. This spec uses M249_004 to avoid collision.
 - **Model reviews:** Authoring draft; independent EGM review and resolution remain pending. This document carries no implementation-readiness claim.
 - **Open blockers:** Exact last-use, effective-access, publication producers need the merged-base inventory. Unknown semantics must be resolved before their Sections start.
-- **Merge order:** Both UI and CLI must merge before implementation. CLI may merge first only with coherent current UI lifecycle callers.
-- **Staggered work:** Independent data Sections may run alongside M249_003. Final Plugin wiring and M249_004's merge follow M249_003.
+- **Merge order (superseded Nov 15, 2026):** UI (#840, #844) and CLI (#839) merged. M249_003 is parked, so M249_004 neither runs alongside it nor waits for its merge.
+- **Implementation base (Nov 15, 2026):** `a1dcc222488e4522f8b92208a4f7df8461fe7fbf`, fetched main containing PR #844.
 - **One-call Usage request (Nov 14, 2026):** "why the getModelLib is called and we combine the billingreport to just 1 api call? and udpate the spec?" The owner corrected the target to M249_004 and requested this change in the UI PR.
 - **Plugin reassessment (Nov 14, 2026):** "not a replacement of a fleet, but an actual Plugin with an use case and fix them". M249_003 defines that behavior; this workstream supplies the corresponding recorded data.
 - **Service examples (Nov 14, 2026):** "agentphone, agentcreditcard, agentemail". The owner requested use-case-driven and adversarial thinking; provider scope and invocation remain product decisions rather than implemented facts.
@@ -345,10 +346,10 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 
 ## Claude handoff
 
-Read [the handoff prompt](../evidence/M249_004_CLAUDE_HANDOFF.md). Start from main containing both merged dependencies, never from this unmerged UI snapshot.
+Read [the handoff prompt](../evidence/M249_004_CLAUDE_HANDOFF.md). Implementation starts from `a1dcc2224`, main containing PR #844.
 
 The Plugin UI and backend implementation are retained for reuse. Do not reactivate the Plugin UI while completing the independent data work.
 
 ## Latest implementation boundaries
 
-M249_003 is parked as the rename workstream. Only Section 5 of this workstream is parked; Sections 1, 2 and 3 retain the performance investigation above.
+M249_003 is parked as the rename workstream. Only Section 5 of this workstream is parked; Sections 1, 2, 2a, 3 and 4 remain in scope, and Sections 1–3 retain the performance investigation above.
