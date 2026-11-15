@@ -159,7 +159,8 @@ fn test_github_app_without_octocrab() {
 #[test]
 fn a_key_that_is_not_rsa_cannot_sign_an_app_jwt() {
     // An HMAC key handed to an RS256 header is refused at signing, never sent.
-    let hmac = jsonwebtoken::EncodingKey::from_secret(b"not an rsa key");
+    let hmac =
+        jsonwebtoken::EncodingKey::from_secret(b"not an rsa key").expect("a non-empty HMAC key");
 
     assert!(sign(APP_ID, &hmac, NOW).is_none());
 }

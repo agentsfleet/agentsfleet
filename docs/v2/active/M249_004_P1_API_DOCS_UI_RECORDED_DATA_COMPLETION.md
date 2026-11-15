@@ -70,6 +70,9 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `rustd/rust-toolchain.toml`, `rustd/Cargo.toml`, `playbooks/operations/ci_rust_images/versions.env`, `README.md` | EDIT | Rust pin moves to 1.100.0, at the owner's direction |
 | `docker-compose.yml`, `compose.dev-infra.yml` | EDIT | Postgres 19rc2; development NATS, Mailpit and QStash catch up to the pins the test stack already uses |
 | Rust sources clippy 1.100 rewrites (`map_or_default`, redundant clones) | EDIT | Mechanical lint fixes the new toolchain requires |
+| `rustd/Cargo.toml`, `rustd/Cargo.lock`; `af_stream/src/h3/{client,server}.rs`; `afd_cron/src/verifier.rs` and the HMAC fixtures that sign with it | EDIT | Every crate to its latest release the dependency graph admits; `tokio-quiche` 0.23 drops `H3Event::NewFlow` and `jsonwebtoken` 12 refuses empty HMAC keys |
+| `package.json`, `cli/package.json`, `ui/packages/*/package.json`, `bun.lock`, `cli/bun.lock`, `patches/@assistant-ui%2F{react,store}@*.patch` | EDIT/MOVE | Every JavaScript package to its latest release; both local assistant-ui patches carried forward unchanged |
+| `ui/packages/app/lib/model-labels{,-server}.ts`, `components/domain/models/ModelLabels.tsx`, `app/(dashboard)/layout.tsx` and their tests | ADD/EDIT | One shared model-label store, read once per sign-in or refresh, replacing Usage's own catalogue call |
 | `docs/v2/evidence/M249_004_SOURCE_INVENTORY.md` | ADD | §1 field inventory, request counts, timings and query plans |
 | `rustd/crates/daemon/afd_billing/src/report/{types.rs,queries.rs,sql/aggregates.sql}` | EDIT | Whole-period daily and fleet/model projections |
 | `rustd/crates/daemon/afd_api_wire/src/billing/mod.rs` | EDIT | Typed report fields |
@@ -171,22 +174,18 @@ Preserve setup charges, null/deleted fleet identities, historical cutoffs and un
 The owner requested one billing-report call instead of fetching model labels through `GET /v1/models` separately.
 Use the existing `GET /v1/tenants/me/billing/reports/current` route and `billing:read` authorization. Do not introduce another reporting endpoint.
 
-The initial response supplies totals, daily buckets, fleet/model breakdowns, filter choices, the first activity page and model display labels.
-Add required `model_labels: Record<string, string>` to that response. Empty reports return `{}`; unavailable labels omit their keys.
+The report response is unchanged: totals, daily buckets, fleet/model breakdowns, filter choices and the first activity page. Billing carries no display labels.
 
-Keep the recorded model identifier as every aggregation key and filter value. Display `model_labels[id] ?? id` without rewriting identity or computing monetary values from current catalogue prices.
-Resolve labels from reviewed platform metadata using the ledger's provider and model identity. Do not select whichever duplicate model identifier happens to occur last.
+Model display names come from one shared label store (owner decision, Nov 15, 2026). The dashboard layout reads the platform catalogue once per sign-in or refresh and hands the labels to a client provider.
+Next does not re-render a layout on client navigation, so the labels stay in the browser for the session. They arrive in the first server render, so no screen swaps an identifier for a name after paint.
 
-If several providers share one reported identifier, include its label only when their matching metadata supplies the same nonempty label.
-Unknown, removed or ambiguous models retain their recorded identifier. A missing label never hides or zeroes settled usage.
+Keep the recorded model identifier as every aggregation key and filter value. Display the label when known, otherwise the identifier. A label never rewrites identity or computes money from current catalogue prices.
+If several providers list one identifier, label it only when every listing supplies the same nonempty name. Unknown, retired or ambiguous models show their recorded identifier.
 
-Limit metadata resolution to model identifiers needed by the report and its filter choices. Use a join or one bounded batch lookup in the existing backend read owner.
-No per-fleet or per-model request loop and no full model-catalogue download is allowed. A single HTTP request does not require forcing unrelated database operations into one SQL statement.
+A failed label read leaves identifiers on screen; it never hides or zeroes settled usage, and it never fails the page.
+Every screen that names a model reads the same store; the Usage loader makes no catalogue request.
 
-The report retains its authorized account, exact integer amounts, filters, inclusive bounds, cutoff and cursor semantics. Labels cannot alter any total or settlement decision.
-Wire types, generated OpenAPI, strict UI decoding and public documentation change together.
-
-Remove `getModelLibrary` from the Usage loader and consume `report.model_labels` directly. The initial Usage-specific service read is one report request, regardless of whether four or more fleets appear.
+Remove `getModelLibrary` from the Usage loader. The initial Usage-specific service read is one report request, regardless of whether four or more fleets appear.
 Common authenticated-shell reads remain separately measured; do not misreport them as per-fleet Usage requests.
 
 The current dashboard layout awaits workspace, balance and invite reads before returning its frame. A page-level Suspense boundary cannot bypass a blocked parent layout.
@@ -198,7 +197,7 @@ Render the Usage frame before its data region resolves, using the existing loadi
 Use the shared local-time utilities for displayed instants. Accounting bucket identities and stored schedule rules retain their established semantics.
 
 - **Dimension 2a.1** — One initial report request → Test `usage_first_load_has_one_report_request` (browser): four fleets require one report call, no model-catalogue call, no fleet-detail calls and no charge call before disclosure.
-- **Dimension 2a.2** — Labels are complete or explicitly unavailable → Test `billing_model_labels_preserve_recorded_identity` (integration/unit): known, advanced, retired, absent and provider-ambiguous models retain correct identifiers and amounts.
+- **Dimension 2a.2** — Labels are complete or explicitly unavailable → Test `unknown_model_shows_recorded_identifier` (unit, shared label store): known, advanced, absent, prototype-named and provider-ambiguous models retain correct identifiers and amounts; a failed label read shows identifiers.
 - **Dimension 2a.3** — Paging and filters retain accounting → Test `billing_labels_do_not_change_snapshot_totals` (integration): labels, cursors and filter changes preserve the existing complete aggregates and exact cutoff behavior.
 - **Dimension 2a.4** — Slow data does not hide the frame → Test `usage_shell_streams_before_report_and_details_load_on_intent` (server-render/browser): delayed report and optional parent-shell reads retain truthful loading states; details load only when opened.
 - **Dimension 2a.5** — Performance evidence identifies the wait → Test `usage_four_fleet_request_waterfall` (browser/profile): record first and repeat load, service duration, response size, browser rendering and query plans; separate local controlled delay from live machine evidence.
@@ -271,8 +270,8 @@ New public endpoints require a demonstrated need and the repository's route inve
 | Foreign account or workspace metadata | Security | Existing authorization refuses access before projection | `api_key_metadata_is_safe_and_account_scoped`, `secret_access_projection_matches_execution_policy` |
 | Secret reference mistaken for permission | Security | Read governing policy; omit unsupported editable controls | `secret_access_projection_matches_execution_policy` |
 | Truncated output or related URL mistaken for publication | Failure | Require confirmed event evidence from this run | `summary_uses_confirmed_run_evidence` |
-| Optional catalogue delays the whole report | Performance | Labels travel with the report; no Usage catalogue request | `usage_first_load_has_one_report_request` |
-| Providers share a model identifier | Data integrity | Resolve only an unambiguous label; retain raw identifier otherwise | `billing_model_labels_preserve_recorded_identity` |
+| Optional catalogue delays the whole report | Performance | Labels come from the shared store; no Usage catalogue request | `usage_first_load_has_one_report_request` |
+| Providers share a model identifier | Data integrity | The label store names an identifier only when every listing agrees; otherwise it shows the identifier | `unknown_model_shows_recorded_identifier` |
 
 ## Invariants
 
@@ -340,11 +339,23 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 - **Latest owner boundary (Nov 14, 2026):** Finish the current work and retain Fleet/template/Plugin reasoning for a separate session. The phone, email and card examples do not expand this implementation scope.
 
 - **Toolchain folded in (Nov 15, 2026):** the owner directed the Rust, Postgres and development-image version moves into this PR rather than a separate worktree.
+- **Model labels move to a shared store (Nov 15, 2026):** the owner chose one browser-held label store over a `model_labels` report field, so the billing API stays unchanged. Labels arrive in the first server render, so no visible swap; they load once per sign-in or refresh and stay for the session.
+- **Package updates (Nov 15, 2026):** every JavaScript package and every Rust crate moves to its latest admissible release in this PR. `libc` and `parking_lot` 0.13 stay behind because `tokio-quiche` 0.23.0 still caps `libc` below 0.2.190; `quick-xml` and `matchit` follow `object_store` 0.14.2 and `axum` 0.8.9, already the latest.
 - **Design sign-off (Nov 15, 2026):** the owner approved the one-request Usage design, the Plugin card ordinal and the secret access projection. API key authentication stays read-only, so Dimension 3.2 records its producer design without adding a write.
 
 > Owner (Indy): "also move rust to 1.1.100, since we have moved up, and ci images, and postgres in your local to 19.rc2 if there is one or later check bun as well and let me know. update the nats, mailpit, qstash too."
 
 > Owner (Indy): "this has to go in this PR agentsfleet-toolchain-bump not a separate worktree and approved."
+
+> Owner (Indy): "For model_labels this may be needed in fleet, fleet setup chat, billing and others - i think. If so you can run this query once async when you load or login (store it in the browsers cache or so -- you tell me how. Then every one who needs it will call this store and use it. ... so the billing just focusses on what it is. If the labels ar enot there its perfectly fine to show the gpt-x"
+
+> Owner (Indy): "A visible swap - i think i prefer this is avoided"
+
+> Owner (Indy): "Keep it on load of a browser when i login or refresh you load once and it stays on"
+
+> Owner (Indy): "can you update to the latest packages"
+
+> Owner (Indy): "I want all the rust crates to be updted in this PR"
 
 > Owner (Indy): "claude to works from your PR merged on the UI refresh you did with gaps delta on api needed on the backend and wire it into the ui you created (post your PR merge)."
 
