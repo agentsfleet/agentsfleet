@@ -212,6 +212,9 @@ code, pre, kbd { font-family: var(--ff-mono); }
 @media (min-width: 48rem) and (max-width: 68.75rem) {
   .app-dashboard-canvas:has(> [data-resource-header]) > div:not([data-resource-header]) { padding-block: var(--sp-3xl); }
 }
+@media (min-width: 48rem) and (max-width: 50rem) {
+  .app-dashboard-canvas:has(> [data-resource-header]) > div:not([data-resource-header]) { padding: var(--sp-2xl); }
+}
 @media (max-width: 42.5rem) {
   .fleet-chat-heading > svg, .fleet-chat-heading > div > svg { display: none; }
 }
