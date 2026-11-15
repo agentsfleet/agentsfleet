@@ -87,12 +87,13 @@ impl ExpirySwept {
         let error_code = fault.code();
         self.refused.get_or_insert(error_code);
         let error_code = error_code.as_str();
-        tracing::debug!(
-            work_id,
-            error_code,
-            event = EVENT_REFUSED,
-            "the biller refused this work; the next pass retries"
-        );
+        {
+            let (event, message) = (
+                &EVENT_REFUSED,
+                format_args!("the biller refused this work; the next pass retries"),
+            );
+            tracing::debug!(message, work_id, error_code, event);
+        };
     }
 }
 

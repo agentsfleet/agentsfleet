@@ -177,15 +177,14 @@ impl Gates {
             return Anomaly::Normal;
         };
         let fleet = fleet_id.as_str();
-        tracing::warn!(
-            event = EVENT_ARCHIVE,
-            fleet_id = fleet,
-            tool,
-            action,
-            count,
-            threshold,
-            "one action repeated past its threshold; the fleet is archived"
-        );
+        {
+            let (event, fleet_id, message) = (
+                &EVENT_ARCHIVE,
+                &fleet,
+                format_args!("one action repeated past its threshold; the fleet is archived"),
+            );
+            tracing::warn!(message, event, fleet_id, tool, action, count, threshold);
+        };
         Anomaly::Archive
     }
 }

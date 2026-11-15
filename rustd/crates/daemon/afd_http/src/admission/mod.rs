@@ -172,11 +172,9 @@ pub async fn admit(State(admission): State<Admission>, request: Request, next: N
     // runs — so a call left inline reads as an untested line forever.
     let in_flight = admission.in_flight();
     let limit = admission.limit().get();
-    tracing::trace!(
-        in_flight,
-        limit,
-        event = "request_admitted",
-        "request admitted"
-    );
+    {
+        let (event, message) = (&"request_admitted", format_args!("request admitted"));
+        tracing::trace!(message, in_flight, limit, event);
+    };
     next.run(request).await
 }

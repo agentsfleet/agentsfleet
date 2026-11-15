@@ -77,12 +77,12 @@ fn log_unknown_field(failure: &serde_json::Error) {
     if let Some(field) = af_core::json::unknown_field_of(failure) {
         let event = EVENT_UNKNOWN_FIELD;
         let error_code = af_core::error_code::INVALID_REQUEST.as_str();
-        tracing::warn!(
-            event,
-            error_code,
-            field,
-            "a request named a field this build does not carry; it was refused"
-        );
+        {
+            let (message,) = (format_args!(
+                "a request named a field this build does not carry; it was refused"
+            ),);
+            tracing::warn!(message, event, error_code, field);
+        };
     }
 }
 

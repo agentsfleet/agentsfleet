@@ -171,13 +171,10 @@ pub(crate) fn observe(result: Result<()>, transport: Transport) {
         let reason = error.reason().as_str();
         let io_kind = error.io_kind().map(|kind| format!("{kind:?}"));
         let error_code = error.code().as_str();
-        tracing::warn!(
-            event = "runner_stream_transport_ended",
-            transport,
-            reason,
-            io_kind,
-            error_code
-        );
+        {
+            let event = &"runner_stream_transport_ended";
+            tracing::warn!(event, transport, reason, io_kind, error_code);
+        };
     }
 }
 

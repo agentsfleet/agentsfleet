@@ -103,11 +103,13 @@ impl HttpKeySet {
             .map_err(|broke| {
                 if broke == CapBreak::TooLarge {
                     let cap = MAX_RESPONSE_BYTES;
-                    tracing::warn!(
-                        cap,
-                        event = "jwks_response_too_large",
-                        "refusing the key set"
-                    );
+                    {
+                        let (event, message) = (
+                            &"jwks_response_too_large",
+                            format_args!("refusing the key set"),
+                        );
+                        tracing::warn!(message, cap, event);
+                    };
                 }
                 VerifyError::KeySetUnavailable
             })

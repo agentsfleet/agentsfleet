@@ -157,12 +157,15 @@ fn settle(counted: Result<Vec<Counted>>) -> Result<Swept> {
     for row in &tally.unmodelled {
         let status = row.status.as_str();
         let fleets = row.fleets;
-        tracing::warn!(
-            status,
-            fleets,
-            event = EVENT_UNMODELLED_STATUS,
-            "fleet rows hold a status this daemon does not model; they are left out of the census"
-        );
+        {
+            let (event, message) = (
+                &EVENT_UNMODELLED_STATUS,
+                format_args!(
+                    "fleet rows hold a status this daemon does not model; they are left out of the census"
+                ),
+            );
+            tracing::warn!(message, status, fleets, event);
+        };
     }
     census::fleet_census_observed(&tally.counts);
     Ok(Swept {

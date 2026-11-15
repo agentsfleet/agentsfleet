@@ -179,12 +179,10 @@ pub async fn deliver_with_retry<S: Deliver>(
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
             let provider = job.provider.as_str();
             let delay_ms = delay.as_millis();
-            tracing::debug!(
-                provider,
-                delay_ms,
-                ?verdict,
-                event = "outbound_delivery_retrying"
-            );
+            {
+                let event = &"outbound_delivery_retrying";
+                tracing::debug!(provider, delay_ms, ?verdict, event);
+            };
         })
         .await
         .map_or_else(|verdict| verdict, |()| Verdict::Delivered)
@@ -201,13 +199,10 @@ fn unroutable(job: &Outgoing, reason: &'static str) -> Verdict {
     let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     let provider = job.provider.as_str();
     let fleet_id = job.fleet_id.as_str();
-    tracing::warn!(
-        error_code,
-        provider,
-        fleet_id,
-        reason,
-        event = "outbound_unknown_provider"
-    );
+    {
+        let event = &"outbound_unknown_provider";
+        tracing::warn!(error_code, provider, fleet_id, reason, event);
+    };
     Verdict::Permanent
 }
 

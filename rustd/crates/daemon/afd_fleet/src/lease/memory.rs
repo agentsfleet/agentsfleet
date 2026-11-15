@@ -149,17 +149,24 @@ impl LeaseService {
             swept,
             evicted,
         } = counted;
-        tracing::debug!(
-            fleet_id = fleet,
-            stored,
-            skipped,
-            truncated,
-            unpublished,
-            swept,
-            evicted,
-            event = EVENT_CAPTURED,
-            "a run's memory was persisted"
-        );
+        {
+            let (fleet_id, event, message) = (
+                &fleet,
+                &EVENT_CAPTURED,
+                format_args!("a run's memory was persisted"),
+            );
+            tracing::debug!(
+                message,
+                fleet_id,
+                stored,
+                skipped,
+                truncated,
+                unpublished,
+                swept,
+                evicted,
+                event
+            );
+        };
         Ok(counted)
     }
 
@@ -219,13 +226,16 @@ fn superseded(fleet_id: &Uuid7, token: Option<u64>, fence: Fence) -> crate::Erro
     let fleet = fleet_id.as_str();
     let own = fence.own();
     let live_seq = fence.live_seq();
-    tracing::debug!(
-        fleet_id = fleet,
-        fencing_token = token,
-        own,
-        live_seq,
-        event = EVENT_FENCED,
-        "a superseded lease, or a token not its own, reached memory; nothing was read or stored"
-    );
+    {
+        let (fleet_id, fencing_token, event, message) = (
+            &fleet,
+            &token,
+            &EVENT_FENCED,
+            format_args!(
+                "a superseded lease, or a token not its own, reached memory; nothing was read or stored"
+            ),
+        );
+        tracing::debug!(message, fleet_id, fencing_token, own, live_seq, event);
+    };
     stale_fence()
 }

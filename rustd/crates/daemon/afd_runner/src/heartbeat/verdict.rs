@@ -61,13 +61,17 @@ fn announce(runner: &Uuid7, stored: &StoredVerdict, verdict: Verdict) {
     match (stored.is_degraded(), verdict.reason()) {
         (false, Some(reason)) => {
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::warn!(
-                error_code = code,
-                runner_id = id,
-                reason,
-                event = "runner_degraded",
-                "runner degraded — it will not be assigned work until this is fixed"
-            );
+            {
+                let (error_code, runner_id, event, message) = (
+                    &code,
+                    &id,
+                    &"runner_degraded",
+                    format_args!(
+                        "runner degraded — it will not be assigned work until this is fixed"
+                    ),
+                );
+                tracing::warn!(message, error_code, runner_id, reason, event);
+            };
         }
         (true, None) => tracing::debug!(runner_id = id, event = "runner_recovered"),
         _steady => {}

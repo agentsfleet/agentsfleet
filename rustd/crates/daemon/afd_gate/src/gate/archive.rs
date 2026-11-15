@@ -47,11 +47,16 @@ impl Gates {
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let fleet = fleet_id.as_str();
-        tracing::warn!(
-            event = EVENT_FLEET_ARCHIVED,
-            fleet_id = fleet,
-            "the fleet ran away and is archived; no further work of its is admitted"
-        );
+        {
+            let (event, fleet_id, message) = (
+                &EVENT_FLEET_ARCHIVED,
+                &fleet,
+                format_args!(
+                    "the fleet ran away and is archived; no further work of its is admitted"
+                ),
+            );
+            tracing::warn!(message, event, fleet_id);
+        };
 
         Ok(())
     }

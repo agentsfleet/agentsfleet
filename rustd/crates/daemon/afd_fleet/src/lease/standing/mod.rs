@@ -101,12 +101,10 @@ impl LeaseService {
         if !read.holds(presented) {
             let fleet_id = read.fleet_id.as_str();
             let live_seq = read.live_seq;
-            tracing::debug!(
-                fleet_id,
-                fencing_token = presented,
-                live_seq,
-                event = EVENT_FENCED
-            );
+            {
+                let (fencing_token, event) = (&presented, &EVENT_FENCED);
+                tracing::debug!(fleet_id, fencing_token, live_seq, event);
+            };
             return Err(stale_fence());
         }
         Ok(Standing {

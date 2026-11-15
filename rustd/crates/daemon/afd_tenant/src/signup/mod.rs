@@ -108,10 +108,13 @@ impl Signups {
                 // is there now, the index did its job and this is a replay.
                 match self.existing(account.oidc_subject).await? {
                     Some(existing) => {
-                        tracing::info!(
-                            event = "signup_replay_after_race",
-                            "a concurrent delivery opened this account first"
-                        );
+                        {
+                            let (event, message) = (
+                                &"signup_replay_after_race",
+                                format_args!("a concurrent delivery opened this account first"),
+                            );
+                            tracing::info!(message, event);
+                        };
                         self.replay(existing).await
                     }
                     // Nothing committed, so the failure was real. The original
@@ -153,16 +156,22 @@ impl Signups {
             .map_err(error::query(CONTEXT_EXISTING))?;
 
         if healed.rows_affected() > 0 {
-            tracing::info!(
-                event = "signup_replay_wallet_healed",
-                "a replay restored a wallet row that had gone missing"
-            );
+            {
+                let (event, message) = (
+                    &"signup_replay_wallet_healed",
+                    format_args!("a replay restored a wallet row that had gone missing"),
+                );
+                tracing::info!(message, event);
+            };
         }
         producers::fleet::signup_replayed();
-        tracing::info!(
-            event = "signup_replay",
-            "this subject already had an account"
-        );
+        {
+            let (event, message) = (
+                &"signup_replay",
+                format_args!("this subject already had an account"),
+            );
+            tracing::info!(message, event);
+        };
         Ok(existing)
     }
 
@@ -217,10 +226,13 @@ impl Signups {
         transaction.commit().await.map_err(&raise)?;
 
         producers::fleet::signup_bootstrapped();
-        tracing::info!(
-            event = "signup_bootstrapped",
-            "a personal account was opened"
-        );
+        {
+            let (event, message) = (
+                &"signup_bootstrapped",
+                format_args!("a personal account was opened"),
+            );
+            tracing::info!(message, event);
+        };
         Ok(Bootstrapped {
             user_id,
             tenant_id,

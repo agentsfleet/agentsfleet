@@ -96,12 +96,10 @@ fn layer_absent(event: &'static str, message: &'static str) -> Response {
     let request_id = RequestId::mint();
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let request_id_field = request_id.as_str();
-    tracing::error!(
-        error_code = code,
-        request_id = request_id_field,
-        event,
-        message
-    );
+    {
+        let (error_code, request_id) = (&code, &request_id_field);
+        tracing::error!(error_code, request_id, event, message);
+    };
     ProblemResponse::new(
         error_code::INTERNAL_OPERATION_FAILED,
         DETAIL_NOT_YOURS,
