@@ -221,12 +221,13 @@ impl LeaseService {
         self.leases.settle_terminal(acquired).await?;
         let fleet_id = acquired.fleet_id.as_str();
         let agentsfleet_event_id = acquired.event_id.as_str();
-        tracing::info!(
-            fleet_id,
-            agentsfleet_event_id,
-            event = EVENT_TERMINAL_SUPPRESSED,
-            "the redelivered event already has a durable ending"
-        );
+        {
+            let (event, message) = (
+                &EVENT_TERMINAL_SUPPRESSED,
+                format_args!("the redelivered event already has a durable ending"),
+            );
+            tracing::info!(message, fleet_id, agentsfleet_event_id, event);
+        };
         no_work(runner_id, REDELIVERED_FINISHED);
         Ok(Step::Stop)
     }

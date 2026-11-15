@@ -8,19 +8,29 @@ use crate::identity::Capabilities;
 pub(super) fn announce_identity(capabilities: &Capabilities) {
     match capabilities {
         Capabilities::Provider(_built) => {
-            tracing::info!(
-                event = "identity_provider_configured",
-                "identity provider configured — tenant and runner planes both serve"
-            );
+            {
+                let (event, message) = (
+                    &"identity_provider_configured",
+                    format_args!(
+                        "identity provider configured — tenant and runner planes both serve"
+                    ),
+                );
+                tracing::info!(message, event);
+            };
         }
         Capabilities::Unconfigured(_absent) => {
             let code = af_core::error_code::AUTH_UNAVAILABLE.as_str();
-            tracing::warn!(
-                error_code = code,
-                event = "identity_provider_unusable",
-                "identity provider unusable — the runner plane serves normally \
+            {
+                let (error_code, event, message) = (
+                    &code,
+                    &"identity_provider_unusable",
+                    format_args!(
+                        "identity provider unusable — the runner plane serves normally \
                  and every tenant-plane capability read answers unavailable"
-            );
+                    ),
+                );
+                tracing::warn!(message, error_code, event);
+            };
         }
     }
 }

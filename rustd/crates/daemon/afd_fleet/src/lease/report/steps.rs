@@ -48,14 +48,22 @@ impl LeaseService {
         let fleet = lease.fleet_id.as_str();
         let event = lease.event_id.as_str();
         let nanos = charged.as_i64();
-        tracing::debug!(
-            fleet_id = fleet,
-            agentsfleet_event_id = event,
-            lease_id,
-            nanos,
-            event = EVENT_SETTLED,
-            "the report won its fence and its final slice was charged"
-        );
+        {
+            let (fleet_id, agentsfleet_event_id, event, message) = (
+                &fleet,
+                &event,
+                &EVENT_SETTLED,
+                format_args!("the report won its fence and its final slice was charged"),
+            );
+            tracing::debug!(
+                message,
+                fleet_id,
+                agentsfleet_event_id,
+                lease_id,
+                nanos,
+                event
+            );
+        };
 
         // After the fence is won, so a refused report does not decrement a
         // lease its runner still holds. The counterpart of the increment
@@ -125,12 +133,14 @@ impl LeaseService {
     pub(super) fn record_repeat(lease: &Reported, lease_id: &str) {
         let fleet = lease.fleet_id.as_str();
         let event = lease.event_id.as_str();
-        tracing::info!(
-            fleet_id = fleet,
-            agentsfleet_event_id = event,
-            lease_id,
-            event = EVENT_ALREADY_SETTLED,
-            "the runner re-sent a settled report; its stored outcome stands"
-        );
+        {
+            let (fleet_id, agentsfleet_event_id, event, message) = (
+                &fleet,
+                &event,
+                &EVENT_ALREADY_SETTLED,
+                format_args!("the runner re-sent a settled report; its stored outcome stands"),
+            );
+            tracing::info!(message, fleet_id, agentsfleet_event_id, lease_id, event);
+        };
     }
 }

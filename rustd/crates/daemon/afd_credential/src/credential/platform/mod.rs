@@ -236,13 +236,15 @@ async fn read<B: Bag>(vault: &Vault, admin_workspace: &Uuid7, key: &str) -> Opti
         Ok(read) => usable_row(read, key),
         Err(error) => {
             let Logged { error_code, reason } = error.logged();
-            tracing::warn!(
-                key,
-                error_code,
-                reason,
-                event = "platform_credential_unreadable",
-                "a platform credential row would not open; that connector will not mint"
-            );
+            {
+                let (event, message) = (
+                    &"platform_credential_unreadable",
+                    format_args!(
+                        "a platform credential row would not open; that connector will not mint"
+                    ),
+                );
+                tracing::warn!(message, key, error_code, reason, event);
+            };
             None
         }
     }

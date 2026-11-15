@@ -11,7 +11,7 @@ type Props = {
 };
 
 export function CollectionToolbar({ label, value, onChange, summary }: Props) {
-  return <div className="flex flex-wrap items-center justify-between gap-lg">
+  return <div className="flex flex-wrap items-center justify-between gap-lg max-summary:gap-md">
     <div className="relative flex min-h-11.5 w-full items-center rounded-control border border-border bg-card focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring sm:max-w-search">
       <MagnifyingGlassIcon size={16} className="pointer-events-none absolute left-lg top-1/2 -translate-y-1/2 text-text-dim" aria-hidden="true" />
       <Input type="search" aria-label={label} placeholder={label} value={value}

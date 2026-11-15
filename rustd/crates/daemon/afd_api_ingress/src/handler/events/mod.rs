@@ -264,12 +264,10 @@ fn dropped(provider: Provider, body: &Bytes, reason: &str) -> Response {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let provider_id = provider.id();
     let body_bytes = body.len();
-    tracing::info!(
-        provider = provider_id,
-        body_bytes,
-        reason,
-        event = EVENT_DROPPED,
-    );
+    {
+        let (provider, event) = (&provider_id, &EVENT_DROPPED);
+        tracing::info!(provider, body_bytes, reason, event);
+    };
     (
         StatusCode::OK,
         Json(EventsAnswer::Ignored(webhook::Ignored {

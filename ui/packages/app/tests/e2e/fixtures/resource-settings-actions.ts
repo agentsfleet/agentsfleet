@@ -1,4 +1,4 @@
-import {visualMembers, visualInvites, visualModels, visualCatalogueModel, visualParity} from "./visual-fixture-data";
+import {visualMembers, visualInvites, visualModels, visualCatalogueModel, visualParity, VISUAL_VIEWER_ID} from "./visual-fixture-data";
 import type {ActionResult} from "@/lib/actions/with-token";
 import type {MemberSummary} from "@/lib/api/tenant-members";
 import type {InviteSummary} from "@/lib/api/invites";
@@ -8,7 +8,7 @@ import {CATALOGUE_MODEL} from "@/tests/helpers/catalogue-fixtures";
 import {WORKSPACE, FLEET_ID} from "@/tests/helpers/draft-fixtures";
 
 export const SAMPLE_MEMBERS: MemberSummary[] = [
-  {user_id: "fixture-owner", display_name: "Kishore Neelamegam", email: "you@example.test", role: "owner", joined_at: "2026-11-01T10:00:00Z"},
+  {user_id: VISUAL_VIEWER_ID, display_name: "Kishore Neelamegam", email: "you@example.test", role: "owner", joined_at: "2026-11-01T10:00:00Z"},
   {user_id: "member", display_name: "Release reviewer", email: "reviewer@example.test", role: "member", joined_at: "2026-11-05T10:00:00Z"},
 ];
 export const SAMPLE_INVITES: InviteSummary[] = [{id: "invite", email: "teammate@example.test", role: "member", created_at: "2026-11-11T10:00:00Z",

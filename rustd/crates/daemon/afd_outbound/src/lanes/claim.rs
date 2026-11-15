@@ -25,23 +25,18 @@ impl<S: Deliver + 'static> Inner<S> {
         let provider = job.outgoing.provider.as_str();
         let fleet_id = job.outgoing.fleet_id.as_str();
         if self.token.is_cancelled() {
-            tracing::info!(
-                provider,
-                fleet_id,
-                attempts,
-                event = EVENT_REQUEUED_AT_SHUTDOWN
-            );
+            {
+                let event = &EVENT_REQUEUED_AT_SHUTDOWN;
+                tracing::info!(provider, fleet_id, attempts, event);
+            };
             self.release(job, Duration::ZERO).await;
             return;
         }
         let error_code = af_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
-        tracing::warn!(
-            error_code,
-            provider,
-            fleet_id,
-            attempts,
-            event = EVENT_DELIVERY_EXHAUSTED
-        );
+        {
+            let event = &EVENT_DELIVERY_EXHAUSTED;
+            tracing::warn!(error_code, provider, fleet_id, attempts, event);
+        };
         if attempts.is_some_and(|cycles| cycles >= MAX_DELIVERY_CYCLES) {
             crate::abandon::delivery(&self.database, job, AbandonReason::CyclesExhausted).await;
             return;
@@ -62,13 +57,10 @@ impl<S: Deliver + 'static> Inner<S> {
         let provider = job.outgoing.provider.as_str();
         let fleet_id = job.outgoing.fleet_id.as_str();
         let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-        tracing::warn!(
-            error_code,
-            provider,
-            fleet_id,
-            write,
-            event = EVENT_CLAIM_LAPSED
-        );
+        {
+            let event = &EVENT_CLAIM_LAPSED;
+            tracing::warn!(error_code, provider, fleet_id, write, event);
+        };
     }
 }
 

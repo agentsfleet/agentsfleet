@@ -231,13 +231,11 @@ impl LeaseRun<'_> {
         let lease_id = self.ids.lease.as_str();
         let class = class.as_str();
         let event = EVENT_BUILD_FAILED;
-        tracing::warn!(
-            error_code,
-            lease_id,
-            class,
-            reason,
-            event,
-            "the sandbox could not be built; the run goes on without it"
-        );
+        {
+            let (message,) = (format_args!(
+                "the sandbox could not be built; the run goes on without it"
+            ),);
+            tracing::warn!(message, error_code, lease_id, class, reason, event);
+        };
     }
 }

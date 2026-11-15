@@ -110,11 +110,11 @@ test.describe("authenticated dashboard fluidity", () => {
       await expect(page.getByRole("heading", {name: CHAT_ENTRANCE, exact: true})).toBeVisible();
       await installBlankFrameAudit(page);
 
-      await openSettingsDestination(page, "API Keys");
+      await openSettingsDestination(page, "Security");
       await expect(page).toHaveURL(/\/settings\/security(?:\?|$)/, {
         timeout: ROUTE_TIMEOUT_MS,
       });
-      await expect(page.getByRole("heading", { name: "API Keys", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Security", exact: true })).toBeVisible();
 
       const switcher = page.getByTestId("workspace-switcher");
       await openWorkspaceMenu(page);
@@ -173,11 +173,11 @@ test.describe("authenticated dashboard fluidity", () => {
       await installBlankFrameAudit(page);
 
       await openSettingsDestination(page, "Models");
-      await openSettingsDestination(page, "API Keys");
+      await openSettingsDestination(page, "Security");
       await expect(page).toHaveURL(/\/settings\/security(?:\?|$)/, {
         timeout: ROUTE_TIMEOUT_MS,
       });
-      await expect(page.getByRole("heading", { name: "API Keys", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Security", exact: true })).toBeVisible();
       expect(await blankFrameCount(page)).toBe(0);
     },
   );
@@ -229,7 +229,7 @@ test.describe("authenticated dashboard fluidity", () => {
       ).toBeGreaterThan(0);
 
       const navigation = page.getByRole("navigation", { name: "Primary" });
-      await openSettingsDestination(page, "API Keys");
+      await openSettingsDestination(page, "Security");
       await expect(page).toHaveURL(/\/settings\/security(?:\?|$)/);
       await navigation.getByRole("link", { name: "Your fleets" }).click();
       await expect(page).toHaveURL(workspaceUrlPattern("fleets"));

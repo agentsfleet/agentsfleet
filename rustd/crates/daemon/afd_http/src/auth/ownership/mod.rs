@@ -256,12 +256,10 @@ fn refuse<D>(
     // At `warn`, anybody probing identifiers would be the loudest thing in an
     // operator's log. The template rather than the path, because a real path
     // carries the identifier that was probed.
-    tracing::debug!(
-        error_code = code_field,
-        request_id = request_id_field,
-        route = template,
-        event,
-    );
+    {
+        let (error_code, request_id, route) = (&code_field, &request_id_field, &template);
+        tracing::debug!(error_code, request_id, route, event);
+    };
     ProblemResponse::new(code, detail, request_id).into_response()
 }
 

@@ -134,13 +134,10 @@ pub(super) fn heals(error: &Error) -> bool {
 pub(super) fn log(schedule_id: &str, attempt: usize, error: &Error, delay: Duration) {
     let delay_ms = delay.as_millis();
     let error_code = error.code();
-    tracing::debug!(
-        schedule_id,
-        attempt,
-        delay_ms,
-        error_code = %error_code,
-        event = EVENT_RETRYING
-    );
+    {
+        let event = &EVENT_RETRYING;
+        tracing::debug!(schedule_id, attempt, delay_ms, %error_code, event);
+    };
 }
 
 /// A scheduler call that failed in a way that can heal, about to be sent again.

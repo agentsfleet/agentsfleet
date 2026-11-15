@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   approveApproval,
   denyApproval,
-  getApproval,
   listApprovals,
   type ApprovalGate,
 } from "./approvals";
@@ -99,26 +98,8 @@ describe("listApprovals", () => {
   });
 });
 
-// ── getApproval ────────────────────────────────────────────────────────
 
-describe("getApproval", () => {
-  it("hits the single-resource path with bearer", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(gateFixture()));
-    const gate = await getApproval(WORKSPACE_ID, GATE_ID, TOKEN);
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${BACKEND_BASE}${PATH_PREFIX}/${GATE_ID}`,
-      expect.objectContaining({ method: "GET" }),
-    );
-    expect(gate.gate_id).toBe(GATE_ID);
-  });
 
-  it("throws on 404 unknown gate id", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ error_code: "UZ-APPROVAL-002", detail: "not found" }, 404),
-    );
-    await expect(getApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toBeTruthy();
-  });
-});
 
 // On the server (no `window`) the resolve fetch targets the absolute API
 // base instead of the `/backend` proxy. afterEach's unstubAllGlobals

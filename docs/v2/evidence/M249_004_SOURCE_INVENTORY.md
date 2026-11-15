@@ -30,11 +30,19 @@ Base: `a1dcc222488e4522f8b92208a4f7df8461fe7fbf`, main containing PR #844.
 
 The shell's own reads (workspaces, balance, invites, and now model labels) are common to every dashboard page and are not Usage requests.
 
-The controlled loader review in M249_003 measured the old dependency: the report answered in 40 ms and the page waited 1,217 ms behind a catalogue delayed by 1,200 ms. Those are injected local delays, not live machine timings.
+The earlier M249_003 controlled review measured the old loader dependency.
+The report answered in 40 ms; the page waited 1,217 ms for a catalogue delayed by 1,200 ms.
+Those are injected local delays, not live machine timings.
 
 ## Query plans
 
-Measured on a worktree Postgres 19 with 2,240,000 settled lines, 224,000 of them in one account's month, across six fleets, setup work and ten models. Times are `EXPLAIN (ANALYZE, BUFFERS)` execution times in milliseconds.
+These are historical measurements of the earlier aggregate optimization.
+Claude reverted that optimization in `431b2ab62`; the current parent `ab4fe8937` uses the prior scoped-row statement.
+The timings below do not establish a speedup for the current SQL or measure the Usage UI.
+
+The worktree Postgres 19 held 2,240,000 settled lines.
+One account's month contained 224,000 across six fleets, setup work and ten models.
+Times are `EXPLAIN (ANALYZE, BUFFERS)` runtimes in milliseconds.
 
 | Statement | Runs | Times (ms) |
 |---|---|---|
@@ -43,13 +51,26 @@ Measured on a worktree Postgres 19 with 2,240,000 settled lines, 224,000 of them
 
 The machine's load average was 4.6–5.4 during both rounds; interleaving the two statements controls for it.
 
-The earlier plan showed where the time went: a 300 ms scan of the account's lines, then three external-merge sorts of all 224,000 rows for the grouping sets and the distinct aggregates. Grouping first hands the grouping sets a fraction of the rows; every filter and grouping set keys on the grouped columns, so the sums cannot change.
+The earlier plan scanned the account's lines in 300 ms.
+It then externally sorted all 224,000 rows three times for grouping sets and distinct aggregates.
 
-Equivalence: `EXCEPT ALL` in both directions over the full result returned 48 rows each and 0 differences, unfiltered and under a fleet filter, a model filter and a setup-only filter.
+Grouping first passes grouped rows to the grouping sets.
+Filters and grouping sets still key on those grouped columns, so sums stay unchanged.
+
+Each full result contained 48 rows.
+`EXCEPT ALL` found zero differences in both directions.
+Checks covered unfiltered reads and fleet, model and setup-only filters.
 
 ## Label design
 
-The first design added `model_labels` to the billing report. The owner moved names to one shared store so billing reports billing alone, and asked that names never visibly swap after paint. The layout therefore reads the labels on the server, once per sign-in or refresh; Next keeps the layout across client navigation (`next/dist/docs/01-app/02-guides/authentication.md:1358`).
+An earlier design put `model_labels` in the report.
+The owner moved names into a shared store and required names before the table paints.
+
+The layout starts one server label read per sign-in or refresh and forwards its promise through the provider.
+Next retains the layout across client navigation (`next/dist/docs/01-app/02-guides/authentication.md:1358`).
+
+The frame, report totals and graph stream while the fleet table waits for names.
+This preserves the shared read and avoids a visible identifier/name swap.
 
 An identifier gets a name only when every catalogue listing of it agrees on one nonempty name. Retired models are absent from the priced catalogue and show their recorded identifier.
 
@@ -65,7 +86,7 @@ A throwaway Postgres 19rc2 container held the real `schema/*.sql` and three acco
 
 The ledger held 5,545 MB, the rollup 28 MB. Rebuilding the rollup from all 9.59M settled lines took 51 s.
 
-Report reads, warm, `EXPLAIN (ANALYZE)` execution time:
+Report reads, warm, `EXPLAIN (ANALYZE)` duration:
 
 | Statement | 10 fleets | 100 fleets | 1,000 fleets |
 |---|---|---|---|
@@ -78,7 +99,9 @@ Report reads, warm, `EXPLAIN (ANALYZE)` execution time:
 
 One plain pass over the large account's month took 8,545 ms cold. Most of the raw statement's time went to `COUNT(DISTINCT …)` and `ARRAY_AGG(DISTINCT …)` sorting and spilling inside its grouping sets.
 
-Equivalence, `EXCEPT ALL` in both directions: the prototype matched main's statement at 45 and 1,035 rows; the rollup read matched at 135 rows (100 fleets). Each found 0 differences.
+Equivalence used `EXCEPT ALL` in both directions.
+The prototype matched main's statement at 45 and 1,035 rows; the rollup read matched at 135 rows (100 fleets).
+Each found 0 differences.
 
 Settlement, `pgbench`, 8 clients for 30 s. Each transaction inserted a run's 3 lines, then settled, rolled up and debited:
 
@@ -90,5 +113,12 @@ Settlement, `pgbench`, 8 clients for 30 s. Each transaction inserted a run's 3 l
 
 Write-ahead log per transaction was ~11–12 KB either way. No transaction failed, so no deadlock aborted any of the ~44,700 runs.
 
-Adversarial checks against the settle statement: a duplicate pass settled 0 and added nothing; a rolled-back settle left nothing; a run across midnight split its money by day and counted once. Two relays settling different lines of one run at the same moment kept money exact but counted the run twice when the count keyed on "the first batch". Counting on the run's smallest runtime slice, which only one transaction can settle, removes that without a lock. The integration suite repeats every one of these checks.
+Adversarial checks against the settle statement found that a duplicate pass settled 0 and added nothing.
+A rolled-back settle left nothing; a run across midnight split its money by day and counted once.
+
+Two relays settling different lines of one run at the same moment kept money exact.
+They counted the run twice when the count keyed on "the first batch".
+Counting on the run's smallest runtime slice, which only one transaction can settle, removes that without a lock.
+
+The integration suite repeats every one of these checks.
 

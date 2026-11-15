@@ -247,11 +247,10 @@ fn unverified() -> Refusal {
 /// its length.
 fn unnamed(named: Option<&str>) -> Response {
     let named = logged_id(named);
-    tracing::info!(
-        named,
-        reason = REASON_NO_SCHEDULE_HEADER,
-        event = EVENT_DROPPED
-    );
+    {
+        let (reason, event) = (&REASON_NO_SCHEDULE_HEADER, &EVENT_DROPPED);
+        tracing::info!(named, reason, event);
+    };
     ignored(REASON_NO_SCHEDULE_HEADER)
 }
 
@@ -264,11 +263,10 @@ fn unnamed(named: Option<&str>) -> Response {
 fn no_such_schedule(schedule: &Uuid7) -> Response {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let schedule_id = schedule.as_str();
-    tracing::info!(
-        schedule_id,
-        reason = REASON_NO_SUCH_SCHEDULE,
-        event = EVENT_DROPPED
-    );
+    {
+        let (reason, event) = (&REASON_NO_SUCH_SCHEDULE, &EVENT_DROPPED);
+        tracing::info!(schedule_id, reason, event);
+    };
     ignored(REASON_NO_SUCH_SCHEDULE)
 }
 

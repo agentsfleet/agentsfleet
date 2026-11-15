@@ -109,14 +109,17 @@ fn missing_ending(
     let process_id = process.id.get();
     let timeout_ms = saturating_millis(timeout);
     let runner_wait_ms = saturating_millis(runner_wait);
-    tracing::warn!(
-        event = EVENT_ENDING_DEADLINE,
-        lease_id,
-        error_code,
-        process_id,
-        timeout_ms,
-        runner_wait_ms
-    );
+    {
+        let event = &EVENT_ENDING_DEADLINE;
+        tracing::warn!(
+            event,
+            lease_id,
+            error_code,
+            process_id,
+            timeout_ms,
+            runner_wait_ms
+        );
+    };
     Ending::Interrupted
 }
 

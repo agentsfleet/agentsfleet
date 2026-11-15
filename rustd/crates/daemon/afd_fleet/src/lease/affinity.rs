@@ -208,13 +208,15 @@ impl Leases {
         if let Err(failure) = self.release(fleet_id, fence).await {
             let Logged { error_code, reason } = failure.logged();
             let fleet_id = fleet_id.as_str();
-            tracing::warn!(
-                error_code,
-                event = EVENT_CLAIM_RELEASE_FAILED,
-                fleet_id,
-                reason,
-                "a claim that issued no lease was not freed; it lapses at its expiry"
-            );
+            {
+                let (event, message) = (
+                    &EVENT_CLAIM_RELEASE_FAILED,
+                    format_args!(
+                        "a claim that issued no lease was not freed; it lapses at its expiry"
+                    ),
+                );
+                tracing::warn!(message, error_code, event, fleet_id, reason);
+            };
         }
     }
 

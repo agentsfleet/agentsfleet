@@ -76,20 +76,7 @@ export type SavedToolCall = {
   duration_ms: number;
 };
 
-export async function listFleetEvents(
-  workspaceId: string,
-  fleetId: string,
-  token: string,
-  opts?: Omit<EventsQuery, "fleet_id">,
-  retry?: RetryOptions,
-): Promise<EventsPage> {
-  return EventsPageSchema.parse(await requestWithRetry<unknown>(
-    `${fleetScope(workspaceId, fleetId)}/events${buildQuery(opts)}`,
-    { method: "GET" },
-    token,
-    retry,
-  ));
-}
+
 
 export type ThreadPage = {
   items: EventDetail[];

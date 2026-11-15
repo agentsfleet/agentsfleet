@@ -126,12 +126,16 @@ impl LeaseService {
             Ok(Funds::Covered | Funds::Unconfirmed) => Ok(()),
             Ok(Funds::Short { .. }) => {
                 let fleet = lease.fleet_id.as_str();
-                tracing::warn!(
-                    fleet_id = fleet,
-                    lease_id,
-                    event = EVENT_NO_CREDITS,
-                    "the tenant's balance can no longer fund this run; not renewed"
-                );
+                {
+                    let (fleet_id, event, message) = (
+                        &fleet,
+                        &EVENT_NO_CREDITS,
+                        format_args!(
+                            "the tenant's balance can no longer fund this run; not renewed"
+                        ),
+                    );
+                    tracing::warn!(message, fleet_id, lease_id, event);
+                };
                 Err(renewal_no_credits())
             }
             Err(fault) if fault.is_wallet_missing() => Ok(()),
@@ -188,13 +192,15 @@ impl LeaseService {
 
         let fleet = lease.fleet_id.as_str();
         let which = verdict.as_str();
-        tracing::warn!(
-            fleet_id = fleet,
-            lease_id,
-            verdict = which,
-            event = EVENT_BUDGET_BREACH,
-            "the fleet reached a ceiling its author declared; not renewed"
-        );
+        {
+            let (fleet_id, verdict, event, message) = (
+                &fleet,
+                &which,
+                &EVENT_BUDGET_BREACH,
+                format_args!("the fleet reached a ceiling its author declared; not renewed"),
+            );
+            tracing::warn!(message, fleet_id, lease_id, verdict, event);
+        };
         Err(budget_exhausted())
     }
 }
@@ -210,14 +216,14 @@ pub(in crate::lease) fn refuse_unreadable_budget(
 ) -> crate::Error {
     let fleet = fleet_id.as_str();
     let Logged { error_code, reason } = fault.logged();
-    tracing::warn!(
-        error_code,
-        fleet_id = fleet,
-        lease_id,
-        reason,
-        event = EVENT_BUDGET_BREACH,
-        "the fleet's stored budget cannot be read; not renewed"
-    );
+    {
+        let (fleet_id, event, message) = (
+            &fleet,
+            &EVENT_BUDGET_BREACH,
+            format_args!("the fleet's stored budget cannot be read; not renewed"),
+        );
+        tracing::warn!(message, error_code, fleet_id, lease_id, reason, event);
+    };
     budget_exhausted()
 }
 
@@ -231,15 +237,16 @@ pub(in crate::lease) fn refuse_unreadable_budget(
 fn admit_unreadable(gate: &'static str, lease: &Renewing, lease_id: &str, fault: &crate::Error) {
     let fleet = lease.fleet_id.as_str();
     let Logged { error_code, reason } = fault.logged();
-    tracing::warn!(
-        error_code,
-        fleet_id = fleet,
-        lease_id,
-        gate,
-        reason,
-        event = EVENT_GATE_UNREADABLE,
-        "a renewal gate could not be read; the run is admitted for one more slice"
-    );
+    {
+        let (fleet_id, event, message) = (
+            &fleet,
+            &EVENT_GATE_UNREADABLE,
+            format_args!(
+                "a renewal gate could not be read; the run is admitted for one more slice"
+            ),
+        );
+        tracing::warn!(message, error_code, fleet_id, lease_id, gate, reason, event);
+    };
 }
 
 /// Admit a fleet's leases whose gate could not be read, and say so.
@@ -255,14 +262,16 @@ pub(in crate::lease) fn admit_unreadable_fleet(
 ) {
     let fleet = fleet_id.as_str();
     let Logged { error_code, reason } = fault.logged();
-    tracing::warn!(
-        error_code,
-        fleet_id = fleet,
-        gate,
-        reason,
-        event = EVENT_GATE_UNREADABLE,
-        "a renewal gate could not be read; the fleet's leases are admitted for one more slice"
-    );
+    {
+        let (fleet_id, event, message) = (
+            &fleet,
+            &EVENT_GATE_UNREADABLE,
+            format_args!(
+                "a renewal gate could not be read; the fleet's leases are admitted for one more slice"
+            ),
+        );
+        tracing::warn!(message, error_code, fleet_id, gate, reason, event);
+    };
 }
 
 #[cfg(test)]

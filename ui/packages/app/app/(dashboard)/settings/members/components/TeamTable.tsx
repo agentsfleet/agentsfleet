@@ -6,11 +6,11 @@ import type { InviteSummary } from "@/lib/api/invites";
 import { EMAIL_STATUS } from "@/lib/api/invites-types";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
-import { useCurrentUser } from "@/lib/auth/client";
 import { memberName } from "./TeamConfirm";
 
 export const TEAM_CAPTION = "People";
 type Props = {
+  viewerUserId: string;
   members: MemberSummary[]; invites: InviteSummary[]; pending: boolean;
   onRemove: (member: MemberSummary) => void;
   onRevoke: (invite: InviteSummary) => void;
@@ -44,13 +44,12 @@ export function TeamTable(props: Props) {
 }
 
 function Heading({children, count}: {children: string; count: number}) {
-  return <h2 className="flex min-h-7 flex-wrap items-center gap-md text-label font-semibold">{children}<Badge className="inline-flex h-5 min-w-5 items-center justify-center px-xs leading-none tabular-nums">{count}</Badge></h2>;
+  return <h2 className="flex h-5 items-center gap-lg text-label font-semibold">{children}<Badge className="h-6.75 min-w-6.25 justify-center tabular-nums">{count}</Badge></h2>;
 }
 
-function MemberRow({member, pending, onRemove}: Pick<Props, "pending" | "onRemove"> & {member: MemberSummary}) {
-  const {userId} = useCurrentUser();
+function MemberRow({member, pending, onRemove, viewerUserId}: Pick<Props, "pending" | "onRemove" | "viewerUserId"> & {member: MemberSummary}) {
   const owner = member.role === ACCOUNT_ROLE.owner;
-  const self = member.user_id === userId;
+  const self = member.user_id === viewerUserId;
   const name = memberName(member);
   const initials = name.split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase();
   return <li aria-label={name} className={ROW}>

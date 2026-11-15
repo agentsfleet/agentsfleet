@@ -85,6 +85,7 @@ export {
   type SpinnerProps,
   type SpinnerSize,
   Dialog,
+  DialogClose,
   DialogTrigger,
   DialogContent,
   DialogHeader,

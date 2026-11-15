@@ -66,12 +66,11 @@ pub(crate) fn announce(config: &OtlpConfig, installed: bool, instruments: &Instr
     let source = config.source();
     let protocol = config.encoding().as_str();
     let families = instruments.registry().len() - instruments.unclaimed().len();
-    tracing::info!(
-        source,
-        protocol,
-        families,
-        installed,
-        event = "startup_otel_enabled",
-        "telemetry is exporting"
-    );
+    {
+        let (event, message) = (
+            &"startup_otel_enabled",
+            format_args!("telemetry is exporting"),
+        );
+        tracing::info!(message, source, protocol, families, installed, event);
+    };
 }

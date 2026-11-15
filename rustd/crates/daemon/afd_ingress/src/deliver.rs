@@ -125,14 +125,11 @@ impl Ingress {
         let event_id = admitted.stored.id.as_str();
         let replayed = admitted.replayed;
         let source = binding.source();
-        tracing::info!(
-            fleet_id = %fleet,
-            workspace_id = %workspace,
-            source,
-            event_id = %event_id,
-            replayed,
-            event = "webhook_delivery_appended",
-        );
+        {
+            let (fleet_id, workspace_id, event) =
+                (&fleet, &workspace, &"webhook_delivery_appended");
+            tracing::info!(%fleet_id, %workspace_id, source, %event_id, replayed, event);
+        };
         Ok(admitted)
     }
 }

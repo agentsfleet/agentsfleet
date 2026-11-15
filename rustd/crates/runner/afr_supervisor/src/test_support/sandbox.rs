@@ -79,6 +79,8 @@ pub(crate) struct FakeEngine {
     /// The host directory each sandbox offers as its workspace, owned by
     /// whoever owns it; none keeps the workspace out of the host's reach.
     pub(crate) workspace: Option<PathBuf>,
+    /// The verified toolbox identity offered by a durable-recovery sandbox.
+    pub(crate) toolbox: Option<String>,
     /// Where each prepare reports the limits it was asked to enforce.
     pub(crate) asked: Option<mpsc::UnboundedSender<Limits>>,
     /// Where each prepare reports the network it was asked to reach.
@@ -86,6 +88,8 @@ pub(crate) struct FakeEngine {
     /// How many times its sandboxes were frozen, and thawed.
     pub(crate) frozen: Arc<AtomicUsize>,
     pub(crate) thawed: Arc<AtomicUsize>,
+    /// Attempts include a thaw that reports failure before it can succeed.
+    pub(crate) thaw_attempts: Arc<AtomicUsize>,
     /// Where each sandbox reports the allowlist it was told to take, and
     /// whether it had been thawed by then.
     pub(crate) reallowed: Option<mpsc::UnboundedSender<(Allowlist, bool)>>,
@@ -133,9 +137,11 @@ impl Engine for FakeEngine {
             teardown_takes: self.teardown_takes,
             thaw_takes: self.thaw_takes,
             workspace,
+            toolbox: self.toolbox.clone(),
             destroyed: Arc::clone(&self.destroyed),
             frozen: Arc::clone(&self.frozen),
             thawed: Arc::clone(&self.thawed),
+            thaw_attempts: Arc::clone(&self.thaw_attempts),
             reallowed: self.reallowed.clone(),
             freezer: self.freezer,
             executor: FakeExecutor {
@@ -155,9 +161,11 @@ struct FakeSandbox {
     teardown_takes: Duration,
     thaw_takes: Duration,
     workspace: Option<(PathBuf, (u32, u32))>,
+    toolbox: Option<String>,
     destroyed: Arc<AtomicUsize>,
     frozen: Arc<AtomicUsize>,
     thawed: Arc<AtomicUsize>,
+    thaw_attempts: Arc<AtomicUsize>,
     reallowed: Option<mpsc::UnboundedSender<(Allowlist, bool)>>,
     freezer: Freezer,
     executor: FakeExecutor,
@@ -185,6 +193,10 @@ impl Sandbox for FakeSandbox {
         })
     }
 
+    fn toolbox_digest(&self) -> Option<&str> {
+        self.toolbox.as_deref()
+    }
+
     fn is_running(&mut self) -> bool {
         self.freezer != Freezer::Dead
     }
@@ -198,6 +210,7 @@ impl Sandbox for FakeSandbox {
     }
 
     async fn thaw(&self) -> afr_sandbox::Result<()> {
+        self.thaw_attempts.fetch_add(1, Ordering::SeqCst);
         if !self.thaw_takes.is_zero() {
             tokio::time::sleep(self.thaw_takes).await;
         }

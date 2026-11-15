@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { AccountSettingsSection } from "@/components/account/AccountSettingsSection";
+import userEvent from "@testing-library/user-event";
+import { AccountAvatar } from "@/components/account/AccountAvatar";
+import { WorkspaceSwitcherTrigger } from "@/components/layout/WorkspaceSwitcherTrigger";
 
 type Identity = ReturnType<typeof import("@/lib/auth/client").useCurrentUser>;
 const identity = vi.hoisted((): {current: Identity} => ({current: {
@@ -9,26 +11,26 @@ const identity = vi.hoisted((): {current: Identity} => ({current: {
 vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => identity.current}));
 afterEach(cleanup);
 
-it("keeps identity loading and signed-out recovery explicit", () => {
-  identity.current = {...identity.current, isLoaded: false, isSignedIn: false};
-  const view = render(<AccountSettingsSection />);
-  expect(screen.getByRole("region", {name: "Your account"})).toBeTruthy();
-  expect(screen.queryByText("Signed in as")).toBeNull();
-  identity.current = {...identity.current, isLoaded: true};
-  view.rerender(<AccountSettingsSection />);
-  expect(screen.getByRole("link", {name: "Sign in"}).getAttribute("href")).toBe("/sign-in");
+it("keeps initials and a generic avatar available when no image can be shown", () => {
+  const view = render(<AccountAvatar userId="one" name="Kishore Kumar" imageUrl={null} />);
+  expect(screen.getByText("KK")).toBeTruthy();
+  view.rerender(<AccountAvatar userId={null} name={null} imageUrl={null} />);
+  expect(screen.queryByText("KK")).toBeNull();
+  expect(view.container.querySelector("svg")).toBeTruthy();
+  view.rerender(<AccountAvatar userId={null} name={null} imageUrl={null} busy />);
+  expect(screen.getByRole("status").textContent).toContain("Loading workspace menu");
 });
 
-it("shows current identity without duplicate profile controls and replaces it when the person changes", () => {
-  identity.current = {isLoaded: true, isSignedIn: true, userId: "one", displayName: "Kishore", emailAddress: "you@example.test", imageUrl: "https://example.test/avatar.png"};
-  const view = render(<AccountSettingsSection />);
-  expect(screen.getByRole("heading", {name: "Kishore"})).toBeTruthy();
-  expect(screen.getByText("you@example.test")).toBeTruthy();
-  expect(screen.queryByRole("button", {name: "Profile and sign-in settings"})).toBeNull();
-  identity.current = {...identity.current, userId: "two", displayName: null, emailAddress: null, imageUrl: null};
-  view.rerender(<AccountSettingsSection />);
-  expect(screen.queryByText("Kishore")).toBeNull();
-  expect(screen.queryByText("you@example.test")).toBeNull();
-  expect(screen.getByRole("heading", {name: "Your account"})).toBeTruthy();
-  expect(screen.getByText("No primary email address")).toBeTruthy();
+it("shows the current email on avatar hover and replaces the identity when the person changes", async () => {
+  identity.current = {isLoaded: true, isSignedIn: true, userId: "one", displayName: "Kishore", emailAddress: "you@example.test", imageUrl: null};
+  const user = userEvent.setup();
+  const view = render(<WorkspaceSwitcherTrigger activeLabel="Workspace" collapsed />);
+  await user.hover(screen.getByRole("button", {name: /you@example.test/}));
+  expect((await screen.findByRole("tooltip")).textContent).toBe("you@example.test");
+  identity.current = {...identity.current, userId: "two", displayName: "Another person", emailAddress: "other@example.test"};
+  view.rerender(<WorkspaceSwitcherTrigger activeLabel="Workspace" collapsed />);
+  expect(screen.queryByRole("button", {name: /you@example.test/})).toBeNull();
+  expect(screen.getByRole("button", {name: /other@example.test/})).toBeTruthy();
+  expect(screen.queryByText("K")).toBeNull();
+  expect(screen.getByText("AP")).toBeTruthy();
 });

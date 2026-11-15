@@ -47,7 +47,7 @@ Removing the active duplicate names requires changing their callers together.
 `text-text-chat`, `text-text-subtle`, and `text-text-dim` remain distinct roles.
 
 The billing page still selects `font-system` and overrides typography on shared controls.
-Examples include `BillingFilters.tsx`, `BillingSpending.tsx`, and `BillingReportView.tsx` under the app's billing route.
+Examples include `BillingFilters.tsx`, `BillingFleetTable.tsx`, and `BillingReportView.tsx` under the app's billing route.
 Those call sites need shared component variants before the local overrides can be removed.
 
 The existing size-name collision in Tailwind also remains.

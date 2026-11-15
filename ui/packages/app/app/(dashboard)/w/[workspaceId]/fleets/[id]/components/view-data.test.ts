@@ -1,13 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-const listFleetEventsMock = vi.hoisted(() => vi.fn());
 const listFleetMessagesMock = vi.hoisted(() => vi.fn());
 const listAllMemoriesMock = vi.hoisted(() => vi.fn());
 const listWorkspaceMembersMock = vi.hoisted(() => vi.fn());
 const requestMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api/events", () => ({
-  listFleetEvents: listFleetEventsMock,
   listFleetMessages: listFleetMessagesMock,
 }));
 vi.mock("@/lib/api/memory", () => ({ listAllMemories: listAllMemoriesMock }));
@@ -37,7 +35,6 @@ function startChat(): ChatViewData {
 
 function resetMocks() {
   for (const mock of [
-    listFleetEventsMock,
     listFleetMessagesMock,
     listAllMemoriesMock,
     listWorkspaceMembersMock,
@@ -71,8 +68,6 @@ describe("startChatData", () => {
     expect(listFleetMessagesMock).toHaveBeenCalledWith(ARGS.workspaceId, ARGS.fleetId, ARGS.token, {
       limit: CHAT_TURNS,
     });
-    // The retired shape: an events-list read followed by per-turn detail reads.
-    expect(listFleetEventsMock).not.toHaveBeenCalled();
     // The tag is what lets the chat loader take the thread fields directly.
     expect(data).toHaveProperty("thread");
   });

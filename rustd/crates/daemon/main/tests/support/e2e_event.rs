@@ -61,7 +61,10 @@ pub(crate) async fn enqueue_unsupported(
     event_type: &str,
     now: Timestamp,
 ) -> Uuid7 {
-    insert_admission(booted, fleet, workspace, event_type, now).await
+    let event = insert_admission(booted, fleet, workspace, event_type, now).await;
+    // Mirror admission's post-commit hint; the recovery cadence exceeds the refusal window.
+    afd_bus::wake::publish(&booted.bus, fleet.clone()).await;
+    event
 }
 
 /// The ledger row for [`enqueue_unsupported`]: its id, which is the event's.

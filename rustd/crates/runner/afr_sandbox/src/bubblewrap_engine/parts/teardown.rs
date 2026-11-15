@@ -140,13 +140,12 @@ fn log_release(lease_id: &str, failed: Option<&Error>) {
         Some(error) => {
             let Logged { error_code, reason } = error.logged();
             let event = EVENT_TEARDOWN_FAILED;
-            tracing::warn!(
-                lease_id,
-                error_code,
-                reason,
-                event,
-                "a sandbox left something behind for the boot sweep"
-            );
+            {
+                let (message,) = (format_args!(
+                    "a sandbox left something behind for the boot sweep"
+                ),);
+                tracing::warn!(message, lease_id, error_code, reason, event);
+            };
         }
     }
 }

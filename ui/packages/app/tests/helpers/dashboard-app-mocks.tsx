@@ -10,8 +10,6 @@ import { authMock, getTokenFn, usePathname } from "./dashboard-mocks";
 // `vi.mock("mod", async () => (await import("./helpers/dashboard-app-mocks")).fooMock())`.
 // The dynamic import resolves to the same instance as the shard's static
 // import, so a fn a test asserts on is the same instance the factory installs.
-// Mocking a module a given shard never imports is inert — over-declaring the
-// vi.mock set is safe.
 
 export type ActionResult<T> =
   | { ok: true; data: T }
@@ -23,7 +21,6 @@ export const setFleetStatusMock = vi.fn();
 export const listFleetsMock = vi.fn();
 export const getTenantBillingMock = vi.fn();
 export const listWorkspaceEventsMock = vi.fn();
-export const listFleetEventsMock = vi.fn();
 export const getTenantProviderMock = vi.fn();
 export const setTenantProviderSelfManagedMock = vi.fn();
 export const resetTenantProviderMock = vi.fn();
@@ -97,29 +94,15 @@ export function tenantProviderMock() {
 
 
 export function eventsMock() {
-  return { listWorkspaceEvents: listWorkspaceEventsMock, listFleetEvents: listFleetEventsMock };
+  return { listWorkspaceEvents: listWorkspaceEventsMock };
 }
 
-const SECRET_KIND = {
-  provider_key: "provider_key",
-  custom_endpoint: "custom_endpoint",
-  custom_secret: "custom_secret",
-} as const;
-
 export function secretsApiMock() {
-  // The vault API calls are mocked fns; the kind discriminator + narrowing
-  // helpers (read by the Models page + its client children) keep their
-  // real behaviour so the full module mock doesn't strip them to undefined.
-  type C = { kind?: string };
   return {
     listSecrets: listSecretsMock,
     createSecret: createSecretMock,
     deleteSecret: deleteSecretMock,
     replaceSecret: vi.fn(),
-    SECRET_KIND,
-    providerKeysOf: (secrets: C[]) => secrets.filter((c) => c.kind === SECRET_KIND.provider_key),
-    customEndpointsOf: (secrets: C[]) => secrets.filter((c) => c.kind === SECRET_KIND.custom_endpoint),
-    customSecretsOf: (secrets: C[]) => secrets.filter((c) => c.kind === SECRET_KIND.custom_secret),
   };
 }
 
@@ -163,7 +146,6 @@ export function resetDashboardMocks() {
   });
   getTenantBillingMock.mockResolvedValue({ balance_nanos: String(5 * NANOS_PER_USD), is_exhausted: false, exhausted_at: null });
   listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
-  listFleetEventsMock.mockResolvedValue({ items: [], next_cursor: null });
   setFleetStatusMock.mockResolvedValue(undefined);
 
 }

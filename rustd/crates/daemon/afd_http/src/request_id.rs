@@ -69,12 +69,17 @@ impl RequestId {
             // random bytes cannot seal a secret either, so the unnamed request
             // this degrades to is the least of what is about to go wrong — and
             // it is the first symptom that surfaces.
-            tracing::error!(
-                error_code = code,
-                event = "request_id_entropy_unavailable",
-                "entropy unavailable — this request is unidentified, and \
+            {
+                let (error_code, event, message) = (
+                    &code,
+                    &"request_id_entropy_unavailable",
+                    format_args!(
+                        "entropy unavailable — this request is unidentified, and \
                  anything that needs a key is about to fail"
-            );
+                    ),
+                );
+                tracing::error!(message, error_code, event);
+            };
             return Self(UNKNOWN_REQUEST_ID.to_owned());
         }
         Self(format!("{PREFIX}{}", hex::encode(bytes)))

@@ -27,78 +27,6 @@ const mockResponse = {
   next_cursor: null,
 };
 
-describe("path identifiers", () => {
-  it("encodes the workspace and fleet ids so a hostile id cannot re-target the route", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => mockResponse });
-    const { listFleetEvents } = await import("./events");
-    await listFleetEvents("ws/../admin", "z?limit=999#x", "tok");
-    const url = fetchMock.mock.calls[0]![0] as string;
-    expect(url).toContain("/v1/workspaces/ws%2F..%2Fadmin/fleets/z%3Flimit%3D999%23x/events");
-    expect(url).not.toContain("/../");
-  });
-});
-
-describe("listFleetEvents", () => {
-  it("hits the per-fleet events endpoint without a cursor by default", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => mockResponse });
-    const { listFleetEvents } = await import("./events");
-    const page = await listFleetEvents("ws_1", "z_1", "tok");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/fleets/z_1/events"),
-      expect.anything(),
-    );
-    const url = fetchMock.mock.calls[0]![0] as string;
-    expect(url).not.toContain("cursor=");
-    expect(page.items[0]!.actor).toBe("steer:kishore");
-  });
-
-  it("forwards actor / since / cursor / limit", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
-    const { listFleetEvents } = await import("./events");
-    await listFleetEvents("ws_1", "z_1", "tok", {
-      cursor: "abc",
-      actor: "webhook:*",
-      since: "2h",
-      limit: 25,
-    });
-    const url = fetchMock.mock.calls[0]![0] as string;
-    expect(url).toContain("cursor=abc");
-    // URLSearchParams encodes ":" as "%3A" but keeps "*" literal (sub-delim).
-    expect(url).toContain("actor=webhook%3A*");
-    expect(url).toContain("since=2h");
-    expect(url).toContain("limit=25");
-  });
-
-  it("forwards actor_prefix — the steer-detection filter (M132)", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
-    const { listWorkspaceEvents } = await import("./events");
-    await listWorkspaceEvents("ws_1", "tok", { actor_prefix: "steer:", limit: 1 });
-    const url = fetchMock.mock.calls[0]![0] as string;
-    expect(url).toContain("actor_prefix=steer%3A");
-  });
-
-  it("omits since from the query string when opts provides other params but not since", async () => {
-    // Exercises the false branch of `if (opts.since)` in buildQuery.
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
-    const { listFleetEvents } = await import("./events");
-    await listFleetEvents("ws_1", "z_1", "tok", { actor: "cron", limit: 10 });
-    const url = fetchMock.mock.calls[0]![0] as string;
-    expect(url).toContain("actor=cron");
-    expect(url).not.toContain("since=");
-  });
-
-  it("produces a clean URL (no trailing ?) when opts is an empty object", async () => {
-    // Exercises the false branch of `qs.length > 0 ? ... : ""` in buildQuery.
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
-    const { listFleetEvents } = await import("./events");
-    await listFleetEvents("ws_1", "z_1", "tok", {});
-    const url = fetchMock.mock.calls[0]![0] as string;
-    // With an empty opts object, buildQuery produces "" so the URL must not end in "?".
-    expect(url).not.toContain("?");
-    expect(url).toContain("/v1/workspaces/ws_1/fleets/z_1/events");
-  });
-});
-
 describe("listWorkspaceEvents", () => {
   it("hits the workspace-aggregate events endpoint", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => mockResponse });
@@ -192,3 +120,50 @@ describe("fleetEventDetailUrl", () => {
   });
 });
 
+describe("workspace event query parameters", () => {
+  it("forwards actor / since / cursor / limit", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
+    const { listWorkspaceEvents } = await import("./events");
+    await listWorkspaceEvents("ws_1", "tok", {
+      cursor: "abc",
+      actor: "webhook:*",
+      since: "2h",
+      limit: 25,
+    });
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain("cursor=abc");
+    // URLSearchParams encodes ":" as "%3A" but keeps "*" literal (sub-delim).
+    expect(url).toContain("actor=webhook%3A*");
+    expect(url).toContain("since=2h");
+    expect(url).toContain("limit=25");
+  });
+
+  it("forwards actor_prefix — the steer-detection filter", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
+    const { listWorkspaceEvents } = await import("./events");
+    await listWorkspaceEvents("ws_1", "tok", { actor_prefix: "steer:", limit: 1 });
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain("actor_prefix=steer%3A");
+  });
+
+  it("omits since from the query string when opts provides other params but not since", async () => {
+    // Exercises the false branch of `if (opts.since)` in buildQuery.
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
+    const { listWorkspaceEvents } = await import("./events");
+    await listWorkspaceEvents("ws_1", "tok", { actor: "cron", limit: 10 });
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain("actor=cron");
+    expect(url).not.toContain("since=");
+  });
+
+  it("produces a clean URL (no trailing ?) when opts is an empty object", async () => {
+    // Exercises the false branch of `qs.length > 0 ? ... : ""` in buildQuery.
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
+    const { listWorkspaceEvents } = await import("./events");
+    await listWorkspaceEvents("ws_1", "tok", {});
+    const url = fetchMock.mock.calls[0]![0] as string;
+    // With an empty opts object, buildQuery produces "" so the URL must not end in "?".
+    expect(url).not.toContain("?");
+    expect(url).toContain("/v1/workspaces/ws_1/events");
+  });
+});

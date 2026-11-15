@@ -62,13 +62,10 @@ pub async fn connect(config: &Config) -> Result<Handle> {
         Ok(_bus) => tracing::info!(seeds, duration_ms, event = "bus_connect_completed"),
         Err(failure) => {
             let Logged { error_code, reason } = failure.logged();
-            tracing::warn!(
-                seeds,
-                duration_ms,
-                error_code,
-                reason,
-                event = "bus_connect_failed"
-            );
+            {
+                let event = &"bus_connect_failed";
+                tracing::warn!(seeds, duration_ms, error_code, reason, event);
+            };
         }
     }
     outcome

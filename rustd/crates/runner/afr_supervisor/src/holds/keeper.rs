@@ -273,12 +273,12 @@ async fn tear_down(fleet: &Uuid7, sandbox: Box<dyn Sandbox>) {
         let error_code = failure.code().as_str();
         let fleet_id = fleet.as_str();
         let event = EVENT_DESTROY_FAILED;
-        tracing::warn!(
-            error_code,
-            fleet_id,
-            event,
-            "a released hold's sandbox did not tear down cleanly"
-        );
+        {
+            let (message,) = (format_args!(
+                "a released hold's sandbox did not tear down cleanly"
+            ),);
+            tracing::warn!(message, error_code, fleet_id, event);
+        };
     }
 }
 

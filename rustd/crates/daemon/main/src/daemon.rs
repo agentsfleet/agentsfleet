@@ -144,8 +144,13 @@ impl Daemon {
         F: Future<Output = ()>,
     {
         let cause = Self::serve_until_stopped(server, signal).await;
-        tracing::info!(cause = ?cause, event = "serving_ended",
-        "serving ended; stopping background tasks");
+        {
+            let (event, message) = (
+                &"serving_ended",
+                format_args!("serving ended; stopping background tasks"),
+            );
+            tracing::info!(message, ?cause, event);
+        };
 
         // Before the supervisor, never after: its token is what cuts a
         // connection, so anything still in flight when it fires is lost.
@@ -163,13 +168,14 @@ impl Daemon {
             let abandoned = shutdown.abandoned.len();
             let panicked = shutdown.panicked.len();
             let code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::error!(
-                error_code = code,
-                abandoned,
-                panicked,
-                event = "background_fleet_unclean",
-                "background fleet did not stop cleanly"
-            );
+            {
+                let (error_code, event, message) = (
+                    &code,
+                    &"background_fleet_unclean",
+                    format_args!("background fleet did not stop cleanly"),
+                );
+                tracing::error!(message, error_code, abandoned, panicked, event);
+            };
         }
 
         Outcome {

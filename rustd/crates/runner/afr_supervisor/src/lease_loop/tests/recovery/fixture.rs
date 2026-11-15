@@ -3,7 +3,7 @@ use super::{CHECKPOINT, ID, PAGE};
 use af_wire::{decision::*, task::*};
 use serde_json::{Value, json};
 
-pub(super) fn assignment() -> DecisionAssignment {
+pub(in crate::lease_loop) fn assignment() -> DecisionAssignment {
     let threshold = DecisionThreshold {
         probability_bps: 9000,
         confidence_bps: 9000,

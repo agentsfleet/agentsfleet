@@ -24,6 +24,7 @@ for (const scenario of [
     })}));
     await page.goto(`${chatProbe}?usage=1`);
     await expect(page.getByLabel("Period totals").locator("time")).toHaveText(scenario.day);
+    await expect(page.getByRole("button", {name: "Charge details", exact: true})).toHaveCount(0);
     await expect(page.getByText(/All times UTC/)).toHaveCount(0);
     await page.screenshot({path: info.outputPath("local-usage.png"), scale: "css", animations: "disabled"});
     expect(errors).toEqual([]);

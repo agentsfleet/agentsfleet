@@ -21,3 +21,6 @@ impl Resolve for Guarded {
         })
     }
 }
+
+#[cfg(test)]
+mod tests;
