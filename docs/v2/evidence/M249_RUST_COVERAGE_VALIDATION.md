@@ -250,3 +250,29 @@ The following source paths contain the mechanical emit changes. The workspace ma
 - `rustd/crates/runner/afr_telemetry/src/telemetry/mod.rs`
 - `rustd/crates/runner/afr_tools/src/egress/mod.rs`
 - `rustd/crates/runner/afr_tools/src/sandbox/oneshot/mod.rs`
+
+## Rebased boundary checks
+
+The UI branch now uses parent `6edd08d8402747b3468820c50ce1102bb79fe2fc`.
+Earlier coverage totals describe their named revisions; they do not grade the new daily-rollup source.
+This follow-up adds no SQL, schema or billing producer changes against that parent.
+
+Six new supervisor tests check task input, binding, receipt, publication, effect-page and effect-read boundaries.
+Each verifies the supervisor's fence, one attempted request and exact refusal or unavailable outcomes.
+Structured fixture inputs are validated before calls.
+
+Three resolver tests check public numeric addresses, blocked loopback/private/metadata destinations and an unspecified address.
+The existing resolver moved into `resolver/mod.rs` without a production behavior change.
+These tests exercise its address policy, not HTTP authorization or external DNS availability.
+
+A scoped diagnostic changed the authoritative input fence and then reversed the resolver's address decision.
+Both mutations failed at test assertions, rather than compilation.
+The diagnostic restored both files byte-for-byte before the green checks.
+
+The restored scoped suites passed six supervisor and three resolver tests with all features enabled.
+These Cargo diagnostics do not replace the native repository checks.
+Their logs are `task-guards-mutation-summary.log`, `task-guards-mutation-results.json` and the two `*-guards-green.log` files.
+
+The native `make lint-rustd` passed source checks, formatting, all-target/all-feature Clippy and the dependency scan.
+Its log is `rollup-rust-lint-final.log` under `/workspace/artifacts/m249-runtime/`.
+Mechanical parent lint repairs use lazy optional defaults and a one-item iterator; no lint rule changed.

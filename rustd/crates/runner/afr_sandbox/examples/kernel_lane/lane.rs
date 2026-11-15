@@ -176,7 +176,10 @@ pub(crate) fn main() -> ExitCode {
         }
         return ExitCode::FAILURE;
     }
-    let lane = match build(toolbox.as_deref().map_or(Path::new(""), Path::new), paths) {
+    let lane = match build(
+        toolbox.as_deref().map_or_else(|| Path::new(""), Path::new),
+        paths,
+    ) {
         Ok(lane) => lane,
         Err(reason) => {
             let reason = reason.message().unwrap_or_default();
