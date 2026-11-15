@@ -22,6 +22,19 @@ it("keeps an unavailable platform default separate from workspace-backed models"
   expect(data.onSwitchEntry).toHaveBeenCalledWith(data.entries[0], "workspace-a");
 });
 
+it("names the platform default by its model alone, without a provider-key claim", () => {
+  render(<ModelsRegistryView {...props()} isDefaultLive platformDefaultAvailable
+    platformDefault={{provider: "fireworks", model: "accounts/fireworks/models/minimax-m3p1-flash", display_name: "MiniMax M3.1 Flash", context_cap_tokens: 1_048_576}} />);
+  const card = within(screen.getByLabelText("Platform default"));
+  expect(card.getByText("MiniMax M3.1 Flash", {exact: true})).toBeTruthy();
+  expect(card.queryByText(/provider key/i)).toBeNull();
+});
+
+it("falls back to the recorded model identifier when the default carries no display name", () => {
+  render(<ModelsRegistryView {...props()} platformDefault={{provider: "fireworks", model: "accounts/fireworks/models/custom", display_name: null, context_cap_tokens: 8_192}} />);
+  expect(within(screen.getByLabelText("Platform default")).getByText("accounts/fireworks/models/custom", {exact: true})).toBeTruthy();
+});
+
 it("does not activate an entry without a credential workspace", () => {
   const data = props(); data.entries[0]!.workspace_id = undefined;
   render(<ModelsRegistryView {...data} />);
