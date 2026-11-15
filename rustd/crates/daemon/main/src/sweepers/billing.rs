@@ -22,6 +22,10 @@ const INTERVAL: Duration = Duration::from_secs(5);
 /// Ticks between restarts of the line read at the oldest unsettled line: a
 /// line the biller refused is retried at least this often, once a minute.
 const LAP_TICKS: u64 = 12;
+const _: () = assert!(
+    INTERVAL.as_secs() * LAP_TICKS <= 60,
+    "a refused line waits at most a minute"
+);
 
 /// Passes one tick may run back to back. A backlog drains at the biller's
 /// pace, and a sustained one still yields to the next tick.
@@ -145,7 +149,7 @@ const fn drains(swept: &LinesSwept) -> bool {
     swept.full
 }
 
-/// Logs a lease pass's end. Every pass is one iteration of a 2 s poll, so its
+/// Logs a lease pass's end. Every pass is one iteration of a 5 s poll, so its
 /// counts log at `debug` (LOG-HOT); a pass the biller refused part of also
 /// warns once, with the first refusal's code, and the next pass retries.
 fn log_moved(swept: &LinesSwept) {

@@ -133,8 +133,8 @@ pub enum Telemetry {
         time_to_first_token_ms: u64,
     },
     /// A settlement took a tenant's credit balance to zero or below. Reported
-    /// once per crossing: debits while it stays there report nothing, and a
-    /// grant that refunds it lets the next crossing report again.
+    /// once per crossing: debits while it stays there report nothing, and once
+    /// a debit leaves credit again the next crossing reports again.
     WalletExhausted {
         /// The tenant whose wallet it was, which the event is attributed to.
         tenant_id: String,

@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use afd_auth::{Principal, Scope, require_scope};
 use afd_connector::Provider;
 use afd_fleet_lifecycle::SecretAccess;
-use afd_vault::{SecretName, SecretSummary};
+use afd_vault::{Kind, SecretName, SecretSummary};
 use axum::body::Bytes;
 
 use afd_http::handler::Refusable;
@@ -29,6 +29,10 @@ pub(super) fn referenced_detail(entries: u32) -> String {
 }
 
 /// One stored projection, as the list emits it.
+///
+/// Access is answered only for a custom secret. A provider key or endpoint
+/// reaches a run through the fleet's model, not through the names its setup
+/// declares, so the declared names cannot say which fleets use it.
 pub(super) fn summary<'a>(
     held: &'a SecretSummary,
     access: Option<&'a SecretAccess>,
@@ -39,17 +43,19 @@ pub(super) fn summary<'a>(
         kind: held.kind().as_str(),
         provider: held.provider().map(Cow::Borrowed),
         base_url: held.base_url().map(Cow::Borrowed),
-        available_to: access.map(|access| {
-            access.get(held.name.as_str()).map_or_default(|fleets| {
-                fleets
-                    .iter()
-                    .map(|fleet| afd_api_wire::secret::SecretFleet {
-                        id: Cow::Owned(fleet.id.to_string()),
-                        name: Cow::Borrowed(fleet.name.as_str()),
-                    })
-                    .collect()
-            })
-        }),
+        available_to: access
+            .filter(|_| held.kind() == Kind::CustomSecret)
+            .map(|access| {
+                access.get(held.name.as_str()).map_or_default(|fleets| {
+                    fleets
+                        .iter()
+                        .map(|fleet| afd_api_wire::secret::SecretFleet {
+                            id: Cow::Owned(fleet.id.to_string()),
+                            name: Cow::Borrowed(fleet.name.as_str()),
+                        })
+                        .collect()
+                })
+            }),
     }
 }
 

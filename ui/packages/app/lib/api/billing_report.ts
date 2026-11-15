@@ -5,8 +5,6 @@ import { nanosSchema } from "./nanos";
 import { HTTP_METHOD } from "./retry";
 import { BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK } from "./billing-report-values";
 
-export { BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK } from "./billing-report-values";
-
 const Count = z.number().int().nonnegative();
 // The server counts activities only where a group is a set of activities: the
 // period and each fleet. A day or a model row omits the count.

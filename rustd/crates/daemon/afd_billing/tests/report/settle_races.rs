@@ -140,29 +140,11 @@ async fn interleaved_settlements_of_one_run_count_it_once() {
     );
     holder.commit().await.unwrap();
     drop(holding);
-    let mut charged = Vec::new();
-    while let Some(joined) = settling.join_next().await {
-        let receipt = joined.unwrap().unwrap();
-        charged.push((receipt.settled_lines, receipt.charged.as_i64()));
-    }
-    charged.sort_unstable();
-    assert_eq!(charged, [(1, 19), (2, 22)]);
+    assert_eq!(charged(settling).await, [(1, 19), (2, 22)]);
     let written = fixture::written(&f.admin, &f.tenant).await;
+    assert_eq!(runs_by_day(&written), [("2026-10-25", 1)]);
     assert_eq!(
-        written
-            .runs
-            .iter()
-            .map(|row| (row.day.as_str(), row.runs))
-            .collect::<Vec<_>>(),
-        [("2026-10-25", 1)]
-    );
-    let usage: Vec<_> = written
-        .usage
-        .iter()
-        .map(|row| (row.model.as_str(), row.charged_nanos, row.line_count))
-        .collect();
-    assert_eq!(
-        usage,
+        usage_by_model(&written),
         [(fixture::MODEL_A, 22, 2), (fixture::MODEL_B, 19, 1)]
     );
     assert_eq!(written.balance, fixture::BALANCE - 41);
@@ -214,6 +196,66 @@ async fn opposite_order_settlements_on_shared_rollup_rows_finish_without_deadloc
     for work in &works {
         settlements.extend(fixture::pending(&f.admin, work).await);
     }
+    let (settled, peak) = settle_together(&biller, settlements).await;
+    assert!(peak > 1, "the settlements overlapped");
+    assert_eq!(settled, 2 * CALLERS);
+    let written = fixture::written(&f.admin, &f.tenant).await;
+    let usage: Vec<_> = written
+        .usage
+        .iter()
+        .map(|row| (row.day.as_str(), row.charged_nanos, row.line_count))
+        .collect();
+    assert_eq!(
+        usage,
+        [("2026-10-20", 55_000, 100), ("2026-10-21", 55_000, 100)]
+    );
+    assert_eq!(
+        runs_by_day(&written),
+        [("2026-10-20", 50), ("2026-10-21", 50)]
+    );
+    assert_eq!(written.balance, fixture::BALANCE - 110_000);
+    assert_eq!(written.ledger, (200, 110_000, 200));
+    api.close().await;
+    f.close().await;
+}
+
+/// Each settlement's lines and charge, in order.
+async fn charged(
+    mut settling: JoinSet<afd_billing::Result<afd_billing::biller::Receipt>>,
+) -> Vec<(usize, i64)> {
+    let mut charged = Vec::new();
+    while let Some(joined) = settling.join_next().await {
+        let receipt = joined.unwrap().unwrap();
+        charged.push((receipt.settled_lines, receipt.charged.as_i64()));
+    }
+    charged.sort_unstable();
+    charged
+}
+
+/// The usage rows in `written`, by model: charge and line count.
+fn usage_by_model(written: &fixture::Written) -> Vec<(&str, i64, i64)> {
+    written
+        .usage
+        .iter()
+        .map(|row| (row.model.as_str(), row.charged_nanos, row.line_count))
+        .collect()
+}
+
+/// The run counts in `written`, by day.
+fn runs_by_day(written: &fixture::Written) -> Vec<(&str, i64)> {
+    written
+        .runs
+        .iter()
+        .map(|row| (row.day.as_str(), row.runs))
+        .collect()
+}
+
+/// Releases every settlement at once and answers the lines they settled and
+/// the most that were inside the biller together.
+async fn settle_together(
+    biller: &LedgerBiller,
+    settlements: Vec<afd_billing::biller::Settlement>,
+) -> (usize, usize) {
     let barrier = Arc::new(Barrier::new(settlements.len()));
     let (inside, peak) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
     let mut settling = JoinSet::new();
@@ -237,29 +279,5 @@ async fn opposite_order_settlements_on_shared_rollup_rows_finish_without_deadloc
             .expect("no settlement deadlocks")
             .settled_lines;
     }
-    assert!(
-        peak.load(Ordering::Acquire) > 1,
-        "the settlements overlapped"
-    );
-    assert_eq!(settled, 2 * CALLERS);
-    let written = fixture::written(&f.admin, &f.tenant).await;
-    let usage: Vec<_> = written
-        .usage
-        .iter()
-        .map(|row| (row.day.as_str(), row.charged_nanos, row.line_count))
-        .collect();
-    assert_eq!(
-        usage,
-        [("2026-10-20", 55_000, 100), ("2026-10-21", 55_000, 100)]
-    );
-    let runs: Vec<_> = written
-        .runs
-        .iter()
-        .map(|row| (row.day.as_str(), row.runs))
-        .collect();
-    assert_eq!(runs, [("2026-10-20", 50), ("2026-10-21", 50)]);
-    assert_eq!(written.balance, fixture::BALANCE - 110_000);
-    assert_eq!(written.ledger, (200, 110_000, 200));
-    api.close().await;
-    f.close().await;
+    (settled, peak.load(Ordering::Acquire))
 }

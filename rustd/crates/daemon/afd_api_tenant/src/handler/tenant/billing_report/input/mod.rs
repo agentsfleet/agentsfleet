@@ -14,13 +14,14 @@ use crate::handler::{Refusal, decoded_parameter};
 
 pub(super) const DETAIL_QUERY: &str = "Invalid billing report filters";
 const DETAIL_PERIOD: &str = "period must be month, week or today";
-const DETAIL_MODEL: &str = "The billing report no longer filters by model";
+/// The refusal for `model`: the report has no model filter.
+pub const DETAIL_MODEL: &str = "The billing report no longer filters by model";
 const QUERY_PERIOD: &str = "period";
 const QUERY_MODEL: &str = "model";
 const INSTANT_MAX_BYTES: usize = 64;
 const PERIOD_MAX_BYTES: usize = 5;
 const ACTIVITY_TYPE_MAX_BYTES: usize = 7;
-/// A removed filter is only checked for presence; this bounds what is read.
+/// `model` is only checked for presence; this bounds what is read.
 const REMOVED_MAX_BYTES: usize = 1;
 const SENTENCES: Sentences = Sentences::new(
     &[(QUERY_PERIOD, DETAIL_PERIOD), (QUERY_MODEL, DETAIL_MODEL)],
@@ -37,8 +38,8 @@ pub(super) struct Bounds {
     activity_type: Option<String>,
     #[garde(inner(length(bytes, max = INSTANT_MAX_BYTES)))]
     through_at: Option<String>,
-    /// The removed model filter: refused outright, so a request that still
-    /// sends it is never answered with a wider, unfiltered report.
+    /// Refused outright: the report has no model filter, and ignoring it would
+    /// answer with a wider, unfiltered total.
     #[garde(inner(length(bytes, max = REMOVED_MAX_BYTES)))]
     model: Option<String>,
 }

@@ -69,18 +69,29 @@ pub(super) async fn charge(
         .iter()
         .try_fold(0_i64, |sum, line| sum.checked_add(line.charged_nanos))
         .ok_or_else(charge_overflow)?;
+    debit(connection, work, tenant, settled.len(), total).await
+}
+
+/// Debits `total` from `tenant`'s wallet for the `lines` just settled.
+///
+/// The debit takes the whole charge, past zero if it must: a balance that
+/// cannot cover it is a debt the next grant repays. Only a payer with no wallet
+/// row (never provisioned, or erased after the work ran) has nothing to debit,
+/// and its lines settle all the same so the relay's oldest-first scan never
+/// stalls behind them.
+async fn debit(
+    connection: &mut PgConnection,
+    work: &WorkKey,
+    tenant: &Uuid7,
+    lines: usize,
+    total: i64,
+) -> Result<Receipt> {
     if total == 0 {
         return Ok(Receipt {
-            settled_lines: settled.len(),
+            settled_lines: lines,
             ..Receipt::default()
         });
     }
-    // The debit takes the whole charge, past zero if it must: a balance that
-    // cannot cover it is a debt the next grant repays. Only a payer with no
-    // wallet row (never provisioned, or erased after the work ran) has nothing
-    // to debit, and its lines settle all the same so the relay's oldest-first
-    // scan never stalls behind them.
-    //
     // `exhausted_at` keeps the first crossing's instant while the balance stays
     // at or below zero and clears once a debit leaves credit, so the debit
     // answers true on exactly the one that crossed. `None` is no wallet row.
@@ -106,7 +117,7 @@ pub(super) async fn charge(
         );
     }
     Ok(Receipt {
-        settled_lines: settled.len(),
+        settled_lines: lines,
         charged: Nanos::from_i64(total),
         taken: Nanos::from_i64(if debited { total } else { 0 }),
         exhausted: exhausted.unwrap_or_default(),

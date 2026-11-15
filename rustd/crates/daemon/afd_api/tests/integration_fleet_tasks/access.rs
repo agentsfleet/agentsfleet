@@ -20,6 +20,9 @@ const ALPHA: &str = "alpha_key";
 const BETA: &str = "beta_key";
 /// Only mentioned in instructions, never declared.
 const GAMMA: &str = "gamma_key";
+/// A provider key the head also declares by name. A provider key reaches a run
+/// through the fleet's model, so declared names cannot say who uses it.
+const DELTA: &str = "delta_key";
 
 /// A valid native definition declaring `credentials` and mentioning `GAMMA` in prose.
 fn definition(credentials: &[&str]) -> (Value, String) {
@@ -176,15 +179,22 @@ async fn secret_access_projection_matches_execution_policy() {
         (&fixture.base.fleet, None),
     )
     .await;
-    append(&fixture, &[BETA]).await;
+    append(&fixture, &[BETA, DELTA]).await;
     foreign_fleet(&fixture).await;
     let owner = router(
         &fixture,
         &[Scope::SecretRead, Scope::SecretWrite, Scope::FleetRead],
     );
-    for name in [ALPHA, BETA, GAMMA] {
+    let token = json!({"token": "fixture-value"});
+    let provider_key = json!({"provider": "anthropic", "api_key": "fixture-value"});
+    for (name, data) in [
+        (ALPHA, &token),
+        (BETA, &token),
+        (GAMMA, &token),
+        (DELTA, &provider_key),
+    ] {
         let path = format!("/v1/workspaces/{}/secrets", fixture.base.workspace);
-        let body = json!({"name": name, "data": {"token": "fixture-value"}}).to_string();
+        let body = json!({"name": name, "data": data}).to_string();
         let stored = send(
             &owner,
             Method::POST,
@@ -201,9 +211,11 @@ async fn secret_access_projection_matches_execution_policy() {
         [
             (ALPHA.into(), fleet()),
             (BETA.into(), fleet()),
+            (DELTA.into(), None),
             (GAMMA.into(), Some(vec![]))
         ],
-        "head and unfinished-task revisions grant; prose and other workspaces do not"
+        "head and unfinished-task revisions grant; prose and other workspaces do not, \
+         and a provider key claims no access either way"
     );
     let secrets_only = router(&fixture, &[Scope::SecretRead]);
     assert!(
@@ -223,6 +235,7 @@ async fn secret_access_projection_matches_execution_policy() {
         access(&owner, &fixture)
             .await
             .iter()
+            .filter(|(name, _)| name != DELTA)
             .all(|(_, fleets)| fleets.as_deref() == Some(&[])),
         "an archived fleet takes no work, so it can read nothing"
     );

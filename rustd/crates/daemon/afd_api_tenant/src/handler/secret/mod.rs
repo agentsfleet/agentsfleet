@@ -194,19 +194,29 @@ pub(crate) async fn list<D: Services>(
             .await
             .map_err(Refusal::at(EVENT_LIST))
     };
+    // Access is a detail of the list, not a condition of it: a failed read
+    // leaves every row's access unknown and the list still answers.
     let access = async {
         if !reads_fleets {
-            return Ok(None);
+            return None;
         }
-        services
-            .fleets()
-            .secret_access(&owned.workspace)
-            .await
-            .map(Some)
-            .map_err(Refusal::at(EVENT_ACCESS))
+        match services.fleets().secret_access(&owned.workspace).await {
+            Ok(access) => Some(access),
+            Err(fault) => {
+                let error_code = fault.code();
+                let error_code = error_code.as_str();
+                tracing::warn!(
+                    error_code,
+                    event = EVENT_ACCESS,
+                    "fleet access to secrets could not be read; the list answers without it"
+                );
+                None
+            }
+        }
     };
     // Two fixed reads in parallel; never one per secret or per fleet.
-    let (held, access) = tokio::try_join!(held, access)?;
+    let (held, access) = tokio::join!(held, access);
+    let held = held?;
 
     Ok(Json(SecretsResponse {
         secrets: held

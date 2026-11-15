@@ -10,7 +10,6 @@ const REPORT: &str = "/v1/tenants/me/billing/reports/current";
 /// The removed per-activity charges route.
 const ACTIVITY_CHARGES: &str = "/v1/tenants/me/billing/activities/01924f4e-0000-7000-8000-00000000c4a1/charges?activity_type=setup";
 /// The sentence a request still sending the removed model filter is told.
-const DETAIL_MODEL: &str = "The billing report no longer filters by model";
 
 // Value: a person with no resolved account cannot reach the billing report.
 #[tokio::test]
@@ -89,7 +88,7 @@ async fn a_model_filter_is_refused_before_any_datastore_read() {
         );
         assert_eq!(
             harness::text(&problem, "detail"),
-            Some(DETAIL_MODEL),
+            Some(afd_api::handler::tenant::DETAIL_MODEL),
             "{path}"
         );
     }

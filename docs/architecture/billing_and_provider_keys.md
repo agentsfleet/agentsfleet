@@ -326,7 +326,7 @@ Its recovery counters count settlement groups, so one lease can contribute sever
 
 A group the relay cannot read is skipped, not failed. A work type, a line kind or a pricing posture this build does not name leaves the group unsettled, and the pass carries on. The owed gauges keep counting it, so the dashboard shows it.
 
-A row of an unknown work type drops out of the by-type `agentsfleet_billing_unsettled_nanos` figure but still pins `agentsfleet_billing_unsettled_oldest_seconds`. The relay logs `billing_relay_skipped` once for each distinct spelling per process and remembers at most 64. An operator learns what is stuck without a line every two seconds.
+A row of an unknown work type drops out of the by-type `agentsfleet_billing_unsettled_nanos` figure but still pins `agentsfleet_billing_unsettled_oldest_seconds`. The relay logs `billing_relay_skipped` once for each distinct spelling per process and remembers at most 64. An operator learns what is stuck without a line every five seconds.
 
 Nothing is guessed. An error would hold the cursor, and with it every tenant's settlement behind one row. A guessed posture would settle the wrong money.
 
@@ -487,7 +487,7 @@ When the gate blocks, the user's surfaces show:
 - **`agentsfleet usage show`** reads `$0.00`, or a negative amount while the tenant owes a debt. The CLI prints *⚠ Out of credits. See https://app.agentsfleet.net/settings/billing*, and below it the most recent charge rows showing where the credits went.
 - **Dashboard events list** (`/w/{workspaceId}/events`) renders the row with an amber `gate_blocked` status.
 - **Slack thread**, when the event was a mention: the thread gets one fixed notice naming `balance_exhausted`.
-- **Dashboard `/settings/billing`** shows settled spending in **Activity** and **Spending** tabs. **Add credits** opens a support email; the shared dashboard header shows the balance. Pending or unavailable usage is excluded and explained; [Billing reporting](billing_reporting.md) owns filters, detail reads and unavailable states.
+- **Dashboard `/settings/billing`** shows period and fleet controls, settled totals, daily spending and a by-fleet table. **Add credits** opens a support email; the shared dashboard header shows the balance. Pending or unavailable usage is excluded and explained; [Billing reporting](billing_reporting.md) owns filters and unavailable states.
 
 The blocked row is **terminal** (admission settled, immutable narrative). When the user's balance is later topped up (manually by us in v2.0, or via Stripe in v2.1+), there is **no automatic replay**. If they want the missed events processed, they re-trigger from the source (push another commit, send another steer).
 

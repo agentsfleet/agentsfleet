@@ -32,6 +32,8 @@ mod funds_plan;
 mod plans;
 #[path = "report/reconcile.rs"]
 mod reconcile;
+#[path = "report/rollup.rs"]
+mod rollup;
 #[path = "report/settle_races.rs"]
 mod settle_races;
 #[path = "report/settle_rollup.rs"]

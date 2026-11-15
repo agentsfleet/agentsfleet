@@ -1,6 +1,6 @@
 //! Verify complete base and overlay roots before writing a fresh frozen workspace.
 
-use super::{Session, files::Workspace, transfer::Transfers};
+use super::{Object, Session, files::Workspace, transfer::Transfers};
 use crate::{Result, client::ControlPlane, error};
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
@@ -53,8 +53,15 @@ impl Restore<'_> {
                 },
             )
             .await?;
+        let unexpected = !response.objects.is_empty();
+        // Wrapped so each unexpected object's data key is wiped as it drops.
+        response
+            .objects
+            .into_iter()
+            .map(Object::from)
+            .for_each(drop);
         let plan = response.plan;
-        if !response.objects.is_empty()
+        if unexpected
             || plan.checkpoint_id != base.checkpoint_id
             || plan.base_id != base.base_id
             || plan.format_version != CHECKPOINT_FORMAT
@@ -157,8 +164,15 @@ impl Restore<'_> {
                 },
             )
             .await?;
+        let unexpected = !response.objects.is_empty();
+        // Wrapped so each unexpected object's data key is wiped as it drops.
+        response
+            .objects
+            .into_iter()
+            .map(Object::from)
+            .for_each(drop);
         let plan = response.plan;
-        if !response.objects.is_empty()
+        if unexpected
             || plan.checkpoint_id != checkpoint.as_str()
             || plan.format_version != CHECKPOINT_FORMAT
             || plan.toolbox_digest != self.toolbox

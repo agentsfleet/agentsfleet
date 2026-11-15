@@ -50,8 +50,8 @@ test.describe("settings billing", () => {
     await expect(page.getByRole("link", { name: "Add credits" })).toHaveAttribute("href", /^mailto:/);
     await expect(page.getByText(/Totals exclude pending or unavailable provider usage/)).toBeVisible();
     await expect(page.getByRole("table", {name: "Spending by fleet", exact: true})
-      .getByRole("columnheader")).toHaveText(["Fleet", "Activities", "Charged"]);
-    await expect(page.getByRole("figure", {name: "Daily spend"})).toContainText("Daily spending is not available yet.");
+      .getByRole("columnheader")).toHaveText(["Fleet", "Model", "Activities", "Charged"]);
+    await expect(page.getByRole("figure", {name: "Daily spend"})).toBeVisible();
     await expect(page.getByText(/Charged by fleet or setup chat|No settled spending/)).toBeVisible();
     await expect(page.getByText(/Charged by model|No settled spending/)).toBeVisible();
     await page.getByRole(ROLE.combobox, { name: FILTER_LABEL.period, exact: true }).click();

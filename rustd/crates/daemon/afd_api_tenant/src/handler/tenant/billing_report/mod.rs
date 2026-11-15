@@ -3,6 +3,8 @@
 mod input;
 mod view;
 
+pub use self::input::DETAIL_MODEL;
+
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
 use crate::services::{Services, TenantBilling as _};

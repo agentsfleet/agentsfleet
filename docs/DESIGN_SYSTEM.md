@@ -393,7 +393,7 @@ The avatar menu opens this combined destination; there is no repeated Profile ac
 
 Keys use resource rows and one-time reveal; sessions support individual and all-other-session sign-out. Read all session pages before bulk revocation and exclude this device.
 
-Usage restores the period toolbar, shared metric strip, daily-spend section and By fleet table. Charge details remain in a closed native disclosure, opening for an explicitly selected activity. Draw daily bars from the report's complete daily buckets, never a partial activities page.
+Usage restores the period toolbar, shared metric strip, daily-spend section and By fleet table. Draw daily bars from the report's complete daily buckets.
 
 Preserve that section with its unavailable state when the report cannot be loaded.
 

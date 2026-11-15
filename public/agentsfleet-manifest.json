@@ -101,14 +101,7 @@
       "operationId": "get_tenant_billing_report",
       "method": "GET",
       "path": "/v1/tenants/me/billing/reports/current",
-      "description": "Read complete-period settled totals, spending groups and a bounded activity page for the caller tenant.",
-      "actionClass": "safe"
-    },
-    {
-      "operationId": "get_tenant_billing_activity_charges",
-      "method": "GET",
-      "path": "/v1/tenants/me/billing/activities/{activity_id}/charges",
-      "description": "Read a bounded page of settled charges for one activity within the caller tenant and selected filters.",
+      "description": "Read complete-period settled totals, spending groups and daily spend for the caller tenant.",
       "actionClass": "safe"
     }
   ],
@@ -130,8 +123,7 @@
       "get_model_library",
       "list_tenant_model_entries",
       "list_workspace_plugins",
-      "get_tenant_billing_report",
-      "get_tenant_billing_activity_charges"
+      "get_tenant_billing_report"
     ],
     "sensitive": [
       "create_fleet",

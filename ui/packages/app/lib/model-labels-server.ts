@@ -1,6 +1,6 @@
+import type { LibraryModel } from "@/lib/api/model-library-types";
 import { cache } from "react";
 import { getModelLibrary } from "@/lib/api/model_library";
-import type { LibraryModel } from "@/lib/api/model-library-types";
 import { modelLabelsOf, type ModelLabels } from "@/lib/model-labels";
 
 /** A catalogue this deep is a fault, and half a catalogue could label an identifier another page disputes. */
