@@ -100,6 +100,22 @@ pub struct SecretSummary<'a> {
     /// The custom endpoint, where one may be displayed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_url: Option<Cow<'a, str>>,
+    /// Runnable fleets in this workspace whose setup declares this secret: the
+    /// head revision, or an unfinished task's accepted revision. Present only
+    /// when the caller may read fleets; an empty list means no fleet uses it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(extensions(("x-stability" = json!("stable")))))]
+    pub available_to: Option<Vec<SecretFleet<'a>>>,
+}
+
+/// One fleet a secret is available to.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SecretFleet<'a> {
+    /// The fleet's identifier.
+    pub id: Cow<'a, str>,
+    /// Its current name.
+    pub name: Cow<'a, str>,
 }
 
 /// `GET /v1/workspaces/{workspace_id}/secrets` — every secret the workspace holds.
@@ -117,7 +133,9 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use super::{SecretSummary, SecretsResponse, StoreSecretRequest, StoredSecretResponse};
+    use super::{
+        SecretFleet, SecretSummary, SecretsResponse, StoreSecretRequest, StoredSecretResponse,
+    };
     use std::borrow::Cow;
 
     #[test]
@@ -157,6 +175,7 @@ mod tests {
                 kind: "custom_secret",
                 provider: None,
                 base_url: None,
+                available_to: None,
             }],
         })
         .expect("the response serializes");
@@ -175,6 +194,7 @@ mod tests {
             kind: "custom_endpoint",
             provider: Some(Cow::Borrowed("openai-compatible")),
             base_url: Some(Cow::Borrowed("https://gw.example.com/v1")),
+            available_to: None,
         })
         .expect("the row serializes");
 
@@ -182,6 +202,31 @@ mod tests {
             body,
             r#"{"name":"gateway","created_at":"1970-01-01T00:00:01Z","kind":"custom_endpoint","provider":"openai-compatible","base_url":"https://gw.example.com/v1"}"#
         );
+    }
+
+    #[test]
+    fn available_to_is_absent_when_unserved_and_a_list_when_recorded() {
+        let row = |available_to| SecretSummary {
+            name: Cow::Borrowed("stripe"),
+            created_at: jiff::Timestamp::constant(1, 0),
+            kind: "custom_secret",
+            provider: None,
+            base_url: None,
+            available_to,
+        };
+        let none = serde_json::to_string(&row(Some(Vec::new()))).expect("the row serializes");
+        assert!(none.ends_with(r#""available_to":[]}"#), "{none}");
+        let named = serde_json::to_string(&row(Some(vec![SecretFleet {
+            id: Cow::Borrowed("01924f4e-0000-7000-8000-00000000c4a1"),
+            name: Cow::Borrowed("Payment alerts"),
+        }])))
+        .expect("the row serializes");
+        assert!(
+            named.ends_with(r#""available_to":[{"id":"01924f4e-0000-7000-8000-00000000c4a1","name":"Payment alerts"}]}"#),
+            "{named}"
+        );
+        let unserved = serde_json::to_string(&row(None)).expect("the row serializes");
+        assert!(!unserved.contains("available_to"), "{unserved}");
     }
 
     /// The envelope is closed; the secret payload inside it is not.

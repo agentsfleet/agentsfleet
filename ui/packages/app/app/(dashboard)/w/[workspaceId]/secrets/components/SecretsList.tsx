@@ -14,7 +14,7 @@ import type { Secret } from "@/lib/api/secrets";
 import { isDefiniteRefusal } from "@/lib/api/errors";
 import { presentErrorString } from "@/lib/errors";
 import EditSecretDialogDynamic from "@/components/domain/shared/dialogs/EditSecretDialogDynamic";
-import { SecretActions, SecretNameCell, secretType } from "./secret-row-cells";
+import { SecretAccessCell, SecretActions, SecretNameCell, secretType } from "./secret-row-cells";
 import {
   DELETE_CONNECTION_CONFIRM,
   DELETE_SECRET_CONFIRM,
@@ -45,7 +45,7 @@ function buildColumns({
     {key: "name", primary: true, header: "Name", cell: secret => <SecretNameCell secret={secret} />},
     {key: "type", header: "Type", cell: secret => secretType(secret)},
     {key: "value", header: "Value", cell: () => <span className="text-text-dim">Hidden</span>},
-    {key: "scope", header: "Available to", cell: () => <span className="text-text-dim">Access details unavailable</span>},
+    {key: "scope", header: "Available to", cell: secret => <SecretAccessCell secret={secret} />},
     {key: "actions", header: <span className="sr-only">Actions</span>, numeric: true, cell: secret => <SecretActions secret={secret} pending={pending}
       protectedFromDelete={protectedSecretName === secret.name} onEdit={onEdit} onDelete={onDelete} />},
   ];

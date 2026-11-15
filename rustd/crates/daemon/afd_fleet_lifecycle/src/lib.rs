@@ -30,6 +30,7 @@ use {af_crypto as _, tokio as _};
 
 pub mod error;
 
+mod access;
 mod live_set;
 mod purge;
 mod read;
@@ -52,6 +53,7 @@ pub mod purge_statements {
     pub const DELETE_ACTIVE_LEASES: &str = crate::sql::DELETE_ACTIVE_LEASES;
 }
 
+pub use self::access::{SecretAccess, SecretFleet};
 pub use self::error::{Error, Result};
 pub use self::purge::delete_locked;
 pub use self::read::{After, FleetPage, FleetRow, Triggers};

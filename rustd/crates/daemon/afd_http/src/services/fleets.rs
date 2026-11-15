@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
-use afd_fleet_lifecycle::{After, FleetPage, FleetStatus, Result as FleetResult};
+use afd_fleet_lifecycle::{After, FleetPage, FleetStatus, Result as FleetResult, SecretAccess};
 
 /// Everything the workspace fleets routes act through.
 ///
@@ -85,6 +85,15 @@ pub trait WorkspaceFleets: Send + Sync + std::fmt::Debug + 'static {
     /// Expires the workspace's cached live set after a delete committed
     /// elsewhere, so the next enumeration no longer lists the fleet.
     fn invalidate_live_set(&self, workspace: &Uuid7) -> impl Future<Output = ()> + Send;
+
+    /// Which runnable fleets may read each of the workspace's secrets.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    fn secret_access(
+        &self,
+        workspace: &Uuid7,
+    ) -> impl Future<Output = FleetResult<SecretAccess>> + Send;
 }
 
 /// The production store answers it directly.
@@ -123,5 +132,12 @@ impl WorkspaceFleets for afd_fleet_lifecycle::Fleets {
 
     fn invalidate_live_set(&self, workspace: &Uuid7) -> impl Future<Output = ()> + Send {
         Self::invalidate_live_set(self, workspace)
+    }
+
+    fn secret_access(
+        &self,
+        workspace: &Uuid7,
+    ) -> impl Future<Output = FleetResult<SecretAccess>> + Send {
+        Self::secret_access(self, workspace)
     }
 }

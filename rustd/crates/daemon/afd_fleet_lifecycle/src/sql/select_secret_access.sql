@@ -1,0 +1,25 @@
+-- Which runnable fleets in a workspace may read each secret, by name.
+-- A lease reads `COALESCE(task.accepted_revision_id, fleet.head_revision_id)`
+-- and resolves exactly the names that revision declares, so both the head and
+-- every unfinished task's accepted revision govern access. Trigger
+-- verification and textual references grant nothing here.
+WITH governing AS (
+    SELECT f.id, f.name, f.head_revision_id AS revision_id
+      FROM fleet.fleets f
+     WHERE f.workspace_id = $1 AND f.status = $2
+    UNION
+    SELECT f.id, f.name, t.accepted_revision_id
+      FROM fleet.fleets f
+      JOIN fleet.tasks t ON t.fleet_id = f.id AND t.terminal_at IS NULL
+     WHERE f.workspace_id = $1 AND f.status = $2
+), declared AS (
+    SELECT g.id, g.name, r.definition #> '{config,x-agentsfleet,credentials}' AS names
+      FROM governing g
+      JOIN fleet.revisions r ON r.id = g.revision_id AND r.fleet_id = g.id
+)
+SELECT DISTINCT credential.name AS secret_name, d.id AS fleet_id, d.name AS fleet_name
+  FROM declared d
+ CROSS JOIN LATERAL jsonb_array_elements_text(
+       CASE WHEN jsonb_typeof(d.names) = 'array' THEN d.names ELSE '[]'::jsonb END
+   ) AS credential(name)
+ ORDER BY secret_name, fleet_name, fleet_id
