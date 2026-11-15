@@ -1,5 +1,5 @@
-import { DraftConversation } from "@/components/domain/chat/DraftConversation";
-import { DraftChatHeading } from "@/components/domain/chat/DraftChatHeading";
+import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
+import { DraftChatHeading } from "@/components/domain/setup/conversation/DraftChatHeading";
 import { DraftClient } from "@/lib/api/drafts";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { useState, type ReactNode } from "react";
@@ -7,20 +7,23 @@ import { TooltipProvider } from "@agentsfleet/design-system";
 import { ShellFrame } from "@/components/layout/ShellFrame";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
-import { SenderNamesProvider } from "@/components/domain/SenderNames";
-import { SenderLabelProvider } from "@/components/domain/FleetMessageRow";
+import { SenderNamesProvider } from "@/components/domain/shared/identity/SenderNames";
+import { SenderLabelProvider } from "@/components/domain/activity/messages/FleetMessageRow";
 import { senderNamesFrom } from "@/lib/events/sender-names";
 import { AssistantRuntimeProvider, useExternalStoreRuntime, type ThreadMessageLike } from "@assistant-ui/react";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { FleetHeader } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetHeader";
-import { FleetConversationLayout } from "@/components/domain/FleetWorkSidebar";
-import { FleetThreadViewport } from "@/components/domain/FleetThreadViewport";
-import { TaskPanel } from "@/components/domain/chat/TaskPanel";
-import { CONNECTION_STATUS } from "@/components/domain/useFleetEventStream";
-import { RENDER_KIND, RENDER_KIND_KEY } from "@/components/domain/useFleetThreadEntries";
+import { FleetConversationLayout } from "@/components/domain/shared/summary/FleetWorkSidebar";
+import { FleetThreadViewport } from "@/components/domain/conversation/thread/FleetThreadViewport";
+import { TaskPanel } from "@/components/domain/tasks/TaskPanel";
+import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { RENDER_KIND, RENDER_KIND_KEY } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { ACTOR } from "@/lib/events/event-summary";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { FLEET_DETAIL, WORKSPACE, FLEET_ID, FLEET, DRAFT, MODEL, MESSAGE, REVIEW } from "@/tests/helpers/draft-fixtures";
+import { SCHEDULE_RUN_STATE, SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
+import { NANOS_PER_USD } from "@/lib/types";
+import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 
 const router = {bfcacheId: "visual-fixture", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {}};
 const exchanges = [
@@ -52,12 +55,24 @@ export function ChatAlignmentFixture() {
 
 
 const setupClient = new DraftClient({account: "fixture-owner", workspace: WORKSPACE, subject: "creator"});
+export function ChatErrorFixture({draft}: {draft?: string}) {
+  return <AppRouterContext value={router}><ChatFixtureShell setup>
+    <WorkspaceChat account="fixture-owner" workspace={WORKSPACE} draft={draft} />
+  </ChatFixtureShell></AppRouterContext>;
+}
+
 export function SetupAlignmentFixture() {
   const model = {...MODEL, label: "MiniMax M3.1 Flash"};
-  const view = {...EMPTY_DRAFT_VIEW, draft: {...DRAFT, linked_fleet_id: FLEET_ID, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}}, fleet: {...FLEET, name: "ci-repairer"}, model: model.ref, models: [model],
+  const definition = {...REVIEW.effective.definition, config: {...REVIEW.effective.definition.config,
+    "x-agentsfleet": {triggers: [{type: "cron", schedule: "0 9 * * 1-5", timezone: "Asia/Kolkata"}]}}};
+  const [createdAt] = useState(() => new Date(Date.now() - 5 * 60 * 1000).toISOString());
+  const view = {...EMPTY_DRAFT_VIEW, draft: {...DRAFT, candidate: DRAFT.candidate ? {...DRAFT.candidate, definition} : undefined, linked_fleet_id: FLEET_ID, review: {...REVIEW,
+    requirements: {credentials: ["github"], repositories: ["agentsfleet/linkwarden"], tools: ["shell"],
+      network: {http_egress: "restricted", allow: ["api.github.com"]}, budget: {daily_nanos: String(NANOS_PER_USD)}},
+    effective: {...REVIEW.effective, definition, instance_name: "Pull request review", target_setup_revision: "1"}}}, fleet: {...FLEET, name: "Pull request review", schedules: [{schedule_id: "review-mornings", fleet_id: FLEET_ID, description: "Weekday pull request review", cron: "0 9 * * 1-5", timezone: "Asia/Kolkata", message: "Review open pull requests", status: "active", sync: SCHEDULE_SYNC.failed, last_error: "Scheduler unavailable", run_state: SCHEDULE_RUN_STATE.unavailable, next_run_at: null}]}, model: model.ref, models: [model],
     messages: exchanges.flatMap(([question, answer], index) => [
-      {...MESSAGE, sequence: String(index * 2 + 1), text: question ?? ""},
-      {...MESSAGE, sequence: String(index * 2 + 2), role: "assistant" as const, text: answer ?? ""},
+      {...MESSAGE, created_at: createdAt, sequence: String(index * 2 + 1), text: question ?? ""},
+      {...MESSAGE, created_at: createdAt, sequence: String(index * 2 + 2), role: "assistant" as const, text: answer ?? ""},
     ])};
   return <AppRouterContext value={router}><ChatFixtureShell setup>
     <DraftChatHeading client={setupClient} view={view} workspace={WORKSPACE} onDirtyChange={() => {}} />

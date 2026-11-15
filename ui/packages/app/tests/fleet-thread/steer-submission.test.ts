@@ -5,7 +5,7 @@ import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
-import { FleetThread } from "@/components/domain/FleetThread";
+import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
 import { ACTOR } from "@/lib/events/event-summary";
 import userEvent from "@testing-library/user-event";
 import { getPendingSends } from "@/lib/streaming/pending-sends";

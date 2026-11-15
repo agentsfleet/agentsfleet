@@ -1,6 +1,6 @@
-import { currentTaskRef } from "@/components/domain/chat/task-references";
+import { currentTaskRef } from "@/components/domain/tasks/task-references";
 import { afterEach, expect, it, vi } from "vitest";
-import { loadTaskDetails } from "@/components/domain/chat/task-detail-reader";
+import { loadTaskDetails } from "@/components/domain/tasks/task-detail-reader";
 import { detail, summary, TASK_IDS } from "./helpers/task-reads";
 afterEach(() => {vi.unstubAllGlobals(); vi.useRealTimers(); vi.restoreAllMocks();});
 

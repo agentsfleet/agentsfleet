@@ -2,8 +2,8 @@ import { ev, mockStream, renderThread } from "./fleet-thread/harness";
 import { describe, expect, it } from "vitest";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 
-import { TOOL_CALLS_LABEL } from "@/components/domain/FleetToolCalls";
-import { TOOL_NAME } from "@/components/domain/tool-call-shape";
+import { TOOL_CALLS_LABEL } from "@/components/domain/activity/tools/FleetToolCalls";
+import { TOOL_NAME } from "@/components/domain/activity/tools/presentation/tool-call-shape";
 import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 

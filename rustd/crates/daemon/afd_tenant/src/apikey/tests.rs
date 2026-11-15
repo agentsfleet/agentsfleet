@@ -15,6 +15,7 @@ fn boundary_row() -> KeyRow {
     KeyRow {
         id: "0195b4ba-8d3a-7f13-8abc-2b3e1e0f7031".to_owned(),
         name: "zeta-deploy".to_owned(),
+        display_suffix: None,
         created_at: MINTED,
         revoked_at: None,
     }

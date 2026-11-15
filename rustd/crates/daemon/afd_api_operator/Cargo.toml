@@ -21,7 +21,6 @@ openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi", "af_wire/op
 [dependencies]
 afd_bus.workspace = true
 afd_admin.workspace = true
-afd_authoring.workspace = true
 af_core.workspace = true
 # A garde report answered with the route's own sentence (`Sentences`), and the
 # shared `?limit` bound.
@@ -39,7 +38,6 @@ axum = { workspace = true, features = ["json", "query"] }
 http.workspace = true
 # The ?since/?until instants a runner-events page is bounded by.
 jiff.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 

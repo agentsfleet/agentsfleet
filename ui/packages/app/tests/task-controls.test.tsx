@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { TaskControls } from "@/components/domain/chat/TaskControls";
+import { TaskControls } from "@/components/domain/tasks/TaskControls";
 import { controlTask, type TaskChange } from "@/lib/api/tasks";
 import { detail, summary } from "./helpers/task-reads";
 vi.mock("@/lib/api/tasks", async original => ({...await original<typeof import("@/lib/api/tasks")>(), controlTask: vi.fn()}));

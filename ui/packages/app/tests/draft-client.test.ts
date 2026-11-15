@@ -32,6 +32,27 @@ describe("private setup editing and recovery boundaries", () => {
     expect(mutations()).toEqual([]);
   });
 
+  it("prepares a source without applying edits and leaves an existing proposal intact", async () => {
+    const instance = await ready();
+    instance.fresh({kind: "definition", definition: REVIEW.effective.definition});
+    await instance.prepareSave();
+    expect(mutations()).toHaveLength(1);
+    expect(mutations()[0]?.body).toMatchObject({source: {kind: "definition", definition: REVIEW.effective.definition}});
+    const proposal = instance.getSnapshot().draft;
+    await instance.prepareSave();
+    expect(instance.getSnapshot().draft).toBe(proposal);
+    expect(mutations()).toHaveLength(1);
+  });
+
+  it("refuses preparation without a source or authoring model before creating a draft", async () => {
+    fixture.override = ({path}) => path.endsWith("/models") ? response({items: [], next_cursor: null}) : undefined;
+    const instance = await ready();
+    await expect(instance.prepareSave()).rejects.toMatchObject({status: 409});
+    instance.fresh({kind: "definition", definition: REVIEW.effective.definition});
+    await expect(instance.prepareSave()).rejects.toMatchObject({status: 400});
+    expect(mutations()).toEqual([]);
+  });
+
   it.each(["same", "rename", "definition"])("creates an editable blank source then applies a %s edit", async (kind) => {
     const instance = await ready(); const input = edit();
     if (kind === "rename") input.instanceName = "new-name";
@@ -64,11 +85,18 @@ describe("private setup editing and recovery boundaries", () => {
     expect(mutations()).toHaveLength(1);
   });
 
-  it.each(["", "x".repeat(32_769), "🌱".repeat(8_193)])("rejects invalid message input before creating an operation (%#)", async (text) => {
+  it.each(["", "   ", "\n\t", "x".repeat(32_769), "🌱".repeat(8_193)])("rejects invalid message input before creating an operation (%#)", async (text) => {
     const instance = await ready();
     await expect(instance.send(text)).rejects.toMatchObject({status: 400});
     expect(instance.getSnapshot()).toMatchObject({pending: false, busy: false, error: "Messages must contain 1 to 32,768 bytes of text."});
     expect(mutations()).toEqual([]);
+  });
+
+  it("preserves meaningful indentation and line breaks when admitting a message", async () => {
+    const instance = await ready();
+    const message = "  Check the callback\n\n    Keep the regression assertions.\n";
+    await instance.send(message);
+    expect(mutations()[0]?.body).toMatchObject({message});
   });
 
   it("requires an authoring model and an existing conversation for applicable actions", async () => {
@@ -263,10 +291,10 @@ describe("private browser chat", () => {
     await expect(instance.refreshSetup()).rejects.toMatchObject({status: 409}); expect(mutations()).toEqual([]);
   });
   it("retains a publication revision tag after a lost answer", async () => {
-    fixture.current = {...DRAFT, publication: {library_id: PUBLICATION.library_id, revision_id: PUBLICATION.revision_id, canonical_digest: "prior"}};
+    fixture.current = {...DRAFT, publication: {plugin_id: PUBLICATION.plugin_id, revision_id: PUBLICATION.revision_id, canonical_digest: "prior"}};
     let attempted = false;
     fixture.override = ({path, method}) => {
-      if (path.endsWith(`/fleet-libraries/${PUBLICATION.library_id}`)) return response({etag: '"original-library"'});
+      if (path.endsWith(`/plugins/${PUBLICATION.plugin_id}`)) return response({etag: '"original-plugin"'});
       if (path.endsWith("/revisions") && method === "POST") {
         if (!attempted) {attempted = true; return response({}, 503);} return response(PUBLICATION, 201);
       }
@@ -274,9 +302,9 @@ describe("private browser chat", () => {
     };
     const instance = await ready(true); await instance.refreshSetup();
     await expect(instance.publish("Recipe", true)).rejects.toMatchObject({status: 503}); await instance.retry();
-    expect(mutations()[1]?.headers.get("If-Match")).toBe('"original-library"');
+    expect(mutations()[1]?.headers.get("If-Match")).toBe('"original-plugin"');
     expect(mutations()[1]?.headers.get("Idempotency-Key")).toBe(mutations()[0]?.headers.get("Idempotency-Key"));
-    expect(calls.filter((call) => call.path.endsWith(`/fleet-libraries/${PUBLICATION.library_id}`))).toHaveLength(1);
+    expect(calls.filter((call) => call.path.endsWith(`/plugins/${PUBLICATION.plugin_id}`))).toHaveLength(1);
   });
   it("clears private data and cancels future I/O on disposal", async () => {
     const instance = await ready(true); instance.dispose(); const before = calls.length;

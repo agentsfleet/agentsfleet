@@ -10,8 +10,8 @@ pub(crate) enum Subject {
     Draft {
         id: Uuid7,
     },
-    Library {
-        library_id: String,
+    Plugin {
+        plugin_id: Uuid7,
         revision_id: Uuid7,
     },
     /// Setup the daemon wrote in code, such as a chat channel's resident.
@@ -66,8 +66,17 @@ impl Context {
     pub(super) fn review_href(&self) -> String {
         match (&self.subject, &self.linked_fleet_id) {
             (Subject::Draft { id }, _) => format!("/w/{}/drafts/{id}", self.workspace_id),
-            (Subject::Library { library_id, .. }, _) => {
-                format!("/w/{}/library/{library_id}", self.workspace_id)
+            (
+                Subject::Plugin {
+                    plugin_id,
+                    revision_id,
+                },
+                _,
+            ) => {
+                format!(
+                    "/w/{}/fleets/new?plugin={plugin_id}&revision={revision_id}",
+                    self.workspace_id
+                )
             }
             (Subject::System, Some(fleet)) => format!("/w/{}/fleets/{fleet}", self.workspace_id),
             (Subject::System, None) => format!("/w/{}/fleets", self.workspace_id),
@@ -110,11 +119,14 @@ mod tests {
                 format!("/w/{workspace}/drafts/{draft}"),
             ),
             (
-                Subject::Library {
-                    library_id: "checkout-watch".to_owned(),
-                    revision_id: revision,
+                Subject::Plugin {
+                    plugin_id: id(6),
+                    revision_id: revision.clone(),
                 },
-                format!("/w/{workspace}/library/checkout-watch"),
+                format!(
+                    "/w/{workspace}/fleets/new?plugin={}&revision={revision}",
+                    id(6)
+                ),
             ),
         ] {
             let context = Context {

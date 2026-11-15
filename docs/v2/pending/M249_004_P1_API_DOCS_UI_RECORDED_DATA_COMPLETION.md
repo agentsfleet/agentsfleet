@@ -1,4 +1,4 @@
-# M249_004: Complete recorded UI data
+# M249_004: Complete recorded data and one-call Usage
 
 **Prototype:** v2.0.0
 **Milestone:** M249
@@ -7,25 +7,28 @@
 **Status:** PENDING
 **Priority:** P1, approved screens need authoritative data
 **Categories:** API, DOCS, UI
-**Batch:** B3, data work may run alongside M249_003
-**Depends on:** M249_001 and M249_002 before implementation; M249_003 before final Plugin wiring and this workstream's merge
+**Batch:** B3, data work follows the UI checkpoint; M249_003 is parked
+**Depends on:** M249_001 and M249_002 before implementation; the final UI checkpoint before adapter wiring; parked M249_003 does not block independent data work
 **Provenance:** Agent-generated from the UI data inventory and Indy's requested Claude handoff
 **Canonical architecture:** `docs/DESIGN_SYSTEM.md`; `docs/architecture/context_lifecycle.md`; `docs/architecture/api_resources.md`
 
 ## Overview
 
-**Goal (testable):** The refreshed UI displays complete recorded usage, key metadata, secret access, revision labels, changes, outputs and context usage without inferred facts.
+**Goal (testable):** Usage loads from one authoritative report request, including model labels. The refreshed UI displays complete recorded usage, key metadata, secret access, revision labels, changes, outputs without inferred facts.
 
 **Problem:** Several approved components have no authoritative backing field or complete projection. They currently show supported facts or explicit unavailable states.
 
-**Solution summary:** Extend existing producers and read responses where facts exist, then wire the refreshed components. Retain unavailable states where a producer remains undefined.
+**Solution summary:** Extend existing producers and read responses where facts exist, then wire the refreshed components. Remove Usage's separate model-catalogue dependency. Retain current setup-reuse semantics and unavailable states where a producer remains undefined. The broader Plugin model is a separate discussion.
 
 **Design flow:** Authenticated read → existing account/workspace authorization → stored ledger, policy or event facts → typed response → existing UI adapter → approved component.
 
-This spec ships as documentation in the UI PR. Its implementation uses a separate worktree and PR after both dependency merges.
+This spec ships as documentation in the UI PR. Its implementation uses a separate worktree and PR after the UI checkpoint.
 
-Usage, key metadata, secret access, recorded work and context measurement can proceed while M249_003 runs.
-Finish Plugin revision-label wiring against M249_003's merged names and payloads. Merge M249_003 before M249_004.
+Usage, key metadata, secret access and recorded work remain valid. Measured context budget is parked separately; M249_003 is parked as the rename workstream.
+Use the retained API names and payloads from the UI checkpoint. Keep the Plugin UI dormant until the separate product discussion reopens it.
+
+The original daily-chart work moved to M249_003 §6. The new one-call requirement in §2a remains here and must not reimplement those completed aggregates.
+Parked M249_003 §7 records the separate-session product discussion. It does not authorize new capability bindings or provider actions in this workstream.
 
 ## PR Intent & comprehension handshake
 
@@ -40,7 +43,7 @@ Finish Plugin revision-label wiring against M249_003's merged names and payloads
 2. `ui/packages/app/lib/api/billing_report.ts` — complete settled totals versus paginated activity details.
 3. `rustd/crates/daemon/afd_billing/src/report/sql/aggregates.sql` — filtered ledger aggregates and settlement cutoff.
 4. `rustd/crates/daemon/afd_api_wire/src/tenant.rs` and `secret.rs` — current account-key and secret metadata.
-5. `rustd/crates/daemon/afd_api_wire/src/library/output.rs` — current revision identity and collection metadata; follow M249_003 renames.
+5. `rustd/crates/daemon/afd_api_wire/src/plugin/output.rs` — current revision metadata. M249_003 §7 links the deferred product questions.
 
 ## Product Clarity (authoring record)
 
@@ -48,7 +51,7 @@ Finish Plugin revision-label wiring against M249_003's merged names and payloads
 2. **Preserved user behaviour** — Create/revoke keys, replace secrets, select revisions, inspect activity and use model credentials in their existing workspace.
 3. **Optimal-way check** — Extend existing scoped reads rather than adding parallel APIs or reconstructing authoritative totals in the browser.
 4. **Rebuild-vs-iterate** — Extend projections and their producers. Keep the approved component structure.
-5. **What we build** — Daily usage and fleet/model projections, safe metadata and supported policy/event/context read fields with UI adapters.
+5. **What we build** — Daily usage and fleet/model projections, safe metadata and supported policy and event read fields with UI adapters.
 6. **What we do NOT build** — Capability plugins, real uploads, mention invocation, platform administration or a new secret authorization model.
 7. **Fit with existing features** — Use the existing settled ledger, effective policies, immutable revisions and native chat ownership.
 8. **Surface order** — Backend contract and producer tests first, then adapters and UI in the same follow-up PR.
@@ -57,7 +60,7 @@ Finish Plugin revision-label wiring against M249_003's merged names and payloads
 
 ## Files Changed (blast radius)
 
-Paths reflect UI candidate `1bebcb701` plus its working changes. Re-inventory after dependency merges; M249_003 may rename library modules.
+Paths reflect UI checkpoint `2099754ae` plus the later fleet-only save changes. Re-inventory the final UI merge before implementation.
 
 | File or family | Action | Why |
 |---|---|---|
@@ -67,18 +70,22 @@ Paths reflect UI candidate `1bebcb701` plus its working changes. Re-inventory af
 | `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/billing_report/{mod.rs,view.rs}` | EDIT | Existing authorized report response |
 | `ui/packages/app/lib/api/billing_report.ts` | EDIT | Decode and validate complete projections |
 | `ui/packages/app/app/(dashboard)/settings/billing/components/{BillingReportView.tsx,BillingSpending.tsx}` | EDIT | Chart and complete fleet/model facts |
+| `ui/packages/app/app/(dashboard)/settings/billing/{page.tsx,loading.tsx,lib/load-report.ts,components/**}` and billing tests | EDIT | One report request, streamed data region and charge details loaded on intent |
+| `ui/packages/app/app/(dashboard)/layout.tsx` and shell read boundaries | REVIEW; EDIT only for confirmed blocking reads | First-load profiling must include parent layout reads, not only the report component |
+| `model.platform_models` metadata lookup and its existing read owner | PLAN before EDIT | Resolve only report model labels, with provider/model identity and no full-catalogue read |
 | `rustd/crates/daemon/afd_api_wire/src/tenant.rs` and `afd_api_tenant/src/handler/tenant/api_key.rs` | EDIT | Safe account-key metadata |
 | `ui/packages/app/lib/api/api_keys.ts` and `app/(dashboard)/settings/security/components/ApiKeyList.tsx` | EDIT | Metadata without credential exposure |
 | `rustd/crates/daemon/afd_api_wire/src/secret.rs` and existing secret handlers | EDIT | Effective-access read projection, if defined |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/secret-row-cells.tsx` and its existing management dialog | EDIT | Available-to facts from existing policy |
-| `rustd/crates/daemon/afd_api_wire/src/library/output.rs` and existing collection projection | EDIT | Head revision ordinal without per-card requests |
-| `ui/packages/app/lib/api/library-types.ts` and the refreshed Plugin rows | EDIT | Decode and display authoritative revision metadata |
-| `ui/packages/app/components/domain/chat/{WorkContextSections.tsx,recorded-changes.ts,ChatComposer.tsx}` | EDIT | Confirmed event facts and measured context usage |
-| Identified key-authentication, event-publication and context-usage producers | EDIT | Record missing facts at their actual owner |
+| `rustd/crates/daemon/afd_api_wire/src/plugin/output.rs` and the existing collection projection | EDIT | Head revision ordinal without per-card requests; no invented capability-binding model |
+| `ui/packages/app/lib/api/draft-plugin.ts` and `components/domain/plugins/**` | EDIT after interface agreement | Consume the current published-setup metadata and recorded revision identity |
+| `ui/packages/app/components/domain/conversation/summary/{WorkContextSections.tsx,recorded-changes.ts}`, `setup/composer/ChatComposer.tsx` and usage components | EDIT | Confirmed work, Plugin provenance; preserve the UI refactor |
+| Identified key-authentication, event-publication producers | EDIT | Record missing facts at their actual owner |
 | Canonical schema files, if new durable facts are needed | EDIT | Fresh-development schema; no migration bridge |
 | `public/openapi.json` | GENERATE | Generated contract, never hand-edited |
 | Existing tests for each changed producer, handler and component | EDIT | Complete data, refusals, races and unavailable states |
 | `docs/v2/evidence/M249_VERIFICATION.md` and `docs/DESIGN_SYSTEM.md` | EDIT | Update resolved data differences and retained unknowns |
+| `docs/v2/evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md` | EDIT | Preserve the deferred Fleet/template/Plugin questions without adding implementation scope |
 | Separate `agentsfleet/docs` branch and changelog | EDIT | Public contract and visible behaviour |
 
 Resolve family entries to exact files during PLAN. Unidentified producers block their implementation Section.
@@ -111,6 +118,19 @@ Resolve family entries to exact files during PLAN. Unidentified producers block 
 - Secret summaries classify server-side without decrypting every secret for display.
 - Revision detail and history already provide decimal revision numbers. Collection metadata should reuse that source.
 - Native chat and shared design-system components own rendering, disclosure, timing and focus.
+- Usage currently calls `getModelLibrary` only to build display labels in `settings/billing/lib/load-report.ts`. Its `Promise.all` makes that optional lookup delay the entire report.
+- Billing already reads aggregates and paginated activities within one read-only snapshot in `afd_billing/src/report/mod.rs`. Fleet count does not create a loop of report requests.
+
+## Performance requirement for Sections 1, 2 and 3
+
+Claude must investigate the slow first Usage load before selecting a query design. Trace browser requests, parent layout reads, handler work and database plans.
+Compare one initial report request with the current report-plus-catalogue dependency. Measure cold and repeat loads with four fleets and larger representative data.
+
+Prefer one coherent scoped read where it supplies complete data efficiently. Compare a set-based SQL projection against a fixed batch of reads using actual query plans.
+Do not force unrelated operations into one statement if it duplicates ledger rows, widens access or increases latency. No per-fleet, per-model or per-key request loop is allowed.
+
+Section 1 records the source inventory, timing and query plans. Section 2 owns the one-call Usage response and exact accounting.
+Section 3 uses scoped batch metadata reads and measures its call count; it must not restore a separate catalogue dependency to Usage.
 
 ## Sections (implementation slices)
 
@@ -120,10 +140,13 @@ Inventory each field as available, adapter-only, backend projection, producer ch
 
 Follow the merged lifecycle and Plugin vocabulary. This workstream does not own those renames.
 
-- **Dimension 1.1** — Every displayed fact names a stored source → Test `ui_projection_inventory_matches_contract` (review): field table cites producer, storage, authorization and adapter.
+- **Dimension 1.1** — Every displayed fact names a stored source → Test `ui_projection_inventory_matches_contract` (review): field table cites producer, storage, authorization, adapter, request count and measured query plan.
 - **Dimension 1.2** — Unsupported facts remain explicit → Test `unavailable_projection_never_becomes_zero` (unit): omitted facts show unavailable; measured zero remains zero.
 
-### §2 — Complete settled usage
+### §2 — Complete settled usage (moved to M249_003 §6)
+
+Indy's Nov 14, 2026 request to align Usage with the uploaded proposal moved this slice into the interface follow-up recorded in parked M249_003 §6.
+That workstream owns its implementation and verification; the description below records its original scope and is not a second implementation task here.
 
 Extend the existing report with UTC daily buckets and each fleet's complete model set. Apply the same filters and snapshot cutoff as totals.
 
@@ -137,9 +160,49 @@ Preserve setup charges, null/deleted fleet identities, historical cutoffs and un
 - **Dimension 2.2** — Paging cannot change aggregates → Test `daily_spend_ignores_activity_cursor` (integration): all cursors return identical daily and fleet/model facts.
 - **Dimension 2.3** — Historical names survive deletion → Test `usage_keeps_deleted_fleet_models` (integration): deleted fleet charges retain ledger identity and all recorded models.
 
+### §2a — One authoritative initial Usage request
+
+The owner requested one billing-report call instead of fetching model labels through `GET /v1/models` separately.
+Use the existing `GET /v1/tenants/me/billing/reports/current` route and `billing:read` authorization. Do not introduce another reporting endpoint.
+
+The initial response supplies totals, daily buckets, fleet/model breakdowns, filter choices, the first activity page and model display labels.
+Add required `model_labels: Record<string, string>` to that response. Empty reports return `{}`; unavailable labels omit their keys.
+
+Keep the recorded model identifier as every aggregation key and filter value. Display `model_labels[id] ?? id` without rewriting identity or computing monetary values from current catalogue prices.
+Resolve labels from reviewed platform metadata using the ledger's provider and model identity. Do not select whichever duplicate model identifier happens to occur last.
+
+If several providers share one reported identifier, include its label only when their matching metadata supplies the same nonempty label.
+Unknown, removed or ambiguous models retain their recorded identifier. A missing label never hides or zeroes settled usage.
+
+Limit metadata resolution to model identifiers needed by the report and its filter choices. Use a join or one bounded batch lookup in the existing backend read owner.
+No per-fleet or per-model request loop and no full model-catalogue download is allowed. A single HTTP request does not require forcing unrelated database operations into one SQL statement.
+
+The report retains its authorized account, exact integer amounts, filters, inclusive bounds, cutoff and cursor semantics. Labels cannot alter any total or settlement decision.
+Wire types, generated OpenAPI, strict UI decoding and public documentation change together.
+
+Remove `getModelLibrary` from the Usage loader and consume `report.model_labels` directly. The initial Usage-specific service read is one report request, regardless of whether four or more fleets appear.
+Common authenticated-shell reads remain separately measured; do not misreport them as per-fleet Usage requests.
+
+The current dashboard layout awaits workspace, balance and invite reads before returning its frame. A page-level Suspense boundary cannot bypass a blocked parent layout.
+Include this path in the cold-load profile. Stream confirmed optional blockers with explicit loading states; do not substitute false empty workspace or zero-balance data.
+
+Keep individual charge requests behind an explicit activity disclosure. Pagination and filter changes request the corresponding report page; they preserve the existing snapshot rules.
+Render the Usage frame before its data region resolves, using the existing loading indicator and Suspense. Defer collapsed charge-detail code with a client dynamic import.
+
+Use the shared local-time utilities for displayed instants. Accounting bucket identities and stored schedule rules retain their established semantics.
+
+- **Dimension 2a.1** — One initial report request → Test `usage_first_load_has_one_report_request` (browser): four fleets require one report call, no model-catalogue call, no fleet-detail calls and no charge call before disclosure.
+- **Dimension 2a.2** — Labels are complete or explicitly unavailable → Test `billing_model_labels_preserve_recorded_identity` (integration/unit): known, advanced, retired, absent and provider-ambiguous models retain correct identifiers and amounts.
+- **Dimension 2a.3** — Paging and filters retain accounting → Test `billing_labels_do_not_change_snapshot_totals` (integration): labels, cursors and filter changes preserve the existing complete aggregates and exact cutoff behavior.
+- **Dimension 2a.4** — Slow data does not hide the frame → Test `usage_shell_streams_before_report_and_details_load_on_intent` (server-render/browser): delayed report and optional parent-shell reads retain truthful loading states; details load only when opened.
+- **Dimension 2a.5** — Performance evidence identifies the wait → Test `usage_four_fleet_request_waterfall` (browser/profile): record first and repeat load, service duration, response size, browser rendering and query plans; separate local controlled delay from live machine evidence.
+- **Dimension 2a.6** — Failure remains recoverable → Test `usage_single_report_failure_retains_filters_and_retry` (unit/browser): timeout, malformed JSON, empty data and denied access preserve truthful error or empty states and existing recovery.
+
 ### §3 — Safe key metadata and effective secret access
 
 Add safe key display metadata at creation if needed. Never derive a suffix from a digest or return recoverable key bytes.
+
+M249_003 §5.6 already implements the nullable creation-time display suffix. Reuse that field and its proofs; do not add a second suffix producer.
 
 Identify the successful-authentication producer before adding last-used metadata. Define write frequency and ordering there; failed or revoked authentication cannot advance it.
 
@@ -149,15 +212,16 @@ Project effective secret access only from the execution policy that actually gov
 
 Keep workspace-backed storage, hidden values, named-field replacement and active-model protection. New editable secret access rules need separate design approval.
 
-- **Dimension 3.1** — Metadata cannot reveal credentials → Test `api_key_metadata_is_safe_and_account_scoped` (integration): foreign account reads fail; list, errors and logs contain no key or digest.
+- **Dimension 3.1** — Metadata cannot reveal credentials → Test `api_key_metadata_is_safe_and_account_scoped` (integration): foreign account reads fail; list, errors and logs contain no key or digest; one bounded page read supplies metadata without per-key queries.
 - **Dimension 3.2** — Last use reflects accepted authentication → Test `api_key_last_use_requires_success` (integration): successful use advances; failed, revoked and out-of-order writes do not falsify recency.
 - **Dimension 3.3** — Effective access stays workspace-scoped → Test `secret_access_projection_matches_execution_policy` (integration): foreign fleets and references alone cannot add access.
 
 ### §4 — Revision labels and recorded work
 
-Expose the head revision ordinal in Plugin collection metadata from the existing revision row. Use M249_003's merged names and avoid per-card history requests.
+Expose the head revision ordinal in Plugin collection metadata from the existing revision row. Use M249_003's current names and avoid per-card history requests.
 
 Preserve immutable revision identity, complete reusable setups and independently saved fleets.
+The separate product discussion may later change that model. Do not infer new connection, resource or action-grant fields before that decision.
 
 Inspect event producers for changed paths, line totals and publication receipts. Add fields only with a confirmed producer and workspace/fleet/run identity.
 
@@ -167,15 +231,24 @@ Local writes are changes, not publication. A related PR URL does not prove this 
 - **Dimension 4.2** — Work totals require recorded evidence → Test `summary_uses_confirmed_run_evidence` (unit/integration): partial tool text and unrelated URLs cannot become authoritative totals or published outputs.
 - **Dimension 4.3** — Reload preserves facts → Test `recorded_summary_survives_reload` (browser): stream and persisted replay render the same confirmed changes and outputs.
 
-### §5 — Measured context budget
+### §5 — Measured context budget: parked
 
-Identify the runtime measurement producer and applicable model limit before exposing a percentage. Define units, observation time and run/model identity.
+The owner parked only this section. Its producer questions, semantics and Dimension 5.1 are preserved in [the parked section](../done/M249_004_SECTION_5_MEASURED_CONTEXT_BUDGET.md).
+The remaining recorded-data and one-call Usage sections stay valid.
 
-Output tokens, cost and configured capacity alone cannot prove remaining context. Model changes, compaction and stale measurements must invalidate incompatible observations.
+> Owner: "I think you could move the Dimension 5, in the M249_004 to parked, since the rest of the spec is valid"
 
-If no producer exists, keep the unavailable state and record the required producer design. Do not invent a context accounting subsystem silently.
+### §6 — Parallel implementation boundaries
 
-- **Dimension 5.1** — Budget requires a coherent observation → Test `context_budget_requires_matching_fresh_measurement` (unit/integration): stale, mismatched and absent observations show unavailable; valid zero remains zero.
+Start independent data work from a tested pushed UI checkpoint in a separate worktree. Record its commit and re-inventory paths after the feature-folder refactor.
+The current UI work owns presentation, auth, shared progress, time utilities and domain-folder moves. Preserve those changes during integration.
+
+The one-call Usage work in §2a can proceed independently. Reuse the implemented key suffix; identify missing metadata producers before changing them.
+
+Plugin revision labels consume the current published-setup representation. The Fleet/template/Plugin reassessment is deferred to a separate session, as recorded in the evidence notes.
+It supplies questions and examples, not new capability fields or provider implementation tasks.
+
+Generate OpenAPI serially after integration. Do not edit another active worktree, duplicate its component moves or overwrite its generated outputs.
 
 ## Interfaces
 
@@ -194,7 +267,8 @@ New public endpoints require a demonstrated need and the repository's route inve
 | Foreign account or workspace metadata | Security | Existing authorization refuses access before projection | `api_key_metadata_is_safe_and_account_scoped`, `secret_access_projection_matches_execution_policy` |
 | Secret reference mistaken for permission | Security | Read governing policy; omit unsupported editable controls | `secret_access_projection_matches_execution_policy` |
 | Truncated output or related URL mistaken for publication | Failure | Require confirmed event evidence from this run | `summary_uses_confirmed_run_evidence` |
-| Model changes invalidate a context observation | Failure | Mark unavailable until a matching observation arrives | `context_budget_requires_matching_fresh_measurement` |
+| Optional catalogue delays the whole report | Performance | Labels travel with the report; no Usage catalogue request | `usage_first_load_has_one_report_request` |
+| Providers share a model identifier | Data integrity | Resolve only an unambiguous label; retain raw identifier otherwise | `billing_model_labels_preserve_recorded_identity` |
 
 ## Invariants
 
@@ -216,9 +290,10 @@ Any new producer metric needs bounded labels, an existing signal owner and a tes
 |---|---|---|---|---|---|
 | R1 | Source inventory and unavailable semantics (§1) | Review field inventory; `make test-unit-all` | No inferred values | P0 | NOT RUN |
 | R2 | Complete daily/fleet/model usage (§2) | `make test-integration-rustd` | Same filters and reconciled exact totals | P0 | NOT RUN |
+| R2a | One-call Usage and initial load (§2a) | Integration, server-render and browser tests named in §2a | One initial Usage report request; no catalogue dependency | P0 | NOT RUN |
 | R3 | Safe scoped metadata and access (§3) | `make test-integration-rustd` | No exposure or authority expansion | P0 | NOT RUN |
 | R4 | Authoritative revision/work facts (§4) | `make test-integration-rustd`; `make dry-app` | Confirmed facts survive reload | P1 | NOT RUN |
-| R5 | Measured budget or explicit unavailable state (§5) | `make test-unit-all`; `make dry-app` | No invented percentage | P1 | NOT RUN |
+| R5 | Measured context budget (§5) | Parked separately | No implementation required in this workstream | P1 | DEFERRED at owner request |
 | S1 | Declared commands green | `make lint-all`; `make test-unit-all`; `make test-integration-rustd`; `make check-version` | Exit 0 | P0 | NOT RUN |
 | S2 | No secrets | `gitleaks detect --redact --no-banner` | Exit 0 | P0 | NOT RUN |
 | S3 | Authenticated runtime and repository gates | `make acceptance-codex`; `orly gate pr` | Exit 0 | P0 | NOT RUN |
@@ -235,13 +310,13 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 
 - Remaining M249_001 visual findings and cleanup: they must finish in the UI PR.
 - CLI grouping, discovery and lifecycle: Claude's M249_002.
-- Plugin public vocabulary and platform catalogue removal: Claude's M249_003.
-- Capability composition and invocation: M239_001; no `@deploy_status` installation here.
-- Real uploads, mention invocation, a new Secrets editor, new secret grants and platform administration UI.
+- Plugin public vocabulary belongs to M249_003. Capability content, resource bindings and invocation require the separate discussion recorded in its §7.
+- Fleet-to-fleet steering and activity: M239_001; capability Plugins do not require that delegation feature.
+- Real uploads, a new Secrets editor, new secret grants, a second execution engine and platform administration UI.
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** Existing projections plus scoped producers; Usage first, then metadata, recorded work and context.
+- **Chosen shape:** Existing projections plus scoped producers; Usage first, then metadata, recorded work.
 - **Alternatives considered:** Browser aggregation cannot prove complete daily totals. A parallel reporting API duplicates authorization and paging ownership.
 - **Patch-vs-refactor verdict:** Extend existing domain reads. Refactor only a producer or projection whose present structure prevents a coherent contract.
 
@@ -250,9 +325,15 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 - **Source:** UI HEAD `1bebcb701e8aba4a368734df51314c7e188f21f9` and working changes; fetched main `4f3159269644b2a1d814fbcc9119f01830b7eaf8`.
 - **Coordination:** `origin/feat/m249-cli-api-discovery` already reserves M249_003. This spec uses M249_004 to avoid collision.
 - **Model reviews:** Authoring draft; independent EGM review and resolution remain pending. This document carries no implementation-readiness claim.
-- **Open blockers:** Exact last-use, effective-access, publication and context producers need the merged-base inventory. Unknown semantics must be resolved before their Sections start.
+- **Open blockers:** Exact last-use, effective-access, publication producers need the merged-base inventory. Unknown semantics must be resolved before their Sections start.
 - **Merge order:** Both UI and CLI must merge before implementation. CLI may merge first only with coherent current UI lifecycle callers.
 - **Staggered work:** Independent data Sections may run alongside M249_003. Final Plugin wiring and M249_004's merge follow M249_003.
+- **One-call Usage request (Nov 14, 2026):** "why the getModelLib is called and we combine the billingreport to just 1 api call? and udpate the spec?" The owner corrected the target to M249_004 and requested this change in the UI PR.
+- **Plugin reassessment (Nov 14, 2026):** "not a replacement of a fleet, but an actual Plugin with an use case and fix them". M249_003 defines that behavior; this workstream supplies the corresponding recorded data.
+- **Service examples (Nov 14, 2026):** "agentphone, agentcreditcard, agentemail". The owner requested use-case-driven and adversarial thinking; provider scope and invocation remain product decisions rather than implemented facts.
+- **Parallel work (Nov 14, 2026):** "claude able to run this and fix in parallel while your UI fix". Section 6 separates independent work from interfaces awaiting product decisions.
+
+- **Latest owner boundary (Nov 14, 2026):** Finish the current work and retain Fleet/template/Plugin reasoning for a separate session. The phone, email and card examples do not expand this implementation scope.
 
 > Owner (Indy): "claude to works from your PR merged on the UI refresh you did with gaps delta on api needed on the backend and wire it into the ui you created (post your PR merge)."
 
@@ -265,3 +346,9 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 ## Claude handoff
 
 Read [the handoff prompt](../evidence/M249_004_CLAUDE_HANDOFF.md). Start from main containing both merged dependencies, never from this unmerged UI snapshot.
+
+The Plugin UI and backend implementation are retained for reuse. Do not reactivate the Plugin UI while completing the independent data work.
+
+## Latest implementation boundaries
+
+M249_003 is parked as the rename workstream. Only Section 5 of this workstream is parked; Sections 1, 2 and 3 retain the performance investigation above.

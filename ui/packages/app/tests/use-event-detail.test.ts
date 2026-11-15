@@ -6,7 +6,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
   getFleetEventAction: getFleetEventActionMock,
 }));
 
-import { useEventDetail } from "@/components/domain/use-event-detail";
+import { useEventDetail } from "@/components/domain/events/use-event-detail";
 import type { EventDetail, EventLocator, EventRow } from "@/lib/api/events";
 
 /** A list row as the events page hands it over: every column the list read

@@ -2,6 +2,8 @@
 -- made it, so `created_by_subject` is the sign-in subject as text, not a user FK.
 -- `revoked_at` is both the revocation instant the key list returns and the NULL
 -- marker authentication reads; a live key is `revoked_at IS NULL`.
+-- `display_suffix` is public recognition metadata read by the key-list statements
+-- in afd_tenant/src/sql/apikey.rs. NULL means an older key has no recoverable suffix.
 CREATE TABLE identity.api_keys (
     id                  UUID PRIMARY KEY,
     CONSTRAINT ck_api_keys_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -9,6 +11,7 @@ CREATE TABLE identity.api_keys (
     name                TEXT NOT NULL,
     description         TEXT NOT NULL,
     key_hash            TEXT NOT NULL,
+    display_suffix      TEXT,
     created_by_subject  TEXT NOT NULL,
     revoked_at          TIMESTAMPTZ(3),
     created_at          TIMESTAMPTZ(3) NOT NULL,

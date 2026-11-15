@@ -21,10 +21,10 @@ export async function deleteFixtureDraft(handle: ClientHandle, workspace: string
   await clientFor(handle).delete(`/v1/workspaces/${workspace}/drafts/${encodeURIComponent(draftId)}`);
 }
 
-export async function publishFixtureLibrary(handle: ClientHandle, workspace: string, definition: Definition) {
+export async function publishFixturePlugin(handle: ClientHandle, workspace: string, definition: Definition) {
   const draft = await createFixtureDraft(handle, workspace, definition);
   if (!draft.candidate) throw new Error("Fixture draft has no candidate");
-  return PublishedSchema.parse(await clientFor(handle).post<unknown>(`/v1/workspaces/${workspace}/fleet-libraries`, {
+  return PublishedSchema.parse(await clientFor(handle).post<unknown>(`/v1/workspaces/${workspace}/plugins`, {
     draft_candidate_id: draft.candidate.id, label: definition.config.name,
   }, { [SETUP_HEADERS.key]: uuidv7() }));
 }

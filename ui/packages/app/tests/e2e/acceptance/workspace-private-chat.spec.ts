@@ -23,7 +23,7 @@ import { DraftSchema } from "@/lib/api/draft-types";
 import { workspaceHref } from "./fixtures/nav";
 import { uniqueTag } from "./fixtures/observation";
 import {
-  CHAT_COPY, NEW_FLEET, draftHref, editSetupAction, expectEditSetupAvailable, historyEntry, openDraft, openSavedFleet, saveSetupButton, setupAction, setupSummary,
+  CHAT_COPY, NEW_FLEET, draftHref, editSetupAction, expectEditSetupAvailable, historyEntry, openDraft, openSavedFleet, privateSaveButton, setupAction, setupSummary,
 } from "./fixtures/private-chat";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { inviteeEmail, inviteeHandle, joinAdminAccount, removeTeammate, signUpInvitee, type Invitee } from "./fixtures/teammate";
@@ -77,7 +77,7 @@ async function recoverFromHistoryAndReload(page: Page, workspaceId: string, draf
 // Save is reachable from the keyboard in the chat header.
 async function saveFromTheKeyboard(page: Page, workspaceId: string): Promise<void> {
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  const save = await saveSetupButton(page);
+  const save = await privateSaveButton(page);
   await expect(save).toBeEnabled();
   await save.focus();
   await save.press("Enter");

@@ -2,7 +2,7 @@ import { ev, mockStream, renderThread } from "./harness";
 import { describe, expect, it } from "vitest";
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { OUTCOME, RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
-import { FleetThread } from "@/components/domain/FleetThread";
+import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
 
 describe("FleetThread — role rendering: activity groups and traces", () => {
   it("shows the received Slack message instead of raw event JSON", async () => {

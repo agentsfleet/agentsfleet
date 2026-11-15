@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
-import { TaskRepositoryProgress } from "@/components/domain/chat/TaskRepositoryProgress";
+import { TaskRepositoryProgress } from "@/components/domain/tasks/TaskRepositoryProgress";
 import { detail, INSTANT, TASK_IDS } from "./helpers/task-reads";
 
 const HEAD = "a".repeat(40);

@@ -1,10 +1,5 @@
-import type { LibraryCard } from "./draft-library";
-
-// Shared failure vocabulary for the two authenticated library surfaces: the
-// tenant Models registry (`tenant_model_entries.ts`) and the Fleet gallery
-// (`fleet-library.ts`). Both consume the same keyset endpoints, so both carry
-// the same typed-failure shapes — kept here rather than duplicated so the two
-// surfaces cannot drift.
+// Read failures for the authenticated Models registry.
+// Fleet Plugin reads use the authoring transport vocabulary.
 //
 // No `cache()` and no server-only import: these are plain types and pure
 // functions shared by server reads and client components alike.
@@ -29,14 +24,6 @@ export type LibraryError = {
   /** Operator-facing detail. Never rendered as the sole user-facing copy. */
   detail?: string;
 };
-
-/**
- * The query parameter carrying gallery list position. Written by the install
- * screen's load-more URL mirror and parsed by its server render — one name,
- * because a producer/parser drift compiles clean and silently breaks the
- * position restore.
- */
-export const LIBRARY_AFTER_PARAM = "library_after";
 
 /**
  * Map a transport status onto the typed vocabulary. 404 is deliberately
@@ -73,6 +60,3 @@ export function libraryErrorFromCause(cause: unknown): LibraryError {
     detail: cause instanceof Error ? cause.message : undefined,
   };
 }
-
-export type WorkspaceLibraryEntry = LibraryCard;
-export type WorkspaceLibraryEntriesResponse = {items: WorkspaceLibraryEntry[]; total: null; next_cursor: string | null};

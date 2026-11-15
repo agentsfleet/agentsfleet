@@ -2,7 +2,7 @@ import type { Source } from "./draft-types";
 import { z } from "zod";
 import { DefinitionSchema } from "./draft-types";
 import { SOURCE_KIND } from "./draft-vocabulary";
-import { LibrarySchema } from "./draft-library";
+import { PluginSchema } from "./draft-plugin";
 import { setupRequest, SetupUnavailable } from "./draft-request";
 
 const FleetSeedSchema = z.object({id: z.uuidv7(), definition: DefinitionSchema, name: z.string(), setup_revision: z.string()});
@@ -15,7 +15,8 @@ export async function sourcePreview(base: string, source: Source, signal: AbortS
     return {definition: fleet.definition, instanceName: fleet.name, revision: source.setup_revision, setupRevision: source.setup_revision};
   }
   const query = new URLSearchParams({revision_id: source.revision_id});
-  const library = await setupRequest({path: `${base}/fleet-libraries/${encodeURIComponent(source.library_id)}?${query}`}, LibrarySchema, signal);
-  if (library.card.id !== source.library_id || library.head.library_id !== source.library_id || library.head.id !== source.revision_id) throw new SetupUnavailable("The selected Library revision could not be confirmed.", 409);
-  return {definition: library.head.definition, instanceName: library.review.effective.instance_name, revision: library.head.id};
+  const plugin = await setupRequest({path: `${base}/plugins/${encodeURIComponent(source.plugin_id)}?${query}`}, PluginSchema, signal);
+  if (plugin.card.id !== source.plugin_id || plugin.head.plugin_id !== source.plugin_id || plugin.head.id !== source.revision_id) throw new SetupUnavailable("The selected Plugin revision could not be confirmed.", 409);
+  return {definition: plugin.head.definition, instanceName: plugin.review.effective.instance_name, revision: plugin.head.id,
+    sourceLabel: `${plugin.card.name} · v${plugin.head.revision}`};
 }

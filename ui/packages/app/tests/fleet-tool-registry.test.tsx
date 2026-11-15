@@ -2,8 +2,8 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { AuiConfig, AssistantRuntimeProvider, ThreadPrimitive, Tools, defineToolkit, useExternalStoreRuntime } from "@assistant-ui/react";
-import { renderFleetMessage } from "@/components/domain/fleetMessageRenderers";
-import { FLEET_CHAT_CONFIG } from "@/components/domain/FleetToolRegistry";
+import { renderFleetMessage } from "@/components/domain/activity/messages/fleetMessageRenderers";
+import { FLEET_CHAT_CONFIG } from "@/components/domain/activity/tools/FleetToolRegistry";
 
 afterEach(cleanup);
 

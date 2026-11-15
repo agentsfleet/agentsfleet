@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
 vi.mock("@/lib/analytics/posthog", () => ({ captureProductEvent: vi.fn() }));
-vi.mock("@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic", () => ({ default: () => null }));
+vi.mock("@/components/domain/shared/dialogs/CreateWorkspaceDialogDynamic", () => ({ default: () => null }));
 vi.mock("@/components/layout/WorkspaceCreationProvider", () => ({
   useWorkspaceCreation: () => ({
     createdWorkspaces: [], locked: false, pending: false, error: null,

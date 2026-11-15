@@ -28,7 +28,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       signUpUrl="/sign-up"
       signInFallbackRedirectUrl={DASHBOARD_ROOT_PATH}
       signUpFallbackRedirectUrl={DASHBOARD_ROOT_PATH}
-      localization={{ userButton: { action__manageAccount: "Account" } }}
+      localization={{
+        userButton: { action__manageAccount: "Account" },
+        signIn: { start: { subtitle: "Sign in to follow your fleets and their work." } },
+        signUp: { start: { subtitle: "Create your account and start your first fleet." } },
+      }}
     >
       <html lang="en" suppressHydrationWarning>
         <body>

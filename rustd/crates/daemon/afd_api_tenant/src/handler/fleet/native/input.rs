@@ -15,11 +15,11 @@ pub(super) fn save(bytes: &[u8]) -> Result<SaveFleet, Refusal> {
         wire::SaveSource::Draft { draft_candidate_id } => SaveSource::Draft {
             draft_candidate_id: uuid(&draft_candidate_id)?,
         },
-        wire::SaveSource::Library {
-            library_id,
+        wire::SaveSource::Plugin {
+            plugin_id,
             revision_id,
-        } => SaveSource::Library {
-            library_id,
+        } => SaveSource::Plugin {
+            plugin_id: uuid(&plugin_id)?,
             revision_id: uuid(&revision_id)?,
         },
     };

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { FleetStreams } from "@/lib/streaming/fleet-stream-registry";
-import { FleetStreamProvider } from "@/components/domain/FleetStreamProvider";
+import { FleetStreamProvider } from "@/components/domain/conversation/stream/FleetStreamProvider";
 export * from "@/lib/streaming/fleet-stream-registry";
 
 export const streams = new FleetStreams();

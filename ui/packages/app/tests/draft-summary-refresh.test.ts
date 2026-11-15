@@ -44,7 +44,7 @@ it.each(["clear", "remove"] as const)("never restores a chat when %s supersedes 
 });
 
 it("keeps an observed publication through a title change and invalidates an unknown later publication", async () => {
-  const publication = {library_id: "library", revision_id: SECOND.id, canonical_digest: "published"};
+  const publication = {plugin_id: "plugin", revision_id: SECOND.id, canonical_digest: "published"};
   const published = {...CARD, publication_revision: 7};
   vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(page([])).mockResolvedValueOnce(page([published, SECOND]));
   const lists = new DraftLists(`/live/v1/workspaces/${WORKSPACE}`);

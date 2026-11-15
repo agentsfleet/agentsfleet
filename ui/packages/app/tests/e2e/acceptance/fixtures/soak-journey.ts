@@ -5,7 +5,7 @@ import { SoakSetup } from "./soak-setup";
 import { SoakRuntime } from "./soak-runtime";
 import { draftHistory, runtimeHistory } from "./soak-history";
 import { SOAK, SOAK_KIND, SOAK_STEPS, UNICODE_SAVED } from "./soak-scenario";
-import { CHAT_COPY, NEW_FLEET, draftHref, editSetupAction, openSavedFleet } from "./private-chat";
+import { CHAT_COPY, privateSaveButton, NEW_FLEET, draftHref, editSetupAction, openSavedFleet } from "./private-chat";
 import { writeFile } from "node:fs/promises";
 import { APPLICATION_FAILURE, outageLedger, trackRequests } from "./soak-outage";
 import { workspaceHref } from "./nav";
@@ -121,7 +121,7 @@ export class SoakJourney {
     this.watch(chat);
     await chat.converse(SOAK.authoredMessages, 1, this.name, from);
     this.definition = chat.definition;
-    await this.page.getByRole("button", {name: CHAT_COPY.save, exact: true}).click();
+    await (await privateSaveButton(this.page)).click();
     this.fleetId = FleetSchema.shape.id.parse(await openSavedFleet(this.page, {handle: this.handle, workspaceId: this.workspace}));
     console.log(JSON.stringify({soakIdentifiers: this.identifiers()}));
     this.runtime = new SoakRuntime(this.page, this.client, this.workspace, this.fleetId);
@@ -145,7 +145,7 @@ export class SoakJourney {
     this.watch(chat);
     await chat.converse(SOAK.setupMessages, revision, this.name, from);
     this.definition = chat.definition;
-    await this.page.getByRole("button", {name: CHAT_COPY.apply, exact: true}).click();
+    await (await privateSaveButton(this.page)).click();
     expect(await openSavedFleet(this.page, {handle: this.handle, workspaceId: this.workspace, revision: String(revision)})).toBe(this.fleetId);
     this.revision = revision;
     await this.assertSaved(revision);

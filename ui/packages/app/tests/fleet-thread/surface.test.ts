@@ -2,8 +2,8 @@ import { ev, mockStream, renderThread, renderThreadWithInitial, routerRefreshMoc
 import { cloneElement, createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { FleetThread } from "@/components/domain/FleetThread";
-import { CONNECTION_STATUS } from "@/components/domain/useFleetEventStream";
+import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
+import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetEventStream";
 
 describe("FleetThread — empty state", () => {
   it("renders the waiting-for-activity hint when no events", () => {

@@ -1,7 +1,7 @@
 -- Frozen setup history: revision 1 at Save, +1 per Apply. Append-only (rule 9).
 --
 -- `review_context` is the frozen review subject (creator, source pin, instance
--- name) activation re-reviews against: a Library install has no draft, and a swept
+-- name) activation re-reviews against: a Plugin install has no draft, and a swept
 -- draft cannot supply it. `review_digest` is the digest that review signed.
 -- `runtime_model_ref` is the model resolved at Save or Apply, because a definition
 -- may omit its model and review then resolves the tenant default.

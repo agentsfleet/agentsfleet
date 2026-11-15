@@ -10,7 +10,7 @@ import {
   SOURCE_CATEGORIES,
 } from "./marketing-copy";
 
-const NATIVE_SETUP_SUMMARY = "Describe and review a job in workspace chat. Save creates a fleet. Publishing to the Library is a separate action.";
+const NATIVE_SETUP_SUMMARY = "Describe and review a job in workspace chat. Save creates a fleet. Publishing a reusable Plugin is a separate action.";
 
 export const MARKETING_POSITIONING_SUMMARY =
   `Open-source runtime for AI agents that wake on production events: they investigate with your logs, metrics, and code, produce an evidence-backed result, and work within configured access. An investigator does not change code; a separately configured repairer can open a draft pull request. Humans review and merge. ${NATIVE_SETUP_SUMMARY} The homepage run uses sample data.`;

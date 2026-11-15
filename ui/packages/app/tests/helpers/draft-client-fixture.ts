@@ -34,7 +34,7 @@ export class DraftClientFixture {
       if (path.endsWith(`/drafts/${DRAFT_ID}`)) return response(this.current);
       if (path.endsWith("/fleets") && call.method === "POST") return response(FLEET, 201);
       if (path.endsWith(`/fleets/${FLEET_ID}`)) return response(this.fleet);
-      if (path.endsWith("/fleet-libraries") && call.method === "POST") return response(PUBLICATION, 201);
+      if (path.endsWith("/plugins") && call.method === "POST") return response(PUBLICATION, 201);
       throw new Error(`Unexpected fixture request ${call.method} ${path}`);
     }));
   }

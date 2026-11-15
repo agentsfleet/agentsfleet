@@ -2,8 +2,8 @@ import type { DraftView } from "@/lib/api/draft-state";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { DraftClient } from "@/lib/api/drafts";
-import { DraftConversation } from "@/components/domain/chat/DraftConversation";
-import { FleetSetup } from "@/components/domain/chat/FleetSetup";
+import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
+import { FleetSetup } from "@/components/domain/setup/conversation/FleetSetup";
 import { ChatFixture, CHAT_PROPS } from "./fixture";
 import { DRAFT, FLEET, MESSAGE, REVIEW, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
@@ -31,7 +31,7 @@ it("keeps the composer in edit mode for an existing setup preview before its fle
   }};
   render(conversation(view));
   expect(screen.getByPlaceholderText("Ask a question or change the setup…")).toBeTruthy();
-  expect(screen.getByText("Save changes when you’re ready.")).toBeTruthy();
+  expect(screen.getByText("Keep chatting to change the setup.")).toBeTruthy();
 });
 
 it.each(["running", "failed", "completed"] as const)("keeps an existing setup above a later %s turn", (state) => {
@@ -44,7 +44,7 @@ it.each(["running", "failed", "completed"] as const)("keeps an existing setup ab
   const summary = screen.getByRole("region", {name: SUMMARY});
   expect(before(screen.getByText("Original proposal"), summary)).toBe(true);
   expect(before(summary, screen.getByText(HEY))).toBe(true);
-  if (state === "running") expect(before(summary, screen.getByRole("status", {name: "Refining setup"}))).toBe(true);
+  if (state === "running") expect(before(summary, screen.getByRole("status", {name: "Thinking"}))).toBe(true);
 });
 
 it("places a source preview before its first pending message", () => {

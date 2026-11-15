@@ -7,7 +7,7 @@ import { workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
 import { getFleet } from "@/lib/api/fleets";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
-import { FleetSetupWorkspace } from "@/components/domain/chat/FleetSetupWorkspace";
+import { FleetSetupWorkspace } from "@/components/domain/setup/FleetSetupWorkspace";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { startChatData, runtimeModelLabel, type ChatViewData } from "./components/view-data";
 import { ChatView } from "./components/ChatView";

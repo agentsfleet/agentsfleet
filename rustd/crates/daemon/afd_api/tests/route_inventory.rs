@@ -84,12 +84,12 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/approvals",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}",
-    // §7 — onboarding, preferences, fleet-library reads.
+    // Onboarding, preferences, Plugin reads.
     "/v1/workspaces/{workspace_id}/onboarding",
     "/v1/workspaces/{workspace_id}/preferences/{pref_key}",
-    "/v1/workspaces/{workspace_id}/fleet-libraries",
+    "/v1/workspaces/{workspace_id}/plugins",
     // M227 N1–N17 (`docs/architecture/api_resources.md`) — eligible models,
-    // creator-private drafts, reviewed setup revisions and explicit Library
+    // creator-private drafts, reviewed setup revisions and explicit Plugin
     // publication. Removed R1/R2 `library-entries` have no row here.
     "/v1/workspaces/{workspace_id}/models",
     "/v1/workspaces/{workspace_id}/drafts",
@@ -98,10 +98,9 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/cancellations",
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/events/stream",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/revisions",
-    "/v1/workspaces/{workspace_id}/fleet-libraries/owned",
-    "/v1/workspaces/{workspace_id}/fleet-libraries/{library_id}",
-    "/v1/workspaces/{workspace_id}/fleet-libraries/{library_id}/revisions",
-    "/v1/workspaces/{workspace_id}/fleet-libraries/{library_id}/revisions/{revision_id}",
+    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}",
+    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}/revisions",
+    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}/revisions/{revision_id}",
 ];
 
 /// The paths the table carries that belong to a LATER milestone.

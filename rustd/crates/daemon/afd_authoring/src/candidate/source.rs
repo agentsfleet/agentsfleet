@@ -15,7 +15,6 @@ use af_fleet_runtime::definition::{ConfigOp, EditBatch};
 use sqlx::PgConnection;
 
 const CONTEXT: &str = "capture native setup source";
-const PLATFORM: &str = "platform";
 const REVISION_INVALID: &str = "setup_revision must be a positive decimal integer";
 
 pub(crate) struct Captured {
@@ -49,17 +48,10 @@ pub(crate) async fn resolve(
                 instance_name: None,
             });
         }
-        Source::Library {
-            library_id,
+        Source::Plugin {
+            plugin_id,
             revision_id,
-        } => sqlx::query_scalar(crate::sql::candidate::LIBRARY_SOURCE)
-            .bind(library_id.as_str())
-            .bind(revision_id)
-            .bind(&person.owner)
-            .bind(PLATFORM)
-            .fetch_optional(connection)
-            .await
-            .map_err(query(CONTEXT))?,
+        } => plugin_source(connection, &person.owner, plugin_id, revision_id).await?,
         Source::Fleet {
             fleet_id,
             setup_revision,
@@ -133,6 +125,21 @@ async fn fleet_source(
         fleet_revision: Some(row.id.clone()),
         instance_name: Some(row.name),
     })
+}
+
+async fn plugin_source(
+    connection: &mut PgConnection,
+    owner: &Uuid7,
+    plugin: &Uuid7,
+    revision: &Uuid7,
+) -> Result<Option<String>> {
+    sqlx::query_scalar(crate::sql::candidate::PLUGIN_SOURCE)
+        .bind(plugin)
+        .bind(revision)
+        .bind(owner)
+        .fetch_optional(connection)
+        .await
+        .map_err(query(CONTEXT))
 }
 
 #[cfg(test)]

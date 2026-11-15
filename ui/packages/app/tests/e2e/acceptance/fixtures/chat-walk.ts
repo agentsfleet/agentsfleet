@@ -15,7 +15,7 @@
  */
 import { expect, type Page } from "@playwright/test";
 import type { EventDetail } from "@/lib/api/events";
-import { REPLY_FIGURES_TEST_ID, RUN_DETAILS_LABEL } from "@/components/domain/FleetReplyFigures";
+import { REPLY_FIGURES_TEST_ID, RUN_DETAILS_LABEL } from "@/components/domain/activity/replies/FleetReplyFigures";
 import { FIXTURE_KEY } from "./constants";
 import {
   anyRunnerLive,

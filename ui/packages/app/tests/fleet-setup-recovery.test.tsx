@@ -6,7 +6,7 @@ import { FleetRecoveryContent } from "@/app/(dashboard)/w/[workspaceId]/fleets/[
 import { FleetHeader } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetHeader";
 import { FLEET, FLEET_DETAIL, SCHEDULE, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
-import { FleetSetupWorkspace } from "@/components/domain/chat/FleetSetupWorkspace";
+import { FleetSetupWorkspace } from "@/components/domain/setup/FleetSetupWorkspace";
 
 const {resume, refresh} = vi.hoisted(() => ({resume: vi.fn(), refresh: vi.fn()}));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({setFleetStatusAction: resume}));

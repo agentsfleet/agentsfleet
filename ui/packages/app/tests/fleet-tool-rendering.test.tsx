@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
-import * as activity from "@/components/domain/tool-call-activity";
+import * as activity from "@/components/domain/activity/tools/presentation/tool-call-activity";
 import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { ev, mockStream, renderThread, threadElement } from "./fleet-thread/harness";

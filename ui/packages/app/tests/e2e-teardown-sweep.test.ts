@@ -22,12 +22,11 @@ type StubFleet = { id: string; name: string; status: string };
 /** Fleets under names no prefix list ever carried — Dimension 1.1's point. */
 const UNLISTED_NAMES = ["console-ab12", "pulse-cd34", "nav-ef56"] as const;
 
-/** The collection the library sweep reads and removes through. */
-const ENTRIES_PATH = "/fleet-libraries";
-const OWNED_ENTRIES_PATH = `${ENTRIES_PATH}/owned`;
+/** The collection the plugin sweep reads and removes through. */
+const ENTRIES_PATH = "/plugins";
 const FLEET_IDS = [FLEET_ID, DRAFT_ID, CANDIDATE_ID] as const;
 
-/** Entries a leaked run leaves in a fixture workspace's own library. */
+/** Entries a leaked run leaves in a fixture workspace's own plugin. */
 const LEAKED_ENTRIES = [
   { id: "entry-1", name: "github-pr-reviewer" },
   { id: "entry-2", name: "github-pr-reviewer" },
@@ -169,28 +168,26 @@ function servePages(all: ReadonlyArray<{ id: string; name?: string }>, pageSize:
   return remaining;
 }
 
-describe("sweepLeakedFixtureLibraries", () => {
-  it("test_library_sweep_is_bounded_and_clears_tenant_rows", async () => {
+describe("sweepLeakedFixturePlugins", () => {
+  it("test_plugin_sweep_is_bounded_and_clears_tenant_rows", async () => {
     // Two near-identical entries under one name: exactly the pile-up that
     // pushed the seeded card off the gallery's first page. A name-scoped
     // sweep would have to know that name; this one does not.
     listWorkspaces.mockResolvedValue([{ id: "ws-1", name: "fixture-workspace" }]);
     servePages([...LEAKED_ENTRIES], 100);
 
-    const { sweepLeakedFixtureLibraries } = await loadSweep();
-    const counts = await sweepLeakedFixtureLibraries();
+    const { sweepLeakedFixturePlugins } = await loadSweep();
+    const counts = await sweepLeakedFixturePlugins();
 
     // One shared store behind every fixture user's workspace, so the first
     // sweep drains it and the rest correctly find nothing left to remove.
     expect(counts.removed).toBe(LEAKED_ENTRIES.length);
     expect(counts.failed).toBe(0);
 
-    // Every read and every delete went through the OWNED collection, which
-    // carries no platform row — so the platform catalogue is unreachable from
-    // here even by mistake. That is the bound, and it is a property of the
-    // path, not of a filter the sweep applies afterwards.
+    // The server scopes this collection to the workspace’s account. Every
+    // read retains the page bound; the client applies no ownership filter.
     const read = get.mock.calls.map(([path]) => String(path));
-    expect(read.every((path) => path.includes(OWNED_ENTRIES_PATH))).toBe(true);
+    expect(read.every((path) => path.endsWith(`${ENTRIES_PATH}?limit=100`))).toBe(true);
     const deleted = del.mock.calls.map(([path]) => String(path));
     LEAKED_ENTRIES.forEach((entry) => {
       const swept = deleted.some(
@@ -200,7 +197,7 @@ describe("sweepLeakedFixtureLibraries", () => {
     });
   });
 
-  it("test_library_sweep_reports_a_failed_removal", async () => {
+  it("test_plugin_sweep_reports_a_failed_removal", async () => {
     // A removal that failed is a row still in the gallery, which is the whole
     // defect the sweep exists to prevent. It is counted, never swallowed.
     listWorkspaces.mockResolvedValue([{ id: "ws-1", name: "fixture-workspace" }]);
@@ -213,8 +210,8 @@ describe("sweepLeakedFixtureLibraries", () => {
     );
     void remaining;
 
-    const { sweepLeakedFixtureLibraries } = await loadSweep();
-    const counts = await sweepLeakedFixtureLibraries();
+    const { sweepLeakedFixturePlugins } = await loadSweep();
+    const counts = await sweepLeakedFixturePlugins();
 
     // entry-1 refuses every time it is offered; entry-2 goes on the first pass
     // and never comes back, which is what the re-read is for.
@@ -222,7 +219,7 @@ describe("sweepLeakedFixtureLibraries", () => {
     expect(counts.failed).toBeGreaterThan(0);
   });
 
-  it("test_library_sweep_drains_every_page_not_just_the_first", async () => {
+  it("test_plugin_sweep_drains_every_page_not_just_the_first", async () => {
     // The bug this pins: a single read reaped the first page and called it
     // done. Entries accumulate without bound — that is the whole premise of
     // the milestone — so "one page" and "every entry" part company the moment
@@ -239,15 +236,15 @@ describe("sweepLeakedFixtureLibraries", () => {
     listWorkspaces.mockResolvedValue([{ id: "ws-1", name: "fixture-workspace" }]);
     const remaining = servePages(piled, PAGE);
 
-    const { sweepLeakedFixtureLibraries } = await loadSweep();
-    const counts = await sweepLeakedFixtureLibraries();
+    const { sweepLeakedFixturePlugins } = await loadSweep();
+    const counts = await sweepLeakedFixturePlugins();
 
     expect(counts.removed).toBe(piled.length);
     expect(counts.failed).toBe(0);
     expect(remaining.size).toBe(0);
   });
 
-  it("test_library_sweep_stops_when_a_whole_page_refuses", async () => {
+  it("test_plugin_sweep_stops_when_a_whole_page_refuses", async () => {
     // Re-reading the first page is what makes the drain converge, and it is
     // also what would spin forever if every row on it refused. The pass that
     // removes nothing is the last one.
@@ -255,8 +252,8 @@ describe("sweepLeakedFixtureLibraries", () => {
     servePages([...LEAKED_ENTRIES], 100);
     del.mockImplementation(() => Promise.reject(new Error("stuck")));
 
-    const { sweepLeakedFixtureLibraries } = await loadSweep();
-    const counts = await sweepLeakedFixtureLibraries();
+    const { sweepLeakedFixturePlugins } = await loadSweep();
+    const counts = await sweepLeakedFixturePlugins();
 
     expect(counts.removed).toBe(0);
     const fixtureUsers = listWorkspaces.mock.calls.length;
@@ -265,14 +262,14 @@ describe("sweepLeakedFixtureLibraries", () => {
     expect(counts.failed).toBe(LEAKED_ENTRIES.length * fixtureUsers);
   });
 
-  it("test_library_sweep_refuses_an_unsafe_target", async () => {
+  it("test_plugin_sweep_refuses_an_unsafe_target", async () => {
     // Same guard, same reason as the fleet sweep: listing a real workspace's
-    // library with fixture credentials is already wrong, so the refusal has
+    // plugin with fixture credentials is already wrong, so the refusal has
     // to land before the first read.
     process.env.NEXT_PUBLIC_API_URL = PROD_API_URL;
-    const { sweepLeakedFixtureLibraries } = await loadSweep();
+    const { sweepLeakedFixturePlugins } = await loadSweep();
 
-    await expect(sweepLeakedFixtureLibraries()).rejects.toThrow(/refusing to mass-delete/);
+    await expect(sweepLeakedFixturePlugins()).rejects.toThrow(/refusing to mass-delete/);
     expect(listWorkspaces).not.toHaveBeenCalled();
     expect(get).not.toHaveBeenCalled();
     expect(del).not.toHaveBeenCalled();

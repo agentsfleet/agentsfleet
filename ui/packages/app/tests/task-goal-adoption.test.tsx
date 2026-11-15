@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { TaskGoalAdoption } from "@/components/domain/chat/TaskGoalAdoption";
+import { TaskGoalAdoption } from "@/components/domain/tasks/TaskGoalAdoption";
 import { adoptTaskGoal, type TaskChange } from "@/lib/api/tasks";
 import { setupRequest } from "@/lib/api/draft-request";
 import { detail, TASK_IDS, SETUP_ID } from "./helpers/task-reads";

@@ -61,39 +61,39 @@ export async function cleanWorkspaceFleets(
 }
 
 /** Deletes only this run's explicitly published, workspace-owned entries. */
-export async function cleanWorkspaceLibraryEntries(
+export async function cleanWorkspacePluginEntries(
   env: Env,
   options: TeardownOptions = {},
 ): Promise<number> {
   const ctx = await readAuthContext(env);
   if (options.workspaceId && options.workspaceId !== ctx.workspaceId) {
-    throw new Error("Library cleanup workspace differs from the terminal session");
+    throw new Error("Plugin cleanup workspace differs from the terminal session");
   }
   const prefix = options.runPrefix ?? ACCEPTANCE_RUN_PREFIX;
-  const entries = await ownedLibraryEntries(ctx);
+  const entries = await ownedPluginEntries(ctx);
   const mine = entries.filter((entry) => entry.name.startsWith(prefix));
-  for (const entry of mine) await nativeRequest(ctx, `/fleet-libraries/${encodeURIComponent(entry.id)}`, "DELETE");
+  for (const entry of mine) await nativeRequest(ctx, `/plugins/${encodeURIComponent(entry.id)}`, "DELETE");
   return mine.length;
 }
 
-const libraryPage = Schema.Struct({
+const pluginPage = Schema.Struct({
   items: Schema.Array(Schema.Struct({id: Schema.String, name: Schema.String})),
   next_cursor: Schema.NullOr(Schema.String),
 });
 const CLEANUP_PAGES_MAX = 100;
 
-async function ownedLibraryEntries(ctx: AuthContext): Promise<Array<{id: string; name: string}>> {
+async function ownedPluginEntries(ctx: AuthContext): Promise<Array<{id: string; name: string}>> {
   const entries: Array<{id: string; name: string}> = [];
   const seen = new Set<string>();
   let cursor: string | null = null;
   for (let page = 0; page < CLEANUP_PAGES_MAX; page++) {
-    const suffix = `/fleet-libraries/owned?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
-    const result = Schema.decodeUnknownSync(libraryPage)(await nativeRequest(ctx, suffix));
+    const suffix = `/plugins?limit=100${cursor ? `&starting_after=${encodeURIComponent(cursor)}` : ""}`;
+    const result = Schema.decodeUnknownSync(pluginPage)(await nativeRequest(ctx, suffix));
     entries.push(...result.items);
     cursor = result.next_cursor;
     if (cursor === null) return entries;
-    if (seen.has(cursor)) throw new Error("Library cleanup cursor did not advance");
+    if (seen.has(cursor)) throw new Error("Plugin cleanup cursor did not advance");
     seen.add(cursor);
   }
-  throw new Error("Library cleanup exceeded its page bound");
+  throw new Error("Plugin cleanup exceeded its page bound");
 }

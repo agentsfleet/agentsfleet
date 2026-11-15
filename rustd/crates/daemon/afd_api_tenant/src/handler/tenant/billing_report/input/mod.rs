@@ -6,7 +6,7 @@ use af_validate::{Limit, Sentences, nul_free};
 use afd_api_wire::admin::MODEL_ID_MAX_BYTES;
 use afd_billing::report::{
     BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY,
-    Boundary, ChargeBoundary, Filter, Request, Window,
+    BILLING_PERIOD_WEEK, Boundary, ChargeBoundary, Filter, Request, Window,
 };
 use afd_billing::sql::work;
 use jiff::Timestamp;
@@ -17,7 +17,7 @@ use crate::handler::{Refusal, decoded_parameter};
 
 pub(super) const DETAIL_QUERY: &str = "Invalid billing report filters";
 pub(super) const DETAIL_CURSOR: &str = "Invalid billing report continuation";
-const DETAIL_PERIOD: &str = "period must be month or today";
+const DETAIL_PERIOD: &str = "period must be month, week or today";
 const DETAIL_LIMIT: &str = "limit must be between 1 and 100";
 const DETAIL_MODEL: &str = "Invalid billing model filter";
 const QUERY_PERIOD: &str = "period";
@@ -166,6 +166,9 @@ fn window(period: &str, through: Option<&str>, now: Timestamp) -> Result<Window,
     let date = match period {
         BILLING_PERIOD_MONTH => date.first_of_month(),
         BILLING_PERIOD_TODAY => date,
+        BILLING_PERIOD_WEEK => date
+            .checked_sub(jiff::Span::new().days(6))
+            .map_err(|_range| Refusal::malformed(DETAIL_QUERY))?,
         _ => return Err(Refusal::malformed(DETAIL_PERIOD)),
     };
     let from = date

@@ -10,7 +10,7 @@ import {
   INTENT_MODULE_STATUS,
   maySpeculateOnHover,
   useIntentModule,
-} from "@/components/domain/island-dynamic/intent-module-loader";
+} from "@/components/domain/shared/dialogs/intent-module-loader";
 import { useCreatedWorkspaces } from "./WorkspaceCreationProvider";
 import { WorkspaceSwitcherTrigger } from "./WorkspaceSwitcherTrigger";
 import { WORKSPACE_LABEL } from "./workspace-groups";

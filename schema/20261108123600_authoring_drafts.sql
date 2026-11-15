@@ -2,7 +2,7 @@
 -- any fleet and may never become one.
 --
 -- Source and publication are separate facts: `source_type` plus one of the
--- `source_*` pointers record where the chat started; `library_revision_id` records
+-- `source_*` pointers record where the chat started; `plugin_revision_id` records
 -- what it published and `fleet_id` the fleet it saved. All four clear on delete,
 -- so deleting a card or purging a fleet never blocks on, or deletes, a draft.
 -- `tenant_model_id` NULL is the platform default; the composite reference refuses
@@ -23,11 +23,11 @@ CREATE TABLE authoring.drafts (
     tenant_model_id             UUID,
     head_candidate_id           UUID,
     source_type                 TEXT   NOT NULL,
-    source_library_revision_id  UUID REFERENCES authoring.library_revisions(id) ON DELETE SET NULL,
+    source_plugin_revision_id  UUID REFERENCES authoring.plugin_revisions(id) ON DELETE SET NULL,
     source_fleet_revision_id    UUID REFERENCES fleet.revisions(id) ON DELETE SET NULL,
     instance_name               TEXT,
     fleet_id                    UUID REFERENCES fleet.fleets(id) ON DELETE SET NULL,
-    library_revision_id         UUID REFERENCES authoring.library_revisions(id) ON DELETE SET NULL,
+    plugin_revision_id         UUID REFERENCES authoring.plugin_revisions(id) ON DELETE SET NULL,
     last_message_sequence       BIGINT NOT NULL,
     cancelled_through_sequence  BIGINT NOT NULL,
     resource_version            BIGINT NOT NULL,
@@ -56,14 +56,14 @@ CREATE INDEX idx_drafts_expires_at_id
 -- Clearing references on delete and purge.
 CREATE INDEX idx_drafts_fleet_id ON authoring.drafts (fleet_id) WHERE fleet_id IS NOT NULL;
 
-CREATE INDEX idx_drafts_source_library_revision_id
-    ON authoring.drafts (source_library_revision_id) WHERE source_library_revision_id IS NOT NULL;
+CREATE INDEX idx_drafts_source_plugin_revision_id
+    ON authoring.drafts (source_plugin_revision_id) WHERE source_plugin_revision_id IS NOT NULL;
 
 CREATE INDEX idx_drafts_source_fleet_revision_id
     ON authoring.drafts (source_fleet_revision_id) WHERE source_fleet_revision_id IS NOT NULL;
 
-CREATE INDEX idx_drafts_library_revision_id
-    ON authoring.drafts (library_revision_id) WHERE library_revision_id IS NOT NULL;
+CREATE INDEX idx_drafts_plugin_revision_id
+    ON authoring.drafts (plugin_revision_id) WHERE plugin_revision_id IS NOT NULL;
 
 CREATE INDEX idx_drafts_tenant_model_id
     ON authoring.drafts (tenant_model_id) WHERE tenant_model_id IS NOT NULL;

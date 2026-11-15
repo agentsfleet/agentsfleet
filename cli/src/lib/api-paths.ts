@@ -52,15 +52,18 @@ export const wsFleetsPath = (wsId: string): string =>
 export const wsFleetPath = (wsId: string, fleetId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}`;
 
-// Reusable native setup: published gallery and this workspace's owned entries.
-export const wsFleetLibrariesPath = (wsId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/fleet-libraries`;
+// Reusable native setup owned by this workspace's account.
+export const wsPluginsPath = (wsId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/plugins`;
 
-export const wsOwnedFleetLibrariesPath = (wsId: string): string =>
-  `${wsFleetLibrariesPath(wsId)}/owned`;
+export const wsPluginPath = (wsId: string, pluginId: string): string =>
+  `${wsPluginsPath(wsId)}/${enc(pluginId)}`;
 
-export const wsFleetLibraryPath = (wsId: string, libraryId: string): string =>
-  `${wsFleetLibrariesPath(wsId)}/${enc(libraryId)}`;
+export const wsPluginRevisionsPath = (wsId: string, pluginId: string): string =>
+  `${wsPluginPath(wsId, pluginId)}/revisions`;
+
+export const wsPluginRevisionPath = (wsId: string, pluginId: string, revisionId: string): string =>
+  `${wsPluginRevisionsPath(wsId, pluginId)}/${enc(revisionId)}`;
 
 // Workspace-scoped per-fleet chat messages (POST → 202 with event_id).
 export const wsFleetMessagesPath = (wsId: string, fleetId: string): string =>

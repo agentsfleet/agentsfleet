@@ -2,7 +2,7 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import { afterEach, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { DraftMessage } from "@/components/domain/chat/DraftMessage";
+import { DraftMessage } from "@/components/domain/setup/conversation/DraftMessage";
 import { CONTEXT_STATE } from "@/lib/context-progress";
 
 afterEach(cleanup);
@@ -18,27 +18,27 @@ function Conversation({value, running = true, text = ""}: {value: unknown; runni
 
 it("shows one private summary status without replacing an existing answer", () => {
   render(<Conversation value={start} text="Partial answer stays available" />);
-  expect(screen.getAllByText("Context summarizing…")).toHaveLength(1);
+  expect(screen.getAllByText("Compacting context · This can take a few minutes")).toHaveLength(1);
   expect(screen.getByText("Partial answer stays available")).toBeTruthy();
-  expect(screen.queryByRole("status", {name: "Refining setup"})).toBeNull();
+  expect(screen.queryByRole("status", {name: "Thinking"})).toBeNull();
 });
 
 it("announces summarization before the first answer without a second working indicator", () => {
   render(<Conversation value={start} />);
-  expect(screen.getAllByText("Context summarizing…")).toHaveLength(1);
+  expect(screen.getAllByText("Compacting context · This can take a few minutes")).toHaveLength(1);
   expect(screen.getByRole("status").getAttribute("aria-live")).toBe("polite");
-  expect(screen.queryByRole("status", {name: "Refining setup"})).toBeNull();
+  expect(screen.queryByRole("status", {name: "Thinking"})).toBeNull();
 });
 
 it("ignores stale summary metadata on a durable completed answer", () => {
   render(<Conversation value={start} running={false} text="Saved answer" />);
   expect(screen.getByText("Saved answer")).toBeTruthy();
-  expect(screen.queryByText("Context summarizing…")).toBeNull();
+  expect(screen.queryByText("Compacting context · This can take a few minutes")).toBeNull();
 });
 
 it("retains working feedback when malformed metadata is received", () => {
   render(<Conversation value={{...start, notes: "private data"}} />);
-  expect(screen.getByRole("status", {name: "Refining setup"})).toBeTruthy();
-  expect(screen.queryByText("Context summarizing…")).toBeNull();
+  expect(screen.getByRole("status", {name: "Thinking"})).toBeTruthy();
+  expect(screen.queryByText("Compacting context · This can take a few minutes")).toBeNull();
   expect(screen.queryByText("private data")).toBeNull();
 });

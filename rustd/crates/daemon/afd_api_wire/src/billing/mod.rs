@@ -34,6 +34,32 @@ pub struct Breakdown<'a> {
     pub totals: Totals,
 }
 
+/// A fleet's complete recorded spending and model attribution.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = BillingFleetBreakdown))]
+pub struct FleetBreakdown<'a> {
+    /// Fleet identity and exact filtered totals.
+    #[serde(flatten)]
+    pub group: Breakdown<'a>,
+    /// Sorted distinct nonempty model identifiers recorded in matching lines.
+    #[cfg_attr(feature = "openapi", schema(extensions(("x-stability" = json!("stable")))))]
+    pub models: Vec<Cow<'a, str>>,
+}
+
+/// Settled totals for one UTC ledger creation date, including empty days.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = BillingDaily))]
+pub struct Daily {
+    /// UTC calendar date in YYYY-MM-DD form.
+    #[cfg_attr(feature = "openapi", schema(format = Date, extensions(("x-stability" = json!("stable")))))]
+    pub day: String,
+    /// Additive daily quantities; `activity_count` counts distinct work within this day.
+    #[cfg_attr(feature = "openapi", schema(extensions(("x-stability" = json!("stable")))))]
+    pub totals: Totals,
+}
+
 /// A fleet choice independent of the currently selected filters.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -62,7 +88,7 @@ pub struct Choices<'a> {
 #[cfg_attr(feature = "openapi", schema(as = BillingSpending))]
 pub struct Spending<'a> {
     /// Grouped runtime fleets and private setup.
-    pub by_fleet: Vec<Breakdown<'a>>,
+    pub by_fleet: Vec<FleetBreakdown<'a>>,
     /// Grouped model identifiers.
     pub by_model: Vec<Breakdown<'a>>,
 }
@@ -72,7 +98,7 @@ pub struct Spending<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "openapi", schema(as = BillingReport))]
 pub struct Report<'a> {
-    /// `month` or `today`, both interpreted in Coordinated Universal Time (UTC).
+    /// `month`, `week` or `today`, interpreted in Coordinated Universal Time (UTC).
     pub period: Cow<'a, str>,
     /// Inclusive beginning of the selected period.
     #[serde(with = "af_wire::instant")]
@@ -82,6 +108,9 @@ pub struct Report<'a> {
     pub through_at: jiff::Timestamp,
     /// Totals across every matching settled line.
     pub totals: Totals,
+    /// Every UTC date in the selected interval, ascending. An activity spanning days counts on each day and once in period totals.
+    #[cfg_attr(feature = "openapi", schema(extensions(("x-stability" = json!("stable")))))]
+    pub daily: Vec<Daily>,
     /// Full-period spending groups.
     pub spending: Spending<'a>,
     /// Unfiltered period choices, never limited to the current page.

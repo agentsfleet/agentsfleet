@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Button, UnavailableState } from "@agentsfleet/design-system";
 import { ApiError } from "@/lib/api/errors";
-import { RouteRetryButton } from "@/components/domain/RouteRetryButton";
+import { RouteRetryButton } from "@/components/domain/shared/navigation/RouteRetryButton";
 import { workspacePath } from "@/lib/workspace-routes";
 
 export function WorkspaceActivityUnavailable({error, workspaceId, hasCursor}: {error: unknown; workspaceId: string; hasCursor: boolean}) {

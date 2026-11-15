@@ -5,6 +5,11 @@ test("Security combines keys and sessions with compact type in both appearances"
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(`${chatProbe}?accountSettings=1`);
+  const identity = page.getByRole("region", {name: "Your account"});
+  await expect(identity.getByRole("heading", {name: "Kishore"})).toBeVisible();
+  await expect(identity).toContainText("you@example.test");
+  await expect(page.getByRole("button", {name: "Profile and sign-in settings"})).toHaveCount(0);
+  await expect(page.getByText("platform-priming", {exact: true})).toBeVisible();
   await expect(page.getByText("Chrome on macOS")).toBeVisible();
   await expect(page.getByText("This device", {exact: true})).toBeVisible();
   await expect(page.getByText("Last active unavailable")).toBeVisible();

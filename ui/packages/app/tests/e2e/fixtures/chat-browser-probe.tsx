@@ -1,14 +1,14 @@
-import { ChatAlignmentFixture, SetupAlignmentFixture } from "./chat-alignment-probe";
+import { ChatAlignmentFixture, ChatErrorFixture, SetupAlignmentFixture } from "./chat-alignment-probe";
 import {ThemeProvider} from "next-themes";
 import { createRoot } from "react-dom/client";
-import { DraftConversation } from "@/components/domain/chat/DraftConversation";
+import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
 import { DraftClient } from "@/lib/api/drafts";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { DRAFT, MESSAGE, MODEL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { ActivityFixture } from "./chat-activity-probe";
-import { SetupChecks } from "@/components/domain/chat/SetupChecks";
-import { FleetActivityRow, SenderLabelProvider } from "@/components/domain/FleetMessageRow";
-import { ChatFailure } from "@/components/domain/chat/ChatFailure";
+import { SetupChecks } from "@/components/domain/setup/summary/SetupChecks";
+import { FleetActivityRow, SenderLabelProvider } from "@/components/domain/activity/messages/FleetMessageRow";
+import { ChatFailure } from "@/components/domain/shared/chat/ChatFailure";
 import { TaskFixture } from "./task-browser-probe";
 import { ChatScrollFixture } from "./chat-scroll-probe";
 import { ScheduleFixture } from "./schedule-browser-probe";
@@ -19,6 +19,8 @@ import { RefreshVisualFixture } from "./refresh-visual-probe";
 import { AccountSettingsFixture } from "./account-settings-probe";
 import { ResourceSettingsFixture } from "./resource-settings-probe";
 import { ResourcePagesFixture } from "./resource-pages-probe";
+import { UsageBrowserFixture } from "./usage-browser-probe";
+import { CONTEXT_STATE } from "@/lib/context-progress";
 
 const client = new DraftClient({account: "fixture-owner", workspace: WORKSPACE, subject: "creator"});
 const SAMPLE_CHAT_AT = new Date().toISOString();
@@ -32,11 +34,13 @@ if (!root) throw new Error("Chat fixture root is missing");
 const query = new URLSearchParams(location.search);
 const blank = {...EMPTY_DRAFT_VIEW, model: MODEL.ref, models: [MODEL]};
 const SETUP_CREATED_AT = new Date("2026-11-01T13:00:00Z");
-createRoot(root).render(<ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem={false}>{query.has("resourcePages") ? <ResourcePagesFixture /> : query.has("resources") ? <ResourceSettingsFixture /> : query.has("accountSettings") ? <AccountSettingsFixture /> : query.has("visual") ? <RefreshVisualFixture /> : query.has("setupAlignment") ? <SetupAlignmentFixture /> : query.has("alignment") ? <ChatAlignmentFixture /> : query.has("starters") ? <main className="flex h-dvh flex-col bg-background text-foreground">
+createRoot(root).render(<ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem={false}>{query.has("chatError") ? <ChatErrorFixture draft={query.has("fleetSave") ? DRAFT.id : undefined} /> : query.has("usage") ? <UsageBrowserFixture /> : query.has("resourcePages") ? <ResourcePagesFixture /> : query.has("resources") ? <ResourceSettingsFixture /> : query.has("accountSettings") ? <AccountSettingsFixture /> : query.has("visual") ? <RefreshVisualFixture /> : query.has("setupAlignment") ? <SetupAlignmentFixture /> : query.has("alignment") ? <ChatAlignmentFixture /> : query.has("starters") ? <main className="flex h-dvh flex-col bg-background text-foreground">
   <DraftConversation client={client} view={blank} workspace={WORKSPACE} unfinished={<UnfinishedFixture />} />
 </main> : query.has("scroll") ? <ChatScrollFixture /> : query.has("schedules") ? <ScheduleFixture /> : query.has("tasks") ? <TaskFixture /> : query.has("setup") ? <SetupFixture /> : query.has("activity") ? <ActivityFixture /> : <main className="flex h-dvh flex-col bg-background text-foreground">
   <p className="px-xl py-sm text-eyebrow text-muted-foreground">Sample data · Chat component review</p>
-  <DraftConversation client={client} view={query.has("loading") ? {...view, busy: true, messages: [{...MESSAGE, state: "running"}]} : view} workspace={WORKSPACE} />
+  <DraftConversation client={client} view={query.has("loading") ? {...view, busy: true,
+    contextProgress: query.get("loading") === "compacting" ? {sequence: MESSAGE.sequence, progress: {generation: 1, state: CONTEXT_STATE.summarizing}} : undefined,
+    messages: [{...MESSAGE, created_at: SAMPLE_CHAT_AT, state: query.get("loading") === "queued" ? "queued" : "running"}]} : view} workspace={WORKSPACE} />
 </main>}</ThemeProvider>);
 window.addEventListener("pagehide", () => client.dispose(), {once: true});
 

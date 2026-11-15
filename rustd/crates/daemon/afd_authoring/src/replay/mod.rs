@@ -69,8 +69,8 @@ pub(crate) enum Resource {
     Draft,
     /// `authoring.messages`: an accepted message.
     Message,
-    /// `authoring.library_revisions`: a Library publication.
-    LibraryRevision,
+    /// `authoring.plugin_revisions`: a Plugin publication.
+    PluginRevision,
 }
 
 impl Resource {
@@ -81,7 +81,7 @@ impl Resource {
             Self::FleetRevision => "fleet_revision",
             Self::Draft => "draft",
             Self::Message => "message",
-            Self::LibraryRevision => "library_revision",
+            Self::PluginRevision => "plugin_revision",
         }
     }
 }

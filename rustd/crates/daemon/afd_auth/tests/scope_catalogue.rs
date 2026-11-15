@@ -66,21 +66,16 @@ fn test_the_hierarchy_subsumes_lower_rungs() {
     assert!(resolve.contains(Scope::ApprovalRead));
 }
 
-/// The two library scopes look laddered and are not.
-///
-/// They share a spelling convention — `library:write` and
-/// `platform-library:write` — which is exactly what a string-prefix hierarchy
-/// would ladder together, handing a workspace owner the platform catalogue.
-/// The hierarchy is data for this reason.
+/// Retired claims grant nothing; the replacement retains one discrete capability.
 #[test]
-fn test_the_library_scopes_are_independent_despite_their_spelling() {
-    let platform = parse_claim("platform-library:write");
-    assert!(platform.contains(Scope::PlatformLibraryWrite));
-    assert!(!platform.contains(Scope::LibraryWrite));
-
-    let tenant = parse_claim("library:write");
-    assert!(tenant.contains(Scope::LibraryWrite));
-    assert!(!tenant.contains(Scope::PlatformLibraryWrite));
+fn plugin_permission_does_not_reinterpret_retired_grants() {
+    for retired in ["library:write", "platform-library:write"] {
+        assert_eq!(parse_claim(retired), ScopeSet::EMPTY);
+    }
+    assert_eq!(
+        parse_claim("plugins:write"),
+        ScopeSet::from_scopes(&[Scope::PluginsWrite])
+    );
 }
 
 /// A discrete verb grants itself and nothing else.
@@ -218,10 +213,9 @@ fn test_the_signup_grant_is_a_tenant_owner_and_not_an_operator() {
     assert!(owner.contains(Scope::ScheduleRead));
     assert!(owner.contains(Scope::SecretWrite));
     assert!(owner.contains(Scope::WorkspaceAdmin));
-    assert!(owner.contains(Scope::LibraryWrite));
+    assert!(owner.contains(Scope::PluginsWrite));
 
     for withheld in [
-        Scope::PlatformLibraryWrite,
         Scope::RunnerEnroll,
         Scope::WorkspaceAny,
         Scope::ModelAdmin,

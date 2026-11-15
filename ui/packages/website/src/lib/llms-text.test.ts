@@ -51,7 +51,7 @@ describe("llms text builders", () => {
   it("should describe native setup without retired file authoring or automatic publication", () => {
     for (const body of [buildLlmsIndexText(inputs), buildLlmsFullText(inputs)]) {
       expect(body).toContain("Save creates a fleet.");
-      expect(body).toContain("Publishing to the Library is a separate action.");
+      expect(body).toContain("Publishing a reusable Plugin is a separate action.");
       expect(body).not.toMatch(/SKILL\.md|TRIGGER\.md|bundle|install-time write grant|Hosted access is gated/i);
     }
   });

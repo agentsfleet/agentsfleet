@@ -5,8 +5,8 @@ import type { Schedule } from "@/lib/api/draft-types";
 import type { EventDetail } from "@/lib/api/events";
 import type { ReactNode } from "react";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
-import FleetThreadDynamic from "@/components/domain/FleetThreadDynamic";
-import { useFleetRunSummary } from "@/components/domain/useFleetRunSummary";
+import FleetThreadDynamic from "@/components/domain/conversation/thread/FleetThreadDynamic";
+import { useFleetRunSummary } from "@/components/domain/conversation/chrome/useFleetRunSummary";
 import type { SenderName } from "@/lib/events/sender-names";
 import FleetStatusLine from "./FleetStatusLine";
 

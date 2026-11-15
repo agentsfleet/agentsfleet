@@ -1,8 +1,7 @@
 //! Privileged platform administration, kept out of the runner control plane.
 //!
 //! This crate owns only the priced-model catalogue and the reveal-free
-//! platform-default metadata. Platform Library curation lives in
-//! `afd_authoring`, beside the native candidates it publishes.
+//! platform-default metadata.
 
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]

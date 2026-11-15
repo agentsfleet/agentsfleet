@@ -36,13 +36,13 @@ vi.mock("@/app/(dashboard)/settings/security/components/ApiKeyList", () => ({
 
 // The "Create key" trigger ships behind a next/dynamic shim — stub
 // it out so the page test stays focused on page-level behaviour.
-vi.mock("@/components/domain/island-dynamic/CreateApiKeyDialogDynamic", () => ({
+vi.mock("@/components/domain/shared/dialogs/CreateApiKeyDialogDynamic", () => ({
   default: () => React.createElement("button", { type: "button" }, "Create key"),
 }));
 
 // Server-rendering precedes client authentication hydration. Keep the real named
 // account section while isolating its provider-bound hook.
-vi.mock("@/lib/auth/account-client", () => ({useAccountSettings: () => ({status: "loading"})}));
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: false, isSignedIn: false})}));
 vi.mock("@/components/account/SessionSettings", () => ({SessionSettings: () => React.createElement("section", null, "Active sessions")}));
 
 function mockAuth(token: string | null = "tok") {
@@ -66,7 +66,8 @@ describe("api-keys page", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/security/page");
     const html = renderToStaticMarkup(await Page());
     expect(html).toMatch(/API keys need admin access/i);
-    expect(html).toContain("Profile and sign-in settings");
+    expect(html).toContain("Your account");
+    expect(html).not.toContain("Profile and sign-in settings");
     expect(html).toContain("Active sessions");
     expect(redirect).not.toHaveBeenCalled();
   });
@@ -84,7 +85,8 @@ describe("api-keys page", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/security/page");
     const html = renderToStaticMarkup(await Page());
     expect(html).toContain("API keys could not be loaded.");
-    expect(html).toContain("Profile and sign-in settings");
+    expect(html).toContain("Your account");
+    expect(html).not.toContain("Profile and sign-in settings");
     expect(html).toContain("Active sessions");
     expect(redirect).not.toHaveBeenCalled();
   });
@@ -93,8 +95,8 @@ describe("api-keys page", () => {
     mockAuth();
     listApiKeysMock.mockResolvedValueOnce({
       items: [
-        { id: "a", key_name: "ci-runner", active: true, created_at: "1970-01-01T00:00:00.002Z", revoked_at: null },
-        { id: "b", key_name: "old-zapier", active: false, created_at: "1970-01-01T00:00:00.001Z", revoked_at: "1970-01-01T00:00:00.001Z" },
+        { id: "a", key_name: "ci-runner", display_suffix: null, active: true, created_at: "1970-01-01T00:00:00.002Z", revoked_at: null },
+        { id: "b", key_name: "old-zapier", display_suffix: null, active: false, created_at: "1970-01-01T00:00:00.001Z", revoked_at: "1970-01-01T00:00:00.001Z" },
       ],
       total: 2,
       next_cursor: null,

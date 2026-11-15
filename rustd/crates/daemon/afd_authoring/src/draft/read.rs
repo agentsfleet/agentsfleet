@@ -57,39 +57,33 @@ struct LockedRow {
     user_id: Uuid7,
     instance_name: Option<String>,
     source_type: String,
-    source_library_id: Option<String>,
-    source_library_revision_id: Option<Uuid7>,
+    source_plugin_id: Option<Uuid7>,
+    source_plugin_revision_id: Option<Uuid7>,
     source_fleet_id: Option<Uuid7>,
     source_fleet_revision: Option<i64>,
-    publication_library_id: Option<String>,
+    publication_plugin_id: Option<Uuid7>,
     publication_revision_id: Option<Uuid7>,
     publication_digest: Option<String>,
 }
 
 impl LockedRow {
     fn decode(self) -> Result<Locked> {
-        let library = pair(
-            self.source_library_id,
-            self.source_library_revision_id.map(String::from),
-        )?;
+        let plugin = self.source_plugin_id.zip(self.source_plugin_revision_id);
         let fleet = match (self.source_fleet_id, self.source_fleet_revision) {
             (Some(fleet), Some(revision)) => Some((fleet, revision)),
             _ => None,
         };
         let source_pin = SourcePin::from_columns(PinColumns {
             source_type: self.source_type,
-            library,
+            plugin,
             fleet,
         })?;
         let publication = match (
-            pair(
-                self.publication_library_id,
-                self.publication_revision_id.map(String::from),
-            )?,
+            self.publication_plugin_id.zip(self.publication_revision_id),
             self.publication_digest,
         ) {
-            (Some((library_id, revision_id)), Some(canonical_digest)) => Some(Publication {
-                library_id,
+            (Some((plugin_id, revision_id)), Some(canonical_digest)) => Some(Publication {
+                plugin_id,
                 revision_id,
                 canonical_digest,
             }),
@@ -116,14 +110,6 @@ impl LockedRow {
             publication,
         })
     }
-}
-
-/// A public Library id beside the revision it names, when the join found both.
-fn pair(library: Option<String>, revision: Option<String>) -> Result<Option<(String, Uuid7)>> {
-    Ok(match (library, revision) {
-        (Some(library), Some(revision)) => Some((library, Uuid7::parse(&revision)?)),
-        _ => None,
-    })
 }
 
 pub(crate) fn optional(id: Option<&str>) -> Result<Option<Uuid7>> {

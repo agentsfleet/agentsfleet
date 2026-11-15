@@ -14,7 +14,7 @@ use std::sync::Arc;
     post, path = "/v1/workspaces/{workspace_id}/fleets", operation_id = "create_fleet",
     tag = afd_http::openapi::tag::FLEETS, summary = "Save a reviewed fleet",
     description = concat!(
-        "Saves a reviewed private draft or selected Library revision as a fleet. Inspect ",
+        "Saves a reviewed private draft or selected Plugin revision as a fleet. Inspect ",
         "the source's complete `review` before copying `review.review_digest`. For a ",
         "draft, read `candidate.id` from `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`. ",
         "Setup progress names missing prerequisites. Retry within 24 hours using the same ",

@@ -71,6 +71,19 @@ async fn mint_key(router: &axum::Router, token: &str) -> String {
     );
     let minted = json_body(minted).await;
     assert!(text(&minted, "key").starts_with("agt_t"));
+    let listed = json_body(send(router, Method::GET, "/v1/api-keys", Some(token), "").await).await;
+    let row = listed
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .expect("a key list carries items")
+        .iter()
+        .find(|row| text(row, "id") == text(&minted, "id"))
+        .expect("the minted key is listed");
+    let suffix = text(row, "display_suffix");
+    assert_eq!(suffix.len(), 4);
+    assert!(text(&minted, "key").ends_with(suffix));
+    assert!(row.get("key").is_none());
+    assert!(row.get("key_hash").is_none());
     text(&minted, "id").to_owned()
 }
 

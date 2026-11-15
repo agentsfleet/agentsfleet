@@ -1,8 +1,8 @@
 import {StrictMode} from "react";
 import {cleanup, render} from "@testing-library/react";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
-import {AuthoringIntentContext} from "@/components/domain/chat/AuthoringIntent";
-import {AuthoringPrompt} from "@/components/domain/chat/AuthoringPrompt";
+import {AuthoringIntentContext} from "@/components/domain/setup/AuthoringIntent";
+import {AuthoringPrompt} from "@/components/domain/setup/composer/AuthoringPrompt";
 
 const composer = vi.hoisted(() => ({text: "", setText: vi.fn()}));
 vi.mock("@assistant-ui/react", () => ({useAui: () => ({composer: () => ({getState: () => ({text: composer.text}), setText: composer.setText})})}));

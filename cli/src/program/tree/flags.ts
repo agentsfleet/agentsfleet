@@ -47,7 +47,7 @@ const LIST_LIMIT_MIN = 1;
 const LIST_LIMIT_MAX = 200;
 const EVENTS_LIMIT_MAX = 500;
 const BILLING_LIMIT_MAX = 100;
-const LIBRARY_LIMIT_MAX = 100;
+const PLUGIN_LIMIT_MAX = 100;
 
 // The placeholder a flag advertises in help. The library defaults to the
 // parsed TYPE — `--limit integer` — which names what the parser does rather
@@ -145,7 +145,7 @@ export const listLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, LIST_LIMIT_M
   Flag.withDescription(PAGE_SIZE),
   Flag.optional,
 );
-export const libraryLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, LIBRARY_LIMIT_MAX).pipe(
+export const pluginLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, PLUGIN_LIMIT_MAX).pipe(
   Flag.withDescription(PAGE_SIZE),
   Flag.optional,
 );

@@ -10,7 +10,6 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { LIBRARY_VISIBILITY } from "../src/commands/library/read.ts";
 import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
@@ -24,12 +23,12 @@ const CREATED_AT = "2023-11-14T22:13:20Z";
 // payload, the text renderer has leaked into the machine register.
 const AGE_SHAPED = /"\d+[smhdy]"/;
 
-// The Library read decodes the full card (src/commands/library/read.ts),
+// The Plugin read decodes the full card (src/commands/plugins-read.ts),
 // so a partial row would be refused before the JSON register is reached.
-const LIBRARY_CARD = {
-  id: ENTRY_ID, name: "reviewer", description: "Reviews pull requests", visibility: LIBRARY_VISIBILITY.tenant,
+const PLUGIN_CARD = {
+  id: ENTRY_ID, name: "reviewer", description: "Reviews pull requests",
   created_at: CREATED_AT, requirements: {}, required_credentials_reasons: {},
-  head_revision_id: REVISION_ID, etag: '"library-1"',
+  head_revision_id: REVISION_ID, etag: '"plugin-1"',
 };
 
 const routes: MockRoutes = {
@@ -38,8 +37,8 @@ const routes: MockRoutes = {
   [`GET /v1/workspaces/${WS_ID}/fleets`]: () =>
     jsonResponse(200, { items: [{ id: FLEET_ID, name: "reviewer", status: "active", created_at: CREATED_AT,
       events_processed: "0", budget_used_nanos: "0" }], next_cursor: null }),
-  [`GET /v1/workspaces/${WS_ID}/fleet-libraries`]: () =>
-    jsonResponse(200, { items: [LIBRARY_CARD], next_cursor: null }),
+  [`GET /v1/workspaces/${WS_ID}/plugins`]: () =>
+    jsonResponse(200, { items: [PLUGIN_CARD], next_cursor: null }),
   "GET /v1/api-keys": () =>
     jsonResponse(200, { items: [{ id: ENTRY_ID, key_name: "ci", active: true, created_at: CREATED_AT }] }),
   "GET /v1/workspaces": () =>

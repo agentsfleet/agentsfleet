@@ -2,13 +2,17 @@
 
 > Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/quickstart](https://docs.agentsfleet.net/quickstart) and [docs.agentsfleet.net/fleets/connectors](https://docs.agentsfleet.net/fleets/connectors).
 
-> References: [`../api_resources.md`](../api_resources.md) (drafts, Save and the Library), [`../data_flow.md`](../data_flow.md) (`trigger/execute` loop), [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (provider posture + credit gate).
+> References: [`../api_resources.md`](../api_resources.md) (drafts, Save and the Plugin), [`../data_flow.md`](../data_flow.md) (`trigger/execute` loop), [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (provider posture + credit gate).
 
 > It follows one persona, **John Doe**, saving the `github-pr-reviewer` fleet through terminal chat in the Command-Line Interface (CLI). He connects the shared GitHub App to his workspace, binds a repository, and watches the fleet read a Pull Request (PR). The review post is refused at egress today (§4).
 
 > Provider posture, billing math, and the credit gate are not re-narrated here; those facts live in their topic docs.
 
-**Outcome under test:** from a published GitHub Pull Request reviewer Library revision to a posted review comment, with the fleet running its reviewed instructions against a repository-bound App event and using a short-lived installation token for runtime GitHub API calls. Today the run reads the diff and the review post is refused at egress (§4). This scenario is **not yet proven**: it becomes green only when the repository-bound Pull Request integration test passes end to end.
+**Outcome under test:** Start from a published GitHub Pull Request reviewer Plugin revision and post a review comment.
+The fleet runs reviewed instructions against a repository-bound App event, using a short-lived installation token for runtime GitHub API calls.
+
+Today the run reads the diff, but egress refuses the review post (§4).
+This scenario remains unproven until the repository-bound Pull Request integration test passes end to end.
 
 Legend: ✅ implemented and locally proven · 🔨 not built or not proven.
 
@@ -25,7 +29,7 @@ sequenceDiagram
 
   Admin->>GH: create App; set callback + /v1/ingress/github
   Admin->>API: vault App identity, webhook secret, and client credentials
-  Note over Admin,PG: admin already staged and published github-pr-reviewer from a reviewed chat draft → authoring.library_revisions
+  Note over Admin,PG: admin already staged and published github-pr-reviewer from a reviewed chat draft → authoring.plugin_revisions
   Op->>API: sign up and create/select workspace W
   Op->>API: connect github (signed single-use state)
   API-->>Op: GitHub user-authorization URL
@@ -36,8 +40,8 @@ sequenceDiagram
   GH-->>API: installation accessible
   API->>PG: conditional vault handle + connector.installs route
   Note over API,PG: other workspace already owns installation → 403, no mutation
-  Op->>CLI: chat --plugin github-pr-reviewer --revision <REVISION_ID> --model <MODEL_REF>
-  CLI->>API: POST /v1/workspaces/{ws}/drafts { source: library revision }
+  Op->>CLI: chat --plugin <PLUGIN_ID> --revision <REVISION_ID> --model <MODEL_REF>
+  CLI->>API: POST /v1/workspaces/{ws}/drafts { source: plugin revision }
   Op->>CLI: ask for repositories=[acme/payments], events=[pull_request]; review
   CLI->>API: GET draft review (setup, access, readiness, review digest)
   CLI->>API: POST /v1/workspaces/{ws}/fleets { source: draft candidate, review_digest }
@@ -59,21 +63,21 @@ sequenceDiagram
 
 ---
 
-## 1. Save: from a Library revision to a fleet
+## 1. Save: from a Plugin revision to a fleet
 
-A platform admin publishes a reviewed draft candidate through `POST` and `PATCH /v1/admin/fleet-libraries`. John opens a private draft pinned to that revision:
+An authorized account member publishes a reviewed draft candidate through `POST /v1/workspaces/{ws}/plugins`. John opens a private draft pinned to a revision from the same account:
 
 ```bash
-agentsfleet chat --plugin github-pr-reviewer --revision <REVISION_ID> --model <MODEL_REF>
+agentsfleet chat --plugin <PLUGIN_ID> --revision <REVISION_ID> --model <MODEL_REF>
 ```
 
 He requests his repository, reviews the exact setup, then saves through `POST /v1/workspaces/{ws}/fleets`.
 
-Get `<MODEL_REF>` from the [authoring model list](../user_flow.md#80-the-wedge-surface), and `<REVISION_ID>` from the Library entry. Save returns `<FLEET_ID>`; approval alone does not resume setup.
+Get `<MODEL_REF>` from the [authoring model list](../user_flow.md#80-the-wedge-surface), and `<REVISION_ID>` from `agentsfleet plugins revisions <PLUGIN_ID>`. Both identifiers are UUIDv7. Save returns `<FLEET_ID>`; approval alone does not resume setup.
 
 ## 2. Two layers: the immutable revision and the live fleet
 
-The fleet runs the instructions and policy of its selected setup revision in `fleet.revisions`, read fresh by every claim (`rustd/crates/daemon/afd_fleet/src/lease/installed.rs`). The Library revision it started from stays immutable; a later improvement appends a new fleet revision through review and changes no Library entry.
+The fleet runs the instructions and policy of its selected setup revision in `fleet.revisions`, read fresh by every claim (`rustd/crates/daemon/afd_fleet/src/lease/installed.rs`). The Plugin revision it started from stays immutable; a later improvement appends a new fleet revision through review and changes no Plugin entry.
 
 ## 3. Connect the App, bind the repository, then receive the PR
 

@@ -3,7 +3,7 @@ import { vi } from "vitest";
 import { act, render } from "@testing-library/react";
 
 import { TooltipProvider } from "@agentsfleet/design-system";
-import { EventDetailsDialog } from "@/components/domain/EventDetailsDialog";
+import { EventDetailsDialog } from "@/components/domain/events/EventDetailsDialog";
 import type { EventDetail } from "@/lib/api/events";
 import { serveDetail } from "./event-details-dialog-served";
 

@@ -18,13 +18,13 @@ vi.mock("next/navigation", () => ({
 }));
 // The thread is a sibling view over the same stream and plays no part in the
 // strip; the strip's own subscription is what these tests drive.
-vi.mock("@/components/domain/FleetThreadDynamic", async () => {
-  const {WorkApprovals} = await import("@/components/domain/chat/WorkContextSections");
+vi.mock("@/components/domain/conversation/thread/FleetThreadDynamic", async () => {
+  const {WorkApprovals} = await import("@/components/domain/conversation/summary/WorkContextSections");
   return {default: ({approvals}: {approvals?: {count: number; href: string}}) => <WorkApprovals approvals={approvals} />};
 });
 
 import { ChatView } from "./ChatView";
-import { useFleetRunSummary } from "@/components/domain/useFleetRunSummary";
+import { useFleetRunSummary } from "@/components/domain/conversation/chrome/useFleetRunSummary";
 import FleetStatusLine from "./FleetStatusLine";
 
 const STATUS_ACTIVE = "active";

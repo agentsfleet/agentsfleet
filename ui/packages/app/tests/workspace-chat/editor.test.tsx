@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DraftClient } from "@/lib/api/drafts";
-import { DefinitionEditor } from "@/components/domain/chat/DefinitionEditor";
+import { DefinitionEditor } from "@/components/domain/setup/editor/DefinitionEditor";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
 import { ChatFixture, CHAT_PROPS } from "./fixture";
 import { DRAFT, FLEET, MODEL_REF, REVIEW, response } from "@/tests/helpers/draft-fixtures";

@@ -368,9 +368,9 @@ What is specific to this flow: status works the same way. The assignment scan fi
 ```text
 person -> private draft/messages -> validated Definition -> reviewed candidate
                                       |                         |
-                                explicit Library publish   Save fleet
+                                explicit Plugin publish   chat Save
                                       |                         |
-                                pinned Library revision -> retained installing fleet
+                                pinned Plugin revision -> retained installing fleet
                                                                 |
                                              checks + actual grants + guarded activation
                                                                 |
@@ -383,9 +383,9 @@ person -> private draft/messages -> validated Definition -> reviewed candidate
 
 Messages are durable recovery; progress streams are hints. Private draft access requires its creator and current membership. Runtime history stays fleet-scoped.
 
-An unchanged Library install uses a pinned revision directly. Improve applies a reviewed setup revision without publishing it. An accepted initial admission survives reload with the same event identity.
+An unchanged Plugin install uses a pinned revision directly. Improve applies a reviewed setup revision without publishing it. An accepted initial admission survives reload with the same event identity.
 
-### A. SAVE  (a reviewed private candidate or a pinned Library revision)
+### A. SAVE  (a reviewed private candidate or a pinned Plugin revision)
 
 One creation sequence serves both sources; §"Fleet creation and setup recovery" below carries it. The retained creation identity makes retries resume the same setup.
 
@@ -395,7 +395,7 @@ One creation sequence serves both sources; §"Fleet creation and setup recovery"
 
 A draft has no queued/running message when Save begins. GET draft returns normalized effective setup, immutable requirements, live readiness, and a digest. The person chooses Save or Save and run now; trigger content is identical.
 
-Library installation of an unchanged revision bypasses a draft and reads its review through Inspect. Changing its name/model/setup opens a draft so every effective input has been reviewed.
+Plugin installation of an unchanged revision bypasses a draft and reads its review through Inspect. Changing its name/model/setup opens a draft so every effective input has been reviewed.
 
 Stop raises the draft's accepted-message watermark before Save. It cancels queued and running messages through that sequence; retained attempts keep their accounting. Discovery and locked admission check only attempts above the watermark.
 
@@ -409,7 +409,7 @@ POST fleets includes a UUIDv7 `Idempotency-Key`, immutable source, reviewed name
 
 Within the [authoring replay window](api_resources.md#shared-wire-rules), the same key and body resume that fleet’s setup checks. Progress may advance; accepted inputs and identity stay unchanged. After expiry, inspect the linked fleet before another Save.
 
-The draft enters `saving` with the linked fleet identity. A previously published candidate's Library receipt stays a source pin; do not publish it again or change an existing revision. Save itself creates no Library entry, so publishing before Save and Save without publication both work.
+The draft enters `saving` with the linked fleet identity. A previously published candidate's Plugin receipt stays a source pin; do not publish it again or change an existing revision. Save itself creates no Plugin entry, so publishing before Save and Save without publication both work.
 
 #### Bounded setup checks
 
@@ -469,10 +469,10 @@ A name/status resource change does not falsely make setup content change; inheri
 
 In the browser, **Edit setup** opens that private draft beside the current fleet conversation.
 Multiple messages and manual instruction edits update the same candidate.
-Explicit **Save changes** applies the reviewed revision and returns focus to the fleet conversation.
+The instruction editor’s **Save changes** applies the reviewed revision and returns focus to the fleet conversation.
 
 A stale setup tag keeps the proposed edits for review.
-Initial **Save fleet** opens the same fleet Chat workspace.
+An initial chat **Save** opens the same fleet Chat workspace.
 Both purposes share the [provider reader and browser chat implementation](shared_chat_verification.md).
 
 #### CLI partial success

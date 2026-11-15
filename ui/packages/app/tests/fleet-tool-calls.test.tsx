@@ -2,10 +2,10 @@ import { ev, mockStream, renderThread as renderToolThread, threadElement } from 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 
-import { CLIPPED_EDIT_NOTE, OUTPUT_CUT_LABEL, SHOW_ALL_LABEL } from "@/components/domain/FleetToolCallBody";
-import { TOOL_CALLS_LABEL } from "@/components/domain/FleetToolCalls";
-import { EMPTY_OUTPUT, OUTPUT_UNAVAILABLE } from "@/components/domain/tool-call-copy";
-import { ARGS_NOT_RECORDED, TOOL_NAME } from "@/components/domain/tool-call-shape";
+import { CLIPPED_EDIT_NOTE, OUTPUT_CUT_LABEL, SHOW_ALL_LABEL } from "@/components/domain/activity/tools/FleetToolCallBody";
+import { TOOL_CALLS_LABEL } from "@/components/domain/activity/tools/FleetToolCalls";
+import { EMPTY_OUTPUT, OUTPUT_UNAVAILABLE } from "@/components/domain/activity/tools/copy/tool-call-copy";
+import { ARGS_NOT_RECORDED, TOOL_NAME } from "@/components/domain/activity/tools/presentation/tool-call-shape";
 import type { LiveFrame, SavedToolCall } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { applyLiveFrame } from "@/lib/streaming/fleet-stream-frames";

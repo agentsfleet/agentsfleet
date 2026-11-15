@@ -53,7 +53,7 @@ impl Recipe {
     }
 }
 
-/// Stored inheritance survives Library changes and makes Restore deterministic.
+/// Stored inheritance survives Plugin changes and makes Restore deterministic.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Inherited {
