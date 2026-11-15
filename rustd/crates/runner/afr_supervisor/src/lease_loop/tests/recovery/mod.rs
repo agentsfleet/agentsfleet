@@ -4,7 +4,7 @@ use crate::test_support::{FENCING, FLEET_ID, FakeEngine, LEASE_ID, Rig, lease};
 use serde_json::Value;
 use std::sync::{Arc, atomic::Ordering};
 mod archive;
-mod fixture;
+pub(in crate::lease_loop) mod fixture;
 mod model;
 mod server;
 use archive::Refusal;
@@ -156,4 +156,61 @@ fn assert_safe(archive: &archive::Archive) {
         assert!(body.get("nonce").is_none());
         assert!(!body.to_string().contains("agt_r_recovery_fixture"));
     }
+}
+
+#[tokio::test]
+async fn refused_task_preparation_or_restore_never_enters_the_model_or_captures_state() {
+    for refusal in [Refusal::Inputs, Refusal::Restore] {
+        let mut server = server::Server::start(refusal).await;
+        let model = model::Model::default();
+        let agent = afr_agent::Loop::new(afr_tools::Catalog::new(vec![]), model.clone());
+        let mut rig = Rig::running(
+            |_| unreachable!("all control-plane requests must use real HTTP"),
+            FakeEngine::default(),
+            agent,
+        );
+        Arc::get_mut(&mut rig.lessee).unwrap().plane = server.plane.take().unwrap();
+        rig.run(&payload()).await.unwrap();
+        assert_eq!(model.0.load(Ordering::SeqCst), 0);
+        assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
+        assert_refused_start(&server.archive.lock().unwrap(), refusal);
+        server.stop();
+    }
+}
+
+fn assert_refused_start(archive: &archive::Archive, refusal: Refusal) {
+    let report = report(archive);
+    assert_eq!(
+        report.get("failure_reason"),
+        Some(&serde_json::json!("startup_posture"))
+    );
+    let detail = if refusal == Refusal::Inputs {
+        "native task intent could not be established"
+    } else {
+        "durable task recovery could not be established"
+    };
+    assert_eq!(
+        report.get("failure_detail"),
+        Some(&serde_json::json!(detail))
+    );
+    assert!(archive.plan.is_none());
+    assert!(archive.page.is_none());
+    assert!(archive.decision.is_none());
+    assert_eq!(
+        archive
+            .calls
+            .iter()
+            .filter(|(path, _)| path.ends_with("/checkpoints"))
+            .count(),
+        0
+    );
+    assert_eq!(
+        archive
+            .calls
+            .iter()
+            .filter(|(path, _)| path.ends_with("/authorizations"))
+            .count(),
+        usize::from(refusal == Refusal::Restore)
+    );
+    assert_safe(archive);
 }

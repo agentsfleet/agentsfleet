@@ -63,3 +63,84 @@ fn complete_layout_spans_pages_without_repeating_shared_content() -> crate::Resu
     assert_eq!(catalog.entry_count, 4099);
     Ok(())
 }
+
+#[test]
+fn a_near_full_manifest_keeps_all_private_history_on_a_separate_bounded_page() -> crate::Result<()>
+{
+    // These valid removed paths leave less space than the eight history references.
+    let removed = (0..4079)
+        .map(|index| format!("dir-{index:04}/{}", "a".repeat(220)))
+        .collect::<Vec<_>>();
+    let catalog = Catalog::build(
+        None,
+        Zeroizing::new(vec![0; 64 * 1024 * 1024]),
+        removed.clone(),
+        &tokio_util::sync::CancellationToken::new(),
+    )?;
+    let identity = "019f0000-0000-7000-8000-000000000001";
+    let ids = catalog
+        .chunks
+        .keys()
+        .map(|key| (key.clone(), identity.to_owned()))
+        .collect();
+    let pages = catalog.pages(Some(&ids))?;
+    assert_eq!(pages.len(), 2);
+    let history = pages
+        .last()
+        .ok_or_else(|| crate::error::config("history page missing"))?;
+    assert!(history.entries.is_empty());
+    assert_eq!(history.history_objects, vec![identity; 8]);
+    let paths = pages
+        .iter()
+        .flat_map(|page| page.entries.iter().map(CheckpointEntry::path))
+        .collect::<Vec<_>>();
+    assert_eq!(paths, removed);
+    for page in &pages {
+        assert!(
+            serde_json::to_vec(page)
+                .map_err(crate::error::encode)?
+                .len()
+                <= af_wire::task::CHECKPOINT_PAGE_BYTES
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn oversized_history_is_refused_before_a_native_plan_can_be_allocated() -> crate::Result<()> {
+    let result = Catalog::build(
+        None,
+        Zeroizing::new(vec![0; 64 * 1024 * 1024 + 1]),
+        vec![],
+        &tokio_util::sync::CancellationToken::new(),
+    );
+    let Err(failure) = result else {
+        return Err(crate::error::config("oversized history was accepted"));
+    };
+    assert!(
+        matches!(failure.kind(), crate::error::ErrorKind::Config { detail }
+        if *detail == "checkpoint history exceeds its bound")
+    );
+    Ok(())
+}
+
+#[test]
+fn chunk_diagnostics_never_include_the_private_history_buffer() -> crate::Result<()> {
+    let private = b"private accepted repair history";
+    let catalog = Catalog::build(
+        None,
+        Zeroizing::new(private.to_vec()),
+        vec![],
+        &tokio_util::sync::CancellationToken::new(),
+    )?;
+    let chunk = catalog
+        .chunks
+        .values()
+        .next()
+        .ok_or_else(|| crate::error::config("history chunk missing"))?;
+    let description = format!("{chunk:?}");
+    assert!(description.contains("history"));
+    assert!(description.contains(&af_core::etag::sha256_hex(private)));
+    assert!(!description.contains("private accepted repair history"));
+    Ok(())
+}

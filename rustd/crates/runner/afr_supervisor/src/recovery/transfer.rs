@@ -243,4 +243,4 @@ fn material(object: &mut CheckpointObject) -> Result<(SecretBytes, [u8; af_crypt
 
 #[cfg(test)]
 #[path = "transfer_http/mod.rs"]
-mod http_tests;
+pub(super) mod http_tests;

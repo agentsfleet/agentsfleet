@@ -29,23 +29,37 @@ struct Reply {
     status: StatusCode,
     body: Vec<u8>,
     chunked: bool,
+    headers: HeaderMap,
 }
-pub(super) struct Seen {
-    pub(super) method: Method,
-    pub(super) path: String,
-    pub(super) headers: HeaderMap,
-    pub(super) bytes: Bytes,
+pub(in crate::recovery) struct Seen {
+    pub(in crate::recovery) method: Method,
+    pub(in crate::recovery) path: String,
+    pub(in crate::recovery) headers: HeaderMap,
+    pub(in crate::recovery) bytes: Bytes,
 }
-pub(super) struct Server {
+pub(crate) struct Server {
     pub(super) transfers: Transfers,
-    pub(super) url: String,
-    pub(super) seen: mpsc::UnboundedReceiver<Seen>,
+    pub(in crate::recovery) url: String,
+    pub(in crate::recovery) seen: mpsc::UnboundedReceiver<Seen>,
     worker: JoinHandle<Result<()>>,
     stop: oneshot::Sender<()>,
     requests: Arc<AtomicUsize>,
 }
 impl Server {
-    pub(super) async fn start(status: StatusCode, body: Vec<u8>, chunked: bool) -> Result<Self> {
+    pub(in crate::recovery) async fn start(
+        status: StatusCode,
+        body: Vec<u8>,
+        chunked: bool,
+    ) -> Result<Self> {
+        Self::with_headers(status, body, chunked, HeaderMap::new()).await
+    }
+
+    pub(crate) async fn with_headers(
+        status: StatusCode,
+        body: Vec<u8>,
+        chunked: bool,
+        headers: HeaderMap,
+    ) -> Result<Self> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
         let (certificate, acceptor) = tls()?;
@@ -70,6 +84,7 @@ impl Server {
                 status,
                 body,
                 chunked,
+                headers,
             },
         ));
         Ok(Self {
@@ -81,7 +96,21 @@ impl Server {
             requests,
         })
     }
-    pub(super) async fn finish(self) -> Result<()> {
+    pub(in crate::recovery) fn transfers(&self) -> Transfers {
+        Transfers {
+            client: self.transfers.client.clone(),
+        }
+    }
+
+    pub(crate) fn client(&self) -> reqwest::Client {
+        self.transfers.client.clone()
+    }
+
+    pub(crate) fn endpoint(&self) -> &str {
+        &self.url
+    }
+
+    pub(crate) async fn finish(self) -> Result<()> {
         self.stop
             .send(())
             .map_err(|()| "fixture listener stopped early")?;
@@ -122,6 +151,7 @@ async fn serve(
                 status,
                 reply.body.clone(),
                 reply.chunked,
+                reply.headers.clone(),
             )
         });
         hyper::server::conn::http1::Builder::new()
@@ -135,6 +165,7 @@ async fn answer(
     status: StatusCode,
     body: Vec<u8>,
     chunked: bool,
+    headers: HeaderMap,
 ) -> std::result::Result<Response<Body>, Infallible> {
     let (parts, incoming) = request.into_parts();
     let Ok(bytes) = to_bytes(Body::new(incoming), 4096).await else {
@@ -160,6 +191,7 @@ async fn answer(
     response
         .headers_mut()
         .insert("location", HeaderValue::from_static("/must-not-follow"));
+    response.headers_mut().extend(headers);
     Ok(response)
 }
 fn tls() -> Result<(reqwest::Certificate, TlsAcceptor)> {

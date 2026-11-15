@@ -282,3 +282,6 @@ fn retry_delay(receipt: &DecisionReceipt) -> Option<std::time::Duration> {
         DecisionRetryDelay::TooLong => None,
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -187,6 +187,25 @@ async fn api_only_task_cannot_publish_even_when_model_invents_the_tool_call() ->
 fn failed_validations() -> Vec<(Vec<ScriptedProcess>, &'static str)> {
     let changed = serde_json::json!({"tested_tree": "e".repeat(40), "changes": [{"path":"src/lib.rs", "contents":"b3RoZXIK"}]}).to_string();
     vec![
+        (vec![], "validation workspace is unavailable"),
+        (
+            vec![
+                ScriptedProcess::exits(
+                    &serde_json::json!({"tested_tree":"b".repeat(40),
+                    "changes":[{"path":"../escape","contents":"cmVwYWlyCg=="}]})
+                    .to_string(),
+                    0,
+                ),
+                ScriptedProcess::exits("checks passed", 0),
+                ScriptedProcess::exits(
+                    &serde_json::json!({"tested_tree":"b".repeat(40),
+                    "changes":[{"path":"../escape","contents":"cmVwYWlyCg=="}]})
+                    .to_string(),
+                    0,
+                ),
+            ],
+            "candidate exceeds supported publication paths or content bounds",
+        ),
         (
             vec![ScriptedProcess::exits("invalid json", 0)],
             "complete supported candidate",
