@@ -1,6 +1,8 @@
 # M249 post-merge runtime validation
 
-Current frontend validation uses fresh task-owned fixtures. It does not establish that the merged backend was deployed.
+Authenticated live flows used fresh task-owned fixtures at the Team repair checkpoint.
+Later Usage and Security changes have controlled browser, unit and production-build evidence.
+Neither establishes that the merged backend was deployed.
 
 ## Source and ownership
 
@@ -14,8 +16,8 @@ Earlier visual paths and hashes describe their historical captures.
 | Isolated application worktree | `/workspace/m249-runtime`, `fix/m249-runtime-followup` |
 | Docs base | `016b64c4649535c1109dab7f28300e5252bfb1fb` |
 | Isolated docs worktree | `/workspace/m249-docs`, `chore/m249-plugin-vocabulary-changelog` |
-| Local frontend | Current application source, with the Team repair; `http://localhost:3187` |
-| Live API | `https://api-dev.agentsfleet.net`; health reports version `0.77.0`, commit `163356f` |
+| Live frontend checkpoint | Team-repair source before the later Usage/Security refinements; `http://localhost:3187` |
+| API observed in the live run | `https://api-dev.agentsfleet.net`; health reported version `0.77.0`, commit `163356f` |
 | Evidence directory | `/workspace/artifacts/m249-runtime/` |
 
 The task created a new Clerk test identity and its own workspace. No withdrawn fleet URL was used.
@@ -39,6 +41,7 @@ Its native save preparation preserves server-resolved models. Those historical f
 
 M249_003 and M249_004 Section 5 remain parked.
 Claude retains M249_004's producers, billing queries, report response and Usage loading work.
+
 This follow-up changes no backend producer, schema, billing query or reusable Usage loader.
 The current visual work includes Claude checkpoint `cad48e0beb8d09dc8742baf7137d893aabdd4dea`; our changes add the UI loading boundaries and suppress hidden detail intent at the Usage component.
 
@@ -109,17 +112,22 @@ The refreshed browser fixture uses a sample avatar image; the earlier authentica
 
 Usage retains Period and Fleet controls, totals, daily spend and By fleet.
 All Fleets includes Setup and saved-fleet usage; individual fleets follow it.
+
 More filters, Charge details and Add credit are absent. Reusable charge and Plugin implementations remain intact.
 Explicit existing Setup/Today URLs retain truthful labels instead of silently widening their scope.
+
 An existing model-filtered URL shows its active model and a clear action; removing the picker cannot hide narrowed totals.
 Recent months remain a bounded list, with the previous month beside an older selected month so history stays reachable.
 
 The Period selector follows the API present in Claude checkpoint `cad48e0beb8d09dc8742baf7137d893aabdd4dea`.
 A current month clears `through_at`; a past month supplies its final millisecond through the shared `previousReportingMonthEnd` helper.
+
 Partial-month snapshots have a distinct through-date choice, so selecting the canonical month can clear an old current-month cutoff.
 Month changes reset cursors and detail intent; fleet changes retain the selected cutoff and reset continuations.
+
 The owner deferred timezone work: there is no `month`, `timezone` or `model_labels` field added to the report API.
 Reporting month names and day buckets retain that API's calendar. Displayed timestamp/range instants use the existing viewer-local utilities.
+
 This does not claim locally regrouped monetary buckets.
 
 The prepared UI work was preserved before incorporating that supplied checkpoint: `visual-work-before-m249004.patch`, an untracked-file snapshot and a retained Git stash.
@@ -130,19 +138,25 @@ Its earlier fixture results are historical checks of that proposed interface, no
 
 The shared model-label request starts alongside the existing shell reads and is reused across client navigation.
 Its pending result passes through the existing provider; only the named fleet table suspends.
+
 The Usage heading, settled totals and daily graph can render while names are slow, without painting an identifier that later swaps to a name.
 Label failure retains recorded identifiers. The reusable charge loader stays intact; the active Usage boundary ignores legacy activity/detail parameters so they add no hidden request.
 
 A deliberately blocked label promise reproduced the original frame wait (`labels-blocking-baseline-retry.log`).
 The stronger streamed-data check also reproduced totals and chart waiting behind labels (`labels-data-blocking-baseline.log`).
-The final implementation moves the name wait to the table; stream checks consume complete chunks before releasing the promise, rather than assuming one transport chunk contains the whole frame.
+
+The final implementation moves the name wait to the table.
+Stream checks read complete chunks before releasing the promise; one chunk may contain only part of the frame.
 
 Daily bars have a fixed 100px plot height and one bar per reporting day, up to 31.
 The decoder rejects an oversized projection as unavailable, without truncating charges.
+
+With no settled usage, bars have zero height and the empty message appears. The 100px plot area remains; it is not a mandatory bar height.
 The fleet menu uses the shared viewport-height bound and scrolling; fleet count cannot add daily bars.
 
 Injected-data browser scenarios cover one and 100 fleets plus Setup, 31 days, selecting the last fleet, and restoring All Fleets in both themes and viewports.
 They assert the selected report's totals, complete daily bars, Setup inclusion, menu/graph bounds and one report request per change.
+
 The label cache is supplied by the browser fixture, so its initial server catalogue walk is outside those measured page interactions.
 No live backend latency or 100-fleet server load is inferred from these samples.
 
@@ -150,6 +164,7 @@ No live backend latency or 100-fleet server load is inferred from these samples.
 
 Command: `bun run test:e2e tests/e2e/usage-report.spec.ts tests/e2e/usage-scale.spec.ts --reporter=line,json`.
 Result: 16 passed in 24.4 seconds; zero unexpected, skipped or flaky cases.
+
 Responses were injected without delay; the shared label store was preloaded. These are local browser measurements, not live API latency.
 Each row spans one dark and one light sample at 1480px or 390px, without CPU or network throttling.
 
@@ -161,7 +176,11 @@ Each row spans one dark and one light sample at 1480px or 390px, without CPU or 
 | Mobile | 100 | 224–427 | 135–305 | 331–341 | 394–586 | 54,130 |
 
 Every sample rendered 31 bars in a 100px plot. The 100-fleet dropdown stayed within its viewport (about 722px desktop, 515–521px mobile) and selected its last fleet correctly.
+
+
 Each sample made three report reads: initial load, individual fleet and All Fleets. There were zero Usage catalogue or charge reads.
+
+
 All Fleets included Setup: the 100-fleet fixture returned `$156,565.50`; selecting fleet 100 returned `$3,100.00` and removed Setup, then All Fleets restored the original total.
 
 | Injected label delay | Frame, totals and chart ready ms | Named table ready ms | Report reads |
@@ -192,13 +211,18 @@ No acceptance collection result is presented as a completed run.
 
 Earlier visual refinement checks ran 18 targeted browser cases, then eight after viewport/control-width changes.
 At that checkpoint package coverage recorded 4,664 app and 516 design-system tests at 100 percent.
-The superseded zone-aware consumer ran 75 unit checks and 16 browser checks; those mocks required fields absent from the final API and do not validate its behavior.
+
+The superseded zone-aware consumer ran 75 unit checks and 16 browser checks.
+Those mocks required fields absent from the final API; they do not validate its behavior.
+
 The speculative broad coverage run was interrupted when the actual checkpoint arrived (exit 130), and is not a completed result.
 
 After incorporating Claude's checkpoint, the first browser attempt failed to launch all 24 cases because its updated Playwright browser executable was missing.
 The native browser installation repaired that prerequisite. The next run passed 22 cases; two new model-filter cases failed on an obsolete fixture-helper reference, which was removed.
+
 The one/100-fleet, Security and timezone-display cases passed in that run.
 The focused final retry passed all 16 affected Usage/scale cases and saved the JSON performance attachments above.
+
 `stream-and-bar-limit-final-unit.log` records 28 passed for streamed-data availability and oversized-report refusal.
 The final stale-cutoff repair passed 32 report-view units and both desktop/mobile captured-month browser cases (`captured-month-unit.log`, `captured-month-browser.log`).
 
@@ -214,11 +238,44 @@ The corrected native infrastructure preflight passed with the repository's comma
 
 The canonical authentication guide now documents Team's application identity.
 These corrections do not turn the earlier failed gate into a passing result.
+
 The next native gate exposed missing Clang resource headers; a task-local matching resource directory repaired that prerequisite.
-The subsequent complete gate remained red: the known two-second wall-tick integration timeout recurred, and the daemon-library unit linker received a bus error with the filesystem full.
+The subsequent complete gate remained red when the known two-second wall-tick timeout recurred.
+
+The daemon-library linker also received a bus error with the filesystem full.
 The runner unit shard passed 1,731 tests and the daemon unit shard passed 172; the daemon-library result remains unverified locally.
+
 The unchanged native integration lane was retried through `make test-integration-rustd`: 1,780 passed plus two exclusive tests, exit 0 (`integration-final-retry.log`).
 No Rust source or test was changed. This passing retry does not relabel the prior whole gate as green.
+
+## Final integrated gate checkpoint
+
+The pushed `576e11213` candidate ran the complete repository PR gate; it exited 1.
+Rust unit shards passed: runner 1,731, daemon 172 and daemon libraries 3,680.
+
+All 4,690 app tests across 492 files passed. Branch coverage was 99.98 percent because the server page's initial query branch had no case.
+The new case verifies an initial period/fleet link makes exactly one scoped report read.
+
+The prose checker found long paragraphs and sentences. They were split without changing API or accounting decisions.
+
+Integration never began: pulling `mirror.gcr.io/library/postgres:19rc2-alpine` returned a Google registry upstream-read quota error (`artifactregistry.googleapis.com`).
+The parent moved the image from `19rc1`; only that older image was cached locally.
+A same-mirror pull retry and a manifest request returned the same quota refusal; no different registry or image was substituted.
+
+The parent Rust 1.100 pin also triggers Clippy at `afr_sandbox/examples/kernel_lane/toolbox.rs:185`.
+It requests `.map_or_default(Vec::as_slice)` in place of `.map(Vec::as_slice).unwrap_or_default()`.
+This is outside the UI changes; the fix was requested from Claude, preserving his Rust ownership.
+
+The gate's version check passed at `0.77.0`. Its native log is `final-integrated-pr-gate.log`.
+
+The failed whole gate remains failed. The targeted frontend lint retry passed source rules, Oxlint and TypeScript checks.
+
+`make test-coverage-all` then passed: app 4,691, website 133, CLI 2,335 with 22 live cases skipped, and design system 516.
+
+All four package coverage gates reached 100 percent. The native prose diagnostic returned zero findings.
+
+The final app production build passed. Its receipts are `final-package-coverage-retry.log`, `final-frontend-lint.log` and `final-production-build.log`.
+The CLI skips are not live acceptance; the blocked registry setup still leaves the new parent integration run unverified.
 
 ## Deployment and access blockers
 
@@ -255,6 +312,7 @@ It removes active platform-publication guidance while preserving historical chan
 
 M249_004 must distinguish the deployed schema blocker from a missing suffix implementation.
 Its backend producer work remains separate; this run supplies no live Usage performance measurement or new query plan.
+
 Claude's source inventory records his separate query-plan and equivalence measurements; those are not this browser benchmark.
 Recorded Outputs must not infer external publication or bookings from model-written text.
 

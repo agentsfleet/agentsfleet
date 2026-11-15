@@ -23,10 +23,13 @@ The owner's later explicit instructions govern differences from the sample.
 
 The November 15 instructions require local displayed dates and times, without a fixed-zone caption.
 Usage has a month/year Period control and an All Fleets choice that includes setup and saved fleets, followed by individual fleets.
+
 The selector follows the existing report API: current month has no `through_at`, and a past month uses its inclusive month-end cutoff.
 The owner deferred timezone changes; accounting months and daily buckets retain their current calendar, while displayed instants use the shared viewer-time utilities.
+
 No `month` or `timezone` parameter is added.
 More filters, Charge details and Add credit stay absent while their future design is pending.
+
 Totals and daily bars render from one report request; the shared model-label read only holds the named fleet table behind its own loading boundary.
 
 Security uses a shield in the resource header and contains API keys and signed-in sessions.
@@ -423,7 +426,9 @@ Draw daily bars from the report's complete daily buckets, never a partial activi
 
 Preserve that section with its unavailable state when the report cannot be loaded.
 
-Secrets use Name, Type, hidden Value, Available to and Manage. Available to names the active fleets whose saved setup declares the secret, the list a run resolves, and says "No active fleets" when none do. When the API omits access because the caller cannot read fleets, say "Access details unavailable"; never derive access from references or show an unbacked access checkbox.
+Secrets use Name, Type, hidden Value, Available to and Manage. Available to names the active fleets whose saved setup declares the secret, the list a run resolves, and says "No active fleets" when none do.
+
+When the caller lacks fleet-read access, say "Access details unavailable". Never infer access from references or show an unbacked access checkbox.
 
 Preserve named-field replacement for credentials that require several values. Plugins and Connected apps use grouped resource rows and shared dialogs. Plugin list cards carry the head revision's number and identifier; inspection shows the selected revision's content.
 
