@@ -8,7 +8,7 @@ import { loadBillingReport } from "../lib/load-report";
 /** The data region: one report request, then the report or a recovery state. */
 export async function UsageReport({ token, query }: { token: string; query: BillingSearch }) {
   const loaded = await loadBillingReport(token, query);
-  return loaded.ok ? <UsageReportView report={loaded.report} pageSize={loaded.pageSize} selected={loaded.selected} detail={loaded.detail} /> :
+  return loaded.ok ? <UsageReportView report={loaded.report} /> :
     <UnavailableState title="Billing report unavailable" description="Your settled spending could not be loaded. Retry, or reset the filters and try again."
       actions={<><RouteRetryButton label="Retry report" /><Button variant="ghost" size="sm" asChild><Link href="/settings/billing">Reset filters</Link></Button></>} />;
 }

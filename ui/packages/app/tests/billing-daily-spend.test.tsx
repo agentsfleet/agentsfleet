@@ -3,19 +3,19 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { BillingDailySpend } from "@/app/(dashboard)/settings/billing/components/BillingDailySpend";
 import { BILLING_QUERY, BILLING_SETUP } from "@/app/(dashboard)/settings/billing/lib/report-query";
-import { billingReport, billingTotals } from "./helpers/billing-report";
+import { billingReport, billingRowTotals, billingTotals } from "./helpers/billing-report";
 
 const { selected } = vi.hoisted(() => ({ selected: { params: new URLSearchParams() } }));
 vi.mock("next/navigation", () => ({ useSearchParams: () => selected.params }));
 afterEach(() => { cleanup(); selected.params = new URLSearchParams(); });
 
-it("renders complete daily amounts independently of the activity page and scales exact nanos", () => {
+it("renders complete daily amounts and scales exact nanos", () => {
   const large = "9007199254741049999";
   const daily = [
-    { day: "2026-10-24", totals: billingTotals({charged_nanos: "0"}) },
-    { day: "2026-10-25", totals: billingTotals({charged_nanos: large}) },
+    { day: "2026-10-24", totals: billingRowTotals({charged_nanos: "0"}) },
+    { day: "2026-10-25", totals: billingRowTotals({charged_nanos: large}) },
   ];
-  render(<BillingDailySpend report={billingReport({daily, activities: {items: [], total: 100, next_cursor: "more"}})} />, {wrapper: TooltipProvider});
+  render(<BillingDailySpend report={billingReport({daily})} />, {wrapper: TooltipProvider});
   const chart = screen.getByRole("list", {name: "Daily settled charges"});
   expect(within(chart).getByText("2026-10-24: $0.00")).toBeTruthy();
   expect(within(chart).getByText("2026-10-25: $9,007,199,254.741")).toBeTruthy();
@@ -25,7 +25,7 @@ it("renders complete daily amounts independently of the activity page and scales
 
 it("keeps a true zero distinct from missing usage and names the selected deleted fleet", () => {
   selected.params = new URLSearchParams("fleet=deleted-fleet");
-  render(<BillingDailySpend report={billingReport({daily: [{day: "2026-10-25", totals: billingTotals({charged_nanos: "0"})}]})} />, {wrapper: TooltipProvider});
+  render(<BillingDailySpend report={billingReport({daily: [{day: "2026-10-25", totals: billingRowTotals({charged_nanos: "0"})}]})} />, {wrapper: TooltipProvider});
   expect(screen.getByText("No settled charges for this period.")).toBeTruthy();
   expect(screen.getByText("Daily spend · deleted-fleet")).toBeTruthy();
   expect(screen.getByText("Daily high $0.00")).toBeTruthy();

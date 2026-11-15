@@ -5,13 +5,13 @@ import { useTransition, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button, Popover, PopoverContent, PopoverTrigger, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner, Time } from "@agentsfleet/design-system";
 import { BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK } from "@/lib/api/billing-report-values";
-import { ALL_FLEETS_LABEL, ALL_MODELS_LABEL, SETUP_LABEL } from "../lib/report-format";
+import { ALL_FLEETS_LABEL, SETUP_LABEL } from "../lib/report-format";
 import { BILLING_ALL, BILLING_QUERY, BILLING_SETUP, changedFilter, previousBillingMonth } from "../lib/report-query";
 
-type Props = { report: BillingReport; modelNames: Record<string, string> };
+type Props = { report: BillingReport };
 type Choice = { value: string; label: ReactNode };
 
-export function BillingFilters({ report, modelNames }: Props) {
+export function BillingFilters({ report }: Props) {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -36,9 +36,6 @@ export function BillingFilters({ report, modelNames }: Props) {
       onChange={value => change(BILLING_QUERY.fleet, value)} />
     <Popover><PopoverTrigger asChild><Button variant="ghost">More filters</Button></PopoverTrigger>
       <PopoverContent className="space-y-xl">
-    <Filter label="Model" value={params.get(BILLING_QUERY.model) ?? BILLING_ALL} disabled={pending}
-      choices={[{ value: BILLING_ALL, label: ALL_MODELS_LABEL }, ...report.filters.models.map(model => ({ value: model, label: modelNames[model] ?? model }))]}
-      onChange={value => change(BILLING_QUERY.model, value)} />
     <fieldset className="flex flex-wrap gap-sm">
       <legend className="sr-only">Billing month navigation</legend>
       <Button size="sm" variant="outline" disabled={pending} onClick={previousMonth}>Previous month</Button>

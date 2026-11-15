@@ -1,6 +1,6 @@
 import {expect} from "@playwright/test";
 import {test} from "./fixtures/chat-probe";
-import {BILLING_FLEET, BILLING_MODEL, BILLING_MODEL_NAME, billingReport, billingTotals} from "@/tests/helpers/billing-report";
+import {BILLING_FLEET, BILLING_MODEL, BILLING_MODEL_NAME, billingReport, billingRowTotals, billingTotals} from "@/tests/helpers/billing-report";
 import type {BillingReport} from "@/lib/api/billing_report";
 
 function reportFor(query: URLSearchParams): BillingReport {
@@ -9,12 +9,11 @@ function reportFor(query: URLSearchParams): BillingReport {
   const daily = Array.from({length: 12 - first}, (_, index) => {
     const day = first + index;
     const charge = BigInt(day) * 1_000_000_000n / (query.has("fleet_id") ? 2n : 1n);
-    return {day: `2026-11-${String(day).padStart(2, "0")}`, totals: billingTotals({charged_nanos: charge.toString()})};
+    return {day: `2026-11-${String(day).padStart(2, "0")}`, totals: billingRowTotals({charged_nanos: charge.toString()})};
   });
   const totals = billingTotals({charged_nanos: daily.reduce((sum, item) => sum + BigInt(item.totals.charged_nanos), 0n).toString(), activity_count: daily.length});
   return billingReport({period: week ? "week" : "month", from_at: `2026-11-${String(first).padStart(2, "0")}T00:00:00Z`, through_at: "2026-11-11T12:00:00Z",
-    daily, totals, spending: {by_fleet: [{key: BILLING_FLEET, label: "Payment alerts", totals, models: [BILLING_MODEL, "retired-model"]}], by_model: []},
-    activities: {items: [], total: daily.length, next_cursor: "another-page"}});
+    daily, totals, spending: {by_fleet: [{key: BILLING_FLEET, label: "Payment alerts", totals, models: [BILLING_MODEL, "retired-model"]}], by_model: []}});
 }
 
 test("Usage renders recorded daily bars and model sets while filters request complete reports", async ({page, chatProbe}, info) => {
@@ -48,8 +47,8 @@ test("Usage preserves exact large amounts and distinguishes zero from an unavail
   let mode = "large";
   await page.route("**/backend/v1/tenants/me/billing/reports/current?*", route => {
     if (mode === "unavailable") return route.fulfill({status: 403, json: {detail: "Fixture report refused", error_code: "UZ-AUTH-022"}});
-    const totals = billingTotals({charged_nanos: mode === "large" ? "9007199254741049999" : "0"});
-    return route.fulfill({json: billingReport({totals, daily: [{day: "2026-10-25", totals}]})});
+    const charged = mode === "large" ? "9007199254741049999" : "0";
+    return route.fulfill({json: billingReport({totals: billingTotals({charged_nanos: charged}), daily: [{day: "2026-10-25", totals: billingRowTotals({charged_nanos: charged})}]})});
   });
   await page.goto(`${chatProbe}?usage=1`);
   await expect(page.getByText("Daily high $9,007,199,254.741", {exact: true})).toBeVisible();

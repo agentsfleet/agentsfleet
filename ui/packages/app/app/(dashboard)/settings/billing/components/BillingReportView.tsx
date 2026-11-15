@@ -2,22 +2,18 @@
 
 import type { ReactNode } from "react";
 import type { BillingFleetBreakdown, BillingReport } from "@/lib/api/billing_report";
-import type { BillingDetail } from "../lib/report-detail";
 import { formatCompactCount, formatCount } from "@/lib/events/run-figures-format";
-import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, DashboardPanel, List, ListItem, DataTable, TimeRange, type DataTableColumn } from "@agentsfleet/design-system";
-import { CaretDownIcon } from "@phosphor-icons/react/ssr";
+import { DashboardPanel, List, ListItem, DataTable, TimeRange, type DataTableColumn } from "@agentsfleet/design-system";
 import { formatBalance } from "@/lib/money";
 import { BillingFilters } from "./BillingFilters";
-import { BillingActivities } from "./BillingActivities";
 import { BillingSpending } from "./BillingSpending";
 import { BillingDailySpend } from "./BillingDailySpend";
 
-type Props = {report: BillingReport; pageSize: number; modelNames: Record<string, string>; detail: BillingDetail; selected: string};
+type Props = {report: BillingReport; modelNames: Record<string, string>};
 
-export function BillingReportView(props: Props) {
-  const {report, modelNames} = props;
+export function BillingReportView({report, modelNames}: Props) {
   return <div className="space-y-2xl">
-    <BillingFilters report={report} modelNames={modelNames} />
+    <BillingFilters report={report} />
     <DashboardPanel padding="none" className="grid divide-y divide-border summary:grid-cols-[2fr_1fr_1fr] summary:divide-x summary:divide-y-0" aria-label="Period totals">
       <Metric label="Settled charges" value={formatBalance(report.totals.charged_nanos)} note={<><TimeRange from={report.from_at} through={report.through_at} /> · USD</>} primary />
       <Metric label="Activities" value={formatCount(report.totals.activity_count)} note="With settled usage" />
@@ -29,10 +25,7 @@ export function BillingReportView(props: Props) {
         <span className="text-eyebrow text-text-dim"><TimeRange from={report.from_at} through={report.through_at} /></span></div>
       <DataTable columns={fleetColumns(modelNames)} rows={report.spending.by_fleet} rowKey={row => row.key ?? "setup"} caption="Spending by fleet" pagination={false} />
     </section>
-    <Collapsible defaultOpen={Boolean(props.selected)}>
-      <CollapsibleTrigger asChild><Button variant="ghost" className="px-0">Charge details<CaretDownIcon size={16} /></Button></CollapsibleTrigger>
-      <CollapsibleContent className="space-y-xl pt-lg"><BillingActivities {...props} /><BillingSpending report={report} modelNames={modelNames} /></CollapsibleContent>
-    </Collapsible>
+    <BillingSpending report={report} modelNames={modelNames} />
     <p className="text-eyebrow leading-eyebrow text-text-dim">Totals exclude pending or unavailable provider usage, which can arrive later. Billing history includes deleted fleets.</p>
   </div>;
 }
