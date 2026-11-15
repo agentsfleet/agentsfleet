@@ -170,3 +170,18 @@ Thirty width checks repeated on the shared aliases confirm no document overflow 
 
 The shared dashboard size remains unchanged from the earlier reviewed checkpoint.
 These bundle measurements and the browser request counters support the loading assessment; they do not establish production latency.
+
+
+## Recheck after the report update
+
+The owner supplied `6edd08d84`, including the daily rollup and trimmed Usage report.
+PR #845 was rebased onto that revision while retaining its reviewed visuals.
+The [cleanup record](M249_UI_CLEANUP.md) separates the inherited API work from the UI removals.
+
+A second complete capture contains 156 states with zero page errors and zero document overflow.
+Every recorded font probe matches the reference; recorded geometry matches the earlier corrected matrix.
+Astra also opened model selection on desktop and phone without a model-name regression.
+
+The earlier performance table describes the previous injected response shape.
+The trimmed-report [cleanup record](M249_UI_CLEANUP.md) contains the new response sizes and current browser timings.
+The final dry lane passes 4,575 unit tests and 134 browser tests; Usage adds 33.95 kB gzipped after the successful production build.

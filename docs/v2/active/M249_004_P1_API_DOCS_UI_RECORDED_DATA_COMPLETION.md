@@ -69,8 +69,9 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `docs/v2/evidence/{M249_VISUAL_BACKLOG,M249_VERIFICATION}.md`, `docs/v2/done/M249_004_SECTION_5_MEASURED_CONTEXT_BUDGET.md`, `docs/v2/parked/README.md` | EDIT | Links follow this spec's move to `active/` |
 | `rustd/rust-toolchain.toml`, `rustd/Cargo.toml`, `playbooks/operations/ci_rust_images/versions.env`, `README.md` | EDIT | Rust pin moves to 1.100.0, at the owner's direction |
 | `docker-compose.yml`, `compose.dev-infra.yml` | EDIT | Postgres 19rc2; development NATS, Mailpit and QStash catch up to the pins the test stack already uses |
-| Rust sources clippy 1.100 rewrites (`map_or_default`, redundant clones) | EDIT | Mechanical lint fixes the new toolchain requires |
+| Rust sources clippy 1.100 rewrites (`map_or_default`, redundant clones, lazy defaults and single-item iterators) | EDIT | Mechanical lint fixes the new toolchain requires |
 | Measured Rust tracing emit sites listed in `docs/v2/evidence/M249_RUST_COVERAGE_VALIDATION.md`; workspace manifest commentary | EDIT | Borrowed field shorthand preserves emitted values while repairing Rust 1.100's duplicate log-copy coverage mapping |
+| `afr_supervisor/src/verbs/tests/{mod,tasks}.rs`; `afd_authoring/src/model/provider/resolver/{mod,tests}.rs` | ADD/EDIT | Failure tests cover task fencing, single attempts and resolver address policy without changing production behavior |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`; `af_stream/src/h3/{client,server}.rs`; `afd_cron/src/verifier.rs` and the HMAC fixtures that sign with it | EDIT | Every crate to its latest release the dependency graph admits; `tokio-quiche` 0.23 drops `H3Event::NewFlow` and `jsonwebtoken` 12 refuses empty HMAC keys |
 | `package.json`, `cli/package.json`, `ui/packages/*/package.json`, `bun.lock`, `cli/bun.lock`, `patches/@assistant-ui%2F{react,store}@*.patch` | EDIT/MOVE | Every JavaScript package to its latest release; both local assistant-ui patches carried forward unchanged |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryView{,.test}.tsx` | EDIT | The Platform default card names its model only; "No provider key needed" misled beside "Platform default" (owner, Nov 15, 2026) |
@@ -90,7 +91,7 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `rustd/crates/daemon/afd_api_wire/src/billing/mod.rs` | EDIT | Typed report fields |
 | `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/billing_report/{mod.rs,view.rs}` | EDIT | Existing authorized report response |
 | `ui/packages/app/lib/api/billing_report.ts` | EDIT | Decode and validate complete projections |
-| `ui/packages/app/app/(dashboard)/settings/billing/components/{BillingReportView.tsx,BillingSpending.tsx}` | EDIT | Chart and complete fleet/model facts |
+| `ui/packages/app/app/(dashboard)/settings/billing/components/{BillingReportView.tsx,BillingFleetTable.tsx}` | EDIT | Chart and complete fleet/model facts |
 | `ui/packages/app/app/(dashboard)/settings/billing/components/{BillingDailySpend,BillingFilters,BillingReportView}.tsx`, `ui/packages/app/app/globals.css`, `ui/packages/design-system/src/design-system/{PageHeader,SectionHeader}.tsx`, `ui/packages/app/components/domain/shared/navigation/CollectionToolbar.tsx`, `ui/packages/app/app/(dashboard)/settings/members/components/{MembersView,TeamTable}.tsx` | EDIT | Match measured chart, header, tablet and Team geometry to the uploaded reference |
 | `ui/packages/app/components/domain/setup/summary/SetupSummary.tsx`, both design-system export files, `ui/packages/app/tests/{setup-policy-disclosure.test.tsx,e2e/setup-policy-help.spec.ts}` | EDIT/ADD | Make policy help work by touch and keyboard through the existing dialog primitive |
 | `docs/v2/evidence/M249_DESIGN_REVIEW.md` | ADD | Rendered comparisons, independent Astra review, fixes and limits |
@@ -108,9 +109,10 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | Canonical schema files, if new durable facts are needed | EDIT | Fresh-development schema; no migration bridge |
 | `public/openapi.json` | GENERATE | Generated contract, never hand-edited |
 | Existing tests for each changed producer, handler and component | EDIT | Complete data, refusals, races and unavailable states |
-| `docs/v2/evidence/M249_VERIFICATION.md`, `docs/DESIGN_SYSTEM.md`, `docs/architecture/{api_resources,web_app}.md` | EDIT | Update resolved data differences and retained unknowns |
+| `docs/v2/evidence/M249_VERIFICATION.md`, `docs/DESIGN_SYSTEM.md`, `docs/architecture/{api_resources,web_app,billing_reporting,billing_and_provider_keys}.md` | EDIT | Update resolved data differences and retained unknowns; repair parent prose findings without changing billing behavior |
 | `docs/v2/evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md` | EDIT | Preserve the deferred Fleet/template/Plugin questions without adding implementation scope |
 | Separate `agentsfleet/docs` branch and changelog | EDIT | Public contract and visible behaviour |
+| `ui/packages/app/**` confirmed orphaned modules and their isolated tests; `lib/models/display.ts` | REMOVE/EDIT | Owner-requested UI cleanup removes obsolete spending, model cells, action hooks, refresh controls and draft-search state; paused Plugin implementation stays available |
 
 Resolve family entries to exact files during PLAN. Unidentified producers block their implementation Section.
 
@@ -483,13 +485,13 @@ M249_003 is parked as the rename workstream. Only Section 5 of this workstream i
 
 ### Codex visual and loading follow-up
 
-Built on Claude checkpoint `cad48e0beb8d09dc8742baf7137d893aabdd4dea`; the report and charges wire fields remain unchanged.
+Originally built on Claude checkpoint `cad48e0beb8d09dc8742baf7137d893aabdd4dea`; the current UI is rebased onto the trimmed report at `6edd08d84`.
 The named-month selector uses `period=month` and the existing `through_at` cutoff; no timezone or month query field is introduced.
 The owner's timezone deferral quoted above remains in force.
 
 The [uploaded reference](../../ux.html) governs Usage and Security geometry; its sample records are not stored product facts.
 All Fleets includes setup and saved-fleet usage, followed by individual fleets.
-Existing model-filtered URLs disclose their scope and provide a clear action.
+Old model-filtered URL fields never reach the trimmed report API.
 Older month navigation remains reachable with a bounded list.
 
 The shared label request starts alongside the existing shell reads; only the fleet table waits for its promise.
@@ -498,8 +500,9 @@ The UI refuses a report containing more than 31 daily buckets instead of clippin
 The owner requested injected-data, 100-fleet, dropdown and performance evidence; see the [runtime results](../evidence/M249_POST_MERGE_RUNTIME_VALIDATION.md).
 
 The visual implementation and its frontend checks are complete in the stacked UI follow-up.
-Its inherited Secrets helper import now stays in the client-safe types module; the production bundle guard, all route budgets, app lint and 4,691 unit tests pass.
-Overall workstream closure remains active, with the local native timing failure and wider review/acceptance limits recorded in the evidence.
+Its inherited Secrets helper import stays in the client-safe types module; the production bundle guard and all route budgets pass.
+The rebased dry lane passes 4,575 unit tests and 134 browser tests.
+Overall workstream closure remains active, with final root checks and wider review/acceptance limits recorded in the evidence.
 
 The owner expanded this follow-up to repair the remaining Rust coverage failure:
 
@@ -512,8 +515,8 @@ It changes no billing producer, query or response behavior.
 The first local instrumented run passed 7,178 tests but remained below the line floor at 97.3226 percent; the final six-shard CI result is still required.
 Exact source scope and results belong in the [Rust coverage evidence](../evidence/M249_RUST_COVERAGE_VALIDATION.md).
 
-The owner also announced a pending parent update removing the Usage activities collection, per-model/day activity counts, obsolete report parameters and the activity-charges route.
-Its UI deletion is removal only. The visual follow-up must integrate that pushed parent, adapt its decoder and controls, and retain one report request per period or fleet change.
+The supplied parent removes the Usage activities collection, per-model/day activity counts, obsolete report parameters and the activity-charges route.
+The visual follow-up consumes that report, adapts its decoder and controls, and retains one report request per period or fleet change.
 
 The owner requested an elaborate comparison with the uploaded reference and a second GPT-6 Astra review after repairs.
 The review covers 13 pages and states across three viewports and both themes, with 156 comparison captures.
@@ -524,3 +527,17 @@ Its focused follow-up passed 24 interaction sequences with unchanged policy stat
 The [design review](../evidence/M249_DESIGN_REVIEW.md) records measurements, approved differences and final checks.
 
 > Owner (Indy): "Yes i need you to optimize and provide performant load, especially when you see multiple calls for something"
+
+
+## Rebased UI cleanup
+
+The owner supplied `6edd08d84` and requested rebasing PR #845 onto it while retaining the reviewed visuals.
+The rebased UI consumes the trimmed report without activity details, pagination or model filtering.
+It retains the shared label store, one report request per control change and the approved chart geometry.
+
+The owner also requested a search for unused UI files, exports and functionality.
+The [cleanup evidence](../evidence/M249_UI_CLEANUP.md) records removed modules, retained reusable code, source review and final checks.
+The repeated visual matrix covers all 13 states and both themes after integrating the new API.
+
+The UI delta contains no SQL or table changes relative to the supplied parent.
+The parent's two daily rollups and settlement statements remain Claude's implementation.

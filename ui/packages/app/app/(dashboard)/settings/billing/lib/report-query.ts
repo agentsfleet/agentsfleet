@@ -19,7 +19,8 @@ export function reportOptions(query: BillingSearch): BillingReportOptions {
 
 /** Filtering retains the selected reporting cutoff; changing period returns to now. */
 export function changedFilter(params: URLSearchParams, key: string, value: string): URLSearchParams {
-  const next = new URLSearchParams(params);
+  const supported = new Set<string>(Object.values(BILLING_QUERY));
+  const next = new URLSearchParams([...params].filter(([name]) => supported.has(name)));
   if (key === BILLING_QUERY.period) next.delete(BILLING_QUERY.through);
   if (value === BILLING_ALL) next.delete(key);
   else next.set(key, value);

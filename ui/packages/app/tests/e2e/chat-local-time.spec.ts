@@ -1,6 +1,6 @@
 import {expect} from "@playwright/test";
 import {test} from "./fixtures/chat-probe";
-import {billingActivity, billingReport} from "@/tests/helpers/billing-report";
+import {billingReport} from "@/tests/helpers/billing-report";
 
 for (const scenario of [
   {zone: "Asia/Kolkata", now: "2026-11-14T13:00:00Z", wake: "7:00 PM", day: "Nov 14, 2026"},
@@ -21,7 +21,6 @@ for (const scenario of [
 
     await page.route("**/backend/v1/tenants/me/billing/reports/current?*", route => route.fulfill({json: billingReport({
       from_at: "2026-11-14T00:00:00Z", through_at: "2026-11-14T01:00:00Z",
-      activities: {items: [billingActivity({recorded_at: "2026-11-14T00:30:00Z"})], total: 1, next_cursor: null},
     })}));
     await page.goto(`${chatProbe}?usage=1`);
     await expect(page.getByLabel("Period totals").locator("time")).toHaveText(scenario.day);

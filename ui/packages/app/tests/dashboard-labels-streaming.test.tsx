@@ -19,7 +19,7 @@ it("streams the Usage frame before slow shared labels without painting an incorr
     let release = (_labels: Record<string, string>) => {};
     modelLabelsCached.mockReturnValue(new Promise<Record<string, string>>(resolve => {release = resolve;}));
     let ready = false;
-    const pending = DashboardLayout({children: <UsageLayout><Suspense fallback={<RouteLoading />}><UsageReportView report={billingReport()} pageSize={25} selected="" detail={{status: "closed"}} /></Suspense></UsageLayout>})
+    const pending = DashboardLayout({children: <UsageLayout><Suspense fallback={<RouteLoading />}><UsageReportView report={billingReport()} /></Suspense></UsageLayout>})
       .then(tree => {ready = true; return tree;});
     await new Promise(resolve => setTimeout(resolve, 0));
     const blockedByLabels = !ready;

@@ -86,7 +86,7 @@ A throwaway Postgres 19rc2 container held the real `schema/*.sql` and three acco
 
 The ledger held 5,545 MB, the rollup 28 MB. Rebuilding the rollup from all 9.59M settled lines took 51 s.
 
-Report reads, warm, `EXPLAIN (ANALYZE)` execution time:
+Report reads, warm, `EXPLAIN (ANALYZE)` duration:
 
 | Statement | 10 fleets | 100 fleets | 1,000 fleets |
 |---|---|---|---|
@@ -99,7 +99,9 @@ Report reads, warm, `EXPLAIN (ANALYZE)` execution time:
 
 One plain pass over the large account's month took 8,545 ms cold. Most of the raw statement's time went to `COUNT(DISTINCT …)` and `ARRAY_AGG(DISTINCT …)` sorting and spilling inside its grouping sets.
 
-Equivalence, `EXCEPT ALL` in both directions: the prototype matched main's statement at 45 and 1,035 rows; the rollup read matched at 135 rows (100 fleets). Each found 0 differences.
+Equivalence used `EXCEPT ALL` in both directions.
+The prototype matched main's statement at 45 and 1,035 rows; the rollup read matched at 135 rows (100 fleets).
+Each found 0 differences.
 
 Settlement, `pgbench`, 8 clients for 30 s. Each transaction inserted a run's 3 lines, then settled, rolled up and debited:
 
@@ -111,5 +113,12 @@ Settlement, `pgbench`, 8 clients for 30 s. Each transaction inserted a run's 3 l
 
 Write-ahead log per transaction was ~11–12 KB either way. No transaction failed, so no deadlock aborted any of the ~44,700 runs.
 
-Adversarial checks against the settle statement: a duplicate pass settled 0 and added nothing; a rolled-back settle left nothing; a run across midnight split its money by day and counted once. Two relays settling different lines of one run at the same moment kept money exact but counted the run twice when the count keyed on "the first batch". Counting on the run's smallest runtime slice, which only one transaction can settle, removes that without a lock. The integration suite repeats every one of these checks.
+Adversarial checks against the settle statement found that a duplicate pass settled 0 and added nothing.
+A rolled-back settle left nothing; a run across midnight split its money by day and counted once.
+
+Two relays settling different lines of one run at the same moment kept money exact.
+They counted the run twice when the count keyed on "the first batch".
+Counting on the run's smallest runtime slice, which only one transaction can settle, removes that without a lock.
+
+The integration suite repeats every one of these checks.
 

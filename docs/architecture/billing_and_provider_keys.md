@@ -302,7 +302,10 @@ Every line carries its `kind` (`af_wire::usage::LineKind`): `model` lines keep t
 
 The key includes the kind, so a model line and a runtime line may hold the same number. Two passes never bill one slice twice (`afd_fleet`'s lease billing races suite).
 
-**Settling.** The lease path never settles. The relay, `sweeper:billing`, settles each committed line on its next pass, within about 5 s. After a restart, its first pass settles what the crash left.
+**Settling.** The lease path never settles.
+The relay, `sweeper:billing`, settles each committed line on its next pass within about five seconds.
+
+After a restart, its first pass settles what the crash left.
 
 `settle` keys on `(work, kind, seq)`, so a retry never charges twice. A balance that cannot cover a line takes it anyway and goes below zero (§11).
 
