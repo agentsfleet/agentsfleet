@@ -1,6 +1,6 @@
 import React from "react";
 import {vi} from "vitest";
-vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({userId: "user_john"})}));
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({userId: "clerk-john"})}));
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
@@ -63,8 +63,8 @@ export const REMOVE_BOB = `${REMOVE_LABEL} ${BOB_NAME}`;
 export const SEND_FAILED = /Couldn't send the invite email/;
 export const RELOAD_FAILED = /Couldn't reload this page's lists/;
 
-export function renderView(members: MemberSummary[] = [JOHN, BOB], invites: InviteSummary[] = [INVITE]) {
-  return render(<MembersView initialMembers={members} initialInvites={invites} />, { wrapper: TooltipProvider });
+export function renderView(members: MemberSummary[] = [JOHN, BOB], invites: InviteSummary[] = [INVITE], viewerUserId = JOHN.user_id) {
+  return render(<MembersView initialMembers={members} initialInvites={invites} viewerUserId={viewerUserId} />, { wrapper: TooltipProvider });
 }
 
 export const rowOf = (name: string) => screen.getByRole("listitem", { name: new RegExp(name) });

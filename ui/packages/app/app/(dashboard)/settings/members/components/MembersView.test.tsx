@@ -61,6 +61,12 @@ afterEach(() => {
 });
 
 describe("the approved team list", () => {
+  it("marks the application identity when the provider uses a distinct subject", () => {
+    const viewer = "0199a801-1000-7000-8000-000000000011";
+    renderView([{...JOHN, user_id: viewer}, {...BOB, user_id: "0199a801-1000-7000-8000-000000000012"}], [], viewer);
+    expect(within(rowOf(JOHN_NAME)).getByText("You")).toBeTruthy();
+    expect(within(rowOf(BOB_NAME)).queryByText("You")).toBeNull();
+  });
   it("keeps an account heading when its owner's name is unavailable", () => {
     renderView([{...JOHN, display_name: null}]);
     expect(screen.getByText("Your account")).toBeTruthy();

@@ -7,6 +7,7 @@ export const LONG_SECRET_NAMES = {
   unbroken: "billing-warehouse-replica-read-only-credentials-for-the-nightly-export",
   spaced: "Release registry credentials for staging",
 } as const;
+export const VISUAL_VIEWER_ID = "0199a801-1000-7000-8000-000000000011";
 
 /** Only read-only browser fixtures read this switch; production data is untouched. */
 export function visualParity() { return new URLSearchParams(location.search).has("parity"); }
@@ -21,7 +22,7 @@ export function visualMembers(sample: MemberSummary[]): MemberSummary[] {
   if (!visualParity() && !new URLSearchParams(location.search).has("manyRows")) return sample;
   if (!visualParity()) return [...sample, {user_id: "support", display_name: "Support reviewer", email: "support@example.test", role: "member", joined_at: "2026-11-08T10:00:00Z"}];
   return [
-    {user_id: "fixture-owner", display_name: "Kishore", email: "kishore@example.com", role: "owner", joined_at: "2026-11-01T10:00:00Z"},
+    {user_id: VISUAL_VIEWER_ID, display_name: "Kishore", email: "kishore@example.com", role: "owner", joined_at: "2026-11-01T10:00:00Z"},
     {user_id: "maya", display_name: "Maya Rao", email: "maya.rao@example.com", role: "member", joined_at: "2026-11-08T10:00:00Z"},
   ];
 }
