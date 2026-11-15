@@ -422,3 +422,22 @@ Recorded Outputs must not infer external publication or bookings from model-writ
 
 The data handoff stays in this requested evidence record.
 Automatic approval review rejected a separate GitHub issue containing deployment and authentication details; no issue was created.
+## Nov 15 deeper rendered comparison
+
+The owner requested a page-by-page comparison with the uploaded reference, followed by an independent GPT-6 Astra review.
+The [design review](M249_DESIGN_REVIEW.md) covers 13 pages and states, three viewports and both themes.
+Its main matrix contains 156 captures and records the corrected CSS geometry separately from live acceptance.
+
+Astra identified one additional P2: the setup policy information control had no touch activation.
+The existing dialog primitive now supplies that explanation without changing network policy.
+The focused follow-up passed 24 interaction sequences across eight contexts with no writes or page errors.
+
+The native six-shard coverage result on `3f72767de` is 107,147 of 109,546 lines, 97.8101 percent, with 2,399 missed.
+Changed-line coverage is 1,210 of 1,210, or 100 percent.
+The unchanged overall floor remains 98 percent, so merge readiness remains blocked.
+
+The parent API cleanup remains pending at observed tip `ab4fe8937`.
+
+App and design-system lint/type checks pass, including 44 source tests.
+The corrected native dry lane passes 4,695 unit tests and 134 browser tests, with no failed, flaky or skipped browser case.
+The app production build passes after the final shared breakpoint-token cleanup.
