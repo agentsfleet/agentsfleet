@@ -45,6 +45,8 @@ mod fleet_tool_calls;
 mod fleets;
 #[path = "input_bounds.rs"]
 mod input_bounds;
+#[path = "integration_api_key_metadata.rs"]
+mod integration_api_key_metadata;
 #[path = "integration_auth_sessions.rs"]
 mod integration_auth_sessions;
 #[path = "integration_billing_report.rs"]

@@ -1,6 +1,7 @@
 //! A secret's "available to" list is exactly the credential list a lease resolves.
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
+use af_wire::task::TaskState;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::test_util::{
     FIXTURE_SETUP_DEFINITION, FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision, TestDatabase,
@@ -171,7 +172,8 @@ async fn access(router: &Router, fixture: &Tasks<'_>) -> Vec<(String, Option<Vec
 async fn secret_access_projection_matches_execution_policy() {
     let lane = TestDatabase::shared();
     let fixture = Tasks::create(&lane).await;
-    // Unfinished tasks move onto a revision declaring ALPHA; the head then moves to BETA.
+    // Unfinished tasks move onto a revision declaring ALPHA; the head then moves
+    // to BETA. Finishing those tasks later withdraws ALPHA.
     append(&fixture, &[ALPHA]).await;
     run(
         &fixture,
@@ -224,6 +226,23 @@ async fn secret_access_projection_matches_execution_policy() {
             .iter()
             .all(|(_, fleets)| fleets.is_none()),
         "a caller who may not read fleets learns no fleet names"
+    );
+    run(
+        &fixture,
+        include_str!("fixtures/finish_tasks.sql"),
+        (&fixture.base.fleet, Some(TaskState::Done.as_str())),
+    )
+    .await;
+    assert_eq!(
+        access(&owner, &fixture).await,
+        [
+            (ALPHA.into(), Some(vec![])),
+            (BETA.into(), fleet()),
+            (DELTA.into(), None),
+            (GAMMA.into(), Some(vec![]))
+        ],
+        "a finished task runs nothing, so its accepted revision grants nothing; \
+         the head still does"
     );
     run(
         &fixture,
