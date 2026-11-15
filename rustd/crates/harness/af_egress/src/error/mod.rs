@@ -134,7 +134,7 @@ pub(crate) enum ErrorKind {
         "no request rule at {host} admits {method} {path} with this body{}; this run's rules for \
          {host} are fixed before it starts, so do not retry this request at another path, \
          through another API, or with another credential",
-        .why.as_deref().map(|why| format!(": {why}")).unwrap_or_default()
+        .why.as_deref().map_or_default(|why| format!(": {why}"))
     )]
     RequestPolicyNotAllowed {
         /// The URL's host.

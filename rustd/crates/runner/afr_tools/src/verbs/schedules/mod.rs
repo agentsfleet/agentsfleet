@@ -9,7 +9,7 @@
 
 use af_core::id::Uuid7;
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 use super::{ScheduleCall, answered};
 use crate::catalog::{CRON_ADD, CRON_LIST, CRON_REMOVE, CRON_RUN, CRON_RUNS, CRON_UPDATE, Entry};
@@ -34,13 +34,19 @@ pub(crate) struct Add {
 }
 
 /// `cron_list`'s arguments: none.
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[expect(
     clippy::empty_structs_with_brackets,
     reason = "schemars renders a unit struct as `null`; the braces make it the empty object every provider's function wire expects"
 )]
 pub(crate) struct List {}
+
+impl<'de> Deserialize<'de> for List {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        crate::schema::empty_object(deserializer).map(|()| Self {})
+    }
+}
 
 /// The arguments naming one schedule: `cron_remove`'s and `cron_run`'s.
 #[derive(Debug, Deserialize, JsonSchema)]

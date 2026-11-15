@@ -300,8 +300,7 @@ fn should_read_up_to_the_size_cap_and_refuse_past_it() {
             .release()
             .verify(manifest, signature)
             .err()
-            .map(|refused| refused.to_string())
-            .unwrap_or_default()
+            .map_or_default(|refused| refused.to_string())
     };
 
     assert_eq!(MANIFEST_MAX_BYTES, 1_048_576);
@@ -347,9 +346,7 @@ fn an_unreadable_manifest_keeps_the_parsers_reason() {
         .unwrap_err();
 
     assert_eq!(refused.toolbox_refusal(), Some(ToolboxRefusal::Manifest));
-    let cause = std::error::Error::source(&refused)
-        .map(ToString::to_string)
-        .unwrap_or_default();
+    let cause = std::error::Error::source(&refused).map_or_default(ToString::to_string);
     assert!(cause.contains("EOF while parsing"), "{cause}");
     assert!(!refused.to_string().contains("EOF"), "{refused}");
 }

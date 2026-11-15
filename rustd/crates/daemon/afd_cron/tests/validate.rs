@@ -55,13 +55,12 @@ fn reported(fields: Fields<'_>) -> Vec<String> {
     garde::Unvalidated::new(fields)
         .validate()
         .err()
-        .map(|report| {
+        .map_or_default(|report| {
             report
                 .iter()
                 .map(|(path, _error)| path.to_string())
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 /// An oversized expression is refused by its bound, so no `Valid` value exists

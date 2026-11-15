@@ -639,7 +639,7 @@ fn the_digest_is_believed_unpadded_and_with_the_one_padding_character() {
     let digest = fire_token::digest_of(BODY);
     for value in [digest.clone(), format!("{digest}=")] {
         assert!(
-            outcome(&changed("body", Some(serde_json::json!(value.clone())))).is_ok(),
+            outcome(&changed("body", Some(serde_json::json!(value)))).is_ok(),
             "{value}"
         );
     }

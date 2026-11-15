@@ -284,10 +284,7 @@ impl RecordingVerbs {
 
     /// Everything asked so far, in order.
     pub(crate) fn asked(&self) -> Vec<Asked> {
-        self.asked
-            .lock()
-            .map(|asked| asked.clone())
-            .unwrap_or_default()
+        self.asked.lock().map_or_default(|asked| asked.clone())
     }
 
     fn record(&self, asked: Asked) {

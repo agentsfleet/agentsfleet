@@ -116,7 +116,7 @@ impl Handler for MemoryStore {
             key: Cow::Owned(key),
             content: Cow::Owned(content),
             category: category.map_or(Cow::Borrowed(PINNED_CATEGORY), Cow::Owned),
-            visibility: visibility.map(Visibility::from).unwrap_or_default(),
+            visibility: visibility.map_or_default(Visibility::from),
         };
         let stored_entry = context.lease.memory.lock().await.store(delta).await;
         match stored_entry {

@@ -123,8 +123,7 @@ impl Tree {
             .ok_or(TaskRefusal::CheckpointIncompatible)?;
         let mut resolved: Vec<String> = path
             .rsplit_once('/')
-            .map(|(parent, _name)| parent.split('/').map(str::to_owned).collect())
-            .unwrap_or_default();
+            .map_or_default(|(parent, _name)| parent.split('/').map(str::to_owned).collect());
         let mut substitutions = 1_usize;
         for part in target.split('/') {
             match part {
