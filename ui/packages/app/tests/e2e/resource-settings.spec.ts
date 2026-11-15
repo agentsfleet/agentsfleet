@@ -87,7 +87,7 @@ test("remaining resource pages and empty setup retain the approved frame", async
   await page.setViewportSize(info.project.name === "chromium" ? {width: 1480, height: 1000} : {width: 390, height: 844});
   await page.route("**/live/v1/workspaces/*/plugins?*", route => route.fulfill({json: {items: [{
     id: "01924f4e-0000-7000-8000-00000000c4a2", name: "Release watch", description: "A saved setup for checking image builds and release readiness.",
-    head_revision_id: "01924f4e-0000-7000-8000-00000000c4a1", etag: "sample", requirements: {},
+    head_revision_id: "01924f4e-0000-7000-8000-00000000c4a1", head_revision: "1", etag: "sample", requirements: {},
     created_at: "2026-11-11T10:00:00Z", required_credentials_reasons: {},
   }], next_cursor: null}}));
   for (const theme of ["dark", "light"]) {

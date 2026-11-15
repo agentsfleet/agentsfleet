@@ -4,6 +4,7 @@ mod authority;
 mod boundaries;
 mod fixture;
 mod foreign;
+mod ordinal;
 mod pagination;
 mod publication;
 mod removal;

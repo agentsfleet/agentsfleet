@@ -18,6 +18,7 @@ pub(super) fn card(value: types::PluginCard) -> wire::Card<types::Requirements> 
         requirements: value.requirements,
         required_credentials_reasons: value.required_credentials_reasons,
         head_revision_id: value.head_revision_id.to_string(),
+        head_revision: value.head_revision,
         etag: value.etag,
     }
 }
