@@ -425,6 +425,10 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 
 > Owner (Indy): "i still need to review the sql, so i didnt sign off"
 
+- **Docs-repository branch deferred (Nov 15, 2026):** the public pages for `SecretSummary.available_to` and `PluginCard.head_revision` wait; no `~/Projects/docs` branch in this PR.
+
+> Owner (Indy): "skip docs-repo for now"
+
 > Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 
 > Owner (Indy): "in your PR ensure that you do a large refactor on the billing area and see how we can better it. You are free to unleash and embark on a large refactor in Rust side and the NExt js side onthe code to make it better performant too."
