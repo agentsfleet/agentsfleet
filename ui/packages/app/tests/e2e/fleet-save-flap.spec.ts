@@ -44,7 +44,7 @@ for (const motion of ["no-preference", "reduce"] as const) test(`Save and publis
     await expect(page.getByText("Setup saved · v1", {exact: true})).toHaveCount(0);
     await page.screenshot({path: info.outputPath("fleet-save-progress.png"), scale: "css", animations: "disabled"});
     receipt.resolve();
-    await expect(page.getByText("Setup saved · v1", {exact: true})).toBeVisible();
+    await expect(page.getByRole("heading", {name: "Setup saved · v1", exact: true})).toBeVisible();
     await expect(progress).toHaveCount(0);
     await expect(page.getByRole("link", {name: "Open fleet", exact: true})).toBeVisible();
     expect(writes).toEqual([{path: expect.stringMatching(/\/fleets$/), body: expect.objectContaining({name: REVIEW.effective.instance_name, start: {kind: "none"}})}]);
@@ -81,7 +81,8 @@ test("an unconfirmed revision retries the original save and keeps the existing f
   await expect(page.getByText("Update not confirmed", {exact: true})).toBeVisible();
   await expect(page.getByText("Setup saved · v2", {exact: true})).toHaveCount(0);
   await page.getByRole("button", {name: "Retry", exact: true}).click();
-  await expect(page.getByText("Setup saved · v2", {exact: true})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Setup saved · v2", exact: true})).toBeVisible();
+  await expect(page.getByTestId("fleet-chat-footer")).toContainText("Setup saved · v2");
   await expect(page.getByRole("link", {name: "Open fleet", exact: true})).toHaveAttribute("href", new RegExp(`/fleets/${FLEET.id}$`));
   expect(attempts).toHaveLength(2);
   expect(attempts[0]?.key).toBeTruthy();
