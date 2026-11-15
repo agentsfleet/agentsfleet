@@ -276,3 +276,36 @@ Their logs are `task-guards-mutation-summary.log`, `task-guards-mutation-results
 The native `make lint-rustd` passed source checks, formatting, all-target/all-feature Clippy and the dependency scan.
 Its log is `rollup-rust-lint-final.log` under `/workspace/artifacts/m249-runtime/`.
 Mechanical parent lint repairs use lazy optional defaults and a one-item iterator; no lint rule changed.
+
+## Rebased integration fixtures
+
+The exact parent `6edd08d84` passed all three native unit selections: 1,731 runner, 172 daemon and 3,674 daemon-library tests.
+The baseline ran in isolated `/workspace/m249-rollup-baseline` through `make test-unit-rustd`, with every feature enabled.
+Its integration result remains separate from these datastore-free counts.
+
+The daemon coverage shard failed the same unsupported-event assertion on `5f7729f12` and `cfa2c5fe0`.
+Each run passed 192 cases and failed one, at `integration_runner_e2e/refusals.rs:32`.
+The ordinary producer commits an admission and then publishes its wake; the unsupported-event fixture only inserted its row.
+
+The recovery probe runs every five seconds; the refusal window stays at two seconds.
+The fixture now awaits the shared post-commit wake after its insert.
+It retains the same admission identifier, refusal check, no-offer assertion and deadline.
+
+This uses `afd_bus::wake::publish`, as production admission does; it changes no production producer, retry policy or recovery interval.
+The standards review confirmed the dispatch/refusal path and the bounded fixture repair.
+Native integration and new-head coverage must verify the outcome before merge.
+
+The substrate shard on `cfa2c5fe0` passed 102 database cases and failed the table-grant inventory.
+The catalogue contained `billing.usage_daily` and `billing.runs_daily`, while the expected inventory omitted both.
+The inventory now includes both tables with their existing `api_runtime` read/write grants.
+
+The existing test probes every runtime role and verb against both tables and still rejects truncation and unrelated roles.
+No grant, SQL file, schema, table or permission changed.
+Their canonical declarations remain in `20261108124610_billing_usage_daily.sql` and `20261108124620_billing_runs_daily.sql`.
+
+The failed aggregate explicitly refused to grade incomplete shard reports.
+No new overall percentage is claimed from that run; the 98 percent floor remains unchanged.
+
+The untouched parent integration run also failed the missing grant inventory: 924 passes and one failure before the lane stopped.
+The daemon end-to-end case and exclusive selection were not reached, so this baseline does not establish their outcomes.
+Its log is `rollup-exact-parent-integration.log`; the clean baseline checkout remains at `6edd08d84`.
