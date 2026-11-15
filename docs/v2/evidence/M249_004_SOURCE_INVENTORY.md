@@ -30,11 +30,15 @@ Base: `a1dcc222488e4522f8b92208a4f7df8461fe7fbf`, main containing PR #844.
 
 The shell's own reads (workspaces, balance, invites, and now model labels) are common to every dashboard page and are not Usage requests.
 
-The controlled loader review in M249_003 measured the old dependency: the report answered in 40 ms and the page waited 1,217 ms behind a catalogue delayed by 1,200 ms. Those are injected local delays, not live machine timings.
+The earlier M249_003 controlled review measured the old loader dependency.
+The report answered in 40 ms; the page waited 1,217 ms for a catalogue delayed by 1,200 ms.
+Those are injected local delays, not live machine timings.
 
 ## Query plans
 
-Measured on a worktree Postgres 19 with 2,240,000 settled lines, 224,000 of them in one account's month, across six fleets, setup work and ten models. Times are `EXPLAIN (ANALYZE, BUFFERS)` execution times in milliseconds.
+The worktree Postgres 19 held 2,240,000 settled lines.
+One account's month contained 224,000 across six fleets, setup work and ten models.
+Times are `EXPLAIN (ANALYZE, BUFFERS)` runtimes in milliseconds.
 
 | Statement | Runs | Times (ms) |
 |---|---|---|
@@ -43,15 +47,26 @@ Measured on a worktree Postgres 19 with 2,240,000 settled lines, 224,000 of them
 
 The machine's load average was 4.6–5.4 during both rounds; interleaving the two statements controls for it.
 
-The earlier plan showed where the time went: a 300 ms scan of the account's lines, then three external-merge sorts of all 224,000 rows for the grouping sets and the distinct aggregates. Grouping first hands the grouping sets a fraction of the rows; every filter and grouping set keys on the grouped columns, so the sums cannot change.
+The earlier plan scanned the account's lines in 300 ms.
+It then externally sorted all 224,000 rows three times for grouping sets and distinct aggregates.
 
-Equivalence: `EXCEPT ALL` in both directions over the full result returned 48 rows each and 0 differences, unfiltered and under a fleet filter, a model filter and a setup-only filter.
+Grouping first passes grouped rows to the grouping sets.
+Filters and grouping sets still key on those grouped columns, so sums stay unchanged.
+
+Each full result contained 48 rows.
+`EXCEPT ALL` found zero differences in both directions.
+Checks covered unfiltered reads and fleet, model and setup-only filters.
 
 ## Label design
 
-The first design added `model_labels` to the billing report. The owner moved names to one shared store so billing reports billing alone, and asked that names never visibly swap after paint. The layout therefore starts one label read on the server per sign-in or refresh and forwards the pending result through its provider; Next keeps the layout across client navigation (`next/dist/docs/01-app/02-guides/authentication.md:1358`).
+An earlier design put `model_labels` in the report.
+The owner moved names into a shared store and required names before the table paints.
 
-The visual follow-up lets the frame, report totals and graph stream while the fleet table waits for names; it preserves the shared read and avoids a visible identifier/name swap.
+The layout starts one server label read per sign-in or refresh and forwards its promise through the provider.
+Next retains the layout across client navigation (`next/dist/docs/01-app/02-guides/authentication.md:1358`).
+
+The frame, report totals and graph stream while the fleet table waits for names.
+This preserves the shared read and avoids a visible identifier/name swap.
 
 An identifier gets a name only when every catalogue listing of it agrees on one nonempty name. Retired models are absent from the priced catalogue and show their recorded identifier.
 
