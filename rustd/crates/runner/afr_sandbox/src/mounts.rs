@@ -50,7 +50,7 @@ mod tests {
         let dir = tempfile::tempdir().ok();
         let path = dir
             .as_ref()
-            .map_or(Path::new("/nonexistent"), |dir| dir.path());
+            .map_or_else(|| Path::new("/nonexistent"), |dir| dir.path());
 
         assert!(super::unmount(path, true).is_err());
         assert!(super::unmount(path, false).is_err());

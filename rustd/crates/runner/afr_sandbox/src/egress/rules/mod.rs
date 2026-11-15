@@ -283,8 +283,7 @@ fn batch(messages: Vec<Message>) -> Vec<Message> {
         message.header.flags = NLM_F_REQUEST;
         message
     };
-    [control(ControlMessage::BatchBegin)]
-        .into_iter()
+    std::iter::once(control(ControlMessage::BatchBegin))
         .chain(messages)
         .chain([control(ControlMessage::BatchEnd)])
         .collect()
