@@ -242,7 +242,8 @@ fn sign(claims: &serde_json::Value, key: &str) -> String {
     jsonwebtoken::encode(
         &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
         claims,
-        &jsonwebtoken::EncodingKey::from_secret(key.as_bytes()),
+        &jsonwebtoken::EncodingKey::from_secret(key.as_bytes())
+            .expect("a fixture signing key is not empty"),
     )
     .expect("the claims serialise")
 }
@@ -314,7 +315,8 @@ fn a_token_missing_a_claim_the_daemon_reads_is_undecodable() {
     let token = jsonwebtoken::encode(
         &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
         &claims,
-        &jsonwebtoken::EncodingKey::from_secret(CURRENT_KEY.as_bytes()),
+        &jsonwebtoken::EncodingKey::from_secret(CURRENT_KEY.as_bytes())
+            .expect("a fixture signing key is not empty"),
     )
     .expect("the claims serialise");
 
@@ -332,7 +334,8 @@ fn a_token_signed_under_another_algorithm_is_refused_by_name() {
     let token = jsonwebtoken::encode(
         &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS384),
         &FireClaims::good(),
-        &jsonwebtoken::EncodingKey::from_secret(CURRENT_KEY.as_bytes()),
+        &jsonwebtoken::EncodingKey::from_secret(CURRENT_KEY.as_bytes())
+            .expect("a fixture signing key is not empty"),
     )
     .expect("the claims serialise");
 
@@ -639,7 +642,7 @@ fn the_digest_is_believed_unpadded_and_with_the_one_padding_character() {
     let digest = fire_token::digest_of(BODY);
     for value in [digest.clone(), format!("{digest}=")] {
         assert!(
-            outcome(&changed("body", Some(serde_json::json!(value.clone())))).is_ok(),
+            outcome(&changed("body", Some(serde_json::json!(value)))).is_ok(),
             "{value}"
         );
     }
@@ -654,7 +657,8 @@ fn an_algorithm_other_than_the_pinned_one_refuses_the_token() {
         let token = jsonwebtoken::encode(
             &jsonwebtoken::Header::new(algorithm),
             &scheduler_claims(BODY),
-            &jsonwebtoken::EncodingKey::from_secret(CURRENT_KEY.as_bytes()),
+            &jsonwebtoken::EncodingKey::from_secret(CURRENT_KEY.as_bytes())
+                .expect("a fixture signing key is not empty"),
         )
         .expect("the claims serialise");
 

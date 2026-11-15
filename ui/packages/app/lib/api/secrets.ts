@@ -14,6 +14,26 @@ interface SecretBase {
   name: string;
   /** Epoch milliseconds — `vault.secrets.created_at`, serialized as int64. */
   created_at: string;
+  /**
+   * Active fleets in this workspace whose saved setup declares this secret: the
+   * list a run resolves, never a textual reference. Absent when the caller may
+   * not read fleets; an empty array is a recorded "no fleet uses it".
+   */
+  available_to?: SecretFleet[];
+}
+
+/** One fleet a secret is available to. */
+export interface SecretFleet {
+  id: string;
+  name: string;
+}
+
+/** The recorded fleets, or `null` when access was not served or is not the served shape. */
+export function fleetAccessOf(secret: Secret): SecretFleet[] | null {
+  const served: unknown = secret.available_to;
+  if (!Array.isArray(served)) return null;
+  const fleets = served.filter((fleet): fleet is SecretFleet => typeof fleet?.id === "string" && typeof fleet?.name === "string" && fleet.name !== "");
+  return fleets.length === served.length ? fleets : null;
 }
 
 /**

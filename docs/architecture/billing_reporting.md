@@ -95,7 +95,7 @@ Report reads use a fixed number of queries, independent of page size. Concurrent
 
 `afd_billing`'s report module owns the report types, period selection, aggregates, grouped paging and detail reads, with static SQL beside each use case. `afd_api_tenant` holds the bounded input parsing and thin handlers, and `afd_api_wire` the response types. `afd_http` registers both routes behind the bearer and `BillingRead` guards.
 
-The dashboard page under `ui/packages/app` validates the responses, keeps the captured report cutoff across page moves, and loads grouped activity and detail rows. Shared table, disclosure and UTC date helpers live in the design system.
+The dashboard page under `ui/packages/app` makes one report request, validates the response, keeps the captured report cutoff across page moves, and reads an activity's charges only when the page opens it. Model names come from the dashboard's shared label store, not a catalogue read. Shared table, disclosure and UTC date helpers live in the design system.
 
 ## Acceptance
 

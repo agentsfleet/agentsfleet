@@ -143,13 +143,10 @@ impl Scripted {
     /// stamp by the length of the clone.
     #[must_use]
     pub fn seen(&self) -> Seen {
-        self.seen
-            .lock()
-            .map(|seen| Seen {
-                attempts: seen.attempts.clone(),
-                foreign: seen.foreign,
-            })
-            .unwrap_or_default()
+        self.seen.lock().map_or_default(|seen| Seen {
+            attempts: seen.attempts.clone(),
+            foreign: seen.foreign,
+        })
     }
 
     /// The behaviour scripted for a destination, or `None` for a job that is

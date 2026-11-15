@@ -1,6 +1,6 @@
 import {expect} from "@playwright/test";
 import {test} from "./fixtures/chat-probe";
-import {BILLING_CATALOGUE, billingActivity, billingReport} from "@/tests/helpers/billing-report";
+import {billingActivity, billingReport} from "@/tests/helpers/billing-report";
 
 for (const scenario of [
   {zone: "Asia/Kolkata", now: "2026-11-14T13:00:00Z", wake: "7:00 PM", activity: "Nov 14, 6:00 AM", day: "Nov 14, 2026"},
@@ -19,7 +19,6 @@ for (const scenario of [
     await expect(page.getByRole("complementary", {name: "Summary"}).getByText("Next wake-up", {exact: true})).toHaveCount(0);
     await page.screenshot({path: info.outputPath("local-wake-up.png"), scale: "css", animations: "disabled"});
 
-    await page.route("**/backend/v1/models", route => route.fulfill({json: BILLING_CATALOGUE}));
     await page.route("**/backend/v1/tenants/me/billing/reports/current?*", route => route.fulfill({json: billingReport({
       from_at: "2026-11-14T00:00:00Z", through_at: "2026-11-14T01:00:00Z",
       activities: {items: [billingActivity({recorded_at: "2026-11-14T00:30:00Z"})], total: 1, next_cursor: null},

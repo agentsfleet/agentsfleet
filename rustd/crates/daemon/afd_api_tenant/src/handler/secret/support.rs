@@ -9,6 +9,7 @@ use std::borrow::Cow;
 
 use afd_auth::{Principal, Scope, require_scope};
 use afd_connector::Provider;
+use afd_fleet_lifecycle::SecretAccess;
 use afd_vault::{SecretName, SecretSummary};
 use axum::body::Bytes;
 
@@ -28,13 +29,27 @@ pub(super) fn referenced_detail(entries: u32) -> String {
 }
 
 /// One stored projection, as the list emits it.
-pub(super) fn summary(held: &SecretSummary) -> afd_api_wire::secret::SecretSummary<'_> {
+pub(super) fn summary<'a>(
+    held: &'a SecretSummary,
+    access: Option<&'a SecretAccess>,
+) -> afd_api_wire::secret::SecretSummary<'a> {
     afd_api_wire::secret::SecretSummary {
         name: Cow::Borrowed(&held.name),
         created_at: held.created_at,
         kind: held.kind().as_str(),
         provider: held.provider().map(Cow::Borrowed),
         base_url: held.base_url().map(Cow::Borrowed),
+        available_to: access.map(|access| {
+            access.get(held.name.as_str()).map_or_default(|fleets| {
+                fleets
+                    .iter()
+                    .map(|fleet| afd_api_wire::secret::SecretFleet {
+                        id: Cow::Owned(fleet.id.to_string()),
+                        name: Cow::Borrowed(fleet.name.as_str()),
+                    })
+                    .collect()
+            })
+        }),
     }
 }
 

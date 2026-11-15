@@ -38,7 +38,7 @@ test.describe("workspace create", () => {
     createdEmail = null;
   });
 
-  test("fresh signup creates a workspace from the switcher dialog", async ({ page }) => {
+  test("fresh signup creates a workspace from the switcher dialog", {tag: "@post-deploy"}, async ({ page }) => {
     const email = uniqueEmail();
     const workspaceName = uniqueWorkspaceName();
     createdEmail = email;

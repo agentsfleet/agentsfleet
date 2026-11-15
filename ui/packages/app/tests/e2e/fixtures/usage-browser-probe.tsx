@@ -4,12 +4,17 @@ import {PathnameContext, SearchParamsContext} from "next/dist/shared/lib/hooks-c
 import {TooltipProvider, UnavailableState} from "@agentsfleet/design-system";
 import {ShellFrame} from "@/components/layout/ShellFrame";
 import {UsageLayout} from "@/app/(dashboard)/settings/billing/components/UsageLayout";
-import {BillingReportView} from "@/app/(dashboard)/settings/billing/components/BillingReportView";
+import {UsageReportView} from "@/app/(dashboard)/settings/billing/components/UsageReportView";
 import {loadBillingReport} from "@/app/(dashboard)/settings/billing/lib/load-report";
+import {ModelLabelsProvider} from "@/components/domain/models/ModelLabels";
+import {modelLabelsOf} from "@/lib/model-labels";
+import {BILLING_CATALOGUE} from "@/tests/helpers/billing-report";
 import {OWN_ACCOUNT} from "@/tests/helpers/workspace-fixtures";
 import {WORKSPACE} from "@/tests/helpers/draft-fixtures";
 
-/** Real report decoder, loader and presentation; browser tests supply HTTP responses. */
+/** Real report decoder, loader and presentation; browser tests supply HTTP responses and the layout's labels come from the fixture catalogue. */
+const LABELS = modelLabelsOf(BILLING_CATALOGUE.models);
+
 export function UsageBrowserFixture() {
   const [query, setQuery] = useState(new URLSearchParams());
   const [loaded, setLoaded] = useState<Awaited<ReturnType<typeof loadBillingReport>> | null>(null);
@@ -22,10 +27,10 @@ export function UsageBrowserFixture() {
     push(url: string) {setQuery(new URL(url, location.origin).searchParams);}, replace() {}, async prefetch() {}};
   const workspaces = [{id: WORKSPACE, name: "Release workspace", created_at: "2026-01-01T00:00:00Z", ...OWN_ACCOUNT}];
   return <AppRouterContext value={router}><PathnameContext value="/settings/billing"><SearchParamsContext value={query}><TooltipProvider>
-    <ShellFrame workspaces={workspaces}><UsageLayout>
+    <ShellFrame workspaces={workspaces}><ModelLabelsProvider labels={LABELS}><UsageLayout>
       {loaded === null ? <output>Loading sample report…</output> : loaded.ok
-        ? <BillingReportView report={loaded.report} modelNames={loaded.modelNames} pageSize={loaded.pageSize} detail={loaded.detail} selected={loaded.selected} />
+        ? <UsageReportView report={loaded.report} pageSize={loaded.pageSize} detail={loaded.detail} selected={loaded.selected} />
         : <UnavailableState title="Billing report unavailable" description="The simulated report request failed." />}
-    </UsageLayout></ShellFrame>
+    </UsageLayout></ModelLabelsProvider></ShellFrame>
   </TooltipProvider></SearchParamsContext></PathnameContext></AppRouterContext>;
 }

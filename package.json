@@ -10,20 +10,20 @@
   "devDependencies": {
     "@ast-grep/cli": "0.51.2",
     "@types/bun": "^1.4.4",
-    "tsrs": "0.23.0-ts7.1.0-beta",
-    "vercel": "65.15.0",
+    "tsrs": "0.25.0-ts7.1.0-beta",
+    "vercel": "65.16.0",
     "zod": "^4.6.7"
   },
   "overrides": {
-    "playwright-core": "1.65.0",
-    "@assistant-ui/store": "0.3.22"
+    "playwright-core": "1.65.1",
+    "@assistant-ui/store": "0.3.23"
   },
   "version": "0.28.2",
   "dependencies": {
     "decimal.js": "^10.6.0"
   },
   "patchedDependencies": {
-    "@assistant-ui/store@0.3.22": "patches/@assistant-ui%2Fstore@0.3.22.patch",
-    "@assistant-ui/react@0.15.33": "patches/@assistant-ui%2Freact@0.15.33.patch"
+    "@assistant-ui/store@0.3.23": "patches/@assistant-ui%2Fstore@0.3.23.patch",
+    "@assistant-ui/react@0.15.36": "patches/@assistant-ui%2Freact@0.15.36.patch"
   }
 }

@@ -34,7 +34,8 @@ test("Secrets exposes hidden values, access limits and reachable management at b
       await expect(table.getByRole("columnheader")).toHaveText(["Name", "Type", "Value", "Available to", "Actions"]);
       const row = table.getByRole("row").filter({hasText: name});
       await expect(row.getByRole("cell").nth(2)).toHaveText("Hidden");
-      await expect(row.getByRole("cell").nth(3)).toHaveText("Access details unavailable");
+      // A fixture secret no fleet declares is a recorded "none", never an unknown.
+      await expect(row.getByRole("cell").nth(3)).toHaveText("No active fleets");
       const manage = row.getByRole("button", {name: `Manage ${name}`, exact: true});
       await expectActionInViewport(page, manage);
       await expectAccessible(page, "Populated secrets table");

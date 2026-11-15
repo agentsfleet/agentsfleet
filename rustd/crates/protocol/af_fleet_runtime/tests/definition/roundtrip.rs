@@ -66,9 +66,7 @@ fn a_fenced_markdown_setup_is_refused_by_every_reader() {
                 refusal.to_string().contains(UNREADABLE),
                 "{reader} refused {label} for another reason: {refusal}"
             );
-            let cause = std::error::Error::source(&refusal)
-                .map(ToString::to_string)
-                .unwrap_or_default();
+            let cause = std::error::Error::source(&refusal).map_or_default(ToString::to_string);
             assert!(
                 cause.contains(cause_names),
                 "{reader}: {label} lost serde's cause `{cause_names}`: {cause}"

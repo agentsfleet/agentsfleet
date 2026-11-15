@@ -1,7 +1,7 @@
 # One infrastructure project per repository. local-dev.sh owns its snapshot.
 services:
   postgres:
-    image: mirror.gcr.io/library/postgres:19rc1-alpine
+    image: mirror.gcr.io/library/postgres:19rc2-alpine
     environment:
       POSTGRES_USER: agentsfleet
       POSTGRES_PASSWORD: agentsfleet
@@ -18,7 +18,7 @@ services:
       retries: 20
 
   mailpit:
-    image: axllent/mailpit:v1.31.3
+    image: axllent/mailpit:v1.33.1
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: "1"
       MP_SMTP_AUTH_ALLOW_INSECURE: "1"
@@ -38,7 +38,7 @@ services:
       - -c
       - |
         cd /tmp
-        bun add @upstash/qstash-cli@2.37.18
+        bun add @upstash/qstash-cli@2.44.2
         bun node_modules/@upstash/qstash-cli/install.js
         exec node_modules/@upstash/qstash-cli/bin/qstash dev -port 8080
     extra_hosts:
@@ -56,7 +56,7 @@ services:
   # and no volume, as in the test lane's compose. Host clients take every node
   # as a seed because `--no_advertise` keeps the bridge addresses to the nodes.
   nats-1: &nats
-    image: nats:2.15.2-alpine
+    image: nats:2.15.3-alpine
     command:
       - --name=nats-1
       - --port=4222

@@ -137,15 +137,12 @@ fn the_derived_one_of_answers_have_disjoint_required_keys() {
             "AccountOpened" => schema_of::<afd_api_wire::ingress::AccountOpened<'_>>(),
             _unknown => serde_json::Value::Null,
         };
-        schema["required"]
-            .as_array()
-            .map(|keys| {
-                keys.iter()
-                    .filter_map(serde_json::Value::as_str)
-                    .map(str::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default()
+        schema["required"].as_array().map_or_default(|keys| {
+            keys.iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
     }
 
     for (name, schema) in [

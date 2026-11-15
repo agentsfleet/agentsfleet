@@ -1,14 +1,13 @@
 import type { BillingSearch } from "./lib/report-query";
-import Link from "next/link";
-import { Button, UnavailableState } from "@agentsfleet/design-system";
+import { Suspense } from "react";
 import { requireCredential } from "@/lib/auth/credential";
+import { RouteLoading } from "@/components/layout/RouteLoading";
 import { UsageLayout } from "./components/UsageLayout";
-import { RouteRetryButton } from "@/components/domain/shared/navigation/RouteRetryButton";
-import { BillingReportView } from "./components/BillingReportView";
-import { loadBillingReport } from "./lib/load-report";
+import { UsageReport } from "./components/UsageReport";
 
 export const dynamic = "force-dynamic";
 
+/** The frame streams first; only the data region waits for the report. */
 export default async function BillingSettingsPage({
   searchParams,
 }: {
@@ -16,11 +15,7 @@ export default async function BillingSettingsPage({
 } = {}) {
   const query = searchParams ? await searchParams : {};
   const token = await requireCredential();
-  const loaded = await loadBillingReport(token, query);
   return <UsageLayout>
-    {loaded.ok ? <BillingReportView report={loaded.report} modelNames={loaded.modelNames} pageSize={loaded.pageSize}
-      selected={loaded.selected} detail={loaded.detail} /> :
-      <UnavailableState title="Billing report unavailable" description="Your settled spending could not be loaded. Retry, or reset the filters and try again."
-        actions={<><RouteRetryButton label="Retry report" /><Button variant="ghost" size="sm" asChild><Link href="/settings/billing">Reset filters</Link></Button></>} />}
+    <Suspense fallback={<RouteLoading />}><UsageReport token={token} query={query} /></Suspense>
   </UsageLayout>;
 }

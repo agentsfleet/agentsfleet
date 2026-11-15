@@ -215,9 +215,7 @@ async fn test_egress_setup_failures_refuse_the_lease() {
         assert_eq!(failure.code(), INTERNAL_OPERATION_FAILED, "{failure}");
         assert!(!failure.is_egress_blocked(), "{failure}");
     }
-    let crowded_cause = std::error::Error::source(&crowded)
-        .map(ToString::to_string)
-        .unwrap_or_default();
+    let crowded_cause = std::error::Error::source(&crowded).map_or_default(ToString::to_string);
     assert!(crowded_cause.contains("past the"), "{crowded_cause}");
 }
 

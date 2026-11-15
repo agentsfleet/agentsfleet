@@ -105,12 +105,11 @@ fn text(value: &Value) -> String {
     ["stringValue", "intValue", "boolValue", "doubleValue"]
         .iter()
         .find_map(|kind| value.get(kind))
-        .map(|found| {
+        .map_or_default(|found| {
             found
                 .as_str()
                 .map_or_else(|| found.to_string(), str::to_owned)
         })
-        .unwrap_or_default()
 }
 
 /// Reads every trace delivery so far into `exported`.

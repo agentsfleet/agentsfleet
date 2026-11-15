@@ -20,7 +20,7 @@ export function ModelsRegistryView(props: Props) {
     <DashboardPanel className="flex flex-wrap items-center gap-xl p-xl sm:p-2xl" aria-label="Platform default">
       <div className="flex min-w-0 basis-full flex-col gap-xl sm:flex-1 sm:basis-auto sm:flex-row sm:items-center"><CpuIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
         <div className="min-w-0"><h2 className="text-label font-semibold">Platform default</h2>
-        <p className="mt-sm text-description text-muted-foreground">{props.platformDefault ? `${props.platformDefault.display_name ?? props.platformDefault.model} · No provider key needed.` : "No platform default is configured."}</p></div></div>
+        <p className="mt-sm text-description text-muted-foreground">{props.platformDefault ? props.platformDefault.display_name ?? props.platformDefault.model : "No platform default is configured."}</p></div></div>
       {props.isDefaultLive ? <Active /> : <Button variant="outline" aria-label="Make active: platform default" disabled={props.pending || !props.platformDefaultAvailable} onClick={props.onSwitchDefault}>Make active</Button>}
     </DashboardPanel>
     <section className="space-y-xl" aria-label="Your models">

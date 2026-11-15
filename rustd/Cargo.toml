@@ -93,7 +93,7 @@ edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
 # only by rust-toolchain.toml's pin, so a lower floor would be an untested claim).
-rust-version = "1.99.1"
+rust-version = "1.100.0"
 # MIT, matching the repository's own `LICENSE` and `cli/package.json`. The
 # manifest said Apache-2.0 from its first commit, which made this workspace the
 # only part of the product claiming a licence the project does not ship under —
@@ -430,7 +430,7 @@ base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 serde-saphyr = { version = "2.1.1", default-features = false, features = ["deserialize"] }
 # Immutable private checkpoint objects and native SigV4 transfer authorizations.
 object_store = { version = "0.14.2", default-features = false, features = ["aws"] }
-aws-sigv4 = "=1.6.4"
+aws-sigv4 = "=1.6.5"
 aws-credential-types = "=1.3.1"
 
 # The ONE cryptographic backend this workspace links.
@@ -475,7 +475,7 @@ rustls-pki-types = { version = "1.15.1", default-features = false, features = ["
 
 # Product analytics: the async client only. It still compiles reqwest's
 # blocking client and chrono, which nothing here calls.
-posthog-rs = { version = "0.31.2", default-features = false, features = ["async-client"] }
+posthog-rs = { version = "0.33.1", default-features = false, features = ["async-client"] }
 # The workspace's first-run naming. Declared here like every other dependency:
 # a version in a member manifest is the one place drift can start.
 petname = { version = "3.2.0", default-features = false, features = ["default-words"] }
@@ -665,7 +665,7 @@ h2 = { version = "0.4.20", default-features = false }
 # Both runner carriers use the same BoringSSL implementation and verified identity.
 boring = { version = "5.4.0", default-features = false }
 tokio-boring = { version = "5.4.0", default-features = false }
-tokio-quiche = { version = "=0.20.1", default-features = false }
+tokio-quiche = { version = "=0.23.0", default-features = false }
 # Core NATS only: default features off keeps JetStream, KV and the object store
 # out of the build, so no signal can come to depend on broker-side state.
 async-nats = { version = "=0.52.0", default-features = false }
@@ -732,7 +732,7 @@ parking_lot = { version = "0.12.5", default-features = false }
 # the installation read and the scoped token mint — are two `reqwest` requests
 # in `afd_credential`, and the webhook payloads are read by `afd_api_ingress`'s
 # own `serde` types, so no GitHub SDK sits between this crate and its caller.
-jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
+jsonwebtoken = { version = "12.0.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 
 # OpenTelemetry, for the push-only export `af_otlp` builds. The SDK alone:
 # it re-exports the API types the
@@ -906,7 +906,7 @@ jsonrpsee-types = { version = "0.26.1", default-features = false }
 tempfile = { version = "3.27.0", default-features = false }
 # The system-call numbers the sandbox's seccomp program refuses; rustix exposes
 # the calls, not their numbers. Codex's `linux-sandbox` reads them from here too.
-# tokio-quiche 0.20.1 caps this below 0.2.190; retain the published transport.
+# tokio-quiche 0.23.0 still caps this below 0.2.190; retain the published transport.
 libc = { version = "=0.2.189", default-features = false }
 # The sandbox's egress scope speaks netlink itself: route netlink for the veth
 # pair, its addresses and its route, nf_tables for the host-side rules. Pure

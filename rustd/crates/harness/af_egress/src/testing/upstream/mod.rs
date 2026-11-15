@@ -178,8 +178,7 @@ async fn answer(
     let (parts, body) = request.into_parts();
     let host = (parts.headers.get(HOST))
         .and_then(|value| value.to_str().ok())
-        .map(|value| value.split(':').next().unwrap_or(value).to_owned())
-        .unwrap_or_default();
+        .map_or_default(|value| value.split(':').next().unwrap_or(value).to_owned());
     let path = parts.uri.path().to_owned();
     let query = parts.uri.query().unwrap_or_default().to_owned();
     let bytes = axum::body::to_bytes(Body::new(body), BODY_LIMIT)

@@ -18,13 +18,11 @@ fn image() -> Vec<u8> {
 
 /// Everything left in `dir`'s staging directory.
 fn staged(dir: &Path) -> Vec<String> {
-    fs::read_dir(dir.join(STAGE_DIR))
-        .map(|entries| {
-            entries
-                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-                .collect()
-        })
-        .unwrap_or_default()
+    fs::read_dir(dir.join(STAGE_DIR)).map_or_default(|entries| {
+        entries
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect()
+    })
 }
 
 #[test]

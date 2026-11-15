@@ -1,6 +1,7 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { type Secret } from "@/lib/api/secrets";
 import { SECRET_KIND } from "@/lib/api/secrets-types";
@@ -178,6 +179,29 @@ describe("the approved secret rows", () => {
     expect(screen.getByText("OpenAI key")).toBeTruthy();
     expect(screen.getByText("Hidden")).toBeTruthy();
     expect(screen.getByText("Access details unavailable")).toBeTruthy();
+  });
+
+  it("unavailable_projection_never_becomes_zero: recorded fleets, a recorded none, and unavailable for anything else", async () => {
+    const fleet = (index: number) => ({id: `fleet-${index}`, name: `Fleet ${index}`});
+    const withAccess = (name: string, available_to: unknown): Secret => ({...providerSecret(CREATED_AT), name, available_to} as Secret);
+    renderList([
+      withAccess("two", [fleet(1), fleet(2)]), withAccess("four", [fleet(1), fleet(2), fleet(3), fleet(4)]),
+      withAccess("none", []), withAccess("absent", undefined), withAccess("malformed", [{id: "fleet-1"}]),
+      withAccess("blank", [{id: "fleet-1", name: ""}]), withAccess("scalar", "everyone"),
+    ]);
+    const cell = (name: string) => within(screen.getByText(name).closest("tr") as HTMLElement);
+    expect(cell("two").getByText("Fleet 1, Fleet 2")).toBeTruthy();
+    expect(cell("four").getByText("Fleet 1, Fleet 2 +2 more")).toBeTruthy();
+    expect(cell("none").getByText("No active fleets")).toBeTruthy();
+    for (const name of ["absent", "malformed", "blank", "scalar"]) expect(cell(name).getByText("Access details unavailable")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", {name: "Manage four"}));
+    expect(screen.getByText(/Available to Fleet 1, Fleet 2, Fleet 3, Fleet 4\./)).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByRole("button", {name: "Manage none"}));
+    expect(screen.getByText(/No active fleet's setup uses it\./)).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByRole("button", {name: "Manage absent"}));
+    expect(screen.getByText(/Fleet access details are not available here\./)).toBeTruthy();
   });
 
   it("keeps the complete long reference readable in its row and delete confirmation", async () => {

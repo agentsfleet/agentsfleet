@@ -141,8 +141,7 @@ fn stopped(reason: Stop, chain: &Chain, inbound: &Inbound) -> ToolOutput {
     let location = inbound
         .location
         .as_deref()
-        .map(|origin| format!("Location: {origin}\n"))
-        .unwrap_or_default();
+        .map_or_default(|origin| format!("Location: {origin}\n"));
     ToolOutput::failed(
         code,
         &format!(

@@ -180,7 +180,7 @@ GET reports current prerequisites in `setup.checks`; changes to a saved review d
 
 An idle `instance_name` draft selection chooses the validated instance slug independently of the recipe. It changes the review digest without creating a new candidate revision. An unresolved account default has a null `effective.runtime_model_ref` and a missing model readiness check.
 
-`PluginCard = {id,name,description,created_at,requirements,required_credentials_reasons,head_revision_id,etag}` keeps the gallery meaning of `afd_api_wire`'s plugin `Card`. `Plugin = {card,head:PluginRevision,review,etag}`. `PluginRevision = {id,plugin_id,revision,definition,canonical_digest,requirements,policy_semantics,created_at}`.
+`PluginCard = {id,name,description,created_at,requirements,required_credentials_reasons,head_revision_id,head_revision,etag}` keeps the gallery meaning of `afd_api_wire`'s plugin `Card`. `Plugin = {card,head:PluginRevision,review,etag}`. `PluginRevision = {id,plugin_id,revision,definition,canonical_digest,requirements,policy_semantics,created_at}`.
 
 Revision list items omit instructions, returning `{id,revision,canonical_digest,created_at}`. Member reads include definition and context review; no secret values.
 
@@ -229,7 +229,7 @@ Title is a human display name, independent of validated definition slugs. Runtim
 | C4 | POST F/messages | `{message,operation_id?}`; message 1..8,192 bytes; operation_id 1..200 bytes when supplied; neither permits NUL; no header key | 202 `{status:"accepted",event_id,replayed,disposition,folded_into_event_id?}`; `disposition` is `started`, `folded` or `queued`, and `folded_into_event_id` names the live run a folded message joined; Location F/messages; recovery through existing message read/stream | INPUT, REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
 | C5 | PATCH F/schedules/{schedule_id} | Required If-Match schedule tag; `{override:ScheduleOverride|null}` for inherited recipe; independent schedule uses `{cron?,timezone?,message?,status?}` and cannot Restore | 200 Schedule and ETag; tag covers recipe revision + instance setup revision + override revision; null restores exact inherited setup | PRECONDITION, STALE, INPUT, STATE, existing schedule404 `UZ-SCHED-002`, DEPENDENCY |
 | C6 | POST W/plugins | Idempotency-Key; `{draft_candidate_id,label}`; creator-owned valid idle candidate; plugins:write | 201 `{plugin_id,revision_id,head_revision_id,etag}`; Location G; explicit publication receipt on linked draft | INPUT, REPLAY, GONE, POLICY, STATE, AUTH, DEPENDENCY |
-| C7 | GET W/plugins | Bounded limit/starting_after paging; no body | 200 Page of account-owned PluginCard, including head_revision_id and etag | existing plugin input/cursor errors, AUTH, DEPENDENCY |
+| C7 | GET W/plugins | Bounded limit/starting_after paging; no body | 200 Page of account-owned PluginCard, including head_revision_id, its decimal head_revision and etag | existing plugin input/cursor errors, AUTH, DEPENDENCY |
 
 ### Fleet editor and history reads
 

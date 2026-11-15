@@ -130,8 +130,16 @@ fn fixed_headers<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(), D::Er
         .map(|_headers| ())
 }
 
-#[derive(Deserialize, Eq, Ord, PartialEq, PartialOrd)]
-enum ForbiddenHeader {}
+/// A map key with no values: every authored header name is refused.
+#[derive(Eq, Ord, PartialEq, PartialOrd)]
+struct ForbiddenHeader(!);
+
+impl<'de> Deserialize<'de> for ForbiddenHeader {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let name = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        Err(serde::de::Error::unknown_variant(&name, &[]))
+    }
+}
 
 /// Bound on an authored signature header, in ASCII characters.
 pub(crate) const MAX_HEADER_LEN: usize = 128;

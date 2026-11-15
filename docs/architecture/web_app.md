@@ -178,6 +178,8 @@ data most visits never opened a dialog to use.
 
 It now loads on intent: dialog open, focus, or an eligible hover.
 
+Model display names are one shared store, not a per-page catalogue read. The dashboard layout reads the catalogue once per sign-in or refresh and hands the labels to `ModelLabelsProvider`; Next keeps the layout across client navigation, so every screen reads `useModelLabels()` from memory and names a model through `modelLabel`. An unknown, retired or ambiguous identifier shows as recorded. Usage therefore makes one report request and no catalogue request.
+
 Statement 3 covered the route too, which previously awaited every read before
 painting a pixel. It now renders its header immediately and streams an
 exported async data region under `Suspense`, matching `ApprovalsData`.
