@@ -41,10 +41,10 @@ pub fn checked(fields: validate::Fields<'_>) -> Result<(), Refusal> {
 /// A refused create, as the caller reads it.
 #[must_use]
 pub fn refused(refusal: Refused) -> Refusal {
-    match refusal.current_state() {
-        Some(state) => Refusal::conflict(refusal.code(), refusal.detail(), state),
-        None => Refusal::coded(refusal.code(), refusal.detail()),
-    }
+    refusal.current_state().map_or_else(
+        || Refusal::coded(refusal.code(), refusal.detail()),
+        |state| Refusal::conflict(refusal.code(), refusal.detail(), state),
+    )
 }
 
 /// What one reconcile answers.

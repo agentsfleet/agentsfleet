@@ -178,10 +178,7 @@ impl IntegrationGrants {
             .await
             .map_err(error::query(CONTEXT_REVOKE))?;
 
-        Ok(match revoked {
-            Some(_row) => Revocation::Revoked,
-            None => Revocation::GrantAbsent,
-        })
+        Ok(revoked.map_or(Revocation::GrantAbsent, |_row| Revocation::Revoked))
     }
 }
 

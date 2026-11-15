@@ -97,12 +97,7 @@ impl Running {
 
     pub(crate) fn cancel(&self, lease: &Uuid7) -> bool {
         let stop = self.state.lock().leases.get(lease).cloned();
-        if let Some(stop) = stop {
-            stop.cancel();
-            true
-        } else {
-            false
-        }
+        stop.inspect(CancellationToken::cancel).is_some()
     }
 
     pub(crate) fn cancel_all(&self) {

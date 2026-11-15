@@ -244,8 +244,9 @@ async fn physical(
 }
 
 fn unavailable(failure: &af_providers::Error) -> DecisionUnavailableCause {
-    match failure.decision_status() {
-        Some(status) => {
+    failure
+        .decision_status()
+        .map_or(DecisionUnavailableCause::Transport, |status| {
             let retry_delay = match failure.decision_retry_after() {
                 None => DecisionRetryDelay::Unspecified,
                 Some(delay) if delay <= std::time::Duration::from_secs(2) => {
@@ -259,9 +260,7 @@ fn unavailable(failure: &af_providers::Error) -> DecisionUnavailableCause {
                 status,
                 retry_delay,
             }
-        }
-        None => DecisionUnavailableCause::Transport,
-    }
+        })
 }
 
 fn retry_delay(receipt: &DecisionReceipt) -> Option<std::time::Duration> {

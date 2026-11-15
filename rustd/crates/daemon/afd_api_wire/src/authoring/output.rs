@@ -179,18 +179,7 @@ pub struct Failure {
     pub cause: Option<String>,
 }
 
-/// One page of results. `total` is null when unavailable; `next_cursor` is null on the last
-/// page.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize)]
-pub struct CursorPage<T> {
-    /// Current bounded rows.
-    pub items: Vec<T>,
-    /// Known total, or null.
-    pub total: Option<u64>,
-    /// Use this value unchanged for the next page, or stop when null.
-    pub next_cursor: Option<String>,
-}
+pub use crate::page::CursorPage;
 
 /// One request cancelled by this Stop operation.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

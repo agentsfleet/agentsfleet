@@ -94,10 +94,10 @@ pub fn parse_since(input: &str) -> Result<Since> {
         'd' => Some(DAY),
         _timestamp_form => None,
     };
-    match unit {
-        Some(unit) => parse_duration(chars.as_str(), unit),
-        None => parse_rfc3339_z(input),
-    }
+    unit.map_or_else(
+        || parse_rfc3339_z(input),
+        |unit| parse_duration(chars.as_str(), unit),
+    )
 }
 
 /// `15s` and friends: the count before the unit, refusing a negative window.

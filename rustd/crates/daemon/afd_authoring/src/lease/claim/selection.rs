@@ -88,10 +88,11 @@ pub(super) async fn authorize(
     if !held(connection, hint).await? {
         return Ok(Authorized::Locked);
     }
-    Ok(match selected(connection, hint, owed).await? {
-        Some(selected) => Authorized::Selected(Box::new(selected)),
-        None => Authorized::Passed,
-    })
+    Ok(selected(connection, hint, owed)
+        .await?
+        .map_or(Authorized::Passed, |selected| {
+            Authorized::Selected(Box::new(selected))
+        }))
 }
 
 /// Take the creator's row and then the draft's without waiting, in the order

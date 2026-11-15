@@ -26,8 +26,10 @@ pub(super) async fn run(harness: &Harness<'_, '_>, arguments: &Value) -> ToolOut
     let limit = timeout_ms
         .map_or(WAIT_DEFAULT, Duration::from_millis)
         .min(WAIT_MAX);
-    match harness.shared.registry.wait(child_id, Some(limit)).await {
-        Some(status) => json(&State::of(&status)),
-        None => not_found(child_id),
-    }
+    harness
+        .shared
+        .registry
+        .wait(child_id, Some(limit))
+        .await
+        .map_or_else(|| not_found(child_id), |status| json(&State::of(&status)))
 }

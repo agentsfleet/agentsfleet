@@ -265,16 +265,20 @@ impl Catalog {
         let page = pages
             .last_mut()
             .ok_or_else(|| error::config("checkpoint page is absent"))?;
-        page.history_objects =
-            self.history_chunks
-                .iter()
-                .map(|key| match ids {
-                    Some(ids) => ids.get(key).cloned().ok_or_else(|| {
-                        error::config("checkpoint history registration is incomplete")
-                    }),
-                    None => Ok(PLACEHOLDER.to_owned()),
-                })
-                .collect::<Result<_>>()?;
+        page.history_objects = self
+            .history_chunks
+            .iter()
+            .map(|key| {
+                ids.map_or_else(
+                    || Ok(PLACEHOLDER.to_owned()),
+                    |ids| {
+                        ids.get(key).cloned().ok_or_else(|| {
+                            error::config("checkpoint history registration is incomplete")
+                        })
+                    },
+                )
+            })
+            .collect::<Result<_>>()?;
         if !af_wire::decision::serialized_within(page, af_wire::task::CHECKPOINT_PAGE_BYTES) {
             let history_objects = std::mem::take(&mut page.history_objects);
             pages.push(CheckpointPage {

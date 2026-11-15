@@ -12,8 +12,9 @@ pub(super) fn run(harness: &Harness<'_, '_>, arguments: &Value) -> ToolOutput {
         Ok(named) => named,
         Err(refused) => return refused,
     };
-    match harness.shared.registry.interrupt(child_id) {
-        Some(status) => json(&State::named(status)),
-        None => not_found(child_id),
-    }
+    harness
+        .shared
+        .registry
+        .interrupt(child_id)
+        .map_or_else(|| not_found(child_id), |status| json(&State::named(status)))
 }
