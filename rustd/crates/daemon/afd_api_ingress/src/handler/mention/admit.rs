@@ -101,17 +101,25 @@ pub(super) async fn routed<D: Services>(
     let fleet_id = fleet.fleet.as_str();
     let event_id = admitted.stored.id.as_str();
     let thread_unavailable = read.as_ref().err().map(|reason| reason.as_str());
-    tracing::info!(
-        workspace_id,
-        fleet_id,
-        verdict,
-        event_id,
-        replayed = admitted.replayed,
-        thread_fetched = body.thread.fetched,
-        message_count = body.thread.count,
-        thread_unavailable,
-        event = EVENT_ROUTED,
-    );
+    {
+        let (replayed, thread_fetched, message_count, event) = (
+            &admitted.replayed,
+            &body.thread.fetched,
+            &body.thread.count,
+            &EVENT_ROUTED,
+        );
+        tracing::info!(
+            workspace_id,
+            fleet_id,
+            verdict,
+            event_id,
+            replayed,
+            thread_fetched,
+            message_count,
+            thread_unavailable,
+            event
+        );
+    };
     Ok(Outcome::Accepted(Accepted {
         event_id: Cow::Owned(admitted.stored.id.into()),
         replayed: admitted.replayed,

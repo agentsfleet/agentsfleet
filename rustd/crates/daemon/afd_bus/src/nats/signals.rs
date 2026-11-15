@@ -169,12 +169,10 @@ pub(super) fn gap(channels: &hub::Channels, cause: Cause) -> usize {
     producers::bus::gaps(cause, u64::try_from(subscriptions).unwrap_or(u64::MAX));
     let cause_label = cause.as_str();
     let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-    tracing::warn!(
-        event = "bus_gap_sent",
-        error_code,
-        cause = cause_label,
-        subscriptions
-    );
+    {
+        let (event, cause) = (&"bus_gap_sent", &cause_label);
+        tracing::warn!(event, error_code, cause, subscriptions);
+    };
     subscriptions
 }
 
@@ -223,13 +221,13 @@ pub(super) async fn pay(client: &Client, signals: &Signals, everyone: &str) -> u
     }
     if let Some(failure) = last_failure {
         let Logged { error_code, reason } = failure.logged();
-        tracing::warn!(
-            event = "bus_gap_marks_owed",
-            error_code,
-            reason,
-            failed,
-            "markers stay owed for the next reconnect"
-        );
+        {
+            let (event, message) = (
+                &"bus_gap_marks_owed",
+                format_args!("markers stay owed for the next reconnect"),
+            );
+            tracing::warn!(message, event, error_code, reason, failed);
+        };
     }
     paid
 }

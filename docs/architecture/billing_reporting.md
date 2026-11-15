@@ -2,7 +2,7 @@
 
 The Usage page shows settled spending for the account across its workspaces. The existing header keeps the available credit balance.
 
-The page shows period and fleet controls, settled totals, daily spending and a Fleet/Model/Activities/Charged table. The per-run activity list and its charge details were removed; their design will return later from scratch.
+The page shows Period and Fleet controls, settled totals, daily spending and a Fleet/Model/Activities/Charged table. Add credit waits for its design.
 
 ## Read flow and ownership
 
@@ -50,6 +50,23 @@ Run counts appear on the period totals and on each fleet group. Model and daily 
 Each `spending.by_fleet` item includes sorted, distinct, nonempty recorded model identifiers in `models`, including deleted fleets and setup charges.
 
 The chart keeps nanodollars as integers until formatting or bounded display scaling. Accessible labels name each day and charge; an unavailable report never displays authoritative zero usage.
+
+## Shared presentation
+
+The page uses the canonical [UX reference](../ux.html), shared Manrope typography, a named-month Period control and an All Fleets selector.
+The owner deferred timezone changes. A past reporting month uses its inclusive `through_at` cutoff; the current month clears it.
+
+Partial snapshots show their through date as a separate choice, allowing a return to the full or live month.
+Displayed instants and ranges use shared viewer-local `Time` utilities. Calendar bucket identities stay as supplied by the API.
+
+The daily plot has a fixed 100px height and at most 31 bars. A decoder refusal handles oversized projections without clipping charges.
+The shared fleet select scrolls within the available viewport height.
+
+The shared model-label request starts once per document load alongside shell reads.
+Its pending promise stays in `ModelLabelsProvider`; the named fleet table waits inside its own `Suspense` boundary.
+
+The heading, controls, totals and daily plot can render from the report while labels are pending.
+A failed label read resolves to recorded identifiers; there is no identifier/name swap after the table paints.
 
 ## Public reads
 

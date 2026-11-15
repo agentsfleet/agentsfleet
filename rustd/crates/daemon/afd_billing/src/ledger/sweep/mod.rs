@@ -97,12 +97,15 @@ pub async fn resettle(
                 done.refused.get_or_insert(error_code);
                 // Bound first: the macro repeats its field expressions.
                 let (work_id, error_code) = (settlement.work.id().as_str(), error_code.as_str());
-                tracing::debug!(
-                    work_id,
-                    error_code,
-                    event = EVENT_REFUSED,
-                    "the biller refused this work's settlement; the next pass retries"
-                );
+                {
+                    let (event, message) = (
+                        &EVENT_REFUSED,
+                        format_args!(
+                            "the biller refused this work's settlement; the next pass retries"
+                        ),
+                    );
+                    tracing::debug!(message, work_id, error_code, event);
+                };
             }
         }
     }

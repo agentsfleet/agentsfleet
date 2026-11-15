@@ -90,24 +90,28 @@ impl Gate {
         let event = self.event;
         match self.on_fault {
             OnFault::Admit => {
-                tracing::warn!(
-                    error_code = code,
-                    cause_error_code,
-                    event,
-                    reason,
-                    "a money gate could not be read; the event is admitted rather than \
+                {
+                    let (error_code, message) = (
+                        &code,
+                        format_args!(
+                            "a money gate could not be read; the event is admitted rather than \
                      halting every fleet on the platform"
-                );
+                        ),
+                    );
+                    tracing::warn!(message, error_code, cause_error_code, event, reason);
+                };
                 None
             }
             OnFault::Retry => {
-                tracing::warn!(
-                    error_code = code,
-                    cause_error_code,
-                    event,
-                    reason,
-                    "the pass ended early; the delivery stays leasable and the next poll retries"
-                );
+                {
+                    let (error_code, message) = (
+                        &code,
+                        format_args!(
+                            "the pass ended early; the delivery stays leasable and the next poll retries"
+                        ),
+                    );
+                    tracing::warn!(message, error_code, cause_error_code, event, reason);
+                };
                 Some(Declined::Retry(Transient { at: event }))
             }
         }

@@ -245,11 +245,13 @@ async fn refuse_head(request: Request, next: Next) -> Response {
         // the instance. It is worth seeing when somebody is debugging why
         // their probe gets a 405, and worth nothing the rest of the time.
         let path = request.uri().path();
-        tracing::debug!(
-            path,
-            event = "head_refused",
-            "HEAD refused — this daemon serves no HEAD route"
-        );
+        {
+            let (event, message) = (
+                &"head_refused",
+                format_args!("HEAD refused — this daemon serves no HEAD route"),
+            );
+            tracing::debug!(message, path, event);
+        };
         return StatusCode::METHOD_NOT_ALLOWED.into_response();
     }
     next.run(request).await

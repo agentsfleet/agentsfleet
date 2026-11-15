@@ -101,11 +101,13 @@ fn log_accept_failure(error: &std::io::Error) {
     // Hoisted: the `log` bridge duplicates field expressions and
     // llvm-cov scores the copy that never runs.
     let reason = error.to_string();
-    tracing::warn!(
-        reason,
-        event = "accept_failed",
-        "accept failed; still serving"
-    );
+    {
+        let (event, message) = (
+            &"accept_failed",
+            format_args!("accept failed; still serving"),
+        );
+        tracing::warn!(message, reason, event);
+    };
 }
 
 /// Serves one accepted connection on its own task, counted by `drain` and cut

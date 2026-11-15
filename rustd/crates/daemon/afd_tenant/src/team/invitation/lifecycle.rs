@@ -246,12 +246,10 @@ impl Team {
 
         let invite_id = invitation.as_str();
         let user_id = invitee.user.as_str();
-        tracing::info!(
-            tenant_id = %tenant,
-            invite_id,
-            user_id,
-            event = "workspace_invite_accepted"
-        );
+        {
+            let (tenant_id, event) = (&tenant, &"workspace_invite_accepted");
+            tracing::info!(%tenant_id, invite_id, user_id, event);
+        };
         Ok(Accepted {
             tenant: locked.tenant,
             workspaces,

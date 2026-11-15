@@ -137,13 +137,10 @@ pub(super) fn connect_options(role: DbRole, url: &str) -> Result<PgConnectOption
     // sink through this line.
     let role_tag = role.tag();
     let ssl_mode = ssl_mode_tag(options.get_ssl_mode());
-    tracing::info!(
-        knob,
-        role = role_tag,
-        ssl_mode,
-        declared,
-        event = SSL_MODE_RESOLVED_EVENT
-    );
+    {
+        let (role, event) = (&role_tag, &SSL_MODE_RESOLVED_EVENT);
+        tracing::info!(knob, role, ssl_mode, declared, event);
+    };
     Ok(options)
 }
 

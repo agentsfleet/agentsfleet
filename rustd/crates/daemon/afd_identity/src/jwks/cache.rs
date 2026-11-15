@@ -175,12 +175,15 @@ impl<S: KeySetSource> KeyCache<S> {
             // `tracing` in the workspace manifest.
             let cause = err.to_string();
             let reason = format!("{reason:?}");
-            tracing::warn!(
-                cause,
-                reason,
-                event = "jwks_refresh_failed",
-                "refresh failed; the last confirmed key set remains subject to its age ceiling"
-            );
+            {
+                let (event, message) = (
+                    &"jwks_refresh_failed",
+                    format_args!(
+                        "refresh failed; the last confirmed key set remains subject to its age ceiling"
+                    ),
+                );
+                tracing::warn!(message, cause, reason, event);
+            };
         }
     }
 
@@ -201,12 +204,13 @@ impl<S: KeySetSource> KeyCache<S> {
         let rejected = parsed.rejected();
         if rejected > 0 {
             let usable = parsed.len();
-            tracing::warn!(
-                rejected,
-                usable,
-                event = "jwks_keys_declined",
-                "the issuer published keys this daemon cannot verify against"
-            );
+            {
+                let (event, message) = (
+                    &"jwks_keys_declined",
+                    format_args!("the issuer published keys this daemon cannot verify against"),
+                );
+                tracing::warn!(message, rejected, usable, event);
+            };
         }
         let fetched_at = self.clock.now();
         *self.held.write().await = Some(Held {

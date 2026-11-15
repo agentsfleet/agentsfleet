@@ -208,13 +208,11 @@ impl Steer {
         // duplicates every field expression, and coverage instrumentation
         // scores the dead copy (LOG-HOIST, `.orly/standards/domains/logging.md`).
         let id = admitted.stored.id.as_str();
-        tracing::debug!(
-            fleet_id = %fleet,
-            workspace_id = %workspace,
-            actor,
-            event_id = %id,
-            event = "steer_appended",
-        );
+        {
+            let (fleet_id, workspace_id, event_id, event) =
+                (&fleet, &workspace, &id, &"steer_appended");
+            tracing::debug!(%fleet_id, %workspace_id, actor, %event_id, event);
+        };
         let run = self.run_facts(fleet, &admitted.stored.id).await;
         Ok(Steered {
             placed: disposition::of(&run, actor, admitted.stored.id.as_str()),
@@ -332,13 +330,10 @@ fn answer_repeat(admission: &Admission<'_>, repeated: Repeated) -> Result<String
     let code = error_code::AGENTSFLEET_OPERATION_CONFLICT.as_str();
     let fleet_id = admission.fleet;
     let event_id = repeated.id.as_str();
-    tracing::warn!(
-        error_code = code,
-        fleet_id = %fleet_id,
-        event_id = %event_id,
-        cause,
-        event = "steer_operation_conflict",
-    );
+    {
+        let (error_code, event) = (&code, &"steer_operation_conflict");
+        tracing::warn!(error_code, %fleet_id, %event_id, cause, event);
+    };
     Err(operation_conflict())
 }
 

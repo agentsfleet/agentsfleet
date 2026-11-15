@@ -264,13 +264,10 @@ impl SlackPoster {
                 // The code `failed` stamps on every other vendor failure, so
                 // this line joins them for the same workspace.
                 let error_code = af_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
-                tracing::warn!(
-                    error_code,
-                    workspace_id,
-                    fleet_id,
-                    reason,
-                    event = EVENT_THREAD_CHECK_FAILED
-                );
+                {
+                    let event = &EVENT_THREAD_CHECK_FAILED;
+                    tracing::warn!(error_code, workspace_id, fleet_id, reason, event);
+                };
                 self.post(job, &inputs).await
             }
         }

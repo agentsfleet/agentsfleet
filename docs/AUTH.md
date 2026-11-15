@@ -32,6 +32,7 @@ Find the question, jump to the one §-section that answers it, and do not read t
 | What does a signup write, and in what order? | §"Signup: what `user.created` writes" |
 | Who can open a workspace, and why is a member refused (`403 UZ-AUTH-026`)? | §Who opens a workspace |
 | How does an invite become a membership? | §Invites |
+| Which identity marks the viewer in Team? | §Team viewer identity |
 | How is an operator's cross-tenant access recorded? | §Platform crossing |
 | How is a manual fleet webhook authenticated? | §"Manual fleet-webhook auth (separate surface)" |
 | How does an OAuth connector mint and refresh? | §"OAuth connectors: a separate surface (M106, generalized by the M108 registry)" |
@@ -389,6 +390,15 @@ A role grants no capability. A `member` loses two inside the owner's account:
 writing a secret and connecting an integration. Each is refused with
 `403 UZ-AUTH-026`.
 
+### Team viewer identity
+
+The Team viewer label compares the application's `user_id` from `GET /v1/users/me` with `MemberSummary.user_id`.
+Both refer to `identity.users.id`.
+The browser auth facade's `userId` carries the identity provider's subject for provider-owned operations.
+
+The Team page reads the application identity alongside members and invites, then passes its identifier to the table.
+An identity read failure reaches the page's existing authentication or error handling.
+
 ### Who opens a workspace
 
 | Caller | Reaches | Refused |
@@ -636,8 +646,9 @@ sequenceDiagram
 
 ### Personal profile and browser sessions
 
-API Keys shows the signed-in person’s avatar, name and primary email above API keys and browser sessions.
-The identity card uses the existing neutral `useCurrentUser` facade. It contains no embedded profile widget or duplicate navigation button.
+Security contains API keys and browser sessions.
+The account avatar and menu use the neutral `useCurrentUser` facade to show the current image and identity, with email on hover.
+There is no repeated identity card, embedded profile widget or duplicate navigation button.
 
 Session controls consume app-owned types from `ui/packages/app/lib/auth/account-types.ts`.
 `account-client.ts` isolates provider hooks and native recent verification.

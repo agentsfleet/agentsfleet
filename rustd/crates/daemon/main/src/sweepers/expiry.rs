@@ -82,12 +82,14 @@ impl Passes {
             }
             Err(fault) => {
                 let error_code = fault.code().as_str();
-                tracing::warn!(
-                    event = FAILED,
-                    pass = "leases",
-                    error_code,
-                    "expired leases wait for the next tick"
-                );
+                {
+                    let (event, pass, message) = (
+                        &FAILED,
+                        &"leases",
+                        format_args!("expired leases wait for the next tick"),
+                    );
+                    tracing::warn!(message, event, pass, error_code);
+                };
                 None
             }
         };
@@ -95,12 +97,14 @@ impl Passes {
             Ok(expired) => Some(expired),
             Err(fault) => {
                 let error_code = fault.code().as_str();
-                tracing::warn!(
-                    event = FAILED,
-                    pass = "attempts",
-                    error_code,
-                    "lapsed attempts wait for the next tick"
-                );
+                {
+                    let (event, pass, message) = (
+                        &FAILED,
+                        &"attempts",
+                        format_args!("lapsed attempts wait for the next tick"),
+                    );
+                    tracing::warn!(message, event, pass, error_code);
+                };
                 None
             }
         };

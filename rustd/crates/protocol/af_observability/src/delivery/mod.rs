@@ -165,13 +165,14 @@ impl Delivery<'_> {
             // time is one an operator will look for and not find.
             let fleet_id = self.fleet_id;
             let wall_ms = self.wall.as_millis();
-            tracing::warn!(
-                fleet_id,
-                wall_ms,
-                reason = "unplaceable_start",
-                event = "skip_delivery_span",
-                "the reported duration puts this run's start before the epoch"
-            );
+            {
+                let (reason, event, message) = (
+                    &"unplaceable_start",
+                    &"skip_delivery_span",
+                    format_args!("the reported duration puts this run's start before the epoch"),
+                );
+                tracing::warn!(message, fleet_id, wall_ms, reason, event);
+            };
             return;
         };
 

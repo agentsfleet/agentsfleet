@@ -66,23 +66,23 @@ pub async fn rebuild(passes: &[&dyn Pass], rounds: u32) -> Result<Rebuilt> {
             tally.scanned = tally.scanned.saturating_add(swept.scanned);
             tally.changed = tally.changed.saturating_add(swept.changed);
             let sweeper = pass.name();
-            tracing::debug!(
-                round,
-                sweeper,
-                scanned = swept.scanned,
-                changed = swept.changed,
-                event = "rebuild_pass_completed",
-            );
+            {
+                let (scanned, changed, event) =
+                    (&swept.scanned, &swept.changed, &"rebuild_pass_completed");
+                tracing::debug!(round, sweeper, scanned, changed, event);
+            };
         }
     }
     let (rounds, scanned, changed) = (tally.rounds, tally.scanned, tally.changed);
-    tracing::info!(
-        rounds,
-        scanned,
-        changed,
-        event = "rebuild_completed",
-        "every recovery pass has run its rounds; completeness is the caller's to assert"
-    );
+    {
+        let (event, message) = (
+            &"rebuild_completed",
+            format_args!(
+                "every recovery pass has run its rounds; completeness is the caller's to assert"
+            ),
+        );
+        tracing::info!(message, rounds, scanned, changed, event);
+    };
     Ok(tally)
 }
 

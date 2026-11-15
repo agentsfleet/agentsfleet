@@ -2,8 +2,8 @@
 
 import { useRef, useState } from "react";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@agentsfleet/design-system";
-import { fleetAccessOf, type Secret } from "@/lib/api/secrets";
-import { SECRET_KIND } from "@/lib/api/secrets-types";
+import type { Secret } from "@/lib/api/secrets";
+import { fleetAccessOf, SECRET_KIND } from "@/lib/api/secrets-types";
 import { providerLabel } from "@/lib/api/model-library-types";
 
 type Props = {secret: Secret; pending: boolean; protectedFromDelete: boolean; onEdit: (name: string) => void; onDelete: (name: string) => void};

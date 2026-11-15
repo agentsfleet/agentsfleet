@@ -253,13 +253,15 @@ fn refuse_selftest(runner: &Uuid7, rejection: &Error) {
     let code = error_code::INVALID_REQUEST.as_str();
     let id = runner.as_str();
     let reason = rejection.detail();
-    tracing::warn!(
-        error_code = code,
-        runner_id = id,
-        reason,
-        event = "selftest_verdict_refused",
-        "self-test verdict refused; the beat still counts as liveness"
-    );
+    {
+        let (error_code, runner_id, event, message) = (
+            &code,
+            &id,
+            &"selftest_verdict_refused",
+            format_args!("self-test verdict refused; the beat still counts as liveness"),
+        );
+        tracing::warn!(message, error_code, runner_id, reason, event);
+    };
 }
 
 /// Runs a write whose failure must not fail the beat, and says whether it
@@ -305,13 +307,10 @@ fn report(event: &'static str, runner: &Uuid7, error: &Error) {
         error_code: cause_error_code,
         reason,
     } = error.logged();
-    tracing::warn!(
-        error_code = code,
-        cause_error_code,
-        runner_id = id,
-        reason,
-        event
-    );
+    {
+        let (error_code, runner_id) = (&code, &id);
+        tracing::warn!(error_code, cause_error_code, runner_id, reason, event);
+    };
 }
 
 pub mod holds;

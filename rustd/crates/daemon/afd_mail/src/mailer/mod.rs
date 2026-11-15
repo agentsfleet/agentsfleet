@@ -208,13 +208,10 @@ impl<'a> Attempt<'a> {
         let invite_id = self.invite.invite_id.as_str();
         let attempt = self.invite.attempt;
         let duration_ms = self.duration_ms();
-        tracing::info!(
-            invite_id,
-            attempt,
-            reply,
-            duration_ms,
-            event = EVENT_COMPLETED
-        );
+        {
+            let event = &EVENT_COMPLETED;
+            tracing::info!(invite_id, attempt, reply, duration_ms, event);
+        };
         InviteEmailOutcome::Sent { reply }
     }
 
@@ -231,16 +228,19 @@ impl<'a> Attempt<'a> {
         let attempt = self.invite.attempt;
         let duration_ms = self.duration_ms();
         let detail = cause.map(ToString::to_string);
-        tracing::warn!(
-            error_code = code,
-            invite_id,
-            attempt,
-            reason,
-            reply,
-            duration_ms,
-            detail,
-            event = EVENT_FAILED
-        );
+        {
+            let (error_code, event) = (&code, &EVENT_FAILED);
+            tracing::warn!(
+                error_code,
+                invite_id,
+                attempt,
+                reason,
+                reply,
+                duration_ms,
+                detail,
+                event
+            );
+        };
         InviteEmailOutcome::Failed { reply }
     }
 
@@ -255,17 +255,20 @@ impl<'a> Attempt<'a> {
         let reason = REASON_UNCONFIGURED;
         let fault = bag_fault.name();
         let field = bag_fault.field();
-        tracing::error!(
-            error_code = code,
-            invite_id,
-            attempt,
-            reason,
-            bag = SMTP_RELAY_BAG,
-            fault,
-            field,
-            duration_ms,
-            event = EVENT_FAILED
-        );
+        {
+            let (error_code, bag, event) = (&code, &SMTP_RELAY_BAG, &EVENT_FAILED);
+            tracing::error!(
+                error_code,
+                invite_id,
+                attempt,
+                reason,
+                bag,
+                fault,
+                field,
+                duration_ms,
+                event
+            );
+        };
         InviteEmailOutcome::Unconfigured
     }
 

@@ -197,12 +197,10 @@ impl Telemetry {
             let budget_ms = budget.as_millis();
             let event = EVENT_CLOSE_TIMED_OUT;
             let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::warn!(
-                budget_ms,
-                event,
-                error_code,
-                "some telemetry was not delivered"
-            );
+            {
+                let message = format_args!("some telemetry was not delivered");
+                tracing::warn!(message, budget_ms, event, error_code);
+            };
         }
     }
 

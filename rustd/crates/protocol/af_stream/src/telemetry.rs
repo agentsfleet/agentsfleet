@@ -90,24 +90,18 @@ impl Drop for Observation {
         let io_kind = self.io_kind.map(|kind| format!("{kind:?}"));
         let _entered = self.span.enter();
         match self.outcome {
-            StreamOutcome::Success => tracing::debug!(
-                event = "runner_stream_operation_completed",
-                outcome,
-                elapsed_seconds
-            ),
-            StreamOutcome::Cancelled | StreamOutcome::Abandoned => tracing::debug!(
-                event = "runner_stream_operation_failed",
-                outcome,
-                elapsed_seconds,
-                error_code
-            ),
-            _ => tracing::warn!(
-                event = "runner_stream_operation_failed",
-                outcome,
-                elapsed_seconds,
-                error_code,
-                io_kind
-            ),
+            StreamOutcome::Success => {
+                let event = &"runner_stream_operation_completed";
+                tracing::debug!(event, outcome, elapsed_seconds);
+            }
+            StreamOutcome::Cancelled | StreamOutcome::Abandoned => {
+                let event = &"runner_stream_operation_failed";
+                tracing::debug!(event, outcome, elapsed_seconds, error_code);
+            }
+            _ => {
+                let event = &"runner_stream_operation_failed";
+                tracing::warn!(event, outcome, elapsed_seconds, error_code, io_kind);
+            }
         }
     }
 }
@@ -125,27 +119,33 @@ pub(crate) fn security(transport: Transport, peer: StreamPeer, group: crate::tls
     let key_exchange = group.as_str();
     let post_quantum_key_exchange = accepted;
     if accepted {
-        tracing::info!(
-            event = "runner_stream_tls_negotiated",
-            transport,
-            role,
-            key_exchange,
-            post_quantum_key_exchange
-        );
+        {
+            let event = &"runner_stream_tls_negotiated";
+            tracing::info!(
+                event,
+                transport,
+                role,
+                key_exchange,
+                post_quantum_key_exchange
+            );
+        };
     } else {
         let error_code = if group == crate::tls::KeyExchange::Other {
             af_core::error_code::INTERNAL_OPERATION_FAILED.as_str()
         } else {
             af_core::error_code::RUN_PROTOCOL_UNSUPPORTED.as_str()
         };
-        tracing::warn!(
-            event = "runner_stream_tls_failed",
-            error_code,
-            transport,
-            role,
-            key_exchange,
-            post_quantum_key_exchange
-        );
+        {
+            let event = &"runner_stream_tls_failed";
+            tracing::warn!(
+                event,
+                error_code,
+                transport,
+                role,
+                key_exchange,
+                post_quantum_key_exchange
+            );
+        };
     }
 }
 
@@ -159,11 +159,10 @@ pub(crate) fn fallback(reason: Reason) -> bool {
     };
     stream::fallback(reason);
     let reason = reason.as_str();
-    tracing::info!(
-        event = "runner_stream_fallback_attempt",
-        transport = "http2",
-        reason
-    );
+    {
+        let (event, transport) = (&"runner_stream_fallback_attempt", &"http2");
+        tracing::info!(event, transport, reason);
+    };
     true
 }
 

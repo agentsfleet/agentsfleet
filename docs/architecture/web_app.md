@@ -178,7 +178,17 @@ data most visits never opened a dialog to use.
 
 It now loads on intent: dialog open, focus, or an eligible hover.
 
-Model display names are one shared store, not a per-page catalogue read. The dashboard layout reads the catalogue once per sign-in or refresh and hands the labels to `ModelLabelsProvider`; Next keeps the layout across client navigation, so every screen reads `useModelLabels()` from memory and names a model through `modelLabel`. An unknown, retired or ambiguous identifier shows as recorded. Usage therefore makes one report request and no catalogue request.
+Model display names use one shared store.
+The layout starts one catalogue read per sign-in or refresh and passes its promise to `ModelLabelsProvider`.
+Next retains that layout across client navigation.
+
+Screens read names through `useModelLabels()` and `modelLabel`.
+Unknown, retired or ambiguous identifiers remain as recorded.
+Usage reads one report and no catalogue.
+
+Only name consumers suspend: the Usage fleet table waits while the frame, totals and daily graph can stream.
+The server catches a label-read failure before forwarding the promise.
+Consumers then receive recorded identifiers rather than an unhandled rejection.
 
 Statement 3 covered the route too, which previously awaited every read before
 painting a pixel. It now renders its header immediately and streams an

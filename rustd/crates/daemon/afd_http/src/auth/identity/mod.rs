@@ -82,12 +82,17 @@ fn unproven() -> Response {
     // `error`, and it is the right level: this is a routing table and a router
     // that disagree, which no amount of client behaviour can cause and no
     // retry can fix.
-    tracing::error!(
-        error_code = code,
-        request_id = request_id_field,
-        event = "runner_identity_unproven",
-        "a runner handler ran with no proven runner — its guard layer is not mounted"
-    );
+    {
+        let (error_code, request_id, event, message) = (
+            &code,
+            &request_id_field,
+            &"runner_identity_unproven",
+            format_args!(
+                "a runner handler ran with no proven runner — its guard layer is not mounted"
+            ),
+        );
+        tracing::error!(message, error_code, request_id, event);
+    };
     ProblemResponse::new(
         error_code::INTERNAL_OPERATION_FAILED,
         DETAIL_UNPROVEN,

@@ -75,11 +75,10 @@ impl Directory {
         if deleted == Deleted::Removed {
             let workspace_id = workspace.as_str();
             let secret_name = name.as_str();
-            tracing::info!(
-                workspace = workspace_id,
-                name = secret_name,
-                event = "secret_deleted",
-            );
+            {
+                let (workspace, name, event) = (&workspace_id, &secret_name, &"secret_deleted");
+                tracing::info!(workspace, name, event);
+            };
         }
         Ok(deleted)
     }

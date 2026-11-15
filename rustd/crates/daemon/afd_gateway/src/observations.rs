@@ -10,13 +10,9 @@ impl Gateway {
         let detail = detail.as_ref();
         let retryable = error.retryable();
         let operation = operation.as_str();
-        tracing::warn!(
-            event = "runner_stream_operation_failed",
-            error_code,
-            reason,
-            detail,
-            retryable,
-            operation
-        );
+        {
+            let event = &"runner_stream_operation_failed";
+            tracing::warn!(event, error_code, reason, detail, retryable, operation);
+        };
     }
 }

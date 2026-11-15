@@ -53,14 +53,10 @@ impl Trace {
         let duration_ms = af_core::clock::saturating_millis(self.began.elapsed());
         let frames = self.frames;
         let error_code = code.as_str();
-        tracing::debug!(
-            event = FAILED,
-            dispatch_id,
-            duration_ms,
-            frames,
-            error_code,
-            reason
-        );
+        {
+            let event = &FAILED;
+            tracing::debug!(event, dispatch_id, duration_ms, frames, error_code, reason);
+        };
     }
 }
 

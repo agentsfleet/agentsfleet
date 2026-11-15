@@ -114,12 +114,10 @@ impl BubblewrapEngine {
             own().inspect_err(|error| {
                 let Logged { error_code, reason } = error.logged();
                 let event = EVENT_HOST_REFUSED;
-                tracing::error!(
-                    error_code,
-                    reason,
-                    event,
-                    "this host's egress is owned elsewhere"
-                );
+                {
+                    let message = format_args!("this host's egress is owned elsewhere");
+                    tracing::error!(message, error_code, reason, event);
+                };
             })?;
         }
         let engine = Self {

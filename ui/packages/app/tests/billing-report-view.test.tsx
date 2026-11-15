@@ -4,14 +4,14 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { BillingReportView } from "@/app/(dashboard)/settings/billing/components/BillingReportView";
 import { BillingSpending } from "@/app/(dashboard)/settings/billing/components/BillingSpending";
-import { BILLING_MODEL, BILLING_MODEL_NAME, billingReport, billingRowTotals, billingTotals } from "./helpers/billing-report";
+import { BILLING_AT, BILLING_FLEET, BILLING_MODEL, BILLING_MODEL_NAME, billingReport, billingRowTotals, billingTotals } from "./helpers/billing-report";
 
 const { push, current } = vi.hoisted(() => ({ push: vi.fn(), current: { params: new URLSearchParams() } }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }), usePathname: () => "/settings/billing", useSearchParams: () => current.params,
 }));
 
-const names = { [BILLING_MODEL]: BILLING_MODEL_NAME };
+const names: Record<string, string> = { [BILLING_MODEL]: BILLING_MODEL_NAME };
 const BY_FLEET_LABEL = "Charged by fleet or setup chat";
 const BY_MODEL_LABEL = "Charged by model";
 function view(report = billingReport()) {
@@ -28,8 +28,8 @@ function pushedParams() {
   return new URL(String(push.mock.calls.at(-1)?.[0]), "https://example.test").searchParams;
 }
 
-beforeEach(() => { push.mockReset(); current.params = new URLSearchParams(); });
-afterEach(() => cleanup());
+beforeEach(() => { vi.useFakeTimers({toFake: ["Date"]}); vi.setSystemTime(new Date("2026-11-15T12:00:00Z")); push.mockReset(); current.params = new URLSearchParams(); });
+afterEach(() => {cleanup(); vi.useRealTimers();});
 
 describe("Billing report filters preserve period totals", () => {
   it("retains unattributed setup charges and a deleted fleet's identifier without inventing a name", () => {
@@ -44,14 +44,17 @@ describe("Billing report filters preserve period totals", () => {
     expect(within(section).getByText("deleted-fleet")).toBeTruthy();
     expect(within(section).getByText("Fleet work")).toBeTruthy();
   });
-  it("opens the previous UTC month and returns to the current month without losing fleet selection", () => {
-    current.params = new URLSearchParams("fleet=deleted-fleet&through_at=2026-11-01T01:00:00Z");
-    view(billingReport({from_at: "2026-11-01T00:00:00Z", through_at: "2026-11-01T01:00:00Z"}));
-    fireEvent.click(screen.getByRole("button", {name: "More filters"}));
-    fireEvent.click(screen.getByRole("button", {name: "Previous month"}));
+  it("selects named months and returns to the current report without losing fleet selection", async () => {
+    current.params = new URLSearchParams("fleet=deleted-fleet&through_at=2026-11-01T01:00:00Z&c=old&activity=old");
+    const rendered = view(billingReport({from_at: "2026-11-01T00:00:00Z", through_at: "2026-11-01T01:00:00Z"}));
+    await choose("Period", "October 2026");
     expect(pushedParams().get("through_at")).toBe("2026-10-31T23:59:59.999Z");
     expect(pushedParams().get("fleet")).toBe("deleted-fleet");
-    fireEvent.click(screen.getByRole("button", {name: "Current month"}));
+    expect(pushedParams().has("c")).toBe(false);
+    current.params = pushedParams();
+    rendered.unmount();
+    view(billingReport({from_at: "2026-10-01T00:00:00Z", through_at: "2026-10-31T23:59:59.999Z"}));
+    await choose("Period", "November 2026");
     expect(pushedParams().has("through_at")).toBe(false);
     expect(pushedParams().get("fleet")).toBe("deleted-fleet");
     expect(screen.getByText(/Billing history includes deleted fleets/)).toBeTruthy();
@@ -63,9 +66,38 @@ describe("Billing report filters preserve period totals", () => {
     expect(totals.getByText("52")).toBeTruthy();
     expect(totals.getByText("Tokens")).toBeTruthy();
     expect(totals.getByText("50")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Payment alerts/ })).toBeNull();
     expect(screen.queryByRole("button", {name: "Charge details"})).toBeNull();
-    expect(screen.queryByRole("table", {name: "Billing activity"})).toBeNull();
+    expect(screen.queryByRole("button", {name: "More filters"})).toBeNull();
     expect(screen.getByText(/Totals exclude pending or unavailable provider usage/)).toBeTruthy();
+  });
+
+  it("retains an older selected calendar month outside the recent choices", async () => {
+    current.params = new URLSearchParams("through_at=2024-02-29T23:59:59.999Z");
+    view(billingReport({from_at: "2024-02-01T00:00:00Z", through_at: "2024-02-29T23:59:59.999Z"}));
+    expect(screen.getByRole("combobox", {name: "Period"}).textContent).toBe("February 2024");
+    await choose("Period", "November 2026");
+    expect(pushedParams().has("through_at")).toBe(false);
+  });
+
+  it.each<[string, string, string, string | null]>([["2026-11-01T00:00:00Z", "2026-11-05T12:00:00Z", "November 2026", null],
+    ["2026-10-01T00:00:00Z", "2026-10-05T12:00:00Z", "October 2026", "2026-10-31T23:59:59.999Z"]])(
+    "can replace a partial-month snapshot with its canonical month (%s)", async (from_at, through_at, label, cutoff) => {
+      current.params = new URLSearchParams({through_at, fleet: BILLING_FLEET, c: "old"});
+      view(billingReport({from_at, through_at}));
+      expect(screen.getByRole("combobox", {name: "Period"}).textContent).toContain("through");
+      await choose("Period", label);
+      expect(pushedParams().get("through_at")).toBe(cutoff);
+      expect(pushedParams().get("fleet")).toBe(BILLING_FLEET);
+      expect(pushedParams().has("c")).toBe(false);
+    });
+
+  it("labels an explicitly scoped report without silently widening it", () => {
+    current.params = new URLSearchParams("fleet=setup&period=today");
+    view(billingReport({period: "today"}));
+    expect(screen.getByRole("combobox", {name: "Fleet"}).textContent).toBe("Setup chat");
+    expect(screen.getByRole("combobox", {name: "Period"}).textContent).toBe("Today");
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("an empty successful report has an honest empty state", () => {
@@ -73,12 +105,12 @@ describe("Billing report filters preserve period totals", () => {
       daily: [{day: "2026-10-25", totals: billingRowTotals({charged_nanos: "0"})}],
       spending: { by_fleet: [], by_model: [] }, filters: { fleets: [], models: [] } }));
     expect(screen.getByText("No settled charges for this period.")).toBeTruthy();
-    expect(screen.getAllByText("No settled spending")).toHaveLength(1);
+    expect(screen.queryByText("Payment alerts")).toBeNull();
   });
 
-  it.each([["Period", "Last 7 days", "period", "week"], ["Period", "Today", "period", "today"], ["Fleet", "Setup chat", "fleet", "setup"]])(
-    "changing %s retains the selected cutoff unless the period changes", async (label, choice, key, expected) => {
-      current.params = new URLSearchParams("through_at=old");
+  it.each([["Period", "Last 7 days", "period", "week"], ["Fleet", "Payment alerts", "fleet", BILLING_FLEET]])(
+    "changing %s resets paging while retaining the selected period", async (label, choice, key, expected) => {
+      current.params = new URLSearchParams("c=old&cps=25&through_at=old&activity=old&dc=old");
       view();
       await choose(label, choice);
       const params = pushedParams();
@@ -93,20 +125,19 @@ describe("Billing report filters preserve period totals", () => {
     const trigger = screen.getByRole("combobox", { name: "Fleet" });
     fireEvent.click(trigger);
     fireEvent.keyDown(trigger, { key: "Enter" });
-    expect(screen.getAllByRole("option", { name: "Setup chat" })).toHaveLength(1);
+    expect(screen.queryByRole("option", { name: "Setup chat" })).toBeNull();
+    expect(screen.getAllByRole("option")[0]?.textContent).toBe("All Fleets");
     fireEvent.click(screen.getByRole("option", { name: retained }));
     await waitFor(() => expect(pushedParams().get("fleet")).toBe(retained));
   });
 
   it("offers no model filter, because the report no longer filters by model", () => {
     view();
-    fireEvent.click(screen.getByRole("button", {name: "More filters"}));
-    expect(screen.getByRole("button", {name: "Previous month"})).toBeTruthy();
     expect(screen.queryByRole("combobox", {name: "Model"})).toBeNull();
   });
 
   it("the spending view uses complete server groups and recorded names", () => {
-    view();
+    render(<BillingSpending report={billingReport()} modelNames={names} />);
     expect(within(screen.getByRole("list", { name: BY_FLEET_LABEL })).getByText("Payment alerts")).toBeTruthy();
     expect(within(screen.getByRole("list", { name: BY_MODEL_LABEL })).getByText(BILLING_MODEL_NAME)).toBeTruthy();
   });

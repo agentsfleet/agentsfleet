@@ -197,12 +197,10 @@ impl Connectors {
                 // llvm-cov scores the dead copy.
                 let provider = Provider::GitHub.id();
                 let claimed = installation_id.is_some();
-                tracing::warn!(
-                    provider,
-                    reason,
-                    claimed,
-                    event = "connector_installation_unresolved",
-                );
+                {
+                    let event = &"connector_installation_unresolved";
+                    tracing::warn!(provider, reason, claimed, event);
+                };
                 Err(error::installation_unresolved(reason))
             }
         }

@@ -271,12 +271,14 @@ impl Drain {
             let bound_ms = af_core::clock::saturating_millis(
                 deadline.saturating_duration_since(tokio::time::Instant::now()),
             );
-            tracing::info!(
-                in_flight = in_flight_at_close,
-                bound_ms,
-                event = EVENT_DRAIN_STARTED,
-                "no longer accepting; waiting for in-flight requests"
-            );
+            {
+                let (in_flight, event, message) = (
+                    &in_flight_at_close,
+                    &EVENT_DRAIN_STARTED,
+                    format_args!("no longer accepting; waiting for in-flight requests"),
+                );
+                tracing::info!(message, in_flight, bound_ms, event);
+            };
         }
         // A timeout around the wait, not inside it: the wait itself has no
         // failure mode, so the bound is the only thing that can end it early.
@@ -287,12 +289,14 @@ impl Drain {
             // Hoisted: the `log` bridge duplicates field expressions and
             // llvm-cov scores the dead copy.
             let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::warn!(
-                error_code,
-                in_flight = abandoned,
-                event = EVENT_DRAIN_TIMED_OUT,
-                "drain bound expired; in-flight requests will be cut"
-            );
+            {
+                let (in_flight, event, message) = (
+                    &abandoned,
+                    &EVENT_DRAIN_TIMED_OUT,
+                    format_args!("drain bound expired; in-flight requests will be cut"),
+                );
+                tracing::warn!(message, error_code, in_flight, event);
+            };
         }
         Settled {
             in_flight_at_close,

@@ -161,13 +161,10 @@ fn dropped(subject: &Subject, error: &Error) {
     let subject_kind = subject.kind();
     let error_code = error.code().as_str();
     let reason = error.reason();
-    tracing::warn!(
-        event = "tail_frame_dropped",
-        fleet_id,
-        subject_kind,
-        error_code,
-        reason
-    );
+    {
+        let event = &"tail_frame_dropped";
+        tracing::warn!(event, fleet_id, subject_kind, error_code, reason);
+    };
 }
 
 #[cfg(test)]

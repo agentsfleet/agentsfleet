@@ -34,12 +34,12 @@ impl BubblewrapEngine {
         {
             let Logged { error_code, reason } = error.logged();
             let event = EVENT_SWEEP_FAILED;
-            tracing::warn!(
-                error_code,
-                reason,
-                event,
-                "the egress sweep could not list what to remove"
-            );
+            {
+                let (message,) = (format_args!(
+                    "the egress sweep could not list what to remove"
+                ),);
+                tracing::warn!(message, error_code, reason, event);
+            };
         }
         let Ok(entries) = fs::read_dir(&self.config.state_dir) else {
             return;

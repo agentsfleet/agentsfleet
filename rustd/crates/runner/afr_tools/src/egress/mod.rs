@@ -83,13 +83,10 @@ fn read_expired(entry: &Entry, lease_id: &str) -> ToolOutput {
     let tool = entry.name();
     let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     let reason = READ_DEADLINE_EXCEEDED;
-    tracing::warn!(
-        event = "http_read_deadline_exceeded",
-        lease_id,
-        tool,
-        error_code,
-        reason
-    );
+    {
+        let event = &"http_read_deadline_exceeded";
+        tracing::warn!(event, lease_id, tool, error_code, reason);
+    };
     ToolOutput::failed(ToolErrorCode::UpstreamUnreachable, READ_DEADLINE_EXCEEDED)
 }
 

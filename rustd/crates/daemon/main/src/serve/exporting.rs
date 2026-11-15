@@ -156,11 +156,14 @@ pub(crate) fn attach_exports(config: &BootConfig) -> Result<Option<Prepared>, Bo
     let Some(otlp) = config.otlp() else {
         // The event name and reason field are load-bearing: a dashboard or an
         // alert matches on this line.
-        tracing::info!(
-            reason = "no endpoint configured",
-            event = "startup_otel_disabled",
-            "telemetry is not exporting"
-        );
+        {
+            let (reason, event, message) = (
+                &"no endpoint configured",
+                &"startup_otel_disabled",
+                format_args!("telemetry is not exporting"),
+            );
+            tracing::info!(message, reason, event);
+        };
         return Ok(None);
     };
 

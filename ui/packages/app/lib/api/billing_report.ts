@@ -8,6 +8,7 @@ import { BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK } from 
 const Count = z.number().int().nonnegative();
 // The server counts activities only where a group is a set of activities: the
 // period and each fleet. A day or a model row omits the count.
+const MAX_DAILY_BUCKETS = 31;
 const Totals = z.object({
   charged_nanos: nanosSchema,
   input_tokens: Count, output_tokens: Count, runtime_ms: Count,
@@ -19,7 +20,7 @@ const FleetBreakdown = Breakdown.extend({ models: z.array(z.string().min(1)), to
 const Daily = z.object({ day: z.iso.date(), totals: Totals });
 const Report = z.object({
   period: z.enum([BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK]), from_at: Instant, through_at: Instant,
-  totals: CountedTotals, daily: z.array(Daily),
+  totals: CountedTotals, daily: z.array(Daily).max(MAX_DAILY_BUCKETS),
   spending: z.object({ by_fleet: z.array(FleetBreakdown), by_model: z.array(Breakdown) }),
   filters: z.object({
     fleets: z.array(z.object({ id: z.string().nullable(), name: z.string().nullable() })),

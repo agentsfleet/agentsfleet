@@ -141,14 +141,15 @@ impl Gates {
             Err(fault) => {
                 let fleet = request.fleet_id.as_str();
                 let Logged { error_code, reason } = fault.logged();
-                tracing::warn!(
-                    error_code,
-                    event = %EVENT_LOOKUP_UNREADABLE,
-                    fleet_id = %fleet,
-                    agentsfleet_event_id = %request.event_id,
-                    reason,
-                    "whether this event already holds a gate could not be read"
-                );
+                {
+                    let (event, fleet_id, agentsfleet_event_id, message) = (
+                        &EVENT_LOOKUP_UNREADABLE,
+                        &fleet,
+                        &request.event_id,
+                        format_args!("whether this event already holds a gate could not be read"),
+                    );
+                    tracing::warn!(message, error_code, %event, %fleet_id, %agentsfleet_event_id, reason);
+                };
                 self.judge_first_encounter(&request, RefState::Unreadable, now)
                     .await
             }
@@ -170,14 +171,15 @@ impl Gates {
             }
             Recorded::Unreadable(Logged { error_code, reason }) => {
                 let fleet = request.fleet_id.as_str();
-                tracing::warn!(
-                    error_code,
-                    event = %EVENT_LOOKUP_UNREADABLE,
-                    fleet_id = %fleet,
-                    agentsfleet_event_id = %request.event_id,
-                    reason,
-                    "whether this event already holds a gate could not be read"
-                );
+                {
+                    let (event, fleet_id, agentsfleet_event_id, message) = (
+                        &EVENT_LOOKUP_UNREADABLE,
+                        &fleet,
+                        &request.event_id,
+                        format_args!("whether this event already holds a gate could not be read"),
+                    );
+                    tracing::warn!(message, error_code, %event, %fleet_id, %agentsfleet_event_id, reason);
+                };
                 self.judge_first_encounter(&request, RefState::Unreadable, now)
                     .await
             }
