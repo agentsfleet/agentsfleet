@@ -41,7 +41,7 @@ test.describe("a private setup chat stays with its creator", () => {
   test.skip(isProdApi, "signs up a fresh teammate — Clerk test mode is DEV only");
   test.setTimeout(FLOW_TIMEOUT_MS);
 
-  test("test_chat_subject_recovery_and_privacy", async ({ browser }) => {
+  test("test_chat_subject_recovery_and_privacy", {tag: "@post-deploy"}, async ({ browser }) => {
     const email = inviteeEmail();
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.admin);
     let invitee: Invitee | null = null;

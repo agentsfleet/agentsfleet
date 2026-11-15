@@ -80,7 +80,7 @@ test.describe("teammates join an account", () => {
     inviteeContext = null;
   });
 
-  test("test_members_page_owner_journey", async ({ page, browser }) => {
+  test("test_members_page_owner_journey", {tag: "@post-deploy"}, async ({ page, browser }) => {
     email = inviteeEmail();
     const invitee = await signUpInvitee(browser, email);
     inviteeContext = invitee.context;
@@ -140,7 +140,7 @@ test.describe("teammates join an account", () => {
     await expect(sendAgain).toHaveCount(status === EMAIL_STATUS.unconfigured ? 0 : 1);
   });
 
-  test("test_invitee_accept_journey", async ({ browser }) => {
+  test("test_invitee_accept_journey", {tag: "@post-deploy"}, async ({ browser }) => {
     email = inviteeEmail();
     const invitee = await signUpInvitee(browser, email);
     inviteeContext = invitee.context;
@@ -170,7 +170,7 @@ test.describe("teammates join an account", () => {
     await expect(page.getByTestId("invite-notice")).toHaveCount(0);
   });
 
-  test("test_member_sees_teammate_message_then_reply", async ({ page, browser }) => {
+  test("test_member_sees_teammate_message_then_reply", {tag: "@post-deploy"}, async ({ page, browser }) => {
     test.setTimeout(REPLY_MS + FLOW_TIMEOUT_MS);
     email = inviteeEmail();
     const invitee = await signUpInvitee(browser, email);

@@ -2,13 +2,35 @@
  * Negative-path helpers used across the acceptance specs.
  *
  * Each helper composes a `runFleetctl` call, asserts a non-zero exit,
- * and verifies stderr/stdout shape against the documented contract.
+ * and verifies stderr/stdout shape against the documented error shape.
  */
 
-import { runFleetctl } from "./cli.js";
 import type { RunResult } from "./cli.js";
+import assert from "node:assert/strict";
+import { Schema } from "effect";
+
+import { runFleetctl } from "./cli.js";
+import { trailingJson } from "./steer-envelope.ts";
 
 type Env = Readonly<Record<string, string>>;
+
+// `renderCliError` in src/lib/cli-error-render.ts writes a `--json` refusal to
+// stderr as `{error: {code, message, …}}`, whatever produced it.
+const RefusalSchema = Schema.Struct({
+  error: Schema.Struct({ code: Schema.String, message: Schema.String }),
+});
+
+/**
+ * The code a `--json` refusal carries: the daemon's `UZ-*` code for a server
+ * refusal, the client's own rejection code otherwise.
+ *
+ * Read from stderr because that is where every refusal goes in either format,
+ * so a refusal that leaked onto stdout fails here rather than passing.
+ */
+export function refusalCode(result: RunResult): string {
+  assert.notEqual(result.code, 0, `expected a refusal; stdout=${result.stdout} stderr=${result.stderr}`);
+  return Schema.decodeUnknownSync(RefusalSchema)(trailingJson(result.stderr)).error.code;
+}
 
 interface ErrorEnvelope {
   error?: { code?: string };
