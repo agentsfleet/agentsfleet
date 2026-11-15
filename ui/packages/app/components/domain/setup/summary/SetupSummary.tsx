@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { Definition, Review } from "@/lib/api/draft-types";
 import type { SetupNetworkChange } from "@/lib/setup-requirements";
 import { useId } from "react";
-import { Button, Switch, TooltipButton, cn } from "@agentsfleet/design-system";
+import { Button, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, Switch, TooltipButton, cn } from "@agentsfleet/design-system";
 import { GitBranchIcon, InfoIcon, KeyIcon } from "@phosphor-icons/react/ssr";
 import { setupRequirements } from "@/lib/setup-requirements";
 import { formatDollars } from "@/lib/money";
@@ -12,6 +12,8 @@ import { formatDollars } from "@/lib/money";
 type Props = {definition?: Definition; requirements?: Review["requirements"]; modelLabel?: string; sourceLabel?: string;
   ready?: boolean; scheduleRecovery?: ReactNode; disabled?: boolean;
   onNetworkChange?: (change: SetupNetworkChange) => void; onManage?: (kind: "repositories" | "credentials") => void};
+
+const PACKAGE_MANAGER_DOMAINS_HELP = "Allow standard package registries while public internet access is restricted.";
 
 export function SetupSummary({definition, requirements, modelLabel, sourceLabel, ready, scheduleRecovery, disabled, onNetworkChange, onManage}: Props) {
   const id = useId();
@@ -43,7 +45,7 @@ export function SetupSummary({definition, requirements, modelLabel, sourceLabel,
             onCheckedChange={checked => onNetworkChange?.({http_egress: checked ? "public" : "restricted"})} /></div>
         <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-md gap-y-xs sm:min-h-9"><div className="flex max-w-full shrink-0 flex-wrap items-center gap-xs">
           <label htmlFor={`${id}-packages`} className={cn("whitespace-nowrap", publicInternet && "text-text-dim")}>Enable package manager domains</label>
-          <TooltipButton tooltip="Allow standard package registries while public internet access is restricted." variant="ghost" size="icon-compact" aria-label="About package manager domains"><InfoIcon size={16} aria-hidden="true" /></TooltipButton>
+          <PackageManagerDomainsHelp />
         </div><Switch id={`${id}-packages`} className="ml-auto" checked={network?.package_manager_domains === true} disabled={disabled || publicInternet || !onNetworkChange}
           onCheckedChange={checked => onNetworkChange?.({package_manager_domains: checked})} /></div>
       </div> : <p className="text-muted-foreground">Network policy not reviewed</p>}
@@ -62,4 +64,13 @@ function SummarySection({title, action, children}: {title: string; action?: Reac
 }
 function Manage({kind, onClick, disabled}: {kind: string; onClick: () => void; disabled?: boolean}) {
   return <Button variant="ghost" size="compact" className="px-0 text-eyebrow text-text-dim" aria-label={`Manage ${kind}`} disabled={disabled} onClick={onClick}>Manage</Button>;
+}
+
+function PackageManagerDomainsHelp() {
+  return <Dialog><DialogTrigger asChild>
+    <TooltipButton tooltip={PACKAGE_MANAGER_DOMAINS_HELP} variant="ghost" size="icon-compact" aria-label="About package manager domains"><InfoIcon size={16} aria-hidden="true" /></TooltipButton>
+  </DialogTrigger><DialogContent><DialogHeader><DialogTitle>Package manager domains</DialogTitle><DialogDescription>{PACKAGE_MANAGER_DOMAINS_HELP}</DialogDescription></DialogHeader>
+    <p className="text-label leading-label text-muted-foreground">This option is disabled when Allow all is on. Its selection is kept when Allow all is switched off.</p>
+    <DialogFooter><DialogClose asChild><Button>Done</Button></DialogClose></DialogFooter>
+  </DialogContent></Dialog>;
 }

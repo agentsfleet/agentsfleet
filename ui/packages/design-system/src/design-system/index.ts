@@ -86,6 +86,7 @@ export { Skeleton, type SkeletonProps } from "./Skeleton";
 export { Spinner, type SpinnerProps, type SpinnerSize } from "./Spinner";
 export {
   Dialog,
+  DialogClose,
   DialogTrigger,
   DialogContent,
   DialogHeader,
