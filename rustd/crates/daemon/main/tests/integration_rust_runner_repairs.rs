@@ -234,8 +234,7 @@ async fn test_incident_repairer_ships_or_stops() {
     let read = transcript
         .asked()
         .last()
-        .map(|turn| turn.results.clone())
-        .unwrap_or_default();
+        .map_or_default(|turn| turn.results.clone());
     assert_eq!(
         (settled.status.as_str(), settled.answer.as_str()),
         ("processed", DIAGNOSIS_ONLY),

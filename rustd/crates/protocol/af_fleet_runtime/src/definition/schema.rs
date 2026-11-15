@@ -41,7 +41,7 @@ struct Shape {
 
 /// The published schema of a native Definition.
 #[derive(Debug, Clone, Copy)]
-pub enum DefinitionSchema {}
+pub struct DefinitionSchema(!);
 
 impl PartialSchema for DefinitionSchema {
     fn schema() -> RefOr<Schema> {

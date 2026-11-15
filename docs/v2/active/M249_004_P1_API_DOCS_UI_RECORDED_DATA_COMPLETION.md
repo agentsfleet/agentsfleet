@@ -67,6 +67,9 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | This spec and its eventual `done/` path | EDIT/MOVE | Record field decisions, tests and completion |
 | `docs/v2/evidence/M249_004_CLAUDE_HANDOFF.md` | EDIT | Correct stale ordering against parked M249_003 |
 | `docs/v2/evidence/{M249_VISUAL_BACKLOG,M249_VERIFICATION}.md`, `docs/v2/done/M249_004_SECTION_5_MEASURED_CONTEXT_BUDGET.md`, `docs/v2/parked/README.md` | EDIT | Links follow this spec's move to `active/` |
+| `rustd/rust-toolchain.toml`, `rustd/Cargo.toml`, `playbooks/operations/ci_rust_images/versions.env`, `README.md` | EDIT | Rust pin moves to 1.100.0, at the owner's direction |
+| `docker-compose.yml`, `compose.dev-infra.yml` | EDIT | Postgres 19rc2; development NATS, Mailpit and QStash catch up to the pins the test stack already uses |
+| Rust sources clippy 1.100 rewrites (`map_or_default`, redundant clones) | EDIT | Mechanical lint fixes the new toolchain requires |
 | `docs/v2/evidence/M249_004_SOURCE_INVENTORY.md` | ADD | §1 field inventory, request counts, timings and query plans |
 | `rustd/crates/daemon/afd_billing/src/report/{types.rs,queries.rs,sql/aggregates.sql}` | EDIT | Whole-period daily and fleet/model projections |
 | `rustd/crates/daemon/afd_api_wire/src/billing/mod.rs` | EDIT | Typed report fields |
@@ -335,6 +338,13 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 - **Parallel work (Nov 14, 2026):** "claude able to run this and fix in parallel while your UI fix". Section 6 separates independent work from interfaces awaiting product decisions.
 
 - **Latest owner boundary (Nov 14, 2026):** Finish the current work and retain Fleet/template/Plugin reasoning for a separate session. The phone, email and card examples do not expand this implementation scope.
+
+- **Toolchain folded in (Nov 15, 2026):** the owner directed the Rust, Postgres and development-image version moves into this PR rather than a separate worktree.
+- **Design sign-off (Nov 15, 2026):** the owner approved the one-request Usage design, the Plugin card ordinal and the secret access projection. API key authentication stays read-only, so Dimension 3.2 records its producer design without adding a write.
+
+> Owner (Indy): "also move rust to 1.1.100, since we have moved up, and ci images, and postgres in your local to 19.rc2 if there is one or later check bun as well and let me know. update the nats, mailpit, qstash too."
+
+> Owner (Indy): "this has to go in this PR agentsfleet-toolchain-bump not a separate worktree and approved."
 
 > Owner (Indy): "claude to works from your PR merged on the UI refresh you did with gaps delta on api needed on the backend and wire it into the ui you created (post your PR merge)."
 

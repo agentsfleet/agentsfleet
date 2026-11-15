@@ -189,8 +189,7 @@ fn array<'a>(value: &'a Value, key: &str) -> Vec<&'a Value> {
     value
         .get(key)
         .and_then(Value::as_array)
-        .map(|array| array.iter().collect())
-        .unwrap_or_default()
+        .map_or_default(|array| array.iter().collect())
 }
 fn text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value.get(key).and_then(Value::as_str)

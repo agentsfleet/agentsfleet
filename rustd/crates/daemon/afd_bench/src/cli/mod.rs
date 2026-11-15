@@ -88,7 +88,6 @@ pub fn show(report: &str) {
 }
 
 /// Turn a lane's outcome into the process's, printing what a person needs.
-#[must_use]
 pub fn exit(name: &str, outcome: Result<String>) -> ExitCode {
     match outcome {
         Ok(path) => {

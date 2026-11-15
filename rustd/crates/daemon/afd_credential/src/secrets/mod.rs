@@ -371,7 +371,7 @@ mod tests {
         for body in [json!("just-a-token"), json!(["a", "b"]), json!(42)] {
             let mut declared = Declared::default();
             declared
-                .route("cred".to_owned(), body.clone(), &Registry)
+                .route("cred".to_owned(), body, &Registry)
                 .expect_err("a non-object stored credential cannot be addressed");
         }
     }
