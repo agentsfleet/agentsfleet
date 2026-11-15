@@ -127,3 +127,31 @@ No coverage increase is claimed before measurement.
 
 The earlier live results and remaining hosted-access limits stay in the [runtime evidence](M249_POST_MERGE_RUNTIME_VALIDATION.md).
 Controlled browser data, local integration results, collection results and live acceptance remain separate.
+
+## Empty filtered periods and retained paging
+
+Astra confirmed a P2 when the selected fleet has no usage in a newly selected period.
+The URL retained its fleet identifier, but the returned choices omitted it and left the dropdown label blank.
+The control now retains that identifier without inventing a name or widening the report.
+
+An empty `fleet=` value now displays All Fleets, matching the request and chart.
+All Fleets remains the first choice; clearing a selected fleet keeps the period and cutoff.
+
+Both new regressions failed before their repairs and passed afterward.
+The final scoped suite passed 13 report-view tests and nine unchanged shared-pager tests.
+The final affected browser suite passed 20 cases in 46.5 seconds, with no failed, flaky or skipped case.
+
+Astra reviewed the four new desktop/phone, dark/light screenshots and the final source without further findings.
+The native standards reviewer also found no issue.
+The successful final production build measures Usage at 33.96 kB gzipped, below its unchanged 102.4 kB limit.
+
+GitHub's first rebased app coverage job passed all 4,575 assertions but failed at 99.98 percent statements.
+The old activity list had been the only caller of the shared pager's optional fixed-parameter argument.
+Removing that unused argument and its loops preserves the remaining EventsList caller and its existing nine tests.
+
+The first rebased daemon coverage shard passed 192 cases and failed its unsupported-event end-state check.
+Its log names `integration_runner_e2e/refusals.rs:32`.
+No assertion, deadline or retry was changed; the final native gate and new-head run must settle that result.
+
+Receipts include `empty-fleet-regression-before.log`, `blank-fleet-regression-before.log`, `empty-fleet-and-pager-final.log` and `final-empty-fleet-browser.log`.
+The final bundle checks are `final-empty-fleet-build.log` and `final-empty-fleet-size.log`.
