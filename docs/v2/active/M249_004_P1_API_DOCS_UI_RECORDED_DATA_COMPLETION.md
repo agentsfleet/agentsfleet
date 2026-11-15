@@ -54,7 +54,7 @@ Parked M249_003 §7 records the separate-session product discussion. It does not
 5. **What we build** — Daily usage and fleet/model projections, safe metadata and supported policy and event read fields with UI adapters.
 6. **What we do NOT build** — Capability plugins, real uploads, mention invocation, platform administration or a new secret authorization model.
 7. **Fit with existing features** — Use the existing settled ledger, effective policies, immutable revisions and native chat ownership.
-8. **Surface order** — Backend contract and producer tests first, then adapters and UI in the same follow-up PR.
+8. **Surface order** — Backend interface and producer tests first, then adapters and UI in the same follow-up PR.
 9. **Dashboard restraint** — Unknown data stays unavailable. A related link, configured capacity or secret reference cannot prove a recorded outcome.
 10. **Confused-user next step** — Show the specific unavailable fact; retain existing activity details, resource management and supported retry actions.
 
@@ -71,7 +71,7 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `docker-compose.yml`, `compose.dev-infra.yml` | EDIT | Postgres 19rc2; development NATS, Mailpit and QStash catch up to the pins the test stack already uses |
 | Rust sources clippy 1.100 rewrites (`map_or_default`, redundant clones) | EDIT | Mechanical lint fixes the new toolchain requires |
 | Measured Rust tracing emit sites listed in `docs/v2/evidence/M249_RUST_COVERAGE_VALIDATION.md`; workspace manifest commentary | EDIT | Borrowed field shorthand preserves emitted values while repairing Rust 1.100's duplicate log-copy coverage mapping |
-| `rustd/Cargo.toml`, `rustd/Cargo.lock`; `af_stream/src/h3/{client,server}.rs`; `afd_cron/src/verifier.rs` and the HMAC fixtures that sign with it | EDIT | Every crate to its latest release the dependency graph admits; `tokio-quiche` 0.23 drops `H3Event::NewFlow` and `jsonwebtoken` 12 refuses empty HMAC keys |
+| `rustd/Cargo.toml`, `rustd/Cargo.lock`; `af_stream/src/h3/{client,server}.rs`; `afd_cron/src/verifier.rs` and the Hash-based Message Authentication Code (HMAC) fixtures that sign with it | EDIT | Every crate to its latest release the dependency graph admits; `tokio-quiche` 0.23 drops `H3Event::NewFlow` and `jsonwebtoken` 12 refuses empty HMAC keys |
 | `package.json`, `cli/package.json`, `ui/packages/*/package.json`, `bun.lock`, `cli/bun.lock`, `patches/@assistant-ui%2F{react,store}@*.patch` | EDIT/MOVE | Every JavaScript package to its latest release; both local assistant-ui patches carried forward unchanged |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryView{,.test}.tsx` | EDIT | The Platform default card names its model only; "No provider key needed" misled beside "Platform default" (owner, Nov 15, 2026) |
 | `ui/packages/app/tests/e2e/acceptance/**`, `cli/test/acceptance/**` and their fixtures | EDIT/ADD | Stale Usage and Secrets specs, plus the ten user journeys §7 lists |
@@ -106,11 +106,11 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `ui/packages/app/components/domain/conversation/summary/{WorkContextSections.tsx,recorded-changes.ts}`, `setup/composer/ChatComposer.tsx` and usage components | EDIT | Confirmed work, Plugin provenance; preserve the UI refactor |
 | Identified key-authentication, event-publication producers | EDIT | Record missing facts at their actual owner |
 | Canonical schema files, if new durable facts are needed | EDIT | Fresh-development schema; no migration bridge |
-| `public/openapi.json` | GENERATE | Generated contract, never hand-edited |
+| `public/openapi.json` | GENERATE | Generated interface document, never hand-edited |
 | Existing tests for each changed producer, handler and component | EDIT | Complete data, refusals, races and unavailable states |
 | `docs/v2/evidence/M249_VERIFICATION.md`, `docs/DESIGN_SYSTEM.md`, `docs/architecture/{api_resources,web_app}.md` | EDIT | Update resolved data differences and retained unknowns |
 | `docs/v2/evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md` | EDIT | Preserve the deferred Fleet/template/Plugin questions without adding implementation scope |
-| Separate `agentsfleet/docs` branch and changelog | EDIT | Public contract and visible behaviour |
+| Separate `agentsfleet/docs` branch and changelog | EDIT | Public interface and visible behaviour |
 
 Resolve family entries to exact files during PLAN. Unidentified producers block their implementation Section.
 
@@ -129,7 +129,7 @@ Resolve family entries to exact files during PLAN. Unidentified producers block 
 | `make lint-all` | Yes | All changed languages and generated consumers |
 | `make test-unit-all` | Yes | Existing coverage floors, including TypeScript 100 percent |
 | `make test-integration-rustd` | Yes | Real ledger, account and workspace boundaries |
-| `make check-version` | Yes | Version and generated contract agreement |
+| `make check-version` | Yes | Version and generated interface agreement |
 | `make dry-app` and `make acceptance-codex` | Yes | Refreshed adapters and authenticated resource flows |
 | Existing bundle-size checks | Yes | Keep caps; any excess needs owner approval |
 | `gitleaks detect --redact --no-banner` | Yes | No credentials in source or evidence |
@@ -158,7 +158,7 @@ Section 3 uses scoped batch metadata reads and measures its call count; it must 
 
 ## Sections (implementation slices)
 
-### §1 — Reconcile source facts and merged contracts
+### §1 — Reconcile source facts and merged interfaces
 
 Inventory each field as available, adapter-only, backend projection, producer change or unresolved design. Record exact files and authorization before editing.
 
@@ -174,14 +174,14 @@ That workstream owns its implementation and verification; the description below 
 
 Extend the existing report with UTC daily buckets and each fleet's complete model set. Apply the same filters and snapshot cutoff as totals.
 
-Use current inclusive time bounds unless the existing contract changes explicitly. Do not silently drop the final timestamp when grouping UTC days.
+Use current inclusive time bounds unless the existing interface changes explicitly. Do not silently drop the final timestamp when grouping UTC days.
 
 Use exact integer monetary units. Fill empty days only within an authoritative complete result; distinguish empty results from unavailable data.
 
 Preserve setup charges, null/deleted fleet identities, historical cutoffs and unpriced usage. Never aggregate a loaded activity page into a complete chart.
 
 - **Dimension 2.1** — Daily totals reconcile → Test `daily_spend_reconciles_filtered_snapshot` (integration): midnight, month end, late settlement and filters sum to report totals.
-- **Dimension 2.2** — Paging cannot change aggregates → Test `daily_spend_ignores_activity_cursor` (integration): all cursors return identical daily and fleet/model facts.
+- **Dimension 2.2** — Removed with activity paging: the report has no cursor to vary (owner: "Delete both").
 - **Dimension 2.3** — Historical names survive deletion → Test `usage_keeps_deleted_fleet_models` (integration): deleted fleet charges retain ledger identity and all recorded models.
 
 ### §2a — One authoritative initial Usage request
@@ -189,7 +189,7 @@ Preserve setup charges, null/deleted fleet identities, historical cutoffs and un
 The owner requested one billing-report call instead of fetching model labels through `GET /v1/models` separately.
 Use the existing `GET /v1/tenants/me/billing/reports/current` route and `billing:read` authorization. Do not introduce another reporting endpoint.
 
-The report response is unchanged: totals, daily buckets, fleet/model breakdowns, filter choices and the first activity page. Billing carries no display labels.
+The report response carries totals, daily buckets, fleet and model breakdowns and fleet filter choices. It has no activity page and no model filter, and it carries no display labels.
 
 Model display names come from one shared label store (owner decision, Nov 15, 2026). The dashboard layout starts the platform catalogue read once per sign-in or refresh and hands its pending result to the client provider.
 Next retains the layout on client navigation, so the browser keeps the shared names for the session.
@@ -208,8 +208,8 @@ Common authenticated-shell reads remain separately measured; do not misreport th
 The current dashboard layout awaits workspace, balance and invite reads before returning its frame. A page-level Suspense boundary cannot bypass a blocked parent layout.
 Include this path in the cold-load profile. Stream confirmed optional blockers with explicit loading states; do not substitute false empty workspace or zero-balance data.
 
-The owner paused Charge details, More filters and Add credit in the visual follow-up. Keep the charge API and reusable loader/detail code intact.
-The current Usage boundary ignores legacy activity/disclosure parameters, so hidden details add no request or wait.
+The activity page and Charge details were deleted with their route, which now answers `410 Gone` (`UZ-REQ-003`). More filters and Add credit wait for their design.
+A filter change drops paging and disclosure keys the report does not read, so an old link adds no request or wait.
 Filter changes read one report; the shared label store is reused.
 Render the Usage frame before its data region resolves, using the existing loading indicator and Suspense.
 
@@ -270,7 +270,7 @@ Fix the specs this branch outdates: Usage columns and empty daily state, Secrets
 
 Add or extend these journeys, each driven the way a user drives it:
 
-1. A run's charge appears in Usage: fleet and model filters, charge details and model display names.
+1. A run's charge appears in Usage: the fleet filter, the by-fleet table and model display names.
 2. Add, replace and delete a secret; "Available to" names the fleet whose setup declares it.
 3. Describe a fleet in the browser chat, review the proposal and save it, with the authoring model's name shown.
 4. Sign-up, teammate invites, private setup chat and workspace creation run in the development acceptance lane.
@@ -304,7 +304,7 @@ Extend existing read responses where possible. Record exact wire names, null/abs
 
 Generate OpenAPI from Rust and update strict UI decoders together. Preserve existing problems, permissions and paging.
 
-New public endpoints require a demonstrated need and the repository's route inventory, documentation and contract tests.
+New public endpoints require a demonstrated need and the repository's route inventory, documentation and interface tests.
 
 ## Failure Modes
 
@@ -366,7 +366,7 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 
 - **Chosen shape:** Existing projections plus scoped producers; Usage first, then metadata, recorded work.
 - **Alternatives considered:** Browser aggregation cannot prove complete daily totals. A parallel reporting API duplicates authorization and paging ownership.
-- **Patch-vs-refactor verdict:** Extend existing domain reads. Refactor only a producer or projection whose present structure prevents a coherent contract.
+- **Patch-vs-refactor verdict:** Extend existing domain reads. Refactor only a producer or projection whose present structure prevents a coherent interface.
 
 ## Discovery (consult log)
 
@@ -417,8 +417,8 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 > Owner (Indy): "there is no primary vault"
 
 - **Usage controls (Nov 15, 2026):** the owner relayed Codex-informed Usage changes: a month/year Period selector, the Fleet default "All Fleets" covering setup and saved-fleet usage with each fleet after it, and no More filters, Charge details or Add credit. A later relay assigned those visual changes to Codex; this workstream keeps the backend, the API and the plumbing that keeps Usage working, and hands Codex the request and response delta.
-- **Reader's time zone (Nov 15, 2026), deferred:** I first cut Usage months on UTC without asking, and the owner objected. A zone-cut report (a required IANA `timezone`, `month=YYYY-MM`, local daily buckets) was then built and tested, compared with Fireworks' and Ona's billing APIs, which take a zone, and with OpenAI's and Anthropic's, which stay on UTC. The owner then deferred it: the report stays on UTC for now and the zone work is dropped from this PR. Fleet spend limits also floor their month at UTC (`afd_billing/src/limits/select_fleet_spend.sql:5`).
-- **Codex handoff (Nov 15, 2026):** the report contract is unchanged and stays on UTC. Codex's Period selector names a UTC month and asks for it with `period=month&through_at=<that month's last millisecond>`, as main's `previousBillingMonth` does today.
+- **Reader's time zone (Nov 15, 2026), deferred:** I first cut Usage months on UTC without asking, and the owner objected. A zone-cut report (a required Internet Assigned Numbers Authority (IANA) `timezone`, `month=YYYY-MM`, local daily buckets) was then built and tested, compared with Fireworks' and Ona's billing APIs, which take a zone, and with OpenAI's and Anthropic's, which stay on UTC. The owner then deferred it: the report stays on UTC for now and the zone work is dropped from this PR. Fleet spend limits also floor their month at UTC (`afd_billing/src/limits/select_fleet_spend.sql:5`).
+- **Codex handoff (Nov 15, 2026):** the report request and response are unchanged and stay on UTC. Codex's Period selector names a UTC month and asks for it with `period=month&through_at=<that month's last millisecond>`, as main's `previousBillingMonth` does today.
 - **Billing refactor (Nov 15, 2026):** the owner asked for a large refactor of the billing area on both sides, for clarity and performance.
 
 > Owner (Indy, relaying Codex): "The Period control: a month/year selector, such as “November 2026”. The filter dropdown’s default text changes exactly “All Fleets”. … The Removal of  “More filters”. The Removal of “Charge details” and “Add credit” from the Usage UI. Their design will be handled later."
@@ -465,6 +465,27 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 - **Settle-sized test batches (Nov 15, 2026):** `funds_plan` and `plans` settled up to 61,440 slices in one statement and hit the lane's 5 s `statement_timeout` under parallel load. They now settle at most 1,024 slices per run, as the relay does.
 
 > Owner (Indy): "Okay add that." and "Okay fix that, if there ia code clean in that area i want you to clean up duplicates, better way of writing the code sql so its performant, and scales code"
+
+- **Review findings (Nov 15, 2026):** gstack review (seven specialists plus an adversarial pass) and three standards reviewers reported. The owner chose every fix, including `410 Gone` for the removed charges route:
+  - The rollup tables drop their tenant foreign key, as the ledger does, so a settle for an erased payer no longer rolls back forever (`an_erased_payer_settles_into_the_rollup`). Both drop the unused `DELETE` grant, and tallies are named `*_count`.
+  - `aggregates.sql` groups fleet cells and run counts by `fleet_id` instead of a NULL-safe join, which forced a nested loop over every cell and fleet.
+  - `filters.models` is removed: the report refuses `model`, so it offers no model choices.
+  - `activity_count` now counts settled runs, on the period totals and fleet rows only; it is absent on model and day rows because one run spans several of each. It was a required count of billed work items on every group.
+  - `GET /v1/tenants/me/billing/activities/{activity_id}/charges` stays in the route table and answers `410 Gone` with `UZ-REQ-003`.
+  - Secrets: "Available to" is answered for custom secrets only, since a provider key reaches a run through the fleet's model; a failed access read leaves access unknown instead of failing the list; a JSON null credential name is skipped.
+  - Restored zeroizing of checkpoint data keys in `afr_supervisor` restore, which the `needless_collect` rewrite had dropped.
+  - Model labels page the catalogue at 100 per request; `UsageReportView` is removed; acceptance fleets use purpose names and are cleaned up by identifier.
+  - Deleted tests of removed features (24 hunks) are kept deleted, justified by the owner's removals; surviving behaviour keeps its tests.
+- **PR #845 merged into this branch (Nov 15, 2026):** Codex's visual follow-up was cut before the API cleanup. Its visuals stand; its activity loader, charge-detail helpers and the "Active model filter" banner are dropped, since the report refuses `model` and the banner would claim a filter the totals do not apply.
+
+> Owner (Indy), choosing every listed fix: "Drop tenant foreign key, Drop the DELETE grant, Rename counters to *_count, Hashable join in aggregates.sql", "Remove filters.models, Record activity_count's meaning, Skip null credential names, Answer 410 Gone, not 404", "Drop UsageReportView, Purpose names for test fleets, Add the missing tests, Stop label read blocking", and "Keep — justified" for the deleted tests.
+
+> Owner (Indy): "Yes these are valid findings i recommend you to fix this … in this PR" (provider-key access and the failed access read)
+
+- **Edge-case journeys (Nov 15, 2026):** the owner asked for acceptance that covers repeated saves, a schedule's reply and adding Slack. `setup-revision-journey` saves v1 then v2 on one fleet and proves a stale v1 session is refused (`409 UZ-AUTHOR-002`). `schedule-wake-journey` already waits for the fleet's reply text. `connect-app-journey` adds Slack: the local deployment configures no Slack app, so it asserts the unconfigured state and `503 UZ-CONN-001`; a configured deployment drives connect, consent and disconnect.
+- **Open follow-up, not in this PR:** the stale-save refusal reads "Finish or stop the current work before changing setup.", which misdescribes a save from an older revision. Its copy needs its own change.
+
+> Owner (Indy): "also ensure the make acceptance-local an dany other robust journey changes on edges cases like repeated save v1, v2, and setting up schedule and seeing if you received a message back, and adding slack and so on."
 
 > Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 
