@@ -3,7 +3,7 @@ import {expect, it, vi} from "vitest";
 import {renderToReadableStream} from "react-dom/server";
 import {UsageLayout} from "@/app/(dashboard)/settings/billing/components/UsageLayout";
 import {RouteLoading} from "@/components/layout/RouteLoading";
-import {UsageReportView} from "@/app/(dashboard)/settings/billing/components/UsageReportView";
+import {BillingReportView} from "@/app/(dashboard)/settings/billing/components/BillingReportView";
 import {BILLING_MODEL, billingReport} from "./helpers/billing-report";
 const {modelLabelsCached} = vi.hoisted(() => ({modelLabelsCached: vi.fn()}));
 vi.mock("@/lib/auth/credential", () => ({credential: async () => "fixture-token"}));
@@ -19,7 +19,7 @@ it("streams the Usage frame before slow shared labels without painting an incorr
     let release = (_labels: Record<string, string>) => {};
     modelLabelsCached.mockReturnValue(new Promise<Record<string, string>>(resolve => {release = resolve;}));
     let ready = false;
-    const pending = DashboardLayout({children: <UsageLayout><Suspense fallback={<RouteLoading />}><UsageReportView report={billingReport()} /></Suspense></UsageLayout>})
+    const pending = DashboardLayout({children: <UsageLayout><Suspense fallback={<RouteLoading />}><BillingReportView report={billingReport()} /></Suspense></UsageLayout>})
       .then(tree => {ready = true; return tree;});
     await new Promise(resolve => setTimeout(resolve, 0));
     const blockedByLabels = !ready;

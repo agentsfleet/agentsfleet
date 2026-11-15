@@ -6,12 +6,15 @@ import { modelLabelsOf, type ModelLabels } from "@/lib/model-labels";
 /** A catalogue this deep is a fault, and half a catalogue could label an identifier another page disputes. */
 const MAX_PAGES = 40;
 
+/** The server's page ceiling (`MAX_LIMIT` in af_core::paging), so the walk takes the fewest round trips. */
+const CATALOGUE_PAGE_LIMIT = 100;
+
 /** The complete catalogue, advanced models included, reduced to unambiguous labels. */
 async function readModelLabels(token: string): Promise<ModelLabels> {
   const models: LibraryModel[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < MAX_PAGES; page += 1) {
-    const library = await getModelLibrary(token, true, cursor);
+    const library = await getModelLibrary(token, true, cursor, CATALOGUE_PAGE_LIMIT);
     models.push(...library.models);
     cursor = library.next_cursor;
     if (cursor === null) return modelLabelsOf(models);

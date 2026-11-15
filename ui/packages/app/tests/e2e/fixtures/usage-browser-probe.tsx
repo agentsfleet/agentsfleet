@@ -4,7 +4,7 @@ import {PathnameContext, SearchParamsContext} from "next/dist/shared/lib/hooks-c
 import {TooltipProvider, UnavailableState} from "@agentsfleet/design-system";
 import {ShellFrame} from "@/components/layout/ShellFrame";
 import {UsageLayout} from "@/app/(dashboard)/settings/billing/components/UsageLayout";
-import {UsageReportView} from "@/app/(dashboard)/settings/billing/components/UsageReportView";
+import {BillingReportView} from "@/app/(dashboard)/settings/billing/components/BillingReportView";
 import {loadBillingReport} from "@/app/(dashboard)/settings/billing/lib/load-report";
 import {ModelLabelsProvider} from "@/components/domain/models/ModelLabels";
 import {modelLabelsOf} from "@/lib/model-labels";
@@ -35,7 +35,7 @@ export function UsageBrowserFixture() {
     <ShellFrame workspaces={workspaces}><ModelLabelsProvider labels={LABELS} pending={pendingLabels}><UsageLayout>
       <Suspense fallback={<RouteLoading />}>
       {loaded === null ? <output>Loading sample report…</output> : loaded.ok
-        ? <UsageReportView report={loaded.report} />
+        ? <BillingReportView report={loaded.report} />
         : <UnavailableState title="Billing report unavailable" description="The simulated report request failed." />}
       </Suspense>
     </UsageLayout></ModelLabelsProvider></ShellFrame>

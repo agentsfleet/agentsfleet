@@ -15,7 +15,7 @@ describe("the per-load label read", () => {
       .mockResolvedValueOnce(page([{ id: "known", display_name: "Known" }, { id: "split", display_name: "Alpha" }], "next"))
       .mockResolvedValueOnce(page([{ id: "split", display_name: "Beta" }], null));
     expect(await modelLabelsCached("token-one")).toEqual({ known: "Known" });
-    expect(getModelLibrary.mock.calls).toEqual([["token-one", true, null], ["token-one", true, "next"]]);
+    expect(getModelLibrary.mock.calls).toEqual([["token-one", true, null, 100], ["token-one", true, "next", 100]]);
   });
 
   it("propagates a failed read so the layout shows recorded identifiers", async () => {

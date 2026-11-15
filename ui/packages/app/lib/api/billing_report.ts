@@ -24,7 +24,6 @@ const Report = z.object({
   spending: z.object({ by_fleet: z.array(FleetBreakdown), by_model: z.array(Breakdown) }),
   filters: z.object({
     fleets: z.array(z.object({ id: z.string().nullable(), name: z.string().nullable() })),
-    models: z.array(z.string()),
   }),
 });
 

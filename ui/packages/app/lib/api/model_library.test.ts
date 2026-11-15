@@ -153,6 +153,11 @@ it("forwards opaque pagination cursors with the advanced filter unchanged", asyn
   await getModelLibrary("token", true, "cursor+/=");
   expect(requestMock).toHaveBeenCalledWith("/v1/models?advanced=true&starting_after=cursor%2B%2F%3D", { method: "GET" }, "token");
 });
+it("asks for the page size it is given, after the cursor", async () => {
+  requestMock.mockResolvedValue(LIBRARY_OK);
+  await getModelLibrary("token", true, "next", 100);
+  expect(requestMock).toHaveBeenCalledWith("/v1/models?advanced=true&starting_after=next&limit=100", { method: "GET" }, "token");
+});
 it("rejects incomplete catalogue pages at the API boundary", async () => {
   requestMock.mockResolvedValue({ models: [{ id: "malformed" }] });
   await expect(getModelLibrary("token")).rejects.toThrow();

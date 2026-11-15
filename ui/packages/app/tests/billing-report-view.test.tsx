@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { BillingReportView } from "@/app/(dashboard)/settings/billing/components/BillingReportView";
 import { BillingSpending } from "@/app/(dashboard)/settings/billing/components/BillingSpending";
+import { ModelLabelsProvider } from "@/components/domain/models/ModelLabels";
 import { BILLING_AT, BILLING_FLEET, BILLING_MODEL, BILLING_MODEL_NAME, billingReport, billingRowTotals, billingTotals } from "./helpers/billing-report";
 
 const { push, current } = vi.hoisted(() => ({ push: vi.fn(), current: { params: new URLSearchParams() } }));
@@ -15,7 +16,7 @@ const names: Record<string, string> = { [BILLING_MODEL]: BILLING_MODEL_NAME };
 const BY_FLEET_LABEL = "Charged by fleet or setup chat";
 const BY_MODEL_LABEL = "Charged by model";
 function view(report = billingReport()) {
-  return render(<BillingReportView report={report} modelNames={names} />, { wrapper: TooltipProvider });
+  return render(<ModelLabelsProvider labels={names}><BillingReportView report={report} /></ModelLabelsProvider>, { wrapper: TooltipProvider });
 }
 async function choose(label: string, value: string) {
   const trigger = screen.getByRole("combobox", { name: label });
@@ -103,7 +104,7 @@ describe("Billing report filters preserve period totals", () => {
   it("an empty successful report has an honest empty state", () => {
     view(billingReport({ totals: billingTotals({ charged_nanos: "0", activity_count: 0, line_count: 0 }),
       daily: [{day: "2026-10-25", totals: billingRowTotals({charged_nanos: "0"})}],
-      spending: { by_fleet: [], by_model: [] }, filters: { fleets: [], models: [] } }));
+      spending: { by_fleet: [], by_model: [] }, filters: { fleets: [] } }));
     expect(screen.getByText("No settled charges for this period.")).toBeTruthy();
     expect(screen.queryByText("Payment alerts")).toBeNull();
   });
@@ -121,7 +122,7 @@ describe("Billing report filters preserve period totals", () => {
 
   it("filter choices keep a deleted fleet selectable without duplicating private setup", async () => {
     const retained = "01924f4e-0000-7000-8000-00000000c4a9";
-    view(billingReport({ filters: { fleets: [{ id: null, name: null }, { id: retained, name: null }], models: [] } }));
+    view(billingReport({ filters: { fleets: [{ id: null, name: null }, { id: retained, name: null }] } }));
     const trigger = screen.getByRole("combobox", { name: "Fleet" });
     fireEvent.click(trigger);
     fireEvent.keyDown(trigger, { key: "Enter" });
@@ -152,6 +153,15 @@ describe("Billing report filters preserve period totals", () => {
     expect(screen.getByText("retained-fleet")).toBeTruthy();
     expect(screen.getByText(BILLING_MODEL)).toBeTruthy();
     expect(screen.getByText("Unknown model")).toBeTruthy();
+  });
+
+  it("names a model whose identifier is an object prototype key by that identifier", () => {
+    const prototypeKeys = ["constructor", "toString", "hasOwnProperty", "__proto__"];
+    render(<BillingSpending modelNames={{}} report={billingReport({ spending: {
+      by_fleet: [], by_model: prototypeKeys.map(key => ({ key, label: null, totals: billingRowTotals() })),
+    } })} />);
+    const group = screen.getByRole("list", { name: BY_MODEL_LABEL });
+    expect(within(group).getAllByRole("listitem").map(item => item.querySelector("span")?.textContent)).toEqual(prototypeKeys);
   });
 
   it("a zero-charge group keeps a zero bar and the other breakdown's empty state", () => {

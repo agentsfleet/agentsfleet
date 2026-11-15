@@ -3,6 +3,7 @@
 import type { BillingBreakdown, BillingReport } from "@/lib/api/billing_report";
 import { EMPTY_STATE_SURFACE, EmptyState, List, ListItem, Section, SectionLabel, UsageBar } from "@agentsfleet/design-system";
 import { formatBalance } from "@/lib/money";
+import { modelLabel } from "@/lib/model-labels";
 import { SETUP_LABEL } from "../lib/report-format";
 
 const BY_FLEET_LABEL = "Charged by fleet or setup chat";
@@ -17,7 +18,7 @@ export function BillingSpending({ report, modelNames }: Props) {
   }
   return <div className="space-y-xl pt-lg font-sans">
     <SpendingList title={BY_FLEET_LABEL} rows={report.spending.by_fleet} label={row => row.label ?? row.key ?? SETUP_LABEL} />
-    <SpendingList title={BY_MODEL_LABEL} rows={report.spending.by_model} label={row => row.key ? modelNames[row.key] ?? row.key : "Unknown model"} />
+    <SpendingList title={BY_MODEL_LABEL} rows={report.spending.by_model} label={row => row.key ? modelLabel(modelNames, row.key) : "Unknown model"} />
   </div>;
 }
 

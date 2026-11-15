@@ -10,9 +10,10 @@ import { BillingDailySpend } from "./BillingDailySpend";
 import { BillingFleetTable } from "./BillingFleetTable";
 import { RouteLoading } from "@/components/layout/RouteLoading";
 
-type Props = {report: BillingReport; modelNames: Record<string, string>};
+type Props = {report: BillingReport};
 
-export function BillingReportView({report, modelNames}: Props) {
+/** Renders from the report alone; only the fleet table waits for model labels, inside its own boundary. */
+export function BillingReportView({report}: Props) {
   return <div className="space-y-2xl">
     <BillingFilters report={report} />
     <DashboardPanel padding="none" className="grid divide-y divide-border summary:grid-cols-[2fr_1fr_1fr] summary:divide-x summary:divide-y-0" aria-label="Period totals">
@@ -24,7 +25,7 @@ export function BillingReportView({report, modelNames}: Props) {
     <section className="space-y-xl" aria-label="By fleet">
       <div className="flex flex-wrap items-center justify-between gap-md"><h2 className="text-label font-semibold">By fleet</h2>
         <span className="text-eyebrow text-text-dim"><TimeRange from={report.from_at} through={report.through_at} /></span></div>
-      <Suspense fallback={<RouteLoading />}><BillingFleetTable rows={report.spending.by_fleet} modelNames={modelNames} /></Suspense>
+      <Suspense fallback={<RouteLoading />}><BillingFleetTable rows={report.spending.by_fleet} /></Suspense>
     </section>
     <p className="text-eyebrow leading-eyebrow text-text-dim">Totals exclude pending or unavailable provider usage, which can arrive later. Billing history includes deleted fleets.</p>
   </div>;

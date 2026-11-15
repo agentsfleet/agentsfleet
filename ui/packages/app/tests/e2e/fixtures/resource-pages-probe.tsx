@@ -18,6 +18,7 @@ import { SecretsDescription } from "@/app/(dashboard)/w/[workspaceId]/secrets/co
 import IntegrationsConnectors from "@/app/(dashboard)/w/[workspaceId]/integrations/components/IntegrationsConnectors";
 import { CONNECT_APPS_COPY } from "@/app/(dashboard)/w/[workspaceId]/integrations/copy";
 import { BillingReportView } from "@/app/(dashboard)/settings/billing/components/BillingReportView";
+import { ModelLabelsProvider } from "@/components/domain/models/ModelLabels";
 import { BILLING_MODEL, BILLING_MODEL_NAME, billingReport } from "@/tests/helpers/billing-report";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 import {VisualLifecycleNotice} from "./visual-lifecycle-notice";
@@ -52,9 +53,9 @@ export function ResourcePagesFixture() {
 
 function ResourcePage({kind}: {kind: typeof PAGES[number]["key"]}) {
   if (kind === "new") return <EmptySetup />;
-  if (kind === "usage") return <UsageLayout>
-    <BillingReportView report={billingReport({from_at: "2026-11-01T00:00:00Z", through_at: "2026-11-12T11:44:00Z"})} modelNames={{[BILLING_MODEL]: BILLING_MODEL_NAME}} />
-  </UsageLayout>;
+  if (kind === "usage") return <ModelLabelsProvider labels={{[BILLING_MODEL]: BILLING_MODEL_NAME}}><UsageLayout>
+    <BillingReportView report={billingReport({from_at: "2026-11-01T00:00:00Z", through_at: "2026-11-12T11:44:00Z"})} />
+  </UsageLayout></ModelLabelsProvider>;
   if (kind === "plugin") return <PluginContent workspaceId={WORKSPACE} />;
   if (kind === "integrations") return <Resource title={CONNECT_APPS_COPY.title} description={CONNECT_APPS_COPY.description}><IntegrationsConnectors workspaceId={WORKSPACE} catalog={CONNECTORS} /></Resource>;
   return <Resource title="Secrets" description={<SecretsDescription />} actions={<AddSecretDialog workspaceId={WORKSPACE} />}>

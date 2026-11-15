@@ -35,7 +35,7 @@ export function billingReport(overrides: Partial<BillingReport> = {}): BillingRe
       totals: index === count - 1 ? row : billingRowTotals({charged_nanos: "0", input_tokens: 0, output_tokens: 0, runtime_ms: 0, line_count: 0})})),
     spending: { by_fleet: [{ key: BILLING_FLEET, label: "Payment alerts", models: [BILLING_MODEL], totals }],
       by_model: [{ key: BILLING_MODEL, label: null, totals: row }] },
-    filters: { fleets: [{ id: BILLING_FLEET, name: "Payment alerts" }], models: [BILLING_MODEL] }, ...overrides };
+    filters: { fleets: [{ id: BILLING_FLEET, name: "Payment alerts" }] }, ...overrides };
 }
 
 export const BILLING_CATALOGUE = {

@@ -32,7 +32,7 @@ function reportFor(count: number, selected: string | null) {
   }
   return billingReport({from_at: "2026-10-01T00:00:00Z", through_at: "2026-10-31T23:59:59.999Z", totals,
     daily: Array.from({length: DAYS}, (_, index) => ({day: `2026-10-${String(index + 1).padStart(2, "0")}`, totals: amounts(daily, activityCount, 1)})),
-    filters: {fleets: [{id: null, name: null}, ...choices.map(({id, name}) => ({id, name}))], models: [BILLING_MODEL]},
+    filters: {fleets: [{id: null, name: null}, ...choices.map(({id, name}) => ({id, name}))]},
     spending: {by_fleet: rows, by_model: [{key: BILLING_MODEL, label: null, totals}]},
   });
 }

@@ -37,7 +37,7 @@ describe("validated settled billing reads", () => {
     await expect(getBillingReport("fixture-token", {})).rejects.toThrow();
   });
 
-  it.each([null, { period: "year" }, { filters: { fleets: [], models: 3 } }])("rejects incomplete report shape %j", async body => {
+  it.each([null, { period: "year" }, { filters: { fleets: 3 } }])("rejects incomplete report shape %j", async body => {
     respond(body);
     await expect(getBillingReport("fixture-token", {})).rejects.toThrow();
   });
