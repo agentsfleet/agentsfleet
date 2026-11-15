@@ -20298,6 +20298,7 @@
           "requirements",
           "required_credentials_reasons",
           "head_revision_id",
+          "head_revision",
           "etag"
         ],
         "properties": {
@@ -20313,6 +20314,10 @@
           "etag": {
             "type": "string",
             "description": "Strong Plugin version."
+          },
+          "head_revision": {
+            "type": "string",
+            "description": "Decimal entry-local revision of that head, such as `3`."
           },
           "head_revision_id": {
             "type": "string",
@@ -20346,6 +20351,7 @@
           "requirements",
           "required_credentials_reasons",
           "head_revision_id",
+          "head_revision",
           "etag"
         ],
         "properties": {
@@ -20361,6 +20367,10 @@
           "etag": {
             "type": "string",
             "description": "Strong Plugin version."
+          },
+          "head_revision": {
+            "type": "string",
+            "description": "Decimal entry-local revision of that head, such as `3`."
           },
           "head_revision_id": {
             "type": "string",
@@ -21932,6 +21942,7 @@
                 "requirements",
                 "required_credentials_reasons",
                 "head_revision_id",
+                "head_revision",
                 "etag"
               ],
               "properties": {
@@ -21947,6 +21958,10 @@
                 "etag": {
                   "type": "string",
                   "description": "Strong Plugin version."
+                },
+                "head_revision": {
+                  "type": "string",
+                  "description": "Decimal entry-local revision of that head, such as `3`."
                 },
                 "head_revision_id": {
                   "type": "string",
@@ -29613,6 +29628,24 @@
           }
         }
       },
+      "SecretFleet": {
+        "type": "object",
+        "description": "One fleet a secret is available to.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The fleet's identifier."
+          },
+          "name": {
+            "type": "string",
+            "description": "Its current name."
+          }
+        }
+      },
       "SecretSummary": {
         "type": "object",
         "description": "One credential as the list shows it.",
@@ -29622,6 +29655,16 @@
           "kind"
         ],
         "properties": {
+          "available_to": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SecretFleet"
+            },
+            "description": "Runnable fleets in this workspace whose setup declares this secret: the\nhead revision, or an unfinished task's accepted revision. Present only\nwhen the caller may read fleets; an empty list means no fleet uses it."
+          },
           "base_url": {
             "type": [
               "string",

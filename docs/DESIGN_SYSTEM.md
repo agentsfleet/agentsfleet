@@ -397,9 +397,9 @@ Usage restores the period toolbar, shared metric strip, daily-spend section and 
 
 Preserve that section with its unavailable state when the report cannot be loaded.
 
-Secrets use Name, Type, hidden Value, Available to and Manage. The current API does not return per-secret fleet access. State that absence; never derive effective authorization from references or show an unbacked access checkbox.
+Secrets use Name, Type, hidden Value, Available to and Manage. Available to names the active fleets whose saved setup declares the secret, the list a run resolves, and says "No active fleets" when none do. When the API omits access because the caller cannot read fleets, say "Access details unavailable"; never derive access from references or show an unbacked access checkbox.
 
-Preserve named-field replacement for credentials that require several values. Plugins and Connected apps use grouped resource rows and shared dialogs. A plugin's actual version appears after inspection; list cards expose only its revision identifier.
+Preserve named-field replacement for credentials that require several values. Plugins and Connected apps use grouped resource rows and shared dialogs. Plugin list cards carry the head revision's number and identifier; inspection shows the selected revision's content.
 
 Compact phone tables keep action targets inside their visible scrolling surface. Session and key rows let identity text occupy the full width before the action. Server pagination and error recovery remain available where the API requires them.
 

@@ -245,7 +245,7 @@ The fresh full browser/authenticated lanes below decide current candidate readin
 |---|---|---|
 | Usage | Settled totals and full charge details; Daily spend explicitly unavailable | UTC daily buckets and complete per-fleet model facts |
 | API keys | Actual creation/revocation dates; no invented suffix or last-use time | Add safe suffix/last-used metadata if recorded |
-| Secrets | Hidden values; Replace/Delete; access details unavailable | Project existing access policy; a new access-control model needs separate design |
+| Secrets | Hidden values; Replace/Delete; Available to names fleets whose setup declares the secret (M249_004 §3.3) | Access comes from the revisions a lease reads; a caller without fleet read sees it unavailable |
 | Plugins | Published setup label; immutable revisions inspected in dialog | Return revision ordinal metadata where the API currently omits it |
 | Changes/Outputs | Only recorded writes and confirmed publication evidence | Recorded diff totals/publication receipts where absent; no made-up totals |
 | Composer | Actual selected model; neutral empty Send; supported preview uploads only | Runtime context-budget facts if already recorded; real uploads/mentions remain separate scope |

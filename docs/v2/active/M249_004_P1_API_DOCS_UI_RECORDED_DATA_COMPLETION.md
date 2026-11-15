@@ -72,14 +72,17 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | Rust sources clippy 1.100 rewrites (`map_or_default`, redundant clones) | EDIT | Mechanical lint fixes the new toolchain requires |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`; `af_stream/src/h3/{client,server}.rs`; `afd_cron/src/verifier.rs` and the HMAC fixtures that sign with it | EDIT | Every crate to its latest release the dependency graph admits; `tokio-quiche` 0.23 drops `H3Event::NewFlow` and `jsonwebtoken` 12 refuses empty HMAC keys |
 | `package.json`, `cli/package.json`, `ui/packages/*/package.json`, `bun.lock`, `cli/bun.lock`, `patches/@assistant-ui%2F{react,store}@*.patch` | EDIT/MOVE | Every JavaScript package to its latest release; both local assistant-ui patches carried forward unchanged |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryView{,.test}.tsx` | EDIT | The Platform default card names its model only; "No provider key needed" misled beside "Platform default" (owner, Nov 15, 2026) |
+| `ui/packages/app/tests/e2e/acceptance/**`, `cli/test/acceptance/**` and their fixtures | EDIT/ADD | Stale Usage and Secrets specs, plus the ten user journeys §7 lists |
 | `ui/packages/app/lib/model-labels{,-server}.ts`, `components/domain/models/ModelLabels.tsx`, `app/(dashboard)/layout.tsx` and their tests | ADD/EDIT | One shared model-label store, read once per sign-in or refresh, replacing Usage's own catalogue call |
+| `docs/architecture/billing_reporting.md` | EDIT | The one-request loader and the label store |
 | `docs/v2/evidence/M249_004_SOURCE_INVENTORY.md` | ADD | §1 field inventory, request counts, timings and query plans |
 | `rustd/crates/daemon/afd_billing/src/report/{types.rs,queries.rs,sql/aggregates.sql}` | EDIT | Whole-period daily and fleet/model projections |
 | `rustd/crates/daemon/afd_api_wire/src/billing/mod.rs` | EDIT | Typed report fields |
 | `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/billing_report/{mod.rs,view.rs}` | EDIT | Existing authorized report response |
 | `ui/packages/app/lib/api/billing_report.ts` | EDIT | Decode and validate complete projections |
 | `ui/packages/app/app/(dashboard)/settings/billing/components/{BillingReportView.tsx,BillingSpending.tsx}` | EDIT | Chart and complete fleet/model facts |
-| `ui/packages/app/app/(dashboard)/settings/billing/{page.tsx,loading.tsx,lib/load-report.ts,components/**}` and billing tests | EDIT | One report request, streamed data region and charge details loaded on intent |
+| `ui/packages/app/app/(dashboard)/settings/billing/{page.tsx,loading.tsx,lib/load-report.ts,components/**}` and billing tests | EDIT | Plumbing only: one report request, the streamed data region (`loading.tsx` gives way to the page's `Suspense`), and `UsageReportView`, which names models from the shared label store. The Usage components stay as main has them; Codex owns their visual changes |
 | `ui/packages/app/app/(dashboard)/layout.tsx` and shell read boundaries | REVIEW; EDIT only for confirmed blocking reads | First-load profiling must include parent layout reads, not only the report component |
 | `model.platform_models` metadata lookup and its existing read owner | PLAN before EDIT | Resolve only report model labels, with provider/model identity and no full-catalogue read |
 | `rustd/crates/daemon/afd_api_wire/src/tenant.rs` and `afd_api_tenant/src/handler/tenant/api_key.rs` | EDIT | Safe account-key metadata |
@@ -93,7 +96,7 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | Canonical schema files, if new durable facts are needed | EDIT | Fresh-development schema; no migration bridge |
 | `public/openapi.json` | GENERATE | Generated contract, never hand-edited |
 | Existing tests for each changed producer, handler and component | EDIT | Complete data, refusals, races and unavailable states |
-| `docs/v2/evidence/M249_VERIFICATION.md` and `docs/DESIGN_SYSTEM.md` | EDIT | Update resolved data differences and retained unknowns |
+| `docs/v2/evidence/M249_VERIFICATION.md`, `docs/DESIGN_SYSTEM.md`, `docs/architecture/{api_resources,web_app}.md` | EDIT | Update resolved data differences and retained unknowns |
 | `docs/v2/evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md` | EDIT | Preserve the deferred Fleet/template/Plugin questions without adding implementation scope |
 | Separate `agentsfleet/docs` branch and changelog | EDIT | Public contract and visible behaviour |
 
@@ -243,6 +246,32 @@ The remaining recorded-data and one-call Usage sections stay valid.
 
 > Owner: "I think you could move the Dimension 5, in the M249_004 to parked, since the rest of the spec is valid"
 
+### §7 — Acceptance covers the user journeys
+
+The owner asked that dashboard and CLI acceptance cover the product from the user's side, and chose to close every gap the coverage review found in this PR.
+
+Fix the specs this branch outdates: Usage columns and empty daily state, Secrets labels, and the design-coherence access cell.
+
+Add or extend these journeys, each driven the way a user drives it:
+
+1. A run's charge appears in Usage: fleet and model filters, charge details and model display names.
+2. Add, replace and delete a secret; "Available to" names the fleet whose setup declares it.
+3. Describe a fleet in the browser chat, review the proposal and save it, with the authoring model's name shown.
+4. Sign-up, teammate invites, private setup chat and workspace creation run in the development acceptance lane.
+5. Exhausted credit: the banner, the balance and refused runs.
+6. API keys from the CLI: create, use, revoke and refusal; the dashboard's masked ending matches the key.
+7. CLI schedules: create, update, sync and delete.
+8. CLI `usage show`: readable rows, paging and the fleet's charge row.
+9. Connect an app and disconnect it; the connection-failure page.
+10. Deny an approval; search a live fleet's memory.
+11. Save a fleet with a schedule; the scheduler's callback wakes it into its chat with a reply, and the user keeps chatting.
+12. Refine a saved fleet from the CLI: one improve-chat message, a review showing the new schedule, an explicit apply to the next setup revision, and the schedule listed.
+
+A journey that needs an external provider uses the repository's existing test double or live development credential; none weakens an assertion to pass.
+
+- **Dimension 7.1** — Stale specs match the shipped interface → Test `settings-billing`, `secrets-lifecycle`, `design-coherence` (acceptance): pass against the local stack.
+- **Dimension 7.2** — Every listed journey runs end to end → Test the specs named in the PR's acceptance table (acceptance): `make acceptance-local` passes both suites.
+
 ### §6 — Implementation boundaries
 
 The UI checkpoint merged in PR #844; no parallel UI worktree remains. This workstream starts from that merge and preserves its presentation, auth, shared progress, time utilities and domain-folder layout.
@@ -340,6 +369,8 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 
 - **Toolchain folded in (Nov 15, 2026):** the owner directed the Rust, Postgres and development-image version moves into this PR rather than a separate worktree.
 - **Model labels move to a shared store (Nov 15, 2026):** the owner chose one browser-held label store over a `model_labels` report field, so the billing API stays unchanged. Labels arrive in the first server render, so no visible swap; they load once per sign-in or refresh and stay for the session.
+- **Journeys 11 and 12 (Nov 15, 2026):** the owner asked whether a schedule added at setup wakes the fleet into its chat and keeps chatting, and whether a setup can be refined from the CLI; neither was covered, so both join §7.
+- **Acceptance scope (Nov 15, 2026):** the owner asked to "ensure your acceptance-local passes and the acceptance of e2e and cli are covered fully from an user experience use case perspecive", then chose "All 10 in this PR" for the coverage review's gaps (§7).
 - **Package updates (Nov 15, 2026):** every JavaScript package and every Rust crate moves to its latest admissible release in this PR. `libc` and `parking_lot` 0.13 stay behind because `tokio-quiche` 0.23.0 still caps `libc` below 0.2.190; `quick-xml` and `matchit` follow `object_store` 0.14.2 and `axum` 0.8.9, already the latest.
 - **Design sign-off (Nov 15, 2026):** the owner approved the one-request Usage design, the Plugin card ordinal and the secret access projection. API key authentication stays read-only, so Dimension 3.2 records its producer design without adding a write.
 
@@ -357,6 +388,10 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 
 > Owner (Indy): "I want all the rust crates to be updted in this PR"
 
+> Owner (Indy): "is there an end to end fleet setup to schedule added and save, adn fleet chat gets the scheudler callback and you process in the fleet chat that you go one? and you keep chatting. is there a way to refine the fleet setup in cli, is there an use case for that wheret its done"
+
+> Owner (Indy): "This the `No provider key needed` must be removed, since its misleading and you already say it as Platform default"
+
 > Owner (Indy): "claude to works from your PR merged on the UI refresh you did with gaps delta on api needed on the backend and wire it into the ui you created (post your PR merge)."
 
 > Owner (Indy): "I dont want any of the legacy backfill crap"
@@ -364,6 +399,25 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 > Owner (Indy): "i dont need a guarded cutover"
 
 > Owner (Indy): "there is no primary vault"
+
+- **Usage controls (Nov 15, 2026):** the owner relayed Codex-informed Usage changes: a month/year Period selector, the Fleet default "All Fleets" covering setup and saved-fleet usage with each fleet after it, and no More filters, Charge details or Add credit. A later relay assigned those visual changes to Codex; this workstream keeps the backend, the API and the plumbing that keeps Usage working, and hands Codex the request and response delta.
+- **Reader's time zone (Nov 15, 2026), deferred:** I first cut Usage months on UTC without asking, and the owner objected. A zone-cut report (a required IANA `timezone`, `month=YYYY-MM`, local daily buckets) was then built and tested, compared with Fireworks' and Ona's billing APIs, which take a zone, and with OpenAI's and Anthropic's, which stay on UTC. The owner then deferred it: the report stays on UTC for now and the zone work is dropped from this PR. Fleet spend limits also floor their month at UTC (`afd_billing/src/limits/select_fleet_spend.sql:5`).
+- **Codex handoff (Nov 15, 2026):** the report contract is unchanged and stays on UTC. Codex's Period selector names a UTC month and asks for it with `period=month&through_at=<that month's last millisecond>`, as main's `previousBillingMonth` does today.
+- **Billing refactor (Nov 15, 2026):** the owner asked for a large refactor of the billing area on both sides, for clarity and performance.
+
+> Owner (Indy, relaying Codex): "The Period control: a month/year selector, such as “November 2026”. The filter dropdown’s default text changes exactly “All Fleets”. … The Removal of  “More filters”. The Removal of “Charge details” and “Add credit” from the Usage UI. Their design will be handled later."
+
+> Owner (Indy): "I never agreed for utc"
+
+> Owner (Indy, relaying Codex): "Codex owns the Usage and Security visual changes. Please handle only the backend/API work in M249_004. … Do not reconstruct daily totals from paginated activities or merely relabel existing buckets. Keep the charge API available for its later UI design."
+
+> Owner (Indy): "I donot need your visual edits, so drop that full, donot save that stash or patch. Codex will be responsible for it."
+
+> Owner (Indy): "I think for now use UTC, no big change needed, and push the branch"
+
+> Owner (Indy): "no timezonee" … "indy needs to think more" … "so we test and fix this" … "later"
+
+> Owner (Indy): "in your PR ensure that you do a large refactor on the billing area and see how we can better it. You are free to unleash and embark on a large refactor in Rust side and the NExt js side onthe code to make it better performant too."
 
 ## Claude handoff
 
