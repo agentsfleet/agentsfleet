@@ -294,6 +294,54 @@ The final gate is rerun after the parent update; its measured outcome belongs in
 The earlier failed whole gate stays failed. The override permits draft review and establishes no passing integration result.
 Hosted merged-backend acceptance, complete parent baseline counts and the full review remain unverified or incomplete as described above.
 
+## Draft publication and frontend bundle repair
+
+[Draft PR #845](https://github.com/agentsfleet/agentsfleet/pull/845) targets Claude's `feat/m249-recorded-data-completion` branch at `ab4fe8937`.
+The complete gate on pushed `4e31295b8` exited 0 with integration explicitly overridden; every other criterion passed.
+Its receipt is `authorized-draft-pr-gate.log`.
+
+The gate's unit results were runner 1,731, daemon 172 and daemon libraries 3,680.
+App 4,691, website 133, design system 516 and CLI 2,335 passed; the CLI skipped 22 live cases.
+The full lint and version checks passed, including Claude's Clippy repair.
+
+Integration started after the Google mirror recovered.
+That attempt stopped at `integration_wall_ticks::a_second_lag_inside_a_tick_re_announces_when_the_tick_ends`: 342 passed and one failed; the exclusive suite was not reached.
+A clean full-lane retry produced the same result.
+
+Both local failures reported `the expected wall transition is prompt: Elapsed(())` at `afd_api/tests/support/wall_stream_fixture.rs:101`.
+No timeout or assertion changed.
+The separate receipts are `authorized-draft-integration-first.log` and `authorized-draft-integration-retry.log`.
+
+The same case [passed in GitHub's API coverage job](https://github.com/agentsfleet/agentsfleet/actions/runs/43706077035/job/132787368212) on this head at `11:01:40Z`.
+Its tenant-plane binary reported 445 passed and zero failed.
+This records a local timing failure alongside a successful CI run; the local retry still failed.
+
+CI's app bundle guard also found server-only Effect code in browser JavaScript.
+An isolated build of exact parent `ab4fe8937` reproduced the same guard failure; see `bundle-parent-build.log` and `bundle-parent-size.log`.
+The new UI code was not the source of that inherited import.
+
+The Secrets row imported `fleetAccessOf` from the transport module, which imports the server retry policy.
+The existing helper moved unchanged to the client-safe `secrets-types.ts`; its DTO imports are type-only.
+All API producers, calls and response fields remain intact.
+
+The repaired production build and unchanged server-module guard passed every route budget.
+The app lint target and all 4,691 app unit tests passed afterward.
+Two scoped independent static reviews reported no findings.
+
+| Gzipped JavaScript | Measured kB | Limit kB |
+|---|---:|---:|
+| Shared dashboard | 290.57 | 294.91 |
+| Usage incremental | 34.04 | 102.4 |
+| Security incremental | 41.26 | 102.4 |
+| Secrets incremental | 66.03 | 102.4 |
+
+Receipts: `secret-boundary-build.log`, `secret-boundary-size.log`, `secret-boundary-lint.log` and `secret-boundary-unit.log`.
+The guard and budgets were unchanged.
+These byte sizes supplement the earlier controlled browser timings; they are not live service measurements.
+
+The shared M249_004 spec stays `IN_PROGRESS`; this frontend follow-up does not complete its other sections or the owner's SQL review.
+The full formal review, complete isolated parent baseline and hosted merged-backend acceptance retain their recorded limits.
+
 ## Deployment and access blockers
 
 Development deployment [43669040645](https://github.com/agentsfleet/agentsfleet/actions/runs/43669040645) failed in `fly / deploy-fly`.
