@@ -277,6 +277,23 @@ All four package coverage gates reached 100 percent. The native prose diagnostic
 The final app production build passed. Its receipts are `final-package-coverage-retry.log`, `final-frontend-lint.log` and `final-production-build.log`.
 The CLI skips are not live acceptance; the blocked registry setup still leaves the new parent integration run unverified.
 
+## Authorized draft checkpoint
+
+The owner supplied parent `ab4fe8937`, which includes the requested Rust 1.100 Clippy repair.
+It also reverts the earlier aggregate optimization; those SQL timings are now marked historical in the source inventory.
+The parent was incorporated without changing the UI or its reporting API fields.
+
+The owner authorized the remaining draft-review exception:
+
+> "Authorize the documented override and open a draft PR"
+
+The question named the failed native checks, unverified parent baseline and incomplete full review.
+A branch-scoped `cmd.verify.integration` override records the configured Google mirror's upstream-read quota blocker.
+The final gate is rerun after the parent update; its measured outcome belongs in the PR's Session notes.
+
+The earlier failed whole gate stays failed. The override permits draft review and establishes no passing integration result.
+Hosted merged-backend acceptance, complete parent baseline counts and the full review remain unverified or incomplete as described above.
+
 ## Deployment and access blockers
 
 Development deployment [43669040645](https://github.com/agentsfleet/agentsfleet/actions/runs/43669040645) failed in `fly / deploy-fly`.
