@@ -38,7 +38,7 @@ async fn report_reads_bound_rollup_scans_to_tenant_and_period() {
     let f = Fixture::open(&database).await;
     let mut previous = 0;
     for size in SIZES {
-        grow(&f, size - previous).await;
+        grow_by(&f, size - previous).await;
         sqlx::query("ANALYZE billing.usage_daily, billing.runs_daily")
             .execute(&mut *f.admin.acquire().await.unwrap())
             .await
@@ -50,30 +50,30 @@ async fn report_reads_bound_rollup_scans_to_tenant_and_period() {
     database.cleanup().await;
 }
 
-/// Adds `growth` in-period runs for the tenant, sixteen times as many for the
+/// Adds `runs` in-period runs for the tenant, sixteen times as many for the
 /// other tenant, and wider usage rows elsewhere, all through the settle path.
-async fn grow(f: &Fixture, growth: usize) {
-    let mut runs: Vec<Line> = (0..growth)
+async fn grow_by(f: &Fixture, runs: usize) {
+    let mut lines: Vec<Line> = (0..runs)
         .map(|_| Line::runtime(&f.tenant, &fixture::id(), 1))
         .collect();
-    runs.extend((0..growth * FOREIGN_RUNS).map(|_| Line::runtime(&f.foreign, &fixture::id(), 1)));
+    lines.extend((0..runs * FOREIGN_RUNS).map(|_| Line::runtime(&f.foreign, &fixture::id(), 1)));
     // Long runs whose slices carry many fleet identifiers: many usage rows from
     // few settlements, which is all this proof needs of them. Each run holds
     // at most what one relay pass settles, never a month in one statement.
-    let foreign: Vec<Vec<Line>> = (0..growth * FOREIGN_USAGE)
+    let foreign: Vec<Vec<Line>> = (0..runs * FOREIGN_USAGE)
         .step_by(RUN_SLICES)
         .map(|from| {
-            let slices = RUN_SLICES.min(growth * FOREIGN_USAGE - from);
+            let slices = RUN_SLICES.min(runs * FOREIGN_USAGE - from);
             spread(&Line::runtime(&f.foreign, &fixture::id(), 1), slices)
         })
         .collect();
     let mut old = Line::runtime(&f.tenant, &fixture::id(), 1);
     old.at = fixture::BEFORE;
-    let old = spread(&old, growth * OLD_USAGE);
-    fixture::seed(&f.admin, &runs).await;
+    let old = spread(&old, runs * OLD_USAGE);
+    fixture::seed(&f.admin, &lines).await;
     fixture::seed(&f.admin, &foreign.concat()).await;
     fixture::seed(&f.admin, &old).await;
-    let works = runs
+    let works = lines
         .iter()
         .chain(foreign.iter().filter_map(|run| run.first()))
         .chain(old.first())
