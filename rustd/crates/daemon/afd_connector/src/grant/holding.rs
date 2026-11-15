@@ -205,12 +205,10 @@ impl Grants {
         // emitted on this path.
         let credential_removed = matches!(forgotten, Forgotten::Disconnected);
         let (workspace_id, provider) = (workspace.as_str(), provider.id());
-        tracing::info!(
-            workspace_id,
-            provider,
-            credential_removed,
-            event = "connector_disconnected",
-        );
+        {
+            let event = &"connector_disconnected";
+            tracing::info!(workspace_id, provider, credential_removed, event);
+        };
         Ok(forgotten)
     }
 }

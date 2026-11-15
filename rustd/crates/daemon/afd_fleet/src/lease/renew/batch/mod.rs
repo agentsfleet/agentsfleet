@@ -112,12 +112,17 @@ impl LeaseService {
             Err(fault) => {
                 let runner = runner_id.as_str();
                 let code = fault.code().as_str();
-                tracing::warn!(
-                    runner_id = runner,
-                    error_code = code,
-                    event = EVENT_FRAME_FAILED,
-                    "the renewal statement did not run; each lease renews on its own path"
-                );
+                {
+                    let (runner_id, error_code, event, message) = (
+                        &runner,
+                        &code,
+                        &EVENT_FRAME_FAILED,
+                        format_args!(
+                            "the renewal statement did not run; each lease renews on its own path"
+                        ),
+                    );
+                    tracing::warn!(message, runner_id, error_code, event);
+                };
                 HashMap::new()
             }
         };

@@ -134,13 +134,12 @@ impl LeaseRun<'_> {
             return Some(sandbox);
         };
         let error_code = code.as_str();
-        tracing::warn!(
-            error_code,
-            lease_id,
-            reason,
-            event,
-            "a held sandbox would not resume; the lease gets a fresh one"
-        );
+        {
+            let (message,) = (format_args!(
+                "a held sandbox would not resume; the lease gets a fresh one"
+            ),);
+            tracing::warn!(message, error_code, lease_id, reason, event);
+        };
         let fleet = key.fleet.clone();
         holds.discard(fleet, sandbox, Release::ThawFailed).await;
         None
@@ -178,12 +177,12 @@ impl LeaseRun<'_> {
         if let Err(failure) = sandbox.freeze().await {
             let error_code = failure.code().as_str();
             let event = EVENT_FREEZE_FAILED;
-            tracing::warn!(
-                error_code,
-                lease_id,
-                event,
-                "a sandbox would not freeze, so it is destroyed rather than held"
-            );
+            {
+                let (message,) = (format_args!(
+                    "a sandbox would not freeze, so it is destroyed rather than held"
+                ),);
+                tracing::warn!(message, error_code, lease_id, event);
+            };
             if durable {
                 super::recovery::capture_unavailable(ending);
             }
@@ -221,13 +220,12 @@ impl LeaseRun<'_> {
             Killed::Unsettled(failure) => {
                 let Logged { error_code, reason } = failure.logged();
                 let event = EVENT_KILL_UNSETTLED;
-                tracing::warn!(
-                    error_code,
-                    lease_id,
-                    reason,
-                    event,
-                    "a sandbox's processes were not proved gone; the report posts anyway"
-                );
+                {
+                    let (message,) = (format_args!(
+                        "a sandbox's processes were not proved gone; the report posts anyway"
+                    ),);
+                    tracing::warn!(message, error_code, lease_id, reason, event);
+                };
             }
         }
         Fate::Killed(sandbox)
@@ -259,12 +257,11 @@ impl LeaseRun<'_> {
             let code = failure.code().as_str();
             let lease_id = self.ids.lease.as_str();
             let event = EVENT_DESTROY_FAILED;
-            tracing::warn!(
-                error_code = code,
-                lease_id,
-                event,
-                "a sandbox did not tear down cleanly"
-            );
+            {
+                let (error_code, message) =
+                    (&code, format_args!("a sandbox did not tear down cleanly"));
+                tracing::warn!(message, error_code, lease_id, event);
+            };
         }
         destroyed
     }

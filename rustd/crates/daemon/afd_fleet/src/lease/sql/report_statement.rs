@@ -282,12 +282,13 @@ fn tokens_of(answer: &AnswerRow, lease_id: &Uuid7) -> RunTokens {
     }
     let lease_id = lease_id.as_str();
     let error_code = af_core::error_code::INTERNAL_DB_QUERY.as_str();
-    tracing::warn!(
-        error_code,
-        lease_id,
-        reason = "a token sum does not fit in a signed 64-bit count",
-        event = EVENT_RUN_TOKENS_UNREAD,
-        "a settled run's tokens could not be summed; its metrics record none"
-    );
+    {
+        let (reason, event, message) = (
+            &"a token sum does not fit in a signed 64-bit count",
+            &EVENT_RUN_TOKENS_UNREAD,
+            format_args!("a settled run's tokens could not be summed; its metrics record none"),
+        );
+        tracing::warn!(message, error_code, lease_id, reason, event);
+    };
     RunTokens::default()
 }

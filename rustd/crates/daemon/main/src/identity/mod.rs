@@ -197,12 +197,17 @@ where
             // Hoisted: the `log` bridge duplicates field expressions and
             // llvm-cov scores the dead copy.
             let code = af_core::error_code::AUTH_UNAVAILABLE.as_str();
-            tracing::error!(
-                error_code = code,
-                event = "identity_writeback_unavailable",
-                "no HTTP client for the identity provider — every new account's \
+            {
+                let (error_code, event, message) = (
+                    &code,
+                    &"identity_writeback_unavailable",
+                    format_args!(
+                        "no HTTP client for the identity provider — every new account's \
                  tenant will go unwritten and its next token will carry none"
-            );
+                    ),
+                );
+                tracing::error!(message, error_code, event);
+            };
             SignupWriteback::Unconfigured(NoWriteback)
         }
     }
@@ -230,12 +235,17 @@ where
             // Hoisted: the `log` bridge duplicates field expressions and
             // llvm-cov scores the dead copy.
             let code = af_core::error_code::AUTH_UNAVAILABLE.as_str();
-            tracing::error!(
-                error_code = code,
-                event = "identity_client_unavailable",
-                "no HTTP client for the identity provider — every tenant-plane \
+            {
+                let (error_code, event, message) = (
+                    &code,
+                    &"identity_client_unavailable",
+                    format_args!(
+                        "no HTTP client for the identity provider — every tenant-plane \
                  capability read will answer unavailable"
-            );
+                    ),
+                );
+                tracing::error!(message, error_code, event);
+            };
             Capabilities::Unconfigured(NoCapabilitySource)
         }
     }
@@ -259,12 +269,17 @@ where
         ))),
         Err(_unbuildable) => {
             let code = af_core::error_code::AUTH_UNAVAILABLE.as_str();
-            tracing::error!(
-                error_code = code,
-                event = "key_set_client_unavailable",
-                "no HTTP client for the key-set endpoint — every session token \
+            {
+                let (error_code, event, message) = (
+                    &code,
+                    &"key_set_client_unavailable",
+                    format_args!(
+                        "no HTTP client for the key-set endpoint — every session token \
                  will answer unavailable"
-            );
+                    ),
+                );
+                tracing::error!(message, error_code, event);
+            };
             Sessions::Unconfigured(NoVerifier)
         }
     }

@@ -70,6 +70,7 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `rustd/rust-toolchain.toml`, `rustd/Cargo.toml`, `playbooks/operations/ci_rust_images/versions.env`, `README.md` | EDIT | Rust pin moves to 1.100.0, at the owner's direction |
 | `docker-compose.yml`, `compose.dev-infra.yml` | EDIT | Postgres 19rc2; development NATS, Mailpit and QStash catch up to the pins the test stack already uses |
 | Rust sources clippy 1.100 rewrites (`map_or_default`, redundant clones) | EDIT | Mechanical lint fixes the new toolchain requires |
+| Measured Rust tracing emit sites listed in `docs/v2/evidence/M249_RUST_COVERAGE_VALIDATION.md`; workspace manifest commentary | EDIT | Borrowed field shorthand preserves emitted values while repairing Rust 1.100's duplicate log-copy coverage mapping |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`; `af_stream/src/h3/{client,server}.rs`; `afd_cron/src/verifier.rs` and the HMAC fixtures that sign with it | EDIT | Every crate to its latest release the dependency graph admits; `tokio-quiche` 0.23 drops `H3Event::NewFlow` and `jsonwebtoken` 12 refuses empty HMAC keys |
 | `package.json`, `cli/package.json`, `ui/packages/*/package.json`, `bun.lock`, `cli/bun.lock`, `patches/@assistant-ui%2F{react,store}@*.patch` | EDIT/MOVE | Every JavaScript package to its latest release; both local assistant-ui patches carried forward unchanged |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryView{,.test}.tsx` | EDIT | The Platform default card names its model only; "No provider key needed" misled beside "Platform default" (owner, Nov 15, 2026) |
@@ -496,5 +497,19 @@ The owner requested injected-data, 100-fleet, dropdown and performance evidence;
 The visual implementation and its frontend checks are complete in the stacked UI follow-up.
 Its inherited Secrets helper import now stays in the client-safe types module; the production bundle guard, all route budgets, app lint and 4,691 unit tests pass.
 Overall workstream closure remains active, with the local native timing failure and wider review/acceptance limits recorded in the evidence.
+
+The owner expanded this follow-up to repair the remaining Rust coverage failure:
+
+> "Move the test-integration coverage up, so we could merge"
+
+The measured failure is 106,183 of 109,225 lines covered, 97.2149 percent against the unchanged 98 percent floor.
+The standalone reproduction establishes false misses in tracing's alternate log expansion.
+The repair uses borrowed field shorthand, with the same event names, fields, formatting, levels and logging features.
+It changes no billing producer, query or response behavior.
+The first local instrumented run passed 7,178 tests but remained below the line floor at 97.3226 percent; the final six-shard CI result is still required.
+Exact source scope and results belong in the [Rust coverage evidence](../evidence/M249_RUST_COVERAGE_VALIDATION.md).
+
+The owner also announced a pending parent update removing the Usage activities collection, per-model/day activity counts, obsolete report parameters and the activity-charges route.
+Its UI deletion is removal only. The visual follow-up must integrate that pushed parent, adapt its decoder and controls, and retain one report request per period or fleet change.
 
 > Owner (Indy): "Yes i need you to optimize and provide performant load, especially when you see multiple calls for something"

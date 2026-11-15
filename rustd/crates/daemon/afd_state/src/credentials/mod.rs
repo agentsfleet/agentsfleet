@@ -77,15 +77,17 @@ impl Credentials {
                     error_code: cause_error_code,
                     reason,
                 } = failure.logged();
-                tracing::warn!(
-                    error_code = code,
-                    cause_error_code,
-                    class,
-                    reason,
-                    event = "credential_lookup_unavailable",
-                    "no connection for a credential lookup — answering unavailable, \
+                {
+                    let (error_code, event, message) = (
+                        &code,
+                        &"credential_lookup_unavailable",
+                        format_args!(
+                            "no connection for a credential lookup — answering unavailable, \
                  never unknown, so a caller is not told its credential is bad"
-                );
+                        ),
+                    );
+                    tracing::warn!(message, error_code, cause_error_code, class, reason, event);
+                };
             })
             // `inspect_err` observes, `map_err` maps: this error carries no source,
             // so stringifying into it would have dropped the chain (RULE ERR-RS).
@@ -98,13 +100,14 @@ impl Credentials {
             .inspect_err(|failure| {
                 let code = error_code::INTERNAL_DB_QUERY.as_str();
                 let reason = failure.to_string();
-                tracing::warn!(
-                    error_code = code,
-                    class,
-                    reason,
-                    event = "credential_lookup_failed",
-                    "credential lookup failed"
-                );
+                {
+                    let (error_code, event, message) = (
+                        &code,
+                        &"credential_lookup_failed",
+                        format_args!("credential lookup failed"),
+                    );
+                    tracing::warn!(message, error_code, class, reason, event);
+                };
             })
             // `inspect_err` observes, `map_err` maps: the cause reaches the log
             // and never the error VALUE, which carries no source (RULE ERR-RS).

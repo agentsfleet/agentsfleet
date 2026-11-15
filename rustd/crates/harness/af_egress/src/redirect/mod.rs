@@ -180,25 +180,31 @@ impl Drop for Chain {
             let reason = self.ending;
             let elapsed_ms = self.began.elapsed().as_millis();
             if self.ending == "completed" {
-                tracing::info!(
-                    event = "http_redirect_completed",
-                    hop_count,
-                    status,
-                    stripped_headers,
-                    reason,
-                    elapsed_ms
-                );
+                {
+                    let event = &"http_redirect_completed";
+                    tracing::info!(
+                        event,
+                        hop_count,
+                        status,
+                        stripped_headers,
+                        reason,
+                        elapsed_ms
+                    );
+                };
             } else {
                 let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                tracing::warn!(
-                    event = "http_redirect_failed",
-                    hop_count,
-                    status,
-                    stripped_headers,
-                    reason,
-                    elapsed_ms,
-                    error_code
-                );
+                {
+                    let event = &"http_redirect_failed";
+                    tracing::warn!(
+                        event,
+                        hop_count,
+                        status,
+                        stripped_headers,
+                        reason,
+                        elapsed_ms,
+                        error_code
+                    );
+                };
             }
         }
     }

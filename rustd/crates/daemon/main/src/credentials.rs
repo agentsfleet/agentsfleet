@@ -62,10 +62,15 @@ pub async fn resolve(
     client: reqwest::Client,
 ) -> Arc<Broker> {
     let Some(workspace) = admin_workspace else {
-        tracing::info!(
-            event = "credential_broker_static_only",
-            "no platform admin workspace is set; no on-demand credentials will be minted and no platform bag, the scheduler's `qstash` among them, can be read"
-        );
+        {
+            let (event, message) = (
+                &"credential_broker_static_only",
+                format_args!(
+                    "no platform admin workspace is set; no on-demand credentials will be minted and no platform bag, the scheduler's `qstash` among them, can be read"
+                ),
+            );
+            tracing::info!(message, event);
+        };
         return broker(Platform::empty(), client);
     };
     let platform = Platform::load(vault, workspace).await;

@@ -145,12 +145,13 @@ impl Leases {
         {
             let error_code = error.code().as_str();
             let reason = error.reason();
-            tracing::warn!(
-                event = EVENT_OUTBOUND_WAKE_LOST,
-                error_code,
-                reason,
-                "the answer waits for the next claim pass"
-            );
+            {
+                let (event, message) = (
+                    &EVENT_OUTBOUND_WAKE_LOST,
+                    format_args!("the answer waits for the next claim pass"),
+                );
+                tracing::warn!(message, event, error_code, reason);
+            };
         }
     }
 }

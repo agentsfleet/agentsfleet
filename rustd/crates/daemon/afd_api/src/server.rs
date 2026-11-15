@@ -85,11 +85,14 @@ pub fn connection_builder() -> auto::Builder<TokioExecutor> {
     // hyper's own default is ~400 KB and nothing announces that it changed, so
     // a bound this important is worth one line an operator can grep for when a
     // client starts getting 431s.
-    tracing::debug!(
-        max_request_header_bytes = MAX_REQUEST_HEADER_BYTES,
-        max_frame_bytes = MAX_FRAME_BYTES,
-        event = "http_connection_policy_set",
-        "connection policy set for both protocol versions"
-    );
+    {
+        let (max_request_header_bytes, max_frame_bytes, event, message) = (
+            &MAX_REQUEST_HEADER_BYTES,
+            &MAX_FRAME_BYTES,
+            &"http_connection_policy_set",
+            format_args!("connection policy set for both protocol versions"),
+        );
+        tracing::debug!(message, max_request_header_bytes, max_frame_bytes, event);
+    };
     builder
 }

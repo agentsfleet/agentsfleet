@@ -83,12 +83,10 @@ fn finished<E>(
         // Drain owns the exit status; a component's own failure is still reported with its cause.
         if let Err(error) = result {
             let Logged { error_code, reason } = error.logged();
-            tracing::warn!(
-                event = "runner_stream_component_stopped",
-                component,
-                error_code,
-                reason
-            );
+            {
+                let event = &"runner_stream_component_stopped";
+                tracing::warn!(event, component, error_code, reason);
+            };
         } else {
             tracing::info!(event = "runner_stream_component_stopped", component);
         }
@@ -104,13 +102,10 @@ fn finished<E>(
             },
         ),
     };
-    tracing::error!(
-        event = "runner_stream_component_failed",
-        error_code,
-        component,
-        outcome,
-        reason,
-    );
+    {
+        let event = &"runner_stream_component_failed";
+        tracing::error!(event, error_code, component, outcome, reason);
+    };
     failed.cancel();
 }
 

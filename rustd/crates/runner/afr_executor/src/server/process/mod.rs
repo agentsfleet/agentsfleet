@@ -131,11 +131,13 @@ impl ProcessRun {
         let output_abandoned = !drain(&mut output, &lines, process, unsent).await;
         if output_abandoned {
             let event = EVENT_OUTPUT_ABANDONED;
-            tracing::debug!(
-                event,
-                process_id = process,
-                "output still open past the drain's grace or its cap"
-            );
+            {
+                let (process_id, message) = (
+                    &process,
+                    format_args!("output still open past the drain's grace or its cap"),
+                );
+                tracing::debug!(message, event, process_id);
+            };
         }
         drop(tasks);
         let exited = ExitedParams {
@@ -244,12 +246,14 @@ impl Group {
     fn signal(&self, signal: Signal) {
         if let Err(errno) = kill_process_group(self.pid, signal) {
             let event = EVENT_SIGNAL_MISSED;
-            tracing::debug!(
-                event,
-                process_id = self.process,
-                reason = %errno,
-                "a signal found no process group"
-            );
+            {
+                let (process_id, reason, message) = (
+                    &self.process,
+                    &errno,
+                    format_args!("a signal found no process group"),
+                );
+                tracing::debug!(message, event, process_id, %reason);
+            };
         }
     }
 }
@@ -259,12 +263,13 @@ fn report(process: u64, ending: Ending) {
     if ending == Ending::Interrupted {
         let event = EVENT_PROCESS_FAILED;
         let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-        tracing::warn!(
-            event,
-            error_code,
-            process_id = process,
-            "how a process ended could not be learned"
-        );
+        {
+            let (process_id, message) = (
+                &process,
+                format_args!("how a process ended could not be learned"),
+            );
+            tracing::warn!(message, event, error_code, process_id);
+        };
     } else {
         let event = EVENT_PROCESS_COMPLETED;
         let (ending, code) = (ending.kind(), ending.code());

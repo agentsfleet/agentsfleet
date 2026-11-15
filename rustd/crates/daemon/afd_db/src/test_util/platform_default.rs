@@ -231,12 +231,15 @@ impl Drop for PlatformDefault {
             return;
         };
         let (error_code, reason) = left.line();
-        tracing::warn!(
-            error_code,
-            event = NOT_REMOVED,
-            reason,
-            "the platform default this run seeded could not be removed; reset the lane"
-        );
+        {
+            let (event, message) = (
+                &NOT_REMOVED,
+                format_args!(
+                    "the platform default this run seeded could not be removed; reset the lane"
+                ),
+            );
+            tracing::warn!(message, error_code, event, reason);
+        };
     }
 }
 

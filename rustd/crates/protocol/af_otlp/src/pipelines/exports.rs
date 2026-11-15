@@ -115,12 +115,13 @@ fn report_failures(outcomes: [(&'static str, Option<OTelSdkResult>); 4]) {
     for (signal, outcome) in outcomes {
         if let Some(Err(failure)) = outcome {
             let reason = failure.to_string();
-            tracing::warn!(
-                signal,
-                reason,
-                event = "telemetry_flush_failed",
-                "a signal could not be flushed before shutdown"
-            );
+            {
+                let (event, message) = (
+                    &"telemetry_flush_failed",
+                    format_args!("a signal could not be flushed before shutdown"),
+                );
+                tracing::warn!(message, signal, reason, event);
+            };
         }
     }
 }

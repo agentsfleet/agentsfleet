@@ -125,11 +125,14 @@ fn log_zero_hit(zero_hit: bool, fleet: &af_core::id::Uuid7) {
         // family that says a fleet's memory is not being reached.
         af_observability::producers::memory::search_found_nothing();
         let fleet_field = fleet.as_str();
-        tracing::debug!(
-            fleet_id = fleet_field,
-            event = EVENT_SEARCH_ZERO_HIT,
-            "a memory search matched nothing the fleet is holding"
-        );
+        {
+            let (fleet_id, event, message) = (
+                &fleet_field,
+                &EVENT_SEARCH_ZERO_HIT,
+                format_args!("a memory search matched nothing the fleet is holding"),
+            );
+            tracing::debug!(message, fleet_id, event);
+        };
     }
 }
 

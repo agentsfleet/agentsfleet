@@ -180,12 +180,16 @@ impl LeaseService {
         }
         let runner = runner_id.as_str();
         let leases = moved.len();
-        tracing::info!(
-            runner_id = runner,
-            leases,
-            event = EVENT_REPRICED,
-            "prices or ceilings moved under the renewal statement; the leases take the per-lease path"
-        );
+        {
+            let (runner_id, event, message) = (
+                &runner,
+                &EVENT_REPRICED,
+                format_args!(
+                    "prices or ceilings moved under the renewal statement; the leases take the per-lease path"
+                ),
+            );
+            tracing::info!(message, runner_id, leases, event);
+        };
         for entry in moved {
             self.leases.latest().forget(&entry.found.fleet_id).await;
             answers.insert(entry.found.id.clone(), Answer::PerLease);

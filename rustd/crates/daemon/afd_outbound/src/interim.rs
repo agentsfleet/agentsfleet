@@ -124,14 +124,17 @@ impl Interjector {
         let fleet_id = job.fleet_id.as_str();
         let agentsfleet_event_id = job.event_id.as_str();
         let bytes = job.answer.len();
-        tracing::info!(
-            fleet_id,
-            agentsfleet_event_id,
-            part,
-            delivered,
-            bytes,
-            event = EVENT_POSTED
-        );
+        {
+            let event = &EVENT_POSTED;
+            tracing::info!(
+                fleet_id,
+                agentsfleet_event_id,
+                part,
+                delivered,
+                bytes,
+                event
+            );
+        };
         delivered
     }
 }

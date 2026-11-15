@@ -217,14 +217,13 @@ impl Memories {
         }
         let (workspace_id, fleet_id) = (workspace.as_str(), fleet.as_str());
         let MemoryAccess { read, publish } = access;
-        tracing::info!(
-            workspace_id,
-            fleet_id,
-            read,
-            publish,
-            event = EVENT_ACCESS_CHANGED,
-            "a fleet's shared-memory grants changed"
-        );
+        {
+            let (event, message) = (
+                &EVENT_ACCESS_CHANGED,
+                format_args!("a fleet's shared-memory grants changed"),
+            );
+            tracing::info!(message, workspace_id, fleet_id, read, publish, event);
+        };
         Ok(access)
     }
 }

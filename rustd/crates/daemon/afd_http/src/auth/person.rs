@@ -285,10 +285,9 @@ fn refuse(code: ErrorCode, detail: &'static str, event: &'static str) -> Respons
     // scores the dead copy.
     let code_field = code.as_str();
     let request_id_field = request_id.as_str();
-    tracing::debug!(
-        error_code = code_field,
-        request_id = request_id_field,
-        event,
-    );
+    {
+        let (error_code, request_id) = (&code_field, &request_id_field);
+        tracing::debug!(error_code, request_id, event);
+    };
     ProblemResponse::new(code, detail, request_id).into_response()
 }

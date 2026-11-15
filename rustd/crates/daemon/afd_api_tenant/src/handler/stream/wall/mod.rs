@@ -241,12 +241,10 @@ async fn hello<D: Services>(services: &D, workspace: &Uuid7, carried: Vec<String
 fn counters_unread(workspace: &Uuid7, error: &afd_fleet_lifecycle::Error) {
     let workspace_id = workspace.as_str();
     let Logged { error_code, reason } = error.logged();
-    tracing::warn!(
-        workspace_id,
-        error_code,
-        reason,
-        event = EVENT_HELLO_COUNTERS_UNREAD
-    );
+    {
+        let event = &EVENT_HELLO_COUNTERS_UNREAD;
+        tracing::warn!(workspace_id, error_code, reason, event);
+    };
 }
 
 /// Re-authorize the caller, then align the attached set with the workspace's.

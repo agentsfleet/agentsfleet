@@ -127,13 +127,15 @@ impl Db {
         let max_connections = config.max_connections();
         let min_connections = config.min_connections();
         let acquire_timeout_ms = acquire_timeout.as_millis();
-        tracing::info!(
-            role = role_tag,
-            size = max_connections,
-            warm = min_connections,
-            acquire_timeout_ms,
-            event = "pool_initialized"
-        );
+        {
+            let (role, size, warm, event) = (
+                &role_tag,
+                &max_connections,
+                &min_connections,
+                &"pool_initialized",
+            );
+            tracing::info!(role, size, warm, acquire_timeout_ms, event);
+        };
         Ok(Self {
             role,
             pool,
@@ -232,20 +234,15 @@ impl Db {
         let role_tag = self.role.tag();
         let deadline_ms = deadline.as_millis();
         if held < target {
-            tracing::warn!(
-                role = role_tag,
-                warmed = held,
-                target,
-                deadline_ms,
-                event = "pool_warm_incomplete"
-            );
+            {
+                let (role, warmed, event) = (&role_tag, &held, &"pool_warm_incomplete");
+                tracing::warn!(role, warmed, target, deadline_ms, event);
+            };
         } else {
-            tracing::info!(
-                role = role_tag,
-                warmed = held,
-                deadline_ms,
-                event = "pool_warmed"
-            );
+            {
+                let (role, warmed, event) = (&role_tag, &held, &"pool_warmed");
+                tracing::info!(role, warmed, deadline_ms, event);
+            };
         }
         held
     }

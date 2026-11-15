@@ -133,12 +133,10 @@ impl MigrationLock {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
             let attempt = polls.load(Ordering::Relaxed);
             let retry_ms = policy.interval.as_millis();
-            tracing::warn!(
-                attempt,
-                max_attempts = policy.attempts,
-                retry_ms,
-                event = "migrate_lock_contended"
-            );
+            {
+                let (max_attempts, event) = (&policy.attempts, &"migrate_lock_contended");
+                tracing::warn!(attempt, max_attempts, retry_ms, event);
+            };
         })
         .await;
 
@@ -173,11 +171,10 @@ impl MigrationLock {
             .await;
         if let Err(error) = unlocked {
             let error_code = error_code::INTERNAL_DB_QUERY.as_str();
-            tracing::warn!(
-                error = %error,
-                error_code,
-                event = "migrate_lock_release_ignored_error"
-            );
+            {
+                let event = &"migrate_lock_release_ignored_error";
+                tracing::warn!(%error, error_code, event);
+            };
         }
     }
 }
@@ -200,12 +197,10 @@ async fn try_lock(connection: &mut PoolConnection<Postgres>) -> Result<(), Unhel
 fn exhausted(policy: RetryPolicy) -> Error {
     let waited_ms = policy.budget().as_millis();
     let error_code = error_code::STARTUP_MIGRATION_CHECK.as_str();
-    tracing::warn!(
-        attempts = policy.attempts,
-        waited_ms,
-        error_code,
-        event = "migrate_lock_exhausted"
-    );
+    {
+        let (attempts, event) = (&policy.attempts, &"migrate_lock_exhausted");
+        tracing::warn!(attempts, waited_ms, error_code, event);
+    };
     Error::new(ErrorKind::MigrationLockUnavailable {
         waited: policy.budget(),
     })

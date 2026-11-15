@@ -82,12 +82,15 @@ impl LeaseRun<'_> {
             let code = failure.code().as_str();
             let lease_id = self.ids.lease.as_str();
             let event = EVENT_RECORDS_FAILED;
-            tracing::warn!(
-                error_code = code,
-                lease_id,
-                event,
-                "the run's full tool records were not stored; the report still settles"
-            );
+            {
+                let (error_code, message) = (
+                    &code,
+                    format_args!(
+                        "the run's full tool records were not stored; the report still settles"
+                    ),
+                );
+                tracing::warn!(message, error_code, lease_id, event);
+            };
         }
     }
 }

@@ -288,16 +288,17 @@ async fn write_back<D: Services>(
     // registry has no narrower code for it, so that line carries its reason and
     // no code rather than one that sends on-call to the provider's reachability.
     let error_code = redelivered.then(|| error_code::AUTH_UNAVAILABLE.as_str());
-    tracing::warn!(
-        event = EVENT_WRITEBACK,
-        error_code,
-        tenant_id,
-        reason,
-        redelivered,
-        "the account exists but its tenant did not reach the identity provider; \
+    {
+        let (event, message) = (
+            &EVENT_WRITEBACK,
+            format_args!(
+                "the account exists but its tenant did not reach the identity provider; \
          the person's next token carries none until a redelivery or an operator \
          writes it"
-    );
+            ),
+        );
+        tracing::warn!(message, event, error_code, tenant_id, reason, redelivered);
+    };
     if redelivered {
         return Err(Refusal::coded(
             error_code::AUTH_UNAVAILABLE,

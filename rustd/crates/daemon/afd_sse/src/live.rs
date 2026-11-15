@@ -153,12 +153,10 @@ impl Live {
                 if attempt == 0 {
                     tracing::warn!(event = "sse_subscription_unavailable", error_code, reason);
                 } else {
-                    tracing::debug!(
-                        event = "sse_subscription_unavailable",
-                        attempt,
-                        error_code,
-                        reason
-                    );
+                    {
+                        let event = &"sse_subscription_unavailable";
+                        tracing::debug!(event, attempt, error_code, reason);
+                    };
                 }
                 if error.is_closed() {
                     Subscribed::Closed

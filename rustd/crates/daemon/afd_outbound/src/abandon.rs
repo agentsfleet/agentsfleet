@@ -57,14 +57,10 @@ impl Abandoned<'_> {
             reason,
             attempt_count,
         } = *self;
-        tracing::warn!(
-            error_code,
-            provider,
-            fleet_id,
-            reason,
-            attempt_count,
-            event = EVENT_ABANDONED
-        );
+        {
+            let event = &EVENT_ABANDONED;
+            tracing::warn!(error_code, provider, fleet_id, reason, attempt_count, event);
+        };
     }
 }
 

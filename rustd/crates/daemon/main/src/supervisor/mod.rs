@@ -132,12 +132,14 @@ impl Supervisor {
     {
         let started = Instant::now();
         let task_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
-        tracing::info!(
-            task_id,
-            task = name,
-            event = EVENT_STARTED,
-            "supervised task started"
-        );
+        {
+            let (task, event, message) = (
+                &name,
+                &EVENT_STARTED,
+                format_args!("supervised task started"),
+            );
+            tracing::info!(message, task_id, task, event);
+        };
         self.tasks.push(Supervised {
             task_id,
             name,
@@ -163,11 +165,14 @@ impl Supervisor {
     /// to sequence it after.
     pub async fn shutdown(self) -> ShutdownReport {
         let count = self.tasks.len();
-        tracing::info!(
-            tasks = count,
-            event = "supervised_tasks_cancelling",
-            "cancelling supervised tasks"
-        );
+        {
+            let (tasks, event, message) = (
+                &count,
+                &"supervised_tasks_cancelling",
+                format_args!("cancelling supervised tasks"),
+            );
+            tracing::info!(message, tasks, event);
+        };
         self.token.cancel();
 
         let mut report = ShutdownReport::default();
@@ -194,28 +199,37 @@ async fn settle(task: Supervised, report: &mut ShutdownReport) {
 
 fn completed(task_id: u64, name: &'static str, started: Instant, report: &mut ShutdownReport) {
     let duration_ms = started.elapsed().as_millis();
-    tracing::info!(
-        task_id,
-        task = name,
-        duration_ms,
-        event = EVENT_COMPLETED,
-        "supervised task completed"
-    );
+    {
+        let (task, event, message) = (
+            &name,
+            &EVENT_COMPLETED,
+            format_args!("supervised task completed"),
+        );
+        tracing::info!(message, task_id, task, duration_ms, event);
+    };
     report.joined.push(name);
 }
 
 fn panicked(task_id: u64, name: &'static str, started: Instant, report: &mut ShutdownReport) {
     let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     let duration_ms = started.elapsed().as_millis();
-    tracing::error!(
-        error_code,
-        task_id,
-        task = name,
-        duration_ms,
-        reason = "panicked",
-        event = EVENT_FAILED,
-        "supervised task panicked"
-    );
+    {
+        let (task, reason, event, message) = (
+            &name,
+            &"panicked",
+            &EVENT_FAILED,
+            format_args!("supervised task panicked"),
+        );
+        tracing::error!(
+            message,
+            error_code,
+            task_id,
+            task,
+            duration_ms,
+            reason,
+            event
+        );
+    };
     report.panicked.push(name);
 }
 
@@ -223,16 +237,26 @@ fn timed_out(task_id: u64, name: &'static str, started: Instant, report: &mut Sh
     let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     let timeout_ms = JOIN_TIMEOUT.as_millis();
     let duration_ms = started.elapsed().as_millis();
-    tracing::error!(
-        error_code,
-        task_id,
-        task = name,
-        timeout_ms,
-        duration_ms,
-        reason = "join_timeout",
-        event = EVENT_FAILED,
-        "supervised task did not stop when cancelled — it is not selecting over its cancellation token"
-    );
+    {
+        let (task, reason, event, message) = (
+            &name,
+            &"join_timeout",
+            &EVENT_FAILED,
+            format_args!(
+                "supervised task did not stop when cancelled — it is not selecting over its cancellation token"
+            ),
+        );
+        tracing::error!(
+            message,
+            error_code,
+            task_id,
+            task,
+            timeout_ms,
+            duration_ms,
+            reason,
+            event
+        );
+    };
     report.abandoned.push(name);
 }
 

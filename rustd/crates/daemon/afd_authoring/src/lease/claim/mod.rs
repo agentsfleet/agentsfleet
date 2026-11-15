@@ -92,11 +92,10 @@ impl Drafts {
                 if matches!(passed, Authorized::Locked) {
                     // Debug: under contention this fires on every poll of the walk.
                     let runner_id = runner.as_str();
-                    tracing::debug!(
-                        runner_id,
-                        event = EVENT_DRAFT_SKIPPED,
-                        MESSAGE_DRAFT_SKIPPED
-                    );
+                    {
+                        let event = &EVENT_DRAFT_SKIPPED;
+                        tracing::debug!(runner_id, event, MESSAGE_DRAFT_SKIPPED);
+                    };
                 }
                 return Ok(Placement::Skipped);
             }

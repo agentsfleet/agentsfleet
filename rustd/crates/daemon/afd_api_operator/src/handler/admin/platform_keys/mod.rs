@@ -107,12 +107,11 @@ pub(crate) async fn set<D: Services>(
             // llvm-cov scores the dead copy.
             let (actor_id, set_provider) = (identity.subject(), key.provider.as_str());
             let set_model = key.model.as_deref();
-            tracing::info!(
-                actor_id,
-                provider = set_provider,
-                model = set_model,
-                event = "admin_platform_default_set",
-            );
+            {
+                let (provider, model, event) =
+                    (&set_provider, &set_model, &"admin_platform_default_set");
+                tracing::info!(actor_id, provider, model, event);
+            };
             Json(PlatformKeySetResponse {
                 provider: Cow::Owned(provider),
                 model: Cow::Owned(model),
