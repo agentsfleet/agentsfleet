@@ -342,6 +342,38 @@ These byte sizes supplement the earlier controlled browser timings; they are not
 The shared M249_004 spec stays `IN_PROGRESS`; this frontend follow-up does not complete its other sections or the owner's SQL review.
 The full formal review, complete isolated parent baseline and hosted merged-backend acceptance retain their recorded limits.
 
+## Final browser follow-up
+
+The owner requested ready-for-review status and then authorized merging after CI is green and Greptile feedback is resolved.
+
+> "When all is green merge the PR."
+
+The exact parent app baseline completed: 4,674 tests across 491 files passed at `ab4fe8937`.
+The UI follow-up has 4,691 tests across 492 files, adding 17 cases.
+This closes the app baseline measurement; unmeasured wider parent lanes remain separate.
+
+CI's first full browser run on `65019fce7` recorded 129 passed, one failed and two flaky cases.
+The failed mobile save assertion matched both the confirmation heading and the footer; the desktop case also retried.
+The mobile reading-position case retried after a 5,134px jump.
+
+The save test now names its confirmation heading and verifies the v2 footer separately, while retaining the global absence check before confirmation.
+The reading test uses a real wheel gesture, waits for the reader's detached state and preserves its 20-frame, one-pixel limit.
+It also verifies that the incoming update arrived and the final position stayed unchanged.
+
+The original four affected cases passed locally, as did eight unchanged mobile repeats; no deterministic local failure is claimed.
+The revised four desktop/mobile cases passed, followed by the complete `CI=true E2E_PORT=3191 make dry-app` run.
+That run passed all 4,691 unit tests and 132 browser tests, with zero browser retries or flaky cases.
+
+The scoped standards review found no issue in either test repair.
+No product scroll implementation, test timeout, retry setting or position threshold changed.
+The development server's generated `next-env.d.ts` edits were removed before commit.
+
+Receipts: `dry-targeted-before-fix.log`, `scroll-before-fix-repeat.log`, `dry-targeted-after-fix.log`, `dry-app-after-fixes.log` and `bundle-parent-app-unit.log`.
+Greptile reviewed `65019fce7` at confidence 5/5 with no actionable findings; the final test-fix revision still requires its own CI and review result before merge.
+
+Companion docs [PR #248](https://github.com/agentsfleet/docs/pull/248) merged at `2026-11-15T11:28:09Z`, commit `d5a5e2fbc6c85ca7e1d262cd2fe1dc443930ba93`.
+The shared M249_004 spec remains active; merging this UI follow-up into Claude's branch does not close that workstream.
+
 ## Deployment and access blockers
 
 Development deployment [43669040645](https://github.com/agentsfleet/agentsfleet/actions/runs/43669040645) failed in `fly / deploy-fly`.
