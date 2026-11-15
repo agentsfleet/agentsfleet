@@ -185,8 +185,7 @@ fn list<'a>(record: &'a Value, key: &str) -> &'a [Value] {
     record
         .get(key)
         .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default()
+        .map_or_default(Vec::as_slice)
 }
 
 /// The manifest beside the lane's image names that image's digest and
