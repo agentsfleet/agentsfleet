@@ -646,8 +646,9 @@ sequenceDiagram
 
 ### Personal profile and browser sessions
 
-API Keys shows the signed-in person’s avatar, name and primary email above API keys and browser sessions.
-The identity card uses the existing neutral `useCurrentUser` facade. It contains no embedded profile widget or duplicate navigation button.
+Security contains API keys and browser sessions.
+The account avatar and menu use the neutral `useCurrentUser` facade to show the current image and identity, with email on hover.
+There is no repeated identity card, embedded profile widget or duplicate navigation button.
 
 Session controls consume app-owned types from `ui/packages/app/lib/auth/account-types.ts`.
 `account-client.ts` isolates provider hooks and native recent verification.

@@ -7,7 +7,7 @@ import {captureAccountState} from "./fixtures/account-visual";
 import { bootstrapTenant } from "./fixtures/bootstrap";
 
 const WIDTHS = [1480, 390, 320];
-const ACCOUNT_LABEL = "API Keys";
+const ACCOUNT_LABEL = "Security";
 const FIXTURE_TAG_BYTES = 4;
 const FIXTURE_PASSWORD_BYTES = 32;
 let accountUserId: string | null = null;
@@ -49,15 +49,14 @@ for (const width of WIDTHS) for (const theme of ["dark", "light"]) {
     await expectAccessible(page, "Account menu");
     await account.click();
     await expect(page).toHaveURL(/\/settings\/security/);
-    const identity = page.getByRole("region", {name: "Your account", exact: true});
-    await expect(identity.getByText("Signed in as", {exact: true})).toBeVisible();
+    await expect(page.getByRole("region", {name: "Your account", exact: true})).toHaveCount(0);
     await expect(page.getByRole("button", {name: "Profile and sign-in settings", exact: true})).toHaveCount(0);
     await expect(page.locator(".cl-userProfile-root")).toHaveCount(0);
     await captureAccountState(page, test.info(), "account-identity", width, theme);
     const sessions = page.getByRole("region", {name: "Active sessions", exact: true});
     await expect(sessions.getByText("This device", {exact: true})).toBeVisible();
-    await expect(page.getByRole("heading", {name: "API Keys", exact: true})).toBeVisible();
-    await expectAccessible(page, "API Keys");
+    await expect(page.getByRole("heading", {name: "Security", exact: true})).toBeVisible();
+    await expectAccessible(page, "Security");
     await captureAccountState(page, test.info(), "keys-and-sessions", width, theme);
     await expectNoPageOverflow(page);
 
@@ -65,7 +64,7 @@ for (const width of WIDTHS) for (const theme of ["dark", "light"]) {
     await opener.click();
     await page.getByRole("menuitem", {name: ACCOUNT_LABEL, exact: true}).click();
     await expect(page).toHaveURL(/\/settings\/security/);
-    await expect(identity.getByText("Signed in as", {exact: true})).toBeVisible();
+    await expect(page.getByText("Signed in as", {exact: true})).toHaveCount(0);
     await expect(sessions.getByText("This device", {exact: true})).toBeVisible();
     await page.reload();
     await expect(page).toHaveURL(/\/settings\/security(?:#.*)?$/);

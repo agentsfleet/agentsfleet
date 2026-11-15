@@ -1,6 +1,6 @@
 import React, { type ReactElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@agentsfleet/design-system";
 
 // The layout's reads each stand in for a network call; what is under test is
@@ -54,10 +54,12 @@ function ModelName({ id }: { id: string }) {
 }
 
 describe("dashboard layout model labels", () => {
+
   it("should hand every screen the server's labels in its first render", async () => {
     listWaitingInvitesCached.mockResolvedValue([]);
     modelLabelsCached.mockResolvedValue({ "gpt-x": "GPT X" });
-    render(await DashboardLayout({ children: <><ModelName id="gpt-x" /><ModelName id="retired-model" /></> }) as ReactElement);
+    const tree = await DashboardLayout({children: <><ModelName id="gpt-x" /><ModelName id="retired-model" /></>});
+    await act(async () => {render(tree);});
     expect(screen.getByText("GPT X")).toBeTruthy();
     expect(screen.getByText("retired-model")).toBeTruthy();
     expect(modelLabelsCached).toHaveBeenCalledExactlyOnceWith(TOKEN);
@@ -66,7 +68,8 @@ describe("dashboard layout model labels", () => {
   it("should show recorded identifiers when the label read fails", async () => {
     listWaitingInvitesCached.mockResolvedValue([]);
     modelLabelsCached.mockRejectedValue(new Error("catalogue down"));
-    render(await DashboardLayout({ children: <ModelName id="gpt-x" /> }) as ReactElement);
+    const tree = await DashboardLayout({children: <ModelName id="gpt-x" />});
+    await act(async () => {render(tree);});
     expect(screen.getByText("gpt-x")).toBeTruthy();
   });
 });

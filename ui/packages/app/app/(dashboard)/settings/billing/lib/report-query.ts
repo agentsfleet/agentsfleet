@@ -1,5 +1,4 @@
 import type { BillingReportOptions } from "@/lib/api/billing_report";
-import {previousReportingMonthEnd} from "@agentsfleet/design-system";
 import { BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH } from "@/lib/api/billing-report-values";
 
 export const BILLING_QUERY = { period: "period", fleet: "fleet", through: "through_at" } as const;
@@ -27,11 +26,10 @@ export function changedFilter(params: URLSearchParams, key: string, value: strin
   return next;
 }
 
-/** The API anchors a UTC calendar month to its inclusive reporting cutoff. */
-export function previousBillingMonth(params: URLSearchParams, from: string): URLSearchParams {
-  const cutoff = previousReportingMonthEnd(from);
+/** Selecting a named month keeps the other report filters. */
+export function selectedBillingMonth(params: URLSearchParams, through?: string): URLSearchParams {
   const next = changedFilter(params, BILLING_QUERY.period, BILLING_PERIOD_MONTH);
-  next.set(BILLING_QUERY.through, cutoff);
+  if (through) next.set(BILLING_QUERY.through, through);
   return next;
 }
 
