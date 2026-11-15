@@ -112,6 +112,16 @@ No acceptance collection result is presented as a completed run.
 Final repository and documentation gate receipts are recorded in the associated PR's Make section.
 The logs above use the `focused-unit`, `targeted-browser` and `revision-browser-retry` prefixes.
 
+The first complete local PR gate failed before completing its native test lanes.
+CMake was missing, QStash's package download lacked the injected trust chain, and evidence-only edits did not satisfy `docs.updated`.
+A subsequent infrastructure preflight exposed proxy interception of NATS's local health check.
+
+Task-local CMake, a trust bundle and a Compose environment override repaired those environment prerequisites.
+The corrected native infrastructure preflight passed with the repository's commands and health checks unchanged.
+
+The canonical authentication guide now documents Team's application identity.
+These corrections do not turn the earlier failed gate into a passing result.
+
 ## Deployment and access blockers
 
 Development deployment [43669040645](https://github.com/agentsfleet/agentsfleet/actions/runs/43669040645) failed in `fly / deploy-fly`.
@@ -137,7 +147,9 @@ Neither that local branch nor its patch was present here, and no remote branch c
 The original `/workspace/docs` checkout stayed clean and unchanged.
 
 This task recreated the recorded branch name in an isolated worktree from current docs main.
-Its 13-page update covers those same prepared page paths and the actual merged behavior.
+Its update covers those same 13 prepared page paths and the actual merged behavior.
+Review added a fourteenth page: the linked running guide still described existing schedule activity as coming soon.
+
 Preservation of the unavailable original patch remains **unverified**; no claim says its exact text was recovered.
 
 The companion update documents fleet-only saving, automatic navigation, local display clocks, daily Usage, safe suffixes, and retained account-owned Plugin APIs and commands.
