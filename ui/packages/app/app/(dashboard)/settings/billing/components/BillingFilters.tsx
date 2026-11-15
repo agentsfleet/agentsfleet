@@ -35,7 +35,7 @@ export function BillingFilters({ report }: Props) {
     && (!month?.through || Date.parse(month.through) !== Date.parse(report.through_at));
   if (captured) periodChoices.unshift({value: "partial-month", label: <><Time value={report.from_at} format="month" /> · through <Time value={report.through_at} format="date" /></>});
   const period = captured ? "partial-month" : report.period === BILLING_PERIOD_MONTH ? report.from_at.slice(0, 7) : report.period;
-  return <div className="space-y-md"><div className="relative flex flex-wrap items-center gap-xl [&>div:has([role=combobox])]:w-full sm:[&>div:has([role=combobox])]:w-auto" aria-busy={pending}>
+  return <div className="space-y-md"><div className="relative flex flex-wrap items-center gap-lg max-summary:gap-md [&>div:has([role=combobox])]:w-full summary:[&>div:has([role=combobox])]:w-auto" aria-busy={pending}>
     <Filter label="Period" value={period} disabled={pending}
       onOpenChange={open => {if (open) setCalendarNow(new Date());}}
       choices={[...periodChoices, {value: BILLING_PERIOD_WEEK, label: "Last 7 days"}, ...(report.period === BILLING_PERIOD_TODAY ? [{value: BILLING_PERIOD_TODAY, label: "Today"}] : [])]}
@@ -59,7 +59,7 @@ function Filter({ label, value, choices, onChange, disabled, onOpenChange }: {
   return <div className="flex min-w-0 items-center gap-md">
     <Label className="mb-0 block font-sans text-eyebrow font-normal leading-label text-muted-foreground">{label}</Label>
     <Select value={value} onValueChange={onChange} disabled={disabled} onOpenChange={onOpenChange}>
-      <SelectTrigger aria-label={label} className="ml-auto h-10 min-h-10 w-auto min-w-35 max-w-[65%] font-sans text-label font-normal sm:ml-0 sm:max-w-64 [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"><SelectValue /></SelectTrigger>
+      <SelectTrigger aria-label={label} className="ml-auto h-10 min-h-10 w-auto min-w-36 max-w-[65%] pr-xl font-sans text-label font-normal text-muted-foreground summary:ml-0 summary:max-w-64 pointer-coarse:min-w-36 [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"><SelectValue /></SelectTrigger>
       <SelectContent className="font-sans">{choices.map(choice => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}</SelectContent>
     </Select>
   </div>;

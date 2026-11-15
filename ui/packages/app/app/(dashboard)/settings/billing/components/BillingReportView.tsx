@@ -34,6 +34,6 @@ export function BillingReportView(props: Props) {
 
 function Metric({label, value, note, primary = false}: {label: string; value: string; note: ReactNode; primary?: boolean}) {
   return <div className="grid min-w-0 grid-cols-[1fr_auto] items-center gap-x-xl p-xl leading-label summary:block summary-medium:p-2xl"><p className="summary:mb-md text-eyebrow leading-label font-semibold text-muted-foreground">{label}</p>
-    <strong className={`col-start-2 row-span-2 row-start-1 break-words text-usage-total font-[750] leading-label tracking-usage-total summary:block summary:leading-usage-total ${primary ? "text-success" : "text-foreground"}`}>{value}</strong>
+    <strong className={`col-start-2 row-span-2 row-start-1 break-words text-usage-total font-[750] leading-label tracking-usage-total ${primary ? "text-success" : "text-foreground"}`}>{value}</strong>
     <p className="col-start-1 summary:mt-md text-eyebrow leading-label text-text-dim">{note}</p></div>;
 }
