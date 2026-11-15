@@ -1,6 +1,6 @@
-import {expect, type Page} from "@playwright/test";
+import {expect} from "@playwright/test";
 import {test} from "./fixtures/chat-probe";
-import {BILLING_CATALOGUE, BILLING_FLEET, BILLING_MODEL, BILLING_MODEL_NAME, billingReport, billingTotals} from "@/tests/helpers/billing-report";
+import {BILLING_FLEET, BILLING_MODEL, BILLING_MODEL_NAME, billingReport, billingTotals} from "@/tests/helpers/billing-report";
 import type {BillingReport} from "@/lib/api/billing_report";
 
 function reportFor(query: URLSearchParams): BillingReport {
@@ -17,14 +17,9 @@ function reportFor(query: URLSearchParams): BillingReport {
     activities: {items: [], total: daily.length, next_cursor: "another-page"}});
 }
 
-async function catalogue(page: Page) {
-  await page.route("**/backend/v1/models", route => route.fulfill({json: BILLING_CATALOGUE}));
-}
-
 test("Usage renders recorded daily bars and model sets while filters request complete reports", async ({page, chatProbe}, info) => {
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize(info.project.name === "chromium" ? {width: 1480, height: 1000} : {width: 390, height: 844});
-  await catalogue(page);
   await page.route("**/backend/v1/tenants/me/billing/reports/current?*", route => route.fulfill({json: reportFor(new URL(route.request().url()).searchParams)}));
   for (const theme of ["dark", "light"]) {
     await page.goto(`${chatProbe}?usage=1`);
@@ -50,7 +45,6 @@ test("Usage renders recorded daily bars and model sets while filters request com
 });
 
 test("Usage preserves exact large amounts and distinguishes zero from an unavailable report", async ({page, chatProbe}) => {
-  await catalogue(page);
   let mode = "large";
   await page.route("**/backend/v1/tenants/me/billing/reports/current?*", route => {
     if (mode === "unavailable") return route.fulfill({status: 403, json: {detail: "Fixture report refused", error_code: "UZ-AUTH-022"}});

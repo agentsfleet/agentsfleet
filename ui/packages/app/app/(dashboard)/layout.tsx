@@ -5,6 +5,9 @@ import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import type { WaitingInvite } from "@/lib/api/invites";
 import { listWaitingInvitesCached } from "@/lib/invites";
+import { ModelLabelsProvider } from "@/components/domain/models/ModelLabels";
+import { NO_MODEL_LABELS } from "@/lib/model-labels";
+import { modelLabelsCached } from "@/lib/model-labels-server";
 
 const NO_WAITING_INVITES: WaitingInvite[] = [];
 
@@ -28,6 +31,10 @@ function readShell(token: string) {
     // notice. Cached per request, so the Invites page shares this read; a
     // failure hides the notice, and that page reports its own.
     listWaitingInvitesCached(token).catch(() => NO_WAITING_INVITES),
+    // Model display names for every screen below, read once per sign-in or
+    // refresh: client navigation keeps this layout, and the browser keeps the
+    // labels with it. A failure leaves recorded identifiers on screen.
+    modelLabelsCached(token).catch(() => NO_MODEL_LABELS),
   ]);
 }
 
@@ -37,9 +44,9 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const token = await credential();
-  const [listResult, billing, waitingInvites] = token
+  const [listResult, billing, waitingInvites, modelLabels] = token
     ? await readShell(token)
-    : [{ items: [], total: 0 }, null, NO_WAITING_INVITES];
+    : [{ items: [], total: 0 }, null, NO_WAITING_INVITES, NO_MODEL_LABELS];
 
   // Shell controls derive the active workspace from `/w/<id>/…`; no
   // `activeWorkspaceId` prop or cookie owns navigation state. ShellFrame wraps
@@ -64,7 +71,7 @@ export default async function DashboardLayout({
         billing={billing}
         waitingInvites={waitingInvites}
       >
-        {children}
+        <ModelLabelsProvider labels={modelLabels}>{children}</ModelLabelsProvider>
       </ShellFrame>
     </TooltipProvider>
   );

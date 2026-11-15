@@ -3,24 +3,23 @@ import type { BillingDetail } from "./report-detail";
 import { BILLING_DETAIL_STATE } from "./report-detail";
 import type { BillingSearch } from "./report-query";
 import { getBillingReport, listBillingActivityCharges } from "@/lib/api/billing_report";
-import { getModelLibrary } from "@/lib/api/model_library";
 import { BILLING_QUERY, DETAIL_PAGE_SIZE, activityKey, detailTrail, first, reportOptions } from "./report-query";
 
-type Loaded = { ok: true; report: BillingReport; modelNames: Record<string, string>; selected: string; detail: BillingDetail; pageSize: number }
+type Loaded = { ok: true; report: BillingReport; selected: string; detail: BillingDetail; pageSize: number }
   | { ok: false };
 
-/** A catalogue outage preserves ledger identity; a report outage never becomes an empty ledger. */
+/**
+ * One report request; model names come from the dashboard's shared label
+ * store, not a catalogue read here. Charges are read only for an activity the
+ * URL opens. A report outage never becomes an empty ledger.
+ */
 export async function loadBillingReport(token: string, query: BillingSearch): Promise<Loaded> {
   const options = reportOptions(query);
   try {
-    // Fixed fan-out: one report and one optional catalogue read.
-    const [report, catalogue] = await Promise.all([
-      getBillingReport(token, options), getModelLibrary(token).catch(() => null),
-    ]);
-    const modelNames = Object.fromEntries(catalogue?.models.map(model => [model.id, model.display_name]) ?? []);
+    const report = await getBillingReport(token, options);
     const selected = report.activities.items.find(activity => activityKey(activity) === first(query[BILLING_QUERY.activity]));
     const detail = selected ? await loadDetails(token, report, selected, options, query) : { status: BILLING_DETAIL_STATE.closed } as const;
-    return { ok: true, report, modelNames, selected: selected ? activityKey(selected) : "", detail, pageSize: options.limit };
+    return { ok: true, report, selected: selected ? activityKey(selected) : "", detail, pageSize: options.limit };
   } catch {
     return { ok: false };
   }
