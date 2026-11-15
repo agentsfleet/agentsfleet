@@ -42,7 +42,7 @@ test.describe("a private fleet setup chat", () => {
   test.skip(isProdApi, "signs up a fresh teammate — Clerk test mode is DEV only");
   test.setTimeout(FLOW_TIMEOUT_MS);
 
-  test("test_private_draft_save_runtime_and_improve", async ({ page, browser }) => {
+  test("test_private_draft_save_runtime_and_improve", {tag: "@post-deploy"}, async ({ page, browser }) => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const name = `${NAME_PREFIX}${uniqueTag()}`;
     const drafts: string[] = [];

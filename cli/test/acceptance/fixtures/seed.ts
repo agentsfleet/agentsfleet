@@ -48,7 +48,7 @@ function fleetReadErrorIsRetryable(error: unknown): boolean {
   return error instanceof FleetNotFoundError;
 }
 
-async function waitForFleetActive(
+export async function waitForFleetActive(
   env: Readonly<Record<string, string>>,
   fleetId: string,
   deadline: number,
