@@ -28,14 +28,6 @@ export interface SecretFleet {
   name: string;
 }
 
-/** The recorded fleets, or `null` when access was not served or is not the served shape. */
-export function fleetAccessOf(secret: Secret): SecretFleet[] | null {
-  const served: unknown = secret.available_to;
-  if (!Array.isArray(served)) return null;
-  const fleets = served.filter((fleet): fleet is SecretFleet => typeof fleet?.id === "string" && typeof fleet?.name === "string" && fleet.name !== "");
-  return fleets.length === served.length ? fleets : null;
-}
-
 /**
  * A vault secret as the list projects it — a tagged union keyed by server
  * `kind`. The server decides what each secret *is* (by the stored `provider`
