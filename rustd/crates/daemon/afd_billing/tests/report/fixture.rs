@@ -67,7 +67,7 @@ impl Fixture {
         Self::open(&TestDatabase::shared()).await
     }
 
-    /// Two funded tenants: the rollup's foreign key needs each to exist.
+    /// Two funded tenants.
     pub(super) async fn open(database: &TestDatabase) -> Self {
         let admin = database.open(DbRole::Migrator, &[]).await;
         let api = database.open(DbRole::Api, &[]).await;

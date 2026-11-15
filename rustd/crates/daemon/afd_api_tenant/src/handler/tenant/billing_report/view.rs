@@ -74,14 +74,7 @@ fn groups(rows: &[store::Aggregate]) -> (wire::Spending<'_>, wire::Choices<'_>) 
                     });
                 }
             }
-            dimension::MODEL => {
-                if let Some(key) = &row.key {
-                    choices.models.push(Cow::Borrowed(key));
-                }
-                if row.line_count > 0 {
-                    spending.by_model.push(bucket);
-                }
-            }
+            dimension::MODEL if row.line_count > 0 => spending.by_model.push(bucket),
             _ => {}
         }
     }
@@ -91,7 +84,6 @@ fn groups(rows: &[store::Aggregate]) -> (wire::Spending<'_>, wire::Choices<'_>) 
 
 fn sort_groups(spending: &mut wire::Spending<'_>, choices: &mut wire::Choices<'_>) {
     choices.fleets.sort_by(|left, right| left.id.cmp(&right.id));
-    choices.models.sort();
     spending
         .by_fleet
         .sort_by(|left, right| spending_order(&left.group, &right.group));

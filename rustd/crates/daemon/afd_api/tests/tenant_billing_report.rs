@@ -99,7 +99,17 @@ async fn a_model_filter_is_refused_before_any_datastore_read() {
 }
 
 #[tokio::test]
-async fn the_activity_charges_route_is_gone() {
+async fn the_activity_charges_route_answers_gone() {
     let response = read(BILLING_READ, ACTIVITY_CHARGES, Some(TENANT_KEY)).await;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(response.status(), StatusCode::GONE);
+    let problem = harness::json_body(response).await;
+    assert_eq!(
+        harness::error_code(&problem),
+        Some(error_code::ENDPOINT_REMOVED.as_str()),
+        "{problem}"
+    );
+    assert_eq!(
+        harness::text(&problem, "detail"),
+        Some(afd_api::handler::tenant::DETAIL_CHARGES_REMOVED)
+    );
 }

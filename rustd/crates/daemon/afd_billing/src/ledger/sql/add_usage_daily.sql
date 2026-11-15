@@ -2,8 +2,8 @@
 -- work type, fleet and model rows. Rows are written in key order, so two
 -- settlements touching the same rows take their locks in the same order.
 INSERT INTO billing.usage_daily AS d
-    (tenant_id, day, work_type, fleet_id, model, fleet_name, charged_nanos, input_tokens,
-     output_tokens, runtime_ms, line_count, unpriced_tokens, created_at, updated_at)
+    (tenant_id, day, work_type, fleet_id, model, fleet_name, charged_nanos, input_token_count,
+     output_token_count, runtime_ms, line_count, unpriced_token_count, created_at, updated_at)
 SELECT line.tenant_id, (line.created_at AT TIME ZONE 'UTC')::date, $1, line.fleet_id, line.model,
        MAX(line.fleet_name), SUM(line.charged), SUM(line.input), SUM(line.output),
        SUM(line.runtime_ms), COUNT(*), SUM(line.unpriced), now(), now()
@@ -15,10 +15,10 @@ GROUP BY line.tenant_id, (line.created_at AT TIME ZONE 'UTC')::date, line.fleet_
 ORDER BY line.tenant_id, (line.created_at AT TIME ZONE 'UTC')::date, line.fleet_id, line.model
 ON CONFLICT ON CONSTRAINT uq_usage_daily_tenant_id_day_work_type_fleet_id_model DO UPDATE
 SET charged_nanos = d.charged_nanos + EXCLUDED.charged_nanos,
-    input_tokens = d.input_tokens + EXCLUDED.input_tokens,
-    output_tokens = d.output_tokens + EXCLUDED.output_tokens,
+    input_token_count = d.input_token_count + EXCLUDED.input_token_count,
+    output_token_count = d.output_token_count + EXCLUDED.output_token_count,
     runtime_ms = d.runtime_ms + EXCLUDED.runtime_ms,
     line_count = d.line_count + EXCLUDED.line_count,
-    unpriced_tokens = d.unpriced_tokens + EXCLUDED.unpriced_tokens,
+    unpriced_token_count = d.unpriced_token_count + EXCLUDED.unpriced_token_count,
     fleet_name = EXCLUDED.fleet_name,
     updated_at = EXCLUDED.updated_at

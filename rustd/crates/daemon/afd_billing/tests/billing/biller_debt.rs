@@ -315,3 +315,45 @@ async fn parallel_runs_overdraw_by_at_most_a_slice_each_then_stop() {
     }
     lane.cleanup().await;
 }
+
+/// Settlements racing past zero report the crossing once: the debits queue on
+/// the wallet row, so exactly one sees a funded balance become exhausted.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn racing_settlements_across_zero_report_exhaustion_once() {
+    const RACERS: usize = 6;
+    let lane = Lane::create().await;
+    lane.wallet(LINE.as_i64() * 3, None, Timestamp::now()).await;
+    let payer = Account {
+        tenant: lane.tenant.clone(),
+        workspace: lane.workspace.clone(),
+    };
+    let (analytics, recorded) = Analytics::recording();
+    let biller = std::sync::Arc::new(Observed::new(ledger(&lane), analytics));
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(RACERS));
+    let mut racing = tokio::task::JoinSet::new();
+    for _ in 0..RACERS {
+        let work = WorkKey::FleetLease(mint_id());
+        let settlement = settlement(&lane, &payer, &work, vec![rated(0)]);
+        let (biller, barrier) = (
+            std::sync::Arc::clone(&biller),
+            std::sync::Arc::clone(&barrier),
+        );
+        racing.spawn(async move {
+            barrier.wait().await;
+            biller.settle(&settlement).await
+        });
+    }
+    let mut crossed = 0;
+    while let Some(joined) = racing.join_next().await {
+        if joined
+            .expect("the settlement joins")
+            .expect("the settlement answers")
+            .exhausted
+        {
+            crossed += 1;
+        }
+    }
+    assert_eq!(crossed, 1, "one debit crosses zero");
+    assert_eq!(recorded.events().len(), 1, "the crossing is reported once");
+}

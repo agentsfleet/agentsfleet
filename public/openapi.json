@@ -19457,8 +19457,7 @@
         "type": "object",
         "description": "Available choices across the entire unfiltered period.",
         "required": [
-          "fleets",
-          "models"
+          "fleets"
         ],
         "properties": {
           "fleets": {
@@ -19467,13 +19466,6 @@
               "$ref": "#/components/schemas/BillingFleetChoice"
             },
             "description": "Runtime fleets and private setup, without private draft labels."
-          },
-          "models": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Exact model identifiers recorded during the period."
           }
         }
       },

@@ -42,6 +42,13 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::ENDPOINT_REMOVED,
+        status: 410,
+        title: "Endpoint removed",
+        hint: "This endpoint was removed and will not return. Check the API reference for what replaces it.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::VAULT_DATA_INVALID,
         status: 400,
         title: "Secret data must be a non-empty JSON object",

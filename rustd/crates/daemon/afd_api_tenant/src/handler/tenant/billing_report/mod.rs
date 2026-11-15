@@ -5,6 +5,9 @@ mod view;
 
 pub use self::input::DETAIL_MODEL;
 
+/// Why the per-activity charges route answers `410 Gone`.
+pub const DETAIL_CHARGES_REMOVED: &str = "Per-activity charges were removed; GET /v1/tenants/me/billing/reports/current returns settled totals";
+
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
 use crate::services::{Services, TenantBilling as _};
@@ -60,4 +63,16 @@ pub(crate) async fn report<D: Services>(
         Json(view::report(&rows, &input)?),
     )
         .into_response())
+}
+
+/// `GET /v1/tenants/me/billing/activities/{activity_id}/charges`, removed.
+///
+/// Kept in the route table, behind the same guards, so a client still calling
+/// it learns the removal is permanent (`410`, `UZ-REQ-003`) instead of meeting
+/// what reads as a routing fault.
+pub(crate) async fn removed() -> Refusal {
+    Refusal::coded(
+        af_core::error_code::ENDPOINT_REMOVED,
+        DETAIL_CHARGES_REMOVED,
+    )
 }

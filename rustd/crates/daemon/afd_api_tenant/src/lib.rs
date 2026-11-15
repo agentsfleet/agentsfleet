@@ -54,6 +54,7 @@ pub fn tenant_handler_for<D: Services>(verb: TenantRoute) -> Option<MethodRouter
         TenantRoute::Billing => Some(get(tenant::billing_snapshot::<D>)),
         TenantRoute::BillingCharges => Some(get(tenant::billing_charges::<D>)),
         TenantRoute::BillingReport => Some(get(tenant::billing_report::report::<D>)),
+        TenantRoute::BillingActivityCharges => Some(get(tenant::billing_report::removed)),
         TenantRoute::Workspaces => Some(get(tenant::list_workspaces::<D>)),
         TenantRoute::CreateWorkspace => Some(post(tenant::create_workspace::<D>)),
         TenantRoute::ModelLibrary => Some(get(tenant::catalogue::<D>)),

@@ -98,7 +98,11 @@ async fn an_empty_report_has_exact_zero_totals() {
     assert_eq!(body.pointer("/totals/charged_nanos"), Some(&json!("0")));
     assert_eq!(body.pointer("/totals/activity_count"), Some(&json!(0)));
     assert_eq!(body.pointer("/spending/by_fleet"), Some(&json!([])));
-    assert_eq!(body.pointer("/filters/models"), Some(&json!([])));
+    assert_eq!(
+        body.pointer("/filters/models"),
+        None,
+        "the report offers no model filter"
+    );
     assert_ledger(&members, &members.john, (0, 0, 0)).await;
     members.cleanup().await;
 }
@@ -149,10 +153,7 @@ async fn equal_spending_uses_stable_fleet_and_model_ordering() {
         body.pointer("/spending/by_model/1/key"),
         Some(&json!("second-report-model"))
     );
-    assert_eq!(
-        body.pointer("/filters/models"),
-        Some(&json!([MODEL, "second-report-model"]))
-    );
+    assert_eq!(body.pointer("/filters/models"), None);
     assert_eq!(body.pointer("/filters/fleets/0/id"), Some(&Value::Null));
     assert_ledger(&members, &members.john, (4, 68, 4)).await;
     members.cleanup().await;
@@ -183,9 +184,11 @@ async fn served_daily_report_includes_zero_days_and_complete_models() {
         Some(&json!("0"))
     );
     assert_eq!(runtime.pointer("/spending/by_fleet"), Some(&json!([])));
-    assert_eq!(
-        runtime.pointer("/filters/models"),
-        Some(&json!([MODEL])),
+    assert!(
+        runtime
+            .pointer("/filters/fleets")
+            .and_then(Value::as_array)
+            .is_some_and(|fleets| !fleets.is_empty()),
         "a filter keeps the unfiltered choices"
     );
     assert_ledger(&members, &members.john, (4, 1050, 3)).await;

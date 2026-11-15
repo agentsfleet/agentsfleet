@@ -22,4 +22,5 @@ SELECT DISTINCT credential.name AS secret_name, d.id AS fleet_id, d.name AS flee
  CROSS JOIN LATERAL jsonb_array_elements_text(
        CASE WHEN jsonb_typeof(d.names) = 'array' THEN d.names ELSE '[]'::jsonb END
    ) AS credential(name)
+ WHERE credential.name IS NOT NULL
  ORDER BY secret_name, fleet_name, fleet_id

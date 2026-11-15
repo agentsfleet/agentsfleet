@@ -9,8 +9,9 @@ use super::fixture::{balance, ledger};
 
 /// The rollup rows of one tenant, in key order.
 const SELECT_USAGE_DAILY: &str = "\
-SELECT day::text AS day, work_type, fleet_id, model, charged_nanos, input_tokens,
-       output_tokens, runtime_ms, line_count, unpriced_tokens
+SELECT day::text AS day, work_type, fleet_id, model, charged_nanos,
+       input_token_count AS input_tokens, output_token_count AS output_tokens, runtime_ms,
+       line_count, unpriced_token_count AS unpriced_tokens
   FROM billing.usage_daily WHERE tenant_id = $1
  ORDER BY day, work_type, fleet_id NULLS FIRST, model";
 
@@ -26,7 +27,7 @@ SELECT (created_at AT TIME ZONE 'UTC')::date::text AS day, work_type, fleet_id, 
 
 /// The run counts of one tenant, in key order.
 const SELECT_RUNS_DAILY: &str = "\
-SELECT day::text AS day, work_type, fleet_id, runs FROM billing.runs_daily WHERE tenant_id = $1
+SELECT day::text AS day, work_type, fleet_id, run_count AS runs FROM billing.runs_daily WHERE tenant_id = $1
  ORDER BY day, work_type, fleet_id NULLS FIRST";
 
 /// A run counted from the ledger: its smallest runtime line, once that line is

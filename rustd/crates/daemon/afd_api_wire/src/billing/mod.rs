@@ -65,8 +65,6 @@ pub struct FleetChoice<'a> {
 pub struct Choices<'a> {
     /// Runtime fleets and private setup, without private draft labels.
     pub fleets: Vec<FleetChoice<'a>>,
-    /// Exact model identifiers recorded during the period.
-    pub models: Vec<Cow<'a, str>>,
 }
 
 /// Full-period settled spending.

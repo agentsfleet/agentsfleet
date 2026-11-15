@@ -300,3 +300,30 @@ async fn runs_of(f: &Fixture, fleet: &af_core::id::Uuid7) -> Vec<(String, i64)> 
         .map(|row| (row.day, row.runs))
         .collect()
 }
+
+/// A payer erased after its work ran still settles into the rollup: the rollup
+/// carries opaque identifiers, as the ledger does, so a missing tenant cannot
+/// refuse the settle and stall the relay behind it.
+#[tokio::test]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
+async fn an_erased_payer_settles_into_the_rollup() {
+    let f = Fixture::shared().await;
+    let erased = fixture::id();
+    let line = Line::runtime(&erased, &fixture::id(), 13);
+    fixture::seed(&f.admin, std::slice::from_ref(&line)).await;
+    assert_eq!(
+        fixture::settle(&f.biller, &f.admin, &line.work()).await,
+        (1, 13)
+    );
+    let usage = fixture::usage_daily(&f.admin, &erased).await;
+    assert_eq!(
+        usage
+            .iter()
+            .map(|row| (row.charged_nanos, row.line_count))
+            .collect::<Vec<_>>(),
+        [(13, 1)]
+    );
+    let runs = fixture::runs_daily(&f.admin, &erased).await;
+    assert_eq!(runs.iter().map(|row| row.runs).sum::<i64>(), 1);
+    f.close().await;
+}
