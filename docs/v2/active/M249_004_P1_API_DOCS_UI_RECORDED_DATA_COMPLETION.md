@@ -76,6 +76,7 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `ui/packages/app/tests/e2e/acceptance/**`, `cli/test/acceptance/**` and their fixtures | EDIT/ADD | Stale Usage and Secrets specs, plus the ten user journeys §7 lists |
 | `ui/packages/app/lib/model-labels{,-server}.ts`, `components/domain/models/ModelLabels.tsx`, `app/(dashboard)/layout.tsx` and their tests | ADD/EDIT | One shared model-label store, read once per sign-in or refresh, replacing Usage's own catalogue call |
 | `docs/architecture/billing_reporting.md` | EDIT | The one-request loader and the label store |
+| `ui/packages/app/vitest.config.ts`, `ui/packages/design-system/vitest.config.ts` | EDIT | Pin the test zone to UTC so time tests grade the same off a UTC machine (owner approval, Nov 15, 2026) |
 | `docs/v2/evidence/M249_004_SOURCE_INVENTORY.md` | ADD | §1 field inventory, request counts, timings and query plans |
 | `rustd/crates/daemon/afd_billing/src/report/{types.rs,queries.rs,sql/aggregates.sql}` | EDIT | Whole-period daily and fleet/model projections |
 | `rustd/crates/daemon/afd_api_wire/src/billing/mod.rs` | EDIT | Typed report fields |
@@ -416,6 +417,15 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 > Owner (Indy): "I think for now use UTC, no big change needed, and push the branch"
 
 > Owner (Indy): "no timezonee" … "indy needs to think more" … "so we test and fix this" … "later"
+
+- **SQL and schema review gate (Nov 15, 2026):** every new or changed statement and every table change is shown to the owner and waits for sign-off before it is written. The two statements already on this branch, `afd_fleet_lifecycle/src/sql/select_secret_access.sql` and the `afd_billing` aggregates rewrite, await the owner's review; a PR opens only after sign-off. This branch changes no table.
+- **Test zone (Nov 15, 2026):** pre-push refused the branch on main's own time tests, which assume a UTC machine, from an IST laptop. The owner chose to pin `TZ=UTC` in both Vitest configs over pushing with an environment override.
+
+> Owner (Indy): "I want to review the queries you do and signoff, on the sql, table changes when you start next"
+
+> Owner (Indy): "i still need to review the sql, so i didnt sign off"
+
+> Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 
 > Owner (Indy): "in your PR ensure that you do a large refactor on the billing area and see how we can better it. You are free to unleash and embark on a large refactor in Rust side and the NExt js side onthe code to make it better performant too."
 
