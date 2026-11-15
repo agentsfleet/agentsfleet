@@ -23,6 +23,7 @@ import { type SwitcherSection, WORKSPACE_LABEL } from "./workspace-groups";
 import { AccountMenuNavigation } from "./AccountMenuNavigation";
 import { WorkspaceSwitcherTrigger } from "./WorkspaceSwitcherTrigger";
 import { useCurrentUser } from "@/lib/auth/client";
+import { AccountAvatar } from "@/components/account/AccountAvatar";
 import { NAV_ICON_SIZE } from "./sidebar-navigation-data";
 
 type WorkspaceSwitcherMenuProps = {
@@ -134,9 +135,8 @@ function WorkspaceSection({ section, activeId, onPick }: WorkspaceSectionProps) 
 function AccountIdentity({workspace}: {workspace: string}) {
   const user = useCurrentUser();
   const name = user.displayName || user.emailAddress?.split("@")[0] || "Your account";
-  const initials = name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase();
   return <>
-    <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-avatar text-label font-extrabold text-avatar-foreground">{initials}</span>
+    <AccountAvatar userId={user.userId} name={name} imageUrl={user.imageUrl} />
     <span className="min-w-0 flex-1 text-left"><span className="block truncate font-semibold">{name}</span><span className="mt-xs block truncate text-eyebrow font-normal text-text-dim">{workspace}</span></span>
   </>;
 }
