@@ -83,6 +83,14 @@ case "$secret_name" in
       "webhook_secret|approval-signing-secret/credential"
     )
     ;;
+  typesafe)
+    # The decision model's key: the setup edit check and durable-task decisions
+    # call TypeSafe with it. The daemon reads it only from this admin-workspace
+    # row, named after the decision API (`afd_credential::provider::decision`).
+    field_refs=(
+      "api_key|typesafe/credential"
+    )
+    ;;
   qstash)
     field_refs=(
       "token|qstash/token"

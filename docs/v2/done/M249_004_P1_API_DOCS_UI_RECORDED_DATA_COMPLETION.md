@@ -122,6 +122,7 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `deploy/local/**`, `make/acceptance.mk`, `Makefile`, `scripts/build-acceptance.ts`, `scripts/local-dev-state.sh`, `README.md`, `docs/development.md` | EDIT/REMOVE | One `make acceptance` on Linux replaces `acceptance-local` (macOS and OrbStack, removed) and `acceptance-codex` (renamed); bootstrap reads the GitHub App fields where it uses them; orphaned shared services are removed (owner, Nov 16, 2026) |
 | `ui/packages/app/app/loading.tsx` (removed), `app/{cli-auth,connectors}/loading.tsx`, `tests/loading-states.test.ts` | REMOVE/ADD | The root loader wrapped the dashboard shell in a streamed boundary that could leave a hidden second shell; the two routes that wait on reads keep their spinner (owner, Nov 16, 2026) |
 | `.github/workflows/acceptance-on-demand.yml` | ADD | Run local acceptance on a hosted VM for any branch (owner, Nov 16, 2026) |
+| `playbooks/lib/platform_secret_sync.sh`, `playbooks/lib/platform_secret_sync_test.sh`, `.github/workflows/deploy-dev-verify.yml` | EDIT | Every dev deploy seeds the `typesafe` decision key into the platform workspace (owner, Nov 16, 2026) |
 | `deploy/local/machine-env.sh`, `.claude/skills/orly-burst/SKILL.md`, `.agents/skills/orly-burst/SKILL.md`, `.gitignore` | ADD/EDIT | Acceptance on a fresh GitHub runner, driven by the `orly-burst` skill until orly ships `orly burst` (owner, Nov 16, 2026) |
 | `rustd/Cargo.{toml,lock}`, `af_core/src/clock.rs` and the jiff call sites | EDIT | jiff and jiff-sqlx 1.0 (owner, Nov 16, 2026) |
 | `afr_supervisor/src/authoring/{proposal.rs,proposal_tests.rs,tests/*}`, `afr_supervisor/Cargo.toml` | EDIT/ADD | A refused first setup names its field to the model (owner, Nov 16, 2026) |
@@ -560,6 +561,10 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 Typed "Save" still depends on the edit check: without a decision model it fails, while the "Save and publish" flap saves directly. The owner kept that behaviour rather than adding a daemon or UI fallback.
 
 > Owner (Indy), on a fallback for typed "Save": "Keep it as now"
+
+Every dev deploy now seeds the `typesafe` key into dev's platform workspace through `platform_secret_sync.sh`. Dev also needs the decision model in its catalogue and named in its runners' policy before typed "Save" can finish there.
+
+> Owner (Indy): "Typesafe i want yuou to fix it up in the platform-secrets.sh or waht ever key so it gets set in this PR when we merge it goes as secret"
 
 > Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 

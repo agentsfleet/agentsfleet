@@ -143,10 +143,14 @@ jobs:
       #
       # `qstash` is the scheduler's token and signing keys, read the same way:
       # without it no schedule registers and every fire is refused.
+      #
+      # `typesafe` is the decision model's key; without it the setup edit check
+      # is unavailable and a typed "Save" cannot finish.
       - name: Seed platform vault secrets
         run: |
           ENV=dev ./playbooks/lib/platform_secret_sync.sh approval-signing
           ENV=dev ./playbooks/lib/platform_secret_sync.sh qstash
+          ENV=dev ./playbooks/lib/platform_secret_sync.sh typesafe
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT: ${{ vars.VAULT_DEV }}
