@@ -108,7 +108,7 @@ test.describe("connect Slack", () => {
     await expect(row).toContainText("Requires platform setup");
     await expect(row.getByRole("button", { name: `Connect ${SLACK}`, exact: true })).toHaveCount(0);
     await row.getByRole("button", { name: `Request access to ${SLACK}`, exact: true }).click();
-    await expect(page.getByTestId("workspace-toast")).toHaveText("Requested");
+    await expect(page.getByTestId("integrations-connectors").getByTestId("workspace-toast")).toHaveText("Requested");
 
     // The connect the page withholds is refused by the daemon too, not merely hidden.
     const refused: unknown = await clientFor(FIXTURE_KEY.regular)
