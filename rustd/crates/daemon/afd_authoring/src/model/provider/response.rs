@@ -1,7 +1,8 @@
 //! Usage is authoritative before any untrusted text or proposal is interpreted.
 
+use af_fleet_runtime::Definition;
 use af_wire::authoring::{
-    ENVELOPE_BYTES_MAX, ModelResult, ModelUsage, ProposalCall, ProposalRejection,
+    ENVELOPE_BYTES_MAX, ModelResult, ModelUsage, ProposalCall, ProposalRejection, RefusalDetail,
 };
 use afd_credential::provider::RegisteredModel;
 use garde::Validate as _;
@@ -22,6 +23,10 @@ mod tests;
 #[cfg(test)]
 #[path = "tests/corrections.rs"]
 mod corrections;
+
+#[cfg(test)]
+#[path = "tests/first_setup.rs"]
+mod first_setup;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -218,14 +223,14 @@ fn proposal(
     }
     // A locally generated SDK id is not a provider acknowledgement.
     let id = item.id.provider().ok_or(ErrorKind::Provider)?.as_str();
+    let arguments =
+        super::schema::settle(serde_json::Value::Object(item.function.arguments.clone()));
     let converted = if item.function.invalid_arguments.is_some() {
         Err(ProposalRejection::InvalidArguments)
     } else {
-        serde_json::from_value::<Arguments>(serde_json::Value::Object(
-            item.function.arguments.clone(),
-        ))
-        .map_err(|_untrusted| ProposalRejection::InvalidArguments)
-        .and_then(|arguments| super::edits::native(arguments.proposal, candidate, said))
+        serde_json::from_value::<Arguments>(arguments.clone())
+            .map_err(|_untrusted| ProposalRejection::InvalidArguments)
+            .and_then(|arguments| super::edits::native(arguments.proposal, candidate, said))
     };
     let call = match converted {
         Ok(proposal) => ProposalCall::Proposed {
@@ -235,10 +240,23 @@ fn proposal(
         Err(reason) => ProposalCall::Refused {
             id: id.into(),
             reason,
+            detail: (reason == ProposalRejection::InvalidArguments)
+                .then(|| checked(&arguments))
+                .flatten(),
         },
     };
     call.validate().map_err(|_untrusted| ErrorKind::Provider)?;
     Ok(call)
+}
+
+/// The native checker's own account of a first setup it refuses.
+///
+/// serde's message for the same failure quotes the refused value, so it is
+/// dropped above; the checker's sentence names keys and rules, never a value.
+fn checked(arguments: &serde_json::Value) -> Option<RefusalDetail> {
+    let definition = arguments.get(super::PROPOSAL_ARGUMENT)?.get("definition")?;
+    let failure = Definition::parse(&definition.to_string()).err()?;
+    RefusalDetail::new(failure.field(), &failure.told())
 }
 
 /// A summary is usable only after complete stop and strict notes validation.

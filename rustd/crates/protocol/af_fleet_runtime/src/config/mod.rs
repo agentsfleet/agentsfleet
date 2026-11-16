@@ -57,9 +57,6 @@ const TOOLS: &str = "tools";
 /// The key naming what it may spend.
 const BUDGET: &str = "budget";
 
-/// The refusal a key outside the schema earns, wherever it is found.
-const REASON_UNSUPPORTED_KEY: &str = "unsupported configuration key";
-
 /// Every key the runtime block accepts.
 ///
 /// One list, read for one purpose: naming a runtime key found at the TOP level,
@@ -67,7 +64,7 @@ const REASON_UNSUPPORTED_KEY: &str = "unsupported configuration key";
 /// [`raw::Runtime`] struct, so there is no second copy of these twelve strings
 /// to drift into disagreement with it.
 /// `every_runtime_key_is_accepted_by_the_schema` proves this list still agrees.
-const RUNTIME_KEYS: [&str; 14] = [
+pub(crate) const RUNTIME_KEYS: [&str; 14] = [
     TRIGGERS,
     TOOLS,
     "credentials",
@@ -147,17 +144,14 @@ impl FleetConfig {
         // Three stages, each owned by whoever does it best: serde reads the
         // shape, garde proves the bounds the schema declares, and `resolve`
         // applies the rules only this product knows.
-        let mut ignored = false;
+        let mut ignored = None;
         let mut decoder = serde_json::Deserializer::from_str(document);
-        let parsed: raw::Document = serde_ignored::deserialize(&mut decoder, |_path| {
-            ignored = true;
+        let parsed: raw::Document = serde_ignored::deserialize(&mut decoder, |path| {
+            ignored.get_or_insert_with(|| unsupported(&path));
         })?;
         decoder.end()?;
-        if ignored {
-            return Err(ErrorKind::InvalidDefinition {
-                reason: REASON_UNSUPPORTED_KEY,
-            }
-            .into());
+        if let Some(unsupported) = ignored {
+            return Err(unsupported);
         }
         parsed.validate()?;
         Self::resolve(parsed)
@@ -175,9 +169,10 @@ impl FleetConfig {
             }));
         }
 
-        if !parsed.extra.is_empty() {
-            return Err(ErrorKind::InvalidDefinition {
-                reason: REASON_UNSUPPORTED_KEY,
+        if let Some(key) = parsed.extra.keys().next() {
+            return Err(ErrorKind::UnsupportedKey {
+                path: key.as_str().into(),
+                setting: None,
             }
             .into());
         }
@@ -307,6 +302,43 @@ impl FleetConfig {
     pub const fn decision_policy(&self) -> Option<&DecisionPolicy> {
         self.decision_policy.as_ref()
     }
+}
+
+/// A key the schema did not read, named by its keys and positions from the
+/// document root, and the runtime setting it sits in.
+fn unsupported(path: &serde_ignored::Path<'_>) -> Error {
+    let mut keys = Vec::new();
+    let mut setting = None;
+    let mut step = Some(path);
+    while let Some(at) = step {
+        step = match at {
+            serde_ignored::Path::Root => None,
+            serde_ignored::Path::Seq { parent, index } => {
+                keys.push(index.to_string());
+                Some(*parent)
+            }
+            serde_ignored::Path::Map { parent, key } => {
+                // Walking leafward to root, the last match is the outermost setting.
+                setting = runtime_key(key).or(setting);
+                keys.push(key.clone());
+                Some(*parent)
+            }
+            serde_ignored::Path::Some { parent }
+            | serde_ignored::Path::NewtypeStruct { parent }
+            | serde_ignored::Path::NewtypeVariant { parent } => Some(*parent),
+        };
+    }
+    keys.reverse();
+    ErrorKind::UnsupportedKey {
+        path: keys.join(".").into(),
+        setting,
+    }
+    .into()
+}
+
+/// The runtime key spelled `key`, as this crate's own constant.
+pub(crate) fn runtime_key(key: &str) -> Option<&'static str> {
+    RUNTIME_KEYS.into_iter().find(|known| *known == key)
 }
 
 /// Declarable signing recipes shared with authoring surfaces.

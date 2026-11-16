@@ -1,6 +1,9 @@
 //! Typed model-facing proposals; the native validator still decides acceptance.
 
 mod decision;
+mod settle;
+
+pub(super) use settle::settle;
 
 use super::{KEY_DESCRIPTION, KEY_TYPE, PROPOSAL_ARGUMENT};
 use af_fleet_runtime::definition::{
@@ -34,6 +37,14 @@ const KEY_NAME: &str = "name";
 const KEY_POLICY: &str = "x-agentsfleet";
 const KEY_TOOLS: &str = "tools";
 const KEY_BUDGET: &str = "budget";
+const KEY_REPOSITORIES: &str = "repositories";
+/// The settings that only mean something beside a named repository.
+const REPOSITORY_SETTINGS: [&str; 4] = [
+    "repository_access",
+    "repository_base",
+    "repository_publication",
+    "repository_validation_workflows",
+];
 const KEY_DAILY_NANOS: &str = "daily_nanos";
 const KEY_OP: &str = "op";
 const KEY_PATH: &str = "path";
@@ -51,6 +62,10 @@ const ACTION_REPLACE: &str = "replace";
 const ACTION_REMOVE: &str = "remove";
 const ACTION_APPEND: &str = "append";
 const DECIMAL_PATTERN: &str = "^[0-9]+$";
+/// What every optional setting tells the model, so a plain fleet stays plain.
+const OMIT: &str = "Omit unless the person asks for it.";
+/// What every repository setting tells the model.
+const WITH_REPOSITORY: &str = "Only together with repositories.";
 
 pub(super) fn parameters(editing: bool) -> Value {
     let proposal = if editing {
@@ -109,41 +124,42 @@ fn definition() -> Value {
     )
 }
 
+// Gates are left out of a first setup: their rules name tools, actions and a
+// condition grammar the form cannot spell, and a model shown an open object
+// invents fields. A person who asks for approvals adds them by edit.
 fn configuration() -> Value {
+    let [access, base, publication, workflows] = REPOSITORY_SETTINGS;
     object(
         &json!({
             KEY_NAME:{KEY_TYPE:TYPE_STRING,KEY_PATTERN:"^[a-z0-9]+(?:-[a-z0-9]+)*$",
                 KEY_DESCRIPTION:"Lowercase fleet slug. Preserve the current name unless the person requests a rename."},
             KEY_POLICY:{
                 KEY_TYPE:TYPE_OBJECT,
-                KEY_DESCRIPTION:"Native policy. Other supported runtime fields remain subject to daemon validation.",
+                KEY_DESCRIPTION:"Every setting except name goes inside this block, budget included, never beside it. An omitted setting means none.",
                 KEY_PROPERTIES:{
-                    KEY_TOOLS:list(&json!({KEY_TYPE:TYPE_STRING})),
-                    "credentials":list(&json!({KEY_TYPE:TYPE_STRING})),
-                    "triggers":super::triggers::schema(),
-                    "network":network(),
-                    "decision_policy":decision::policy(),
-                    "repositories":list(&json!({KEY_TYPE:TYPE_STRING})),
-                    "repository_access":{KEY_TYPE:TYPE_STRING,KEY_ENUM:["read","write"]},
-                    "repository_base":{KEY_TYPE:TYPE_STRING},
-                    "repository_publication":{KEY_TYPE:TYPE_STRING,KEY_ENUM:["event_draft","existing_pr"],
-                        KEY_DESCRIPTION:"Default event_draft. Select existing_pr only when the person explicitly requests repair of assigned existing pull requests; native task publication still validates each target."},
-                    "repository_validation_workflows":{KEY_TYPE:TYPE_ARRAY,KEY_MAX_ITEMS:16,
+                    KEY_TOOLS:described(list(&json!({KEY_TYPE:TYPE_STRING})), OMIT),
+                    "credentials":described(list(&json!({KEY_TYPE:TYPE_STRING})), OMIT),
+                    "triggers":described(super::triggers::schema(), OMIT),
+                    "network":described(network(), OMIT),
+                    "decision_policy":described(decision::policy(),
+                        "Omit for ordinary fleets. Only when the person asks for owner-reviewed routing and completion questions."),
+                    KEY_REPOSITORIES:described(list(&json!({KEY_TYPE:TYPE_STRING})),
+                        "Omit unless the person names a repository, as owner/name; never an empty list."),
+                    access:{KEY_TYPE:TYPE_STRING,KEY_ENUM:["read","write"],KEY_DESCRIPTION:WITH_REPOSITORY},
+                    base:{KEY_TYPE:TYPE_STRING,KEY_DESCRIPTION:WITH_REPOSITORY},
+                    publication:{KEY_TYPE:TYPE_STRING,KEY_ENUM:["event_draft","existing_pr"],
+                        KEY_DESCRIPTION:"Only together with repositories. Select existing_pr only when the person explicitly requests repair of assigned existing pull requests; native task publication still validates each target."},
+                    workflows:{KEY_TYPE:TYPE_ARRAY,KEY_MAX_ITEMS:16,
                         KEY_DESCRIPTION:"Owner-reviewed workflow paths and exact SHA-256 digests required for existing_pr. Ask for the reviewed identities; never invent approval or hashes.",
                         KEY_ITEMS:object(&json!({"path":{KEY_TYPE:TYPE_STRING},
                             "sha256":{KEY_TYPE:TYPE_STRING,KEY_PATTERN:"^[0-9a-f]{64}$"}}), &["path","sha256"])},
-                    "gates":object(&json!({
-                        "timeout_ms":{KEY_TYPE:TYPE_INTEGER},
-                        "rules":list(&json!({KEY_TYPE:TYPE_OBJECT})),
-                        "anomaly_rules":list(&json!({KEY_TYPE:TYPE_OBJECT}))
-                    }), &[]),
                     KEY_BUDGET:object(&json!({
                         KEY_DAILY_NANOS:{KEY_TYPE:TYPE_STRING,KEY_PATTERN:DECIMAL_PATTERN,
-                            KEY_DESCRIPTION:"Positive decimal integer nanos, never dollars or a JSON number."},
+                            KEY_DESCRIPTION:"Positive decimal integer nanos as a string, never dollars or a JSON number: one dollar is \"1000000000\"."},
                         "monthly_nanos":{KEY_TYPE:TYPE_STRING,KEY_PATTERN:DECIMAL_PATTERN}
                     }), &[KEY_DAILY_NANOS])
                 },
-                KEY_REQUIRED:[KEY_TOOLS,KEY_BUDGET]
+                KEY_REQUIRED:[KEY_BUDGET]
             }
         }),
         &[KEY_NAME, KEY_POLICY],
@@ -154,9 +170,9 @@ fn network() -> Value {
     object(
         &json!({
             "http_egress":{KEY_TYPE:TYPE_STRING,KEY_ENUM:[HttpEgress::Restricted,HttpEgress::Public],
-                KEY_DESCRIPTION:"Default restricted. Use public HTTPS only when the customer explicitly requests public egress."},
+                KEY_DESCRIPTION:"Omit unless the person asks for public HTTPS egress."},
             "package_manager_domains":{KEY_TYPE:"boolean",
-                KEY_DESCRIPTION:"Default false. Permit standard package registry domains through HTTP tools when requested."},
+                KEY_DESCRIPTION:"Omit unless the person asks for package registry access through HTTP tools."},
             "allow":list(&json!({KEY_TYPE:TYPE_STRING})),
             "read_only":{KEY_TYPE:"boolean"},
             "read_post_paths":list(&json!({KEY_TYPE:TYPE_STRING}))
@@ -167,6 +183,14 @@ fn network() -> Value {
 
 fn list(items: &Value) -> Value {
     json!({KEY_TYPE:TYPE_ARRAY,KEY_ITEMS:items})
+}
+
+/// `schema` with the sentence that tells the model when to fill it.
+fn described(mut schema: Value, description: &str) -> Value {
+    if let Some(fields) = schema.as_object_mut() {
+        fields.insert(KEY_DESCRIPTION.to_owned(), description.into());
+    }
+    schema
 }
 
 fn config_operation() -> Value {

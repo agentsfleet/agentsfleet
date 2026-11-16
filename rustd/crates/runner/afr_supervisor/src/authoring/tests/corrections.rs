@@ -77,6 +77,46 @@ async fn rejected_model_edits_receive_feedback_before_a_corrected_proposal_is_ap
     }
 }
 
+// Value: protects=the checker's named field reaches the model instead of the general rules;
+// fails_when=a refusal's detail is dropped and the model is left guessing which key to fix.
+#[tokio::test]
+async fn a_refusal_naming_a_field_tells_the_model_that_field() {
+    const DETAIL: &str = "`budget` belongs under the `x-agentsfleet` block, not at the top level";
+    let mut rig = rig(|call| match call.verb {
+        Verb::AuthoringModel => {
+            let request: Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+            if request["call_index"] == 1 {
+                return result(
+                    call,
+                    &json!([{"id":"bad-1","reason":"invalid_arguments",
+                        "detail":{"field":"budget","text":DETAIL}}]),
+                    false,
+                );
+            }
+            let messages = request["request"]["messages"].as_array().unwrap();
+            let heard = messages.last().unwrap()["text"].as_str().unwrap();
+            assert_eq!(
+                heard,
+                format!(
+                    "No changes were applied. The setup is invalid: {DETAIL}. Fix that, keep only the settings the person asked for, and return a corrected propose_setup call."
+                )
+            );
+            result(
+                call,
+                &json!([{"id":"corrected",
+                    "proposal":{"kind":"initialize","definition":{"schema_version":1,"description":"Answers support questions","instructions_md":"Reply briefly.","config":{"name":"fixture","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}}}}]),
+                false,
+            )
+        }
+        Verb::AuthoringActivity => super::json(&json!({"accepted":true,"replayed":false})),
+        Verb::AuthoringReport => ack(),
+        other => panic!("unexpected authority {other:?}"),
+    });
+    let (_calls, report) = run(&mut rig, lease()).await;
+    assert_eq!(report["outcome"], "completed");
+    assert_eq!(report["usage"]["calls"], 2);
+}
+
 // Value: protects=correction attempts retain usage and stop at the admitted limit;
 // fails_when=rejections are retried forever or reported as a completed answer.
 #[tokio::test]

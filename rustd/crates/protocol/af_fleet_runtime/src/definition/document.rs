@@ -16,7 +16,7 @@ pub struct ConfigDocument {
 }
 
 /// The runtime block's key in a configuration document.
-const RUNTIME_BLOCK: &str = "x-agentsfleet";
+pub(crate) const RUNTIME_BLOCK: &str = "x-agentsfleet";
 /// The budget's key inside the runtime block.
 const BUDGET: &str = "budget";
 /// The trigger set's key inside the runtime block.

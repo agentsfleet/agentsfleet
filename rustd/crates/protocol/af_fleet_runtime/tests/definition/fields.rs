@@ -172,12 +172,13 @@ fn a_gate_rule_naming_a_behaviour_is_refused_as_an_unknown_key() {
     let Err(refused) = FleetConfig::authored(&document.to_string()) else {
         panic!("a gate rule naming a behaviour is refused");
     };
-    assert!(
-        refused
-            .to_string()
-            .contains("unsupported configuration key"),
-        "refused as an unknown key, not a shape failure: {refused}"
+    // The path names the one key to remove; its value never appears.
+    assert_eq!(
+        refused.told(),
+        "`x-agentsfleet.gates.rules.0.behavior` is an unsupported configuration key"
     );
+    assert!(!refused.told().contains("auto_kill"));
+    assert_eq!(refused.field(), Some("gates"));
     let asks = json!({"name": "gate-asks", "x-agentsfleet": {
         "triggers": [{"type": "webhook", "source": "github"}],
         "tools": ["http_request"],
@@ -185,4 +186,23 @@ fn a_gate_rule_naming_a_behaviour_is_refused_as_an_unknown_key() {
         "gates": {"rules": [{"tool": "http_request", "action": "post"}]}
     }});
     FleetConfig::authored(&asks.to_string()).expect("the same rule without it parses");
+}
+
+/// A key beside `name` that is not a runtime key is named alone, and belongs to
+/// no runtime setting.
+#[test]
+fn an_unknown_key_beside_the_name_is_named_without_a_setting() {
+    let document = json!({"name": "beside-name", "owner_note": "Private wording", "x-agentsfleet": {
+        "tools": [], "budget": {"daily_nanos": NANOS_PER_USD.to_string()}
+    }});
+
+    let Err(refused) = FleetConfig::authored(&document.to_string()) else {
+        panic!("an unknown key beside the name is refused");
+    };
+    assert_eq!(
+        refused.told(),
+        "`owner_note` is an unsupported configuration key"
+    );
+    assert!(!refused.told().contains("Private wording"));
+    assert_eq!(refused.field(), None);
 }

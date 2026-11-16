@@ -132,6 +132,10 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `deploy/local/machine-env.sh`, `.claude/skills/orly-burst/SKILL.md`, `.agents/skills/orly-burst/SKILL.md`, `.gitignore` | ADD/EDIT | Acceptance on a fresh GitHub runner, driven by the `orly-burst` skill until orly ships `orly burst` (owner, Nov 16, 2026) |
 | `rustd/Cargo.{toml,lock}`, `af_core/src/clock.rs` and the jiff call sites | EDIT | jiff and jiff-sqlx 1.0 (owner, Nov 16, 2026) |
 | `afr_supervisor/src/authoring/{proposal.rs,proposal_tests.rs,tests/*}`, `afr_supervisor/Cargo.toml` | EDIT/ADD | A refused first setup names its field to the model (owner, Nov 16, 2026) |
+| `afd_authoring/src/model/provider/{schema/mod.rs,schema/settle.rs,tools.rs,response.rs,tests/first_setup.rs,tests/proposals.rs}`, `afd_authoring/src/model/edit_intent/verdict.rs`, `afd_authoring/tests/draft/model_calls/{corrections.rs,provider_failures.rs}` | EDIT/ADD | The setup form asks only for what the person said, an omitted setting means none, and the tool says when to ask (owner, Nov 16, 2026) |
+| `af_fleet_runtime/src/{config/mod.rs,definition/mod.rs,definition/document.rs,error/mod.rs,error/raise.rs}`, `af_fleet_runtime/tests/{definition/fields.rs,error_surface.rs}` | EDIT | The checker names an unsupported key by its path and the setting a refusal concerns |
+| `af_wire/src/authoring/{proposal.rs,mod.rs,proposal_tests.rs}` | EDIT | A refusal may carry the checker's sentence and setting to the runner |
+| `afr_supervisor/src/authoring/{turn.rs,tests/*}` | EDIT | A message whose setup was accepted completes, and a refused proposal is corrected once (owner, Nov 16, 2026) |
 | `ui/packages/app/**` confirmed orphaned modules and their isolated tests; `lib/models/display.ts` | REMOVE/EDIT | Owner-requested UI cleanup removes obsolete spending, model cells, action hooks, refresh controls and draft-search state; paused Plugin implementation stays available |
 | `ui/packages/app/app/globals.css` unused activity-table selectors | REMOVE | Remove styles for the deleted activity table without changing the reviewed resource layouts |
 
@@ -591,6 +595,17 @@ Typed "Save" still depends on the edit check: without a decision model it fails,
 - **Phone composer pinned (Nov 16, 2026):** without follow, a long reply pushed the phone composer and Jump to latest below the screen, because the composer was sticky only at 681 px and wider. The owner chose to pin it at every width, which reverses M249 visual decision D2 ("Phone composer scrolls with the page", `docs/v2/evidence/M249_EXCEPTIONS.md`), made while the thread still followed the bottom.
 
 > Owner (Indy), on the phone composer: "Pin it on phones (Recommended)"
+
+- **Setup form and refusals (Nov 16, 2026):** in acceptance run 43882349219 two setup messages each ended `calls_exhausted` after 8 calls refused `invalid_arguments` (onboarding-chat-journey, install-fleet-cli). A replay against the same model showed why. The form listed every optional block with its default and declared gate rules as any object; the checker refused invented keys and an empty `repositories` list; the daemon dropped the checker's reason while decoding.
+- **What changed:** the form requires only `budget`, tells the model to omit what the person did not ask for, and leaves gates out of a first setup. An omitted tool list and an empty repository list settle as none. A refusal carries the checker's sentence to the model and only its setting to the log.
+- **Replay with the new form:** three of four runs were accepted on the first call and the fourth on the second. The refusal's optional `detail` is a daemon-to-runner wire addition, so a runner older than its daemon cannot decode a refusal that carries it. Dev deploys the daemon, then the runner, from one build (`deploy-dev.yml`).
+- **Turn rule:** install-fleet-cli's setup was accepted on call 4 and the message still failed, because calls 5 to 8 were refused. A message whose setup was accepted now completes, and a refused proposal gets one corrected attempt before the message fails.
+
+> Owner (Indy), on the error cases: "1 - we need to make some key soptional 2. repositories must be optional unless user says so 3. same as 2 4. why does the model put that in the wrong place 5. if no decision_policy then it must be none 6. Okay 7. Okay yes and get confirmation 8. Yes"
+
+> Owner (Indy): "go commit this, i think i want to retry only once."
+
+> Owner (Indy): "I want everything to be committed in this PR, is that clear."
 
 > Owner (Indy): "Just donot clutter the code, make it small modular and performant in the Nextjs"
 
