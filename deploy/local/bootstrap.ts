@@ -25,7 +25,11 @@ const DECISION_DOCS = "https://docs.typesafe.ai/api/system-one.md";
 const DECISION_EVIDENCE = '{"requested":"jev-latest","reported":"jev-1.14.0","save":0.11,"rename":0.81}';
 const DECISION_VERIFIED_AT = "2026-11-16T10:30:00.000Z";
 const PLATFORM_KEYS = "/v1/admin/platform-keys";
-const GITHUB_FIELDS = ["app_id", "app_slug", "client_id", "client_secret", "private_key_pem", "webhook_secret"];
+// Each connector app's bag and its fields, read from one development vault.
+const CONNECTOR_APPS: Readonly<Record<string, readonly string[]>> = {
+  "github-app": ["app_id", "app_slug", "client_id", "client_secret", "private_key_pem", "webhook_secret"],
+  "linear-app": ["client_id", "client_secret"],
+};
 const SIGNING_SECRET = "approval-signing";
 const SIGNING_BYTES = 32;
 const SCHEDULER_BAG = "qstash";
@@ -184,20 +188,25 @@ export function decisionModel() {
   };
 }
 
+/** Runs only on a fresh acceptance database, so later runs never touch 1Password. */
 export async function configureConnector(request: Request, workspaceId: string, op: Op = runOp): Promise<void> {
-  await saveSecret(request, workspaceId, "github-app", await connectorFields(op));
+  let vault: string | undefined;
+  for (const [bag, fields] of Object.entries(CONNECTOR_APPS)) {
+    const given = givenFields(bag, fields);
+    if (given) { await saveSecret(request, workspaceId, bag, given); continue; }
+    vault ??= process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT || await connectorVault(op);
+    const data: Record<string, string> = {};
+    for (const field of fields) data[field] = await op(["read", "--no-newline", `op://${vault}/${bag}/${field}`]);
+    if (!Object.values(data).every(Boolean)) throw new LocalBootstrapError(`development ${bag} fields are required for initial connector setup`);
+    await saveSecret(request, workspaceId, bag, data);
+  }
 }
 
-/** A caller that resolved every field (a burst machine) passes them in; otherwise 1Password reads them all. */
-async function connectorFields(op: Op): Promise<Record<string, string>> {
-  const given: Record<string, string> = Object.fromEntries(
-    GITHUB_FIELDS.map(field => [field, process.env[`LOCAL_GITHUB_${field.toUpperCase()}`] ?? ""]));
-  if (Object.values(given).every(Boolean)) return given;
-  const vault = process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT || await connectorVault(op);
-  const data: Record<string, string> = {};
-  for (const field of GITHUB_FIELDS) data[field] = await op(["read", "--no-newline", `op://${vault}/github-app/${field}`]);
-  if (!Object.values(data).every(Boolean)) throw new LocalBootstrapError("development GitHub App fields are required for initial connector setup");
-  return data;
+/** A caller that resolved every field (a burst machine) passes them in as LOCAL_<APP>_<FIELD>. */
+function givenFields(bag: string, fields: readonly string[]): Record<string, string> | undefined {
+  const prefix = `LOCAL_${bag.split("-")[0]?.toUpperCase()}_`;
+  const given: Record<string, string> = Object.fromEntries(fields.map(field => [field, process.env[`${prefix}${field.toUpperCase()}`] ?? ""]));
+  return Object.values(given).every(Boolean) ? given : undefined;
 }
 
 /** The one development vault holding the GitHub App item. */

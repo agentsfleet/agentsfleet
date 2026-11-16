@@ -27,7 +27,9 @@ const SECRETS_PATH = `/v1/workspaces/${FIXTURE_WORKSPACE}/secrets`;
 const SECRET_BAG = z.strictObject({ name: z.string(), data: z.record(z.string(), z.string()) });
 const GITHUB_FIELDS = ["app_id", "app_slug", "client_id", "client_secret", "private_key_pem", "webhook_secret"];
 const GITHUB_NAMES = GITHUB_FIELDS.map((field) => `LOCAL_GITHUB_${field.toUpperCase()}`);
-const CONNECTOR_ENV = [...GITHUB_NAMES, "ACCEPTANCE_LOCAL_CONNECTOR_VAULT", "TYPESAFE_API_KEY"];
+const LINEAR_FIELDS = ["client_id", "client_secret"];
+const LINEAR_NAMES = LINEAR_FIELDS.map((field) => `LOCAL_LINEAR_${field.toUpperCase()}`);
+const CONNECTOR_ENV = [...GITHUB_NAMES, ...LINEAR_NAMES, "ACCEPTANCE_LOCAL_CONNECTOR_VAULT", "TYPESAFE_API_KEY"];
 const DECISION_ID = "01900000-0000-7000-8000-0000000000d1";
 const MODELS_PATH = "/v1/admin/models";
 
@@ -317,13 +319,13 @@ describe("fixture secret bags", () => {
     await expect(configureScheduler(noWrite, FIXTURE_WORKSPACE, "")).rejects.toMatchObject({ name: "ZodError" });
   });
 
-  test("connector fields come from the caller or one op read each", async () => {
-    let saved: unknown;
+  test("connector apps come from the caller or one op read per field", async () => {
+    let saved: unknown[] = [];
     let calls: string[][] = [];
     const request = fakeRequest((method, url, body) => {
       expect(url).toBe(SECRETS_PATH);
       if (method === "GET") return { secrets: [] };
-      saved = body;
+      saved.push(body);
       return {};
     });
     const op = async (args: string[]): Promise<string> => {
@@ -336,32 +338,35 @@ describe("fixture secret bags", () => {
     };
     const run = async (): Promise<void> => {
       calls = [];
-      saved = undefined;
+      saved = [];
       await configureConnector(request, FIXTURE_WORKSPACE, op);
     };
+    const fromOp = (vault: string, bag: string, fields: string[]) =>
+      ({ name: bag, data: Object.fromEntries(fields.map((field) => [field, `from-op:op://${vault}/${bag}/${field}`])) });
 
-    // A burst machine passes every field in: no 1Password at all.
-    for (const name of GITHUB_NAMES) process.env[name] = `given-${name}`;
+    // A burst machine passes every field of both apps in: no 1Password at all.
+    for (const name of [...GITHUB_NAMES, ...LINEAR_NAMES]) process.env[name] = `given-${name}`;
     await run();
     expect(calls).toEqual([]);
-    expect(saved).toEqual({ name: "github-app",
-      data: Object.fromEntries(GITHUB_FIELDS.map((field, index) => [field, `given-${GITHUB_NAMES[index]}`])) });
+    expect(saved).toEqual([
+      { name: "github-app", data: Object.fromEntries(GITHUB_FIELDS.map((field, index) => [field, `given-${GITHUB_NAMES[index]}`])) },
+      { name: "linear-app", data: Object.fromEntries(LINEAR_FIELDS.map((field, index) => [field, `given-${LINEAR_NAMES[index]}`])) },
+    ]);
 
-    // One field missing: all six come from 1Password, never a mix.
+    // One GitHub field missing: all six come from 1Password, never a mix; Linear stays the caller's.
     delete process.env.LOCAL_GITHUB_WEBHOOK_SECRET;
     delete process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT;
     await run();
     expect(calls[0]).toEqual(["item", "list", "--format", "json"]);
     expect(calls.slice(1)).toEqual(GITHUB_FIELDS.map((field) => ["read", "--no-newline", `op://vault-dev/github-app/${field}`]));
-    expect(saved).toEqual({ name: "github-app",
-      data: Object.fromEntries(GITHUB_FIELDS.map((field) => [field, `from-op:op://vault-dev/github-app/${field}`])) });
+    expect(saved[0]).toEqual(fromOp("vault-dev", "github-app", GITHUB_FIELDS));
 
-    // A named vault skips discovery.
-    for (const name of GITHUB_NAMES) delete process.env[name];
+    // A named vault skips discovery and serves both apps.
+    for (const name of [...GITHUB_NAMES, ...LINEAR_NAMES]) delete process.env[name];
     process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT = "chosen";
     await run();
-    expect(calls).toHaveLength(GITHUB_FIELDS.length);
-    expect(calls.every((args) => args[0] === "read" && args[2]?.startsWith("op://chosen/github-app/"))).toBe(true);
+    expect(calls).toHaveLength(GITHUB_FIELDS.length + LINEAR_FIELDS.length);
+    expect(saved).toEqual([fromOp("chosen", "github-app", GITHUB_FIELDS), fromOp("chosen", "linear-app", LINEAR_FIELDS)]);
   });
 });
 
