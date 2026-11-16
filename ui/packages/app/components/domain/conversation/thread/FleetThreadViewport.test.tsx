@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, type RenderResult } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import {
   AssistantRuntimeProvider,
@@ -8,6 +8,7 @@ import {
 } from "@assistant-ui/react";
 import { FleetConversationLayout } from "../../shared/summary/FleetWorkSidebar";
 import { FleetThreadViewport } from "./FleetThreadViewport";
+import { useOpenAtLatest } from "../../shared/chat/useOpenAtLatest";
 import { CONNECTION_STATUS, type ConnectionStatus } from "../stream/useFleetEventStream";
 
 const NO_MESSAGES: ThreadMessageLike[] = [];
@@ -35,6 +36,20 @@ const SENT_TOP_PX = 820;
 const SENT_HEIGHT_PX = 40;
 
 afterEach(() => cleanup());
+
+function Runtime({ children }: { children: ReactNode }) {
+  const runtime = useExternalStoreRuntime<ThreadMessageLike>({
+    messages: NO_MESSAGES, isRunning: false, convertMessage: (message) => message, onNew: async () => {},
+  });
+  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
+}
+
+/** Refs that never attach, as before an element mounts. */
+function Detached() {
+  const none = useRef<HTMLDivElement>(null);
+  useOpenAtLatest(none, none);
+  return null;
+}
 
 function View({ eventsCount = 0, messages = NO_MESSAGES, isRunning = false, connectionStatus = CONNECTION_STATUS.LIVE, setup, setupEventId, work }: {
   eventsCount?: number;
@@ -111,6 +126,24 @@ describe("FleetThreadViewport scroll", () => {
       browser.layout(frame.log);
       expect(frame.scrollTo).toHaveBeenCalledTimes(1);
       expect(frame.viewport.scrollTop).toBe(held);
+    });
+
+    it("keeps landing when the reader scrolls but stays at the latest turn", () => {
+      const browser = stubBrowserLayout();
+      const frame = browser.frameOf(render(<View messages={SETTLED_TURN} eventsCount={1} />));
+      browser.layout(frame.log);
+      fireEvent.scroll(frame.viewport);
+      frame.size.log = 1_300;
+      browser.layout(frame.log);
+      expect(frame.scrollTo).toHaveBeenCalledTimes(2);
+      expect(frame.viewport.scrollTop).toBe(900);
+    });
+
+    it("does nothing until its viewport and log exist", () => {
+      const observed = vi.fn();
+      vi.stubGlobal("ResizeObserver", class { observe = observed; disconnect(): void {} });
+      render(<Runtime><Detached /></Runtime>);
+      expect(observed).not.toHaveBeenCalled();
     });
 
     it("opens at history that loads after the chat mounts", () => {
