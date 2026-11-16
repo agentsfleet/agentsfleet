@@ -67,7 +67,8 @@ test("test_slack_received_uses_readable_label_without_empty_details", async ({pa
   });
 });
 
-type ProbeResult = { longTasks: number; frames: number; p95FrameMs: number };
+type LongTask = { startMs: number; durationMs: number };
+type ProbeResult = { longTasks: number; tasks: LongTask[]; frames: number; p95FrameMs: number };
 
 test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
   await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
@@ -338,9 +339,16 @@ function callFrame(name: string, kind: string, extra: Record<string, unknown>): 
 // animation frames, so a slow render shows as a long frame even under 50 ms.
 async function startFrameProbe(page: Page): Promise<void> {
   await page.evaluate((key) => {
-    const probe = { longTasks: 0, gaps: [] as number[], running: true };
-    new PerformanceObserver((list) => { probe.longTasks += list.getEntries().length; })
-      .observe({ type: "longtask" });
+    const probe = { longTasks: 0, tasks: [] as LongTask[], gaps: [] as number[], running: true };
+    const origin = performance.now();
+    // Each long task keeps when it started, from the probe's start, and how long it held the thread,
+    // so a failure says which moment of the reply cost it.
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        probe.longTasks += 1;
+        probe.tasks.push({ startMs: Math.round(entry.startTime - origin), durationMs: Math.round(entry.duration) });
+      }
+    }).observe({ type: "longtask" });
     let last = performance.now();
     const tick = (now: number) => {
       probe.gaps.push(now - last);
@@ -354,11 +362,11 @@ async function startFrameProbe(page: Page): Promise<void> {
 
 async function stopFrameProbe(page: Page): Promise<ProbeResult> {
   return page.evaluate(({ key, p95 }) => {
-    const probe = (window as unknown as Record<string, { longTasks: number; gaps: number[]; running: boolean }>)[key];
+    const probe = (window as unknown as Record<string, { longTasks: number; tasks: LongTask[]; gaps: number[]; running: boolean }>)[key];
     if (probe === undefined) throw new Error("frame probe was never started");
     probe.running = false;
     const sorted = [...probe.gaps].sort((a, b) => a - b);
     const at = Math.max(0, Math.ceil(sorted.length * p95) - 1);
-    return { longTasks: probe.longTasks, frames: sorted.length, p95FrameMs: sorted[at] ?? 0 };
+    return { longTasks: probe.longTasks, tasks: probe.tasks, frames: sorted.length, p95FrameMs: sorted[at] ?? 0 };
   }, { key: PROBE_KEY, p95: P95 });
 }
