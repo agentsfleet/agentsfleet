@@ -1,5 +1,6 @@
 //! What the model's call means before the native checker reads it: a first setup's
-//! omitted settings mean none, and an edit's list arrives as a list.
+//! omitted settings mean none, an edit's omitted lists mean none, and an edit's
+//! list arrives as a list.
 //!
 //! The form tells the model to leave out what the person did not ask for. A
 //! stored document must still say outright that a fleet has no tools, and an
@@ -16,16 +17,22 @@
 use serde_json::{Map, Value, json};
 
 use super::{
-    KEY_CONFIG, KEY_CONFIG_OPS, KEY_DEFINITION, KEY_KIND, KEY_POLICY, KEY_REPOSITORIES, KEY_TOOLS,
-    KEY_VALUE, KIND_INITIALIZE, PROPOSAL_ARGUMENT, REPOSITORY_SETTINGS,
+    KEY_CONFIG, KEY_CONFIG_OPS, KEY_DEFINITION, KEY_INSTRUCTION_EDITS, KEY_KIND, KEY_POLICY,
+    KEY_REPOSITORIES, KEY_TOOLS, KEY_VALUE, KIND_EDIT, KIND_INITIALIZE, PROPOSAL_ARGUMENT,
+    REPOSITORY_SETTINGS,
 };
 
 /// The key the model wraps a list's entries in.
 const ITEM: &str = "item";
 
-/// The tool arguments with a first setup's omissions spelled as none and each
-/// edited value's wrapped list unwrapped.
+/// The tool arguments with a first setup's omissions spelled as none, an edit's
+/// omitted lists spelled as empty and each edited value's wrapped list unwrapped.
 pub(in crate::model::provider) fn settle(mut arguments: Value) -> Value {
+    if let Some(proposal) = edit_proposal(&mut arguments) {
+        for list in [KEY_CONFIG_OPS, KEY_INSTRUCTION_EDITS] {
+            proposal.entry(list).or_insert_with(|| json!([]));
+        }
+    }
     for operation in edit_operations(&mut arguments) {
         if let Some(value) = operation.get_mut(KEY_VALUE) {
             unwrap_item(value);
@@ -60,6 +67,15 @@ fn unwrap_item(value: &mut Value) {
         Value::Array(list) => Value::Array(list),
         entry => Value::Array(vec![entry]),
     };
+}
+
+/// An edit proposal's members; a first setup or a malformed call has none.
+fn edit_proposal(arguments: &mut Value) -> Option<&mut Map<String, Value>> {
+    let proposal = arguments.get_mut(PROPOSAL_ARGUMENT)?;
+    if proposal.get(KEY_KIND).and_then(Value::as_str) != Some(KIND_EDIT) {
+        return None;
+    }
+    proposal.as_object_mut()
 }
 
 /// The configuration operations of an edit; a first setup or a malformed call has none.

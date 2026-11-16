@@ -64,6 +64,11 @@ const ACTION_APPEND: &str = "append";
 const DECIMAL_PATTERN: &str = "^[0-9]+$";
 /// What every optional setting tells the model, so a plain fleet stays plain.
 const OMIT: &str = "Omit unless the person asks for it.";
+/// What the triggers setting tells the model: chat is not a trigger, a request for none means none.
+const TRIGGERS_HELP: &str = "Omit unless the person asks for one. Chat and steer messages always reach a fleet and are never triggers. \
+    A trigger starts a run on a schedule (cron), from a webhook or from a Slack mention.";
+/// What an edit's two lists tell the model: the one it does not use is left out.
+const LEAVE_OUT: &str = "Leave this out when the edit makes no change of this kind.";
 /// What every repository setting tells the model.
 const WITH_REPOSITORY: &str = "Only together with repositories.";
 
@@ -89,16 +94,10 @@ fn edit() -> Value {
             KEY_BASE_CANDIDATE_ID:{KEY_TYPE:TYPE_STRING,KEY_MIN_LENGTH:36,KEY_MAX_LENGTH:36},
             KEY_BASE_CANDIDATE_REVISION:{KEY_TYPE:TYPE_STRING,KEY_PATTERN:DECIMAL_PATTERN,KEY_MIN_LENGTH:1,KEY_MAX_LENGTH:DECIMAL_BYTES_MAX,
                 KEY_DESCRIPTION:"Copy the current candidate revision exactly as a string, such as '1'. Never a number."},
-            KEY_CONFIG_OPS:{KEY_TYPE:TYPE_ARRAY,KEY_MAX_ITEMS:MAX_CONFIG_OPS,KEY_ITEMS:config_operation()},
-            KEY_INSTRUCTION_EDITS:{KEY_TYPE:TYPE_ARRAY,KEY_MAX_ITEMS:MAX_INSTRUCTION_EDITS,KEY_ITEMS:instruction_edit()}
+            KEY_CONFIG_OPS:described(json!({KEY_TYPE:TYPE_ARRAY,KEY_MAX_ITEMS:MAX_CONFIG_OPS,KEY_ITEMS:config_operation()}), LEAVE_OUT),
+            KEY_INSTRUCTION_EDITS:described(json!({KEY_TYPE:TYPE_ARRAY,KEY_MAX_ITEMS:MAX_INSTRUCTION_EDITS,KEY_ITEMS:instruction_edit()}), LEAVE_OUT)
         }),
-        &[
-            KEY_KIND,
-            KEY_BASE_CANDIDATE_ID,
-            KEY_BASE_CANDIDATE_REVISION,
-            KEY_CONFIG_OPS,
-            KEY_INSTRUCTION_EDITS,
-        ],
+        &[KEY_KIND, KEY_BASE_CANDIDATE_ID, KEY_BASE_CANDIDATE_REVISION],
     )
 }
 
@@ -139,7 +138,7 @@ fn configuration() -> Value {
                 KEY_PROPERTIES:{
                     KEY_TOOLS:described(list(&json!({KEY_TYPE:TYPE_STRING})), OMIT),
                     "credentials":described(list(&json!({KEY_TYPE:TYPE_STRING})), OMIT),
-                    "triggers":described(super::triggers::schema(), OMIT),
+                    "triggers":described(super::triggers::schema(), TRIGGERS_HELP),
                     "network":described(network(), OMIT),
                     "decision_policy":described(decision::policy(),
                         "Omit for ordinary fleets. Only when the person asks for owner-reviewed routing and completion questions."),

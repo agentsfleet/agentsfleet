@@ -252,7 +252,7 @@ fn trigger() -> Value {
 #[test]
 fn a_value_wrapped_in_item_is_the_list_it_names() {
     use crate::model::provider::schema::settle;
-    let edit = |value: Value| json!({"proposal":{"kind":"edit","config_ops":[{"op":"add","path":"/config/x-agentsfleet/triggers","value":value}]}});
+    let edit = |value: Value| json!({"proposal":{"kind":"edit","config_ops":[{"op":"add","path":"/config/x-agentsfleet/triggers","value":value}],"instruction_edits":[]}});
     assert_eq!(
         settle(edit(json!({"item": trigger()}))),
         edit(json!([trigger()]))
@@ -282,6 +282,81 @@ fn a_wrapped_trigger_on_a_fleet_without_triggers_is_a_valid_edit()
     assert!(proposed.get("reason").is_none(), "{proposed}");
     assert!(!moved);
     Ok(())
+}
+
+// Value: protects=an edit that leaves out a list it does not use is read as an empty list, as the form says;
+// fails_when=a call without instruction_edits or config_ops is refused as malformed, or a first setup gains the lists.
+#[test]
+fn an_edit_that_leaves_out_a_list_means_none_of_that_kind() {
+    use crate::model::provider::schema::settle;
+    let edit = |members: Value| {
+        let mut proposal =
+            json!({"kind":"edit","base_candidate_id":"x","base_candidate_revision":"1"});
+        if let (Some(base), Some(extra)) = (proposal.as_object_mut(), members.as_object()) {
+            base.extend(extra.clone());
+        }
+        json!({"proposal": proposal})
+    };
+    let only_config = settle(edit(
+        json!({"config_ops":[{"op":"remove","path":"/config/x"}]}),
+    ));
+    assert_eq!(
+        only_config.pointer("/proposal/instruction_edits"),
+        Some(&json!([]))
+    );
+    let only_text = settle(edit(
+        json!({"instruction_edits":[{"kind":"append","text":"More."}]}),
+    ));
+    assert_eq!(only_text.pointer("/proposal/config_ops"), Some(&json!([])));
+    let neither = settle(edit(json!({})));
+    assert_eq!(neither.pointer("/proposal/config_ops"), Some(&json!([])));
+    assert_eq!(
+        neither.pointer("/proposal/instruction_edits"),
+        Some(&json!([]))
+    );
+    let first = settle(json!({"proposal":{"kind":"initialize"}}));
+    assert_eq!(first.pointer("/proposal/config_ops"), None);
+}
+
+// Value: protects=a schedule edit that names no instruction change is proposed, as the model writes it;
+// fails_when=the missing instruction_edits list makes decoding refuse an edit whose operation is right.
+#[test]
+fn a_schedule_edit_without_instruction_edits_is_proposed() -> Result<(), Box<dyn std::error::Error>>
+{
+    let base = candidate("Keep the existing rule.")?;
+    let call = ToolCall::new(
+        CallId::from_wire("edit-fixture"),
+        ToolFunction::new(
+            ToolName::new(TOOL)?,
+            json!({"proposal":{
+                "kind":"edit","base_candidate_id":base.id,"base_candidate_revision":base.revision,
+                "config_ops":[{"op":"add","path":"/config/x-agentsfleet/triggers","value":[trigger()]}]
+            }}),
+        ),
+    );
+    let (proposed, _) = checked(&call)?;
+    assert!(proposed.get("proposal").is_some(), "{proposed}");
+    Ok(())
+}
+
+// Value: protects=the model is not told that chat or steer messages are triggers;
+// fails_when=the triggers setting drops the sentence that says they never are.
+#[test]
+fn the_form_says_chat_is_never_a_trigger() {
+    let block = "/parameters/properties/proposal/properties/definition/properties/config/properties/x-agentsfleet/properties/triggers/description";
+    let help = tool(false)
+        .pointer(block)
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    assert!(help.is_some_and(|text| text.contains("Chat and steer messages always reach a fleet")),);
+    assert_eq!(
+        tool(true).pointer("/parameters/properties/proposal/required"),
+        Some(&json!([
+            "kind",
+            "base_candidate_id",
+            "base_candidate_revision"
+        ]))
+    );
 }
 
 // Value: protects=the model is told the document root, which every edit path starts from;

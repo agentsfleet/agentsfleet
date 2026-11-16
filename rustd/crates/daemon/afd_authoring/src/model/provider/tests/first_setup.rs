@@ -51,13 +51,26 @@ fn the_first_setup_form_asks_only_for_a_name_and_a_budget() {
             .pointer(&format!("{block}/properties/gates"))
             .is_none()
     );
-    for setting in ["tools", "credentials", "triggers", "network"] {
+    for setting in ["tools", "credentials", "network"] {
         assert_eq!(
             schema.pointer(&format!("{block}/properties/{setting}/description")),
             Some(&json!(OMIT)),
             "{setting}"
         );
     }
+    // Triggers add the one thing a plain fleet is tempted to declare: chat is never one.
+    let triggers = schema
+        .pointer(&format!("{block}/properties/triggers/description"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        triggers.starts_with("Omit unless the person asks for one."),
+        "{triggers}"
+    );
+    assert!(
+        triggers.contains("Chat and steer messages always reach a fleet"),
+        "{triggers}"
+    );
     let placement = schema
         .pointer(&format!("{block}/description"))
         .and_then(Value::as_str)
