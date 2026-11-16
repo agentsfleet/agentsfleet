@@ -140,7 +140,7 @@ jobs:
         # Every service the lane starts, by its compose name: a name that
         # does not exist fails this step and prints no logs at all, which is
         # a diagnostic that fails exactly when it is needed.
-        run: docker compose logs --tail 200 postgres nats-1 nats-2 nats-3
+        run: docker compose logs --tail 200 postgres ant bee elk
 
   # The kernel lane, as root on the hosted runner, which is a virtual machine
   # of its own: no nested virtualization is needed, only what a runner host is

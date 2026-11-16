@@ -20,7 +20,7 @@ facts.
   `UZ-STARTUP-004`, a seed it cannot reach and a server that reports JetStream,
   no cluster, no headers or a `max_payload` under the largest frame
   (`afd_bus/src/nats/preflight.rs`). The local lane is a real three-node
-  cluster: compose `nats-1`, `nats-2` and `nats-3`.
+  cluster: compose `ant`, `bee` and `elk`.
 - Drive work with `orly gate` (work → verify → pr). Hooks run `orly gate work`;
   `orly gate pr` runs by hand at CHORE(close), before `gh pr create`.
   `.orly/orly.json` declares `verify.lint`, `verify.unit`,
@@ -143,7 +143,7 @@ repository:
 - Run one lane per checkout. Stop a run by its process ID, never `pkill -f`. A
   vitest coverage-lock red is not a test failure.
 - The NATS nodes run `--no_advertise`, so a host client uses its whole seed
-  list. Probe a node with `docker compose exec nats-1 wget -q -O -
+  list. Probe a node with `docker compose exec ant wget -q -O -
   http://127.0.0.1:8222/healthz`; recreate the cluster only through
   `make _ensure-test-infra`.
 - Linux-only `afr_sandbox` and `afr_executor` code is linted and tested on

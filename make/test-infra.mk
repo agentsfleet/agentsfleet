@@ -86,7 +86,7 @@ AGENTSFLEET_NATS_PORT_3 ?= $(shell echo $$(( $(AGENTSFLEET_NATS_BASE_PORT) + 2 )
 export AGENTSFLEET_NATS_BASE_PORT AGENTSFLEET_NATS_PORT_2 AGENTSFLEET_NATS_PORT_3
 TEST_NATS_URL ?= nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_BASE_PORT),nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_PORT_2),nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_PORT_3)
 # How a test stops and restarts one node: compose, with the verb appended
-# (`stop nats-2`, `up -d --wait nats-2`). Only the exclusive lane uses it.
+# (`stop bee`, `up -d --wait bee`). Only the exclusive lane uses it.
 TEST_NATS_CONTROL ?= docker compose --project-directory $(CURDIR)
 export TEST_NATS_URL TEST_NATS_CONTROL
 
@@ -132,7 +132,7 @@ _ensure-test-infra:
 	@# worktree's test run destroy another's mid-flight.
 	@echo "→ [infra] Host ports: postgres=$(AGENTSFLEET_PG_HOST_PORT) qstash=$(AGENTSFLEET_QSTASH_HOST_PORT) api=$(AGENTSFLEET_API_HOST_PORT) mailpit=$(AGENTSFLEET_MAILPIT_SMTP_PORT)/$(AGENTSFLEET_MAILPIT_UI_PORT) nats=$(AGENTSFLEET_NATS_BASE_PORT)-$(AGENTSFLEET_NATS_PORT_3)"
 	@echo "→ [infra] Starting postgres + qstash + mailpit + nats (waiting for healthchecks)..."
-	@docker compose up -d --wait --remove-orphans postgres qstash mailpit nats-1 nats-2 nats-3
+	@docker compose up -d --wait --remove-orphans postgres qstash mailpit ant bee elk
 	@echo "✓ [infra] postgres + qstash + mailpit + nats ready"
 
 # Drop and recreate all app schemas so every test-integration run starts from a clean

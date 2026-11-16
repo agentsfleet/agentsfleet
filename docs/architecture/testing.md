@@ -36,7 +36,7 @@ Together they cover the whole workspace. Continuous Integration (CI) runs each o
 
 A package-scoped runner, such as `cargo test -p af_wire` or `bun run test` inside a package, proves that package and nothing more. It never satisfies the repository claim.
 
-`make test-integration-rustd` needs live datastores, and so does the coverage lane that measures it (§Coverage). Docker compose brings up Postgres and three NATS nodes (`nats-1` to `nats-3`), and the schemas reset per run. NATS keeps nothing, so it needs no reset (`make/test-infra.mk`).
+`make test-integration-rustd` needs live datastores, and so does the coverage lane that measures it (§Coverage). Docker compose brings up Postgres and three NATS nodes (`ant`, `bee` and `elk`), and the schemas reset per run. NATS keeps nothing, so it needs no reset (`make/test-infra.mk`).
 
 No other lane needs either. `make test-unit-all` stays datastore-free, because every Rust test that needs one is `#[ignore]`d and runs only in those two lanes. `KEEP_TEST_STATE=1` skips the reset for the inner loop; CI never sets it.
 

@@ -1,7 +1,7 @@
 //! Tests that stop a real node, so they run alone (the lane's
 //! `EXCLUSIVE_MODULES`).
 //!
-//! Stopping `nats-2` drops every client on it. A sibling test whose seed or
+//! Stopping `bee` drops every client on it. A sibling test whose seed or
 //! publisher sat there would fail for a reason that is not its own.
 
 use std::time::Duration;
@@ -19,12 +19,12 @@ use super::{
 /// appends the verb.
 const CONTROL_ENV: &str = "TEST_NATS_CONTROL";
 /// The node every test here stops.
-const VICTIM: &str = "nats-2";
+const VICTIM: &str = "bee";
 /// The deadline a viewer on a stopped node resumes inside: its client fails
 /// over to a live seed, and the viewer is told of the gap before it does.
 const RESUME: Duration = Duration::from_secs(10);
 
-/// `nats-2`, stopped until [`Self::restart`], or until this drops on a failed
+/// `bee`, stopped until [`Self::restart`], or until this drops on a failed
 /// test, so later suites find three nodes either way.
 struct Stopped {
     up: bool,
@@ -71,10 +71,10 @@ fn node(seeds: &[String], index: usize) -> Fallible<&str> {
     Ok(seeds.get(index).ok_or("the lane exports three seeds")?)
 }
 
-/// A client on `nats-2` that can still fail over.
+/// A client on `bee` that can still fail over.
 ///
-/// Its second seed relays to `nats-1` and refuses while the client boots, so
-/// boot lands on `nats-2`; the relay opens once the client is up. The client
+/// Its second seed relays to `ant` and refuses while the client boots, so
+/// boot lands on `bee`; the relay opens once the client is up. The client
 /// shuffles its seeds, so without the relay the node it dials is a coin flip.
 async fn on_the_victim(seeds: &[String], namespace: &str) -> Fallible<(Handle, Proxy)> {
     let peer = node(seeds, 0)?;
@@ -135,7 +135,7 @@ async fn node_kill_gaps_viewers_and_resumes() -> TestResult {
 /// Frames the loss test publishes, one every [`PACE`].
 const FRAMES: u32 = 1_000;
 const PACE: Duration = Duration::from_millis(10);
-/// The frame before which `nats-2` is told to stop.
+/// The frame before which `bee` is told to stop.
 const STOP_BEFORE: u32 = 200;
 /// How long a reader waits for the last frame.
 const READ_LIMIT: Duration = Duration::from_secs(30);

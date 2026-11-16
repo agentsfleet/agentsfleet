@@ -1,14 +1,15 @@
-# agentsfleet disposable container stack — datastores and agentsfleetd API
-# `make up` uses compose.dev-infra.yml and a native daemon per worktree.
-# Integration tests use this stack with isolated project names and reset state.
+# agentsfleet datastores: Postgres, Mailpit, the QStash emulator and three NATS
+# nodes. One definition serves both users: the integration lane runs it from
+# this checkout (make/test-infra.mk), and `make up` copies it once into the
+# shared development stack (scripts/local-dev-state.sh), which keeps that copy.
 #
-# The test-infra services (postgres, qstash, mailpit, nats-1..3) carry NO
-# `container_name`, so several git worktrees can run `make test-integration` at
-# once. Compose namespaces containers and volumes by project, and the project
-# name defaults to the directory basename — already unique per worktree. Pinning
-# the name collapses every worktree onto one container: whichever ran last owned
-# the database, and the integration lane starts by dropping every schema, so
-# concurrent agents silently destroyed each other's runs.
+# The services carry NO `container_name`, so several git worktrees can run
+# `make test-integration` at once. Compose namespaces containers and volumes by
+# project, and the project name defaults to the directory basename — already
+# unique per worktree. Pinning the name collapses every worktree onto one
+# container: whichever ran last owned the database, and the integration lane
+# starts by dropping every schema, so concurrent agents silently destroyed each
+# other's runs.
 #
 # Their host ports are FIXED, and `make` exports the values —
 # scripts/test-infra-ports.sh decides them. Letting Docker assign an ephemeral
@@ -19,15 +20,9 @@
 #
 # Only a LINKED git worktree gets pinned per-project ports. The `:-` defaults
 # below are what a primary checkout uses, which is what CI always has, and CI
-# hardcodes localhost:5432 into the connection strings it hands the test
-# container — so these defaults are load-bearing, not decorative. They also mean
-# a bare `docker compose up` in a fresh clone behaves exactly as it always did.
-#
-# `agentsfleetd` deliberately KEEPS its fixed name, and `localhost:3000` stays
-# the documented entry point of the `make up` dev stack. Its port rides the
-# mailpit service (the two share a network namespace) under
-# AGENTSFLEET_API_HOST_PORT, which the test lane sets per worktree so parallel
-# lanes do not collide on 3000 the way two `make up` stacks still would.
+# hardcodes localhost:5432 into its connection strings — so these defaults are
+# load-bearing, not decorative. Every port binds to loopback only: the fixture
+# passwords below never listen on another interface.
 services:
   postgres:
     image: mirror.gcr.io/library/postgres:19rc2-alpine
@@ -57,11 +52,11 @@ services:
       # Per-worktree but fixed — see the header. scripts/test-infra-ports.sh
       # writes the value, and make/test-infra.mk builds the URLs from the same
       # declared AGENTSFLEET_*_HOST_PORT values, which compose publishes verbatim.
-      - "${AGENTSFLEET_PG_HOST_PORT:-5432}:5432"
+      - "127.0.0.1:${AGENTSFLEET_PG_HOST_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agentsfleet -d agentsfleetdb"]
+      test: ["CMD-SHELL", "pg_isready -U agentsfleet -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -71,14 +66,8 @@ services:
     # lane. It accepts any credentials and keeps every message for reading at
     # its web page or its API, so a test asserts on the real SMTP exchange and
     # a person can open the rendered email in a browser.
-    #
-    # The daemon container joins THIS network namespace, so it reaches mailpit
-    # on 127.0.0.1 — the one kind of host `afd_mail` sends to without TLS
-    # (`afd_mail::Security::of`). A container sharing a namespace cannot
-    # publish its own ports, so the daemon's API port is published here too.
     image: axllent/mailpit:v1.33.1
     ports:
-      - "${AGENTSFLEET_API_HOST_PORT:-3000}:3000"
       - "127.0.0.1:${AGENTSFLEET_MAILPIT_SMTP_PORT:-1025}:1025"
       - "127.0.0.1:${AGENTSFLEET_MAILPIT_UI_PORT:-8025}:8025"
     environment:
@@ -110,7 +99,7 @@ services:
         exec node_modules/@upstash/qstash-cli/bin/qstash dev -port 8080
     ports:
       # Per-worktree but fixed -- see the postgres service above.
-      - "${AGENTSFLEET_QSTASH_HOST_PORT:-8080}:8080"
+      - "127.0.0.1:${AGENTSFLEET_QSTASH_HOST_PORT:-8080}:8080"
     # The emulator delivers a fire to a listener on the host; Docker Desktop
     # resolves this name itself and a Linux engine needs the mapping.
     extra_hosts:
@@ -128,60 +117,21 @@ services:
       retries: 60
       start_period: 30s
 
-  agentsfleetd:
-    container_name: agentsfleetd-api
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        TARGETARCH: ${TARGETARCH:-amd64}
-    # In mailpit's network namespace, so the invite email goes to 127.0.0.1
-    # without TLS. Postgres and the NATS nodes are reached by service name.
-    # Its API port is published on the mailpit service above.
-    network_mode: "service:mailpit"
-    env_file:
-      # Local test shells point directly at the machine-level file. Compose
-      # reads the path from the invoking shell; the fallback serves setups
-      # that still use a checkout-local file.
-      - path: ${AGENTSFLEET_RUSTD_ENV_FILE:-.env.agentsfleetd.local}
-        required: false
-    environment:
-      # Local dev defaults: satisfy role-separated startup checks without
-      # requiring a checked-in .env file.
-      ENCRYPTION_MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef # gitleaks:allow
-      # Compose service names, not localhost.
-      DATABASE_URL_API: postgresql://agentsfleet:agentsfleet@postgres:5432/agentsfleetdb?application_name=api&sslmode=disable
-      # Every node as a seed, with the lane's fixed credentials.
-      NATS_URL: nats://agentsfleet:agentsfleet@nats-1:4222,nats://agentsfleet:agentsfleet@nats-2:4222,nats://agentsfleet:agentsfleet@nats-3:4222
-      MIGRATE_ON_START: "1"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      mailpit:
-        condition: service_started
-      nats-1:
-        condition: service_healthy
-    # No healthcheck. The image is distroless — no shell, no wget, no HTTP
-    # client — so a compose healthcheck has nothing to run and the container
-    # would sit unhealthy forever. Readiness is declared where it is acted on:
-    # deploy/fly/agentsfleetd-{dev,prod}/fly.toml's `[checks.readiness]` polls
-    # /readyz. Nothing here depends on this service being healthy.
-
   # Three core NATS nodes routed as one cluster: no JetStream, no volume, so a
   # restarted node rejoins empty. `--no_advertise` keeps the nodes' bridge
   # addresses away from clients, which dial their seed list from the host.
   # The fixed local password is a lane fixture; nothing deployed uses it. The alpine build of the pinned release carries wget for the check.
-  nats-1: &nats
+  ant: &nats
     image: nats:2.15.3-alpine
     command:
-      - --name=nats-1
+      - --name=ant
       - --port=4222
       - --http_port=8222
       - --user=agentsfleet
       - --pass=agentsfleet
       - --cluster_name=agentsfleet
       - --cluster=nats://0.0.0.0:6222
-      - --routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222
+      - --routes=nats://ant:6222,nats://bee:6222,nats://elk:6222
       - --no_advertise=true
     ports:
       - "127.0.0.1:${AGENTSFLEET_NATS_BASE_PORT:-4222}:4222"
@@ -190,31 +140,31 @@ services:
       interval: 1s
       timeout: 2s
       retries: 30
-  nats-2:
+  bee:
     <<: *nats
     command:
-      - --name=nats-2
+      - --name=bee
       - --port=4222
       - --http_port=8222
       - --user=agentsfleet
       - --pass=agentsfleet
       - --cluster_name=agentsfleet
       - --cluster=nats://0.0.0.0:6222
-      - --routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222
+      - --routes=nats://ant:6222,nats://bee:6222,nats://elk:6222
       - --no_advertise=true
     ports:
       - "127.0.0.1:${AGENTSFLEET_NATS_PORT_2:-4223}:4222"
-  nats-3:
+  elk:
     <<: *nats
     command:
-      - --name=nats-3
+      - --name=elk
       - --port=4222
       - --http_port=8222
       - --user=agentsfleet
       - --pass=agentsfleet
       - --cluster_name=agentsfleet
       - --cluster=nats://0.0.0.0:6222
-      - --routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222
+      - --routes=nats://ant:6222,nats://bee:6222,nats://elk:6222
       - --no_advertise=true
     ports:
       - "127.0.0.1:${AGENTSFLEET_NATS_PORT_3:-4224}:4222"

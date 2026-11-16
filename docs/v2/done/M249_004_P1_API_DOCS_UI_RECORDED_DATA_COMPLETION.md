@@ -122,6 +122,7 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `deploy/local/**`, `make/acceptance.mk`, `Makefile`, `scripts/build-acceptance.ts`, `scripts/local-dev-state.sh`, `README.md`, `docs/development.md` | EDIT/REMOVE | One `make acceptance` on Linux replaces `acceptance-local` (macOS and OrbStack, removed) and `acceptance-codex` (renamed); bootstrap reads the GitHub App fields where it uses them; orphaned shared services are removed (owner, Nov 16, 2026) |
 | `ui/packages/app/app/loading.tsx` (removed), `app/{cli-auth,connectors}/loading.tsx`, `tests/loading-states.test.ts` | REMOVE/ADD | The root loader wrapped the dashboard shell in a streamed boundary that could leave a hidden second shell; the two routes that wait on reads keep their spinner (owner, Nov 16, 2026) |
 | `.github/workflows/acceptance-on-demand.yml` | ADD | Run local acceptance on a hosted VM for any branch (owner, Nov 16, 2026) |
+| `docker-compose.yml`, `compose.dev-infra.yml` (removed), `scripts/local-dev-{state,test,live-test}.sh`, `make/test-infra.mk`, `.github/workflows/test-integration-rustd.yml`, `.orly/LOCAL.md`, `docs/architecture/{datastore_scaling,testing}.md`, `afd_bus` NATS doc and exclusive test, `deploy/fly/nats-{dev,prod}/Dockerfile` | EDIT/REMOVE | One datastore compose file for the integration lane and the shared development stack; the NATS nodes are `ant`, `bee` and `elk` (owner, Nov 16, 2026) |
 | `playbooks/lib/platform_secret_sync.sh`, `playbooks/lib/platform_secret_sync_test.sh`, `.github/workflows/deploy-dev-verify.yml` | EDIT | Every dev deploy seeds the `typesafe` decision key into the platform workspace (owner, Nov 16, 2026) |
 | `deploy/local/machine-env.sh`, `.claude/skills/orly-burst/SKILL.md`, `.agents/skills/orly-burst/SKILL.md`, `.gitignore` | ADD/EDIT | Acceptance on a fresh GitHub runner, driven by the `orly-burst` skill until orly ships `orly burst` (owner, Nov 16, 2026) |
 | `rustd/Cargo.{toml,lock}`, `af_core/src/clock.rs` and the jiff call sites | EDIT | jiff and jiff-sqlx 1.0 (owner, Nov 16, 2026) |
@@ -563,6 +564,12 @@ Typed "Save" still depends on the edit check: without a decision model it fails,
 > Owner (Indy), on a fallback for typed "Save": "Keep it as now"
 
 > Owner (Indy), on the requested model: "yes ask jev-latest"
+
+- **One datastore compose file (Nov 16, 2026):** `compose.dev-infra.yml` and `docker-compose.yml` declared the same six services with the same images; `docker-compose.yml` also carried an `agentsfleetd` service nothing started. The integration lane and `make up` now share `docker-compose.yml`, every port binds to loopback, and the dev stack reads its service names from its own snapshot, so a stack created before the rename keeps reusing its containers. The deployed NATS images still pin 2.15.2 while the tested stack runs 2.15.3.
+
+> Owner (Indy), on merging the two compose files: "This PR (#846)"
+
+> Owner (Indy): "as opposed to nats-1, 2 3 name good 3 character ones" (chosen: `ant`, `bee`, `elk`)
 
 Every dev deploy now seeds the `typesafe` key into dev's platform workspace through `platform_secret_sync.sh`. Dev also needs the decision model in its catalogue and named in its runners' policy before typed "Save" can finish there.
 

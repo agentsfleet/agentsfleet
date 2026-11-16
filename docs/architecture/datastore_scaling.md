@@ -180,7 +180,7 @@ Fault injection and saturation testing use isolated datastores and synthetic des
 ## Shared local development
 
 `make up` shares one infrastructure project across a repository's linked Git worktrees.
-`compose.dev-infra.yml` contains Postgres, three NATS nodes (`nats-1` to `nats-3`), Mailpit and Upstash QStash.
+`docker-compose.yml` contains Postgres, three NATS nodes (`ant`, `bee` and `elk`), Mailpit and Upstash QStash.
 The first caller saves a canonical Compose snapshot; later callers reuse healthy services without replacing that snapshot.
 
 Each worktree starts its own native `agentsfleetd`, compiled from that checkout.
