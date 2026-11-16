@@ -1,39 +1,90 @@
 "use client";
 
-import { use, type ReactNode } from "react";
-import { ThreadPrimitive, useAuiState } from "@assistant-ui/react";
+import { use, useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
+import { ThreadPrimitive, useAui } from "@assistant-ui/react";
 import { ArrowDownIcon } from "@phosphor-icons/react/ssr";
 import { Button, Section, cn } from "@agentsfleet/design-system";
 
 import { FleetSummaryContext, FleetWorkSidebar } from "../summary/FleetWorkSidebar";
 
-/** The viewport owns scrolling; its capped footer keeps the composer reachable. */
-export function ChatThread({children, footer, label, testId, autoScroll = true, centered = false}: {
-  children: ReactNode; footer: ReactNode; label: string; testId?: string; autoScroll?: boolean; centered?: boolean;
+// The reader has left the bottom once more than this separates them from it.
+const AT_BOTTOM_PX = 1;
+
+/**
+ * The viewport owns scrolling; its capped footer keeps the composer reachable.
+ * A chat opens at its latest turn, and after that only the reader moves the
+ * view: the library's top anchor lifts a sent turn to the top over a reserve
+ * sized to the viewport, and a streamed reply, a resize or the composer never
+ * scrolls it. Jump to latest follows a reply that runs below the composer.
+ */
+export function ChatThread({children, footer, label, testId, centered = false}: {
+  children: ReactNode; footer: ReactNode; label: string; testId?: string; centered?: boolean;
 }) {
   const summary = use(FleetSummaryContext);
-  const composing = useAuiState(state => state.composer.text.length > 0);
+  const viewport = useRef<HTMLDivElement>(null);
+  const log = useRef<HTMLDivElement>(null);
+  useOpenAtLatest(viewport, log);
   return <ThreadPrimitive.Root asChild data-testid={testId}>
     <Section aria-label={label} className={cn("relative flex min-h-0 flex-1 flex-col overflow-clip bg-background", centered && "[--max-w-chat:var(--max-w-new-fleet)] [--chat-input-height:var(--new-fleet-input-height)] min-[681px]:[--chat-inset:var(--sp-3xl)]")}>
-    <ThreadPrimitive.Viewport turnAnchor="top" autoScroll={autoScroll && !composing && !centered} scrollToBottomOnInitialize={autoScroll && !centered} scrollToBottomOnThreadSwitch={autoScroll && !centered} role="presentation"
+    <ThreadPrimitive.Viewport ref={viewport} turnAnchor="top" autoScroll={false} scrollToBottomOnInitialize={false} role="presentation"
       className={cn("flex min-h-0 flex-1 flex-col overflow-y-auto", summary && "summary:grid summary:grid-cols-[minmax(0,1fr)_var(--summary-width)] summary:grid-rows-[1fr_auto] summary:gap-x-lg summary:pr-lg summary-medium:gap-x-xl summary-medium:pr-xl summary-wide:gap-x-3xl summary-wide:pr-2xl")}>
       <div className={cn("flex min-w-0 flex-col", centered ? "mt-4xl flex-none sm:mt-auto sm:-translate-y-xl" : "flex-1", summary && "summary:contents")}>
-        <div className={cn("flex min-w-0 flex-1 flex-col px-xl sm:px-chat-inset", centered && "max-[42.5rem]:px-5", !centered && "pt-xl sm:pt-2xl", summary && "summary:col-start-1 summary:row-start-1")}>{children}</div>
+        <div ref={log} className={cn("flex min-w-0 flex-1 flex-col px-xl sm:px-chat-inset", centered && "max-[42.5rem]:px-5", !centered && "pt-xl sm:pt-2xl", summary && "summary:col-start-1 summary:row-start-1")}>{children}</div>
         <FleetWorkSidebar>{summary}</FleetWorkSidebar>
       </div>
-      <ThreadPrimitive.ViewportFooter data-testid="fleet-chat-footer"
+      {/* Not the library's ViewportFooter: its inset counts rows hidden under
+          the composer as seen, so Jump to latest stayed hidden over them. */}
+      <div data-testid="fleet-chat-footer"
         className={cn("z-10 flex max-h-[calc(100%_-_3rem_-_var(--sp-sm))] shrink-0 flex-col bg-background px-xl sm:px-chat-inset", centered ? "relative mb-2xl pt-3xl max-[42.5rem]:px-5 sm:mb-auto sm:-translate-y-xl" : "relative pb-5 pt-lg max-[42.5rem]:px-lg min-[681px]:sticky min-[681px]:bottom-0", summary && "summary:col-start-1 summary:row-start-2 summary:max-h-[calc(100dvh_-_9rem)]")}>
         <div className="relative mx-auto flex w-full max-w-chat flex-col">
-        {autoScroll ? <ThreadPrimitive.ScrollToBottom asChild>
+        {centered ? null : <ThreadPrimitive.ScrollToBottom asChild>
           <Button variant="secondary" size="icon" aria-label="Jump to latest"
             className="absolute bottom-full left-1/2 z-20 mb-sm -translate-x-1/2 rounded-full disabled:pointer-events-none disabled:invisible">
             <ArrowDownIcon className="size-4" aria-hidden="true" />
           </Button>
-        </ThreadPrimitive.ScrollToBottom> : null}
+        </ThreadPrimitive.ScrollToBottom>}
         {footer}
         </div>
-      </ThreadPrimitive.ViewportFooter>
+      </div>
     </ThreadPrimitive.Viewport>
     </Section>
   </ThreadPrimitive.Root>;
+}
+
+/**
+ * Lands the thread on its latest turn as it opens, whether the turns came with
+ * the mount or loaded just after; a first turn whose reply is running is live
+ * and left alone. Settled rows lay out only near the viewport and move the
+ * bottom when they do, so each resize of the log lands again until the thread
+ * changes, the reader scrolls up or types. Nothing here runs after that.
+ */
+function useOpenAtLatest(viewport: RefObject<HTMLDivElement | null>, log: RefObject<HTMLDivElement | null>): void {
+  const aui = useAui();
+  useLayoutEffect(() => {
+    const frame = viewport.current;
+    const rows = log.current;
+    if (!frame || !rows) return;
+    const mounted = aui.thread().getState().messages;
+    let opened = mounted.length > 0 ? mounted : undefined;
+    const land = new ResizeObserver(() => {
+      const {messages} = aui.thread().getState();
+      if (messages.length === 0) return;
+      if (opened === undefined && messages.at(-1)?.status?.type === "running") return stop();
+      opened ??= messages;
+      if (messages === opened) frame.scrollTo({top: frame.scrollHeight, behavior: "instant"});
+      else stop();
+    });
+    const leave = () => {
+      if (frame.scrollHeight - frame.clientHeight - frame.scrollTop > AT_BOTTOM_PX) stop();
+    };
+    const stop = () => {
+      land.disconnect();
+      frame.removeEventListener("scroll", leave);
+      frame.removeEventListener("input", stop);
+    };
+    land.observe(rows);
+    frame.addEventListener("scroll", leave);
+    frame.addEventListener("input", stop);
+    return stop;
+  }, [aui, viewport, log]);
 }

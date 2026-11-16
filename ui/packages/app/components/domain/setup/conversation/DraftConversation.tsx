@@ -48,7 +48,7 @@ export function DraftConversation({client, view, workspace, subject, children, u
     <AssistantRuntimeProvider runtime={runtime}>
       <AuthoringPrompt hasMessages={messages.length > 0} />
       <DraftRetryProvider client={client} disabled={view.busy || view.pending || recovery.pending || view.inaccessible || !view.model}>
-      <SetupConversationLayout client={client} view={view} workspace={workspace} subject={subject}><ChatThread label="Fleet setup conversation" autoScroll={!empty} centered={empty}
+      <SetupConversationLayout client={client} view={view} workspace={workspace} subject={subject}><ChatThread label="Fleet setup conversation" centered={empty}
         footer={<>{errorNotice}<ChatComposer empty={empty} client={client} view={view} workspace={workspace} onOpenFleet={onOpenFleet} modelsHref={modelsHref} canStop={recovery.canStop} blocked={instructionsDirty} dirty={instructionsDirty} />
           {empty ? <><ChatSuggestions disabled={view.busy || view.pending || view.inaccessible} /><p className="mb-xl mt-5 text-center text-eyebrow leading-label text-text-dim">No fleet selected. Start something new, or open your fleets from the rail.</p>{unfinished}</> : null}</>}>
         <div role="log" aria-live="off" className={cn("mx-auto flex w-full max-w-chat flex-1 flex-col", !empty && "py-3xl")}>

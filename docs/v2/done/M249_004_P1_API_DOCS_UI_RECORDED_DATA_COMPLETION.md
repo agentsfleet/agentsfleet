@@ -124,6 +124,7 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `.github/workflows/acceptance-on-demand.yml` | ADD | Run local acceptance on a hosted VM for any branch (owner, Nov 16, 2026) |
 | `afd_cron/src/activation.rs`, `afd_authoring/src/creation/{mod,chat_save,schedules}.rs`, `afd_http/src/services/schedule/{mod,plane}.rs`, `afd_api_tenant/src/handler/fleet/native/schedules.rs`, `main/src/plane/{mod,surfaces}.rs`, `afd_api/tests/authoring/saving/chat_save/registration.rs` | EDIT/ADD | A typed "Save" registers its trigger schedules with the scheduler, through the same function as the dashboard save (owner, Nov 16, 2026) |
 | `ui/packages/app/components/domain/activity/replies/FleetReplyActions.tsx`, `tests/fleet-thread/role-reply-parts.test.ts` | EDIT | A reply reserves its action bar's slot, so it does not move when it finishes (owner, Nov 16, 2026) |
+| `ui/packages/app/components/domain/shared/chat/ChatThread.tsx`, `components/domain/setup/conversation/DraftConversation.tsx`, their unit tests, `tests/e2e/chat-typography.spec.ts`, `tests/e2e/fixtures/chat-scroll-probe.tsx`, `tests/e2e/acceptance/fleet-thread.spec.ts` | EDIT | Fleet and setup chats anchor each sent message at the top and never move on their own (owner, Nov 16, 2026) |
 | `afr_supervisor/src/authoring/{turn,proposal}.rs` | EDIT | Each setup model call and proposal logs a value-free outcome (owner, Nov 16, 2026) |
 | `ui/packages/app/tests/e2e/acceptance/**` | EDIT | Acceptance follows the shipped dashboard: the empty composer's start button, display-name member rows, the recovery alert, wide-only header labels, the paused Plugin pages and run figures in Run details (owner, Nov 16, 2026) |
 | `docker-compose.yml`, `compose.dev-infra.yml` (removed), `scripts/local-dev-{state,test,live-test}.sh`, `make/test-infra.mk`, `.github/workflows/test-integration-rustd.yml`, `.orly/LOCAL.md`, `docs/architecture/{datastore_scaling,testing}.md`, `afd_bus` NATS doc and exclusive test, `deploy/fly/nats-{dev,prod}/Dockerfile` | EDIT/REMOVE | One datastore compose file for the integration lane and the shared development stack; the NATS nodes are `ant`, `bee` and `elk` (owner, Nov 16, 2026) |
@@ -582,6 +583,12 @@ Typed "Save" still depends on the edit check: without a decision model it fails,
 > Owner (Indy), on the resize finding: "I will test and ask for this change if needed."
 
 > Owner (Indy): "I need the acceptance-e2e and accepatance-cli to suceed to figure out accordinly the GH action workflow must succeed"
+
+- **Chat scroll model (Nov 16, 2026):** the thread followed the bottom while a reply streamed, except while the composer held text, so a resize while typing left a reply's last lines under the composer (fleet-thread.spec.ts). The owner compared Claude, which anchors each sent message at the top and lets the reply grow downward, and chose that model: on send the sent turn scrolls to the top over a reserve, streaming and resizes never move the view, Jump to latest follows a long reply, and opening a chat still lands at its latest turn. Open for the owner: on phones the composer is not sticky, so a long reply pushes it below the screen.
+
+> Owner (Indy), on the scroll model: "Match Claude"
+
+> Owner (Indy): "Just donot clutter the code, make it small modular and performant in the Nextjs"
 
 Every dev deploy now seeds the `typesafe` key into dev's platform workspace through `platform_secret_sync.sh`. Dev also needs the decision model in its catalogue and named in its runners' policy before typed "Save" can finish there.
 
