@@ -28,7 +28,7 @@ import { readAuthContext } from "./fixtures/native-api.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { deleteFixtureFleet } from "./fixtures/teardown.ts";
 import { authoringModel, commandValues, fixtureDefinition, inspectDraft, saveNativeFleet } from "./fixtures/native-setup.ts";
-import { AppliedSchema, CreatedSchema, DraftSchema } from "../../src/commands/chat/protocol.ts";
+import { AppliedSchema } from "../../src/commands/chat/protocol.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
@@ -41,6 +41,10 @@ const CHAT_TIMEOUT_MS = 240_000;
 const DAILY_CRON = "0 9 * * *" as const;
 const REQUEST = `Add a schedule to this fleet: a cron trigger "${DAILY_CRON}" in UTC whose message is ` +
   "\"daily status\". Keep the instructions, tools and budget exactly as they are. Do not ask questions.";
+
+/** The receipt `chat --message --json` prints before the durable messages (ChatActions.message). */
+const AcceptedSchema = Schema.Struct({ kind: Schema.Literal("chat_accepted"), draft_id: Schema.String, sequence: Schema.String });
+const AnswerSchema = Schema.Struct({ role: Schema.Literal("assistant"), state: Schema.Literal("completed") });
 
 const ListedSchema = Schema.Struct({ schedules: Schema.Array(Schema.Struct({ cron: Schema.String, message: Schema.String })) });
 
@@ -97,10 +101,11 @@ if (!isLive) {
       const result = await run(["--json", "chat", "--fleet", fleetId, "--setup-revision", savedRevision, "--model", model, "--no-input", "--message", REQUEST]);
       assert.equal(result.code, 0, `the improve chat refused: ${result.stderr}`);
       const values = commandValues(result);
-      const draft = values.find(Schema.is(CreatedSchema)) ?? values.find(Schema.is(DraftSchema));
-      assert.ok(draft, `no draft came back: ${result.stdout}`);
-      assert.equal(draft.linked_fleet_id ?? fleetId, fleetId, "the chat must improve the named fleet");
-      draftId = draft.id;
+      const accepted = values.find(Schema.is(AcceptedSchema));
+      assert.ok(accepted, `no acceptance receipt came back: ${result.stdout}`);
+      assert.ok(values.some(Schema.is(AnswerSchema)), `the setup model never answered: ${result.stdout}`);
+      // The fleet the draft improves is proved by apply, which names it.
+      draftId = accepted.draft_id;
     }, CHAT_TIMEOUT_MS);
 
     it("`--review` shows the requested schedule in the effective setup", async () => {

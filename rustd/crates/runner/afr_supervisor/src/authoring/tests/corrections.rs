@@ -1,6 +1,6 @@
 //! Invalid model edits receive feedback without acquiring proposal authority.
 
-use super::{ack, json, lease, result, rig, run};
+use super::{ack, json, lease, result, rig, run, run_logged};
 use crate::client::{Call, Verb};
 use serde_json::Value;
 use std::sync::atomic::Ordering;
@@ -112,9 +112,74 @@ async fn a_refusal_naming_a_field_tells_the_model_that_field() {
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let (_calls, report) = run(&mut rig, lease()).await;
+    let (_calls, report, logs) = run_logged(&mut rig, lease()).await;
     assert_eq!(report["outcome"], "completed");
     assert_eq!(report["usage"]["calls"], 2);
+    // The log names the setting and the kind of refusal; the checker's sentence, which can
+    // quote what the person wrote, only the model hears.
+    assert!(logs.contains(r#""refusal":"invalid_arguments""#), "{logs}");
+    assert!(logs.contains(r#""field":"budget""#), "{logs}");
+    assert!(logs.contains(r#""outcome":"accepted""#), "{logs}");
+    assert!(!logs.contains("belongs under"), "{logs}");
+}
+
+// Value: protects=a first setup the daemon would refuse for its length is told so before it is sent;
+// fails_when=the runner submits an oversized first setup, or its refusal reaches the log with the sentence.
+#[tokio::test]
+async fn an_oversized_first_setup_is_refused_by_the_runner_without_asking_the_daemon() {
+    let oversized = "x".repeat(af_fleet_runtime::definition::MAX_INITIAL_INSTRUCTIONS_CHARS + 1);
+    let mut rig = rig(move |call| match call.verb {
+        Verb::AuthoringModel => {
+            let request: Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+            if request["call_index"] == 1 {
+                return result(
+                    call,
+                    &json!([{"id":"long-1",
+                        "proposal":{"kind":"initialize","definition":{"schema_version":1,"description":"Answers support questions","instructions_md":oversized,"config":{"name":"fixture","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}}}}]),
+                    false,
+                );
+            }
+            let messages = request["request"]["messages"].as_array().unwrap();
+            let heard = messages.last().unwrap()["text"].as_str().unwrap();
+            assert!(
+                heard.starts_with("No changes were applied. The setup is invalid: "),
+                "{heard}"
+            );
+            result(
+                call,
+                &json!([{"id":"short-2",
+                    "proposal":{"kind":"initialize","definition":{"schema_version":1,"description":"Answers support questions","instructions_md":"Reply briefly.","config":{"name":"fixture","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}}}}]),
+                false,
+            )
+        }
+        Verb::AuthoringActivity => {
+            let request: Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+            assert_eq!(
+                request["event"]["proposal"]["definition"]["instructions_md"], "Reply briefly.",
+                "the oversized setup reached the daemon"
+            );
+            super::json(&json!({"accepted":true,"replayed":false}))
+        }
+        Verb::AuthoringReport => ack(),
+        other => panic!("unexpected authority {other:?}"),
+    });
+    let (calls, report, logs) = run_logged(&mut rig, lease()).await;
+    assert_eq!(report["outcome"], "completed");
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call.verb == Verb::AuthoringActivity)
+            .count(),
+        1
+    );
+    assert!(
+        logs.contains(r#""refusal":"invalid_first_setup""#),
+        "{logs}"
+    );
+    assert!(
+        !logs.contains("xxxxxxxx"),
+        "the log carries the oversized text"
+    );
 }
 
 // Value: protects=a refused proposal gets one corrected attempt and its usage is kept;
