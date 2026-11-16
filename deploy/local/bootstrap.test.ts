@@ -4,7 +4,7 @@ import { chmod, readFile, rm, stat, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { configureConnector, configureScheduler, configureSigning, enroll, localTarget, persistWorkspace, privateFile } from "./bootstrap";
+import { configureConnector, configureDecisions, configureScheduler, configureSigning, enroll, localTarget, persistWorkspace, privateFile } from "./bootstrap";
 
 type BootstrapRequest = Parameters<typeof enroll>[0];
 type Handler = (method: string, path: string, body?: unknown) => unknown;
@@ -27,7 +27,9 @@ const SECRETS_PATH = `/v1/workspaces/${FIXTURE_WORKSPACE}/secrets`;
 const SECRET_BAG = z.strictObject({ name: z.string(), data: z.record(z.string(), z.string()) });
 const GITHUB_FIELDS = ["app_id", "app_slug", "client_id", "client_secret", "private_key_pem", "webhook_secret"];
 const GITHUB_NAMES = GITHUB_FIELDS.map((field) => `LOCAL_GITHUB_${field.toUpperCase()}`);
-const CONNECTOR_ENV = [...GITHUB_NAMES, "ACCEPTANCE_LOCAL_CONNECTOR_VAULT"];
+const CONNECTOR_ENV = [...GITHUB_NAMES, "ACCEPTANCE_LOCAL_CONNECTOR_VAULT", "TYPESAFE_API_KEY"];
+const DECISION_ID = "01900000-0000-7000-8000-0000000000d1";
+const MODELS_PATH = "/v1/admin/models";
 
 let root = "";
 let savedEnv: Record<string, string | undefined> = {};
@@ -169,10 +171,10 @@ describe("runner enrollment", () => {
       if (method === "GET") return { items: [], next_cursor: null };
       writes++;
       throw new Error("reply lost");
-    }), LOCAL_API, namespace, file)).rejects.toThrow(/reply lost/);
+    }), LOCAL_API, namespace, file, DECISION_ID)).rejects.toThrow(/reply lost/);
     expect(await Bun.file(file).exists()).toBe(false);
     await expect(enroll(fakeRequest(() => expect.unreachable("ambiguous enrollment must not repeat")),
-      LOCAL_API, namespace, file)).rejects.toThrow(/unfinished/);
+      LOCAL_API, namespace, file, DECISION_ID)).rejects.toThrow(/unfinished/);
     expect(writes).toBe(1);
     const pages: string[] = [];
     await expect(enroll(fakeRequest((method, path) => {
@@ -180,7 +182,7 @@ describe("runner enrollment", () => {
       pages.push(path);
       return pages.length === 1 ? { items: [{ host_id: "another-host" }], next_cursor: "older/page" }
         : { items: [{ host_id: `local-acceptance-${namespace}` }], next_cursor: null };
-    }), LOCAL_API, namespace, `${file}.orphan`)).rejects.toThrow(/already enrolled/);
+    }), LOCAL_API, namespace, `${file}.orphan`, DECISION_ID)).rejects.toThrow(/already enrolled/);
     expect(pages).toEqual(["/v1/admin/runners", "/v1/admin/runners?starting_after=older%2Fpage"]);
     expect(await Bun.file(`${file}.orphan`).exists()).toBe(false);
   });
@@ -191,7 +193,7 @@ describe("runner enrollment", () => {
       const attempt = enroll(fakeRequest((method) => {
         expect(method).toBe("GET");
         return page;
-      }), LOCAL_API, "wt_test", file);
+      }), LOCAL_API, "wt_test", file, DECISION_ID);
       await expect(attempt).rejects.toBeInstanceOf(Error);
       await expect(attempt).rejects.toMatchObject({ name: "ZodError" });
       expect(await Bun.file(`${file}.enrolling`).exists()).toBe(false);
@@ -200,7 +202,7 @@ describe("runner enrollment", () => {
     await expect(enroll(fakeRequest((method) => {
       expect(method).toBe("GET");
       return { items: [], next_cursor: "repeated" };
-    }), LOCAL_API, "wt_test", file)).rejects.toThrow(/repeated a cursor/);
+    }), LOCAL_API, "wt_test", file, DECISION_ID)).rejects.toThrow(/repeated a cursor/);
     expect(await Bun.file(`${file}.enrolling`).exists()).toBe(false);
     expect(await Bun.file(file).exists()).toBe(false);
   });
@@ -209,14 +211,16 @@ describe("runner enrollment", () => {
     const file = `${root}/runner.json`;
     const registration = { runner_id: "01900000-0000-7000-8000-000000000001", runner_token: "agt_r_test_only" };
     let writes = 0;
-    const request = fakeRequest(async (method) => {
+    const request = fakeRequest(async (method, _path, body) => {
       expect(await Bun.file(file).exists()).toBe(false);
       if (method === "GET") return { items: [], next_cursor: null };
       expect(await Bun.file(`${file}.enrolling`).exists()).toBe(true);
+      // The setup edit check runs only for a runner that names a decision model.
+      expect(body).toMatchObject({ assigned_policy: { decision_model_id: DECISION_ID } });
       writes++;
       return registration;
     });
-    await enroll(request, LOCAL_API, "wt_1234abcd", file);
+    await enroll(request, LOCAL_API, "wt_1234abcd", file, DECISION_ID);
     expect(await Bun.file(file).json()).toEqual(registration);
     expect((await stat(file)).mode & 0o777).toBe(0o600);
     expect(await Bun.file(`${file}.enrolling`).exists()).toBe(false);
@@ -225,7 +229,7 @@ describe("runner enrollment", () => {
       expect(url).toBe(`${LOCAL_API}/v1/runners/me`);
       return Response.json({});
     }));
-    await enroll(fakeRequest(() => expect.unreachable("existing runner must not enroll again")), LOCAL_API, "wt_1234abcd", file);
+    await enroll(fakeRequest(() => expect.unreachable("existing runner must not enroll again")), LOCAL_API, "wt_1234abcd", file, DECISION_ID);
     expect(verify).toHaveBeenCalledTimes(1);
     expect(writes).toBe(1);
   });
@@ -365,5 +369,52 @@ describe("platform workspace record", () => {
     await writeFile(file, "ENCRYPTION_MASTER_KEY=keep-existing-key\n");
     await persistWorkspace(file, "new-workspace");
     expect(await readFile(file, "utf8")).toBe("ENCRYPTION_MASTER_KEY=keep-existing-key\nPLATFORM_ADMIN_WORKSPACE_ID=new-workspace\n");
+  });
+});
+
+describe("setup edit check", () => {
+  const modelRow = { id: DECISION_ID, provider: "typesafe", model_id: "jev-1.14.0" };
+
+  test("the decision model is created once and its key saved once in the platform workspace", async () => {
+    process.env.TYPESAFE_API_KEY = "ts_test_only";
+    let created: unknown;
+    let saved: unknown;
+    const first = fakeRequest((method, path, body) => {
+      if (method === "GET" && path === MODELS_PATH) return { models: [], next_cursor: null };
+      if (method === "POST" && path === MODELS_PATH) { created = body; return { model: { id: DECISION_ID }, request_id: "req" }; }
+      if (method === "GET" && path === SECRETS_PATH) return { secrets: [] };
+      if (method === "POST" && path === SECRETS_PATH) { saved = SECRET_BAG.parse(body); return {}; }
+      return expect.unreachable(`unexpected ${method} ${path}`);
+    });
+    expect(await configureDecisions(first, FIXTURE_WORKSPACE)).toBe(DECISION_ID);
+    expect(created).toMatchObject({ provider: "typesafe", model_id: "jev-1.14.0", prices: [],
+      decision: { enabled: true, profile: { api: "typesafe", endpoint: "https://api.typesafe.ai/v1/systemone",
+        accepted_models: ["jev-1.14.0"], capabilities: { noul: true } } } });
+    const decision = z.object({ decision: z.object({
+      profile: z.object({ evaluation_digest: z.string().regex(/^[0-9a-f]{64}$/) }),
+      prices: z.array(z.object({ prompt_tokens_above: z.literal(0), output_nanos_per_mtok: z.literal("0") })).length(1),
+    }) }).parse(created);
+    expect(decision.decision.prices).toHaveLength(1);
+    expect(saved).toEqual({ name: "typesafe", data: { api_key: "ts_test_only" } });
+
+    // A rerun reuses both: no second model, no replaced key.
+    const again = fakeRequest((method, path) => {
+      if (method === "GET" && path === MODELS_PATH) return { models: [modelRow], next_cursor: null };
+      if (method === "GET" && path === SECRETS_PATH) return { secrets: [{ name: "typesafe" }] };
+      return expect.unreachable(`a configured check must not write: ${method} ${path}`);
+    });
+    expect(await configureDecisions(again, FIXTURE_WORKSPACE)).toBe(DECISION_ID);
+  });
+
+  test("another platform workspace keeps its own key, and a missing key refuses before any write", async () => {
+    process.env.TYPESAFE_API_KEY = "ts_test_only";
+    const other = fakeRequest((method, path) => {
+      if (method === "GET" && path === MODELS_PATH) return { models: [modelRow], next_cursor: null };
+      return expect.unreachable(`must not touch another workspace: ${method} ${path}`);
+    });
+    expect(await configureDecisions(other, FIXTURE_WORKSPACE, "operator-workspace")).toBe(DECISION_ID);
+    delete process.env.TYPESAFE_API_KEY;
+    await expect(configureDecisions(fakeRequest(() => expect.unreachable("no key, no request")), FIXTURE_WORKSPACE))
+      .rejects.toThrow(/TYPESAFE_API_KEY/);
   });
 });

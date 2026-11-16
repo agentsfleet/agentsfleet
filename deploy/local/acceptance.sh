@@ -20,7 +20,8 @@ acceptance_environment
 source "$LOCAL_DEV_ENV_FILE"
 set +a
 model_bootstrap_key="${FIREWORKS_API_KEY:-}"
-unset OPENROUTER_API_KEY FIREWORKS_API_KEY
+decision_bootstrap_key="${TYPESAFE_API_KEY:-}"
+unset OPENROUTER_API_KEY FIREWORKS_API_KEY TYPESAFE_API_KEY
 case "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" in pk_test_*) ;; *) dev_fail 'local acceptance requires development Clerk credentials' ;; esac
 : "${CLERK_SECRET_KEY:?development Clerk secret is required}"
 acceptance_adapter_build

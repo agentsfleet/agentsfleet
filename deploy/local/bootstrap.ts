@@ -1,5 +1,5 @@
 import { chmod, lstat, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { readCatalogue, CATALOGUE_URL } from "../../scripts/model-catalogue/catalogue";
 import { desiredRows } from "../../scripts/model-catalogue/rows";
@@ -14,6 +14,15 @@ const PLATFORM_SCOPES = ["runner:enroll", "runner:read", "model:read", "model:ad
 const RUNNERS = "/v1/admin/runners";
 const FLEET_RUNNERS = "/v1/admin/runners";
 const MODELS = "/v1/admin/models";
+const DECISION_PROVIDER = "typesafe";
+// Pinned: TypeSafe answers `jev-latest` as a versioned model, and only an
+// accepted reported name counts as an answer.
+const DECISION_MODEL = "jev-1.14.0";
+const DECISION_DOCS = "https://docs.typesafe.ai/api/system-one.md";
+// One call per message on Nov 16, 2026: "Save" scored 0.11 and
+// "Rename it to billing-digest" 0.81 for "does this ask to change the setup?".
+const DECISION_EVIDENCE = '{"model":"jev-1.14.0","save":0.11,"rename":0.81}';
+const DECISION_VERIFIED_AT = "2026-11-16T10:30:00.000Z";
 const PLATFORM_KEYS = "/v1/admin/platform-keys";
 const GITHUB_FIELDS = ["app_id", "app_slug", "client_id", "client_secret", "private_key_pem", "webhook_secret"];
 const SIGNING_SECRET = "approval-signing";
@@ -93,20 +102,21 @@ async function saveSecret(request: Request, workspaceId: string, name: string, d
   if (!secrets.some((row) => row.name === name)) await request(HTTP_METHOD.post, path, { name, data });
 }
 
-async function hasConfiguredModel(request: Request): Promise<boolean> {
-  const schema = z.object({ models: z.array(z.object({ provider: z.string(), model_id: z.string() })),
+async function catalogueModel(request: Request, provider: string, model: string): Promise<string | undefined> {
+  const schema = z.object({ models: z.array(z.object({ id: z.string(), provider: z.string(), model_id: z.string() })),
     next_cursor: z.string().min(1).nullable() });
   const seen = new Set<string>();
   let cursor: string | null = null;
   do {
     const suffix: string = cursor ? `?starting_after=${encodeURIComponent(cursor)}` : "";
     const page = schema.parse(await request<unknown>(HTTP_METHOD.get, `${MODELS}${suffix}`));
-    if (page.models.some((model) => model.provider === PROVIDER && model.model_id === MODEL)) return true;
+    const found = page.models.find((entry) => entry.provider === provider && entry.model_id === model);
+    if (found) return found.id;
     cursor = page.next_cursor;
     if (cursor && seen.has(cursor)) throw new LocalBootstrapError("model catalogue repeated a cursor");
     if (cursor) seen.add(cursor);
   } while (cursor);
-  return false;
+  return undefined;
 }
 
 async function configureModel(request: Request, workspaceId: string): Promise<void> {
@@ -116,7 +126,7 @@ async function configureModel(request: Request, workspaceId: string): Promise<vo
   if (!key) throw new LocalBootstrapError("machine configuration must supply FIREWORKS_API_KEY for initial local setup");
   const row = desiredRows(await readCatalogue(CATALOGUE_URL)).find((entry) => entry.provider === PROVIDER && entry.model_name === MODEL);
   if (!row) throw new LocalBootstrapError("local acceptance model is missing from the checked catalogue");
-  if (!await hasConfiguredModel(request)) {
+  if (!await catalogueModel(request, PROVIDER, MODEL)) {
     const { provider, model_name, prices, inference, ...metadata } = row;
     await request(HTTP_METHOD.post, MODELS, { provider, model_id: model_name, metadata, prices, inference });
   }
@@ -125,6 +135,52 @@ async function configureModel(request: Request, workspaceId: string): Promise<vo
 }
 
 /** Runs only on a fresh acceptance database, so later runs never touch 1Password. */
+/**
+ * The setup edit check asks this model whether a chat message requests a setup
+ * change, so a plain "Save" is never mistaken for an edit. Its key lives in the
+ * platform workspace, the only place the daemon reads decision keys from.
+ */
+export async function configureDecisions(request: Request, workspaceId: string, configuredWorkspace?: string): Promise<string> {
+  const key = process.env.TYPESAFE_API_KEY;
+  if (!key) throw new LocalBootstrapError("machine configuration must supply TYPESAFE_API_KEY for the setup edit check");
+  const id = await catalogueModel(request, DECISION_PROVIDER, DECISION_MODEL)
+    ?? z.object({ model: z.object({ id: z.string() }) }).parse(await request<unknown>(HTTP_METHOD.post, MODELS, decisionModel())).model.id;
+  if (!configuredWorkspace || configuredWorkspace === workspaceId)
+    await saveSecret(request, workspaceId, DECISION_PROVIDER, { api_key: key });
+  return id;
+}
+
+/** A decision-only catalogue entry: no chat inference, one reviewed TypeSafe profile. */
+export function decisionModel() {
+  const at = DECISION_VERIFIED_AT;
+  return {
+    provider: DECISION_PROVIDER, model_id: DECISION_MODEL, prices: [],
+    metadata: { display_name: "Setup edit check", advanced: true, context_cap_tokens: 8_192,
+      context_source_url: DECISION_DOCS, context_verified_at: at },
+    decision: {
+      enabled: true,
+      profile: {
+        revision: `acceptance-${DECISION_MODEL}`, api: DECISION_PROVIDER, endpoint: "https://api.typesafe.ai/v1/systemone",
+        accepted_models: [DECISION_MODEL], capabilities: { noul: true, choice: true, score: true }, input_max_bytes: 24_576,
+        intent: { questions_revision: "dt-routing-v1", intent: { probability_bps: 8500, confidence_bps: 7000 },
+          association: { probability_bps: 9500, confidence_bps: 8500 }, single_request_max_bps: 3000, multiple_request_min_bps: 7000 },
+        goal: { questions_revision: "dt-goal-v1", statement_min_bps: 9500,
+          continue_action: { probability_bps: 8000, confidence_bps: 7000 }, wait: { probability_bps: 8500, confidence_bps: 7500 },
+          done: { probability_bps: 9500, confidence_bps: 8500 } },
+        evaluation_digest: createHash("sha256").update(DECISION_EVIDENCE).digest("hex"),
+        evaluation_source_url: DECISION_DOCS, evaluated_at: at,
+      },
+      // TypeSafe publishes no input rate and bills no output tokens; this rate
+      // only meters local acceptance.
+      prices: [{ effective_from: at, effective_until: null, prompt_tokens_above: 0,
+        input_nanos_per_mtok: "1000000000", cached_input_nanos_per_mtok: "1000000000", cache_write_nanos_per_mtok: null,
+        cache_write_5m_nanos_per_mtok: null, cache_write_1h_nanos_per_mtok: null, output_nanos_per_mtok: "0",
+        source_url: DECISION_DOCS, verified_at: at,
+        conditions: "Local acceptance only: TypeSafe publishes no input rate; output tokens are free" }],
+    },
+  };
+}
+
 export async function configureConnector(request: Request, workspaceId: string, op: Op = runOp): Promise<void> {
   await saveSecret(request, workspaceId, "github-app", await connectorFields(op));
 }
@@ -195,7 +251,7 @@ async function requireFreshHost(request: Request, host: string): Promise<void> {
   } while (cursor);
 }
 
-export async function enroll(request: Request, base: string, namespace: string, record: string): Promise<void> {
+export async function enroll(request: Request, base: string, namespace: string, record: string, decisionModelId: string): Promise<void> {
   if (await Bun.file(record).exists()) {
     await privateFile(record);
     const { runner_token } = registrationSchema.parse(await Bun.file(record).json());
@@ -210,7 +266,8 @@ export async function enroll(request: Request, base: string, namespace: string, 
   await requireFreshHost(request, host);
   await writeFile(pending, host, {flag: EXCLUSIVE_CREATE, mode: 0o600});
   const registration = await request(HTTP_METHOD.post, RUNNERS, { host_id: host, labels: [],
-    assigned_policy: { durable_tasks_enabled: true, sandbox_tier: "container_nested", network_policy: "allow_all", registry_allowlist: [], worker_count: 4, extra_binds: [] } });
+    assigned_policy: { durable_tasks_enabled: true, decision_model_id: decisionModelId, sandbox_tier: "container_nested",
+      network_policy: "allow_all", registry_allowlist: [], worker_count: 4, extra_binds: [] } });
   registrationSchema.parse(registration);
   await writeFile(temporary, `${JSON.stringify(registration)}\n`, { flag: EXCLUSIVE_CREATE, mode: 0o600 });
   await rename(temporary, record);
@@ -242,6 +299,7 @@ export async function bootstrap(): Promise<void> {
     const request = api(base, session.sessionJwt);
     const workspaceId = await workspace(request);
     await configureModel(request, workspaceId);
+    const decision = await configureDecisions(request, workspaceId, process.env.PLATFORM_ADMIN_WORKSPACE_ID);
     await configureSigning(request, workspaceId, process.env.PLATFORM_ADMIN_WORKSPACE_ID);
     await configureScheduler(request, workspaceId, process.env.AGENTSFLEET_QSTASH_HOST_PORT ?? "", process.env.PLATFORM_ADMIN_WORKSPACE_ID);
     if (process.env.PLATFORM_ADMIN_WORKSPACE_ID) {
@@ -252,8 +310,8 @@ export async function bootstrap(): Promise<void> {
       await configureConnector(request, workspaceId);
       await persistWorkspace(envFile, workspaceId);
     }
-    await enroll(request, base, namespace, record);
-    console.log("Local platform model, connector, scheduler and runner configuration ready.");
+    await enroll(request, base, namespace, record, decision);
+    console.log("Local platform model, decision model, connector, scheduler and runner configuration ready.");
   } finally {
     await revokeSession(session.sessionId);
   }

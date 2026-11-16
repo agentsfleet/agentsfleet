@@ -551,6 +551,12 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 
 > Owner (Indy): "crap i didnt agree to S3 bucket"
 
+- **Typed "Save" needs the setup edit check (Nov 16, 2026):** a typed "Save" runs one setup turn. The turn completes only when the model answers without a proposal. On "Save" the default model kept proposing edits, and the edit-intent check that refuses them was unavailable (`UZ-AUTHOR-008`), because acceptance never configured a decision model. One failed save made the full eight model calls in 40 seconds and ended `provider_failed`. Before Nov 3 there was no such check, and an accepted proposal ended the turn by itself. Bootstrap now adds a TypeSafe decision model, stores its key in the platform workspace and names it in the runner's policy. TypeSafe reports `jev-latest` as `jev-1.14.0`, so the profile pins that version; one probe call per message scored "Save" 0.11 and "Rename it to billing-digest" 0.81.
+
+> Owner (Indy), choosing how typed "Save" is fixed: "Configure the classifier"
+
+> Owner (Indy): "Typed "Save" -  vault updated op://ZMB_CD_DEV/typesafe/credential"
+
 > Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 
 > Owner (Indy): "in your PR ensure that you do a large refactor on the billing area and see how we can better it. You are free to unleash and embark on a large refactor in Rust side and the NExt js side onthe code to make it better performant too."

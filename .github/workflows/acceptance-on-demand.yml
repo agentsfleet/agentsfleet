@@ -103,6 +103,8 @@ jobs:
           OIDC_ISSUER: op://${{ vars.VAULT_DEV }}/clerk-dev/issuer
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential
           FIREWORKS_API_KEY: op://${{ vars.VAULT_DEV }}/agentsfleet-fireworks-api-token/credential
+          # The setup edit check's decision model (deploy/local/bootstrap.ts).
+          TYPESAFE_API_KEY: op://${{ vars.VAULT_DEV }}/typesafe/credential
 
       # The owner-only machine environment files `make acceptance` reads.
       - name: Write the machine environment files

@@ -66,5 +66,6 @@ acceptance_platform() (
   cd "$DEV_ROOT/ui/packages/app" || return
   export NEXT_PUBLIC_API_URL="$DEV_URL" LOCAL_ACCEPTANCE_API="$DEV_URL" LOCAL_ACCEPTANCE_NAMESPACE="$DEV_ID"
   LOCAL_DEV_ENV_FILE="${LOCAL_ACCEPTANCE_BOOTSTRAP_ENV_FILE:-$LOCAL_DEV_ENV_FILE}" \
-  FIREWORKS_API_KEY="${model_bootstrap_key:-${FIREWORKS_API_KEY:-}}" bun "$DEV_ROOT/deploy/local/bootstrap.ts"
+  FIREWORKS_API_KEY="${model_bootstrap_key:-${FIREWORKS_API_KEY:-}}" \
+  TYPESAFE_API_KEY="${decision_bootstrap_key:-${TYPESAFE_API_KEY:-}}" bun "$DEV_ROOT/deploy/local/bootstrap.ts"
 )
