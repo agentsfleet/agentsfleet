@@ -93,9 +93,9 @@ test.describe("teammates join an account", () => {
     // Invite from the dialog, then copy the link the invitee will open.
     await page.getByRole("button", { name: /^invite member$/i }).click();
     const dialog = page.getByRole("dialog");
-    await dialog.getByLabel(/^email$/i).fill(invitee.email);
+    await dialog.getByLabel(/^email address$/i).fill(invitee.email);
     await page.screenshot({path: test.info().outputPath("live-invite.png"), scale: "css", animations: "disabled"});
-    await dialog.getByRole("button", { name: /^send$/i }).click();
+    await dialog.getByRole("button", { name: /^send invite$/i }).click();
     const ready = page.getByTestId("invite-ready");
     const link = await ready.getByLabel(/^invite link$/i).inputValue();
     expect(link).toMatch(/\/invites\/[0-9a-f-]+$/);

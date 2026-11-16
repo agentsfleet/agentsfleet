@@ -44,9 +44,9 @@ test("plugin navigation rejects the removed library route", async ({page}) => {
   const response = await page.goto(workspaceHref(workspace, "library"));
   expect(response?.status()).toBe(404);
   await expect(page.getByRole("heading", {name: "Page not found", exact: true})).toBeVisible();
-  const current = await page.goto(workspaceHref(workspace, "plugins"));
+  await page.goto(workspaceHref(workspace, "plugins"));
   if (!pluginsUiEnabled()) {
-    expect(current?.status()).toBe(404);
+    // Plugins streams its loading frame first, so the refusal is the not-found page, not a 404 status.
     await expect(page.getByRole("heading", {name: "Page not found", exact: true})).toBeVisible();
     return;
   }
