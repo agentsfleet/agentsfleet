@@ -80,11 +80,15 @@ For a narrower run, set `SUITE=e2e`, `SUITE=cli` or `SUITE=execution`.
 
 The coordinator and local deployment files live in `deploy/local/`.
 
-This command needs macOS, OrbStack, Bun, Rust, cosign and the provisioned machine environment under `~/.config/agentsfleet/`.
+This command needs macOS, OrbStack, Bun, Rust, cosign and the machine environment under `~/.config/agentsfleet/`.
 On first use it creates private worktree settings, an OrbStack Debian machine and a signed toolbox for the current runner version.
 It enrolls the runner through the authenticated local API using a dedicated test identity.
+
 It reuses the development database and datastore containers; Compose adds one Caddy container for local HTTPS.
-Every worktree's Caddy signs with one local root kept beside the shared stack. The first run on a machine asks macOS to approve it for HTTPS in your login keychain; the trust stays, so later runs and new worktrees ask nothing. Browser certificate verification stays enabled.
+Every worktree's Caddy signs with one local root kept beside the shared stack.
+
+The first run on a machine asks macOS to approve that root for HTTPS in your login keychain.
+The trust stays, so later runs and new worktrees ask nothing. Browser certificate verification stays enabled.
 
 The dashboard serves its ordinary production build from this checkout.
 Each invocation calls `acceptance-build`, starts the shipping runner service through `deploy/baremetal/deploy.sh`, and runs the selected acceptance targets.
