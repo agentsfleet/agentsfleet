@@ -1,3 +1,5 @@
+// @vitest-environment node
+// Native Date and AbortSignal behavior keeps malformed-deadline failures observable.
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { watchManualApprovalCompletion } from "@/lib/auth/manual-approval-completion";
 
@@ -22,10 +24,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function observe(owner = new AbortController(), expiresAt = new Date(NOW + 300_000).toISOString()) {
+function observe(owner = new AbortController()) {
   owners.push(owner);
   const update = vi.fn();
-  const done = watchManualApprovalCompletion(SESSION, expiresAt, owner.signal, update);
+  const done = watchManualApprovalCompletion(SESSION, owner.signal, update);
   return { owner, update, done };
 }
 
@@ -41,19 +43,50 @@ it("does not read or publish after ownership was already cancelled", async () =>
   expect(run.update).not.toHaveBeenCalled();
 });
 
-it.each(["invalid", new Date(NOW - 1).toISOString()])("refuses an unusable expiry: %s", async expiry => {
-  const run = observe(new AbortController(), expiry);
+it("stops when the renewed server deadline has expired", async () => {
+  fetchStatus.mockResolvedValueOnce(Response.json({ status: "verification_pending", expires_at: new Date(NOW - 1).toISOString() }));
+  const run = observe();
+  await tick();
   await run.done;
-  expect(fetchStatus).not.toHaveBeenCalled();
+  expect(fetchStatus).toHaveBeenCalledOnce();
   expect(run.update).toHaveBeenCalledWith({ kind: "failed", message: expect.stringContaining("expired") });
 });
 
-it("stops when the session expires during its first poll wait", async () => {
-  const run = observe(new AbortController(), new Date(NOW + 1_000).toISOString());
-  await tick(1_000);
+it("stops when the renewed server deadline expires during a poll wait", async () => {
+  fetchStatus.mockResolvedValueOnce(Response.json({ status: "verification_pending", expires_at: new Date(NOW + 3_000).toISOString() }));
+  const run = observe();
+  await tick(3_000);
   await run.done;
-  expect(fetchStatus).not.toHaveBeenCalled();
+  expect(fetchStatus).toHaveBeenCalledOnce();
   expect(run.update).toHaveBeenCalledWith({ kind: "failed", message: expect.stringContaining("expired") });
+});
+
+it("never extends its five-minute bound for a later server deadline", async () => {
+  fetchStatus.mockImplementation(async () => Response.json({ status: "verification_pending", expires_at: new Date(NOW + 600_000).toISOString() }));
+  const run = observe();
+  await tick(300_000);
+  await run.done;
+  expect(fetchStatus).toHaveBeenCalledTimes(149);
+  expect(run.update).toHaveBeenCalledOnce();
+  expect(run.update).toHaveBeenCalledWith({ kind: "failed", message: expect.stringContaining("expired") });
+});
+
+it.each([
+  { status: "verification_pending", expires_at: "invalid" },
+  { status: "verification_pending", expires_at: "2026-11-16T12:00:00+00" },
+  { status: "verification_pending", expires_at: "2026-11-16T12:00:00 +00:00" },
+  { status: "verification_pending", expires_at: null },
+  { status: "consumed", expires_at: new Date(NOW + 300_000).toISOString() },
+  { error_code: "UZ-AUTH-012" },
+])("does not trust malformed waiting status: %j", async body => {
+  fetchStatus.mockResolvedValueOnce(Response.json(body)).mockImplementationOnce(async () => consumed());
+  const run = observe();
+  await tick();
+  expect(run.update).not.toHaveBeenCalled();
+  await tick();
+  await run.done;
+  expect(fetchStatus).toHaveBeenCalledTimes(2);
+  expect(run.update).toHaveBeenCalledWith({ kind: "completed" });
 });
 
 it("cancels the pending wait without starting a status request", async () => {
@@ -116,7 +149,7 @@ it.each([200, 429, 503])("retries a transient %i response without a body", async
 it("does not publish if ownership ends as a waiting body is discarded", async () => {
   const owner = new AbortController();
   const body = new ReadableStream({ cancel() { owner.abort(); } });
-  fetchStatus.mockResolvedValueOnce(new Response(body));
+  fetchStatus.mockResolvedValueOnce(new Response(body, { status: 503 }));
   const run = observe(owner);
   await tick();
   await run.done;

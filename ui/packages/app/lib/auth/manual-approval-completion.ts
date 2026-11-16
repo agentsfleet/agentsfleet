@@ -1,7 +1,7 @@
 import * as v from "valibot";
 
 export type ManualCompletion = { kind: "completed" } | { kind: "failed"; message: string };
-type ReadOutcome = "waiting" | "completed" | "failed";
+type ReadOutcome = { kind: "waiting"; expiresAt: number | null } | { kind: "completed" } | { kind: "failed" };
 
 const POLL_MS = 2_000;
 const JITTER_MS = 400;
@@ -13,12 +13,15 @@ const SESSION_CONSUMED_CODE = "UZ-AUTH-012";
 const EXPIRED_MESSAGE = "This sign-in expired. Start a new sign-in from your terminal.";
 const FAILED_MESSAGE = "This sign-in could not be confirmed. Check your terminal, or start a new sign-in.";
 const RefusalSchema = v.object({ error_code: v.string() });
+const WaitingSchema = v.object({ status: v.picklist(["pending", "verification_pending"]),
+  expires_at: v.pipe(v.string(), v.isoTimestamp(), v.transform(Date.parse), v.finite()) });
 
 /** The session read exposes completion without releasing any credential material. */
-export async function watchManualApprovalCompletion(sessionId: string, expiresAt: string,
+export async function watchManualApprovalCompletion(sessionId: string,
   signal: AbortSignal, update: (result: ManualCompletion) => void): Promise<void> {
-  const expiry = Date.parse(expiresAt);
-  const deadline = Number.isFinite(expiry) ? Math.min(expiry, Date.now() + MAX_WAIT_MS) : Date.now();
+  // Approval renews server expiry; the pre-approval session deadline is stale.
+  const hardDeadline = Date.now() + MAX_WAIT_MS;
+  let deadline = hardDeadline;
   const stopped = (): boolean => signal.aborted;
   for (let attempt = 0; attempt < MAX_READS && !stopped(); attempt += 1) {
     const remaining = deadline - Date.now();
@@ -31,8 +34,9 @@ export async function watchManualApprovalCompletion(sessionId: string, expiresAt
         Math.min(REQUEST_TIMEOUT_MS, deadline - Date.now())))]);
       const result = await readCompletion(sessionId, owner);
       if (stopped()) return;
-      if (result === "completed") { update({ kind: "completed" }); return; }
-      if (result === "failed") { update({ kind: "failed", message: FAILED_MESSAGE }); return; }
+      if (result.kind === "completed") { update({ kind: "completed" }); return; }
+      if (result.kind === "failed") { update({ kind: "failed", message: FAILED_MESSAGE }); return; }
+      if (result.expiresAt !== null) deadline = Math.min(hardDeadline, result.expiresAt);
     } catch {
       // A lost status read must leave the verification code available.
       if (stopped()) return;
@@ -45,13 +49,18 @@ async function readCompletion(sessionId: string, signal: AbortSignal): Promise<R
   const response = await fetch(`/backend/v1/auth/sessions/${encodeURIComponent(sessionId)}`, {
     method: "GET", headers: { Accept: "application/json" }, cache: "no-store", redirect: "error", signal,
   });
-  if (response.redirected) { await response.body?.cancel(); return "failed"; }
+  if (response.redirected) { await response.body?.cancel(); return { kind: "failed" }; }
+  if (response.status === 200) {
+    const body = v.parse(WaitingSchema, await boundedJson(response, signal));
+    return { kind: "waiting", expiresAt: body.expires_at };
+  }
   if (response.status === 410) {
     const body = v.safeParse(RefusalSchema, await boundedJson(response, signal));
-    return body.success && body.output.error_code === SESSION_CONSUMED_CODE ? "completed" : "failed";
+    return { kind: body.success && body.output.error_code === SESSION_CONSUMED_CODE ? "completed" : "failed" };
   }
   await response.body?.cancel();
-  return response.status >= 400 && response.status < 500 && response.status !== 429 ? "failed" : "waiting";
+  return response.status >= 400 && response.status < 500 && response.status !== 429
+    ? { kind: "failed" } : { kind: "waiting", expiresAt: null };
 }
 
 async function boundedJson(response: Response, signal: AbortSignal): Promise<unknown> {

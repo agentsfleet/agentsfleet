@@ -12,13 +12,15 @@ import CliAuthPage from "@/app/cli-auth/[session_id]/page";
 const SESSION_ID = "0190b3c0-1111-7000-8000-000000000001";
 const HEADING = "Unleash your agents.";
 let expiresAt: string;
+let approvedExpiresAt: string;
 let poll: ReturnType<typeof vi.fn<() => Promise<Response>>>;
 let requests: { url: string; init?: RequestInit }[];
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   expiresAt = new Date(Date.now() + 300_000).toISOString();
-  poll = vi.fn().mockImplementation(async () => Response.json({ status: "verification_pending" }));
+  approvedExpiresAt = expiresAt;
+  poll = vi.fn().mockImplementation(async () => Response.json({ status: "verification_pending", expires_at: approvedExpiresAt }));
   requests = [];
   getToken.mockReset().mockResolvedValue("browser-session-fixture");
   window.history.replaceState(null, "", `/cli-auth/${SESSION_ID}`);
@@ -27,11 +29,14 @@ beforeEach(() => {
 
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-async function approve() {
+async function approve(delayMs = 0) {
   const terminal = await generateEphemeralKeypair();
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     requests.push({ url, init });
-    if (init?.method === "PATCH") return new Response(null, { status: 200 });
+    if (init?.method === "PATCH") {
+      approvedExpiresAt = new Date(Date.now() + 300_000).toISOString();
+      return new Response(null, { status: 200 });
+    }
     if (requests.length === 1) return Response.json({ status: "pending", cli_public_key: terminal.publicKeyBase64Url,
       token_name: "terminal", expires_at: expiresAt });
     return poll();
@@ -42,6 +47,7 @@ async function approve() {
   const mounted = mounts[0];
   if (!mounted) throw new Error("Expected the manual approval page to mount");
   const button = await screen.findByRole("button", { name: "Authorize" });
+  await act(async () => { await vi.advanceTimersByTimeAsync(delayMs); });
   await act(async () => { fireEvent.click(button); });
   expect(await screen.findByLabelText("Verification code")).toBeTruthy();
   return mounted;
@@ -102,6 +108,17 @@ it("keeps the code after a network failure and observes a later completion", asy
   expect(screen.getByRole("heading", { name: HEADING })).toBeTruthy();
 });
 
+it("keeps a renewed code available after the original session deadline", async () => {
+  await approve(240_000);
+  const code = screen.getByLabelText("Verification code").textContent;
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_001); });
+  expect(screen.getByLabelText("Verification code").textContent).toBe(code);
+  expect(screen.queryByText(/This sign-in expired/)).toBeNull();
+  poll.mockResolvedValueOnce(Response.json({ error_code: "UZ-AUTH-012" }, { status: 410 }));
+  await readStatus();
+  expect(screen.getByRole("heading", { name: HEADING })).toBeTruthy();
+});
+
 it("aborts an outstanding completion read on unmount", async () => {
   const mounted = await approve();
   poll.mockReturnValue(new Promise<Response>(() => undefined));
@@ -116,10 +133,10 @@ it("aborts an outstanding completion read on unmount", async () => {
 });
 
 it("stops observing when the login session expires", async () => {
-  expiresAt = new Date(Date.now() + 1_000).toISOString();
   await approve();
+  approvedExpiresAt = new Date(Date.now() - 1).toISOString();
   await readStatus();
   expect(screen.getByText("This sign-in expired. Start a new sign-in from your terminal.")).toBeTruthy();
   expect(screen.queryByRole("heading", { name: HEADING })).toBeNull();
-  expect(poll).not.toHaveBeenCalled();
+  expect(poll).toHaveBeenCalledOnce();
 });

@@ -32,7 +32,7 @@ function ManualCliAuthPage({ session_id }: { session_id: string }) {
   useEffect(() => {
     if (!waiting || !isSignedIn || load.kind !== LOAD.active) return;
     const owner = new AbortController();
-    void watchManualApprovalCompletion(session_id, load.session.expires_at, owner.signal, result => {
+    void watchManualApprovalCompletion(session_id, owner.signal, result => {
       setApprove(result.kind === "completed" ? { kind: APPROVE.completed } : { kind: APPROVE.failed, message: result.message });
     });
     return () => owner.abort();
