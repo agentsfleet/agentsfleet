@@ -144,7 +144,8 @@ export async function configureDecisions(request: Request, workspaceId: string, 
   const key = process.env.TYPESAFE_API_KEY;
   if (!key) throw new LocalBootstrapError("machine configuration must supply TYPESAFE_API_KEY for the setup edit check");
   const id = await catalogueModel(request, DECISION_PROVIDER, DECISION_MODEL)
-    ?? z.object({ model: z.object({ id: z.string() }) }).parse(await request<unknown>(HTTP_METHOD.post, MODELS, decisionModel())).model.id;
+    // The created model's fields are flattened into the reply (AdminModelCreated).
+    ?? z.object({ id: z.string() }).parse(await request<unknown>(HTTP_METHOD.post, MODELS, decisionModel())).id;
   if (!configuredWorkspace || configuredWorkspace === workspaceId)
     await saveSecret(request, workspaceId, DECISION_PROVIDER, { api_key: key });
   return id;

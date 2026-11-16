@@ -381,7 +381,7 @@ describe("setup edit check", () => {
     let saved: unknown;
     const first = fakeRequest((method, path, body) => {
       if (method === "GET" && path === MODELS_PATH) return { models: [], next_cursor: null };
-      if (method === "POST" && path === MODELS_PATH) { created = body; return { model: { id: DECISION_ID }, request_id: "req" }; }
+      if (method === "POST" && path === MODELS_PATH) { created = body; return { ...modelRow, request_id: "req" }; }
       if (method === "GET" && path === SECRETS_PATH) return { secrets: [] };
       if (method === "POST" && path === SECRETS_PATH) { saved = SECRET_BAG.parse(body); return {}; }
       return expect.unreachable(`unexpected ${method} ${path}`);

@@ -557,6 +557,10 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 
 > Owner (Indy): "Typed "Save" -  vault updated op://ZMB_CD_DEV/typesafe/credential"
 
+Typed "Save" still depends on the edit check: without a decision model it fails, while the "Save and publish" flap saves directly. The owner kept that behaviour rather than adding a daemon or UI fallback.
+
+> Owner (Indy), on a fallback for typed "Save": "Keep it as now"
+
 > Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 
 > Owner (Indy): "in your PR ensure that you do a large refactor on the billing area and see how we can better it. You are free to unleash and embark on a large refactor in Rust side and the NExt js side onthe code to make it better performant too."
