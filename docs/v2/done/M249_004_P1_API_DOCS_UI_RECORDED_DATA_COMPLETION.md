@@ -120,6 +120,8 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `docs/v2/evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md` | EDIT | Preserve the deferred Fleet/template/Plugin questions without adding implementation scope |
 | Separate `agentsfleet/docs` branch and changelog | EDIT | Public interface and visible behaviour |
 | `deploy/local/{certificate.sh,certificate_test.sh,orbstack.sh,compose.yml,acceptance.sh}`, `scripts/local-dev-state.sh`, `docs/development.md` | EDIT | Local acceptance runs on a Mac: one Caddy root per machine, trusted once in a form Chromium honours; cmake and clang for BoringSSL; orphaned shared services removed (owner, Nov 16, 2026) |
+| `ui/packages/app/app/loading.tsx` (removed), `app/{cli-auth,connectors}/loading.tsx`, `tests/loading-states.test.ts` | REMOVE/ADD | The root loader wrapped the dashboard shell in a streamed boundary that could leave a hidden second shell; the two routes that wait on reads keep their spinner (owner, Nov 16, 2026) |
+| `.github/workflows/acceptance-on-demand.yml` | ADD | Run local acceptance on a hosted VM for any branch (owner, Nov 16, 2026) |
 | `ui/packages/app/**` confirmed orphaned modules and their isolated tests; `lib/models/display.ts` | REMOVE/EDIT | Owner-requested UI cleanup removes obsolete spending, model cells, action hooks, refresh controls and draft-search state; paused Plugin implementation stays available |
 | `ui/packages/app/app/globals.css` unused activity-table selectors | REMOVE | Remove styles for the deleted activity table without changing the reviewed resource layouts |
 
@@ -514,6 +516,12 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 > Owner (Indy): "the fix must go in this PR"
 
 > Owner (Indy): "i cant prompt for every tree"
+
+- **Doubled dashboard shell (Nov 16, 2026):** the root `app/loading.tsx` wrapped the dashboard layout in a streamed boundary. When Clerk updated during hydration, React rendered the shell on the client and the server's late copy stayed hidden in the page, duplicating every shell identifier. The root loader is removed; `cli-auth` and `connectors/complete`, the two routes that wait on reads without their own loader, keep the full-screen spinner. The first paint of a dashboard load now waits for the shell's reads.
+
+> Owner (Indy): "Yes remove the app/loading.tsx, is there anyone else using it? ... if so safely remove."
+
+> Owner (Indy): "I want to go with the option on gh" (the on-demand acceptance workflow, in this PR)
 
 > Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 

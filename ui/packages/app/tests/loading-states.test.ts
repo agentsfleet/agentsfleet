@@ -5,7 +5,8 @@ import { within } from "@testing-library/react";
 
 describe("shared page loading", () => {
   const routes = [
-    { name: "loading.tsx", load: () => import("../app/loading") },
+    { name: "cli-auth/loading.tsx", load: () => import("../app/cli-auth/loading") },
+    { name: "connectors/loading.tsx", load: () => import("../app/connectors/loading") },
     { name: "(dashboard)/loading.tsx", load: () => import("../app/(dashboard)/loading") },
     { name: "(dashboard)/invites/loading.tsx", load: () => import("../app/(dashboard)/invites/loading") },
     { name: "(dashboard)/settings/members/loading.tsx", load: () => import("../app/(dashboard)/settings/members/loading") },
