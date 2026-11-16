@@ -120,8 +120,12 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: acceptance-on-demand-${{ github.run_id }}
+          # The daemon, runner and dashboard logs say why a turn failed; the
+          # Playwright results only show that it did.
           path: |
             ui/packages/app/playwright-acceptance-results/
             ui/packages/app/playwright-acceptance-report/
+            ~/.local/state/agentsfleet/**/daemon.log
+            ~/.local/state/agentsfleet/**/acceptance/*.log
           if-no-files-found: warn
           retention-days: 7

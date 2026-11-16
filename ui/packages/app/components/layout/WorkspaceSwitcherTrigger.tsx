@@ -20,7 +20,9 @@ export function WorkspaceSwitcherTrigger({ activeLabel, busy = false, failed = f
   const displayLabel = name || "Your workspace";
   const subtitle = failed ? "Retry account menu" : activeLabel;
   const visibleLabel = [!busy && initials, !collapsed && displayLabel, !collapsed && subtitle].filter(Boolean).join(" ");
-  const accessibleLabel = [menuLabel, visibleLabel, emailAddress].filter(Boolean).join(": ");
+  // The visible text stays contiguous in the name, and the active workspace
+  // always ends it: a collapsed trigger shows only initials but still says where you are.
+  const accessibleLabel = [menuLabel, emailAddress, visibleLabel, collapsed && !busy && subtitle].filter(Boolean).join(": ");
   return <TooltipButton tooltip={emailAddress || displayLabel} type="button" variant="ghost" size="lg" aria-label={accessibleLabel}
     className={cn("group h-11 min-h-11 w-full min-w-0 justify-center gap-2.5 px-0 py-sm hover:bg-muted hover:text-foreground md:h-12 md:min-h-12", !collapsed && "md:justify-start md:px-lg")}
     {...props}>
