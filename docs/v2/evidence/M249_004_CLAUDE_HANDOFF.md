@@ -1,6 +1,6 @@
 # Claude handoff: recorded UI data
 
-Implement [M249_004](../active/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md) in a separate worktree and PR.
+Implement [M249_004](../done/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md) in a separate worktree and PR.
 
 1. Read repository instructions and the spec. Verify M249_001 and M249_002 are merged; record both SHAs.
 2. Fetch main and create your worktree from that merged main. Do not edit the running UI or CLI worktree.

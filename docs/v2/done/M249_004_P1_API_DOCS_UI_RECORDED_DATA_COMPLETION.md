@@ -4,7 +4,7 @@
 **Milestone:** M249
 **Workstream:** 004
 **Date:** Nov 13, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1, approved screens need authoritative data
 **Categories:** API, DOCS, UI
 **Batch:** B3, data work follows the merged UI checkpoint (PR #844); M249_003 is parked
@@ -346,17 +346,17 @@ Any new producer metric needs bounded labels, an existing signal owner and a tes
 
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|---|---|---|---|---|
-| R1 | Source inventory and unavailable semantics (§1) | Review field inventory; `make test-unit-all` | No inferred values | P0 | NOT RUN |
-| R2 | Complete daily/fleet/model usage (§2) | `make test-integration-rustd` | Same filters and reconciled exact totals | P0 | NOT RUN |
-| R2a | One-call Usage and initial load (§2a) | Integration, server-render and browser tests named in §2a | One initial Usage report request; no catalogue dependency | P0 | NOT RUN |
-| R3 | Safe scoped metadata and access (§3) | `make test-integration-rustd` | No exposure or authority expansion | P0 | NOT RUN |
-| R4 | Authoritative revision/work facts (§4) | `make test-integration-rustd`; `make dry-app` | Confirmed facts survive reload | P1 | NOT RUN |
+| R1 | Source inventory and unavailable semantics (§1) | Review field inventory; `make test-unit-all` | No inferred values | P0 | PASS: app unit tests, 4,651 passed (Nov 15); `orly gate pr` counts in the PR body |
+| R2 | Complete daily/fleet/model usage (§2) | `make test-integration-rustd` | Same filters and reconciled exact totals | P0 | PASS: `afd_billing` settle, rollup and report suites (47 + 30 + 8 + 1 + 20 passed) |
+| R2a | One-call Usage and initial load (§2a) | Integration, server-render and browser tests named in §2a | One initial Usage report request; no catalogue dependency | P0 | PASS: `billing-page-report`, `dashboard-labels-streaming` and report view tests (49 passed after the #845 merge) |
+| R3 | Safe scoped metadata and access (§3) | `make test-integration-rustd` | No exposure or authority expansion | P0 | PASS: `api_key_metadata_is_safe_and_account_scoped`, secret access suites |
+| R4 | Authoritative revision/work facts (§4) | `make test-integration-rustd`; `make dry-app` | Confirmed facts survive reload | P1 | PASS: recorded in `docs/v2/evidence/M249_POST_MERGE_RUNTIME_VALIDATION.md` |
 | R5 | Measured context budget (§5) | Parked separately | No implementation required in this workstream | P1 | DEFERRED at owner request |
-| S1 | Declared commands green | `make lint-all`; `make test-unit-all`; `make test-integration-rustd`; `make check-version` | Exit 0 | P0 | NOT RUN |
-| S2 | No secrets | `gitleaks detect --redact --no-banner` | Exit 0 | P0 | NOT RUN |
-| S3 | Authenticated runtime and repository gates | `make acceptance-codex`; `orly gate pr` | Exit 0 | P0 | NOT RUN |
+| S1 | Declared commands green | `make lint-all`; `make test-unit-all`; `make test-integration-rustd`; `make check-version` | Exit 0 | P0 | `orly gate pr` before the PR; counts in the PR body |
+| S2 | No secrets | `gitleaks detect --redact --no-banner` | Exit 0 | P0 | PASS: `gitleaks detect --log-opts=origin/main..HEAD`, 59 commits, no leaks |
+| S3 | Authenticated runtime and repository gates | `make acceptance-codex`; `orly gate pr` | Exit 0 | P0 | DEFERRED at owner request: local acceptance stopped at TLS trust (Discovery); `orly gate pr` in the PR body |
 
-Keep this spec pending until producer decisions and review blockers are resolved. Move it to done only after its implementation rubric passes.
+The owner closed this spec in its PR with the local acceptance run outstanding; Discovery records why.
 
 ## Dead Code Sweep
 
@@ -496,6 +496,13 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 - **Open follow-up, not in this PR:** the stale-save refusal reads "Finish or stop the current work before changing setup.", which misdescribes a save from an older revision. Its copy needs its own change.
 
 > Owner (Indy): "also ensure the make acceptance-local an dany other robust journey changes on edges cases like repeated save v1, v2, and setting up schedule and seeing if you received a message back, and adding slack and so on."
+
+- **Closed with local acceptance outstanding (Nov 16, 2026):** `make acceptance-local` built and started the stack, then stopped at the preflight sign-in: `net::ERR_CERT_AUTHORITY_INVALID at https://localhost:45304/sign-in`. 2 failed, 7 passed and 112 did not run. `deploy/local/certificate.sh` adds the local Caddy certificate to the macOS keychain, which can need an approval nobody gave during the unattended run. This branch changes nothing under `deploy/` or the acceptance sign-in fixtures. The new journeys pass their type and lint checks but have not run end to end. A rerun with the keychain approval settles Dimension 7.2.
+- **PR #845 landed rebased (Nov 16, 2026):** the base branch received #845 with six commits the earlier local merge lacked. Its fleet-retention fix, supported-key URL filter, unused-code removal and runner tests are kept; `filters.models` stays removed and the data-key wiping in `afr_supervisor` restore stays.
+
+> Owner (Indy): "i think move the spec to done"
+
+> Owner (Indy): "it must be done in the PR"
 
 > Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 
