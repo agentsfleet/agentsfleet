@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use super::fixture::{SUBJECT, Tasks};
 use crate::harness::{Fleet, json_body, send};
 
-/// Declared by a revision only unfinished tasks still run.
+/// Declared only by a revision unfinished tasks accepted before the head moved on.
 const ALPHA: &str = "alpha_key";
 /// Declared by the fleet's current head.
 const BETA: &str = "beta_key";
@@ -172,8 +172,9 @@ async fn access(router: &Router, fixture: &Tasks<'_>) -> Vec<(String, Option<Vec
 async fn secret_access_projection_matches_execution_policy() {
     let lane = TestDatabase::shared();
     let fixture = Tasks::create(&lane).await;
-    // Unfinished tasks move onto a revision declaring ALPHA; the head then moves
-    // to BETA. Finishing those tasks later withdraws ALPHA.
+    // Unfinished tasks accept a revision declaring ALPHA; the head then moves to
+    // BETA. Those tasks cannot install any more, since their credentials differ
+    // from the head's, so ALPHA grants nothing even while they wait.
     append(&fixture, &[ALPHA]).await;
     run(
         &fixture,
@@ -211,13 +212,14 @@ async fn secret_access_projection_matches_execution_policy() {
     assert_eq!(
         access(&owner, &fixture).await,
         [
-            (ALPHA.into(), fleet()),
+            (ALPHA.into(), Some(vec![])),
             (BETA.into(), fleet()),
             (DELTA.into(), None),
             (GAMMA.into(), Some(vec![]))
         ],
-        "head and unfinished-task revisions grant; prose and other workspaces do not, \
-         and a provider key claims no access either way"
+        "only the head grants: a waiting task on a revision whose credentials differ \
+         cannot install; prose and other workspaces grant nothing, and a provider key \
+         claims no access either way"
     );
     let secrets_only = router(&fixture, &[Scope::SecretRead]);
     assert!(
@@ -241,8 +243,7 @@ async fn secret_access_projection_matches_execution_policy() {
             (DELTA.into(), None),
             (GAMMA.into(), Some(vec![]))
         ],
-        "a finished task runs nothing, so its accepted revision grants nothing; \
-         the head still does"
+        "finishing the tasks changes nothing; the head still grants"
     );
     run(
         &fixture,
