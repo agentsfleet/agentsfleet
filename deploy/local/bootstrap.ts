@@ -15,13 +15,14 @@ const RUNNERS = "/v1/admin/runners";
 const FLEET_RUNNERS = "/v1/admin/runners";
 const MODELS = "/v1/admin/models";
 const DECISION_PROVIDER = "typesafe";
-// Pinned: TypeSafe answers `jev-latest` as a versioned model, and only an
-// accepted reported name counts as an answer.
-const DECISION_MODEL = "jev-1.14.0";
+// TypeSafe answers `jev-latest` with the version that served it, and only an
+// accepted reported version counts: a new one is ignored until it is added here.
+const DECISION_MODEL = "jev-latest";
+const DECISION_ACCEPTED = ["jev-1.14.0"];
 const DECISION_DOCS = "https://docs.typesafe.ai/api/system-one.md";
 // One call per message on Nov 16, 2026: "Save" scored 0.11 and
 // "Rename it to billing-digest" 0.81 for "does this ask to change the setup?".
-const DECISION_EVIDENCE = '{"model":"jev-1.14.0","save":0.11,"rename":0.81}';
+const DECISION_EVIDENCE = '{"requested":"jev-latest","reported":"jev-1.14.0","save":0.11,"rename":0.81}';
 const DECISION_VERIFIED_AT = "2026-11-16T10:30:00.000Z";
 const PLATFORM_KEYS = "/v1/admin/platform-keys";
 const GITHUB_FIELDS = ["app_id", "app_slug", "client_id", "client_secret", "private_key_pem", "webhook_secret"];
@@ -162,8 +163,8 @@ export function decisionModel() {
     decision: {
       enabled: true,
       profile: {
-        revision: `acceptance-${DECISION_MODEL}`, api: DECISION_PROVIDER, endpoint: "https://api.typesafe.ai/v1/systemone",
-        accepted_models: [DECISION_MODEL], capabilities: { noul: true, choice: true, score: true }, input_max_bytes: 24_576,
+        revision: `acceptance-${DECISION_ACCEPTED.join("+")}`, api: DECISION_PROVIDER, endpoint: "https://api.typesafe.ai/v1/systemone",
+        accepted_models: DECISION_ACCEPTED, capabilities: { noul: true, choice: true, score: true }, input_max_bytes: 24_576,
         intent: { questions_revision: "dt-routing-v1", intent: { probability_bps: 8500, confidence_bps: 7000 },
           association: { probability_bps: 9500, confidence_bps: 8500 }, single_request_max_bps: 3000, multiple_request_min_bps: 7000 },
         goal: { questions_revision: "dt-goal-v1", statement_min_bps: 9500,

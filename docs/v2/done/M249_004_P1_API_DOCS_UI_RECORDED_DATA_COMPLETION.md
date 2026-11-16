@@ -552,7 +552,7 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 
 > Owner (Indy): "crap i didnt agree to S3 bucket"
 
-- **Typed "Save" needs the setup edit check (Nov 16, 2026):** a typed "Save" runs one setup turn. The turn completes only when the model answers without a proposal. On "Save" the default model kept proposing edits, and the edit-intent check that refuses them was unavailable (`UZ-AUTHOR-008`), because acceptance never configured a decision model. One failed save made the full eight model calls in 40 seconds and ended `provider_failed`. Before Nov 3 there was no such check, and an accepted proposal ended the turn by itself. Bootstrap now adds a TypeSafe decision model, stores its key in the platform workspace and names it in the runner's policy. TypeSafe reports `jev-latest` as `jev-1.14.0`, so the profile pins that version; one probe call per message scored "Save" 0.11 and "Rename it to billing-digest" 0.81.
+- **Typed "Save" needs the setup edit check (Nov 16, 2026):** a typed "Save" runs one setup turn. The turn completes only when the model answers without a proposal. On "Save" the default model kept proposing edits, and the edit-intent check that refuses them was unavailable (`UZ-AUTHOR-008`), because acceptance never configured a decision model. One failed save made the full eight model calls in 40 seconds and ended `provider_failed`. Before Nov 3 there was no such check, and an accepted proposal ended the turn by itself. Bootstrap now adds a TypeSafe decision model, stores its key in the platform workspace and names it in the runner's policy. TypeSafe answers `jev-latest` with the version that served it, `jev-1.14.0`; the profile asks for `jev-latest` and accepts only that reviewed version, so a new version is ignored until it is added; one probe call per message scored "Save" 0.11 and "Rename it to billing-digest" 0.81.
 
 > Owner (Indy), choosing how typed "Save" is fixed: "Configure the classifier"
 
@@ -561,6 +561,8 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 Typed "Save" still depends on the edit check: without a decision model it fails, while the "Save and publish" flap saves directly. The owner kept that behaviour rather than adding a daemon or UI fallback.
 
 > Owner (Indy), on a fallback for typed "Save": "Keep it as now"
+
+> Owner (Indy), on the requested model: "yes ask jev-latest"
 
 Every dev deploy now seeds the `typesafe` key into dev's platform workspace through `platform_secret_sync.sh`. Dev also needs the decision model in its catalogue and named in its runners' policy before typed "Save" can finish there.
 

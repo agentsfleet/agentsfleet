@@ -111,13 +111,14 @@ start_dashboard
 printf 'AGENTSFLEET_API_URL=https://localhost:%s\nAGENTSFLEET_RUNNER_TOKEN=%s\nSSL_CERT_FILE=/var/lib/agentsfleet-runner/ca.pem\n' \
   "$LOCAL_ACCEPTANCE_TLS_PORT" "$ACCEPTANCE_RUNNER_TOKEN" >"$LOCAL_ACCEPTANCE_STATE/runner.env"
 acceptance_runner_stream_environment >>"$LOCAL_ACCEPTANCE_STATE/runner.env"
+runner_started=$(( $(date +%s) - 1 ))
 start_runner
-# The suites' preflight needs a runner that has reported in; the container
-# connects a few seconds after it starts. The token travels on stdin, never argv.
+# The suites' preflight needs a runner that has beaten since it started; until
+# then `last_seen_at` is the never-seen epoch. The token travels on stdin.
 deadline=$(( $(date +%s) + DEV_READY_SECONDS ))
 until printf 'header = "Authorization: Bearer %s"\n' "$ACCEPTANCE_RUNNER_TOKEN" |
   curl --silent --fail --max-time 2 --config - --cacert "$LOCAL_ACCEPTANCE_CA" \
-    "https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT/v1/runners/me" | jq -e '.last_seen_at != null' >/dev/null; do
+    "https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT/v1/runners/me" | jq -e --argjson since "$runner_started" '(.last_seen_at | sub("\\.[0-9]+"; "") | fromdateiso8601) >= $since' >/dev/null; do
   [ "$(date +%s)" -lt "$deadline" ] || dev_fail "the acceptance runner never reported in; read $LOCAL_ACCEPTANCE_STATE/runner.log"
   sleep 0.5
 done

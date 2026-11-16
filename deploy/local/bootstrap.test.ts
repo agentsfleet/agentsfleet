@@ -381,7 +381,7 @@ describe("platform workspace record", () => {
 });
 
 describe("setup edit check", () => {
-  const modelRow = { id: DECISION_ID, provider: "typesafe", model_id: "jev-1.14.0" };
+  const modelRow = { id: DECISION_ID, provider: "typesafe", model_id: "jev-latest" };
 
   test("the decision model is created once and its key saved once in the platform workspace", async () => {
     process.env.TYPESAFE_API_KEY = "ts_test_only";
@@ -395,7 +395,7 @@ describe("setup edit check", () => {
       return expect.unreachable(`unexpected ${method} ${path}`);
     });
     expect(await configureDecisions(first, FIXTURE_WORKSPACE)).toBe(DECISION_ID);
-    expect(created).toMatchObject({ provider: "typesafe", model_id: "jev-1.14.0", prices: [],
+    expect(created).toMatchObject({ provider: "typesafe", model_id: "jev-latest", prices: [],
       decision: { enabled: true, profile: { api: "typesafe", endpoint: "https://api.typesafe.ai/v1/systemone",
         accepted_models: ["jev-1.14.0"], capabilities: { noul: true } } } });
     const decision = z.object({ decision: z.object({

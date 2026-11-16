@@ -142,7 +142,7 @@ The machine environment and `AGENTSFLEET_UI_ENV_FILE` supply development Clerk c
 Initial setup uses the machine's `FIREWORKS_API_KEY` and the development GitHub App to populate the local encrypted vault.
 Bootstrap takes the app's six fields from `LOCAL_GITHUB_*` when all are set, and otherwise reads them with `op`.
 It needs them only on a fresh acceptance database.
-The setup edit check uses `TYPESAFE_API_KEY`: bootstrap stores it as the platform workspace's `typesafe` key, adds a pinned `jev-1.14.0` decision model and names it in the runner's policy.
+The setup edit check uses `TYPESAFE_API_KEY`: bootstrap stores it as the platform workspace's `typesafe` key, adds a decision model that asks for `jev-latest` and accepts only the reviewed `jev-1.14.0` answer, then names it in the runner's policy.
 That check tells the setup model that a plain "Save" asks for no edit, so the save can finish.
 It also seeds the `qstash` bag from the local scheduler emulator.
 
