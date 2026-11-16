@@ -34,6 +34,7 @@ const emulatorKeysSchema = z.object({current: z.string().min(1), next: z.string(
 const portSchema = z.string().regex(/^[0-9]+$/);
 const EMULATOR_SILENT = "the local QStash emulator did not answer its signing keys; start the shared infrastructure first";
 const registrationSchema = z.object({ runner_id: z.uuidv7(), runner_token: z.string().startsWith("agt_r") });
+const runnerSelfSchema = z.object({assigned_policy: z.object({decision_model_id: z.string().optional()})});
 const runnerPageSchema = z.object({items: z.array(z.object({host_id: z.string()})), next_cursor: z.string().min(1).nullable()});
 type Request = <T>(method: string, path: string, body?: unknown) => Promise<T>;
 /** Runs the 1Password command line with these arguments and returns its output. */
@@ -256,7 +257,11 @@ export async function enroll(request: Request, base: string, namespace: string, 
   if (await Bun.file(record).exists()) {
     await privateFile(record);
     const { runner_token } = registrationSchema.parse(await Bun.file(record).json());
-    await api(base, runner_token)(HTTP_METHOD.get, "/v1/runners/me");
+    const self = runnerSelfSchema.parse(await api(base, runner_token)(HTTP_METHOD.get, "/v1/runners/me"));
+    // Enrollment is the only place bootstrap sets the policy, so a runner
+    // enrolled earlier keeps running without the setup edit check.
+    if (self.assigned_policy.decision_model_id !== decisionModelId)
+      throw new LocalBootstrapError("the reused acceptance runner names no setup edit check model; assign it the decision model in the runner configuration or recreate this acceptance database");
     return;
   }
   const pending = `${record}.enrolling`;

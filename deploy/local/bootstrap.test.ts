@@ -225,13 +225,21 @@ describe("runner enrollment", () => {
     expect((await stat(file)).mode & 0o777).toBe(0o600);
     expect(await Bun.file(`${file}.enrolling`).exists()).toBe(false);
     expect(await Bun.file(`${file}.new`).exists()).toBe(false);
+    let policy: Record<string, string> = { decision_model_id: DECISION_ID };
     const verify = spyOn(globalThis, "fetch").mockImplementation(fakeFetch(async (url) => {
       expect(url).toBe(`${LOCAL_API}/v1/runners/me`);
-      return Response.json({});
+      return Response.json({ assigned_policy: policy });
     }));
-    await enroll(fakeRequest(() => expect.unreachable("existing runner must not enroll again")), LOCAL_API, "wt_1234abcd", file, DECISION_ID);
+    const reuse = () => enroll(fakeRequest(() => expect.unreachable("existing runner must not enroll again")),
+      LOCAL_API, "wt_1234abcd", file, DECISION_ID);
+    await reuse();
     expect(verify).toHaveBeenCalledTimes(1);
     expect(writes).toBe(1);
+    // A runner enrolled before the edit check, or with another model, is refused rather than reported ready.
+    policy = {};
+    await expect(reuse()).rejects.toThrow(/setup edit check/);
+    policy = { decision_model_id: "01900000-0000-7000-8000-0000000000ff" };
+    await expect(reuse()).rejects.toThrow(/setup edit check/);
   });
 });
 
