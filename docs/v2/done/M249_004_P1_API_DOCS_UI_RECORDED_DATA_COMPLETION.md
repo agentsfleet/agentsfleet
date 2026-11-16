@@ -119,6 +119,7 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `docs/v2/evidence/M249_VERIFICATION.md`, `docs/DESIGN_SYSTEM.md`, `docs/architecture/{api_resources,web_app,billing_reporting,billing_and_provider_keys}.md` | EDIT | Update resolved data differences and retained unknowns; repair parent prose findings without changing billing behavior |
 | `docs/v2/evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md` | EDIT | Preserve the deferred Fleet/template/Plugin questions without adding implementation scope |
 | Separate `agentsfleet/docs` branch and changelog | EDIT | Public interface and visible behaviour |
+| `deploy/local/{certificate.sh,certificate_test.sh,orbstack.sh,compose.yml,acceptance.sh}`, `scripts/local-dev-state.sh`, `docs/development.md` | EDIT | Local acceptance runs on a Mac: one Caddy root per machine, trusted once in a form Chromium honours; cmake and clang for BoringSSL; orphaned shared services removed (owner, Nov 16, 2026) |
 | `ui/packages/app/**` confirmed orphaned modules and their isolated tests; `lib/models/display.ts` | REMOVE/EDIT | Owner-requested UI cleanup removes obsolete spending, model cells, action hooks, refresh controls and draft-search state; paused Plugin implementation stays available |
 | `ui/packages/app/app/globals.css` unused activity-table selectors | REMOVE | Remove styles for the deleted activity table without changing the reviewed resource layouts |
 
@@ -503,6 +504,16 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 > Owner (Indy): "i think move the spec to done"
 
 > Owner (Indy): "it must be done in the PR"
+
+- **Local acceptance fixed in this PR (Nov 16, 2026):** three changes since the last recorded pass (Oct 22–23) stopped `make acceptance-local` on a Mac. `eca828b09` made the keychain trust temporary and scoped to `localhost`, which Chromium skips, so the browser never trusted the Caddy root. `55a6e51fd` put BoringSSL under the runner stream, which needs cmake and clang the OrbStack machine never installed. M244 dropped dragonfly, and an old container then failed every start as an unexpected service. Every worktree's Caddy now signs with one root kept beside the shared stack, trusted once per machine for the TLS policy; the machine installs both tools, and orphans are removed as `make/test-infra.mk` already does.
+
+> Owner (Indy): "yes go ahead with the fix"
+
+> Owner (Indy): "ensure its permanent, and not ephermeal, you keep handrolling"
+
+> Owner (Indy): "the fix must go in this PR"
+
+> Owner (Indy): "i cant prompt for every tree"
 
 > Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 
