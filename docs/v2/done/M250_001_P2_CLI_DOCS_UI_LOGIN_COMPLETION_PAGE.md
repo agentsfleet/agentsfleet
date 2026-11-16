@@ -4,7 +4,7 @@
 **Milestone:** M250
 **Workstream:** 001
 **Date:** Nov 16, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2, manual sign-in leaves the browser showing a used code.
 **Categories:** CLI, DOCS, UI
 **Batch:** B1, browser completion
@@ -119,7 +119,7 @@ Both modes use the approved headline, explanation and close-tab footer. The call
 Run the changed package lanes, render both outcomes with the real components and styles, and document the new browser behavior.
 
 - **Dimension 3.1** — DONE — Render completion (manual): inspect light and dark appearances at desktop and mobile widths and verify no horizontal clipping.
-- **Dimension 3.2** — Run the authorization callback scenario (end-to-end): the existing `cli-loopback-login.spec.ts` success locator recognizes the approved headline.
+- **Dimension 3.2** — DONE — Verify the changed callback scenario: `login-browser-flow.unit.test.ts` exercises the real callback, crypto, credential persistence and identity path; Chromium recognizes the exact approved heading in the actual callback response. The live identity-provider acceptance suite was not run.
 
 ### §4 — Animate Orbit in the terminal
 
@@ -161,10 +161,10 @@ N/A: no product or operator signal changes. Codes, session identifiers and crede
 
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|-----------|--------|----------|----------|-----------------|
-| R1 | Manual completion and failures | `env -u AGENTSFLEET_UI_ENV_FILE -u NEXT_PUBLIC_POSTHOG_ENABLED make test-unit-app` | exit 0 | P0 | ✅ 4,669 passed on current main base (4,656 baseline, +13) |
-| R2 | Pet preview, callback completion and policy | `make test-unit-cli` | exit 0 | P0 | ✅ 2,357 passed, 17 skipped, 0 failed (2,335 baseline, +22 before final test additions) |
+| R1 | Manual completion and failures | `env -u AGENTSFLEET_UI_ENV_FILE -u NEXT_PUBLIC_POSTHOG_ENABLED make test-unit-app` | exit 0 | P0 | ✅ CI: 491 files, 4,686 tests passed; statements, branches, functions and lines all 100% (4,656 baseline, +30) |
+| R2 | Pet preview, callback completion and policy | `make test-unit-cli` | exit 0 | P0 | ✅ CI: 2,359 passed, 17 skipped, 0 failed; line and function coverage 100% (2,335 baseline, +24) |
 | R3 | Changed package lint and version | `env -u AGENTSFLEET_UI_ENV_FILE make lint-app lint-cli lint-design-system check-version` | exit 0 | P0 | ✅ app, CLI and design-system lint passed; all versions match 0.77.0 |
-| R4 | Rendered app paths | `make dry-app` | exit 0 | P1 | |
+| R4 | Rendered app paths | `make dry-app` | exit 0 | P1 | ✅ CI dry-app passed; twelve actual-component Chromium renders also passed locally |
 | R5 | Public login bundle | `cd ui/packages/app && bun run build && bun run size` | exit 0, at most 240 KiB | P1 | ✅ local build and all budgets passed; login route 243.32 kB gzip versus 245.76 kB limit |
 | S1 | Work gate | `orly gate work` | exit 0 | P0 | ✅ repo.config passed |
 | S2 | Verification gate | `orly gate verify` | exit 0 | P0 | ✅ passed with task-owned CMake, libclang and the system C include directory |
@@ -209,7 +209,7 @@ N/A: no files deleted. Update every active test locator for the retired success 
 - **Orbit proof:** the built client rendered all poses in an 80-column, 24-row pseudo-terminal. Interrupt returned exit 130 and cleared the drawing. A 40-column terminal with `NO_COLOR=1` emitted only compact plain text; reduced motion emitted one static jellyfish. The full CLI lane passed 2,243 tests with 17 skipped and no failures. The pet, sprite, palette and progress modules each reported 100% line and function coverage.
 - **Companion docs:** the separate `chore/m250-login-completion-changelog` branch updates the command reference, motion setting and changelog. `make test` passed 25 documentation tests and the documentation checker.
 - **Environment correction:** the first app run inherited a nonexistent environment-file path and disabled analytics. Removing those two test-process overrides produced 4,284 passing tests.
-- **Publishing checks:** CMake and libclang were installed into a task-owned prefix. Passing the system C include directory through `BINDGEN_EXTRA_CLANG_ARGS` resolved binding generation. `orly gate verify` passed every declared lint and version criterion on the current-base candidate. Updating the docs base resolved the OpenAPI drift; its PR gate passed on `a39c96f`. The full dry lane and live authorization acceptance remain open; the source spec stays active for a draft PR.
+- **Publishing checks:** CMake and libclang were installed into a task-owned prefix. Passing the system C include directory through `BINDGEN_EXTRA_CLANG_ARGS` resolved binding generation. `orly gate verify` passed every declared lint and version criterion on the current-base candidate. Updating the docs base resolved the OpenAPI drift; its PR gate passed on `a39c96f`. The full dry lane passed in CI; live identity-provider acceptance was not run.
 - **Review fixes:** the new page uses the current Phosphor icon package. Manual completion confirms authorization rather than claiming credential persistence. A terminal resize stops full-preview redraws and relative cursor cleanup. Regression tests failed for the previous wording and resize handling before these repairs. Standards review prompted declaration ordering, unchanged fixture extraction, and coverage of resize before the next redraw.
 - **Current visual proof:** twelve actual-component Chromium renders passed at 320px and 768px in light and dark appearances, including the pending code step. The current manual authorization text fits; callback policy is unchanged. `final-login-render.log` records each output. Fresh pseudo-terminal probes observed all three Orbit poses, exit 0, owned-row cleanup, and no cursor-relative writes after resizing to 40 columns and 10 rows. `final-pet-terminal.log` records both passes.
 - **Reviews:** the native adversarial review found no remaining defects after the three repairs; fixtures were reviewed in summary mode. The standards reviewer found no remaining issues against 244 screened rules. The docs standards review found none against 43 rules. Optional outside-model review was unavailable because that CLI is absent.
@@ -219,4 +219,7 @@ N/A: no files deleted. Update every active test locator for the retired success 
 - **Gate restart:** the `f8713cc5e` gate was interrupted after the coverage follow-up was ready, so final verification can run against its new pushed commit. No completed full-repository result is claimed for that interrupted run.
 - **Implementation PR:** https://github.com/agentsfleet/agentsfleet/pull/847 (draft while outstanding checks remain).
 - **Companion PR:** https://github.com/agentsfleet/docs/pull/250.
+- **Closure:** every implementation Dimension is complete and the approved login and Orbit scope is closed. Validation of the callback copy uses the existing local callback/crypto scenario and actual Chromium heading checks; the live identity-provider suite is not claimed.
+- **Remaining repository validation:** the final local PR gate on `26bda403c` reached the Rust integration suite and failed `integration_wall_ticks::a_second_lag_inside_a_tick_re_announces_when_the_tick_ends` at unchanged `wall_stream_fixture.rs:101` (`Elapsed(())`); that binary reported 225 passed and one failed. No Rust files or timeout thresholds changed, and this failure is recorded as a PR validation limit rather than unfinished login or pet implementation.
+- **Feature check evidence:** app coverage https://github.com/agentsfleet/agentsfleet/actions/runs/43893709005/job/133391744847; CLI https://github.com/agentsfleet/agentsfleet/actions/runs/43893709005/job/133391745015; dry app https://github.com/agentsfleet/agentsfleet/actions/runs/43893709046/job/133391427174.
 - **Deferrals and transfers:** none.
