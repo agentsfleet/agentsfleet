@@ -23,7 +23,12 @@ pub(super) async fn apply(
         ProposalCall::Proposed { id, proposal } => (id, proposal),
         ProposalCall::Refused { id, reason } => {
             let refusal = refusal_kind(*reason);
-            tracing::info!(event = "setup_proposal_outcome", sequence, outcome = "refused", refusal);
+            tracing::info!(
+                event = "setup_proposal_outcome",
+                sequence,
+                outcome = "refused",
+                refusal
+            );
             return Ok((
                 ModelMessage::Tool {
                     call_id: id.clone(),
@@ -34,7 +39,12 @@ pub(super) async fn apply(
         }
     };
     if let Some(text) = initial_refusal(proposal) {
-        tracing::info!(event = "setup_proposal_outcome", sequence, outcome = "refused", refusal = "invalid_first_setup");
+        tracing::info!(
+            event = "setup_proposal_outcome",
+            sequence,
+            outcome = "refused",
+            refusal = "invalid_first_setup"
+        );
         return Ok((
             ModelMessage::Tool {
                 call_id: call_id.clone(),
@@ -54,15 +64,24 @@ pub(super) async fn apply(
     let receipt = retrying(|| plane.authoring_activity(id, &request)).await;
     let (text, accepted) = match receipt {
         Ok(receipt) if receipt.accepted => {
-            tracing::info!(event = "setup_proposal_outcome", sequence, outcome = "accepted");
+            tracing::info!(
+                event = "setup_proposal_outcome",
+                sequence,
+                outcome = "accepted"
+            );
             (
-            serde_json::to_string(&receipt).map_err(error::encode)?,
-            true,
+                serde_json::to_string(&receipt).map_err(error::encode)?,
+                true,
             )
         }
         Ok(_) => return Err(error::config("the daemon did not accept the proposal")),
         Err(failure) if failure.refusal_code() == Some(af_core::error_code::INVALID_REQUEST) => {
-            tracing::info!(event = "setup_proposal_outcome", sequence, outcome = "refused", refusal = "daemon_invalid");
+            tracing::info!(
+                event = "setup_proposal_outcome",
+                sequence,
+                outcome = "refused",
+                refusal = "daemon_invalid"
+            );
             (
                 "The proposal is invalid. Correct it using the fixed native proposal schema."
                     .to_owned(),

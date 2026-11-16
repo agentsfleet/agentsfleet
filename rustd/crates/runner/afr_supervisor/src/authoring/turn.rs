@@ -4,7 +4,7 @@ use super::{Ending, meter::Observed, proposal};
 use crate::{Result, client::ControlPlane, error};
 use af_core::{clock::Clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
-use af_wire::authoring::{ContextRole, Lease, ModelCall, ModelMessage, ModelRequest};
+use af_wire::authoring::{ContextRole, Lease, ModelCall, ModelMessage, ModelRequest, ModelResult};
 use serde_json::Value;
 
 pub(super) struct Turn<'a> {
@@ -28,7 +28,7 @@ impl Turn<'_> {
             })?;
             let remaining = budget.saturating_sub(meter.output_tokens.unwrap_or(budget));
             if remaining == 0 {
-                tracing::info!(event = "setup_turn_ended", calls = call_index - 1, ending = "output_budget");
+                ended(call_index - 1, "output_budget");
                 break;
             }
             let request = ModelCall {
@@ -54,11 +54,7 @@ impl Turn<'_> {
                 ));
             }
             self.observed.accept(&result.usage)?;
-            // One value-free line per call says why a turn did or did not end.
-            let text_empty = result.text.trim().is_empty();
-            let proposals = result.proposal_calls.len();
-            tracing::info!(event = "setup_model_call", call_index, text_empty, proposals,
-                cut = result.cut, compacted = result.compacted);
+            record_call(call_index, &result);
             if matches!(result.usage, af_wire::authoring::ModelUsage::Unknown) {
                 return Ok(Ending::unknown());
             }
@@ -66,11 +62,11 @@ impl Turn<'_> {
                 continue;
             }
             if result.cut {
-                tracing::info!(event = "setup_turn_ended", calls = call_index, ending = "cut");
+                ended(call_index, "cut");
                 return Ok(Ending::incomplete());
             }
             if result.proposal_calls.is_empty() {
-                tracing::info!(event = "setup_turn_ended", calls = call_index, ending = "answered");
+                ended(call_index, "answered");
                 return Ok(Ending::completed(Some(result.text)));
             }
             let answer = result.text.clone();
@@ -88,11 +84,11 @@ impl Turn<'_> {
                 all_accepted &= accepted;
             }
             if all_accepted && !answer.trim().is_empty() {
-                tracing::info!(event = "setup_turn_ended", calls = call_index, ending = "proposed_and_answered");
+                ended(call_index, "proposed_and_answered");
                 return Ok(Ending::completed(Some(answer)));
             }
         }
-        tracing::info!(event = "setup_turn_ended", calls = max_calls, ending = "calls_exhausted");
+        ended(max_calls, "calls_exhausted");
         Ok(Ending::incomplete())
     }
 
@@ -123,4 +119,25 @@ impl Turn<'_> {
         }
         Ok(messages)
     }
+}
+
+/// One value-free line per model call says why a turn did or did not end.
+fn record_call(call_index: u32, result: &ModelResult) {
+    let text_empty = result.text.trim().is_empty();
+    let proposals = result.proposal_calls.len();
+    let cut = result.cut;
+    let compacted = result.compacted;
+    tracing::info!(
+        event = "setup_model_call",
+        call_index,
+        text_empty,
+        proposals,
+        cut,
+        compacted
+    );
+}
+
+/// How a turn ended, after how many model calls.
+fn ended(calls: u32, ending: &'static str) {
+    tracing::info!(event = "setup_turn_ended", calls, ending);
 }
