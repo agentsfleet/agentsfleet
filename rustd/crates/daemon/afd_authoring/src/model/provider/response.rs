@@ -241,17 +241,10 @@ fn proposal(
             .and_then(|arguments| super::edits::native(arguments.proposal, candidate, said))
     };
     let call = match converted {
-        Ok(proposal) => edit_refusal(&proposal, candidate).map_or_else(
-            || ProposalCall::Proposed {
-                id: id.into(),
-                proposal,
-            },
-            |detail| ProposalCall::Refused {
-                id: id.into(),
-                reason: ProposalRejection::InvalidArguments,
-                detail: Some(detail),
-            },
-        ),
+        Ok(proposal) => ProposalCall::Proposed {
+            id: id.into(),
+            proposal,
+        },
         Err(reason) => ProposalCall::Refused {
             id: id.into(),
             reason,
@@ -274,10 +267,74 @@ fn checked(arguments: &serde_json::Value) -> Option<RefusalDetail> {
     RefusalDetail::new(failure.field(), &failure.told())
 }
 
+/// Refuses every proposal a Save earns, as a message that asks for no change.
+///
+/// A Save is a command, never a request to edit: the dashboard marks only
+/// pure commands such as "Save" or "please save it". The model still reaches
+/// for the one tool it has on every Save, so the refusal does not wait for an
+/// intent model, which a deployment may not have, and costs it no call. The
+/// turn then gets its sentence from the model, and the save proceeds.
+pub(in crate::model) fn refuse_for_save(
+    decoded: &mut Decoded,
+    request: &garde::Valid<ModelCallInput>,
+) -> Result<()> {
+    let Some(result) = &mut decoded.result else {
+        return Ok(());
+    };
+    let mut refused = false;
+    for call in &mut result.proposal_calls {
+        if let ProposalCall::Proposed { id, .. } = call {
+            *call = ProposalCall::Refused {
+                id: id.clone(),
+                reason: ProposalRejection::EditNotRequested,
+                detail: None,
+            };
+            refused = true;
+        }
+    }
+    if refused {
+        super::super::continuation::refresh_result(&mut decoded.continuation, request, result)?;
+    }
+    Ok(())
+}
+
+/// Refuses each edit still proposed that would leave the setup invalid.
+///
+/// It runs after the edit-intent check: a message that asks for no change is
+/// answered, not corrected, so an edit it should never have produced must not
+/// be refused as malformed first. Commit refuses the same edit with a status
+/// and no reason; applying it to the candidate here gives the model the rule.
+pub(in crate::model) fn refuse_invalid_edits(
+    decoded: &mut Decoded,
+    candidate: Option<&crate::types::Candidate>,
+    request: &garde::Valid<ModelCallInput>,
+) -> Result<()> {
+    let Some(result) = &mut decoded.result else {
+        return Ok(());
+    };
+    let mut refused = false;
+    for call in &mut result.proposal_calls {
+        let detail = match &*call {
+            ProposalCall::Proposed { proposal, .. } => edit_refusal(proposal, candidate),
+            ProposalCall::Refused { .. } => None,
+        };
+        if let Some(detail) = detail {
+            *call = ProposalCall::Refused {
+                id: call.id().to_owned(),
+                reason: ProposalRejection::InvalidArguments,
+                detail: Some(detail),
+            };
+            refused = true;
+        }
+    }
+    if refused {
+        super::super::continuation::refresh_result(&mut decoded.continuation, request, result)?;
+    }
+    Ok(())
+}
+
 /// The native checker's own account of an edit that would leave the setup invalid.
 ///
-/// Commit refuses the same edit with a status and no reason, which leaves the
-/// model guessing; applying it to the candidate it edits names the rule broken.
 /// The crate's serde lift drops the value serde quotes, so the sentence names
 /// keys and rules, never a value. Commit still validates.
 fn edit_refusal(

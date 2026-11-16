@@ -84,6 +84,7 @@ impl ModelCalls {
             candidate,
             compaction,
             context_digest,
+            save,
         } = intent;
         outbound.timeout = outbound.timeout.saturating_sub(authorized_at.elapsed());
         let publisher = self.preview(
@@ -120,6 +121,14 @@ impl ModelCalls {
         if let Some(publisher) = publisher {
             publisher.drain().await;
         }
+        if save
+            && compaction.is_none()
+            && let Ok(decoded) = &mut decoded
+            && let Err(fault) = provider::refuse_for_save(decoded, request)
+        {
+            tracing::warn!(event = "setup_save_turn", dispatch_id = %request.dispatch_id,
+                    error_code = %fault.code());
+        }
         if compaction.is_none()
             && let Ok(decoded) = &mut decoded
             && let Err(fault) = self
@@ -129,6 +138,13 @@ impl ModelCalls {
             // The main response must still reach accounting after a stop or failed check.
             tracing::warn!(event = "setup_edit_intent", dispatch_id = %request.dispatch_id,
                     disposition = "unavailable", error_code = %fault.code());
+        }
+        if compaction.is_none()
+            && let Ok(decoded) = &mut decoded
+            && let Err(fault) = provider::refuse_invalid_edits(decoded, candidate.as_ref(), request)
+        {
+            tracing::warn!(event = "setup_edit_check", dispatch_id = %request.dispatch_id,
+                    error_code = %fault.code());
         }
         receipt::finish(
             &self.drafts,

@@ -28,6 +28,8 @@ pub(super) struct Prepared {
     pub(super) input_tokens: u64,
     pub(super) measurement: Option<af_inference::InputCount>,
     pub(super) context_digest: String,
+    /// The message is a Save, which never asks for a setup change.
+    pub(super) save: bool,
 }
 
 pub(super) fn request(mut request: ModelCallInput) -> Result<garde::Valid<ModelCallInput>> {
@@ -77,6 +79,7 @@ pub(super) fn body(
         input_tokens: input.cast_unsigned(),
         measurement: None,
         context_digest: String::new(),
+        save: false,
     })
 }
 
