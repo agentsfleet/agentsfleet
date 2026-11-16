@@ -45,9 +45,9 @@ const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfl
 // The words the Members table shows for each email status, held here rather
 // than imported so the spec pins what a person reads on the page.
 const EMAIL_STATUS_LABEL: Record<EmailStatus, string> = {
-  [EMAIL_STATUS.sent]: "Invite emailed",
-  [EMAIL_STATUS.failed]: "Email not sent",
-  [EMAIL_STATUS.unconfigured]: "Email not set up",
+  [EMAIL_STATUS.sent]: "Invitation sent",
+  [EMAIL_STATUS.failed]: "Email not sent · Share the invite link",
+  [EMAIL_STATUS.unconfigured]: "Email not set up · Share the invite link",
 };
 
 type WorkspaceRow = { id: string; name: string | null; role: string };
@@ -91,7 +91,7 @@ test.describe("teammates join an account", () => {
     await expect(page.getByRole("heading", { name: /^team$/i })).toBeVisible();
 
     // Invite from the dialog, then copy the link the invitee will open.
-    await page.getByRole("button", { name: /^invite$/i }).click();
+    await page.getByRole("button", { name: /^invite member$/i }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel(/^email$/i).fill(invitee.email);
     await page.screenshot({path: test.info().outputPath("live-invite.png"), scale: "css", animations: "disabled"});
@@ -134,10 +134,11 @@ test.describe("teammates join an account", () => {
     await page.goto("/settings/members");
     const row = rowFor(page, email);
     await expect(row).toHaveCount(1);
-    // The row carries a second, phone-width copy of the status that CSS hides here.
-    await expect(row.getByText(EMAIL_STATUS_LABEL[status], { exact: true }).filter({ visible: true })).toBeVisible();
-    const sendAgain = row.getByRole("button", { name: /^send the invite email to .* again$/i });
-    await expect(sendAgain).toHaveCount(status === EMAIL_STATUS.unconfigured ? 0 : 1);
+    await expect(row.getByText(EMAIL_STATUS_LABEL[status], { exact: true })).toBeVisible();
+    // Sending again lives in the row's menu, and only where a relay exists.
+    await row.getByRole("button", { name: `Manage invite for ${email}`, exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Send invite again", exact: true })).toHaveCount(status === EMAIL_STATUS.unconfigured ? 0 : 1);
+    await page.keyboard.press("Escape");
   });
 
   test("test_invitee_accept_journey", {tag: "@post-deploy"}, async ({ browser }) => {

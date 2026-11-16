@@ -76,7 +76,7 @@ test.describe("secrets lifecycle", () => {
     await add.getByRole("button", { name: "Use named fields" }).click();
     await add.getByLabel("Field 1 name").fill("api_key");
     await add.getByLabel("Field 1 value").fill("FIXTURE_TOKEN");
-    await add.getByRole("button", { name: "Add secret", exact: true }).click();
+    await add.getByRole("button", { name: "Add", exact: true }).click();
     await expect(add).toBeHidden({ timeout: ACTION_TIMEOUT_MS });
 
     // Nothing declares it yet: a recorded "none", not an unknown.

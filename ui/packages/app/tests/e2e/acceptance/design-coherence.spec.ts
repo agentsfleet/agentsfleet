@@ -45,10 +45,12 @@ test("Secrets exposes hidden values, access limits and reachable management at b
         await expect(management).toContainText("Stored in this workspace");
         await expectAccessible(page, "Secret management");
         await management.getByRole("button", {name: action, exact: true}).click();
+        // Both dialogs keep a fixed title and name the secret in their description.
         const dialog = action === "Replace value"
-          ? page.getByRole("dialog", {name: `Replace secret “${name}”`, exact: true})
-          : page.getByRole("alertdialog", {name: `Delete secret “${name}”?`, exact: true});
+          ? page.getByRole("dialog", {name: "Replace secret", exact: true})
+          : page.getByRole("alertdialog", {name: "Delete secret?", exact: true});
         await expect(dialog).toBeVisible();
+        await expect(dialog).toContainText(`“${name}”`);
         await expect(dialog).toHaveAccessibleName(/.+/);
         await expect(dialog).toHaveAccessibleDescription(/.+/);
         await expectAccessible(page, `${action} dialog`);

@@ -69,7 +69,7 @@ test.describe("workspace create", () => {
       timeout: WORKSPACE_CREATE_TIMEOUT_MS,
     });
     await openWorkspaceMenu(page);
-    await expect(page.getByRole("menuitem", { name: workspaceName })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: workspaceName, exact: true })).toBeVisible();
 
     await page.getByTestId("workspace-new").click();
     const duplicateDialog = page.getByRole("dialog", {
@@ -89,7 +89,7 @@ test.describe("workspace create", () => {
     expect(duplicateActionPosts).toBe(1);
     await duplicateDialog.getByRole("button", { name: "Cancel" }).click();
     await openWorkspaceMenu(page);
-    await expect(page.getByRole("menuitem", { name: workspaceName }))
+    await expect(page.getByRole("menuitem", { name: workspaceName, exact: true }))
       .toHaveCount(1);
 
     const activeUrl = page.url();
@@ -128,7 +128,7 @@ test.describe("workspace create", () => {
     await page.unroute("**/*", loseCommittedResponse);
     await uncertainDialog.getByRole("button", { name: "Cancel" }).click();
     await openWorkspaceMenu(page);
-    await expect(page.getByRole("menuitem", { name: committedName }))
+    await expect(page.getByRole("menuitem", { name: committedName, exact: true }))
       .toHaveCount(1);
   });
 });

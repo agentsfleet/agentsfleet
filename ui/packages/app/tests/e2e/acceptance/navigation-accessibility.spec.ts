@@ -20,7 +20,9 @@ for (const width of WIDTHS) {
     await expect(opener).toBeVisible();
     await opener.focus();
     await page.keyboard.press("Enter");
-    const create = page.getByRole("menuitem", { name: CREATE_WORKSPACE });
+    // The first item opens the Switch workspace submenu, which holds Create workspace.
+    await page.keyboard.press("ArrowRight");
+    const create = page.getByRole("menu", { name: /^Switch workspace(?::|$)/ }).getByRole("menuitem", { name: CREATE_WORKSPACE });
     await expect(create).toBeVisible();
     await expectAccessible(page, "Workspace menu");
     await expectNoPageOverflow(page);
@@ -28,6 +30,7 @@ for (const width of WIDTHS) {
     await expect(create).toBeHidden();
     await expect(opener).toBeFocused();
     await page.keyboard.press("Enter");
+    await page.keyboard.press("ArrowRight");
     await create.click();
     const dialog = page.getByRole("dialog", { name: CREATE_WORKSPACE });
     await expect(dialog).toBeVisible();

@@ -23,7 +23,9 @@ test("a published setup retains its pinned revision while UI reuse follows its s
   if (!pluginsUiEnabled()) {
     await expect(page.getByRole("navigation", {name: "Primary", exact: true}).getByRole("link", {name: "Plugins", exact: true})).toHaveCount(0);
     const query = new URLSearchParams({plugin: published.plugin_id, revision: published.revision_id});
-    expect((await page.goto(`${workspaceHref(workspace, "fleets/new")}?${query}`))?.status()).toBe(404);
+    // The route streams its loading frame first, so the refusal is the not-found page, not a 404 status.
+    await page.goto(`${workspaceHref(workspace, "fleets/new")}?${query}`);
+    await expect(page.getByRole("heading", {name: "Page not found", exact: true})).toBeVisible();
     const entry = await clientFor(FIXTURE_KEY.regular).get<{head: {id: string}}>(`/v1/workspaces/${workspace}/plugins/${published.plugin_id}?revision_id=${published.revision_id}`);
     expect(entry.head.id).toBe(published.revision_id);
     return;
