@@ -48,8 +48,7 @@ jobs:
           VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
 
       - name: Run smoke tests against DEV
-        run: bun run test:e2e:smoke
-        working-directory: ui/packages/app
+        run: make dry-app-smoke
         env:
           BASE_URL: https://app-dev.agentsfleet.net
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}

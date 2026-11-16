@@ -58,7 +58,7 @@ There is no deploy workflow and no CI credentials; Vercel's GitHub integration h
 
 `dist/vercel.json` carries the serving config Vercel reads (the `/ → /install.sh` rewrite, the
 `text/x-shellscript` content-type, and the 5-minute cache) — Vercel does **not** read Cloudflare
-`_redirects`/`_headers`. The `lint-agentsfleet-sh` CI job (shellcheck + `install_test.sh`) gates the
-merge, so a broken installer can't reach `main`. The 5-minute `Cache-Control` propagates a bump
+`_redirects`/`_headers`. `make lint-shell` (shellcheck) and the `lint-agentsfleet-sh` CI job
+(`install_test.sh`) gate the merge, so a broken installer can't reach `main`. The 5-minute `Cache-Control` propagates a bump
 globally within minutes. One-time Vercel provisioning (project + custom domain) lives in
 [`playbooks/operations/installer_deploy/`](../../playbooks/operations/installer_deploy/).

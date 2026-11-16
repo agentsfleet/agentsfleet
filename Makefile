@@ -17,46 +17,11 @@ include make/build.mk
 include make/release-candidate.mk
 .DEFAULT_GOAL := help
 
-help:  ## Show all available Makefile targets
-	@echo "agentsfleet"
-	@echo ""
-	@echo "Development:"
-	@echo "  up                       Start this worktree's daemon on shared development infrastructure"
-	@echo "  down                     Stop this worktree's daemon; keep data and shared services"
-	@echo ""
-	@echo "Static Analysis:"
-	@echo "  lint-all                 Run every linter + quality gate (umbrella for all checks below)"
-	@echo "  lint-rustd               Lint the Rust workspace (rustfmt + Clippy + cargo shear)"
-	@echo "  lint-website             Lint website (Oxlint + tsc)"
-	@echo "  lint-apps-designsystem-cli  Lint app + design-system + agentsfleet"
-	@echo ""
-	@echo "Quality Gates:"
-	@echo "  check-gh-actions-valid   Validate .github/workflows/ (actionlint YAML + shellcheck + make-target refs)"
-	@echo "  check-playbooks          Validate playbooks/ (shellcheck + reference integrity)"
-	@echo ""
-	@echo "Tests:"
-	@echo "  test-unit-all            Run all unit lanes (rustd + cli + app + website + design-system)"
-	@echo "  test-unit-website        Run website unit tests (vitest, no coverage)"
-	@echo "  test-unit-rustd          Run the Rust workspace unit tests (cargo)"
-	@echo "  test-integration-rustd   Start isolated datastores and run Rust integration tests"
-	@echo "  test-runner-kernel       Run sandbox and deployed-unit startup tests (prepared Linux host)"
-	@echo "  test-runner-startup      Run default/explicit engine startup tests under systemd"
-	@echo "  test-unit-cli      Run agentsfleet CLI unit tests (bun, no coverage)"
-	@echo "  test-coverage-all        Coverage gate: app + website + agentsfleet + design-system"
-	@echo ""
-	@echo "Acceptance:"
-	@echo "  acceptance               Build and start the full stack on this Linux machine, then run acceptance (SUITE=e2e|cli|execution)"
-	@echo "  dry                      Dry lanes — website + app Playwright page renders (no Clerk auth)"
-	@echo "  dry-smoke                Smoke dry lanes — fast website + app (no Clerk auth)"
-	@echo "  acceptance-e2e           Dashboard auth acceptance — Clerk sign-in + lifecycle vs live API (mirrors CI acceptance-e2e)"
-	@echo "  acceptance-cli           CLI auth acceptance — agentsfleet login + token lifecycle vs live API (mirrors CI acceptance-cli)"
-	@echo ""
-	@echo "Performance:"
-	@echo "  bench                    Run the Tier-2 hey HTTP loadgen gate"
-	@echo ""
-	@echo "Verify:"
-	@echo "  check-version            Verify rustd/Cargo.toml + cli/package.json match VERSION"
-	@echo ""
-	@echo "Build & Deploy:"
-	@echo "  build                    Build production container (uses prebuilt linux binaries)"
-	@echo "  sync-version             Propagate VERSION → rustd/Cargo.toml + cli/package.json"
+# Generated from the `## ` text on each rule line, so a new target documents
+# itself where it is declared. `_`-prefixed targets are internal and stay out.
+help:  ## List every public target with its description, grouped by the file that declares it
+	@echo "agentsfleet — make <target>"
+	@awk 'BEGIN { FS = ":[^#]*## " } \
+	  /^[A-Za-z0-9][A-Za-z0-9_.-]*:([^=]|$$)/ && /## / { \
+	    if (FILENAME != shown) { printf "\n%s\n", FILENAME; shown = FILENAME } \
+	    printf "  %-34s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)

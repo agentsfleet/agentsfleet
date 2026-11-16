@@ -303,14 +303,16 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
 not in any contributor's dotfiles. Hook fixes are normal repo PRs.
 
 - **pre-push classifies the outgoing range into lint and unit surfaces** by file
-  pattern (`*.rs`/`rustd/*` → `lint-rustd`, `cli/*` → `test-unit-cli`,
-  `ui/packages/app/*` → `test-unit-app`, `ui/packages/website/*` →
-  `test-unit-website`, `ui/packages/design-system/*` → both
-  `test-unit-design-system` and `test-unit-app`). Zero matches →
+  pattern (`*.rs`/`rustd/*` → `lint-rustd`, `cli/*` → `test-coverage-cli`,
+  `ui/packages/app/*` → `test-coverage-app`, `ui/packages/website/*` →
+  `test-coverage-website`, `ui/packages/design-system/*` → both
+  `test-coverage-design-system` and `test-coverage-app`). Each is the target
+  its Continuous Integration (CI) job in `.github/workflows/test.yml` runs.
+  Zero matches →
   `"no test-relevant files — nothing to run"` and the push sails through, so a
   docs-only push skips the suite entirely. No pre-push lane needs a live
   datastore. Rust unit tests do not run here; they run at `orly gate pr` and
-  in Continuous Integration (CI) (`.githooks/pre-push`).
+  in CI (`.githooks/pre-push`).
 - **Clippy is pre-push's, not pre-commit's.** `lint-rustd` compiles the whole
   workspace under `-D warnings`, which measured 36s to 3m16s per commit. That
   is a tax on every commit, including the small ones. Pre-commit keeps the

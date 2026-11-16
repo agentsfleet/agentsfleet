@@ -4,7 +4,7 @@
  * The sweep only ever runs at the end of a real end-to-end job, so its own
  * failure modes are exactly the ones nobody watches. These tests drive it
  * against stubbed fixtures so the four claims that matter are checked on every
- * `make test-unit-app` instead of being inferred from a green suite:
+ * `make test-coverage-app` instead of being inferred from a green suite:
  * it reaps regardless of fleet name, it reports what it could not delete,
  * one dead fixture user does not shield another's leaks, and it refuses a
  * target that is not disposable.

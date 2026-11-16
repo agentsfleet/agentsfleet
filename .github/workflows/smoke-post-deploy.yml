@@ -22,7 +22,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       # Detect which Vercel project deployed based on GitHub deployment metadata first.
       # URL-shape fallback remains for safety, but deployment.environment is the stable source.
@@ -64,7 +64,7 @@ jobs:
         working-directory: ${{ steps.detect.outputs.workdir }}
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: bunx --no-install playwright install --with-deps chromium
         working-directory: ${{ steps.detect.outputs.workdir }}
 
       - name: Load Vercel bypass secret from 1Password
@@ -75,9 +75,17 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/${{ steps.detect.outputs.bypass_item }}/credential
 
-      - name: Run smoke tests against deployed URL
-        run: bun run test:e2e:smoke
-        working-directory: ${{ steps.detect.outputs.workdir }}
+      # One step per package so each names its make target outright.
+      - name: Run app smoke tests against deployed URL
+        if: steps.detect.outputs.package == 'app'
+        run: make dry-app-smoke
+        env:
+          BASE_URL: ${{ steps.detect.outputs.smoke_base_url }}
+          VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
+
+      - name: Run website smoke tests against deployed URL
+        if: steps.detect.outputs.package != 'app'
+        run: make dry-website-smoke
         env:
           BASE_URL: ${{ steps.detect.outputs.smoke_base_url }}
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
@@ -143,7 +151,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       # Installs and builds run BEFORE the 1Password load (same posture as
       # the dev jobs): no postinstall script ever sees a Clerk key.
@@ -162,7 +170,7 @@ jobs:
       - name: Resolve Playwright version
         id: playwright-version
         run: |
-          PLAYWRIGHT_VERSION="$(bunx playwright --version | awk '{print $2}')"
+          PLAYWRIGHT_VERSION="$(bunx --no-install playwright --version | awk '{print $2}')"
           test -n "$PLAYWRIGHT_VERSION"
           echo "version=$PLAYWRIGHT_VERSION" >> "$GITHUB_OUTPUT"
         working-directory: ui/packages/app
@@ -180,9 +188,9 @@ jobs:
       - name: Install Playwright browsers
         run: |
           if [ "${{ steps.playwright-cache-acceptance.outputs.cache-hit }}" = "true" ]; then
-            bunx playwright install chromium
+            bunx --no-install playwright install chromium
           else
-            bunx playwright install --with-deps chromium
+            bunx --no-install playwright install --with-deps chromium
           fi
         working-directory: ui/packages/app
 
@@ -198,8 +206,7 @@ jobs:
           VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
 
       - name: Run acceptance e2e against PROD
-        run: bun run test:e2e:acceptance
-        working-directory: ui/packages/app
+        run: make acceptance-e2e
         env:
           BASE_URL: ${{ github.event.deployment_status.target_url }}
           NEXT_PUBLIC_API_URL: https://api.agentsfleet.net

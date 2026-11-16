@@ -124,7 +124,7 @@ Updating local assets does not publish GitHub avatar/social images or deploy web
 
 ## Verification record
 
-The website coverage gate requires 100% statements, branches, functions, and lines, and `make _dry_website` runs the browser checks.
+The website coverage gate requires 100% statements, branches, functions, and lines, and `make dry-website` runs the browser checks.
 Browser checks cover themes, responsive layout, keyboard access, reduced motion, typing, looping, pause, citations, suggestions, and cancelled signup.
 Unused preview and measurement modules were removed with their tests; remaining tests cover the visitor's actions.
 

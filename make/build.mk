@@ -1,105 +1,26 @@
 # =============================================================================
-# BUILD — container builds and version manifests
+# BUILD — version manifests, the builder image tag and the toolbox image
 # =============================================================================
 
-.PHONY: build _dist-daemons _builder-image sync-version check-version toolbox-image
+.PHONY: sync-version check-version toolbox-image
 
-VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
-# The commit, computed once and EXPORTED. It tags the image below, and
-# `rustd/crates/daemon/afd_api/build.rs` reads it for the commit `/healthz` reports —
-# so the tag on an image and the field inside it come from one variable rather
-# than from two that can disagree. Before the export, a container build tagged
-# `:VERSION-abc1234` and served `"commit":"unknown"`: the build context carries
-# no `.git`, and nothing told the build script what `make` already knew.
+# The commit, computed once and EXPORTED.
+# `rustd/crates/daemon/afd_api/build.rs` reads it for the commit `/healthz`
+# reports, `scripts/build-candidate.sh` hands it to the builder container, and
+# the bench lanes record it as a result's revision, so all three name one
+# value. The export matters because a container build context carries no
+# `.git`, so the build script cannot find the commit by itself.
 GIT_COMMIT := $(if $(GITHUB_SHA),$(shell echo $(GITHUB_SHA) | cut -c1-7),$(shell git rev-parse --short HEAD 2>/dev/null || echo "dev"))
 export GIT_COMMIT
-SERVICE_NAME := agentsfleetd
-DOCKER_REGISTRY ?= ghcr.io
-IMAGE_REPO ?= $(DOCKER_REGISTRY)/agentsfleet/$(SERVICE_NAME)
-_IMAGE := $(IMAGE_REPO)
-PLATFORMS ?= linux/amd64,linux/arm64
-_PROD_TAGS := --tag $(_IMAGE):$(VERSION) --tag $(_IMAGE):$(VERSION)-$(GIT_COMMIT) --tag $(_IMAGE):latest
 
-# Internal: shared buildx command
-# Usage: $(call _buildx,<dockerfile>,<tags>,<extra-flags>)
-define _buildx
-	@DOCKER_BUILDKIT=1 docker buildx build \
-		. \
-		--platform $(PLATFORMS) \
-		-f $(1) \
-		$(2) \
-		$(3)
-endef
-
-# The daemon, built the way the release builds it: inside a musl-native Alpine
-# container, so the musl target is the host target and no cross linker has to
-# be configured on a developer's machine. The static assert runs INSIDE the
-# container because that is where readelf is known to exist; a binary with a
-# NEEDED entry or an INTERP section fails here, same as in the release job.
-#
-# DIST_ARCH_PAIRS narrows the build — pass the host's pair alone when one
-# architecture is enough, since the other arrives through QEMU at emulation
-# speed: `make _dist-daemons DIST_ARCH_PAIRS="arm64:aarch64"`.
-DIST_ARCH_PAIRS ?= amd64:x86_64 arm64:aarch64
-
-# The builder image, baked once. Docker's own layer cache makes this a no-op
-# after the first run, so it is an honest prerequisite rather than a cost.
-# Versions live beside the Dockerfile, in the playbook that owns publishing it,
-# so there is one place a base moves.
+# The musl builder image `candidate-native-linux` builds inside
+# (make/release-candidate.mk). Versions live beside the Dockerfile, in the
+# playbook that owns publishing it, so there is one place a base moves.
 BUILDER_DIR := playbooks/operations/ci_rust_images
 BUILDER_RUST_VERSION := $(shell sed -n 's/^RUST_VERSION=//p' $(BUILDER_DIR)/versions.env)
 BUILDER_ALPINE_SERIES := $(shell sed -n 's/^ALPINE_SERIES=//p' $(BUILDER_DIR)/versions.env)
-# The toolchain arrives by rustup rather than from a `rust:*-alpine` base, so
-# the local bake needs the installer pin and its checksums too — the Dockerfile
-# refuses to build without them rather than silently fetching an unverified one.
-BUILDER_RUSTUP_VERSION := $(shell sed -n 's/^RUSTUP_VERSION=//p' $(BUILDER_DIR)/versions.env)
-BUILDER_RUSTUP_SHA_X86 := $(shell sed -n 's/^RUSTUP_SHA256_X86_64_MUSL=//p' $(BUILDER_DIR)/versions.env)
-BUILDER_RUSTUP_SHA_ARM := $(shell sed -n 's/^RUSTUP_SHA256_AARCH64_MUSL=//p' $(BUILDER_DIR)/versions.env)
 BUILDER_REVISION := $(shell sed -n 's/^IMAGE_REVISION=//p' $(BUILDER_DIR)/versions.env)
 BUILDER_IMAGE ?= ghcr.io/agentsfleet/ci-rust-alpine:$(BUILDER_RUST_VERSION)-alpine$(BUILDER_ALPINE_SERIES)$(if $(BUILDER_REVISION),-$(BUILDER_REVISION))
-
-# Pull the published builder; bake it locally only when the registry does not
-# have it. Either way it happens once and every build after reuses the layers.
-# The bake path now installs the toolchain with rustup rather than inheriting it
-# from a `rust:*-alpine` base, so it downloads more and needs the network for
-# longer. That is the fallback, not the path: a published tag is a pull.
-_builder-image:
-	@docker image inspect $(BUILDER_IMAGE) >/dev/null 2>&1 && exit 0; \
-	docker pull -q $(BUILDER_IMAGE) >/dev/null 2>&1 && exit 0; \
-	echo "→ [image] baking the musl builder locally (once)..."; \
-	docker build -q \
-	  --build-arg RUST_VERSION=$(BUILDER_RUST_VERSION) \
-	  --build-arg ALPINE_SERIES=$(BUILDER_ALPINE_SERIES) \
-	  --build-arg RUSTUP_VERSION=$(BUILDER_RUSTUP_VERSION) \
-	  --build-arg RUSTUP_SHA256_X86_64_MUSL=$(BUILDER_RUSTUP_SHA_X86) \
-	  --build-arg RUSTUP_SHA256_AARCH64_MUSL=$(BUILDER_RUSTUP_SHA_ARM) \
-	  -f $(BUILDER_DIR)/Dockerfile.alpine \
-	  -t $(BUILDER_IMAGE) $(BUILDER_DIR) >/dev/null
-
-_dist-daemons: _builder-image
-	mkdir -p dist
-	@for arch in $(DIST_ARCH_PAIRS); do \
-	  out="$${arch%%:*}"; platform="$${arch##*:}"; \
-	  echo "→ [image] building the daemon for linux/$$out..."; \
-	  docker run --rm --platform "linux/$$out" \
-	    -e CARGO_TARGET_DIR="/w/rustd/target/musl-$$out" \
-	    -v "$(CURDIR):/w" -w /w/rustd $(BUILDER_IMAGE) \
-	    sh -c 'set -e; \
-	      cargo build --profile dist -p agentsfleetd --bin agentsfleetd; \
-	      triple="$$(rustc -vV | sed -n "s/^host: //p")"; \
-	      bin="$$CARGO_TARGET_DIR/$$triple/dist/agentsfleetd"; \
-	      if readelf -d "$$bin" | grep -q " (NEEDED)"; then echo "FAIL: dynamic NEEDED entries"; exit 1; fi; \
-	      if readelf -l "$$bin" | grep -q INTERP; then echo "FAIL: INTERP present"; exit 1; fi; \
-	      echo "  static: zero NEEDED, no INTERP"; \
-	      install -m 755 "$$bin" "$$CARGO_TARGET_DIR/agentsfleetd"' \
-	    || exit 1; \
-	  cp "rustd/target/musl-$$out/agentsfleetd" "dist/agentsfleetd-rs-linux-$$out"; \
-	  chmod +x "dist/agentsfleetd-rs-linux-$$out"; \
-	  echo "✓ [image] dist/agentsfleetd-rs-linux-$$out ($$platform)"; \
-	done
-
-build: _dist-daemons ## Build production container (uses prebuilt linux binaries)
-	$(call _buildx,Dockerfile,$(_PROD_TAGS),)
 
 sync-version: ## Propagate VERSION → rustd/Cargo.toml + cli/package.json (cli.js reads pkg.version at runtime)
 	@set -e; \

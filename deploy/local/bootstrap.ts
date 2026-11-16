@@ -131,8 +131,9 @@ export async function configureConnector(request: Request, workspaceId: string, 
 
 /** A caller that resolved every field (a burst machine) passes them in; otherwise 1Password reads them all. */
 async function connectorFields(op: Op): Promise<Record<string, string>> {
-  const given = GITHUB_FIELDS.map(field => process.env[`LOCAL_GITHUB_${field.toUpperCase()}`] ?? "");
-  if (given.every(Boolean)) return Object.fromEntries(GITHUB_FIELDS.map((field, index) => [field, given[index]]));
+  const given: Record<string, string> = Object.fromEntries(
+    GITHUB_FIELDS.map(field => [field, process.env[`LOCAL_GITHUB_${field.toUpperCase()}`] ?? ""]));
+  if (Object.values(given).every(Boolean)) return given;
   const vault = process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT || await connectorVault(op);
   const data: Record<string, string> = {};
   for (const field of GITHUB_FIELDS) data[field] = await op(["read", "--no-newline", `op://${vault}/github-app/${field}`]);
@@ -145,8 +146,9 @@ async function connectorVault(op: Op): Promise<string> {
   const rows = z.array(z.object({title: z.string(), vault: z.object({id: z.string(), name: z.string().default("")})}))
     .parse(JSON.parse(await op(["item", "list", "--format", "json"])));
   const matches = rows.filter(row => row.title === "github-app" && /(?:^|_)DEV$/.test(row.vault.name));
-  if (matches.length !== 1) throw new LocalBootstrapError("set ACCEPTANCE_LOCAL_CONNECTOR_VAULT to the development vault holding github-app");
-  return matches[0].vault.id;
+  const [match] = matches;
+  if (matches.length !== 1 || !match) throw new LocalBootstrapError("set ACCEPTANCE_LOCAL_CONNECTOR_VAULT to the development vault holding github-app");
+  return match.vault.id;
 }
 
 async function runOp(args: string[]): Promise<string> {
