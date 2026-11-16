@@ -1,39 +1,24 @@
 #!/usr/bin/env bash
 # Linux adapter; the runner keeps its shipping sandbox and signed-toolbox checks.
-source "$DEV_ROOT/deploy/local/codex-certificate.sh"
+source "$DEV_ROOT/deploy/local/linux-certificate.sh"
 acceptance_runner_owned=0
 
 acceptance_adapter() {
-  [ "$(uname -s)" = Linux ] || dev_fail 'acceptance-codex requires Linux and privileged Docker'
-  docker info >/dev/null || dev_fail 'acceptance-codex requires a running Docker daemon'
+  [ "$(uname -s)" = Linux ] || dev_fail 'acceptance-linux requires Linux and privileged Docker'
+  docker info >/dev/null || dev_fail 'acceptance-linux requires a running Docker daemon'
   command -v certutil >/dev/null || dev_fail 'install libnss3-tools for browser certificate trust'
-  if [ -n "${CODEX_PROXY_CERT:-}" ]; then
-    export LOCAL_DEV_COMPOSE_FILE="$DEV_STATE/acceptance/cloud-infra.json"
-    mkdir -p "$(dirname "$LOCAL_DEV_COMPOSE_FILE")"
-    python3 - "$CODEX_PROXY_CERT" "$LOCAL_DEV_COMPOSE_FILE" <<'PY'
-import json, sys
-from pathlib import Path
-volume = {'type': 'bind', 'source': sys.argv[1], 'target': '/run/session-ca.pem', 'read_only': True}
-overlay = {'services': {'qstash': {'volumes': [volume], 'environment': {'NODE_EXTRA_CA_CERTS': '/run/session-ca.pem'}}}}
-Path(sys.argv[2]).write_text(json.dumps(overlay))
-PY
-  fi
 }
 
 acceptance_adapter_build() {
-  unset ACCEPTANCE_RUNNER_MACHINE
   export LOCAL_ACCEPTANCE_RUNNER_STREAM_HOST=localhost
 }
 
 acceptance_machine() {
   acceptance_runner_image="agentsfleet-acceptance-$DEV_ID"
   acceptance_runner_container="$DEV_PROJECT-$DEV_ID-runner"
-  local args=(--file deploy/local/codex-runner.Dockerfile --tag "$acceptance_runner_image"
+  local args=(--file deploy/local/linux-runner.Dockerfile --tag "$acceptance_runner_image"
     --build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY
     --build-arg http_proxy --build-arg https_proxy --build-arg no_proxy)
-  if [ -n "${CODEX_PROXY_CERT:-}" ]; then
-    args+=(--secret "id=session-ca,src=$CODEX_PROXY_CERT")
-  fi
   docker build "${args[@]}" .
 }
 
@@ -70,7 +55,7 @@ acceptance_proxy_config() {
 
 acceptance_proxy() {
   docker compose --project-name "$DEV_PROJECT-$DEV_ID-acceptance" --file deploy/local/compose.yml \
-    --file deploy/local/codex-compose.yml "$@"
+    --file deploy/local/linux-compose.yml "$@"
 }
 
 acceptance_runner_stream_environment() {
@@ -85,13 +70,10 @@ start_runner() {
   fi
   local args=(--init --name "$acceptance_runner_container" --privileged --cgroupns=private --network host
     --mount "type=bind,src=$DEV_ROOT/dist/acceptance/agentsfleet-runner,dst=/usr/local/bin/agentsfleet-runner,readonly"
-    --mount "type=bind,src=$DEV_ROOT/deploy/local/codex-runner.sh,dst=/usr/local/bin/acceptance-runner,readonly"
+    --mount "type=bind,src=$DEV_ROOT/deploy/local/linux-runner.sh,dst=/usr/local/bin/acceptance-runner,readonly"
     --mount "type=bind,src=$ACCEPTANCE_LOCAL_TOOLBOX_DIR,dst=/toolbox,readonly"
     --mount "type=bind,src=$LOCAL_ACCEPTANCE_CA,dst=/acceptance-ca.crt,readonly"
     --env-file "$LOCAL_ACCEPTANCE_STATE/runner.env")
-  if [ -n "${CODEX_PROXY_CERT:-}" ]; then
-    args+=(--mount "type=bind,src=$CODEX_PROXY_CERT,dst=/run/session-ca.pem,readonly")
-  fi
   acceptance_runner_container="$(docker create "${args[@]}" "$acceptance_runner_image" \
     bash /usr/local/bin/acceptance-runner)"
   acceptance_runner_owned=1

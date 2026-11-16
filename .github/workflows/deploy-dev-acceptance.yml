@@ -64,7 +64,7 @@ jobs:
 
   # ── Acceptance e2e against DEV ──────────────────────────────────────────
   # Loads Clerk DEV credentials and runs preflight plus one execution test.
-  # Bulk browser coverage stays in acceptance-local. Failures gate notify.
+  # Bulk browser coverage stays in `make acceptance`. Failures gate notify.
   #
   # deploy-dev-dashboard builds app-dev.agentsfleet.net with the development
   # target. NEXT_PUBLIC_API_URL below configures fixture calls;

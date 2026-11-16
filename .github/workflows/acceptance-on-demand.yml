@@ -1,6 +1,6 @@
 name: acceptance / on demand
 
-# Local acceptance (`make acceptance-codex`) on a throwaway GitHub-hosted VM, for
+# Full-stack acceptance (`make acceptance`) on a throwaway GitHub-hosted VM, for
 # any branch, started by hand or by an agent with `gh workflow run`. The runner
 # sandbox needs a full Linux kernel and privileged Docker, which a hosted VM has
 # and a laptop on flaky Wi-Fi does not reliably keep.
@@ -56,11 +56,12 @@ jobs:
           cache-prefix: playwright-app
           lock-file: bun.lock
 
-      - name: Install workspace dependencies and the command-line application (before any secret)
+      # `make acceptance` builds the command-line application itself.
+      - name: Install workspace dependencies (before any secret)
         run: |
           set -euo pipefail
           bun install --frozen-lockfile
-          (cd cli && bun install --frozen-lockfile && bun run build)
+          (cd cli && bun install --frozen-lockfile)
           for package in ui/packages/*/; do (cd "$package" && bun install --frozen-lockfile); done
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends libnss3-tools cmake clang
@@ -103,29 +104,37 @@ jobs:
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential
           FIREWORKS_API_KEY: op://${{ vars.VAULT_DEV }}/agentsfleet-fireworks-api-token/credential
 
-      # Shared with scripts/acceptance-burst.sh's AWS runner, so both write the
-      # same owner-only machine environment files.
+      # The owner-only machine environment files `make acceptance` reads.
       - name: Write the machine environment files
-        run: scripts/acceptance-burst/machine-env.sh "$RUNNER_TEMP/machine-env" >> "$GITHUB_ENV"
+        run: deploy/local/machine-env.sh "$RUNNER_TEMP/machine-env" >> "$GITHUB_ENV"
 
       - name: Run acceptance
         env:
           SUITE: ${{ inputs.suite || 'e2e' }}
           ACCEPTANCE_LOCAL_CONNECTOR_VAULT: ${{ vars.VAULT_DEV }}
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-        run: make acceptance-codex SUITE="$SUITE"
+        run: make acceptance SUITE="$SUITE"
+
+      # The daemon, runner and dashboard logs say why a turn failed; the
+      # Playwright results only show that it did. Copy the exact files: a
+      # recursive glob walks into Caddy's root-owned state and fails the upload.
+      - name: Collect the service logs
+        if: always()
+        run: |
+          logs=ui/packages/app/playwright-acceptance-results/logs
+          mkdir -p "$logs"
+          for file in ~/.local/state/agentsfleet/dev-*/worktrees/*/daemon.log \
+            ~/.local/state/agentsfleet/dev-*/worktrees/*/acceptance/*.log; do
+            if [ -f "$file" ]; then cp "$file" "$logs/"; fi
+          done
 
       - name: Upload acceptance evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: acceptance-on-demand-${{ github.run_id }}
-          # The daemon, runner and dashboard logs say why a turn failed; the
-          # Playwright results only show that it did.
           path: |
             ui/packages/app/playwright-acceptance-results/
             ui/packages/app/playwright-acceptance-report/
-            ~/.local/state/agentsfleet/**/daemon.log
-            ~/.local/state/agentsfleet/**/acceptance/*.log
           if-no-files-found: warn
           retention-days: 7

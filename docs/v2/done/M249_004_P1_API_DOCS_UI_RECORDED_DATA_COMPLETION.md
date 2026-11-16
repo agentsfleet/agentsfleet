@@ -119,10 +119,10 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `docs/v2/evidence/M249_VERIFICATION.md`, `docs/DESIGN_SYSTEM.md`, `docs/architecture/{api_resources,web_app,billing_reporting,billing_and_provider_keys}.md` | EDIT | Update resolved data differences and retained unknowns; repair parent prose findings without changing billing behavior |
 | `docs/v2/evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md` | EDIT | Preserve the deferred Fleet/template/Plugin questions without adding implementation scope |
 | Separate `agentsfleet/docs` branch and changelog | EDIT | Public interface and visible behaviour |
-| `deploy/local/{certificate.sh,certificate_test.sh,orbstack.sh,compose.yml,acceptance.sh}`, `scripts/local-dev-state.sh`, `docs/development.md` | EDIT | Local acceptance runs on a Mac: one Caddy root per machine, trusted once in a form Chromium honours; cmake and clang for BoringSSL; orphaned shared services removed (owner, Nov 16, 2026) |
+| `deploy/local/**`, `make/acceptance.mk`, `Makefile`, `scripts/build-acceptance.ts`, `scripts/local-dev-state.sh`, `README.md`, `docs/development.md` | EDIT/REMOVE | One `make acceptance` on Linux replaces `acceptance-local` (macOS and OrbStack, removed) and `acceptance-codex` (renamed); bootstrap reads the GitHub App fields where it uses them; orphaned shared services are removed (owner, Nov 16, 2026) |
 | `ui/packages/app/app/loading.tsx` (removed), `app/{cli-auth,connectors}/loading.tsx`, `tests/loading-states.test.ts` | REMOVE/ADD | The root loader wrapped the dashboard shell in a streamed boundary that could leave a hidden second shell; the two routes that wait on reads keep their spinner (owner, Nov 16, 2026) |
 | `.github/workflows/acceptance-on-demand.yml` | ADD | Run local acceptance on a hosted VM for any branch (owner, Nov 16, 2026) |
-| `scripts/acceptance-burst.sh`, `scripts/acceptance-burst/{aws-user-data.sh,machine-env.sh}`, `.claude/skills/orly-burst/SKILL.md`, `.agents/skills/orly-burst/SKILL.md`, `.gitignore` | ADD/EDIT | Burst acceptance on a throwaway full VM: AWS Spot (Debian 13 amd64) or the GitHub workflow, driven by the `orly-burst` skill (owner, Nov 16, 2026) |
+| `deploy/local/machine-env.sh`, `.claude/skills/orly-burst/SKILL.md`, `.agents/skills/orly-burst/SKILL.md`, `.gitignore` | ADD/EDIT | Acceptance on a fresh GitHub runner, driven by the `orly-burst` skill until orly ships `orly burst` (owner, Nov 16, 2026) |
 | `rustd/Cargo.{toml,lock}`, `af_core/src/clock.rs` and the jiff call sites | EDIT | jiff and jiff-sqlx 1.0 (owner, Nov 16, 2026) |
 | `afr_supervisor/src/authoring/{proposal.rs,proposal_tests.rs,tests/*}`, `afr_supervisor/Cargo.toml` | EDIT/ADD | A refused first setup names its field to the model (owner, Nov 16, 2026) |
 | `ui/packages/app/**` confirmed orphaned modules and their isolated tests; `lib/models/display.ts` | REMOVE/EDIT | Owner-requested UI cleanup removes obsolete spending, model cells, action hooks, refresh controls and draft-search state; paused Plugin implementation stays available |
@@ -146,7 +146,7 @@ Resolve family entries to exact files during PLAN. Unidentified producers block 
 | `make test-unit-all` | Yes | Existing coverage floors, including TypeScript 100 percent |
 | `make test-integration-rustd` | Yes | Real ledger, account and workspace boundaries |
 | `make check-version` | Yes | Version and generated interface agreement |
-| `make dry-app` and `make acceptance-codex` | Yes | Refreshed adapters and authenticated resource flows |
+| `make dry-app` and `make acceptance` | Yes | Refreshed adapters and authenticated resource flows |
 | Existing bundle-size checks | Yes | Keep caps; any excess needs owner approval |
 | `gitleaks detect --redact --no-banner` | Yes | No credentials in source or evidence |
 | File ≤350 lines; function ≤50; method ≤70 | Yes | Keep domain projections separate |
@@ -360,7 +360,7 @@ Any new producer metric needs bounded labels, an existing signal owner and a tes
 | R5 | Measured context budget (§5) | Parked separately | No implementation required in this workstream | P1 | DEFERRED at owner request |
 | S1 | Declared commands green | `make lint-all`; `make test-unit-all`; `make test-integration-rustd`; `make check-version` | Exit 0 | P0 | `orly gate pr` before the PR; counts in the PR body |
 | S2 | No secrets | `gitleaks detect --redact --no-banner` | Exit 0 | P0 | PASS: `gitleaks detect --log-opts=origin/main..HEAD`, 59 commits, no leaks |
-| S3 | Authenticated runtime and repository gates | `make acceptance-codex`; `orly gate pr` | Exit 0 | P0 | DEFERRED at owner request: local acceptance stopped at TLS trust (Discovery); `orly gate pr` in the PR body |
+| S3 | Authenticated runtime and repository gates | `make acceptance`; `orly gate pr` | Exit 0 | P0 | DEFERRED at owner request: local acceptance stopped at TLS trust (Discovery); `orly gate pr` in the PR body |
 
 The owner closed this spec in its PR with the local acceptance run outstanding; Discovery records why.
 
@@ -540,6 +540,16 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 > Owner (Indy): "ensure its just a script assuming aws is installed." (the separate test harness was removed)
 
 > Owner (Indy): "i think make it as orly-burst" (the skill name)
+
+- **Acceptance runs only on Linux (Nov 16, 2026):** the Mac path failed on Wi-Fi drops, keychain trust and the OrbStack machine, so `make acceptance-local` and its OrbStack, keychain, toolbox-signing and cross-build code are removed. `acceptance-codex` is renamed `make acceptance`, which the on-demand workflow runs. The AWS launcher staged code and results in S3 and kept the 1Password token in SSM Parameter Store, which the owner never agreed to; it is removed, and nothing was created in AWS (`ParameterNotFound`, `NoSuchEntity`, no bucket). AWS Spot and E2E Networks return through `orly burst` over a per-run SSH session that stores nothing (agentsfleet/orly#79). Bootstrap now reads the six GitHub App fields inside `configureConnector`, from the caller when all are set and otherwise with `op`, and only on a fresh acceptance database. Two specs passed display names where a fleet name must be a kebab slug, so draft creation refused them with `UZ-REQ-001`.
+
+> Owner (Indy): "since the mac orbstack isnt workign reliably"
+
+> Owner (Indy): "I dont want too many targets, keep things simple"
+
+> Owner (Indy): "so in the CI which target will run, rename it clearly"
+
+> Owner (Indy): "crap i didnt agree to S3 bucket"
 
 > Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 

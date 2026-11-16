@@ -26,7 +26,6 @@ class EnvironmentTests(unittest.TestCase):
         self.env = {**os.environ, 'DEV_STATE': str(self.root), 'DEV_ID': 'wt_1234abcd',
                     'LOCAL_DEV_ENV_FILE': str(self.file), 'DEV_DB': 'dev_wt_1234abcd'}
         self.env.pop('AGENTSFLEET_LOCAL_ACCEPTANCE_ENV_FILE', None)
-        self.env.pop('ACCEPTANCE_LOCAL_RUNNER_MACHINE', None)
         self.env.pop('ENCRYPTION_MASTER_KEY', None)
 
     def run_bootstrap(self):
@@ -38,7 +37,7 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(first.returncode, 0, first.stderr)
         content = self.file.read_text()
         self.assertRegex(content, r'ENCRYPTION_MASTER_KEY=[a-f0-9]{64}\n')
-        self.assertIn('afr-acceptance-1234abcd', content)
+        self.assertIn(f'ACCEPTANCE_LOCAL_RUNNER_RECORD={self.root}/acceptance/runner.json', content)
         self.assertEqual(self.file.stat().st_mode & 0o777, 0o600)
         self.assertEqual(first.stdout, '')
         self.assertEqual(self.run_bootstrap().returncode, 0)
@@ -262,6 +261,53 @@ await assert.rejects(configureScheduler(noWrite, workspace, ''), {name: 'ZodErro
 ''', str(ROOT / 'deploy/local/bootstrap.ts')], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_connector_fields_come_from_the_caller_or_one_op_read_each(self):
+        result = subprocess.run(['bun', '-e', '''
+const { strict: assert } = await import('node:assert');
+const { configureConnector } = await import(Bun.argv[1]);
+const fields = ['app_id', 'app_slug', 'client_id', 'client_secret', 'private_key_pem', 'webhook_secret'];
+const names = fields.map(field => `LOCAL_GITHUB_${field.toUpperCase()}`);
+let saved, calls;
+const request = async (method, url, body) => {
+  assert.equal(url, '/v1/workspaces/local-fixture/secrets');
+  if (method === 'GET') return {secrets: []};
+  saved = body;
+  return {};
+};
+const op = async args => {
+  calls.push(args);
+  if (args[0] === 'item') return JSON.stringify([
+    {title: 'github-app', vault: {id: 'vault-dev', name: 'ZMB_CD_DEV'}},
+    {title: 'github-app', vault: {id: 'vault-prod', name: 'ZMB_CD_PROD'}},
+  ]);
+  return `from-op:${args[2]}`;
+};
+const run = async () => { calls = []; saved = undefined; await configureConnector(request, 'local-fixture', op); };
+
+// A burst machine passes every field in: no 1Password at all.
+names.forEach(name => { process.env[name] = `given-${name}`; });
+await run();
+assert.deepEqual(calls, []);
+assert.equal(saved.name, 'github-app');
+assert.deepEqual(saved.data, Object.fromEntries(fields.map((field, index) => [field, `given-${names[index]}`])));
+
+// One field missing: all six come from 1Password, never a mix.
+delete process.env.LOCAL_GITHUB_WEBHOOK_SECRET;
+delete process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT;
+await run();
+assert.deepEqual(calls[0], ['item', 'list', '--format', 'json']);
+assert.deepEqual(calls.slice(1), fields.map(field => ['read', '--no-newline', `op://vault-dev/github-app/${field}`]));
+assert.deepEqual(saved.data, Object.fromEntries(fields.map(field => [field, `from-op:op://vault-dev/github-app/${field}`])));
+
+// A named vault skips discovery.
+names.forEach(name => { delete process.env[name]; });
+process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT = 'chosen';
+await run();
+assert.equal(calls.length, fields.length);
+assert.ok(calls.every(args => args[0] === 'read' && args[2].startsWith('op://chosen/github-app/')));
+''', str(ROOT / 'deploy/local/bootstrap.ts')], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_configured_platform_workspace_and_encryption_key_are_preserved(self):
         result = subprocess.run(['bun', '-e', '''
 const { strict: assert } = await import('node:assert');
@@ -283,5 +329,4 @@ assert.equal(await readFile(file, 'utf8'), 'ENCRYPTION_MASTER_KEY=keep-existing-
 unittest.main(argv=['acceptance-bootstrap'])
 PY
 
-bash "$(dirname "$0")/certificate_test.sh"
-bash "$(dirname "$0")/codex_test.sh"
+bash "$(dirname "$0")/linux_test.sh"

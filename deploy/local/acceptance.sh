@@ -8,12 +8,7 @@ dev_state
 
 action="${1:-all}"
 case "$action" in all|e2e|cli|execution) ;; *) dev_fail 'expected e2e, cli or execution (default: both suites)' ;; esac
-backend="${2:-orbstack}"
-case "$backend" in
-  orbstack) source deploy/local/orbstack.sh ;;
-  codex) source deploy/local/codex.sh ;;
-  *) dev_fail 'expected orbstack or codex acceptance backend' ;;
-esac
+source deploy/local/linux.sh
 acceptance_adapter
 export LOCAL_DEV_ENV_FILE="${AGENTSFLEET_LOCAL_ACCEPTANCE_ENV_FILE:-$DEV_STATE/acceptance.env}"
 dev_lock "$DEV_STATE/acceptance.lock"
@@ -81,10 +76,7 @@ start_dashboard() {
 make --no-print-directory acceptance-build
 export LOCAL_DEV_BINARY="$DEV_ROOT/dist/acceptance/agentsfleetd"
 # Caddy issues the local leaf before the daemon's mandatory native TLS preflight.
-export LOCAL_ACCEPTANCE_CA_STATE="$DEV_SHARED/acceptance-ca"
-dev_directory "$LOCAL_ACCEPTANCE_CA_STATE"
-mkdir -p "$LOCAL_ACCEPTANCE_STATE/caddy-data" "$LOCAL_ACCEPTANCE_STATE/caddy-config" "$LOCAL_ACCEPTANCE_CA_STATE"
-chmod 700 "$LOCAL_ACCEPTANCE_CA_STATE"
+mkdir -p "$LOCAL_ACCEPTANCE_STATE/caddy-data" "$LOCAL_ACCEPTANCE_STATE/caddy-config"
 acceptance_proxy_config
 acceptance_proxy up --detach --wait
 acceptance_runner_stream_identity

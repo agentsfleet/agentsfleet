@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Writes the two machine environment files local acceptance reads, owner-only,
+# Writes the two machine environment files `make acceptance` reads, owner-only,
 # from credentials already in the environment, and prints the variables that
-# point at them. Shared by the on-demand workflow and the AWS Spot runner so the
-# two cannot drift. Usage: machine-env.sh <directory>
+# point at them. Every acceptance machine uses it, so none can drift.
+# Usage: machine-env.sh <directory>
 set -euo pipefail
 
 # The dev Clerk session token carries this audience (deploy-dev-fly.yml, docs/AUTH.md).

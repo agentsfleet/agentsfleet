@@ -10,8 +10,6 @@ services:
     volumes:
       - ${LOCAL_ACCEPTANCE_STATE}/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${LOCAL_ACCEPTANCE_STATE}/caddy-data:/data
-      # One local root per machine, so the keychain trusts it once for every worktree.
-      - ${LOCAL_ACCEPTANCE_CA_STATE}:/data/caddy/pki
       - ${LOCAL_ACCEPTANCE_STATE}/caddy-config:/config
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]

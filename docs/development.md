@@ -72,27 +72,42 @@ Apply those settings with the registered token when starting that checkout's run
 The settings helper prints no token and performs no remote host changes.
 On macOS, it requires an explicit runner-reachable URL because Linux cannot use this machine's loopback address.
 
-### Local acceptance
+### Acceptance
 
-`make acceptance-local` prepares the local services and calls `acceptance-e2e`, then `acceptance-cli`.
-Those existing targets keep their deployed-service behavior.
+`make acceptance` builds this checkout and starts the whole stack on the Linux machine it runs on.
+It then calls `acceptance-e2e` and `acceptance-cli`, which keep their deployed-service behavior.
 For a narrower run, set `SUITE=e2e`, `SUITE=cli` or `SUITE=execution`.
+The coordinator and its files live in `deploy/local/`.
 
-The coordinator and local deployment files live in `deploy/local/`.
+It runs on throwaway machines, not laptops.
+Label a pull request `acceptance`, and the `acceptance-on-demand.yml` workflow runs it on a fresh GitHub runner for every push.
+Once that workflow is on `main`, it can also be dispatched for any branch:
 
-This command needs macOS, OrbStack, Bun, Rust, cosign and the machine environment under `~/.config/agentsfleet/`.
-On first use it creates private worktree settings, an OrbStack Debian machine and a signed toolbox for the current runner version.
-It enrolls the runner through the authenticated local API using a dedicated test identity.
+```bash
+gh workflow run acceptance-on-demand.yml -f ref=<branch> -f suite=e2e
+```
 
-It reuses the development database and datastore containers; Compose adds one Caddy container for local HTTPS.
-Every worktree's Caddy signs with one local root kept beside the shared stack.
+The machine needs privileged Docker, Bun, Rust, Python, OpenSSL and `certutil` from `libnss3-tools`.
+`deploy/local/machine-env.sh` writes its two machine environment files from credentials already in the environment.
+Set `ACCEPTANCE_LOCAL_TOOLBOX_DIR` to a signed toolbox set whose manifest admits the current runner version.
+The adapter checks the signature against the runner’s compiled release key; it never loads a release signing key.
 
-The first run on a machine asks macOS to approve that root for HTTPS in your login keychain.
-The trust stays, so later runs and new worktrees ask nothing. Browser certificate verification stays enabled.
-
+It uses the development database and datastore containers; Compose adds one Caddy container for local HTTPS.
 The dashboard serves its ordinary production build from this checkout.
-Each invocation calls `acceptance-build`, starts the shipping runner service through `deploy/baremetal/deploy.sh`, and runs the selected acceptance targets.
-The dashboard is a child process and stops when the command exits; the development daemon, Caddy and Linux runner remain available.
+Each invocation calls `acceptance-build`, starts the runner and runs the selected acceptance targets.
+The dashboard is a child process and stops when the command exits; the development daemon, Caddy and runner remain available.
+
+```bash
+ACCEPTANCE_LOCAL_TOOLBOX_DIR="<SIGNED_TOOLBOX_DIR>" make acceptance &&
+  printf 'Acceptance passed.\n'
+```
+
+Expected output after both suites pass:
+
+```text
+<varies>
+Acceptance passed.
+```
 
 The generated `<WORKTREE_STATE>/acceptance.env` preserves this database's encryption key across reruns.
 An existing database without its settings requires its original encryption key; bootstrap refuses to generate a replacement.
@@ -101,15 +116,13 @@ These settings override the generated defaults:
 
 | Setting | Value |
 | --- | --- |
-| `ACCEPTANCE_LOCAL_RUNNER_MACHINE` | Dedicated OrbStack Linux machine name; uses the standard `agentsfleet-runner.service` |
 | `ACCEPTANCE_LOCAL_TOOLBOX_DIR` | Absolute Linux path containing the signed toolbox image and manifest |
 | `ACCEPTANCE_LOCAL_RUNNER_RECORD` | Private registration JSON containing `runner_id` and `runner_token` |
-| `ACCEPTANCE_LOCAL_SIGNING_VAULT` | Vault containing `toolbox-release-key`; required if metadata discovery is ambiguous |
 | `ACCEPTANCE_LOCAL_CONNECTOR_VAULT` | Development vault containing `github-app`; required if metadata discovery is ambiguous |
 
 #### Recover after an intentional acceptance database reset
 
-The local database, its saved `PLATFORM_ADMIN_WORKSPACE_ID`, and the registration file selected by `ACCEPTANCE_LOCAL_RUNNER_RECORD` belong to the same fixture. Normal `make acceptance-codex` retries reuse all three. Do not reset the database alone.
+The local database, its saved `PLATFORM_ADMIN_WORKSPACE_ID`, and the registration file selected by `ACCEPTANCE_LOCAL_RUNNER_RECORD` belong to the same fixture. Normal `make acceptance` retries reuse all three. Do not reset the database alone.
 
 When deliberately recreating this worktree’s acceptance database:
 
@@ -121,14 +134,14 @@ When deliberately recreating this worktree’s acceptance database:
    Resolve a path containing `$DEV_STATE` against this worktree’s state directory. Preserve the encryption key, Clerk/provider credentials and signed toolbox.
 
    Preserve operator-managed settings that do not belong to this fixture.
-5. Run `make acceptance-codex` with the same settings file. Bootstrap creates the replacement workspace configuration and runner registration together.
+5. Run `make acceptance` with the same settings file. Bootstrap creates the replacement workspace configuration and runner registration together.
 
 This recovery applies only after a database reset you deliberately initiated. An unexpected `401`, `403`, missing registration file or unfinished enrollment is not proof of a reset. Keep the existing refusal and credential-recovery checks; do not automatically enroll another runner or replace an existing platform workspace.
 
-
-
 The machine environment and `AGENTSFLEET_UI_ENV_FILE` supply development Clerk credentials.
-Initial setup uses the machine's `FIREWORKS_API_KEY` and the existing development GitHub App item to populate the local encrypted vault.
+Initial setup uses the machine's `FIREWORKS_API_KEY` and the development GitHub App to populate the local encrypted vault.
+Bootstrap takes the app's six fields from `LOCAL_GITHUB_*` when all are set, and otherwise reads them with `op`.
+It needs them only on a fresh acceptance database.
 It also seeds the `qstash` bag from the local scheduler emulator.
 
 The default model's settings and prices come from the checked catalogue; an existing platform default is preserved.
@@ -146,29 +159,6 @@ The tests select model references and make real provider calls through the backe
 Optional `ACCEPTANCE_LOCAL_UI_PORT` and `ACCEPTANCE_LOCAL_TLS_PORT` select ports; an occupied port causes a refusal rather than stopping its owner.
 Startup logs live under `<WORKTREE_STATE>/acceptance/`.
 
-### Linux cloud acceptance
-
-Use `make acceptance-codex` on Linux with privileged Docker, Bun, Rust, Python, OpenSSL and `certutil` from `libnss3-tools`.
-It calls the same `acceptance-e2e` and `acceptance-cli` targets as the macOS command; `SUITE` selects the same narrower runs.
-
-Set `ACCEPTANCE_LOCAL_TOOLBOX_DIR` to an existing signed toolbox set whose manifest admits the current runner version.
-The adapter checks the signature against the runner’s compiled release key; it never loads a release signing key.
-Development Clerk credentials, the model key and the development connector remain the common bootstrap inputs.
-
-Use the absolute directory containing that verified set for `<SIGNED_TOOLBOX_DIR>`.
-
-```bash
-ACCEPTANCE_LOCAL_TOOLBOX_DIR="<SIGNED_TOOLBOX_DIR>" make acceptance-codex &&
-  printf 'Local acceptance passed.\n'
-```
-
-Expected output after both suites pass:
-
-```text
-<varies>
-Local acceptance passed.
-```
-
 The runner starts in an owned privileged Docker container, using the shipping binary, sandbox and toolbox verification.
 Its private cgroup namespace contains the delegated `agentsfleet/runner` subgroup.
 
@@ -180,100 +170,10 @@ Caddy listens only on loopback addresses in this virtual machine.
 Chromium temporarily trusts the local certificate through the user’s Network Security Services (NSS) database; exit removes only that certificate.
 
 Bun receives an extra certificate authority (CA) bundle. Certificate verification stays enabled.
-When `CODEX_PROXY_CERT` is available, Docker builds and QStash also trust that public session certificate.
-
-Identity requests use direct HTTPS unless `IDENTITY_HTTP_PROXY_URL` explicitly names a trusted proxy.
-For a Cloud acceptance invocation, pass the inherited HTTPS proxy deliberately:
-
-```sh
-IDENTITY_HTTP_PROXY_URL="$HTTPS_PROXY" make acceptance-codex
-```
-
-This setting covers signing-key reads, capability reads, and Clerk metadata writeback.
-It does not enable automatic proxy discovery, disable certificate verification, or change model networking in the runner.
-Use it only where the configured proxy and its certificate authority are trusted.
-Invalid values refuse boot; failed proxy requests never fall back to direct access.
+Identity requests use direct HTTPS unless `IDENTITY_HTTP_PROXY_URL` names a trusted proxy; [the authentication notes](AUTH.md) describe it.
 
 Exit stops and removes only the runner container this invocation created, preserving its private startup log.
 The shared datastores, local daemon, Caddy and saved registration remain available for the next run.
-
-### Burst acceptance
-
-`scripts/acceptance-burst.sh` runs `make acceptance-codex` on a throwaway full VM and brings the evidence back.
-The `orly-burst` skill drives it; it never runs inside `orly gate pr`.
-
-```bash
-scripts/acceptance-burst.sh --provider aws-spot --suite e2e   # EC2 Spot, Debian 13 amd64
-scripts/acceptance-burst.sh --provider gh --suite e2e         # acceptance-on-demand.yml
-```
-
-Expected last line:
-
-```text
-acceptance-burst: provider=aws-spot ref=<branch> suite=e2e minutes=<n> type=<instance> spot=$<price>/h exit=0 evidence=<dir>
-```
-
-The AWS provider stages a git bundle and the dev deploy's signed toolbox in S3, then starts one Spot instance.
-The instance installs its tools, reads the 1Password service-account token from SSM Parameter Store and runs the suite.
-It reports `run.log`, `results.tar.gz` and `exit-code` to S3, then shuts down, and AWS deletes it.
-
-The launcher uses HTTPS to AWS only, so it also works from Claude cloud sessions.
-The instance shuts itself down after 120 minutes at most.
-The toolbox is amd64 only, so the launcher tries `c7i.4xlarge c7a.4xlarge c6i.4xlarge m7i.4xlarge` until one has Spot capacity.
-
-A dispatched `gh` run works only once the workflow is on `main`.
-Before that, label the pull request `acceptance`; every push to it then runs the workflow.
-
-#### One-time AWS setup
-
-The account owner runs these once, in one region, with the names the launcher expects by default.
-
-```bash
-REGION=us-east-1 BUCKET=<unique-bucket-name>
-aws s3api create-bucket --bucket "$BUCKET" --region "$REGION"
-aws s3api put-bucket-lifecycle-configuration --bucket "$BUCKET" --lifecycle-configuration \
-  '{"Rules":[{"ID":"expire-runs","Status":"Enabled","Filter":{"Prefix":"runs/"},"Expiration":{"Days":1}}]}'
-op read 'op://<vault>/<item>/credential' | aws ssm put-parameter --region "$REGION" --type SecureString \
-  --name /acceptance-burst/op-service-account-token --value file:///dev/stdin
-aws iam create-role --role-name acceptance-burst --assume-role-policy-document \
-  '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
-aws iam put-role-policy --role-name acceptance-burst --policy-name run --policy-document file://instance-policy.json
-aws iam create-instance-profile --instance-profile-name acceptance-burst
-aws iam add-role-to-instance-profile --instance-profile-name acceptance-burst --role-name acceptance-burst
-```
-
-Add a monthly AWS Budgets cost budget with an email alert as well.
-`instance-policy.json` lets the instance read its run and write its results, nothing else:
-
-```json
-{"Version":"2012-10-17","Statement":[
- {"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:ListBucket"],
-  "Resource":["arn:aws:s3:::<bucket>","arn:aws:s3:::<bucket>/runs/*"]},
- {"Effect":"Allow","Action":"ssm:GetParameter",
-  "Resource":"arn:aws:ssm:<region>:<account>:parameter/acceptance-burst/op-service-account-token"}]}
-```
-
-The person or agent that launches runs needs only this policy:
-
-```json
-{"Version":"2012-10-17","Statement":[
- {"Effect":"Allow","Action":"ec2:RunInstances","Resource":"*",
-  "Condition":{"StringEquals":{"aws:RequestTag/owner":"agent"}}},
- {"Effect":"Allow","Action":"ec2:RunInstances","NotResource":"arn:aws:ec2:*:*:instance/*"},
- {"Effect":"Allow","Action":"ec2:CreateTags","Resource":"*",
-  "Condition":{"StringEquals":{"ec2:CreateAction":"RunInstances"}}},
- {"Effect":"Allow","Action":"ec2:TerminateInstances","Resource":"*",
-  "Condition":{"StringEquals":{"ec2:ResourceTag/owner":"agent"}}},
- {"Effect":"Allow","Action":["ec2:DescribeInstances","ec2:DescribeSpotPriceHistory"],"Resource":"*"},
- {"Effect":"Allow","Action":"iam:PassRole","Resource":"arn:aws:iam::<account>:role/acceptance-burst"},
- {"Effect":"Allow","Action":"ssm:GetParameters","Resource":"arn:aws:ssm:*::parameter/aws/service/debian/*"},
- {"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject","s3:ListBucket"],
-  "Resource":["arn:aws:s3:::<bucket>","arn:aws:s3:::<bucket>/runs/*"]}]}
-```
-
-Set `ACCEPTANCE_BURST_BUCKET` before a run.
-Optional settings are `ACCEPTANCE_BURST_REGION`, `ACCEPTANCE_BURST_INSTANCE_TYPES`, `ACCEPTANCE_BURST_IMAGE` and `ACCEPTANCE_BURST_SUBNET`.
-`ACCEPTANCE_BURST_TOOLBOX_DIR` skips the toolbox download; `--keep` leaves the instance running for debugging.
 
 ### Local dashboard against api-dev
 

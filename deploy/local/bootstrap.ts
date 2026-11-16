@@ -27,6 +27,8 @@ const EMULATOR_SILENT = "the local QStash emulator did not answer its signing ke
 const registrationSchema = z.object({ runner_id: z.uuidv7(), runner_token: z.string().startsWith("agt_r") });
 const runnerPageSchema = z.object({items: z.array(z.object({host_id: z.string()})), next_cursor: z.string().min(1).nullable()});
 type Request = <T>(method: string, path: string, body?: unknown) => Promise<T>;
+/** Runs the 1Password command line with these arguments and returns its output. */
+type Op = (args: string[]) => Promise<string>;
 class LocalBootstrapError extends Error {}
 
 /** Refuse a remote target before creating identities or reading provider credentials. */
@@ -122,14 +124,36 @@ async function configureModel(request: Request, workspaceId: string): Promise<vo
   await request("PUT", PLATFORM_KEYS, { provider: PROVIDER, source_workspace_id: workspaceId, model: MODEL });
 }
 
-async function configureConnector(request: Request, workspaceId: string): Promise<void> {
+/** Runs only on a fresh acceptance database, so later runs never touch 1Password. */
+export async function configureConnector(request: Request, workspaceId: string, op: Op = runOp): Promise<void> {
+  await saveSecret(request, workspaceId, "github-app", await connectorFields(op));
+}
+
+/** A caller that resolved every field (a burst machine) passes them in; otherwise 1Password reads them all. */
+async function connectorFields(op: Op): Promise<Record<string, string>> {
+  const given = GITHUB_FIELDS.map(field => process.env[`LOCAL_GITHUB_${field.toUpperCase()}`] ?? "");
+  if (given.every(Boolean)) return Object.fromEntries(GITHUB_FIELDS.map((field, index) => [field, given[index]]));
+  const vault = process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT || await connectorVault(op);
   const data: Record<string, string> = {};
-  for (const field of GITHUB_FIELDS) {
-    const value = process.env[`LOCAL_GITHUB_${field.toUpperCase()}`];
-    if (!value) throw new LocalBootstrapError("development GitHub App fields are required for initial connector setup");
-    data[field] = value;
-  }
-  await saveSecret(request, workspaceId, "github-app", data);
+  for (const field of GITHUB_FIELDS) data[field] = await op(["read", "--no-newline", `op://${vault}/github-app/${field}`]);
+  if (!Object.values(data).every(Boolean)) throw new LocalBootstrapError("development GitHub App fields are required for initial connector setup");
+  return data;
+}
+
+/** The one development vault holding the GitHub App item. */
+async function connectorVault(op: Op): Promise<string> {
+  const rows = z.array(z.object({title: z.string(), vault: z.object({id: z.string(), name: z.string().default("")})}))
+    .parse(JSON.parse(await op(["item", "list", "--format", "json"])));
+  const matches = rows.filter(row => row.title === "github-app" && /(?:^|_)DEV$/.test(row.vault.name));
+  if (matches.length !== 1) throw new LocalBootstrapError("set ACCEPTANCE_LOCAL_CONNECTOR_VAULT to the development vault holding github-app");
+  return matches[0].vault.id;
+}
+
+async function runOp(args: string[]): Promise<string> {
+  const child = Bun.spawn(["op", ...args], {stdin: "ignore", stdout: "pipe", stderr: "inherit", signal: AbortSignal.timeout(TIMEOUT_MS)});
+  const output = await new Response(child.stdout).text();
+  if (await child.exited !== 0) throw new LocalBootstrapError(`1Password could not run: op ${args[0]} ${args[1] ?? ""}`.trim());
+  return output;
 }
 
 /** Only the dedicated local fixture may gain a signing bag; retries keep its key. */

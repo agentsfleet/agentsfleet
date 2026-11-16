@@ -182,7 +182,7 @@ Evidence lives in host unit and integration tests, the unchanged continuity acce
 
 ## Required proof
 
-Run the original unchanged `make acceptance-local` after integration. Its single-fleet continuity scenario must continue past the former turn-42 failure and retain its original 181-message and four-save assertions. Record that result separately from focused proofs that force repeated compactions in each host.
+Run the original unchanged `make acceptance` after integration. Its single-fleet continuity scenario must continue past the former turn-42 failure and retain its original 181-message and four-save assertions. Record that result separately from focused proofs that force repeated compactions in each host.
 
 Retain the historical failed run.
 

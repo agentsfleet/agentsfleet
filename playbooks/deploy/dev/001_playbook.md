@@ -62,7 +62,7 @@ gh run watch "$run_id" --repo agentsfleet/agentsfleet --exit-status
 Record the workflow URL, commit, every job result and any intended `deploy-metal` skip.
 Any other skipped job is a failure.
 
-`make acceptance-local` keeps the full browser and command-line suites.
+`make acceptance` keeps the full browser and command-line suites.
 `ACCEPTANCE_SCOPE=ten-fleets` runs only ten concurrent fleets and their prerequisites.
 On 2026-10-25, Indy deferred ten-fleet acceptance to a manual run after a verified development deploy.
 

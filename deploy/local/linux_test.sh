@@ -15,12 +15,12 @@ ROOT = Path(sys.argv[1])
 def command(*args):
     return subprocess.run(args, capture_output=True, text=True, check=True).stdout
 
-class CodexTests(unittest.TestCase):
+class LinuxTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='acceptance-codex-')
+        self.temp = tempfile.TemporaryDirectory(prefix='acceptance-linux-')
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.env = {**os.environ, 'DEV_ROOT': str(ROOT), 'DEV_ID': 'wt_codex_test'}
+        self.env = {**os.environ, 'DEV_ROOT': str(ROOT), 'DEV_ID': 'wt_linux_test'}
 
     def shell(self, body, **settings):
         return subprocess.run(['bash', '-c', 'set -euo pipefail\n' + body],
@@ -40,7 +40,7 @@ class CodexTests(unittest.TestCase):
         for status in (0, 7):
             database = self.root / f'nss-{status}'
             result = self.shell('''
-source "$DEV_ROOT/deploy/local/codex-certificate.sh"
+source "$DEV_ROOT/deploy/local/linux-certificate.sh"
 trap 'acceptance_untrust_certificate "$TEST_CERTIFICATE"' EXIT
 acceptance_trust_certificate "$TEST_CERTIFICATE" "$TEST_DATABASE"
 certutil -L -d "sql:$TEST_DATABASE" -n "agentsfleet-local-$DEV_ID" >/dev/null
@@ -48,7 +48,7 @@ exit "$TEST_STATUS"
 ''', TEST_CERTIFICATE=str(certificate), TEST_DATABASE=str(database), TEST_STATUS=str(status))
             self.assertEqual(result.returncode, status, result.stderr)
             remains = subprocess.run(['certutil', '-L', '-d', f'sql:{database}',
-                                      '-n', 'agentsfleet-local-wt_codex_test'], capture_output=True)
+                                      '-n', 'agentsfleet-local-wt_linux_test'], capture_output=True)
             self.assertNotEqual(remains.returncode, 0)
 
     @unittest.skipUnless(subprocess.run(['sh', '-c', 'command -v certutil'], capture_output=True).returncode == 0,
@@ -59,7 +59,7 @@ exit "$TEST_STATUS"
         database = self.root / 'nss'
         for replace in ('0', '1'):
             result = self.shell('''
-source "$DEV_ROOT/deploy/local/codex-certificate.sh"
+source "$DEV_ROOT/deploy/local/linux-certificate.sh"
 trap 'acceptance_untrust_certificate "$TEST_CERTIFICATE"' EXIT
 if [ "$TEST_REPLACE" = 1 ]; then
   acceptance_trust_certificate "$TEST_CERTIFICATE" "$TEST_DATABASE"
@@ -74,7 +74,7 @@ if [ "$TEST_REPLACE" = 0 ]; then acceptance_trust_certificate "$TEST_CERTIFICATE
                 TEST_DATABASE=str(database / replace), TEST_REPLACE=replace)
             self.assertNotEqual(result.returncode, 0)
             kept = command('certutil', '-L', '-d', f'sql:{database / replace}',
-                           '-n', 'agentsfleet-local-wt_codex_test', '-a')
+                           '-n', 'agentsfleet-local-wt_linux_test', '-a')
             self.assertIn(foreign.read_text().strip(), kept)
 
     def toolbox(self, version):
@@ -108,7 +108,7 @@ if [ "$TEST_REPLACE" = 0 ]; then acceptance_trust_certificate "$TEST_CERTIFICATE
         body = '''
 saved_root="$DEV_ROOT"
 DEV_ROOT="$DEV_ROOT_ORIGINAL"
-source "$DEV_ROOT/deploy/local/codex.sh"
+source "$DEV_ROOT/deploy/local/linux.sh"
 DEV_ROOT="$saved_root"
 dev_fail() { printf '%s\n' "$*" >&2; exit 1; }
 acceptance_toolbox
@@ -153,7 +153,7 @@ dev_compose up --detach
         state.mkdir()
         calls = self.root / 'calls'
         result = self.shell('''
-source "$DEV_ROOT/deploy/local/codex.sh"
+source "$DEV_ROOT/deploy/local/linux.sh"
 acceptance_runner_container=acceptance-fixture
 acceptance_runner_image=runner-image
 ACCEPTANCE_LOCAL_TOOLBOX_DIR="$TEST_STATE"
@@ -184,7 +184,7 @@ start_runner
                 state.mkdir()
             calls = self.root / f'calls-{unwritable}'
             result = self.shell('''
-source "$DEV_ROOT/deploy/local/codex.sh"
+source "$DEV_ROOT/deploy/local/linux.sh"
 acceptance_runner_owned=1
 acceptance_runner_container=owned-fixture
 docker() {
@@ -204,7 +204,7 @@ printf '%s %s\\n' "$status" "$acceptance_runner_owned"
 
     def test_linux_requirement_refuses_before_any_docker_mutation(self):
         result = self.shell('''
-source "$DEV_ROOT/deploy/local/codex.sh"
+source "$DEV_ROOT/deploy/local/linux.sh"
 uname() { printf 'Darwin\n'; }
 docker() { printf 'unexpected docker call\n'; exit 99; }
 dev_fail() { printf '%s\n' "$*" >&2; exit 1; }
@@ -214,5 +214,5 @@ acceptance_adapter
         self.assertIn('requires Linux', result.stderr)
         self.assertNotIn('unexpected docker call', result.stdout)
 
-unittest.main(argv=['acceptance-codex'])
+unittest.main(argv=['acceptance-linux'])
 PY

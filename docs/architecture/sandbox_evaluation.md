@@ -935,7 +935,7 @@ Reserve capacity for cleanup and control records, then verify actual recovery at
 
 ## Evidence and implementation boundary
 
-Run repository claims through existing Make targets: `make lint-all`, `make test-unit-all`, `make test-integration-rustd`, `make check-version`, and the unchanged `make acceptance-local`. Use `make test-runner-kernel` for the implemented Linux sandbox; it does not prove Firecracker or SPACE behavior. A selected remote backend needs a distinct real-backend workload wired into the appropriate Make lane before support is claimed.
+Run repository claims through existing Make targets: `make lint-all`, `make test-unit-all`, `make test-integration-rustd`, `make check-version`, and the unchanged `make acceptance`. Use `make test-runner-kernel` for the implemented Linux sandbox; it does not prove Firecracker or SPACE behavior. A selected remote backend needs a distinct real-backend workload wired into the appropriate Make lane before support is claimed.
 
 Keep failure injection deterministic with barriers, controlled transport loss and synthetic repository contents. Preserve source hashes, process markers and sanitized stage timings. Clean up only the run's own resources.
 
