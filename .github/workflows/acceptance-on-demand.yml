@@ -102,11 +102,11 @@ jobs:
       # owner-only under the runner's temporary directory.
       - name: Write the machine environment files
         env:
-          OIDC_AUDIENCE: ${{ vars.CLERK_DEV_OIDC_AUDIENCE }}
+          # The dev Clerk session token carries this audience (deploy-dev-fly.yml, docs/AUTH.md).
+          OIDC_AUDIENCE: https://api-dev.agentsfleet.net
         run: |
           set -euo pipefail
           umask 077
-          test -n "$OIDC_AUDIENCE" || { echo "::error::set the CLERK_DEV_OIDC_AUDIENCE repository variable"; exit 1; }
           {
             printf 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=%s\n' "$CLERK_PUBLISHABLE_KEY"
             printf 'CLERK_PUBLISHABLE_KEY=%s\nCLERK_SECRET_KEY=%s\nCLERK_WEBHOOK_SECRET=%s\n' \
