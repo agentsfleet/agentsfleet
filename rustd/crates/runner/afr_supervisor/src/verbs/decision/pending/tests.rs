@@ -78,6 +78,48 @@ fn receipt() -> DecisionReceiptInput {
     }
 }
 
+#[tokio::test]
+async fn a_conflicting_receipt_cannot_replace_the_original_pending_charge() -> crate::Result<()> {
+    let (plane, mut calls) = receipt_peer(Arc::new(AtomicBool::new(true)));
+    let lease = Uuid7::parse(crate::test_util::LEASE_ID)?;
+    let call = Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
+    let pending = PendingDecisions::default();
+    let original = receipt();
+    let _retained = pending.retain(call.clone(), original.clone())?;
+    let mut changed = original.clone();
+    if let DecisionReceipt::Provider { result } = &mut changed.receipt {
+        result.usage = Some(DecisionUsage {
+            input_tokens: 99,
+            output_tokens: 88,
+            cached_input_tokens: 0,
+            cache_write_tokens: 0,
+        });
+    }
+    let refused = pending.retain(call, changed);
+    let Err(failure) = refused else {
+        return Err(crate::error::config(
+            "conflicting physical receipt was accepted",
+        ));
+    };
+    assert!(
+        matches!(failure.kind(), crate::error::ErrorKind::Config { detail }
+        if *detail == "a physical decision already has a retained receipt")
+    );
+    let halt = Halt::new(CancellationToken::new());
+    pending.settle(&plane, &halt, &lease).await?;
+    let observed = crate::test_support::drain(&mut calls);
+    assert_eq!(observed.len(), 1);
+    let body = observed
+        .first()
+        .and_then(|call| call.body.as_ref())
+        .ok_or_else(|| crate::error::config("original receipt was lost"))?;
+    let sent: DecisionReceiptInput = serde_json::from_slice(body).map_err(crate::error::encode)?;
+    assert_eq!(sent, original);
+    pending.settle(&plane, &halt, &lease).await?;
+    assert_eq!(crate::test_support::drain(&mut calls).len(), 0);
+    Ok(())
+}
+
 fn receipt_peer(
     ready: Arc<AtomicBool>,
 ) -> (crate::client::ControlPlane, crate::test_support::Calls) {

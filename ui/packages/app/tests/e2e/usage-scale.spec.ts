@@ -1,6 +1,6 @@
 import {expect} from "@playwright/test";
 import {test} from "./fixtures/chat-probe";
-import {BILLING_MODEL, billingReport, billingTotals} from "@/tests/helpers/billing-report";
+import {BILLING_MODEL, billingReport, billingRowTotals, billingTotals} from "@/tests/helpers/billing-report";
 import type {BillingFleetBreakdown} from "@/lib/api/billing_report";
 
 const DAYS = 31;
@@ -20,6 +20,8 @@ function amounts(daily: bigint, activities: number, days: number) {
     input_tokens: lines * 40, output_tokens: lines * 10, runtime_ms: lines * 1_000, line_count: lines});
 }
 
+function rowAmounts({activity_count: _count, ...row}: ReturnType<typeof amounts>) { return billingRowTotals(row); }
+
 function reportFor(count: number, selected: string | null) {
   const choices = fleets(count), visible = selected ? choices.filter(fleet => fleet.id === selected) : choices;
   const setup = selected === null;
@@ -31,9 +33,9 @@ function reportFor(count: number, selected: string | null) {
     rows.push({key: null, label: "Setup chats", models: [BILLING_MODEL], totals: amounts(SETUP_DAILY, 1, DAYS)});
   }
   return billingReport({from_at: "2026-10-01T00:00:00Z", through_at: "2026-10-31T23:59:59.999Z", totals,
-    daily: Array.from({length: DAYS}, (_, index) => ({day: `2026-10-${String(index + 1).padStart(2, "0")}`, totals: amounts(daily, activityCount, 1)})),
+    daily: Array.from({length: DAYS}, (_, index) => ({day: `2026-10-${String(index + 1).padStart(2, "0")}`, totals: rowAmounts(amounts(daily, activityCount, 1))})),
     filters: {fleets: [{id: null, name: null}, ...choices.map(({id, name}) => ({id, name}))]},
-    spending: {by_fleet: rows, by_model: [{key: BILLING_MODEL, label: null, totals}]},
+    spending: {by_fleet: rows, by_model: [{key: BILLING_MODEL, label: null, totals: rowAmounts(totals)}]},
   });
 }
 
@@ -43,7 +45,7 @@ for (const count of [1, 100]) test(`${count} fleets keep daily bars bounded and 
   const extraReads: string[] = [];
   page.on("request", request => {
     const url = new URL(request.url());
-    if (/\/backend\/v1\/(?:models|tenants\/me\/billing\/activities\/)/.test(url.pathname)) extraReads.push(url.pathname);
+    if (/\/backend\/v1\/(?:models|tenants\/me\/billing\/(?:charges|activities\/))/.test(url.pathname)) extraReads.push(url.pathname);
   });
   await page.route("**/backend/v1/tenants/me/billing/reports/current?*", route => {
     const query = new URL(route.request().url()).searchParams;
@@ -70,6 +72,9 @@ for (const count of [1, 100]) test(`${count} fleets keep daily bars bounded and 
     expect(chartBox?.width).toBeLessThanOrEqual(page.viewportSize()!.width);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.getByRole("region", {name: "By fleet"}).getByText("Setup chats", {exact: true})).toBeVisible();
+    const rows = page.getByRole("table", {name: "Spending by fleet"}).locator("tbody > tr");
+    await expect(rows).toHaveCount(count + 1);
+    await expect(page.getByText(`Daily high ${count === 1 ? "$1.50" : "$5,050.50"}`, {exact: true})).toBeVisible();
 
     const opened = performance.now();
     await page.getByRole("combobox", {name: "Fleet", exact: true}).click();
@@ -84,6 +89,9 @@ for (const count of [1, 100]) test(`${count} fleets keep daily bars bounded and 
     await expect(totals.getByText(fleetAmount, {exact: true})).toBeVisible();
     const fleetSwitchMs = performance.now() - switched;
     await expect(chart.getByRole("listitem")).toHaveCount(DAYS);
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText(`Support queue ${count}`);
+    await expect(page.getByText(`Daily high ${count === 1 ? "$1.00" : "$100.00"}`, {exact: true})).toBeVisible();
     expect(requests.at(-1)?.get("fleet_id")).toBe(fleets(count).at(-1)?.id);
     await expect(page.getByRole("region", {name: "By fleet"}).getByText("Setup chats", {exact: true})).toHaveCount(0);
 
@@ -91,6 +99,7 @@ for (const count of [1, 100]) test(`${count} fleets keep daily bars bounded and 
     await page.getByRole("combobox", {name: "Fleet", exact: true}).click();
     await page.getByRole("option", {name: "All Fleets", exact: true}).click();
     await expect(totals.getByText(allAmount, {exact: true})).toBeVisible();
+    await expect(rows).toHaveCount(count + 1);
     const allFleetsMs = performance.now() - allStarted;
     expect(requests).toHaveLength(before + 3);
     expect(requests.at(-1)?.has("fleet_id")).toBe(false);

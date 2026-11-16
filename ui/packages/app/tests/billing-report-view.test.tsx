@@ -3,18 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { BillingReportView } from "@/app/(dashboard)/settings/billing/components/BillingReportView";
-import { BillingSpending } from "@/app/(dashboard)/settings/billing/components/BillingSpending";
 import { ModelLabelsProvider } from "@/components/domain/models/ModelLabels";
-import { BILLING_AT, BILLING_FLEET, BILLING_MODEL, BILLING_MODEL_NAME, billingReport, billingRowTotals, billingTotals } from "./helpers/billing-report";
+import { BILLING_AT, BILLING_FLEET, BILLING_MODEL, BILLING_MODEL_NAME, billingReport, billingTotals } from "./helpers/billing-report";
 
 const { push, current } = vi.hoisted(() => ({ push: vi.fn(), current: { params: new URLSearchParams() } }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }), usePathname: () => "/settings/billing", useSearchParams: () => current.params,
 }));
-
 const names: Record<string, string> = { [BILLING_MODEL]: BILLING_MODEL_NAME };
-const BY_FLEET_LABEL = "Charged by fleet or setup chat";
-const BY_MODEL_LABEL = "Charged by model";
 function view(report = billingReport()) {
   return render(<ModelLabelsProvider labels={names}><BillingReportView report={report} /></ModelLabelsProvider>, { wrapper: TooltipProvider });
 }
@@ -28,7 +24,6 @@ async function choose(label: string, value: string) {
 function pushedParams() {
   return new URL(String(push.mock.calls.at(-1)?.[0]), "https://example.test").searchParams;
 }
-
 beforeEach(() => { vi.useFakeTimers({toFake: ["Date"]}); vi.setSystemTime(new Date("2026-11-15T12:00:00Z")); push.mockReset(); current.params = new URLSearchParams(); });
 afterEach(() => {cleanup(); vi.useRealTimers();});
 
@@ -60,7 +55,7 @@ describe("Billing report filters preserve period totals", () => {
     expect(pushedParams().get("fleet")).toBe("deleted-fleet");
     expect(screen.getByText(/Billing history includes deleted fleets/)).toBeTruthy();
   });
-  it("renders full-period totals with no activity list or charge details", () => {
+  it("renders full-period totals with the recorded physical runtime count", () => {
     view(billingReport({ totals: billingTotals({ charged_nanos: "5200000000", activity_count: 52, line_count: 150 }) }));
     const totals = within(screen.getByLabelText("Period totals"));
     expect(totals.getByText("$5.20")).toBeTruthy();
@@ -101,14 +96,6 @@ describe("Billing report filters preserve period totals", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("an empty successful report has an honest empty state", () => {
-    view(billingReport({ totals: billingTotals({ charged_nanos: "0", activity_count: 0, line_count: 0 }),
-      daily: [{day: "2026-10-25", totals: billingRowTotals({charged_nanos: "0"})}],
-      spending: { by_fleet: [], by_model: [] }, filters: { fleets: [] } }));
-    expect(screen.getByText("No settled charges for this period.")).toBeTruthy();
-    expect(screen.queryByText("Payment alerts")).toBeNull();
-  });
-
   it.each([["Period", "Last 7 days", "period", "week"], ["Fleet", "Payment alerts", "fleet", BILLING_FLEET]])(
     "changing %s resets paging while retaining the selected period", async (label, choice, key, expected) => {
       current.params = new URLSearchParams("c=old&cps=25&through_at=old&activity=old&dc=old");
@@ -132,58 +119,33 @@ describe("Billing report filters preserve period totals", () => {
     await waitFor(() => expect(pushedParams().get("fleet")).toBe(retained));
   });
 
-  it("offers no model filter, because the report no longer filters by model", () => {
-    view();
+  it("keeps a successful empty report distinct from recovery", () => {
+    view(billingReport({ totals: billingTotals({charged_nanos: "0", activity_count: 0, line_count: 0}),
+      daily: [], spending: {by_fleet: [], by_model: []}, filters: {fleets: []} }));
+    expect(screen.getByText("No settled charges for this period.")).toBeTruthy();
+    expect(screen.queryByText("Billing report unavailable")).toBeNull();
+    expect(screen.queryByRole("button", {name: "Next page"})).toBeNull();
+    expect(screen.queryByRole("button", {name: "More filters"})).toBeNull();
     expect(screen.queryByRole("combobox", {name: "Model"})).toBeNull();
   });
 
-  it("the spending view uses complete server groups and recorded names", () => {
-    render(<BillingSpending report={billingReport()} modelNames={names} />);
-    expect(within(screen.getByRole("list", { name: BY_FLEET_LABEL })).getByText("Payment alerts")).toBeTruthy();
-    expect(within(screen.getByRole("list", { name: BY_MODEL_LABEL })).getByText(BILLING_MODEL_NAME)).toBeTruthy();
+  it("keeps an empty scoped fleet labelled and can clear it without changing the period", async () => {
+    current.params = new URLSearchParams({fleet: BILLING_FLEET, period: "month", through_at: BILLING_AT});
+    view(billingReport({totals: billingTotals({charged_nanos: "0", activity_count: 0, line_count: 0}),
+      daily: [], spending: {by_fleet: [], by_model: []}, filters: {fleets: []}}));
+    expect(screen.getByRole("combobox", {name: "Fleet"}).textContent).toBe(BILLING_FLEET);
+    expect(screen.getByText(`Daily spend · ${BILLING_FLEET}`)).toBeTruthy();
+    expect(screen.getByText("No settled charges for this period.")).toBeTruthy();
+    expect(push).not.toHaveBeenCalled();
+    await choose("Fleet", "All Fleets");
+    expect(Object.fromEntries(pushedParams())).toEqual({period: "month", through_at: BILLING_AT});
   });
 
-  it("spending groups retain opaque labels and private setup when names are absent", () => {
-    const totals = billingTotals();
-    render(<BillingSpending modelNames={{}} report={billingReport({ spending: {
-      by_fleet: [{ key: null, label: null, models: [], totals }, { key: "retained-fleet", label: null, models: [], totals }],
-      by_model: [{ key: BILLING_MODEL, label: null, totals: billingRowTotals() }, { key: null, label: null, totals: billingRowTotals() }],
-    } })} />, { wrapper: TooltipProvider });
-    expect(screen.getByText("Setup chat")).toBeTruthy();
-    expect(screen.getByText("retained-fleet")).toBeTruthy();
-    expect(screen.getByText(BILLING_MODEL)).toBeTruthy();
-    expect(screen.getByText("Unknown model")).toBeTruthy();
-  });
-
-  it("names a model whose identifier is an object prototype key by that identifier", () => {
-    const prototypeKeys = ["constructor", "toString", "hasOwnProperty", "__proto__"];
-    render(<BillingSpending modelNames={{}} report={billingReport({ spending: {
-      by_fleet: [], by_model: prototypeKeys.map(key => ({ key, label: null, totals: billingRowTotals() })),
-    } })} />);
-    const group = screen.getByRole("list", { name: BY_MODEL_LABEL });
-    expect(within(group).getAllByRole("listitem").map(item => item.querySelector("span")?.textContent)).toEqual(prototypeKeys);
-  });
-
-  it("a zero-charge group keeps a zero bar and the other breakdown's empty state", () => {
-    render(<BillingSpending modelNames={names} report={billingReport({ spending: {
-      by_fleet: [{ key: null, label: null, models: [], totals: billingTotals({ charged_nanos: "0" }) }], by_model: [],
-    } })} />);
-    const group = screen.getByRole("list", { name: BY_FLEET_LABEL });
-    expect(within(group).getByText("$0.00")).toBeTruthy();
-    expect(group.querySelector<HTMLElement>(".usage-bar-fill")?.style.width).toBe("0%");
-    expect(screen.getByText("No settled spending")).toBeTruthy();
-  });
-
-  it("preserves exact money and proportional bars above safe JavaScript integers", () => {
-    render(<BillingSpending modelNames={names} report={billingReport({ spending: {
-      by_fleet: [
-        { key: "large", label: "Large charge", models: [], totals: billingTotals({ charged_nanos: "10000000000000000100000" }) },
-        { key: "small", label: "Smaller charge", models: [], totals: billingTotals({ charged_nanos: "2500000000000000025000" }) },
-      ], by_model: [],
-    } })} />);
-    const group = screen.getByRole("list", { name: BY_FLEET_LABEL });
-    expect(within(group).getByText("$10,000,000,000,000.0001")).toBeTruthy();
-    const bars = group.querySelectorAll<HTMLElement>(".usage-bar-fill");
-    expect(Array.from(bars, bar => bar.style.width)).toEqual(["100%", "25%"]);
+  it("treats an empty fleet query as All Fleets, matching the report request", () => {
+    current.params = new URLSearchParams("fleet=");
+    view();
+    expect(screen.getByRole("combobox", {name: "Fleet"}).textContent).toBe("All Fleets");
+    expect(screen.getByText("Daily spend · All Fleets")).toBeTruthy();
+    expect(push).not.toHaveBeenCalled();
   });
 });

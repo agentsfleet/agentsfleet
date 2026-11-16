@@ -5,8 +5,6 @@ export const BILLING_QUERY = { period: "period", fleet: "fleet", through: "throu
 export const BILLING_ALL = "all";
 export const BILLING_SETUP = BILLING_ACTIVITY_SETUP;
 export type BillingSearch = Record<string, string | string[] | undefined>;
-/** Paging and disclosure keys the report does not read; a filter change drops them so a shared URL stops carrying them. */
-const UNREAD_KEYS = ["c", "cps", "ps", "activity", "dc"] as const;
 
 /** A malformed explicit filter reaches the daemon's validation instead of widening the read. */
 export function reportOptions(query: BillingSearch): BillingReportOptions {
@@ -21,15 +19,15 @@ export function reportOptions(query: BillingSearch): BillingReportOptions {
 
 /** Filtering retains the selected reporting cutoff; changing period returns to now. */
 export function changedFilter(params: URLSearchParams, key: string, value: string): URLSearchParams {
-  const next = new URLSearchParams(params);
-  for (const unread of UNREAD_KEYS) next.delete(unread);
+  const supported = new Set<string>(Object.values(BILLING_QUERY));
+  const next = new URLSearchParams([...params].filter(([name]) => supported.has(name)));
   if (key === BILLING_QUERY.period) next.delete(BILLING_QUERY.through);
   if (value === BILLING_ALL) next.delete(key);
   else next.set(key, value);
   return next;
 }
 
-/** Selecting a named month resets continuations and keeps its other filters. */
+/** Selecting a named month keeps the other report filters. */
 export function selectedBillingMonth(params: URLSearchParams, through?: string): URLSearchParams {
   const next = changedFilter(params, BILLING_QUERY.period, BILLING_PERIOD_MONTH);
   if (through) next.set(BILLING_QUERY.through, through);

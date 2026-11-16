@@ -2,7 +2,7 @@ import type { TaskActivity } from "@/lib/task-activity";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { FleetWorkSidebar } from "@/components/domain/shared/summary/FleetWorkSidebar";
-import { WorkAction, workActivity } from "@/components/domain/conversation/summary/WorkActivity";
+import { workActivity } from "@/components/domain/conversation/summary/WorkActivity";
 import { TaskNextStep } from "@/components/domain/tasks/TaskNextStep";
 import { evt } from "./helpers/fleet-stream-fixtures";
 import { detail, TASK_IDS } from "./helpers/task-reads";
@@ -35,10 +35,7 @@ it("attributes actions only to explicit task identities and retains recorded pro
   const recent = {...item, progress: {...item.progress, sequence: 1, phase: "saved" as const}};
   expect(workActivity([...events, evt({taskActivity: {items: [recent], truncated: false}})], TASK_IDS[0]).items).toEqual([recent]);
   expect(workActivity(events, TASK_IDS[1])).toEqual({items: [], truncated: false});
-  const view = render(<WorkAction history={history} />);
-  expect(screen.getByText("Latest recorded action: Saving encrypted files")).toBeTruthy();
-  view.rerender(<WorkAction history={{items: [], truncated: false}} />);
-  expect(screen.getByText(/Open for the objective/)).toBeTruthy();
+
 });
 
 it("explains saved dependencies without inventing a next action from status", () => {

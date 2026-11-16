@@ -27,7 +27,10 @@ export function BillingFilters({ report }: Props) {
       ? selectedBillingMonth(current, through) : changedFilter(current, key, value);
     startTransition(() => router.push(`${pathname}?${next}`, { scroll: false }));
   };
-  const fleet = params.get(BILLING_QUERY.fleet) ?? BILLING_ALL;
+  const fleet = params.get(BILLING_QUERY.fleet) || BILLING_ALL;
+  if (fleet !== BILLING_ALL && !fleets.some(choice => choice.value === fleet)) {
+    fleets.push({value: fleet, label: fleet === BILLING_SETUP ? SETUP_LABEL : fleet});
+  }
   const periodChoices = months.map(month => ({value: month.value, label: <Time value={month.instant} format="month" />}));
   const month = months.find(choice => choice.value === report.from_at.slice(0, 7));
   const captured = report.period === BILLING_PERIOD_MONTH && params.has(BILLING_QUERY.through)
@@ -40,10 +43,11 @@ export function BillingFilters({ report }: Props) {
       choices={[...periodChoices, {value: BILLING_PERIOD_WEEK, label: "Last 7 days"}, ...(report.period === BILLING_PERIOD_TODAY ? [{value: BILLING_PERIOD_TODAY, label: "Today"}] : [])]}
       onChange={value => {const month = months.find(choice => choice.value === value); change(BILLING_QUERY.period, month ? BILLING_PERIOD_MONTH : value, month?.through);}} />
     <Filter label="Fleet" value={fleet} disabled={pending}
-      choices={[{ value: BILLING_ALL, label: ALL_FLEETS_LABEL }, ...(fleet === BILLING_SETUP ? [{value: BILLING_SETUP, label: SETUP_LABEL}] : []), ...fleets]}
+      choices={[{ value: BILLING_ALL, label: ALL_FLEETS_LABEL }, ...fleets]}
       onChange={value => change(BILLING_QUERY.fleet, value)} />
     {pending ? <span className="absolute right-0 top-0"><Spinner size="sm" label="Updating report…" /></span> : null}
   </div>
+
   </div>;
 }
 

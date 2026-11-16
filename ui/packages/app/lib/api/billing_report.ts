@@ -5,10 +5,10 @@ import { nanosSchema } from "./nanos";
 import { HTTP_METHOD } from "./retry";
 import { BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK } from "./billing-report-values";
 
+const MAX_DAILY_BUCKETS = 31;
 const Count = z.number().int().nonnegative();
 // The server counts activities only where a group is a set of activities: the
 // period and each fleet. A day or a model row omits the count.
-const MAX_DAILY_BUCKETS = 31;
 const Totals = z.object({
   charged_nanos: nanosSchema,
   input_tokens: Count, output_tokens: Count, runtime_ms: Count,

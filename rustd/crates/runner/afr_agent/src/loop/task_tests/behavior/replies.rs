@@ -142,3 +142,43 @@ async fn empty_reply_or_wrong_native_acknowledgement_does_not_claim_the_source_a
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn another_tasks_status_reply_uses_its_listed_native_generation() -> crate::Result<()> {
+    let native = source(vec![item(ITEM, TaskInputAction::Status, false)]);
+    use_listed_task(&native);
+    let script = Script::new([vec![say("The task is waiting for review."), ended(false)]]);
+    let output = execute(&script, &native, false).await?;
+    assert_eq!(output.result.content, "The task is waiting for review.");
+    assert!(output.task.is_none());
+    assert!(output.recovery.is_none());
+    let receipts = native.receipts.lock().expect("fixture mutex is unpoisoned");
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(
+        receipts.first().and_then(|receipt| receipt.task.as_ref()),
+        Some(&DecisionTaskVersion {
+            task_id: SOURCE.to_owned(),
+            generation: 4
+        })
+    );
+    assert!(
+        native
+            .goals
+            .requests
+            .lock()
+            .expect("fixture mutex is unpoisoned")
+            .is_empty()
+    );
+    Ok(())
+}
+
+fn use_listed_task(native: &Replies) {
+    let mut inputs = native.inputs.lock().expect("fixture mutex is unpoisoned");
+    inputs.current_task = None;
+    inputs.tasks = vec![af_wire::task::TaskInputCandidate {
+        task_id: SOURCE.to_owned(),
+        title: "Review the repair".to_owned(),
+        state: TaskState::Waiting,
+        generation: 4,
+    }];
+}

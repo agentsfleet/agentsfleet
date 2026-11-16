@@ -217,6 +217,8 @@ mod closing_tests;
 #[cfg(test)]
 mod durable_policy_tests;
 #[cfg(test)]
+mod refusal_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod unanswered_tests;

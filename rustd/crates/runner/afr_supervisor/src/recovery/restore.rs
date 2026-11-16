@@ -438,3 +438,7 @@ fn overlay(entries: &mut BTreeMap<String, CheckpointEntry>, entry: CheckpointEnt
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests/restore/nonempty.rs"]
+mod nonempty_tests;

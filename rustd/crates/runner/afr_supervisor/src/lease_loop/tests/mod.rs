@@ -53,4 +53,4 @@ mod failures;
 mod renewal;
 mod usage;
 
-mod recovery;
+pub(in crate::lease_loop) mod recovery;

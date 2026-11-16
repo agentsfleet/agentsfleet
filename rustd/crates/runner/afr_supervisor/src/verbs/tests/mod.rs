@@ -7,6 +7,7 @@
 
 mod decision;
 mod folds;
+mod tasks;
 
 use af_core::error_code;
 use af_core::id::Uuid7;

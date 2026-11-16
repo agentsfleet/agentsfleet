@@ -104,10 +104,12 @@ impl BubblewrapEngine {
         boot::admissible(host)?;
         let root = rustix::process::geteuid().is_root();
         let run_as = root.then_some(config.sandbox_ids);
-        let owner = run_as.unwrap_or((
-            rustix::process::getuid().as_raw(),
-            rustix::process::getgid().as_raw(),
-        ));
+        let owner = run_as.unwrap_or_else(|| {
+            (
+                rustix::process::getuid().as_raw(),
+                rustix::process::getgid().as_raw(),
+            )
+        });
         // Before the sweep, which would otherwise remove a second process's
         // live links on this host.
         if host.egress {

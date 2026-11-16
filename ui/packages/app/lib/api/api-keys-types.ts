@@ -14,5 +14,4 @@ export const DEFAULT_SORT: ApiKeySort = "-created_at";
 export const KEY_PREFIX = "agt_t";
 export const KEY_SUFFIX_REGEX = /^[0-9a-f]{4}$/;
 export const KEY_NAME_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
-export const KEY_NAME_MAX = 64;
 export const DESCRIPTION_MAX = 256;

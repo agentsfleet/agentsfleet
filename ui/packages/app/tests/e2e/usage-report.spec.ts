@@ -80,6 +80,9 @@ test("Usage preserves exact large amounts and distinguishes zero from an unavail
   mode = "zero";
   await page.reload();
   await expect(page.getByText("No settled charges for this period.", {exact: true})).toBeVisible();
+  const zeroBars = page.getByRole("list", {name: "Daily settled charges"}).getByRole("listitem").locator('[aria-hidden="true"]');
+  await expect(zeroBars).toHaveCount(1);
+  expect(await zeroBars.first().evaluate(element => element.getBoundingClientRect().height)).toBe(0);
   mode = "oversized";
   await page.reload();
   await expect(page.getByText("Billing report unavailable", {exact: true})).toBeVisible();
@@ -117,20 +120,55 @@ for (const scenario of [
   });
 });
 
-test("existing model-scoped URLs disclose their scope and can clear it", async ({page, chatProbe}) => {
+test("old filter and paging URLs never reach the trimmed report API", async ({page, chatProbe}) => {
   const reads: URLSearchParams[] = [];
   await page.route("**/backend/v1/tenants/me/billing/reports/current?*", route => {
     const query = new URL(route.request().url()).searchParams; reads.push(query);
-    const totals = billingTotals({charged_nanos: query.has("model") ? "1000000000" : "2000000000"});
-    return route.fulfill({json: billingReport({totals})});
+    return route.fulfill({json: billingReport()});
   });
-  await page.goto(`${chatProbe}?usage=1&model=${encodeURIComponent(BILLING_MODEL)}`);
-  await expect(page.getByLabel("Active model filter")).toContainText(BILLING_MODEL);
-  await expect(page.getByLabel("Period totals").getByText("$1.00", {exact: true})).toBeVisible();
-  await page.getByRole("button", {name: "Clear model filter", exact: true}).click();
+  await page.goto(`${chatProbe}?usage=1&model=${encodeURIComponent(BILLING_MODEL)}&limit=25&starting_after=old&activity=old&dc=old`);
+  await expect(page.getByLabel("Period totals").getByText("$0.0001", {exact: true})).toBeVisible();
+  expect(reads).toHaveLength(1);
+  expect(Object.fromEntries(reads[0]!)).toEqual({period: "month"});
+  await expect(page.getByRole("combobox", {name: "Model", exact: true})).toHaveCount(0);
   await expect(page.getByLabel("Active model filter")).toHaveCount(0);
-  await expect(page.getByLabel("Period totals").getByText("$2.00", {exact: true})).toBeVisible();
-  expect(reads.at(-1)?.has("model")).toBe(false);
+  await page.getByRole("combobox", {name: "Fleet", exact: true}).click();
+  await page.getByRole("option", {name: "Payment alerts", exact: true}).click();
+  await expect.poll(() => reads.length).toBe(2);
+  expect(Object.fromEntries(reads[1]!)).toEqual({period: "month", fleet_id: BILLING_FLEET});
+});
+
+test("an empty scoped period keeps its fleet label until All Fleets is selected", async ({page, chatProbe}, info) => {
+  await page.setViewportSize(info.project.name === "chromium" ? {width: 1480, height: 1000} : {width: 390, height: 844});
+  const reads: URLSearchParams[] = [];
+  await page.route("**/backend/v1/tenants/me/billing/reports/current?*", route => {
+    const query = new URL(route.request().url()).searchParams; reads.push(query);
+    const report = query.has("fleet_id") ? billingReport({totals: billingTotals({charged_nanos: "0", activity_count: 0, line_count: 0}),
+      daily: [], spending: {by_fleet: [], by_model: []}, filters: {fleets: []}}) : billingReport();
+    return route.fulfill({json: report});
+  });
+  await page.goto(`${chatProbe}?usage=1&fleet=`);
+  await expect(page.getByRole("combobox", {name: "Fleet", exact: true})).toContainText("All Fleets");
+  expect(reads).toHaveLength(1);
+  expect(Object.fromEntries(reads[0]!)).toEqual({period: "month"});
+  for (const theme of ["dark", "light"]) {
+    const before = reads.length;
+    await page.goto(`${chatProbe}?usage=1&fleet=${BILLING_FLEET}&period=month&through_at=2026-10-25T12%3A00%3A00Z`);
+    await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
+    const fleet = page.getByRole("combobox", {name: "Fleet", exact: true});
+    await expect(fleet).toContainText(BILLING_FLEET);
+    await expect(page.getByText("No settled charges for this period.", {exact: true})).toBeVisible();
+    await expect(page.getByRole("list", {name: "Daily settled charges"}).getByRole("listitem")).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({path: info.outputPath(`usage-empty-scoped-${theme}.png`), animations: "disabled", scale: "css"});
+    await fleet.click();
+    await expect(page.getByRole("option").first()).toHaveText("All Fleets");
+    await page.getByRole("option", {name: "All Fleets", exact: true}).click();
+    await expect(fleet).toContainText("All Fleets");
+    await expect(page.getByLabel("Period totals").getByText("$0.0001", {exact: true})).toBeVisible();
+    expect(reads).toHaveLength(before + 2);
+    expect(Object.fromEntries(reads.at(-1)!)).toEqual({period: "month", through_at: "2026-10-25T12:00:00Z"});
+  }
 });
 
 test("a slow shared label read keeps the Usage frame visible without another catalogue request", async ({page, chatProbe}, info) => {
@@ -138,7 +176,7 @@ test("a slow shared label read keeps the Usage frame visible without another cat
   const extraReads: string[] = [];
   page.on("request", request => {
     const path = new URL(request.url()).pathname;
-    if (/\/backend\/v1\/(?:models|tenants\/me\/billing\/activities\/)/.test(path)) extraReads.push(path);
+    if (/\/backend\/v1\/(?:models|tenants\/me\/billing\/(?:charges|activities\/))/.test(path)) extraReads.push(path);
   });
   await page.route("**/backend/v1/tenants/me/billing/reports/current?*", route => {
     reports += 1;

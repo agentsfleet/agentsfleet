@@ -2,7 +2,7 @@
 
 The Usage page shows settled spending for the account across its workspaces. The existing header keeps the available credit balance.
 
-The page shows Period and Fleet controls, settled totals, daily spending and a Fleet/Model/Activities/Charged table. Add credit waits for its design.
+The page shows period and fleet controls, settled totals, daily spending and a Fleet/Model/Activities/Charged table. The per-run activity list and its charge details were removed; their design will return later from scratch. Add credit waits for its design.
 
 ## Read flow and ownership
 
@@ -51,23 +51,6 @@ Each `spending.by_fleet` item includes sorted, distinct, nonempty recorded model
 
 The chart keeps nanodollars as integers until formatting or bounded display scaling. Accessible labels name each day and charge; an unavailable report never displays authoritative zero usage.
 
-## Shared presentation
-
-The page uses the canonical [UX reference](../ux.html), shared Manrope typography, a named-month Period control and an All Fleets selector.
-The owner deferred timezone changes. A past reporting month uses its inclusive `through_at` cutoff; the current month clears it.
-
-Partial snapshots show their through date as a separate choice, allowing a return to the full or live month.
-Displayed instants and ranges use shared viewer-local `Time` utilities. Calendar bucket identities stay as supplied by the API.
-
-The daily plot has a fixed 100px height and at most 31 bars. A decoder refusal handles oversized projections without clipping charges.
-The shared fleet select scrolls within the available viewport height.
-
-The shared model-label request starts once per document load alongside shell reads.
-Its pending promise stays in `ModelLabelsProvider`; the named fleet table waits inside its own `Suspense` boundary.
-
-The heading, controls, totals and daily plot can render from the report while labels are pending.
-A failed label read resolves to recorded identifiers; there is no identifier/name swap after the table paints.
-
 ## Public reads
 
 `GET /v1/tenants/me/billing/reports/current` returns the selected period, bounds, full-period summary, spending groups, daily spend and filter choices. Query parameters are `period`, `fleet_id`, `activity_type` and `through_at`, declared with `garde` before parsing; malformed values return the shared invalid-request response. It requires `billing:read`, and responses declare private, no-store caching.
@@ -80,7 +63,7 @@ A load simulation on Postgres 19rc2 with 15-minute runs measured the report read
 
 | Read | 10 fleets | 100 fleets | 1,000 fleets |
 |---|---|---|---|
-| Raw ledger read | ~465 ms | ~5,030 ms | ~87,900 ms |
+| Raw ledger, the previous statement | ~465 ms | ~5,030 ms | ~87,900 ms |
 | Daily rollup | ~1.2 ms | ~10 ms | ~170–260 ms |
 
 The rollup matched the raw statement row for row (`EXCEPT ALL`, 0 differences). Settling with the rollup cost about 12% throughput when every client hit one account's wallet, and nothing measurable across many accounts. Details are in `docs/v2/evidence/M249_004_SOURCE_INVENTORY.md`.
@@ -101,3 +84,15 @@ Integration tests prove each of these through the real settle path:
 - two concurrent settles of one run count it once, and settles in opposite orders finish without a deadlock;
 - a line settled after month end counts in the month it was created;
 - the report and the rollup equal the settled ledger.
+
+## Dashboard presentation
+
+The Period control lists named months and sends their existing inclusive reporting cutoffs.
+All Fleets includes Setup and saved fleets; individual fleet choices follow it.
+Control changes clear obsolete URL state and retain the supported report filters.
+
+The daily chart uses CSS bars inside the shared dashboard panel.
+It adds no chart library, observer or extra report request.
+The shared model-label store names the fleet rows; delayed labels hold only that table's boundary.
+
+The [rendered review](../v2/evidence/M249_DESIGN_REVIEW.md) and [UI cleanup](../v2/evidence/M249_UI_CLEANUP.md) record the reference, measurements and validation limits.
