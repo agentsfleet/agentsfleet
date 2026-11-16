@@ -28,9 +28,10 @@ This skill owns the steps from review to land. Pull Request rules live in
    change affects, sweep orphans, and leave `git status -uall` empty.
 5. **Push.** Push the branch. The gate checks that `HEAD` is the pushed
    revision, so it runs after this.
-6. **Gate.** Run `orly gate pr`. It runs every declared `verify.*` command, so
-   keep its counts for the Pull Request body. Every criterion is green or carries
-   an `Orly-Override` trailer the owner recorded with a reason.
+6. **Gate.** Run `orly gate pr` once on the final pushed tree. With a reviewed
+   hermetic policy, `--reuse-verification` may reuse valid matching completion
+   evidence; keep the original run, counts and provenance in the Pull
+   Request. Every required criterion passes or carries an owner-recorded override.
 7. **Open the Pull Request.** Open it with a body that follows the PR standard.
    This needs an explicit ask, or auto mode with a start instruction.
 8. **Babysit.** Poll CI checks and greptile threads, fix what this diff broke,
@@ -41,5 +42,7 @@ This skill owns the steps from review to land. Pull Request rules live in
 
 ## Codex cloud tasks
 
-A cloud task pushes nothing. Stop after step 4 with `orly gate verify` green,
-and report; the owner opens the Pull Request from the app, and CI runs the lanes.
+Follow the user's explicit publishing authorization in cloud runtimes. Opening the Pull Request includes the feature-branch push and required final gate.
+It does not authorize merge, release or a consumer pin update.
+
+When publishing is not authorized, stop with concrete prepared changes and verification evidence for the owner.

@@ -136,6 +136,7 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `af_fleet_runtime/src/{config/mod.rs,definition/mod.rs,definition/document.rs,error/mod.rs,error/raise.rs}`, `af_fleet_runtime/tests/{definition/fields.rs,error_surface.rs}` | EDIT | The checker names an unsupported key by its path and the setting a refusal concerns |
 | `af_wire/src/authoring/{proposal.rs,mod.rs,proposal_tests.rs}` | EDIT | A refusal may carry the checker's sentence and setting to the runner |
 | `afr_supervisor/src/authoring/{turn.rs,tests/*}` | EDIT | A message whose setup was accepted completes, and a refused proposal is corrected once (owner, Nov 16, 2026) |
+| `.orly/**`, `.agents/skills/orly-burst/`, `.claude/skills/orly-burst/`, `.opencode/skills/orly-burst/` | EDIT/ADD | orly 0.40 rules and its `orly-burst` skill; the `orly_version` pin is removed (owner, Nov 16, 2026: "remove the repo pin, its no longer valid") |
 | `ui/packages/app/**` confirmed orphaned modules and their isolated tests; `lib/models/display.ts` | REMOVE/EDIT | Owner-requested UI cleanup removes obsolete spending, model cells, action hooks, refresh controls and draft-search state; paused Plugin implementation stays available |
 | `ui/packages/app/app/globals.css` unused activity-table selectors | REMOVE | Remove styles for the deleted activity table without changing the reviewed resource layouts |
 

@@ -2,7 +2,7 @@
 
 The operating model is committed here. `orly init` materialised it —
 `.orly/AGENTS.md`, the `.orly/standards/` rule files, and the `orly-spec`,
-`orly-build` and `orly-ship` skills — and `.orly/orly.json` records the engine version and every file it wrote.
+`orly-build` and `orly-ship` skills — and `.orly/orly.json` records every file it wrote.
 Nothing resolves out of a developer's home directory, so a fresh clone reads
 its own rules. `orly update --no-hooks` re-
 materialises them; `orly doctor` reports drift. This file carries only project
@@ -155,5 +155,3 @@ repository:
 - `ui/packages/app/app/icon.svg` is a copy of `brand.svg`, never a symlink.
 - Docs-repository API pages for a new route are committed after the
   `agentsfleet` PR merges.
-- An orly pin mismatch is fixed by installing into a prefix the task owns,
-  never by changing the global install.
