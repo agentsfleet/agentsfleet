@@ -15,7 +15,7 @@ on:
         description: Acceptance suite
         type: choice
         options: [e2e, cli, all]
-        default: e2e
+        default: all
   # A pull request carrying the `acceptance` label runs it too, on every push,
   # since a dispatch only works once this file is on the default branch.
   pull_request:
@@ -112,7 +112,8 @@ jobs:
 
       - name: Run acceptance
         env:
-          SUITE: ${{ inputs.suite || 'e2e' }}
+          # Both suites by default: dashboard acceptance, then the command line's.
+          SUITE: ${{ inputs.suite || 'all' }}
           ACCEPTANCE_LOCAL_CONNECTOR_VAULT: ${{ vars.VAULT_DEV }}
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
         run: make acceptance SUITE="$SUITE"

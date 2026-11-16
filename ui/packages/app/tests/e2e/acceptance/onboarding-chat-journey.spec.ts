@@ -47,7 +47,7 @@ test.describe("onboarding chat", () => {
     await expect(model).not.toHaveText(/^\s*(Choose model)?\s*$/);
 
     await page.getByLabel(CHAT_PLACEHOLDER).fill(description(FLEET_NAME));
-    await page.getByRole("button", { name: CHAT_COPY.send, exact: true }).click();
+    await page.getByRole("button", { name: CHAT_COPY.start, exact: true }).click();
 
     // The proposal arrives as a reviewable setup, with its runtime model named.
     const summary = setupSummary(page);

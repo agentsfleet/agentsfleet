@@ -62,4 +62,6 @@ export async function expectSelectedWorkspace(page: Page, name: string): Promise
   await page.getByTestId("workspace-switcher").click();
   await expect(page.getByRole("menuitem", {name: `Switch workspace: ${name}`, exact: true})).toBeVisible();
   await page.keyboard.press("Escape");
+  // A click during the closing animation is swallowed; wait until the menu is gone.
+  await expect(page.getByRole("menu")).toHaveCount(0);
 }

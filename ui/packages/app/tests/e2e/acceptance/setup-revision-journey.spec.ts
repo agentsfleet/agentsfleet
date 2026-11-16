@@ -63,7 +63,7 @@ test.describe("setup revisions", () => {
     // Revision 1: describe, review, save.
     await page.goto(workspaceHref(workspaceId, NEW_FLEET));
     await page.getByLabel(CHAT_PLACEHOLDER).fill(description());
-    await page.getByRole("button", { name: CHAT_COPY.send, exact: true }).click();
+    await page.getByRole("button", { name: CHAT_COPY.start, exact: true }).click();
     await expect(setupSummary(page)).toContainText(FLEET_NAME, { timeout: PROPOSAL_TIMEOUT_MS });
     await (await privateSaveButton(page)).click();
     const saved = await openSavedFleet(page, { handle: FIXTURE_KEY.regular, workspaceId });

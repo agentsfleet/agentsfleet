@@ -62,8 +62,9 @@ async function expectSenderLine(turn: Locator, name: string | null): Promise<voi
   else await expect(line).toHaveText(name);
 }
 
+// A row's name is the member's display name (TeamTable), so it is found by the email it shows.
 function rowFor(page: Page, email: string) {
-  return page.getByRole("listitem", { name: new RegExp(email.replace(/[.+]/g, "\\$&"), "i") });
+  return page.getByRole("region", {name: "Members", exact: true}).getByRole("listitem").filter({hasText: email});
 }
 
 test.describe("teammates join an account", () => {
@@ -114,7 +115,8 @@ test.describe("teammates join an account", () => {
     await page.screenshot({path: test.info().outputPath("live-team.png"), scale: "css", animations: "disabled"});
 
     // Remove them; the row leaves the page.
-    await member.getByRole("button", { name: /^remove /i }).click();
+    await member.getByRole("button", { name: /^manage /i }).click();
+    await page.getByRole("menuitem", { name: /^remove /i }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: /^remove$/i }).click();
     await expect(rowFor(page, invitee.email)).toHaveCount(0);
   });
@@ -187,9 +189,9 @@ test.describe("teammates join an account", () => {
     const fleet = await seedFleet(FIXTURE_KEY.admin, workspaceId, { name: `${THREAD_PREFIX}${tag}` });
     try {
       await waitForFleetActive(FIXTURE_KEY.admin, workspaceId, fleet.id);
-      // A teammate's turn carries their name only when their account has one
-      // (lib/events/sender-names.ts), and these fixtures sign up without one,
-      // so each sender line is held to what the backend recorded.
+      // A teammate's turn carries their name when their account has one
+      // (lib/events/sender-names.ts); each sender line is held to what the
+      // backend recorded.
       const johnName = (await owner.get<CurrentUser>(CURRENT_USER)).display_name ?? null;
       const bobName = (await bobApi.get<CurrentUser>(CURRENT_USER)).display_name ?? null;
 
@@ -207,14 +209,14 @@ test.describe("teammates join an account", () => {
       await expect(onJohns).toBeVisible({ timeout: LIVE_MS });
       await expectSenderLine(onJohns, bobName);
 
-      // John answers; Bob's screen names John, and John's own turn names no one.
+      // John answers; Bob's screen names John, and John's own turn reads "You".
       const johnSays = `ship it ${tag}`;
       await send(page, johnSays);
       const onBobs = invitee.page.getByLabel(CHAT_LABEL).locator(PERSON_TURN).filter({ hasText: johnSays });
       await expect(onBobs).toBeVisible({ timeout: LIVE_MS });
       await expectSenderLine(onBobs, johnName);
       const ownTurn = page.getByLabel(CHAT_LABEL).locator(PERSON_TURN).filter({ hasText: johnSays });
-      await expect(ownTurn.getByTestId(SENDER_LINE)).toHaveCount(0);
+      await expect(ownTurn.getByTestId(SENDER_LINE)).toHaveText("You");
 
       // The fleet's answer to Bob reaches John's screen too.
       await expect(page.getByLabel(CHAT_LABEL).locator(ASSISTANT_TURN).first()).toBeVisible({ timeout: REPLY_MS });

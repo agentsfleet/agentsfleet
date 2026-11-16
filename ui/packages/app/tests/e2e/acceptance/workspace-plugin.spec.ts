@@ -18,7 +18,9 @@ test("an account publication can be removed while Plugin navigation follows its 
   await page.goto(workspaceHref(workspace, "fleets/new"));
   if (!pluginsUiEnabled()) {
     await expect(page.getByRole("navigation", {name: "Primary", exact: true}).getByRole("link", {name: "Plugins", exact: true})).toHaveCount(0);
-    expect((await page.goto(workspaceHref(workspace, "plugins")))?.status()).toBe(404);
+    // The route streams its loading frame first, so the refusal is the not-found page, not a 404 status.
+    await page.goto(workspaceHref(workspace, "plugins"));
+    await expect(page.getByRole("heading", {name: "Page not found", exact: true})).toBeVisible();
     await clientFor(FIXTURE_KEY.regular).delete(`/v1/workspaces/${workspace}/plugins/${entry.plugin_id}`, {[SETUP_HEADERS.match]: entry.etag});
   } else {
     await page.getByRole("navigation", {name: "Primary", exact: true}).getByRole("link", {name: "Plugins", exact: true}).click();

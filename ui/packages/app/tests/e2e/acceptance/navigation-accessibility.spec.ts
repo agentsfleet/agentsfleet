@@ -21,6 +21,8 @@ for (const width of WIDTHS) {
     await opener.focus();
     await page.keyboard.press("Enter");
     // The first item opens the Switch workspace submenu, which holds Create workspace.
+    // The menu mounts lazily; a key pressed before it has focus is lost.
+    await expect(page.getByRole("menuitem", {name: /^Switch workspace:/})).toBeFocused();
     await page.keyboard.press("ArrowRight");
     const create = page.getByRole("menu", { name: /^Switch workspace(?::|$)/ }).getByRole("menuitem", { name: CREATE_WORKSPACE });
     await expect(create).toBeVisible();
@@ -30,6 +32,8 @@ for (const width of WIDTHS) {
     await expect(create).toBeHidden();
     await expect(opener).toBeFocused();
     await page.keyboard.press("Enter");
+    // The menu mounts lazily; a key pressed before it has focus is lost.
+    await expect(page.getByRole("menuitem", {name: /^Switch workspace:/})).toBeFocused();
     await page.keyboard.press("ArrowRight");
     await create.click();
     const dialog = page.getByRole("dialog", { name: CREATE_WORKSPACE });

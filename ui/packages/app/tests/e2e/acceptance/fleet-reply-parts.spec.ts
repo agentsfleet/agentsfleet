@@ -98,10 +98,11 @@ test("test_stream_reply_parts_live_then_folded", async ({ page }) => {
 });
 
 // The tool icon stays steady while its status label sweeps during the request.
-// It settles green with its recorded name, outcome and expandable output.
+// It settles on its recorded name, outcome and expandable output; a succeeded
+// bullet stays neutral, as the dashboard paints it (FleetToolCallHeader).
 // The animation is read from the browser's computed style, which no unit lane
 // can see.
-test("test_live_tool_cell_settles_green", async ({ page }) => {
+test("test_live_tool_cell_settles_succeeded", async ({ page }) => {
   await page.emulateMedia({reducedMotion: "no-preference"});
   await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     await stream.send([
@@ -127,7 +128,8 @@ test("test_live_tool_cell_settles_green", async ({ page }) => {
     await expect(cell).toContainText(DONE_LABEL);
     await expect(activity).toHaveAttribute("data-chat-loading", "false");
     await expect(activity).toHaveCSS("animation-name", "none");
-    await expect(bullet).toHaveClass(/\btext-success\b/);
+    await expect(cell).toHaveAttribute("data-state", "succeeded");
+    await expect(bullet).toHaveClass(/\btext-muted-foreground\b/);
     await expect.poll(() => bullet.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
     await expect(cell.getByRole("heading", {name: OUTPUT_LABEL, exact: true})).toBeVisible();
     await expect(cell).toContainText("200 OK");

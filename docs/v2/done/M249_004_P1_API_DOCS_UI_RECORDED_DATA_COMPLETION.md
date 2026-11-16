@@ -122,6 +122,10 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `deploy/local/**`, `make/acceptance.mk`, `Makefile`, `scripts/build-acceptance.ts`, `scripts/local-dev-state.sh`, `README.md`, `docs/development.md` | EDIT/REMOVE | One `make acceptance` on Linux replaces `acceptance-local` (macOS and OrbStack, removed) and `acceptance-codex` (renamed); bootstrap reads the GitHub App fields where it uses them; orphaned shared services are removed (owner, Nov 16, 2026) |
 | `ui/packages/app/app/loading.tsx` (removed), `app/{cli-auth,connectors}/loading.tsx`, `tests/loading-states.test.ts` | REMOVE/ADD | The root loader wrapped the dashboard shell in a streamed boundary that could leave a hidden second shell; the two routes that wait on reads keep their spinner (owner, Nov 16, 2026) |
 | `.github/workflows/acceptance-on-demand.yml` | ADD | Run local acceptance on a hosted VM for any branch (owner, Nov 16, 2026) |
+| `afd_cron/src/activation.rs`, `afd_authoring/src/creation/{mod,chat_save,schedules}.rs`, `afd_http/src/services/schedule/{mod,plane}.rs`, `afd_api_tenant/src/handler/fleet/native/schedules.rs`, `main/src/plane/{mod,surfaces}.rs`, `afd_api/tests/authoring/saving/chat_save/registration.rs` | EDIT/ADD | A typed "Save" registers its trigger schedules with the scheduler, through the same function as the dashboard save (owner, Nov 16, 2026) |
+| `ui/packages/app/components/domain/activity/replies/FleetReplyActions.tsx`, `tests/fleet-thread/role-reply-parts.test.ts` | EDIT | A reply reserves its action bar's slot, so it does not move when it finishes (owner, Nov 16, 2026) |
+| `afr_supervisor/src/authoring/{turn,proposal}.rs` | EDIT | Each setup model call and proposal logs a value-free outcome (owner, Nov 16, 2026) |
+| `ui/packages/app/tests/e2e/acceptance/**` | EDIT | Acceptance follows the shipped dashboard: the empty composer's start button, display-name member rows, the recovery alert, wide-only header labels, the paused Plugin pages and run figures in Run details (owner, Nov 16, 2026) |
 | `docker-compose.yml`, `compose.dev-infra.yml` (removed), `scripts/local-dev-{state,test,live-test}.sh`, `make/test-infra.mk`, `.github/workflows/test-integration-rustd.yml`, `.orly/LOCAL.md`, `docs/architecture/{datastore_scaling,testing}.md`, `afd_bus` NATS doc and exclusive test, `deploy/fly/nats-{dev,prod}/Dockerfile` | EDIT/REMOVE | One datastore compose file for the integration lane and the shared development stack; the NATS nodes are `ant`, `bee` and `elk` (owner, Nov 16, 2026) |
 | `playbooks/lib/platform_secret_sync.sh`, `playbooks/lib/platform_secret_sync_test.sh`, `.github/workflows/deploy-dev-verify.yml` | EDIT | Every dev deploy seeds the `typesafe` decision key into the platform workspace (owner, Nov 16, 2026) |
 | `deploy/local/machine-env.sh`, `.claude/skills/orly-burst/SKILL.md`, `.agents/skills/orly-burst/SKILL.md`, `.gitignore` | ADD/EDIT | Acceptance on a fresh GitHub runner, driven by the `orly-burst` skill until orly ships `orly burst` (owner, Nov 16, 2026) |
@@ -570,6 +574,14 @@ Typed "Save" still depends on the edit check: without a decision model it fails,
 > Owner (Indy), on merging the two compose files: "This PR (#846)"
 
 > Owner (Indy): "as opposed to nats-1, 2 3 name good 3 character ones" (chosen: `ant`, `bee`, `elk`)
+
+- **The remaining acceptance failures (Nov 16, 2026):** a triage of run 43851827412 (91 passed, 18 failed) found thirteen tests asserting markup, copy or flows the dashboard had changed, two races with the lazily loaded workspace menu, an unconfigured Linear app, and four product findings. Fixed here: a typed "Save" never registered its schedules (only the dashboard save's native path did); a finished reply jumped 44 px when its action bar mounted. Recorded for later: the chat stops following the bottom on resize while the composer holds text, and a first setup turn in `install-fleet-cli` spends its eight calls; the new per-call events name the cause on the next run.
+
+> Owner (Indy), on the batch: "or doing on a piece meal type of approach." (answered with one batch)
+
+> Owner (Indy), on the resize finding: "I will test and ask for this change if needed."
+
+> Owner (Indy): "I need the acceptance-e2e and accepatance-cli to suceed to figure out accordinly the GH action workflow must succeed"
 
 Every dev deploy now seeds the `typesafe` key into dev's platform workspace through `platform_secret_sync.sh`. Dev also needs the decision model in its catalogue and named in its runners' policy before typed "Save" can finish there.
 

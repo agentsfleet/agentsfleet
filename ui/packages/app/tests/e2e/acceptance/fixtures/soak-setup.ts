@@ -98,7 +98,7 @@ export class SoakSetup {
     const created = this.draftId ? null : this.page.waitForResponse(response =>
       response.request().method() === "POST" && new URL(response.url()).pathname.endsWith(`/workspaces/${this.workspace}/drafts`));
     await this.root.getByLabel(CHAT_COPY.composer).getByRole("textbox").fill(text);
-    await this.root.getByRole("button", {name: CHAT_COPY.send, exact: true}).click();
+    await this.root.getByRole("button", {name: this.draftId ? CHAT_COPY.send : CHAT_COPY.start, exact: true}).click();
     if (created) {
       const response = await created;
       expect(response.status(), "private setup created").toBe(201);
