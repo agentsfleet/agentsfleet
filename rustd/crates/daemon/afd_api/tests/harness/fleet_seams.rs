@@ -130,6 +130,17 @@ impl Fleet {
         self
     }
 
+    /// Registers a chat save's trigger schedules through `scheduler`, as the
+    /// serving plane does. After [`Self::with_fleet_queue`], which replaces
+    /// the creations this configures.
+    pub(crate) fn with_schedule_registration(
+        mut self,
+        scheduler: Arc<dyn afd_cron::Scheduler>,
+    ) -> Self {
+        self.creations = self.creations.with_scheduler(scheduler);
+        self
+    }
+
     /// Runs the signed-ingress routes over a live database and `bus`.
     ///
     /// Resolve bindings and secrets through production stores, then commit the

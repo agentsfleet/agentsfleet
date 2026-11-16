@@ -141,7 +141,8 @@ impl Creations {
         }
     }
 
-    /// Retries activation after a committed report, including after a lost acknowledgement.
+    /// Retries activation after a committed report, including after a lost acknowledgement,
+    /// then registers the activated fleet's trigger schedules.
     pub(crate) async fn finish_saved_turn(&self, attempt: &Attempt) -> Result<()> {
         let mut connection = self.setup.drafts.database.acquire().await?;
         let saved: Option<SavedTurn> = sqlx::query_as(include_str!("sql/saved_turn.sql"))
@@ -163,7 +164,8 @@ impl Creations {
             subject: &saved.oidc_subject,
         };
         drop(connection);
-        self.advance(access, &saved.fleet_id, af_core::clock::now())
-            .await
+        let now = af_core::clock::now();
+        self.advance(access, &saved.fleet_id, now).await?;
+        self.register_triggers(access, &saved.fleet_id, now).await
     }
 }

@@ -139,6 +139,19 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         attempts: afd_cron::Attempts,
     ) -> impl Future<Output = CronResult<Option<Reconciled>>> + Send;
 
+    /// Registers each of `fleet`'s trigger schedules not yet synced, once
+    /// each under one shared limit: what an activated fleet owes them.
+    ///
+    /// # Errors
+    /// As [`Self::list`], for the read before anything is pushed. A push that
+    /// fails or runs out of time is left on its row, never raised.
+    fn register_triggers(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        now: Timestamp,
+    ) -> impl Future<Output = CronResult<()>> + Send;
+
     /// What a signed fire resolves to.
     ///
     /// # Errors

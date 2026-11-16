@@ -31,9 +31,24 @@ pub struct Creations {
     admissions: Admissions,
     grants: IntegrationGrants,
     schedules: afd_cron::Schedules,
+    /// What a chat save registers an active fleet's trigger schedules
+    /// through; without one they wait for `:sync`.
+    registrar: Option<afd_cron::ScheduleService>,
 }
 
 impl Creations {
+    /// Registers a chat-saved fleet's trigger schedules through `scheduler`,
+    /// the one the schedule routes push through, as Save's route does.
+    #[must_use]
+    pub fn with_scheduler(mut self, scheduler: std::sync::Arc<dyn afd_cron::Scheduler>) -> Self {
+        let store = self
+            .schedules
+            .clone()
+            .with_activity_streams(self.activity_streams());
+        self.registrar = Some(afd_cron::ScheduleService::new(store, scheduler));
+        self
+    }
+
     /// Bind authoring settlement and Save/Apply to the confirmed native owner.
     #[must_use]
     pub fn for_connection(mut self, authority: afd_runner::capacity::authority::Authority) -> Self {
@@ -59,6 +74,7 @@ impl Creations {
             ),
             setup,
             admissions,
+            registrar: None,
         }
     }
 }

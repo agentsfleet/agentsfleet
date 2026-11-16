@@ -124,6 +124,15 @@ impl FleetSchedules for SchedulePlane {
         ))
     }
 
+    fn register_triggers(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        now: Timestamp,
+    ) -> impl Future<Output = CronResult<()>> + Send {
+        self.service.register_triggers(workspace, fleet, now)
+    }
+
     fn fire_target(
         &self,
         schedule: &Uuid7,
