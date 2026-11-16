@@ -6,8 +6,9 @@ use crate::{
     error,
 };
 use af_core::id::Uuid7;
+use af_fleet_runtime::Definition;
 use af_wire::authoring::{
-    ActivityEvent, ActivityRequest, Lease, ModelMessage, ProposalCall, ProposalRejection,
+    ActivityEvent, ActivityRequest, Lease, ModelMessage, Proposal, ProposalCall, ProposalRejection,
 };
 use serde_json::Value;
 
@@ -30,6 +31,15 @@ pub(super) async fn apply(
             ));
         }
     };
+    if let Some(text) = initial_refusal(proposal) {
+        return Ok((
+            ModelMessage::Tool {
+                call_id: call_id.clone(),
+                text,
+            },
+            false,
+        ));
+    }
     let request = ActivityRequest {
         fence: lease.fence.clone(),
         sequence: lease.sequence.clone(),
@@ -61,6 +71,34 @@ pub(super) async fn apply(
     ))
 }
 
+/// The most model feedback one refused setup carries.
+const REFUSAL_BYTES_MAX: usize = 1_024;
+
+/// Proves a first setup with the daemon's own validator before submitting it.
+///
+/// The daemon refuses an invalid setup with a fixed sentence, which leaves the
+/// model guessing; the same validator here names the field and rule to fix.
+/// The daemon still validates: this only decides what the model hears.
+pub(super) fn initial_refusal(proposal: &Proposal) -> Option<String> {
+    let Proposal::Initialize { definition } = proposal else {
+        return None;
+    };
+    let failure = Definition::parse(&definition.to_string())
+        .and_then(|parsed| parsed.validate_initial_generation())
+        .err()?;
+    let mut text = format!(
+        "No changes were applied. The setup is invalid: {failure}. Fix that and return a corrected propose_setup call."
+    );
+    if text.len() > REFUSAL_BYTES_MAX {
+        let mut end = REFUSAL_BYTES_MAX;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text.truncate(end);
+    }
+    Some(text)
+}
+
 const fn feedback(reason: ProposalRejection) -> &'static str {
     match reason {
         ProposalRejection::InvalidArguments => {
@@ -80,3 +118,7 @@ const fn feedback(reason: ProposalRejection) -> &'static str {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "proposal_tests.rs"]
+mod tests;

@@ -1470,6 +1470,7 @@ dependencies = [
  "af_core",
  "af_crypto",
  "af_egress",
+ "af_fleet_runtime",
  "af_observability",
  "af_providers",
  "af_secrets",

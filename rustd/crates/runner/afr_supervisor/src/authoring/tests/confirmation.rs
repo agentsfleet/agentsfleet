@@ -6,7 +6,7 @@ use crate::client::Verb;
 fn tool_only(call: &crate::client::Call) -> crate::test_support::Answer {
     let crate::test_support::Answer::Reply(bytes) = result(
         call,
-        &json!([{"id":"edit","proposal":{"kind":"initialize","definition":{}}}]),
+        &json!([{"id":"edit","proposal":{"kind":"initialize","definition":{"schema_version":1,"description":"Answers support questions","instructions_md":"Reply briefly.","config":{"name":"fixture","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}}}}]),
         false,
     ) else {
         unreachable!()
@@ -28,7 +28,7 @@ async fn an_accepted_edit_finishes_from_its_receipt_without_another_model_call()
             result(
                 call,
                 &json!([{"id":"edit",
-                "proposal":{"kind":"initialize","definition":{}}}]),
+                "proposal":{"kind":"initialize","definition":{"schema_version":1,"description":"Answers support questions","instructions_md":"Reply briefly.","config":{"name":"fixture","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}}}}]),
                 false,
             )
         }

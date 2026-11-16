@@ -31,7 +31,7 @@ fn correcting(call: &Call, reason: &str, feedback_hint: &str) -> crate::test_sup
             result(
                 call,
                 &json!([{"id":"corrected",
-                    "proposal":{"kind":"initialize","definition":{}}}]),
+                    "proposal":{"kind":"initialize","definition":{"schema_version":1,"description":"Answers support questions","instructions_md":"Reply briefly.","config":{"name":"fixture","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}}}}]),
                 false,
             )
         }

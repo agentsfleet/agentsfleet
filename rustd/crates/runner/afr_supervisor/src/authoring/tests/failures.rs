@@ -76,7 +76,7 @@ fn proposing(call: &crate::client::Call) -> Answer {
     result(
         call,
         &json!([{"id":format!("call-{}",request["call_index"]),
-            "proposal":{"kind":"initialize","definition":{}}}]),
+            "proposal":{"kind":"initialize","definition":{"schema_version":1,"description":"Answers support questions","instructions_md":"Reply briefly.","config":{"name":"fixture","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}}}}]),
         false,
     )
 }
