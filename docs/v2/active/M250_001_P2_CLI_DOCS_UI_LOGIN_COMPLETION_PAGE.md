@@ -55,6 +55,7 @@
 | `ui/packages/app/tests/cli-auth-page.test.ts` | EDIT | Approved code-step wording |
 | `ui/packages/app/tests/cli-auth-page.fixtures.ts` | CREATE | Keep unchanged test fixtures outside the case file’s 350-line limit |
 | `ui/packages/app/tests/cli-auth-completion.test.tsx` | CREATE | Completion, refusal, expiry and cancellation regressions |
+| `ui/packages/app/tests/manual-approval-completion.test.ts` | CREATE | Observer boundaries, cancellation races, stream cleanup and read cap |
 | `ui/packages/app/tests/e2e/acceptance/cli-loopback-login.spec.ts` | EDIT | Updated success locator |
 | `docs/AUTH_DEVICE_LOGIN.md` | EDIT | Browser completion behavior |
 | `cli/src/constants/pet.ts` | EDIT | Approved pet identity and animation dimensions |
@@ -214,6 +215,8 @@ N/A: no files deleted. Update every active test locator for the retired success 
 - **Reviews:** the native adversarial review found no remaining defects after the three repairs; fixtures were reviewed in summary mode. The standards reviewer found no remaining issues against 244 screened rules. The docs standards review found none against 43 rules. Optional outside-model review was unavailable because that CLI is absent.
 - **PR validation follow-up:** the first exact-head PR gate stopped at local integration setup: QStash could not trust the cloud certificate chain. A task-owned Compose override adds that certificate bundle and removes the inherited HTTP proxy for NATS loopback health probes. Repository infrastructure and gates are unchanged.
 - **Bundle repair:** the first Actions app size check measured the public login route at 273.18 kB gzip, above its existing 245.76 kB limit. The observer now reuses the app’s existing Valibot schema validator. The same local build and size commands passed at 243.32 kB and 38 focused authentication tests passed; no bundle limit changed.
+- **Coverage follow-up:** all application tests passed in Actions, but the existing 100% threshold identified uncovered observer branches. Seventeen focused cases now cover cancellation during waits and response reads, failed streams, invalid expiry and schema, redirects, transient statuses and clock skew. Combined with the thirteen rendered-page cases, thirty focused tests passed; observer coverage reached statements 83/83, branches 39/39, functions 9/9 and lines 57/57.
+- **Gate restart:** the `f8713cc5e` gate was interrupted after the coverage follow-up was ready, so final verification can run against its new pushed commit. No completed full-repository result is claimed for that interrupted run.
 - **Implementation PR:** https://github.com/agentsfleet/agentsfleet/pull/847 (draft while outstanding checks remain).
 - **Companion PR:** https://github.com/agentsfleet/docs/pull/250.
 - **Deferrals and transfers:** none.
