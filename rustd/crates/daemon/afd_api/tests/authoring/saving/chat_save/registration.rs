@@ -134,6 +134,62 @@ async fn a_chat_save_registers_its_cron_trigger_with_the_scheduler() {
     case.cleanup().await;
 }
 
+// Value: protects=a schedule a stopped daemon left unregistered is registered when the runner re-sends its report;
+// fails_when=a replayed report finds the closed draft and skips the sweep, so the fleet is active and its cron never fires.
+#[tokio::test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the lane reaches its live scheduler with reqwest's defaults, as afd_cron's live suites do"
+)]
+#[ignore = "needs live Postgres, NATS and the compose qstash service: make test-integration-rustd"]
+async fn a_replayed_report_finishes_the_registration_a_stopped_save_left_owed() {
+    let (url, token) = live();
+    // The scheduler refuses this token: the save activates and closes its draft, and the
+    // sweep's push fails, as it does when the daemon stops before the sweep runs.
+    let mut case = registering(&url, "a-token-the-scheduler-refuses").await;
+    case.fund().await;
+    let (item, _) = case.request_with(daily(&[])).await;
+    let input = json!({"message":"Save this setup", "save":true, "operation_id":mint()});
+    accept_message(&case, &item, &input).await;
+    let before = read(&case, &item).await;
+    let (path, report_token, report) = finish_request(&mut case, &before).await;
+    report_once(&case, &path, &report_token, &report).await;
+    let fleet_path = format!(
+        "{}/{}",
+        case.collection(),
+        read(&case, &item).await["linked_fleet_id"]
+            .as_str()
+            .expect("the report saved the fleet")
+    );
+    let fleet = read(&case, &fleet_path).await;
+    assert_eq!(fleet["status"], "active", "{fleet}");
+    assert_ne!(only_schedule(&fleet)["sync"], "synced", "{fleet}");
+
+    // The scheduler answers again, and the runner re-sends the report it never saw acknowledged.
+    let scheduler = afd_cron::QStash::fixed(
+        reqwest::Client::new(),
+        af_crypto::secret::SecretString::new(token.clone()),
+        LIVE_DESTINATION.to_owned(),
+        url.clone(),
+    );
+    case.router = case
+        .base
+        .services(&Scope::ALL)
+        .with_fleet_queue(case.base.db.clone(), case.bus.clone())
+        .with_schedule_registration(Arc::new(scheduler))
+        .router();
+    report_once(&case, &path, &report_token, &report).await;
+
+    let fleet = read(&case, &fleet_path).await;
+    let schedule = only_schedule(&fleet);
+    assert_eq!(schedule["sync"], "synced", "{schedule}");
+    assert_eq!(
+        held(&url, &token, schedule).await.status(),
+        reqwest::StatusCode::OK
+    );
+    case.cleanup().await;
+}
+
 #[tokio::test]
 #[ignore = "needs live Postgres, NATS and the compose qstash service: make test-integration-rustd"]
 async fn a_chat_save_still_installing_registers_nothing() {

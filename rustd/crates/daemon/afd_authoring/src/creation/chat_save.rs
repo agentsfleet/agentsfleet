@@ -143,20 +143,20 @@ impl Creations {
 
     /// Retries activation after a committed report, including after a lost acknowledgement,
     /// then registers the activated fleet's trigger schedules.
+    ///
+    /// A report replayed after a daemon stopped between activation and the sweep finds its
+    /// draft closed, and only the sweep is owed: it pushes the schedules not yet synced and
+    /// does nothing for the rest, so running it again is harmless.
     pub(crate) async fn finish_saved_turn(&self, attempt: &Attempt) -> Result<()> {
         let mut connection = self.setup.drafts.database.acquire().await?;
-        let saved: Option<SavedTurn> = sqlx::query_as(include_str!("sql/saved_turn.sql"))
-            .bind(&attempt.draft_id)
-            .bind(&attempt.workspace_id)
-            .bind(&attempt.user_id)
-            .bind(attempt.message_sequence)
-            .bind(MessageState::Completed.as_str())
-            .bind(DraftState::Saving.as_str())
-            .bind(&attempt.tenant_id)
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query(CONTEXT))?;
-        let Some(saved) = saved else {
+        let mut owed = None;
+        for (state, activation_owed) in [(DraftState::Saving, true), (DraftState::Closed, false)] {
+            if let Some(saved) = saved_turn(&mut connection, attempt, state).await? {
+                owed = Some((saved, activation_owed));
+                break;
+            }
+        }
+        let Some((saved, activation_owed)) = owed else {
             return Ok(());
         };
         let access = Access {
@@ -165,7 +165,28 @@ impl Creations {
         };
         drop(connection);
         let now = af_core::clock::now();
-        self.advance(access, &saved.fleet_id, now).await?;
+        if activation_owed {
+            self.advance(access, &saved.fleet_id, now).await?;
+        }
         self.register_triggers(access, &saved.fleet_id, now).await
     }
+}
+
+/// The save request `attempt` finished, while its draft is in `state`.
+async fn saved_turn(
+    connection: &mut PgConnection,
+    attempt: &Attempt,
+    state: DraftState,
+) -> Result<Option<SavedTurn>> {
+    sqlx::query_as(include_str!("sql/saved_turn.sql"))
+        .bind(&attempt.draft_id)
+        .bind(&attempt.workspace_id)
+        .bind(&attempt.user_id)
+        .bind(attempt.message_sequence)
+        .bind(MessageState::Completed.as_str())
+        .bind(state.as_str())
+        .bind(&attempt.tenant_id)
+        .fetch_optional(connection)
+        .await
+        .map_err(query(CONTEXT))
 }
