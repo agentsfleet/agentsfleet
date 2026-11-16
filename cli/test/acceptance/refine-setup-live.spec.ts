@@ -94,7 +94,7 @@ if (!isLive) {
     });
 
     it("`chat --fleet --message` opens the fleet's improve chat and the setup model answers", async () => {
-      const result = await run(["--json", "chat", "--fleet", fleetId, "--model", model, "--no-input", "--message", REQUEST]);
+      const result = await run(["--json", "chat", "--fleet", fleetId, "--setup-revision", savedRevision, "--model", model, "--no-input", "--message", REQUEST]);
       assert.equal(result.code, 0, `the improve chat refused: ${result.stderr}`);
       const values = commandValues(result);
       const draft = values.find(Schema.is(CreatedSchema)) ?? values.find(Schema.is(DraftSchema));
