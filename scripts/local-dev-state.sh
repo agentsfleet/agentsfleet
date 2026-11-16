@@ -124,21 +124,22 @@ EOF
 
 dev_infra_up() {
   dev_snapshot
-  local status count=0 service state health restart=()
+  local status count=0 orphans=0 service state health restart=()
   status="$(dev_compose ps --all --format '{{.Service}} {{.State}} {{.Health}}')"
   if [ -n "$status" ]; then
     while read -r service state health; do
-      case "$service" in postgres|mailpit|qstash|nats-1|nats-2|nats-3) ;; *) dev_fail 'unexpected shared service' ;; esac
+      # A service an older compose file declared (dragonfly before M244) is an orphan.
+      case "$service" in postgres|mailpit|qstash|nats-1|nats-2|nats-3) ;; *) orphans=1; continue ;; esac
       if [ "$state" = running ] && [ "$health" = healthy ]; then count=$((count + 1)); fi
       if [ "$state" = running ] && [ "$health" = unhealthy ]; then restart+=("$service"); fi
     done <<<"$status"
   fi
-  if [ "$count" = 6 ]; then
+  if [ "$count" = 6 ] && [ "$orphans" = 0 ]; then
     printf 'Reusing shared infrastructure %s\n' "$DEV_PROJECT"
     return
   fi
   if [ "${#restart[@]}" -gt 0 ]; then dev_compose restart "${restart[@]}"; fi
-  dev_compose up -d --wait --wait-timeout 330 --no-recreate
+  dev_compose up -d --wait --wait-timeout 330 --no-recreate --remove-orphans
 }
 
 dev_database() {

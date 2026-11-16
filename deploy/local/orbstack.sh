@@ -24,8 +24,10 @@ process.exit(rows.some(row => row.name === Bun.argv[1]) ? 0 : 1);
   orb -m "$ACCEPTANCE_LOCAL_RUNNER_MACHINE" bash -s -- "$DEV_ROOT" <<'LINUX'
 set -euo pipefail
 export PATH="$HOME/.cargo/bin:$PATH"
-if ! command -v cargo >/dev/null || ! command -v mmdebstrap >/dev/null || ! command -v bwrap >/dev/null || ! command -v jq >/dev/null; then
-  bash "$1/.github/actions/build-toolbox/install-tools.sh" build-essential pkg-config libssl-dev bubblewrap ca-certificates git
+# BoringSSL, under the runner stream's QUIC stack, builds with cmake and clang.
+if ! command -v cargo >/dev/null || ! command -v mmdebstrap >/dev/null || ! command -v bwrap >/dev/null || ! command -v jq >/dev/null ||
+  ! command -v cmake >/dev/null || ! command -v clang >/dev/null; then
+  bash "$1/.github/actions/build-toolbox/install-tools.sh" build-essential pkg-config libssl-dev bubblewrap ca-certificates git cmake clang
 fi
 if ! command -v cargo >/dev/null; then
   # The installer fetches rustup-init once and never retries, and OrbStack's

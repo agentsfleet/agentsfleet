@@ -81,7 +81,10 @@ start_dashboard() {
 make --no-print-directory acceptance-build
 export LOCAL_DEV_BINARY="$DEV_ROOT/dist/acceptance/agentsfleetd"
 # Caddy issues the local leaf before the daemon's mandatory native TLS preflight.
-mkdir -p "$LOCAL_ACCEPTANCE_STATE/caddy-data" "$LOCAL_ACCEPTANCE_STATE/caddy-config"
+export LOCAL_ACCEPTANCE_CA_STATE="$DEV_SHARED/acceptance-ca"
+dev_directory "$LOCAL_ACCEPTANCE_CA_STATE"
+mkdir -p "$LOCAL_ACCEPTANCE_STATE/caddy-data" "$LOCAL_ACCEPTANCE_STATE/caddy-config" "$LOCAL_ACCEPTANCE_CA_STATE"
+chmod 700 "$LOCAL_ACCEPTANCE_CA_STATE"
 acceptance_proxy_config
 acceptance_proxy up --detach --wait
 acceptance_runner_stream_identity

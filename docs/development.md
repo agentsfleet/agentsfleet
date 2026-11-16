@@ -84,7 +84,7 @@ This command needs macOS, OrbStack, Bun, Rust, cosign and the provisioned machin
 On first use it creates private worktree settings, an OrbStack Debian machine and a signed toolbox for the current runner version.
 It enrolls the runner through the authenticated local API using a dedicated test identity.
 It reuses the development database and datastore containers; Compose adds one Caddy container for local HTTPS.
-The first run may ask macOS to approve the local Caddy certificate in your login keychain; browser certificate verification stays enabled.
+Every worktree's Caddy signs with one local root kept beside the shared stack. The first run on a machine asks macOS to approve it for HTTPS in your login keychain; the trust stays, so later runs and new worktrees ask nothing. Browser certificate verification stays enabled.
 
 The dashboard serves its ordinary production build from this checkout.
 Each invocation calls `acceptance-build`, starts the shipping runner service through `deploy/baremetal/deploy.sh`, and runs the selected acceptance targets.
