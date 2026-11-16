@@ -16,23 +16,28 @@ on:
         type: choice
         options: [e2e, cli, all]
         default: e2e
+  # A pull request carrying the `acceptance` label runs it too, on every push,
+  # since a dispatch only works once this file is on the default branch.
+  pull_request:
+    types: [labeled, synchronize]
 
 permissions:
   contents: read
   actions: read # download the signed toolbox from the latest dev deploy
 
 concurrency:
-  group: acceptance-on-demand-${{ inputs.ref }}
+  group: acceptance-on-demand-${{ inputs.ref || github.head_ref }}
   cancel-in-progress: true
 
 jobs:
   acceptance:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'acceptance')
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.head_ref }}
 
       # Fail in seconds when the kernel cannot host the runner sandbox.
       - name: Check the kernel for the runner sandbox
@@ -124,7 +129,7 @@ jobs:
 
       - name: Run acceptance
         env:
-          SUITE: ${{ inputs.suite == 'all' && '' || inputs.suite }}
+          SUITE: ${{ inputs.suite || 'e2e' }}
           ACCEPTANCE_LOCAL_CONNECTOR_VAULT: ${{ vars.VAULT_DEV }}
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
         run: make acceptance-codex SUITE="$SUITE"
