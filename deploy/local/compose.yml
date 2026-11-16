@@ -1,18 +1,16 @@
-# The worktree proxy joins the existing native API; datastores stay in local-dev.
+# Acceptance's HTTPS proxy in front of the native API and dashboard. It shares
+# the host's network and binds loopback only, so no acceptance port leaves this
+# machine; the datastores stay in local-dev.
 services:
   caddy:
     image: mirror.gcr.io/library/caddy:2.11.7-alpine
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "127.0.0.1:${LOCAL_ACCEPTANCE_TLS_PORT}:443"
-      - "127.0.0.1:${LOCAL_ACCEPTANCE_UI_TLS_PORT}:444"
+    network_mode: host
     volumes:
       - ${LOCAL_ACCEPTANCE_STATE}/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${LOCAL_ACCEPTANCE_STATE}/caddy-data:/data
       - ${LOCAL_ACCEPTANCE_STATE}/caddy-config:/config
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      test: ["CMD", "wget", "-Y", "off", "-q", "-O", "/dev/null", "http://127.0.0.1:${LOCAL_ACCEPTANCE_ADMIN_PORT}/config/"]
       interval: 2s
       timeout: 2s
       retries: 30

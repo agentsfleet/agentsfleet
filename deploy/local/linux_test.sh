@@ -40,7 +40,7 @@ class LinuxTests(unittest.TestCase):
         for status in (0, 7):
             database = self.root / f'nss-{status}'
             result = self.shell('''
-source "$DEV_ROOT/deploy/local/linux-certificate.sh"
+source "$DEV_ROOT/deploy/local/linux.sh"
 trap 'acceptance_untrust_certificate "$TEST_CERTIFICATE"' EXIT
 acceptance_trust_certificate "$TEST_CERTIFICATE" "$TEST_DATABASE"
 certutil -L -d "sql:$TEST_DATABASE" -n "agentsfleet-local-$DEV_ID" >/dev/null
@@ -59,7 +59,7 @@ exit "$TEST_STATUS"
         database = self.root / 'nss'
         for replace in ('0', '1'):
             result = self.shell('''
-source "$DEV_ROOT/deploy/local/linux-certificate.sh"
+source "$DEV_ROOT/deploy/local/linux.sh"
 trap 'acceptance_untrust_certificate "$TEST_CERTIFICATE"' EXIT
 if [ "$TEST_REPLACE" = 1 ]; then
   acceptance_trust_certificate "$TEST_CERTIFICATE" "$TEST_DATABASE"
