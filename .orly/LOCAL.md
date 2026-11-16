@@ -140,6 +140,11 @@ repository:
   unset" panic is an invocation error. `AFD_TEST_LOG=1` shows daemon logs.
 - A green PR proves neither Playwright (`make dry-app`) nor acceptance (it runs
   after merge), so a rendered-page change runs its specs locally.
+- Acceptance runs on Linux only, as `make acceptance`. CI runs it from
+  `acceptance-on-demand.yml`; a cloud machine runs it with `orly burst
+  acceptance --provider aws-spot` or `e2e`. The lane, setup, secrets and
+  artifacts are the `burst` section of `.orly/orly.json`, and no gate runs it,
+  because it costs money.
 - Run one lane per checkout. Stop a run by its process ID, never `pkill -f`. A
   vitest coverage-lock red is not a test failure.
 - The NATS nodes run `--no_advertise`, so a host client uses its whole seed
