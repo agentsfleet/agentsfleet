@@ -1,0 +1,141 @@
+name: acceptance / on demand
+
+# Local acceptance (`make acceptance-codex`) on a throwaway GitHub-hosted VM, for
+# any branch, started by hand or by an agent with `gh workflow run`. The runner
+# sandbox needs a full Linux kernel and privileged Docker, which a hosted VM has
+# and a laptop on flaky Wi-Fi does not reliably keep.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to test
+        required: true
+      suite:
+        description: Acceptance suite
+        type: choice
+        options: [e2e, cli, all]
+        default: e2e
+
+permissions:
+  contents: read
+  actions: read # download the signed toolbox from the latest dev deploy
+
+concurrency:
+  group: acceptance-on-demand-${{ inputs.ref }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      # Fail in seconds when the kernel cannot host the runner sandbox.
+      - name: Check the kernel for the runner sandbox
+        run: |
+          set -euo pipefail
+          sudo modprobe erofs
+          grep -qw erofs /proc/filesystems
+          grep -qw securityfs /proc/filesystems
+          test -e /dev/loop-control
+          grep -q landlock /sys/kernel/security/lsm
+          docker run --rm --privileged mirror.gcr.io/library/debian:trixie-slim true
+
+      - uses: ./.github/actions/setup-bun-playwright
+        with:
+          working-directory: ui/packages/app
+          cache-prefix: playwright-app
+          lock-file: bun.lock
+
+      - name: Install workspace dependencies and the command-line application (before any secret)
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          (cd cli && bun install --frozen-lockfile && bun run build)
+          for package in ui/packages/*/; do (cd "$package" && bun install --frozen-lockfile); done
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libnss3-tools cmake clang
+
+      # rustd/rust-toolchain.toml is the single pin; rustup installs it on first use.
+      - name: Rust toolchain
+        working-directory: rustd
+        run: rustup show && cargo --version
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rustd/target
+          key: cargo-acceptance-v1-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+
+      # The release key never enters this workflow: it reuses the toolbox the
+      # trusted dev deploy already signed. Artifacts there live three days.
+      - name: Fetch the signed toolbox from the latest dev deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_id=$(gh run list --workflow deploy-dev.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          test -n "$run_id" || { echo "::error::no successful deploy-dev run on main to take a signed toolbox from"; exit 1; }
+          gh run download "$run_id" --name runner-toolbox --dir "$RUNNER_TEMP/toolbox"
+          echo "ACCEPTANCE_LOCAL_TOOLBOX_DIR=$RUNNER_TEMP/toolbox" >> "$GITHUB_ENV"
+
+      - name: Load development credentials from 1Password (after every install)
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
+          CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
+          CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_DEV }}/clerk-dev/webhook-secret
+          OIDC_ISSUER: op://${{ vars.VAULT_DEV }}/clerk-dev/issuer
+          AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential
+          FIREWORKS_API_KEY: op://${{ vars.VAULT_DEV }}/agentsfleet-fireworks-api-token/credential
+
+      # The local lane reads the machine environment from two files; write them
+      # owner-only under the runner's temporary directory.
+      - name: Write the machine environment files
+        env:
+          OIDC_AUDIENCE: ${{ vars.CLERK_DEV_OIDC_AUDIENCE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$OIDC_AUDIENCE" || { echo "::error::set the CLERK_DEV_OIDC_AUDIENCE repository variable"; exit 1; }
+          {
+            printf 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=%s\n' "$CLERK_PUBLISHABLE_KEY"
+            printf 'CLERK_PUBLISHABLE_KEY=%s\nCLERK_SECRET_KEY=%s\nCLERK_WEBHOOK_SECRET=%s\n' \
+              "$CLERK_PUBLISHABLE_KEY" "$CLERK_SECRET_KEY" "$CLERK_WEBHOOK_SECRET"
+          } > "$RUNNER_TEMP/ui.env"
+          {
+            printf 'OIDC_ISSUER=%s\nOIDC_AUDIENCE=%s\n' "$OIDC_ISSUER" "$OIDC_AUDIENCE"
+            printf 'CLERK_API_BASE=https://api.clerk.com/v1\nCLERK_SECRET_KEY=%s\n' "$CLERK_SECRET_KEY"
+            printf 'AUTH_SESSION_CODE_PEPPER=%s\n' "$AUTH_SESSION_CODE_PEPPER"
+          } > "$RUNNER_TEMP/agentsfleetd.env"
+          {
+            echo "AGENTSFLEET_UI_ENV_FILE=$RUNNER_TEMP/ui.env"
+            echo "AGENTSFLEET_RUSTD_ENV_FILE=$RUNNER_TEMP/agentsfleetd.env"
+          } >> "$GITHUB_ENV"
+
+      - name: Run acceptance
+        env:
+          SUITE: ${{ inputs.suite == 'all' && '' || inputs.suite }}
+          ACCEPTANCE_LOCAL_CONNECTOR_VAULT: ${{ vars.VAULT_DEV }}
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        run: make acceptance-codex SUITE="$SUITE"
+
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: acceptance-on-demand-${{ github.run_id }}
+          path: |
+            ui/packages/app/playwright-acceptance-results/
+            ui/packages/app/playwright-acceptance-report/
+          if-no-files-found: warn
+          retention-days: 7
