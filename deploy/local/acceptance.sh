@@ -112,6 +112,15 @@ printf 'AGENTSFLEET_API_URL=https://localhost:%s\nAGENTSFLEET_RUNNER_TOKEN=%s\nS
   "$LOCAL_ACCEPTANCE_TLS_PORT" "$ACCEPTANCE_RUNNER_TOKEN" >"$LOCAL_ACCEPTANCE_STATE/runner.env"
 acceptance_runner_stream_environment >>"$LOCAL_ACCEPTANCE_STATE/runner.env"
 start_runner
+# The suites' preflight needs a runner that has reported in; the container
+# connects a few seconds after it starts. The token travels on stdin, never argv.
+deadline=$(( $(date +%s) + DEV_READY_SECONDS ))
+until printf 'header = "Authorization: Bearer %s"\n' "$ACCEPTANCE_RUNNER_TOKEN" |
+  curl --silent --fail --max-time 2 --config - --cacert "$LOCAL_ACCEPTANCE_CA" \
+    "https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT/v1/runners/me" | jq -e '.last_seen_at != null' >/dev/null; do
+  [ "$(date +%s)" -lt "$deadline" ] || dev_fail "the acceptance runner never reported in; read $LOCAL_ACCEPTANCE_STATE/runner.log"
+  sleep 0.5
+done
 
 export BASE_URL="https://localhost:$LOCAL_ACCEPTANCE_UI_TLS_PORT"
 export NEXT_PUBLIC_API_URL="https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT"
