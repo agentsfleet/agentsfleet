@@ -70,6 +70,21 @@ pub(crate) async fn report<D: Services>(
 /// Kept in the route table, behind the same guards, so a client still calling
 /// it learns the removal is permanent (`410`, `UZ-REQ-003`) instead of meeting
 /// what reads as a routing fault.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get, path = "/v1/tenants/me/billing/activities/{activity_id}/charges",
+    tag = afd_http::openapi::tag::BILLING, operation_id = "get_tenant_billing_activity_charges",
+    summary = "Removed: per-activity charges",
+    description = "Per-activity charges were removed. This route always answers 410 Gone with UZ-REQ-003; read settled totals from GET /v1/tenants/me/billing/reports/current.",
+    params(("activity_id" = String, Path, description = "Ignored; the route is removed")),
+    responses(
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 410, description = afd_http::openapi::GONE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
 pub(crate) async fn removed() -> Refusal {
     Refusal::coded(
         af_core::error_code::ENDPOINT_REMOVED,

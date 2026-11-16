@@ -146,8 +146,8 @@ const GRANTS: [(&str, &str, &[Verb]); 82] = [
     ("authoring.replay_receipts", "api_runtime", WRITE_ONCE),
     ("billing.wallets", "api_runtime", READ_WRITE),
     ("billing.usage_lines", "api_runtime", KEPT),
-    ("billing.usage_daily", "api_runtime", READ_WRITE),
-    ("billing.runs_daily", "api_runtime", READ_WRITE),
+    ("billing.usage_daily", "api_runtime", KEPT),
+    ("billing.runs_daily", "api_runtime", KEPT),
     (
         "billing.authoring_report_receipts",
         "api_runtime",

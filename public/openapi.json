@@ -8170,6 +8170,94 @@
         ]
       }
     },
+    "/v1/tenants/me/billing/activities/{activity_id}/charges": {
+      "get": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Removed: per-activity charges",
+        "description": "Per-activity charges were removed. This route always answers 410 Gone with UZ-REQ-003; read settled totals from GET /v1/tenants/me/billing/reports/current.",
+        "operationId": "get_tenant_billing_activity_charges",
+        "parameters": [
+          {
+            "name": "activity_id",
+            "in": "path",
+            "description": "Ignored; the route is removed",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The resource is gone and will not return",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/tenants/me/billing/charges": {
       "get": {
         "tags": [

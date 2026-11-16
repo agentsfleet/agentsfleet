@@ -90,6 +90,7 @@ afd_http::plane_collector! {
         crate::handler::tenant::billing::charges,
         crate::handler::tenant::billing::snapshot,
         crate::handler::tenant::billing_report::report,
+        crate::handler::tenant::billing_report::removed,
         crate::handler::tenant::cli_credential::mint,
         crate::handler::tenant::identity::current,
         crate::handler::tenant::invite::accept,
