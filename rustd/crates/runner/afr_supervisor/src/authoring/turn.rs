@@ -4,10 +4,17 @@ use super::{Ending, meter::Observed, proposal};
 use crate::{Result, client::ControlPlane, error};
 use af_core::{clock::Clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
-use af_wire::authoring::{ContextRole, Lease, ModelCall, ModelMessage, ModelRequest, ModelResult};
+use af_wire::authoring::{
+    ContextRole, Lease, ModelCall, ModelMessage, ModelRequest, ModelResult, ProposalCall,
+    ProposalRejection,
+};
 use serde_json::Value;
 
 /// The corrected proposals one message may send after a refusal (owner, Nov 16, 2026).
+///
+/// A refusal that says the message asks for no change is not one: the right
+/// reply is a sentence, which a typed Save and every question need, so those
+/// refusals spend only the call allowance.
 const CORRECTIONS_MAX: u32 = 1;
 
 pub(super) struct Turn<'a> {
@@ -81,6 +88,15 @@ impl Turn<'_> {
             });
             // The one call after an accepted setup asks for its sentence and ends the turn.
             let closing = accepted_any;
+            let asked_for_an_answer = result.proposal_calls.iter().all(|call| {
+                matches!(
+                    call,
+                    ProposalCall::Refused {
+                        reason: ProposalRejection::EditNotRequested,
+                        ..
+                    }
+                )
+            });
             let mut all_accepted = true;
             for call in result.proposal_calls {
                 let (message, accepted) =
@@ -100,7 +116,7 @@ impl Turn<'_> {
                 ended(call_index, "proposed");
                 return Ok(Ending::completed(None));
             }
-            if !accepted_any {
+            if !accepted_any && !asked_for_an_answer {
                 if corrections == CORRECTIONS_MAX {
                     ended(call_index, "corrections_exhausted");
                     return Ok(Ending::incomplete());

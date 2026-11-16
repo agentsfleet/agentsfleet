@@ -144,6 +144,65 @@ async fn exhausted_corrections_fail_with_known_usage_and_no_activity_or_answer()
     assert_eq!(rig.runs.load(Ordering::SeqCst), 0);
 }
 
+// Value: protects=a message that asks for no change is answered in text however many proposals come first;
+// fails_when=a refusal that asks for an answer spends the one correction and fails a typed Save.
+#[tokio::test]
+async fn refusals_that_ask_for_an_answer_do_not_spend_the_one_correction() {
+    let mut rig = rig(|call| match call.verb {
+        Verb::AuthoringModel => {
+            let request: Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+            match request["call_index"].as_u64().unwrap() {
+                1 => rejected(call, "invalid_arguments"),
+                2 | 3 => rejected(call, "edit_not_requested"),
+                4 => result(call, &json!([]), false),
+                index => panic!("unexpected model call {index}"),
+            }
+        }
+        Verb::AuthoringReport => ack(),
+        other => panic!("a refused proposal acquired authority {other:?}"),
+    });
+    let (calls, report) = run(&mut rig, lease()).await;
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call.verb == Verb::AuthoringModel)
+            .count(),
+        4
+    );
+    assert_eq!(report["outcome"], "completed");
+    assert_eq!(report["answer"], "Private result");
+    assert_eq!(report["usage"]["calls"], 4);
+}
+
+// Value: protects=the one correction still ends a message that keeps sending bad proposals;
+// fails_when=an answer request widens the allowance for the refusals after it.
+#[tokio::test]
+async fn a_second_format_refusal_ends_the_message_even_after_an_answer_request() {
+    let mut rig = rig(|call| match call.verb {
+        Verb::AuthoringModel => {
+            let request: Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+            match request["call_index"].as_u64().unwrap() {
+                1 => rejected(call, "edit_not_requested"),
+                2 | 3 => rejected(call, "invalid_arguments"),
+                index => panic!("unexpected model call {index}"),
+            }
+        }
+        Verb::AuthoringReport => ack(),
+        other => panic!("a refused proposal acquired authority {other:?}"),
+    });
+    let (calls, report) = run(&mut rig, lease()).await;
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call.verb == Verb::AuthoringModel)
+            .count(),
+        3
+    );
+    assert_eq!(report["outcome"], "failed");
+    assert_eq!(report["failure_reason"], "provider_failed");
+    assert!(report.get("answer").is_none_or(Value::is_null));
+}
+
 // Value: protects=corrections cannot spend beyond the admitted output allowance;
 // fails_when=an exhausted turn makes another model call or publishes success.
 #[tokio::test]

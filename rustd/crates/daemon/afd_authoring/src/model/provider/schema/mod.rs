@@ -193,17 +193,23 @@ fn described(mut schema: Value, description: &str) -> Value {
     schema
 }
 
+/// Where a setting's path starts and how an absent one is added, with a path that works.
+const PATH_HELP: &str = "JSON Pointer from the document root. It starts with /config, such as /config/x-agentsfleet/budget/daily_nanos, \
+    or is /description. Add a setting that is absent as a new member holding its whole value, such as /config/x-agentsfleet/triggers \
+    with the list. /- at the end of a path appends to a list that exists.";
+
 fn config_operation() -> Value {
+    let path = json!({KEY_TYPE:TYPE_STRING,KEY_DESCRIPTION:PATH_HELP});
     let write = object(
         &json!({
             KEY_OP:{KEY_TYPE:TYPE_STRING,KEY_ENUM:[ACTION_ADD,ACTION_REPLACE]},
-            KEY_PATH:{KEY_TYPE:TYPE_STRING}, KEY_VALUE:{}
+            KEY_PATH:path, KEY_VALUE:{}
         }),
         &[KEY_OP, KEY_PATH, KEY_VALUE],
     );
     let remove = object(
         &json!({
-            KEY_OP:{KEY_TYPE:TYPE_STRING,KEY_ENUM:[ACTION_REMOVE]}, KEY_PATH:{KEY_TYPE:TYPE_STRING}
+            KEY_OP:{KEY_TYPE:TYPE_STRING,KEY_ENUM:[ACTION_REMOVE]}, KEY_PATH:path
         }),
         &[KEY_OP, KEY_PATH],
     );

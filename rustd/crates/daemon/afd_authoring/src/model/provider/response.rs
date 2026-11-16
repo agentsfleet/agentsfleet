@@ -1,8 +1,12 @@
 //! Usage is authoritative before any untrusted text or proposal is interpreted.
 
-use af_fleet_runtime::Definition;
+use af_fleet_runtime::{
+    Definition,
+    definition::{ConfigOp, EditBatch, InstructionEdit},
+};
 use af_wire::authoring::{
-    ENVELOPE_BYTES_MAX, ModelResult, ModelUsage, ProposalCall, ProposalRejection, RefusalDetail,
+    ENVELOPE_BYTES_MAX, ModelResult, ModelUsage, Proposal, ProposalCall, ProposalRejection,
+    RefusalDetail,
 };
 use afd_credential::provider::RegisteredModel;
 use garde::Validate as _;
@@ -27,6 +31,10 @@ mod corrections;
 #[cfg(test)]
 #[path = "tests/first_setup.rs"]
 mod first_setup;
+
+#[cfg(test)]
+#[path = "tests/edit_refusal.rs"]
+mod edit_refusal;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -233,10 +241,17 @@ fn proposal(
             .and_then(|arguments| super::edits::native(arguments.proposal, candidate, said))
     };
     let call = match converted {
-        Ok(proposal) => ProposalCall::Proposed {
-            id: id.into(),
-            proposal,
-        },
+        Ok(proposal) => edit_refusal(&proposal, candidate).map_or_else(
+            || ProposalCall::Proposed {
+                id: id.into(),
+                proposal,
+            },
+            |detail| ProposalCall::Refused {
+                id: id.into(),
+                reason: ProposalRejection::InvalidArguments,
+                detail: Some(detail),
+            },
+        ),
         Err(reason) => ProposalCall::Refused {
             id: id.into(),
             reason,
@@ -256,6 +271,34 @@ fn proposal(
 fn checked(arguments: &serde_json::Value) -> Option<RefusalDetail> {
     let definition = arguments.get(super::PROPOSAL_ARGUMENT)?.get("definition")?;
     let failure = Definition::parse(&definition.to_string()).err()?;
+    RefusalDetail::new(failure.field(), &failure.told())
+}
+
+/// The native checker's own account of an edit that would leave the setup invalid.
+///
+/// Commit refuses the same edit with a status and no reason, which leaves the
+/// model guessing; applying it to the candidate it edits names the rule broken.
+/// The crate's serde lift drops the value serde quotes, so the sentence names
+/// keys and rules, never a value. Commit still validates.
+fn edit_refusal(
+    proposal: &Proposal<Definition, ConfigOp, InstructionEdit>,
+    candidate: Option<&crate::types::Candidate>,
+) -> Option<RefusalDetail> {
+    let Proposal::Edit {
+        config_ops,
+        instruction_edits,
+        ..
+    } = proposal
+    else {
+        return None;
+    };
+    let failure = candidate?
+        .definition
+        .edit(EditBatch {
+            config_ops: config_ops.clone(),
+            instruction_edits: instruction_edits.clone(),
+        })
+        .err()?;
     RefusalDetail::new(failure.field(), &failure.told())
 }
 
