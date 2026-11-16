@@ -164,6 +164,7 @@ N/A: no product or operator signal changes. Codes, session identifiers and crede
 | R2 | Pet preview, callback completion and policy | `make test-unit-cli` | exit 0 | P0 | ✅ 2,357 passed, 17 skipped, 0 failed (2,335 baseline, +22 before final test additions) |
 | R3 | Changed package lint and version | `env -u AGENTSFLEET_UI_ENV_FILE make lint-app lint-cli lint-design-system check-version` | exit 0 | P0 | ✅ app, CLI and design-system lint passed; all versions match 0.77.0 |
 | R4 | Rendered app paths | `make dry-app` | exit 0 | P1 | |
+| R5 | Public login bundle | `cd ui/packages/app && bun run build && bun run size` | exit 0, at most 240 KiB | P1 | ✅ local build and all budgets passed; login route 243.32 kB gzip versus 245.76 kB limit |
 | S1 | Work gate | `orly gate work` | exit 0 | P0 | ✅ repo.config passed |
 | S2 | Verification gate | `orly gate verify` | exit 0 | P0 | ✅ passed with task-owned CMake, libclang and the system C include directory |
 
@@ -211,5 +212,8 @@ N/A: no files deleted. Update every active test locator for the retired success 
 - **Review fixes:** the new page uses the current Phosphor icon package. Manual completion confirms authorization rather than claiming credential persistence. A terminal resize stops full-preview redraws and relative cursor cleanup. Regression tests failed for the previous wording and resize handling before these repairs. Standards review prompted declaration ordering, unchanged fixture extraction, and coverage of resize before the next redraw.
 - **Current visual proof:** twelve actual-component Chromium renders passed at 320px and 768px in light and dark appearances, including the pending code step. The current manual authorization text fits; callback policy is unchanged. `final-login-render.log` records each output. Fresh pseudo-terminal probes observed all three Orbit poses, exit 0, owned-row cleanup, and no cursor-relative writes after resizing to 40 columns and 10 rows. `final-pet-terminal.log` records both passes.
 - **Reviews:** the native adversarial review found no remaining defects after the three repairs; fixtures were reviewed in summary mode. The standards reviewer found no remaining issues against 244 screened rules. The docs standards review found none against 43 rules. Optional outside-model review was unavailable because that CLI is absent.
+- **PR validation follow-up:** the first exact-head PR gate stopped at local integration setup: QStash could not trust the cloud certificate chain. A task-owned Compose override adds that certificate bundle and removes the inherited HTTP proxy for NATS loopback health probes. Repository infrastructure and gates are unchanged.
+- **Bundle repair:** the first Actions app size check measured the public login route at 273.18 kB gzip, above its existing 245.76 kB limit. The observer now reuses the app’s existing Valibot schema validator. The same local build and size commands passed at 243.32 kB and 38 focused authentication tests passed; no bundle limit changed.
+- **Implementation PR:** https://github.com/agentsfleet/agentsfleet/pull/847 (draft while outstanding checks remain).
 - **Companion PR:** https://github.com/agentsfleet/docs/pull/250.
 - **Deferrals and transfers:** none.

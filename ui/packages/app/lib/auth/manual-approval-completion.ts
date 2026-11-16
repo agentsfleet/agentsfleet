@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as v from "valibot";
 
 export type ManualCompletion = { kind: "completed" } | { kind: "failed"; message: string };
 type ReadOutcome = "waiting" | "completed" | "failed";
@@ -12,7 +12,7 @@ const MAX_RESPONSE_BYTES = 4_096;
 const SESSION_CONSUMED_CODE = "UZ-AUTH-012";
 const EXPIRED_MESSAGE = "This sign-in expired. Start a new sign-in from your terminal.";
 const FAILED_MESSAGE = "This sign-in could not be confirmed. Check your terminal, or start a new sign-in.";
-const RefusalSchema = z.object({ error_code: z.string() });
+const RefusalSchema = v.object({ error_code: v.string() });
 
 /** The session read exposes completion without releasing any credential material. */
 export async function watchManualApprovalCompletion(sessionId: string, expiresAt: string,
@@ -47,8 +47,8 @@ async function readCompletion(sessionId: string, signal: AbortSignal): Promise<R
   });
   if (response.redirected) { await response.body?.cancel(); return "failed"; }
   if (response.status === 410) {
-    const body = RefusalSchema.safeParse(await boundedJson(response, signal));
-    return body.success && body.data.error_code === SESSION_CONSUMED_CODE ? "completed" : "failed";
+    const body = v.safeParse(RefusalSchema, await boundedJson(response, signal));
+    return body.success && body.output.error_code === SESSION_CONSUMED_CODE ? "completed" : "failed";
   }
   await response.body?.cancel();
   return response.status >= 400 && response.status < 500 && response.status !== 429 ? "failed" : "waiting";
