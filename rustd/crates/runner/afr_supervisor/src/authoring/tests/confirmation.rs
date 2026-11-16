@@ -83,10 +83,10 @@ async fn an_accepted_tool_only_edit_gets_a_conversational_follow_up() {
     assert_eq!(report["usage"]["calls"], 2);
 }
 
-// Value: protects=tool-only edits cannot bypass the physical-call or output allowance;
-// fails_when=an empty accepted edit fabricates completion or authorizes another provider send.
+// Value: protects=an accepted setup completes its message within the call and output allowance;
+// fails_when=the message fails after acceptance, the runner invents an answer or sends again.
 #[tokio::test]
-async fn a_tool_only_edit_without_a_follow_up_allowance_does_not_invent_an_answer() {
+async fn a_tool_only_edit_without_a_follow_up_allowance_completes_with_no_invented_answer() {
     for spent_output in [false, true] {
         let mut rig = rig(|call| match call.verb {
             Verb::AuthoringModel => tool_only(call),
@@ -101,9 +101,48 @@ async fn a_tool_only_edit_without_a_follow_up_allowance_does_not_invent_an_answe
             configured.limits.max_calls = 1;
         }
         let (_, report) = run(&mut rig, configured).await;
-        assert_eq!(report["outcome"], "failed");
+        assert_eq!(report["outcome"], "completed");
         assert!(report["answer"].is_null());
         assert_eq!(report["usage"]["knowledge"], "known");
         assert_eq!(report["usage"]["calls"], 1);
     }
+}
+
+// Value: protects=a refusal after an accepted setup cannot fail the message or prolong the turn;
+// fails_when=a later refused proposal reports failure, keeps its text or earns another call.
+#[tokio::test]
+async fn a_refusal_after_an_accepted_setup_ends_the_turn_completed() {
+    let mut rig = rig(|call| match call.verb {
+        Verb::AuthoringModel => {
+            let request: serde_json::Value =
+                serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+            if request["call_index"] == 1 {
+                tool_only(call)
+            } else {
+                assert_eq!(
+                    request["call_index"], 2,
+                    "one call follows an accepted setup"
+                );
+                result(
+                    call,
+                    &json!([{"id":"late","reason":"invalid_arguments"}]),
+                    false,
+                )
+            }
+        }
+        Verb::AuthoringActivity => json(&json!({"accepted":true,"replayed":false})),
+        Verb::AuthoringReport => ack(),
+        other => panic!("unexpected authority {other:?}"),
+    });
+    let (calls, report) = run(&mut rig, lease()).await;
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|c| c.verb == Verb::AuthoringActivity)
+            .count(),
+        1
+    );
+    assert_eq!(report["outcome"], "completed");
+    assert!(report["answer"].is_null());
+    assert_eq!(report["usage"]["calls"], 2);
 }

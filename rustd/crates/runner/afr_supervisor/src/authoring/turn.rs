@@ -7,6 +7,9 @@ use af_crypto::entropy::Entropy;
 use af_wire::authoring::{ContextRole, Lease, ModelCall, ModelMessage, ModelRequest, ModelResult};
 use serde_json::Value;
 
+/// The corrected proposals one message may send after a refusal (owner, Nov 16, 2026).
+const CORRECTIONS_MAX: u32 = 1;
+
 pub(super) struct Turn<'a> {
     pub(super) plane: &'a ControlPlane,
     pub(super) lease: &'a Lease<Value>,
@@ -19,6 +22,8 @@ impl Turn<'_> {
     pub(super) async fn run(&self) -> Result<Ending> {
         let mut messages = self.context()?;
         let mut activity_sequence = 1;
+        let mut accepted_any = false;
+        let mut corrections = 0;
         let max_calls = u32::try_from(self.lease.limits.max_calls.min(8))
             .map_err(|source| error::boundary("the authoring call allowance is invalid", source))?;
         for call_index in 1..=max_calls {
@@ -29,7 +34,7 @@ impl Turn<'_> {
             let remaining = budget.saturating_sub(meter.output_tokens.unwrap_or(budget));
             if remaining == 0 {
                 ended(call_index - 1, "output_budget");
-                break;
+                return Ok(settled(accepted_any));
             }
             let request = ModelCall {
                 capability_token: self.lease.model_access.token.clone(),
@@ -63,7 +68,7 @@ impl Turn<'_> {
             }
             if result.cut {
                 ended(call_index, "cut");
-                return Ok(Ending::incomplete());
+                return Ok(settled(accepted_any));
             }
             if result.proposal_calls.is_empty() {
                 ended(call_index, "answered");
@@ -74,6 +79,8 @@ impl Turn<'_> {
                 text: result.text,
                 proposal_calls: result.proposal_calls.clone(),
             });
+            // The one call after an accepted setup asks for its sentence and ends the turn.
+            let closing = accepted_any;
             let mut all_accepted = true;
             for call in result.proposal_calls {
                 let (message, accepted) =
@@ -82,14 +89,27 @@ impl Turn<'_> {
                 messages.push(message);
                 activity_sequence += u64::from(accepted);
                 all_accepted &= accepted;
+                accepted_any |= accepted;
             }
             if all_accepted && !answer.trim().is_empty() {
                 ended(call_index, "proposed_and_answered");
                 return Ok(Ending::completed(Some(answer)));
             }
+            if closing {
+                // Its text may describe a change that was just refused, so none is kept.
+                ended(call_index, "proposed");
+                return Ok(Ending::completed(None));
+            }
+            if !accepted_any {
+                if corrections == CORRECTIONS_MAX {
+                    ended(call_index, "corrections_exhausted");
+                    return Ok(Ending::incomplete());
+                }
+                corrections += 1;
+            }
         }
         ended(max_calls, "calls_exhausted");
-        Ok(Ending::incomplete())
+        Ok(settled(accepted_any))
     }
 
     fn context(&self) -> Result<Vec<ModelMessage>> {
@@ -135,6 +155,16 @@ fn record_call(call_index: u32, result: &ModelResult) {
         cut,
         compacted
     );
+}
+
+/// A message whose setup was accepted is done, whatever followed; the runner
+/// writes no answer of its own. Without one, the turn failed.
+fn settled(accepted: bool) -> Ending {
+    if accepted {
+        Ending::completed(None)
+    } else {
+        Ending::incomplete()
+    }
 }
 
 /// How a turn ended, after how many model calls.

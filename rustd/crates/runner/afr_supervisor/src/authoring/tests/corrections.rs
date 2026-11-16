@@ -117,8 +117,8 @@ async fn a_refusal_naming_a_field_tells_the_model_that_field() {
     assert_eq!(report["usage"]["calls"], 2);
 }
 
-// Value: protects=correction attempts retain usage and stop at the admitted limit;
-// fails_when=rejections are retried forever or reported as a completed answer.
+// Value: protects=a refused proposal gets one corrected attempt and its usage is kept;
+// fails_when=rejections are retried past that attempt or reported as a completed answer.
 #[tokio::test]
 async fn exhausted_corrections_fail_with_known_usage_and_no_activity_or_answer() {
     let mut rig = rig(|call| match call.verb {
@@ -132,13 +132,13 @@ async fn exhausted_corrections_fail_with_known_usage_and_no_activity_or_answer()
             .iter()
             .filter(|call| call.verb == Verb::AuthoringModel)
             .count(),
-        8
+        2
     );
     assert_eq!(report["outcome"], "failed");
     assert_eq!(report["failure_reason"], "provider_failed");
     assert_eq!(report["usage"]["knowledge"], "known");
-    assert_eq!(report["usage"]["calls"], 8);
-    assert_eq!(report["usage"]["provider_cost_nanos"], "8");
+    assert_eq!(report["usage"]["calls"], 2);
+    assert_eq!(report["usage"]["provider_cost_nanos"], "2");
     assert!(report.get("answer").is_none_or(Value::is_null));
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(rig.runs.load(Ordering::SeqCst), 0);
