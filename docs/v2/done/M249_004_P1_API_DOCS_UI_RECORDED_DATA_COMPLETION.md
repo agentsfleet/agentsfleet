@@ -588,6 +588,10 @@ Typed "Save" still depends on the edit check: without a decision model it fails,
 
 > Owner (Indy), on the scroll model: "Match Claude"
 
+- **Phone composer pinned (Nov 16, 2026):** without follow, a long reply pushed the phone composer and Jump to latest below the screen, because the composer was sticky only at 681 px and wider. The owner chose to pin it at every width, which reverses M249 visual decision D2 ("Phone composer scrolls with the page", `docs/v2/evidence/M249_EXCEPTIONS.md`), made while the thread still followed the bottom.
+
+> Owner (Indy), on the phone composer: "Pin it on phones (Recommended)"
+
 > Owner (Indy): "Just donot clutter the code, make it small modular and performant in the Nextjs"
 
 Every dev deploy now seeds the `typesafe` key into dev's platform workspace through `platform_secret_sync.sh`. Dev also needs the decision model in its catalogue and named in its runners' policy before typed "Save" can finish there.

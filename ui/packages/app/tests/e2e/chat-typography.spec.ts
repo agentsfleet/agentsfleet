@@ -126,11 +126,21 @@ test("opens at the latest turn, lifts a sent turn to the top and holds it while 
   await expect.poll(fromBottom).toBeGreaterThan(1);
   expect(Math.abs(await scrollTop() - held)).toBeLessThanOrEqual(1);
   await expect(page.getByRole("button", {name: "Jump to latest"})).toBeVisible();
+  // The composer stays on the chat's floor and inside the window over the reply,
+  // at phone width too (owner, Nov 16, 2026). NaN fails the bound if either box is gone.
+  const composerOffFloor = () => page.evaluate(() => {
+    const root = document.querySelector('[data-testid="fleet-thread-root"]')?.getBoundingClientRect();
+    const footer = document.querySelector('[data-testid="fleet-chat-footer"]')?.getBoundingClientRect();
+    if (!root || !footer) return Number.NaN;
+    return Math.max(Math.abs(root.bottom - footer.bottom), footer.bottom - window.innerHeight);
+  });
+  expect(await composerOffFloor()).toBeLessThanOrEqual(1);
   for (const size of [{width: roomy.width, height: 360}, roomy]) {
     await page.setViewportSize(size);
     await painted();
     expect(Math.abs(await scrollTop() - held)).toBeLessThanOrEqual(1);
     expect(Math.abs(await sentTop())).toBeLessThanOrEqual(1);
+    expect(await composerOffFloor()).toBeLessThanOrEqual(1);
   }
   await page.getByRole("button", {name: "Jump to latest"}).click();
   await expect.poll(fromBottom).toBeLessThanOrEqual(1);
