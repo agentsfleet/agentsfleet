@@ -78,7 +78,7 @@ dependencies = [
  "af_validate",
  "base64 0.23.1",
  "hex",
- "jiff",
+ "jiff 1.0.0",
  "serde",
  "serde_ignored",
  "serde_json",
@@ -100,7 +100,7 @@ dependencies = [
  "getrandom 0.4.3",
  "hex",
  "hmac",
- "jiff",
+ "jiff 1.0.0",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -123,7 +123,7 @@ dependencies = [
  "h2",
  "hyper",
  "hyper-util",
- "jiff",
+ "jiff 1.0.0",
  "rcgen",
  "regex",
  "regex-automata",
@@ -189,7 +189,7 @@ dependencies = [
  "csv",
  "dashmap",
  "hex",
- "jiff",
+ "jiff 1.0.0",
  "opentelemetry 0.33.1",
  "opentelemetry_sdk 0.33.1",
  "posthog-rs",
@@ -328,7 +328,7 @@ dependencies = [
  "const_format",
  "garde",
  "insta",
- "jiff",
+ "jiff 1.0.0",
  "regex",
  "serde",
  "serde_json",
@@ -347,7 +347,7 @@ dependencies = [
  "afd_billing",
  "afd_db",
  "futures-util",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "serde",
  "serde_json",
@@ -371,7 +371,7 @@ dependencies = [
  "afd_state",
  "async-trait",
  "hex",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "sha2 0.11.1",
  "sqlx",
@@ -435,7 +435,7 @@ dependencies = [
  "http",
  "hyper",
  "hyper-util",
- "jiff",
+ "jiff 1.0.0",
  "jsonwebtoken",
  "reqwest",
  "serde",
@@ -471,7 +471,7 @@ dependencies = [
  "afd_vault",
  "axum",
  "http",
- "jiff",
+ "jiff 1.0.0",
  "serde",
  "serde_json",
  "tracing",
@@ -494,7 +494,7 @@ dependencies = [
  "axum",
  "garde",
  "http",
- "jiff",
+ "jiff 1.0.0",
  "serde_json",
  "tracing",
  "utoipa",
@@ -558,7 +558,7 @@ dependencies = [
  "futures-util",
  "garde",
  "http",
- "jiff",
+ "jiff 1.0.0",
  "serde",
  "serde_json",
  "tokio",
@@ -574,7 +574,7 @@ dependencies = [
  "af_validate",
  "af_wire",
  "garde",
- "jiff",
+ "jiff 1.0.0",
  "serde",
  "serde_json",
  "utoipa",
@@ -593,7 +593,7 @@ dependencies = [
  "afd_db",
  "afd_events",
  "afd_fleet_lifecycle",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "serde_json",
  "sqlx",
@@ -651,7 +651,7 @@ dependencies = [
  "garde",
  "hex",
  "http",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "moka",
  "proc-macro2",
@@ -703,7 +703,7 @@ dependencies = [
  "afd_vault",
  "futures-util",
  "hdrhistogram",
- "jiff",
+ "jiff 1.0.0",
  "opentelemetry 0.33.1",
  "opentelemetry_sdk 0.33.1",
  "reqwest",
@@ -728,7 +728,7 @@ dependencies = [
  "async-trait",
  "base64 0.23.1",
  "futures-util",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "serde",
  "serde_json",
@@ -773,7 +773,7 @@ dependencies = [
  "base64 0.23.1",
  "garde",
  "hex",
- "jiff",
+ "jiff 1.0.0",
  "reqwest",
  "serde",
  "serde_json",
@@ -801,7 +801,7 @@ dependencies = [
  "afd_db",
  "afd_vault",
  "axum",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "jsonwebtoken",
  "moka",
@@ -838,7 +838,7 @@ dependencies = [
  "base64 0.23.1",
  "const_format",
  "garde",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "jsonwebtoken",
  "philiprehberger-cron-parser",
@@ -864,7 +864,7 @@ dependencies = [
  "afd_authoring",
  "afd_fleet",
  "backon",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "sqlx",
  "thiserror 2.0.21",
@@ -889,7 +889,7 @@ dependencies = [
  "afd_state",
  "base64 0.23.1",
  "futures-util",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "serde",
  "serde_json",
@@ -940,7 +940,7 @@ dependencies = [
  "garde",
  "hex",
  "http",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "jsonwebtoken",
  "moka",
@@ -972,7 +972,7 @@ dependencies = [
  "afd_api_wire",
  "afd_db",
  "afd_state",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "moka",
  "sqlx",
@@ -989,7 +989,7 @@ dependencies = [
  "afd_billing",
  "afd_db",
  "afd_state",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "sqlx",
  "thiserror 2.0.21",
@@ -1012,7 +1012,7 @@ dependencies = [
  "afd_events",
  "afd_fleet_lifecycle",
  "base64 0.23.1",
- "jiff",
+ "jiff 1.0.0",
  "serde",
  "serde_json",
  "sqlx",
@@ -1045,7 +1045,7 @@ dependencies = [
  "garde",
  "http",
  "http-body-util",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "parking_lot",
  "serde",
@@ -1096,7 +1096,7 @@ dependencies = [
  "garde",
  "hex",
  "http",
- "jiff",
+ "jiff 1.0.0",
  "percent-encoding",
  "serde",
  "serde_json",
@@ -1116,7 +1116,7 @@ dependencies = [
  "afd_auth",
  "aws-lc-rs",
  "base64 0.23.1",
- "jiff",
+ "jiff 1.0.0",
  "jsonwebtoken",
  "moka",
  "reqwest",
@@ -1145,7 +1145,7 @@ dependencies = [
  "afd_outbound",
  "afd_vault",
  "hex",
- "jiff",
+ "jiff 1.0.0",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -1187,7 +1187,7 @@ dependencies = [
  "afd_db",
  "afd_events",
  "garde",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "sqlx",
  "thiserror 2.0.21",
@@ -1210,7 +1210,7 @@ dependencies = [
  "backon",
  "dashmap",
  "http",
- "jiff",
+ "jiff 1.0.0",
  "reqwest",
  "serde",
  "serde_json",
@@ -1238,7 +1238,7 @@ dependencies = [
  "afd_state",
  "const_format",
  "garde",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "serde",
  "serde_json",
@@ -1296,7 +1296,7 @@ dependencies = [
  "base64 0.23.1",
  "futures-util",
  "garde",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "petname",
  "serde",
@@ -1319,7 +1319,7 @@ dependencies = [
  "afd_db",
  "afd_events",
  "garde",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "serde",
  "serde_json",
@@ -1355,7 +1355,7 @@ dependencies = [
  "garde",
  "guffbolt",
  "hex",
- "jiff",
+ "jiff 1.0.0",
  "memmap2",
  "reqwest",
  "schemars 1.2.3",
@@ -1402,7 +1402,7 @@ dependencies = [
  "aho-corasick",
  "async-trait",
  "garde",
- "jiff",
+ "jiff 1.0.0",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -1435,7 +1435,7 @@ dependencies = [
  "hex",
  "hyper",
  "hyper-util",
- "jiff",
+ "jiff 1.0.0",
  "landlock",
  "libc",
  "libtest-mimic",
@@ -1496,7 +1496,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
- "jiff",
+ "jiff 1.0.0",
  "parking_lot",
  "rcgen",
  "reqwest",
@@ -1553,7 +1553,7 @@ dependencies = [
  "bytes",
  "garde",
  "html2text",
- "jiff",
+ "jiff 1.0.0",
  "rustix 1.1.6",
  "schemars 1.2.3",
  "serde",
@@ -1581,7 +1581,7 @@ dependencies = [
  "afr_tools",
  "axum",
  "clap",
- "jiff",
+ "jiff 1.0.0",
  "serde_json",
  "tempfile",
  "tokio",
@@ -1647,7 +1647,7 @@ dependencies = [
  "garde",
  "hyper",
  "hyper-util",
- "jiff",
+ "jiff 1.0.0",
  "jiff-sqlx",
  "opentelemetry 0.33.1",
  "opentelemetry-appender-tracing",
@@ -3958,7 +3958,7 @@ dependencies = [
  "bstr",
  "gix-error",
  "itoa",
- "jiff",
+ "jiff 0.2.46",
 ]
 
 [[package]]
@@ -5305,12 +5305,12 @@ checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 
 [[package]]
 name = "jiff"
-version = "0.2.45"
+version = "0.2.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34e6d07feb763c647199bd9072192b9639da3b5ffde49afd73c08b1d5ceb1469"
+checksum = "175dc66334db3b9ab9985bf8b61cfed50dc16d20964bb47f9e479adcae984a7f"
 dependencies = [
- "jiff-core",
- "jiff-static",
+ "jiff-core 0.1.8",
+ "jiff-static 0.2.46",
  "jiff-tzdb-platform",
  "log",
  "portable-atomic",
@@ -5320,34 +5320,69 @@ dependencies = [
 ]
 
 [[package]]
-name = "jiff-core"
-version = "0.1.7"
+name = "jiff"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c0dfb57e3485bee979b355302992ea9c38331a94f6ccce72c2bf0077d6c9310"
+checksum = "9cc767b5763de45e810109520123bb2829a653f3a7ed9be40b2bc4f81158f595"
+dependencies = [
+ "jiff-core 1.0.0",
+ "jiff-static 1.0.0",
+ "log",
+ "portable-atomic",
+ "portable-atomic-util",
+ "serde_core",
+]
+
+[[package]]
+name = "jiff-core"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e599b80292e597019b8b3e392de3f4bea2959ddfb8c7dff60e035e9e311a2c1b"
+dependencies = [
+ "log",
+]
+
+[[package]]
+name = "jiff-core"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "894f7ac42105f584100691b3bf6e6b92dd12fcfa225f6c397f95c8a94b47b68f"
 dependencies = [
  "log",
 ]
 
 [[package]]
 name = "jiff-sqlx"
-version = "0.2.2"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6639870bba69eee8eb23555a5fe8c554f7731c5692c1a4abf834eba77414491"
+checksum = "a4996ad290ff7f7081becdda47e28556fbebb81618c599eac5d09182b5a60e38"
 dependencies = [
- "jiff",
+ "jiff 1.0.0",
  "sqlx",
 ]
 
 [[package]]
 name = "jiff-static"
-version = "0.2.45"
+version = "0.2.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d93b8289f811027d18f228ae410cbadc766419d50b79185fa0084b10cc172d03"
+checksum = "c7b1af7547d47354bc438d797e3854601bde8f8d185780c5ba4ab27afa54f1ba"
 dependencies = [
- "jiff-core",
+ "jiff-core 0.1.8",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "jiff-static"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "955491488dc99b572ea6d67b172dcd98787d00744b1fb44a5689b4e6413695a6"
+dependencies = [
+ "jiff-core 1.0.0",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.10",
 ]
 
 [[package]]
@@ -7511,7 +7546,7 @@ dependencies = [
  "hex",
  "indexmap 1.9.3",
  "indexmap 2.14.2",
- "jiff",
+ "jiff 0.2.46",
  "schemars 0.9.0",
  "schemars 1.2.3",
  "serde_core",

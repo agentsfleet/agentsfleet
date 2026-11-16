@@ -241,7 +241,10 @@ fn version_stamp(max_updated: Option<jiff::Timestamp>) -> String {
     let newest = max_updated.map_or(jiff::Timestamp::UNIX_EPOCH, |at| {
         at.max(jiff::Timestamp::UNIX_EPOCH)
     });
-    newest.to_zoned(jiff::tz::TimeZone::UTC).date().to_string()
+    newest
+        .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+        .date()
+        .to_string()
 }
 
 mod input;

@@ -35,8 +35,14 @@ fn daily(rows: &[store::Aggregate], window: store::Window) -> Vec<wire::Daily> {
         .iter()
         .filter_map(|row| row.day.map(|day| (day, row)))
         .collect();
-    let from = window.from.to_zoned(jiff::tz::TimeZone::UTC).date();
-    let through = window.through.to_zoned(jiff::tz::TimeZone::UTC).date();
+    let from = window
+        .from
+        .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+        .date();
+    let through = window
+        .through
+        .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+        .date();
     from.series(jiff::Span::new().days(1))
         .take_while(|day| *day <= through)
         .map(|day| wire::Daily {

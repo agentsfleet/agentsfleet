@@ -101,7 +101,7 @@ fn window(period: &str, through: Option<&str>, now: Timestamp) -> Result<Window,
     if through > now {
         return Err(Refusal::malformed(DETAIL_QUERY));
     }
-    let date = through.to_zoned(TimeZone::UTC).date();
+    let date = through.to_zoned_datetime(TimeZone::UTC).date();
     let date = match period {
         BILLING_PERIOD_MONTH => date.first_of_month(),
         BILLING_PERIOD_TODAY => date,
@@ -112,7 +112,7 @@ fn window(period: &str, through: Option<&str>, now: Timestamp) -> Result<Window,
     };
     let from = date
         .at(0, 0, 0, 0)
-        .to_zoned(TimeZone::UTC)
+        .to_zoned_datetime(TimeZone::UTC)
         .map_err(|_range| Refusal::malformed(DETAIL_QUERY))?
         .timestamp();
     Ok(Window { from, through })

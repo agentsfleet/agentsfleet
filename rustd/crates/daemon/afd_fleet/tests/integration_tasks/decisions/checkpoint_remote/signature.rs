@@ -43,10 +43,10 @@ pub(super) fn assert_bound(upload: &CheckpointTransfer) {
             .expect("required signature parameter"),
     )
     .expect("signature date")
-    .to_zoned(jiff::tz::TimeZone::UTC)
+    .to_zoned_datetime(jiff::tz::TimeZone::UTC)
     .expect("UTC signature timestamp")
     .timestamp();
-    let time: SystemTime = timestamp.into();
+    let time = af_core::clock::system_time(timestamp);
     let lifetime = Duration::from_secs(
         query
             .get("X-Amz-Expires")
