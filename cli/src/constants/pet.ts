@@ -1,3 +1,14 @@
 export const PET_COMMAND = "pet";
-export const PET_NAME = "Scout";
+export const PET_NAME = "Orbit";
 export const PET_PREVIEW_MS = 5000;
+export const PET_FRAME_MS = 135;
+export const PET_COLUMNS = 34;
+export const PET_ROWS = 18;
+export const PET_MIN_COLUMNS = 61;
+export const PET_MIN_ROWS = 20;
+export const PET_IDLE_FRAMES = 12;
+export const PET_WORKING_END_FRAME = 30;
+export const PET_DISPLAY = { compact: "compact", preview: "preview" } as const;
+export type PetDisplay = (typeof PET_DISPLAY)[keyof typeof PET_DISPLAY];
+export const PET_STATE = { idle: "idle", working: "working", done: "done" } as const;
+export type PetState = (typeof PET_STATE)[keyof typeof PET_STATE];

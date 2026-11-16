@@ -54,6 +54,13 @@ and is versioned with each release:
 `agentsfleet --help` and `agentsfleet <command> --help` print the same surface
 from the binary you actually have installed.
 
+Run `agentsfleet pet` to watch Orbit, the terminal jellyfish, for five seconds.
+The preview shows Orbit floating, working and celebrating. Press Ctrl+C to stop it.
+
+Small terminals use a compact jellyfish, and `AGENTSFLEET_REDUCED_MOTION=1` disables animation.
+Resizing the terminal stops the full preview's redraws to protect surrounding output.
+`agentsfleet pet --json` returns `{"name":"Orbit"}` without signing in or making a request.
+
 ## Development
 
 Building, testing, and the repository layout: [`docs/development.md`](https://github.com/agentsfleet/agentsfleet/blob/main/docs/development.md).

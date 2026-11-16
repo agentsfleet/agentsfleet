@@ -2,7 +2,7 @@ export const PAGE_STATUS = { success: "success", denied: "denied", failed: "fail
 export type CallbackPageStatus = (typeof PAGE_STATUS)[keyof typeof PAGE_STATUS];
 
 const PAGE_COPY = {
-  [PAGE_STATUS.success]: ["Terminal authorized", "You can return to your terminal."],
+  [PAGE_STATUS.success]: ["Unleash your agents.", "You're signed in. Return to your terminal and put your agents to work."],
   [PAGE_STATUS.denied]: ["Authorization denied", "Your terminal has not been signed in. You can close this page."],
   [PAGE_STATUS.failed]: ["Sign-in did not complete", "Return to your terminal for details, then start a new sign-in."],
 } as const;
@@ -28,20 +28,22 @@ const STYLE = [
   "@media (prefers-color-scheme:dark){:root{--bg:#121212;--card:#1a1a1a;--border:#2c2c2c;--text:#f2f0e9;--muted:#a3a39b;--accent:#b8f0ce;--danger:#f2a49c}}",
   "*{box-sizing:border-box}",
   'body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);font-family:"Instrument Sans",system-ui,sans-serif}',
-  "main{width:min(26rem,calc(100vw - 2rem));padding:2rem;border:1px solid var(--border);border-radius:12px;background:var(--card);text-align:center}",
+  "main{width:min(25rem,calc(100vw - 2rem));padding:1.875rem 1.75rem 1.625rem;border:1px solid var(--border);border-radius:12px;background:var(--card);text-align:center}",
   ".brand{display:inline-flex;align-items:center;gap:.5rem;font-size:1.125rem;font-weight:500;letter-spacing:-.01em}",
   ".brand svg{width:28px;height:28px;color:var(--accent)}",
-  ".status{margin:1.5rem auto 1rem;width:48px;height:48px;border:1.5px solid currentColor;border-radius:50%;display:grid;place-items:center}",
+  ".status{margin:1.6875rem auto 1.125rem;width:48px;height:48px;border:1.5px solid currentColor;border-radius:50%;display:grid;place-items:center}",
   ".status svg{width:24px;height:24px}",
-  ".success{color:var(--accent)}.denied,.failed{color:var(--danger)}",
-  "h1{margin:0 0 .5rem;font-size:1.375rem;font-weight:600}",
-  "p{margin:0;line-height:1.6;color:var(--muted)}",
+  ".success{color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--card))}.denied,.failed{color:var(--danger)}",
+  "h1{margin:0 0 .75rem;font-size:1.75rem;font-weight:500;letter-spacing:-.015em}",
+  "p{margin:0;font-size:.875rem;line-height:1.7;color:var(--muted)}",
+  ".footer{border-top:1px solid var(--border);margin-top:1.5625rem;padding-top:1.125rem;font-size:.75rem}",
 ].join("");
 
 export function callbackPage(status: CallbackPageStatus): Response {
   const [title, message] = PAGE_COPY[status];
+  const footer = status === PAGE_STATUS.success ? '<p class="footer">You can close this tab.</p>' : "";
   const icon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${STATUS_ICON[status]}</svg>`;
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · agentsfleet</title><style>${STYLE}</style></head><body><main><div class="brand">${BRAND_MARK}<span>agentsfleet</span></div><div class="status ${status}">${icon}</div><h1>${title}</h1><p>${message}</p></main></body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · agentsfleet</title><style>${STYLE}</style></head><body><main><div class="brand">${BRAND_MARK}<span>agentsfleet</span></div><div class="status ${status}">${icon}</div><h1>${title}</h1><p>${message}</p>${footer}</main></body></html>`;
   return new Response(html, {
     headers: {
       "Content-Type": "text/html; charset=utf-8",

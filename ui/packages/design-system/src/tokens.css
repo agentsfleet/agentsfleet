@@ -160,6 +160,7 @@
   --control-hover: .94;
   --blur-dialog: 3px;
   --lh-dialog-description: 22px;
+  --max-w-auth-card: 25rem;
   --max-w-wide: 860px;
   --max-w-content: 1280px;
   --max-w-tagline: 28ch;

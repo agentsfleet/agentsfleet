@@ -62,7 +62,7 @@ describe("local pet preview", () => {
   it("works without credentials or network access and keeps JSON output clean", async () => {
     const result = await runFleetctl(["pet", "--json"], {env: emptyEnv()});
     assert.equal(result.code, 0);
-    assert.deepEqual(JSON.parse(result.stdout), {name: "Scout"});
+    assert.deepEqual(JSON.parse(result.stdout), {name: "Orbit"});
     assert.equal(result.stderr, "");
     assertNoConnectionError(result, ["pet", "--json"]);
   });

@@ -9,6 +9,7 @@
 // is intentionally side-effect-only — the analytics correlation is
 // driven by the command code, not by this service.
 
+import type { PetDisplay } from "../constants/pet.ts";
 import { Effect, Layer, Context, type Scope } from "effect";
 import { CliConfig } from "./config.ts";
 import { startProgress } from "../output/progress.ts";
@@ -78,7 +79,7 @@ export interface OutputShape {
   readonly stdoutIsTty: boolean;
   readonly intro: (msg: string) => Effect.Effect<void>;
   readonly info: (msg: string) => Effect.Effect<void>;
-  readonly progress: (label: string) => Effect.Effect<void, never, Scope.Scope>;
+  readonly progress: (label: string, display?: PetDisplay) => Effect.Effect<void, never, Scope.Scope>;
   /**
    * One result, in whichever register is active.
    *
@@ -136,7 +137,7 @@ export const makeStdioOutput = ({ stdout, stderr, format, env }: OutputConfig): 
   format,
   intro: (msg) => Effect.sync(() => writeLine(stdout, `\n${msg}`)),
   info: (msg) => Effect.sync(() => writeLine(stdout, msg)),
-  progress: (label) => startProgress(stderr, label, format === OUTPUT_FORMAT.text && isTty(stdout), env),
+  progress: (label, display) => startProgress(stderr, label, format === OUTPUT_FORMAT.text && isTty(stdout), env, display),
   // The one call that answers both registers. In json the payload IS the
   // answer, so the human sentence is dropped rather than wrapped — a script
   // parsing this wants the record, not a record with a message in it.

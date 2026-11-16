@@ -2,6 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { BRAND_MARK_PATH, PAGE_STATUS, callbackPage } from "../src/commands/auth/login-callback-page.ts";
 
 describe("the login callback page", () => {
+  test("renders the approved completion message", async () => {
+    const html = await callbackPage(PAGE_STATUS.success).text();
+    expect(html).toContain("<h1>Unleash your agents.</h1>");
+    expect(html).toContain("You're signed in. Return to your terminal and put your agents to work.");
+    expect(html).toContain("You can close this tab.");
+  });
+
   test("every outcome carries the mark, its heading and an icon, and loads nothing", async () => {
     for (const status of Object.values(PAGE_STATUS)) {
       const html = await callbackPage(status).text();

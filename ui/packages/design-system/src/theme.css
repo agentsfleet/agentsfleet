@@ -224,6 +224,7 @@
   --container-search: var(--max-w-search);
   --radius-chip: var(--r-chip);
   --leading-dialog-description: var(--lh-dialog-description);
+  --container-auth-card: var(--max-w-auth-card);
   --container-wide: var(--max-w-wide);
   --container-content: var(--max-w-content);
   --container-tagline: var(--max-w-tagline);

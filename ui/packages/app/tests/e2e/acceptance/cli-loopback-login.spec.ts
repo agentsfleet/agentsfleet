@@ -91,7 +91,7 @@ for (const initiallySignedIn of [true, false]) {
       expect(delivered.method()).toBe("POST");
       expect(delivered.headers().origin).toBe(new URL(baseURL).origin);
       expect(delivered.headers()["content-type"]).toBe("application/x-www-form-urlencoded");
-      await expect(page.getByRole("heading", { name: "Terminal authorized" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Unleash your agents.", exact: true })).toBeVisible();
       expect(await cli.exited).toBe(0);
       expect(cli.output.includes("Finalizing sign-in…")).toBe(true);
       expect(cli.output.includes("signed in as")).toBe(true);

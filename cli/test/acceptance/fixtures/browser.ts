@@ -110,7 +110,7 @@ async function approveLogin(page: Page, opts: CliAuthHandoffOptions, sessionId: 
     }
   }
   await approve.click();
-  const completed = page.getByRole("heading", {name: "Terminal authorized", exact: true});
+  const completed = page.getByRole("heading", {name: "Unleash your agents.", exact: true});
   const codeOutput = page.getByLabel(VERIFICATION_CODE_LABEL).filter({hasText: VERIFICATION_CODE_RE});
   await completed.or(codeOutput).first().waitFor({ state: "visible", timeout: timeoutMs });
   if (await completed.isVisible()) return null;
