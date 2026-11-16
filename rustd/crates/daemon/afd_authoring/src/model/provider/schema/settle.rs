@@ -1,4 +1,5 @@
-//! A first setup's omitted settings mean none before the native checker reads it.
+//! What the model's call means before the native checker reads it: a first setup's
+//! omitted settings mean none, and an edit's list arrives as a list.
 //!
 //! The form tells the model to leave out what the person did not ask for. A
 //! stored document must still say outright that a fleet has no tools, and an
@@ -6,16 +7,30 @@
 //! is not "every repository". In a model's first setup only, an omitted tool
 //! list and an empty repository list both mean none, so the model is never
 //! refused for doing what the form asked.
+//!
+//! The model writes a list it was not told is a list as an object that wraps
+//! each entry in `item`, its tool-call encoding for repeated elements. An edit's
+//! `value` has no declared type, so it is the one place that happens; replaying
+//! the same model over the typed first-setup form wrote real arrays every time.
 
 use serde_json::{Map, Value, json};
 
 use super::{
-    KEY_CONFIG, KEY_DEFINITION, KEY_KIND, KEY_POLICY, KEY_REPOSITORIES, KEY_TOOLS, KIND_INITIALIZE,
-    PROPOSAL_ARGUMENT, REPOSITORY_SETTINGS,
+    KEY_CONFIG, KEY_CONFIG_OPS, KEY_DEFINITION, KEY_KIND, KEY_POLICY, KEY_REPOSITORIES, KEY_TOOLS,
+    KEY_VALUE, KIND_INITIALIZE, PROPOSAL_ARGUMENT, REPOSITORY_SETTINGS,
 };
 
-/// The tool arguments with a first setup's omissions spelled as none.
+/// The key the model wraps a list's entries in.
+const ITEM: &str = "item";
+
+/// The tool arguments with a first setup's omissions spelled as none and each
+/// edited value's wrapped list unwrapped.
 pub(in crate::model::provider) fn settle(mut arguments: Value) -> Value {
+    for operation in edit_operations(&mut arguments) {
+        if let Some(value) = operation.get_mut(KEY_VALUE) {
+            unwrap_item(value);
+        }
+    }
     if let Some(settings) = first_setup_settings(&mut arguments) {
         settings.entry(KEY_TOOLS).or_insert_with(|| json!([]));
         if settings
@@ -30,6 +45,31 @@ pub(in crate::model::provider) fn settle(mut arguments: Value) -> Value {
         }
     }
     arguments
+}
+
+/// `{"item": entry}` is the list `[entry]`, and `{"item": [entries]}` is that list.
+fn unwrap_item(value: &mut Value) {
+    let Some(entries) = value
+        .as_object_mut()
+        .filter(|members| members.len() == 1)
+        .and_then(|members| members.remove(ITEM))
+    else {
+        return;
+    };
+    *value = match entries {
+        Value::Array(list) => Value::Array(list),
+        entry => Value::Array(vec![entry]),
+    };
+}
+
+/// The configuration operations of an edit; a first setup or a malformed call has none.
+fn edit_operations(arguments: &mut Value) -> impl Iterator<Item = &mut Value> {
+    arguments
+        .get_mut(PROPOSAL_ARGUMENT)
+        .and_then(|proposal| proposal.get_mut(KEY_CONFIG_OPS))
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .flatten()
 }
 
 /// The `x-agentsfleet` block of a first setup; an edit or a malformed call has none.

@@ -193,17 +193,24 @@ fn described(mut schema: Value, description: &str) -> Value {
     schema
 }
 
-/// Where a setting's path starts and how an absent one is added, with a path that works.
+/// Where a setting's path starts and how a list grows, with paths that work.
 const PATH_HELP: &str = "JSON Pointer from the document root. It starts with /config, such as /config/x-agentsfleet/budget/daily_nanos, \
-    or is /description. Add a setting that is absent as a new member holding its whole value, such as /config/x-agentsfleet/triggers \
-    with the list. /- at the end of a path appends to a list that exists.";
+    or is /description. To add to a list that exists, end the path with /- and give one item, such as /config/x-agentsfleet/triggers/-. \
+    A setting that is absent is added as a new member holding its whole value, a JSON array for a list, \
+    such as /config/x-agentsfleet/triggers with [one trigger].";
+
+/// What an edit's value looks like, since its schema declares no type: a trigger as in the first setup, and a list as an array.
+const VALUE_HELP: &str = "The new value, shaped as in the first setup. A trigger is \
+    {\"type\":\"cron\",\"schedule\":\"0 9 * * *\",\"timezone\":\"UTC\",\"message\":\"Daily check\"}. \
+    With a path ending /- the value is that one object; for a list written whole it is a JSON array of them, \
+    never an object wrapping an item. A budget amount is a decimal string of nanos.";
 
 fn config_operation() -> Value {
     let path = json!({KEY_TYPE:TYPE_STRING,KEY_DESCRIPTION:PATH_HELP});
     let write = object(
         &json!({
             KEY_OP:{KEY_TYPE:TYPE_STRING,KEY_ENUM:[ACTION_ADD,ACTION_REPLACE]},
-            KEY_PATH:path, KEY_VALUE:{}
+            KEY_PATH:path, KEY_VALUE:{KEY_DESCRIPTION:VALUE_HELP}
         }),
         &[KEY_OP, KEY_PATH, KEY_VALUE],
     );

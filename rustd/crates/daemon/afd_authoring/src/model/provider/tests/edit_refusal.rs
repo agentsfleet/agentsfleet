@@ -242,6 +242,48 @@ fn the_form_s_example_adds_a_schedule_to_a_setup_that_has_none()
     Ok(())
 }
 
+/// One schedule, as the form teaches it.
+fn trigger() -> Value {
+    json!({"type":"cron","schedule":"0 9 * * *","timezone":"UTC","message":PRIVATE})
+}
+
+// Value: protects=a list the model wrote as an object wrapping `item` is the list it meant;
+// fails_when=a wrapped entry or list reaches the checker as an object, or a real object is unwrapped.
+#[test]
+fn a_value_wrapped_in_item_is_the_list_it_names() {
+    use crate::model::provider::schema::settle;
+    let edit = |value: Value| json!({"proposal":{"kind":"edit","config_ops":[{"op":"add","path":"/config/x-agentsfleet/triggers","value":value}]}});
+    assert_eq!(
+        settle(edit(json!({"item": trigger()}))),
+        edit(json!([trigger()]))
+    );
+    assert_eq!(
+        settle(edit(json!({"item": [trigger()]}))),
+        edit(json!([trigger()]))
+    );
+    for untouched in [
+        json!({"item": 1, "more": 2}),
+        json!({"daily_nanos": "1"}),
+        json!([trigger()]),
+        json!("text"),
+    ] {
+        assert_eq!(settle(edit(untouched.clone())), edit(untouched));
+    }
+}
+
+// Value: protects=adding a schedule to a fleet that has no triggers works the way the model writes it;
+// fails_when=a wrapped trigger reaches the setup check as an object and the edit is refused as unreadable.
+#[test]
+fn a_wrapped_trigger_on_a_fleet_without_triggers_is_a_valid_edit()
+-> Result<(), Box<dyn std::error::Error>> {
+    let wrapped = json!({"item": trigger()});
+    let (proposed, moved) = checked(&config_edit("/config/x-agentsfleet/triggers", &wrapped)?)?;
+    assert!(proposed.get("proposal").is_some(), "{proposed}");
+    assert!(proposed.get("reason").is_none(), "{proposed}");
+    assert!(!moved);
+    Ok(())
+}
+
 // Value: protects=the model is told the document root, which every edit path starts from;
 // fails_when=the path description drops the /config root or the add-a-member rule.
 #[test]
