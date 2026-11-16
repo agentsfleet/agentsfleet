@@ -28,6 +28,7 @@ impl Turn<'_> {
             })?;
             let remaining = budget.saturating_sub(meter.output_tokens.unwrap_or(budget));
             if remaining == 0 {
+                tracing::info!(event = "setup_turn_ended", calls = call_index - 1, ending = "output_budget");
                 break;
             }
             let request = ModelCall {
@@ -53,6 +54,11 @@ impl Turn<'_> {
                 ));
             }
             self.observed.accept(&result.usage)?;
+            // One value-free line per call says why a turn did or did not end.
+            let text_empty = result.text.trim().is_empty();
+            let proposals = result.proposal_calls.len();
+            tracing::info!(event = "setup_model_call", call_index, text_empty, proposals,
+                cut = result.cut, compacted = result.compacted);
             if matches!(result.usage, af_wire::authoring::ModelUsage::Unknown) {
                 return Ok(Ending::unknown());
             }
@@ -60,9 +66,11 @@ impl Turn<'_> {
                 continue;
             }
             if result.cut {
+                tracing::info!(event = "setup_turn_ended", calls = call_index, ending = "cut");
                 return Ok(Ending::incomplete());
             }
             if result.proposal_calls.is_empty() {
+                tracing::info!(event = "setup_turn_ended", calls = call_index, ending = "answered");
                 return Ok(Ending::completed(Some(result.text)));
             }
             let answer = result.text.clone();
@@ -80,9 +88,11 @@ impl Turn<'_> {
                 all_accepted &= accepted;
             }
             if all_accepted && !answer.trim().is_empty() {
+                tracing::info!(event = "setup_turn_ended", calls = call_index, ending = "proposed_and_answered");
                 return Ok(Ending::completed(Some(answer)));
             }
         }
+        tracing::info!(event = "setup_turn_ended", calls = max_calls, ending = "calls_exhausted");
         Ok(Ending::incomplete())
     }
 
