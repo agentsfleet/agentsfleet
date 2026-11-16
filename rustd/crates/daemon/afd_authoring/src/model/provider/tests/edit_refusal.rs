@@ -182,6 +182,12 @@ fn a_save_leaves_an_answer_and_an_earlier_refusal_alone() -> Result<(), Box<dyn 
             }}),
         ),
     );
+    // A call that left no result (a refused provider answer) has nothing to refuse.
+    let mut nothing = Decoded::rejected();
+    refuse_for_save(&mut nothing, &input()?)?;
+    refuse_invalid_edits(&mut nothing, None, &input()?)?;
+    assert!(nothing.result.is_none());
+
     let mut refused = decoded(&[&stale])?;
     refuse_for_save(&mut refused, &input()?)?;
     assert_eq!(
