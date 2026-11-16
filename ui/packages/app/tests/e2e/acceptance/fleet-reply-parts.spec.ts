@@ -4,6 +4,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { FRAME_KIND } from "@/lib/api/events-types";
+import { formatMs } from "@/lib/utils";
 import { FIXTURE_KEY, FRAME_BUDGET_TAG } from "./fixtures/constants";
 import { sseFrame as frame } from "./fixtures/sse";
 import type { TimedFrame } from "./fixtures/page-event-stream";
@@ -133,7 +134,7 @@ test("test_live_tool_cell_settles_succeeded", async ({ page }) => {
     await expect.poll(() => bullet.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
     await expect(cell.getByRole("heading", {name: OUTPUT_LABEL, exact: true})).toBeVisible();
     await expect(cell).toContainText("200 OK");
-    await expect(cell).toContainText("0.7s");
+    await expect(cell).toContainText(`Duration ${formatMs(TOOL_WALL_MS)}`);
   });
 });
 

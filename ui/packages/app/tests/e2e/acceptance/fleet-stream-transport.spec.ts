@@ -22,7 +22,8 @@ const STREAMING_MARKER = "Live chunk painted before any completion.";
 const STREAMING_SENDER = "stream-still-running";
 const MISSED_MARKER = "The publication missed during disconnect is recovered.";
 const LIVE_SENDER = "stream-transport";
-const MISSED_OUTCOME = `Lost connection to the runner — ${MISSED_MARKER}`;
+// A transport loss with prose detail shows the detail alone (fleetFailureCopy.tsx).
+const MISSED_OUTCOME = MISSED_MARKER;
 const STATUS = { ACTIVE: "active", PROCESSED: "processed", FAILED: "fleet_error" } as const;
 const FUTURE_RUN_OFFSET_MS = 60_000;
 const LIVE_TOKENS = 12_345;
@@ -112,7 +113,7 @@ test("native fleet streaming deduplicates completion and backfills after disconn
 
     const recoveryStarted = performance.now();
     resume.resolve();
-    await expect(chat.getByText(MISSED_OUTCOME, { exact: true })).toHaveCount(1);
+    await expect(chat.locator("[data-failed-outcome]").getByText(MISSED_OUTCOME, { exact: true })).toHaveCount(1);
     // The newest row is now a failure, which would read "Needs attention" had
     // the backfill dropped the gate facts. The label is binary, so it cannot
     // tell the reconnected gate's 2 from 1: FleetApprovalSummary settles to

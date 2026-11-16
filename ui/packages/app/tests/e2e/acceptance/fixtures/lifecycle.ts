@@ -29,8 +29,12 @@ async function confirmAction(page: Page, label: "Archive"): Promise<void> {
 
 export async function archiveFleet(page: Page): Promise<void> {
   await confirmAction(page, "Archive");
-  await expect(page.getByTestId("fleet-notice")).toContainText("Fleet archived");
+  const notice = page.getByTestId("fleet-notice");
+  await expect(notice).toContainText("Fleet archived");
   await page.getByRole("link", {name: "View history", exact: true}).click();
+  // At 390 px the notice covers Fleet actions, and hovering it holds it open.
+  await notice.getByRole("button", {name: "Dismiss notification", exact: true}).click();
+  await expect(notice).toHaveAttribute("aria-hidden", "true");
 }
 
 export async function expectRowState(

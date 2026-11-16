@@ -64,7 +64,8 @@ test.describe("setup revisions", () => {
     await page.goto(workspaceHref(workspaceId, NEW_FLEET));
     await page.getByLabel(CHAT_PLACEHOLDER).fill(description());
     await page.getByRole("button", { name: CHAT_COPY.start, exact: true }).click();
-    await expect(setupSummary(page)).toContainText(FLEET_NAME, { timeout: PROPOSAL_TIMEOUT_MS });
+    // The proposed name heads the page (DraftChatHeading); the setup region holds its checks.
+    await expect(page.getByRole("heading", { level: 1, name: FLEET_NAME, exact: true })).toBeVisible({ timeout: PROPOSAL_TIMEOUT_MS });
     await (await privateSaveButton(page)).click();
     const saved = await openSavedFleet(page, { handle: FIXTURE_KEY.regular, workspaceId });
     fleetId = saved;

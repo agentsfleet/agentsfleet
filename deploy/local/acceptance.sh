@@ -131,6 +131,9 @@ export AUTH_E2E_REGULAR_EMAIL="${AUTH_E2E_REGULAR_EMAIL:-regular-fixture@e2e.age
 export AUTH_E2E_ADMIN_EMAIL="${AUTH_E2E_ADMIN_EMAIL:-admin-fixture@e2e.agentsfleet.net}"
 targets=("acceptance-$action")
 if [ "$action" = all ]; then targets=(acceptance-e2e acceptance-cli); fi
+# Every suite runs, so one red suite never hides the other's result.
+suites_status=0
 for target in "${targets[@]}"; do
-  make --no-print-directory "$target"
+  make --no-print-directory "$target" || suites_status=$?
 done
+exit "$suites_status"

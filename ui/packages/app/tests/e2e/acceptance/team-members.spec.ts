@@ -62,8 +62,11 @@ async function expectSenderLine(turn: Locator, name: string | null): Promise<voi
   else await expect(line).toHaveText(name);
 }
 
-// A row's name is the member's display name (TeamTable), so it is found by the email it shows.
-function rowFor(page: Page, email: string) {
+// A pending invite is named by its email; a member row by display name, so it is found by the email it shows (TeamTable).
+function inviteRow(page: Page, email: string) {
+  return page.getByRole("region", {name: "Pending invitations", exact: true}).getByRole("listitem", {name: email, exact: true});
+}
+function memberRow(page: Page, email: string) {
   return page.getByRole("region", {name: "Members", exact: true}).getByRole("listitem").filter({hasText: email});
 }
 
@@ -104,13 +107,13 @@ test.describe("teammates join an account", () => {
     await expect(ready.getByRole("button", { name: /^copied$/i })).toBeVisible();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
     await ready.getByRole("button", { name: /^done$/i }).click();
-    await expect(rowFor(page, invitee.email)).toHaveCount(1);
+    await expect(inviteRow(page, invitee.email)).toHaveCount(1);
 
     // The invitee accepts from their own session; the owner then sees a member.
     const inviteId = link.slice(link.lastIndexOf("/") + 1);
     await clientFor({ sessionJwt: invitee.sessionJwt }).post(`${WAITING_INVITES}/${inviteId}/accept`, undefined);
     await page.reload();
-    const member = rowFor(page, invitee.email);
+    const member = memberRow(page, invitee.email);
     await expect(member).toHaveCount(1);
     await page.screenshot({path: test.info().outputPath("live-team.png"), scale: "css", animations: "disabled"});
 
@@ -118,7 +121,7 @@ test.describe("teammates join an account", () => {
     await member.getByRole("button", { name: /^manage /i }).click();
     await page.getByRole("menuitem", { name: /^remove /i }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: /^remove$/i }).click();
-    await expect(rowFor(page, invitee.email)).toHaveCount(0);
+    await expect(memberRow(page, invitee.email)).toHaveCount(0);
   });
 
   // Which status the row shows depends on the deployment's relay, so the test
@@ -134,7 +137,7 @@ test.describe("teammates join an account", () => {
     const status = recorded.email_status;
     await signInAs(page, FIXTURE_KEY.admin);
     await page.goto("/settings/members");
-    const row = rowFor(page, email);
+    const row = inviteRow(page, email);
     await expect(row).toHaveCount(1);
     await expect(row.getByText(EMAIL_STATUS_LABEL[status], { exact: true })).toBeVisible();
     // Sending again lives in the row's menu, and only where a relay exists.

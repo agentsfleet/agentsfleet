@@ -41,7 +41,6 @@ import {
   REASON_DECLARED_AT_INSTALL,
 } from "./fixtures/grants";
 import { saveFleetViaUI } from "./fixtures/install-ui";
-import { workspaceUrlPattern } from "./fixtures/nav";
 import { ensureSecondWorkspace, readFleetCounters, waitForFleetActive } from "./fixtures/seed";
 import { clientFor } from "./fixtures/api-client";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
@@ -64,7 +63,6 @@ const RENDER_TIMEOUT_MS = 15_000;
 const LEASE_WINDOW_MS = 30_000;
 // The install-time grant request runs after the fleet flips active, so the row
 // lands a beat behind the install itself.
-const GRANT_TIMEOUT_MS = 30_000;
 // The usage ledger settles after the terminal row; the balance follows it.
 const BILLING_SETTLE_TIMEOUT_MS = 90_000;
 
@@ -119,7 +117,7 @@ async function activated(fleetId: string): Promise<WalkFleet> {
   return { id: fleetId, callsign: deriveFleetIdentity(fleetId).callsign };
 }
 
-/** Approval is separate from Save; continuing must keep the original fleet. */
+/** Approval is separate from Save; approving the last grant activates the same fleet. */
 async function approveAndContinue(page: Page, fleetId: string, setupUrl: string): Promise<void> {
   const callsign = deriveFleetIdentity(fleetId).callsign;
   const grant = standing(await connectorGrantFor(FIXTURE_KEY.regular, workspaceId, fleetId), callsign);
@@ -134,12 +132,12 @@ async function approveAndContinue(page: Page, fleetId: string, setupUrl: string)
   expect(approved.status).toBe(GRANT_STATUS.approved);
   expect(approved.approved_at).not.toBeNull();
   expect(await pendingGateFor(FIXTURE_KEY.regular, workspaceId, fleetId)).toBeNull();
-  await page.goto(setupUrl);
-  await page.getByRole("button", {name: "Finish setup", exact: true}).click();
-  await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`), {timeout: GRANT_TIMEOUT_MS});
-  // This detail URL already identifies the saved fleet. Finish continuation
-  // before another navigation can cancel its request.
+  // Approving the last setup grant activates the fleet itself (afd_api_tenant
+  // approval/setup.rs), so there is nothing left to finish.
   await activated(fleetId);
+  await page.goto(setupUrl);
+  await expect(page.getByRole("form", {name: "Chat composer", exact: true}).getByRole("textbox")).toBeEnabled();
+  await expect(page.getByRole("button", {name: "Finish setup", exact: true})).toHaveCount(0);
 }
 
 test.describe.serial("multi-fleet grant journey", () => {
@@ -149,7 +147,7 @@ test.describe.serial("multi-fleet grant journey", () => {
     await clientFor(FIXTURE_KEY.regular).delete(`/v1/workspaces/${workspaceId}/secrets/linear`);
   });
 
-  test("two saved fleets each require their own approval and continuation", async ({ page }) => {
+  test("two saved fleets each require their own approval, which activates each", async ({ page }) => {
     test.setTimeout(INSTALL_TEST_TIMEOUT_MS);
     workspaceId = (await ensureSecondWorkspace(FIXTURE_KEY.regular, GRANT_WORKSPACE)).id;
     await observed(JOURNEY_LEG.install, () =>
