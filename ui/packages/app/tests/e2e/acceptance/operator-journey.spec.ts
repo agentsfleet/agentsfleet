@@ -189,7 +189,8 @@ test.describe("operator journey", () => {
     await switchWorkspace(page, secondaryWorkspaceName);
 
     await clickSidebarLink(page, workspaceHref(wsId, "fleets"), workspaceUrlPattern("fleets"));
-    await page.getByRole("main").getByRole("link", { name: "New fleet", exact: true }).click();
+    // The header's icon link shares the name; the page's entrance button is the one with visible text.
+    await page.getByRole("main").getByRole("link", { name: "New fleet", exact: true }).filter({ hasText: "New fleet" }).click();
     await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
     const fleetId = await saveFleetViaUI(page, JOURNEY_FLEET_PREFIX, {
       handle: FIXTURE_KEY.admin,

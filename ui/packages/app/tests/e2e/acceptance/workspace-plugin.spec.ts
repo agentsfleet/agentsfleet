@@ -11,7 +11,8 @@ import {SETUP_HEADERS} from "@/lib/api/draft-types";
 
 test("an account publication can be removed while Plugin navigation follows its setting", async ({page}) => {
   const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-  const name = "Deployment review";
+  // A fleet name is a kebab slug (af_fleet_runtime FleetName); the Definition parse refuses anything else.
+  const name = "deployment-review";
   const entry = await publishFixturePlugin(FIXTURE_KEY.regular, workspace, fixtureDefinition(name));
   await signInAs(page, FIXTURE_KEY.regular);
   await page.goto(workspaceHref(workspace, "fleets/new"));
