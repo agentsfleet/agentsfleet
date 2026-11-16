@@ -24,9 +24,10 @@ import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
+import { readAuthContext } from "./fixtures/native-api.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { deleteFixtureFleet } from "./fixtures/teardown.ts";
-import { commandValues, fixtureDefinition, inspectDraft, saveNativeFleet } from "./fixtures/native-setup.ts";
+import { authoringModel, commandValues, fixtureDefinition, inspectDraft, saveNativeFleet } from "./fixtures/native-setup.ts";
 import { AppliedSchema, CreatedSchema, DraftSchema } from "../../src/commands/chat/protocol.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
@@ -62,6 +63,7 @@ if (!isLive) {
     let savedRevision = "";
     let draftId = "";
     let reviewDigest = "";
+    let model = "";
 
     async function run(args: ReadonlyArray<string>, timeoutMs = CHAT_TIMEOUT_MS): Promise<RunResult> {
       const result = await runFleetctl(args, { env, timeoutMs });
@@ -79,6 +81,8 @@ if (!isLive) {
       const fleet = await saveNativeFleet(env, fixtureDefinition(FLEET_NAME));
       fleetId = fleet.id;
       savedRevision = fleet.setup_revision;
+      // An improve chat names its authoring model, as every new chat does.
+      model = await authoringModel(await readAuthContext(env));
     }, SETUP_TIMEOUT_MS);
 
     afterAll(async () => {
@@ -90,7 +94,7 @@ if (!isLive) {
     });
 
     it("`chat --fleet --message` opens the fleet's improve chat and the setup model answers", async () => {
-      const result = await run(["--json", "chat", "--fleet", fleetId, "--no-input", "--message", REQUEST]);
+      const result = await run(["--json", "chat", "--fleet", fleetId, "--model", model, "--no-input", "--message", REQUEST]);
       assert.equal(result.code, 0, `the improve chat refused: ${result.stderr}`);
       const values = commandValues(result);
       const draft = values.find(Schema.is(CreatedSchema)) ?? values.find(Schema.is(DraftSchema));

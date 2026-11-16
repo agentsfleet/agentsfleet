@@ -51,6 +51,8 @@ import { modelLabel } from "@/lib/model-labels";
 // Two stable template names — the server suffixes a repeat, and a per-run
 // unique name would mint a gallery row per run that nothing deletes. One sweep
 // prefix reaches both, and the suffixed fleet names still carry it.
+// A settled charge can be a fraction of a cent ("$0.0001"), so only an exact zero counts as none.
+const ZERO_CHARGE = /\$0\.00(?!\d)/;
 const TEMPLATE_FIRST = "grant-walk-alpha";
 const TEMPLATE_SECOND = "grant-walk-beta";
 const SWEEP_PREFIX = "grant-walk";
@@ -286,7 +288,7 @@ test.describe.serial("multi-fleet grant journey", () => {
     await page.getByRole("combobox", { name: "Fleet", exact: true }).click();
     await page.getByRole("option", { name: settled.fleetName, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`fleet=${fleet.id}`));
-    await expect(page.locator('[aria-label="Period totals"]')).not.toContainText("$0.00");
+    await expect(page.locator('[aria-label="Period totals"]')).not.toContainText(ZERO_CHARGE);
     const byFleet = page.getByRole("table", { name: "Spending by fleet", exact: true });
     const row = byFleet.getByRole("row").filter({ hasText: settled.fleetName });
     for (const model of settled.models) {
@@ -296,6 +298,6 @@ test.describe.serial("multi-fleet grant journey", () => {
     await page.getByRole("combobox", { name: "Fleet", exact: true }).click();
     await page.getByRole("option", { name: ALL_FLEETS_LABEL, exact: true }).click();
     await expect.poll(() => new URL(page.url()).searchParams.has("fleet")).toBe(false);
-    await expect(page.locator('[aria-label="Period totals"]')).not.toContainText("$0.00");
+    await expect(page.locator('[aria-label="Period totals"]')).not.toContainText(ZERO_CHARGE);
   });
 });
