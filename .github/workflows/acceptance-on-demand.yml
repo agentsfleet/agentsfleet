@@ -103,29 +103,10 @@ jobs:
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential
           FIREWORKS_API_KEY: op://${{ vars.VAULT_DEV }}/agentsfleet-fireworks-api-token/credential
 
-      # The local lane reads the machine environment from two files; write them
-      # owner-only under the runner's temporary directory.
+      # Shared with scripts/acceptance-burst.sh's AWS runner, so both write the
+      # same owner-only machine environment files.
       - name: Write the machine environment files
-        env:
-          # The dev Clerk session token carries this audience (deploy-dev-fly.yml, docs/AUTH.md).
-          OIDC_AUDIENCE: https://api-dev.agentsfleet.net
-        run: |
-          set -euo pipefail
-          umask 077
-          {
-            printf 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=%s\n' "$CLERK_PUBLISHABLE_KEY"
-            printf 'CLERK_PUBLISHABLE_KEY=%s\nCLERK_SECRET_KEY=%s\nCLERK_WEBHOOK_SECRET=%s\n' \
-              "$CLERK_PUBLISHABLE_KEY" "$CLERK_SECRET_KEY" "$CLERK_WEBHOOK_SECRET"
-          } > "$RUNNER_TEMP/ui.env"
-          {
-            printf 'OIDC_ISSUER=%s\nOIDC_AUDIENCE=%s\n' "$OIDC_ISSUER" "$OIDC_AUDIENCE"
-            printf 'CLERK_API_BASE=https://api.clerk.com/v1\nCLERK_SECRET_KEY=%s\n' "$CLERK_SECRET_KEY"
-            printf 'AUTH_SESSION_CODE_PEPPER=%s\n' "$AUTH_SESSION_CODE_PEPPER"
-          } > "$RUNNER_TEMP/agentsfleetd.env"
-          {
-            echo "AGENTSFLEET_UI_ENV_FILE=$RUNNER_TEMP/ui.env"
-            echo "AGENTSFLEET_RUSTD_ENV_FILE=$RUNNER_TEMP/agentsfleetd.env"
-          } >> "$GITHUB_ENV"
+        run: scripts/acceptance-burst/machine-env.sh "$RUNNER_TEMP/machine-env" >> "$GITHUB_ENV"
 
       - name: Run acceptance
         env:

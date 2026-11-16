@@ -122,6 +122,9 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `deploy/local/{certificate.sh,certificate_test.sh,orbstack.sh,compose.yml,acceptance.sh}`, `scripts/local-dev-state.sh`, `docs/development.md` | EDIT | Local acceptance runs on a Mac: one Caddy root per machine, trusted once in a form Chromium honours; cmake and clang for BoringSSL; orphaned shared services removed (owner, Nov 16, 2026) |
 | `ui/packages/app/app/loading.tsx` (removed), `app/{cli-auth,connectors}/loading.tsx`, `tests/loading-states.test.ts` | REMOVE/ADD | The root loader wrapped the dashboard shell in a streamed boundary that could leave a hidden second shell; the two routes that wait on reads keep their spinner (owner, Nov 16, 2026) |
 | `.github/workflows/acceptance-on-demand.yml` | ADD | Run local acceptance on a hosted VM for any branch (owner, Nov 16, 2026) |
+| `scripts/acceptance-burst.sh`, `scripts/acceptance-burst/{aws-user-data.sh,machine-env.sh}`, `.claude/skills/orly-burst/SKILL.md`, `.agents/skills/orly-burst/SKILL.md`, `.gitignore` | ADD/EDIT | Burst acceptance on a throwaway full VM: AWS Spot (Debian 13 amd64) or the GitHub workflow, driven by the `orly-burst` skill (owner, Nov 16, 2026) |
+| `rustd/Cargo.{toml,lock}`, `af_core/src/clock.rs` and the jiff call sites | EDIT | jiff and jiff-sqlx 1.0 (owner, Nov 16, 2026) |
+| `afr_supervisor/src/authoring/{proposal.rs,proposal_tests.rs,tests/*}`, `afr_supervisor/Cargo.toml` | EDIT/ADD | A refused first setup names its field to the model (owner, Nov 16, 2026) |
 | `ui/packages/app/**` confirmed orphaned modules and their isolated tests; `lib/models/display.ts` | REMOVE/EDIT | Owner-requested UI cleanup removes obsolete spending, model cells, action hooks, refresh controls and draft-search state; paused Plugin implementation stays available |
 | `ui/packages/app/app/globals.css` unused activity-table selectors | REMOVE | Remove styles for the deleted activity table without changing the reviewed resource layouts |
 
@@ -522,6 +525,21 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 > Owner (Indy): "Yes remove the app/loading.tsx, is there anyone else using it? ... if so safely remove."
 
 > Owner (Indy): "I want to go with the option on gh" (the on-demand acceptance workflow, in this PR)
+
+- **Setup saves and jiff (Nov 16, 2026):** the daemon refused an invalid first setup with one fixed sentence and the runner told the model only "The proposal is invalid", so the default model guessed until its turn ran out. The runner now proves a first setup with the daemon's validator and returns its message. jiff and jiff-sqlx move to 1.0; `gix-date` still pins jiff 0.2.
+- **Burst acceptance (Nov 16, 2026):** `scripts/acceptance-burst.sh` runs `make acceptance-codex` on AWS Spot or the GitHub workflow, assuming the `aws` command-line tool is installed and signed in. The signed toolbox is amd64 only, so AWS uses x86 Spot types with a capacity fallback. E2E Networks waits on how these two work.
+
+> Owner (Indy): "I see jiff is 1.0, is it updated in ours? ... Make this change in this PR"
+
+> Owner (Indy): "Is the setup-chat save failure in acceptance, if so fix it and push and tiggger workflow."
+
+> Owner (Indy): "in this PR lets do AWS spot and Github Actions. Based on how it works we do E2E Networks"
+
+> Owner (Indy): "Build it in this PR"
+
+> Owner (Indy): "ensure its just a script assuming aws is installed." (the separate test harness was removed)
+
+> Owner (Indy): "i think make it as orly-burst" (the skill name)
 
 > Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 

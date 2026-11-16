@@ -197,6 +197,84 @@ Invalid values refuse boot; failed proxy requests never fall back to direct acce
 Exit stops and removes only the runner container this invocation created, preserving its private startup log.
 The shared datastores, local daemon, Caddy and saved registration remain available for the next run.
 
+### Burst acceptance
+
+`scripts/acceptance-burst.sh` runs `make acceptance-codex` on a throwaway full VM and brings the evidence back.
+The `orly-burst` skill drives it; it never runs inside `orly gate pr`.
+
+```bash
+scripts/acceptance-burst.sh --provider aws-spot --suite e2e   # EC2 Spot, Debian 13 amd64
+scripts/acceptance-burst.sh --provider gh --suite e2e         # acceptance-on-demand.yml
+```
+
+Expected last line:
+
+```text
+acceptance-burst: provider=aws-spot ref=<branch> suite=e2e minutes=<n> type=<instance> spot=$<price>/h exit=0 evidence=<dir>
+```
+
+The AWS provider stages a git bundle and the dev deploy's signed toolbox in S3, then starts one Spot instance.
+The instance installs its tools, reads the 1Password service-account token from SSM Parameter Store and runs the suite.
+It reports `run.log`, `results.tar.gz` and `exit-code` to S3, then shuts down, and AWS deletes it.
+
+The launcher uses HTTPS to AWS only, so it also works from Claude cloud sessions.
+The instance shuts itself down after 120 minutes at most.
+The toolbox is amd64 only, so the launcher tries `c7i.4xlarge c7a.4xlarge c6i.4xlarge m7i.4xlarge` until one has Spot capacity.
+
+A dispatched `gh` run works only once the workflow is on `main`.
+Before that, label the pull request `acceptance`; every push to it then runs the workflow.
+
+#### One-time AWS setup
+
+The account owner runs these once, in one region, with the names the launcher expects by default.
+
+```bash
+REGION=us-east-1 BUCKET=<unique-bucket-name>
+aws s3api create-bucket --bucket "$BUCKET" --region "$REGION"
+aws s3api put-bucket-lifecycle-configuration --bucket "$BUCKET" --lifecycle-configuration \
+  '{"Rules":[{"ID":"expire-runs","Status":"Enabled","Filter":{"Prefix":"runs/"},"Expiration":{"Days":1}}]}'
+op read 'op://<vault>/<item>/credential' | aws ssm put-parameter --region "$REGION" --type SecureString \
+  --name /acceptance-burst/op-service-account-token --value file:///dev/stdin
+aws iam create-role --role-name acceptance-burst --assume-role-policy-document \
+  '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+aws iam put-role-policy --role-name acceptance-burst --policy-name run --policy-document file://instance-policy.json
+aws iam create-instance-profile --instance-profile-name acceptance-burst
+aws iam add-role-to-instance-profile --instance-profile-name acceptance-burst --role-name acceptance-burst
+```
+
+Add a monthly AWS Budgets cost budget with an email alert as well.
+`instance-policy.json` lets the instance read its run and write its results, nothing else:
+
+```json
+{"Version":"2012-10-17","Statement":[
+ {"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:ListBucket"],
+  "Resource":["arn:aws:s3:::<bucket>","arn:aws:s3:::<bucket>/runs/*"]},
+ {"Effect":"Allow","Action":"ssm:GetParameter",
+  "Resource":"arn:aws:ssm:<region>:<account>:parameter/acceptance-burst/op-service-account-token"}]}
+```
+
+The person or agent that launches runs needs only this policy:
+
+```json
+{"Version":"2012-10-17","Statement":[
+ {"Effect":"Allow","Action":"ec2:RunInstances","Resource":"*",
+  "Condition":{"StringEquals":{"aws:RequestTag/owner":"agent"}}},
+ {"Effect":"Allow","Action":"ec2:RunInstances","NotResource":"arn:aws:ec2:*:*:instance/*"},
+ {"Effect":"Allow","Action":"ec2:CreateTags","Resource":"*",
+  "Condition":{"StringEquals":{"ec2:CreateAction":"RunInstances"}}},
+ {"Effect":"Allow","Action":"ec2:TerminateInstances","Resource":"*",
+  "Condition":{"StringEquals":{"ec2:ResourceTag/owner":"agent"}}},
+ {"Effect":"Allow","Action":["ec2:DescribeInstances","ec2:DescribeSpotPriceHistory"],"Resource":"*"},
+ {"Effect":"Allow","Action":"iam:PassRole","Resource":"arn:aws:iam::<account>:role/acceptance-burst"},
+ {"Effect":"Allow","Action":"ssm:GetParameters","Resource":"arn:aws:ssm:*::parameter/aws/service/debian/*"},
+ {"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject","s3:ListBucket"],
+  "Resource":["arn:aws:s3:::<bucket>","arn:aws:s3:::<bucket>/runs/*"]}]}
+```
+
+Set `ACCEPTANCE_BURST_BUCKET` before a run.
+Optional settings are `ACCEPTANCE_BURST_REGION`, `ACCEPTANCE_BURST_INSTANCE_TYPES`, `ACCEPTANCE_BURST_IMAGE` and `ACCEPTANCE_BURST_SUBNET`.
+`ACCEPTANCE_BURST_TOOLBOX_DIR` skips the toolbox download; `--keep` leaves the instance running for debugging.
+
 ### Local dashboard against api-dev
 
 Set `NEXT_PUBLIC_API_URL` to `https://api-dev.agentsfleet.net` in the dashboard environment, then build and start the production dashboard locally.

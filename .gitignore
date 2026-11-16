@@ -39,6 +39,7 @@ scratch_pad.md
 !.claude/skills/orly-build/
 !.claude/skills/orly-ship/
 !.claude/skills/orly-spec/
+!.claude/skills/orly-burst/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 agentsfleet/docs/spec/new-feature.md
