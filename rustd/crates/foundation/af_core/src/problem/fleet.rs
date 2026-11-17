@@ -164,6 +164,27 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::RUNNER_REGISTRATION_KEY_REUSED,
+        status: 409,
+        title: "Registration key reused",
+        hint: "This Idempotency-Key already registered a runner with a different request. Send a new UUIDv7 key for a new runner.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUNNER_TENANT_MANAGED,
+        status: 409,
+        title: "Runner is managed by its tenant",
+        hint: "A tenant runner's token is rotated by its tenant through `PATCH /v1/tenants/me/runners/{runner_id}`. Revoke the runner instead if it must stop.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUNNER_PLACEMENT_REFUSED,
+        status: 500,
+        title: "Runner placement refused",
+        hint: "Issue refused work the claim should have filtered for this runner. Report it: the placement filter has a hole.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
         // 424: the fleet's own request is well-formed; what is missing is a
         // credential it depends on, which is the distinction this status

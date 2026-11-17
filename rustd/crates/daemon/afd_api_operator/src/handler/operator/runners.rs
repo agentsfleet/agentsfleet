@@ -51,7 +51,11 @@ pub(crate) async fn list<D: Services>(
     };
     match services
         .runners()
-        .list_runners(page.cursor.as_ref(), page.limit)
+        .list_runners(
+            &afd_runner::Reach::Platform,
+            page.cursor.as_ref(),
+            page.limit,
+        )
         .await
     {
         Ok(rows) => Json(RunnersResponse {
@@ -98,7 +102,11 @@ pub(crate) async fn detail<D: Services>(
         Ok(runner) => runner,
         Err(refused) => return refused.into_response(),
     };
-    match services.runners().runner_detail(&runner).await {
+    match services
+        .runners()
+        .runner_detail(&afd_runner::Reach::Platform, &runner)
+        .await
+    {
         Ok(row) => Json(detail_payload(&row)).into_response(),
         Err(error) => refuse(&error, EVENT_DETAIL),
     }

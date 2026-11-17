@@ -54,6 +54,7 @@ pub(in super::super) async fn model(
     policy.decision_model_id = selected.map(|id| Cow::Borrowed(id.as_str()));
     runners
         .edit(
+            &afd_runner::Reach::Platform,
             &fixture.case.held.runner,
             afd_runner::RunnerEdit {
                 assigned_policy: Some(&policy),

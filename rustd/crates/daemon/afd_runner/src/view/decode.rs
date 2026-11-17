@@ -30,6 +30,7 @@ const TABLE_EVENTS: &str = "runner.events";
 pub(super) struct ItemRow {
     durable_tasks_enabled: bool,
     decision_model_id: Option<Uuid7>,
+    tenant_id: Option<Uuid7>,
     id: Uuid7,
     host_id: String,
     sandbox_tier: String,
@@ -93,6 +94,7 @@ impl ItemRow {
         };
         Ok(RunnerItem {
             id: self.id.clone(),
+            tenant_id: self.tenant_id,
             host_id: self.host_id,
             sandbox_tier: columns.sandbox_tier.clone(),
             status: af_core::spelling::from_spelling(&self.status)

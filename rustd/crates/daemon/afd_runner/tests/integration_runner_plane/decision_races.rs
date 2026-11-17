@@ -56,6 +56,7 @@ async fn finish_case(fixture: Fixture, model: DecisionModelFixture, runner: Uuid
     fixture
         .runners
         .edit(
+            &afd_runner::Reach::Platform,
             &runner,
             RunnerEdit {
                 assigned_policy: Some(&clear),
@@ -105,7 +106,7 @@ async fn assert_outcome(
 ) {
     let detail = fixture
         .runners
-        .runner_detail(runner)
+        .runner_detail(&afd_runner::Reach::Platform, runner)
         .await
         .expect("committed runner state");
     match change {
@@ -149,6 +150,7 @@ fn start_assignment(
         let labels = [Cow::Borrowed("changed-with-policy")];
         runners
             .edit(
+                &afd_runner::Reach::Platform,
                 &target,
                 RunnerEdit {
                     assigned_policy: Some(&policy),

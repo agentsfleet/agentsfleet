@@ -1,5 +1,7 @@
 WITH current_runner AS (
-  SELECT id, status FROM runner.runners WHERE id = $1 FOR UPDATE
+  SELECT id, status FROM runner.runners
+  WHERE id = $1 AND tenant_id IS NOT DISTINCT FROM $8::uuid
+  FOR UPDATE
 ), updated AS (
   UPDATE runner.runners r
   SET token_hash = $2::text, updated_at = now()

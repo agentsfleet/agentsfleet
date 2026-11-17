@@ -34,8 +34,10 @@ mod decision_profile;
 pub mod edit;
 pub mod heartbeat;
 pub mod policy;
+mod reach;
 pub mod reconcile;
 pub mod record;
+mod register;
 mod rotate;
 pub mod spelling;
 pub mod sql;
@@ -54,8 +56,10 @@ pub use self::error::{
 };
 pub use self::heartbeat::{Beat, NO_REPORT};
 pub use self::policy::{AssignmentColumns, StoredVerdict};
+pub use self::reach::Reach;
 pub use self::reconcile::{Verdict, reconcile};
 pub use self::record::SelfRow;
+pub use self::register::Registered;
 pub use self::store::{Enrolled, Runners};
 pub use self::view::{
     KeysetCursor, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem, RunnerPage,

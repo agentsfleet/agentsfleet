@@ -13,6 +13,7 @@ pub(in super::super) async fn set(case: &Case, enabled: bool) {
     policy.durable_tasks_enabled = enabled;
     runners
         .edit(
+            &afd_runner::Reach::Platform,
             &case.held.runner,
             afd_runner::RunnerEdit {
                 assigned_policy: Some(&policy),

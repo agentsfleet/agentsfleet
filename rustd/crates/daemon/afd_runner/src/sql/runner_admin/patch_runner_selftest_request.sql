@@ -1,5 +1,7 @@
 WITH current_state AS (
-  SELECT id, status FROM runner.runners WHERE id = $1 FOR UPDATE
+  SELECT id, status FROM runner.runners
+  WHERE id = $1 AND ($3::uuid IS NULL OR tenant_id = $3)
+  FOR UPDATE
 ), updated AS (
   UPDATE runner.runners r
   SET selftest_requested_at = now(), updated_at = now()

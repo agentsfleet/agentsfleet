@@ -2,19 +2,16 @@
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use af_wire::runner::{AssignedPolicy, RegisterRequest};
 use afd_db::Db;
 use jiff::Timestamp;
 use sqlx::Acquire as _;
 
 use crate::error::{Result, query};
-use crate::policy::SandboxConfig;
-use crate::reconcile::{Verdict, reconcile};
-use crate::spelling::{policy_wire, render_list, tier_wire};
+use crate::reconcile::Verdict;
+use crate::register::Prepared;
+use af_wire::runner::RegisterRequest;
 use afd_auth::credential::CredentialKind;
 
-use crate::sql;
-use crate::validate::registration;
 use afd_auth::minted::Minted;
 
 /// Statement names, for the context a query failure carries.
@@ -22,7 +19,7 @@ use afd_auth::minted::Minted;
 /// Named because each is spelled at a `map_err` and would otherwise be an
 /// inline literal at every call site (RULE UFS), and because the string reaches
 /// an operator's log as the answer to "which statement".
-const CONTEXT_REGISTER: &str = "runner enrolment";
+pub(crate) const CONTEXT_REGISTER: &str = "runner enrolment";
 
 /// What enrolment produced.
 ///
@@ -85,7 +82,7 @@ impl Runners {
     /// Split out because it is the only part that touches entropy, and because
     /// three consecutive fallible draws inside the write would push
     /// [`Runners::register`] past the function-length line for no gain.
-    fn mint(&self, now: Timestamp) -> Result<(Uuid7, Uuid7, Minted)> {
+    pub(crate) fn mint(&self, now: Timestamp) -> Result<(Uuid7, Uuid7, Minted)> {
         let runner_id = self.entropy.uuid7(now)?;
         let event_id = self.entropy.uuid7(now)?;
         Ok((
@@ -118,74 +115,19 @@ impl Runners {
         request: &RegisterRequest<'_>,
         now: Timestamp,
     ) -> Result<Enrolled> {
-        let stored = registration(request)?;
-        let host_id: &str = &request.host_id;
-        let worker_count = stored.assignment.worker_count.get();
-
-        // Reconciled against the assignment AS STORED, so the verdict describes
-        // the row rather than the request — they differ whenever the clamp bit.
-        let assigned = AssignedPolicy {
-            worker_count,
-            ..request.assigned_policy.clone()
-        };
-        let verdict = reconcile(&assigned, None);
-
-        // Rendered before the connection is taken: serialisation cannot fail
-        // for these shapes, but holding a pooled connection across work that
-        // does not need it is how a pool's occupancy stops matching its load.
-        let labels_json = render_list(&stored.labels);
-        let registry_json = render_list(&assigned.registry_allowlist);
-        let sandbox_config_json = SandboxConfig {
-            extra_binds: assigned.extra_binds.clone(),
-        }
-        .render();
-
-        let (runner_id, event_id, token) = self.mint(now)?;
+        let prepared = Prepared::of(self, request, now)?;
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_REGISTER))?;
-        crate::decision::lock(
-            &mut transaction,
-            stored.assignment.decision_model_id.as_ref(),
-        )
-        .await?
-        .allow_change_from(None)?;
-        sql::runner::RegisterRow {
-            durable_tasks_enabled: assigned.durable_tasks_enabled,
-            sandbox_config_json: &sandbox_config_json,
-            decision_model_id: stored.assignment.decision_model_id.as_ref(),
-            runner_id: &runner_id,
-            host_id,
-            token_digest: token.digest().as_str(),
-            sandbox_tier: tier_wire(assigned.sandbox_tier),
-            status: sql::RUNNER_STATUS_ACTIVE,
-            labels_json: &labels_json,
-            last_seen_at: sql::NEVER_SEEN,
-            event_id: &event_id,
-            event_type: sql::event_type::RUNNER_REGISTERED,
-            network_policy: policy_wire(assigned.network_policy),
-            registry_allowlist_json: &registry_json,
-            worker_count: worker_count.cast_signed(),
-            degraded_reason: verdict.reason(),
-        }
-        .bind()
-        .execute(&mut *transaction)
-        .await
-        .map_err(query(CONTEXT_REGISTER))?;
+        prepared.insert(&mut transaction, None).await?;
         transaction
             .commit()
             .await
             .map_err(query(CONTEXT_REGISTER))?;
-        record_enrolled(&runner_id, host_id, verdict);
-        Ok(Enrolled {
-            runner_id,
-            token,
-            worker_count,
-            verdict,
-        })
+        Ok(prepared.enrolled())
     }
 }
 
-fn record_enrolled(runner: &Uuid7, host: &str, verdict: Verdict) {
+pub(crate) fn record_enrolled(runner: &Uuid7, host: &str, verdict: Verdict) {
     let runner_id = runner.as_str();
     let degraded = verdict.is_degraded();
     {

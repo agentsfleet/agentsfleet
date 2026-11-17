@@ -97,7 +97,12 @@ async fn rotation_refuses_old_acquisition_and_old_locked_grants() -> TestResult 
     let old = acquire(&fixture, &runner, &digest, None).await?;
     let rotated = fixture
         .runners
-        .rotate_token(&runner, "connection-test", clock::now())
+        .rotate_token(
+            &afd_runner::Reach::Platform,
+            &runner,
+            "connection-test",
+            clock::now(),
+        )
         .await?;
     assert_eq!(
         fixture.runners.check_connection(&old).await?,
@@ -155,7 +160,13 @@ async fn stopped_and_removed_hosts_return_terminal_classified_decisions() -> Tes
         let authority = acquire(&fixture, &runner, &digest, None).await?;
         fixture
             .runners
-            .transition(&runner, action, "connection-test", clock::now())
+            .transition(
+                &afd_runner::Reach::Platform,
+                &runner,
+                action,
+                "connection-test",
+                clock::now(),
+            )
             .await?;
         assert_eq!(
             fixture.runners.check_connection(&authority).await?,
@@ -170,7 +181,10 @@ async fn stopped_and_removed_hosts_return_terminal_classified_decisions() -> Tes
         );
         assert!(!can_claim(&fixture, &authority).await?);
         if action == RunnerAdminAction::Revoke {
-            fixture.runners.delete_revoked(&runner).await?;
+            fixture
+                .runners
+                .delete_revoked(&afd_runner::Reach::Platform, &runner)
+                .await?;
             assert_eq!(
                 fixture.runners.check_connection(&authority).await?,
                 Decision::Refused(Refusal::Credential)

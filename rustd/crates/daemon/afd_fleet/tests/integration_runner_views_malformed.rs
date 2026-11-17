@@ -31,7 +31,7 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
     overwrite_status(&fixtures, &enrolled.runner_id).await;
     let malformed = fixtures
         .runners()
-        .runner_detail(&enrolled.runner_id)
+        .runner_detail(&afd_runner::Reach::Platform, &enrolled.runner_id)
         .await
         .expect_err("an unknown stored state fails the whole detail");
     assert_eq!(malformed.code(), error_code::INTERNAL_DB_QUERY);
@@ -92,7 +92,7 @@ async fn assert_missing_runner_is_not_found(fixtures: &Fixtures) {
         .expect("the missing identifier is canonical");
     let detail_error = fixtures
         .runners()
-        .runner_detail(&missing)
+        .runner_detail(&afd_runner::Reach::Platform, &missing)
         .await
         .expect_err("a missing runner has no detail");
     let event_error = fixtures

@@ -31,15 +31,20 @@ pub const DETAIL_RUNNER_NOT_REVOKED: &str = "active runner must be revoked befor
 /// The refusal a delete of a runner still holding a lease earns.
 pub const DETAIL_RUNNER_STILL_LEASED: &str =
     "runner still holds an active lease; retry once it is released";
+/// The refusal a registration key reused for a different request earns.
+pub const DETAIL_REGISTRATION_KEY_REUSED: &str =
+    "this Idempotency-Key already registered a runner with a different request";
+/// The refusal a platform caller rotating a tenant runner's token earns.
+pub const DETAIL_TENANT_MANAGED: &str = "a tenant runner's token is rotated by its tenant";
 
 mod raise;
 
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
 pub(crate) use self::raise::{
-    admin_state_malformed, assignment_malformed, decision_model_id, query, rejected, row_malformed,
-    runner_not_found, runner_not_revoked, runner_still_leased, runner_vanished, selftest_refused,
-    stored_json,
+    admin_state_malformed, assignment_malformed, decision_model_id, query, registration_key_reused,
+    rejected, row_malformed, runner_not_found, runner_not_revoked, runner_still_leased,
+    runner_vanished, selftest_refused, stored_json, tenant_managed,
 };
 
 af_core::error_shell!(
@@ -131,6 +136,14 @@ pub(crate) enum ErrorKind {
     #[error("a runner still holding an active lease cannot have its record retired")]
     RunnerStillLeased,
 
+    /// A tenant registration's key was reused for a different request.
+    #[error("a registration key was reused for a different request")]
+    RegistrationKeyReused,
+
+    /// A platform caller asked to mint a tenant runner's token.
+    #[error("a tenant runner's token is rotated by its tenant")]
+    TenantManaged,
+
     /// A revoked runner was asked to collect a self-test.
     ///
     /// Revocation is terminal, so the ask can never be collected — a refusal
@@ -214,6 +227,8 @@ impl Error {
             ErrorKind::RunnerVanished | ErrorKind::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
             ErrorKind::RunnerNotRevoked => DETAIL_RUNNER_NOT_REVOKED,
             ErrorKind::RunnerStillLeased => DETAIL_RUNNER_STILL_LEASED,
+            ErrorKind::RegistrationKeyReused => DETAIL_REGISTRATION_KEY_REUSED,
+            ErrorKind::TenantManaged => DETAIL_TENANT_MANAGED,
             ErrorKind::SelftestRefused => DETAIL_SELFTEST_REFUSED,
             // The five datastore-shaped failures — a statement that reached
             // Postgres, and four rows this build cannot read — all answer
@@ -250,6 +265,8 @@ impl Error {
             | ErrorKind::RunnerNotFound
             | ErrorKind::RunnerNotRevoked
             | ErrorKind::RunnerStillLeased
+            | ErrorKind::RegistrationKeyReused
+            | ErrorKind::TenantManaged
             | ErrorKind::SelftestRefused
             | ErrorKind::AdminStateMalformed
             | ErrorKind::AssignmentMalformed { .. }
@@ -286,6 +303,8 @@ impl Error {
                 error_code::RUNNER_MUST_REVOKE_FIRST
             }
             ErrorKind::SelftestRefused => error_code::RUN_SELFTEST_REFUSED,
+            ErrorKind::RegistrationKeyReused => error_code::RUNNER_REGISTRATION_KEY_REUSED,
+            ErrorKind::TenantManaged => error_code::RUNNER_TENANT_MANAGED,
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::StoredJson { .. }

@@ -58,7 +58,11 @@ pub(crate) async fn handle<D: Services>(
         Ok(runner) => runner,
         Err(refused) => return refused.into_response(),
     };
-    match services.runners().delete_revoked(&runner).await {
+    match services
+        .runners()
+        .delete_revoked(&afd_runner::Reach::Platform, &runner)
+        .await
+    {
         Ok(()) => {
             super::runner_notify::changed(&*services, &runner).await;
             StatusCode::NO_CONTENT.into_response()

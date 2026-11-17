@@ -67,6 +67,8 @@ pub struct RegisterRow<'a> {
     pub event_id: &'a Uuid7,
     /// The event type that row records.
     pub event_type: &'a str,
+    /// The registering tenant; `None` for a platform runner.
+    pub tenant_id: Option<&'a Uuid7>,
     /// Assigned egress posture, as its wire spelling.
     pub network_policy: &'a str,
     /// Assigned registry baseline, already rendered as a JSON array.
@@ -106,6 +108,7 @@ impl<'a> RegisterRow<'a> {
             .bind(self.sandbox_config_json)
             .bind(self.durable_tasks_enabled)
             .bind(super::meta::DURABLE_TASKS_ENABLED)
+            .bind(self.tenant_id)
     }
 }
 
@@ -120,8 +123,20 @@ pub const SELECT_RUNNER_SELF: &str = include_str!("select_runner_self.sql");
 /// A revoked row remains terminal and is returned without changing either
 /// table, so rotation cannot reopen it through a second authority channel.
 /// `$1` runner, `$2` the new digest, `$3` the revoked status, `$4` event id,
-/// `$5` event type, `$6` the actor key, `$7` the actor.
+/// `$5` event type, `$6` the actor key, `$7` the actor, `$8` the reach's tenant:
+/// NULL reaches only platform runners, so a platform caller never mints a tenant
+/// runner's token.
 pub const ROTATE_RUNNER_TOKEN: &str = include_str!("rotate_runner_token.sql");
+
+/// A runner's tenant, read on a refused rotation to tell `404` from `409`.
+pub const SELECT_RUNNER_TENANT: &str = include_str!("select_runner_tenant.sql");
+
+/// A tenant registration's retry receipt; no row back means the key exists.
+/// `$1` id, `$2` tenant, `$3` operation id, `$4` request digest, `$5` runner.
+pub const INSERT_REGISTRATION_RECEIPT: &str = include_str!("insert_registration_receipt.sql");
+
+/// The stored receipt for `$1` tenant and `$2` operation id.
+pub const SELECT_REGISTRATION_RECEIPT: &str = include_str!("select_registration_receipt.sql");
 
 /// The heartbeat's policy read.
 ///

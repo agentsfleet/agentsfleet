@@ -108,6 +108,16 @@ pub(crate) fn runner_still_leased() -> Error {
     ErrorKind::RunnerStillLeased.into()
 }
 
+/// Refuses a registration key reused for a different request.
+pub(crate) fn registration_key_reused() -> Error {
+    ErrorKind::RegistrationKeyReused.into()
+}
+
+/// Refuses a platform caller minting a tenant runner's token.
+pub(crate) fn tenant_managed() -> Error {
+    ErrorKind::TenantManaged.into()
+}
+
 /// One [`Error`] of every kind, labelled, for a suite that grades the surface.
 ///
 /// A sample built here rather than in the suite means adding a kind without a
@@ -136,6 +146,8 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("runner not found", runner_not_found()),
         ("runner not revoked", runner_not_revoked()),
         ("runner still leased", runner_still_leased()),
+        ("registration key reused", registration_key_reused()),
+        ("tenant managed", tenant_managed()),
         ("selftest refused", selftest_refused()),
         ("admin state malformed", admin_state_malformed()),
         (

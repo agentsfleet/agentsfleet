@@ -116,7 +116,13 @@ async fn mutate<'a, D: Services>(
     match mutation {
         OrdinaryMutation::Transition(action) => services
             .runners()
-            .transition(runner, action, actor, services.now())
+            .transition(
+                &afd_runner::Reach::Platform,
+                runner,
+                action,
+                actor,
+                services.now(),
+            )
             .await
             .map(|status| RunnerAdminPatchResponse {
                 id: Cow::Borrowed(runner.as_str()),
@@ -125,22 +131,20 @@ async fn mutate<'a, D: Services>(
                 labels: None,
                 selftest_requested_at: None,
             }),
-        OrdinaryMutation::Selftest => {
-            services
-                .runners()
-                .request_selftest(runner)
-                .await
-                .map(|recorded| RunnerAdminPatchResponse {
-                    id: Cow::Borrowed(runner.as_str()),
-                    status: recorded.status(),
-                    assigned_policy: None,
-                    labels: None,
-                    selftest_requested_at: Some(recorded.requested_at()),
-                })
-        }
+        OrdinaryMutation::Selftest => services
+            .runners()
+            .request_selftest(&afd_runner::Reach::Platform, runner)
+            .await
+            .map(|recorded| RunnerAdminPatchResponse {
+                id: Cow::Borrowed(runner.as_str()),
+                status: recorded.status(),
+                assigned_policy: None,
+                labels: None,
+                selftest_requested_at: Some(recorded.requested_at()),
+            }),
         OrdinaryMutation::Edit(edit) => services
             .runners()
-            .edit(runner, edit, services.now())
+            .edit(&afd_runner::Reach::Platform, runner, edit, services.now())
             .await
             .map(|stored| RunnerAdminPatchResponse {
                 id: Cow::Borrowed(runner.as_str()),
@@ -181,7 +185,12 @@ async fn rotate<D: Services>(
 ) -> Response {
     match services
         .runners()
-        .rotate_token(runner, identity.subject(), services.now())
+        .rotate_token(
+            &afd_runner::Reach::Platform,
+            runner,
+            identity.subject(),
+            services.now(),
+        )
         .await
     {
         Ok(rotated) => {

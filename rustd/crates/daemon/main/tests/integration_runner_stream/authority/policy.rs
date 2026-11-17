@@ -105,6 +105,7 @@ async fn a_lost_revocation_push_is_fenced_at_issue_and_the_next_native_heartbeat
 async fn revoke_without_delivery(fixture: &Fixture) -> TestResult {
     afd_runner::Runners::new(fixture.run.booted.database.clone(), Entropy::new())
         .transition(
+            &afd_runner::Reach::Platform,
             &fixture.run.runner_id,
             serde_json::from_value(json!("revoke"))?,
             crate::e2e::ACTOR,

@@ -24,7 +24,7 @@ use afd_runner::error::one_of_each_kind;
 /// How many carry a `source()` — the chain an operator follows to the cause.
 const WITH_SOURCE: usize = 5;
 /// How many distinct registry codes the kinds report between them.
-const DISTINCT_CODES: usize = 7;
+const DISTINCT_CODES: usize = 9;
 
 /// Everything every error surface owes, graded once by
 /// `af_core::test_util::error_surface`: registered codes, `[CODE] message`
@@ -40,7 +40,7 @@ fn the_error_surface_holds() {
     );
 }
 
-/// The caller-facing vocabulary: present, uncoded, and exactly 8 sentences.
+/// The caller-facing vocabulary: present, uncoded, and exactly 10 sentences.
 #[test]
 fn the_caller_facing_sentences_hold() {
     let samples = one_of_each_kind();
@@ -48,7 +48,7 @@ fn the_caller_facing_sentences_hold() {
         samples
             .iter()
             .map(|(label, error)| (*label, error.detail())),
-        8,
+        10,
     );
 }
 

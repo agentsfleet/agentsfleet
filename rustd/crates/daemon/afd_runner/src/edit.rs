@@ -16,6 +16,7 @@ use sqlx::{Acquire as _, Postgres, Transaction};
 use crate::admin::stored_state;
 use crate::error::{Result, query, rejected, runner_not_found};
 use crate::policy::SandboxConfig;
+use crate::reach::Reach;
 use crate::spelling::{policy_wire, render_list, tier_wire};
 use crate::store::Runners;
 use crate::validate::{assignment, labels};
@@ -26,6 +27,13 @@ const CONTEXT_EDIT: &str = "runner edit";
 const EVENT_POLICY_ASSIGNED: &str = "runner_policy_assigned";
 const DETAIL_REVOKED_NO_POLICY: &str = "revoked runners cannot be re-assigned a policy";
 const DETAIL_EDIT_EMPTY: &str = "a runner edit carries an assigned policy, labels, or both";
+/// A tenant runner never holds a platform decision model: it would carry the
+/// platform decision key to a host its tenant controls.
+pub const DETAIL_TENANT_DECISION_MODEL: &str =
+    "a tenant runner cannot be assigned a decision model";
+/// Durable tasks on a tenant runner are a platform admin's switch.
+pub const DETAIL_TENANT_DURABLE_TASKS: &str =
+    "durable tasks on a tenant runner are enabled by a platform admin";
 
 /// What an edit changes. At least one half is present.
 #[derive(Debug, Clone, Copy)]
@@ -60,6 +68,7 @@ struct Assignment<'a> {
 #[derive(Debug, sqlx::FromRow)]
 struct PatchState {
     decision_model_id: Option<Uuid7>,
+    tenant_id: Option<Uuid7>,
     status: String,
     capability_report: Option<String>,
 }
@@ -82,6 +91,7 @@ impl Runners {
     /// datastore.
     pub async fn edit<'a>(
         &self,
+        reach: &Reach,
         runner: &Uuid7,
         edit: RunnerEdit<'_, 'a>,
         now: Timestamp,
@@ -107,6 +117,7 @@ impl Runners {
         .await?;
         let row = sqlx::query_as::<_, PatchState>(sql::runner_admin::SELECT_RUNNER_PATCH_STATE)
             .bind(runner)
+            .bind(reach.tenant())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT_EDIT))?
@@ -116,6 +127,7 @@ impl Runners {
             if status == AdminState::Revoked {
                 return Err(rejected(DETAIL_REVOKED_NO_POLICY));
             }
+            tenant_assignment(reach, row.tenant_id.as_ref(), assignment)?;
             selected.allow_change_from(row.decision_model_id.as_ref().map(Uuid7::as_str))?;
             assign(&mut transaction, runner, assignment, row.capability_report).await?;
         }
@@ -192,5 +204,24 @@ async fn assign(
         .fetch_optional(&mut **transaction)
         .await
         .map_err(query(CONTEXT_EDIT))?;
+    Ok(())
+}
+
+/// Refuses what a tenant runner may not be assigned: a platform decision model
+/// from any reach, and durable tasks switched on by its tenant.
+fn tenant_assignment(
+    reach: &Reach,
+    tenant: Option<&Uuid7>,
+    assignment: &Assignment<'_>,
+) -> Result<()> {
+    if tenant.is_none() {
+        return Ok(());
+    }
+    if assignment.decision_model_id.is_some() {
+        return Err(rejected(DETAIL_TENANT_DECISION_MODEL));
+    }
+    if reach.tenant().is_some() && assignment.stored.durable_tasks_enabled {
+        return Err(rejected(DETAIL_TENANT_DURABLE_TASKS));
+    }
     Ok(())
 }

@@ -89,7 +89,7 @@ async fn unavailable_selections_cannot_partially_edit_a_runner() {
     assert_refused_edit(&fixture, &runner, &mut policy).await;
     let detail = fixture
         .runners
-        .runner_detail(&runner)
+        .runner_detail(&afd_runner::Reach::Platform, &runner)
         .await
         .expect("unchanged runner");
     assert_eq!(detail.item().labels(), ["plane"]);
@@ -111,6 +111,7 @@ async fn assign(fixture: &Fixture, runner: &Uuid7, policy: &AssignedPolicy<'_>) 
     let edited = fixture
         .runners
         .edit(
+            &afd_runner::Reach::Platform,
             runner,
             RunnerEdit {
                 assigned_policy: Some(policy),
@@ -153,7 +154,7 @@ async fn assert_readers(fixture: &Fixture, runner: &Uuid7, selected: Option<&str
     );
     let detail = fixture
         .runners
-        .runner_detail(runner)
+        .runner_detail(&afd_runner::Reach::Platform, runner)
         .await
         .expect("operator projection");
     assert_eq!(
@@ -171,7 +172,7 @@ async fn assert_pages(
 ) {
     let first = fixture
         .runners
-        .list_runners(None, 100)
+        .list_runners(&afd_runner::Reach::Platform, None, 100)
         .await
         .expect("first page");
     let item = first
@@ -186,7 +187,7 @@ async fn assert_pages(
     let boundary = KeysetCursor::new(created_at + Duration::from_secs(1), runner.clone());
     let next = fixture
         .runners
-        .list_runners(Some(&boundary), 100)
+        .list_runners(&afd_runner::Reach::Platform, Some(&boundary), 100)
         .await
         .expect("cursor page");
     let item = next
@@ -207,6 +208,7 @@ async fn assert_refused_edit(fixture: &Fixture, runner: &Uuid7, policy: &mut Ass
     let refusal = fixture
         .runners
         .edit(
+            &afd_runner::Reach::Platform,
             runner,
             RunnerEdit {
                 assigned_policy: Some(policy),

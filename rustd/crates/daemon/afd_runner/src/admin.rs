@@ -8,6 +8,7 @@ use crate::error::{
     Result, admin_state_malformed, query, rejected, runner_not_found, runner_not_revoked,
     runner_still_leased, selftest_refused,
 };
+use crate::reach::Reach;
 use crate::sql;
 use crate::store::Runners;
 
@@ -76,6 +77,7 @@ impl Runners {
     /// an illegal transition, or an unavailable datastore.
     pub async fn transition(
         &self,
+        reach: &Reach,
         runner: &Uuid7,
         action: RunnerAdminAction,
         actor_id: &str,
@@ -95,6 +97,7 @@ impl Runners {
             .bind(sql::meta::TO_STATUS)
             .bind(sql::meta::ACTOR_ID)
             .bind(actor_id)
+            .bind(reach.tenant())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_TRANSITION))?
@@ -112,12 +115,13 @@ impl Runners {
     /// # Errors
     /// Returns a typed refusal for a missing runner, a runner not yet revoked,
     /// a runner still holding an active lease, or an unavailable datastore.
-    pub async fn delete_revoked(&self, runner: &Uuid7) -> Result<()> {
+    pub async fn delete_revoked(&self, reach: &Reach, runner: &Uuid7) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
         let row = sqlx::query_as::<_, Retired>(sql::runner_admin::DELETE_RUNNER_IF_IN_STATE)
             .bind(runner)
             .bind(state_wire(AdminState::Revoked))
             .bind(sql::LEASE_STATUS_ACTIVE)
+            .bind(reach.tenant())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_DELETE))?
@@ -137,11 +141,16 @@ impl Runners {
     /// # Errors
     /// Returns the dedicated conflict for a revoked runner, not-found for a
     /// missing runner, or the canonical datastore failures.
-    pub async fn request_selftest(&self, runner: &Uuid7) -> Result<SelftestRequested> {
+    pub async fn request_selftest(
+        &self,
+        reach: &Reach,
+        runner: &Uuid7,
+    ) -> Result<SelftestRequested> {
         let mut connection = self.pool().acquire().await?;
         let row = sqlx::query_as::<_, Requested>(sql::runner_admin::PATCH_RUNNER_SELFTEST_REQUEST)
             .bind(runner)
             .bind(state_wire(AdminState::Revoked))
+            .bind(reach.tenant())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_SELFTEST))?

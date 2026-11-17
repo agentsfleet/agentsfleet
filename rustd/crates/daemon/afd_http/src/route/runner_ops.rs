@@ -72,9 +72,10 @@ impl RunnerOpsRoute {
     #[must_use]
     pub const fn meta(self) -> RouteMeta {
         let (template, scopes) = match self {
-            Self::Register | Self::List => {
-                (paths::ADMIN_RUNNERS, Scopes::rw(RUNNER_READ, RUNNER_REGISTER))
-            }
+            Self::Register | Self::List => (
+                paths::ADMIN_RUNNERS,
+                Scopes::rw(RUNNER_READ, RUNNER_REGISTER),
+            ),
             // These identities share one axum path. Both carry the same
             // method-sensitive metadata so merging them cannot retain a
             // cheaper GET-only gate for PATCH.

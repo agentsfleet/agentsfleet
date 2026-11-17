@@ -16,8 +16,8 @@
 
 use crate::requests;
 use crate::support;
-use af_wire::runner::{NetworkPolicy, SandboxTier};
 use af_core::id::Uuid7;
+use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_auth::directory::Digest;
 use afd_runner::Verdict;
 use afd_runner::reconcile::REASON_NO_CAPABILITY_REPORT;
@@ -221,8 +221,16 @@ async fn runner_tenant_cannot_change() {
 
     for (runner, to, what) in [
         (&tenant_runner, None, "flipping a tenant runner to NULL"),
-        (&tenant_runner, Some(&other), "handing a tenant runner to another tenant"),
-        (&platform_runner, Some(&tenant), "claiming a platform runner for a tenant"),
+        (
+            &tenant_runner,
+            Some(&other),
+            "handing a tenant runner to another tenant",
+        ),
+        (
+            &platform_runner,
+            Some(&tenant),
+            "claiming a platform runner for a tenant",
+        ),
     ] {
         let refused = fixtures
             .set_runner_tenant(runner, to)
@@ -234,19 +242,28 @@ async fn runner_tenant_cannot_change() {
         );
     }
     assert_eq!(
-        fixtures.value::<Uuid7>(Row::Runner(&tenant_runner), "tenant_id").await,
+        fixtures
+            .value::<Uuid7>(Row::Runner(&tenant_runner), "tenant_id")
+            .await,
         Some(tenant.clone()),
         "the row still names its tenant"
     );
     assert_eq!(
-        fixtures.value::<Uuid7>(Row::Runner(&platform_runner), "tenant_id").await,
+        fixtures
+            .value::<Uuid7>(Row::Runner(&platform_runner), "tenant_id")
+            .await,
         None,
         "and a platform runner is still a platform runner"
     );
 
-    fixtures.rename_runner_host(&platform_runner, "renamed").await;
+    fixtures
+        .rename_runner_host(&platform_runner, "renamed")
+        .await;
     assert_eq!(
-        fixtures.text(Row::Runner(&platform_runner), "host_id").await.as_deref(),
+        fixtures
+            .text(Row::Runner(&platform_runner), "host_id")
+            .await
+            .as_deref(),
         Some("renamed"),
         "an update that leaves tenant_id alone still lands"
     );
@@ -276,7 +293,9 @@ async fn tenant_runner_refuses_a_decision_model() {
         .await
         .expect_err("a tenant runner must not take a decision model");
     assert!(
-        refused.to_string().contains("ck_runners_tenant_no_decision_model"),
+        refused
+            .to_string()
+            .contains("ck_runners_tenant_no_decision_model"),
         "the table check must be what refused, got: {refused}"
     );
     fixtures

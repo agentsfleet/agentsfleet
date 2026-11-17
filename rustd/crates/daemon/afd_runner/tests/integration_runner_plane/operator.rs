@@ -36,7 +36,13 @@ async fn test_a_drain_records_its_status_and_a_self_test_ask() {
     let runners = &fixture.runners;
 
     let draining = runners
-        .transition(&runner, RunnerAdminAction::Drain, ACTOR, clock::now())
+        .transition(
+            &afd_runner::Reach::Platform,
+            &runner,
+            RunnerAdminAction::Drain,
+            ACTOR,
+            clock::now(),
+        )
         .await
         .expect("a drain applies");
     assert_eq!(draining, AdminState::Draining);
@@ -54,12 +60,12 @@ async fn test_a_drain_records_its_status_and_a_self_test_ask() {
     assert_eq!(drained.metadata.get("actor_id"), Some(&Value::from(ACTOR)));
 
     let asked = runners
-        .request_selftest(&runner)
+        .request_selftest(&afd_runner::Reach::Platform, &runner)
         .await
         .expect("a self-test is asked of a live runner");
     assert_eq!(asked.status(), AdminState::Draining);
     let detail = runners
-        .runner_detail(&runner)
+        .runner_detail(&afd_runner::Reach::Platform, &runner)
         .await
         .expect("the detail reads");
     assert_eq!(detail.selftest_requested_at(), Some(asked.requested_at()));
@@ -75,22 +81,34 @@ async fn test_revoke_is_terminal_until_the_record_retires() {
     let runners = &fixture.runners;
 
     runners
-        .transition(&runner, RunnerAdminAction::Revoke, ACTOR, clock::now())
+        .transition(
+            &afd_runner::Reach::Platform,
+            &runner,
+            RunnerAdminAction::Revoke,
+            ACTOR,
+            clock::now(),
+        )
         .await
         .expect("a revoke applies");
     let refused = runners
-        .request_selftest(&runner)
+        .request_selftest(&afd_runner::Reach::Platform, &runner)
         .await
         .expect_err("a revoked runner is asked nothing");
     assert_eq!(refused.detail(), DETAIL_SELFTEST_REFUSED);
     let reopened = runners
-        .transition(&runner, RunnerAdminAction::Cordon, ACTOR, clock::now())
+        .transition(
+            &afd_runner::Reach::Platform,
+            &runner,
+            RunnerAdminAction::Cordon,
+            ACTOR,
+            clock::now(),
+        )
         .await
         .expect_err("revoked is terminal");
     assert!(reopened.is_rejected(), "{reopened}");
 
     runners
-        .delete_revoked(&runner)
+        .delete_revoked(&afd_runner::Reach::Platform, &runner)
         .await
         .expect("a revoked runner's record retires");
     let gone = runners
@@ -110,7 +128,7 @@ async fn test_the_operator_reads_derive_liveness_and_page_by_creation() {
     let runners = &fixture.runners;
 
     let detail = runners
-        .runner_detail(&newer)
+        .runner_detail(&afd_runner::Reach::Platform, &newer)
         .await
         .expect("the detail reads");
     let item = detail.item();
@@ -131,14 +149,14 @@ async fn test_the_operator_reads_derive_liveness_and_page_by_creation() {
         .await
         .expect("the older runner beats");
     let beaten = runners
-        .runner_detail(&older)
+        .runner_detail(&afd_runner::Reach::Platform, &older)
         .await
         .expect("the detail reads");
     assert_eq!(beaten.item().liveness(), RunnerLiveness::Online);
 
     let boundary = KeysetCursor::new(item.created_at(), item.id().clone());
     let page = runners
-        .list_runners(Some(&boundary), 1)
+        .list_runners(&afd_runner::Reach::Platform, Some(&boundary), 1)
         .await
         .expect("a page after the cursor reads");
     let next = page
@@ -169,6 +187,7 @@ async fn test_an_edit_stores_its_binds_in_the_sandbox_configuration() {
     let edited = fixture
         .runners
         .edit(
+            &afd_runner::Reach::Platform,
             &runner,
             RunnerEdit {
                 assigned_policy: Some(&policy),
@@ -194,7 +213,7 @@ async fn test_an_edit_stores_its_binds_in_the_sandbox_configuration() {
     );
     let detail = fixture
         .runners
-        .runner_detail(&runner)
+        .runner_detail(&afd_runner::Reach::Platform, &runner)
         .await
         .expect("the detail reads");
     assert_eq!(detail.item().labels(), ["plane", "edited"]);
@@ -222,12 +241,18 @@ async fn test_retiring_a_runner_keeps_the_attempts_it_ran_and_their_reservations
 
     fixture
         .runners
-        .transition(&runner, RunnerAdminAction::Revoke, ACTOR, clock::now())
+        .transition(
+            &afd_runner::Reach::Platform,
+            &runner,
+            RunnerAdminAction::Revoke,
+            ACTOR,
+            clock::now(),
+        )
         .await
         .expect("a revoke applies");
     fixture
         .runners
-        .delete_revoked(&runner)
+        .delete_revoked(&afd_runner::Reach::Platform, &runner)
         .await
         .expect("a runner that ran an attempt still retires");
 
@@ -257,6 +282,7 @@ async fn test_an_edit_carrying_nothing_is_refused_before_any_write() {
     let refused = fixture
         .runners
         .edit(
+            &afd_runner::Reach::Platform,
             &runner,
             RunnerEdit {
                 assigned_policy: None,
@@ -287,7 +313,7 @@ async fn test_a_rotation_lands_for_a_live_runner_and_is_refused_once_revoked() {
 
     fixture
         .runners
-        .rotate_token(&runner, ACTOR, clock::now())
+        .rotate_token(&afd_runner::Reach::Platform, &runner, ACTOR, clock::now())
         .await
         .expect("a live runner rotates");
     let rotated = capture.only("runner_token_rotated");
@@ -300,12 +326,18 @@ async fn test_a_rotation_lands_for_a_live_runner_and_is_refused_once_revoked() {
 
     fixture
         .runners
-        .transition(&runner, RunnerAdminAction::Revoke, ACTOR, clock::now())
+        .transition(
+            &afd_runner::Reach::Platform,
+            &runner,
+            RunnerAdminAction::Revoke,
+            ACTOR,
+            clock::now(),
+        )
         .await
         .expect("a revoke applies");
     let refused = fixture
         .runners
-        .rotate_token(&runner, ACTOR, clock::now())
+        .rotate_token(&afd_runner::Reach::Platform, &runner, ACTOR, clock::now())
         .await
         .expect_err("a revoked runner holds no credential to rotate");
 

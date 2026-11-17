@@ -231,6 +231,7 @@ pub(crate) async fn allow_all_egress(run: &crate::e2e::Scenario) {
         af_crypto::entropy::Entropy::new(),
     )
     .edit(
+        &afd_runner::Reach::Platform,
         &run.runner_id,
         afd_runner::RunnerEdit {
             assigned_policy: Some(&policy),

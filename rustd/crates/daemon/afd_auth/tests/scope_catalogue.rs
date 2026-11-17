@@ -288,19 +288,52 @@ fn test_iteration_agrees_with_membership() {
 #[test]
 fn scope_claim_strings_are_unchanged() {
     const PINNED: [&str; 30] = [
-        "fleet:read", "fleet:write", "fleet:admin", "schedule:read", "schedule:write",
-        "secret:read", "secret:write", "apikey:read", "apikey:write", "apikey:admin",
-        "grant:read", "grant:write", "connector:read", "connector:write", "model:read",
-        "model:admin", "platform-key:read", "platform-key:admin", "runner:read", "runner:write",
-        "stream:read", "approval:read", "runner:register", "runner:tenant", "approval:resolve",
-        "billing:read", "workspace:admin", "plugins:write", "runner:self", "workspace:any",
+        "fleet:read",
+        "fleet:write",
+        "fleet:admin",
+        "schedule:read",
+        "schedule:write",
+        "secret:read",
+        "secret:write",
+        "apikey:read",
+        "apikey:write",
+        "apikey:admin",
+        "grant:read",
+        "grant:write",
+        "connector:read",
+        "connector:write",
+        "model:read",
+        "model:admin",
+        "platform-key:read",
+        "platform-key:admin",
+        "runner:read",
+        "runner:write",
+        "stream:read",
+        "approval:read",
+        "runner:register",
+        "runner:tenant",
+        "approval:resolve",
+        "billing:read",
+        "workspace:admin",
+        "plugins:write",
+        "runner:self",
+        "workspace:any",
     ];
     let wires = Scope::ALL.map(Scope::wire);
     assert_eq!(wires, PINNED, "claim values, in catalogue order");
     for scope in Scope::ALL {
-        assert_eq!(Scope::from_wire(scope.wire()), Some(scope), "{} round-trips", scope.wire());
+        assert_eq!(
+            Scope::from_wire(scope.wire()),
+            Some(scope),
+            "{} round-trips",
+            scope.wire()
+        );
     }
-    assert_eq!(Scope::from_wire("runner:enroll"), None, "the old value grants nothing");
+    assert_eq!(
+        Scope::from_wire("runner:enroll"),
+        None,
+        "the old value grants nothing"
+    );
 }
 
 /// `runner:tenant` is granted per account by a platform admin, never at signup.
@@ -308,7 +341,9 @@ fn scope_claim_strings_are_unchanged() {
 fn runner_tenant_is_not_part_of_the_signup_grant() {
     assert!(!TENANT_OWNER_GRANT.contains(&Scope::RunnerTenant));
     assert!(
-        !signup_owner_claim().split(' ').any(|claim| claim == "runner:tenant"),
+        !signup_owner_claim()
+            .split(' ')
+            .any(|claim| claim == "runner:tenant"),
         "the claim seeded at signup must not carry runner:tenant"
     );
 }

@@ -70,6 +70,7 @@ async fn assign(fixture: &Fixture, runner: &Uuid7, policy: &AssignedPolicy<'_>) 
     let result = fixture
         .runners
         .edit(
+            &afd_runner::Reach::Platform,
             runner,
             RunnerEdit {
                 assigned_policy: Some(policy),
@@ -110,7 +111,7 @@ async fn assert_readers(fixture: &Fixture, runner: &Uuid7, expected: bool) {
     );
     let detail = fixture
         .runners
-        .runner_detail(runner)
+        .runner_detail(&afd_runner::Reach::Platform, runner)
         .await
         .expect("runner detail");
     assert_eq!(
@@ -124,7 +125,7 @@ async fn assert_readers(fixture: &Fixture, runner: &Uuid7, expected: bool) {
     for cursor in [None, Some(&boundary)] {
         let page = fixture
             .runners
-            .list_runners(cursor, 100)
+            .list_runners(&afd_runner::Reach::Platform, cursor, 100)
             .await
             .expect("operator list page");
         let item = page
