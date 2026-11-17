@@ -141,6 +141,9 @@ Paths were re-inventoried against `a1dcc2224`; §1's inventory records the exact
 | `afr_supervisor/src/authoring/{turn.rs,tests/*}` | EDIT | A message whose setup was accepted completes, and a refused proposal is corrected once (owner, Nov 16, 2026) |
 | `.orly/**`, `.agents/skills/orly-burst/`, `.claude/skills/orly-burst/`, `.opencode/skills/orly-burst/` | EDIT/ADD | orly 0.40 rules and its `orly-burst` skill; the `orly_version` pin is removed (owner, Nov 16, 2026: "remove the repo pin, its no longer valid") |
 | `.orly/orly.json` (`burst`, `commands.burst.acceptance`), `.orly/AGENTS.md`, `.orly/LOCAL.md` | EDIT | The repository's burst lane, setup, warm-up, secret references and artifacts, so the `orly-burst` skill has a lane to select; the secret references name only the development vault, as the playbooks already do |
+| `rustd/Cargo.{toml,lock}`, `package.json`, `cli/package.json`, `ui/packages/*/package.json`, `bun.lock`, `cli/bun.lock` | EDIT | Every release out on Nov 17 that resolves; `libc` and `parking_lot` wait on tokio-quiche's `libc` cap (owner, Nov 17, 2026) |
+| `docs/development.md`, `playbooks/operations/ci_rust_images/001_playbook.md`, `ui/agentsfleet.dev/README.md` | EDIT | Prose this branch changed meets the language limits `orly gate pr` checks |
+| `docs/v2/evidence/M249_EXCEPTIONS.md` | EDIT | Decision D2 records its reversal |
 | `ui/packages/app/**` confirmed orphaned modules and their isolated tests; `lib/models/display.ts` | REMOVE/EDIT | Owner-requested UI cleanup removes obsolete spending, model cells, action hooks, refresh controls and draft-search state; paused Plugin implementation stays available |
 | `ui/packages/app/app/globals.css` unused activity-table selectors | REMOVE | Remove styles for the deleted activity table without changing the reviewed resource layouts |
 
@@ -375,10 +378,10 @@ Any new producer metric needs bounded labels, an existing signal owner and a tes
 | R4 | Authoritative revision/work facts (§4) | `make test-integration-rustd`; `make dry-app` | Confirmed facts survive reload | P1 | PASS: recorded in `docs/v2/evidence/M249_POST_MERGE_RUNTIME_VALIDATION.md` |
 | R5 | Measured context budget (§5) | Parked separately | No implementation required in this workstream | P1 | DEFERRED at owner request |
 | S1 | Declared commands green | `make lint-all`; `make test-unit-all`; `make test-integration-rustd`; `make check-version` | Exit 0 | P0 | `orly gate pr` before the PR; counts in the PR body |
-| S2 | No secrets | `gitleaks detect --redact --no-banner` | Exit 0 | P0 | PASS: `gitleaks detect --log-opts=origin/main..HEAD`, 59 commits, no leaks |
-| S3 | Authenticated runtime and repository gates | `make acceptance`; `orly gate pr` | Exit 0 | P0 | DEFERRED at owner request: local acceptance stopped at TLS trust (Discovery); `orly gate pr` in the PR body |
+| S2 | No secrets | `gitleaks detect --redact --no-banner` | Exit 0 | P0 | PASS: the CI `gitleaks` check passes on each pushed head of PR #846 |
+| S3 | Authenticated runtime and repository gates | `make acceptance`; `orly gate pr` | Exit 0 | P0 | Recorded per pushed head in PR #846, Session notes 2: GitHub Actions and AWS Spot runs, and `orly gate pr` |
 
-The owner closed this spec in its PR with the local acceptance run outstanding; Discovery records why.
+Acceptance runs on Linux only, on a GitHub runner or an AWS Spot machine; PR #846 records each run.
 
 ## Dead Code Sweep
 
@@ -573,7 +576,7 @@ Record exact deletions after the merged-base inventory; no implementation deleti
 
 > Owner (Indy): "Typed "Save" -  vault updated op://ZMB_CD_DEV/typesafe/credential"
 
-Typed "Save" still depends on the edit check: without a decision model it fails, while the "Save and publish" flap saves directly. The owner kept that behaviour rather than adding a daemon or UI fallback.
+Typed "Save" still depends on the edit check: without a decision model it fails, while the "Save and publish" flap saves directly. The owner kept that behaviour rather than adding a daemon or UI fallback. Superseded on Nov 17, 2026: a Save turn now refuses every proposal itself and needs no decision model.
 
 > Owner (Indy), on a fallback for typed "Save": "Keep it as now"
 
@@ -620,13 +623,24 @@ Typed "Save" still depends on the edit check: without a decision model it fails,
 
 > Owner (Indy): "Just donot clutter the code, make it small modular and performant in the Nextjs"
 
-Every dev deploy now seeds the `typesafe` key into dev's platform workspace through `platform_secret_sync.sh`. Dev also needs the decision model in its catalogue and named in its runners' policy before typed "Save" can finish there.
+Every dev deploy now seeds the `typesafe` key into dev's platform workspace through `platform_secret_sync.sh`. Dev also needs the decision model in its catalogue and runner policy before edit checks run there; a typed "Save" no longer needs it.
 
 > Owner (Indy): "Typesafe i want yuou to fix it up in the platform-secrets.sh or waht ever key so it gets set in this PR when we merge it goes as secret"
 
 > Owner (Indy), choosing among the push options: "Pin TZ=UTC in vitest config"
 
 > Owner (Indy): "in your PR ensure that you do a large refactor on the billing area and see how we can better it. You are free to unleash and embark on a large refactor in Rust side and the NExt js side onthe code to make it better performant too."
+
+- **Frame budget on the Linux lane (Nov 17, 2026), open:** `test_streaming_reply_costs_no_long_tasks` fails on GitHub's runner on one long task, the reply's arrival over 100 settled turns. Run 43968571603 recorded it 82 ms after the probe started, lasting 54 ms against the browser's 50 ms floor. Its p95 frame time, 16.8 ms, met the 17.6 ms budget.
+- **What the arrival costs:** on the browser fixture at four times CPU slowdown, that task took 128 to 134 ms on main's chat thread and 131 to 141 ms on this branch's. The cost predates this branch, which measured about 5% more on three samples each.
+- **Where it goes:** the lane serves the production build (`next start`), so this is not a development-build cost. The time sits in React's render and commit of the subscribed rows, and no single row component of ours stands out.
+- **AWS Spot (Nov 17, 2026):** eleven lanes ended between Nov 16 and 17: two finished with failures fixed since, and four were reclaimed 5 to 25 minutes in. Two found no capacity, one hit the account's Spot quota (`MaxSpotInstanceCountExceeded`) and two were launch mistakes. The quota allows one 16-core lane at a time.
+- **E2E Networks (Nov 16, 2026):** the account offers no Debian trixie image, so that lane runs another day.
+- **Dependencies (Nov 17, 2026):** 97 workspace crates and every `package.json` were checked against their registries. The QUIC stack was already current: tokio-quiche 0.23.0, quiche 0.30.1, datagram-socket 0.8.1 and boring 5.5.0. `libc` 0.2.191 stays out because tokio-quiche and quiche require `libc` below 0.2.190; `parking_lot` 0.13 needs 0.2.191, so it waits too.
+
+> Owner (Indy): "I donot see debian trixie in E2E so we will have to do it tomorrow on E2E."
+
+> Owner (Indy), on the dependency bumps: "Fold into #846 now"
 
 ## Claude handoff
 
