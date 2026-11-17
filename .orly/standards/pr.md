@@ -34,6 +34,8 @@ GitLab merge requests follow the same rules.
 - **Good:** a rebase before the first push; after it, `git merge origin/main` and a plain push
 - **Why:** a force-push rewrites history that reviewers have already commented on.
 
+Fetch the target base immediately before checking it; a cached tracking ref does not prove freshness.
+
 ### PR-BUDGET — A milestone ships in one ready PR plus at most one follow-up.
 - **Applies to:** every milestone, and scope found while its PR is open
 - **Checked by:** review
@@ -50,7 +52,7 @@ GitLab merge requests follow the same rules.
 - **Good:** a repository-wide search for each old name, before the PR opens, that finds only changelogs and finished specs
 - **Why:** the PR that changes a symbol owns its cleanup, and deferred orphans compound across PRs.
 
-### PR-TREE — `git status -uall` prints nothing after the last commit, before the PR opens or updates.
+### PR-TREE — `git status --porcelain=v1 -uall` prints nothing after the last commit, before the PR opens or updates.
 - **Applies to:** the checkout a PR is opened or updated from
 - **Checked by:** gate: git.tree
 - **Bad:** a PR opened with an untracked `notes.txt` and a lockfile a hook rewrote left unstaged
@@ -70,6 +72,10 @@ GitLab merge requests follow the same rules.
 - **Bad:** `Status: DONE` on a spec still under `docs/v2/active/`
 - **Good:** finished work has `Status: DONE`; a parked record has `Status: DEFERRED`, the owner's quoted decision and reopening conditions in Discovery
 - **Why:** the spec's folder tells the next agent whether the work is finished.
+
+Commit completed scope's closure with the delivery. Pending CI does not add
+implementation scope or reopen a completed spec. Failed verification stays
+visible; never rewrite an acceptance criterion to call the work complete.
 
 ### PR-VERSION — The repository's version-sync check passes before the PR opens.
 - **Applies to:** repositories that declare `verify.version`
@@ -177,3 +183,20 @@ Each section leads with its answer, with no marketing adjectives, throat-clearin
 CI red from the diff is fixed and pushed; CI red from elsewhere goes to the owner.
 A fetch failure, a disputed finding or a new revision restarts the quiet count, and a review not yet posted is pending, not quiet.
 A finding in code the agent did not write goes to the owner before any fix.
+
+An authorized PR request targets ready-for-review unless the owner explicitly
+requests a draft. Promote a temporary draft from the same stream and read back
+the live draft flag before handoff. Review readiness does not waive checks or
+authorize merge.
+
+Classify a failure as unrelated only with equivalent baseline evidence;
+otherwise report its cause as unverified. An unchanged file alone is insufficient.
+
+The final handoff records the committed spec path and status, clean tree and equal local/upstream/PR revisions.
+It also records live review state, required companion links and current verification outcomes.
+A successful push or closed spec cannot substitute for the forge's readiness state.
+
+Inspect review threads even when their check is green. Answer every thread and fix findings introduced by the diff.
+Pending checks keep follow-up running.
+
+A blocker report names the exact check, evidence and required action.
