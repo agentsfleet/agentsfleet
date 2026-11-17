@@ -240,11 +240,15 @@ The runner's supervisor, agent loop, tool catalog, outbound guard, in-sandbox se
 
 The routes, their methods and their request and reply shapes are in the API reference's **Runner plane** group on docs.agentsfleet.net. That group is generated from `public/openapi.json`. The registration routes sit with the runner management routes; this doc does not restate them.
 
-The shape that matters here has two registration routes (§Registering a runner). `POST /v1/admin/runners` is called by an operator. `POST /v1/tenants/me/runners` is called by a tenant for its own hosts. Every other route sits under `/v1/runners/me` and is called by the runner with its `agt_r`.
+The shape that matters here has two registration routes (§Registering a runner). `POST /v1/admin/runners` is called by an operator. `POST /v1/tenants/me/runners` is called by a tenant for its own hosts.
+
+Every other route sits under `/v1/runners/me` and is called by the runner with its `agt_r`.
 
 `me` resolves from the token. No `runner_id` appears in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human* credential; everything else is authed by the machine credential it mints.
 
-Identity and auth are covered in [`../AUTH.md`](../AUTH.md); the runner is the first machine principal. `register` is gated by the `runner:register` scope. The scope is grantable on its own, because enrolling a host into the shared fleet exposes every tenant's secrets to it. A tenant's own route is gated by `runner:tenant`, because that host takes only its tenant's work.
+Identity and auth are covered in [`../AUTH.md`](../AUTH.md); the runner is the first machine principal. `register` is gated by the `runner:register` scope. The scope is grantable on its own, because enrolling a host into the shared fleet exposes every tenant's secrets to it.
+
+A tenant's own route is gated by `runner:tenant`, because that host takes only its tenant's work.
 
 A token without that scope is rejected `403`, tenant `admin` JWT and `agt_t` api_key alike.
 

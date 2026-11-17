@@ -91,7 +91,9 @@ Find the question, jump to the one §-section that answers it, and do not read t
 
 A fourth surface, **inbound webhooks**, does not use Bearer at all (HMAC-signed by the provider). See §"Manual fleet-webhook auth (separate surface)".
 
-A fifth surface, the **runner token** (`agt_r`), is the first *machine* principal: a host-resident `agentsfleet-runner` whose principal holds no tenant identity. Same Bearer wire shape and DB-hash lookup, but its own trust plane (`Plane::Runner`). The same guard layer therefore refuses it on every tenant route (see *Runner token* below). A tenant can register a runner of its own. Its owner is a column on the runner's row, and the token carries no claim for it.
+A fifth surface, the **runner token** (`agt_r`), is the first *machine* principal: a host-resident `agentsfleet-runner` whose principal holds no tenant identity. Same Bearer wire shape and DB-hash lookup, but its own trust plane (`Plane::Runner`). The same guard layer therefore refuses it on every tenant route (see *Runner token* below).
+
+A tenant can register a runner of its own. Its owner is a column on the runner's row, and the token carries no claim for it.
 
 Cookies **never reach the Rust backend**. The Clerk `__session` cookie lives on the dashboard's own host (`app.agentsfleet.net`), written by the Clerk SDK on the page after sign-in.
 
@@ -853,11 +855,13 @@ Platform operator — agentsfleet platform runners register                    a
 
 A tenant registers a host of its own with `agentsfleet runners register --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
 The route is `POST /v1/tenants/me/runners`, and it requires the `runner:tenant` scope.
+
 A platform admin grants that scope to an account at the identity provider.
 Signup never grants it, so a regular user cannot register a runner.
 
 The request carries a UUIDv7 `Idempotency-Key`.
 A retry with the same key and body answers `200` with the same `runner_id` and no token, because the token appears once.
+
 The same key with another body answers `409 UZ-RUN-025`.
 To recover a lost token, rotate it with `agentsfleet runners rotate-token <RUNNER_ID> --token-out <NEW_FILE>`.
 
