@@ -41,14 +41,18 @@ import {
   REASON_DECLARED_AT_INSTALL,
 } from "./fixtures/grants";
 import { saveFleetViaUI } from "./fixtures/install-ui";
-import { workspaceUrlPattern } from "./fixtures/nav";
 import { ensureSecondWorkspace, readFleetCounters, waitForFleetActive } from "./fixtures/seed";
 import { clientFor } from "./fixtures/api-client";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import { catalogueLabels, fleetUsage, type FleetUsage } from "./fixtures/usage";
+import { ALL_FLEETS_LABEL } from "@/app/(dashboard)/settings/billing/lib/report-format";
+import { modelLabel } from "@/lib/model-labels";
 
 // Two stable template names — the server suffixes a repeat, and a per-run
 // unique name would mint a gallery row per run that nothing deletes. One sweep
 // prefix reaches both, and the suffixed fleet names still carry it.
+// A settled charge can be a fraction of a cent ("$0.0001"), so only an exact zero counts as none.
+const ZERO_CHARGE = /\$0\.00(?!\d)/;
 const TEMPLATE_FIRST = "grant-walk-alpha";
 const TEMPLATE_SECOND = "grant-walk-beta";
 const SWEEP_PREFIX = "grant-walk";
@@ -61,7 +65,6 @@ const RENDER_TIMEOUT_MS = 15_000;
 const LEASE_WINDOW_MS = 30_000;
 // The install-time grant request runs after the fleet flips active, so the row
 // lands a beat behind the install itself.
-const GRANT_TIMEOUT_MS = 30_000;
 // The usage ledger settles after the terminal row; the balance follows it.
 const BILLING_SETTLE_TIMEOUT_MS = 90_000;
 
@@ -116,7 +119,7 @@ async function activated(fleetId: string): Promise<WalkFleet> {
   return { id: fleetId, callsign: deriveFleetIdentity(fleetId).callsign };
 }
 
-/** Approval is separate from Save; continuing must keep the original fleet. */
+/** Approval is separate from Save; approving the last grant activates the same fleet. */
 async function approveAndContinue(page: Page, fleetId: string, setupUrl: string): Promise<void> {
   const callsign = deriveFleetIdentity(fleetId).callsign;
   const grant = standing(await connectorGrantFor(FIXTURE_KEY.regular, workspaceId, fleetId), callsign);
@@ -131,12 +134,12 @@ async function approveAndContinue(page: Page, fleetId: string, setupUrl: string)
   expect(approved.status).toBe(GRANT_STATUS.approved);
   expect(approved.approved_at).not.toBeNull();
   expect(await pendingGateFor(FIXTURE_KEY.regular, workspaceId, fleetId)).toBeNull();
-  await page.goto(setupUrl);
-  await page.getByRole("button", {name: "Finish setup", exact: true}).click();
-  await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`), {timeout: GRANT_TIMEOUT_MS});
-  // This detail URL already identifies the saved fleet. Finish continuation
-  // before another navigation can cancel its request.
+  // Approving the last setup grant activates the fleet itself (afd_api_tenant
+  // approval/setup.rs), so there is nothing left to finish.
   await activated(fleetId);
+  await page.goto(setupUrl);
+  await expect(page.getByRole("form", {name: "Chat composer", exact: true}).getByRole("textbox")).toBeEnabled();
+  await expect(page.getByRole("button", {name: "Finish setup", exact: true})).toHaveCount(0);
 }
 
 test.describe.serial("multi-fleet grant journey", () => {
@@ -146,7 +149,7 @@ test.describe.serial("multi-fleet grant journey", () => {
     await clientFor(FIXTURE_KEY.regular).delete(`/v1/workspaces/${workspaceId}/secrets/linear`);
   });
 
-  test("two saved fleets each require their own approval and continuation", async ({ page }) => {
+  test("two saved fleets each require their own approval, which activates each", async ({ page }) => {
     test.setTimeout(INSTALL_TEST_TIMEOUT_MS);
     workspaceId = (await ensureSecondWorkspace(FIXTURE_KEY.regular, GRANT_WORKSPACE)).id;
     await observed(JOURNEY_LEG.install, () =>
@@ -268,5 +271,33 @@ test.describe.serial("multi-fleet grant journey", () => {
         { timeout: BILLING_SETTLE_TIMEOUT_MS },
       )
       .toBeLessThan(balanceBeforeNanos);
+  });
+  test("the run's charge appears in Usage under its fleet and its models' names", async ({ page }) => {
+    test.setTimeout(RUN_TEST_TIMEOUT_MS);
+    const fleet = installed(second);
+    const usage = await pollFor<FleetUsage>(
+      () => observed(JOURNEY_LEG.observe, () => fleetUsage(FIXTURE_KEY.regular, fleet.id)),
+      BILLING_SETTLE_TIMEOUT_MS,
+    );
+    expect(usage, "the settled report carries no charge for the fleet that just ran").not.toBeNull();
+    const settled = usage as FleetUsage;
+    const labels = await observed(JOURNEY_LEG.observe, () => catalogueLabels(FIXTURE_KEY.regular));
+    await signInAs(page, FIXTURE_KEY.regular);
+    await page.goto("/settings/billing");
+    // Narrow to the fleet the way a user does, through the Fleet filter.
+    await page.getByRole("combobox", { name: "Fleet", exact: true }).click();
+    await page.getByRole("option", { name: settled.fleetName, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`fleet=${fleet.id}`));
+    await expect(page.locator('[aria-label="Period totals"]')).not.toContainText(ZERO_CHARGE);
+    const byFleet = page.getByRole("table", { name: "Spending by fleet", exact: true });
+    const row = byFleet.getByRole("row").filter({ hasText: settled.fleetName });
+    for (const model of settled.models) {
+      await expect(row.getByText(modelLabel(labels, model), { exact: true }), `model ${model} is named as the catalogue names it`).toBeVisible();
+    }
+    // Back to every fleet keeps the charge inside the account's month total.
+    await page.getByRole("combobox", { name: "Fleet", exact: true }).click();
+    await page.getByRole("option", { name: ALL_FLEETS_LABEL, exact: true }).click();
+    await expect.poll(() => new URL(page.url()).searchParams.has("fleet")).toBe(false);
+    await expect(page.locator('[aria-label="Period totals"]')).not.toContainText(ZERO_CHARGE);
   });
 });

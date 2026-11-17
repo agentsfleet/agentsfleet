@@ -94,6 +94,14 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             .into(),
         ),
         (
+            "unsupported key",
+            ErrorKind::UnsupportedKey {
+                path: "x-agentsfleet.gates.rules.0.severity".into(),
+                setting: Some("gates"),
+            }
+            .into(),
+        ),
+        (
             "unknown runtime key",
             ErrorKind::UnknownRuntimeKey {
                 field: "not-a-key".into(),

@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import {
   CELL_STATE,
-  INTERRUPTED_VERB,
   EMPTY_OUTPUT,
   OUTPUT_UNAVAILABLE,
   cellState,
@@ -99,7 +98,7 @@ describe("toolCopy", () => {
   });
 
   it("replaces the verb with Interrupted, whatever the tool", () => {
-    expect(headerOf(TOOL_NAME.FILE_WRITE, { path: PATH }, CELL_STATE.INTERRUPTED)).toBe(`${INTERRUPTED_VERB} ${SHOWN_PATH}`);
+    expect(headerOf(TOOL_NAME.FILE_WRITE, { path: PATH }, CELL_STATE.INTERRUPTED)).toBe(`Interrupted ${SHOWN_PATH}`);
   });
 
   it("counts a write's lines only when its content arrived whole", () => {

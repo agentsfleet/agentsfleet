@@ -49,15 +49,23 @@ export async function cleanWorkspaceFleets(
   });
   for (const fleet of mine) {
     // List responses may carry `fleet_id` instead of `id`; lifecycle.ts
-    // already guards both. Delete removes a fleet in any status.
+    // already guards both.
     const fleetId = fleet.id ?? fleet.fleet_id;
     if (!fleetId) continue;
-    const removed = await runFleetctl(["fleet", "delete", fleetId, "--json"], { env });
-    if (removed.code !== 0 && !/not.*found/i.test(removed.stderr)) {
-      throw new Error(`teardown delete ${fleetId} exited ${removed.code}: ${removed.stderr.trim()}`);
-    }
+    await deleteFixtureFleet(env, fleetId);
   }
   return mine.length;
+}
+
+/**
+ * Deletes the one fleet a spec recorded when it saved it. Delete removes a
+ * fleet in any status, and a fleet already gone is not a teardown failure.
+ */
+export async function deleteFixtureFleet(env: Env, fleetId: string): Promise<void> {
+  const removed = await runFleetctl(["fleet", "delete", fleetId, "--json"], { env });
+  if (removed.code !== 0 && !/not.*found/i.test(removed.stderr)) {
+    throw new Error(`teardown delete ${fleetId} exited ${removed.code}: ${removed.stderr.trim()}`);
+  }
 }
 
 /** Deletes only this run's explicitly published, workspace-owned entries. */

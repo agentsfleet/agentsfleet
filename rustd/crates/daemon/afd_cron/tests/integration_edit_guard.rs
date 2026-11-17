@@ -147,7 +147,7 @@ async fn an_edit_to_a_one_off_recounts_its_instant_from_the_edit() {
         fire_at > edited.updated_at,
         "the instant is counted from the edit's own stamp"
     );
-    let civil = fire_at.to_zoned(TimeZone::UTC);
+    let civil = fire_at.to_zoned_datetime(TimeZone::UTC);
     assert_eq!(
         (civil.month(), civil.day(), civil.hour(), civil.minute()),
         (3, 15, 9, 10),

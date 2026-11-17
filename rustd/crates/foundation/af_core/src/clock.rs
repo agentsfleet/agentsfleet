@@ -52,6 +52,16 @@ pub fn now() -> Timestamp {
     instant_at(SystemTime::now())
 }
 
+/// An instant as a [`SystemTime`].
+///
+/// jiff 1.0 makes this conversion fallible for instants the platform cannot
+/// represent. Every instant here comes from a host clock or the ledger, so the
+/// epoch fallback marks an impossible value rather than hiding a real one.
+#[must_use]
+pub fn system_time(at: Timestamp) -> SystemTime {
+    SystemTime::try_from(at).unwrap_or(SystemTime::UNIX_EPOCH)
+}
+
 /// The same conversion, over an instant the caller supplies.
 ///
 /// PURE — it reads no clock, which is what lets the pre-epoch and out-of-range
@@ -213,9 +223,18 @@ mod tests {
 
     use jiff::Timestamp;
 
-    use super::{after, before, elapsed};
+    use super::{after, before, elapsed, system_time};
 
     const AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
+
+    #[test]
+    fn an_instant_converts_to_the_same_system_time() {
+        let at = system_time(AT);
+        assert_eq!(
+            at.duration_since(std::time::SystemTime::UNIX_EPOCH).ok(),
+            Some(Duration::from_secs(1_760_000_000))
+        );
+    }
 
     #[test]
     fn the_span_to_a_later_instant_is_its_distance() {

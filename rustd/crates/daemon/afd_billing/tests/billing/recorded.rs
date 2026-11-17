@@ -79,11 +79,14 @@ async fn an_observed_retry_charges_nothing_new() {
     let payer = payer();
     let work = WorkKey::FleetLease(mint_id());
     let charged = settlement(&payer, &work);
-    let inner = Observed::new({
-        let inner = RecordingBiller::new();
-        inner.fund(&payer.tenant, SECOND_FUNDING);
-        inner
-    });
+    let inner = Observed::new(
+        {
+            let inner = RecordingBiller::new();
+            inner.fund(&payer.tenant, SECOND_FUNDING);
+            inner
+        },
+        af_observability::Analytics::silent(),
+    );
     let first = inner
         .settle(&charged)
         .await

@@ -35,16 +35,13 @@ impl Requirements {
                 .iter()
                 .map(|name| name.as_str().to_owned())
                 .collect(),
-            repositories: runtime
-                .repository_binding()
-                .map(|binding| {
-                    binding
-                        .repositories()
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect()
-                })
-                .unwrap_or_default(),
+            repositories: runtime.repository_binding().map_or_default(|binding| {
+                binding
+                    .repositories()
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect()
+            }),
             tools: runtime.tools().iter().map(ToString::to_string).collect(),
             network: block.get("network").cloned(),
             approval_rules: block

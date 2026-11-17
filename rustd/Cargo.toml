@@ -93,7 +93,7 @@ edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
 # only by rust-toolchain.toml's pin, so a lower floor would be an untested claim).
-rust-version = "1.99.1"
+rust-version = "1.100.0"
 # MIT, matching the repository's own `LICENSE` and `cli/package.json`. The
 # manifest said Apache-2.0 from its first commit, which made this workspace the
 # only part of the product claiming a licence the project does not ship under —
@@ -315,7 +315,7 @@ const_format = { version = "0.2.37", default-features = false }
 # generated help, rather than a second undocumented input path. `color` and
 # `wrap_help` are left off — the daemon's usage output is read out of a
 # container log, where escape sequences and terminal-width reflow are noise.
-clap = { version = "4.6.7", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context"] }
+clap = { version = "4.6.8", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context"] }
 
 # RustCrypto. Pure Rust with no C linkage, the workspace's posture, and the
 # AES-256-GCM construction every stored vault row was sealed with.
@@ -360,7 +360,7 @@ url = { version = "2.5.8", default-features = false }
 # Return completed SQL sessions to the pool; detach cancelled task transactions.
 scopeguard = "1.2.0"
 
-uuid = { version = "1.29.2", default-features = false, features = ["v7", "std"] }
+uuid = { version = "1.29.3", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.
 #
@@ -406,7 +406,7 @@ uuid = { version = "1.29.2", default-features = false, features = ["v7", "std"] 
 # `/usr/share/zoneinfo` (gcr.io/distroless/static-debian12:nonroot, verified).
 # It lets a zone name be VALIDATED against the real database instead of
 # pattern-matched — see `afd_cron::validate::timezone`.
-jiff = { version = "0.2.40", default-features = false, features = [
+jiff = { version = "1.0.0", default-features = false, features = [
   "std",
   "tzdb-zoneinfo",
   # Every instant on the wire is a `jiff::Timestamp` serialized as RFC 3339 in
@@ -417,7 +417,7 @@ jiff = { version = "0.2.40", default-features = false, features = [
 # every crate here from implementing sqlx's traits for jiff's type, so row
 # fields decode through `#[sqlx(try_from = "jiff_sqlx::Timestamp")]` and binds go
 # through `ToSqlx`. Postgres only; its sqlite half stays off.
-jiff-sqlx = { version = "0.2.2", default-features = false, features = ["postgres"] }
+jiff-sqlx = { version = "1.0.0", default-features = false, features = ["postgres"] }
 
 # Base64url, for JSON Web Key components and the three segments of a session
 # token. `default-features = false` is load-bearing here rather than habitual:
@@ -430,7 +430,7 @@ base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 serde-saphyr = { version = "2.1.1", default-features = false, features = ["deserialize"] }
 # Immutable private checkpoint objects and native SigV4 transfer authorizations.
 object_store = { version = "0.14.2", default-features = false, features = ["aws"] }
-aws-sigv4 = "=1.6.4"
+aws-sigv4 = "=1.6.5"
 aws-credential-types = "=1.3.1"
 
 # The ONE cryptographic backend this workspace links.
@@ -471,11 +471,11 @@ aws-lc-rs = { version = "1.19.0", default-features = false, features = [
 # The PEM `PUBLIC KEY` a toolbox release is signed against, as `cosign` writes
 # it, read into the SubjectPublicKeyInfo `aws-lc-rs` verifies with. Already in
 # the build through rustls; declared so the runner's sandbox crate names it.
-rustls-pki-types = { version = "1.15.1", default-features = false, features = ["std"] }
+rustls-pki-types = { version = "1.16.0", default-features = false, features = ["std"] }
 
 # Product analytics: the async client only. It still compiles reqwest's
 # blocking client and chrono, which nothing here calls.
-posthog-rs = { version = "0.31.2", default-features = false, features = ["async-client"] }
+posthog-rs = { version = "0.33.1", default-features = false, features = ["async-client"] }
 # The workspace's first-run naming. Declared here like every other dependency:
 # a version in a member manifest is the one place drift can start.
 petname = { version = "3.2.0", default-features = false, features = ["default-words"] }
@@ -663,9 +663,9 @@ tower = { version = "0.5.3", default-features = false, features = ["util"] }
 # is no other way to prove the auto builder serves both.
 h2 = { version = "0.4.20", default-features = false }
 # Both runner carriers use the same BoringSSL implementation and verified identity.
-boring = { version = "5.4.0", default-features = false }
-tokio-boring = { version = "5.4.0", default-features = false }
-tokio-quiche = { version = "=0.20.1", default-features = false }
+boring = { version = "5.5.0", default-features = false }
+tokio-boring = { version = "5.5.0", default-features = false }
+tokio-quiche = { version = "=0.23.0", default-features = false }
 # Core NATS only: default features off keeps JetStream, KV and the object store
 # out of the build, so no signal can come to depend on broker-side state.
 async-nats = { version = "=0.52.0", default-features = false }
@@ -732,7 +732,7 @@ parking_lot = { version = "0.12.5", default-features = false }
 # the installation read and the scoped token mint — are two `reqwest` requests
 # in `afd_credential`, and the webhook payloads are read by `afd_api_ingress`'s
 # own `serde` types, so no GitHub SDK sits between this crate and its caller.
-jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
+jsonwebtoken = { version = "12.0.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 
 # OpenTelemetry, for the push-only export `af_otlp` builds. The SDK alone:
 # it re-exports the API types the
@@ -833,11 +833,13 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # `log` record that never runs when a subscriber is installed, and llvm-cov maps
 # both copies to the same source line and reports the DEAD one. The consequence
 # is that `warn!(x = y.z(), ...)` reads as uncovered however many times it runs.
-# Field expressions containing a call are therefore hoisted to a `let` above the
-# macro across this workspace; bare identifiers need no such treatment because
-# they get no coverage region of their own. Isolated in a standalone crate: same
-# code and same versions report 5, adding `features = ["log"]` reports 0.
-# M176 §Coverage decision carries the full measurement.
+# Rust 1.100 also maps named bare values and literals to that dead copy. Bind
+# those values and use tracing's field shorthand at affected emit sites. Keep
+# aliases borrowed and scoped to the emit; a literal message stays format_args!
+# so its value type and position in the field set remain unchanged. Computed
+# fields are hoisted as before. No logging feature or coverage filter changes.
+# The structured reproduction and native measurements are recorded in
+# docs/v2/evidence/M249_RUST_COVERAGE_VALIDATION.md.
 tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"] }
 # The email templates. Variables are checked against a Rust struct at compile
 # time, and HTML escaping is on by default for `.html` templates, so a display
@@ -906,7 +908,8 @@ jsonrpsee-types = { version = "0.26.1", default-features = false }
 tempfile = { version = "3.27.0", default-features = false }
 # The system-call numbers the sandbox's seccomp program refuses; rustix exposes
 # the calls, not their numbers. Codex's `linux-sandbox` reads them from here too.
-# tokio-quiche 0.20.1 caps this below 0.2.190; retain the published transport.
+# tokio-quiche 0.23.0 and quiche 0.30.1 still cap this below 0.2.190; retain the published
+# transport. parking_lot 0.13 waits on the same cap: its parking_lot_core 0.10 needs 0.2.191.
 libc = { version = "=0.2.189", default-features = false }
 # The sandbox's egress scope speaks netlink itself: route netlink for the veth
 # pair, its addresses and its route, nf_tables for the host-side rules. Pure
@@ -1119,7 +1122,7 @@ inline_asm_x86_att_syntax = "deny"
 inline_asm_x86_intel_syntax = "deny"
 # integer_division = "deny"  # off until fixed: 71 findings today
 iter_on_empty_collections = "deny"
-# iter_on_single_items = "deny"  # off until fixed: 3 findings today
+iter_on_single_items = "deny"
 # iter_over_hash_type = "deny"  # off until fixed: 8 findings today
 iter_with_drain = "deny"
 large_include_file = "deny"
@@ -1131,18 +1134,20 @@ lossy_float_literal = "deny"
 # map_with_unused_argument_over_ranges = "deny"  # off until fixed: 49 findings today
 mem_forget = "deny"
 # missing_asserts_for_indexing = "deny"  # off until fixed: 3 findings today
-# missing_const_for_fn = "deny"  # off until fixed: 1 findings today
+# missing_const_for_fn = "deny"  # off until fixed: 46 findings today
 mixed_read_write_in_expression = "deny"
 modulo_arithmetic = "deny"
 multiple_unsafe_ops_per_block = "deny"
 mutex_atomic = "deny"
 mutex_integer = "deny"
-# needless_collect = "deny"  # off until fixed: 3 findings today
+needless_collect = "deny"
 # needless_pass_by_ref_mut = "deny"  # off until fixed: 7 findings today
 needless_type_cast = "deny"
 non_send_fields_in_send_ty = "deny"
 non_zero_suggestions = "deny"
-# or_fun_call = "deny"  # off until fixed: 3 findings today
+# Hand-written `if let`/`else` and `match` on an `Option` use the combinators (FN-RS).
+option_if_let_else = "deny"
+or_fun_call = "deny"
 # panic_in_result_fn = "deny"  # off until fixed: 167 findings today
 path_buf_push_overwrite = "deny"
 pathbuf_init_then_push = "deny"
@@ -1158,7 +1163,7 @@ return_and_then = "deny"
 search_is_some = "deny"
 set_contains_or_insert = "deny"
 significant_drop_in_scrutinee = "deny"
-# significant_drop_tightening = "deny"  # off until fixed: 299 findings today
+# significant_drop_tightening = "deny"  # off until fixed: 519 findings today
 single_option_map = "deny"
 str_to_string = "deny"
 # string_add = "deny"  # off until fixed: 2 findings today
@@ -1185,6 +1190,7 @@ unused_rounding = "deny"
 # unwrap_in_result = "deny"  # off until fixed: 29 findings today
 # use_debug = "deny"  # off until fixed: 2 findings today
 use_self = "deny"
+useless_let_if_seq = "deny"
 verbose_file_reads = "deny"
 volatile_composites = "deny"
 while_float = "deny"

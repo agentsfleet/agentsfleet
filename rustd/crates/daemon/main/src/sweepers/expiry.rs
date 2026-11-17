@@ -22,17 +22,18 @@ const COMPLETED: &str = "expiry_sweep_completed";
 /// The biller refused an expired lease's last slice; the next tick retries.
 const REFUSED: &str = "expiry_sweep_refused";
 
-pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Analytics) {
+pub(super) fn spawn(
+    supervisor: &mut Supervisor,
+    database: &Db,
+    analytics: &Analytics,
+    biller: Arc<dyn Biller>,
+) {
     let passes = Passes {
         database: database.clone(),
-        biller: crate::billing::biller(database.clone()),
+        biller: Arc::clone(&biller),
         entropy: Entropy::new(),
-        drafts: afd_authoring::Drafts::new(
-            database.clone(),
-            Entropy::new(),
-            crate::billing::biller(database.clone()),
-        )
-        .with_analytics(analytics.clone()),
+        drafts: afd_authoring::Drafts::new(database.clone(), Entropy::new(), biller)
+            .with_analytics(analytics.clone()),
     };
     supervisor.spawn(super::EXPIRY, async move |stop| {
         let mut interval = tokio::time::interval(af_core::timing::EXPIRY_TICK);
@@ -81,12 +82,14 @@ impl Passes {
             }
             Err(fault) => {
                 let error_code = fault.code().as_str();
-                tracing::warn!(
-                    event = FAILED,
-                    pass = "leases",
-                    error_code,
-                    "expired leases wait for the next tick"
-                );
+                {
+                    let (event, pass, message) = (
+                        &FAILED,
+                        &"leases",
+                        format_args!("expired leases wait for the next tick"),
+                    );
+                    tracing::warn!(message, event, pass, error_code);
+                };
                 None
             }
         };
@@ -94,12 +97,14 @@ impl Passes {
             Ok(expired) => Some(expired),
             Err(fault) => {
                 let error_code = fault.code().as_str();
-                tracing::warn!(
-                    event = FAILED,
-                    pass = "attempts",
-                    error_code,
-                    "lapsed attempts wait for the next tick"
-                );
+                {
+                    let (event, pass, message) = (
+                        &FAILED,
+                        &"attempts",
+                        format_args!("lapsed attempts wait for the next tick"),
+                    );
+                    tracing::warn!(message, event, pass, error_code);
+                };
                 None
             }
         };
@@ -138,14 +143,12 @@ mod tests {
     async fn a_tick_runs_both_passes_and_logs_a_store_it_cannot_reach() {
         let log = Capture::install();
         let database = unreachable_db();
+        let biller =
+            crate::billing::biller(database.clone(), af_observability::Analytics::silent());
         let passes = Passes {
-            biller: crate::billing::biller(database.clone()),
+            biller: std::sync::Arc::clone(&biller),
             entropy: Entropy::new(),
-            drafts: afd_authoring::Drafts::new(
-                database.clone(),
-                Entropy::new(),
-                crate::billing::biller(database.clone()),
-            ),
+            drafts: afd_authoring::Drafts::new(database.clone(), Entropy::new(), biller),
             database,
         };
         assert_eq!(

@@ -224,14 +224,15 @@ fn written(
             // llvm-cov scores the dead copy.
             let Logged { error_code, reason } = unwritten.logged();
             let fleet_id = fleet.as_str();
-            tracing::warn!(
-                error_code,
-                event = EVENT_REQUEST_FAILED,
-                fleet_id,
-                service,
-                reason,
-                "the delivery parked without raising its grant card; the next poll asks again"
-            );
+            {
+                let (event, message) = (
+                    &EVENT_REQUEST_FAILED,
+                    format_args!(
+                        "the delivery parked without raising its grant card; the next poll asks again"
+                    ),
+                );
+                tracing::warn!(message, error_code, event, fleet_id, service, reason);
+            };
             None
         }
     }
@@ -298,15 +299,18 @@ fn log_issued(runner_id: &Uuid7, lease_id: &Uuid7, acquired: &Acquired, issued_a
     let fleet_id = acquired.fleet_id.as_str();
     let agentsfleet_event_id = acquired.event_id.as_str();
     let queue_wait_ms = queue_wait::of(acquired, issued_at);
-    tracing::info!(
-        event = EVENT_LEASED,
-        runner_id,
-        lease_id,
-        fleet_id,
-        agentsfleet_event_id,
-        queue_wait_ms,
-        "a lease was issued"
-    );
+    {
+        let (event, message) = (&EVENT_LEASED, format_args!("a lease was issued"));
+        tracing::info!(
+            message,
+            event,
+            runner_id,
+            lease_id,
+            fleet_id,
+            agentsfleet_event_id,
+            queue_wait_ms
+        );
+    };
 }
 
 #[cfg(test)]

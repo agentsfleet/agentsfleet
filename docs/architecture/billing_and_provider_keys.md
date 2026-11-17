@@ -259,7 +259,7 @@ A fleet run is charged for what it uses, and only that: no event costs anything 
      issue  → nothing                      the admission gate already checked the floor
      renew  → check(floor)                 once per payer every third tick, before the host's statement
      report → nothing
-   sweeper:billing, the relay, every 2 s: settle(lines)
+   sweeper:billing, the relay, every 5 s: settle(lines)
 ```
 
 `afd_fleet`'s task decision intent module assigns the native decision range before dispatch.
@@ -302,7 +302,10 @@ Every line carries its `kind` (`af_wire::usage::LineKind`): `model` lines keep t
 
 The key includes the kind, so a model line and a runtime line may hold the same number. Two passes never bill one slice twice (`afd_fleet`'s lease billing races suite).
 
-**Settling.** The lease path never settles. The relay, `sweeper:billing`, settles each committed line on its next pass, about 2 s later. After a restart, its first pass settles what the crash left.
+**Settling.** The lease path never settles.
+The relay, `sweeper:billing`, settles each committed line on its next pass within about five seconds.
+
+After a restart, its first pass settles what the crash left.
 
 `settle` keys on `(work, kind, seq)`, so a retry never charges twice. A balance that cannot cover a line takes it anyway and goes below zero (§11).
 
@@ -326,7 +329,7 @@ Its recovery counters count settlement groups, so one lease can contribute sever
 
 A group the relay cannot read is skipped, not failed. A work type, a line kind or a pricing posture this build does not name leaves the group unsettled, and the pass carries on. The owed gauges keep counting it, so the dashboard shows it.
 
-A row of an unknown work type drops out of the by-type `agentsfleet_billing_unsettled_nanos` figure but still pins `agentsfleet_billing_unsettled_oldest_seconds`. The relay logs `billing_relay_skipped` once for each distinct spelling per process and remembers at most 64. An operator learns what is stuck without a line every two seconds.
+A row of an unknown work type drops out of the by-type `agentsfleet_billing_unsettled_nanos` figure but still pins `agentsfleet_billing_unsettled_oldest_seconds`. The relay logs `billing_relay_skipped` once for each distinct spelling per process and remembers at most 64. An operator learns what is stuck without a line every five seconds.
 
 Nothing is guessed. An error would hold the cursor, and with it every tenant's settlement behind one row. A guessed posture would settle the wrong money.
 
@@ -487,7 +490,7 @@ When the gate blocks, the user's surfaces show:
 - **`agentsfleet usage show`** reads `$0.00`, or a negative amount while the tenant owes a debt. The CLI prints *⚠ Out of credits. See https://app.agentsfleet.net/settings/billing*, and below it the most recent charge rows showing where the credits went.
 - **Dashboard events list** (`/w/{workspaceId}/events`) renders the row with an amber `gate_blocked` status.
 - **Slack thread**, when the event was a mention: the thread gets one fixed notice naming `balance_exhausted`.
-- **Dashboard `/settings/billing`** shows settled spending in **Activity** and **Spending** tabs. **Add credits** opens a support email; the shared dashboard header shows the balance. Pending or unavailable usage is excluded and explained; [Billing reporting](billing_reporting.md) owns filters, detail reads and unavailable states.
+- **Dashboard `/settings/billing`** shows period and fleet controls, settled totals, daily spending and a by-fleet table. **Add credits** opens a support email; the shared dashboard header shows the balance. Pending or unavailable usage is excluded and explained; [Billing reporting](billing_reporting.md) owns filters and unavailable states.
 
 The blocked row is **terminal** (admission settled, immutable narrative). When the user's balance is later topped up (manually by us in v2.0, or via Stripe in v2.1+), there is **no automatic replay**. If they want the missed events processed, they re-trigger from the source (push another commit, send another steer).
 
@@ -703,7 +706,7 @@ They rounded differently, priced cached tokens differently, failed differently d
  work happens ─► usage lines        ─► Rater (pure)              ─► UsageLog (ours, inside the work's transaction)
  (runner, per     {seq, at, prompt,     tier by whole-request         billing.usage_lines, one row per request,
   request;         cached_read,         prompt size, price by `at`,   unique (work, kind, seq); the charges page reads it
-  setup chat       cache_write,         posture, one rounding rule              │ the relay, every 2 s
+  setup chat       cache_write,         posture, one rounding rule              │ the relay, every 5 s
   makes its own)   cache_write_5m,                                              ▼
                    cache_write_1h,                               Arc<dyn Biller>   check / settle / balance
                    output, runtime}                              ├─ LedgerBiller: billing.wallets + billing.usage_lines (built in)
@@ -775,7 +778,7 @@ For each, one transaction moves the lease's cursor to its deadline and logs the 
 
 **Budgets** are a separate `afd_billing::limits::fleet_spend` reader over `billing.usage_lines`, so a budget holds whichever biller moves the money. It counts the fleet's own lines. Setup-chat lines name no fleet; whether a fleet's budget should count the setup chat that authored it is Indy's call.
 
-**The relay and metrics.** `sweeper:billing` runs every 2 seconds, and up to ten passes back to back while a pass fills its batch.
+**The relay and metrics.** `sweeper:billing` runs every 5 seconds, and up to ten passes back to back while a pass fills its batch. A refused line is retried within a minute.
 
 The sweeper bills expired leases' last slices, then settles every unsettled line (`afd_billing::ledger::resettle`). A balance trails the charges a person reads by about one pass.
 

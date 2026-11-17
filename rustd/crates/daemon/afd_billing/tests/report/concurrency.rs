@@ -22,7 +22,8 @@ async fn simultaneous_report_clients_overlap_and_return_every_connection() {
     Migrator::new().run(&admin).await.unwrap();
     admin.close().await;
     let f = Fixture::open(&database).await;
-    fixture::seed(&f.admin, &[Line::setup(&f.tenant, 17)]).await;
+    fixture::record(&f, &[Line::setup(&f.tenant, 17)]).await;
+    let before = fixture::written(&f.admin, &f.tenant).await;
     let api = database
         .open(
             DbRole::Api,
@@ -47,7 +48,8 @@ async fn simultaneous_report_clients_overlap_and_return_every_connection() {
     }
     assert_eq!(returned.len(), CONNECTIONS);
     drop(returned);
-    assert_eq!(fixture::ledger(&f.admin, &f.tenant).await, (1, 17, 1));
+    assert_eq!(before.ledger, (1, 17, 1));
+    assert_eq!(fixture::written(&f.admin, &f.tenant).await, before);
     api.close().await;
     f.close().await;
     database.cleanup().await;
@@ -56,7 +58,7 @@ async fn simultaneous_report_clients_overlap_and_return_every_connection() {
 async fn run_round(f: &Fixture, api: &Db, round: usize) {
     let mut lock = f.admin.acquire().await.unwrap();
     let mut lock = sqlx::Connection::begin(&mut *lock).await.unwrap();
-    sqlx::query("LOCK TABLE billing.usage_lines IN ACCESS EXCLUSIVE MODE")
+    sqlx::query("LOCK TABLE billing.usage_daily IN ACCESS EXCLUSIVE MODE")
         .execute(&mut *lock)
         .await
         .unwrap();
@@ -71,7 +73,7 @@ async fn run_round(f: &Fixture, api: &Db, round: usize) {
             if (client + round).is_multiple_of(2) {
                 tokio::task::yield_now().await;
             }
-            billing.report(&tenant, &fixture::request(10)).await
+            billing.report(&tenant, &fixture::request()).await
         });
     }
     barrier.wait().await;
@@ -90,7 +92,7 @@ async fn run_round(f: &Fixture, api: &Db, round: usize) {
         assert_eq!(
             (
                 fixture::summary(&report).charged_nanos,
-                report.activities.len()
+                fixture::summary(&report).line_count
             ),
             (17, 1)
         );
@@ -102,7 +104,7 @@ async fn run_round(f: &Fixture, api: &Db, round: usize) {
 
 async fn observe(admin: &Db) -> i64 {
     loop {
-        let waiting: i64 = sqlx::query_scalar("SELECT COUNT(*)::bigint FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'WITH scoped AS%'")
+        let waiting: i64 = sqlx::query_scalar("SELECT COUNT(*)::bigint FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%WITH cells AS%'")
             .fetch_one(&mut *admin.acquire().await.unwrap()).await.unwrap();
         if usize::try_from(waiting).expect("nonnegative connection count fits usize") == CONNECTIONS
         {

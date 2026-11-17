@@ -104,12 +104,10 @@ impl Swept {
 pub async fn run<S: Sweep>(sweeper: S, token: CancellationToken) {
     let name = sweeper.name();
     let interval_ms = sweeper.interval().as_millis();
-    tracing::debug!(
-        sweeper = name,
-        interval_ms,
-        event = EVENT_STARTED,
-        "a sweeper started"
-    );
+    {
+        let (sweeper, event, message) = (&name, &EVENT_STARTED, format_args!("a sweeper started"));
+        tracing::debug!(message, sweeper, interval_ms, event);
+    };
 
     loop {
         // Read EVERY tick, not once at start-up: retention shortens its own
@@ -120,13 +118,16 @@ pub async fn run<S: Sweep>(sweeper: S, token: CancellationToken) {
             () = tokio::time::sleep(sweeper.interval()) => {}
         }
         match sweeper.sweep().await {
-            Ok(swept) if swept.is_worth_reporting() => tracing::debug!(
-                sweeper = name,
-                scanned = swept.scanned,
-                changed = swept.changed,
-                event = EVENT_SWEPT,
-                "a sweep completed"
-            ),
+            Ok(swept) if swept.is_worth_reporting() => {
+                let (sweeper, scanned, changed, event, message) = (
+                    &name,
+                    &swept.scanned,
+                    &swept.changed,
+                    &EVENT_SWEPT,
+                    format_args!("a sweep completed"),
+                );
+                tracing::debug!(message, sweeper, scanned, changed, event);
+            }
             Ok(_idle) => {}
             // Reported and continued. Every sweep here is idempotent and
             // bounded, so a failed pass has cost nothing a later pass cannot
@@ -134,13 +135,14 @@ pub async fn run<S: Sweep>(sweeper: S, token: CancellationToken) {
             // daemon restart to get liveness back.
             Err(failure) => {
                 let Logged { error_code, reason } = failure.logged();
-                tracing::warn!(
-                    sweeper = name,
-                    error_code,
-                    reason,
-                    event = EVENT_FAILED,
-                    "a sweep failed; the next pass will retry it"
-                );
+                {
+                    let (sweeper, event, message) = (
+                        &name,
+                        &EVENT_FAILED,
+                        format_args!("a sweep failed; the next pass will retry it"),
+                    );
+                    tracing::warn!(message, sweeper, error_code, reason, event);
+                };
             }
         }
     }

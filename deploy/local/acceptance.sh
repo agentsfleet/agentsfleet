@@ -8,12 +8,7 @@ dev_state
 
 action="${1:-all}"
 case "$action" in all|e2e|cli|execution) ;; *) dev_fail 'expected e2e, cli or execution (default: both suites)' ;; esac
-backend="${2:-orbstack}"
-case "$backend" in
-  orbstack) source deploy/local/orbstack.sh ;;
-  codex) source deploy/local/codex.sh ;;
-  *) dev_fail 'expected orbstack or codex acceptance backend' ;;
-esac
+source deploy/local/linux.sh
 acceptance_adapter
 export LOCAL_DEV_ENV_FILE="${AGENTSFLEET_LOCAL_ACCEPTANCE_ENV_FILE:-$DEV_STATE/acceptance.env}"
 dev_lock "$DEV_STATE/acceptance.lock"
@@ -25,7 +20,8 @@ acceptance_environment
 source "$LOCAL_DEV_ENV_FILE"
 set +a
 model_bootstrap_key="${FIREWORKS_API_KEY:-}"
-unset OPENROUTER_API_KEY FIREWORKS_API_KEY
+decision_bootstrap_key="${TYPESAFE_API_KEY:-}"
+unset OPENROUTER_API_KEY FIREWORKS_API_KEY TYPESAFE_API_KEY
 case "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" in pk_test_*) ;; *) dev_fail 'local acceptance requires development Clerk credentials' ;; esac
 : "${CLERK_SECRET_KEY:?development Clerk secret is required}"
 acceptance_adapter_build
@@ -115,7 +111,17 @@ start_dashboard
 printf 'AGENTSFLEET_API_URL=https://localhost:%s\nAGENTSFLEET_RUNNER_TOKEN=%s\nSSL_CERT_FILE=/var/lib/agentsfleet-runner/ca.pem\n' \
   "$LOCAL_ACCEPTANCE_TLS_PORT" "$ACCEPTANCE_RUNNER_TOKEN" >"$LOCAL_ACCEPTANCE_STATE/runner.env"
 acceptance_runner_stream_environment >>"$LOCAL_ACCEPTANCE_STATE/runner.env"
+runner_started=$(( $(date +%s) - 1 ))
 start_runner
+# The suites' preflight needs a runner that has beaten since it started; until
+# then `last_seen_at` is the never-seen epoch. The token travels on stdin.
+deadline=$(( $(date +%s) + DEV_READY_SECONDS ))
+until printf 'header = "Authorization: Bearer %s"\n' "$ACCEPTANCE_RUNNER_TOKEN" |
+  curl --silent --fail --max-time 2 --config - --cacert "$LOCAL_ACCEPTANCE_CA" \
+    "https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT/v1/runners/me" | jq -e --argjson since "$runner_started" '(.last_seen_at | sub("\\.[0-9]+"; "") | fromdateiso8601) >= $since' >/dev/null; do
+  [ "$(date +%s)" -lt "$deadline" ] || dev_fail "the acceptance runner never reported in; read $LOCAL_ACCEPTANCE_STATE/runner.log"
+  sleep 0.5
+done
 
 export BASE_URL="https://localhost:$LOCAL_ACCEPTANCE_UI_TLS_PORT"
 export NEXT_PUBLIC_API_URL="https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT"
@@ -125,6 +131,9 @@ export AUTH_E2E_REGULAR_EMAIL="${AUTH_E2E_REGULAR_EMAIL:-regular-fixture@e2e.age
 export AUTH_E2E_ADMIN_EMAIL="${AUTH_E2E_ADMIN_EMAIL:-admin-fixture@e2e.agentsfleet.net}"
 targets=("acceptance-$action")
 if [ "$action" = all ]; then targets=(acceptance-e2e acceptance-cli); fi
+# Every suite runs, so one red suite never hides the other's result.
+suites_status=0
 for target in "${targets[@]}"; do
-  make --no-print-directory "$target"
+  make --no-print-directory "$target" || suites_status=$?
 done
+exit "$suites_status"

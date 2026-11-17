@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: _model_allowlist_check lint-all lint-source lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-gh-actions-valid check-playbooks check-playbooks-refs
+.PHONY: check-models lint-all lint-source lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-gh-actions-valid check-playbooks check-playbooks-refs
 
 ACTIONLINT ?= actionlint
 
@@ -45,21 +45,21 @@ lint-cli: lint-source  ## Lint agentsfleet CLI and its public text
 	@cd cli && bun run lint
 	@echo "✓ [agentsfleet] Lint passed"
 
-# Governance gates: the script-driven checks that enforce repository CONVENTIONS
-# rather than compile correctness. Grouped so this target names a
-# policy set instead of a growing list, and so a new rule extends this line
-# rather than adding another near-duplicate wrapper.
-_model_allowlist_check:
+# The curated model catalogue under scripts/model-catalogue/: a repository
+# convention rather than compile correctness, so it rides lint-all.
+check-models:  ## Check the curated model catalogue: identities, context evidence and exact sourced prices
 	@echo "→ [models] Checking curated identities, context evidence and exact sourced prices..."
 	@bun run --bun tsrs --project scripts/model-catalogue/tsconfig.json
 	@bun test scripts/model-catalogue
 	@bun scripts/model-catalogue/check.mjs
 
-
 # The Rust workspace. `cd` rather than `--manifest-path`: rust-toolchain.toml is
 # resolved from the WORKING DIRECTORY, so running cargo from the repository root
 # would silently use whatever toolchain the shell has active instead of the
 # pinned one — the lane would pass on a compiler nobody agreed to.
+#
+# No `lint-source` prerequisite: lint-all and the lint-app family already run
+# it, so the ast-grep scan runs once per lint-all rather than once per caller.
 #
 # `--all-targets` covers tests and benches too. A clippy violation that only
 # exists in a test file is still a violation; excluding them is how a test file
@@ -68,7 +68,7 @@ RUSTD_DIR := rustd
 # The version CI installs too (`.github/workflows/test-unit-rustd.yml`).
 CARGO_SHEAR_VERSION := 1.14.0
 
-lint-rustd: lint-source  ## Lint the Rust workspace (rustfmt + clippy + cargo shear, warnings are errors)
+lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy + cargo shear, warnings are errors)
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@command -v cargo-shear >/dev/null 2>&1 || { echo "✗ cargo-shear not found. Install via: mise use -g cargo:cargo-shear@$(CARGO_SHEAR_VERSION)"; exit 1; }
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage_test.py
@@ -78,7 +78,7 @@ lint-rustd: lint-source  ## Lint the Rust workspace (rustfmt + clippy + cargo sh
 	@# flag that code is never compiled here — so the one module whose whole job
 	@# is to be exercised by tests would be the one module lint never sees.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] clippy -D warnings" -- \
-	  cargo clippy --workspace --all-targets --all-features -- -D warnings
+	  cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 	@# Rustc's dead-code lints stop at a crate's edge: a dependency nothing names
 	@# compiles silently. `cargo shear` fails on unused and misplaced
 	@# dependencies by source scan. Its unlinked-file notes stay warnings, because
@@ -87,16 +87,19 @@ lint-rustd: lint-source  ## Lint the Rust workspace (rustfmt + clippy + cargo sh
 
 SHELLCHECK ?= shellcheck
 
-lint-shell:  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
-	@echo "→ [shell] Running shellcheck on scripts/*.sh..."
+lint-shell:  ## shellcheck scripts/*.sh at error level, and the agentsfleet.dev installer and its test at every level
+	@echo "→ [shell] Running shellcheck on scripts/*.sh and the installer..."
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
-	@# `--severity=error` is the floor: catches genuine breakage (syntax,
-	@# undefined-vars, dangerous quoting) without blocking on pre-existing
-	@# stylistic warnings in symlinked dotfiles/scripts/. Tighten to
-	@# `warning` once dotfiles cleanup lands.
+	@# `--severity=error` is the floor for scripts/: it catches genuine
+	@# breakage (syntax, undefined variables, dangerous quoting) without
+	@# blocking on the warnings scripts/ already carries. Tighten to `warning`
+	@# once those are fixed.
 	@# `-x` lets shellcheck follow `source`/`.` into sibling scripts.
 	@$(SHELLCHECK) --severity=error -x scripts/*.sh
-	@echo "✓ [shell] shellcheck passed (error-level)"
+	@# The installer is what `curl | bash` runs, so it and its smoke test are
+	@# held to every severity.
+	@$(SHELLCHECK) -s bash ui/agentsfleet.dev/dist/install.sh ui/agentsfleet.dev/install_test.sh
+	@echo "✓ [shell] shellcheck passed (scripts/ at error level, installer at every level)"
 
 lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + design-system + agentsfleet
 
@@ -105,24 +108,27 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-gh-actions-valid check-playbooks check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-rustd lint-source check-models lint-website lint-apps-designsystem-cli lint-shell check-gh-actions-valid check-playbooks check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
-check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check
+check-gh-actions-valid:  ## Validate .github/ — actionlint (YAML + run: shellcheck), make-target refs in workflows and actions, check-release-candidate
 	@echo "→ [gh-actions] Running actionlint on workflows..."
 	@command -v $(ACTIONLINT) >/dev/null 2>&1 || { echo "actionlint not found. Install via: mise install actionlint"; exit 1; }
 	@$(ACTIONLINT) .github/workflows/*.yml
 	@# What the workflows run, which actionlint cannot see (pins, step order,
 	@# retired secrets), is ast-grep's: .ast-grep/rules/workflows/, run by
 	@# lint-source.
-	@echo "→ [gh-actions] Verifying make targets referenced in workflows..."
+	@echo "→ [gh-actions] Verifying make targets referenced in workflows and actions..."
 	@# Filter out our own recipe name — GNU make recurses on $(MAKE) even in
 	@# -n mode (dry-run propagates through sub-makes), so a self-reference
 	@# fork-bombs: each generation forks N sub-makes that each fork N more.
 	@#
-	@# Regex covers both `run: make <tgt>` (single-line) and `^<indent>make <tgt>`
-	@# (continuation inside `run: |` blocks). Without the second pattern, multi-
-	@# line shell blocks slip through (e.g. lint.yml's openapi assertion).
+	@# An invocation is `make` at the start of a line or after `run:` (single-line
+	@# steps and continuation lines inside `run: |` blocks), after `sudo`, or
+	@# inside a `$$(...)` substitution. Every target word after it counts, so
+	@# `make a b` checks both; flags are skipped, and the list ends at the first
+	@# `VAR=value`, redirection or shell operator. A `make -C <dir>` or
+	@# `make -f <file>` names another tree's targets, so it is not checked here.
 	@#
 	@# Existence check greps stderr for "No rule to make target" rather than
 	@# trusting `$(MAKE) -n`'s exit code. Recipes containing $(MAKE) execute
@@ -131,14 +137,26 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@# non-zero in CI without being "unknown" — that's a false positive for
 	@# the existence check we want here.
 	@FAIL=0; \
-	TGTS=$$( \
-	  { grep -hoE 'run:[[:space:]]*make[[:space:]]+[A-Za-z0-9_./-]+' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; \
- grep -hoE '^[[:space:]]+make[[:space:]]+[A-Za-z0-9_./-]+' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; \
-	  } | awk '{print $$NF}' | grep -v '^check-gh-actions-valid$$' | sort -u); \
+	TGTS=$$(awk '{ \
+	    if (!match($$0, /^[[:space:]]*(-[[:space:]]+)?(run:[[:space:]]*)?make[[:space:]]/) && \
+	        !match($$0, /(sudo|\$$\()[[:space:]]*make[[:space:]]/)) next; \
+	    rest = substr($$0, RSTART + RLENGTH); \
+	    sub(/[0-9]*[;|&)<>#].*/, "", rest); \
+	    n = split(rest, word, /[[:space:]]+/); \
+	    for (i = 1; i <= n; i++) { \
+	      if (word[i] == "") continue; \
+	      if (word[i] ~ /^(-C|-f|--directory|--file|--makefile)/) break; \
+	      if (word[i] ~ /^-/) continue; \
+	      if (word[i] !~ /^[A-Za-z0-9_][A-Za-z0-9_.\/-]*$$/) break; \
+	      print word[i]; \
+	    } \
+	  }' $$(find .github/workflows -name '*.yml' -o -name '*.yaml') $$(find .github/actions -type f) \
+	  | grep -v '^check-gh-actions-valid$$' | sort -u); \
+	if [ -z "$$TGTS" ]; then echo "✗ [gh-actions] make-target scan matched nothing — the scan is broken, not the tree"; exit 1; fi; \
 	for tgt in $$TGTS; do \
  err=$$($(MAKE) -n "$$tgt" 2>&1 >/dev/null || true); \
  if echo "$$err" | grep -qE "No rule to make target [\`']?$$tgt[\`']?"; then \
- echo "✗ '.github/workflows/' references 'make $$tgt' which is not a known target"; \
+ echo "✗ '.github/' references 'make $$tgt' which is not a known target"; \
 	    FAIL=1; \
  fi; \
 	done; \

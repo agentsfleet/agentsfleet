@@ -3,15 +3,12 @@
 mod queries;
 mod types;
 
-pub use types::{
-    Activity, Aggregate, Boundary, Charge, ChargeBoundary, Filter, Report, Request, Window,
-    dimension,
-};
+pub use types::{Aggregate, Filter, Report, Request, Window, dimension};
 
 #[cfg(feature = "test-util")]
 mod test_util;
 #[cfg(feature = "test-util")]
-pub use test_util::{activities_query, aggregates_query, charges_query};
+pub use test_util::aggregates_query;
 
 /// The selected Coordinated Universal Time (UTC) calendar month through the reporting cutoff.
 pub const BILLING_PERIOD_MONTH: &str = "month";
@@ -27,53 +24,19 @@ pub const BILLING_ACTIVITY_SETUP: &str = "setup";
 use af_core::id::Uuid7;
 use afd_db::Db;
 
-use crate::biller::WorkKey;
 use crate::{Result, error};
 
 const CONTEXT_READ: &str = "read settled usage report";
-const CONTEXT_DETAILS: &str = "read settled activity charges";
 
-/// Read aggregates and the activity page from the same database image.
+/// Read the period's totals, groups and choices from the daily usage rollup.
 pub(crate) async fn read(database: &Db, tenant: &Uuid7, request: &Request) -> Result<Report> {
     let mut connection = database.acquire().await?;
-    let mut transaction = sqlx::Connection::begin(connection.as_mut())
-        .await
-        .map_err(error::query(CONTEXT_READ))?;
-    sqlx::query(include_str!("sql/snapshot.sql"))
-        .execute(&mut *transaction)
-        .await
-        .map_err(error::query(CONTEXT_READ))?;
-    let aggregates: Vec<types::AggregateRow> =
+    let rows: Vec<types::AggregateRow> =
         queries::aggregates(|statement| statement, tenant, request)
-            .fetch_all(&mut *transaction)
+            .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_READ))?;
-    let aggregates = aggregates.into_iter().map(Aggregate::from).collect();
-    let activities = queries::activities(|statement| statement, tenant, request)
-        .fetch_all(&mut *transaction)
-        .await
-        .map_err(error::query(CONTEXT_READ))?;
-    transaction
-        .commit()
-        .await
-        .map_err(error::query(CONTEXT_READ))?;
     Ok(Report {
-        aggregates,
-        activities,
+        aggregates: rows.into_iter().map(Aggregate::from).collect(),
     })
-}
-
-/// Read one work item's settled lines without exposing whether foreign work exists.
-pub(crate) async fn details(
-    database: &Db,
-    tenant: &Uuid7,
-    work: &WorkKey,
-    request: &Request,
-    after: Option<&ChargeBoundary>,
-) -> Result<Vec<Charge>> {
-    let mut connection = database.acquire().await?;
-    queries::charges(|statement| statement, tenant, work, request, after)
-        .fetch_all(connection.as_mut())
-        .await
-        .map_err(error::query(CONTEXT_DETAILS))
 }

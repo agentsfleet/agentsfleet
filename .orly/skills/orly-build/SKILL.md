@@ -38,6 +38,7 @@ it applies are the standards listed in `.orly/AGENTS.md`; tests follow
 
 ## Codex cloud tasks
 
-A cloud task may run without Git hooks and pushes nothing. Run `orly gate work`
-and `orly gate verify` yourself and stop before `orly gate pr`. CI runs the
-heavy lanes on the Pull Request.
+A cloud task may run without Git hooks; run required gates manually when hooks are unavailable.
+An explicit user instruction permits feature-branch pushes and Pull Requests in cloud runtimes; continue with `orly-ship` and its checks.
+
+Without that authorization, leave the prepared work and verification evidence for the owner. A cloud runtime never waives a required check.

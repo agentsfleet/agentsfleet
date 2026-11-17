@@ -25,10 +25,10 @@ test.describe("Security API keys", () => {
     await signInAs(page, FIXTURE_KEY.admin);
     await page.goto("/settings/security");
     await expect(page).toHaveURL(/\/settings\/security(\?|$)/);
-    await expect(page.getByRole("heading", {name: "API Keys", level: 1, exact: true})).toBeVisible();
+    await expect(page.getByRole("heading", {name: "Security", level: 1, exact: true})).toBeVisible();
     await expect(page.getByRole("region", {name: "Account API keys", exact: true}).getByRole("heading", { name: "API keys", exact: true })).toBeVisible();
     await page.getByRole("button", {name: /^Workspace and account menu(?::|$)/}).click();
-    await expect(page.getByRole("menuitem", {name: "API Keys", exact: true})).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("menuitem", {name: "Security", exact: true})).toHaveAttribute("aria-current", "page");
     await page.keyboard.press("Escape");
 
     const name = `e2e-${Date.now()}`;
@@ -49,8 +49,12 @@ test.describe("Security API keys", () => {
     await expect(page.getByLabel(/api key value/i)).toHaveCount(0);
     await expect(page.getByText(raw, { exact: false })).toHaveCount(0);
 
-    // The new key is listed (newest-first → page 1).
+    // The new key is listed (newest-first → page 1) under the masked ending of
+    // the value just revealed, so an operator can match a key to its row.
     await expect(page.getByText(name, { exact: true })).toBeVisible();
+    const row = page.getByRole("listitem").filter({ hasText: name });
+    await expect(row.getByText(`agt_t••••••••${raw.slice(-4)}`, { exact: true })).toBeVisible();
+    await expect(row.getByText("Last used: unavailable", { exact: true })).toBeVisible();
 
     // Revoke → the row flips to a revoked state exposing Delete.
     await page.getByRole("button", { name: new RegExp(`revoke api key ${name}`, "i") }).click();

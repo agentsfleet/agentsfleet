@@ -26,7 +26,10 @@ export const CHAT_COPY = {
   improve: "Edit setup",
   composer: "Setup chat composer",
   send: "Send message",
+  // An empty composer starts a fleet; its button names that (ChatComposer.tsx).
+  start: "New fleet from message",
   unavailable: "Chat is unavailable",
+  recovery: "Chat recovery",
   historyUnavailable: "Unfinished setups could not be loaded.",
 } as const;
 
@@ -72,7 +75,11 @@ export async function openSavedFleet(page: Page, {handle, workspaceId, revision 
   await expect(page).toHaveURL(workspaceHref(workspaceId, `fleets/${id}`));
   await expect.poll(async () => (await readFixtureFleet(handle, workspaceId, id)).setup_revision,
     {timeout: SAVE_TIMEOUT_MS}).toBe(revision);
-  await expect(page.getByRole("form", {name: "Chat composer", exact: true}).getByRole("textbox")).toBeEnabled();
+  // An installing fleet (waiting on an approval) shows its setup chat, not the
+  // runtime chat (fleets/[id]/page.tsx); each state is held to its own screen.
+  if ((await readFixtureFleet(handle, workspaceId, id)).status === "installing")
+    await expect(page.getByRole("form", {name: CHAT_COPY.composer, exact: true})).toBeVisible();
+  else await expect(page.getByRole("form", {name: "Chat composer", exact: true}).getByRole("textbox")).toBeEnabled();
   return id;
 }
 
@@ -80,8 +87,10 @@ export function setupSummary(page: Page): Locator {
   return page.getByRole("region", {name: CHAT_COPY.setup, exact: true});
 }
 
+/** Lost access to a chat leaves the persistent recovery alert with Reload (ChatErrorNotice, WorkspaceChat). */
 export function chatUnavailable(page: Page): Locator {
-  return page.getByRole("alert").filter({ hasText: CHAT_COPY.unavailable });
+  return page.getByRole("alert", {name: CHAT_COPY.recovery, exact: true})
+    .filter({has: page.getByRole("button", {name: "Reload", exact: true})});
 }
 
 /** Opens a chat by the address its history entry links to and waits for its candidate. */

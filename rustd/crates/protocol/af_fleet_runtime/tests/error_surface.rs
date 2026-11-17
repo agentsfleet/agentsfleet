@@ -44,3 +44,38 @@ fn the_error_surface_holds() {
         },
     );
 }
+
+/// Every kind names the setting it concerns in this crate's own spelling, or
+/// none where the failure is the document's shape: a log may carry the answer,
+/// so authored text such as `Not Kebab` or `not-a-key` must never be it.
+#[test]
+fn every_kind_names_its_setting_in_the_crates_own_spelling() {
+    let expected = [
+        ("missing required field", Some("name")),
+        ("invalid definition", None),
+        ("runtime key outside block", Some("gates")),
+        ("unsupported key", Some("gates")),
+        ("unknown runtime key", Some("x-agentsfleet")),
+        ("runtime block required", Some("x-agentsfleet")),
+        ("invalid name", Some("name")),
+        ("invalid credential ref", Some("credentials")),
+        ("invalid budget", Some("budget.daily_nanos")),
+        ("invalid threshold", Some("threshold_count")),
+        ("invalid trigger set", Some("triggers")),
+        ("unverifiable webhook source", Some("triggers")),
+        ("invalid signature config", Some("triggers")),
+        ("invalid repository binding", Some("repositories")),
+        ("invalid field type", None),
+        ("out of bounds", None),
+    ];
+    let kinds = one_of_each_kind();
+    assert_eq!(
+        kinds.len(),
+        expected.len(),
+        "a new kind needs its expected setting here"
+    );
+    for ((label, error), (expected_label, field)) in kinds.iter().zip(expected) {
+        assert_eq!(*label, expected_label);
+        assert_eq!(error.field(), field, "{label}");
+    }
+}

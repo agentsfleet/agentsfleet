@@ -1,5 +1,5 @@
 //! The billing relay: the task that settles logged usage. Renewals and reports
-//! log their usage lines and return; every 2 s this task settles those lines
+//! log their usage lines and return; every 5 s this task settles those lines
 //! through the daemon's [`Biller`]. The expiry sweeper bills the
 //! last slice of a lease that ended unreported, and its lines settle here.
 
@@ -17,11 +17,15 @@ use crate::supervisor::Supervisor;
 
 /// How often a tick runs: how long a committed line waits to be charged, and
 /// how far a balance can trail the charges a person reads.
-const INTERVAL: Duration = Duration::from_secs(2);
+const INTERVAL: Duration = Duration::from_secs(5);
 
 /// Ticks between restarts of the line read at the oldest unsettled line: a
-/// line the biller refused is retried at least this often.
-const LAP_TICKS: u64 = 30;
+/// line the biller refused is retried at least this often, once a minute.
+const LAP_TICKS: u64 = 12;
+const _: () = assert!(
+    INTERVAL.as_secs() * LAP_TICKS <= 60,
+    "a refused line waits at most a minute"
+);
 
 /// Passes one tick may run back to back. A backlog drains at the biller's
 /// pace, and a sustained one still yields to the next tick.
@@ -39,9 +43,13 @@ const COMPLETED: &str = "billing_sweep_completed";
 /// The biller refused part of a pass; the next pass retries it.
 const REFUSED: &str = "billing_sweep_refused";
 
-pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, tasks: Tasks) {
+pub(super) fn spawn(
+    supervisor: &mut Supervisor,
+    database: &Db,
+    tasks: Tasks,
+    biller: Arc<dyn Biller>,
+) {
     let database = database.clone();
-    let biller: Arc<dyn Biller> = crate::billing::biller(database.clone());
     supervisor.spawn(super::BILLING, async move |stop| {
         let mut decision_cursor = DecisionMaintenanceCursor::default();
         let mut interval = tokio::time::interval(INTERVAL);
@@ -90,11 +98,14 @@ async fn drain<F: Future<Output = bool>>(
 /// One pass over fleet leases from where the last one stopped, logged at both
 /// ends. Answers whether to run again at once.
 async fn sweep_leases(database: &Db, biller: &dyn Biller, resume: &Mutex<Option<Resume>>) -> bool {
-    tracing::debug!(
-        event = STARTED,
-        pass = "leases",
-        "billing relay pass starts"
-    );
+    {
+        let (event, pass, message) = (
+            &STARTED,
+            &"leases",
+            format_args!("billing relay pass starts"),
+        );
+        tracing::debug!(message, event, pass);
+    };
     let after = resume.lock().map_or(None, |at| at.clone());
     let swept =
         afd_fleet::lease::billing_sweep::settle_lines(database, biller, after.as_ref()).await;
@@ -108,11 +119,13 @@ async fn sweep_leases(database: &Db, biller: &dyn Biller, resume: &Mutex<Option<
         }
         Err(error) => {
             let error_code = error.code().as_str();
-            tracing::warn!(
-                event = FAILED,
-                error_code,
-                "billing sweep waits for its datastore"
-            );
+            {
+                let (event, message) = (
+                    &FAILED,
+                    format_args!("billing sweep waits for its datastore"),
+                );
+                tracing::warn!(message, event, error_code);
+            };
             false
         }
     }
@@ -141,27 +154,33 @@ const fn drains(swept: &LinesSwept) -> bool {
     swept.full
 }
 
-/// Logs a lease pass's end. Every pass is one iteration of a 2 s poll, so its
+/// Logs a lease pass's end. Every pass is one iteration of a 5 s poll, so its
 /// counts log at `debug` (LOG-HOT); a pass the biller refused part of also
 /// warns once, with the first refusal's code, and the next pass retries.
 fn log_moved(swept: &LinesSwept) {
     let refused = swept.settle_failures;
     if let (true, Some(code)) = (refused > 0, swept.refused) {
         let error_code = code.as_str();
-        tracing::warn!(
-            event = REFUSED,
-            error_code,
-            refused,
-            "the biller refused part of a billing relay pass; the next pass retries"
-        );
+        {
+            let (event, message) = (
+                &REFUSED,
+                format_args!(
+                    "the biller refused part of a billing relay pass; the next pass retries"
+                ),
+            );
+            tracing::warn!(message, event, error_code, refused);
+        };
     }
-    tracing::debug!(
-        event = COMPLETED,
-        pass = "leases",
-        resettled = swept.resettled,
-        settle_failures = swept.settle_failures,
-        "billing relay pass finished"
-    );
+    {
+        let (event, pass, resettled, settle_failures, message) = (
+            &COMPLETED,
+            &"leases",
+            &swept.resettled,
+            &swept.settle_failures,
+            format_args!("billing relay pass finished"),
+        );
+        tracing::debug!(message, event, pass, resettled, settle_failures);
+    };
 }
 
 #[cfg(test)]

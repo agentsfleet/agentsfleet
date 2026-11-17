@@ -36,13 +36,13 @@ Together they cover the whole workspace. Continuous Integration (CI) runs each o
 
 A package-scoped runner, such as `cargo test -p af_wire` or `bun run test` inside a package, proves that package and nothing more. It never satisfies the repository claim.
 
-`make test-integration-rustd` needs live datastores, and so does the coverage lane that measures it (§Coverage). Docker compose brings up Postgres and three NATS nodes (`nats-1` to `nats-3`), and the schemas reset per run. NATS keeps nothing, so it needs no reset (`make/test-infra.mk`).
+`make test-integration-rustd` needs live datastores, and so does the coverage lane that measures it (§Coverage). Docker compose brings up Postgres and three NATS nodes (`ant`, `bee` and `elk`), and the schemas reset per run. NATS keeps nothing, so it needs no reset (`make/test-infra.mk`).
 
 No other lane needs either. `make test-unit-all` stays datastore-free, because every Rust test that needs one is `#[ignore]`d and runs only in those two lanes. `KEEP_TEST_STATE=1` skips the reset for the inner loop; CI never sets it.
 
-`make lint-all` is the lint claim. Its Rust half is `lint-rustd`, which runs the ast-grep rules under `.ast-grep/` through `make lint-source` and the `scripts/rustd_coverage_test.py` self-test. It then runs `cargo fmt --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings` and `cargo shear`.
+`make lint-all` is the lint claim. Its Rust half is `lint-rustd`, which runs the `scripts/rustd_coverage_test.py` self-test, then `cargo fmt --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings` and `cargo shear`.
 
-The rest of `lint-all` is the model allowlist check and the TypeScript lints. It also runs the shell, workflow and playbook checks, and the deploy safety gate.
+The rest of `lint-all` is the ast-grep rules under `.ast-grep/` (`make lint-source`), the model allowlist check and the TypeScript lints. It also runs the shell, workflow and playbook checks, and the deploy safety gate.
 
 `make test-runner-kernel` proves the runner's sandbox on a real Linux kernel. It builds the toolbox image unless `AFR_TOOLBOX_IMAGE` names one, then runs `afr_sandbox`'s kernel lane as root with bubblewrap, Landlock and cgroup v2. It finishes with `test-runner-startup`, the runner's startup under systemd, and fails rather than skips.
 

@@ -241,10 +241,9 @@ fn parse_status(raw: Option<&str>) -> Result<Option<GateStatus>, Refusal> {
     // `None` because absent MEANT pending and the two were the same request.
     // Absent now means every state, so collapsing would make `?status=pending`
     // — the one query an existing client is told to send — return all five.
-    match from_spelling::<GateStatus>(raw) {
-        Some(state) => Ok(Some(state)),
-        None => Err(Refusal::malformed(DETAIL_STATUS)),
-    }
+    from_spelling::<GateStatus>(raw)
+        .map(Some)
+        .ok_or_else(|| Refusal::malformed(DETAIL_STATUS))
 }
 
 #[cfg(test)]

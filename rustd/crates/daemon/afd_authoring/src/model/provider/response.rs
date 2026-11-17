@@ -1,7 +1,12 @@
 //! Usage is authoritative before any untrusted text or proposal is interpreted.
 
+use af_fleet_runtime::{
+    Definition,
+    definition::{ConfigOp, EditBatch, InstructionEdit},
+};
 use af_wire::authoring::{
-    ENVELOPE_BYTES_MAX, ModelResult, ModelUsage, ProposalCall, ProposalRejection,
+    ENVELOPE_BYTES_MAX, ModelResult, ModelUsage, Proposal, ProposalCall, ProposalRejection,
+    RefusalDetail,
 };
 use afd_credential::provider::RegisteredModel;
 use garde::Validate as _;
@@ -22,6 +27,14 @@ mod tests;
 #[cfg(test)]
 #[path = "tests/corrections.rs"]
 mod corrections;
+
+#[cfg(test)]
+#[path = "tests/first_setup.rs"]
+mod first_setup;
+
+#[cfg(test)]
+#[path = "tests/edit_refusal.rs"]
+mod edit_refusal;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -218,14 +231,14 @@ fn proposal(
     }
     // A locally generated SDK id is not a provider acknowledgement.
     let id = item.id.provider().ok_or(ErrorKind::Provider)?.as_str();
+    let arguments =
+        super::schema::settle(serde_json::Value::Object(item.function.arguments.clone()));
     let converted = if item.function.invalid_arguments.is_some() {
         Err(ProposalRejection::InvalidArguments)
     } else {
-        serde_json::from_value::<Arguments>(serde_json::Value::Object(
-            item.function.arguments.clone(),
-        ))
-        .map_err(|_untrusted| ProposalRejection::InvalidArguments)
-        .and_then(|arguments| super::edits::native(arguments.proposal, candidate, said))
+        serde_json::from_value::<Arguments>(arguments.clone())
+            .map_err(|_untrusted| ProposalRejection::InvalidArguments)
+            .and_then(|arguments| super::edits::native(arguments.proposal, candidate, said))
     };
     let call = match converted {
         Ok(proposal) => ProposalCall::Proposed {
@@ -235,10 +248,115 @@ fn proposal(
         Err(reason) => ProposalCall::Refused {
             id: id.into(),
             reason,
+            detail: (reason == ProposalRejection::InvalidArguments)
+                .then(|| checked(&arguments))
+                .flatten(),
         },
     };
     call.validate().map_err(|_untrusted| ErrorKind::Provider)?;
     Ok(call)
+}
+
+/// The native checker's own account of a first setup it refuses.
+///
+/// serde's message for the same failure quotes the refused value, so it is
+/// dropped above; the checker's sentence names keys and rules, never a value.
+fn checked(arguments: &serde_json::Value) -> Option<RefusalDetail> {
+    let definition = arguments.get(super::PROPOSAL_ARGUMENT)?.get("definition")?;
+    let failure = Definition::parse(&definition.to_string()).err()?;
+    RefusalDetail::new(failure.field(), &failure.told())
+}
+
+/// Refuses every proposal a Save earns, as a message that asks for no change.
+///
+/// A Save is a command, never a request to edit: the dashboard marks only
+/// pure commands such as "Save" or "please save it". The model still reaches
+/// for the one tool it has on every Save, so the refusal does not wait for an
+/// intent model, which a deployment may not have, and costs it no call. The
+/// turn then gets its sentence from the model, and the save proceeds.
+pub(in crate::model) fn refuse_for_save(
+    decoded: &mut Decoded,
+    request: &garde::Valid<ModelCallInput>,
+) -> Result<()> {
+    let Some(result) = &mut decoded.result else {
+        return Ok(());
+    };
+    let mut refused = false;
+    for call in &mut result.proposal_calls {
+        if let ProposalCall::Proposed { id, .. } = call {
+            *call = ProposalCall::Refused {
+                id: id.clone(),
+                reason: ProposalRejection::EditNotRequested,
+                detail: None,
+            };
+            refused = true;
+        }
+    }
+    if refused {
+        super::super::continuation::refresh_result(&mut decoded.continuation, request, result)?;
+    }
+    Ok(())
+}
+
+/// Refuses each edit still proposed that would leave the setup invalid.
+///
+/// It runs after the edit-intent check: a message that asks for no change is
+/// answered, not corrected, so an edit it should never have produced must not
+/// be refused as malformed first. Commit refuses the same edit with a status
+/// and no reason; applying it to the candidate here gives the model the rule.
+pub(in crate::model) fn refuse_invalid_edits(
+    decoded: &mut Decoded,
+    candidate: Option<&crate::types::Candidate>,
+    request: &garde::Valid<ModelCallInput>,
+) -> Result<()> {
+    let Some(result) = &mut decoded.result else {
+        return Ok(());
+    };
+    let mut refused = false;
+    for call in &mut result.proposal_calls {
+        let detail = match &*call {
+            ProposalCall::Proposed { proposal, .. } => edit_refusal(proposal, candidate),
+            ProposalCall::Refused { .. } => None,
+        };
+        if let Some(detail) = detail {
+            *call = ProposalCall::Refused {
+                id: call.id().to_owned(),
+                reason: ProposalRejection::InvalidArguments,
+                detail: Some(detail),
+            };
+            refused = true;
+        }
+    }
+    if refused {
+        super::super::continuation::refresh_result(&mut decoded.continuation, request, result)?;
+    }
+    Ok(())
+}
+
+/// The native checker's own account of an edit that would leave the setup invalid.
+///
+/// The crate's serde lift drops the value serde quotes, so the sentence names
+/// keys and rules, never a value. Commit still validates.
+fn edit_refusal(
+    proposal: &Proposal<Definition, ConfigOp, InstructionEdit>,
+    candidate: Option<&crate::types::Candidate>,
+) -> Option<RefusalDetail> {
+    let Proposal::Edit {
+        config_ops,
+        instruction_edits,
+        ..
+    } = proposal
+    else {
+        return None;
+    };
+    let failure = candidate?
+        .definition
+        .edit(EditBatch {
+            config_ops: config_ops.clone(),
+            instruction_edits: instruction_edits.clone(),
+        })
+        .err()?;
+    RefusalDetail::new(failure.field(), &failure.told())
 }
 
 /// A summary is usable only after complete stop and strict notes validation.

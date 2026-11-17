@@ -93,13 +93,10 @@ impl Trace {
         let duration_ms = af_core::clock::saturating_millis(self.started.elapsed());
         let error_code = code.as_str();
         self.span.in_scope(|| {
-            tracing::warn!(
-                event = FAILED,
-                correlation_id,
-                duration_ms,
-                error_code,
-                reason
-            );
+            {
+                let event = &FAILED;
+                tracing::warn!(event, correlation_id, duration_ms, error_code, reason);
+            };
         });
     }
 }

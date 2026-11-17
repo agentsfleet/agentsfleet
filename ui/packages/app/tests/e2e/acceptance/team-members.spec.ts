@@ -45,9 +45,9 @@ const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfl
 // The words the Members table shows for each email status, held here rather
 // than imported so the spec pins what a person reads on the page.
 const EMAIL_STATUS_LABEL: Record<EmailStatus, string> = {
-  [EMAIL_STATUS.sent]: "Invite emailed",
-  [EMAIL_STATUS.failed]: "Email not sent",
-  [EMAIL_STATUS.unconfigured]: "Email not set up",
+  [EMAIL_STATUS.sent]: "Invitation sent",
+  [EMAIL_STATUS.failed]: "Email not sent · Share the invite link",
+  [EMAIL_STATUS.unconfigured]: "Email not set up · Share the invite link",
 };
 
 type WorkspaceRow = { id: string; name: string | null; role: string };
@@ -62,8 +62,12 @@ async function expectSenderLine(turn: Locator, name: string | null): Promise<voi
   else await expect(line).toHaveText(name);
 }
 
-function rowFor(page: Page, email: string) {
-  return page.getByRole("listitem", { name: new RegExp(email.replace(/[.+]/g, "\\$&"), "i") });
+// A pending invite is named by its email; a member row by display name, so it is found by the email it shows (TeamTable).
+function inviteRow(page: Page, email: string) {
+  return page.getByRole("region", {name: "Pending invitations", exact: true}).getByRole("listitem", {name: email, exact: true});
+}
+function memberRow(page: Page, email: string) {
+  return page.getByRole("region", {name: "Members", exact: true}).getByRole("listitem").filter({hasText: email});
 }
 
 test.describe("teammates join an account", () => {
@@ -80,7 +84,7 @@ test.describe("teammates join an account", () => {
     inviteeContext = null;
   });
 
-  test("test_members_page_owner_journey", async ({ page, browser }) => {
+  test("test_members_page_owner_journey", {tag: "@post-deploy"}, async ({ page, browser }) => {
     email = inviteeEmail();
     const invitee = await signUpInvitee(browser, email);
     inviteeContext = invitee.context;
@@ -91,11 +95,11 @@ test.describe("teammates join an account", () => {
     await expect(page.getByRole("heading", { name: /^team$/i })).toBeVisible();
 
     // Invite from the dialog, then copy the link the invitee will open.
-    await page.getByRole("button", { name: /^invite$/i }).click();
+    await page.getByRole("button", { name: /^invite member$/i }).click();
     const dialog = page.getByRole("dialog");
-    await dialog.getByLabel(/^email$/i).fill(invitee.email);
+    await dialog.getByLabel(/^email address$/i).fill(invitee.email);
     await page.screenshot({path: test.info().outputPath("live-invite.png"), scale: "css", animations: "disabled"});
-    await dialog.getByRole("button", { name: /^send$/i }).click();
+    await dialog.getByRole("button", { name: /^send invite$/i }).click();
     const ready = page.getByTestId("invite-ready");
     const link = await ready.getByLabel(/^invite link$/i).inputValue();
     expect(link).toMatch(/\/invites\/[0-9a-f-]+$/);
@@ -103,20 +107,21 @@ test.describe("teammates join an account", () => {
     await expect(ready.getByRole("button", { name: /^copied$/i })).toBeVisible();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
     await ready.getByRole("button", { name: /^done$/i }).click();
-    await expect(rowFor(page, invitee.email)).toHaveCount(1);
+    await expect(inviteRow(page, invitee.email)).toHaveCount(1);
 
     // The invitee accepts from their own session; the owner then sees a member.
     const inviteId = link.slice(link.lastIndexOf("/") + 1);
     await clientFor({ sessionJwt: invitee.sessionJwt }).post(`${WAITING_INVITES}/${inviteId}/accept`, undefined);
     await page.reload();
-    const member = rowFor(page, invitee.email);
+    const member = memberRow(page, invitee.email);
     await expect(member).toHaveCount(1);
     await page.screenshot({path: test.info().outputPath("live-team.png"), scale: "css", animations: "disabled"});
 
     // Remove them; the row leaves the page.
-    await member.getByRole("button", { name: /^remove /i }).click();
+    await member.getByRole("button", { name: /^manage /i }).click();
+    await page.getByRole("menuitem", { name: /^remove /i }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: /^remove$/i }).click();
-    await expect(rowFor(page, invitee.email)).toHaveCount(0);
+    await expect(memberRow(page, invitee.email)).toHaveCount(0);
   });
 
   // Which status the row shows depends on the deployment's relay, so the test
@@ -132,15 +137,16 @@ test.describe("teammates join an account", () => {
     const status = recorded.email_status;
     await signInAs(page, FIXTURE_KEY.admin);
     await page.goto("/settings/members");
-    const row = rowFor(page, email);
+    const row = inviteRow(page, email);
     await expect(row).toHaveCount(1);
-    // The row carries a second, phone-width copy of the status that CSS hides here.
-    await expect(row.getByText(EMAIL_STATUS_LABEL[status], { exact: true }).filter({ visible: true })).toBeVisible();
-    const sendAgain = row.getByRole("button", { name: /^send the invite email to .* again$/i });
-    await expect(sendAgain).toHaveCount(status === EMAIL_STATUS.unconfigured ? 0 : 1);
+    await expect(row.getByText(EMAIL_STATUS_LABEL[status], { exact: true })).toBeVisible();
+    // Sending again lives in the row's menu, and only where a relay exists.
+    await row.getByRole("button", { name: `Manage invite for ${email}`, exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Send invite again", exact: true })).toHaveCount(status === EMAIL_STATUS.unconfigured ? 0 : 1);
+    await page.keyboard.press("Escape");
   });
 
-  test("test_invitee_accept_journey", async ({ browser }) => {
+  test("test_invitee_accept_journey", {tag: "@post-deploy"}, async ({ browser }) => {
     email = inviteeEmail();
     const invitee = await signUpInvitee(browser, email);
     inviteeContext = invitee.context;
@@ -170,7 +176,7 @@ test.describe("teammates join an account", () => {
     await expect(page.getByTestId("invite-notice")).toHaveCount(0);
   });
 
-  test("test_member_sees_teammate_message_then_reply", async ({ page, browser }) => {
+  test("test_member_sees_teammate_message_then_reply", {tag: "@post-deploy"}, async ({ page, browser }) => {
     test.setTimeout(REPLY_MS + FLOW_TIMEOUT_MS);
     email = inviteeEmail();
     const invitee = await signUpInvitee(browser, email);
@@ -186,9 +192,9 @@ test.describe("teammates join an account", () => {
     const fleet = await seedFleet(FIXTURE_KEY.admin, workspaceId, { name: `${THREAD_PREFIX}${tag}` });
     try {
       await waitForFleetActive(FIXTURE_KEY.admin, workspaceId, fleet.id);
-      // A teammate's turn carries their name only when their account has one
-      // (lib/events/sender-names.ts), and these fixtures sign up without one,
-      // so each sender line is held to what the backend recorded.
+      // A teammate's turn carries their name when their account has one
+      // (lib/events/sender-names.ts); each sender line is held to what the
+      // backend recorded.
       const johnName = (await owner.get<CurrentUser>(CURRENT_USER)).display_name ?? null;
       const bobName = (await bobApi.get<CurrentUser>(CURRENT_USER)).display_name ?? null;
 
@@ -206,14 +212,14 @@ test.describe("teammates join an account", () => {
       await expect(onJohns).toBeVisible({ timeout: LIVE_MS });
       await expectSenderLine(onJohns, bobName);
 
-      // John answers; Bob's screen names John, and John's own turn names no one.
+      // John answers; Bob's screen names John, and John's own turn reads "You".
       const johnSays = `ship it ${tag}`;
       await send(page, johnSays);
       const onBobs = invitee.page.getByLabel(CHAT_LABEL).locator(PERSON_TURN).filter({ hasText: johnSays });
       await expect(onBobs).toBeVisible({ timeout: LIVE_MS });
       await expectSenderLine(onBobs, johnName);
       const ownTurn = page.getByLabel(CHAT_LABEL).locator(PERSON_TURN).filter({ hasText: johnSays });
-      await expect(ownTurn.getByTestId(SENDER_LINE)).toHaveCount(0);
+      await expect(ownTurn.getByTestId(SENDER_LINE)).toHaveText("You");
 
       // The fleet's answer to Bob reaches John's screen too.
       await expect(page.getByLabel(CHAT_LABEL).locator(ASSISTANT_TURN).first()).toBeVisible({ timeout: REPLY_MS });

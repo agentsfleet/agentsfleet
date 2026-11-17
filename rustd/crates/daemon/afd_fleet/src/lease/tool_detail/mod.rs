@@ -156,12 +156,10 @@ impl LeaseService {
             Kept::Fenced(target) => {
                 let fleet_id = target.fleet_id.as_str();
                 let live_seq = target.live_seq;
-                tracing::debug!(
-                    fleet_id,
-                    fencing_token = presented,
-                    live_seq,
-                    event = EVENT_FENCED
-                );
+                {
+                    let (fencing_token, event) = (&presented, &EVENT_FENCED);
+                    tracing::debug!(fleet_id, fencing_token, live_seq, event);
+                };
                 return Err(stale_fence());
             }
             Kept::Stored {
@@ -191,14 +189,17 @@ fn log_skip(target: &LiveLease, skip: Skip) {
         bytes,
     } = skip;
     let reason = reason.as_str();
-    tracing::info!(
-        fleet_id,
-        agentsfleet_event_id = event_id,
-        position,
-        reason,
-        bytes,
-        event = EVENT_SKIPPED
-    );
+    {
+        let (agentsfleet_event_id, event) = (&event_id, &EVENT_SKIPPED);
+        tracing::info!(
+            fleet_id,
+            agentsfleet_event_id,
+            position,
+            reason,
+            bytes,
+            event
+        );
+    };
 }
 
 mod store;

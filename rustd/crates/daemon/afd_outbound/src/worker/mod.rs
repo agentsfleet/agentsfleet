@@ -162,11 +162,10 @@ async fn claim_once<S: Deliver + 'static>(
     let limit = i64::try_from(room).unwrap_or(i64::MAX);
     let claimed = obligation::claim(database, limit, &token).await?;
     let count = claimed.len();
-    tracing::debug!(
-        via = via_label,
-        claimed = count,
-        event = EVENT_CLAIM_COMPLETED
-    );
+    {
+        let (via, claimed, event) = (&via_label, &count, &EVENT_CLAIM_COMPLETED);
+        tracing::debug!(via, claimed, event);
+    };
     if count > 0 {
         af_observability::producers::outbound::claims(
             via.label(),

@@ -94,8 +94,7 @@ fn render(inbound: &Inbound) -> String {
     let location = inbound
         .location
         .as_deref()
-        .map(|origin| format!("Location: {origin}\n"))
-        .unwrap_or_default();
+        .map_or_default(|origin| format!("Location: {origin}\n"));
     let cut = if inbound.truncated {
         format!("[Response truncated at {RESPONSE_MAX_BYTES} bytes]\n")
     } else {
@@ -104,8 +103,7 @@ fn render(inbound: &Inbound) -> String {
     let content_type = inbound
         .content_type
         .as_ref()
-        .map(|value| format!("Content-Type: {value}\n"))
-        .unwrap_or_default();
+        .map_or_default(|value| format!("Content-Type: {value}\n"));
     let lossy = if inbound.lossy {
         "[Response contains replaced non-UTF-8 bytes]\n"
     } else {

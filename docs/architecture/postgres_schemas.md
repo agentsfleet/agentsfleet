@@ -314,12 +314,15 @@ Routing follows those settings; credential endpoint restrictions must match them
 | `wallets` | The tenant's balance; the only row money moves on | `balance_nanos` is signed: negative while the tenant owes a debt |
 | `authoring_report_receipts` | Acknowledges an interim report without settling | append-only |
 | `usage_lines` | One priced provider request or runtime slice of billed work; what the charges page, fleet budgets and the fleet list's `budget_used_nanos` trigger read | `UNIQUE (work_type, work_id, kind, seq)` · fleet runs and setup chat both write it (billing §11) |
+| `usage_daily` | Settled usage per tenant, UTC day, work type, fleet and model; what the Usage report reads | natural key `UNIQUE NULLS NOT DISTINCT (tenant_id, day, work_type, fleet_id, model)` · written in the settle transaction · rebuildable from `usage_lines` |
+| `runs_daily` | Settled runs per tenant, UTC day, work type and fleet | natural key `UNIQUE NULLS NOT DISTINCT (tenant_id, day, work_type, fleet_id)` · a run counts once, on its first runtime slice |
 
 Nothing is set aside before work runs. A funds check reads the balance less the payer's unsettled
 lines, and no `holds` table exists (billing §11).
 
 Money outlives every deletion. `usage_lines` carries opaque `tenant_id`, `workspace_id`,
-`fleet_id` and `authoring_attempt_id` values with no foreign key. `authoring.attempts` keeps
+`fleet_id` and `authoring_attempt_id` values with no foreign key, and `usage_daily` and
+`runs_daily` carry opaque `tenant_id` and `fleet_id` the same way. `authoring.attempts` keeps
 its workspace, tenant and user identifiers without a foreign key.
 
 Erasing a fleet, workspace or account therefore never deletes a charge. The slots name the export
@@ -334,7 +337,7 @@ that reads them (rule 7).
 | Plugin card | its revisions | fleets installed from it; drafts started from it (`source_plugin_revision_id` set NULL) | none |
 | Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runner leases for their 30-day window; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
 | Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | attempts, usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Authoring private results; each removed object first records its location and charged bytes for remote cleanup |
-| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, usage lines (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
+| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, usage lines, daily usage and run rows (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | Device session (past `expires_at`) | nothing: the row stays, and every read refuses it | none | none; the row holds a sealed ciphertext and a code digest |
 | OAuth nonce (spent at the callback, or presented past `expires_at`) | the row, at its spend; one never presented stays | none | none; the row holds only a digest |
 | Runner (record retired after revoke) | leases, history, lifetime counters | attempts (`runner_id` set NULL), usage lines; slots (`last_runner_id` set NULL) | none |

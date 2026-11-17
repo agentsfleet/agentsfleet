@@ -106,7 +106,7 @@ mod tests {
     fn a_repeated_row_is_the_same_single_grant() {
         let granted: Grants = ["github", "github"].into_iter().collect();
 
-        assert_eq!(granted, ["github"].into_iter().collect::<Grants>());
+        assert_eq!(granted, std::iter::once("github").collect::<Grants>());
     }
 
     #[test]
@@ -149,7 +149,7 @@ mod tests {
         let config = config("");
         let resolved = provider(None);
         let declared = Declared::with_mintable([("gh", "github")]);
-        let granted: Grants = ["github"].into_iter().collect();
+        let granted: Grants = std::iter::once("github").collect();
 
         let assembled = assemble(
             Inputs {
@@ -184,7 +184,7 @@ mod tests {
         let config = config("");
         let resolved = provider(None);
         let declared = Declared::with_mintable([("gh", "github"), ("desk", "zoho")]);
-        let granted: Grants = ["github"].into_iter().collect();
+        let granted: Grants = std::iter::once("github").collect();
 
         let parked = assemble(
             Inputs {

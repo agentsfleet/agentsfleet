@@ -13,7 +13,7 @@
 [![app coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=app&label=app&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=app)
 [![website coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=website&label=website&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=website)
 [![cli coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=cli&label=cli&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=cli)
-[![Rust](https://img.shields.io/badge/Rust-1.99.1-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/Rust-1.100.0-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Docs](https://img.shields.io/badge/Docs-agentsfleet.net-B8F0CE?labelColor=151716&logo=gitbook&logoColor=B8F0CE)](https://docs.agentsfleet.net)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -73,7 +73,7 @@ See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for instal
 
 ## Local development
 
-**Prerequisites:** [Rust 1.99.1](https://rustup.rs) · [Docker](https://www.docker.com) (Postgres, NATS, QStash) · [Bun ≥1.4.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
+**Prerequisites:** [Rust 1.100.0](https://rustup.rs) · [Docker](https://www.docker.com) (Postgres, NATS, QStash) · [Bun ≥1.4.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
 
 Rustup installs the pinned toolchain from `rustd/rust-toolchain.toml` on the first `cargo` run inside `rustd/`.
 
@@ -112,8 +112,7 @@ for startup, status, ownership and teardown.
 make lint-all
 make test-unit-all
 make test-integration-rustd   # needs Docker: live Postgres + NATS
-make acceptance-local        # macOS + OrbStack: browser and CLI acceptance
-make acceptance-codex        # Linux + privileged Docker: the same acceptance suites
+make acceptance              # Linux + privileged Docker; a PR labelled "acceptance" runs it in CI
 ```
 
 ---

@@ -168,6 +168,8 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("20261108124400_billing_wallets.sql"),
     migration!("20261108124500_billing_authoring_report_receipts.sql"),
     migration!("20261108124600_billing_usage_lines.sql"),
+    migration!("20261108124610_billing_usage_daily.sql"),
+    migration!("20261108124620_billing_runs_daily.sql"),
     migration!("20261108124700_memory_entries.sql"),
     migration!("20261108124800_memory_context_checkpoints.sql"),
     migration!("20261108124900_fleet_task_items.sql"),

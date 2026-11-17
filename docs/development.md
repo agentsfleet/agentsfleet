@@ -72,23 +72,45 @@ Apply those settings with the registered token when starting that checkout's run
 The settings helper prints no token and performs no remote host changes.
 On macOS, it requires an explicit runner-reachable URL because Linux cannot use this machine's loopback address.
 
-### Local acceptance
+### Acceptance
 
-`make acceptance-local` prepares the local services and calls `acceptance-e2e`, then `acceptance-cli`.
-Those existing targets keep their deployed-service behavior.
+`make acceptance` builds this checkout and starts the whole stack on the Linux machine it runs on.
+It then calls `acceptance-e2e` and `acceptance-cli`, which keep their deployed-service behavior.
+The coordinator and its files live in `deploy/local/`.
+
 For a narrower run, set `SUITE=e2e`, `SUITE=cli` or `SUITE=execution`.
 
-The coordinator and local deployment files live in `deploy/local/`.
+Acceptance runs on throwaway machines, not laptops.
+Label a pull request `acceptance`, and the `acceptance-on-demand.yml` workflow runs it on a fresh GitHub runner for every push.
+Once that workflow is on `main`, it can also be dispatched for any branch:
 
-This command needs macOS, OrbStack, Bun, Rust, cosign and the provisioned machine environment under `~/.config/agentsfleet/`.
-On first use it creates private worktree settings, an OrbStack Debian machine and a signed toolbox for the current runner version.
-It enrolls the runner through the authenticated local API using a dedicated test identity.
-It reuses the development database and datastore containers; Compose adds one Caddy container for local HTTPS.
-The first run may ask macOS to approve the local Caddy certificate in your login keychain; browser certificate verification stays enabled.
+```bash
+gh workflow run acceptance-on-demand.yml -f ref=<branch> -f suite=e2e
+```
 
+The machine needs privileged Docker, Bun, Rust, Python, OpenSSL and `certutil` from `libnss3-tools`.
+`deploy/local/machine-env.sh` writes its two machine environment files from credentials already in the environment.
+
+Set `ACCEPTANCE_LOCAL_TOOLBOX_DIR` to a signed toolbox set whose manifest admits the current runner version.
+The adapter checks the signature against the runner’s compiled release key; it never loads a release signing key.
+
+It uses the development database and datastore containers; Compose adds one Caddy container for local HTTPS.
 The dashboard serves its ordinary production build from this checkout.
-Each invocation calls `acceptance-build`, starts the shipping runner service through `deploy/baremetal/deploy.sh`, and runs the selected acceptance targets.
-The dashboard is a child process and stops when the command exits; the development daemon, Caddy and Linux runner remain available.
+
+Each invocation calls `acceptance-build`, starts the runner and runs the selected acceptance targets.
+The dashboard is a child process and stops when the command exits; the development daemon, Caddy and runner remain available.
+
+```bash
+ACCEPTANCE_LOCAL_TOOLBOX_DIR="<SIGNED_TOOLBOX_DIR>" make acceptance &&
+  printf 'Acceptance passed.\n'
+```
+
+Expected output after both suites pass:
+
+```text
+<varies>
+Acceptance passed.
+```
 
 The generated `<WORKTREE_STATE>/acceptance.env` preserves this database's encryption key across reruns.
 An existing database without its settings requires its original encryption key; bootstrap refuses to generate a replacement.
@@ -97,15 +119,13 @@ These settings override the generated defaults:
 
 | Setting | Value |
 | --- | --- |
-| `ACCEPTANCE_LOCAL_RUNNER_MACHINE` | Dedicated OrbStack Linux machine name; uses the standard `agentsfleet-runner.service` |
 | `ACCEPTANCE_LOCAL_TOOLBOX_DIR` | Absolute Linux path containing the signed toolbox image and manifest |
 | `ACCEPTANCE_LOCAL_RUNNER_RECORD` | Private registration JSON containing `runner_id` and `runner_token` |
-| `ACCEPTANCE_LOCAL_SIGNING_VAULT` | Vault containing `toolbox-release-key`; required if metadata discovery is ambiguous |
 | `ACCEPTANCE_LOCAL_CONNECTOR_VAULT` | Development vault containing `github-app`; required if metadata discovery is ambiguous |
 
 #### Recover after an intentional acceptance database reset
 
-The local database, its saved `PLATFORM_ADMIN_WORKSPACE_ID`, and the registration file selected by `ACCEPTANCE_LOCAL_RUNNER_RECORD` belong to the same fixture. Normal `make acceptance-codex` retries reuse all three. Do not reset the database alone.
+The local database, its saved `PLATFORM_ADMIN_WORKSPACE_ID`, and the registration file selected by `ACCEPTANCE_LOCAL_RUNNER_RECORD` belong to the same fixture. Normal `make acceptance` retries reuse all three. Do not reset the database alone.
 
 When deliberately recreating this worktree’s acceptance database:
 
@@ -117,15 +137,20 @@ When deliberately recreating this worktree’s acceptance database:
    Resolve a path containing `$DEV_STATE` against this worktree’s state directory. Preserve the encryption key, Clerk/provider credentials and signed toolbox.
 
    Preserve operator-managed settings that do not belong to this fixture.
-5. Run `make acceptance-codex` with the same settings file. Bootstrap creates the replacement workspace configuration and runner registration together.
+5. Run `make acceptance` with the same settings file. Bootstrap creates the replacement workspace configuration and runner registration together.
 
 This recovery applies only after a database reset you deliberately initiated. An unexpected `401`, `403`, missing registration file or unfinished enrollment is not proof of a reset. Keep the existing refusal and credential-recovery checks; do not automatically enroll another runner or replace an existing platform workspace.
 
-
-
 The machine environment and `AGENTSFLEET_UI_ENV_FILE` supply development Clerk credentials.
-Initial setup uses the machine's `FIREWORKS_API_KEY` and the existing development GitHub App item to populate the local encrypted vault.
-It also seeds the `qstash` bag from the local scheduler emulator.
+Initial setup uses the machine's `FIREWORKS_API_KEY` and the development GitHub App to populate the local encrypted vault.
+On a fresh acceptance database, bootstrap takes the app's six fields from `LOCAL_GITHUB_*` when all are set, and otherwise reads them with `op`.
+
+The setup edit check uses `TYPESAFE_API_KEY`, which bootstrap stores as the platform workspace's `typesafe` key.
+Bootstrap adds a decision model that asks for `jev-latest`, accepts only the reviewed `jev-1.14.0` answer and names it in the runner's policy.
+A typed "Save" skips that check, because its turn refuses every proposal itself.
+
+Any other message that proposes an edit still uses the check.
+Bootstrap also seeds the `qstash` bag from the local scheduler emulator.
 
 The default model's settings and prices come from the checked catalogue; an existing platform default is preserved.
 Signing keys stay in the signing process's environment, and temporary setup sessions are revoked.
@@ -142,29 +167,6 @@ The tests select model references and make real provider calls through the backe
 Optional `ACCEPTANCE_LOCAL_UI_PORT` and `ACCEPTANCE_LOCAL_TLS_PORT` select ports; an occupied port causes a refusal rather than stopping its owner.
 Startup logs live under `<WORKTREE_STATE>/acceptance/`.
 
-### Linux cloud acceptance
-
-Use `make acceptance-codex` on Linux with privileged Docker, Bun, Rust, Python, OpenSSL and `certutil` from `libnss3-tools`.
-It calls the same `acceptance-e2e` and `acceptance-cli` targets as the macOS command; `SUITE` selects the same narrower runs.
-
-Set `ACCEPTANCE_LOCAL_TOOLBOX_DIR` to an existing signed toolbox set whose manifest admits the current runner version.
-The adapter checks the signature against the runner’s compiled release key; it never loads a release signing key.
-Development Clerk credentials, the model key and the development connector remain the common bootstrap inputs.
-
-Use the absolute directory containing that verified set for `<SIGNED_TOOLBOX_DIR>`.
-
-```bash
-ACCEPTANCE_LOCAL_TOOLBOX_DIR="<SIGNED_TOOLBOX_DIR>" make acceptance-codex &&
-  printf 'Local acceptance passed.\n'
-```
-
-Expected output after both suites pass:
-
-```text
-<varies>
-Local acceptance passed.
-```
-
 The runner starts in an owned privileged Docker container, using the shipping binary, sandbox and toolbox verification.
 Its private cgroup namespace contains the delegated `agentsfleet/runner` subgroup.
 
@@ -176,19 +178,7 @@ Caddy listens only on loopback addresses in this virtual machine.
 Chromium temporarily trusts the local certificate through the user’s Network Security Services (NSS) database; exit removes only that certificate.
 
 Bun receives an extra certificate authority (CA) bundle. Certificate verification stays enabled.
-When `CODEX_PROXY_CERT` is available, Docker builds and QStash also trust that public session certificate.
-
-Identity requests use direct HTTPS unless `IDENTITY_HTTP_PROXY_URL` explicitly names a trusted proxy.
-For a Cloud acceptance invocation, pass the inherited HTTPS proxy deliberately:
-
-```sh
-IDENTITY_HTTP_PROXY_URL="$HTTPS_PROXY" make acceptance-codex
-```
-
-This setting covers signing-key reads, capability reads, and Clerk metadata writeback.
-It does not enable automatic proxy discovery, disable certificate verification, or change model networking in the runner.
-Use it only where the configured proxy and its certificate authority are trusted.
-Invalid values refuse boot; failed proxy requests never fall back to direct access.
+Identity requests use direct HTTPS unless `IDENTITY_HTTP_PROXY_URL` names a trusted proxy; [the authentication notes](AUTH.md) describe it.
 
 Exit stops and removes only the runner container this invocation created, preserving its private startup log.
 The shared datastores, local daemon, Caddy and saved registration remain available for the next run.
@@ -321,14 +311,20 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
 not in any contributor's dotfiles. Hook fixes are normal repo PRs.
 
 - **pre-push classifies the outgoing range into lint and unit surfaces** by file
-  pattern (`*.rs`/`rustd/*` → `lint-rustd`, `cli/*` → `test-unit-cli`,
-  `ui/packages/app/*` → `test-unit-app`, `ui/packages/website/*` →
-  `test-unit-website`, `ui/packages/design-system/*` → both
-  `test-unit-design-system` and `test-unit-app`). Zero matches →
+  pattern:
+  - `*.rs` and `rustd/*` → `lint-rustd`
+  - `cli/*` → `test-coverage-cli`
+  - `ui/packages/app/*` → `test-coverage-app`
+  - `ui/packages/website/*` → `test-coverage-website`
+  - `ui/packages/design-system/*` → both `test-coverage-design-system` and
+    `test-coverage-app`
+
+  Each is the target its Continuous Integration (CI) job in
+  `.github/workflows/test.yml` runs. Zero matches →
   `"no test-relevant files — nothing to run"` and the push sails through, so a
-  docs-only push skips the suite entirely. No pre-push lane needs a live
-  datastore. Rust unit tests do not run here; they run at `orly gate pr` and
-  in Continuous Integration (CI) (`.githooks/pre-push`).
+  docs-only push skips the suite entirely.
+- **No pre-push lane needs a live datastore.** Rust unit tests do not run
+  here; they run at `orly gate pr` and in CI (`.githooks/pre-push`).
 - **Clippy is pre-push's, not pre-commit's.** `lint-rustd` compiles the whole
   workspace under `-D warnings`, which measured 36s to 3m16s per commit. That
   is a tax on every commit, including the small ones. Pre-commit keeps the

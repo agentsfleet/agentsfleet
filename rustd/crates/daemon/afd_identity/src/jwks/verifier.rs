@@ -155,11 +155,16 @@ impl<S: KeySetSource> JwksVerifier<S> {
         // stream of 401s. The VALUE is never logged — it is claim content from
         // a token, and naming the claim is what an operator needs.
         let ceiling = claims.ceiling().inspect_err(|_unreadable| {
-            tracing::warn!(
-                event = "workspace_ceiling_unreadable",
-                "a token carries a workspace ceiling this daemon cannot read; \
+            {
+                let (event, message) = (
+                    &"workspace_ceiling_unreadable",
+                    format_args!(
+                        "a token carries a workspace ceiling this daemon cannot read; \
                  the token is refused rather than served without the confinement"
-            );
+                    ),
+                );
+                tracing::warn!(message, event);
+            };
         });
 
         let subject = claims

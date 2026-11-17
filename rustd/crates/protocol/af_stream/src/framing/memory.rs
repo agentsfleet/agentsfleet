@@ -81,12 +81,10 @@ impl MemoryLimits {
 }
 
 fn read(env: &(impl EnvSource + ?Sized), setting: &'static str, default: usize) -> Result<usize> {
-    match env.get(setting) {
-        Some(raw) => raw
-            .parse()
-            .map_err(|source| ErrorKind::MemorySetting { setting, source }.into()),
-        None => Ok(default),
-    }
+    env.get(setting).map_or(Ok(default), |raw| {
+        raw.parse()
+            .map_err(|source| ErrorKind::MemorySetting { setting, source }.into())
+    })
 }
 
 #[cfg(test)]

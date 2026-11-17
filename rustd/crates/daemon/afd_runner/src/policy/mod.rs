@@ -106,8 +106,7 @@ impl AssignmentColumns {
         self.sandbox_config_json
             .as_deref()
             .and_then(parse_json::<SandboxConfig<'_>>)
-            .map(|config| config.extra_binds)
-            .unwrap_or_default()
+            .map_or_default(|config| config.extra_binds)
     }
 }
 

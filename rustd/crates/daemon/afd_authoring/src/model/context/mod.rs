@@ -48,7 +48,10 @@ pub(super) async fn prepare(
     )
     .await?;
     snapshot.source = source.fingerprint;
-    Ok((prepared(plan, &estimator, settings, context)?, snapshot))
+    Ok((
+        prepared(plan, &estimator, settings, context, save)?,
+        snapshot,
+    ))
 }
 
 fn prepared(
@@ -56,6 +59,7 @@ fn prepared(
     estimator: &estimate::Estimator<'_>,
     settings: &af_wire::inference::ModelInference,
     context: u32,
+    save: bool,
 ) -> Result<Prepared> {
     let (mut body, output_limit, compaction, context_digest) = match plan {
         Plan::Ready {
@@ -86,6 +90,7 @@ fn prepared(
         input_tokens,
         measurement: None,
         context_digest,
+        save,
     })
 }
 

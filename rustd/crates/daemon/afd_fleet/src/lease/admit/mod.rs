@@ -245,11 +245,16 @@ pub async fn money_gates_with<E: af_core::error_code::Coded, F: af_core::error_c
 /// The refusal for a workspace that resolves to no tenant.
 fn unowned_workspace(workspace_id: &Uuid7) -> Declined {
     let workspace = workspace_id.as_str();
-    tracing::warn!(
-        event = EVENT_TENANT_UNRESOLVED,
-        workspace_id = workspace,
-        "the workspace resolves to no tenant; the event cannot be charged to anyone"
-    );
+    {
+        let (event, workspace_id, message) = (
+            &EVENT_TENANT_UNRESOLVED,
+            &workspace,
+            format_args!(
+                "the workspace resolves to no tenant; the event cannot be charged to anyone"
+            ),
+        );
+        tracing::warn!(message, event, workspace_id);
+    };
     Declined::Refuse(Refusal::labelled(
         af_core::event::label::TENANT_RESOLVE_FAILED,
     ))

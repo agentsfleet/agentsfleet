@@ -168,11 +168,13 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
                 // cache, while a transient miss must not blank a live operator
                 // for a whole freshness window.
                 let subject = subject.as_str().to_owned();
-                tracing::warn!(
-                    subject,
-                    event = "scopes_subject_unknown_to_provider",
-                    "resolving to no capabilities"
-                );
+                {
+                    let (event, message) = (
+                        &"scopes_subject_unknown_to_provider",
+                        format_args!("resolving to no capabilities"),
+                    );
+                    tracing::warn!(message, subject, event);
+                };
                 Ok(ScopeSet::EMPTY)
             }
             Err(_unreachable) => self.serve_stale_or_refuse(subject, self.stale.get(&key).await),
@@ -205,21 +207,24 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
     ) -> Result<ScopeSet, Unavailable> {
         let Some(entry) = held.filter(|entry| self.within(*entry, self.ceiling)) else {
             let subject = subject.as_str().to_owned();
-            tracing::error!(
-                subject,
-                event = "scopes_unavailable",
-                "no warm entry and the provider is unreachable"
-            );
+            {
+                let (event, message) = (
+                    &"scopes_unavailable",
+                    format_args!("no warm entry and the provider is unreachable"),
+                );
+                tracing::error!(message, subject, event);
+            };
             return Err(Unavailable);
         };
         let subject = subject.as_str().to_owned();
         let ceiling_secs = self.ceiling.as_secs();
-        tracing::warn!(
-            subject,
-            ceiling_secs,
-            event = "scopes_served_stale",
-            "the provider is unreachable and the entry is within the ceiling"
-        );
+        {
+            let (event, message) = (
+                &"scopes_served_stale",
+                format_args!("the provider is unreachable and the entry is within the ceiling"),
+            );
+            tracing::warn!(message, subject, ceiling_secs, event);
+        };
         Ok(entry.scopes)
     }
 

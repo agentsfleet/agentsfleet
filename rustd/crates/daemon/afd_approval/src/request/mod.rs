@@ -257,13 +257,15 @@ fn settle(found: &str, raised: bool, fleet: &Uuid7, service: &str) -> Requested 
         unknown => {
             let fleet_id = fleet.as_str();
             let status = unknown.to_owned();
-            tracing::warn!(
-                event = EVENT_STATUS_UNKNOWN,
-                fleet_id,
-                service,
-                status,
-                "a grant row carries a status this build cannot place; the event waits"
-            );
+            {
+                let (event, message) = (
+                    &EVENT_STATUS_UNKNOWN,
+                    format_args!(
+                        "a grant row carries a status this build cannot place; the event waits"
+                    ),
+                );
+                tracing::warn!(message, event, fleet_id, service, status);
+            };
             Requested::Pending
         }
     }
@@ -275,20 +277,20 @@ fn report(outcome: Requested, fleet: &Uuid7, wanted: &Wanted<'_>) {
     let service = wanted.service;
     let origin = wanted.origin.as_str();
     match outcome {
-        Requested::Raised => tracing::info!(
-            event = EVENT_REQUESTED,
-            fleet_id,
-            service,
-            origin,
-            "a grant was requested and a person now owes an answer"
-        ),
-        Requested::Pending => tracing::debug!(
-            event = EVENT_SUPPRESSED,
-            fleet_id,
-            service,
-            origin,
-            "a card is already open for this service; nothing was written"
-        ),
+        Requested::Raised => {
+            let (event, message) = (
+                &EVENT_REQUESTED,
+                format_args!("a grant was requested and a person now owes an answer"),
+            );
+            tracing::info!(message, event, fleet_id, service, origin);
+        }
+        Requested::Pending => {
+            let (event, message) = (
+                &EVENT_SUPPRESSED,
+                format_args!("a card is already open for this service; nothing was written"),
+            );
+            tracing::debug!(message, event, fleet_id, service, origin);
+        }
         Requested::Approved | Requested::Denied => (),
     }
 }

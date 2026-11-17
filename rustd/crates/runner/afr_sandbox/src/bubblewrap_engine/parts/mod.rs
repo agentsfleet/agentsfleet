@@ -68,19 +68,21 @@ impl Parts {
 
     /// The lease's directory.
     pub(super) fn dir(&self) -> &Path {
-        self.dir.as_deref().unwrap_or(Path::new(""))
+        self.dir.as_deref().unwrap_or_else(|| Path::new(""))
     }
 
     /// The lease's `workspace/` on its disk, once it has one.
     pub(super) fn workspace(&self) -> &Path {
         self.disk
             .as_ref()
-            .map_or(Path::new(""), WorkspaceDisk::workspace)
+            .map_or_else(|| Path::new(""), WorkspaceDisk::workspace)
     }
 
     /// The lease's `tmp/` on its disk, once it has one.
     pub(super) fn tmp(&self) -> &Path {
-        self.disk.as_ref().map_or(Path::new(""), WorkspaceDisk::tmp)
+        self.disk
+            .as_ref()
+            .map_or_else(|| Path::new(""), WorkspaceDisk::tmp)
     }
 
     /// Takes ownership of the lease's workspace disk.

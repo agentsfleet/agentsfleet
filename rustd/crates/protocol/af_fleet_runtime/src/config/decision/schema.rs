@@ -19,19 +19,19 @@ pub(super) const TEXT_PATTERN: &str = r"^[^\x00]*[^\s\x00][^\x00]*$";
 
 /// The intent question with its six required criteria.
 #[derive(Debug)]
-pub(crate) enum IntentQuestion {}
+pub(crate) struct IntentQuestion(!);
 /// The association question; native task aliases are supplied at dispatch.
 #[derive(Debug)]
-pub(crate) enum AssociationQuestion {}
+pub(crate) struct AssociationQuestion(!);
 /// A probability-of-yes question with both criteria.
 #[derive(Debug)]
-pub(crate) enum NoulQuestion {}
+pub(crate) struct NoulQuestion(!);
 /// The next-action question with four required criteria.
 #[derive(Debug)]
-pub(crate) enum NextActionQuestion {}
+pub(crate) struct NextActionQuestion(!);
 /// Both required probability-of-yes criteria for a completion statement.
 #[derive(Debug)]
-pub(crate) enum NoulCriteria {}
+pub(crate) struct NoulCriteria(!);
 
 impl PartialSchema for IntentQuestion {
     fn schema() -> RefOr<Schema> {

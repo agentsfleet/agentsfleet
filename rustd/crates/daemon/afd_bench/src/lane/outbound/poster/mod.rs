@@ -143,13 +143,10 @@ impl Scripted {
     /// stamp by the length of the clone.
     #[must_use]
     pub fn seen(&self) -> Seen {
-        self.seen
-            .lock()
-            .map(|seen| Seen {
-                attempts: seen.attempts.clone(),
-                foreign: seen.foreign,
-            })
-            .unwrap_or_default()
+        self.seen.lock().map_or_default(|seen| Seen {
+            attempts: seen.attempts.clone(),
+            foreign: seen.foreign,
+        })
     }
 
     /// The behaviour scripted for a destination, or `None` for a job that is
@@ -168,7 +165,7 @@ impl Scripted {
         delay: Duration,
         terminal: bool,
     ) -> bool {
-        let attempts_so_far = if let Ok(mut seen) = self.seen.lock() {
+        let attempts_so_far = self.seen.lock().map_or(0, |mut seen| {
             let attempts = seen.attempts.entry(id.clone()).or_default();
             attempts.push(Attempt {
                 at,
@@ -176,9 +173,7 @@ impl Scripted {
                 delay,
             });
             attempts.len()
-        } else {
-            0
-        };
+        });
         // Terminal for the drain means delivered OR the ladder exhausted,
         // which is this many attempts on one job; the poster is not told
         // when the worker gives up, so it counts.
@@ -204,19 +199,22 @@ impl Deliver for Scripted {
             // on the rig that is an earlier run's leftover — and never counted.
             None => (Duration::ZERO, Verdict::Delivered),
         };
-        let settles = if let Some(behaviour) = scripted {
+        let settles = scripted.map_or_else(
+            || {
+                self.foreign();
+                false
+            },
             // One obligation per (fleet, event), so the event names the job.
-            self.stamp(
-                &job.event_id,
-                behaviour,
-                at,
-                delay,
-                verdict == Verdict::Delivered,
-            )
-        } else {
-            self.foreign();
-            false
-        };
+            |behaviour| {
+                self.stamp(
+                    &job.event_id,
+                    behaviour,
+                    at,
+                    delay,
+                    verdict == Verdict::Delivered,
+                )
+            },
+        );
         let settled = Arc::clone(&self.settled);
         let settled_signal = Arc::clone(&self.settled_signal);
         async move {

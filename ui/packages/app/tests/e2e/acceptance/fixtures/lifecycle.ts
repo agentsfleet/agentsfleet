@@ -29,8 +29,12 @@ async function confirmAction(page: Page, label: "Archive"): Promise<void> {
 
 export async function archiveFleet(page: Page): Promise<void> {
   await confirmAction(page, "Archive");
-  await expect(page.getByTestId("fleet-notice")).toContainText("Fleet archived");
+  const notice = page.getByTestId("fleet-notice");
+  await expect(notice).toContainText("Fleet archived");
   await page.getByRole("link", {name: "View history", exact: true}).click();
+  // At 390 px the notice covers Fleet actions, and hovering it holds it open.
+  await notice.getByRole("button", {name: "Dismiss notification", exact: true}).click();
+  await expect(notice).toHaveAttribute("aria-hidden", "true");
 }
 
 export async function expectRowState(
@@ -61,8 +65,13 @@ export async function expectRowState(
 }
 
 // Archived history permits permanent deletion without restoring execution.
+const SUMMARY_BREAKPOINT_PX = 681;
+
 export async function expectDetailArchived(page: Page): Promise<void> {
-  await expect(page.getByLabel("Fleet status: archived")).toBeVisible({timeout: ROW_STATE_TIMEOUT_MS});
+  // The Summary's Status says so at every width; the header label shows only
+  // from the `summary` breakpoint, 42.5625rem (design-system theme.css).
+  await expect(page.getByRole("region", {name: "Status", exact: true})).toContainText("Archived", {timeout: ROW_STATE_TIMEOUT_MS});
+  if ((page.viewportSize()?.width ?? 0) >= SUMMARY_BREAKPOINT_PX) await expect(page.getByLabel("Fleet status: archived")).toBeVisible();
   await expect(page.getByRole("textbox")).toHaveCount(0);
   await expect(page.getByRole("button", {name: "Approve", exact: true})).toHaveCount(0);
   await expect(page.getByRole("button", {name: "Deny", exact: true})).toHaveCount(0);

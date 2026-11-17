@@ -57,14 +57,14 @@ fn main() -> std::io::Result<()> {
 
     let mut listing = String::new();
     for (name, pointer) in SERIES {
-        let values: Vec<f64> = baseline
+        let values: Vec<String> = baseline
             .pointer(pointer)
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
             .filter_map(Value::as_f64)
+            .map(literal)
             .collect();
-        let values: Vec<String> = values.into_iter().map(literal).collect();
         let _ = writeln!(
             listing,
             "pub(super) const {name}: &[f64] = &[{}];",

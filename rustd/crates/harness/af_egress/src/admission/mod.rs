@@ -122,10 +122,10 @@ impl<'p> Admission<'p> {
     /// secret it has does not carry, named with the fields that secret does
     /// carry, or a secret it does not have.
     pub(crate) fn unknown(self, secret: SecretRef<'_>) -> Error {
-        let fields = match self.mints(secret.name) {
-            Some(_minted) => Some(vec![FIELD_TOKEN]),
-            None => self.statics.field_names(secret.name),
-        };
+        let fields = self.mints(secret.name).map_or_else(
+            || self.statics.field_names(secret.name),
+            |_minted| Some(vec![FIELD_TOKEN]),
+        );
         match fields {
             // A credential with no string field has none to name.
             Some(mut fields) if !fields.is_empty() => {

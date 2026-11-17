@@ -84,13 +84,13 @@ impl<'a> Rater<'a> {
 
         let (price, tokens, unpriced_tokens) = match self.posture {
             Posture::SelfManaged => (None, 0, 0),
-            Posture::Platform => match self.book.quote(usage.at, usage.whole_prompt()) {
-                None => (None, 0, tokens_of(&usage)),
-                Some(tier) => {
+            Posture::Platform => self.book.quote(usage.at, usage.whole_prompt()).map_or_else(
+                || (None, 0, tokens_of(&usage)),
+                |tier| {
                     let (cost, unpriced) = token_cost(&usage, &tier.price);
                     (Some(tier.id.clone()), cost, unpriced)
-                }
-            },
+                },
+            ),
         };
 
         let charged = i64::try_from(runtime + tokens).map_err(|_overflow| charge_overflow())?;
@@ -132,15 +132,19 @@ fn token_cost(usage: &UsageLine, price: &af_core::catalogue::Price) -> (i128, u6
     ];
     categories
         .into_iter()
-        .fold((0, 0), |(cost, unpriced), (tokens, rate)| match rate {
-            Some(rate) => (
-                cost + ceil_div(
-                    i128::from(tokens) * i128::from(rate),
-                    i128::from(TOKENS_PER_MTOK),
-                ),
-                unpriced,
-            ),
-            None => (cost, unpriced + u64::from(tokens)),
+        .fold((0, 0), |(cost, unpriced), (tokens, rate)| {
+            rate.map_or_else(
+                || (cost, unpriced + u64::from(tokens)),
+                |rate| {
+                    (
+                        cost + ceil_div(
+                            i128::from(tokens) * i128::from(rate),
+                            i128::from(TOKENS_PER_MTOK),
+                        ),
+                        unpriced,
+                    )
+                },
+            )
         })
 }
 

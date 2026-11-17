@@ -129,7 +129,7 @@ afd_connector = { workspace = true, features = ["test-util"] }
 reqwest.workspace = true
 afd_admin = { workspace = true, features = ["test-util"] }
 afd_approval.workspace = true
-afd_billing.workspace = true
+afd_billing = { workspace = true, features = ["test-util"] }
 afd_credential.workspace = true
 af_crypto = { workspace = true, features = ["test-util"] }
 afd_fleet = { workspace = true, features = ["test-util"] }

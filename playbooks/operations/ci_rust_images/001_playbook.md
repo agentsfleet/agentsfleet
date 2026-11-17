@@ -12,13 +12,11 @@ executable: false
 
 Builds and pushes `ghcr.io/agentsfleet/ci-rust-alpine` for amd64 and arm64.
 The image bakes the musl build packages, `git`, `pkgconf`, `ca-certificates` and the `rustfmt`, `clippy` and `llvm-tools` components.
-It does not cache compiled crates.
-`make/build.mk` gives each architecture its own `rustd/target/musl-<arch>/` directory for that.
+It does not cache compiled crates; `scripts/build-candidate.sh` mounts `.cargo-cache/` and `rustd/target/` into the container for that.
 
 | Consumer | How it gets the tag |
 |---|---|
-| `make/build.mk` `_dist-daemons` (and `build`) | `BUILDER_IMAGE`, derived from `versions.env` |
-| `make candidate-native-linux` in `build-candidate.yml` | `BUILDER_IMAGE` |
+| `make candidate-native-linux` in `build-candidate.yml` | `BUILDER_IMAGE`, derived from `versions.env` in `make/build.mk` |
 | `warm-cache.yml` | the same `sed` over `versions.env` |
 
 The tag is `<RUST_VERSION>-alpine<ALPINE_SERIES>`, plus `-<IMAGE_REVISION>` when `versions.env` sets one, derived and never pasted.

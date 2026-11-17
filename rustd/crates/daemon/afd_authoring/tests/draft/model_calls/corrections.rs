@@ -116,7 +116,7 @@ async fn invalid_anchors_can_be_corrected_without_losing_continuation_or_mutatin
 fn assert_refused(result: &ModelCallResult) {
     assert!(
         matches!(result.proposal_calls.first(), Some(ProposalCall::Refused {
-        id, reason: ProposalRejection::InstructionsMissing,
+        id, reason: ProposalRejection::InstructionsMissing, detail: None,
     }) if id == "correction-1")
     );
     assert!(matches!(

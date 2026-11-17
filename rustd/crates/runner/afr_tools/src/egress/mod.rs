@@ -83,13 +83,10 @@ fn read_expired(entry: &Entry, lease_id: &str) -> ToolOutput {
     let tool = entry.name();
     let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     let reason = READ_DEADLINE_EXCEEDED;
-    tracing::warn!(
-        event = "http_read_deadline_exceeded",
-        lease_id,
-        tool,
-        error_code,
-        reason
-    );
+    {
+        let event = &"http_read_deadline_exceeded";
+        tracing::warn!(event, lease_id, tool, error_code, reason);
+    };
     ToolOutput::failed(ToolErrorCode::UpstreamUnreachable, READ_DEADLINE_EXCEEDED)
 }
 
@@ -141,8 +138,7 @@ fn stopped(reason: Stop, chain: &Chain, inbound: &Inbound) -> ToolOutput {
     let location = inbound
         .location
         .as_deref()
-        .map(|origin| format!("Location: {origin}\n"))
-        .unwrap_or_default();
+        .map_or_default(|origin| format!("Location: {origin}\n"));
     ToolOutput::failed(
         code,
         &format!(

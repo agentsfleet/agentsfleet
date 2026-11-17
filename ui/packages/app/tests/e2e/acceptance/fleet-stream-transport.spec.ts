@@ -3,7 +3,9 @@
 import type { Page } from "@playwright/test";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { expect, test } from "@playwright/test";
+import { RUN_DETAILS_LABEL } from "@/components/domain/activity/replies/FleetReplyFigures";
 import { FRAME_KIND } from "@/lib/api/events-types";
+import { formatCompactCount } from "@/lib/events/run-figures-format";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { workspaceHref } from "./fixtures/nav";
@@ -20,9 +22,14 @@ const STREAMING_MARKER = "Live chunk painted before any completion.";
 const STREAMING_SENDER = "stream-still-running";
 const MISSED_MARKER = "The publication missed during disconnect is recovered.";
 const LIVE_SENDER = "stream-transport";
-const MISSED_OUTCOME = `Lost connection to the runner — ${MISSED_MARKER}`;
+// A transport loss with prose detail shows the detail alone (fleetFailureCopy.tsx).
+const MISSED_OUTCOME = MISSED_MARKER;
 const STATUS = { ACTIVE: "active", PROCESSED: "processed", FAILED: "fleet_error" } as const;
 const FUTURE_RUN_OFFSET_MS = 60_000;
+const LIVE_TOKENS = 12_345;
+// FleetHeaderStatus's label for any pending approval: the one surface a
+// frame's approval count reaches while no gate exists behind it.
+const NEEDS_APPROVAL = "Needs approval";
 
 test("native fleet streaming deduplicates completion and backfills after disconnect within its request budget", async ({ page }, testInfo) => {
   const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
@@ -80,7 +87,6 @@ test("native fleet streaming deduplicates completion and backfills after disconn
     await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(href, { waitUntil: "domcontentloaded" });
-    const summary = page.getByRole("complementary", {name: "Summary"});
     const chat = page.getByLabel("Fleet chat");
     await expect(chat).toBeVisible();
     await connected.promise;
@@ -90,10 +96,16 @@ test("native fleet streaming deduplicates completion and backfills after disconn
     // The completion inlines LIVE_MARKER, so it could paint on its own. This
     // run never completes: only the live chunk path can put its text on screen.
     await expect(chat.getByText(STREAMING_MARKER, { exact: true })).toHaveCount(1);
-    await expect(summary).toBeVisible();
-    // Pin test: these literals are the completion's user-visible figures.
-    await expect(summary.getByText("12,345", { exact: true })).toBeVisible();
-    await expect(summary.getByRole("link", { name: /^1 approval waiting/ })).toBeVisible();
+    // The completion's figures ride its frame into the reply's Run details.
+    const liveReply = chat.locator('[data-role="assistant"]').filter({ hasText: LIVE_MARKER });
+    await liveReply.getByRole("button", { name: RUN_DETAILS_LABEL, exact: true }).click();
+    const details = page.getByRole("dialog", { name: RUN_DETAILS_LABEL });
+    await expect(details.getByText(formatCompactCount(LIVE_TOKENS), { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(details).toBeHidden();
+    // Only the final opening frame carries a pending approval, so the label
+    // proves every malformed frame before it was consumed.
+    await expect(page.getByText(NEEDS_APPROVAL, { exact: true })).toBeVisible();
     await afterPaint(page);
     expect(counts.historyReads).toBe(0);
     expect(counts.pageRefreshes).toBe(0);
@@ -101,8 +113,12 @@ test("native fleet streaming deduplicates completion and backfills after disconn
 
     const recoveryStarted = performance.now();
     resume.resolve();
-    await expect(chat.getByText(MISSED_OUTCOME, { exact: true })).toHaveCount(1);
-    await expect(summary.getByRole("link", { name: /^2 approvals waiting/ })).toBeVisible();
+    await expect(chat.locator("[data-failed-outcome]").getByText(MISSED_OUTCOME, { exact: true })).toHaveCount(1);
+    // The newest row is now a failure, which would read "Needs attention" had
+    // the backfill dropped the gate facts. The label is binary, so it cannot
+    // tell the reconnected gate's 2 from 1: FleetApprovalSummary settles to
+    // nothing when the API returns no gate, and these gates exist only in frames.
+    await expect(page.getByText(NEEDS_APPROVAL, { exact: true })).toBeVisible();
     // The overlap must remain one delivery, including when identical copies
     // would otherwise collapse into one grouped timeline entry.
     const overlapRow = chat.locator('[data-role="system"]').filter({
@@ -110,7 +126,9 @@ test("native fleet streaming deduplicates completion and backfills after disconn
     });
     await expect(overlapRow).toHaveCount(1);
     await expect(overlapRow.getByTestId("group-count")).toHaveCount(0);
-    await expect(summary.getByText("77", { exact: true })).toBeVisible();
+    // The missed row's 77 tokens have no surface: an integration turn with no
+    // reply earns no reply row (useFleetThreadEntries `hasReplyRow`), and its
+    // tick carries no run figures. The single outcome above is its proof.
     await afterPaint(page);
     expect(counts.deliveredStreams).toBe(2);
     expect(counts.historyReads).toBe(1);
@@ -138,7 +156,7 @@ test("native fleet streaming deduplicates completion and backfills after disconn
 function eventRow(createdAt: number): Omit<EventRow, "fleet_id" | "workspace_id"> {
   return {
     event_id: EVENT_ID, actor: `webhook:${LIVE_SENDER}`, event_type: "webhook", status: STATUS.PROCESSED,
-    created_at: new Date(createdAt).toISOString(), updated_at: new Date(createdAt).toISOString(), tokens: 12_345, wall_ms: 2_500,
+    created_at: new Date(createdAt).toISOString(), updated_at: new Date(createdAt).toISOString(), tokens: LIVE_TOKENS, wall_ms: 2_500,
     cost_nanos: "1250000000", failure_label: null, failure_detail: null,
     resumes_event_id: null,
   };
@@ -159,8 +177,8 @@ function openingFrames(complete: ReturnType<typeof eventRow>): string {
     frame(FRAME_KIND.EVENT_COMPLETE, complete),
     `event: ${FRAME_KIND.EVENT_COMPLETE}\ndata: {invalid JSON\n\n`,
     frame(FRAME_KIND.EVENT_COMPLETE, { event_id: "thin-completion", status: STATUS.PROCESSED }),
-    // Older than the completed run, so the summary keeps reading that run's
-    // figures instead of this one's empty "still working" line.
+    // Older than the completed run, so the latest-run figures stay that run's
+    // instead of this one's empty ones.
     frame(FRAME_KIND.EVENT_RECEIVED, {
       event_id: STREAMING_ID, actor: `webhook:${STREAMING_SENDER}`, created_at: new Date(Date.parse(complete.created_at) - 1).toISOString(),
     }),

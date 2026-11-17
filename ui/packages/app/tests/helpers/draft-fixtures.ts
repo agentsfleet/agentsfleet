@@ -41,7 +41,7 @@ export const MODEL: WorkspaceModel = {ref: MODEL_REF, label: "Authoring model", 
 export const ACCEPTED = {status: "accepted", sequence: "1", replayed: false} as const;
 export const PUBLICATION = {plugin_id: PLUGIN_ID, revision_id: REVISION_ID, head_revision_id: REVISION_ID, etag: '"plugin-one"'};
 export const PLUGIN_CARD = {id: PLUGIN_ID, name: "Checkout watch", description: "Investigate failures",
-  head_revision_id: REVISION_ID, etag: PUBLICATION.etag, requirements: {}, created_at: "1970-01-01T00:00:00Z", required_credentials_reasons: {}};
+  head_revision_id: REVISION_ID, head_revision: "1", etag: PUBLICATION.etag, requirements: {}, created_at: "1970-01-01T00:00:00Z", required_credentials_reasons: {}};
 export const PLUGIN = {card: PLUGIN_CARD, head: {id: REVISION_ID, plugin_id: PLUGIN_CARD.id, revision: "1",
   definition: REVIEW.effective.definition, canonical_digest: "plugin-one"}, review: REVIEW, etag: PUBLICATION.etag};
 

@@ -21,7 +21,8 @@ import os, pathlib, sys, time
 a = sys.argv[1:]
 d = pathlib.Path(a[a.index("--project-directory")+1])
 state = d.parent / "docker-ready"
-action = next(x for x in a if x in ["ps", "up", "down", "exec", "restart"])
+action = next(x for x in a if x in ["ps", "up", "down", "exec", "restart", "config"])
+SERVICES = ["postgres", "mailpit", "qstash", "ant", "bee", "elk"]
 with (d.parent / "docker-calls").open("a") as f: f.write(action + "\\n")
 with (d.parent / "docker-args").open("a") as f: f.write(__import__("json").dumps(a) + "\\n")
 if action == "up":
@@ -29,9 +30,10 @@ if action == "up":
     time.sleep(float(os.getenv("FAKE_DOCKER_DELAY", "0.1")))
     state.write_text("ready")
 elif action == "ps" and state.exists():
-    for name in (["postgres"] if state.read_text() == "partial" else ["postgres", "mailpit", "qstash", "nats-1", "nats-2", "nats-3"]):
+    for name in (["postgres"] if state.read_text() == "partial" else SERVICES):
         print(name, "running" if state.read_text() == "ready" else "exited", "unhealthy" if name == "postgres" and os.getenv("FAIL_HEALTH") else "healthy")
 elif action == "restart": state.write_text("ready")
+elif action == "config": print("\\n".join(SERVICES))
 elif action == "exec":
     with (d.parent / "database-calls").open("a") as f: f.write(sys.stdin.read())
 elif action == "down": state.unlink(missing_ok=True)
@@ -83,7 +85,7 @@ class LauncherTests(unittest.TestCase):
                 shutil.copyfile(SOURCE / "scripts" / name, repo / "scripts" / name)
             launcher = repo / "scripts/local-dev.sh"
             launcher.write_text(launcher.read_text().replace("DEV_INFRA_LOCK_ATTEMPTS=1800", "DEV_INFRA_LOCK_ATTEMPTS=10").replace("DEV_BUILD_LOCK_ATTEMPTS=6000", "DEV_BUILD_LOCK_ATTEMPTS=10").replace("DEV_PROCESS_LOCK_ATTEMPTS=9000", "DEV_PROCESS_LOCK_ATTEMPTS=10"))
-            shutil.copyfile(SOURCE / "compose.dev-infra.yml", repo / "compose.dev-infra.yml")
+            shutil.copyfile(SOURCE / "docker-compose.yml", repo / "docker-compose.yml")
         for name, body in [("docker", DOCKER), ("git", GIT), ("cargo", CARGO), ("curl", CURL)]:
             (self.bin / name).write_text(body)
             (self.bin / name).chmod(0o700)
@@ -128,7 +130,7 @@ class LauncherTests(unittest.TestCase):
             list(pool.map(lambda i: self.run_dev("up", i, infra=True), [0, 1]))
         self.assertEqual((self.shared() / "docker-calls").read_text().splitlines().count("up"), 1)
         snapshot = (self.shared() / "infrastructure/compose.yml").read_bytes()
-        (self.repos[1] / "compose.dev-infra.yml").write_text("branch drift")
+        (self.repos[1] / "docker-compose.yml").write_text("branch drift")
         for state in ["stopped", "partial"]:
             (self.shared() / "docker-ready").write_text(state)
             self.run_dev("up", 1, infra=True)

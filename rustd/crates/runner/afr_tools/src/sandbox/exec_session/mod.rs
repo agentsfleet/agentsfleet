@@ -233,16 +233,16 @@ fn reply(
     budget: usize,
     refused: Option<&str>,
 ) -> ToolOutput {
-    let state = match ended {
-        Some(ending) => {
+    let state = ended.map_or_else(
+        || format!("{} {}", output::RUNNING, id.get()),
+        |ending| {
             if ending == Ending::OutOfMemory {
                 oneshot::out_of_memory(lease_id);
             }
             sessions.close(id, ending);
             output::status(ending)
-        }
-        None => format!("{} {}", output::RUNNING, id.get()),
-    };
+        },
+    );
     let text = collected.text(budget);
     let text = match refused {
         Some(why) => output::with_line(text, why),

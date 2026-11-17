@@ -73,12 +73,10 @@ fn steer_message(acquired: &Acquired) -> Option<Cow<'_, str>> {
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
             let fleet_id = acquired.fleet_id.as_str();
             let event_id = acquired.event_id.as_str();
-            tracing::warn!(
-                error_code = code,
-                fleet_id,
-                event_id,
-                event = EVENT_STEER_BODY_UNREADABLE,
-            );
+            {
+                let (error_code, event) = (&code, &EVENT_STEER_BODY_UNREADABLE);
+                tracing::warn!(error_code, fleet_id, event_id, event);
+            };
             None
         })
 }

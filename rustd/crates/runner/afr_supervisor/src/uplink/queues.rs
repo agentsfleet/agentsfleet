@@ -82,10 +82,10 @@ impl Queues {
         match self.activity.try_send(message) {
             Ok(()) => Ok(()),
             Err(mpsc::error::TrySendError::Full(_)) => {
-                tracing::debug!(
-                    event = "runner_stream_activity_dropped",
-                    reason = "queue_capacity"
-                );
+                {
+                    let (event, reason) = (&"runner_stream_activity_dropped", &"queue_capacity");
+                    tracing::debug!(event, reason);
+                };
                 Ok(())
             }
             Err(mpsc::error::TrySendError::Closed(_)) => Err(ErrorKind::Disconnected.into()),

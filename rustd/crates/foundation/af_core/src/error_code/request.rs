@@ -18,6 +18,9 @@ pub const INVALID_REQUEST: ErrorCode = ErrorCode::declare("UZ-REQ-001");
 /// A request or fetched artifact exceeded its declared byte or entry bound.
 pub const PAYLOAD_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-REQ-002");
 
+/// An endpoint the API removed on purpose; it answers `410 Gone` and does not return.
+pub const ENDPOINT_REMOVED: ErrorCode = ErrorCode::declare("UZ-REQ-003");
+
 /// A stored envelope was malformed — wrong component length, or an unsupported version.
 pub const VAULT_DATA_INVALID: ErrorCode = ErrorCode::declare("UZ-VAULT-001");
 

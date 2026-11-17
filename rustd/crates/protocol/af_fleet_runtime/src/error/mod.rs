@@ -136,6 +136,20 @@ pub(crate) enum ErrorKind {
         field: Box<str>,
     },
 
+    /// A key nested inside a setting the schema reads, or beside `name`, that
+    /// the schema does not read.
+    ///
+    /// Named by its path because the fix is that one key: a gate rule field
+    /// that does not exist is not the same mistake as an unknown setting.
+    #[error("`{path}` is an unsupported configuration key")]
+    UnsupportedKey {
+        /// Keys and positions from the document root, such as
+        /// `x-agentsfleet.gates.rules.0.severity`; never a value.
+        path: Box<str>,
+        /// The runtime setting the key sits in, when the path passes one.
+        setting: Option<&'static str>,
+    },
+
     /// The `x-agentsfleet` block is absent.
     ///
     /// Not a missing field: the fix is a whole namespaced block, not one key.
@@ -258,6 +272,32 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         error_code::AGENTSFLEET_INVALID_CONFIG
+    }
+
+    /// The setting this failure concerns, spelled as this crate's own key and
+    /// never as authored text, so a log may carry it. `None` where the failure
+    /// is the document's shape or bounds rather than one setting's rule.
+    #[must_use]
+    pub fn field(&self) -> Option<&'static str> {
+        match self.kind() {
+            ErrorKind::MissingRequiredField { field }
+            | ErrorKind::InvalidBudget { field, .. }
+            | ErrorKind::InvalidThreshold { field, .. } => Some(*field),
+            ErrorKind::RuntimeKeyOutsideBlock { field } => crate::config::runtime_key(field),
+            ErrorKind::UnsupportedKey { setting, .. } => *setting,
+            ErrorKind::UnknownRuntimeKey { .. } | ErrorKind::RuntimeBlockRequired => {
+                Some(crate::definition::RUNTIME_BLOCK)
+            }
+            ErrorKind::InvalidName { .. } => Some("name"),
+            ErrorKind::InvalidCredentialRef { .. } => Some("credentials"),
+            ErrorKind::InvalidTriggerSet { .. }
+            | ErrorKind::UnverifiableWebhookSource { .. }
+            | ErrorKind::InvalidSignatureConfig { .. } => Some("triggers"),
+            ErrorKind::InvalidRepositoryBinding { .. } => Some("repositories"),
+            ErrorKind::InvalidDefinition { .. }
+            | ErrorKind::InvalidFieldType { .. }
+            | ErrorKind::OutOfBounds { .. } => None,
+        }
     }
 }
 

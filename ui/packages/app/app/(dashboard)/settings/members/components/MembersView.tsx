@@ -16,6 +16,7 @@ import { TEAM_CAPTION, TeamTable } from "./TeamTable";
 type Props = {
   initialMembers: MemberSummary[];
   initialInvites: InviteSummary[];
+  viewerUserId: string;
 };
 
 // The two lists, re-read from the backend after every change so the page
@@ -127,19 +128,20 @@ export function MembersView(props: Props) {
   const ownerName = team.members.find(member => member.role === "owner")?.display_name;
   return (
     <PageLayout className="gap-2xl">
-      <PageHeader className="sm:items-center" description={MEMBERS_DESCRIPTION} actions={<InviteDialogDynamic onSettled={team.refresh} />}>
+      <PageHeader className="max-summary:gap-xl summary:items-center" description={MEMBERS_DESCRIPTION} actions={<InviteDialogDynamic onSettled={team.refresh} />}>
         <PageTitle>{MEMBERS_TITLE}</PageTitle>
       </PageHeader>
       {/* Reachable by script only, for the focus a removal hands back. A screen
           reader announces it by its label; no outline marks it for a mouse. */}
       <Section ref={regionRef} tabIndex={-1} aria-label={TEAM_CAPTION} className="gap-2xl focus:outline-none">
-        <div className="flex flex-wrap items-center gap-xl border-b border-border pb-2xl pt-5">
-          <UsersIcon size={24} className="mt-xs shrink-0 text-muted-foreground" aria-hidden="true" />
-          <div className="min-w-0 flex-1 space-y-sm"><p className="text-label font-semibold">{ownerName ? `${ownerName}’s account` : "Your account"}</p><p className="text-label text-muted-foreground">Members can open every workspace in this account.</p></div><div className="basis-full pl-10 sm:basis-auto sm:pl-0"><Badge>You’re the owner</Badge></div>
+        <div className="flex flex-wrap items-start gap-lg border-b border-border pb-2xl summary:items-center summary:gap-xl summary:pt-5">
+          <UsersIcon size={24} className="shrink-0 text-muted-foreground summary:mt-xs" aria-hidden="true" />
+          <div className="min-w-0 flex-1 space-y-sm"><p className="text-label font-semibold">{ownerName ? `${ownerName}’s account` : "Your account"}</p><p className="text-label text-muted-foreground">Members can open every workspace in this account.</p></div><div className="basis-full pl-9 summary:basis-auto summary:pl-0"><Badge>You’re the owner</Badge></div>
         </div>
         <CollectionToolbar label="Search name or email" value={search} onChange={setSearch} summary="Account-wide access" />
         {members.length === 0 && invites.length === 0 ? <EmptyState title="No matching people" description="Try another name or email, or clear your search." /> : null}
         <TeamTable
+          viewerUserId={props.viewerUserId}
           members={members}
           invites={invites}
           pending={team.pending}

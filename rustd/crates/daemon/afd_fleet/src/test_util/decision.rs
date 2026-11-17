@@ -31,8 +31,7 @@ pub fn known_result(request: &DecisionRequest) -> DecisionResult {
                 DecisionQuestion::Choice { options, .. } => DecisionAnswer::Choice {
                     choice: options
                         .first()
-                        .map(|option| option.value.clone())
-                        .unwrap_or_default(),
+                        .map_or_default(|option| option.value.clone()),
                     confidence: Some(1.0),
                     probabilities: options
                         .iter()

@@ -321,12 +321,10 @@ async fn fan_out<D: Services>(
 /// an App that will never look, and an operator asking "why did my fleet not
 /// run" has only this line to read.
 fn dropped(event: &str, reason: &str) -> Response {
-    tracing::info!(
-        provider = PROVIDER_GITHUB,
-        delivery_event = event,
-        reason,
-        event = EVENT_DROPPED,
-    );
+    {
+        let (provider, delivery_event, event) = (&PROVIDER_GITHUB, &event, &EVENT_DROPPED);
+        tracing::info!(provider, delivery_event, reason, event);
+    };
     (
         StatusCode::OK,
         Json(AppIngressAnswer::Ignored(webhook::Ignored {

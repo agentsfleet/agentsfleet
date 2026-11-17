@@ -17,12 +17,19 @@ const MODEL_LIBRARY_PATH = "/v1/models";
  * Fetch the model library. Bearer-authed (any authenticated tenant — the route
  * carries no capability scope). Called server-side by getModelLibraryAction;
  * throws (ApiError) on a non-2xx response so callers can fall back to a
- * catalogue-free path (a free-text model field).
+ * catalogue-free path (a free-text model field). Without a `limit` the server
+ * pages at its default size.
  */
-export async function getModelLibrary(token: string, advanced = false, startingAfter: string | null = null): Promise<ModelLibrary> {
+export async function getModelLibrary(
+  token: string,
+  advanced = false,
+  startingAfter: string | null = null,
+  limit: number | null = null,
+): Promise<ModelLibrary> {
   const params = new URLSearchParams();
   if (advanced) params.set("advanced", "true");
   if (startingAfter !== null) params.set("starting_after", startingAfter);
+  if (limit !== null) params.set("limit", String(limit));
   const query = params.toString();
   const path = query ? `${MODEL_LIBRARY_PATH}?${query}` : MODEL_LIBRARY_PATH;
   return modelLibrarySchema.parse(await request<unknown>(path, { method: "GET" }, token));

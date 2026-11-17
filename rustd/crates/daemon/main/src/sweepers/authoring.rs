@@ -4,19 +4,23 @@ use crate::supervisor::Supervisor;
 use af_crypto::entropy::Entropy;
 use af_observability::Analytics;
 use afd_db::Db;
+use std::sync::Arc;
 use std::time::Duration;
+
+use afd_billing::biller::Biller;
 
 const INTERVAL: Duration = Duration::from_secs(10);
 const FAILED: &str = "authoring_maintenance_failed";
 const COMPLETED: &str = "authoring_maintenance_completed";
 
-pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Analytics) {
-    let drafts = afd_authoring::Drafts::new(
-        database.clone(),
-        Entropy::new(),
-        crate::billing::biller(database.clone()),
-    )
-    .with_analytics(analytics.clone());
+pub(super) fn spawn(
+    supervisor: &mut Supervisor,
+    database: &Db,
+    analytics: &Analytics,
+    biller: Arc<dyn Biller>,
+) {
+    let drafts = afd_authoring::Drafts::new(database.clone(), Entropy::new(), biller)
+        .with_analytics(analytics.clone());
     supervisor.spawn(super::AUTHORING, async move |stop| {
         let mut interval = tokio::time::interval(INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -37,22 +41,33 @@ async fn maintain(drafts: &afd_authoring::Drafts) {
     // privacy purges and the replay receipts.
     match drafts.housekeep().await {
         Ok(counts) if counts != afd_authoring::Maintenance::default() => {
-            tracing::info!(
-                event = COMPLETED,
-                purged_drafts = counts.purged_drafts,
-                expired_results = counts.expired_results,
-                expired_receipts = counts.expired_receipts,
-                "authoring recovery advanced"
-            );
+            {
+                let (event, purged_drafts, expired_results, expired_receipts, message) = (
+                    &COMPLETED,
+                    &counts.purged_drafts,
+                    &counts.expired_results,
+                    &counts.expired_receipts,
+                    format_args!("authoring recovery advanced"),
+                );
+                tracing::info!(
+                    message,
+                    event,
+                    purged_drafts,
+                    expired_results,
+                    expired_receipts
+                );
+            };
         }
         Ok(_) => {}
         Err(error) => {
             let error_code = error.code().as_str();
-            tracing::warn!(
-                event = FAILED,
-                error_code,
-                "authoring recovery waits for its durable store"
-            );
+            {
+                let (event, message) = (
+                    &FAILED,
+                    format_args!("authoring recovery waits for its durable store"),
+                );
+                tracing::warn!(message, event, error_code);
+            };
         }
     }
 }
@@ -74,7 +89,7 @@ mod tests {
         let drafts = afd_authoring::Drafts::new(
             database.clone(),
             Entropy::new(),
-            crate::billing::biller(database),
+            crate::billing::biller(database, af_observability::Analytics::silent()),
         );
         let capture = Capture::install();
 

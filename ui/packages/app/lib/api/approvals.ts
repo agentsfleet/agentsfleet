@@ -97,17 +97,7 @@ export async function listApprovals(
   return request<ApprovalsListResponse>(path, { method: "GET" }, token);
 }
 
-export async function getApproval(
-  workspaceId: string,
-  gateId: string,
-  token: string,
-): Promise<ApprovalGate> {
-  return request<ApprovalGate>(
-    `/v1/workspaces/${workspaceId}/approvals/${gateId}`,
-    { method: "GET" },
-    token,
-  );
-}
+
 
 // Resolve. The server returns 200 with ResolveResponse on success and 409 with
 // AlreadyResolvedResponse when another channel got there first. Both are

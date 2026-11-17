@@ -54,11 +54,14 @@ export async function openWorkspaceMenu(page: Page): Promise<Locator> {
   const trigger = page.getByTestId("workspace-switcher");
   if (await trigger.getAttribute("aria-expanded") !== "true") await trigger.click();
   await page.getByRole("menuitem", {name: /^Switch workspace:/}).click();
-  return page.getByRole("menu", {name: "Switch workspace", exact: true});
+  // Radix names a submenu by its trigger, "Switch workspace: <active workspace>".
+  return page.getByRole("menu", {name: /^Switch workspace(?::|$)/});
 }
 
 export async function expectSelectedWorkspace(page: Page, name: string): Promise<void> {
   await page.getByTestId("workspace-switcher").click();
   await expect(page.getByRole("menuitem", {name: `Switch workspace: ${name}`, exact: true})).toBeVisible();
   await page.keyboard.press("Escape");
+  // A click during the closing animation is swallowed; wait until the menu is gone.
+  await expect(page.getByRole("menu")).toHaveCount(0);
 }

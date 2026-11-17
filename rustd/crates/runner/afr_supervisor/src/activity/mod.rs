@@ -244,13 +244,13 @@ impl<W: ActivityWriter + ?Sized> ActivityPump<'_, W> {
         let lease_id = self.lease_id.as_str();
         let dropped = self.dropped;
         let event = EVENT_BATCH_DROPPED;
-        tracing::warn!(
-            error_code = code,
-            lease_id,
-            dropped,
-            event,
-            "the live tail fell behind; a batch was dropped"
-        );
+        {
+            let (error_code, message) = (
+                &code,
+                format_args!("the live tail fell behind; a batch was dropped"),
+            );
+            tracing::warn!(message, error_code, lease_id, dropped, event);
+        };
     }
 }
 
@@ -272,12 +272,11 @@ async fn post(plane: &(impl ActivityWriter + ?Sized), lease_id: &Uuid7, frames: 
         let code = failure.code().as_str();
         let lease_id = lease_id.as_str();
         let event = EVENT_POST_FAILED;
-        tracing::warn!(
-            error_code = code,
-            lease_id,
-            event,
-            "a live-tail batch was not delivered"
-        );
+        {
+            let (error_code, message) =
+                (&code, format_args!("a live-tail batch was not delivered"));
+            tracing::warn!(message, error_code, lease_id, event);
+        };
     }
 }
 

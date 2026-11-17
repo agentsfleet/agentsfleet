@@ -2,7 +2,7 @@
 
 The operating model is committed here. `orly init` materialised it —
 `.orly/AGENTS.md`, the `.orly/standards/` rule files, and the `orly-spec`,
-`orly-build` and `orly-ship` skills — and `.orly/orly.json` records the engine version and every file it wrote.
+`orly-build` and `orly-ship` skills — and `.orly/orly.json` records every file it wrote.
 Nothing resolves out of a developer's home directory, so a fresh clone reads
 its own rules. `orly update --no-hooks` re-
 materialises them; `orly doctor` reports drift. This file carries only project
@@ -20,7 +20,7 @@ facts.
   `UZ-STARTUP-004`, a seed it cannot reach and a server that reports JetStream,
   no cluster, no headers or a `max_payload` under the largest frame
   (`afd_bus/src/nats/preflight.rs`). The local lane is a real three-node
-  cluster: compose `nats-1`, `nats-2` and `nats-3`.
+  cluster: compose `ant`, `bee` and `elk`.
 - Drive work with `orly gate` (work → verify → pr). Hooks run `orly gate work`;
   `orly gate pr` runs by hand at CHORE(close), before `gh pr create`.
   `.orly/orly.json` declares `verify.lint`, `verify.unit`,
@@ -140,10 +140,15 @@ repository:
   unset" panic is an invocation error. `AFD_TEST_LOG=1` shows daemon logs.
 - A green PR proves neither Playwright (`make dry-app`) nor acceptance (it runs
   after merge), so a rendered-page change runs its specs locally.
+- Acceptance runs on Linux only, as `make acceptance`. CI runs it from
+  `acceptance-on-demand.yml`; a cloud machine runs it with `orly burst
+  acceptance --provider aws-spot` or `e2e`. The lane, setup, secrets and
+  artifacts are the `burst` section of `.orly/orly.json`, and no gate runs it,
+  because it costs money.
 - Run one lane per checkout. Stop a run by its process ID, never `pkill -f`. A
   vitest coverage-lock red is not a test failure.
 - The NATS nodes run `--no_advertise`, so a host client uses its whole seed
-  list. Probe a node with `docker compose exec nats-1 wget -q -O -
+  list. Probe a node with `docker compose exec ant wget -q -O -
   http://127.0.0.1:8222/healthz`; recreate the cluster only through
   `make _ensure-test-infra`.
 - Linux-only `afr_sandbox` and `afr_executor` code is linted and tested on
@@ -155,5 +160,3 @@ repository:
 - `ui/packages/app/app/icon.svg` is a copy of `brand.svg`, never a symlink.
 - Docs-repository API pages for a new route are committed after the
   `agentsfleet` PR merges.
-- An orly pin mismatch is fixed by installing into a prefix the task owns,
-  never by changing the global install.

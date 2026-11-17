@@ -108,7 +108,7 @@ jobs:
       # The catalogue seeder's integration test runs the seeder under Bun.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
       - name: Install the seeder's dependencies
         run: bun install --frozen-lockfile
       # `_reset-test-db` brings compose up, waits for healthchecks, drops
@@ -140,7 +140,7 @@ jobs:
         # Every service the lane starts, by its compose name: a name that
         # does not exist fails this step and prints no logs at all, which is
         # a diagnostic that fails exactly when it is needed.
-        run: docker compose logs --tail 200 postgres nats-1 nats-2 nats-3
+        run: docker compose logs --tail 200 postgres ant bee elk
 
   # The kernel lane, as root on the hosted runner, which is a virtual machine
   # of its own: no nested virtualization is needed, only what a runner host is

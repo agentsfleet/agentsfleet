@@ -109,7 +109,7 @@ dev_snapshot() {
   local staging="$DEV_SHARED/infrastructure-new-$$"
   dev_directory "$staging"
   mkdir -p "$staging"
-  cp "$DEV_ROOT/compose.dev-infra.yml" "$staging/compose.yml"
+  cp "$DEV_ROOT/docker-compose.yml" "$staging/compose.yml"
   cat >"$staging/ports.env" <<EOF
 AGENTSFLEET_PG_HOST_PORT=$AGENTSFLEET_PG_HOST_PORT
 AGENTSFLEET_QSTASH_HOST_PORT=$AGENTSFLEET_QSTASH_HOST_PORT
@@ -124,21 +124,25 @@ EOF
 
 dev_infra_up() {
   dev_snapshot
-  local status count=0 service state health restart=()
+  local services status count=0 orphans=0 service state health restart=()
+  # The stack's own snapshot names its services, so a stack created from an
+  # older compose file keeps reusing the containers it declared.
+  services="$(dev_compose config --services)"
   status="$(dev_compose ps --all --format '{{.Service}} {{.State}} {{.Health}}')"
   if [ -n "$status" ]; then
     while read -r service state health; do
-      case "$service" in postgres|mailpit|qstash|nats-1|nats-2|nats-3) ;; *) dev_fail 'unexpected shared service' ;; esac
+      # A service the snapshot does not declare (dragonfly before M244) is an orphan.
+      if ! grep -qxF "$service" <<<"$services"; then orphans=1; continue; fi
       if [ "$state" = running ] && [ "$health" = healthy ]; then count=$((count + 1)); fi
       if [ "$state" = running ] && [ "$health" = unhealthy ]; then restart+=("$service"); fi
     done <<<"$status"
   fi
-  if [ "$count" = 6 ]; then
+  if [ "$count" = "$(grep -c . <<<"$services")" ] && [ "$orphans" = 0 ]; then
     printf 'Reusing shared infrastructure %s\n' "$DEV_PROJECT"
     return
   fi
   if [ "${#restart[@]}" -gt 0 ]; then dev_compose restart "${restart[@]}"; fi
-  dev_compose up -d --wait --wait-timeout 330 --no-recreate
+  dev_compose up -d --wait --wait-timeout 330 --no-recreate --remove-orphans
 }
 
 dev_database() {

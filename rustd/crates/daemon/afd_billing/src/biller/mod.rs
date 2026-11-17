@@ -165,6 +165,9 @@ pub struct Receipt {
     /// What this call took from the balance: all of `charged`, or nothing
     /// when the payer has no wallet.
     pub taken: Nanos,
+    /// Whether this call's debit took the balance from above zero to zero or
+    /// below: true for exactly one settlement per crossing.
+    pub exhausted: bool,
 }
 
 /// A payer's balance as a biller sees it.

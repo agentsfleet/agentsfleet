@@ -67,12 +67,9 @@ pub(super) fn admissible(host: &HostProbe) -> Result<()> {
     let error = refused(missing);
     let Logged { error_code, reason } = error.logged();
     let event = EVENT_HOST_REFUSED;
-    tracing::error!(
-        missing,
-        error_code,
-        reason,
-        event,
-        "this host cannot build a sandbox"
-    );
+    {
+        let message = format_args!("this host cannot build a sandbox");
+        tracing::error!(message, missing, error_code, reason, event);
+    };
     Err(error)
 }

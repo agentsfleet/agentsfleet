@@ -19,7 +19,10 @@ use crate::{
     test_support::{Answer, Behaviour, FakeAgent, FakeEngine, Rig, bounded, json},
 };
 use af_wire::authoring::Lease;
+use parking_lot::Mutex;
 use serde_json::{Value, json};
+use std::sync::Arc;
+use tracing_subscriber::fmt::MakeWriter;
 
 const LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a8060";
 const ATTEMPT: &str = "01890a5d-ac96-774b-bcce-b302099a8061";
@@ -65,7 +68,49 @@ fn ack() -> Answer {
     json(&json!({"settled":true,"replayed":false,"sequence":"1","state":"completed"}))
 }
 
+/// What the runner's log writes while a turn runs, as production formats it.
+#[derive(Clone, Default)]
+struct Logs(Arc<Mutex<Vec<u8>>>);
+
+impl Logs {
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock()).into_owned()
+    }
+}
+
+impl<'a> MakeWriter<'a> for Logs {
+    type Writer = Self;
+    fn make_writer(&'a self) -> Self {
+        self.clone()
+    }
+}
+
+impl std::io::Write for Logs {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 async fn run(rig: &mut Rig, lease: Lease<Value>) -> (Vec<Call>, Value) {
+    let (calls, report, _logs) = run_logged(rig, lease).await;
+    (calls, report)
+}
+
+/// Runs a turn under a subscriber, as the runner does, so its log lines run and can be read.
+async fn run_logged(rig: &mut Rig, lease: Lease<Value>) -> (Vec<Call>, Value, String) {
+    let logs = Logs::default();
+    let _installed = tracing::subscriber::set_default(
+        tracing_subscriber::fmt()
+            .json()
+            .with_ansi(false)
+            .without_time()
+            .with_writer(logs.clone())
+            .finish(),
+    );
     bounded(
         "authoring turn",
         rig.lessee
@@ -86,5 +131,5 @@ async fn run(rig: &mut Rig, lease: Lease<Value>) -> (Vec<Call>, Value) {
         }
         calls.push(call);
     };
-    (calls, report)
+    (calls, report, logs.text())
 }

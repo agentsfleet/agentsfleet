@@ -2,14 +2,15 @@
 # Safety gates — deploy correctness and vault-read approval
 # =============================================================================
 #
-# Two static checks that assert properties of the tree rather than build
-# anything, like check-openapi or check-route-registration-doc. Split out of
-# quality.mk (RULE FLL), which the vault-gate parity scan pushed past the
-# 350-line cap; the same reason check-test-reachability.mk lives on its own.
+# Checks that assert properties of the tree rather than build the product.
+# Split out of quality.mk (RULE FLL), which the vault-gate parity scan pushed
+# past the 350-line cap.
 #
-# Where they fire: both are prerequisites of `lint-all`, so CI's lint job
-# runs them. check-vault-gate-parity additionally hangs off check-playbooks, so
-# validating the playbooks surface can never skip the guardrail that protects it.
+# Where they fire: check-deploy-safety is a prerequisite of `lint-all`,
+# check-release-candidate of check-gh-actions-valid, and
+# check-vault-gate-parity of check-playbooks, so CI's lint jobs run all three
+# and validating the playbooks surface can never skip the guardrail that
+# protects it.
 
 .PHONY: check-vault-gate-parity check-deploy-safety
 .PHONY: check-release-candidate
@@ -45,8 +46,8 @@ check-vault-gate-parity:  ## Every playbooks/operations/ script that reads the v
 	@echo "→ [playbooks] vault-gate self-tests..."
 	@bash playbooks/operations/credential_rotation/vault_gate_test.sh
 
-check-deploy-safety:  ## shellcheck + every *_test.sh suite under deploy/baremetal/ + the Fly deploy proofs
-	@# deploy/ sits outside _shell_lint's scripts/*.sh glob, so it would otherwise
+check-deploy-safety:  ## shellcheck + every *_test.sh suite under deploy/baremetal/ + the Fly deploy proofs + the Docker receiver-admission proof
+	@# deploy/ sits outside lint-shell's scripts/*.sh glob, so it would otherwise
 	@# never be shellchecked. The suites are found by name, so a new one runs
 	@# without an edit here. Some cases need a Linux tool (flock, GNU tar,
 	@# systemd-analyze); each skips on a machine without it and hard-fails when

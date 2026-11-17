@@ -10,13 +10,9 @@
 # agentsfleetd benchmarks.
 # =============================================================================
 
-.PHONY: bench _bench-loadgen
+.PHONY: bench
 
-bench:  ## Run the Tier-2 hey HTTP loadgen gate.
-	@$(MAKE) _bench-loadgen
-
-
-_bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
+bench:  ## Run the Tier-2 hey HTTP loadgen gate against API_BENCH_URL (default: this worktree's daemon /healthz)
 	@mkdir -p .tmp
 	@command -v hey >/dev/null 2>&1 || { \
 	  echo "✗ hey is required for make bench. Install via:"; \
@@ -121,9 +117,11 @@ BENCH_LANE_ENV = BENCH_PROFILE="$(PROFILE)" \
 # `--release` is not a detail. A debug build measures rustc's unoptimised
 # output, which is the wrong system: the number would be a property of the
 # build profile rather than of the path.
-BENCH_LANE_RUN := cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin
+BENCH_LANE_RUN := cargo run --release --locked --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin
 
-.PHONY: bench-steer bench-lease bench-outbound bench-cardinality bench-tail bench-compare
+BENCH_LANES := bench-lease bench-steer bench-outbound bench-cardinality bench-tail
+
+.PHONY: $(BENCH_LANES) bench-compare
 
 # On the rig every lane resets and migrates first, as the integration lane
 # does (`$(TEST_STATE_DEP)`, then `_migrate-test-db`, which depends on the
@@ -151,28 +149,22 @@ BENCH_MIGRATE := $(if $(and $(filter rig,$(PROFILE)),$(BENCH_RIG_OWNED)),$(TEST_
 # oversubscribed host or a pool that did not recover exits non-zero.
 BENCH_SHAPE ?= default
 
-bench-lease: _ensure-test-infra $(BENCH_MIGRATE)  ## Lease throughput, then a drain: rate, p95, statements and commits per lease, idle statement totals (PROFILE=rig [BENCH_SHAPE=default|saturation|burst] [BENCH_FLEETS=n] [BENCH_RUNNERS=n] [BENCH_TURN_MS=n] [BENCH_RATE=n])
-	@echo "→ [bench-lease] profile=$(PROFILE) shape=$(BENCH_SHAPE)"
-	@BENCH_SHAPE="$(BENCH_SHAPE)" $(BENCH_LANE_ENV) $(BENCH_LANE_RUN) lease
-
-bench-steer: _ensure-test-infra $(BENCH_MIGRATE)  ## Steer ingress: accepted rate, p95, readiness depth (PROFILE=rig [BENCH_FLEETS=n] [BENCH_CONCURRENCY=n])
-	@echo "→ [bench-steer] profile=$(PROFILE)"
-	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) steer
-
-bench-outbound: _ensure-test-infra $(BENCH_MIGRATE)  ## Delivery ceiling: rate, p95, head-of-line and retry cost (PROFILE=rig [BENCH_JOBS=n] [BENCH_SLOW_FRACTION=0..1])
-	@echo "→ [bench-outbound] profile=$(PROFILE)"
-	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) outbound
-
-bench-cardinality: _ensure-test-infra $(BENCH_MIGRATE)  ## Cost per idle fleet up a ladder (PROFILE=rig [BENCH_FLEETS=n], rig cap 1000000)
-	@echo "→ [bench-cardinality] profile=$(PROFILE)"
-	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) cardinality
-
+bench-lease:  ## Lease throughput, then a drain: rate, p95, statements and commits per lease, idle statement totals (PROFILE=rig [BENCH_SHAPE=default|saturation|burst] [BENCH_FLEETS=n] [BENCH_RUNNERS=n] [BENCH_TURN_MS=n] [BENCH_RATE=n])
+bench-steer:  ## Steer ingress: accepted rate, p95, readiness depth (PROFILE=rig [BENCH_FLEETS=n] [BENCH_CONCURRENCY=n])
+bench-outbound:  ## Delivery ceiling: rate, p95, head-of-line and retry cost (PROFILE=rig [BENCH_JOBS=n] [BENCH_SLOW_FRACTION=0..1])
+bench-cardinality:  ## Cost per idle fleet up a ladder (PROFILE=rig [BENCH_FLEETS=n], rig cap 1000000)
 # The live tail's ladders: viewers on one fleet × payload size, then open
 # streams. The only lane that also subscribes, on the same NATS cluster the
 # others publish to.
-bench-tail: _ensure-test-infra $(BENCH_MIGRATE)  ## Live tail: allocations, busy time and p95 per delivered frame over a viewer ladder, heap per stream over a stream ladder (PROFILE=rig)
-	@echo "→ [bench-tail] profile=$(PROFILE)"
-	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) tail
+bench-tail:  ## Live tail: allocations, busy time and p95 per delivered frame over a viewer ladder, heap per stream over a stream ladder (PROFILE=rig)
+
+# Only the lease lane has shapes, so it alone is handed BENCH_SHAPE.
+bench-lease: BENCH_LANE_SHAPE = BENCH_SHAPE="$(BENCH_SHAPE)"
+
+# One recipe for every lane: the target names the lane binary after `bench-`.
+$(BENCH_LANES): bench-%: _ensure-test-infra $(BENCH_MIGRATE)
+	@echo "→ [$@] profile=$(PROFILE)$(if $(BENCH_LANE_SHAPE), shape=$(BENCH_SHAPE))"
+	@$(BENCH_LANE_SHAPE) $(BENCH_LANE_ENV) $(BENCH_LANE_RUN) $*
 
 bench-compare:  ## Delta between a result and its baseline (LANE=lease PROFILE=rig) — always exit 0
 	@$(BENCH_LANE_RUN) compare -- "$(LANE)" "$(PROFILE)"

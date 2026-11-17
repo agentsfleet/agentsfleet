@@ -260,13 +260,13 @@ where
                 }
                 // A machine's capabilities are DERIVED from the variant, so
                 // there is no provider to ask and no assignment to widen.
-                match class.person_credential {
-                    None => Ok(Principal::Runner(Runner::new(runner, degraded))),
+                class.person_credential.map_or_else(
+                    || Ok(Principal::Runner(Runner::new(runner, degraded))),
                     // The directory answered with a shape this class cannot
                     // produce. Fail closed rather than mint a runner principal
                     // from a person's credential.
-                    Some(_person) => Err(class.unknown),
-                }
+                    |_person| Err(class.unknown),
+                )
             }
             CredentialRecord::Person {
                 tenant,

@@ -77,7 +77,7 @@ impl Recheck for Scripted {
 
     async fn admitted(&self) -> Result<bool, Outage> {
         let turn = self.asked.fetch_add(1, Ordering::Relaxed);
-        let answer = self.answers.get(turn).or(self.answers.last());
+        let answer = self.answers.get(turn).or_else(|| self.answers.last());
         match answer.expect("every script has an answer") {
             Answer::Admitted => Ok(true),
             Answer::Revoked => Ok(false),

@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
       - name: Install website dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/website
@@ -33,13 +33,13 @@ jobs:
       - name: Install Playwright browsers
         run: |
           if [ "${{ steps.playwright-cache-website.outputs.cache-hit }}" = "true" ]; then
-            bunx playwright install chromium
+            bunx --no-install playwright install chromium
           else
-            bunx playwright install --with-deps chromium
+            bunx --no-install playwright install --with-deps chromium
           fi
         working-directory: ui/packages/website
       - name: Run website smoke dry Playwright lane
-        run: make _dry_website_smoke
+        run: make dry-website-smoke
 
   dry-app-smoke:
     runs-on: ubuntu-latest
@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
       - name: Install app dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/app
@@ -62,9 +62,9 @@ jobs:
       - name: Install Playwright browsers
         run: |
           if [ "${{ steps.playwright-cache-app.outputs.cache-hit }}" = "true" ]; then
-            bunx playwright install chromium
+            bunx --no-install playwright install chromium
           else
-            bunx playwright install --with-deps chromium
+            bunx --no-install playwright install --with-deps chromium
           fi
         working-directory: ui/packages/app
       - name: Load Clerk dev keys from 1Password

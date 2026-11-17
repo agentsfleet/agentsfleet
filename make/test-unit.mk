@@ -2,7 +2,7 @@
 # TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-rustd test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs build-test-unit-rustd test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all test-runner-kernel test-runner-startup test-coverage-runner-kernel
+.PHONY: test-unit-rustd test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs build-test-unit-rustd test-coverage-cli test-coverage-website test-coverage-app test-coverage-design-system test-coverage-all test-runner-kernel test-runner-startup test-coverage-runner-kernel
 
 # Three shards, so Continuous Integration runs each on its own runner at once
 # and `test-unit-rustd` is all three in order: the whole workspace, through the
@@ -30,7 +30,7 @@ _RUSTD_UNIT_DAEMON_LIBS = $(filter-out $(_RUSTD_UNIT_RUNNER) $(_RUSTD_UNIT_DAEMO
 # --all-features for the same reason lint-rustd carries it: the `test-util`
 # mocks are how the failure paths a real datastore will not produce on demand
 # get reached at all, and a default-feature run silently skips them.
-_RUSTD_UNIT_TEST = cargo test --all-features
+_RUSTD_UNIT_TEST = cargo test --locked --all-features
 _RUSTD_NEED_CARGO = command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 
 test-unit-rustd: test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs  ## Run the Rust workspace unit tests (cargo), shard by shard
@@ -45,7 +45,8 @@ test-unit-rustd-daemon:  ## Rust unit shard: agentsfleetd, the daemon binary and
 
 test-unit-rustd-daemon-libs:  ## Rust unit shard: every other library crate (daemon/, protocol/, foundation/)
 	@bash scripts/local-dev-test.sh
-	@bash deploy/local/bootstrap_test.sh
+	@bun test deploy/local/bootstrap.test.ts
+	@bash deploy/local/linux_test.sh
 	@$(_RUSTD_NEED_CARGO)
 	@$(call _rust_lane,rustd-unit-daemon-libs.log,[rustd] unit: daemon libraries,$(_RUSTD_UNIT_TEST) $(call _rustd_packages,$(_RUSTD_UNIT_DAEMON_LIBS)))
 
@@ -59,39 +60,32 @@ build-test-unit-rustd:  ## Compile the Rust unit shards' test binaries without r
 	@cd $(RUSTD_DIR) && $(_RUSTD_UNIT_TEST) --no-run $(call _rustd_packages,$(_RUSTD_UNIT_DAEMON))
 	@cd $(RUSTD_DIR) && $(_RUSTD_UNIT_TEST) --no-run $(call _rustd_packages,$(_RUSTD_UNIT_DAEMON_LIBS))
 
-test-unit-cli:  ## Run agentsfleet CLI unit tests (bun)
-	@echo "→ [agentsfleet] Building dist/ (tests spawn dist/bin/agentsfleet.js)..."
-	@cd cli && bun run build >/dev/null
-	@echo "→ [agentsfleet] Running Bun unit tests..."
-	@# --timeout 30000: the help-e2e / PTY tests spawn the built binary and wait
-	@# for output; bun's 5s default flakes under the parallel pre-push lane load.
-	@cd cli && bun test --timeout 30000
-	@echo "✓ [agentsfleet] Unit tests passed"
-
-test-unit-website:  ## Run website unit tests (vitest)
-	@echo "→ [website] Running Vitest unit tests..."
-	@cd ui/packages/website && bun run test
-	@echo "✓ [website] Unit tests passed"
-
-test-unit-app:  ## Run app unit tests (vitest, no coverage)
-	@echo "→ [app] Running Vitest unit tests..."
-	@cd ui/packages/app && bun run test
-	@echo "✓ [app] Unit tests passed"
-
-test-unit-design-system:  ## Run design-system unit tests (vitest, no coverage)
-	@echo "→ [design-system] Running Vitest unit tests..."
-	@cd ui/packages/design-system && bun run test
-	@echo "✓ [design-system] Unit tests passed"
-
-test-coverage-all:  ## Run coverage gates across app, website, agentsfleet, and design-system
-	@echo "→ [app] Running Vitest with --coverage..."
-	@cd ui/packages/app && bun run test:coverage
-	@echo "→ [website] Running Vitest with --coverage..."
-	@cd ui/packages/website && bun run test:coverage
+# One target per package, each the exact command its Continuous Integration
+# job runs (.github/workflows/test.yml) and pre-push runs (.githooks/pre-push),
+# so a green local lane and a green check prove the same thing.
+test-coverage-cli:  ## agentsfleet CLI unit tests with the 100% coverage floor (scripts/enforce-coverage.mjs)
 	@echo "→ [agentsfleet] Enforcing the 100% coverage floor (scripts/enforce-coverage.mjs)..."
 	@cd cli && bun run test
+
+test-coverage-website:  ## Website unit tests with coverage (vitest --coverage)
+	@echo "→ [website] Running Vitest with --coverage..."
+	@cd ui/packages/website && bun run test:coverage
+
+test-coverage-app:  ## App unit tests with coverage (vitest --coverage)
+	@echo "→ [app] Running Vitest with --coverage..."
+	@cd ui/packages/app && bun run test:coverage
+
+test-coverage-design-system:  ## Design-system unit tests with coverage (vitest --coverage)
 	@echo "→ [design-system] Running Vitest with --coverage..."
 	@cd ui/packages/design-system && bun run test:coverage
+
+# Called in sequence rather than listed as prerequisites, so `make -j` cannot
+# run four coverage suites at once; the first red stops the rest.
+test-coverage-all:  ## Run coverage gates across app, website, agentsfleet, and design-system
+	@$(MAKE) --no-print-directory test-coverage-app
+	@$(MAKE) --no-print-directory test-coverage-website
+	@$(MAKE) --no-print-directory test-coverage-cli
+	@$(MAKE) --no-print-directory test-coverage-design-system
 	@echo "✓ All package coverage gates passed"
 
 # The Rust runner's sandbox, proven on a real kernel: capabilities, seccomp,
@@ -115,14 +109,14 @@ test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (
 	  test -f "$$image" && image="$$(realpath "$$image")" && \
 	  cd $(RUSTD_DIR) && AFR_TOOLBOX_IMAGE="$$image" \
 	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(or $(KERNEL_LANE_RUNNER),env)" \
-	  cargo run -p afr_sandbox --features test-util --example kernel_lane
+	  cargo run --locked -p afr_sandbox --features test-util --example kernel_lane
 	@$(MAKE) --no-print-directory test-runner-startup
 
 # Uses the deployed unit and the shipping binary, including its release key.
 # An absent toolbox must refuse admission after successful host preparation.
 # The kernel lane above separately proves signed admission and child limits.
 test-runner-startup:  ## Prove default/explicit engine startup under systemd on a Linux host
-	@cd $(RUSTD_DIR) && cargo build -p agentsfleet_runner --bin agentsfleet-runner
+	@cd $(RUSTD_DIR) && cargo build --locked -p agentsfleet_runner --bin agentsfleet-runner
 	@target="$$(cd $(RUSTD_DIR) && cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')" && \
 	  $(KERNEL_LANE_RUNNER) bash scripts/test-runner-startup.sh "$$target/debug/agentsfleet-runner" deploy/baremetal/agentsfleet-runner.service
 
@@ -135,9 +129,9 @@ test-coverage-runner-kernel:  ## Measure the kernel lane under coverage into rus
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
 	@set -e; cd $(RUSTD_DIR); \
 	  coverage_env="$$(cargo llvm-cov show-env --sh)"; eval "$$coverage_env"; \
-	  cargo llvm-cov clean --workspace; \
+	  cargo llvm-cov clean --locked --workspace; \
 	  cd ..; $(MAKE) --no-print-directory test-runner-kernel; \
-	  cd $(RUSTD_DIR); cargo llvm-cov report --workspace \
+	  cd $(RUSTD_DIR); cargo llvm-cov report --locked --workspace \
 	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov-kernel.info \
 	  || { echo "✗ [rustd] kernel lane lcov report failed"; exit 1; }
 	@git rev-parse HEAD > $(RUSTD_DIR)/lcov-kernel.rev

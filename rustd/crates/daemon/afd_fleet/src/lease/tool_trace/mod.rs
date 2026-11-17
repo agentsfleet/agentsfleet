@@ -49,14 +49,16 @@ pub(crate) fn stored(raw: Option<RawToolTrace<'_>>, owner: TraceOwner<'_>) -> Op
             let event_id = owner.event_id;
             let reason = rejection.as_str();
             let bytes = raw.byte_len();
-            tracing::warn!(
-                fleet_id = %fleet_id,
-                agentsfleet_event_id = %event_id,
-                reason,
-                bytes,
-                event = %EVENT_TRACE_DROPPED,
-                "the run's tool trace was not stored; the report settles without it"
-            );
+            {
+                let (agentsfleet_event_id, event, message) = (
+                    &event_id,
+                    &EVENT_TRACE_DROPPED,
+                    format_args!(
+                        "the run's tool trace was not stored; the report settles without it"
+                    ),
+                );
+                tracing::warn!(message, %fleet_id, %agentsfleet_event_id, reason, bytes, %event);
+            };
             return None;
         }
     };

@@ -1,5 +1,6 @@
 use super::fixture::{self, Fixture, Line};
-use afd_billing::report::{Aggregate, Boundary, Filter, dimension};
+use af_wire::usage::LineKind;
+use afd_billing::report::{Aggregate, Filter, Report, dimension};
 use afd_billing::sql::work;
 
 const BEFORE_MIDNIGHT: &str = "2026-09-30T23:59:59.999Z";
@@ -10,7 +11,7 @@ const MIDNIGHT: &str = "2026-10-01T00:00:00Z";
 async fn daily_spend_reconciles_filtered_snapshot() {
     let f = Fixture::shared().await;
     seed_days(&f).await;
-    let mut request = fixture::request(1);
+    let mut request = fixture::request();
     request.window.from = fixture::instant(BEFORE_MIDNIGHT);
     for filter in [
         Filter::default(),
@@ -19,16 +20,11 @@ async fn daily_spend_reconciles_filtered_snapshot() {
             ..Filter::default()
         },
         Filter {
-            model: Some(fixture::MODEL_B.to_owned()),
-            ..Filter::default()
-        },
-        Filter {
             work_type: Some(work::AUTHORING_ATTEMPT),
             ..Filter::default()
         },
         Filter {
             fleet: Some(f.fleet.clone()),
-            model: Some(fixture::MODEL_B.to_owned()),
             work_type: Some(work::FLEET_LEASE),
         },
     ] {
@@ -38,43 +34,26 @@ async fn daily_spend_reconciles_filtered_snapshot() {
     }
     request.filter = Filter::default();
     let report = f.billing.report(&f.tenant, &request).await.unwrap();
-    assert_eq!(fixture::summary(&report).activity_count, 2);
-    assert_eq!(days(&report).map(|day| day.activity_count).sum::<i64>(), 3);
+    // One run, counted once on its first runtime slice's day; setup is no run.
+    assert_eq!(fixture::summary(&report).activity_count, Some(1));
+    assert!(days(&report).all(|day| day.activity_count.is_none()));
     let mut dates: Vec<_> = days(&report)
-        .map(|day| day.day.unwrap().to_string())
+        .map(|day| (day.day.unwrap().to_string(), day.charged_nanos))
         .collect();
     dates.sort();
-    assert_eq!(dates, ["2026-09-30", "2026-10-01"]);
+    assert_eq!(
+        dates,
+        [("2026-09-30".to_owned(), 17), ("2026-10-01".to_owned(), 52)]
+    );
     assert_eq!(fixture::summary(&report).charged_nanos, 69);
     assert_eq!(fixture::summary(&report).unpriced_tokens, 5);
-    f.close().await;
-}
-
-#[tokio::test]
-#[ignore = "requires live Postgres: make test-integration-rustd"]
-async fn daily_spend_ignores_activity_cursor() {
-    let f = Fixture::shared().await;
-    seed_days(&f).await;
-    let mut request = fixture::request(1);
-    request.window.from = fixture::instant(BEFORE_MIDNIGHT);
-    let first = f.billing.report(&f.tenant, &request).await.unwrap();
-    let last = first.activities.first().unwrap();
-    request.after = Some(Boundary {
-        recorded_at: last.recorded_at,
-        work_id: last.work_id.clone(),
-        work_type: if last.work_type == work::FLEET_LEASE {
-            work::FLEET_LEASE
-        } else {
-            work::AUTHORING_ATTEMPT
-        },
-    });
-    let next = f.billing.report(&f.tenant, &request).await.unwrap();
-    let mut before = first.aggregates;
-    let mut after = next.aggregates;
-    before.sort_by_key(|row| (row.dimension, row.key.clone(), row.day));
-    after.sort_by_key(|row| (row.dimension, row.key.clone(), row.day));
-    assert_eq!(before, after);
-    assert_ne!(first.activities.first(), next.activities.first());
+    let runs = fixture::runs_daily(&f.admin, &f.tenant).await;
+    assert_eq!(
+        runs.iter()
+            .map(|run| (run.day.as_str(), run.runs))
+            .collect::<Vec<_>>(),
+        [("2026-09-30", 1)]
+    );
     f.close().await;
 }
 
@@ -83,65 +62,48 @@ async fn daily_spend_ignores_activity_cursor() {
 async fn usage_keeps_deleted_fleet_models() {
     let f = Fixture::shared().await;
     seed_days(&f).await;
-    let mut request = fixture::request(1);
+    let mut request = fixture::request();
     request.window.from = fixture::instant(BEFORE_MIDNIGHT);
     let report = f.billing.report(&f.tenant, &request).await.unwrap();
-    let fleet = report
-        .aggregates
-        .iter()
-        .find(|row| {
-            row.dimension == dimension::FLEET && row.key.as_deref() == Some(f.fleet.as_str())
-        })
-        .unwrap();
+    let fleet = fixture::group(&report, dimension::FLEET, Some(f.fleet.as_str()));
     assert_eq!(fleet.label.as_deref(), Some(fixture::FLEET_NAME));
+    // The runtime-only slice has no model, so it names none.
     assert_eq!(fleet.models, [fixture::MODEL_A, fixture::MODEL_B]);
-    request.filter.model = Some(fixture::MODEL_B.to_owned());
+    request.filter.work_type = Some(work::AUTHORING_ATTEMPT);
     let filtered = f.billing.report(&f.tenant, &request).await.unwrap();
-    let fleet = filtered
-        .aggregates
-        .iter()
-        .find(|row| {
-            row.dimension == dimension::FLEET && row.key.as_deref() == Some(f.fleet.as_str())
-        })
-        .unwrap();
-    assert_eq!(fleet.models, [fixture::MODEL_B]);
+    let fleet = fixture::group(&filtered, dimension::FLEET, Some(f.fleet.as_str()));
+    assert_eq!(fleet.label.as_deref(), Some(fixture::FLEET_NAME));
+    assert_eq!((fleet.charged_nanos, fleet.models.len()), (0, 0));
     f.close().await;
 }
 
+/// One run crossing UTC midnight, with a runtime-only slice, a setup attempt
+/// and a line still unsettled; the fleet identifier has no live fleet row.
 async fn seed_days(f: &Fixture) {
-    // The ledger retains a fleet identifier that has no live fleet row.
     let mut first = Line::runtime(&f.tenant, &f.fleet, 17);
     first.at = BEFORE_MIDNIGHT;
-    first.settled = Some(MIDNIGHT);
-    let mut second = Line::runtime(&f.tenant, &f.fleet, 23);
-    second.work_id.clone_from(&first.work_id);
-    second.sequence = 1;
+    let mut second = first.next(LineKind::Model, 0, 23);
     second.model = fixture::MODEL_B;
     second.at = MIDNIGHT;
-    second.settled = Some(MIDNIGHT);
-    let mut runtime = Line::runtime(&f.tenant, &f.fleet, 0);
-    runtime.work_id.clone_from(&first.work_id);
-    runtime.sequence = 2;
+    let mut runtime = first.next(LineKind::Runtime, 60_000, 0);
     runtime.model = "";
     runtime.at = MIDNIGHT;
-    runtime.settled = Some(MIDNIGHT);
     let mut setup = Line::setup(&f.tenant, 29);
     setup.at = MIDNIGHT;
-    setup.settled = Some(MIDNIGHT);
     setup.unpriced = 5;
-    let mut late = Line::runtime(&f.tenant, &f.fleet, 999);
-    late.settled = Some(fixture::LATER);
-    fixture::seed(&f.admin, &[first, second, runtime, setup, late]).await;
+    let pending = Line::runtime(&f.tenant, &f.fleet, 999);
+    fixture::seed(&f.admin, std::slice::from_ref(&pending)).await;
+    fixture::record(f, &[first, second, runtime, setup]).await;
 }
 
-fn days(report: &afd_billing::report::Report) -> impl Iterator<Item = &Aggregate> {
+fn days(report: &Report) -> impl Iterator<Item = &Aggregate> {
     report
         .aggregates
         .iter()
         .filter(|row| row.dimension == dimension::DAY)
 }
 
-fn assert_additive_totals(report: &afd_billing::report::Report) {
+fn assert_additive_totals(report: &Report) {
     let total = fixture::summary(report);
     let quantities: [fn(&Aggregate) -> i64; 6] = [
         |row| row.charged_nanos,

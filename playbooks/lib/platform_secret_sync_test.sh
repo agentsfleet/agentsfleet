@@ -96,53 +96,23 @@ if [ "$method" = "GET" ]; then
   exit 0
 fi
 
+# The exact keys each bag must carry; one check below applies the list.
 case "$EXPECTED_NAME" in
-  github-app)
-    jq -e '
-      (.name == "github-app" or .data != null)
-      and ((.data // {}) | keys == [
-        "app_id", "app_slug", "client_id", "client_secret",
-        "private_key_pem", "webhook_secret"
-      ])
-    ' "$payload" >/dev/null
-    ;;
-  qstash)
-    jq -e '
-      (.name == "qstash" or .data != null)
-      and ((.data // {}) | keys == [
-        "current_signing_key", "next_signing_key", "token", "url"
-      ])
-    ' "$payload" >/dev/null
-    ;;
-  slack-app)
-    jq -e '
-      (.name == "slack-app" or .data != null)
-      and ((.data // {}) | keys == [
-        "client_id", "client_secret", "signing_secret"
-      ])
-    ' "$payload" >/dev/null
-    ;;
-  smtp-relay)
-    jq -e '
-      (.name == "smtp-relay" or .data != null)
-      and ((.data // {}) | keys == [
-        "from_address", "host", "password", "port", "username"
-      ])
-    ' "$payload" >/dev/null
-    ;;
-  zoho-app | jira-app | linear-app)
-    jq -e '
-      (.name == env.EXPECTED_NAME or .data != null)
-      and ((.data // {}) | keys == ["client_id", "client_secret"])
-    ' "$payload" >/dev/null
-    ;;
-  approval-signing)
-    jq -e '
-      (.name == "approval-signing" or .data != null)
-      and ((.data // {}) | keys == ["webhook_secret"])
-    ' "$payload" >/dev/null
-    ;;
+  github-app) expected='["app_id","app_slug","client_id","client_secret","private_key_pem","webhook_secret"]' ;;
+  qstash) expected='["current_signing_key","next_signing_key","token","url"]' ;;
+  slack-app) expected='["client_id","client_secret","signing_secret"]' ;;
+  smtp-relay) expected='["from_address","host","password","port","username"]' ;;
+  zoho-app | jira-app | linear-app) expected='["client_id","client_secret"]' ;;
+  approval-signing) expected='["webhook_secret"]' ;;
+  typesafe) expected='["api_key"]' ;;
+  *) expected="" ;;
 esac
+if [ -n "$expected" ]; then
+  jq -e --argjson expected "$expected" '
+    (.name == env.EXPECTED_NAME or .data != null)
+    and ((.data // {}) | keys == $expected)
+  ' "$payload" >/dev/null
+fi
 
 printf '%s|%s\n' "$method" "$url" >>"$CALLS_FILE"
 printf '{"name":"%s"}\n' "${RESPONSE_NAME:-$EXPECTED_NAME}" >"$output"
@@ -220,7 +190,7 @@ test_replaces_existing_bag_in_one_put() {
 test_maps_every_provider_field_name() {
   local name="maps every provider field name"
   local secret_name output status
-  local -a secret_names=(slack-app zoho-app jira-app linear-app qstash approval-signing)
+  local -a secret_names=(slack-app zoho-app jira-app linear-app qstash approval-signing typesafe)
   for secret_name in "${secret_names[@]}"; do
     : >"$work_dir/calls"
     status=0

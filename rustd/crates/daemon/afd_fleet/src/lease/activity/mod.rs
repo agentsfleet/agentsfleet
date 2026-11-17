@@ -129,12 +129,17 @@ impl Leases {
                     &owned
                 }
                 Err(malformed) => {
-                    tracing::debug!(
-                        fleet_id = fleet,
-                        reason = %malformed,
-                        event = EVENT_DROPPED,
-                        "a frame carried arguments that are not JSON; the tail loses it"
-                    );
+                    {
+                        let (fleet_id, reason, event, message) = (
+                            &fleet,
+                            &malformed,
+                            &EVENT_DROPPED,
+                            format_args!(
+                                "a frame carried arguments that are not JSON; the tail loses it"
+                            ),
+                        );
+                        tracing::debug!(message, fleet_id, %reason, event);
+                    };
                     continue;
                 }
             };
@@ -151,13 +156,16 @@ impl Leases {
             .await
         {
             let Logged { error_code, reason } = unreachable_queue.logged();
-            tracing::debug!(
-                error_code,
-                fleet_id = fleet,
-                reason,
-                event = EVENT_DROPPED,
-                "the queue would not take a live-tail batch; the run is unaffected"
-            );
+            {
+                let (fleet_id, event, message) = (
+                    &fleet,
+                    &EVENT_DROPPED,
+                    format_args!(
+                        "the queue would not take a live-tail batch; the run is unaffected"
+                    ),
+                );
+                tracing::debug!(message, error_code, fleet_id, reason, event);
+            };
         }
     }
 }

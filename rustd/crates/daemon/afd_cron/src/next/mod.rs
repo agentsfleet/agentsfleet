@@ -18,7 +18,7 @@ use philiprehberger_cron_parser::{CronExpr, DateTime};
 pub(crate) fn next_fire(cron: &str, timezone: &str, after: Timestamp) -> Option<Timestamp> {
     let expression = CronExpr::parse(cron).ok()?;
     let zone = TimeZone::get(timezone).ok()?;
-    let wall = after.to_zoned(zone.clone()).datetime();
+    let wall = after.to_zoned_datetime(zone.clone()).datetime();
     let next = expression.next_from(&DateTime {
         year: i32::from(wall.year()),
         month: u8::try_from(wall.month()).ok()?,
@@ -37,7 +37,7 @@ pub(crate) fn next_fire(cron: &str, timezone: &str, after: Timestamp) -> Option<
         0,
     )
     .ok()?;
-    Some(civil.to_zoned(zone).ok()?.timestamp())
+    Some(civil.to_zoned_datetime(zone).ok()?.timestamp())
 }
 
 #[cfg(test)]

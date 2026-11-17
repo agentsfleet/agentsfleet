@@ -307,7 +307,6 @@ impl Pending {
             ClientH3Event::Core(
                 H3Event::IncomingSettings { .. } | H3Event::BodyBytesReceived { .. },
             ) => {}
-            ClientH3Event::Core(H3Event::NewFlow { .. }) => return Err(ErrorKind::Protocol.into()),
         }
         Ok(())
     }

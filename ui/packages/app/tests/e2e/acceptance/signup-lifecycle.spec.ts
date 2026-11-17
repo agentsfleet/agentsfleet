@@ -69,7 +69,7 @@ test.describe("signup → install → lifecycle", () => {
     createdEmail = null;
   });
 
-  test("fresh signup walks install → observe → bill → halt entirely in the UI", async ({
+  test("fresh signup walks install → observe → bill → halt entirely in the UI", {tag: "@post-deploy"}, async ({
     page,
   }) => {
     const email = uniqueEmail();

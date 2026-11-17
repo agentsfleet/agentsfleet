@@ -141,15 +141,3 @@ function sameEntry(before: ThreadEntry, after: ThreadEntry): boolean {
 function entryMembers(entry: ThreadEntry): readonly FleetEvent[] {
   return entry.kind === ENTRY_KIND.GROUP ? entry.events : [entry.event];
 }
-
-/**
- * The earliest and latest timestamps a group spans, for its "11:38–12:03"
- * range. Takes a NON-EMPTY run (a group always has ≥`MIN_GROUP_RUN` members),
- * and reads the extremes rather than the ends, so it does not assume a
- * direction the caller might change. Min/max over the members means there is
- * no empty-array branch to leave forever uncovered.
- */
-export function groupSpan(members: FleetEvent[]): { first: Date; last: Date } {
-  const times = members.map((member) => member.createdAt.getTime());
-  return { first: new Date(Math.min(...times)), last: new Date(Math.max(...times)) };
-}

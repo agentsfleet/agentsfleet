@@ -211,11 +211,10 @@ impl Connectors {
         // scores the dead copy.
         let workspace_id = workspace.as_str();
         let provider = provider.id();
-        tracing::debug!(
-            workspace_id,
-            provider,
-            event = "connector_connect_initiated"
-        );
+        {
+            let event = &"connector_connect_initiated";
+            tracing::debug!(workspace_id, provider, event);
+        };
         // Every shipped endpoint parses — `crate::registry`'s suite pins each
         // one — so only a registry edit that broke one reaches the refusal,
         // and refusing the connect beats sending a person to nowhere.

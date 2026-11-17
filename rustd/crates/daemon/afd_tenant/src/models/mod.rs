@@ -110,19 +110,23 @@ impl Models {
         fetch: i64,
     ) -> Result<Vec<sqlx::postgres::PgRow>> {
         let mut connection = self.database.acquire().await?;
-        let query = match after {
-            None => sqlx::query(sql::SELECT_LIBRARY_PAGE_FIRST)
-                .bind(filter)
-                .bind(fetch)
-                .bind(advanced),
-            Some(boundary) => sqlx::query(sql::SELECT_LIBRARY_PAGE_AFTER)
-                .bind(filter)
-                .bind(&boundary.display_key)
-                .bind(&boundary.vendor_key)
-                .bind(&boundary.id)
-                .bind(fetch)
-                .bind(advanced),
-        };
+        let query = after.map_or_else(
+            || {
+                sqlx::query(sql::SELECT_LIBRARY_PAGE_FIRST)
+                    .bind(filter)
+                    .bind(fetch)
+                    .bind(advanced)
+            },
+            |boundary| {
+                sqlx::query(sql::SELECT_LIBRARY_PAGE_AFTER)
+                    .bind(filter)
+                    .bind(&boundary.display_key)
+                    .bind(&boundary.vendor_key)
+                    .bind(&boundary.id)
+                    .bind(fetch)
+                    .bind(advanced)
+            },
+        );
         query
             .fetch_all(connection.as_mut())
             .await

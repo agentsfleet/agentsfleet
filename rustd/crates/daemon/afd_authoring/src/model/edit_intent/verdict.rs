@@ -91,6 +91,7 @@ pub(super) fn reject(decoded: &mut Decoded) {
                 *call = ProposalCall::Refused {
                     id: id.clone(),
                     reason: ProposalRejection::EditNotRequested,
+                    detail: None,
                 };
             }
         }

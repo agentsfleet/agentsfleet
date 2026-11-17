@@ -31,15 +31,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
       - name: Install shared acceptance tooling dependencies
         run: bun install --frozen-lockfile
       - name: Install agentsfleet dependencies
         run: bun install --frozen-lockfile
         working-directory: cli
       - name: Test agentsfleet (100% coverage floor enforced)
-        run: bun run test
-        working-directory: cli
+        run: make test-coverage-cli
       # Written by the step above; the cli lane already emits lcov.
       - name: Upload cli coverage to Codecov
         if: success()
@@ -57,13 +56,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
       - name: Install website dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/website
       - name: Test website
-        run: bun run test:coverage
-        working-directory: ui/packages/website
+        run: make test-coverage-website
       # Written by the step above; the website lane already emits lcov.
       - name: Upload website coverage to Codecov
         if: success()
@@ -81,13 +79,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
       - name: Install app dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/app
       - name: Test app
-        run: bun run test:coverage
-        working-directory: ui/packages/app
+        run: make test-coverage-app
       # Written by the step above; the app lane already emits lcov.
       - name: Upload app coverage to Codecov
         if: success()
@@ -105,13 +102,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
       - name: Install design-system dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/design-system
       - name: Test design-system (97% coverage gate)
-        run: bun run test:coverage
-        working-directory: ui/packages/design-system
+        run: make test-coverage-design-system
 
   bundle-size-website:
     runs-on: ubuntu-latest
@@ -119,7 +115,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
       - name: Install website dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/website
@@ -136,7 +132,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
       - name: Install app dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/app

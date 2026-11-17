@@ -120,12 +120,13 @@ impl LeaseRun<'_> {
                 let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
                 let lease_id = self.ids.lease.as_str();
                 let event = EVENT_ENGINE_PANICKED;
-                tracing::error!(
-                    error_code = code,
-                    lease_id,
-                    event,
-                    "the agent engine panicked; a sandbox is still torn down"
-                );
+                {
+                    let (error_code, message) = (
+                        &code,
+                        format_args!("the agent engine panicked; a sandbox is still torn down"),
+                    );
+                    tracing::error!(message, error_code, lease_id, event);
+                };
                 failed(FailureClass::RunnerCrash, DETAIL_PANIC)
             }
             None => failed(FailureClass::RenewalTerminate, DETAIL_RENEWAL),

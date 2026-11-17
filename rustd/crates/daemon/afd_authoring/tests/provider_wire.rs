@@ -15,7 +15,7 @@ pub(crate) fn body(
             http::header::CONTENT_TYPE,
             http::HeaderValue::from_static("text/event-stream"),
         );
-        serde_json::from_slice(&bytes).map_or(bytes.clone(), |document| encode(&document))
+        serde_json::from_slice(&bytes).map_or_else(|_| bytes.clone(), |document| encode(&document))
     } else {
         bytes
     };

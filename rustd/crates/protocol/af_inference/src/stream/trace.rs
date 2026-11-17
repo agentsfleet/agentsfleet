@@ -87,14 +87,17 @@ impl TurnTrace {
             Some(cause) => {
                 let reason = cause.as_str();
                 let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                tracing::warn!(
-                    event = FAILED,
-                    correlation_id,
-                    duration_ms,
-                    text_bytes,
-                    reason,
-                    error_code
-                );
+                {
+                    let event = &FAILED;
+                    tracing::warn!(
+                        event,
+                        correlation_id,
+                        duration_ms,
+                        text_bytes,
+                        reason,
+                        error_code
+                    );
+                };
             }
         }
     }

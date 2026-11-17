@@ -210,22 +210,4 @@ pub struct ChargesResponse<'a> {
     pub next_cursor: Option<Cow<'a, str>>,
 }
 
-// Generic over the item, because the envelope is the same for every paged
-// resource on these planes and a per-resource copy is a per-resource chance
-// for the keys to drift apart. The three keys are pinned by the integration
-// test that counts them.
-/// One result page with `items`, `total`, and `next_cursor`. A null `next_cursor` means the
-/// last page.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct PageResponse<'a, T> {
-    /// The rows on this page, in the requested order.
-    pub items: Vec<T>,
-    /// Total matching records across all pages. Use `next_cursor` to determine whether
-    /// another page exists.
-    pub total: i64,
-    /// Where the next page resumes, or `null` on the last page.
-    ///
-    /// Always emitted, never omitted, for the module's null rule.
-    pub next_cursor: Option<Cow<'a, str>>,
-}
+pub use crate::page::PageResponse;

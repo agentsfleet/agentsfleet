@@ -57,7 +57,7 @@ async fn cut_output_never_completes_or_submits_a_proposal() {
         Verb::AuthoringModel => result(
             call,
             &json!([{"id":"cut-call",
-            "proposal":{"kind":"initialize","definition":{}}}]),
+            "proposal":{"kind":"initialize","definition":{"schema_version":1,"description":"Answers support questions","instructions_md":"Reply briefly.","config":{"name":"fixture","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}}}}]),
             true,
         ),
         Verb::AuthoringReport => ack(),
@@ -83,7 +83,7 @@ async fn a_refused_proposal_is_repaired_without_skipping_its_activity_sequence()
                 json!([])
             } else {
                 json!([{"id":format!("call-{}",request["call_index"]),
-                    "proposal":{"kind":"initialize","definition":{}}}])
+                    "proposal":{"kind":"initialize","definition":{"schema_version":1,"description":"Answers support questions","instructions_md":"Reply briefly.","config":{"name":"fixture","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}}}}])
             };
             result(call, &proposals, false)
         }

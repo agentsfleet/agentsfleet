@@ -183,10 +183,10 @@ fn expected(message: &str) -> Option<&str> {
 }
 
 fn with_expected(head: &str, expected: Option<&str>) -> Box<str> {
-    match expected {
-        Some(clause) => format!("{head}{EXPECTED}{clause}").into(),
-        None => head.into(),
-    }
+    expected.map_or_else(
+        || head.into(),
+        |clause| format!("{head}{EXPECTED}{clause}").into(),
+    )
 }
 
 #[cfg(test)]

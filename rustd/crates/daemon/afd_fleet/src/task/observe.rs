@@ -19,11 +19,14 @@ pub(super) async fn measure<T>(
     let operation_label = operation.as_str();
     let interrupted = scopeguard::guard(started, |started| {
         producers::task::operation_completed(operation, TaskOutcome::Cancelled, started.elapsed());
-        tracing::info!(
-            event = "dt_operation_cancelled",
-            operation = operation_label,
-            reason = "operation_dropped"
-        );
+        {
+            let (event, operation, reason) = (
+                &"dt_operation_cancelled",
+                &operation_label,
+                &"operation_dropped",
+            );
+            tracing::info!(event, operation, reason);
+        };
     });
     let result = work.await;
     let started = scopeguard::ScopeGuard::into_inner(interrupted);
@@ -39,8 +42,11 @@ pub(super) async fn measure<T>(
             .task_timeout_reason()
             .or_else(|| error.decision_failure_reason())
             .unwrap_or("operation_failed");
-        tracing::warn!(event = "dt_operation_failed", operation = operation_label,
-            outcome = outcome_label, %error_code, reason);
+        {
+            let (event, operation, outcome) =
+                (&"dt_operation_failed", &operation_label, &outcome_label);
+            tracing::warn!(event, operation, outcome, %error_code, reason);
+        };
     }
     result
 }
