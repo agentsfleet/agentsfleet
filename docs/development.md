@@ -76,10 +76,11 @@ On macOS, it requires an explicit runner-reachable URL because Linux cannot use 
 
 `make acceptance` builds this checkout and starts the whole stack on the Linux machine it runs on.
 It then calls `acceptance-e2e` and `acceptance-cli`, which keep their deployed-service behavior.
-For a narrower run, set `SUITE=e2e`, `SUITE=cli` or `SUITE=execution`.
 The coordinator and its files live in `deploy/local/`.
 
-It runs on throwaway machines, not laptops.
+For a narrower run, set `SUITE=e2e`, `SUITE=cli` or `SUITE=execution`.
+
+Acceptance runs on throwaway machines, not laptops.
 Label a pull request `acceptance`, and the `acceptance-on-demand.yml` workflow runs it on a fresh GitHub runner for every push.
 Once that workflow is on `main`, it can also be dispatched for any branch:
 
@@ -89,11 +90,13 @@ gh workflow run acceptance-on-demand.yml -f ref=<branch> -f suite=e2e
 
 The machine needs privileged Docker, Bun, Rust, Python, OpenSSL and `certutil` from `libnss3-tools`.
 `deploy/local/machine-env.sh` writes its two machine environment files from credentials already in the environment.
+
 Set `ACCEPTANCE_LOCAL_TOOLBOX_DIR` to a signed toolbox set whose manifest admits the current runner version.
 The adapter checks the signature against the runner’s compiled release key; it never loads a release signing key.
 
 It uses the development database and datastore containers; Compose adds one Caddy container for local HTTPS.
 The dashboard serves its ordinary production build from this checkout.
+
 Each invocation calls `acceptance-build`, starts the runner and runs the selected acceptance targets.
 The dashboard is a child process and stops when the command exits; the development daemon, Caddy and runner remain available.
 
@@ -140,11 +143,14 @@ This recovery applies only after a database reset you deliberately initiated. An
 
 The machine environment and `AGENTSFLEET_UI_ENV_FILE` supply development Clerk credentials.
 Initial setup uses the machine's `FIREWORKS_API_KEY` and the development GitHub App to populate the local encrypted vault.
-Bootstrap takes the app's six fields from `LOCAL_GITHUB_*` when all are set, and otherwise reads them with `op`.
-It needs them only on a fresh acceptance database.
-The setup edit check uses `TYPESAFE_API_KEY`: bootstrap stores it as the platform workspace's `typesafe` key, adds a decision model that asks for `jev-latest` and accepts only the reviewed `jev-1.14.0` answer, then names it in the runner's policy.
-That check tells the setup model that a plain "Save" asks for no edit, so the save can finish.
-It also seeds the `qstash` bag from the local scheduler emulator.
+On a fresh acceptance database, bootstrap takes the app's six fields from `LOCAL_GITHUB_*` when all are set, and otherwise reads them with `op`.
+
+The setup edit check uses `TYPESAFE_API_KEY`, which bootstrap stores as the platform workspace's `typesafe` key.
+Bootstrap adds a decision model that asks for `jev-latest`, accepts only the reviewed `jev-1.14.0` answer and names it in the runner's policy.
+A typed "Save" skips that check, because its turn refuses every proposal itself.
+
+Any other message that proposes an edit still uses the check.
+Bootstrap also seeds the `qstash` bag from the local scheduler emulator.
 
 The default model's settings and prices come from the checked catalogue; an existing platform default is preserved.
 Signing keys stay in the signing process's environment, and temporary setup sessions are revoked.
@@ -305,16 +311,20 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
 not in any contributor's dotfiles. Hook fixes are normal repo PRs.
 
 - **pre-push classifies the outgoing range into lint and unit surfaces** by file
-  pattern (`*.rs`/`rustd/*` → `lint-rustd`, `cli/*` → `test-coverage-cli`,
-  `ui/packages/app/*` → `test-coverage-app`, `ui/packages/website/*` →
-  `test-coverage-website`, `ui/packages/design-system/*` → both
-  `test-coverage-design-system` and `test-coverage-app`). Each is the target
-  its Continuous Integration (CI) job in `.github/workflows/test.yml` runs.
-  Zero matches →
+  pattern:
+  - `*.rs` and `rustd/*` → `lint-rustd`
+  - `cli/*` → `test-coverage-cli`
+  - `ui/packages/app/*` → `test-coverage-app`
+  - `ui/packages/website/*` → `test-coverage-website`
+  - `ui/packages/design-system/*` → both `test-coverage-design-system` and
+    `test-coverage-app`
+
+  Each is the target its Continuous Integration (CI) job in
+  `.github/workflows/test.yml` runs. Zero matches →
   `"no test-relevant files — nothing to run"` and the push sails through, so a
-  docs-only push skips the suite entirely. No pre-push lane needs a live
-  datastore. Rust unit tests do not run here; they run at `orly gate pr` and
-  in CI (`.githooks/pre-push`).
+  docs-only push skips the suite entirely.
+- **No pre-push lane needs a live datastore.** Rust unit tests do not run
+  here; they run at `orly gate pr` and in CI (`.githooks/pre-push`).
 - **Clippy is pre-push's, not pre-commit's.** `lint-rustd` compiles the whole
   workspace under `-D warnings`, which measured 36s to 3m16s per commit. That
   is a tax on every commit, including the small ones. Pre-commit keeps the

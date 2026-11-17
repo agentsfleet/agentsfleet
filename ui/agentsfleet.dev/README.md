@@ -6,7 +6,7 @@ The one-URL installer for the `agentsfleet` command-line interface (CLI), served
 curl -fsSL https://agentsfleet.dev | bash
 ```
 
-This is a static site — no build step. `dist/` is committed and served by Vercel as-is.
+This is a static site with no build step. `dist/` is committed and served by Vercel as-is.
 
 ## Layout
 
@@ -17,11 +17,11 @@ This is a static site — no build step. `dist/` is committed and served by Verc
 | `install_test.sh` | Hermetic black-box smoke tests for `dist/install.sh`. | no |
 | `README.md` | This file. | no |
 
-The Windows PowerShell installer (`install.ps1`) is a separate follow-up — not here yet.
+The Windows PowerShell installer (`install.ps1`) is a separate follow-up and is not here yet.
 
 ## What `dist/install.sh` does
 
-1. Requires Node.js (`node` + `npm`) — `agentsfleet` is an npm-distributed Node CLI (`bin: ./dist/bin/agentsfleet.js`), so there is no standalone binary to fall back to. Missing Node exits `5` with an install link.
+1. Requires Node.js (`node` + `npm`): `agentsfleet` is an npm-distributed Node CLI (`bin: ./dist/bin/agentsfleet.js`), so there is no standalone binary to fall back to. Missing Node exits `5` with an install link.
 2. `npm install -g --prefix "$AGENTSFLEET_INSTALL" @agentsfleet/cli[@version]` (default prefix `~/.agentsfleet`), then adds `<prefix>/bin` to PATH.
 3. Prints the next command: `agentsfleet login`.
 
@@ -50,15 +50,17 @@ network is ever touched.
 ## Deploying
 
 The served bytes are `dist/`, deployed by a **git-connected Vercel project** (`agentsfleet-agents-dev`,
-framework `None`, root directory `ui/agentsfleet.dev/dist`) — the same pattern as `agentsfleet-website`.
+framework `None`, root directory `ui/agentsfleet.dev/dist`), the same pattern as `agentsfleet-website`.
 There is no deploy workflow and no CI credentials; Vercel's GitHub integration handles it:
 
 - Open a PR touching `ui/agentsfleet.dev/**` → Vercel auto-deploys a **preview** and comments the URL.
 - Merge to `main` → Vercel deploys **production** → `https://agentsfleet.dev`.
 
 `dist/vercel.json` carries the serving config Vercel reads (the `/ → /install.sh` rewrite, the
-`text/x-shellscript` content-type, and the 5-minute cache) — Vercel does **not** read Cloudflare
+`text/x-shellscript` content-type, and the 5-minute cache); Vercel does **not** read Cloudflare
 `_redirects`/`_headers`. `make lint-shell` (shellcheck) and the `lint-agentsfleet-sh` CI job
 (`install_test.sh`) gate the merge, so a broken installer can't reach `main`. The 5-minute `Cache-Control` propagates a bump
-globally within minutes. One-time Vercel provisioning (project + custom domain) lives in
+globally within minutes.
+
+The one-time Vercel setup (project and custom domain) lives in
 [`playbooks/operations/installer_deploy/`](../../playbooks/operations/installer_deploy/).

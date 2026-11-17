@@ -12,8 +12,7 @@ executable: false
 
 Builds and pushes `ghcr.io/agentsfleet/ci-rust-alpine` for amd64 and arm64.
 The image bakes the musl build packages, `git`, `pkgconf`, `ca-certificates` and the `rustfmt`, `clippy` and `llvm-tools` components.
-It does not cache compiled crates.
-`scripts/build-candidate.sh` mounts `.cargo-cache/` and `rustd/target/` into the container for that.
+It does not cache compiled crates; `scripts/build-candidate.sh` mounts `.cargo-cache/` and `rustd/target/` into the container for that.
 
 | Consumer | How it gets the tag |
 |---|---|
