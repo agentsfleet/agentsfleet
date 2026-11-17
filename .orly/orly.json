@@ -30,6 +30,12 @@
         "check-version"
       ]
     ],
+    "burst.integration": [
+      [
+        "make",
+        "test-integration-rustd"
+      ]
+    ],
     "burst.acceptance": [
       [
         "bash",
