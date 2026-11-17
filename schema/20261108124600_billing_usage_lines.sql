@@ -5,7 +5,7 @@
 -- the name when the line was written. `work_type`, `kind` and `posture` are
 -- application constants (RULE STS). `kind` is
 -- `af_wire::usage::LineKind` (`model`, `runtime`, `decision`) and numbers its own
--- lines, so `seq` is unique within work and kind. Readers: `sql/select_tenant_charges_{first,after}.sql`,
+-- lines, so `seq` is unique within work and kind. Readers: `report/sql/charges.sql`,
 -- `ledger/sql/{select_unsettled,select_unsettled_work,settle_lines}.sql` and
 -- `commit_report.sql`. Exactly one of `fleet_id` / `authoring_attempt_id` is set,
 -- by `work_type`. `platform_model_price_id` is NULL when no catalogue price covered
