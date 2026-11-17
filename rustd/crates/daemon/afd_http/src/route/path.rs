@@ -35,7 +35,14 @@ macro_rules! admin_runner_path {
     };
 }
 
-pub(super) use {admin_runner_path, fleet_path, workspace_path};
+/// A path under one of the calling tenant's runners.
+macro_rules! tenant_runner_path {
+    ($suffix:literal) => {
+        concat!("/v1/tenants/me/runners/{runner_id}", $suffix)
+    };
+}
+
+pub(super) use {admin_runner_path, fleet_path, tenant_runner_path, workspace_path};
 
 #[cfg(test)]
 mod tests {

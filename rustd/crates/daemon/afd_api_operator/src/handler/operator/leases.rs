@@ -18,7 +18,7 @@ const EVENT: &str = "runner_leases_failed";
     get,
     path = "/v1/admin/runners/{runner_id}/leases",
     tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "list_fleet_runner_leases",
+    operation_id = "list_platform_runner_leases",
     summary = "List a runner's work assignments",
     description = concat!(
         "Lists a runner's work assignments newest first, with fleet outcomes and failure ",

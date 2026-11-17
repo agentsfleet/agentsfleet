@@ -15,6 +15,9 @@ pub struct RunnerItem<'a> {
     /// Canonical runner identifier.
     #[serde(borrow)]
     pub id: Cow<'a, str>,
+    /// The tenant that registered this runner. Absent for a platform runner.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<Cow<'a, str>>,
     /// Stable host identity supplied at enrolment.
     #[serde(borrow)]
     pub host_id: Cow<'a, str>,

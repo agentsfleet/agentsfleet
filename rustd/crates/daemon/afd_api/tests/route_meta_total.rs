@@ -99,6 +99,9 @@ const RETIRED_RUNNER_HTTP_ROUTES: usize = 10;
 /// The two platform catalogue routes and the redundant owned collection were retired.
 const RETIRED_CATALOGUE_ROUTES: usize = 3;
 
+/// A tenant's own runners: register, list, read, manage and delete (M246).
+const TENANT_RUNNER_ADDITIONS: usize = 5;
+
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
@@ -109,6 +112,7 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + DURABLE_TASK_ADDITIONS
     + FOLD_ADDITIONS
     + RUNNER_STREAM_ADDITIONS
+    + TENANT_RUNNER_ADDITIONS
     - RETIRED_WEBHOOK_ROUTES
     - RETIRED_RUNNER_HTTP_ROUTES
     - RETIRED_CATALOGUE_ROUTES;

@@ -1,4 +1,5 @@
-//! The operator view over runners — a tenant looking at the fleet's hosts.
+//! Runner management: platform runners under `/v1/admin/runners`, and a tenant's
+//! own runners under `/v1/tenants/me/runners`, served by one handler set.
 //!
 //! Split from [`super::runner`] along the guard boundary, which is a real one:
 //! everything here is `Guard::Bearer`, a tenant principal reading or cordoning
@@ -9,12 +10,13 @@
 use af_wire::paths;
 use afd_auth::Scope;
 
-use super::path::admin_runner_path;
+use super::path::{admin_runner_path, tenant_runner_path};
 use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
 const RUNNER_REGISTER: &[Scope] = &[Scope::RunnerRegister];
 const RUNNER_READ: &[Scope] = &[Scope::RunnerRead];
 const RUNNER_WRITE: &[Scope] = &[Scope::RunnerWrite];
+const RUNNER_TENANT: &[Scope] = &[Scope::RunnerTenant];
 
 /// An operator-plane route over runners.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,6 +35,16 @@ pub enum RunnerOpsRoute {
     Events,
     /// One runner's leases.
     Leases,
+    /// Register one of the calling tenant's runners.
+    TenantRegister,
+    /// The calling tenant's runners.
+    TenantList,
+    /// One of the calling tenant's runners.
+    TenantGet,
+    /// Cordon, rotate or edit one of the calling tenant's runners.
+    TenantPatch,
+    /// Retire one of the calling tenant's revoked runners.
+    TenantDelete,
 }
 
 // `/v1/fleets/streams`, a per-instance operator diagnostic over the
@@ -52,16 +64,26 @@ impl RunnerOpsRoute {
         Self::Delete,
         Self::Events,
         Self::Leases,
+        Self::TenantRegister,
+        Self::TenantList,
+        Self::TenantGet,
+        Self::TenantPatch,
+        Self::TenantDelete,
     ];
 
     /// The verbs this operator route serves.
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
-            Self::Register => &[Verb::Post],
-            Self::List | Self::Get | Self::Events | Self::Leases => &[Verb::Get],
-            Self::Patch => &[Verb::Patch],
-            Self::Delete => &[Verb::Delete],
+            Self::Register | Self::TenantRegister => &[Verb::Post],
+            Self::List
+            | Self::Get
+            | Self::Events
+            | Self::Leases
+            | Self::TenantList
+            | Self::TenantGet => &[Verb::Get],
+            Self::Patch | Self::TenantPatch => &[Verb::Patch],
+            Self::Delete | Self::TenantDelete => &[Verb::Delete],
         }
     }
 
@@ -85,6 +107,12 @@ impl RunnerOpsRoute {
             ),
             Self::Events => (admin_runner_path!("/events"), Scopes::Always(RUNNER_READ)),
             Self::Leases => (admin_runner_path!("/leases"), Scopes::Always(RUNNER_READ)),
+            Self::TenantRegister | Self::TenantList => {
+                (paths::TENANT_RUNNERS, Scopes::Always(RUNNER_TENANT))
+            }
+            Self::TenantGet | Self::TenantPatch | Self::TenantDelete => {
+                (tenant_runner_path!(""), Scopes::Always(RUNNER_TENANT))
+            }
         };
         RouteMeta::new(Guard::Bearer, RouteClass::Api, template, scopes)
     }

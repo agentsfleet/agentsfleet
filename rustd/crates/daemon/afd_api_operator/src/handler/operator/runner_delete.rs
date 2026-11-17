@@ -19,6 +19,7 @@ use http::StatusCode;
 use super::query;
 use crate::handler::{parse_id, refuse};
 use crate::services::Services;
+use afd_runner::Reach;
 
 /// The scoped event a failed retirement is logged under.
 const EVENT: &str = "runner_delete_failed";
@@ -27,8 +28,8 @@ const EVENT: &str = "runner_delete_failed";
     delete,
     path = "/v1/admin/runners/{runner_id}",
     tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "delete_fleet_runner",
-    summary = "Delete a revoked runner",
+    operation_id = "delete_platform_runner",
+    summary = "Delete a revoked platform runner",
     description = concat!(
         "Permanently deletes a revoked runner, its leases, and runner events. Revoke it ",
         "first with a PATCH request setting `action` to `revoke`. Active leases must finish ",
@@ -54,17 +55,18 @@ pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,
 ) -> Response {
-    let runner = match parse_id(&raw, query::DETAIL_BAD_RUNNER_ID) {
+    retire(&*services, &Reach::Platform, &raw).await
+}
+
+/// Retires a revoked runner within `reach`.
+pub(super) async fn retire<D: Services>(services: &D, reach: &Reach, raw: &str) -> Response {
+    let runner = match parse_id(raw, query::DETAIL_BAD_RUNNER_ID) {
         Ok(runner) => runner,
         Err(refused) => return refused.into_response(),
     };
-    match services
-        .runners()
-        .delete_revoked(&afd_runner::Reach::Platform, &runner)
-        .await
-    {
+    match services.runners().delete_revoked(reach, &runner).await {
         Ok(()) => {
-            super::runner_notify::changed(&*services, &runner).await;
+            super::runner_notify::changed(services, &runner).await;
             StatusCode::NO_CONTENT.into_response()
         }
         Err(error) => refuse(&error, EVENT),

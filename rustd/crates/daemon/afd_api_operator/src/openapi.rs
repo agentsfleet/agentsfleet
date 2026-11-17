@@ -38,6 +38,12 @@ afd_http::plane_collector! {
         crate::handler::operator::runner_patch::handle,
         crate::handler::operator::runners::detail,
         crate::handler::operator::runners::list,
+        crate::handler::operator::runner_register::platform,
+        crate::handler::operator::tenant_runners::register,
+        crate::handler::operator::tenant_runners::list,
+        crate::handler::operator::tenant_runners::detail,
+        crate::handler::operator::tenant_runners::update,
+        crate::handler::operator::tenant_runners::delete,
     )
 }
 

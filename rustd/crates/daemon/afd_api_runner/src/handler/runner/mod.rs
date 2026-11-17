@@ -7,17 +7,11 @@
 //! and no way to test one without the other. Every function below is short
 //! enough to read in one sitting for that reason, not by discipline.
 //!
-//! # Enrolment is on the OTHER plane
-//!
-//! [`enrolment`] answers `POST /v1/admin/runners`, which is a tenant operator
-//! creating a runner — `Guard::Bearer` and `runner:register`, not a runner token.
-//! It lives here anyway because it writes the row every verb beside it reads,
-//! and splitting it away from the plane it creates would put the mint and the
-//! thing it mints for in two different places.
+//! Registration is not here: it is a person creating a runner, so it lives with
+//! the other runner-management handlers in `afd_api_operator`.
 
 pub(crate) mod credential;
 pub(crate) mod decisions;
-pub(crate) mod enrolment;
 pub(crate) mod memory;
 pub(crate) mod message;
 pub(crate) mod schedule;

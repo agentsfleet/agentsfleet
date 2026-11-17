@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use afd_api_wire::operator::{RunnerDetail, RunnerItem, RunnersResponse};
-use afd_runner::{RunnerDetail as StoredDetail, RunnerItem as StoredItem};
+use afd_runner::{Reach, RunnerDetail as StoredDetail, RunnerItem as StoredItem};
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse as _, Response};
@@ -21,8 +21,8 @@ const EVENT_DETAIL: &str = "runner_detail_failed";
     get,
     path = "/v1/admin/runners",
     tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "list_fleet_runners",
-    summary = "List runners",
+    operation_id = "list_platform_runners",
+    summary = "List platform runners",
     description = concat!(
         "Lists runners newest first. Requires platform administrator access. Each item ",
         "includes its current connection status, without authentication state or token ",
@@ -45,17 +45,22 @@ pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    let page = match query::page(&params) {
+    page(&*services, &Reach::Platform, &params).await
+}
+
+/// One page of the runners `reach` covers, newest first.
+pub(super) async fn page<D: Services>(
+    services: &D,
+    reach: &Reach,
+    params: &HashMap<String, String>,
+) -> Response {
+    let page = match query::page(params) {
         Ok(page) => page,
         Err(detail) => return malformed(detail),
     };
     match services
         .runners()
-        .list_runners(
-            &afd_runner::Reach::Platform,
-            page.cursor.as_ref(),
-            page.limit,
-        )
+        .list_runners(reach, page.cursor.as_ref(), page.limit)
         .await
     {
         Ok(rows) => Json(RunnersResponse {
@@ -74,8 +79,8 @@ pub(crate) async fn list<D: Services>(
     get,
     path = "/v1/admin/runners/{runner_id}",
     tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "get_fleet_runner",
-    summary = "Read a runner",
+    operation_id = "get_platform_runner",
+    summary = "Read a platform runner",
     description = concat!(
         "Returns a runner's details, current work, and lifetime counters. Requires platform ",
         "administrator access.",
@@ -98,15 +103,16 @@ pub(crate) async fn detail<D: Services>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,
 ) -> Response {
-    let runner = match parse_id(&raw, query::DETAIL_BAD_RUNNER_ID) {
+    read(&*services, &Reach::Platform, &raw).await
+}
+
+/// One runner within `reach`; a runner outside it is not found.
+pub(super) async fn read<D: Services>(services: &D, reach: &Reach, raw: &str) -> Response {
+    let runner = match parse_id(raw, query::DETAIL_BAD_RUNNER_ID) {
         Ok(runner) => runner,
         Err(refused) => return refused.into_response(),
     };
-    match services
-        .runners()
-        .runner_detail(&afd_runner::Reach::Platform, &runner)
-        .await
-    {
+    match services.runners().runner_detail(reach, &runner).await {
         Ok(row) => Json(detail_payload(&row)).into_response(),
         Err(error) => refuse(&error, EVENT_DETAIL),
     }
@@ -115,6 +121,7 @@ pub(crate) async fn detail<D: Services>(
 fn item(row: &StoredItem) -> RunnerItem<'static> {
     RunnerItem {
         id: Cow::Owned(row.id().to_string()),
+        tenant_id: row.tenant_id().map(|tenant| Cow::Owned(tenant.to_string())),
         host_id: Cow::Owned(row.host_id().to_owned()),
         sandbox_tier: Cow::Owned(row.sandbox_tier().to_owned()),
         status: row.status(),

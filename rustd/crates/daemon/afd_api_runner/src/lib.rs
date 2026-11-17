@@ -1,6 +1,6 @@
 //! Runner-control HTTP adapters.
 //!
-//! The stream, enrolment, self-record, credential, memory, message, schedule,
+//! The stream, self-record, credential, memory, message, schedule,
 //! tool-call, decision and task handlers live here so host protocol changes
 //! compile independently. Heartbeats, leases, renewals, activity and reports
 //! travel on the stream.
@@ -70,9 +70,4 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
             .post(handler::runner::schedule_run::run::<D>),
         RunnerRoute::Messages => post(handler::runner::message::handle::<D>),
     }
-}
-
-/// Returns the unauthenticated runner-enrolment handler.
-pub fn enrolment_handler<D: Services>() -> MethodRouter<Arc<D>> {
-    post(handler::runner::enrolment::handle::<D>)
 }

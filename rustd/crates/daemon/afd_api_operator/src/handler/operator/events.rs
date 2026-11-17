@@ -19,7 +19,7 @@ const EVENT: &str = "runner_events_failed";
     get,
     path = "/v1/admin/runners/{runner_id}/events",
     tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "list_fleet_runner_events",
+    operation_id = "list_platform_runner_events",
     summary = "List runner activity",
     description = concat!(
         "Lists a runner's recorded activity newest first. Requires platform administrator ",

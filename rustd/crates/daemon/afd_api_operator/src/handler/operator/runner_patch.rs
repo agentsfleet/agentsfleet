@@ -7,7 +7,7 @@ use afd_api_wire::admin::{
     RunnerAdminAction, RunnerAdminPatchRequest, RunnerAdminPatchResponse,
     RunnerTokenRotatedResponse,
 };
-use afd_runner::RunnerEdit;
+use afd_runner::{Reach, RunnerEdit};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -40,8 +40,8 @@ enum OrdinaryMutation<'r, 'a> {
     patch,
     path = "/v1/admin/runners/{runner_id}",
     tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "patch_fleet_runner",
-    summary = "Manage a runner",
+    operation_id = "update_platform_runner",
+    summary = "Manage a platform runner",
     description = concat!(
         "Requires platform administrator access. Send either `action` or an edit containing ",
         "`assigned_policy`, `labels`, or both. Both edits succeed together or neither ",
@@ -80,13 +80,24 @@ pub(crate) async fn handle<D: Services>(
     Path(raw): Path<String>,
     body: Bytes,
 ) -> Response {
-    let runner = match parse_id(&raw, query::DETAIL_BAD_RUNNER_ID) {
+    apply(&*services, &Reach::Platform, &identity, &raw, &body).await
+}
+
+/// Applies an action or an edit to a runner within `reach`.
+pub(super) async fn apply<D: Services>(
+    services: &D,
+    reach: &Reach,
+    identity: &PersonIdentity,
+    raw: &str,
+    body: &Bytes,
+) -> Response {
+    let runner = match parse_id(raw, query::DETAIL_BAD_RUNNER_ID) {
         Ok(runner) => runner,
         Err(refused) => return refused.into_response(),
     };
     // Strict: the assigned policy is a shape the runner reads leniently, and an
     // operator's misspelled key inside it must still be refused.
-    let Ok(request) = afd_http::handler::read_strict_body::<RunnerAdminPatchRequest<'_>>(&body)
+    let Ok(request) = afd_http::handler::read_strict_body::<RunnerAdminPatchRequest<'_>>(body)
     else {
         return malformed(DETAIL_PATCH_BODY);
     };
@@ -95,20 +106,21 @@ pub(crate) async fn handle<D: Services>(
     };
 
     let ordinary = match mutation {
-        Mutation::Rotate => return rotate(&*services, &identity, &runner).await,
+        Mutation::Rotate => return rotate(services, reach, identity, &runner).await,
         Mutation::Transition(action) => OrdinaryMutation::Transition(action),
         Mutation::Selftest => OrdinaryMutation::Selftest,
         Mutation::Edit(edit) => OrdinaryMutation::Edit(edit),
     };
-    let result = mutate(&*services, &runner, identity.subject(), ordinary).await;
+    let result = mutate(services, reach, &runner, identity.subject(), ordinary).await;
     if result.is_ok() {
-        super::runner_notify::changed(&*services, &runner).await;
+        super::runner_notify::changed(services, &runner).await;
     }
-    finish(result, &identity, &runner)
+    finish(result, identity, &runner)
 }
 
 async fn mutate<'a, D: Services>(
     services: &D,
+    reach: &Reach,
     runner: &'a af_core::id::Uuid7,
     actor: &str,
     mutation: OrdinaryMutation<'_, 'a>,
@@ -116,13 +128,7 @@ async fn mutate<'a, D: Services>(
     match mutation {
         OrdinaryMutation::Transition(action) => services
             .runners()
-            .transition(
-                &afd_runner::Reach::Platform,
-                runner,
-                action,
-                actor,
-                services.now(),
-            )
+            .transition(reach, runner, action, actor, services.now())
             .await
             .map(|status| RunnerAdminPatchResponse {
                 id: Cow::Borrowed(runner.as_str()),
@@ -133,7 +139,7 @@ async fn mutate<'a, D: Services>(
             }),
         OrdinaryMutation::Selftest => services
             .runners()
-            .request_selftest(&afd_runner::Reach::Platform, runner)
+            .request_selftest(reach, runner)
             .await
             .map(|recorded| RunnerAdminPatchResponse {
                 id: Cow::Borrowed(runner.as_str()),
@@ -144,7 +150,7 @@ async fn mutate<'a, D: Services>(
             }),
         OrdinaryMutation::Edit(edit) => services
             .runners()
-            .edit(&afd_runner::Reach::Platform, runner, edit, services.now())
+            .edit(reach, runner, edit, services.now())
             .await
             .map(|stored| RunnerAdminPatchResponse {
                 id: Cow::Borrowed(runner.as_str()),
@@ -180,17 +186,13 @@ fn finish(
 
 async fn rotate<D: Services>(
     services: &D,
+    reach: &Reach,
     identity: &PersonIdentity,
     runner: &af_core::id::Uuid7,
 ) -> Response {
     match services
         .runners()
-        .rotate_token(
-            &afd_runner::Reach::Platform,
-            runner,
-            identity.subject(),
-            services.now(),
-        )
+        .rotate_token(reach, runner, identity.subject(), services.now())
         .await
     {
         Ok(rotated) => {
