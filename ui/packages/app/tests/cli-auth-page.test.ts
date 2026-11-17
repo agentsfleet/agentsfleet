@@ -10,26 +10,11 @@ const { useAuth, getTokenFn } = vi.hoisted(() => {
 
 vi.mock("@clerk/nextjs", () => ({ useAuth }));
 
+import { activeBody, jsonResponse, samplePeerSpkiBase64Url } from "./cli-auth-page.fixtures";
+
 import CliAuthPage from "@/app/cli-auth/[session_id]/page";
 
 const SESSION_ID = "0190b3c0-1111-7000-8000-000000000001";
-
-function activeBody(overrides: Partial<{ status: string; cli_public_key: string; token_name: string; expires_at: string }> = {}) {
-  return {
-    status: "pending",
-    cli_public_key: "AAAA",
-    token_name: "darwin/arm64",
-    expires_at: new Date(Date.now() + 300_000).toISOString(),
-    ...overrides,
-  };
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
 
 async function renderPage() {
   let utils!: ReturnType<typeof render>;
@@ -193,8 +178,8 @@ describe("CliAuthPage — approve flow", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Finish signing in" })).toBeTruthy();
-      expect(screen.getByText("Go back to the terminal where you started signing in and enter this code.")).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "One last step." })).toBeTruthy();
+      expect(screen.getByText("Enter this code in the terminal where you started signing in.")).toBeTruthy();
     });
     const code = screen.getByLabelText("Verification code").textContent ?? "";
     expect(code).toMatch(/^\d{6}$/);
@@ -357,16 +342,3 @@ describe("CliAuthPage — approve flow", () => {
     expect((screen.getByRole("button", { name: "Authorize" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
-
-async function samplePeerSpkiBase64Url(): Promise<string> {
-  const pair = await crypto.subtle.generateKey(
-    { name: "ECDH", namedCurve: "P-256" },
-    true,
-    ["deriveBits"],
-  );
-  const spki = await crypto.subtle.exportKey("spki", pair.publicKey);
-  const bytes = new Uint8Array(spki);
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
-}

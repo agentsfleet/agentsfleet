@@ -1,13 +1,14 @@
 "use client";
 
 import {
-  Alert, AlertDescription, AlertTitle, Button, Card, CardContent, CardDescription,
+  Alert, AlertDescription, AlertTitle, BrandMark, Button, Card, CardContent, CardDescription,
   CardFooter, CardHeader, CopyButton, PageTitle,
 } from "@agentsfleet/design-system";
 import { RouteLoading } from "@/components/layout/RouteLoading";
+import { CheckIcon, TerminalIcon } from "@phosphor-icons/react/ssr";
 
 export const LOAD = { loading: "loading", active: "active", terminal: "terminal", error: "error" } as const;
-export const APPROVE = { idle: "idle", working: "working", approved: "approved", uncertain: "uncertain", failed: "failed" } as const;
+export const APPROVE = { idle: "idle", working: "working", approved: "approved", uncertain: "uncertain", completed: "completed", failed: "failed" } as const;
 export const SESSION_STATUS = { pending: "pending", verification_pending: "verification_pending" } as const;
 export interface ActiveSession {
   status: (typeof SESSION_STATUS)[keyof typeof SESSION_STATUS];
@@ -19,18 +20,9 @@ export type LoadState = { kind: typeof LOAD.loading }
   | { kind: typeof LOAD.active; session: ActiveSession }
   | { kind: typeof LOAD.terminal; message: string }
   | { kind: typeof LOAD.error; message: string };
-export type ApproveState = { kind: typeof APPROVE.idle | typeof APPROVE.working }
+export type ApproveState = { kind: typeof APPROVE.idle | typeof APPROVE.working | typeof APPROVE.completed }
   | { kind: typeof APPROVE.approved | typeof APPROVE.uncertain; verificationCode: string }
   | { kind: typeof APPROVE.failed; message: string };
-
-// Presentational chrome for the CLI-auth approve page. Extracted from
-// page.tsx to keep that file under the length cap; these are internal to
-// the route (the approve-flow logic stays in page.tsx).
-//
-// The copy affordance used to live here, as a component ALSO named CopyButton —
-// which shadowed the design-system export of the same name and is very likely why
-// that primitive went unused across the whole app. It is gone; the route imports
-// the real one.
 
 export function PageShell({ children }: { children: React.ReactNode }) {
   return (
@@ -47,14 +39,17 @@ export function ManualApprovalView({ isLoaded, isSignedIn, load, approve, onAppr
   if (!isLoaded || load.kind === LOAD.loading) return <RouteLoading fullScreen />;
   if (!isSignedIn) return <AuthNotice title="Sign in to continue" message="You need to be signed in to approve a CLI login." />;
   if (load.kind === LOAD.terminal || load.kind === LOAD.error) return <AuthNotice title="Login session unavailable" message={load.message} />;
-  if (approve.kind === APPROVE.approved || approve.kind === APPROVE.uncertain) return <PageShell><Card>
-    <CardHeader><PageTitle>Finish signing in</PageTitle><CardDescription>
+  if (approve.kind === APPROVE.completed) return <CompletionView />;
+  if (approve.kind === APPROVE.approved || approve.kind === APPROVE.uncertain) return <PageShell><Card className="mx-auto max-w-auth-card text-center">
+    <CardHeader className="items-center gap-md"><AuthorizationBrand /><AuthorizationIcon><TerminalIcon aria-hidden="true" /></AuthorizationIcon>
+      <PageTitle className="font-medium">One last step.</PageTitle><CardDescription className="text-body-sm leading-prose">
       {approve.kind === APPROVE.uncertain
         ? "We couldn't confirm the approval over the network. If your terminal is asking for a code, enter this one; otherwise refresh and try again."
-        : "Go back to the terminal where you started signing in and enter this code."}
+        : "Enter this code in the terminal where you started signing in."}
     </CardDescription></CardHeader>
     <CardContent><VerificationCodeDisplay code={approve.verificationCode} /></CardContent>
-    <CardFooter><CopyButton value={approve.verificationCode} label="Copy code" showLabel /></CardFooter>
+    <CardFooter className="justify-center"><CopyButton value={approve.verificationCode} label="Copy code" showLabel /></CardFooter>
+    <p className="mt-xl border-t border-border pt-lg text-eyebrow text-muted-foreground">Waiting for verification in your terminal…</p>
   </Card></PageShell>;
   return <PageShell><Card>
     <CardHeader><PageTitle>Connect your terminal</PageTitle><CardDescription>
@@ -68,6 +63,24 @@ export function ManualApprovalView({ isLoaded, isSignedIn, load, approve, onAppr
       {approve.kind === APPROVE.working ? "Authorizing…" : "Authorize"}
     </Button></CardFooter>
   </Card></PageShell>;
+}
+
+function CompletionView() {
+  return <PageShell><Card className="mx-auto max-w-auth-card text-center">
+    <CardHeader className="items-center gap-lg"><AuthorizationBrand /><AuthorizationIcon><CheckIcon aria-hidden="true" /></AuthorizationIcon>
+      <PageTitle className="font-medium">Unleash your agents.</PageTitle>
+      <CardDescription className="text-body-sm leading-prose">Your terminal is authorized. Return to your terminal to finish signing in.</CardDescription>
+    </CardHeader>
+    <CardFooter className="mt-lg justify-center border-t border-border text-eyebrow text-muted-foreground">You can close this tab.</CardFooter>
+  </Card></PageShell>;
+}
+
+function AuthorizationBrand() {
+  return <div className="flex items-center justify-center gap-sm text-lg font-medium"><BrandMark className="size-7" /><span>agentsfleet</span></div>;
+}
+
+function AuthorizationIcon({ children }: { children: React.ReactNode }) {
+  return <div className="mt-sm flex size-12 items-center justify-center rounded-full border border-pulse bg-pulse/10 text-pulse">{children}</div>;
 }
 
 export function AuthNotice({ title, message }: { title: string; message: string }) {

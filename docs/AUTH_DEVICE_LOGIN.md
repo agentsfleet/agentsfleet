@@ -16,6 +16,18 @@ Acronyms used throughout: command-line interface (CLI), JSON Web Token (JWT), Ha
 Both modes use Elliptic-Curve Diffie-Hellman (ECDH) P-256 transport encryption and the existing random six-digit verification secret.
 Default login delivers that secret to a bound local listener after browser approval. Manual login asks the person to copy it into the terminal.
 
+Both browser flows finish with “Unleash your agents.” and a return-to-terminal instruction.
+The default callback waits for terminal finalization before displaying success.
+
+After manual approval, the browser keeps the code visible and reads the existing session status until the terminal consumes it.
+Only `410` with `UZ-AUTH-012` confirms that code use; cancellation and expiry never display success.
+
+Approval renews the verification window. The observer uses the renewed expiry from status reads,
+with an independent five-minute bound after approval; it never uses the earlier approval-page deadline.
+
+The manual page confirms authorization and asks the person to return to the terminal; credential saving and identity checks still finish there.
+These browser reads stop on navigation or session expiry and do not release credential material.
+
 The CLI spends the decrypted session token on `POST /v1/cli-credentials`.
 It saves the returned durable credential in `credentials.json`, with mode `0o600`, for subsequent requests.
 

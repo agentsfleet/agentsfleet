@@ -1,4 +1,4 @@
-// Checks on this machine's setup, and the owl.
+// Checks on this machine's setup, and the jellyfish.
 
 import { Command } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
@@ -15,10 +15,10 @@ const doctorCommand = Command.make("doctor").pipe(
   guardedHandler(() => withManagedExitCode(doctorEffect)),
 );
 
-// Runnable by name, never advertised: it is a preview of the progress owl,
+// Runnable by name, never advertised: it is a preview of the progress pet,
 // not a command anyone needs to find.
 const petCommand = Command.make(PET_COMMAND).pipe(
-  Command.withDescription("Watch Scout, your terminal owl, for five seconds"),
+  Command.withDescription("Watch Orbit, your terminal jellyfish, for five seconds"),
   guardedHandler(() => petPreview),
   Command.unlisted,
 );

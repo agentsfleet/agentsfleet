@@ -14,6 +14,7 @@ import { APPROVE, LOAD, SESSION_STATUS, AuthNotice, ManualApprovalView,
 import { LOOPBACK_KIND, type BrowserHandoff, type LoopbackHandoff } from "@/lib/auth/cli-loopback";
 import { readBrowserHandoff } from "@/lib/auth/cli-loopback-store";
 import { CliLoopbackApproval, type ApprovalRequest, type ApprovalResult } from "./cli-loopback-approval";
+import { watchManualApprovalCompletion } from "@/lib/auth/manual-approval-completion";
 
 const JSON_CONTENT_TYPE = "application/json";
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -27,6 +28,15 @@ function ManualCliAuthPage({ session_id }: { session_id: string }) {
   const [load, setLoad] = useState<LoadState>({ kind: LOAD.loading });
   const [approve, setApprove] = useState<ApproveState>({ kind: APPROVE.idle });
   useEffect(() => { void loadManualSession(session_id, setLoad, setApprove); }, [session_id]);
+  const waiting = approve.kind === APPROVE.approved || approve.kind === APPROVE.uncertain;
+  useEffect(() => {
+    if (!waiting || !isSignedIn || load.kind !== LOAD.active) return;
+    const owner = new AbortController();
+    void watchManualApprovalCompletion(session_id, owner.signal, result => {
+      setApprove(result.kind === "completed" ? { kind: APPROVE.completed } : { kind: APPROVE.failed, message: result.message });
+    });
+    return () => owner.abort();
+  }, [session_id, load, waiting, isSignedIn]);
   const onApprove = useCallback((session: ActiveSession) => {
     void approveManual(session_id, session, getToken, setApprove);
   }, [getToken, session_id]);
@@ -112,7 +122,7 @@ export default function CliAuthPage({ params }: { params: Promise<{ session_id: 
   const [handoff, setHandoff] = useState<BrowserHandoff | null>(null);
   useEffect(() => setHandoff(readBrowserHandoff(session_id)), [session_id]);
   if (!handoff) return <RouteLoading fullScreen />;
-  if (handoff.kind === LOOPBACK_KIND.manual) return <ManualCliAuthPage session_id={session_id} />;
+  if (handoff.kind === LOOPBACK_KIND.manual) return <ManualCliAuthPage key={session_id} session_id={session_id} />;
   if (handoff.kind === LOOPBACK_KIND.automatic) return <CliLoopbackApproval key={handoff.handoff.sessionId}
     handoff={handoff.handoff} approve={request => approveLocal(handoff.handoff, request, getToken)} />;
   return <AuthNotice title="Sign-in unavailable" message={handoff.message} />;
