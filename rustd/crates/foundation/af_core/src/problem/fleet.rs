@@ -173,7 +173,7 @@ pub(super) const FLEET: &[Problem] = &[
     Problem {
         code: error_code::RUNNER_TENANT_MANAGED,
         status: 409,
-        title: "Runner is managed by its tenant",
+        title: "Tenant-managed runner",
         hint: "A tenant runner's token is rotated by its tenant through `PATCH /v1/tenants/me/runners/{runner_id}`. Revoke the runner instead if it must stop.",
         user_message: None,
     },

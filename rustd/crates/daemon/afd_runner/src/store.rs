@@ -80,9 +80,8 @@ impl Runners {
 
     /// Draws the two identifiers and the credential an enrolment needs.
     ///
-    /// Split out because it is the only part that touches entropy, and because
-    /// three consecutive fallible draws inside the write would push
-    /// [`Runners::register`] past the function-length line for no gain.
+    /// Split out because it is the only part that touches entropy, and both
+    /// registration entries draw through it in `Prepared::of`.
     pub(crate) fn mint(&self, now: Timestamp) -> Result<(Uuid7, Uuid7, Minted)> {
         let runner_id = self.entropy.uuid7(now)?;
         let event_id = self.entropy.uuid7(now)?;

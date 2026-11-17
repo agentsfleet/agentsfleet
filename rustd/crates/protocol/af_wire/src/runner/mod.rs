@@ -230,7 +230,7 @@ pub struct RegistrationReplay<'a> {
     /// The runner the first request registered.
     #[serde(borrow)]
     pub runner_id: Cow<'a, str>,
-    /// The assignment as stored.
+    /// The assignment as first registered; a later edit is read from the runner.
     #[serde(borrow)]
     pub assigned_policy: AssignedPolicy<'a>,
 }

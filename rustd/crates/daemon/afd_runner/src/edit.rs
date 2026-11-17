@@ -69,6 +69,7 @@ struct Assignment<'a> {
 struct PatchState {
     decision_model_id: Option<Uuid7>,
     platform_owned: bool,
+    durable_tasks_enabled: bool,
     status: String,
     capability_report: Option<String>,
 }
@@ -150,7 +151,7 @@ impl RunnerScope<'_> {
             if status == AdminState::Revoked {
                 return Err(rejected(DETAIL_REVOKED_NO_POLICY));
             }
-            tenant_assignment(self.owner, row.platform_owned, assignment)?;
+            tenant_assignment(self.owner, &row, assignment)?;
             selected.allow_change_from(row.decision_model_id.as_ref().map(Uuid7::as_str))?;
             assign(&mut transaction, runner, assignment, row.capability_report).await?;
         }
@@ -210,19 +211,22 @@ async fn assign(
 }
 
 /// Refuses what a tenant runner may not be assigned: a platform decision model
-/// from any caller, and durable tasks switched on by its tenant.
+/// from any caller, and durable tasks switched on by its tenant. A tenant may
+/// keep durable tasks a platform admin switched on; a policy edit replaces the
+/// whole assignment, so refusing the value itself would make every later tenant
+/// edit either fail or switch them off.
 fn tenant_assignment(
     owner: Owner<'_>,
-    platform_owned: bool,
+    row: &PatchState,
     assignment: &Assignment<'_>,
 ) -> Result<()> {
-    if platform_owned {
+    if row.platform_owned {
         return Ok(());
     }
     if assignment.decision_model_id.is_some() {
         return Err(rejected(DETAIL_TENANT_DECISION_MODEL));
     }
-    if !owner.platform() && assignment.stored.durable_tasks_enabled {
+    if !owner.platform() && assignment.stored.durable_tasks_enabled && !row.durable_tasks_enabled {
         return Err(rejected(DETAIL_TENANT_DURABLE_TASKS));
     }
     Ok(())

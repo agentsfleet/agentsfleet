@@ -279,16 +279,28 @@ impl Refusable for afd_ingress::Error {
 pub fn refuse<E: Refusable + ?Sized>(error: &E, event: &'static str) -> Response {
     let request_id = RequestId::mint();
     log_refusal(error, event, &request_id);
-    if error.code() == af_core::error_code::AUTHORING_POLICY {
-        return ProblemResponse::conflict(
-            error.code(),
-            error.detail(),
-            request_id,
-            "review_required",
-        )
-        .into_response();
+    if let Some(state) = conflict_state(error.code()) {
+        return ProblemResponse::conflict(error.code(), error.detail(), request_id, state)
+            .into_response();
     }
     ProblemResponse::new(error.code(), error.detail(), request_id).into_response()
+}
+
+/// The state a 409 names, so a client branches on it without re-reading the
+/// resource (HTTP-STATEEXT). A conflict this does not name answers no state.
+fn conflict_state(code: af_core::error_code::ErrorCode) -> Option<&'static str> {
+    use af_core::error_code::{
+        AUTHORING_POLICY, RUNNER_REGISTRATION_KEY_REUSED, RUNNER_TENANT_MANAGED,
+    };
+    if code == AUTHORING_POLICY {
+        Some("review_required")
+    } else if code == RUNNER_REGISTRATION_KEY_REUSED {
+        Some("registered")
+    } else if code == RUNNER_TENANT_MANAGED {
+        Some("tenant_managed")
+    } else {
+        None
+    }
 }
 
 /// The log line every rendered refusal leaves, whatever its envelope.

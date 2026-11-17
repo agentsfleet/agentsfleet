@@ -24,7 +24,8 @@ const EVENT_DETAIL: &str = "runner_detail_failed";
     operation_id = "list_platform_runners",
     summary = "List platform runners",
     description = concat!(
-        "Lists runners newest first. Requires platform administrator access. Each item ",
+        "Lists every runner newest first, tenant runners included with their `tenant_id`. ",
+        "Requires platform administrator access. Each item ",
         "includes its current connection status, without authentication state or token ",
         "hashes. Use `next_cursor` to continue.",
     ),

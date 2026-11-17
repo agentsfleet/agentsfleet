@@ -111,7 +111,7 @@ pub(crate) fn runner_not_revoked() -> Error {
     ErrorKind::RunnerNotRevoked.into()
 }
 
-/// Refuses deleting a runner that still holds an active lease.
+/// Refuses deleting a runner that still holds a live or unbilled lease.
 pub(crate) fn runner_still_leased() -> Error {
     ErrorKind::RunnerStillLeased.into()
 }

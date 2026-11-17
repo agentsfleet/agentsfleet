@@ -65,7 +65,7 @@ enum OrdinaryMutation<'r, 'a> {
         (status = 200, description = afd_http::openapi::OK, body = RunnerAdminPatchResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 409, description = "The runner is revoked, so the request can never be honoured"),
+        (status = 409, description = "The runner is revoked, or a rotate addressed a tenant runner, whose tenant rotates its token"),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         afd_http::openapi::GuardedFailures,
     ),

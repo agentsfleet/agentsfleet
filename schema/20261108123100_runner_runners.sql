@@ -39,7 +39,8 @@ CREATE TABLE runner.runners (
     durable_tasks_enabled BOOLEAN NOT NULL DEFAULT true,
     -- Ownership is stated at registration, never inferred from a missing tenant: a
     -- platform runner takes every tenant's work, so it must be named as one. Both
-    -- columns are fixed after insert (trigger below).
+    -- columns are fixed after insert (trigger below). Read by the lease claim and
+    -- candidate scan, authoring candidates, the host lock and the runner statements.
     platform_owned BOOLEAN NOT NULL,
     tenant_id UUID REFERENCES identity.tenants (id) ON DELETE CASCADE,
     CONSTRAINT ck_runners_owner CHECK (platform_owned = (tenant_id IS NULL)),
@@ -55,9 +56,10 @@ CREATE INDEX idx_runners_decision_platform_model
     ON runner.runners (decision_platform_model_id)
     WHERE decision_platform_model_id IS NOT NULL;
 
--- The runner list pages newest first; a tenant's list also serves erasure's cascade.
+-- The runner list pages newest first.
 CREATE INDEX idx_runners_created_at_id ON runner.runners (created_at DESC, id DESC);
 
+-- A tenant's runners, newest first; also serves erasure's cascade.
 CREATE INDEX idx_runners_tenant_id_created_at_id
     ON runner.runners (tenant_id, created_at DESC, id DESC)
     WHERE tenant_id IS NOT NULL;

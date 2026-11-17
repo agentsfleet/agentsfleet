@@ -1,0 +1,203 @@
+//! Against a live datastore: a tenant's runner takes only its
+//! tenant's work, never work that carries the platform model key, and the claim
+//! and the issue each refuse on their own.
+#![cfg(feature = "test-util")]
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
+use af_core::id::Uuid7;
+use af_wire::runner::{NetworkPolicy, SandboxTier};
+use afd_db::test_util::mint_id;
+use afd_fleet::lease::{Acquired, Billed, Leases};
+use afd_runner::Registered;
+
+use crate::requests::{enrolment_tagged, placement_tag};
+use crate::seed::{ACTOR, PROVIDER, REQUEST_JSON, reports_capable, select_fleet};
+use crate::support::Fixtures;
+
+/// A tenant's own model: anything but the platform default.
+const TENANT_MODEL: &str = "tenant-own-model";
+
+/// One tenant's workspace and the tag its fleets and runners share.
+struct Owner {
+    tenant: Uuid7,
+    workspace: Uuid7,
+    tag: String,
+}
+
+impl Owner {
+    /// A tenant whose first fleet creates it; `tag` keeps this test's fleets apart.
+    fn new() -> Self {
+        Self {
+            tenant: mint_id(),
+            workspace: mint_id(),
+            tag: placement_tag(&mint_id()),
+        }
+    }
+
+    /// A fleet on `model` with one queued admission.
+    async fn fleet(&self, fixtures: &Fixtures, model: &str) -> Uuid7 {
+        let fleet = mint_id();
+        fixtures
+            .seed_fleet_on(&fleet, &self.workspace, &self.tenant, &self.tag, model)
+            .await;
+        crate::queue::enqueue(
+            &fixtures.database,
+            &fleet,
+            &self.workspace,
+            ACTOR,
+            "chat",
+            REQUEST_JSON,
+            fixtures.enrolled_at(),
+        )
+        .await;
+        fleet
+    }
+}
+
+/// A runner `tenant` registered, carrying `tag`, that has reported capable.
+async fn tenant_runner(fixtures: &Fixtures, tenant: &Uuid7, tag: &str) -> Uuid7 {
+    let request = enrolment_tagged(
+        SandboxTier::LandlockFull,
+        NetworkPolicy::AllowListEgress,
+        2,
+        tag,
+    );
+    let Registered::Created(enrolled) = fixtures
+        .runners()
+        .register_tenant(tenant, &mint_id(), &request, fixtures.enrolled_at())
+        .await
+        .expect("the tenant registers its runner")
+    else {
+        panic!("a fresh key registers a new runner");
+    };
+    reports_capable(fixtures, &enrolled.runner_id).await;
+    enrolled.runner_id
+}
+
+/// A platform runner carrying `tag`, that has reported capable.
+async fn platform_runner(fixtures: &Fixtures, tag: &str) -> Uuid7 {
+    let request = enrolment_tagged(
+        SandboxTier::LandlockFull,
+        NetworkPolicy::AllowListEgress,
+        2,
+        tag,
+    );
+    let enrolled = fixtures
+        .runners()
+        .register(&request, fixtures.enrolled_at())
+        .await
+        .expect("the platform registers its runner");
+    reports_capable(fixtures, &enrolled.runner_id).await;
+    enrolled.runner_id
+}
+
+/// Issues `held` to `runner`, billed to `tenant` under `posture`.
+async fn issue(
+    fixtures: &Fixtures,
+    leases: &Leases,
+    runner: &Uuid7,
+    held: &Acquired,
+    tenant: &Uuid7,
+    posture: &str,
+) -> bool {
+    leases
+        .issue(
+            runner,
+            held,
+            Billed {
+                tenant_id: tenant,
+                posture,
+                provider: PROVIDER,
+                model: TENANT_MODEL,
+            },
+            fixtures.enrolled_at(),
+        )
+        .await
+        .expect("the issue answers")
+        .is_some()
+}
+
+async fn scalar(fixtures: &Fixtures, statement: &'static str, id: &Uuid7) -> i64 {
+    sqlx::query_scalar(statement)
+        .bind(id)
+        .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))
+        .await
+        .expect("the count reads")
+}
+
+/// Leases ever issued to `runner`.
+async fn leases_of(fixtures: &Fixtures, runner: &Uuid7) -> i64 {
+    scalar(
+        fixtures,
+        "SELECT count(*) FROM runner.leases WHERE runner_id = $1",
+        runner,
+    )
+    .await
+}
+
+/// Whether `fleet` has a slot row, which only a winning claim writes.
+async fn slotted(fixtures: &Fixtures, fleet: &Uuid7) -> bool {
+    scalar(
+        fixtures,
+        "SELECT count(*) FROM runner.fleet_slots WHERE fleet_id = $1",
+        fleet,
+    )
+    .await
+        > 0
+}
+
+/// `fleet`'s slot as a claim leaves it: its fence, deadline and holder.
+async fn slot(fixtures: &Fixtures, fleet: &Uuid7) -> (i64, String, Option<Uuid7>) {
+    sqlx::query_as(
+        "SELECT fencing_token, lease_expires_at::text, last_runner_id FROM runner.fleet_slots WHERE fleet_id = $1",
+    )
+    .bind(fleet)
+    .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))
+    .await
+    .expect("the slot reads")
+}
+
+/// Lapses `fleet`'s claim, as an expired lease leaves it.
+async fn lapse(fixtures: &Fixtures, fleet: &Uuid7) {
+    sqlx::query(
+        "UPDATE runner.fleet_slots SET lease_expires_at = now() - interval '1 hour', hold_expires_at = NULL WHERE fleet_id = $1",
+    )
+    .bind(fleet)
+    .execute(&mut *fixtures.database.acquire().await.expect("a connection"))
+    .await
+    .expect("the claim lapses");
+}
+
+/// The claim statement alone, bound as the ledger binds it; whether it claimed.
+async fn claim_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool {
+    use afd_fleet::lease::sql;
+    sqlx::query(sql::queue::CLAIM_HEAD)
+        .bind(fleet)
+        .bind(runner)
+        .bind(af_core::timing::LEASE_TTL)
+        .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
+        .bind(sql::RUNNER_STATUS_ACTIVE)
+        .bind(sql::LEASE_STATUS_ACTIVE)
+        .bind(sql::LEASE_STATUS_EXPIRED)
+        .bind(af_wire::task::CAPABILITY)
+        .bind(af_wire::task::TaskState::Ready.as_str())
+        .bind(af_wire::task::TaskState::Running.as_str())
+        .bind(afd_fleet::task::DECISION_POLICY_PATH)
+        .bind(sql::FLEET_STATUS_ACTIVE)
+        .bind(af_core::event::status::RECEIVED)
+        .bind(afd_admission::Producer::Steer.as_str())
+        .bind(afd_credential::provider::PLATFORM_MODEL_REF)
+        .fetch_optional(&mut *fixtures.database.acquire().await.expect("a connection"))
+        .await
+        .expect("the claim answers")
+        .is_some()
+}
+
+const SELF_MANAGED: &str = afd_billing::sql::posture::SELF_MANAGED;
+const PLATFORM: &str = afd_billing::sql::posture::PLATFORM;
+
+mod ownership;
+mod platform_model;

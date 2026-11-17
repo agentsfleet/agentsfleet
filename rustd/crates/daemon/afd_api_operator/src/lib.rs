@@ -27,7 +27,7 @@ use axum::routing::{MethodRouter, delete, get, patch, post, put};
 use route::{AdminRoute, RunnerOpsRoute};
 use services::Services;
 
-/// Selects an operator handler; runner registration belongs to the runner crate.
+/// Selects the runner-management handler for a platform or tenant runner route.
 pub fn runner_ops_handler_for<D: Services>(verb: RunnerOpsRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         RunnerOpsRoute::Register => Some(post(handler::operator::runner_register::platform::<D>)),

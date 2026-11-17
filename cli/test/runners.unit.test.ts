@@ -36,6 +36,7 @@ test("runners register replay suggests rotate-token", async () => {
   expect(result.code).toBe(3);
   expect(existsSync(file)).toBe(false);
   expect(JSON.parse(result.stderr).error.suggestion).toContain(`agentsfleet runners rotate-token ${RUNNER_ID}`);
+  expect(JSON.parse(result.stderr).error.code).toBe("RUNNER_REGISTRATION_REPLAYED");
 });
 
 test("a dropped reply retries with the same key and saves the token once", async () => {

@@ -1,8 +1,11 @@
 WITH current_row AS (
   SELECT r.id, r.status,
+         -- A live lease, or an ended one whose runtime tail is not yet billed: the
+         -- delete cascades to leases, so either would lose work or money.
          EXISTS (
            SELECT 1 FROM runner.leases l
-           WHERE l.runner_id = r.id AND l.status = $3::text
+           WHERE l.runner_id = r.id
+             AND (l.status = $3::text OR l.last_metered_at < l.lease_expires_at)
          ) AS leased
   FROM runner.runners r
   WHERE r.id = $1 AND ($5::boolean OR r.tenant_id = $4::uuid)

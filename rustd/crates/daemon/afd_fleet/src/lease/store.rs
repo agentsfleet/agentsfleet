@@ -84,6 +84,12 @@ impl Leases {
         })
     }
 
+    /// Whether this store serves a stream connection, which must prove its
+    /// credential and connection on every host statement.
+    pub(crate) const fn connected(&self) -> bool {
+        self.authority.is_some()
+    }
+
     /// The connection's proof for `runner`: its credential digest and
     /// connection, or none for a trusted domain call.
     pub(crate) fn host_proof<'a>(

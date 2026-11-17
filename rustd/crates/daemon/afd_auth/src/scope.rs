@@ -124,9 +124,7 @@ scopes! {
     /// [`Scope::RunnerWrite`] and is separately grantable and revocable.
     RunnerRegister => "runner:register",
     /// Register and manage this tenant's own runners, which take only its work.
-    ///
-    /// Granted per account by a platform admin and never seeded at signup, so a
-    /// regular user does not hold it.
+    /// A platform admin grants it per account; signup never does.
     RunnerTenant => "runner:tenant",
     /// Decide an approval gate, approving or denying it.
     ApprovalResolve => "approval:resolve",

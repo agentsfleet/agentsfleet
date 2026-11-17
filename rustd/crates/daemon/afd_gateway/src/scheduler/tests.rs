@@ -79,6 +79,39 @@ async fn a_wake_with_nothing_pending_asks_no_session_to_claim() -> TestResult {
     Ok(())
 }
 
+// Value: protects=a probe the datastore cannot answer never drops a wake;
+// fails_when=a probe error skips the pass; why_new=the probe gate fails open;
+// seam=the injected probe.
+#[tokio::test(start_paused = true)]
+async fn a_failed_probe_still_runs_the_pass() -> TestResult {
+    let registry = Arc::new(Registry::default());
+    let mut session = SessionFixture::new(1)?;
+    let _registration = session.register(&registry)?;
+    let wake = Wake::default();
+    let stop = CancellationToken::new();
+    let job = tokio::spawn({
+        let registry = Arc::clone(&registry);
+        let wake = wake.clone();
+        let stop = stop.clone();
+        async move {
+            notifications(&registry, &wake, stop, || async {
+                Err(crate::Error::from(sqlx::Error::RowNotFound))
+            })
+            .await
+        }
+    });
+    tokio::task::yield_now().await;
+    wake.ring(session.handle.runner.clone());
+    session
+        .request()
+        .await?
+        .send(false)
+        .map_err(|unsent| format!("the pass lost its answer {unsent}"))?;
+    stop.cancel();
+    job.await??;
+    Ok(())
+}
+
 #[tokio::test(start_paused = true)]
 async fn rings_coalesce_into_one_claim_pass() -> TestResult {
     let registry = Arc::new(Registry::default());

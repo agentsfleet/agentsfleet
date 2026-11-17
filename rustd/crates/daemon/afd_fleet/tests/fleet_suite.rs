@@ -152,13 +152,15 @@ mod integration_runner_maintenance;
 mod integration_runner_retire;
 #[path = "integration_runner_row.rs"]
 mod integration_runner_row;
+#[path = "integration_runner_tenant.rs"]
+mod integration_runner_tenant;
 #[path = "integration_runner_views.rs"]
 mod integration_runner_views;
 #[path = "integration_runner_views_malformed.rs"]
 mod integration_runner_views_malformed;
 #[path = "integration_steer_admitted_stamp.rs"]
 mod integration_steer_admitted_stamp;
-#[path = "integration_tenant_placement.rs"]
+#[path = "integration_tenant_placement/mod.rs"]
 mod integration_tenant_placement;
 mod integration_terminal_redelivery;
 #[path = "integration_unanswered_notice.rs"]

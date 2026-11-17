@@ -29,7 +29,7 @@ pub enum Registered {
     Replayed {
         /// The runner the first request created.
         runner_id: Uuid7,
-        /// The worker count as stored, so the replay echoes what the host applies.
+        /// The worker count as first registered and clamped.
         worker_count: u32,
     },
 }
@@ -175,10 +175,18 @@ impl Runners {
             .await
             .map_err(query(CONTEXT_REGISTER))?;
         if receipt.is_none() {
+            // Roll back, then read the committed receipt on this same connection:
+            // a request holds one pool connection, so concurrent retries cannot
+            // exhaust the pool waiting on a second.
             drop(transaction);
-            return self
-                .replay(tenant, operation, &digest, prepared.worker_count)
-                .await;
+            return replay(
+                &mut connection,
+                tenant,
+                operation,
+                &digest,
+                prepared.worker_count,
+            )
+            .await;
         }
         prepared
             .insert(&mut transaction, Owner::Tenant(tenant))
@@ -189,32 +197,31 @@ impl Runners {
             .map_err(query(CONTEXT_REGISTER))?;
         Ok(Registered::Created(prepared.enrolled()))
     }
+}
 
-    /// Answers a key that already registered a runner.
-    async fn replay(
-        &self,
-        tenant: &Uuid7,
-        operation: &Uuid7,
-        digest: &str,
-        worker_count: u32,
-    ) -> Result<Registered> {
-        let mut connection = self.pool().acquire().await?;
-        let (stored_digest, runner_id): (String, Uuid7) =
-            sqlx::query_as(sql::runner::SELECT_REGISTRATION_RECEIPT)
-                .bind(tenant)
-                .bind(operation)
-                .fetch_optional(&mut *connection)
-                .await
-                .map_err(query(CONTEXT_REGISTER))?
-                .ok_or_else(runner_not_found)?;
-        if stored_digest != digest {
-            return Err(registration_key_reused());
-        }
-        Ok(Registered::Replayed {
-            runner_id,
-            worker_count,
-        })
+/// Answers a key that already registered a runner.
+async fn replay(
+    connection: &mut sqlx::PgConnection,
+    tenant: &Uuid7,
+    operation: &Uuid7,
+    digest: &str,
+    worker_count: u32,
+) -> Result<Registered> {
+    let (stored_digest, runner_id): (String, Uuid7) =
+        sqlx::query_as(sql::runner::SELECT_REGISTRATION_RECEIPT)
+            .bind(tenant)
+            .bind(operation)
+            .fetch_optional(connection)
+            .await
+            .map_err(query(CONTEXT_REGISTER))?
+            .ok_or_else(runner_not_found)?;
+    if stored_digest != digest {
+        return Err(registration_key_reused());
     }
+    Ok(Registered::Replayed {
+        runner_id,
+        worker_count,
+    })
 }
 
 /// The SHA-256 of the request as parsed, so whitespace and key order in the

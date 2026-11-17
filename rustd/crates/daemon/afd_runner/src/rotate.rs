@@ -8,15 +8,12 @@ use crate::admin::state_wire;
 use crate::error::{Result, query, rejected, runner_not_found, tenant_managed};
 use crate::scope::{Owner, RunnerScope};
 use crate::sql;
-use crate::store::Runners;
 use afd_auth::credential::CredentialKind;
 use afd_auth::minted::Minted;
 
 const CONTEXT_ROTATE: &str = "runner token rotation";
 const DETAIL_REVOKED: &str = "revoked runners cannot rotate credentials";
 const EVENT_TOKEN_ROTATED: &str = "runner_token_rotated";
-
-impl Runners {}
 
 impl RunnerScope<'_> {
     /// Replaces a runner's stored digest and returns the new credential once.

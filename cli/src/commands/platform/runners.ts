@@ -97,6 +97,8 @@ export const runnerDelete = Effect.fn("runners.delete")(function* (kind: RunnerK
 });
 
 const REPLAY_DETAIL = "This runner was registered earlier; its token was shown once and is never stored";
+// The registration already happened; a named code lets a script tell this from a server failure.
+const REPLAY_CODE = "RUNNER_REGISTRATION_REPLAYED";
 
 export const runnerRegister = Effect.fn("runners.register")(function* (kind: RunnerKind, host: string, edit: RunnerEdit & {readonly policy: string}, tokenFile: string) {
   const body = {host_id: host, labels: [], ...yield* runnerEdit(edit)};
@@ -113,7 +115,7 @@ export const runnerRegister = Effect.fn("runners.register")(function* (kind: Run
     const replay = fresh._tag === "None" ? Schema.decodeUnknownOption(RegistrationReplaySchema)(answer) : fresh;
     if (fresh._tag === "None" && replay._tag === "Some") {
       return yield* Effect.fail(new ServerError({
-        detail: REPLAY_DETAIL, code: "", status: 200, requestId: null,
+        detail: REPLAY_DETAIL, code: REPLAY_CODE, status: 200, requestId: null,
         suggestion: `agentsfleet runners rotate-token ${replay.value.runner_id} --token-out <new-file>`,
       }));
     }
