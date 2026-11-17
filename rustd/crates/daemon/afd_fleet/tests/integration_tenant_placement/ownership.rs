@@ -1,6 +1,6 @@
 use super::*;
 
-/// the live matrix matches the rule.
+/// The live matrix matches the rule.
 // Value: protects=a tenant runner takes only its tenant's work and a platform
 // runner any; fails_when=the scan or claim drops the owner, or refuses
 // everything; why_new=the ownership filter; seam=none.
@@ -62,7 +62,7 @@ async fn cross_tenant_placement_matrix() {
     fixtures.cleanup().await;
 }
 
-/// the claim alone refuses a foreign runner.
+/// The claim alone refuses a foreign runner.
 // Value: protects=the claim statement is the control, not the scan;
 // fails_when=the claim's `fleet` step stops joining the runner; why_new=the claim filter;
 // seam=none.
@@ -103,7 +103,7 @@ async fn claim_statement_refuses_a_foreign_runner() {
     fixtures.cleanup().await;
 }
 
-/// issue refuses a foreign runner under the host lock.
+/// Issue refuses a foreign runner under the host lock.
 // Value: protects=issue holds even when the claim lets a placement through;
 // fails_when=the host lock stops binding the work's tenant; why_new=the issue
 // re-check; seam=an Acquired handed straight to issue.

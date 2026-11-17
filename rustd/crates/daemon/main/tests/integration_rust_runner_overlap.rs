@@ -136,6 +136,7 @@ async fn test_chat_streams_before_sandbox_ready() {
     let engine = Stalled::new(sandboxes.path(), &ready);
     let runner = tokio::spawn(rust_runner(
         &run,
+        &run.token,
         home.path(),
         (Box::new(engine), Box::new(answering_first())),
         shutdown.clone(),

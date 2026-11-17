@@ -49,6 +49,7 @@ mod runaway;
 mod seed;
 mod slack;
 mod stops;
+mod tenant_keys;
 mod window;
 mod witness;
 

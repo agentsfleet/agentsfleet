@@ -23,6 +23,8 @@ use crate::wire::report_body;
 
 #[path = "integration_rust_runner_overlap.rs"]
 mod overlap;
+#[path = "integration_rust_runner_tenant.rs"]
+mod tenant;
 
 /// A key no build of the daemon carries.
 const FUTURE: &str = "future";
@@ -139,6 +141,7 @@ async fn test_rust_runner_lease_roundtrip() {
         .expect("a debug build permits the unsandboxed engine");
     let runner = tokio::spawn(rust_runner(
         &run,
+        &run.token,
         home.path(),
         (Box::new(engine), Box::new(scripted())),
         shutdown.clone(),
@@ -249,10 +252,11 @@ type Engines = (
     Box<dyn afr_agent::AgentEngine>,
 );
 
-/// The Rust runner's supervisor, pointed at the scenario's daemon, building
-/// with `engine` and running each turn on `agent`.
+/// The Rust runner's supervisor, pointed at the scenario's daemon as the runner
+/// `token` names, building with `engine` and running each turn on `agent`.
 fn rust_runner(
     run: &crate::e2e::Scenario,
+    token: &str,
     home: &std::path::Path,
     (engine, agent): Engines,
     shutdown: tokio_util::sync::CancellationToken,
@@ -270,7 +274,7 @@ fn rust_runner(
         (ENV_API_URL, run.base.as_str()),
         (afr_supervisor::config::ENV_STREAM_URL, origin.as_str()),
         (afr_supervisor::config::ENV_STREAM_CA, root.as_str()),
-        (ENV_RUNNER_TOKEN, run.token.as_str()),
+        (ENV_RUNNER_TOKEN, token),
         (ENV_STORAGE_HOME, home.as_str()),
     ]);
     let (config, home) = afr_supervisor::boot(&env).expect("the scenario's env is valid");

@@ -11,7 +11,7 @@ use crate::rows::Row;
 use crate::support::Fixtures;
 use af_core::id::Uuid7;
 
-/// the tenant cannot change.
+/// The tenant cannot change.
 ///
 /// A tenant runner flipped to NULL would become a platform runner and receive
 /// every tenant's work, so the trigger refuses it. A platform runner's other
@@ -132,7 +132,7 @@ async fn runner_ownership_is_stated_and_consistent() {
     fixtures.cleanup().await;
 }
 
-/// a tenant runner holds no decision model.
+/// A tenant runner holds no decision model.
 ///
 /// A platform decision model hands the platform decision key to a host its
 /// tenant holds root on. A platform runner still takes one, so a check that
@@ -167,7 +167,7 @@ async fn tenant_runner_refuses_a_decision_model() {
     fixtures.cleanup().await;
 }
 
-/// erasure takes only the tenant's runners.
+/// Erasure takes only the tenant's runners.
 ///
 /// The receipt stays: it holds opaque identifiers and a digest, and a key
 /// retried after its runner was erased must still enrol nothing.
