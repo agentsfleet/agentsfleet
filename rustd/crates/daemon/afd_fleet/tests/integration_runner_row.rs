@@ -229,7 +229,7 @@ async fn runner_tenant_cannot_change() {
             .await
             .expect_err(what);
         assert!(
-            refused.to_string().contains("fixed at enrolment"),
+            refused.to_string().contains("fixed at registration"),
             "{what} must be refused by the trigger, got: {refused}"
         );
     }
