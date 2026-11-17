@@ -28,11 +28,11 @@ afterEach(() => vi.resetAllMocks());
 
 describe("readSessionScopes", () => {
   it("parses the top-level space-delimited scopes claim into a set (with closure)", async () => {
-    authMock.mockResolvedValueOnce({ sessionClaims: { scopes: "runner:read runner:enroll model:admin" } });
+    authMock.mockResolvedValueOnce({ sessionClaims: { scopes: "runner:read runner:register model:admin" } });
     const { readSessionScopes } = await import("./platform");
     const scopes = await readSessionScopes();
     // model:admin closes down to model:read; runner:read already explicit.
-    expect([...scopes].sort()).toEqual(["model:admin", "model:read", "runner:enroll", "runner:read"]);
+    expect([...scopes].sort()).toEqual(["model:admin", "model:read", "runner:read", "runner:register"]);
   });
 
   it("accepts a JSON-array scopes claim too (backend-tolerant reader parity)", async () => {
@@ -93,7 +93,7 @@ describe("hasScope", () => {
     authMock.mockResolvedValue({ sessionClaims: { scopes: "runner:read model:read" } });
     const { hasScope } = await import("./platform");
     await expect(hasScope("runner:read")).resolves.toBe(true);
-    await expect(hasScope("runner:enroll")).resolves.toBe(false);
+    await expect(hasScope("runner:register")).resolves.toBe(false);
   });
 
   it("is false (fail-closed) when the auth provider throws", async () => {
@@ -116,7 +116,7 @@ describe("expandScopes", () => {
     expect(s.has("model:admin")).toBe(false);
     const r = expandScopes(["runner:read"]);
     expect(r.has("runner:write")).toBe(false);
-    expect(r.has("runner:enroll")).toBe(false); // enroll is independent, never implied
+    expect(r.has("runner:register")).toBe(false); // register is independent, never implied
   });
 
   it("passes an unknown scope through verbatim, granting nothing extra", () => {

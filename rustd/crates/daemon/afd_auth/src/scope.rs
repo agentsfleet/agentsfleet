@@ -17,12 +17,10 @@
 //!
 //! # How a new scope is kept from being half-added
 //!
-//! [`Scope::wire`] and [`Scope::bit`] are exhaustive matches, so a new variant
-//! fails to compile until it is given both a claim value and a bit. [`ALL`]
-//! must then list it, and `KNOWN_BITS` — asserted at compile time against the
-//! union of every entry in [`ALL`] — fails until it does. The exhaustive
-//! matches give the guarantee a hand-written table would need a separate
-//! assertion for.
+//! The `scopes!` list names each scope once, with its documentation and claim
+//! value, and generates the enum, [`Scope::ALL`] and [`Scope::wire`] from that
+//! one list, so a scope cannot exist without a claim value or be missing from
+//! [`Scope::ALL`]. Each scope's bit is its position in the list.
 
 use af_core::error_code::{self, ErrorCode};
 
@@ -33,165 +31,132 @@ use af_core::error_code::{self, ErrorCode};
 /// who they are is not enough.
 pub const INSUFFICIENT_SCOPE: ErrorCode = error_code::AUTH_INSUFFICIENT_SCOPE;
 
-/// One capability. Every gate names one or more of these.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[non_exhaustive]
-pub enum Scope {
+/// Declares the catalogue once: each scope's variant, its documentation and its
+/// claim value.
+///
+/// Generates [`Scope`], [`Scope::ALL`] in catalogue order, and the exhaustive
+/// `const fn` [`Scope::wire`], so adding a scope is one line. A `macro_rules!`
+/// rather than a derive crate, for the reason `af_core::error_shell` gives: no
+/// procedural-macro build unit, and every generated function stays `const`. The
+/// claim values are written out, never derived from the variant names, because
+/// the identity provider matches them verbatim (RULE UFS).
+macro_rules! scopes {
+    ($( $(#[$meta:meta])* $variant:ident => $wire:literal, )+) => {
+        /// One capability. Every gate names one or more of these.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[non_exhaustive]
+        pub enum Scope {
+            $( $(#[$meta])* $variant, )+
+        }
+
+        /// How many scopes the catalogue holds.
+        const SCOPE_COUNT: usize = [$( stringify!($variant), )+].len();
+
+        impl Scope {
+            /// Every scope, in catalogue order. Generated from the same list as the
+            /// enum, so it cannot miss a variant.
+            pub const ALL: [Self; SCOPE_COUNT] = [$( Self::$variant, )+];
+
+            /// The claim value for this scope, matched verbatim at the identity
+            /// provider (RULE UFS).
+            #[must_use]
+            pub const fn wire(self) -> &'static str {
+                match self {
+                    $( Self::$variant => $wire, )+
+                }
+            }
+        }
+    };
+}
+
+scopes! {
     // ── Laddered resources (read < write < admin) ─────────────────────────
     /// View fleets, their events and their memories.
-    FleetRead,
+    FleetRead => "fleet:read",
     /// Create, update and message fleets.
-    FleetWrite,
+    FleetWrite => "fleet:write",
     /// Delete a fleet.
-    FleetAdmin,
+    FleetAdmin => "fleet:admin",
     /// View hosted schedules.
-    ScheduleRead,
+    ScheduleRead => "schedule:read",
     /// Create, update, delete and explicitly sync hosted schedules.
-    ScheduleWrite,
+    ScheduleWrite => "schedule:write",
     /// List workspace secrets.
-    SecretRead,
+    SecretRead => "secret:read",
     /// Store, rotate and delete secrets, and configure the tenant's provider.
-    SecretWrite,
+    SecretWrite => "secret:write",
     /// List tenant api-keys.
-    ApikeyRead,
+    ApikeyRead => "apikey:read",
     /// Create and rotate tenant api-keys.
-    ApikeyWrite,
+    ApikeyWrite => "apikey:write",
     /// Revoke a tenant api-key.
-    ApikeyAdmin,
+    ApikeyAdmin => "apikey:admin",
     /// List integration grants.
-    GrantRead,
+    GrantRead => "grant:read",
     /// Revoke integration grants.
-    GrantWrite,
+    GrantWrite => "grant:write",
     /// Read connector status.
-    ConnectorRead,
+    ConnectorRead => "connector:read",
     /// Start a connector connect flow.
-    ConnectorWrite,
+    ConnectorWrite => "connector:write",
     /// Read the priced model catalogue.
-    ModelRead,
+    ModelRead => "model:read",
     /// Create, update and delete model catalogue rows.
-    ModelAdmin,
+    ModelAdmin => "model:admin",
     /// Read the platform default key and model.
-    PlatformKeyRead,
+    PlatformKeyRead => "platform-key:read",
     /// Set and delete the platform default key and model.
-    PlatformKeyAdmin,
+    PlatformKeyAdmin => "platform-key:admin",
     /// List runners and their events — the operator plane over EXISTING runners.
-    RunnerRead,
+    RunnerRead => "runner:read",
     /// Cordon a runner and patch its state.
-    RunnerWrite,
+    RunnerWrite => "runner:write",
     // ── Single-action reads (no write rung) ───────────────────────────────
     /// View the live streams open on an instance (operator diagnostic).
-    StreamRead,
+    StreamRead => "stream:read",
     /// View the approval inbox.
-    ApprovalRead,
+    ApprovalRead => "approval:read",
     // ── Discrete verbs (a distinct action, not generic CRUD) ──────────────
-    /// Create a trusted runner, minting an `agt_r` token.
+    /// Register a platform runner, minting an `agt_r` token.
     ///
     /// Uniquely dangerous — the host then receives every tenant's inline
     /// secrets — so it is held independently of [`Scope::RunnerRead`] and
     /// [`Scope::RunnerWrite`] and is separately grantable and revocable.
-    RunnerEnroll,
+    RunnerRegister => "runner:register",
+    /// Register and manage this tenant's own runners, which take only its work.
+    ///
+    /// Granted per account by a platform admin and never seeded at signup, so a
+    /// regular user does not hold it.
+    RunnerTenant => "runner:tenant",
     /// Decide an approval gate, approving or denying it.
-    ApprovalResolve,
+    ApprovalResolve => "approval:resolve",
     /// Read the tenant's billing snapshot, charges and metering periods.
-    BillingRead,
+    BillingRead => "billing:read",
     /// Create workspaces, and list the tenant's workspaces.
-    WorkspaceAdmin,
+    WorkspaceAdmin => "workspace:admin",
     /// Publish, revise and delete account-owned Plugins.
-    PluginsWrite,
+    PluginsWrite => "plugins:write",
     // ── Runner credential (machine identity, minted onto the agt_r token) ──
     /// The runner's own plane. Carried ONLY by a runner-token principal, which
     /// carries only this — so a runner cannot reach a tenant route and a person
     /// cannot reach a runner route.
-    RunnerSelf,
+    RunnerSelf => "runner:self",
     // ── Cross-tenant override (held by almost no one; every use audited) ───
     /// Bypass the tenant-id ownership match, reading and acting on any tenant's
     /// workspace. Mirrors Sentry's `is_global`; every crossing is audited.
-    WorkspaceAny,
+    WorkspaceAny => "workspace:any",
 }
 
+// A `ScopeSet` is a `u32`, one bit per scope. Widen it here and in `bit` when
+// the catalogue outgrows it; this assertion fails the build at that moment.
+const _: () = assert!(
+    Scope::ALL.len() <= 32,
+    "ScopeSet is a u32: a 33rd scope needs a wider set"
+);
+
 impl Scope {
-    /// Every scope, in catalogue order.
-    ///
-    /// Totality is enforced at compile time by `KNOWN_BITS` below, not by
-    /// review: a variant missing from here leaves a hole in the union.
-    pub const ALL: [Self; 29] = [
-        Self::FleetRead,
-        Self::FleetWrite,
-        Self::FleetAdmin,
-        Self::ScheduleRead,
-        Self::ScheduleWrite,
-        Self::SecretRead,
-        Self::SecretWrite,
-        Self::ApikeyRead,
-        Self::ApikeyWrite,
-        Self::ApikeyAdmin,
-        Self::GrantRead,
-        Self::GrantWrite,
-        Self::ConnectorRead,
-        Self::ConnectorWrite,
-        Self::ModelRead,
-        Self::ModelAdmin,
-        Self::PlatformKeyRead,
-        Self::PlatformKeyAdmin,
-        Self::RunnerRead,
-        Self::RunnerWrite,
-        Self::StreamRead,
-        Self::ApprovalRead,
-        Self::RunnerEnroll,
-        Self::ApprovalResolve,
-        Self::BillingRead,
-        Self::WorkspaceAdmin,
-        Self::PluginsWrite,
-        Self::RunnerSelf,
-        Self::WorkspaceAny,
-    ];
-
-    /// The claim value for this scope, matched verbatim at the identity
-    /// provider (RULE UFS).
-    ///
-    /// An exhaustive match rather than a table scan: a new variant fails to
-    /// compile here until it is given a claim value, a check a table would
-    /// need a separate assertion for.
-    #[must_use]
-    pub const fn wire(self) -> &'static str {
-        match self {
-            Self::FleetRead => "fleet:read",
-            Self::FleetWrite => "fleet:write",
-            Self::FleetAdmin => "fleet:admin",
-            Self::ScheduleRead => "schedule:read",
-            Self::ScheduleWrite => "schedule:write",
-            Self::SecretRead => "secret:read",
-            Self::SecretWrite => "secret:write",
-            Self::ApikeyRead => "apikey:read",
-            Self::ApikeyWrite => "apikey:write",
-            Self::ApikeyAdmin => "apikey:admin",
-            Self::GrantRead => "grant:read",
-            Self::GrantWrite => "grant:write",
-            Self::ConnectorRead => "connector:read",
-            Self::ConnectorWrite => "connector:write",
-            Self::ModelRead => "model:read",
-            Self::ModelAdmin => "model:admin",
-            Self::PlatformKeyRead => "platform-key:read",
-            Self::PlatformKeyAdmin => "platform-key:admin",
-            Self::RunnerRead => "runner:read",
-            Self::RunnerWrite => "runner:write",
-            Self::StreamRead => "stream:read",
-            Self::ApprovalRead => "approval:read",
-            Self::RunnerEnroll => "runner:enroll",
-            Self::ApprovalResolve => "approval:resolve",
-            Self::BillingRead => "billing:read",
-            Self::WorkspaceAdmin => "workspace:admin",
-            Self::PluginsWrite => "plugins:write",
-            Self::RunnerSelf => "runner:self",
-            Self::WorkspaceAny => "workspace:any",
-        }
-    }
-
-    /// This scope's seat in a [`ScopeSet`].
-    ///
-    /// Exhaustive for the same reason [`Scope::wire`] is. Distinctness is
-    /// proven by `KNOWN_BITS`: two variants sharing a bit would make the union
-    /// narrower than the catalogue and fail the compile-time assertion.
+    /// This scope's seat in a [`ScopeSet`]: its position in the catalogue, which
+    /// the enum's own discriminants make distinct.
     #[must_use]
     const fn bit(self) -> u32 {
         1_u32 << (self as u32)
@@ -207,29 +172,6 @@ impl Scope {
         Self::ALL.into_iter().find(|scope| scope.wire() == value)
     }
 }
-
-/// The union of every catalogued scope's bit.
-///
-/// Asserted below to be exactly 29 contiguous bits. That assertion is what
-/// makes [`Scope::ALL`] total: a variant left out of the array clears its bit
-/// here, and a variant sharing another's bit narrows the union.
-const KNOWN_BITS: u32 = {
-    // Slice patterns rather than indexing: `while let [head, tail @ ..]` walks
-    // a slice in a const context without an index that clippy has to be told
-    // cannot escape its bound, because there is no index.
-    let mut remaining: &[Scope] = &Scope::ALL;
-    let mut bits = 0_u32;
-    while let [head, tail @ ..] = remaining {
-        bits |= head.bit();
-        remaining = tail;
-    }
-    bits
-};
-
-const _: () = assert!(
-    KNOWN_BITS == (1_u32 << 29) - 1,
-    "Scope::ALL must list every variant exactly once, and each must own a distinct bit"
-);
 
 /// `admin` subsumes `write` and `read`; `write` subsumes `read`.
 ///

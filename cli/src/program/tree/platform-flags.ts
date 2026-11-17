@@ -11,7 +11,7 @@ export const PLATFORM_SCOPE = {
   modelRead: "model:read",
   modelAdmin: "model:admin",
   runnerRead: "runner:read",
-  runnerEnroll: "runner:enroll",
+  runnerRegister: "runner:register",
   runnerWrite: "runner:write",
 } as const;
 

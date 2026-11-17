@@ -79,11 +79,11 @@ test("clears labels explicitly and refuses an empty edit", async () => {
   expect(empty.code).toBe(4); expect(empty.stderr).toContain("Supply --policy or --labels"); expect(fixture.calls).toEqual([]);
 });
 
-test.each(["enroll", "rotate-token"])("saves the %s credential privately without printing it", async (command) => {
+test.each(["register", "rotate-token"])("saves the %s credential privately without printing it", async (command) => {
   const token = "agt_r_" + "a".repeat(64);
-  fixture.respond = () => Response.json(command === "enroll" ? {runner_id: RUNNER_ID, runner_token: token, assigned_policy: POLICY} : {id: RUNNER_ID, runner_token: token});
+  fixture.respond = () => Response.json(command === "register" ? {runner_id: RUNNER_ID, runner_token: token, assigned_policy: POLICY} : {id: RUNNER_ID, runner_token: token});
   const file = join(fixture.state, "runner-token");
-  const args = command === "enroll" ? ["--host-id", "build-host", "--policy", "-"] : [RUNNER_ID];
+  const args = command === "register" ? ["--host-id", "build-host", "--policy", "-"] : [RUNNER_ID];
   const result = await fixture.run(["runners", command, ...args, "--token-out", file, "--json"], JSON.stringify(POLICY));
   expect(result.code).toBe(0); expect(readFileSync(file, "utf8")).toBe(`${token}\n`);
   expect(statSync(file).mode & 0o777).toBe(0o600); expect(result.stdout + result.stderr).not.toContain(token);
@@ -110,11 +110,11 @@ test("rejects an unknown runner state instead of presenting a successful read", 
   expect(result.code).not.toBe(0); expect(result.stderr).toContain("supported API shape"); expect(result.stdout).toBe("");
 });
 
-test.each(["enroll", "rotate-token"])("never replays %s after a committed request loses its reply", async command => {
+test.each(["register", "rotate-token"])("never replays %s after a committed request loses its reply", async command => {
   let commits = 0;
   fixture.respond = () => {commits += 1; throw Object.assign(new TypeError("Connection reset after commit"), {code: "ECONNRESET"});};
   const file = join(fixture.state, "lost-reply-token");
-  const args = command === "enroll" ? ["--host-id", "build-host", "--policy", "-"] : [RUNNER_ID];
+  const args = command === "register" ? ["--host-id", "build-host", "--policy", "-"] : [RUNNER_ID];
   const result = await fixture.run(["runners", command, ...args, "--token-out", file, "--json"], JSON.stringify(POLICY));
   expect(result.code).toBe(2); expect(JSON.parse(result.stderr).error.code).toBe("NetworkError");
   expect(commits).toBe(1); expect(fixture.calls).toHaveLength(1);

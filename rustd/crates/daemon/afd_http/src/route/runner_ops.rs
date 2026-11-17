@@ -12,7 +12,7 @@ use afd_auth::Scope;
 use super::path::admin_runner_path;
 use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
-const RUNNER_ENROLL: &[Scope] = &[Scope::RunnerEnroll];
+const RUNNER_REGISTER: &[Scope] = &[Scope::RunnerRegister];
 const RUNNER_READ: &[Scope] = &[Scope::RunnerRead];
 const RUNNER_WRITE: &[Scope] = &[Scope::RunnerWrite];
 
@@ -65,7 +65,7 @@ impl RunnerOpsRoute {
         }
     }
 
-    /// Enrolment is held independently of read and write because it is
+    /// Registration is held independently of read and write because it is
     /// uniquely dangerous: the host it creates then receives every tenant's
     /// inline secrets, so it is separately grantable and separately revocable
     /// rather than folded into a `runner:admin` rung nobody could withhold.
@@ -73,7 +73,7 @@ impl RunnerOpsRoute {
     pub const fn meta(self) -> RouteMeta {
         let (template, scopes) = match self {
             Self::Register | Self::List => {
-                (paths::ADMIN_RUNNERS, Scopes::rw(RUNNER_READ, RUNNER_ENROLL))
+                (paths::ADMIN_RUNNERS, Scopes::rw(RUNNER_READ, RUNNER_REGISTER))
             }
             // These identities share one axum path. Both carry the same
             // method-sensitive metadata so merging them cannot retain a

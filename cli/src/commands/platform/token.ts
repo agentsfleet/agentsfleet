@@ -7,7 +7,7 @@ type TokenFile = {readonly descriptor: number; readonly path: string; written: b
 const FILE_DETAIL = "Cannot create the token file; use a new path in a private, writable directory";
 const FILE_HINT = "pass --token-out <file>; an existing file is never overwritten";
 const WRITE_DETAIL = "The server issued a token, but saving it failed";
-const WRITE_HINT = "rotate this runner's token into a new writable file; do not repeat enrollment";
+const WRITE_HINT = "rotate this runner's token into a new writable file; do not repeat registration";
 
 /** Reserve the destination before minting a credential; failures never expose its bytes. */
 export function withRunnerTokenFile<A, R>(path: string, use: (save: (token: string) => Effect.Effect<void, UnexpectedError>) => Effect.Effect<A, CliError, R>) {

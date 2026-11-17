@@ -25,7 +25,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Lost wake recovery | the next recovery probe, at most 5 s later | each replica asks PostgreSQL for pending work every `OFFER_FALLBACK_TICK` (5 s), with or without a wake ring | §Failure recovery model |
 | Runner datastore credentials | zero | no runner crate links `sqlx` or `async-nats`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
 | Control protocol | one enrolment route, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, enrolment in its **Platform** group (`public/openapi.json`); `me` resolves from the token | §The control protocol |
-| Enrollment gate | the `runner:enroll` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
+| Enrollment gate | the `runner:register` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
 | Fresh-mint liveness | `last_seen_at = 0` sentinel | a never-connected runner reads `registered`, not a fake `online` | §Runner state |
 | Runner "status" | three separate categories | `status` enum + derived liveness + append-only `runner.events` | §Runner state |
 | Memory isolation | one live holder per fleet | `runner.fleet_slots` keyed by `fleet_id` + time gate + capture-time fencing | §Memory continuity |
@@ -50,7 +50,7 @@ Each trap is enforced in its owner section; this list is the index.
 
 - There is no `runner_runtime` Postgres role, and there must never be one (§Datastore role model).
 
-- `runner:enroll` is a token scope, not a Postgres role. It must not become a database `GRANT` (§Datastore role model).
+- `runner:register` is a token scope, not a Postgres role. It must not become a database `GRANT` (§Datastore role model).
 
 - A lost wake needs no repair sweep; the next 5 s recovery probe reads PostgreSQL (§Failure recovery model).
 
@@ -244,7 +244,7 @@ The shape that matters here has one enrolment route, `POST /v1/admin/runners`, c
 
 `me` resolves from the token. No `runner_id` appears in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints.
 
-Identity and auth are covered in [`../AUTH.md`](../AUTH.md); the runner is the first machine principal. `register` is gated by the `runner:enroll` scope. The scope is grantable on its own, because enrolling a host into the shared fleet exposes every tenant's secrets to it.
+Identity and auth are covered in [`../AUTH.md`](../AUTH.md); the runner is the first machine principal. `register` is gated by the `runner:register` scope. The scope is grantable on its own, because enrolling a host into the shared fleet exposes every tenant's secrets to it.
 
 A token without that scope is rejected `403`, tenant `admin` JWT and `agt_t` api_key alike.
 
@@ -261,7 +261,7 @@ The [runner guide](runner_protocol.md) describes connection setup, cancellation 
 
 A runner needs a `agt_r` token before it can receive work. The **platform operator pre-mints it through the CLI** and installs it on the host. The host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model).
 
-The operator runs `agentsfleet platform runners enroll --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
+The operator runs `agentsfleet platform runners register --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
 The CLI calls `POST /v1/admin/runners` and saves the one-time runner token in an owner-only file.
 The operator installs that token on the host as `AGENTSFLEET_RUNNER_TOKEN`.
 
@@ -269,13 +269,13 @@ No identity credential ever touches a shell (M84_001 retired the `register --tok
 
 It then opens its native session and starts the worker pool. There is no register call, so no host ever holds an enrollment-grade credential.
 
-There is no enrollment token; the minter must hold `runner:enroll`. The open-fleet, self-enrolling case is mode C, later.
+There is no enrollment token; the minter must hold `runner:register`. The open-fleet, self-enrolling case is mode C, later.
 
 ```text
  platform admin                                          agentsfleetd
- (CLI credential carrying runner:enroll)
+ (CLI credential carrying runner:register)
    | CLI enrollment -> POST /v1/admin/runners   GATE 1 - who may enroll:
-   |   Authorization: Bearer <session-JWT>           runner:enroll scope required
+   |   Authorization: Bearer <session-JWT>           runner:register scope required
    |   { host_id, assigned_policy{sandbox_tier,     (tenant admin / agt_t -> 403)
    |     network_policy, registry_allowlist[],
    |     worker_count}, labels[] }
@@ -456,16 +456,16 @@ Access to the runner-domain tables (`runner.runners`, `runner.leases`, `runner.f
 
 | Layer | Mechanism | Answers | Enforced where |
 |-------|-----------|---------|----------------|
-| **App authorization** | the `runner:enroll` scope on the verified token | *Which API caller* may enroll / list / manage runners | the request handlers' authorization layer |
+| **App authorization** | the `runner:register` scope on the verified token | *Which API caller* may enroll / list / manage runners | the request handlers' authorization layer |
 | **Datastore identity** | `api_runtime` Postgres role | *Which process identity* writes the rows | Postgres `GRANT` |
 
 ```text
-   caller (Clerk JWT, runner:enroll)                  runner (agt_r token, NO db creds)
+   caller (Clerk JWT, runner:register)                  runner (agt_r token, NO db creds)
         |  GET/POST /v1/fleet, /v1/admin/runners                  |  Native runner stream
         v                                                   v
    +-------------------------------------------------------------------------+
    | agentsfleetd                                                            |
-   |   Layer 1 - scope check: does caller hold runner:enroll? (admin routes) |
+   |   Layer 1 - scope check: does caller hold runner:register? (admin routes) |
    |   Layer 2 - writes runner.* connecting to PG as api_runtime             |
    +-------------------------------------------------------------------------+
                                         v
@@ -480,7 +480,7 @@ Three load-bearing facts:
 
    The runner schema slots grant those tables to `api_runtime` only. They never mention `worker_runtime`, dead substrate removed wholesale in the worker-substrate retirement workstream.
 
-2. **`runner:enroll` is not a Postgres role; it is a token scope**. "Whoever may enroll has access to the runner tables" is an *API-authorization* statement, already satisfied at Layer 1. Layer 1 gates `register` and the fleet-management routes; `runner:enroll` is not, and must not become, a database `GRANT`.
+2. **`runner:register` is not a Postgres role; it is a token scope**. "Whoever may enroll has access to the runner tables" is an *API-authorization* statement, already satisfied at Layer 1. Layer 1 gates `register` and the fleet-management routes; `runner:register` is not, and must not become, a database `GRANT`.
 
 3. **Therefore there is no `runner_runtime` role, and there must never be one**. A `runner_*`-named datastore role would assert that the runner connects to the datastore. That is exactly the guarantee this fleet is built to deny.
 
@@ -850,7 +850,7 @@ Each replica's 5 s recovery probe reads PostgreSQL, so missing notifications can
 
 ## Sandbox tiers
 
-The control plane ASSIGNS a tier to each runner row (`agentsfleet platform runners enroll` or the fleet PATCH). It delivers the tier with the runner's identity on enrollment and every heartbeat.
+The control plane ASSIGNS a tier to each runner row (`agentsfleet platform runners register` or the fleet PATCH). It delivers the tier with the runner's identity on enrollment and every heartbeat.
 
 The host probes what its kernel can enforce and reports that upward. A host whose report cannot satisfy its assignment is marked degraded and issued no work (§Assigned policy and reconciliation).
 

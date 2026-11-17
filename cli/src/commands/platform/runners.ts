@@ -5,7 +5,7 @@ import { eventTime } from "../../lib/event-time.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import { ADMIN_RUNNERS_PATH, decodePlatform, invalidInput, platformInput, platformPath, platformQuery, platformRequest, platformResult, readPlatformFile } from "./common.ts";
-import { RunnerDetailSchema, RunnerEnrolledSchema, RunnerEventsSchema, RunnerLabelsSchema, RunnerLeasesSchema, RunnerMutationSchema, RunnerPageSchema, RunnerPolicySchema, RunnerRotatedSchema } from "./runner-schema.ts";
+import { RunnerDetailSchema, RunnerRegisteredSchema, RunnerEventsSchema, RunnerLabelsSchema, RunnerLeasesSchema, RunnerMutationSchema, RunnerPageSchema, RunnerPolicySchema, RunnerRotatedSchema } from "./runner-schema.ts";
 import { withRunnerTokenFile } from "./token.ts";
 
 export type RunnerPaging = {readonly limit?: number | undefined; readonly startingAfter?: string | undefined};
@@ -93,12 +93,12 @@ export const platformRunnerDelete = Effect.fn("platform.runners.delete")(functio
   yield* platformResult({id, deleted: true}, "Runner deleted", {ID: id});
 });
 
-export const platformRunnerEnroll = Effect.fn("platform.runners.enroll")(function* (host: string, edit: RunnerEdit & {readonly policy: string}, tokenFile: string) {
+export const platformRunnerRegister = Effect.fn("platform.runners.register")(function* (host: string, edit: RunnerEdit & {readonly policy: string}, tokenFile: string) {
   const body = {host_id: host, labels: [], ...yield* runnerEdit(edit)};
   return yield* withRunnerTokenFile(tokenFile, (save) => Effect.gen(function* () {
-    const enrolled = yield* decodePlatform(RunnerEnrolledSchema, yield* platformRequest({path: ADMIN_RUNNERS_PATH, method: HTTP_METHOD.post, body, retry: {maxAttempts: 1}}));
-    yield* save(enrolled.runner_token);
-    yield* platformResult({runner_id: enrolled.runner_id, assigned_policy: enrolled.assigned_policy, token_file: tokenFile}, "Runner enrolled", {ID: enrolled.runner_id, "Token file": tokenFile});
+    const registered = yield* decodePlatform(RunnerRegisteredSchema, yield* platformRequest({path: ADMIN_RUNNERS_PATH, method: HTTP_METHOD.post, body, retry: {maxAttempts: 1}}));
+    yield* save(registered.runner_token);
+    yield* platformResult({runner_id: registered.runner_id, assigned_policy: registered.assigned_policy, token_file: tokenFile}, "Runner registered", {ID: registered.runner_id, "Token file": tokenFile});
   }));
 });
 

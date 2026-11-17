@@ -81,14 +81,14 @@ fn plugin_permission_does_not_reinterpret_retired_grants() {
 /// A discrete verb grants itself and nothing else.
 #[test]
 fn test_a_discrete_verb_expands_to_itself() {
-    let enroll = parse_claim("runner:enroll");
+    let register = parse_claim("runner:register");
     // Set equality rather than a count beside a membership check: the property
     // is "this and nothing else", and stating it as one assertion is what makes
     // an accidental widening fail here rather than pass a count that moved.
-    assert_eq!(enroll, ScopeSet::from_scopes(&[Scope::RunnerEnroll]));
+    assert_eq!(register, ScopeSet::from_scopes(&[Scope::RunnerRegister]));
     assert!(
-        !enroll.contains(Scope::RunnerRead),
-        "enrolling a runner is not reading one — they are separately revocable"
+        !register.contains(Scope::RunnerRead),
+        "registering a runner is not reading one — they are separately revocable"
     );
 }
 
@@ -216,7 +216,8 @@ fn test_the_signup_grant_is_a_tenant_owner_and_not_an_operator() {
     assert!(owner.contains(Scope::PluginsWrite));
 
     for withheld in [
-        Scope::RunnerEnroll,
+        Scope::RunnerRegister,
+        Scope::RunnerTenant,
         Scope::WorkspaceAny,
         Scope::ModelAdmin,
         Scope::PlatformKeyAdmin,
@@ -277,4 +278,37 @@ fn test_iteration_agrees_with_membership() {
         );
     }
     assert!(ScopeSet::EMPTY.iter().next().is_none());
+}
+
+/// Dimension 2.9: every claim string survives the catalogue's rewrite.
+///
+/// The identity provider matches claim values verbatim, so this pins each one
+/// byte for byte. `runner:register` replaces `runner:enroll` and `runner:tenant`
+/// is new, both by Indy's ruling; every other value is unchanged.
+#[test]
+fn scope_claim_strings_are_unchanged() {
+    const PINNED: [&str; 30] = [
+        "fleet:read", "fleet:write", "fleet:admin", "schedule:read", "schedule:write",
+        "secret:read", "secret:write", "apikey:read", "apikey:write", "apikey:admin",
+        "grant:read", "grant:write", "connector:read", "connector:write", "model:read",
+        "model:admin", "platform-key:read", "platform-key:admin", "runner:read", "runner:write",
+        "stream:read", "approval:read", "runner:register", "runner:tenant", "approval:resolve",
+        "billing:read", "workspace:admin", "plugins:write", "runner:self", "workspace:any",
+    ];
+    let wires = Scope::ALL.map(Scope::wire);
+    assert_eq!(wires, PINNED, "claim values, in catalogue order");
+    for scope in Scope::ALL {
+        assert_eq!(Scope::from_wire(scope.wire()), Some(scope), "{} round-trips", scope.wire());
+    }
+    assert_eq!(Scope::from_wire("runner:enroll"), None, "the old value grants nothing");
+}
+
+/// `runner:tenant` is granted per account by a platform admin, never at signup.
+#[test]
+fn runner_tenant_is_not_part_of_the_signup_grant() {
+    assert!(!TENANT_OWNER_GRANT.contains(&Scope::RunnerTenant));
+    assert!(
+        !signup_owner_claim().split(' ').any(|claim| claim == "runner:tenant"),
+        "the claim seeded at signup must not carry runner:tenant"
+    );
 }

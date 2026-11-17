@@ -1,7 +1,7 @@
 import {RunnerAction, RunnerEventType, RunnerHistory} from "../../commands/platform/runner-vocabulary.ts";
 import { Schema } from "effect";
 import { Command, Flag } from "effect/cli";
-import { platformRunnerAction, platformRunnerDelete, platformRunnerEnroll, platformRunnerHistory, platformRunnersList, platformRunnerRotate, platformRunnerShow, platformRunnerUpdate } from "../../commands/platform/runners.ts";
+import { platformRunnerAction, platformRunnerDelete, platformRunnerRegister, platformRunnerHistory, platformRunnersList, platformRunnerRotate, platformRunnerShow, platformRunnerUpdate } from "../../commands/platform/runners.ts";
 import { guardedHandler } from "./guarded-handler.ts";
 import { grants, listedWhen, type Visibility } from "./visibility.ts";
 import { PLATFORM_SCOPE, platformLabelsFlag, platformPagingFlags, platformPolicyFlag, platformTokenFlag } from "./platform-flags.ts";
@@ -19,11 +19,11 @@ const show = Command.make("show", runnerId).pipe(
   Command.withDescription("Show policy, capabilities, liveness, counters, and checks (runner:read)"),
   guardedHandler(({id}) => platformRunnerShow(id)),
 );
-const enroll = Command.make("enroll", {
+const register = Command.make("register", {
   host: requiredTextFlag("host-id", "Host identity", "<host>"), policy: platformPolicyFlag,
   labels: platformLabelsFlag, tokenFile: platformTokenFlag,
-}).pipe(Command.withDescription("Enroll a trusted host and save its token (runner:enroll)"),
-  guardedHandler(({host, policy, labels, tokenFile}) => platformRunnerEnroll(host, {policy, labels: opt(labels)}, tokenFile)));
+}).pipe(Command.withDescription("Register a trusted host and save its token (runner:register)"),
+  guardedHandler(({host, policy, labels, tokenFile}) => platformRunnerRegister(host, {policy, labels: opt(labels)}, tokenFile)));
 const update = Command.make("update", {...runnerId, policy: platformPolicyFlag.pipe(Flag.optional), labels: platformLabelsFlag}).pipe(
   Command.withDescription("Replace policy and/or labels (runner:write)"),
   guardedHandler(({id, policy, labels}) => platformRunnerUpdate(id, {policy: opt(policy), labels: opt(labels)})),
@@ -48,19 +48,19 @@ const leases = Command.make("leases", {...runnerId, ...platformPagingFlags,
 }).pipe(Command.withDescription("Read runner leases (runner:read)"), guardedHandler(({id, limit, startingAfter, workspace, fleet}) =>
   platformRunnerHistory(id, RunnerHistory.Leases, {limit: opt(limit), startingAfter: opt(startingAfter), workspace: opt(workspace), fleet: opt(fleet)})));
 
-// `runner:enroll` is independent of the read/write ladder: an enroller sees
-// `enroll` and nothing else unless the server also reported `runner:read`.
+// `runner:register` is independent of the read/write ladder: a registrar sees
+// `register` and nothing else unless the server also reported `runner:read`.
 export const platformRunnersCommand = (visibility: Visibility) => {
   const read = grants(visibility, PLATFORM_SCOPE.runnerRead);
-  const enrollable = grants(visibility, PLATFORM_SCOPE.runnerEnroll);
+  const registrable = grants(visibility, PLATFORM_SCOPE.runnerRegister);
   const write = grants(visibility, PLATFORM_SCOPE.runnerWrite);
   const reads = listedWhen(read);
   const writes = listedWhen(write);
   return {
-    listed: read || enrollable || write,
+    listed: read || registrable || write,
     command: Command.make("runners").pipe(
       Command.withDescription("Manage platform execution hosts"), Command.withSubcommands([
-        reads(list), reads(show), listedWhen(enrollable)(enroll), writes(update), writes(rotate), writes(remove),
+        reads(list), reads(show), listedWhen(registrable)(register), writes(update), writes(rotate), writes(remove),
         reads(events), reads(leases),
         writes(actionCommand("cordon", RunnerAction.Cordon)), writes(actionCommand("drain", RunnerAction.Drain)),
         writes(actionCommand("revoke", RunnerAction.Revoke)), writes(actionCommand("self-test", RunnerAction.SelfTest)),

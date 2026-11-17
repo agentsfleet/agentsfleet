@@ -13,8 +13,8 @@
 export const SCOPE = {
   /** View the runner fleet — `GET /v1/admin/runners`, runner activity. */
   RUNNER_READ: "runner:read",
-  /** Enroll a runner — `POST /v1/admin/runners`. */
-  RUNNER_ENROLL: "runner:enroll",
+  /** Register a platform runner — `POST /v1/admin/runners`. */
+  RUNNER_REGISTER: "runner:register",
   /** Cordon/patch a runner's admin state — `PATCH …/runners/{id}`. */
   RUNNER_WRITE: "runner:write",
   /** Read the model catalogue — `GET` on the admin models surface. */

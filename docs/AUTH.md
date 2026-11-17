@@ -161,7 +161,7 @@ The `read < write < admin` ladder is stored as data. Holding a higher scope sati
 
 | Scope | Grants |
 |---|---|
-| `runner:enroll` | create a trusted runner (mint a `agt_r`) — uniquely dangerous (the host then receives every tenant's inline secrets); held independently of `runner:read`/`runner:write` so it is separately grantable/revocable |
+| `runner:register` | create a trusted runner (mint a `agt_r`) — uniquely dangerous (the host then receives every tenant's inline secrets); held independently of `runner:read`/`runner:write` so it is separately grantable/revocable |
 | `stream:read` | reserved for an operator diagnostic of the live SSE streams open on an instance. No route in `rustd/crates/daemon/afd_http/src/route/` requires it today, so holding it reaches nothing |
 | `approval:read` / `approval:resolve` | view the approval inbox / decide (approve or deny) an approval gate. The one pair here with a ladder: `approval:resolve` includes `approval:read` (`HIERARCHY`, `scope.rs`) |
 | `billing:read` | Read the tenant balance, raw charges, settled report and activity charges. [Billing reporting](architecture/billing_reporting.md#public-reads) lists the reporting paths. Balance and raw charges retain `/v1/tenants/me/billing` and `/v1/tenants/me/billing/charges`. |
@@ -211,7 +211,7 @@ The gate is scoped to the person. Keeping an automation out of the approval surf
 
 | Recommended for | Scope set |
 |---|---|
-| platform operator (almost no one) | `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `workspace:any` |
+| platform operator (almost no one) | `runner:register`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `workspace:any` |
 | read-only collaborator | `fleet:read`, `schedule:read`, `grant:read`, `connector:read`, `billing:read`, `approval:read` |
 
 ### CLI credential: resolved, not granted
@@ -280,7 +280,7 @@ The result is not cached. A deletion is permanent and needs no cache, while a tr
 
 This requires the Clerk **session-token claims** to project `public_metadata.scopes` into the top-level `scopes` claim, and `public_metadata.tenant_id` into `metadata.tenant_id` (`playbooks/founding/03_priming_infra/001_playbook.md`, step "Configure Clerk claims"). Setting Public metadata alone does nothing if the claims do not map it.
 
-Grant the full platform-operator bundle only to a development user who needs write and admin actions. The bundle is `runner:enroll runner:write stream:read model:admin platform-key:admin workspace:any`.
+Grant the full platform-operator bundle only to a development user who needs write and admin actions. The bundle is `runner:register runner:write stream:read model:admin platform-key:admin workspace:any`.
 
 It includes platform key rotation and access across tenants. Read-only inspection needs neither permission.
 
@@ -813,10 +813,10 @@ Flows 1–3 all act *on behalf of* a human or a tenant. The **runner token** is 
 
 ### Provisioning (register)
 
-A platform operator enrolls a trusted host with `agentsfleet platform runners enroll --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
+A platform operator enrolls a trusted host with `agentsfleet platform runners register --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
 The CLI authenticates with the operator's existing credential and saves the runner token in an owner-only file.
 
-Enrollment is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the leases placed on it. So the endpoint that mints an `agt_r` (`POST /v1/admin/runners`) requires the `runner:enroll` scope.
+Enrollment is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the leases placed on it. So the endpoint that mints an `agt_r` (`POST /v1/admin/runners`) requires the `runner:register` scope.
 
 That scope is a discrete capability held only by platform operators, revocable independently of `runner:read` and `runner:write`. A caller without it, session token or `agt_t` key alike (a key holds exactly its creator's scopes), is refused `403 UZ-AUTH-022`. An empty scope set fails closed.
 
@@ -831,16 +831,16 @@ The host **never self-registers** (Option B, the GitLab-16 "create runner → au
 No host ever holds an enrollment-grade credential.
 
 ```
-Platform operator — agentsfleet platform runners enroll                    agentsfleetd
-   │ CLI request → POST /v1/admin/runners (runner:enroll)
+Platform operator — agentsfleet platform runners register                    agentsfleetd
+   │ CLI request → POST /v1/admin/runners (runner:register)
    │   Authorization: Bearer <operator-credential>
    │   { host_id, assigned_policy{…}, labels[] }
    ▼
-   Guard::Bearer + require_scope gate the route (runner:enroll);
+   Guard::Bearer + require_scope gate the route (runner:register);
    the handler mints agt_r<random>, stores ONLY sha256(agt_r) in runner.runners,
    returns the raw token ONCE
    │
-   ◄── 201 { runner_id, runner_token: "agt_r…", assigned_policy }   (no runner:enroll → 403)
+   ◄── 201 { runner_id, runner_token: "agt_r…", assigned_policy }   (no runner:register → 403)
    the operator installs agt_r on the host (env AGENTSFLEET_RUNNER_TOKEN); the host
    does NOT call register — it authenticates every later call with that agt_r
 ```

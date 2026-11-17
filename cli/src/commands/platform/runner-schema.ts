@@ -44,7 +44,7 @@ export const RunnerMutationSchema = Schema.Struct({
   labels: Schema.optionalKey(Schema.NullOr(Schema.Array(Schema.String))),
   selftest_requested_at: Schema.optionalKey(Schema.NullOr(instant)),
 });
-export const RunnerEnrolledSchema = Schema.Struct({runner_id: text, runner_token: text, assigned_policy: RunnerPolicySchema});
+export const RunnerRegisteredSchema = Schema.Struct({runner_id: text, runner_token: text, assigned_policy: RunnerPolicySchema});
 export const RunnerRotatedSchema = Schema.Struct({id: text, runner_token: text});
 export const RunnerEventsSchema = Schema.Struct({
   items: Schema.Array(Schema.Struct({id: text, runner_id: text, event_type: Schema.Enum(RunnerEventType), occurred_at: instant, metadata: Schema.Unknown})),
