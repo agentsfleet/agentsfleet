@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 06, 2026 (rescoped Nov 17, 2026)
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, customers will point their own hosts at the cloud `agentsfleetd`. Today only an operator can enrol a host, and any enrolled host receives every tenant's work.
 
