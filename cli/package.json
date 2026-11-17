@@ -38,17 +38,17 @@
     "@vercel/detect-agent": "^1.2.7",
     "diff": "^9.0.0",
     "effect": "4.1.4",
-    "posthog-node": "^5.73.1",
+    "posthog-node": "^5.74.0",
     "uuid": "^14.0.3"
   },
   "license": "MIT",
   "devDependencies": {
-    "@clerk/testing": "^2.3.0",
+    "@clerk/testing": "^2.3.1",
     "@playwright/test": "1.65.1",
     "@types/node": "^26.6.6",
     "@types/uuid": "^11.0.0",
     "bun-types": "^1.4.4",
-    "oxlint": "^1.93.0",
+    "oxlint": "^1.94.0",
     "playwright": "^1.65.1",
     "tsrs": "0.25.0-ts7.1.0-beta"
   }

@@ -315,7 +315,7 @@ const_format = { version = "0.2.37", default-features = false }
 # generated help, rather than a second undocumented input path. `color` and
 # `wrap_help` are left off — the daemon's usage output is read out of a
 # container log, where escape sequences and terminal-width reflow are noise.
-clap = { version = "4.6.7", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context"] }
+clap = { version = "4.6.8", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context"] }
 
 # RustCrypto. Pure Rust with no C linkage, the workspace's posture, and the
 # AES-256-GCM construction every stored vault row was sealed with.
@@ -360,7 +360,7 @@ url = { version = "2.5.8", default-features = false }
 # Return completed SQL sessions to the pool; detach cancelled task transactions.
 scopeguard = "1.2.0"
 
-uuid = { version = "1.29.2", default-features = false, features = ["v7", "std"] }
+uuid = { version = "1.29.3", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.
 #
@@ -908,7 +908,8 @@ jsonrpsee-types = { version = "0.26.1", default-features = false }
 tempfile = { version = "3.27.0", default-features = false }
 # The system-call numbers the sandbox's seccomp program refuses; rustix exposes
 # the calls, not their numbers. Codex's `linux-sandbox` reads them from here too.
-# tokio-quiche 0.23.0 still caps this below 0.2.190; retain the published transport.
+# tokio-quiche 0.23.0 and quiche 0.30.1 still cap this below 0.2.190; retain the published
+# transport. parking_lot 0.13 waits on the same cap: its parking_lot_core 0.10 needs 0.2.191.
 libc = { version = "=0.2.189", default-features = false }
 # The sandbox's egress scope speaks netlink itself: route netlink for the veth
 # pair, its addresses and its route, nf_tables for the host-side rules. Pure
