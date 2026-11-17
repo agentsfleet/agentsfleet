@@ -101,6 +101,7 @@ Preparation installs WireGuard; deployment restores `/etc/wireguard/fly-dev.conf
 
 The tunnel carries only the Fly organization prefix; split DNS sends `*.internal` lookups to Fly.
 An external runner needs equivalent routing, name resolution and permitted TCP/UDP traffic.
+A tenant's own runner is an external runner too. It needs the stream URL, the public trust file and a route to the daemon.
 Certificate delivery alone creates no route.
 
 Permit both transports to allow HTTP/2 fallback when UDP is unavailable.

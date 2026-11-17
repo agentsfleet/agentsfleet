@@ -24,8 +24,8 @@ Every row is taken from the sections below; the owner column names the section t
 | Renewal refused on empty wallet | `UZ-RUN-012` | each `/renew` meters the run's slice and refuses one the wallet cannot cover; reachable for any exhausted tenant | §Money gates |
 | Lost wake recovery | the next recovery probe, at most 5 s later | each replica asks PostgreSQL for pending work every `OFFER_FALLBACK_TICK` (5 s), with or without a wake ring | §Failure recovery model |
 | Runner datastore credentials | zero | no runner crate links `sqlx` or `async-nats`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
-| Control protocol | one enrolment route, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, enrolment in its **Platform** group (`public/openapi.json`); `me` resolves from the token | §The control protocol |
-| Enrollment gate | the `runner:register` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
+| Control protocol | two registration routes, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, registration with the runner management routes (`public/openapi.json`); `me` resolves from the token | §The control protocol |
+| Registration gate | `runner:register` for a platform runner, `runner:tenant` for a tenant's own | a caller without the scope, session JWT or `agt_t` key alike → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
 | Fresh-mint liveness | `last_seen_at = 0` sentinel | a never-connected runner reads `registered`, not a fake `online` | §Runner state |
 | Runner "status" | three separate categories | `status` enum + derived liveness + append-only `runner.events` | §Runner state |
 | Memory isolation | one live holder per fleet | `runner.fleet_slots` keyed by `fleet_id` + time gate + capture-time fencing | §Memory continuity |
@@ -238,13 +238,13 @@ The runner's supervisor, agent loop, tool catalog, outbound guard, in-sandbox se
 
 `agentsfleetd` translates the runner's calls into the Postgres writes and NATS publishes the worker once made directly. The runner never sees a datastore.
 
-The routes, their methods and their request and reply shapes are in the API reference's **Runner plane** group on docs.agentsfleet.net. That group is generated from `public/openapi.json`. The enrolment route sits in its **Platform** group; this doc does not restate them.
+The routes, their methods and their request and reply shapes are in the API reference's **Runner plane** group on docs.agentsfleet.net. That group is generated from `public/openapi.json`. The registration routes sit with the runner management routes; this doc does not restate them.
 
-The shape that matters here has one enrolment route, `POST /v1/admin/runners`, called by an operator (§Registering a runner). Every other route sits under `/v1/runners/me` and is called by the runner with its `agt_r`.
+The shape that matters here has two registration routes (§Registering a runner). `POST /v1/admin/runners` is called by an operator. `POST /v1/tenants/me/runners` is called by a tenant for its own hosts. Every other route sits under `/v1/runners/me` and is called by the runner with its `agt_r`.
 
-`me` resolves from the token. No `runner_id` appears in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints.
+`me` resolves from the token. No `runner_id` appears in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human* credential; everything else is authed by the machine credential it mints.
 
-Identity and auth are covered in [`../AUTH.md`](../AUTH.md); the runner is the first machine principal. `register` is gated by the `runner:register` scope. The scope is grantable on its own, because enrolling a host into the shared fleet exposes every tenant's secrets to it.
+Identity and auth are covered in [`../AUTH.md`](../AUTH.md); the runner is the first machine principal. `register` is gated by the `runner:register` scope. The scope is grantable on its own, because enrolling a host into the shared fleet exposes every tenant's secrets to it. A tenant's own route is gated by `runner:tenant`, because that host takes only its tenant's work.
 
 A token without that scope is rejected `403`, tenant `admin` JWT and `agt_t` api_key alike.
 
@@ -267,9 +267,9 @@ The operator installs that token on the host as `AGENTSFLEET_RUNNER_TOKEN`.
 
 No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the runner validates the `agt_r` prefix and fails loud rather than looping on a silent 401.
 
-It then opens its native session and starts the worker pool. There is no register call, so no host ever holds an enrollment-grade credential.
+It then opens its native session and starts the worker pool. There is no register call, so no host ever holds a registration-grade credential.
 
-There is no enrollment token; the minter must hold `runner:register`. The open-fleet, self-enrolling case is mode C, later.
+There is no registration token. The minter must hold `runner:register`, or `runner:tenant` for a tenant's own host. The open-fleet, self-registering case is mode C, later.
 
 ```text
  platform admin                                          agentsfleetd
@@ -298,6 +298,29 @@ There is no enrollment token; the minter must hold `runner:register`. The open-f
 The write swaps `token_hash` and appends an actor-attributed event atomically. The write returns the replacement token once, and makes the old token fail the next auth read.
 
 Revoking instead sets `status='revoked'` (M84_002) so every later call gets a 401. The runner's complete environment is `AGENTSFLEET_API_URL` plus `AGENTSFLEET_RUNNER_TOKEN`, with the optional host-local `RUNNER_STORAGE_HOME`. There is no bootstrap credential on the host, no datastore secret, and **no policy in the environment** (M148; §Assigned policy and reconciliation).
+
+### A tenant's own runner
+
+A tenant that holds `runner:tenant` registers a host of its own with `agentsfleet runners register`.
+The CLI calls `POST /v1/tenants/me/runners` with a UUIDv7 `Idempotency-Key`, so a retry never registers a second runner.
+The row records the tenant, and nothing changes it afterwards.
+
+A tenant runner takes only its own tenant's work, and never a fleet that runs on the platform model.
+The platform key therefore never reaches a host that its tenant controls.
+
+```text
+                              runner's tenant_id
+work of tenant T              NULL (platform)    T          U (another tenant)
+fleet on the platform model   leased             refused    refused
+fleet on T's own model        leased             leased     refused
+```
+
+The candidate scan and the claim statement both apply this table.
+Issue applies it again under the host lock, and logs `runner_placement_refused` (`UZ-RUN-027`) when the claim let a placement through.
+Labels place work and carry no security meaning, so a tenant that labels its runner cannot make it take another tenant's work.
+
+A platform admin can cordon, drain, revoke and relabel a tenant runner.
+Only the tenant rotates its token, and a platform rotation answers `409 UZ-RUN-026`.
 
 ## Assigned policy and reconciliation (M148)
 
@@ -444,7 +467,7 @@ The surface shipped; what it should *do* in these four cases did not.
 
 - **All-runners-down.** If every healthy runner is gone, where does cordoned or lapsed work drain to? There is no eligible target, so the work must **hold** (not thrash or fail) until capacity returns.
 
-- **Eligibility.** Label, state, liveness and shared host-capacity checks precede placement. Trust class, tenant and workspace scope and sandbox-engine eligibility remain future work.
+- **Eligibility.** Label, state, liveness, tenant ownership and shared host-capacity checks precede placement (§A tenant's own runner). Trust class, workspace scope and sandbox-engine eligibility remain future work.
 
 - **Cordon rules.** When to cordon; partial versus full drain; the drain deadline; what happens if drain never completes (escalate cordon to revoke?).
 

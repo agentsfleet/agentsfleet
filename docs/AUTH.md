@@ -91,7 +91,7 @@ Find the question, jump to the one §-section that answers it, and do not read t
 
 A fourth surface, **inbound webhooks**, does not use Bearer at all (HMAC-signed by the provider). See §"Manual fleet-webhook auth (separate surface)".
 
-A fifth surface, the **runner token** (`agt_r`), is the first *machine* principal: a host-resident `agentsfleet-runner` that holds no tenant identity at all. Same Bearer wire shape and DB-hash lookup, but its own trust plane (`Plane::Runner`). The same guard layer therefore refuses it on every tenant route (see *Runner token* below).
+A fifth surface, the **runner token** (`agt_r`), is the first *machine* principal: a host-resident `agentsfleet-runner` whose principal holds no tenant identity. Same Bearer wire shape and DB-hash lookup, but its own trust plane (`Plane::Runner`). The same guard layer therefore refuses it on every tenant route (see *Runner token* below). A tenant can register a runner of its own. Its owner is a column on the runner's row, and the token carries no claim for it.
 
 Cookies **never reach the Rust backend**. The Clerk `__session` cookie lives on the dashboard's own host (`app.agentsfleet.net`), written by the Clerk SDK on the page after sign-in.
 
@@ -119,7 +119,7 @@ Five principal surfaces, one wire shape (`Authorization: Bearer …`), and a pre
 | Human at a terminal (CLI) | `afc_<hex>` CLI credential | backend (`POST /v1/cli-credentials`, paid for with a Clerk api-template JWT) | SHA-256 hash lookup + revocation check; scopes resolved live from Clerk on `oidc_subject` | `Guard::Bearer` → stored credential |
 | Human in a browser (dashboard) | Clerk session token | Clerk | JWKS verify + `aud` | `Guard::Bearer` → session token |
 | Service / automation | `agt_t<hex>` tenant api key | backend | SHA-256 hash lookup; scopes resolved live from Clerk for the key's creator (`created_by`) | `Guard::Bearer` → stored credential |
-| Host runner (machine) | `agt_r<hex>` runner token | backend (`POST /v1/admin/runners`) | SHA-256 hash lookup in `runner.runners` | `Guard::RunnerBearer` on `/v1/runners/me/*` |
+| Host runner (machine) | `agt_r<hex>` runner token | backend (`POST /v1/admin/runners`, or `POST /v1/tenants/me/runners` for a tenant's own host) | SHA-256 hash lookup in `runner.runners` | `Guard::RunnerBearer` on `/v1/runners/me/*` |
 | Inbound webhook (provider) | HMAC signature (no Bearer) | provider | per-provider HMAC | `Guard::WebhookSignature` / `WebhookHmac` / `Svix` / `PayloadSigned` → verified in the handler |
 
 The prefix decides the path before anything is looked up, so `agt_t` and `afc_` never reach the session-token verifier. Each group of routes is a `Plane` (`rustd/crates/daemon/afd_auth/src/plane.rs`): `Plane::Tenant` accepts the session token, `agt_t` and `afc_`; `Plane::Runner` accepts only `agt_r`. A class the plane does not accept is refused before any datastore read, so runner tokens cannot satisfy tenant routes and the reverse.
@@ -161,7 +161,8 @@ The `read < write < admin` ladder is stored as data. Holding a higher scope sati
 
 | Scope | Grants |
 |---|---|
-| `runner:register` | create a trusted runner (mint a `agt_r`) — uniquely dangerous (the host then receives every tenant's inline secrets); held independently of `runner:read`/`runner:write` so it is separately grantable/revocable |
+| `runner:register` | create a platform runner (mint a `agt_r`) — uniquely dangerous (the host then receives every tenant's inline secrets); held independently of `runner:read`/`runner:write` so it is separately grantable/revocable |
+| `runner:tenant` | register, list, read, change and retire the calling tenant's own runners under `/v1/tenants/me/runners`. Such a runner takes only that tenant's work. A platform admin grants it per account at the identity provider, and signup never does |
 | `stream:read` | reserved for an operator diagnostic of the live SSE streams open on an instance. No route in `rustd/crates/daemon/afd_http/src/route/` requires it today, so holding it reaches nothing |
 | `approval:read` / `approval:resolve` | view the approval inbox / decide (approve or deny) an approval gate. The one pair here with a ladder: `approval:resolve` includes `approval:read` (`HIERARCHY`, `scope.rs`) |
 | `billing:read` | Read the tenant balance, raw charges, settled report and activity charges. [Billing reporting](architecture/billing_reporting.md#public-reads) lists the reporting paths. Balance and raw charges retain `/v1/tenants/me/billing` and `/v1/tenants/me/billing/charges`. |
@@ -198,7 +199,7 @@ See §"CLI credential: resolved, not granted" below for the resolver's failure m
 
 | Constant | Scopes | Why it exists in code |
 |---|---|---|
-| `TENANT_OWNER_GRANT` | `fleet:admin`, `schedule:write`, `secret:write`, `apikey:admin`, `grant:write`, `connector:write`, `billing:read`, `workspace:admin`, `plugins:write`, `approval:resolve` | WRITTEN once into a new owner's `public_metadata.scopes` at signup, rendered space-delimited by `signup_owner_claim()` (`rustd/crates/daemon/afd_auth/src/scope.rs`). The writeback runs from the ingress plane's identity-events handler (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`), not the tenant one. A seed, not an authority: the provider owns the value from that instant, and an operator's edit wins permanently. No platform/cross-tenant scope, preserving "an admin cannot enroll a runner" |
+| `TENANT_OWNER_GRANT` | `fleet:admin`, `schedule:write`, `secret:write`, `apikey:admin`, `grant:write`, `connector:write`, `billing:read`, `workspace:admin`, `plugins:write`, `approval:resolve` | WRITTEN once into a new owner's `public_metadata.scopes` at signup, rendered space-delimited by `signup_owner_claim()` (`rustd/crates/daemon/afd_auth/src/scope.rs`). The writeback runs from the ingress plane's identity-events handler (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`), not the tenant one. A seed, not an authority: the provider owns the value from that instant, and an operator's edit wins permanently. No platform or cross-tenant scope, and no `runner:tenant`, so an account registers a runner only after a platform admin grants it that scope |
 | `RUNNER_SCOPES` | `runner:self` | DERIVED for every `agt_r` runner principal by `Principal::scopes` (`rustd/crates/daemon/afd_auth/src/principal.rs`), never stored on it — the one credential class with no identity at the provider to resolve against, because it names a machine, not a person |
 
 **Approving follows the person, not the credential class (M160_002 §6, Indy's call, Aug 13, 2026)**. An earlier revision authored a machine grant in code (the owner set minus `approval:resolve`). This kept a Fleet holding an `agt_t` key from approving the gate guarding its own next action.
@@ -212,6 +213,7 @@ The gate is scoped to the person. Keeping an automation out of the approval surf
 | Recommended for | Scope set |
 |---|---|
 | platform operator (almost no one) | `runner:register`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `workspace:any` |
+| tenant that runs its own hosts (granted per account) | `runner:tenant` |
 | read-only collaborator | `fleet:read`, `schedule:read`, `grant:read`, `connector:read`, `billing:read`, `approval:read` |
 
 ### CLI credential: resolved, not granted
@@ -813,14 +815,14 @@ Flows 1–3 all act *on behalf of* a human or a tenant. The **runner token** is 
 
 ### Provisioning (register)
 
-A platform operator enrolls a trusted host with `agentsfleet platform runners register --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
+A platform operator registers a trusted host with `agentsfleet platform runners register --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
 The CLI authenticates with the operator's existing credential and saves the runner token in an owner-only file.
 
-Enrollment is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the leases placed on it. So the endpoint that mints an `agt_r` (`POST /v1/admin/runners`) requires the `runner:register` scope.
+Registration is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the leases placed on it. So the endpoint that mints an `agt_r` (`POST /v1/admin/runners`) requires the `runner:register` scope.
 
 That scope is a discrete capability held only by platform operators, revocable independently of `runner:read` and `runner:write`. A caller without it, session token or `agt_t` key alike (a key holds exactly its creator's scopes), is refused `403 UZ-AUTH-022`. An empty scope set fails closed.
 
-There is no open enrollment token.
+There is no open registration token.
 
 The operator plane has its own scopes (`rustd/crates/daemon/afd_http/src/route/runner_ops.rs`). `runner:read` fronts the list `GET /v1/admin/runners`, one runner `GET /v1/admin/runners/{runner_id}`, and its `/events` and `/leases`; `runner:write` fronts `PATCH` and `DELETE /v1/admin/runners/{runner_id}`.
 
@@ -828,7 +830,7 @@ Sending `{"action":"rotate"}` atomically replaces the stored runner-token digest
 
 The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model). The operator pre-mints the `agt_r` and installs it on the host as `AGENTSFLEET_RUNNER_TOKEN`. `agentsfleet-runner` checks the `agt_r` prefix at boot (`rustd/crates/runner/afr_supervisor/src/config/mod.rs`) and goes straight to the heartbeat/lease loop.
 
-No host ever holds an enrollment-grade credential.
+No host ever holds a registration-grade credential.
 
 ```
 Platform operator — agentsfleet platform runners register                    agentsfleetd
@@ -846,6 +848,41 @@ Platform operator — agentsfleet platform runners register                    a
 ```
 
 `runner.runners` is a dedicated schema, because runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `admin_state='revoked'`; cordon and drain use the same non-active runner gate.
+
+### Tenant-owned runners
+
+A tenant registers a host of its own with `agentsfleet runners register --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
+The route is `POST /v1/tenants/me/runners`, and it requires the `runner:tenant` scope.
+A platform admin grants that scope to an account at the identity provider.
+Signup never grants it, so a regular user cannot register a runner.
+
+The request carries a UUIDv7 `Idempotency-Key`.
+A retry with the same key and body answers `200` with the same `runner_id` and no token, because the token appears once.
+The same key with another body answers `409 UZ-RUN-025`.
+To recover a lost token, rotate it with `agentsfleet runners rotate-token <RUNNER_ID> --token-out <NEW_FILE>`.
+
+A tenant runner takes only its own tenant's work, and a platform runner takes any tenant's:
+
+```
+                              runner's tenant_id
+work of tenant T              NULL (platform)    T          U (another tenant)
+fleet on the platform model   leased             refused    refused
+fleet on T's own model        leased             leased     refused
+```
+
+Five rules hold this table in place.
+
+| Rule | Where it holds |
+|---|---|
+| A tenant runner takes only its own tenant's work | the lease claim and the candidate scan read `runner.runners.tenant_id`; issue reads it again under the host lock and logs `runner_placement_refused` (`UZ-RUN-027`) on a miss |
+| It never receives the platform model key | a fleet whose revision runs on the platform default model is not offered to it, and issue refuses it too |
+| It has no platform decision model | a check on `runner.runners` refuses `decision_platform_model_id` on a tenant row |
+| Its owner is explicit and never changes | `platform_owned` is stated at registration, a check ties it to `tenant_id`, and a trigger refuses any update of either |
+| Only its tenant rotates its token | a platform caller's rotate answers `409 UZ-RUN-026` |
+
+A platform admin can still cordon, drain, revoke and relabel a tenant runner.
+Durable tasks start off for a tenant runner, and only a platform admin can change that.
+An erased tenant takes its runners with it, and each host's next authenticated call answers `401 UZ-RUN-001`.
 
 ### Native runner stream authentication
 
@@ -880,6 +917,8 @@ SELECT id, admin_state, degraded FROM runner.runners WHERE token_hash = sha256(t
   miss                 → 401 UZ-RUN-001
   non-active           → 401 UZ-RUN-009
 ```
+
+The runner's tenant is not on the principal. Placement reads it from the runner's row under the host lock, because a copy on the principal could be staler than the row.
 
 A runner token must never satisfy a tenant route, and a user or tenant token must never satisfy a runner route. The boundary is data: `Plane::accepts` lists each plane's credential classes (`rustd/crates/daemon/afd_auth/src/plane.rs`), and `test_planes_partition_the_catalogue` (`rustd/crates/daemon/afd_auth/tests/bearer_prefix_routing/classification.rs`) proves every class belongs to exactly one plane. No handler re-checks it.
 

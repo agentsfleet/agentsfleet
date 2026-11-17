@@ -160,7 +160,7 @@ there is no generic repository trait.
 | `candidates` | A frozen numbered setup the model proposed | append-only |
 | `attempts` | One runner lease running one message, money bounded, model pinned | `reserved_nanos` is the ceiling each funds check asks for, with nothing set aside; `outcome` is set once usage settles |
 | `dispatches` | One physical model call: intent before, result after; `native_reply` is the provider's own reply kept for replay, private like `result` |  |
-| `edit_decisions` | Setup edit-intent checks with frozen decision prices and measured usage | no private text or secrets; opaque setup-chat accounting survives deletion; unresolved calls keep their reservation |
+| `edit_decisions` | Setup edit-intent checks with their reservation and measured usage | no private text or secrets; opaque setup-chat accounting survives deletion; unresolved calls keep their reservation |
 | `activity_receipts` | Replay proof for "runner posted a setup" | append-only |
 | `answer_receipts` | Replay proof for "runner posted an answer" | append-only |
 | `replay_receipts` | Every authoring retry key: create draft, send message, publish | append-only, swept at a fixed age |
@@ -251,11 +251,14 @@ omit its model and review then resolves the tenant default.
  runners ◀── leases ··▶ fleet.events (event_id), fleet.fleets (fleet_id): opaque, no FK
          ◀── events, lifetime_counters (1:1)
  fleet_slots (1 per fleet) ──▶ runners (last_runner_id), fleet.fleets
+ runners ──▶ identity.tenants (tenant_id, NULL for a platform runner)   ON DELETE CASCADE
+ registration_receipts (no FKs: a retry key outlives its runner and its tenant)
 ```
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `runners` | An enrolled host: policy, health, self-test | optional reviewed decision-model selection; referenced models cannot be deleted |
+| `runners` | An enrolled host: policy, health, self-test, and the tenant that owns it | `platform_owned` says who owns it and `tenant_id` is set exactly when it is false; both fixed after insert by a trigger; a check refuses a decision model on a tenant row; optional reviewed decision-model selection; referenced models cannot be deleted |
+| `registration_receipts` | One tenant registration's retry key and request digest, so a retry finds the runner it created | append-only; unique `(tenant_id, operation_id)`; no foreign keys, so a receipt outlives its runner and its tenant |
 | `leases` | One fleet event handed to one runner. Settled history outlives a purge; the insert proves scope in the same transaction | non-secret decision snapshot; no foreign key to fleet, event, task or historical model revision |
 | `decision_calls` | Kept physical-call identity, frozen prices, reservations and canonical usage | opaque original ownership survives deletion; unresolved rows prevent whole-reservation release |
 | `decision_payloads` | Bounded private evidence and answers for a call | fleet deletion removes payloads while accounting stays |
@@ -337,7 +340,7 @@ that reads them (rule 7).
 | Plugin card | its revisions | fleets installed from it; drafts started from it (`source_plugin_revision_id` set NULL) | none |
 | Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runner leases for their 30-day window; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
 | Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | attempts, usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Authoring private results; each removed object first records its location and charged bytes for remote cleanup |
-| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, usage lines, daily usage and run rows (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
+| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys, runners with their leases, history and counters | attempts, usage lines, daily usage and run rows, registration receipts (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | Device session (past `expires_at`) | nothing: the row stays, and every read refuses it | none | none; the row holds a sealed ciphertext and a code digest |
 | OAuth nonce (spent at the callback, or presented past `expires_at`) | the row, at its spend; one never presented stays | none | none; the row holds only a digest |
 | Runner (record retired after revoke) | leases, history, lifetime counters | attempts (`runner_id` set NULL), usage lines; slots (`last_runner_id` set NULL) | none |
@@ -359,9 +362,10 @@ A column kept with no reader still owes a drop under rule 7.
 - **`identity.api_keys.description`: kept, no reader.** The file `20261108120700_identity_api_keys.sql` declares it and
   `afd_tenant`'s `insert_tenant_key.sql` writes it. The key list selects
   `id, name, created_at, revoked_at`, and `ApiKeySummary` has no description field.
-- **`identity.cli_credentials.credential_prefix`, `deployment`, `created_from_address`: kept,
-  no reader.** The file `20261108120800_identity_cli_credentials.sql` declares them and only `afd_tenant`'s `insert_cli_credential.sql` writes
-  them. The table's one read, `afd_state`'s `select_cli_credential.sql`, selects none of them. The mint response echoes the request's deployment, not the stored one.
+- **`identity.cli_credentials.credential_prefix`, `deployment`, `created_from_address`: dropped.**
+  The file `20261108120800_identity_cli_credentials.sql` declares the table without them. The
+  table's one read, `afd_state`'s `select_cli_credential.sql`, selected none of them, and the mint
+  response echoes the deployment answering the request.
 - **`identity.cli_credentials.tenant_id`: kept.** The file `20261108120800_identity_cli_credentials.sql` declares it and
   `select_cli_credential.sql` reads it during authentication. The mint copies the user's tenant,
   and the reading statement already joins `identity.users`. The column therefore restates
@@ -402,6 +406,25 @@ Added by this milestone:
   apart are gone.
 
   Spellings are `af_wire::usage::LineKind`.
+
+- **`runner.runners.platform_owned`, `tenant_id` and `runner.registration_receipts`: added by M246.** A tenant registers
+  runners of its own, and a runner takes only its tenant's work. Ownership is stated at insert, and
+  `ck_runners_owner` requires `platform_owned = (tenant_id IS NULL)`, so a missing tenant never reads as the platform. The partial index
+  `idx_runners_tenant_id_created_at_id` serves a tenant's list and the erasure cascade.
+- **`idx_runners_created_at_id`: added by M246.** The runner list pages newest first. A volume bench measured the list at
+  3.7 ms before the index and 0.1 ms after.
+- **Unused indexes dropped by the M246 audit.** `idx_task_effects_source_item`, `idx_task_effect_states_reconcile` and
+  `idx_task_checkpoints_expiry`: no statement filters or orders on them, and each cost a write per row.
+- **Write-only columns dropped by the M246 audit.** Each was written by a statement and read by none.
+  - `fleet.approval_gates`: `spend_count`, `spend_ceiling`, `stated_binding`.
+  - `identity.cli_credentials`: `credential_prefix`, `deployment`, `created_from_address`.
+  - `authoring.edit_decisions.snapshot`, `fleet.obligations.abandon_reason`, `fleet.task_bases.retained_bytes`.
+  - `fleet.task_completions`: `conclusion`, `body_digest`.
+  - `fleet.task_effect_states.confirmed_at`, `fleet.task_waits.consumed_admission_id`, `fleet.tasks.last_transition_at`.
+  - `fleet.task_inputs` and `fleet.task_interpretations`: `accepting_lease_id`, `accepting_fence`.
+  - `fleet.task_storage_purges.delete_after_at`.
+- **Write-only by name, kept by evidence.** `identity.api_keys.display_suffix` is read by the key list and shown in the API
+  and the dashboard. `fleet.task_effects.source_item_id` is a field of the public task-effect input.
 
 ## Public interface changes
 
