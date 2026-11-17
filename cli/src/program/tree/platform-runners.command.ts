@@ -1,70 +1,84 @@
 import {RunnerAction, RunnerEventType, RunnerHistory} from "../../commands/platform/runner-vocabulary.ts";
 import { Schema } from "effect";
 import { Command, Flag } from "effect/cli";
-import { platformRunnerAction, platformRunnerDelete, platformRunnerRegister, platformRunnerHistory, platformRunnersList, platformRunnerRotate, platformRunnerShow, platformRunnerUpdate } from "../../commands/platform/runners.ts";
+import { runnerAction, runnerDelete, runnerHistory, runnerRegister, runnerRotate, runnersList, runnerShow, runnerUpdate } from "../../commands/platform/runners.ts";
+import { PLATFORM_RUNNERS, TENANT_RUNNERS, type RunnerReach } from "../../commands/platform/runner-reach.ts";
 import { guardedHandler } from "./guarded-handler.ts";
 import { grants, listedWhen, type Visibility } from "./visibility.ts";
-import { PLATFORM_SCOPE, platformLabelsFlag, platformPagingFlags, platformPolicyFlag, platformTokenFlag } from "./platform-flags.ts";
+import { platformLabelsFlag, platformPagingFlags, platformPolicyFlag, platformTokenFlag } from "./platform-flags.ts";
 import { eventTimeFlag, idArgument, opt, requiredIdFlag, requiredTextFlag, sinceFlag } from "./flags.ts";
 
-const runnerId = {id: idArgument("runner_id", "Platform runner identifier")};
-const actionCommand = (name: string, action: RunnerAction) => Command.make(name, runnerId).pipe(
-  Command.withDescription(`Request ${name} (runner:write)`), guardedHandler(({id}) => platformRunnerAction(id, action)),
-);
-const list = Command.make("list", platformPagingFlags).pipe(
-  Command.withDescription("List platform runners (runner:read)"),
-  guardedHandler(({limit, startingAfter}) => platformRunnersList({limit: opt(limit), startingAfter: opt(startingAfter)})),
-);
-const show = Command.make("show", runnerId).pipe(
-  Command.withDescription("Show policy, capabilities, liveness, counters, and checks (runner:read)"),
-  guardedHandler(({id}) => platformRunnerShow(id)),
-);
-const register = Command.make("register", {
-  host: requiredTextFlag("host-id", "Host identity", "<host>"), policy: platformPolicyFlag,
-  labels: platformLabelsFlag, tokenFile: platformTokenFlag,
-}).pipe(Command.withDescription("Register a trusted host and save its token (runner:register)"),
-  guardedHandler(({host, policy, labels, tokenFile}) => platformRunnerRegister(host, {policy, labels: opt(labels)}, tokenFile)));
-const update = Command.make("update", {...runnerId, policy: platformPolicyFlag.pipe(Flag.optional), labels: platformLabelsFlag}).pipe(
-  Command.withDescription("Replace policy and/or labels (runner:write)"),
-  guardedHandler(({id, policy, labels}) => platformRunnerUpdate(id, {policy: opt(policy), labels: opt(labels)})),
-);
-const rotate = Command.make("rotate-token", {...runnerId, tokenFile: platformTokenFlag}).pipe(
-  Command.withDescription("Replace the runner token and save it once (runner:write)"),
-  guardedHandler(({id, tokenFile}) => platformRunnerRotate(id, tokenFile)),
-);
-const remove = Command.make("delete", runnerId).pipe(
-  Command.withDescription("Delete a revoked runner and its history (runner:write)"), guardedHandler(({id}) => platformRunnerDelete(id)),
-);
-const events = Command.make("events", {...runnerId, ...platformPagingFlags,
-  eventType: requiredTextFlag("event-type", "Comma-separated runner event types").pipe(
-    Flag.filter(value => value.split(",").every(Schema.is(Schema.Enum(RunnerEventType))), () => "expected known runner event types separated by commas"), Flag.optional,
-  ),
-  since: sinceFlag, until: eventTimeFlag("until", false),
-}).pipe(Command.withDescription("Read runner activity (runner:read)"), guardedHandler(({id, limit, startingAfter, eventType, since, until}) =>
-  platformRunnerHistory(id, RunnerHistory.Events, {limit: opt(limit), startingAfter: opt(startingAfter), eventType: opt(eventType), since: opt(since), until: opt(until)})));
-const leases = Command.make("leases", {...runnerId, ...platformPagingFlags,
-  workspace: requiredIdFlag("workspace", "Filter by workspace").pipe(Flag.optional),
-  fleet: requiredTextFlag("fleet", "Filter by fleet ID or exact name").pipe(Flag.optional),
-}).pipe(Command.withDescription("Read runner leases (runner:read)"), guardedHandler(({id, limit, startingAfter, workspace, fleet}) =>
-  platformRunnerHistory(id, RunnerHistory.Leases, {limit: opt(limit), startingAfter: opt(startingAfter), workspace: opt(workspace), fleet: opt(fleet)})));
+const runnerId = {id: idArgument("runner_id", "Runner identifier")};
 
-// `runner:register` is independent of the read/write ladder: a registrar sees
-// `register` and nothing else unless the server also reported `runner:read`.
-export const platformRunnersCommand = (visibility: Visibility) => {
-  const read = grants(visibility, PLATFORM_SCOPE.runnerRead);
-  const registrable = grants(visibility, PLATFORM_SCOPE.runnerRegister);
-  const write = grants(visibility, PLATFORM_SCOPE.runnerWrite);
+/**
+ * One command group per kind of runner, from one definition: the platform's
+ * `platform runners` and a tenant's own `runners` share every handler, and
+ * differ only in the API path, the scopes that list each verb, and the
+ * operator-only history verbs.
+ */
+export const runnersCommand = (reach: RunnerReach, visibility: Visibility) => {
+  const {read: readScope, write: writeScope, register: registerScope} = reach.scopes;
+  const actionCommand = (name: string, action: RunnerAction) => Command.make(name, runnerId).pipe(
+    Command.withDescription(`Request ${name} (${writeScope})`), guardedHandler(({id}) => runnerAction(reach, id, action)),
+  );
+  const list = Command.make("list", platformPagingFlags).pipe(
+    Command.withDescription(`List runners (${readScope})`),
+    guardedHandler(({limit, startingAfter}) => runnersList(reach, {limit: opt(limit), startingAfter: opt(startingAfter)})),
+  );
+  const show = Command.make("show", runnerId).pipe(
+    Command.withDescription(`Show policy, capabilities, liveness, counters, and checks (${readScope})`),
+    guardedHandler(({id}) => runnerShow(reach, id)),
+  );
+  const register = Command.make("register", {
+    host: requiredTextFlag("host-id", "Host identity", "<host>"), policy: platformPolicyFlag,
+    labels: platformLabelsFlag, tokenFile: platformTokenFlag,
+  }).pipe(Command.withDescription(`Register a host and save its token (${registerScope})`),
+    guardedHandler(({host, policy, labels, tokenFile}) => runnerRegister(reach, host, {policy, labels: opt(labels)}, tokenFile)));
+  const update = Command.make("update", {...runnerId, policy: platformPolicyFlag.pipe(Flag.optional), labels: platformLabelsFlag}).pipe(
+    Command.withDescription(`Replace policy and/or labels (${writeScope})`),
+    guardedHandler(({id, policy, labels}) => runnerUpdate(reach, id, {policy: opt(policy), labels: opt(labels)})),
+  );
+  const rotate = Command.make("rotate-token", {...runnerId, tokenFile: platformTokenFlag}).pipe(
+    Command.withDescription(`Replace the runner token and save it once (${writeScope})`),
+    guardedHandler(({id, tokenFile}) => runnerRotate(reach, id, tokenFile)),
+  );
+  const remove = Command.make("delete", runnerId).pipe(
+    Command.withDescription(`Delete a revoked runner and its history (${writeScope})`), guardedHandler(({id}) => runnerDelete(reach, id)),
+  );
+  const events = Command.make("events", {...runnerId, ...platformPagingFlags,
+    eventType: requiredTextFlag("event-type", "Comma-separated runner event types").pipe(
+      Flag.filter(value => value.split(",").every(Schema.is(Schema.Enum(RunnerEventType))), () => "expected known runner event types separated by commas"), Flag.optional,
+    ),
+    since: sinceFlag, until: eventTimeFlag("until", false),
+  }).pipe(Command.withDescription(`Read runner activity (${readScope})`), guardedHandler(({id, limit, startingAfter, eventType, since, until}) =>
+    runnerHistory(id, RunnerHistory.Events, {limit: opt(limit), startingAfter: opt(startingAfter), eventType: opt(eventType), since: opt(since), until: opt(until)})));
+  const leases = Command.make("leases", {...runnerId, ...platformPagingFlags,
+    workspace: requiredIdFlag("workspace", "Filter by workspace").pipe(Flag.optional),
+    fleet: requiredTextFlag("fleet", "Filter by fleet ID or exact name").pipe(Flag.optional),
+  }).pipe(Command.withDescription(`Read runner leases (${readScope})`), guardedHandler(({id, limit, startingAfter, workspace, fleet}) =>
+    runnerHistory(id, RunnerHistory.Leases, {limit: opt(limit), startingAfter: opt(startingAfter), workspace: opt(workspace), fleet: opt(fleet)})));
+
+  // Registering is independent of the read/write ladder: a registrar sees
+  // `register` and nothing else unless the server also reported read.
+  const read = grants(visibility, readScope);
+  const registrable = grants(visibility, registerScope);
+  const write = grants(visibility, writeScope);
   const reads = listedWhen(read);
   const writes = listedWhen(write);
+  const history = reach.history ? [reads(events), reads(leases)] : [];
   return {
     listed: read || registrable || write,
     command: Command.make("runners").pipe(
-      Command.withDescription("Manage platform execution hosts"), Command.withSubcommands([
+      Command.withDescription(reach.description), Command.withSubcommands([
         reads(list), reads(show), listedWhen(registrable)(register), writes(update), writes(rotate), writes(remove),
-        reads(events), reads(leases),
+        ...history,
         writes(actionCommand("cordon", RunnerAction.Cordon)), writes(actionCommand("drain", RunnerAction.Drain)),
         writes(actionCommand("revoke", RunnerAction.Revoke)), writes(actionCommand("self-test", RunnerAction.SelfTest)),
       ]),
     ),
   };
 };
+
+export const platformRunnersCommand = (visibility: Visibility) => runnersCommand(PLATFORM_RUNNERS, visibility);
+
+export const tenantRunnersCommand = (visibility: Visibility) => runnersCommand(TENANT_RUNNERS, visibility);

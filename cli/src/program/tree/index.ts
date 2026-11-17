@@ -17,12 +17,15 @@ import { modelsCommand } from "./models.command.ts";
 import { secretsCommand } from "./secrets.command.ts";
 import { apiKeysCommand, connectionsCommand } from "./access.command.ts";
 import { platformCommand } from "./platform.command.ts";
-import { UNKNOWN_VISIBILITY, type Visibility } from "./visibility.ts";
+import { tenantRunnersCommand } from "./platform-runners.command.ts";
+import { UNKNOWN_VISIBILITY, listedWhen, type Visibility } from "./visibility.ts";
 import { CLI_NAME } from "../../constants/rejection.ts";
 
-// `Unknown` is the fail-closed default: no operator family is advertised.
-export const buildCommandTree = (visibility: Visibility = UNKNOWN_VISIBILITY) =>
-  Command.make(CLI_NAME).pipe(
+// `Unknown` is the fail-closed default: no operator family is advertised, and
+// neither is the tenant's `runners`, which needs a scope a platform admin grants.
+export const buildCommandTree = (visibility: Visibility = UNKNOWN_VISIBILITY) => {
+  const runners = tenantRunnersCommand(visibility);
+  return Command.make(CLI_NAME).pipe(
     Command.withDescription("agentsfleet cli"),
     Command.withSharedFlags(globalFlags),
     Command.withSubcommands([
@@ -38,5 +41,7 @@ export const buildCommandTree = (visibility: Visibility = UNKNOWN_VISIBILITY) =>
       apiKeysCommand(),
       usageCommand(),
       platformCommand(visibility),
+      listedWhen(runners.listed)(runners.command),
     ]),
   );
+};

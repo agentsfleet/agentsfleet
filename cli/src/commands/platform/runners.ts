@@ -1,20 +1,23 @@
 import {RunnerAction, RunnerHistory} from "./runner-vocabulary.ts";
-import { Clock, Effect } from "effect";
+import { Clock, Effect, Schema } from "effect";
 import {instantNanos} from "../../lib/instant.ts";
 import { eventTime } from "../../lib/event-time.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import { ADMIN_RUNNERS_PATH, decodePlatform, invalidInput, platformInput, platformPath, platformQuery, platformRequest, platformResult, readPlatformFile } from "./common.ts";
-import { RunnerDetailSchema, RunnerRegisteredSchema, RunnerEventsSchema, RunnerLabelsSchema, RunnerLeasesSchema, RunnerMutationSchema, RunnerPageSchema, RunnerPolicySchema, RunnerRotatedSchema } from "./runner-schema.ts";
+import { RegistrationReplaySchema, RunnerDetailSchema, RunnerRegisteredSchema, RunnerEventsSchema, RunnerLabelsSchema, RunnerLeasesSchema, RunnerMutationSchema, RunnerPageSchema, RunnerPolicySchema, RunnerRotatedSchema } from "./runner-schema.ts";
 import { withRunnerTokenFile } from "./token.ts";
+import type { RunnerReach } from "./runner-reach.ts";
+import { v7 as uuidv7 } from "uuid";
+import { ServerError } from "../../errors/index.ts";
 
 export type RunnerPaging = {readonly limit?: number | undefined; readonly startingAfter?: string | undefined};
 type RunnerRead = RunnerPaging & {readonly workspace?: string | undefined; readonly fleet?: string | undefined; readonly eventType?: string | undefined; readonly since?: string | undefined; readonly until?: string | undefined};
 type RunnerEdit = {readonly policy?: string | undefined; readonly labels?: string | undefined};
 const DEFAULT_ENGINE = "Bubblewrap";
 
-export const platformRunnersList = Effect.fn("platform.runners.list")(function* (options: RunnerPaging) {
-  const path = ADMIN_RUNNERS_PATH + platformQuery({limit: options.limit, starting_after: options.startingAfter});
+export const runnersList = Effect.fn("runners.list")(function* (reach: RunnerReach, options: RunnerPaging) {
+  const path = reach.path + platformQuery({limit: options.limit, starting_after: options.startingAfter});
   const page = yield* decodePlatform(RunnerPageSchema, yield* platformRequest({path}));
   const output = yield* Output;
   if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
@@ -25,8 +28,8 @@ export const platformRunnersList = Effect.fn("platform.runners.list")(function* 
   if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
 });
 
-export const platformRunnerShow = Effect.fn("platform.runners.show")(function* (id: string) {
-  const runner = yield* decodePlatform(RunnerDetailSchema, yield* platformRequest({path: platformPath(ADMIN_RUNNERS_PATH, id)}));
+export const runnerShow = Effect.fn("runners.show")(function* (reach: RunnerReach, id: string) {
+  const runner = yield* decodePlatform(RunnerDetailSchema, yield* platformRequest({path: platformPath(reach.path, id)}));
   yield* platformResult(runner, runner.host_id, {
     ID: runner.id, State: runner.status, Connection: runner.liveness, "Default engine": DEFAULT_ENGINE,
     "Isolation tier": runner.assigned_policy.sandbox_tier,
@@ -45,7 +48,7 @@ export const platformRunnerShow = Effect.fn("platform.runners.show")(function* (
   }
 });
 
-export const platformRunnerHistory = Effect.fn("platform.runners.history")(function* (id: string, kind: RunnerHistory, options: RunnerRead) {
+export const runnerHistory = Effect.fn("runners.history")(function* (id: string, kind: RunnerHistory, options: RunnerRead) {
   const now = yield* Clock.currentTimeMillis;
   const since = options.since === undefined ? undefined : eventTime(options.since, now, true);
   const until = options.until === undefined ? undefined : eventTime(options.until, now, false);
@@ -73,39 +76,57 @@ export const platformRunnerHistory = Effect.fn("platform.runners.history")(funct
   }
 });
 
-export const platformRunnerUpdate = Effect.fn("platform.runners.update")(function* (id: string, edit: RunnerEdit) {
+export const runnerUpdate = Effect.fn("runners.update")(function* (reach: RunnerReach, id: string, edit: RunnerEdit) {
   if (edit.policy === undefined && edit.labels === undefined) return yield* Effect.fail(invalidInput("Supply --policy or --labels"));
   const body = yield* runnerEdit(edit);
   const runner = yield* decodePlatform(RunnerMutationSchema, yield* platformRequest({
-    path: platformPath(ADMIN_RUNNERS_PATH, id), method: HTTP_METHOD.patch, body,
+    path: platformPath(reach.path, id), method: HTTP_METHOD.patch, body,
   }));
   yield* platformResult(runner, "Runner updated", {ID: runner.id, State: runner.status});
 });
 
-export const platformRunnerAction = Effect.fn("platform.runners.action")(function* (id: string, action: RunnerAction) {
-  const response = yield* platformRequest({path: platformPath(ADMIN_RUNNERS_PATH, id), method: HTTP_METHOD.patch, body: {action}});
+export const runnerAction = Effect.fn("runners.action")(function* (reach: RunnerReach, id: string, action: RunnerAction) {
+  const response = yield* platformRequest({path: platformPath(reach.path, id), method: HTTP_METHOD.patch, body: {action}});
   const runner = yield* decodePlatform(RunnerMutationSchema, response);
   yield* platformResult(runner, "Runner action requested", {ID: runner.id, Action: action, State: runner.status});
 });
 
-export const platformRunnerDelete = Effect.fn("platform.runners.delete")(function* (id: string) {
-  yield* platformRequest({path: platformPath(ADMIN_RUNNERS_PATH, id), method: HTTP_METHOD.delete});
+export const runnerDelete = Effect.fn("runners.delete")(function* (reach: RunnerReach, id: string) {
+  yield* platformRequest({path: platformPath(reach.path, id), method: HTTP_METHOD.delete});
   yield* platformResult({id, deleted: true}, "Runner deleted", {ID: id});
 });
 
-export const platformRunnerRegister = Effect.fn("platform.runners.register")(function* (host: string, edit: RunnerEdit & {readonly policy: string}, tokenFile: string) {
+const REPLAY_DETAIL = "This runner was registered earlier; its token was shown once and is never stored";
+
+export const runnerRegister = Effect.fn("runners.register")(function* (reach: RunnerReach, host: string, edit: RunnerEdit & {readonly policy: string}, tokenFile: string) {
   const body = {host_id: host, labels: [], ...yield* runnerEdit(edit)};
+  // One key per invocation: the CLI's own retries resend it, so a lost reply
+  // inside this run never registers twice. The platform route takes no key.
+  const request = reach.idempotentRegister
+    ? {path: reach.path, method: HTTP_METHOD.post, body, headers: {"Idempotency-Key": uuidv7()}}
+    : {path: reach.path, method: HTTP_METHOD.post, body, retry: {maxAttempts: 1}};
   return yield* withRunnerTokenFile(tokenFile, (save) => Effect.gen(function* () {
-    const registered = yield* decodePlatform(RunnerRegisteredSchema, yield* platformRequest({path: ADMIN_RUNNERS_PATH, method: HTTP_METHOD.post, body, retry: {maxAttempts: 1}}));
+    const answer = yield* platformRequest(request);
+    // A token-carrying answer first: a struct schema ignores extra keys, so the
+    // replay shape also matches a fresh registration.
+    const fresh = Schema.decodeUnknownOption(RunnerRegisteredSchema)(answer);
+    const replay = fresh._tag === "None" ? Schema.decodeUnknownOption(RegistrationReplaySchema)(answer) : fresh;
+    if (fresh._tag === "None" && replay._tag === "Some") {
+      return yield* Effect.fail(new ServerError({
+        detail: REPLAY_DETAIL, code: "", status: 200, requestId: null,
+        suggestion: `agentsfleet runners rotate-token ${replay.value.runner_id} --token-out <new-file>`,
+      }));
+    }
+    const registered = yield* decodePlatform(RunnerRegisteredSchema, answer);
     yield* save(registered.runner_token);
     yield* platformResult({runner_id: registered.runner_id, assigned_policy: registered.assigned_policy, token_file: tokenFile}, "Runner registered", {ID: registered.runner_id, "Token file": tokenFile});
   }));
 });
 
-export const platformRunnerRotate = Effect.fn("platform.runners.rotate")(function* (id: string, tokenFile: string) {
+export const runnerRotate = Effect.fn("runners.rotate")(function* (reach: RunnerReach, id: string, tokenFile: string) {
   return yield* withRunnerTokenFile(tokenFile, (save) => Effect.gen(function* () {
     const rotated = yield* decodePlatform(RunnerRotatedSchema, yield* platformRequest({
-      path: platformPath(ADMIN_RUNNERS_PATH, id), method: HTTP_METHOD.patch, body: {action: RunnerAction.Rotate}, retry: {maxAttempts: 1},
+      path: platformPath(reach.path, id), method: HTTP_METHOD.patch, body: {action: RunnerAction.Rotate}, retry: {maxAttempts: 1},
     }));
     yield* save(rotated.runner_token);
     yield* platformResult({id: rotated.id, token_file: tokenFile}, "Runner token rotated", {ID: rotated.id, "Token file": tokenFile});
