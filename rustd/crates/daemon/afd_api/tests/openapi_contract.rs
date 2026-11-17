@@ -234,14 +234,17 @@ fn test_shared_refusals_keep_their_shared_sentences() {
         ("500", &[INTERNAL]),
     ];
     let document = document();
-    let paths = document["paths"]
-        .as_object()
+    let paths = document
+        .get("paths")
+        .and_then(serde_json::Value::as_object)
         .expect("the document has paths");
     let mut drifted = Vec::new();
     for (path, item) in paths {
         for (method, operation) in item.as_object().expect("a path item is an object") {
             for (status, sentences) in &allowed {
-                let Some(description) = operation["responses"][*status]["description"].as_str()
+                let Some(description) = operation
+                    .pointer(&format!("/responses/{status}/description"))
+                    .and_then(serde_json::Value::as_str)
                 else {
                     continue;
                 };

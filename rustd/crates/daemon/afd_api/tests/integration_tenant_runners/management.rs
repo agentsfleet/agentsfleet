@@ -27,8 +27,9 @@ async fn tenant_lists_only_its_runners() {
 
     let listed =
         json_body(send(&a.router, Method::GET, TENANT_RUNNERS, Some(&a.token), "").await).await;
-    let mut ids: Vec<&str> = listed["items"]
-        .as_array()
+    let mut ids: Vec<&str> = listed
+        .get("items")
+        .and_then(Value::as_array)
         .expect("items")
         .iter()
         .map(|item| text(item, "id"))
@@ -37,10 +38,13 @@ async fn tenant_lists_only_its_runners() {
     let mut expected = vec![a1.as_str(), a2.as_str()];
     expected.sort_unstable();
     assert_eq!(ids, expected);
-    assert_eq!(listed["total"].as_i64(), Some(2));
+    assert_eq!(listed.get("total").and_then(Value::as_i64), Some(2));
     let first_page = format!("{TENANT_RUNNERS}?limit=1");
     let page = json_body(send(&a.router, Method::GET, &first_page, Some(&a.token), "").await).await;
-    assert_eq!(page["items"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        page.get("items").and_then(Value::as_array).map(Vec::len),
+        Some(1)
+    );
     fixture.cleanup().await;
 }
 
@@ -204,12 +208,12 @@ async fn platform_reach_cannot_rotate_or_edit_a_tenant_runner() {
     let rotate =
         json_body(operator_patch(&operator, &runner, r#"{"action":"rotate"}"#).await).await;
     assert_eq!(
-        rotate["error_code"].as_str(),
+        rotate.get("error_code").and_then(Value::as_str),
         Some("UZ-RUN-026"),
         "{rotate}"
     );
     assert_eq!(
-        rotate["current_state"].as_str(),
+        rotate.get("current_state").and_then(Value::as_str),
         Some("tenant_managed"),
         "{rotate}"
     );

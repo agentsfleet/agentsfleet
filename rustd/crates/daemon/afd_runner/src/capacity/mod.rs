@@ -63,6 +63,14 @@ impl<'a> From<(&'a Uuid7, &'a authority::Authority)> for Guard<'a> {
     }
 }
 
+/// Whether a locked host may take the work it was locked for, and whether a
+/// tenant owns it, as the host lock's statement answered both.
+#[derive(Debug, Clone, Copy, sqlx::FromRow)]
+struct Ownership {
+    serves: bool,
+    tenant_owned: bool,
+}
+
 /// Capacity observed while holding the host row until transaction completion.
 #[derive(Debug, Clone, Copy)]
 pub struct Capacity {
@@ -73,7 +81,7 @@ pub struct Capacity {
     renewals_allowed: bool,
     lease_version: i64,
     decision_selected: bool,
-    serves: bool,
+    ownership: Ownership,
 }
 
 impl Capacity {
@@ -82,7 +90,7 @@ impl Capacity {
     /// answers it under the lock, with the predicate the claim uses.
     #[must_use]
     pub const fn serves(self) -> bool {
-        self.serves
+        self.ownership.serves
     }
 
     /// Authoritative database time, read once the host lock was held.
@@ -120,8 +128,8 @@ struct Host {
     degraded: bool,
     lease_version: i64,
     decision_selected: bool,
-    serves: bool,
-    tenant_owned: bool,
+    #[sqlx(flatten)]
+    ownership: Ownership,
 }
 
 /// [`sql::CENSUS`]'s row.
@@ -139,8 +147,7 @@ pub struct Held {
     claims_allowed: bool,
     lease_version: i64,
     decision_selected: bool,
-    serves: bool,
-    tenant_owned: bool,
+    ownership: Ownership,
 }
 
 impl Held {
@@ -149,13 +156,13 @@ impl Held {
     /// answers it under the lock, with the predicate the claim uses.
     #[must_use]
     pub const fn serves(self) -> bool {
-        self.serves
+        self.ownership.serves
     }
 
     /// Whether a tenant registered this host, so no platform model key may reach it.
     #[must_use]
     pub const fn tenant_owned(self) -> bool {
-        self.tenant_owned
+        self.ownership.tenant_owned
     }
 
     /// Whether the host may take new work: active and not degraded. Whether a
@@ -197,8 +204,7 @@ pub async fn lock_host<'a>(
             claims_allowed: !host.degraded && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
             lease_version: host.lease_version,
             decision_selected: host.decision_selected,
-            serves: host.serves,
-            tenant_owned: host.tenant_owned,
+            ownership: host.ownership,
         }))
 }
 
@@ -271,7 +277,7 @@ pub async fn lock<'a>(
         renewals_allowed: !host.degraded && renewable_state(&host.status),
         lease_version: host.lease_version,
         decision_selected: host.decision_selected,
-        serves: host.serves,
+        ownership: host.ownership,
     }))
 }
 

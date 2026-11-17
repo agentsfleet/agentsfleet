@@ -106,10 +106,11 @@ pub const IGNORED: &str = "The signed event was ignored; the response explains w
 /// What a webhook receiver reads: the provider's own document.
 pub const DELIVERY: &str = "The provider's original event body; requires a valid signature";
 
-/// The five refusals every guarded route can answer around its own handler: no
-/// credential, a credential short a scope, a limit, a failure and an outage. An
-/// annotation lists what is particular to its route, then this, so the shared
-/// sentences are written once.
+/// The five refusals every guarded route can answer around its own handler.
+///
+/// No credential, a credential short a scope, a limit, a failure and an outage.
+/// An annotation lists what is particular to its route, then this, so the
+/// shared sentences are written once.
 #[cfg(feature = "openapi")]
 #[derive(Debug)]
 pub struct GuardedFailures;
@@ -213,7 +214,8 @@ mod tests {
             .into_iter()
             .map(|(status, response)| match response {
                 RefOr::T(response) => (status, response.description),
-                RefOr::Ref(_) => panic!("{status} is a reference, not a response"),
+                // A reference has no inline sentence, so the comparison below fails on it.
+                RefOr::Ref(_) => (status, String::new()),
             })
             .collect();
         let expected = [

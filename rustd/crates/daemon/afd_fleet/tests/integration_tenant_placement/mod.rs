@@ -65,16 +65,21 @@ async fn tenant_runner(fixtures: &Fixtures, tenant: &Uuid7, tag: &str) -> Uuid7 
         2,
         tag,
     );
-    let Registered::Created(enrolled) = fixtures
+    let registered = fixtures
         .runners()
         .register_tenant(tenant, &mint_id(), &request, fixtures.enrolled_at())
         .await
-        .expect("the tenant registers its runner")
-    else {
-        panic!("a fresh key registers a new runner");
+        .expect("the tenant registers its runner");
+    assert!(
+        matches!(registered, Registered::Created(_)),
+        "a fresh key registers a new runner"
+    );
+    let runner = match registered {
+        Registered::Created(enrolled) => enrolled.runner_id,
+        Registered::Replayed { runner_id, .. } => runner_id,
     };
-    reports_capable(fixtures, &enrolled.runner_id).await;
-    enrolled.runner_id
+    reports_capable(fixtures, &runner).await;
+    runner
 }
 
 /// A platform runner carrying `tag`, that has reported capable.

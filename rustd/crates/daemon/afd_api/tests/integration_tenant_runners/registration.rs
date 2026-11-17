@@ -22,7 +22,7 @@ async fn tenant_registers_a_tenant_runner() {
         created
             .headers()
             .get(http::header::CACHE_CONTROL)
-            .map(|v| v.as_bytes()),
+            .map(http::HeaderValue::as_bytes),
         Some(b"no-store".as_slice()),
         "the token response is never cached"
     );
@@ -109,9 +109,13 @@ async fn registration_retry_replays_without_the_token() {
     )
     .await;
     let other = json_body(other).await;
-    assert_eq!(other["error_code"].as_str(), Some("UZ-RUN-025"), "{other}");
     assert_eq!(
-        other["current_state"].as_str(),
+        other.get("error_code").and_then(Value::as_str),
+        Some("UZ-RUN-025"),
+        "{other}"
+    );
+    assert_eq!(
+        other.get("current_state").and_then(Value::as_str),
         Some("registered"),
         "{other}"
     );
@@ -177,7 +181,8 @@ async fn concurrent_registrations_with_one_key_leave_one_runner() {
         match status {
             StatusCode::CREATED => created += 1,
             StatusCode::OK => replayed += 1,
-            other => panic!("unexpected {other}"),
+            // Any other answer leaves the totals below short of every caller.
+            _ => {}
         }
         runners.insert(runner);
     }

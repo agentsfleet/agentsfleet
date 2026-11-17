@@ -214,7 +214,7 @@ fn text<'v>(value: &'v Value, key: &str) -> &'v str {
     value
         .get(key)
         .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("`{key}` in {value}"))
+        .expect("the response carries this string field")
 }
 
 async fn patch(caller: &Caller, runner: &Uuid7, body: &str) -> http::Response<axum::body::Body> {
