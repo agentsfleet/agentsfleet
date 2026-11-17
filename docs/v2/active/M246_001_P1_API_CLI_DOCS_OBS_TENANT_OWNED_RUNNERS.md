@@ -81,10 +81,10 @@ revoke: PATCH {"action":"revoke"} ─► status gate ─► M243 stream closes
 |------|--------|-----|
 | `docs/v2/pending/M246_001_P1_API_CLI_DOCS_OBS_TENANT_OWNED_RUNNERS.md` | EDIT, then MOVE to `active/` and `done/` | this spec |
 | `docs/v2/pending/M251_001_P1_API_CLI_DOCS_INFRA_OBS_UI_TENANT_RUNNERS_CONNECT_ROTATE_PROXY.md` | CREATE | the Sections this rescope moved out |
-| `schema/20261108123100_runner_runners.sql` | EDIT | §1: `tenant_id`, its index, the trigger that fixes it, and the tenant-or-decision-model check. No production deploy exists, so the table file is edited (`.github/workflows/` holds only `deploy-dev-*`) |
+| `schema/20261108123100_runner_runners.sql` | EDIT | §1: `tenant_id`, its index, the trigger that fixes it, and the tenant-or-decision-model check. No production deploy has run since the Nov 08 schema rebuild, so the table file is edited: `release.yml` defines `deploy-fly-prod`, but `gh run list --workflow release.yml` shows its last run on 2026-04-07 (`v0.4.0`) |
 | `schema/<UTC>_runner_enrolment_receipts.sql` | CREATE | §1: the enrolment retry receipt (SQL-RETRYKEY) |
 | `rustd/crates/daemon/afd_db/src/migration.rs`, `afd_db/tests/migrations.rs` | EDIT | §1: register the receipt slot (MIG) |
-| `rustd/crates/daemon/afd_fleet/tests/integration_runner_row.rs` | EDIT | §1: the tenant, check and erasure tests |
+| `rustd/crates/daemon/afd_fleet/tests/integration_runner_row.rs`, `fleet_suite.rs`, `support/fleet_tenant_runners.rs` (new) | CREATE, EDIT | §1: the tenant, check and erasure tests, and the tenant-runner row helpers §3 and §4 reuse |
 | `rustd/crates/daemon/afd_auth/src/scope.rs`, `afd_auth/tests/scope_catalogue.rs` | EDIT | §2: the `scopes!` catalogue, `ScopeSet` as `u64`, `Scope::RunnerTenant`, `TENANT_OWNER_GRANT` of 11 |
 | `rustd/crates/foundation/af_core/src/error_code/fleet.rs`, `error_code/mod.rs`, `problem/fleet.rs` | EDIT | §2, §3: `UZ-RUN-025`, `UZ-RUN-026`, `UZ-RUN-027` |
 | `rustd/crates/daemon/afd_runner/src/reach.rs`, `lib.rs` | CREATE, EDIT | §2: `Reach` and `Reach::admit` |
@@ -152,9 +152,9 @@ revoke: PATCH {"action":"revoke"} ─► status gate ─► M243 stream closes
 
 The deletion matrix gains the tenant's runners under Tenant, with their leases, history and counters. Receipts stay, holding opaque identifiers only, as other receipts do. **Implementation default:** the tenant lives on the row and rides the host lock, never on `Principal::Runner`. The lock read is the authority at placement, and a principal copy would be a staler second one. **Implementation default:** a trigger keeps the tenant fixed. A tenant runner flipped to NULL would become a platform runner and receive every tenant's work.
 
-- **Dimension 1.1** — the tenant cannot change → Test `runner_tenant_cannot_change` (integration): an `UPDATE` setting a tenant runner's `tenant_id` to NULL raises, and the row still names its tenant. The same `UPDATE` on a platform runner's `host_id` succeeds, so a trigger that refuses every update fails.
-- **Dimension 1.2** — a tenant runner holds no decision model → Test `tenant_runner_refuses_a_decision_model` (integration): setting `decision_platform_model_id` on a tenant runner violates the check; on a platform runner it succeeds.
-- **Dimension 1.3** — erasure takes only the tenant's runners → Test `tenant_erasure_takes_its_runners` (integration): deleting tenant A removes A's two runners and their leases. A platform runner, tenant B's runner and A's receipts remain.
+- **Dimension 1.1 — DONE** — the tenant cannot change → Test `runner_tenant_cannot_change` (integration): setting a tenant runner's `tenant_id` to NULL, a tenant runner's to another tenant, and a platform runner's to a tenant each raise the trigger's refusal, and the rows keep their tenants. Renaming a platform runner's host succeeds, so a trigger that refuses every update fails.
+- **Dimension 1.2 — DONE** — a tenant runner holds no decision model → Test `tenant_runner_refuses_a_decision_model` (integration): setting `decision_platform_model_id` on a tenant runner violates the check; on a platform runner it succeeds.
+- **Dimension 1.3 — DONE** — erasure takes only the tenant's runners → Test `tenant_erasure_takes_its_runners` (integration): deleting tenant A removes A's two runners and their leases. A platform runner, tenant B's runner and A's receipts remain.
 
 ### §2 — Tenants enrol and manage their own runners
 

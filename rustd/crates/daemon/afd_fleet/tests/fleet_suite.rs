@@ -44,6 +44,8 @@ mod rows;
 mod seed;
 #[path = "support/fleet_fixtures.rs"]
 mod support;
+#[path = "support/fleet_tenant_runners.rs"]
+mod tenant_runners;
 #[path = "support/view_heartbeat.rs"]
 mod view_heartbeat;
 
