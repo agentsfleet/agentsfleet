@@ -128,12 +128,12 @@ impl LeaseCgroup {
             let error_code = refusal.code().as_str();
             let reason = leftover.to_string();
             let event = EVENT_CGROUP_LEFT;
-            tracing::warn!(
-                error_code,
-                reason,
-                event,
-                "a cgroup whose limits failed could not be removed"
-            );
+            {
+                let (message,) = (format_args!(
+                    "a cgroup whose limits failed could not be removed"
+                ),);
+                tracing::warn!(message, error_code, reason, event);
+            };
         }
         refusal
     }

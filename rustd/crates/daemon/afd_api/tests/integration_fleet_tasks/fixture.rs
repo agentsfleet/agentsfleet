@@ -185,6 +185,10 @@ impl<'lane> Owner<'lane> {
         }
     }
 
+    pub(super) const fn tenant(&self) -> &Uuid7 {
+        &self.tenant
+    }
+
     pub(super) async fn other_workspace(&self) -> Uuid7 {
         let id = mint_id();
         let mut connection = self.database.acquire().await.expect("workspace connection");

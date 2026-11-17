@@ -100,7 +100,7 @@ async fn a_once_fire_at_follows_the_rows_own_stamp() {
         "{fire_at} after {}",
         created.created_at
     );
-    let wall = fire_at.to_zoned(TimeZone::UTC).datetime();
+    let wall = fire_at.to_zoned_datetime(TimeZone::UTC).datetime();
     assert_eq!(
         (wall.month(), wall.day(), wall.hour(), wall.minute()),
         (3, 15, 9, 5),

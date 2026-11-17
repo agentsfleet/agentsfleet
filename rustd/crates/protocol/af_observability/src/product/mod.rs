@@ -65,10 +65,10 @@ impl Analytics {
     /// `host` is the ingestion host, when this deployment names one — a
     /// self-hosted `PostHog`, or the EU region. `None` is `PostHog`'s own default.
     pub async fn resolve(project_key: &str, host: Option<&str>) -> Self {
-        let mut options = ClientOptions::from(project_key);
-        if let Some(host) = host {
-            options = ClientOptions::from((project_key, host));
-        }
+        let options = host.map_or_else(
+            || ClientOptions::from(project_key),
+            |host| ClientOptions::from((project_key, host)),
+        );
         Self(Sink::PostHog(Arc::new(posthog_rs::client(options).await)))
     }
 

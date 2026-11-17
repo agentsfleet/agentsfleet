@@ -5,6 +5,9 @@ import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import type { WaitingInvite } from "@/lib/api/invites";
 import { listWaitingInvitesCached } from "@/lib/invites";
+import { ModelLabelsProvider } from "@/components/domain/models/ModelLabels";
+import { NO_MODEL_LABELS } from "@/lib/model-labels";
+import { modelLabelsCached } from "@/lib/model-labels-server";
 
 const NO_WAITING_INVITES: WaitingInvite[] = [];
 
@@ -37,6 +40,9 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const token = await credential();
+  // Start the shared read alongside the shell; only label consumers suspend.
+  // The Usage frame can stream while names load, without an identifier/name swap.
+  const labels = token ? modelLabelsCached(token).catch(() => NO_MODEL_LABELS) : undefined;
   const [listResult, billing, waitingInvites] = token
     ? await readShell(token)
     : [{ items: [], total: 0 }, null, NO_WAITING_INVITES];
@@ -64,7 +70,7 @@ export default async function DashboardLayout({
         billing={billing}
         waitingInvites={waitingInvites}
       >
-        {children}
+        <ModelLabelsProvider labels={NO_MODEL_LABELS} pending={labels}>{children}</ModelLabelsProvider>
       </ShellFrame>
     </TooltipProvider>
   );

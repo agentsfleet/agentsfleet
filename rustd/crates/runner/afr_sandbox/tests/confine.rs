@@ -170,7 +170,7 @@ fn keep_profiles(scratch: &Path, collected: &Path) -> std::io::Result<()> {
             .extension()
             .is_some_and(|extension| extension == PROFILE_EXTENSION)
         {
-            let name: OsString = path.file_name().map(ToOwned::to_owned).unwrap_or_default();
+            let name: OsString = path.file_name().map_or_default(ToOwned::to_owned);
             fs::copy(&path, collected.join(name))?;
         }
     }

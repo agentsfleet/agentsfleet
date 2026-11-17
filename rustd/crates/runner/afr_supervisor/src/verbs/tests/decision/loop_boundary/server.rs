@@ -86,11 +86,11 @@ impl Server {
             .await;
         }
         let calls = self.calls.lock().unwrap();
-        let reservations: Vec<_> = calls
+        let reservations = calls
             .iter()
             .filter(|(path, _)| path.ends_with("/tasks/decisions"))
-            .collect();
-        assert_eq!(reservations.len(), 1);
+            .count();
+        assert_eq!(reservations, 1);
         let records: Vec<_> = calls
             .iter()
             .filter(|(path, _)| path.contains("/tasks/decisions/"))

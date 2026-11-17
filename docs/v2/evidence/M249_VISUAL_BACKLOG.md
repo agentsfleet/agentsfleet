@@ -10,7 +10,7 @@ Source repairs and diagnostic results are recorded in M249_VERIFICATION.md. They
 
 Indy stopped additional ZIPs and full capture delivery. Use targeted internal measurements and native regression checks; Indy reviews the PR preview or deployment.
 
-Backend data differences belong to [M249_004](../pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md), not this visual backlog.
+Backend data differences belong to [M249_004](../done/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md), not this visual backlog.
 
 ## Current verification status
 

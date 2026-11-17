@@ -17,6 +17,7 @@
  * table, in a window that holds a full page of rows.
  */
 import { expect, type Page, test } from "@playwright/test";
+import { pluginsUiEnabled } from "@/lib/plugin-ui";
 import { v7 } from "uuid";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY, PLUGIN_LAYOUT_WORKSPACE_NAME } from "./fixtures/constants";
@@ -103,6 +104,13 @@ test.describe("measured placement", () => {
     await seedPluginEntry(workspaceId, name);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspaceId, WORKSPACE_PLUGIN));
+    if (!pluginsUiEnabled()) {
+      // Paused Plugin pages stream the not-found page; it still fits the phone.
+      await expect(page.getByRole("heading", {name: "Page not found", exact: true})).toBeVisible();
+      const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(sideways).toBeLessThanOrEqual(LINE_TOLERANCE_PX);
+      return;
+    }
     const row = page.getByRole("listitem").filter({hasText: name});
     await row.getByRole("button", {name: `Manage ${name}`, exact: true}).click();
     const start = page.getByRole("button", {name: "Use for new fleet", exact: true});

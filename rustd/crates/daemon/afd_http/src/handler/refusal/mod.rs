@@ -152,13 +152,10 @@ impl Refusal {
         let request_id = RequestId::mint();
         let code = error_code::SSE_STREAM_CAP.as_str();
         let id = request_id.as_str();
-        tracing::warn!(
-            error_code = code,
-            request_id = id,
-            carrying,
-            capacity,
-            event = "stream_cap_rejected",
-        );
+        {
+            let (error_code, request_id, event) = (&code, &id, &"stream_cap_rejected");
+            tracing::warn!(error_code, request_id, carrying, capacity, event);
+        };
         Self(Box::new(
             (
                 [(header::RETRY_AFTER, HeaderValue::from(RETRY_AFTER_SECONDS))],

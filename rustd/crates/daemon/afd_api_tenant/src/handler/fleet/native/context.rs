@@ -119,7 +119,7 @@ async fn current<D: Services>(
 fn activity_page(receipts: Vec<afd_events::EventDetailRow>) -> CursorPage<SetupActivity> {
     let next = receipts
         .get(25)
-        .and(receipts.get(24))
+        .and_then(|_| receipts.get(24))
         .map(|last| afd_events::Cursor::after(last.row.created_at, &last.row.event_id).encode());
     let activities = receipts
         .into_iter()

@@ -26,6 +26,7 @@ pub(crate) use self::api_key::{delete, list, mint, revoke};
 pub(crate) use self::billing::{charges as billing_charges, snapshot as billing_snapshot};
 // The refusal sentences, for the router suite to assert by identity.
 pub use self::billing::{DETAIL_LIMIT_NOT_NUMERIC, DETAIL_LIMIT_RANGE};
+pub use self::billing_report::{DETAIL_CHARGES_REMOVED, DETAIL_MODEL};
 pub(crate) use self::identity::current as current_user;
 pub(crate) use self::model_entry::list as list_model_entries;
 pub(crate) use self::model_entry::write::{

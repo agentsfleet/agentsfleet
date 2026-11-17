@@ -152,18 +152,23 @@ pub(super) async fn readyz<D: Dependencies>(State(dependencies): State<Arc<D>>) 
             // `warn` once per probe: an operator should see the bus is down,
             // and the instance keeps serving because Postgres backs every signal.
             let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::warn!(
-                event = EVENT_BUS_UNAVAILABLE,
-                error_code,
-                "the bus did not answer; readiness holds on the database"
-            );
+            {
+                let (event, message) = (
+                    &EVENT_BUS_UNAVAILABLE,
+                    format_args!("the bus did not answer; readiness holds on the database"),
+                );
+                tracing::warn!(message, event, error_code);
+            };
         }
-        tracing::trace!(
-            database = inputs.database,
-            queue = inputs.queue,
-            event = "readiness_probed",
-            "readiness probed"
-        );
+        {
+            let (database, queue, event, message) = (
+                &inputs.database,
+                &inputs.queue,
+                &"readiness_probed",
+                format_args!("readiness probed"),
+            );
+            tracing::trace!(message, database, queue, event);
+        };
         StatusCode::OK
     } else {
         // Hoisted out of the macro: `tracing`'s `log` feature compiles a second
@@ -173,13 +178,16 @@ pub(super) async fn readyz<D: Dependencies>(State(dependencies): State<Arc<D>>) 
         // `warn`, not `error`: the instance is behaving correctly by refusing
         // traffic, and the incident belongs to whichever dependency is down.
         // An `error` here would page for someone else's outage twice.
-        tracing::warn!(
-            error_code = code,
-            database = inputs.database,
-            queue = inputs.queue,
-            event = "readiness_refused",
-            "instance is not ready — refusing traffic until dependencies answer"
-        );
+        {
+            let (error_code, database, queue, event, message) = (
+                &code,
+                &inputs.database,
+                &inputs.queue,
+                &"readiness_refused",
+                format_args!("instance is not ready — refusing traffic until dependencies answer"),
+            );
+            tracing::warn!(message, error_code, database, queue, event);
+        };
         StatusCode::SERVICE_UNAVAILABLE
     };
 

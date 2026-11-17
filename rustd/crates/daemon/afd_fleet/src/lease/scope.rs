@@ -147,12 +147,15 @@ fn binding_of(definition: &str) -> Option<RepositoryBinding> {
         Ok(definition) => definition.runtime().repository_binding().cloned(),
         Err(unreadable) => {
             let Logged { error_code, reason } = unreadable.logged();
-            tracing::warn!(
-                event = EVENT_CONFIG_UNPARSED,
-                error_code,
-                reason,
-                "a fleet's stored config would not parse; a repository-scoped mint will refuse"
-            );
+            {
+                let (event, message) = (
+                    &EVENT_CONFIG_UNPARSED,
+                    format_args!(
+                        "a fleet's stored config would not parse; a repository-scoped mint will refuse"
+                    ),
+                );
+                tracing::warn!(message, event, error_code, reason);
+            };
             None
         }
     }

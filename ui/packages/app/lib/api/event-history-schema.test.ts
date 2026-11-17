@@ -1,11 +1,11 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { row } from "@/tests/helpers/event-summary-fixtures";
-import { listFleetEvents, listWorkspaceEvents } from "./events";
+import { listWorkspaceEvents } from "./events";
 
 const fetchMock = vi.fn<typeof fetch>();
 vi.stubGlobal("fetch", fetchMock);
 afterEach(() => fetchMock.mockReset());
-const readers = [() => listFleetEvents("workspace", "fleet", "session"), () => listWorkspaceEvents("workspace", "session")];
+const readers = [() => listWorkspaceEvents("workspace", "session")];
 
 it.each(readers)("accepts recorded facts and future event names without losing precision", async (read) => {
   const event = row({event_type: "future_trigger", status: "future_status", cost_nanos: "9007199254740993", created_at: "2026-10-19T00:00:00.125Z"});

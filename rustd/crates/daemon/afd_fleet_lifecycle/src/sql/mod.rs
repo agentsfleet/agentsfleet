@@ -67,6 +67,12 @@ pub(crate) const DELETE_FLEET: &str = include_str!("delete_fleet.sql");
 /// window; a live one would name a fleet that no longer exists, and goes here.
 pub(crate) const DELETE_ACTIVE_LEASES: &str = include_str!("delete_active_leases.sql");
 
+/// Which runnable fleets may read each secret, from the revisions a lease reads.
+///
+/// `$1` workspace · `$2` the runnable status. One row per secret name and
+/// fleet, ordered by name; see the statement's note for which revisions count.
+pub(crate) const SELECT_SECRET_ACCESS: &str = include_str!("select_secret_access.sql");
+
 /// Every fleet identifier in one workspace.
 ///
 /// `$1` workspace. No ORDER BY: the caller collects into a `BTreeSet`, which

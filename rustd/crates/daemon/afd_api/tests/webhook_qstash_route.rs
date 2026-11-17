@@ -129,7 +129,7 @@ pub(crate) fn mint(claims: &FireClaims, key: &str) -> String {
     jsonwebtoken::encode(
         &Header::new(Algorithm::HS256),
         claims,
-        &EncodingKey::from_secret(key.as_bytes()),
+        &EncodingKey::from_secret(key.as_bytes()).expect("a fixture signing key is not empty"),
     )
     .expect("the fixture claims serialise")
 }

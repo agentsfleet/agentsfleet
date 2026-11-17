@@ -57,7 +57,7 @@ async fn malformed_proposal_keeps_known_usage_and_replays_a_nonexecutable_refusa
                 .expect("bounded correction feedback");
             assert!(
                 matches!(result.proposal_calls.first(), Some(ProposalCall::Refused {
-            id, reason: ProposalRejection::InvalidArguments,
+            id, reason: ProposalRejection::InvalidArguments, detail: None,
         }) if id == "call_bad")
             );
         }

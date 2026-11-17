@@ -4,3 +4,4 @@ SET balance_nanos = balance_nanos - $2,
                         ELSE NULL END,
     updated_at = now()
 WHERE tenant_id = $1
+RETURNING old.exhausted_at IS NULL AND new.exhausted_at IS NOT NULL AS exhausted_now

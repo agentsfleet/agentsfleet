@@ -63,14 +63,31 @@ Clippy's `map_err_ignore` catches the `|_|` form, but the `to_string()` form nee
 
 ## The fallible path
 
-### FN-RS — The fallible path is a pipeline of `?` and combinators, and a `match` appears only where its arms carry different logic.
+### FN-RS — The fallible path is a pipeline of `?` and combinators, and a `match` or `if let` on an `Option` or `Result` appears only where its arms carry different logic.
 - **Applies to:** `**/*.rs`
-- **Checked by:** review
-- **Bad:** `match load(path) { Ok(raw) => match parse(&raw) { Ok(c) => c, Err(e) => return Err(e.into()) }, Err(e) => return Err(e.into()) }`
-- **Good:** `let config = parse(&load(path)?)?;`
-- **Why:** each hand-plumbed failure arm is another place the error can be swallowed.
+- **Checked by:** Clippy, where the workspace denies `option_if_let_else`, `manual_let_else`, `map_unwrap_or`, `manual_map`, `manual_ok_or` and `question_mark`; review for the shapes no lint names
+- **Bad:** `match load(path) { Ok(raw) => match parse(&raw) { Ok(c) => c, Err(e) => return Err(e.into()) }, Err(e) => return Err(e.into()) }`; `if let Some(v) = value { render(v) } else { String::new() }`
+- **Good:** `let config = parse(&load(path)?)?;`; `value.map_or_default(render)`
+- **Why:** each hand-plumbed arm is another place a value or an error can be dropped, and one method names the whole intent.
 
-`map`, `and_then`, `ok_or_else` and `unwrap_or_else` transform success and pass failure through in one line.
+Pick the one method that says the intent:
+
+| Intent | Method | Not |
+|---|---|---|
+| Transform the value | `map(f)` | a hand-written `match` |
+| Transform, or the type's default | `map_or_default(f)` | `map(f).unwrap_or_default()`, `if let … else { Default::default() }` |
+| Transform, or a fixed fallback | `map_or(x, f)` | `map(f).unwrap_or(x)` |
+| Transform, or a computed fallback | `map_or_else(g, f)` | `map(f).unwrap_or_else(g)`, `if let … else { g() }` |
+| A step that can fail or be empty | `and_then(f)` | `map(f).flatten()` |
+| Test the value | `is_some_and(p)` / `is_ok_and(p)` | `map_or(false, p)` |
+| Test, with absent counting as true | `is_none_or(p)` | `map_or(true, p)` |
+| Keep a value that passes | `filter(p)` | `and_then(\|v\| p(&v).then_some(v))` |
+| `Option` to `Result` | `ok_or(e)` / `ok_or_else(f)` | a `match` |
+| `Result` to `Option` | `ok()` | a `match` |
+| Change the error | `?` through a `From` impl; `map_err` only to add context (RS-MAPERR) | rebuilding the error in a `match` |
+| Leave early when absent | `let Some(v) = value else { return … };` | a nested `if let` |
+
+Use the `_else` form when the fallback allocates or has a side effect, so it runs only when needed. A repository that enables these lints workspace-wide enforces the rule on every new crate. A repository that has not yet enabled them turns them on crate by crate as it converts.
 
 ### RS-SENTINEL — A fallible function returns `Result`, an absent value is an `Option`, and no sentinel stands in for either.
 - **Applies to:** `**/*.rs`

@@ -67,7 +67,8 @@ pub(super) fn authoring(
 #[derive(Debug)]
 pub(super) struct Outbound {
     pub(super) schedules: afd_api::SchedulePlane,
-    /// The scheduler the fire route verifies through.
+    /// The scheduler the fire route verifies through, and a chat save
+    /// registers its trigger schedules through.
     pub(super) scheduler: Arc<dyn afd_cron::Scheduler>,
     pub(super) connectors: afd_connector::Connectors,
     pub(super) interjector: afd_outbound::Interjector,

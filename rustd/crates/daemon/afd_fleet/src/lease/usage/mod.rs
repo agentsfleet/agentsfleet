@@ -64,13 +64,7 @@ impl Pricing {
             .await
             .unwrap_or_else(|fault| {
             let Logged { error_code, reason } = fault.logged();
-            tracing::warn!(
-                error_code,
-                lease_id,
-                reason,
-                event = EVENT_TOKENS_UNPRICED,
-                "the catalogue could not be read; the run fee is charged and the tokens are logged unpriced"
-            );
+            { let (event, message,) = (&EVENT_TOKENS_UNPRICED, format_args!("the catalogue could not be read; the run fee is charged and the tokens are logged unpriced"),); tracing::warn!(message, error_code, lease_id, reason, event); };
             PriceBook::default()
         });
         Self::of(book, posture, provider, model)

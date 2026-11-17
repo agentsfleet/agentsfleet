@@ -2,6 +2,7 @@ import { ev, mockStream, renderThread, threadElement } from "./harness";
 import { describe, expect, it } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { OUTCOME } from "@/lib/events/event-summary";
+import { REPLY_ACTIONS_TEST_ID } from "@/components/domain/activity/replies/FleetReplyActions";
 
 // The reply as assistant-ui message parts, rendered through the real runtime:
 // the operator's turn splits into its trigger and a reply message whose status
@@ -10,6 +11,7 @@ import { OUTCOME } from "@/lib/events/event-summary";
 const COMPOSER_NAME = "Message your fleet…";
 const TOOL_CALLS = "Tool activity";
 const COPY_REPLY = "Copy reply";
+const QUOTE_REPLY = "Quote reply";
 const TOOL_STARTED_AT_MS = 1_000;
 const TOOL_WALL_MS = 700;
 
@@ -85,6 +87,27 @@ describe("FleetThread — reply parts", () => {
     // The operator's row is always laid out: the viewport's top anchor pins it
     // by its height, and a skipped row would report a stand-in height.
     expect(messageRoot(screen.getByText("Go")).getAttribute("data-settled")).toBeNull();
+  });
+
+  it("should reserve the action bar's height while streaming and fill that same slot when the reply settles", () => {
+    const streaming = ev({ id: "evt_reserve", role: "user", actor: "operator", text: "Go", status: "received", reply: "Half an answer" });
+    mockStream([streaming]);
+    const view = renderThread();
+    const slot = within(replyRow()).queryByTestId(REPLY_ACTIONS_TEST_ID);
+    // The slot holds its full height before the answer is final, with nothing
+    // inside it to focus or announce.
+    expect(slot?.className ?? "").toMatch(/\bh-11\b/);
+    expect(slot?.childElementCount).toBe(0);
+    expect(slot?.textContent).toBe("");
+
+    mockStream([{ ...streaming, status: "processed", reply: "The whole answer" }]);
+    view.rerender(threadElement());
+    const settled = within(replyRow()).getByTestId(REPLY_ACTIONS_TEST_ID);
+    // The same node, so settling adds controls without mounting new height.
+    expect(settled).toBe(slot);
+    expect(settled.className).toMatch(/\bh-11\b/);
+    expect(within(settled).getByRole("button", { name: COPY_REPLY })).toBeTruthy();
+    expect(within(settled).getByRole("button", { name: QUOTE_REPLY })).toBeTruthy();
   });
 
   it("test_outcome_floor_without_text_part", () => {

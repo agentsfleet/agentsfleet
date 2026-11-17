@@ -53,9 +53,15 @@ impl Restore<'_> {
                 },
             )
             .await?;
-        let objects: Vec<Object> = response.objects.into_iter().map(Object::from).collect();
+        let unexpected = !response.objects.is_empty();
+        // Wrapped so each unexpected object's data key is wiped as it drops.
+        response
+            .objects
+            .into_iter()
+            .map(Object::from)
+            .for_each(drop);
         let plan = response.plan;
-        if !objects.is_empty()
+        if unexpected
             || plan.checkpoint_id != base.checkpoint_id
             || plan.base_id != base.base_id
             || plan.format_version != CHECKPOINT_FORMAT
@@ -158,9 +164,15 @@ impl Restore<'_> {
                 },
             )
             .await?;
-        let objects: Vec<Object> = response.objects.into_iter().map(Object::from).collect();
+        let unexpected = !response.objects.is_empty();
+        // Wrapped so each unexpected object's data key is wiped as it drops.
+        response
+            .objects
+            .into_iter()
+            .map(Object::from)
+            .for_each(drop);
         let plan = response.plan;
-        if !objects.is_empty()
+        if unexpected
             || plan.checkpoint_id != checkpoint.as_str()
             || plan.format_version != CHECKPOINT_FORMAT
             || plan.toolbox_digest != self.toolbox
@@ -426,3 +438,7 @@ fn overlay(entries: &mut BTreeMap<String, CheckpointEntry>, entry: CheckpointEnt
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests/restore/nonempty.rs"]
+mod nonempty_tests;

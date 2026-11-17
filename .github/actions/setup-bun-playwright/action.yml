@@ -18,17 +18,14 @@ inputs:
   lock-file:
     description: Lockfile path (from repo root) whose hash keys the cache
     required: true
-  bun-version:
-    description: Bun toolchain pin
-    required: false
-    default: 1.4.4
 
 runs:
   using: composite
   steps:
     - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       with:
-        bun-version: ${{ inputs.bun-version }}
+        # package.json's packageManager is the one Bun pin.
+        bun-version-file: package.json
 
     - name: Install dependencies (BEFORE any secret load)
       shell: bash
@@ -39,7 +36,7 @@ runs:
       id: playwright-version
       shell: bash
       run: |
-        PLAYWRIGHT_VERSION="$(bunx playwright --version | awk '{print $2}')"
+        PLAYWRIGHT_VERSION="$(bunx --no-install playwright --version | awk '{print $2}')"
         test -n "$PLAYWRIGHT_VERSION"
         echo "version=$PLAYWRIGHT_VERSION" >> "$GITHUB_OUTPUT"
       working-directory: ${{ inputs.working-directory }}
@@ -58,8 +55,8 @@ runs:
       shell: bash
       run: |
         if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
-          bunx playwright install chromium
+          bunx --no-install playwright install chromium
         else
-          bunx playwright install --with-deps chromium
+          bunx --no-install playwright install --with-deps chromium
         fi
       working-directory: ${{ inputs.working-directory }}

@@ -326,7 +326,9 @@ A missed budget is a design finding, and the threshold never loosens silently.
 - **Good:** the commands `.orly/orly.json` declares, such as `verify.unit` and `verify.integration`
 - **Why:** a package run skips every other crate and the TypeScript coverage gates.
 
-`orly gate pr` runs every declared command itself and never infers success from a push.
+`orly gate pr` verifies every declared command and never infers success from a push. Explicit reuse requires the repository's reviewed hermetic policy and valid current-input completion evidence.
+
+Retain the original command, output, counts and run provenance when a result is reused. Live datastore and network observations remain fresh unless an explicit supported freshness policy exists.
 
 ### TEST-CLAIM — A claim that tests pass names the command it ran and the counts it printed.
 - **Applies to:** done messages, Pull Request descriptions and Session Notes
@@ -341,6 +343,10 @@ A missed budget is a design finding, and the threshold never loosens silently.
 - **Bad:** "Tests pass" while Docker was down and the integration lane never started
 - **Good:** "`verify.integration` not run: Docker unavailable; unit lane passed with the counts above."
 - **Why:** a hidden skip reads as proof.
+
+Report passed, failed, blocked, cancelled, skipped and not run separately. A later successful retry is a new observation; keep the earlier failed gate and its reason.
+
+Expected conditional post-deploy skips stay visible and never become passes. Required unrun checks keep the boundary closed.
 
 ### TEST-EXIT — A verdict is the command's own logged exit status, never a pipeline's last stage, a trailing `echo`, a background notice or `| tail`.
 - **Applies to:** agents and scripts that judge a command's result
@@ -364,6 +370,10 @@ The zsh shell has no `PIPESTATUS` array, and `sh -c 'false | tail -1; echo $?'` 
 - **Bad:** `.unwrap_or(0)` turning a failed count query into "zero rows"; an empty search over a mistyped path
 - **Good:** `.expect("count tenant rows")`; the same search run first on a file known to match
 - **Why:** a check that cannot find anything reports absence for free.
+
+A baseline failure claim cites the exact base revision and its deciding output. Measure a missing baseline lane in an isolated checkout at that revision.
+
+Distinguish an invocation or environment prerequisite failure from a product assertion failure. Retry the affected lane or job when justified; a green retry alone does not establish that a race was repaired.
 
 ### TEST-DELTA — A diff that adds code adds tests: the unit count rises over the recorded baseline, or the Pull Request says why not.
 - **Applies to:** code-adding branches before the Pull Request opens

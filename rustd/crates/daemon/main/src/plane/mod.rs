@@ -136,7 +136,7 @@ impl ServingPlane {
         let common = construction::Common::new(&parts);
         let database = parts.database;
         let kek = parts.kek;
-        let authoring = surfaces::authoring(
+        let mut authoring = surfaces::authoring(
             common.drafts,
             &kek,
             &common.providers,
@@ -160,6 +160,11 @@ impl ServingPlane {
                 slack_api_base: parts.slack_api_base,
             },
         );
+        // Before the gateway clones it: a chat save registers its trigger
+        // schedules through the scheduler the schedule routes push through.
+        authoring.creations = authoring
+            .creations
+            .with_scheduler(Arc::clone(&outbound.scheduler));
         let native = construction::NativeInputs {
             database: &database,
             kek,

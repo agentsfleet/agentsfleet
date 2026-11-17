@@ -9,6 +9,8 @@ pub(super) enum Refusal {
     None,
     Plan,
     Commit,
+    Inputs,
+    Restore,
 }
 pub(super) struct Archive {
     pub(super) refusal: Refusal,
@@ -33,12 +35,23 @@ impl Archive {
         use axum::http::StatusCode;
         self.calls.push((path.to_owned(), body.clone()));
         if path.ends_with("/inputs") {
-            return (StatusCode::OK, fixture::inputs());
+            if self.refusal == Refusal::Inputs {
+                return (StatusCode::CONFLICT, json!({"error_code":"UZ-RUN-011"}));
+            }
+            let mut inputs = fixture::inputs();
+            if self.refusal == Refusal::Restore {
+                inputs["current_task"]["checkpoint_id"] = json!(CHECKPOINT);
+                inputs["current_task"]["checkpoint_generation"] = json!(1);
+            }
+            return (StatusCode::OK, inputs);
         }
         if path.ends_with("/effects") {
             return (StatusCode::OK, json!({"effects":[],"next_cursor":null}));
         }
         assert_eq!(body.get("fencing_token"), Some(&json!(super::FENCING)));
+        if path.ends_with("/authorizations") && self.refusal == Refusal::Restore {
+            return (StatusCode::CONFLICT, json!({"error_code":"UZ-RUN-011"}));
+        }
         if path.ends_with("/decisions") {
             let input: DecisionReservationInput = serde_json::from_value(body).unwrap();
             self.decision = Some(input.operation_id.clone());

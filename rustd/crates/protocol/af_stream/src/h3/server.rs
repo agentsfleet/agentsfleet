@@ -224,9 +224,7 @@ where
             ServerH3Event::Core(
                 H3Event::IncomingSettings { .. } | H3Event::BodyBytesReceived { .. },
             ) => Ok(ControlFlow::Continue(())),
-            ServerH3Event::Core(H3Event::IncomingHeaders(_) | H3Event::NewFlow { .. }) => {
-                Err(ErrorKind::Protocol.into())
-            }
+            ServerH3Event::Core(H3Event::IncomingHeaders(_)) => Err(ErrorKind::Protocol.into()),
         }
     }
 }

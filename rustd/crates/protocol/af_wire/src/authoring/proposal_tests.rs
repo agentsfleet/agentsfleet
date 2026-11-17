@@ -1,6 +1,6 @@
 //! Pin the successful wire and refuse ambiguous executable/refused objects.
 
-use super::{ProposalCall, ProposalRejection};
+use super::{ProposalCall, ProposalRejection, REFUSAL_TEXT_BYTES_MAX, RefusalDetail};
 use crate::authoring::Proposal;
 use serde_json::{Value, json};
 
@@ -44,6 +44,7 @@ fn each_refusal_round_trips_without_an_executable_proposal()
         let call: ProposalCall = ProposalCall::Refused {
             id: "provider-call".into(),
             reason,
+            detail: None,
         };
         let expected = json!({"id":"provider-call", "reason":spelling});
         assert_eq!(serde_json::to_value(&call)?, expected);
@@ -110,14 +111,15 @@ fn missing_outcomes_unknown_reasons_and_discriminators_are_rejected()
 
 #[cfg(feature = "openapi")]
 #[test]
-fn each_published_alternative_rejects_unknown_fields() -> Result<(), Box<dyn std::error::Error>> {
+fn each_published_alternative_caps_its_declared_fields() -> Result<(), Box<dyn std::error::Error>> {
     let schema = serde_json::to_value(<ProposalCall as utoipa::PartialSchema>::schema())?;
     let alternatives = schema
         .get("oneOf")
         .and_then(Value::as_array)
         .ok_or("exclusive call alternatives")?;
     assert_eq!(alternatives.len(), 2);
-    for payload in ["proposal", "reason"] {
+    // Only a refusal carries an optional field: the checker's detail.
+    for (payload, optional) in [("proposal", None), ("reason", Some("detail"))] {
         let alternative = alternatives
             .iter()
             .find(|alternative| {
@@ -135,15 +137,68 @@ fn each_published_alternative_rejects_unknown_fields() -> Result<(), Box<dyn std
             .get("required")
             .and_then(Value::as_array)
             .ok_or("required fields")?;
-        assert_eq!(properties.len(), 2);
-        assert_eq!(required.len(), properties.len());
-        assert!(required.contains(&json!("id")));
-        assert!(required.contains(&json!(payload)));
-        // With every declared field required, this cap rules out any extra key.
+        assert_eq!(required, &vec![json!("id"), json!(payload)]);
+        let unrequired: Vec<&str> = properties
+            .keys()
+            .map(String::as_str)
+            .filter(|key| !required.contains(&json!(key)))
+            .collect();
+        assert_eq!(unrequired, optional.into_iter().collect::<Vec<_>>());
+        // The cap is the declared field count, so no undeclared key fits beside them.
         assert_eq!(
             alternative.get("maxProperties"),
-            Some(&json!(required.len()))
+            Some(&json!(properties.len()))
         );
     }
+    Ok(())
+}
+
+#[test]
+fn a_refusal_carries_the_checkers_detail_and_validates_its_bounds()
+-> Result<(), Box<dyn std::error::Error>> {
+    use garde::Validate as _;
+
+    let detail = RefusalDetail::new(
+        Some("budget"),
+        "`budget` belongs under the `x-agentsfleet` block",
+    )
+    .ok_or("a sentence makes a detail")?;
+    let call: ProposalCall = ProposalCall::Refused {
+        id: "provider-call".into(),
+        reason: ProposalRejection::InvalidArguments,
+        detail: Some(detail.clone()),
+    };
+    let expected = json!({"id":"provider-call", "reason":"invalid_arguments", "detail":{
+        "field":"budget", "text":"`budget` belongs under the `x-agentsfleet` block"}});
+    assert_eq!(serde_json::to_value(&call)?, expected);
+    let decoded: ProposalCall = serde_json::from_value(expected)?;
+    assert!(
+        matches!(decoded, ProposalCall::Refused { detail: Some(found), .. } if found == detail)
+    );
+    call.validate()?;
+
+    // A long sentence is cut at a character boundary and still validates.
+    let long = "é".repeat(REFUSAL_TEXT_BYTES_MAX);
+    let cut = RefusalDetail::new(None, &long).ok_or("a long sentence still makes a detail")?;
+    assert_eq!(cut.text().len(), REFUSAL_TEXT_BYTES_MAX);
+    assert_eq!(cut.field(), None);
+    ProposalCall::<Value, Value, Value>::Refused {
+        id: "provider-call".into(),
+        reason: ProposalRejection::InvalidArguments,
+        detail: Some(cut),
+    }
+    .validate()?;
+    // An empty sentence says nothing to fix.
+    assert!(RefusalDetail::new(Some("budget"), "").is_none());
+    // A detail with an unknown key is not a refusal detail.
+    let Err(refused) = serde_json::from_value::<ProposalCall>(json!({"id":"provider-call",
+        "reason":"invalid_arguments", "detail":{"text":"Fix it", "value":"private"}}))
+    else {
+        return Err("a detail with an unknown key was accepted".into());
+    };
+    assert!(
+        refused.to_string().contains("did not match any variant"),
+        "{refused}"
+    );
     Ok(())
 }

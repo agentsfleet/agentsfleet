@@ -74,9 +74,7 @@ async fn a_binding_with_no_base_refuses_a_remote_with_no_default_branch() {
         message.contains(REPOSITORY) && message.contains("checked out"),
         "{message}"
     );
-    let cause = std::error::Error::source(&refused)
-        .map(ToString::to_string)
-        .unwrap_or_default();
+    let cause = std::error::Error::source(&refused).map_or_default(ToString::to_string);
     assert_eq!(cause, "the repository's HEAD names no branch");
 }
 

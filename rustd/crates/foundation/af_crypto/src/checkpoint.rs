@@ -211,8 +211,8 @@ fn aad(
 ) -> Aad {
     let repository = hex::encode(scope.repository.as_bytes());
     let format = scope.format_version.to_string();
-    let version = version.map(|value| value.to_string()).unwrap_or_default();
-    let nonce = nonce.map(hex::encode).unwrap_or_default();
+    let version = version.map_or_default(|value| value.to_string());
+    let nonce = nonce.map_or_default(hex::encode);
     // Every field excludes NUL: repository bytes use hex, identifiers are
     // checked UUIDs, and the remaining fields are fixed labels or numbers.
     let fields = [

@@ -18,11 +18,18 @@ import { NANOS_PER_USD, type TenantBilling, type TenantBillingChargesResponse } 
 export const KIND_INTEGRATION_GRANT = "integration_grant";
 
 export const CONNECTOR_SERVICE_LINEAR = "linear";
+/** Mirrors `afd_credential::secrets::connector::SLACK_INTEGRATION`. */
+export const CONNECTOR_SERVICE_SLACK = "slack";
 
 /** The vault-handle field that names the connector. Mirrors
  * `afd_credential::secrets::connector::FIELD_INTEGRATION`. */
 const FIELD_INTEGRATION = "integration";
 const FIELD_REFRESH_TOKEN = "refresh_token";
+/** A Slack handle's binding and token fields, as `afd_credential`'s handle
+ * inspection and `afd_connector`'s catalogue label read them. */
+const FIELD_TEAM_ID = "team_id";
+const FIELD_TEAM_NAME = "team_name";
+const FIELD_BOT_TOKEN = "bot_token";
 
 /** The card's `evidence` key naming the third party it is about. Mirrors
  * `afd_approval::request::EVIDENCE_SERVICE`, which is also what
@@ -32,6 +39,33 @@ const EVIDENCE_SERVICE = "service";
 // Vault admission requires the handle's name to match its connector.
 // Each journey owns a dedicated workspace and removes this synthetic handle.
 export const GRANT_CREDENTIAL_NAME = CONNECTOR_SERVICE_LINEAR;
+
+/** A synthetic connector handle: its vault name and the fields that make the
+ * catalogue read it as connected. */
+export interface ConnectorHandle {
+  readonly name: string;
+  readonly data: Readonly<Record<string, string>>;
+}
+
+const LINEAR_HANDLE: ConnectorHandle = {
+  name: GRANT_CREDENTIAL_NAME,
+  data: { [FIELD_INTEGRATION]: CONNECTOR_SERVICE_LINEAR, [FIELD_REFRESH_TOKEN]: CONNECTOR_SERVICE_LINEAR },
+};
+
+/** The team a seeded Slack connection is labelled with. */
+export const SLACK_TEAM_NAME = "Support desk";
+
+/** A Slack connection whose bot token is a placeholder: no fleet in the
+ * journey workspace declares Slack, so it is never sent upstream. */
+export const SLACK_HANDLE: ConnectorHandle = {
+  name: CONNECTOR_SERVICE_SLACK,
+  data: {
+    [FIELD_INTEGRATION]: CONNECTOR_SERVICE_SLACK,
+    [FIELD_TEAM_ID]: "support-desk",
+    [FIELD_TEAM_NAME]: SLACK_TEAM_NAME,
+    [FIELD_BOT_TOKEN]: CONNECTOR_SERVICE_SLACK,
+  },
+};
 
 const SECRETS_PATH = (workspaceId: string) => `/v1/workspaces/${workspaceId}/secrets`;
 const APPROVALS_PATH = (workspaceId: string) => `/v1/workspaces/${workspaceId}/approvals`;
@@ -52,17 +86,15 @@ const CHARGES_PAGE_LIMIT = 100;
 export async function ensureConnectorHandle(
   handle: ClientHandle,
   workspaceId: string,
+  connector: ConnectorHandle = LINEAR_HANDLE,
 ): Promise<void> {
   const client = clientFor(handle);
   try {
-    await client.post(SECRETS_PATH(workspaceId), {
-      name: GRANT_CREDENTIAL_NAME,
-      data: { [FIELD_INTEGRATION]: CONNECTOR_SERVICE_LINEAR, [FIELD_REFRESH_TOKEN]: CONNECTOR_SERVICE_LINEAR },
-    });
+    await client.post(SECRETS_PATH(workspaceId), { name: connector.name, data: connector.data });
     return;
   } catch (refused) {
     const stored = await client.get<{ secrets: { name: string }[] }>(SECRETS_PATH(workspaceId));
-    if (!stored.secrets.some((secret) => secret.name === GRANT_CREDENTIAL_NAME)) throw refused;
+    if (!stored.secrets.some((secret) => secret.name === connector.name)) throw refused;
   }
 }
 

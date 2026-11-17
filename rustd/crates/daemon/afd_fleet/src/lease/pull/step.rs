@@ -66,14 +66,22 @@ pub(in crate::lease) fn claim_lost<T>(runner_id: &Uuid7, acquired: &Acquired) ->
     let fleet_id = acquired.fleet_id.as_str();
     let agentsfleet_event_id = acquired.event_id.as_str();
     let fence = acquired.fence.as_i64();
-    tracing::info!(
-        event = EVENT_CLAIM_LOST,
-        runner_id = runner,
-        fleet_id,
-        agentsfleet_event_id,
-        fencing_token = fence,
-        "the pass outlived its claim; no lease was written"
-    );
+    {
+        let (event, runner_id, fencing_token, message) = (
+            &EVENT_CLAIM_LOST,
+            &runner,
+            &fence,
+            format_args!("the pass outlived its claim; no lease was written"),
+        );
+        tracing::info!(
+            message,
+            event,
+            runner_id,
+            fleet_id,
+            agentsfleet_event_id,
+            fencing_token
+        );
+    };
     no_work(runner_id, CLAIM_LOST_REASON);
     Step::Stop
 }

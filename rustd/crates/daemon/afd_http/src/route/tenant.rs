@@ -30,7 +30,8 @@ pub enum TenantRoute {
     BillingCharges,
     /// Complete-period settled usage reporting.
     BillingReport,
-    /// Individually settled charges of one billed activity.
+    /// One activity's charges: removed, and answers `410 Gone` so a client
+    /// learns the removal is permanent rather than a routing fault.
     BillingActivityCharges,
     /// The tenant's workspaces.
     Workspaces,

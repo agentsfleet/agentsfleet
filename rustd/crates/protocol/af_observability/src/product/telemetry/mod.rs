@@ -132,6 +132,13 @@ pub enum Telemetry {
         /// Milliseconds to the first token; zero when the runner did not say.
         time_to_first_token_ms: u64,
     },
+    /// A settlement took a tenant's credit balance to zero or below. Reported
+    /// once per crossing: debits while it stays there report nothing, and once
+    /// a debit leaves credit again the next crossing reports again.
+    WalletExhausted {
+        /// The tenant whose wallet it was, which the event is attributed to.
+        tenant_id: String,
+    },
     /// A signup created a personal tenant and workspace, or replayed one.
     SignupBootstrapped {
         /// The identity subject, so a replayed webhook stitches to one person.
@@ -219,6 +226,7 @@ impl Telemetry {
             Self::FleetTriggered { .. } => "fleet_triggered",
             Self::FleetCompleted { .. } => "fleet_completed",
             Self::SignupBootstrapped { .. } => "signup_bootstrapped",
+            Self::WalletExhausted { .. } => "wallet_exhausted",
             Self::InviteEmail { outcome, .. } => match outcome {
                 InviteEmailOutcome::Sent { .. } => "invite_email_sent",
                 InviteEmailOutcome::Failed { .. } => "invite_email_failed",
@@ -245,6 +253,7 @@ impl Telemetry {
             | Self::SignupBootstrapped { actor, .. }
             | Self::InviteEmail { actor, .. }
             | Self::Authoring { actor, .. } => Some(actor),
+            Self::WalletExhausted { tenant_id } => Some(tenant_id),
             Self::ServerStarted { .. }
             | Self::WorkerStarted { .. }
             | Self::StartupFailed { .. }
@@ -255,10 +264,10 @@ impl Telemetry {
     /// The event as the client sends it.
     #[must_use]
     pub fn event(&self) -> Event {
-        let mut event = match self.actor() {
-            Some(actor) => Event::new(self.name(), actor),
-            None => Event::new_anon(self.name()),
-        };
+        let mut event = self.actor().map_or_else(
+            || Event::new_anon(self.name()),
+            |actor| Event::new(self.name(), actor),
+        );
         self.describe(&mut event);
         event
     }

@@ -23,6 +23,9 @@ mod transfer_tests;
 pub(super) use capture::Capture;
 pub(super) use restore::Restore;
 
+#[cfg(test)]
+pub(crate) use transfer::http_tests::server::Server as TestHttpsServer;
+
 use crate::client::ControlPlane;
 use af_core::id::Uuid7;
 use af_wire::task::{CheckpointPlan, DecisionTaskVersion};

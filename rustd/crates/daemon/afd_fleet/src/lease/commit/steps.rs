@@ -93,12 +93,13 @@ pub(super) fn warn_unknown_reply(lease: &Reported, stored: Option<&str>) {
     }
     let fleet_id = lease.fleet_id.as_str();
     let agentsfleet_event_id = lease.event_id.as_str();
-    tracing::warn!(
-        fleet_id,
-        agentsfleet_event_id,
-        event = EVENT_REPLY_PROVIDER_UNKNOWN,
-        "the recorded connector names no connector; the answer is owed nowhere"
-    );
+    {
+        let (event, message) = (
+            &EVENT_REPLY_PROVIDER_UNKNOWN,
+            format_args!("the recorded connector names no connector; the answer is owed nowhere"),
+        );
+        tracing::warn!(message, fleet_id, agentsfleet_event_id, event);
+    };
 }
 
 #[cfg(test)]

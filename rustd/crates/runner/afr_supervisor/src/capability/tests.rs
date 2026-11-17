@@ -26,8 +26,7 @@ fn check(report: &af_wire::runner::SelftestReport<'_>, name: &str) -> (bool, Str
         .checks
         .iter()
         .find(|check| check.name == name)
-        .map(|check| (check.ok, check.detail.to_string()))
-        .unwrap_or_default()
+        .map_or_default(|check| (check.ok, check.detail.to_string()))
 }
 
 #[test]

@@ -98,7 +98,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Install repository dependencies before loading secrets
         run: bun install --frozen-lockfile
@@ -108,7 +108,11 @@ jobs:
         run: npm install -g @agentsfleet/cli@${{ needs.resolve-release.outputs.version }}
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: bunx --no-install playwright install --with-deps chromium
+        working-directory: cli
+
+      - name: Build the command-line application before credentials
+        run: bun run build
         working-directory: cli
 
       - name: Load production Clerk credentials after installation
@@ -124,8 +128,7 @@ jobs:
           AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_PROD }}/e2e-fixtures-email/admin
 
       - name: Run CLI acceptance against api.agentsfleet.net
-        run: bun run test:acceptance
-        working-directory: cli
+        run: make acceptance-cli
         env:
           AGENTSFLEET_ACCEPTANCE_TARGET: https://api.agentsfleet.net
           AGENTSFLEET_ACCEPTANCE_BINARY: global

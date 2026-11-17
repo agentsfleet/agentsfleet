@@ -49,8 +49,6 @@ const LAYOUT_TOLERANCE_PX = 1;
 const LONG_REPLY = Array.from({ length: 80 }, (_, line) => `long streamed reply line ${line + 1}`).join("\n");
 const LONG_REPLY_ID = "9100000000000-1";
 const FUTURE_RUN_OFFSET_MS = 60_000;
-// Below this much chat above the composer there is no room to show history.
-const HISTORY_ROOM_PX = 48;
 const ROUND_TRIP_TIMEOUT_MS = 10_000;
 const ONE_OPEN_STREAM = { created: 1, open: 1 };
 
@@ -147,15 +145,27 @@ test.describe("fleet thread surface", () => {
       await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
       await expect(page.getByText("long streamed reply line 80")).toBeAttached();
       const draft = page.getByLabel(COMPOSER_LABEL).getByRole("textbox");
+      const root = page.getByTestId("fleet-thread-root");
+      // The frame the live reply left, read at the roomy window before any draft.
+      let held: number | undefined;
 
       for (const size of LAYOUT_WINDOWS) {
         // Blur first so the draft takes focus again at this size.
         await draft.blur();
         await page.setViewportSize(size);
+        await afterPaint(page);
+        const resized = await root.evaluate(readTurn, LONG_REPLY_ID);
+        held ??= resized.scrollTop;
+        if (size === LAYOUT_WINDOWS[0]) {
+          // The reply arrived live, so the view stayed on its turn: the turn's
+          // start is in view above the composer.
+          expect(resized.turnTop).toBeGreaterThanOrEqual(resized.rootTop - LAYOUT_TOLERANCE_PX);
+          expect(resized.turnTop).toBeLessThan(resized.footerTop);
+        }
         // fill() never presses Enter, so the draft is typed but never sent.
         await draft.fill(TALL_DRAFT);
         await afterPaint(page);
-        const layout = await page.getByTestId("fleet-thread-root").evaluate((root) => {
+        const layout = await root.evaluate((root) => {
           const edges = (el: Element) => {
             const { top, bottom, left, right } = el.getBoundingClientRect();
             return { top, bottom, left, right };
@@ -164,13 +174,13 @@ test.describe("fleet thread surface", () => {
           for (let el: Element | null = root; el; el = el.parentElement) {
             if (el.scrollTop !== 0) scrolled.push(`${el.tagName}#${el.id}.${el.className}`);
           }
-          const messages = root.querySelectorAll('[data-testid="fleet-message"]');
+          const viewport = root.querySelector('[role="presentation"]')!;
           return {
             root: edges(root),
             footer: edges(root.querySelector('[data-testid="fleet-chat-footer"]')!),
             send: edges(root.querySelector('button[aria-label="Send"]')!),
-            lastMessage: edges(messages[messages.length - 1]!),
-            viewportScrollTop: root.querySelector('[role="presentation"]')!.scrollTop,
+            viewportScrollTop: viewport.scrollTop,
+            viewportOverflow: viewport.scrollHeight - viewport.clientHeight,
             draftHeight: root.querySelector("textarea")!.getBoundingClientRect().height,
             windowHeight: window.innerHeight,
             windowWidth: window.innerWidth,
@@ -179,7 +189,7 @@ test.describe("fleet thread surface", () => {
         });
         await test.info().attach(`chat-layout-${size.height}`, {
           contentType: "application/json",
-          body: JSON.stringify(layout),
+          body: JSON.stringify({ ...layout, resized }),
         });
         // The composer sits on the chat floor; Send is inside the chat frame
         // and the window.
@@ -194,12 +204,11 @@ test.describe("fleet thread surface", () => {
         );
         // Only the conversation viewport scrolls; the root and every frame box
         // above it stay put while the reply overflows and the draft grows.
-        expect(layout.viewportScrollTop).toBeGreaterThan(0);
+        expect(layout.viewportOverflow).toBeGreaterThan(0);
         expect(layout.scrolled).toEqual([]);
-        // Where there is room, the newest reply stays above the composer.
-        if (layout.footer.top - layout.root.top > HISTORY_ROOM_PX) {
-          expect(layout.lastMessage.bottom).toBeLessThanOrEqual(layout.footer.top + LAYOUT_TOLERANCE_PX);
-        }
+        // Match Claude: neither the live reply, the resize nor the draft moves the frame.
+        expect(Math.abs(resized.scrollTop - held)).toBeLessThanOrEqual(LAYOUT_TOLERANCE_PX);
+        expect(Math.abs(layout.viewportScrollTop - held)).toBeLessThanOrEqual(LAYOUT_TOLERANCE_PX);
       }
       await draft.fill("");
     } finally {
@@ -295,6 +304,18 @@ test.describe("fleet thread surface", () => {
     expect(authHits, authHits.join("\n")).toEqual([]);
   });
 });
+
+// Where a turn starts in the thread's frame: the first row its event renders.
+function readTurn(root: Element, eventId: string) {
+  const viewport = root.querySelector('[role="presentation"]')!;
+  const turn = root.querySelector(`[data-message-id="${eventId}"]`)!;
+  return {
+    scrollTop: viewport.scrollTop,
+    turnTop: turn.getBoundingClientRect().top,
+    rootTop: root.getBoundingClientRect().top,
+    footerTop: root.querySelector('[data-testid="fleet-chat-footer"]')!.getBoundingClientRect().top,
+  };
+}
 
 async function afterPaint(page: Page): Promise<void> {
   await page.evaluate(() => new Promise<void>((resolve) => {

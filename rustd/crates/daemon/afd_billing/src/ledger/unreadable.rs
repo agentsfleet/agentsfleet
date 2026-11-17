@@ -113,13 +113,15 @@ pub fn skipped(what: Unreadable, work_type: &str, spelling: &str) {
     if first {
         // Bound first: the macro repeats its field expressions.
         let unreadable = what.as_str();
-        tracing::warn!(
-            unreadable,
-            work_type,
-            spelling,
-            event = EVENT_SKIPPED,
-            "the billing relay cannot read this usage; it stays unsettled and the relay moves on"
-        );
+        {
+            let (event, message) = (
+                &EVENT_SKIPPED,
+                format_args!(
+                    "the billing relay cannot read this usage; it stays unsettled and the relay moves on"
+                ),
+            );
+            tracing::warn!(message, unreadable, work_type, spelling, event);
+        };
     }
 }
 

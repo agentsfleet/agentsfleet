@@ -13,6 +13,8 @@
 //! anywhere in this daemon. [`Supervisor::spawn`] hands each one a cancellation
 //! token and keeps its handle, so shutdown cancels, joins, and only then drops.
 //!
+use std::sync::Arc;
+
 use af_crypto::entropy::Entropy;
 use af_observability::Analytics;
 use afd_db::Db;
@@ -75,12 +77,15 @@ pub fn spawn(
     let census = Census::new(database.clone());
     supervisor.spawn(FLEET_CENSUS, move |token| sweep::run(census, token));
 
-    authoring::spawn(supervisor, database, analytics);
+    // One biller for every sweeper that moves money, so they share one
+    // counted, failing-open path and report through the same analytics.
+    let biller = crate::billing::biller(database.clone(), analytics.clone());
+    authoring::spawn(supervisor, database, analytics, Arc::clone(&biller));
 
     // Usage logged without its settlement: money the request path owes and
     // could not finish.
     tasks::spawn(supervisor, tasks.clone());
     checkpoints::spawn(supervisor, tasks.clone());
-    billing::spawn(supervisor, database, tasks);
-    expiry::spawn(supervisor, database, analytics);
+    billing::spawn(supervisor, database, tasks, Arc::clone(&biller));
+    expiry::spawn(supervisor, database, analytics, biller);
 }

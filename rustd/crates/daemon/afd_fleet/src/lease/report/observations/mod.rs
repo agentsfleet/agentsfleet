@@ -47,7 +47,7 @@ pub fn observe(
     });
     let ended = settled
         .completed_at
-        .map_or_else(SystemTime::now, SystemTime::from);
+        .map_or_else(SystemTime::now, af_core::clock::system_time);
     let complete = settled
         .completed_at
         .map(|completed| af_core::clock::elapsed(received, completed));
@@ -128,7 +128,7 @@ fn delivery_of<'a>(
         input_tokens: usage.prompt,
         output_tokens: usage.output,
         wall: reported_wall(request),
-        opened_at: Some(SystemTime::from(settled.event_created_at)),
+        opened_at: Some(af_core::clock::system_time(settled.event_created_at)),
         segments: segments_of(settled, request.telemetry.segments, complete),
     }
 }

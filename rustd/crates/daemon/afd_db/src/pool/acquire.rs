@@ -53,14 +53,10 @@ impl Db {
                 let held = self.pool.size();
                 let ceiling = self.max_connections;
                 let waited_ms = self.acquire_timeout.as_millis();
-                tracing::warn!(
-                    error_code = code,
-                    role,
-                    held,
-                    ceiling,
-                    waited_ms,
-                    event = "pool_acquire_retried"
-                );
+                {
+                    let (error_code, event) = (&code, &"pool_acquire_retried");
+                    tracing::warn!(error_code, role, held, ceiling, waited_ms, event);
+                };
                 self.acquire_once().await
             }
             first => first,

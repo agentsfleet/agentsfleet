@@ -1,7 +1,8 @@
-//! Schedule intent is copied on the same transaction as its setup pointer.
+//! Schedule intent is copied on the same transaction as its setup pointer, and
+//! registered upstream once the fleet is active.
 
-use super::Creations;
-use crate::Result;
+use super::{ACTIVE, Creations};
+use crate::{Access, Result};
 use af_core::id::Uuid7;
 use af_fleet_runtime::{Definition, config::Trigger};
 use jiff::Timestamp;
@@ -42,6 +43,25 @@ impl Creations {
                     now,
                 },
             )
+            .await?)
+    }
+
+    /// Registers an active fleet's trigger schedules, as Save's route does
+    /// after its own activation; an installing fleet's wait for activation.
+    pub(super) async fn register_triggers(
+        &self,
+        access: Access<'_>,
+        fleet: &Uuid7,
+        now: Timestamp,
+    ) -> Result<()> {
+        let Some(registrar) = &self.registrar else {
+            return Ok(());
+        };
+        if self.read(access, fleet).await?.status != ACTIVE {
+            return Ok(());
+        }
+        Ok(registrar
+            .register_triggers(access.workspace, fleet, now)
             .await?)
     }
 }

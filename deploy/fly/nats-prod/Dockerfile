@@ -1,5 +1,4 @@
-# The release the integration lane and the local stack run (docker-compose.yml,
-# compose.dev-infra.yml). A bus whose deployed version drifts from the tested
+# The release the integration lane and the local stack run (docker-compose.yml). A bus whose deployed version drifts from the tested
 # one is a bus nobody has tested.
 FROM nats:2.15.2-alpine
 

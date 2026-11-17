@@ -12,7 +12,7 @@ pub use activity::{ActivityAccepted, ActivityEvent, ActivityRequest, CandidateVe
 pub use lease::{ContextMessage, ContextRole, Lease, Limits, ModelAccess, Pricing, SelectedModel};
 pub use meter::{Knowledge, Meter, Usage};
 pub use model::{ModelCall, ModelMessage, ModelRequest, ModelResult, ModelUsage};
-pub use proposal::{ProposalCall, ProposalRejection};
+pub use proposal::{ProposalCall, ProposalRejection, REFUSAL_TEXT_BYTES_MAX, RefusalDetail};
 pub use renew::{Renew, Renewed};
 pub use report::{Accounting, FailureReason, Outcome, Report, Reported};
 

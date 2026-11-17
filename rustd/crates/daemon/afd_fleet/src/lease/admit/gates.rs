@@ -170,13 +170,16 @@ pub(super) async fn balance<F: af_core::error_code::Coded>(
     let fleet = request.fleet_id.as_str();
     let event = request.event_id;
     let floor_nanos = floor.as_i64();
-    tracing::debug!(
-        event = %EVENT_BALANCE_EXHAUSTED,
-        fleet_id = %fleet,
-        agentsfleet_event_id = %event,
-        estimate_nanos = floor_nanos,
-        "the tenant's credit pool cannot cover this run's floor cost"
-    );
+    {
+        let (event, fleet_id, agentsfleet_event_id, estimate_nanos, message) = (
+            &EVENT_BALANCE_EXHAUSTED,
+            &fleet,
+            &event,
+            &floor_nanos,
+            format_args!("the tenant's credit pool cannot cover this run's floor cost"),
+        );
+        tracing::debug!(message, %event, %fleet_id, %agentsfleet_event_id, estimate_nanos);
+    };
     Some(Declined::Refuse(Refusal::labelled(
         af_core::event::label::BALANCE_EXHAUSTED,
     )))
@@ -205,14 +208,17 @@ pub(super) fn fleet_budget<E: af_core::error_code::Coded>(
     let fleet = request.fleet_id.as_str();
     let event = request.event_id;
     let which = verdict.as_str();
-    tracing::debug!(
-        error_code = code,
-        event = %EVENT_BUDGET_BREACH,
-        fleet_id = %fleet,
-        agentsfleet_event_id = %event,
-        verdict = which,
-        "the fleet has reached a ceiling its author declared"
-    );
+    {
+        let (error_code, event, fleet_id, agentsfleet_event_id, verdict, message) = (
+            &code,
+            &EVENT_BUDGET_BREACH,
+            &fleet,
+            &event,
+            &which,
+            format_args!("the fleet has reached a ceiling its author declared"),
+        );
+        tracing::debug!(message, error_code, %event, %fleet_id, %agentsfleet_event_id, verdict);
+    };
     Some(Declined::Refuse(Refusal::labelled(
         af_core::event::label::BUDGET_BREACH,
     )))

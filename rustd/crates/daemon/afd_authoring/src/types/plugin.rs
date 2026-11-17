@@ -122,6 +122,8 @@ pub struct PluginCard {
     pub required_credentials_reasons: serde_json::Value,
     /// Immutable head identity.
     pub head_revision_id: Uuid7,
+    /// The head's decimal entry-local revision, from the same revision row.
+    pub head_revision: String,
     /// Strong Plugin version.
     pub etag: String,
 }

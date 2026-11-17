@@ -278,14 +278,13 @@ async fn read(shared: &Shared, headers: &HeaderMap, fields: HashMap<String, Stri
     record(shared, REPLIES_PATH, headers, fields, Value::Null);
     // `None` scripts by thread; `Some(None)` is an ordered script run out.
     let ordered = locked(&shared.in_order).as_mut().map(VecDeque::pop_front);
-    let reply = match ordered {
-        Some(next) => next,
-        None => Some(
+    let reply = ordered.unwrap_or_else(|| {
+        Some(
             thread
                 .and_then(|ts| locked(&shared.by_thread).get(&ts).cloned())
                 .unwrap_or_else(|| Reply::answers(StatusCode::OK.as_u16(), EMPTY_THREAD)),
-        ),
-    };
+        )
+    });
     match reply {
         Some(Reply::Answers(status, body)) => json(status, body),
         Some(Reply::Stalls) => {

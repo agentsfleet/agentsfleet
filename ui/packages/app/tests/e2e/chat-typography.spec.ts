@@ -43,18 +43,30 @@ test("setup and fleet status text has a muted-to-foreground sweep with accessibl
   }
 });
 
-test("incoming progress preserves the draft and reading position until the reader jumps to latest", async ({page, chatProbe}) => {
+test("incoming progress never moves the draft or the reading position, and Jump to latest follows it", async ({page, chatProbe}) => {
   await page.goto(`${chatProbe}?scroll=1`);
   const input = page.getByRole("textbox");
   const viewport = page.locator('[data-testid="fleet-thread-root"] [role="presentation"]');
+  const updates = page.getByText("New recorded update: the callback regression is still running. Its result has not been confirmed.", {exact: true});
+  await expect(input).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
   const draft = "Keep the login fix in the callback handler. Preserve session expiry.";
-  for (const {atBottom, composing} of [{atBottom: true, composing: true}, {atBottom: false, composing: true}, {atBottom: false, composing: false}]) {
+  // Match Claude: a live update never moves the view, at the bottom or not, composing or not.
+  for (const {atBottom, composing} of [{atBottom: true, composing: false}, {atBottom: true, composing: true}, {atBottom: false, composing: true}, {atBottom: false, composing: false}]) {
     await input.fill(composing ? draft : "");
     if (!composing) await input.blur();
-    await viewport.evaluate((element, bottom) => {
-      element.scrollTop = bottom ? element.scrollHeight : 0;
-    }, atBottom);
     await expect.poll(() => viewport.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+    if (atBottom) {
+      await viewport.evaluate(element => {element.scrollTop = element.scrollHeight;});
+      await expect.poll(() => viewport.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(1);
+    } else {
+      // Let the reader's gesture cancel pending follow before progress arrives.
+      await viewport.hover();
+      await page.mouse.wheel(0, -100_000);
+      await expect.poll(() => viewport.evaluate(element => element.scrollTop)).toBeLessThanOrEqual(1);
+      await expect(page.getByRole("button", {name: "Jump to latest"})).toBeVisible();
+    }
+    const before = await updates.count();
     const samples = await viewport.evaluate(element => new Promise<number[]>(resolve => {
       const positions = [element.scrollTop];
       window.dispatchEvent(new Event("fixture:progress"));
@@ -65,21 +77,73 @@ test("incoming progress preserves the draft and reading position until the reade
       };
       requestAnimationFrame(sample);
     }));
-    expect(Math.max(...samples) - Math.min(...samples)).toBeLessThanOrEqual(1);
+    expect(Math.max(...samples) - Math.min(...samples), `atBottom=${atBottom}, composing=${composing}`).toBeLessThanOrEqual(1);
+    await expect(updates).toHaveCount(before + 1);
+    expect(Math.abs(await viewport.evaluate(element => element.scrollTop) - samples[0]!)).toBeLessThanOrEqual(1);
     await expect(input).toHaveValue(composing ? draft : "");
     if (composing) await expect(input).toBeFocused();
     else await expect(input).not.toBeFocused();
   }
+  // Match Claude: the reader follows the progress with Jump to latest; the first case above shows the view held there.
   await page.getByRole("button", {name: "Jump to latest"}).click();
   await expect.poll(() => viewport.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(1);
   await expect(input).toHaveValue("");
-  const updates = page.getByText("New recorded update: the callback regression is still running. Its result has not been confirmed.", {exact: true});
-  const recorded = await updates.count();
-  await page.evaluate(() => window.dispatchEvent(new Event("fixture:progress")));
-  await expect(updates).toHaveCount(recorded + 1);
-  await expect(updates.last()).toBeInViewport();
-  await expect.poll(() => viewport.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(1);
-  await expect(input).toHaveValue("");
+});
+
+// The composer's own growth is measured over a live reply in fleet-thread.spec.ts.
+test("opens at the latest turn, lifts a sent turn to the top and holds it while the reply streams and the window resizes", async ({page, chatProbe}) => {
+  const roomy = page.viewportSize();
+  if (roomy === null) throw new Error("the project sets no viewport to resize from");
+  // A settled reply taller than its layout placeholder sits just above the newest turn.
+  await page.goto(`${chatProbe}?scroll=1&tall=18`);
+  const viewport = page.locator('[data-testid="fleet-thread-root"] [role="presentation"]');
+  const input = page.getByRole("textbox");
+  await expect(input).toBeVisible();
+  const fromBottom = () => viewport.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop);
+  const scrollTop = () => viewport.evaluate(element => element.scrollTop);
+  const painted = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect.poll(fromBottom).toBeLessThanOrEqual(1);
+  await input.fill("Check the canary rollout.");
+  await page.getByRole("button", {name: "Send", exact: true}).click();
+  const sent = page.locator("[data-aui-top-anchor-user]");
+  await expect(sent).toContainText("Check the canary rollout.");
+  // NaN, failing every bound, if the sent turn is no longer the anchor.
+  const sentTop = () => viewport.evaluate(element => {
+    const anchor = element.querySelector("[data-aui-top-anchor-user]");
+    return anchor === null ? Number.NaN : anchor.getBoundingClientRect().top - element.getBoundingClientRect().top;
+  });
+  await expect.poll(async () => Math.abs(await sentTop())).toBeLessThanOrEqual(1);
+  // The reserve is the room below a short reply that lets the sent turn reach the top.
+  expect(await page.locator("[data-aui-top-anchor-reserve]").evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(0);
+  const held = await scrollTop();
+  await page.evaluate(async chunks => {
+    for (let chunk = 0; chunk < chunks; chunk++) {
+      window.dispatchEvent(new Event("fixture:chunk"));
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+  }, 25);
+  // Match Claude: the reply runs on below the composer and the view never follows it.
+  await expect.poll(fromBottom).toBeGreaterThan(1);
+  expect(Math.abs(await scrollTop() - held)).toBeLessThanOrEqual(1);
+  await expect(page.getByRole("button", {name: "Jump to latest"})).toBeVisible();
+  // The composer stays on the chat's floor and inside the window over the reply,
+  // at phone width too (owner, Nov 16, 2026). NaN fails the bound if either box is gone.
+  const composerOffFloor = () => page.evaluate(() => {
+    const root = document.querySelector('[data-testid="fleet-thread-root"]')?.getBoundingClientRect();
+    const footer = document.querySelector('[data-testid="fleet-chat-footer"]')?.getBoundingClientRect();
+    if (!root || !footer) return Number.NaN;
+    return Math.max(Math.abs(root.bottom - footer.bottom), footer.bottom - window.innerHeight);
+  });
+  expect(await composerOffFloor()).toBeLessThanOrEqual(1);
+  for (const size of [{width: roomy.width, height: 360}, roomy]) {
+    await page.setViewportSize(size);
+    await painted();
+    expect(Math.abs(await scrollTop() - held)).toBeLessThanOrEqual(1);
+    expect(Math.abs(await sentTop())).toBeLessThanOrEqual(1);
+    expect(await composerOffFloor()).toBeLessThanOrEqual(1);
+  }
+  await page.getByRole("button", {name: "Jump to latest"}).click();
+  await expect.poll(fromBottom).toBeLessThanOrEqual(1);
 });
 
 test("conversation and composer use the approved Manrope scale", async ({page, chatProbe}, info) => {

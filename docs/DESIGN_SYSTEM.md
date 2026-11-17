@@ -1,6 +1,6 @@
 # agentsfleet design system
 
-**Direction:** Clear Signal · **Updated:** 2026-11-12
+**Direction:** Clear Signal · **Updated:** 2026-11-15
 
 This document governs the app, website, and shared component library.
 Clear Signal names the visual direction; agentsfleet remains the product name.
@@ -10,6 +10,34 @@ Indy approved the refreshed app layout and Manrope scale on November 11, 2026, w
 The current code uses the refreshed tokens and components. Deployment and final acceptance remain pending.
 
 The app approval does not change website display sizing or approve new public API behavior.
+
+## App visual reference
+
+[ux.html](ux.html) is the canonical app visual reference, stored beside this document.
+It contains the owner's November 15 upload, renamed from `proposal.html` without changing its bytes.
+Its SHA-256 is `b3ba83c2de2292e7f65193c85d97d299ec4d01a7484c7243fb9a5d42da5d52fe`.
+
+Render this file when comparing layouts, typography, controls and themes.
+Its sample records do not establish product facts or grant permission to activate paused features.
+The owner's later explicit instructions govern differences from the sample.
+
+The November 15 instructions require local displayed dates and times, without a fixed-zone caption.
+Usage has a month/year Period control and an All Fleets choice that includes setup and saved fleets, followed by individual fleets.
+
+The selector follows the existing report API: current month has no `through_at`, and a past month uses its inclusive month-end cutoff.
+The owner deferred timezone changes; accounting months and daily buckets retain their current calendar, while displayed instants use the shared viewer-time utilities.
+
+No `month` or `timezone` parameter is added.
+More filters, Charge details and Add credit stay absent while their future design is pending.
+
+The [rendered design review](v2/evidence/M249_DESIGN_REVIEW.md) records the page comparisons and approved differences.
+Keep shared header spacing, chart borders and local help disclosures consistent with that reviewed implementation.
+
+Totals and daily bars render from one report request; the shared model-label read only holds the named fleet table behind its own loading boundary.
+
+Security uses a shield in the resource header and contains API keys and signed-in sessions.
+The account avatar displays the person's image when available and their email on hover; it retains the initials fallback.
+The repeated Signed in as card is removed.
 
 ## Intent
 
@@ -300,7 +328,7 @@ The installed SDK's message attachment client does not support removal during su
 
 Display concise progress facts and outcomes; do not present hidden model reasoning as an activity feed.
 
-### Models, API Keys, and Team
+### Models, Security, and Team
 
 Models offers one Create model dialog with Provider, Model, credential choice, and optional Make active.
 Model choices include the provider's complete catalogue without an advanced-model visibility switch. Keep paging and failed-read recovery reachable.
@@ -328,10 +356,12 @@ Account Models retains Create model and Make active.
 Its choices never grant platform administration.
 Preserve model, platform credential, and vault access checks when renaming or regrouping other surfaces.
 
-API Keys opens with a compact identity card: avatar, name and primary email. API keys and signed-in browser sessions follow it.
+Security opens with API keys followed by signed-in browser sessions.
+Account identity belongs in the account avatar and menu, with email available on hover.
 Provider credentials belong under Models and Secrets.
 
-The owner’s Nov 14 refinement removes the repeated Profile button and embedded provider widget. Sign out remains in the avatar menu.
+The owner's November 15 refinement removes the repeated identity card as well as the earlier Profile button and embedded provider widget.
+Sign out remains in the avatar menu.
 
 The app owns profile and session data shapes; Clerk supplies the current implementation through a dedicated adapter.
 Keep Clerk-specific objects and errors out of product components. A component re-export alone does not make the provider replaceable.
@@ -340,7 +370,7 @@ Use Last active for activity timestamps and Signed in only for recorded session 
 Keep an absent activity time unknown.
 
 Require confirmation and recent verification before signing out another device, and reconcile an uncertain response before repeating the request.
-Do not add unverified profile or authentication-factor mutations to the identity card.
+Do not add unverified profile or authentication-factor mutations to account controls.
 
 Keep **Avatar → Team**. Current membership gives access to every workspace in the account; do not label this workspace-only access.
 Preserve Owner and Member roles, owner protection, pending invitations, and member removal.
@@ -388,18 +418,22 @@ Team groups native lists inside shared panels. Its search remains, with names, i
 
 Invite delivery status must reflect the backend, including a retained invite whose email was not delivered.
 
-API Keys contains a compact identity card, keys and signed-in sessions behind the auth facade.
+Security contains keys and signed-in sessions behind the auth facade.
 The avatar menu opens this combined destination; there is no repeated Profile action or embedded identity-provider widget.
 
 Keys use resource rows and one-time reveal; sessions support individual and all-other-session sign-out. Read all session pages before bulk revocation and exclude this device.
 
-Usage restores the period toolbar, shared metric strip, daily-spend section and By fleet table. Charge details remain in a closed native disclosure, opening for an explicitly selected activity. Draw daily bars from the report's complete daily buckets, never a partial activities page.
+Usage uses the period toolbar, shared metric strip, daily-spend section and By fleet table.
+Charge details and Add credit remain absent until their design is approved.
+Draw daily bars from the report's complete daily buckets.
 
 Preserve that section with its unavailable state when the report cannot be loaded.
 
-Secrets use Name, Type, hidden Value, Available to and Manage. The current API does not return per-secret fleet access. State that absence; never derive effective authorization from references or show an unbacked access checkbox.
+Secrets use Name, Type, hidden Value, Available to and Manage. Available to names the active fleets whose saved setup declares the secret, the list a run resolves, and says "No active fleets" when none do.
 
-Preserve named-field replacement for credentials that require several values. Plugins and Connected apps use grouped resource rows and shared dialogs. A plugin's actual version appears after inspection; list cards expose only its revision identifier.
+When the caller lacks fleet-read access, say "Access details unavailable". Never infer access from references or show an unbacked access checkbox.
+
+Preserve named-field replacement for credentials that require several values. Plugins and Connected apps use grouped resource rows and shared dialogs. Plugin list cards carry the head revision's number and identifier; inspection shows the selected revision's content.
 
 Compact phone tables keep action targets inside their visible scrolling surface. Session and key rows let identity text occupy the full width before the action. Server pagination and error recovery remain available where the API requires them.
 
@@ -499,7 +533,7 @@ Label creation timestamps Created across tables and detail views. Other timestam
 
 Record lists place the timestamp after the record identity and before Actions.
 
-Secrets and API Keys fold creation metadata beneath Name on narrow screens, keeping Actions visible.
+Secrets and API key lists fold creation metadata beneath Name on narrow screens, keeping Actions visible.
 
 The separate Created column returns at the small-screen breakpoint.
 
@@ -959,7 +993,7 @@ Destructive actions retain their existing confirmation behavior.
 5. Inspect app and website in dark, light, narrow, keyboard, and reduced-motion states.
 
 Finish the converted app with a rendered visual review, after real data and fonts load.
-Review conversation, activity, errors, wake-ups, empty state, Models, Create model, Plugins, Secrets, Usage, API Keys, Team, and invitations.
+Review conversation, activity, errors, wake-ups, empty state, Models, Create model, Plugins, Secrets, Usage, Security, Team, and invitations.
 
 | Check | Required observation |
 |---|---|
@@ -1132,15 +1166,17 @@ Menu labels use sentence case. Account navigation uses 40px rows beside the rail
 
 Archived fleets retain history and disable composer, approval, schedule and task mutations. Deletion evidence shows the destination after deletion, not a toast over the former conversation.
 
-Before packaging, render the unchanged approved proposal and candidate at the same widths and compare computed geometry. Capture 1480px and 390px in both themes, plus Conversation, Models, API Keys and New fleet at 696px and 900px.
+Before packaging, render [ux.html](ux.html) and the candidate at the same widths and compare computed geometry.
+Capture 1480px and 390px in both themes, plus Conversation, Models, Security and New fleet at 696px and 900px.
 
 Every evidence file identifies a clean candidate revision, source-tree digest and UTC capture time. Motion evidence includes lossless frame pairs for both themes and sizes; reduced-motion pairs remain byte-identical.
 
 The bundle manifest hashes every payload, including reports and its index. Report each pre-submission check as PASS, FAIL or NOT RUN with measurements and filenames; unresolved failures prevent packaging.
 
-The owner-approved account menu has Team, API Keys, Usage, Models, Appearance and Sign out beneath the identity header. The header's native submenu switches and creates workspaces.
+The owner-approved account menu has Team, Security, Usage, Models, Appearance and Sign out beneath the identity header. The header's native submenu switches and creates workspaces.
 
-API Keys shows an identity card followed by keys and signed-in sessions. The owner’s Nov 14 refinement removes the embedded account/sign-in widget and its repeated header action.
+Security shows keys and signed-in sessions, with identity available from the account avatar.
+The November 15 refinement removes the repeated identity card; the earlier account/sign-in widget and repeated header action remain removed.
 
 ### Conversation shape and header cost
 

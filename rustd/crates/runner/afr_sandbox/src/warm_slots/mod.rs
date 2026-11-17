@@ -90,12 +90,10 @@ impl WarmSlots {
             let reason = stopped.to_string();
             let event = EVENT_KEEPER_FAILED;
             let error_code = DIED_CODE.as_str();
-            tracing::warn!(
-                error_code,
-                reason,
-                event,
-                "the warm-slot keeper stopped abnormally"
-            );
+            {
+                let message = format_args!("the warm-slot keeper stopped abnormally");
+                tracing::warn!(message, error_code, reason, event);
+            };
         }
     }
 
@@ -181,12 +179,13 @@ fn live_slot(
         let event = EVENT_SLOT_DIED;
         let error_code = DIED_CODE.as_str();
         let name = slot.name.as_str();
-        tracing::warn!(
-            error_code,
-            slot = name,
-            event,
-            "a warm slot's sandbox died while it waited"
-        );
+        {
+            let (slot, message) = (
+                &name,
+                format_args!("a warm slot's sandbox died while it waited"),
+            );
+            tracing::warn!(message, error_code, slot, event);
+        };
         work.spawn(retire(slot));
     }
 }
@@ -253,13 +252,13 @@ async fn retire(Slot { name, sandbox }: Slot) {
     if let Err(error) = sandbox.destroy().await {
         let Logged { error_code, reason } = error.logged();
         let event = EVENT_SLOT_LEFT;
-        tracing::warn!(
-            error_code,
-            slot = name,
-            reason,
-            event,
-            "an unused warm slot failed to tear down"
-        );
+        {
+            let (slot, message) = (
+                &name,
+                format_args!("an unused warm slot failed to tear down"),
+            );
+            tracing::warn!(message, error_code, slot, reason, event);
+        };
     }
 }
 

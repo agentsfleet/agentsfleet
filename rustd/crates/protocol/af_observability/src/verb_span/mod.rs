@@ -142,7 +142,7 @@ impl Ticks for HostTicks {
     }
 
     fn wall(&self) -> SystemTime {
-        af_core::clock::now().into()
+        af_core::clock::system_time(af_core::clock::now())
     }
 }
 

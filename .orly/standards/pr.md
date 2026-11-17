@@ -64,11 +64,11 @@ GitLab merge requests follow the same rules.
 - **Good:** `HEAD` equal to `@{upstream}` when the PR opens or updates
 - **Why:** review and Continuous Integration (CI) judge the pushed revision, so a local-only commit ships unreviewed.
 
-### PR-SPEC — A finished spec sits in `docs/v*/done/` in the PR's diff with every Dimension `DONE`, and a parked spec stays in `active/` as `IN_PROGRESS`.
+### PR-SPEC — A finished spec sits in `docs/v*/done/` with every Dimension `DONE`; a parked spec follows SPEC-STATUS as a `DEFERRED` record in `done/`.
 - **Applies to:** PRs on a branch that carries a spec
 - **Checked by:** review
 - **Bad:** `Status: DONE` on a spec still under `docs/v2/active/`
-- **Good:** the spec moved to `docs/v2/done/` in the closing commit, with `Status: DONE`
+- **Good:** finished work has `Status: DONE`; a parked record has `Status: DEFERRED`, the owner's quoted decision and reopening conditions in Discovery
 - **Why:** the spec's folder tells the next agent whether the work is finished.
 
 ### PR-VERSION — The repository's version-sync check passes before the PR opens.
@@ -132,7 +132,10 @@ One image carries one assertion, named in its caption, and no failure is cropped
 A countable before/after belongs in a fenced diagram, not in two images.
 The person attaches images, because no forge command-line tool uploads them to a PR body.
 
-### PR-REVIEW — The Review section leads with the result and lists every finding with severity, location, defect and disposition.
+Keep one canonical approved visual reference. Label fixture captures, authenticated live acceptance, production measurements and injected delays separately; one category does not prove another.
+When the owner requests design approval first, present the concrete design before implementation and preserve that approval boundary.
+
+### PR-REVIEW — The Review section leads with the actual result and lists every finding with severity, location, defect and disposition.
 - **Applies to:** every `## Review` section
 - **Checked by:** review
 - **Bad:** an empty `## Review` heading, or `Looks good` when no review ran
@@ -140,6 +143,8 @@ The person attaches images, because no forge command-line tool uploads them to a
 - **Why:** a missing or vague review reads as clean when it may not be.
 
 Severity is P0, P1 or P2, and the disposition is `FIXED` or `DEFERRED` with the quote PR-DEFER requires.
+
+A missing, timed-out or unavailable reviewer is an incomplete review. Record its reason; never convert a launched reviewer, usage-limit response or parent-written summary into a clean finding count.
 
 ### PR-MAKE — The Make section lists each command actually run, with its exit status and decisive output line.
 - **Applies to:** every `## Make` section

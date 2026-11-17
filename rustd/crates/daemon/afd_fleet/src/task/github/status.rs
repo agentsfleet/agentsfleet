@@ -146,23 +146,25 @@ impl Session<'_> {
         let checks = target
             .workflows
             .iter()
-            .map(|workflow| match latest.get(&workflow.id) {
-                Some(run) => Check {
-                    workflow_id: workflow.id,
-                    run_id: Some(run.id),
-                    run_number: Some(run.run_number),
-                    run_attempt: Some(run.run_attempt),
-                    status: run.status.clone(),
-                    conclusion: run.conclusion.clone(),
-                },
-                None => Check {
-                    workflow_id: workflow.id,
-                    run_id: None,
-                    run_number: None,
-                    run_attempt: None,
-                    status: "pending".to_owned(),
-                    conclusion: None,
-                },
+            .map(|workflow| {
+                latest.get(&workflow.id).map_or_else(
+                    || Check {
+                        workflow_id: workflow.id,
+                        run_id: None,
+                        run_number: None,
+                        run_attempt: None,
+                        status: "pending".to_owned(),
+                        conclusion: None,
+                    },
+                    |run| Check {
+                        workflow_id: workflow.id,
+                        run_id: Some(run.id),
+                        run_number: Some(run.run_number),
+                        run_attempt: Some(run.run_attempt),
+                        status: run.status.clone(),
+                        conclusion: run.conclusion.clone(),
+                    },
+                )
             })
             .collect();
         Ok(Snapshot {

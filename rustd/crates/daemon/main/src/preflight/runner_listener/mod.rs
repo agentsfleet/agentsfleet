@@ -29,19 +29,19 @@ pub(super) fn read<E: EnvSource + ?Sized>(
     env: &E,
     faults: &mut Vec<Fault>,
 ) -> Option<RunnerListenerConfig> {
-    let address = match optional(env, LISTEN_ADDR) {
-        None => Some(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 4443))),
-        Some(raw) => match raw.parse() {
-            Ok(address) => Some(address),
-            Err(_source) => {
-                faults.push(Fault::Invalid {
-                    knob: LISTEN_ADDR,
-                    why: DETAIL_ADDRESS.to_owned(),
-                });
-                None
-            }
+    let address = optional(env, LISTEN_ADDR).map_or_else(
+        || Some(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 4443))),
+        |raw| {
+            raw.parse::<SocketAddr>()
+                .inspect_err(|_source| {
+                    faults.push(Fault::Invalid {
+                        knob: LISTEN_ADDR,
+                        why: DETAIL_ADDRESS.to_owned(),
+                    });
+                })
+                .ok()
         },
-    };
+    );
     let chain = required(env, faults, TLS_CERT_FILE, DETAIL_CERTIFICATE);
     let key = required(env, faults, TLS_KEY_FILE, DETAIL_PRIVATE_KEY);
     Some(RunnerListenerConfig {

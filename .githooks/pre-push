@@ -4,17 +4,17 @@
 #
 # Stage shape:
 #   1. classify pushed files (since upstream / main fork-point) into 5 flags
-#   2. run matching test-unit-* lanes — cargo backgrounded, JavaScript serial
+#   2. run matching lanes — cargo backgrounded, JavaScript serial
 #
 # No `orly gate` call: `work` proves nothing here (see below), and `pr` is the
 # comprehensive tier that belongs at CHORE(close).
 #
 # Surfaces:
 #   - lint-rustd                   (*.rs, rustd/*)
-#   - test-unit-cli            (cli/*)
-#   - test-unit-website        (ui/packages/website/*)
-#   - test-unit-app            (ui/packages/app/*, design-system/* triggers both)
-#   - test-unit-design-system  (ui/packages/design-system/*)
+#   - test-coverage-cli            (cli/*)
+#   - test-coverage-website        (ui/packages/website/*)
+#   - test-coverage-app            (ui/packages/app/*, design-system/* triggers both)
+#   - test-coverage-design-system  (ui/packages/design-system/*)
 #
 # `lint-rustd` runs HERE rather than at commit time: commit-time checks cost
 # seconds, and the lint and unit rows are pre-push's. Clippy over the whole
@@ -118,10 +118,10 @@ fi
 # for the answer.
 plan=""
 [ "$needs_rustd"              = 1 ] && plan="$plan lint-rustd"
-[ "$needs_test_cli"           = 1 ] && plan="$plan test-unit-cli"
-[ "$needs_test_website"       = 1 ] && plan="$plan test-unit-website"
-[ "$needs_test_app"           = 1 ] && plan="$plan test-unit-app"
-[ "$needs_test_design_system" = 1 ] && plan="$plan test-unit-design-system"
+[ "$needs_test_cli"           = 1 ] && plan="$plan test-coverage-cli"
+[ "$needs_test_website"       = 1 ] && plan="$plan test-coverage-website"
+[ "$needs_test_app"           = 1 ] && plan="$plan test-coverage-app"
+[ "$needs_test_design_system" = 1 ] && plan="$plan test-coverage-design-system"
 echo "  lanes:$plan"
 
 # --- Test lanes --------------------------------------------------------------
@@ -131,7 +131,7 @@ echo "  lanes:$plan"
 # help-e2e tests spawn the built binary and wait on its output). Those fight
 # each other for local runtime: launching all of them at once is what made the
 # CLI lane flake badly enough to earn its `--timeout 30000` (see
-# make/test-unit.mk). They stay serial among themselves, exactly as before.
+# cli/scripts/enforce-coverage.mjs). They stay serial among themselves, exactly as before.
 #
 # The Rust lanes are cargo — no jsdom, no PTY, no bun. They contend with the
 # JavaScript lanes for CPU alone, which is what a machine's scheduler is for.
@@ -168,10 +168,11 @@ if [ "$needs_rustd" = 1 ]; then
 fi
 
 # Serial among themselves: same order, same isolation as before.
-[ "$needs_test_cli"           = 1 ] && run_lane test-unit-cli                make test-unit-cli
-[ "$needs_test_website"       = 1 ] && run_lane test-unit-website            make test-unit-website
-[ "$needs_test_app"           = 1 ] && run_lane test-unit-app                make test-unit-app
-[ "$needs_test_design_system" = 1 ] && run_lane test-unit-design-system      make test-unit-design-system
+# The same targets the Continuous Integration jobs run (.github/workflows/test.yml).
+[ "$needs_test_cli"           = 1 ] && run_lane test-coverage-cli            make test-coverage-cli
+[ "$needs_test_website"       = 1 ] && run_lane test-coverage-website        make test-coverage-website
+[ "$needs_test_app"           = 1 ] && run_lane test-coverage-app            make test-coverage-app
+[ "$needs_test_design_system" = 1 ] && run_lane test-coverage-design-system  make test-coverage-design-system
 
 if [ -n "$rustd_pid" ]; then
   echo "→ waiting on the Rust lanes (output replays below when they finish)"

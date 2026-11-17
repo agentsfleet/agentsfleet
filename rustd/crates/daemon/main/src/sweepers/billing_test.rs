@@ -154,7 +154,7 @@ fn a_partial_pass_waits_for_the_tick() {
 #[tokio::test]
 async fn a_lease_pass_with_no_datastore_waits_for_it() {
     let database = unreachable_db();
-    let biller = crate::billing::biller(database.clone());
+    let biller = crate::billing::biller(database.clone(), af_observability::Analytics::silent());
     let capture = Capture::install();
 
     sweep_leases(&database, biller.as_ref(), &std::sync::Mutex::new(None)).await;

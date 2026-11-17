@@ -214,13 +214,15 @@ impl Declared {
 fn missing(workspace_id: &Uuid7, name: &str) -> crate::Error {
     let code = error_code::AGENTSFLEET_CREDENTIAL_MISSING.as_str();
     let workspace = workspace_id.as_str();
-    tracing::warn!(
-        error_code = code,
-        event = EVENT_CREDENTIAL_NOT_FOUND,
-        workspace_id = workspace,
-        name,
-        "the fleet declared a credential this workspace does not hold"
-    );
+    {
+        let (error_code, event, workspace_id, message) = (
+            &code,
+            &EVENT_CREDENTIAL_NOT_FOUND,
+            &workspace,
+            format_args!("the fleet declared a credential this workspace does not hold"),
+        );
+        tracing::warn!(message, error_code, event, workspace_id, name);
+    };
     credential_missing()
 }
 
@@ -371,7 +373,7 @@ mod tests {
         for body in [json!("just-a-token"), json!(["a", "b"]), json!(42)] {
             let mut declared = Declared::default();
             declared
-                .route("cred".to_owned(), body.clone(), &Registry)
+                .route("cred".to_owned(), body, &Registry)
                 .expect_err("a non-object stored credential cannot be addressed");
         }
     }

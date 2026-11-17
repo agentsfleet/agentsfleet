@@ -117,10 +117,10 @@ fn annotate_beta(schema: &mut Schema) -> bool {
     extensions
         .get_or_insert_with(Extensions::default)
         .insert(STABILITY.to_owned(), BETA.into());
-    *description = Some(match description.take() {
-        Some(text) => format!("{text} {BETA_NOTE}"),
-        None => BETA_NOTE.to_owned(),
-    });
+    *description = Some(description.take().map_or_else(
+        || BETA_NOTE.to_owned(),
+        |text| format!("{text} {BETA_NOTE}"),
+    ));
     true
 }
 

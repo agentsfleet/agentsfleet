@@ -4,6 +4,16 @@ This report tracks the approved proposal, the final Claude review and the implem
 It distinguishes reviewed visuals, source fixes, automated checks and owner approval.
 The UI refresh incorporates the CLI/API work merged in PR #839.
 
+## Post-merge status
+
+PR #844 merged as `a1dcc222488e4522f8b92208a4f7df8461fe7fbf`.
+The [post-merge runtime record](M249_POST_MERGE_RUNTIME_VALIDATION.md) is the current source for authenticated validation and remaining blockers.
+
+The ledgers below preserve earlier checkpoints. Daily Usage totals, fleet model sets, safe key suffixes and frozen-model save preparation already exist in merged source.
+Their earlier missing-data descriptions are historical; remaining M249_004 producers and Usage loading still belong to that workstream.
+
+Plugin UI remains paused, and M249_003 plus M249_004 Section 5 remain parked.
+
 ## Current result
 
 M249_001 moves to done at Indy's explicit implementation-closeout request. All 14 implementation Dimensions are complete. A fresh adversarial capture pass found residual presentation defects; its repairs and new evidence follow below.
@@ -245,7 +255,7 @@ The fresh full browser/authenticated lanes below decide current candidate readin
 |---|---|---|
 | Usage | Settled totals and full charge details; Daily spend explicitly unavailable | UTC daily buckets and complete per-fleet model facts |
 | API keys | Actual creation/revocation dates; no invented suffix or last-use time | Add safe suffix/last-used metadata if recorded |
-| Secrets | Hidden values; Replace/Delete; access details unavailable | Project existing access policy; a new access-control model needs separate design |
+| Secrets | Hidden values; Replace/Delete; Available to names fleets whose setup declares the secret (M249_004 §3.3) | Access comes from the revisions a lease reads; a caller without fleet read sees it unavailable |
 | Plugins | Published setup label; immutable revisions inspected in dialog | Return revision ordinal metadata where the API currently omits it |
 | Changes/Outputs | Only recorded writes and confirmed publication evidence | Recorded diff totals/publication receipts where absent; no made-up totals |
 | Composer | Actual selected model; neutral empty Send; supported preview uploads only | Runtime context-budget facts if already recorded; real uploads/mentions remain separate scope |
@@ -271,7 +281,7 @@ Flow 2 capabilities, real upload storage, mention invocation, new secret policy 
 
 ## Post-merge implementation start
 
-The repository follow-up is [M249_004](../pending/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md), with a [Claude handoff](M249_004_CLAUDE_HANDOFF.md). It remains pending.
+The repository follow-up is [M249_004](../done/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md), with a [Claude handoff](M249_004_CLAUDE_HANDOFF.md). It is done.
 
 Its implementation starts after both UI and CLI merges; M249_003 on Claude's branch owns Plugin vocabulary. The historical downloadable prompt below is superseded by that repository handoff.
 

@@ -50,7 +50,7 @@ pub(super) async fn reconcile(
     holds: Option<&Valid<HeldFleets<'_>>>,
     closing: bool,
 ) -> Vec<String> {
-    let held = holds.map(fleets).unwrap_or_default();
+    let held = holds.map_or_default(fleets);
     let listed: Vec<&Uuid7> = held.iter().collect();
     let clear = sqlx::query(sql::holds::CLEAR_DROPPED_HOLDS)
         .bind(runner)

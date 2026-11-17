@@ -104,22 +104,22 @@ impl BubblewrapEngine {
         boot::admissible(host)?;
         let root = rustix::process::geteuid().is_root();
         let run_as = root.then_some(config.sandbox_ids);
-        let owner = run_as.unwrap_or((
-            rustix::process::getuid().as_raw(),
-            rustix::process::getgid().as_raw(),
-        ));
+        let owner = run_as.unwrap_or_else(|| {
+            (
+                rustix::process::getuid().as_raw(),
+                rustix::process::getgid().as_raw(),
+            )
+        });
         // Before the sweep, which would otherwise remove a second process's
         // live links on this host.
         if host.egress {
             own().inspect_err(|error| {
                 let Logged { error_code, reason } = error.logged();
                 let event = EVENT_HOST_REFUSED;
-                tracing::error!(
-                    error_code,
-                    reason,
-                    event,
-                    "this host's egress is owned elsewhere"
-                );
+                {
+                    let message = format_args!("this host's egress is owned elsewhere");
+                    tracing::error!(message, error_code, reason, event);
+                };
             })?;
         }
         let engine = Self {

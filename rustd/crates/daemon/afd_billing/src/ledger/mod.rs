@@ -34,6 +34,8 @@ pub use self::sweep::{Resettled, Resume, resettle, unsettled};
 const INSERT_LINES: &str = include_str!("sql/insert_lines.sql");
 const SETTLE_LINES: &str = include_str!("sql/settle_lines.sql");
 const DEBIT_WALLET: &str = include_str!("sql/debit_wallet.sql");
+const ADD_USAGE_DAILY: &str = include_str!("sql/add_usage_daily.sql");
+const COUNT_RUN: &str = include_str!("sql/count_run.sql");
 const SELECT_BALANCE: &str = include_str!("sql/select_balance.sql");
 
 /// What each statement here was doing, for [`query`].

@@ -12,6 +12,7 @@ mod atomic;
 mod improvement;
 mod recovery;
 mod refusals;
+mod registration;
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

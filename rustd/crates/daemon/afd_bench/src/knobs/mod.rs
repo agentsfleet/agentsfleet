@@ -52,16 +52,15 @@ pub fn required(env: &dyn EnvSource, key: &'static str) -> Result<String> {
 /// `VariableUnreadable` when the variable is set to something that
 /// is not a whole number.
 pub fn number(env: &dyn EnvSource, key: &'static str, fallback: u64) -> Result<u64> {
-    match variable(env, key) {
-        None => Ok(fallback),
-        Some(value) => value.trim().parse().map_err(|_unparsed| {
+    variable(env, key).map_or(Ok(fallback), |value| {
+        value.trim().parse().map_err(|_unparsed| {
             ErrorKind::VariableUnreadable {
                 variable: key,
                 value,
             }
             .into()
-        }),
-    }
+        })
+    })
 }
 
 /// A fraction in `0..=1`, or its default when unset.
@@ -71,9 +70,8 @@ pub fn number(env: &dyn EnvSource, key: &'static str, fallback: u64) -> Result<u
 /// `VariableUnreadable` when the variable is set to something that
 /// is not a number in that range.
 pub fn fraction(env: &dyn EnvSource, key: &'static str, fallback: f64) -> Result<f64> {
-    match variable(env, key) {
-        None => Ok(fallback),
-        Some(value) => value
+    variable(env, key).map_or(Ok(fallback), |value| {
+        value
             .trim()
             .parse::<f64>()
             .ok()
@@ -84,8 +82,8 @@ pub fn fraction(env: &dyn EnvSource, key: &'static str, fallback: f64) -> Result
                     value,
                 }
                 .into()
-            }),
-    }
+            })
+    })
 }
 
 #[cfg(test)]

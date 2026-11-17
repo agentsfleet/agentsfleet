@@ -26,6 +26,7 @@ use crate::error::{ErrorKind, Result, missing};
 
 pub use self::digest::canonical_digest;
 pub use self::document::ConfigDocument;
+pub(crate) use self::document::RUNTIME_BLOCK;
 #[cfg(feature = "openapi")]
 pub use self::edit::narrow_edit_batch;
 pub use self::edit::{ConfigOp, EditBatch, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS};

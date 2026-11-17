@@ -23,6 +23,8 @@ pub struct Card<Q = Value> {
     pub required_credentials_reasons: Value,
     /// Immutable current head `UUIDv7`.
     pub head_revision_id: String,
+    /// Decimal entry-local revision of that head, such as `3`.
+    pub head_revision: String,
     /// Strong Plugin version.
     pub etag: String,
 }

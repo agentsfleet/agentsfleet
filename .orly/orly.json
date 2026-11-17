@@ -1,6 +1,5 @@
 {
   "schema_version": 1,
-  "orly_version": "0.28.1",
   "packs": [
     "language.rust",
     "persona.indy",
@@ -30,6 +29,13 @@
         "make",
         "check-version"
       ]
+    ],
+    "burst.acceptance": [
+      [
+        "bash",
+        "-c",
+        "set -a; source <(deploy/local/machine-env.sh /run/orly-burst-machine-env); set +a; status=0; make acceptance SUITE=all || status=$?; logs=ui/packages/app/playwright-acceptance-results/logs; mkdir -p \"$logs\"; for file in ~/.local/state/agentsfleet/dev-*/worktrees/*/daemon.log ~/.local/state/agentsfleet/dev-*/worktrees/*/acceptance/*.log; do if [ -f \"$file\" ]; then cp \"$file\" \"$logs/\"; fi; done; exit \"$status\""
+      ]
     ]
   },
   "surfaces": {
@@ -46,19 +52,124 @@
       "public/openapi/"
     ]
   },
+  "burst": {
+    "setup": [
+      [
+        "bash",
+        "-c",
+        "dpkg -s build-essential clang cmake jq libnss3-tools libssl-dev lsof openssl pkg-config python3 >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq --no-install-recommends build-essential clang cmake jq libnss3-tools libssl-dev lsof openssl pkg-config python3; }"
+      ],
+      [
+        "bash",
+        "-c",
+        "modprobe erofs && modprobe loop && grep -qw erofs /proc/filesystems && grep -qw securityfs /proc/filesystems && test -e /dev/loop-control && test -b /dev/loop0 && grep -q landlock /sys/kernel/security/lsm && docker run --rm --privileged mirror.gcr.io/library/debian:trixie-slim true"
+      ],
+      [
+        "bash",
+        "-c",
+        "command -v rustup >/dev/null || curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none"
+      ],
+      [
+        "bash",
+        "-c",
+        "cd rustd && rustup toolchain install && cargo --version"
+      ],
+      [
+        "bash",
+        "-c",
+        "want=\"$(jq -r .packageManager package.json)\"; want=\"${want#bun@}\"; [ \"$(bun --version 2>/dev/null)\" = \"$want\" ] || curl -fsSL https://bun.sh/install | bash -s \"bun-v$want\""
+      ]
+    ],
+    "warm": [
+      [
+        "bun",
+        "install",
+        "--frozen-lockfile"
+      ],
+      [
+        "bash",
+        "-c",
+        "cd cli && bun install --frozen-lockfile"
+      ],
+      [
+        "bash",
+        "-c",
+        "for package in ui/packages/*/; do (cd \"$package\" && bun install --frozen-lockfile) || exit 1; done"
+      ],
+      [
+        "bash",
+        "-c",
+        "cd ui/packages/app && bunx --no-install playwright install --with-deps chromium"
+      ],
+      [
+        "bash",
+        "-c",
+        "source scripts/local-dev.sh && dev_state && cd rustd && cargo build --locked --bin agentsfleetd --bin agentsfleet-runner --target-dir \"$DEV_SHARED/build\""
+      ],
+      [
+        "bash",
+        "-c",
+        "source scripts/local-dev.sh && docker compose --file docker-compose.yml pull --quiet"
+      ],
+      [
+        "bash",
+        "-c",
+        "LOCAL_ACCEPTANCE_STATE=/tmp LOCAL_ACCEPTANCE_ADMIN_PORT=2019 docker compose --file deploy/local/compose.yml pull --quiet"
+      ],
+      [
+        "bash",
+        "-c",
+        "source scripts/local-dev.sh && docker build --quiet --file deploy/local/linux-runner.Dockerfile --tag \"agentsfleet-acceptance-$DEV_ID\" ."
+      ],
+      [
+        "docker",
+        "pull",
+        "--quiet",
+        "mirror.gcr.io/library/debian:trixie-slim"
+      ]
+    ],
+    "secrets": {
+      "CLERK_SECRET_KEY": "op://ZMB_CD_DEV/clerk-dev/secret-key",
+      "CLERK_PUBLISHABLE_KEY": "op://ZMB_CD_DEV/clerk-dev/publishable-key",
+      "CLERK_WEBHOOK_SECRET": "op://ZMB_CD_DEV/clerk-dev/webhook-secret",
+      "OIDC_ISSUER": "op://ZMB_CD_DEV/clerk-dev/issuer",
+      "AUTH_SESSION_CODE_PEPPER": "op://ZMB_CD_DEV/auth-session-code-pepper/credential",
+      "FIREWORKS_API_KEY": "op://ZMB_CD_DEV/agentsfleet-fireworks-api-token/credential",
+      "TYPESAFE_API_KEY": "op://ZMB_CD_DEV/typesafe/credential",
+      "LOCAL_GITHUB_APP_ID": "op://ZMB_CD_DEV/github-app/app_id",
+      "LOCAL_GITHUB_APP_SLUG": "op://ZMB_CD_DEV/github-app/app_slug",
+      "LOCAL_GITHUB_CLIENT_ID": "op://ZMB_CD_DEV/github-app/client_id",
+      "LOCAL_GITHUB_CLIENT_SECRET": "op://ZMB_CD_DEV/github-app/client_secret",
+      "LOCAL_GITHUB_PRIVATE_KEY_PEM": "op://ZMB_CD_DEV/github-app/private_key_pem",
+      "LOCAL_GITHUB_WEBHOOK_SECRET": "op://ZMB_CD_DEV/github-app/webhook_secret",
+      "LOCAL_LINEAR_CLIENT_ID": "op://ZMB_CD_DEV/linear-app/client_id",
+      "LOCAL_LINEAR_CLIENT_SECRET": "op://ZMB_CD_DEV/linear-app/client_secret"
+    },
+    "artifacts": [
+      "ui/packages/app/playwright-acceptance-results",
+      "ui/packages/app/playwright-acceptance-report"
+    ],
+    "directories": [
+      "ACCEPTANCE_LOCAL_TOOLBOX_DIR"
+    ]
+  },
   "managed": [
     ".agents/skills/orly-build/SKILL.md",
+    ".agents/skills/orly-burst/SKILL.md",
     ".agents/skills/orly-ship/SKILL.md",
     ".agents/skills/orly-spec/SKILL.md",
     ".claude/agents/orly-standards-reviewer.md",
     ".claude/skills/orly-build/SKILL.md",
+    ".claude/skills/orly-burst/SKILL.md",
     ".claude/skills/orly-ship/SKILL.md",
     ".claude/skills/orly-spec/SKILL.md",
     ".opencode/skills/orly-build/SKILL.md",
+    ".opencode/skills/orly-burst/SKILL.md",
     ".opencode/skills/orly-ship/SKILL.md",
     ".opencode/skills/orly-spec/SKILL.md",
     ".orly/AGENTS.md",
     ".orly/skills/orly-build/SKILL.md",
+    ".orly/skills/orly-burst/SKILL.md",
     ".orly/skills/orly-ship/SKILL.md",
     ".orly/skills/orly-spec/SKILL.md",
     ".orly/standards/changelog.md",

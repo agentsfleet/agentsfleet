@@ -183,11 +183,13 @@ impl ProviderClaims {
             .map_err(|broke| {
                 if broke == CapBreak::TooLarge {
                     let cap = USER_MAX_RESPONSE_BYTES;
-                    tracing::warn!(
-                        cap,
-                        event = "scope_response_too_large",
-                        "refusing the user document"
-                    );
+                    {
+                        let (event, message) = (
+                            &"scope_response_too_large",
+                            format_args!("refusing the user document"),
+                        );
+                        tracing::warn!(message, cap, event);
+                    };
                 }
                 ClaimUnavailable::Unreachable
             })

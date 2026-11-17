@@ -323,8 +323,8 @@ fn text(output: &Value) -> Option<String> {
 /// One Server-Sent Event carrying `data`, named by its `type` when it has one,
 /// as Messages and Responses name theirs.
 fn framed(data: &Value) -> String {
-    match data["type"].as_str() {
-        Some(name) => format!("event: {name}\ndata: {data}\n\n"),
-        None => format!("data: {data}\n\n"),
-    }
+    data["type"].as_str().map_or_else(
+        || format!("data: {data}\n\n"),
+        |name| format!("event: {name}\ndata: {data}\n\n"),
+    )
 }

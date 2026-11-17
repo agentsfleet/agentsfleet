@@ -191,12 +191,10 @@ impl CliCredentials {
         let credential_id = id.as_str();
         let machine_name = request.machine.as_str();
         let deployment = request.deployment;
-        tracing::info!(
-            credential_id,
-            machine_name,
-            deployment,
-            event = "credential_minted"
-        );
+        {
+            let event = &"credential_minted";
+            tracing::info!(credential_id, machine_name, deployment, event);
+        };
 
         Ok(Revealed {
             id,

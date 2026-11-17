@@ -133,13 +133,15 @@ async fn a_delivery_that_does_not_prove_itself_is_refused_and_appends_nothing() 
 
     for (case, proof, body) in cases {
         let ingress = holding(signed::TRIGGER_GITHUB, Some(signed::SECRET));
-        let headers = match proof {
-            Some(proof) => signed::github_headers(EVENT_WORKFLOW_RUN, signed::DELIVERY_ID, proof),
-            None => vec![
-                (signed::name(signed::HEADER_EVENT), EVENT_WORKFLOW_RUN),
-                (signed::name(signed::HEADER_DELIVERY), signed::DELIVERY_ID),
-            ],
-        };
+        let headers = proof.map_or_else(
+            || {
+                vec![
+                    (signed::name(signed::HEADER_EVENT), EVENT_WORKFLOW_RUN),
+                    (signed::name(signed::HEADER_DELIVERY), signed::DELIVERY_ID),
+                ]
+            },
+            |proof| signed::github_headers(EVENT_WORKFLOW_RUN, signed::DELIVERY_ID, proof),
+        );
         assert_eq!(
             refused(&ingress, &headers, body, case).await,
             error_code::WEBHOOK_SIGNATURE_INVALID.as_str(),

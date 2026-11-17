@@ -41,13 +41,12 @@ impl LeaseService {
                 let Logged { error_code, reason } = failure.logged();
                 let fleet_id = fleet_id.as_str();
                 let event = EVENT_WINDOW_READ_FAILED;
-                tracing::warn!(
-                    error_code,
-                    fleet_id,
-                    reason,
-                    event,
-                    "the lease issues without its memory window; the runner reads memory itself"
-                );
+                {
+                    let (message,) = (format_args!(
+                        "the lease issues without its memory window; the runner reads memory itself"
+                    ),);
+                    tracing::warn!(message, error_code, fleet_id, reason, event);
+                };
                 None
             }
         }

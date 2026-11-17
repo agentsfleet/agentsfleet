@@ -110,13 +110,18 @@ fn identifier(column: &'static str, value: &str) -> Result<Uuid7> {
 fn subject(value: &str) -> Result<Subject> {
     Subject::new(value).map_err(|_blank| {
         let code = error_code::INTERNAL_DB_QUERY.as_str();
-        tracing::error!(
-            error_code = code,
-            event = "credential_row_identity_blank",
-            "a credential row holds a blank identity-provider subject — every \
+        {
+            let (error_code, event, message) = (
+                &code,
+                &"credential_row_identity_blank",
+                format_args!(
+                    "a credential row holds a blank identity-provider subject — every \
              capability gate would refuse it, so the lookup answers unavailable \
              rather than authenticating a principal with no identity"
-        );
+                ),
+            );
+            tracing::error!(message, error_code, event);
+        };
         Unavailable
     })
 }

@@ -14,7 +14,8 @@ import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/na
 const SWITCH_TIMEOUT_MS = 10_000;
 const FLOW_TIMEOUT_MS = 120_000;
 // Purpose-based fleet names keep cleanup scoped to this lifecycle suite.
-const SEED_PREFIX = "Workspace lifecycle";
+// A fleet name is a kebab slug (af_fleet_runtime FleetName); the Definition parse refuses anything else.
+const SEED_PREFIX = "workspace-lifecycle";
 
 test.describe("multi-workspace + fleet lifecycle", () => {
   test.setTimeout(FLOW_TIMEOUT_MS);
@@ -61,7 +62,7 @@ test.describe("multi-workspace + fleet lifecycle", () => {
   test("an active fleet can be permanently deleted with one confirmation", async ({page}, info) => {
     const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
     await signInAs(page, FIXTURE_KEY.regular);
-    const fleetId = await saveFleetViaUI(page, `${SEED_PREFIX} deletion`, {
+    const fleetId = await saveFleetViaUI(page, `${SEED_PREFIX}-deletion`, {
       handle: FIXTURE_KEY.regular, workspaceId: secondary.id,
     });
     await waitForFleetActive(FIXTURE_KEY.regular, secondary.id, fleetId);

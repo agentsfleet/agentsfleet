@@ -105,12 +105,10 @@ impl Classified {
             // `debug`, not `warn`: the row still lists. The stored spelling is
             // carried so a newer daemon's vocabulary is visible when it appears.
             let spelling = stored.unwrap_or_default();
-            tracing::debug!(
-                column = COLUMN_KIND,
-                stored = spelling,
-                name,
-                event = "secret_kind_degraded",
-            );
+            {
+                let (column, stored, event) = (&COLUMN_KIND, &spelling, &"secret_kind_degraded");
+                tracing::debug!(column, stored, name, event);
+            };
             return Self::CustomSecret;
         };
         match (kind, provider) {
@@ -128,12 +126,11 @@ impl Classified {
                 // Presenting the kind without it would hand the dashboard a
                 // row outside its own type.
                 let stored_kind = kind.as_str();
-                tracing::debug!(
-                    column = COLUMN_KIND,
-                    stored = stored_kind,
-                    name,
-                    event = "secret_provider_missing",
-                );
+                {
+                    let (column, stored, event) =
+                        (&COLUMN_KIND, &stored_kind, &"secret_provider_missing");
+                    tracing::debug!(column, stored, name, event);
+                };
                 Self::CustomSecret
             }
         }

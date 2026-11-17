@@ -34,9 +34,11 @@ use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 use serde::Deserialize;
 
-use crate::auth::{Acting, WorkspaceContext};
+use crate::auth::{Acting, PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspaceConnectors as _, WorkspaceSecrets as _};
+use crate::services::{
+    Services, WorkspaceConnectors as _, WorkspaceFleets as _, WorkspaceSecrets as _,
+};
 
 mod support;
 
@@ -45,6 +47,7 @@ use support::{connection_named, delete_refusal, may_disconnect, read_body, summa
 /// The scoped events each verb's failures are logged under.
 const EVENT_STORE: &str = "secret_store_failed";
 const EVENT_LIST: &str = "secret_list_failed";
+const EVENT_ACCESS: &str = "secret_access_failed";
 const EVENT_REPLACE: &str = "secret_replace_failed";
 const EVENT_DELETE: &str = "secret_delete_failed";
 
@@ -176,16 +179,50 @@ pub(crate) async fn store<D: Services>(
 ))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
+    identity: PersonIdentity,
     WorkspaceContext(owned): WorkspaceContext,
 ) -> Result<Response, Refusal> {
-    let held = services
-        .secrets()
-        .list(&owned.workspace)
-        .await
-        .map_err(Refusal::at(EVENT_LIST))?;
+    // Fleet names are fleet data: a caller who may not list fleets sees no access.
+    let reads_fleets = identity
+        .person()
+        .scopes()
+        .satisfies_any(&[afd_auth::Scope::FleetRead]);
+    let held = async {
+        services
+            .secrets()
+            .list(&owned.workspace)
+            .await
+            .map_err(Refusal::at(EVENT_LIST))
+    };
+    // Access is a detail of the list, not a condition of it: a failed read
+    // leaves every row's access unknown and the list still answers.
+    let access = async {
+        if !reads_fleets {
+            return None;
+        }
+        match services.fleets().secret_access(&owned.workspace).await {
+            Ok(access) => Some(access),
+            Err(fault) => {
+                let error_code = fault.code();
+                let error_code = error_code.as_str();
+                tracing::warn!(
+                    error_code,
+                    event = EVENT_ACCESS,
+                    "fleet access to secrets could not be read; the list answers without it"
+                );
+                None
+            }
+        }
+    };
+    // Two fixed reads in parallel; never one per secret or per fleet.
+    let (held, access) = tokio::join!(held, access);
+    let held = held?;
 
     Ok(Json(SecretsResponse {
-        secrets: held.iter().map(summary).collect(),
+        secrets: held
+            .iter()
+            .map(|secret| summary(secret, access.as_ref()))
+            .collect(),
     })
     .into_response())
 }

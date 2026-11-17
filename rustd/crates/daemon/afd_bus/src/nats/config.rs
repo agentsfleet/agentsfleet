@@ -14,7 +14,7 @@ use garde::{Unvalidated, Validate};
 use super::Tuning;
 use crate::{Result, error::ErrorKind};
 
-/// Comma-separated seed URLs, such as `nats://user:pass@nats-1:4222,nats://user:pass@nats-2:4222`.
+/// Comma-separated seed URLs, such as `nats://user:pass@ant:4222,nats://user:pass@bee:4222`.
 pub const URL_ENV: &str = "NATS_URL";
 /// Optional development namespace; empty keeps the deployed subject spelling.
 pub const NAMESPACE_ENV: &str = "AGENTSFLEET_DEV_NAMESPACE";

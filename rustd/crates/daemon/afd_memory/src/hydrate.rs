@@ -73,16 +73,24 @@ impl Memories {
         let (hydrated, dropped_count) = (kept.len(), dropped.len());
         let dropped_bytes = window::total_bytes(&dropped);
         let shared_count = shared.len();
-        tracing::debug!(
-            fleet_id,
-            held,
-            hydrated,
-            dropped = dropped_count,
-            dropped_bytes,
-            shared = shared_count,
-            event = EVENT_HYDRATED,
-            "a run was seeded with its memory window; the rest stays durable"
-        );
+        {
+            let (dropped, shared, event, message) = (
+                &dropped_count,
+                &shared_count,
+                &EVENT_HYDRATED,
+                format_args!("a run was seeded with its memory window; the rest stays durable"),
+            );
+            tracing::debug!(
+                message,
+                fleet_id,
+                held,
+                hydrated,
+                dropped,
+                dropped_bytes,
+                shared,
+                event
+            );
+        };
         Ok(MemoryHydrateResponse {
             memory: kept,
             shared,

@@ -43,10 +43,7 @@ pub(crate) fn redirected(vendor: &str, pinned: Option<&str>) -> Option<String> {
         return Some(vendor.to_owned());
     };
     let origin = origin_of(pin)?;
-    Some(match path_of(vendor) {
-        Some(path) => format!("{origin}{path}"),
-        None => origin.to_owned(),
-    })
+    Some(path_of(vendor).map_or_else(|| origin.to_owned(), |path| format!("{origin}{path}")))
 }
 
 /// The `scheme://host[:port]` of an absolute URL, if it has one.

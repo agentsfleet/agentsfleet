@@ -64,14 +64,13 @@ pub(super) fn assert_datagram_budget(outcomes: &[Outcome], path: &str) {
     let (size, to_client, to_server) = outcomes
         .iter()
         .max_by_key(|outcome| outcome.size)
-        .map(|outcome| {
+        .map_or_default(|outcome| {
             (
                 outcome.size,
                 outcome.traffic.datagrams_to_client,
                 outcome.traffic.datagrams_to_server,
             )
-        })
-        .unwrap_or_default();
+        });
     assert_ne!(size, 0, "{path}: no case ran");
     let budget = 2 * (size / 1_000 + 1);
     assert!(

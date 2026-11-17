@@ -173,12 +173,9 @@ impl Workspaces {
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query("resolve subject tenant"))?;
-        match tenant {
-            Some(tenant) => Ok(Some(tenant)),
-            // The claim stands when no user row exists, which is the same
-            // fallback the `COALESCE` above encodes.
-            None => Ok(Some(person.tenant().clone())),
-        }
+        // The claim stands when no user row exists, which is the same
+        // fallback the `COALESCE` above encodes.
+        Ok(Some(tenant.unwrap_or_else(|| person.tenant().clone())))
     }
 }
 

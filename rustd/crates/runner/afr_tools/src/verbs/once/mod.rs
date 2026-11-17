@@ -106,7 +106,7 @@ fn minute_of(at: &str, now: Timestamp) -> Result<String, &'static str> {
     if minute > clock::after(now, HORIZON) {
         return Err(DETAIL_TOO_FAR);
     }
-    let civil = minute.to_zoned(TimeZone::UTC).datetime();
+    let civil = minute.to_zoned_datetime(TimeZone::UTC).datetime();
     Ok(format!(
         "{} {} {} {} *",
         civil.minute(),

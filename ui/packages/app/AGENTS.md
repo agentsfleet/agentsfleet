@@ -32,4 +32,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## Billing history
 
 - Fleet deletion retains tenant billing usage. Read names and identifiers from the ledger, without requiring a live fleet row.
-- Keep historical UTC month cutoffs when changing fleet or model filters; reset paging and details. Current month returns to the server's current cutoff.
+- Keep historical UTC month cutoffs when changing the fleet or period filter. Current month returns to the server's current cutoff.

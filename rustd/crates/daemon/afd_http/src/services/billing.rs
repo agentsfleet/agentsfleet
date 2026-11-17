@@ -24,18 +24,6 @@ pub trait TenantBilling: Send + Sync + std::fmt::Debug + 'static {
         request: &afd_billing::report::Request,
     ) -> impl Future<Output = afd_billing::Result<afd_billing::report::Report>> + Send;
 
-    /// The individually settled lines of one activity.
-    ///
-    /// # Errors
-    /// Reports an unavailable datastore or an unreadable ledger row.
-    fn activity_charges(
-        &self,
-        tenant: &Uuid7,
-        work: &afd_billing::biller::WorkKey,
-        request: &afd_billing::report::Request,
-        after: Option<&afd_billing::report::ChargeBoundary>,
-    ) -> impl Future<Output = afd_billing::Result<Vec<afd_billing::report::Charge>>> + Send;
-
     /// The wallet snapshot behind `GET /v1/tenants/me/billing`.
     ///
     /// # Errors
@@ -68,16 +56,6 @@ impl TenantBilling for afd_billing::tenant::Billing {
         request: &afd_billing::report::Request,
     ) -> impl Future<Output = afd_billing::Result<afd_billing::report::Report>> + Send {
         Self::report(self, tenant, request)
-    }
-
-    fn activity_charges(
-        &self,
-        tenant: &Uuid7,
-        work: &afd_billing::biller::WorkKey,
-        request: &afd_billing::report::Request,
-        after: Option<&afd_billing::report::ChargeBoundary>,
-    ) -> impl Future<Output = afd_billing::Result<Vec<afd_billing::report::Charge>>> + Send {
-        Self::activity_charges(self, tenant, work, request, after)
     }
 
     fn snapshot(&self, tenant: &Uuid7) -> impl Future<Output = afd_billing::Result<Wallet>> + Send {

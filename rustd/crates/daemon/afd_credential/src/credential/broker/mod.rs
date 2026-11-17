@@ -252,17 +252,13 @@ impl Key {
     /// collapsed into a shared key, because every ask that failed to digest
     /// would otherwise share one cache entry.
     fn of(ask: &Ask<'_>, connector: &str) -> Option<Self> {
-        let identity = ask
-            .handle
-            .as_object()
-            .map(|handle| {
-                handle
-                    .iter()
-                    .filter(|(field, _)| !ROTATING_FIELDS.contains(&field.as_str()))
-                    .map(|(field, value)| (field.as_str(), value))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let identity = ask.handle.as_object().map_or_default(|handle| {
+            handle
+                .iter()
+                .filter(|(field, _)| !ROTATING_FIELDS.contains(&field.as_str()))
+                .map(|(field, value)| (field.as_str(), value))
+                .collect()
+        });
         let scope = Scope {
             identity,
             binding: ask.binding.map(RepositoryBinding::recorded),

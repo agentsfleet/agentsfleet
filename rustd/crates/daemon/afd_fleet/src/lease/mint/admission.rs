@@ -174,25 +174,31 @@ impl LeaseService {
         )
         .await
         {
-            Ok(outcome) => tracing::debug!(
-                event = EVENT_REFRESH_ROTATED,
-                workspace_id,
-                integration,
-                ?outcome,
-                "a rotated refresh token was written back"
-            ),
+            Ok(outcome) => {
+                let (event, message) = (
+                    &EVENT_REFRESH_ROTATED,
+                    format_args!("a rotated refresh token was written back"),
+                );
+                tracing::debug!(message, event, workspace_id, integration, ?outcome);
+            }
             // The operator's breadcrumb, and nothing more. No token bytes ride
             // this line, and the request is already successful.
             Err(failed) => {
                 let Logged { error_code, reason } = failed.logged();
-                tracing::warn!(
-                    event = EVENT_REFRESH_ROTATED,
-                    workspace_id,
-                    integration,
-                    error_code,
-                    reason,
-                    "a rotated refresh token could not be written back"
-                );
+                {
+                    let (event, message) = (
+                        &EVENT_REFRESH_ROTATED,
+                        format_args!("a rotated refresh token could not be written back"),
+                    );
+                    tracing::warn!(
+                        message,
+                        event,
+                        workspace_id,
+                        integration,
+                        error_code,
+                        reason
+                    );
+                };
             }
         }
     }
@@ -207,13 +213,13 @@ impl LeaseService {
 fn refused(scope: &MintScope, integration: &str, refusal: crate::Error) -> crate::Error {
     let workspace_id = scope.workspace_id.as_str();
     let error_code = refusal.code().as_str();
-    tracing::warn!(
-        event = EVENT_HANDLE_REFUSED,
-        error_code,
-        workspace_id,
-        integration,
-        "a stored handle names a connection its workspace does not hold"
-    );
+    {
+        let (event, message) = (
+            &EVENT_HANDLE_REFUSED,
+            format_args!("a stored handle names a connection its workspace does not hold"),
+        );
+        tracing::warn!(message, event, error_code, workspace_id, integration);
+    };
     refusal
 }
 

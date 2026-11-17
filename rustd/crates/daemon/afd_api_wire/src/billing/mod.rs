@@ -3,23 +3,10 @@
 #[cfg(feature = "openapi")]
 pub mod query;
 mod usage;
-pub use usage::{Activity, Charge, Totals};
+pub use usage::Totals;
 
 use serde::Serialize;
 use std::borrow::Cow;
-
-/// A bounded list with the standard envelope.
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "openapi", schema(as = BillingPage))]
-pub struct Page<'a, T> {
-    /// Items on this page.
-    pub items: Vec<T>,
-    /// Full matching count, or null when it was not computed.
-    pub total: Option<i64>,
-    /// Continue with `starting_after`, or null on the final page.
-    pub next_cursor: Option<Cow<'a, str>>,
-}
 
 /// One spending group across the entire selected period.
 #[derive(Debug, Clone, Serialize)]
@@ -55,7 +42,7 @@ pub struct Daily {
     /// UTC calendar date in YYYY-MM-DD form.
     #[cfg_attr(feature = "openapi", schema(format = Date, extensions(("x-stability" = json!("stable")))))]
     pub day: String,
-    /// Additive daily quantities; `activity_count` counts distinct work within this day.
+    /// Additive daily quantities; runs are counted on the period and fleet totals only.
     #[cfg_attr(feature = "openapi", schema(extensions(("x-stability" = json!("stable")))))]
     pub totals: Totals,
 }
@@ -78,11 +65,9 @@ pub struct FleetChoice<'a> {
 pub struct Choices<'a> {
     /// Runtime fleets and private setup, without private draft labels.
     pub fleets: Vec<FleetChoice<'a>>,
-    /// Exact model identifiers recorded during the period.
-    pub models: Vec<Cow<'a, str>>,
 }
 
-/// Full-period settled spending, independent of activity pagination.
+/// Full-period settled spending.
 #[derive(Debug, Clone, Default, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "openapi", schema(as = BillingSpending))]
@@ -103,18 +88,16 @@ pub struct Report<'a> {
     /// Inclusive beginning of the selected period.
     #[serde(with = "af_wire::instant")]
     pub from_at: jiff::Timestamp,
-    /// Inclusive reporting cutoff, retained by continuations.
+    /// Inclusive end of the period; the report covers every whole UTC day through it.
     #[serde(with = "af_wire::instant")]
     pub through_at: jiff::Timestamp,
     /// Totals across every matching settled line.
     pub totals: Totals,
-    /// Every UTC date in the selected interval, ascending. An activity spanning days counts on each day and once in period totals.
+    /// Every UTC date in the selected interval, ascending.
     #[cfg_attr(feature = "openapi", schema(extensions(("x-stability" = json!("stable")))))]
     pub daily: Vec<Daily>,
     /// Full-period spending groups.
     pub spending: Spending<'a>,
-    /// Unfiltered period choices, never limited to the current page.
+    /// Unfiltered period choices.
     pub filters: Choices<'a>,
-    /// Bounded grouped activities, newest first.
-    pub activities: Page<'a, Activity<'a>>,
 }

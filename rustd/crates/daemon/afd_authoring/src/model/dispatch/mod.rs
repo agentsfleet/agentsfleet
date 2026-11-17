@@ -44,6 +44,8 @@ pub(super) struct Intent {
     pub(super) candidate: Option<crate::types::Candidate>,
     pub(super) compaction: Option<af_context::Compaction>,
     pub(super) context_digest: String,
+    /// The message is a Save, which never asks for a setup change.
+    pub(super) save: bool,
 }
 
 impl Intent {
@@ -81,6 +83,7 @@ impl Intent {
             candidate,
             compaction: prepared.compaction,
             context_digest: prepared.context_digest,
+            save: prepared.save,
         }
     }
 }

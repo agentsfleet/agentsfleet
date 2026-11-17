@@ -84,6 +84,7 @@ impl ModelCalls {
             candidate,
             compaction,
             context_digest,
+            save,
         } = intent;
         outbound.timeout = outbound.timeout.saturating_sub(authorized_at.elapsed());
         let publisher = self.preview(
@@ -123,7 +124,17 @@ impl ModelCalls {
         if compaction.is_none()
             && let Ok(decoded) = &mut decoded
             && let Err(fault) = self
-                .check_edit_intent(runner, lease, request, counters, decoded)
+                .screen_proposals(
+                    runner,
+                    lease,
+                    request,
+                    counters,
+                    Screening {
+                        save,
+                        candidate: candidate.as_ref(),
+                    },
+                    decoded,
+                )
                 .await
         {
             // The main response must still reach accounting after a stop or failed check.
@@ -144,6 +155,26 @@ impl ModelCalls {
             },
         )
         .await
+    }
+
+    /// What a setup call's proposals may keep once the model has answered: a Save
+    /// keeps none, an edit the person did not ask for goes, and an edit that breaks
+    /// the setup is refused with the rule it broke.
+    async fn screen_proposals(
+        &self,
+        runner: &Uuid7,
+        lease: &Uuid7,
+        request: &garde::Valid<ModelCallInput>,
+        counters: &guard::Counters,
+        screening: Screening<'_>,
+        decoded: &mut provider::Decoded,
+    ) -> Result<()> {
+        if screening.save {
+            return provider::refuse_for_save(decoded, request);
+        }
+        self.check_edit_intent(runner, lease, request, counters, decoded)
+            .await?;
+        provider::refuse_invalid_edits(decoded, screening.candidate, request)
     }
 
     fn preview(
@@ -168,6 +199,14 @@ impl ModelCalls {
             publisher
         })
     }
+}
+
+/// What the screening of a call's proposals depends on besides the call.
+struct Screening<'a> {
+    /// The message is a Save, which never asks for a setup change.
+    save: bool,
+    /// The setup an edit applies to.
+    candidate: Option<&'a crate::types::Candidate>,
 }
 
 struct Interpretation<'a> {

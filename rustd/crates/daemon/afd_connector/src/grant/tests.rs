@@ -75,10 +75,11 @@ fn connects_racing_on_every_core_never_share_a_stamp() {
             })
         })
         .collect();
-    let mut stamps: Vec<i64> = handles
-        .into_iter()
-        .flat_map(|handle| handle.join().expect("a stamping thread finishes"))
-        .collect();
+    // Every thread is spawned before any is joined: they meet at the barrier.
+    let mut stamps: Vec<i64> = Vec::with_capacity(THREADS * EACH);
+    for handle in handles {
+        stamps.extend(handle.join().expect("a stamping thread finishes"));
+    }
 
     let taken = stamps.len();
     stamps.sort_unstable();

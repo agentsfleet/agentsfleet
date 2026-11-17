@@ -75,11 +75,13 @@ impl Halt {
         if !self.refused.swap(true, Ordering::SeqCst) {
             let code = failure.code().as_str();
             let event = EVENT_TOKEN_REFUSED;
-            tracing::error!(
-                error_code = code,
-                event,
-                "the daemon refused this runner's token"
-            );
+            {
+                let (error_code, message) = (
+                    &code,
+                    format_args!("the daemon refused this runner's token"),
+                );
+                tracing::error!(message, error_code, event);
+            };
         }
         self.stop();
         true

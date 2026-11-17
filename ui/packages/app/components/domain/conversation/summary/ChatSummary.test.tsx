@@ -18,7 +18,8 @@ it("keeps Summary inline and preserves the composer while recorded work changes"
   fireEvent.change(draft, {target: {value: "Keep my exact direction"}});
   expect(screen.getByRole("complementary", {name: "Summary"}).textContent).toContain("Running checks");
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.queryByRole("button")).toBeNull();
+  // The thread's own Jump to latest is the only control; Summary adds none.
+  expect(screen.getAllByRole("button").map(button => button.getAttribute("aria-label"))).toEqual(["Jump to latest"]);
   view.rerender(workspace("Checks passed"));
   expect(screen.getAllByRole("complementary")).toHaveLength(1);
   expect(screen.getByRole("textbox")).toBe(draft);
@@ -35,6 +36,6 @@ it("omits an absent work reader without hiding the conversation", () => {
 function Conversation({work}: {work?: ReactNode}) {
   const runtime = useExternalStoreRuntime({messages: NO_MESSAGES, isRunning: false, convertMessage: (message: ThreadMessageLike) => message, onNew: async () => {}});
   return <AssistantRuntimeProvider runtime={runtime}><FleetConversationLayout work={work}>
-    <ChatThread label="Conversation" autoScroll={false} footer={<textarea aria-label="Draft" defaultValue="Keep my draft" />}><p>Conversation history</p></ChatThread>
+    <ChatThread label="Conversation" footer={<textarea aria-label="Draft" defaultValue="Keep my draft" />}><p>Conversation history</p></ChatThread>
   </FleetConversationLayout></AssistantRuntimeProvider>;
 }

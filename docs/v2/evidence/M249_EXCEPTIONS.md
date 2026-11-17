@@ -16,6 +16,8 @@ commit that implements them; the run records that revision and source digest.
 | D8 | Keep Usage phone selects at 16px. | C4 |
 | D9 | Restore compact 36px wake-up strip and desktop Team row controls. | E3, I4 |
 
+D2 was reversed on Nov 16, 2026. Once the thread stopped following the bottom, Indy chose to pin the phone composer: “Pin it on phones (Recommended)” (M249_004 Discovery).
+
 The exact answer approves only these choices. It does not approve a visual
 result, missing evidence, a failed check, or opening a PR before the gates pass.
 

@@ -76,11 +76,10 @@ impl Uuid7 {
     /// is not lowercase hex, or is not a version-7 RFC 4122 UUID. Uppercase hex
     /// fails here rather than being folded to lowercase.
     pub fn parse(text: &str) -> Result<Self> {
-        let reason = first_violation(text);
-        match reason {
-            Some(reason) => Err(Error::from(ErrorKind::IdShape { reason })),
-            None => Ok(Self(Box::from(text))),
-        }
+        first_violation(text).map_or_else(
+            || Ok(Self(Box::from(text))),
+            |reason| Err(Error::from(ErrorKind::IdShape { reason })),
+        )
     }
 
     /// The canonical text.

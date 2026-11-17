@@ -148,10 +148,10 @@ where
         ignored.get_or_insert_with(|| path.to_string());
     })?;
     format.end()?;
-    match ignored {
-        Some(path) => Err(serde::de::Error::unknown_field(&path, &[])),
-        None => Ok(value),
-    }
+    ignored.map_or_else(
+        || Ok(value),
+        |path| Err(serde::de::Error::unknown_field(&path, &[])),
+    )
 }
 
 /// The field name from an `unknown field` refusal, when that is what failed.

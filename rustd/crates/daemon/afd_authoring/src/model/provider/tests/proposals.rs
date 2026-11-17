@@ -38,7 +38,7 @@ fn the_model_sees_the_native_edit_revision_type() {
 }
 
 // Value: protects=new drafts expose native policy types before a paid tool call;
-// fails_when=the model guesses empty strings for arrays or quotes a gate timeout.
+// fails_when=the model guesses empty strings for arrays or a number for a decimal string.
 #[test]
 fn initialization_exposes_policy_collection_and_scalar_types() {
     let schema = tool(false);
@@ -48,17 +48,12 @@ fn initialization_exposes_policy_collection_and_scalar_types() {
         "credentials",
         "triggers",
         "network/properties/allow",
-        "gates/properties/rules",
     ] {
         assert_eq!(
             schema.pointer(&format!("{block}/{path}/type")),
             Some(&json!("array"))
         );
     }
-    assert_eq!(
-        schema.pointer(&format!("{block}/gates/properties/timeout_ms/type")),
-        Some(&json!("integer"))
-    );
     assert_eq!(
         schema.pointer(&format!("{block}/budget/properties/daily_nanos/type")),
         Some(&json!("string"))

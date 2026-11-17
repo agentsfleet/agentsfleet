@@ -92,12 +92,17 @@ impl Gates {
             // is not, so it is logged loudly and waits.
             Route::EvaluateRecorded => {
                 let fleet = request.fleet_id.as_str();
-                tracing::error!(
-                    event = %EVENT_ROUTE_UNREACHABLE,
-                    fleet_id = %fleet,
-                    agentsfleet_event_id = %request.event_id,
-                    "a recorded gate reached the first-encounter pass; the event waits"
-                );
+                {
+                    let (event, fleet_id, agentsfleet_event_id, message) = (
+                        &EVENT_ROUTE_UNREACHABLE,
+                        &fleet,
+                        &request.event_id,
+                        format_args!(
+                            "a recorded gate reached the first-encounter pass; the event waits"
+                        ),
+                    );
+                    tracing::error!(message, %event, %fleet_id, %agentsfleet_event_id);
+                };
                 Verdict::Await(Waiting::Unreadable)
             }
         }
@@ -143,13 +148,16 @@ impl Gates {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
             let fleet = request.fleet_id.as_str();
             let Logged { error_code, reason } = fault.logged();
-            tracing::error!(
-                error_code,
-                event = EVENT_ARCHIVE_FAILED,
-                fleet_id = fleet,
-                reason,
-                "the gate archived this fleet and the row would not flip; it stays active"
-            );
+            {
+                let (event, fleet_id, message) = (
+                    &EVENT_ARCHIVE_FAILED,
+                    &fleet,
+                    format_args!(
+                        "the gate archived this fleet and the row would not flip; it stays active"
+                    ),
+                );
+                tracing::error!(message, error_code, event, fleet_id, reason);
+            };
         }
         Verdict::Archived
     }

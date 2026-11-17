@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
       - name: Install website dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/website
@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
       - name: Install app dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/app
@@ -51,10 +51,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Gates the merge: a broken installer can't reach main, so the git-connected
       # Cloudflare Pages project never auto-deploys a broken curl|bash target.
-      - name: Shellcheck + smoke-test the installer
-        run: |
-          shellcheck -s bash ui/agentsfleet.dev/dist/install.sh ui/agentsfleet.dev/install_test.sh
-          bash ui/agentsfleet.dev/install_test.sh
+      # Its shellcheck rides `make lint-shell`, which safety-gates runs.
+      - name: Smoke-test the installer
+        run: bash ui/agentsfleet.dev/install_test.sh
 
   check-gh-actions-valid:
     runs-on: ubuntu-latest
@@ -74,11 +73,12 @@ jobs:
   safety-gates:
     # Repo-hygiene gates that lived under `make lint-all` but were never run by
     # CI, so a broken architecture reference, an ungated vault reader, or a
-    # deploy-safety regression could merge green. Each is a static check needing
-    # only shellcheck (on the runner image), flock (util-linux, present) and Bun,
-    # which the model seeder's secrets test runs the seeder under; no cargo build.
-    # GitHub sets CI=true, so check-deploy-safety's flock lock tests run here
-    # rather than skip.
+    # deploy-safety regression could merge green. They need shellcheck (on the
+    # runner image), flock (util-linux, present), Bun, which the model seeder's
+    # secrets test runs the seeder under, and Docker (on the runner image), which
+    # check-deploy-safety's receiver-admission proof builds a test image with;
+    # no cargo build. GitHub sets CI=true, so check-deploy-safety's flock lock
+    # tests run here rather than skip.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -87,7 +87,7 @@ jobs:
           python-version: "3.14"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
       - name: Playbooks (shellcheck + refs + vault-gate parity)
         run: make check-playbooks
       - name: Deploy version/lock safety
@@ -100,14 +100,14 @@ jobs:
       - name: Version manifests match VERSION
         run: make check-version
       # Two lint-all checks no other job runs, so their findings would merge
-      # green: shellcheck over scripts/ and the curated model catalogue. Help
-      # text, public API wording and tests that read a repository file are
-      # ast-grep rules, run by lint-source in the jobs above. The root install
-      # carries the model check's tsrs.
+      # green: shellcheck over scripts/ and the installer, and the curated model
+      # catalogue. Help text, public API wording and tests that read a
+      # repository file are ast-grep rules, run by lint-source in the jobs
+      # above. The root install carries the model check's tsrs.
       - name: Install root dependencies
         run: bun install --frozen-lockfile
       - name: Shell and model catalogue checks
-        run: make lint-shell _model_allowlist_check
+        run: make lint-shell check-models
 
   lint:
     runs-on: ubuntu-latest

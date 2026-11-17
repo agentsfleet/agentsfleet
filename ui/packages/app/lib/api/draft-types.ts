@@ -14,7 +14,6 @@ export const MESSAGE_STATE = {
 } as const;
 export const SETUP_HEADERS = {match: "If-Match", key: "Idempotency-Key"} as const;
 export const MESSAGE_MAX_BYTES = 32 * 1024;
-export const INSTRUCTIONS_MAX_BYTES = 32 * 1024;
 export const PAGE_LIMIT = 25;
 // The largest page a workspace model or private-chat list answers with.
 export const LIST_PAGE_MAX = 100;

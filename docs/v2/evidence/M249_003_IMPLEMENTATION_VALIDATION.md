@@ -4,6 +4,14 @@ The retained API and command-line interface (CLI) use account-owned Plugins. The
 
 Auth pages share the refreshed theme; Usage shows complete daily charges and recorded models. M249_003 is parked at the owner's request.
 
+## Post-merge continuation
+
+[PR #844](https://github.com/agentsfleet/agentsfleet/pull/844) merged as `a1dcc222488e4522f8b92208a4f7df8461fe7fbf`.
+Its final Session notes contain the completed CI and review results; earlier pending checks and conditional merge holds below are historical.
+
+The [post-merge runtime record](M249_POST_MERGE_RUNTIME_VALIDATION.md) separates fresh authenticated flows, injected response faults, browser fixtures and deployment blockers.
+It also records the Team identity repair and the unavailable original companion-doc patch.
+
 ## Candidate and baseline
 
 | Item | Value |

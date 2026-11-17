@@ -12,7 +12,6 @@ import {
   outcomeFor,
   outcomeForStatus,
   roleFor,
-  senderInitialsFor,
   senderLabelFor,
   THREAD_STATUS,
 } from "./event-summary";
@@ -103,17 +102,7 @@ describe("senderLabelFor", () => {
   });
 });
 
-describe("senderInitialsFor", () => {
-  it("takes one letter per word, or the first two of a single word", () => {
-    expect(senderInitialsFor(SENDER.OPERATOR)).toBe("OP");
-    expect(senderInitialsFor(PLATFORM_IDENTITY)).toBe("GA");
-    expect(senderInitialsFor(SENDER.CONFIG_RELOAD)).toBe("CR");
-  });
 
-  it("survives an empty label", () => {
-    expect(senderInitialsFor("")).toBe("");
-  });
-});
 
 describe("failureSentenceFor", () => {
   it("renders a sentence for a known runner failure", () => {

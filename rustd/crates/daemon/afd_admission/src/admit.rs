@@ -105,13 +105,11 @@ impl Admissions {
             // did is a deploy that changed a handler, and somebody should
             // know a sender saw both shapes.
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::warn!(
-                error_code = code,
-                producer,
-                fleet_id = %admission.fleet,
-                event_id,
-                event = "admission_payload_drifted",
-            );
+            {
+                let (error_code, fleet_id, event) =
+                    (&code, &admission.fleet, &"admission_payload_drifted");
+                tracing::warn!(error_code, producer, %fleet_id, event_id, event);
+            };
         }
         self.wake(&ledger.stored.fleet).await;
         metrics::admitted(if ledger.inserted {
@@ -120,13 +118,10 @@ impl Admissions {
             AdmissionOutcome::Replayed
         });
         let replayed = !ledger.inserted;
-        tracing::debug!(
-            producer,
-            fleet_id = %admission.fleet,
-            event_id,
-            event = "admission_committed",
-            replayed
-        );
+        {
+            let (fleet_id, event) = (&admission.fleet, &"admission_committed");
+            tracing::debug!(producer, %fleet_id, event_id, event, replayed);
+        };
         Ok(Admitted {
             replayed,
             stored: ledger.stored,
@@ -189,11 +184,8 @@ fn count_refusal(refused: &Error, admission: &Admission<'_>) {
     metrics::admitted(outcome);
     let Logged { error_code, reason } = refused.logged();
     let producer = admission.producer.as_str();
-    tracing::warn!(
-        error_code,
-        producer,
-        fleet_id = %admission.fleet,
-        reason,
-        event,
-    );
+    {
+        let fleet_id = &admission.fleet;
+        tracing::warn!(error_code, producer, %fleet_id, reason, event);
+    };
 }

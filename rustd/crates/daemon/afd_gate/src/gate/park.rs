@@ -111,13 +111,16 @@ impl Gates {
 
         let fleet = request.fleet_id.as_str();
         let action = reference.action_id().as_str();
-        tracing::debug!(
-            event = %EVENT_PARK_PENDING,
-            fleet_id = %fleet,
-            agentsfleet_event_id = %request.event_id,
-            action_id = %action,
-            "a human has been asked, and this event waits for the answer"
-        );
+        {
+            let (event, fleet_id, agentsfleet_event_id, action_id, message) = (
+                &EVENT_PARK_PENDING,
+                &fleet,
+                &request.event_id,
+                &action,
+                format_args!("a human has been asked, and this event waits for the answer"),
+            );
+            tracing::debug!(message, %event, %fleet_id, %agentsfleet_event_id, %action_id);
+        };
         Parked::Awaiting(reference)
     }
 
@@ -208,14 +211,17 @@ impl Gates {
             || "no identifier could be minted".to_owned(),
             Error::to_string,
         );
-        tracing::warn!(
-            event = %EVENT_PARK_UNAVAILABLE,
-            fleet_id = %fleet,
-            agentsfleet_event_id = %request.event_id,
-            write,
-            reason,
-            "the gate could not be raised; the event waits rather than running ungated"
-        );
+        {
+            let (event, fleet_id, agentsfleet_event_id, message) = (
+                &EVENT_PARK_UNAVAILABLE,
+                &fleet,
+                &request.event_id,
+                format_args!(
+                    "the gate could not be raised; the event waits rather than running ungated"
+                ),
+            );
+            tracing::warn!(message, %event, %fleet_id, %agentsfleet_event_id, write, reason);
+        };
         Parked::Unavailable
     }
 }

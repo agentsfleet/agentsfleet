@@ -309,21 +309,17 @@ pub(super) fn log_refusal<E: Refusable + ?Sized>(
         // An outage is the instance's problem to report, and the caller's to
         // back off from. `warn` rather than `error`: the incident belongs to
         // whichever datastore is down, and paging twice for it helps nobody.
-        tracing::warn!(
-            error_code = code_field,
-            request_id = request_id_field,
-            reason,
-            event,
-        );
+        {
+            let (error_code, request_id) = (&code_field, &request_id_field);
+            tracing::warn!(error_code, request_id, reason, event);
+        };
     } else {
         // Everything else is either the caller's request or one statement, and
         // neither is worth waking anybody for on its own.
-        tracing::debug!(
-            error_code = code_field,
-            request_id = request_id_field,
-            reason,
-            event,
-        );
+        {
+            let (error_code, request_id) = (&code_field, &request_id_field);
+            tracing::debug!(error_code, request_id, reason, event);
+        };
     }
 }
 

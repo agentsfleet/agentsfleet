@@ -34,7 +34,7 @@ const KEY_DESCRIPTION: &str = "description";
 /// The single argument carries the native proposal object without JSON-in-JSON.
 const PROPOSAL_ARGUMENT: &str = "proposal";
 pub(super) use request::body;
-pub(super) use response::{Decoded, decode, decode_summary};
+pub(super) use response::{Decoded, decode, decode_summary, refuse_for_save, refuse_invalid_edits};
 
 /// An authorized provider request: read-only counting precedes durable generation intent.
 pub struct ProviderRequest {

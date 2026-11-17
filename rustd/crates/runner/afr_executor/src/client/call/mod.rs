@@ -106,12 +106,12 @@ fn unqueued(process: ProcessId) {
     let event = EVENT_KILL_UNQUEUED;
     let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let process_id = process.get();
-    tracing::warn!(
-        event,
-        error_code,
-        process_id,
-        "a kill for a process whose reader left could not be queued"
-    );
+    {
+        let (message,) = (format_args!(
+            "a kill for a process whose reader left could not be queued"
+        ),);
+        tracing::warn!(message, event, error_code, process_id);
+    };
 }
 
 #[cfg(test)]

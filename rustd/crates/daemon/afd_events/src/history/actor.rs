@@ -24,16 +24,20 @@ impl History {
         cursor: Option<&Cursor>,
         limit: i64,
     ) -> Result<Vec<EventRow>> {
-        let query = match cursor {
-            None => sqlx::query(SELECT_FLEET_PAGE_OF_ACTOR)
-                .bind(workspace)
-                .bind(fleet),
-            Some(at) => sqlx::query(SELECT_FLEET_PAGE_OF_ACTOR_AFTER)
-                .bind(workspace)
-                .bind(fleet)
-                .bind(at.created_at.to_sqlx())
-                .bind(&at.event_id),
-        };
+        let query = cursor.map_or_else(
+            || {
+                sqlx::query(SELECT_FLEET_PAGE_OF_ACTOR)
+                    .bind(workspace)
+                    .bind(fleet)
+            },
+            |at| {
+                sqlx::query(SELECT_FLEET_PAGE_OF_ACTOR_AFTER)
+                    .bind(workspace)
+                    .bind(fleet)
+                    .bind(at.created_at.to_sqlx())
+                    .bind(&at.event_id)
+            },
+        );
         let mut connection = self.database.acquire().await?;
         let rows = query
             .bind(actor)

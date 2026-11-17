@@ -200,8 +200,7 @@ impl RepositoryBinding {
         let workflows = authored
             .repository_validation_workflows
             .take()
-            .map(|workflows| workflows.0)
-            .unwrap_or_default();
+            .map_or_default(|workflows| workflows.0);
         if publication == RepositoryPublication::ExistingPr
             && authored.repository_access != Some(Access::Write)
         {
