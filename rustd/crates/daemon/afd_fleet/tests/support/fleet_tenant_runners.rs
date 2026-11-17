@@ -23,9 +23,9 @@ use crate::support::Fixtures;
 const INSERT_RUNNER: &str = "INSERT INTO runner.runners \
     (id, host_id, token_hash, sandbox_tier, status, labels, network_policy, \
      registry_allowlist, worker_count, last_seen_at, lease_version, created_at, \
-     updated_at, tenant_id) \
+     updated_at, tenant_id, platform_owned) \
     VALUES ($1, 'tenant-box', $2, $4, $5, '[]'::jsonb, $6, '[]'::jsonb, 1, $7, 0, \
-            now(), now(), $3)";
+            now(), now(), $3, $8)";
 
 const INSERT_RECEIPT: &str = "INSERT INTO runner.registration_receipts \
     (id, tenant_id, operation_id, request_digest, runner_id, created_at) \
@@ -45,6 +45,21 @@ impl Fixtures {
 
     /// A runner row owned by `tenant`, or a platform runner for `None`.
     pub(crate) async fn insert_runner(&self, tenant: Option<&Uuid7>) -> Uuid7 {
+        self.insert_owned_runner(tenant.is_none(), tenant)
+            .await
+            .expect("a runner row of a valid shape must insert")
+    }
+
+    /// A runner row stating `platform_owned` and `tenant` as given, answering
+    /// what the database said, so a test can offer it an inconsistent pair.
+    ///
+    /// # Errors
+    /// The database's own refusal, as [`Fixtures::set_runner_tenant`].
+    pub(crate) async fn insert_owned_runner(
+        &self,
+        platform_owned: bool,
+        tenant: Option<&Uuid7>,
+    ) -> Result<Uuid7, sqlx::Error> {
         let runner = mint_id();
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query(INSERT_RUNNER)
@@ -55,10 +70,28 @@ impl Fixtures {
             .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
             .bind(policy_wire(NetworkPolicy::AllowAll))
             .bind(afd_runner::sql::NEVER_SEEN.to_sqlx())
+            .bind(platform_owned)
+            .execute(&mut *connection)
+            .await?;
+        Ok(runner)
+    }
+
+    /// Sets a runner's ownership flag, answering what the database said.
+    ///
+    /// # Errors
+    /// The database's own refusal, as [`Fixtures::set_runner_tenant`].
+    pub(crate) async fn set_runner_platform_owned(
+        &self,
+        runner: &Uuid7,
+        platform_owned: bool,
+    ) -> Result<(), sqlx::Error> {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query("UPDATE runner.runners SET platform_owned = $2 WHERE id = $1")
+            .bind(runner)
+            .bind(platform_owned)
             .execute(&mut *connection)
             .await
-            .expect("a runner row of a valid shape must insert");
-        runner
+            .map(|_| ())
     }
 
     /// Sets a runner's tenant, answering what the database said.

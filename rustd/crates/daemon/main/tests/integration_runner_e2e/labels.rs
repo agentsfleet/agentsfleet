@@ -39,12 +39,8 @@ async fn edit_labels(run: &Scenario, labels: &[&str]) {
         run.booted.database.clone(),
         af_crypto::entropy::Entropy::new(),
     )
-    .edit(
-        &afd_runner::Reach::Platform,
-        &run.runner_id,
-        edit,
-        af_core::clock::now(),
-    )
+    .platform()
+    .edit(&run.runner_id, edit, af_core::clock::now())
     .await
     .expect("an operator may edit a live runner's labels");
     assert_eq!(stored.labels.as_deref(), Some(labels.as_slice()));

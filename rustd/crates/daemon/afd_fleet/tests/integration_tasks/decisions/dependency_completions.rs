@@ -37,8 +37,6 @@ fn completion(case: &Case) -> VerifiedCompletion {
         run_id: 100,
         run_number: 10,
         run_attempt: 2,
-        conclusion: "success".to_owned(),
-        body_digest: "a".repeat(64),
     }
 }
 
@@ -122,13 +120,10 @@ async fn fanout(fixture: &Decisions<'_>, task: &Uuid7, completion: &VerifiedComp
             .expect("current completion"),
         1
     );
-    let mut replay = completion.clone();
-    replay.body_digest = "b".repeat(64);
-    "failure".clone_into(&mut replay.conclusion);
     assert_eq!(
         fixture
             .tasks
-            .record_github_completion(&replay)
+            .record_github_completion(completion)
             .await
             .expect("same native receipt identity"),
         0
@@ -163,8 +158,8 @@ async fn cooldown(fixture: &Decisions<'_>, task: &Uuid7) {
             .is_null()
     );
     assert!(
-        wait.pointer("/consumed_admission_id")
-            .expect("fixture consumed_admission_id")
+        wait.pointer("/consumed_at")
+            .expect("fixture consumed_at")
             .is_null()
     );
     let cooling: bool = sqlx::query_scalar("SELECT due_at >= cooldown_expires_at AND due_at > now() FROM fleet.task_waits WHERE task_id=$1")

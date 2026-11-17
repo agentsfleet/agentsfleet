@@ -9,6 +9,7 @@ use sqlx::Acquire as _;
 use crate::error::{Result, query};
 use crate::reconcile::Verdict;
 use crate::register::Prepared;
+use crate::scope::Owner;
 use af_wire::runner::RegisterRequest;
 use afd_auth::credential::CredentialKind;
 
@@ -118,7 +119,7 @@ impl Runners {
         let prepared = Prepared::of(self, request, now)?;
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_REGISTER))?;
-        prepared.insert(&mut transaction, None).await?;
+        prepared.insert(&mut transaction, Owner::Platform).await?;
         transaction
             .commit()
             .await

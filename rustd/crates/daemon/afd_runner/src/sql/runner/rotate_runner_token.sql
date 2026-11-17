@@ -1,6 +1,6 @@
 WITH current_runner AS (
   SELECT id, status FROM runner.runners
-  WHERE id = $1 AND tenant_id IS NOT DISTINCT FROM $8::uuid
+  WHERE id = $1 AND (($9::boolean AND platform_owned) OR tenant_id = $8::uuid)
   FOR UPDATE
 ), updated AS (
   UPDATE runner.runners r

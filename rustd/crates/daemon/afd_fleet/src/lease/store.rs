@@ -79,8 +79,8 @@ impl Leases {
         runner: &af_core::id::Uuid7,
     ) -> crate::Result<Option<afd_runner::capacity::Capacity>> {
         Ok(match &self.authority {
-            Some(authority) => afd_runner::capacity::lock(tx, (runner, authority)).await?,
-            None => afd_runner::capacity::lock(tx, runner).await?,
+            Some(authority) => afd_runner::capacity::lock(tx, (runner, authority), None).await?,
+            None => afd_runner::capacity::lock(tx, runner, None).await?,
         })
     }
 
@@ -103,10 +103,14 @@ impl Leases {
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         runner: &af_core::id::Uuid7,
+        work_tenant: &af_core::id::Uuid7,
     ) -> crate::Result<Option<afd_runner::capacity::Held>> {
+        let work = Some(work_tenant);
         Ok(match &self.authority {
-            Some(authority) => afd_runner::capacity::lock_host(tx, (runner, authority)).await?,
-            None => afd_runner::capacity::lock_host(tx, runner).await?,
+            Some(authority) => {
+                afd_runner::capacity::lock_host(tx, (runner, authority), work).await?
+            }
+            None => afd_runner::capacity::lock_host(tx, runner, work).await?,
         })
     }
 

@@ -21,8 +21,8 @@ const CONTEXT_ABANDON: &str = "abandon obligation";
 
 /// Why an answer was given up on.
 ///
-/// A closed set whose spelling is what `abandon_reason` stores, so an operator
-/// filtering on it and the code writing it cannot drift apart.
+/// A closed set whose spelling is what the abandon log line carries, so an
+/// operator filtering on it and the code writing it cannot drift apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbandonReason {
     /// The destination refused it and no retry changes that: a deleted
@@ -95,12 +95,11 @@ pub async fn stamp_delivered(database: &Db, job: &Claimed) -> Result<bool> {
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn abandon(database: &Db, job: &Claimed, reason: AbandonReason) -> Result<Option<i64>> {
+pub async fn abandon(database: &Db, job: &Claimed) -> Result<Option<i64>> {
     let mut connection = database.acquire().await?;
     sqlx::query_scalar(sql::ABANDON)
         .bind(&job.id)
         .bind(&job.token)
-        .bind(reason.as_str())
         .fetch_optional(&mut *connection)
         .await
         .map_err(crate::error::query(CONTEXT_ABANDON))

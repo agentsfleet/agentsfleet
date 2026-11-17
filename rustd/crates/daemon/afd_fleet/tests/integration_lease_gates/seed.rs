@@ -11,7 +11,7 @@ use afd_db::test_util::{DefaultSeed, PlatformDefault, mint_id};
 
 use super::{
     CONTEXT_CAP_TOKENS, GATE_WINDOW, KIND_EVENT, KIND_REPOSITORY_WRITE, PROVIDER_KEY_BODY,
-    PROVIDER_KEY_KIND, REPOSITORY_WRITE_SPEND_CEILING, Ready, STATUS_APPROVED,
+    PROVIDER_KEY_KIND, Ready, STATUS_APPROVED,
 };
 use crate::report_seed::FIXTURE_KEK_HEX;
 use crate::seed::{MODEL, PROVIDER};
@@ -197,20 +197,14 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) 
 /// read by `approved_write_gate` in SQL off `fleet.approval_gates`; its approval
 /// allows the event to proceed when the reference is absent.
 ///
-/// Every clause the statement filters on is set rather than defaulted:
-/// `updated_at <= expires_at`, a non-null `stated_binding`, a non-null
-/// `spend_count`, and a `spend_ceiling` equal to the one the reader binds. A
-/// row missing any of them comes back as no row, which is indistinguishable
-/// from an unapproved gate and would make this fixture prove nothing.
+/// `updated_at <= expires_at` is set rather than defaulted: a row past its
+/// deadline comes back as no row, which is indistinguishable from an
+/// unapproved gate and would make this fixture prove nothing.
 ///
 /// Returns the gate's identifier, which is what the repair branch is named
 /// from — so the caller can assert the branch the delivery locked is THIS
 /// gate's and not merely well-formed.
-pub(super) async fn seed_write_gate(
-    fixtures: &Fixtures,
-    ready: &Ready,
-    stated_binding: &str,
-) -> Uuid7 {
+pub(super) async fn seed_write_gate(fixtures: &Fixtures, ready: &Ready) -> Uuid7 {
     let workspace = workspace_of(fixtures, &ready.fleet).await;
     let gate_id = mint_id();
 
@@ -223,12 +217,10 @@ pub(super) async fn seed_write_gate(
         "INSERT INTO fleet.approval_gates \
            (id, fleet_id, workspace_id, action_id, tool_name, action_name, \
             gate_type, proposed_action, evidence, blast_radius, expires_at, \
-            resolved_by, status, detail, created_at, updated_at, event_id, \
-            stated_binding, spend_count, spend_ceiling) \
+            resolved_by, status, detail, created_at, updated_at, event_id) \
          VALUES ($1, $2, $3, $4, 'chat', 'author', \
                  $5, 'author a branch', '{}'::jsonb, 'one repository', \
-                 now() + $6::interval, 'fixture:human', $7, '', now(), now(), $8, \
-                 $9::jsonb, 0, $10)",
+                 now() + $6::interval, 'fixture:human', $7, '', now(), now(), $8)",
     )
     .bind(&gate_id)
     .bind(&ready.fleet)
@@ -238,8 +230,6 @@ pub(super) async fn seed_write_gate(
     .bind(GATE_WINDOW)
     .bind(STATUS_APPROVED)
     .bind(&ready.event_id)
-    .bind(stated_binding)
-    .bind(REPOSITORY_WRITE_SPEND_CEILING)
     .execute(&mut *connection)
     .await
     .expect("the write gate row must insert");

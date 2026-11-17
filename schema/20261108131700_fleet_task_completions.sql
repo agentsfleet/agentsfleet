@@ -12,8 +12,6 @@ CREATE TABLE fleet.task_completions (
     run_id BIGINT NOT NULL CHECK (run_id > 0),
     run_number BIGINT NOT NULL CHECK (run_number > 0),
     run_attempt INTEGER NOT NULL CHECK (run_attempt > 0),
-    conclusion TEXT NOT NULL,
-    body_digest TEXT NOT NULL,
     received_at TIMESTAMPTZ(3) NOT NULL,
     created_at TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_task_completion_run UNIQUE NULLS NOT DISTINCT (workspace_id, scope_fleet_id, installation_id, repository_id, run_id, run_attempt)

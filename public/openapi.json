@@ -782,9 +782,9 @@
         "tags": [
           "Runners"
         ],
-        "summary": "List runners",
+        "summary": "List platform runners",
         "description": "Lists runners newest first. Requires platform administrator access. Each item includes its current connection status, without authentication state or token hashes. Use `next_cursor` to continue.",
-        "operationId": "list_fleet_runners",
+        "operationId": "list_platform_runners",
         "parameters": [
           {
             "name": "starting_after",
@@ -887,9 +887,9 @@
         "tags": [
           "Runners"
         ],
-        "summary": "Register a runner",
-        "description": "Registers a runner and assigns its policy. Requires `runner:enroll` on a bearer credential. Save the returned `agt_r` token securely; it appears once. The runner must apply the assigned policy.",
-        "operationId": "register_runner",
+        "summary": "Register a platform runner",
+        "description": "Registers a platform runner and assigns its policy. Requires `runner:register` on a bearer credential. Save the returned `agt_r` token securely; it appears once. The runner must apply the assigned policy.",
+        "operationId": "register_platform_runner",
         "requestBody": {
           "content": {
             "application/json": {
@@ -994,9 +994,9 @@
         "tags": [
           "Runners"
         ],
-        "summary": "Read a runner",
+        "summary": "Read a platform runner",
         "description": "Returns a runner's details, current work, and lifetime counters. Requires platform administrator access.",
-        "operationId": "get_fleet_runner",
+        "operationId": "get_platform_runner",
         "parameters": [
           {
             "name": "runner_id",
@@ -1100,9 +1100,9 @@
         "tags": [
           "Runners"
         ],
-        "summary": "Delete a revoked runner",
+        "summary": "Delete a revoked platform runner",
         "description": "Permanently deletes a revoked runner, its leases, and runner events. Revoke it first with a PATCH request setting `action` to `revoke`. Active leases must finish or expire before deletion. Fleets previously assigned to this runner can then use another runner.",
-        "operationId": "delete_fleet_runner",
+        "operationId": "delete_platform_runner",
         "parameters": [
           {
             "name": "runner_id",
@@ -1209,9 +1209,9 @@
         "tags": [
           "Runners"
         ],
-        "summary": "Manage a runner",
+        "summary": "Manage a platform runner",
         "description": "Requires platform administrator access. Send either `action` or an edit containing `assigned_policy`, `labels`, or both. Both edits succeed together or neither changes.\n\nActions are `cordon`, `drain`, `revoke`, `rotate`, and `self_test`. Revocation is permanent. `rotate` returns a replacement `runner_token` once; save it and update the host. `self_test` queues a sandbox check; a connected runner is notified immediately and reports later. The response confirms the request, not the result. Revoked runners return 409 `UZ-RUN-018`.\n\nChanges notify a connected runner after commit; its next heartbeat repairs a lost notification. Repeating the current policy has no effect; revoked runners return 400. Labels replace the entire set, using enrollment limits. Duplicates are removed in their original order; an empty list clears labels. Revoked runners' labels remain editable. The response includes labels when supplied.",
-        "operationId": "patch_fleet_runner",
+        "operationId": "update_platform_runner",
         "parameters": [
           {
             "name": "runner_id",
@@ -1349,7 +1349,7 @@
         ],
         "summary": "List runner activity",
         "description": "Lists a runner's recorded activity newest first. Requires platform administrator access. Filter by event type or an occurrence-time range in milliseconds.",
-        "operationId": "list_fleet_runner_events",
+        "operationId": "list_platform_runner_events",
         "parameters": [
           {
             "name": "runner_id",
@@ -1502,7 +1502,7 @@
         ],
         "summary": "List a runner's work assignments",
         "description": "Lists a runner's work assignments newest first, with fleet outcomes and failure reasons. Requires platform administrator access. Continue with `next_cursor` as `starting_after`.\n\n`destination` is `available` for a fleet in your account, `fleet_deleted` after deletion, or `not_permitted` in another account. Fleet and event fields become null when their records are removed.\n\nCompleted assignments remain for 30 days after settlement. Running or renewing assignments are retained. Assignments abandoned by a dead runner expire after the same window, then receive their own retention window.\n\nAcquisition and release activity remains for 30 days after each event; other runner lifecycle activity is retained. Lifetime counters remain unchanged when history is removed.",
-        "operationId": "list_fleet_runner_leases",
+        "operationId": "list_platform_runner_leases",
         "parameters": [
           {
             "name": "runner_id",
@@ -9776,6 +9776,602 @@
         ]
       }
     },
+    "/v1/tenants/me/runners": {
+      "get": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "List tenant runners",
+        "description": "Lists the calling tenant's runners newest first; `total` counts only them. Requires `runner:tenant`.",
+        "operationId": "list_tenant_runners",
+        "parameters": [
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Use the previous response's `next_cursor` unchanged.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Rows per page (1-100).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Register a tenant runner",
+        "description": "Registers a runner that takes only the calling tenant's work. Requires `runner:tenant`, which a platform admin grants per account. Send a UUIDv7 `Idempotency-Key`. A retry with the same key and body answers 200 with the same runner and no token. The token appears only once, so rotate it to recover. The same key with another body answers 409.",
+        "operationId": "register_tenant_runner",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Required UUIDv7 registration key.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A retry of a registration that already succeeded; no token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationReplay"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Runner registered; the bearer token is returned exactly once",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This Idempotency-Key already registered a runner with a different request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/tenants/me/runners/{runner_id}": {
+      "get": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Read a tenant runner",
+        "description": "Returns one of the calling tenant's runners. Another tenant's runner answers 404. Requires `runner:tenant`.",
+        "operationId": "get_tenant_runner",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "description": "Runner identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Delete a revoked tenant runner",
+        "description": "Permanently deletes one of the calling tenant's revoked runners. Another tenant's runner answers 404. Requires `runner:tenant`.",
+        "operationId": "delete_tenant_runner",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "description": "Runner identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The runner is still in service; revoke it first",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Manage a tenant runner",
+        "description": "Takes the same body as the platform runner PATCH: an `action` (`cordon`, `drain`, `revoke`, `rotate`, `self_test`) or an edit of `assigned_policy`, `labels`, or both. A tenant runner never takes a decision model, and only a platform admin switches on durable tasks; both answer 400. Another tenant's runner answers 404. Requires `runner:tenant`.",
+        "operationId": "update_tenant_runner",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "description": "Runner identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerAdminPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerAdminPatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The runner is revoked, so the request can never be honoured",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/tenants/me/workspaces": {
       "get": {
         "tags": [
@@ -13227,7 +13823,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13237,7 +13833,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "You do not have permission for this action",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13287,7 +13883,7 @@
             }
           },
           "429": {
-            "description": "Too many requests",
+            "description": "A request or capacity limit has been reached",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13297,7 +13893,7 @@
             }
           },
           "500": {
-            "description": "Internal failure",
+            "description": "An internal server error occurred",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13307,7 +13903,7 @@
             }
           },
           "503": {
-            "description": "Dependency unavailable",
+            "description": "A required service is unavailable",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13380,7 +13976,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13390,7 +13986,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "You do not have permission for this action",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13410,7 +14006,7 @@
             }
           },
           "429": {
-            "description": "Too many requests",
+            "description": "A request or capacity limit has been reached",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13420,7 +14016,7 @@
             }
           },
           "500": {
-            "description": "Internal failure",
+            "description": "An internal server error occurred",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13430,7 +14026,7 @@
             }
           },
           "503": {
-            "description": "Dependency unavailable",
+            "description": "A required service is unavailable",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13658,7 +14254,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13668,7 +14264,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "You do not have permission for this action",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13728,7 +14324,7 @@
             }
           },
           "429": {
-            "description": "Too many requests",
+            "description": "A request or capacity limit has been reached",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13738,7 +14334,7 @@
             }
           },
           "500": {
-            "description": "Internal failure",
+            "description": "An internal server error occurred",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13748,7 +14344,7 @@
             }
           },
           "503": {
-            "description": "Dependency unavailable",
+            "description": "A required service is unavailable",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13824,7 +14420,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13834,7 +14430,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "You do not have permission for this action",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13854,7 +14450,7 @@
             }
           },
           "429": {
-            "description": "Too many requests",
+            "description": "A request or capacity limit has been reached",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13864,7 +14460,7 @@
             }
           },
           "500": {
-            "description": "Internal failure",
+            "description": "An internal server error occurred",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -13874,7 +14470,7 @@
             }
           },
           "503": {
-            "description": "Dependency unavailable",
+            "description": "A required service is unavailable",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -15404,7 +16000,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -15414,7 +16010,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "You do not have permission for this action",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -15484,7 +16080,7 @@
             }
           },
           "429": {
-            "description": "Too many requests",
+            "description": "A request or capacity limit has been reached",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -15494,7 +16090,7 @@
             }
           },
           "500": {
-            "description": "Internal failure",
+            "description": "An internal server error occurred",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -15504,7 +16100,7 @@
             }
           },
           "503": {
-            "description": "Dependency unavailable",
+            "description": "A required service is unavailable",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16417,7 +17013,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16427,7 +17023,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "You do not have permission for this action",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16447,7 +17043,7 @@
             }
           },
           "429": {
-            "description": "Too many requests",
+            "description": "A request or capacity limit has been reached",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16457,7 +17053,7 @@
             }
           },
           "500": {
-            "description": "Internal failure",
+            "description": "An internal server error occurred",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16467,7 +17063,7 @@
             }
           },
           "503": {
-            "description": "Dependency unavailable",
+            "description": "A required service is unavailable",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16572,7 +17168,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16582,7 +17178,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "You do not have permission for this action",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16602,7 +17198,7 @@
             }
           },
           "429": {
-            "description": "Too many requests",
+            "description": "A request or capacity limit has been reached",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16612,7 +17208,7 @@
             }
           },
           "500": {
-            "description": "Internal failure",
+            "description": "An internal server error occurred",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16622,7 +17218,7 @@
             }
           },
           "503": {
-            "description": "Dependency unavailable",
+            "description": "A required service is unavailable",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16722,7 +17318,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16732,7 +17328,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "You do not have permission for this action",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16802,7 +17398,7 @@
             }
           },
           "500": {
-            "description": "Internal failure",
+            "description": "An internal server error occurred",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16812,7 +17408,7 @@
             }
           },
           "503": {
-            "description": "Dependency unavailable",
+            "description": "A required service is unavailable",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16997,7 +17593,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -17007,7 +17603,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "You do not have permission for this action",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -17027,7 +17623,7 @@
             }
           },
           "429": {
-            "description": "Too many requests",
+            "description": "A request or capacity limit has been reached",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -17037,7 +17633,7 @@
             }
           },
           "500": {
-            "description": "Internal failure",
+            "description": "An internal server error occurred",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -17047,7 +17643,7 @@
             }
           },
           "503": {
-            "description": "Dependency unavailable",
+            "description": "A required service is unavailable",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -17630,7 +18226,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -17640,7 +18236,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "You do not have permission for this action",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -17660,7 +18256,7 @@
             }
           },
           "429": {
-            "description": "Too many requests",
+            "description": "A request or capacity limit has been reached",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -17670,7 +18266,7 @@
             }
           },
           "500": {
-            "description": "Internal failure",
+            "description": "An internal server error occurred",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -17680,7 +18276,7 @@
             }
           },
           "503": {
-            "description": "Dependency unavailable",
+            "description": "A required service is unavailable",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -28135,6 +28731,25 @@
         },
         "additionalProperties": false
       },
+      "RegistrationReplay": {
+        "type": "object",
+        "description": "A repeated tenant registration under the same Idempotency-Key and body.\n\nThe first response revealed the runner's one-time token, which is never\nstored, so the replay answers everything else; the caller rotates the token\nto recover it.",
+        "required": [
+          "runner_id",
+          "assigned_policy"
+        ],
+        "properties": {
+          "assigned_policy": {
+            "$ref": "#/components/schemas/AssignedPolicy",
+            "description": "The assignment as stored."
+          },
+          "runner_id": {
+            "type": "string",
+            "description": "The runner the first request registered."
+          }
+        },
+        "additionalProperties": false
+      },
       "ReplaceSecretRequest": {
         "type": "object",
         "description": "`PUT /v1/workspaces/{workspace_id}/secrets/{secret_name}` — replace the body.",
@@ -28728,6 +29343,13 @@
           "status": {
             "$ref": "#/components/schemas/AdminState",
             "description": "Operator-controlled admission state."
+          },
+          "tenant_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tenant that registered this runner. Absent for a platform runner."
           }
         },
         "additionalProperties": false

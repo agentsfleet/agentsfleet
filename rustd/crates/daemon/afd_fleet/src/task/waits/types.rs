@@ -39,12 +39,6 @@ pub struct VerifiedCompletion {
     /// GitHub's actual run attempt.
     #[garde(range(min = 1, max = i32::MAX.unsigned_abs()))]
     pub run_attempt: u32,
-    /// Bounded provider conclusion; it never completes a task directly.
-    #[garde(length(bytes, min = 1, max = 64), pattern(r"^[a-z_]+$"))]
-    pub conclusion: String,
-    /// Digest of the body whose signature was verified.
-    #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]{64}$"))]
-    pub body_digest: String,
 }
 
 /// Bounded maintenance result; identities stay in traces, never metric labels.

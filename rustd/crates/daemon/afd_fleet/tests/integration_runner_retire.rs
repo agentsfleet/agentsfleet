@@ -36,7 +36,8 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
 
     let in_service = fixtures
         .runners()
-        .delete_revoked(&afd_runner::Reach::Platform, &enrolled.runner_id)
+        .platform()
+        .delete_revoked(&enrolled.runner_id)
         .await
         .err()
         .map(|error| error.code());
@@ -48,8 +49,8 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
 
     fixtures
         .runners()
+        .platform()
         .transition(
-            &afd_runner::Reach::Platform,
             &enrolled.runner_id,
             RunnerAdminAction::Revoke,
             ACTOR,
@@ -59,13 +60,15 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
         .expect("an active runner may be revoked");
     fixtures
         .runners()
-        .delete_revoked(&afd_runner::Reach::Platform, &enrolled.runner_id)
+        .platform()
+        .delete_revoked(&enrolled.runner_id)
         .await
         .expect("a revoked runner's record is retired");
 
     let gone = fixtures
         .runners()
-        .delete_revoked(&afd_runner::Reach::Platform, &enrolled.runner_id)
+        .platform()
+        .delete_revoked(&enrolled.runner_id)
         .await
         .err()
         .map(|error| error.code());
@@ -123,8 +126,8 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
 
     fixtures
         .runners()
+        .platform()
         .transition(
-            &afd_runner::Reach::Platform,
             &runner,
             RunnerAdminAction::Revoke,
             ACTOR,
@@ -135,7 +138,8 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
 
     let still_leased = fixtures
         .runners()
-        .delete_revoked(&afd_runner::Reach::Platform, &runner)
+        .platform()
+        .delete_revoked(&runner)
         .await
         .err();
     assert_eq!(
@@ -151,7 +155,8 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
     fixtures.expire_lease(&lease).await;
     fixtures
         .runners()
-        .delete_revoked(&afd_runner::Reach::Platform, &runner)
+        .platform()
+        .delete_revoked(&runner)
         .await
         .expect("once its lease is gone, a revoked runner's record retires");
 

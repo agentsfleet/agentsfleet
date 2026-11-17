@@ -58,8 +58,7 @@ CREATE TABLE fleet.tasks (
     -- Monotonic, so it survives deletion of old private waits.
     wait_sequence BIGINT CHECK (wait_sequence >= 0),
     -- A bounded reason code, never model text.
-    status_reason TEXT,
-    last_transition_at TIMESTAMPTZ(3)
+    status_reason TEXT
 );
 
 CREATE INDEX idx_tasks_fleet_unfinished ON fleet.tasks (fleet_id, id)

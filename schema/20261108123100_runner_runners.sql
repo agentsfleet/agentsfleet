@@ -37,13 +37,16 @@ CREATE TABLE runner.runners (
         REFERENCES model.platform_models (id) ON DELETE RESTRICT,
     -- Gates new lease eligibility only, never the authority of an issued lease.
     durable_tasks_enabled BOOLEAN NOT NULL DEFAULT true,
-    -- The tenant that enrolled this host; NULL is a platform runner. Fixed after insert
-    -- (trigger below), because a tenant runner takes only its tenant's work.
+    -- Ownership is stated at registration, never inferred from a missing tenant: a
+    -- platform runner takes every tenant's work, so it must be named as one. Both
+    -- columns are fixed after insert (trigger below).
+    platform_owned BOOLEAN NOT NULL,
     tenant_id UUID REFERENCES identity.tenants (id) ON DELETE CASCADE,
+    CONSTRAINT ck_runners_owner CHECK (platform_owned = (tenant_id IS NULL)),
     -- A platform decision model would hand the platform decision key to a
     -- host its tenant holds root on.
     CONSTRAINT ck_runners_tenant_no_decision_model
-        CHECK (tenant_id IS NULL OR decision_platform_model_id IS NULL)
+        CHECK (platform_owned OR decision_platform_model_id IS NULL)
 );
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON runner.runners TO api_runtime;
@@ -52,17 +55,21 @@ CREATE INDEX idx_runners_decision_platform_model
     ON runner.runners (decision_platform_model_id)
     WHERE decision_platform_model_id IS NOT NULL;
 
-CREATE INDEX idx_runners_tenant_id_id
-    ON runner.runners (tenant_id, id)
+-- The runner list pages newest first; a tenant's list also serves erasure's cascade.
+CREATE INDEX idx_runners_created_at_id ON runner.runners (created_at DESC, id DESC);
+
+CREATE INDEX idx_runners_tenant_id_created_at_id
+    ON runner.runners (tenant_id, created_at DESC, id DESC)
     WHERE tenant_id IS NOT NULL;
 
-CREATE FUNCTION runner.runners_refuse_tenant_change() RETURNS trigger AS $$
+CREATE FUNCTION runner.runners_refuse_owner_change() RETURNS trigger AS $$
 BEGIN
-    RAISE EXCEPTION 'runners.tenant_id is fixed at registration';
+    RAISE EXCEPTION 'runner ownership is fixed at registration';
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_runners_refuse_tenant_change
-    BEFORE UPDATE OF tenant_id ON runner.runners
-    FOR EACH ROW WHEN (OLD.tenant_id IS DISTINCT FROM NEW.tenant_id)
-    EXECUTE FUNCTION runner.runners_refuse_tenant_change();
+CREATE TRIGGER trg_runners_refuse_owner_change
+    BEFORE UPDATE OF platform_owned, tenant_id ON runner.runners
+    FOR EACH ROW WHEN (OLD.platform_owned IS DISTINCT FROM NEW.platform_owned
+                       OR OLD.tenant_id IS DISTINCT FROM NEW.tenant_id)
+    EXECUTE FUNCTION runner.runners_refuse_owner_change();

@@ -19,10 +19,9 @@ use std::sync::Arc;
     tag = afd_http::openapi::tag::FLEETS, summary = "Read fleet setup and progress",
     params(afd_http::openapi::path::Fleet),
     responses((status = 200, body = afd_api_wire::fleet::FleetResponse, description = "Current fleet", headers(("ETag" = String))),
-        (status = 400, description = "Invalid identity"), (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"), (status = 404, description = "Fleet unavailable"),
-        (status = 429, description = "Too many requests"), (status = 500, description = "Internal failure"),
-        (status = 503, description = "Dependency unavailable"))
+        (status = 400, description = "Invalid identity"), (status = 404, description = "Fleet unavailable"),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn one<D: Services>(
     State(services): State<Arc<D>>,

@@ -1255,7 +1255,7 @@ codegen-units = 16
 strip = false
 debug = 1
 
-# datagram-socket 0.8.1, the newest release and the one tokio-quiche 0.20.1
+# datagram-socket 0.8.1, the newest release and the one tokio-quiche 0.23.0
 # requires, builds `libc::msghdr` with struct literals, and 64-bit musl's
 # private padding makes that a compile error on every static Linux build.
 # The vendored copy changes only those two literals; drop it once upstream

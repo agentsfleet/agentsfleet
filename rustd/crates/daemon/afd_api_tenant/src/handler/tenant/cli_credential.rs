@@ -30,7 +30,6 @@ use axum::response::{IntoResponse as _, Response};
 use http::{HeaderValue, StatusCode, header};
 
 use crate::auth::{FreshSession, HumanIdentity};
-use crate::client::Origin;
 use crate::handler::Refusal;
 use crate::services::{Services, TerminalCredentials as _};
 
@@ -74,7 +73,6 @@ const DETAIL_CREDENTIAL_ID: &str = "id must be a valid UUIDv7";
 pub(crate) async fn mint<D: Services>(
     State(services): State<Arc<D>>,
     identity: FreshSession,
-    origin: Origin,
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let person = identity.person();
@@ -96,7 +94,6 @@ pub(crate) async fn mint<D: Services>(
         tenant: &user.tenant,
         machine,
         deployment: services.deployment(),
-        from_address: origin.address.as_str(),
     };
 
     let revealed = services

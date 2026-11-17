@@ -53,7 +53,7 @@ async fn the_fallback_tick_probes_once_per_replica() -> TestResult {
     let scheduler = tokio::spawn({
         let registry = Arc::clone(&fixture.registry);
         let stop = stop.clone();
-        async move { notifications(&registry, &wake, stop).await }
+        async move { notifications(&registry, &wake, stop, || async { Ok(true) }).await }
     });
     tokio::task::yield_now().await;
     for expected in 1..=3 {

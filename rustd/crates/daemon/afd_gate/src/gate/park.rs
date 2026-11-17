@@ -4,9 +4,8 @@
 //! # One write, then the announce, in an order that is a safety property
 //!
 //! The durable row goes down BEFORE anything points a human at it. That row is
-//! what a resolve updates and what the write-scoped mint spends against, so a
-//! card reaching a reviewer ahead of it would be answerable and worthless — the
-//! click would find nothing to resolve and the mint nothing to honour. Failing
+//! what a resolve updates, so a card reaching a reviewer ahead of it would be
+//! answerable and worthless — the click would find nothing to resolve. Failing
 //! closed here costs one poll; the other order costs a human's decision.
 //!
 //! # Any datastore loss is [`Parked::Unavailable`]
@@ -22,7 +21,7 @@ use afd_api_wire::tail::{FleetCounters, TailFrame};
 use jiff::Timestamp;
 
 use super::sql;
-use crate::error::{DETAIL_GATE_BINDING_UNWRITABLE, Error, Result, encoded, query};
+use crate::error::{Error, Result, query};
 use crate::gate::claim::Claim;
 use crate::gate::detail::Stated;
 use crate::gate::pending::GateRef;
@@ -43,8 +42,6 @@ const EVENT_PARK_PENDING: &str = "gate_pending";
 /// durable row is the only write a park makes.
 const WRITE_ROW: &str = "durable_row";
 
-/// The spend count a bounded approval opens at.
-///
 /// What a park attempt produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Parked {
@@ -144,10 +141,10 @@ impl Gates {
         afd_bus::observe_notification(&subject, publication);
     }
 
-    /// Insert the row a resolve updates and the mint spends against, and
-    /// answer what the frame needs: the identifier it was recorded under, how
-    /// many of the fleet's gates now wait (this one counted), and where the
-    /// fleet's counters stand — read on the same connection, best-effort.
+    /// Insert the row a resolve updates, and answer what the frame needs: the
+    /// identifier it was recorded under, how many of the fleet's gates now wait
+    /// (this one counted), and where the fleet's counters stand — read on the
+    /// same connection, best-effort.
     async fn record_row(
         &self,
         request: &Park<'_>,
@@ -155,14 +152,6 @@ impl Gates {
         now: Timestamp,
     ) -> Result<Recorded> {
         let gate_id = self.mint(now)?;
-        // Recorded so the write mint can compare the approved reach against the
-        // fleet's current config without trusting anything PATCHable.
-        let binding = request
-            .stated
-            .binding
-            .map(|declared| encoded(&declared.recorded(), DETAIL_GATE_BINDING_UNWRITABLE))
-            .transpose()?;
-
         let mut connection = self.database().acquire().await?;
         let pending_approvals = sql::PendingRow {
             gate_id: &gate_id,
@@ -172,7 +161,6 @@ impl Gates {
             stated: request.stated,
             claim: request.claim,
             event_id: request.event_id,
-            stated_binding: binding.as_deref(),
         }
         .bind()
         .fetch_one(&mut *connection)

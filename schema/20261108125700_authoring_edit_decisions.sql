@@ -7,8 +7,6 @@ CREATE TABLE authoring.edit_decisions (
     workspace_id UUID NOT NULL,
     usage_sequence BIGINT NOT NULL CHECK (usage_sequence >= 0),
     candidate_revision BIGINT NOT NULL CHECK (candidate_revision >= 0),
-    -- Frozen catalogue and price snapshot; no secret or private text.
-    snapshot JSONB,
     disposition TEXT NOT NULL,
     reserved_nanos BIGINT NOT NULL CHECK (reserved_nanos >= 0),
     -- Measured token categories, recorded whether or not the edit was valid.

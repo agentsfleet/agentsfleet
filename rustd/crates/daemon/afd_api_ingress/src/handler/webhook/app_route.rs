@@ -207,10 +207,9 @@ async fn route<D: Services>(
         ));
     };
 
-    if let Some(completion) = delivery.completion(
-        afd_fleet::task::CompletionScope::Workspace(workspace.clone()),
-        afd_ingress::replay_id(&body),
-    ) {
+    if let Some(completion) = delivery.completion(afd_fleet::task::CompletionScope::Workspace(
+        workspace.clone(),
+    )) {
         services
             .tasks()
             .record_github_completion(&completion)

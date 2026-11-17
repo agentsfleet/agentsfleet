@@ -69,11 +69,10 @@ const FORGED_CARD: &str = "\
 INSERT INTO fleet.approval_gates
   (id, fleet_id, workspace_id, action_id, tool_name, action_name,
    gate_type, proposed_action, evidence, blast_radius, expires_at,
-   status, detail, created_at, updated_at, event_id, stated_binding,
-   spend_count, spend_ceiling)
+   status, detail, created_at, updated_at, event_id)
 VALUES ($1, $2, $3, $4, $5, $6,
         $7, $8, $9::jsonb, $10, now() + $11::interval,
-        $12, '', now(), now(), $13, NULL, NULL, NULL)";
+        $12, '', now(), now(), $13)";
 
 /// Raises the honest grant + card through the statement under test.
 async fn raise_honest_grant(lane: &Lane) {

@@ -122,7 +122,7 @@ pub(super) async fn assert_host_full(running: &Running, order: &str) {
         "{order}: one worker, one live lease"
     );
     let mut tx = connection.begin().await.expect("census transaction");
-    let capacity = afd_runner::capacity::lock(&mut tx, &running.runner)
+    let capacity = afd_runner::capacity::lock(&mut tx, &running.runner, None)
         .await
         .expect("lock host")
         .expect("host exists");

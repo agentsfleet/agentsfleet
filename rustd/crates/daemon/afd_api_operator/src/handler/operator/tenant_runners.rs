@@ -1,7 +1,7 @@
 //! The calling tenant's own runners, under `/v1/tenants/me/runners`.
 //!
 //! Each handler resolves the caller's tenant and calls the same core its
-//! platform twin calls, with a tenant reach, so the two surfaces cannot drift
+//! platform twin calls, with the tenant's scope, so the two surfaces cannot drift
 //! apart. A runner outside the tenant answers `404`, as one that does not exist.
 
 use std::collections::HashMap;
@@ -15,7 +15,7 @@ use af_wire::runner::{RegisterRequest, RegisterResponse, RegistrationReplay};
 use afd_api_wire::admin::{RunnerAdminPatchRequest, RunnerAdminPatchResponse};
 #[cfg(feature = "openapi")]
 use afd_api_wire::operator::{RunnerDetail, RunnersResponse};
-use afd_runner::Reach;
+use afd_http::handler::Refusal;
 use axum::body::Bytes;
 use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Response};
@@ -25,10 +25,8 @@ use crate::auth::PersonIdentity;
 use crate::services::Services;
 
 /// The caller's tenant, or the response that refuses it.
-async fn tenant<D: Services>(services: &D, identity: &PersonIdentity) -> Result<Uuid7, Response> {
-    afd_http::handler::reach::tenant(services, identity.person())
-        .await
-        .map_err(IntoResponse::into_response)
+async fn tenant<D: Services>(services: &D, identity: &PersonIdentity) -> Result<Uuid7, Refusal> {
+    afd_http::handler::caller_tenant::of(services, identity.person()).await
 }
 
 /// Registers one of the caller's runners.
@@ -40,9 +38,9 @@ async fn tenant<D: Services>(services: &D, identity: &PersonIdentity) -> Result<
     summary = "Register a tenant runner",
     description = concat!(
         "Registers a runner that takes only the calling tenant's work. Requires `runner:tenant`, ",
-        "which a platform admin grants per account. Send a UUIDv7 `Idempotency-Key`: a retry ",
-        "with the same key and body answers 200 with the same runner and no token, since the ",
-        "token appears once; rotate it to recover. The same key with another body answers 409.",
+        "which a platform admin grants per account. Send a UUIDv7 `Idempotency-Key`. A retry ",
+        "with the same key and body answers 200 with the same runner and no token. The token ",
+        "appears only once, so rotate it to recover. The same key with another body answers 409.",
     ),
     params(("Idempotency-Key" = String, Header, description = "Required UUIDv7 registration key.")),
     request_body = RegisterRequest<'_>,
@@ -50,13 +48,9 @@ async fn tenant<D: Services>(services: &D, identity: &PersonIdentity) -> Result<
         (status = 201, description = "Runner registered; the bearer token is returned exactly once", body = RegisterResponse<'_>),
         (status = 200, description = "A retry of a registration that already succeeded; no token", body = RegistrationReplay<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 409, description = "This Idempotency-Key already registered a runner with a different request"),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn register<D: Services>(
@@ -67,7 +61,7 @@ pub(crate) async fn register<D: Services>(
 ) -> Response {
     match tenant(&*services, &identity).await {
         Ok(tenant) => super::runner_register::tenant(&*services, &tenant, &headers, &body).await,
-        Err(refused) => refused,
+        Err(refused) => refused.into_response(),
     }
 }
 
@@ -83,11 +77,7 @@ pub(crate) async fn register<D: Services>(
     responses(
         (status = 200, description = afd_http::openapi::OK, body = RunnersResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn list<D: Services>(
@@ -96,15 +86,15 @@ pub(crate) async fn list<D: Services>(
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
     match tenant(&*services, &identity).await {
-        Ok(tenant) => super::runners::page(&*services, &Reach::Tenant(tenant), &params).await,
-        Err(refused) => refused,
+        Ok(tenant) => super::runners::page(services.runners().tenant(&tenant), &params).await,
+        Err(refused) => refused.into_response(),
     }
 }
 
 /// Reads one of the caller's runners.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/tenants/me/runners/{runner_id}",
+    path = af_wire::paths::TENANT_RUNNER,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "get_tenant_runner",
     summary = "Read a tenant runner",
@@ -113,12 +103,8 @@ pub(crate) async fn list<D: Services>(
     responses(
         (status = 200, description = afd_http::openapi::OK, body = RunnerDetail<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn detail<D: Services>(
@@ -127,15 +113,15 @@ pub(crate) async fn detail<D: Services>(
     Path(raw): Path<String>,
 ) -> Response {
     match tenant(&*services, &identity).await {
-        Ok(tenant) => super::runners::read(&*services, &Reach::Tenant(tenant), &raw).await,
-        Err(refused) => refused,
+        Ok(tenant) => super::runners::read(services.runners().tenant(&tenant), &raw).await,
+        Err(refused) => refused.into_response(),
     }
 }
 
 /// Applies an action or an edit to one of the caller's runners.
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch,
-    path = "/v1/tenants/me/runners/{runner_id}",
+    path = af_wire::paths::TENANT_RUNNER,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "update_tenant_runner",
     summary = "Manage a tenant runner",
@@ -150,14 +136,10 @@ pub(crate) async fn detail<D: Services>(
     responses(
         (status = 200, description = afd_http::openapi::OK, body = RunnerAdminPatchResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = "The runner is revoked, so the request can never be honoured"),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn update<D: Services>(
@@ -168,17 +150,23 @@ pub(crate) async fn update<D: Services>(
 ) -> Response {
     match tenant(&*services, &identity).await {
         Ok(tenant) => {
-            super::runner_patch::apply(&*services, &Reach::Tenant(tenant), &identity, &raw, &body)
-                .await
+            super::runner_patch::apply(
+                &*services,
+                services.runners().tenant(&tenant),
+                &identity,
+                &raw,
+                &body,
+            )
+            .await
         }
-        Err(refused) => refused,
+        Err(refused) => refused.into_response(),
     }
 }
 
 /// Retires one of the caller's revoked runners.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
-    path = "/v1/tenants/me/runners/{runner_id}",
+    path = af_wire::paths::TENANT_RUNNER,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "delete_tenant_runner",
     summary = "Delete a revoked tenant runner",
@@ -187,13 +175,9 @@ pub(crate) async fn update<D: Services>(
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = "The runner is still in service; revoke it first"),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn delete<D: Services>(
@@ -202,7 +186,9 @@ pub(crate) async fn delete<D: Services>(
     Path(raw): Path<String>,
 ) -> Response {
     match tenant(&*services, &identity).await {
-        Ok(tenant) => super::runner_delete::retire(&*services, &Reach::Tenant(tenant), &raw).await,
-        Err(refused) => refused,
+        Ok(tenant) => {
+            super::runner_delete::retire(&*services, services.runners().tenant(&tenant), &raw).await
+        }
+        Err(refused) => refused.into_response(),
     }
 }

@@ -34,7 +34,8 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
         .clock_around(
             fixtures
                 .runners()
-                .request_selftest(&afd_runner::Reach::Platform, &enrolled.runner_id),
+                .platform()
+                .request_selftest(&enrolled.runner_id),
         )
         .await;
     let requested = requested.expect("a live runner records the ask");
@@ -52,8 +53,8 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
 
     fixtures
         .runners()
+        .platform()
         .transition(
-            &afd_runner::Reach::Platform,
             &enrolled.runner_id,
             RunnerAdminAction::Revoke,
             ACTOR,
@@ -63,7 +64,8 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
         .expect("the runner is revoked");
     let revoked = fixtures
         .runners()
-        .request_selftest(&afd_runner::Reach::Platform, &enrolled.runner_id)
+        .platform()
+        .request_selftest(&enrolled.runner_id)
         .await
         .expect_err("a revoked runner cannot collect an ask");
     assert_eq!(revoked.code().as_str(), "UZ-RUN-018");
@@ -72,7 +74,8 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
         .expect("the missing fixture is a UUIDv7");
     let absent = fixtures
         .runners()
-        .request_selftest(&afd_runner::Reach::Platform, &missing)
+        .platform()
+        .request_selftest(&missing)
         .await
         .expect_err("a missing runner stays distinct from revocation");
     assert_eq!(absent.code().as_str(), "UZ-RUN-014");
@@ -104,8 +107,8 @@ async fn test_runner_rotation_takeover() {
 
     let rotated = fixtures
         .runners()
+        .platform()
         .rotate_token(
-            &afd_runner::Reach::Platform,
             &enrolled.runner_id,
             ACTOR,
             af_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1)),

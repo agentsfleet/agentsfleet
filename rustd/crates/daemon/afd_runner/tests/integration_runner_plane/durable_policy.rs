@@ -69,8 +69,8 @@ async fn disabled_policy_survives_unrelated_edits_and_identical_save_adds_no_eve
 async fn assign(fixture: &Fixture, runner: &Uuid7, policy: &AssignedPolicy<'_>) {
     let result = fixture
         .runners
+        .platform()
         .edit(
-            &afd_runner::Reach::Platform,
             runner,
             RunnerEdit {
                 assigned_policy: Some(policy),
@@ -111,7 +111,8 @@ async fn assert_readers(fixture: &Fixture, runner: &Uuid7, expected: bool) {
     );
     let detail = fixture
         .runners
-        .runner_detail(&afd_runner::Reach::Platform, runner)
+        .platform()
+        .runner_detail(runner)
         .await
         .expect("runner detail");
     assert_eq!(
@@ -125,7 +126,8 @@ async fn assert_readers(fixture: &Fixture, runner: &Uuid7, expected: bool) {
     for cursor in [None, Some(&boundary)] {
         let page = fixture
             .runners
-            .list_runners(&afd_runner::Reach::Platform, cursor, 100)
+            .platform()
+            .list_runners(cursor, 100)
             .await
             .expect("operator list page");
         let item = page

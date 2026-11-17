@@ -25,12 +25,13 @@ const SEED: &str = r"
 WITH inserted_runners AS (
     INSERT INTO runner.runners
       (id, host_id, token_hash, sandbox_tier, status, labels, network_policy,
-       registry_allowlist, worker_count, lease_version, last_seen_at, created_at, updated_at)
+       registry_allowlist, worker_count, lease_version, last_seen_at, created_at, updated_at,
+       platform_owned)
     VALUES
       ($6, $16, $18, 'dev_none', 'active', '[]'::jsonb, 'deny_all_egress', '[]'::jsonb,
-       1, 0, '2025-10-09 08:00:00.020+00', '2025-10-09 08:00:00.020+00', '2025-10-09 08:00:00.020+00'),
+       1, 0, '2025-10-09 08:00:00.020+00', '2025-10-09 08:00:00.020+00', '2025-10-09 08:00:00.020+00', true),
       ($7, $17, $19, 'dev_none', 'active', '[]'::jsonb, 'deny_all_egress', '[]'::jsonb,
-       1, 0, '2025-10-09 08:00:00.021+00', '2025-10-09 08:00:00.021+00', '2025-10-09 08:00:00.021+00')
+       1, 0, '2025-10-09 08:00:00.021+00', '2025-10-09 08:00:00.021+00', '2025-10-09 08:00:00.021+00', true)
 ), inserted_events AS (
     INSERT INTO fleet.events
       (fleet_id, workspace_id, event_id, actor, event_type, status, request_json, wall_ms,

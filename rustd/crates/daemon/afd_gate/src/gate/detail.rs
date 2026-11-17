@@ -21,7 +21,7 @@
 
 use std::time::Duration;
 
-use af_fleet_runtime::config::{GateRule, RepositoryBinding};
+use af_fleet_runtime::config::GateRule;
 
 /// The trustworthy half of one approval card.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,21 +38,6 @@ pub struct Stated<'a> {
     pub kind: &'a str,
     /// How far a yes reaches. Empty renders as nothing.
     pub radius: &'a str,
-    /// The fleet's repository egress binding as the DAEMON holds it — never as
-    /// a model described it.
-    ///
-    /// The one decision-relevant fact the platform can vouch for, because it is
-    /// the same value the write mint scopes its token by: whatever the model
-    /// claims, the run cannot reach outside this list. Without it the card's
-    /// trustworthy half named no repository and no commit — `tool`, `action`
-    /// and `summary` carry event type, actor and event id, so every
-    /// decision-relevant word a human read came from the model's half. The
-    /// commit stays unverifiable, because approval releases a bounded run
-    /// rather than specific bytes; the blast radius no longer does.
-    ///
-    /// `None` when the fleet declares none, which fails the mint closed, so
-    /// there is no reach to state.
-    pub binding: Option<&'a RepositoryBinding>,
     /// How long the question stands before it lapses.
     pub timeout: Duration,
 }
@@ -64,20 +49,13 @@ impl<'a> Stated<'a> {
     /// the rule that matched. A card reaching a human with neither would be a
     /// card that says what is being asked but not what kind of question it is.
     #[must_use]
-    pub const fn of(
-        tool: &'a str,
-        action: &'a str,
-        summary: &'a str,
-        binding: Option<&'a RepositoryBinding>,
-        timeout: Duration,
-    ) -> Self {
+    pub const fn of(tool: &'a str, action: &'a str, summary: &'a str, timeout: Duration) -> Self {
         Self {
             tool,
             action,
             summary,
             kind: "",
             radius: "",
-            binding,
             timeout,
         }
     }
@@ -119,7 +97,7 @@ mod tests {
     fn the_daemon_derived_facts_are_always_present() {
         // They are what a model cannot forge, so a blank one here is a failure
         // rather than a display default.
-        let stated = Stated::of("chat", "steer:user_42", "evt-1", None, FIFTEEN_MINUTES);
+        let stated = Stated::of("chat", "steer:user_42", "evt-1", FIFTEEN_MINUTES);
 
         assert_eq!(stated.tool, "chat");
         assert_eq!(stated.action, "steer:user_42");
@@ -130,8 +108,7 @@ mod tests {
     #[test]
     fn a_matched_rule_supplies_the_workspace_copy() {
         let matched = rule("repair", "one draft Pull Request");
-        let stated =
-            Stated::of("chat", "steer:user_42", "evt-1", None, FIFTEEN_MINUTES).under(&matched);
+        let stated = Stated::of("chat", "steer:user_42", "evt-1", FIFTEEN_MINUTES).under(&matched);
 
         assert_eq!(stated.kind, "repair");
         assert_eq!(stated.radius, "one draft Pull Request");
@@ -140,8 +117,7 @@ mod tests {
     #[test]
     fn an_omitted_blast_radius_stays_empty_rather_than_inventing_a_reassuring_one() {
         let matched = rule("repair", "");
-        let stated =
-            Stated::of("chat", "steer:user_42", "evt-1", None, FIFTEEN_MINUTES).under(&matched);
+        let stated = Stated::of("chat", "steer:user_42", "evt-1", FIFTEEN_MINUTES).under(&matched);
 
         assert_eq!(stated.radius, "");
     }

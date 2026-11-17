@@ -13,10 +13,7 @@ CREATE TABLE fleet.approval_gates (
     gate_type         TEXT   NOT NULL,
     proposed_action   TEXT   NOT NULL,
     evidence          JSONB  NOT NULL,
-    stated_binding    JSONB,
     blast_radius      TEXT   NOT NULL,
-    spend_count       BIGINT,
-    spend_ceiling     BIGINT,
     expires_at        TIMESTAMPTZ(3) NOT NULL,
     status            TEXT   NOT NULL,
     resolved_at       TIMESTAMPTZ(3),
@@ -47,31 +44,7 @@ CREATE INDEX idx_approval_gates_workspace_id_status_created_at
 
 CREATE FUNCTION fleet.approval_gates_guard_update() RETURNS trigger AS $$
 BEGIN
-    IF OLD.resolved_at IS NULL THEN
-        IF NEW.spend_count IS DISTINCT FROM OLD.spend_count
-            OR NEW.spend_ceiling IS DISTINCT FROM OLD.spend_ceiling THEN
-            RAISE EXCEPTION 'approval_gates spend is fixed before resolution';
-        END IF;
-        RETURN NEW;
-    END IF;
-    -- Resolved: the only change allowed is spending one more use within the ceiling.
-    IF (NEW.id, NEW.fleet_id, NEW.workspace_id, NEW.event_id, NEW.active_grant_id,
-        NEW.action_id, NEW.tool_name, NEW.action_name, NEW.gate_type,
-        NEW.proposed_action, NEW.evidence, NEW.stated_binding, NEW.blast_radius,
-        NEW.spend_ceiling, NEW.expires_at, NEW.status, NEW.resolved_at,
-        NEW.resolved_by, NEW.resolved_by_name, NEW.detail, NEW.created_at,
-        NEW.updated_at)
-        IS DISTINCT FROM
-       (OLD.id, OLD.fleet_id, OLD.workspace_id, OLD.event_id, OLD.active_grant_id,
-        OLD.action_id, OLD.tool_name, OLD.action_name, OLD.gate_type,
-        OLD.proposed_action, OLD.evidence, OLD.stated_binding, OLD.blast_radius,
-        OLD.spend_ceiling, OLD.expires_at, OLD.status, OLD.resolved_at,
-        OLD.resolved_by, OLD.resolved_by_name, OLD.detail, OLD.created_at,
-        OLD.updated_at)
-        OR OLD.spend_count IS NULL
-        OR OLD.spend_ceiling IS NULL
-        OR NEW.spend_count IS DISTINCT FROM OLD.spend_count + 1
-        OR NEW.spend_count > NEW.spend_ceiling THEN
+    IF OLD.resolved_at IS NOT NULL THEN
         RAISE EXCEPTION 'approval_gates resolved row is immutable';
     END IF;
     RETURN NEW;

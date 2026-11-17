@@ -26,8 +26,6 @@ CREATE TABLE fleet.task_effects (
     CONSTRAINT uq_task_effects_operation UNIQUE (task_id, operation_id)
 );
 
-CREATE INDEX idx_task_effects_source_item ON fleet.task_effects (source_item_id);
-
 CREATE FUNCTION fleet.task_effects_refuse_update() RETURNS trigger AS $$
 BEGIN RAISE EXCEPTION 'task_effects is append-only'; END;
 $$ LANGUAGE plpgsql;

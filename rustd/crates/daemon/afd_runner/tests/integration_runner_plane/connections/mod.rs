@@ -39,7 +39,7 @@ async fn acquire(
 async fn can_claim(fixture: &Fixture, authority: &Authority) -> TestResult<bool> {
     let mut connection = fixture.database.acquire().await?;
     let mut transaction = connection.begin().await?;
-    let available = capacity::lock(&mut transaction, authority)
+    let available = capacity::lock(&mut transaction, authority, None)
         .await?
         .is_some_and(capacity::Capacity::can_claim);
     transaction.commit().await?;
@@ -97,12 +97,8 @@ async fn rotation_refuses_old_acquisition_and_old_locked_grants() -> TestResult 
     let old = acquire(&fixture, &runner, &digest, None).await?;
     let rotated = fixture
         .runners
-        .rotate_token(
-            &afd_runner::Reach::Platform,
-            &runner,
-            "connection-test",
-            clock::now(),
-        )
+        .platform()
+        .rotate_token(&runner, "connection-test", clock::now())
         .await?;
     assert_eq!(
         fixture.runners.check_connection(&old).await?,
@@ -139,7 +135,11 @@ async fn a_connection_proof_never_authorizes_another_host_and_debug_omits_its_di
     let guard = capacity::Guard::from((&other, &authority));
     assert!(!format!("{guard:?}").contains(digest.as_str()));
     assert!(!format!("{authority:?}").contains(digest.as_str()));
-    assert!(capacity::lock(&mut transaction, guard).await?.is_none());
+    assert!(
+        capacity::lock(&mut transaction, guard, None)
+            .await?
+            .is_none()
+    );
     transaction.commit().await?;
     drop(connection);
     fixture.cleanup().await;
@@ -160,13 +160,8 @@ async fn stopped_and_removed_hosts_return_terminal_classified_decisions() -> Tes
         let authority = acquire(&fixture, &runner, &digest, None).await?;
         fixture
             .runners
-            .transition(
-                &afd_runner::Reach::Platform,
-                &runner,
-                action,
-                "connection-test",
-                clock::now(),
-            )
+            .platform()
+            .transition(&runner, action, "connection-test", clock::now())
             .await?;
         assert_eq!(
             fixture.runners.check_connection(&authority).await?,
@@ -181,10 +176,7 @@ async fn stopped_and_removed_hosts_return_terminal_classified_decisions() -> Tes
         );
         assert!(!can_claim(&fixture, &authority).await?);
         if action == RunnerAdminAction::Revoke {
-            fixture
-                .runners
-                .delete_revoked(&afd_runner::Reach::Platform, &runner)
-                .await?;
+            fixture.runners.platform().delete_revoked(&runner).await?;
             assert_eq!(
                 fixture.runners.check_connection(&authority).await?,
                 Decision::Refused(Refusal::Credential)

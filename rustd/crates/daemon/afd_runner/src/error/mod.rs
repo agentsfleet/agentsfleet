@@ -44,7 +44,7 @@ pub use self::raise::one_of_each_kind;
 pub(crate) use self::raise::{
     admin_state_malformed, assignment_malformed, decision_model_id, query, registration_key_reused,
     rejected, row_malformed, runner_not_found, runner_not_revoked, runner_still_leased,
-    runner_vanished, selftest_refused, stored_json, tenant_managed,
+    runner_vanished, selftest_refused, stored_json, tenant_managed, undigestible,
 };
 
 af_core::error_shell!(
@@ -174,6 +174,14 @@ pub(crate) enum ErrorKind {
         source: serde_json::Error,
     },
 
+    /// A parsed registration request would not serialise, so it has no digest.
+    #[error("the registration request could not be digested")]
+    RequestDigest {
+        /// The serialisation failure underneath, without the document's text.
+        #[source]
+        source: af_core::json::Unreadable,
+    },
+
     /// The caller sent something this plane will not accept.
     ///
     /// The only variant whose sentence is written FOR the caller; every other
@@ -241,7 +249,9 @@ impl Error {
             | ErrorKind::StoredJson { .. }
             | ErrorKind::AdminStateMalformed
             | ErrorKind::AssignmentMalformed { .. } => DETAIL_DATABASE_ERROR,
-            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => DETAIL_OPERATION_FAILED,
+            ErrorKind::Entropy { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::RequestDigest { .. } => DETAIL_OPERATION_FAILED,
             ErrorKind::Datastore { .. } | ErrorKind::TimedOut { .. } => DETAIL_UNAVAILABLE,
             // The ledger already decided what a caller is told, and answering
             // a second sentence for one condition is the drift the shared
@@ -272,6 +282,7 @@ impl Error {
             | ErrorKind::AssignmentMalformed { .. }
             | ErrorKind::StoredJson { .. }
             | ErrorKind::Rejected { .. }
+            | ErrorKind::RequestDigest { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::Identifier { .. } => false,
         }
@@ -316,7 +327,9 @@ impl Error {
             // A daemon whose clock cannot name an instant, and a host that
             // cannot draw random bytes, are both THIS process failing — never
             // the caller's request being wrong.
-            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Entropy { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::RequestDigest { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Datastore { .. }
             | ErrorKind::TimedOut { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Admission { source } => source.code(),

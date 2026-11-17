@@ -8,16 +8,16 @@ use jiff::Timestamp;
 use sqlx::{Acquire as _, Postgres, Transaction};
 
 use crate::edit::DETAIL_TENANT_DECISION_MODEL;
-use crate::error::{Result, query, registration_key_reused, rejected, runner_not_found};
+use crate::error::{
+    Result, query, registration_key_reused, rejected, runner_not_found, undigestible,
+};
 use crate::policy::SandboxConfig;
 use crate::reconcile::{Verdict, reconcile};
+use crate::scope::Owner;
 use crate::spelling::{policy_wire, render_list, tier_wire};
 use crate::sql;
 use crate::store::{CONTEXT_REGISTER, Enrolled, Runners, record_enrolled};
 use crate::validate::registration;
-
-/// The refusal a registration body that cannot be digested earns.
-const DETAIL_UNDIGESTIBLE: &str = "the registration request could not be read";
 
 /// What a tenant registration answered.
 #[derive(Debug)]
@@ -87,7 +87,7 @@ impl<'r> Prepared<'r> {
     pub(crate) async fn insert(
         &self,
         transaction: &mut Transaction<'_, Postgres>,
-        tenant: Option<&Uuid7>,
+        owner: Owner<'_>,
     ) -> Result<()> {
         crate::decision::lock(transaction, self.decision_model_id.as_ref())
             .await?
@@ -105,7 +105,8 @@ impl<'r> Prepared<'r> {
             last_seen_at: sql::NEVER_SEEN,
             event_id: &self.event_id,
             event_type: sql::event_type::RUNNER_REGISTERED,
-            tenant_id: tenant,
+            tenant_id: owner.tenant(),
+            platform_owned: owner.platform(),
             network_policy: policy_wire(self.assigned.network_policy),
             registry_allowlist_json: &self.registry_json,
             worker_count: self.worker_count.cast_signed(),
@@ -179,7 +180,9 @@ impl Runners {
                 .replay(tenant, operation, &digest, prepared.worker_count)
                 .await;
         }
-        prepared.insert(&mut transaction, Some(tenant)).await?;
+        prepared
+            .insert(&mut transaction, Owner::Tenant(tenant))
+            .await?;
         transaction
             .commit()
             .await
@@ -217,6 +220,6 @@ impl Runners {
 /// The SHA-256 of the request as parsed, so whitespace and key order in the
 /// body never change it.
 fn request_digest(request: &RegisterRequest<'_>) -> Result<String> {
-    let body = serde_json::to_vec(request).map_err(|_| rejected(DETAIL_UNDIGESTIBLE))?;
+    let body = serde_json::to_vec(request).map_err(undigestible)?;
     Ok(af_core::etag::sha256_hex(&body))
 }

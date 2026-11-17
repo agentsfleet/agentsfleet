@@ -40,7 +40,7 @@ async fn probe_ticks<F: Future<Output = Result<bool>>>(
 }
 
 /// The query only asks whether a pass may help; it does not acquire leases or reimplement admission.
-async fn pending_work(gateway: &Gateway, stop: &CancellationToken) -> Result<bool> {
+pub(super) async fn pending_work(gateway: &Gateway, stop: &CancellationToken) -> Result<bool> {
     within(
         stop,
         Instant::now() + STREAM_ANSWER_TIMEOUT,

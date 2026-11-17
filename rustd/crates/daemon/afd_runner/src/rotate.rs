@@ -6,7 +6,7 @@ use jiff::Timestamp;
 
 use crate::admin::state_wire;
 use crate::error::{Result, query, rejected, runner_not_found, tenant_managed};
-use crate::reach::Reach;
+use crate::scope::{Owner, RunnerScope};
 use crate::sql;
 use crate::store::Runners;
 use afd_auth::credential::CredentialKind;
@@ -16,7 +16,9 @@ const CONTEXT_ROTATE: &str = "runner token rotation";
 const DETAIL_REVOKED: &str = "revoked runners cannot rotate credentials";
 const EVENT_TOKEN_ROTATED: &str = "runner_token_rotated";
 
-impl Runners {
+impl Runners {}
+
+impl RunnerScope<'_> {
     /// Replaces a runner's stored digest and returns the new credential once.
     ///
     /// The credential value exists only in [`Minted`]; the statement receives
@@ -29,14 +31,13 @@ impl Runners {
     /// failures without exposing either credential.
     pub async fn rotate_token(
         &self,
-        reach: &Reach,
         runner: &Uuid7,
         actor_id: &str,
         now: Timestamp,
     ) -> Result<Minted> {
-        let token = Minted::draw(CredentialKind::RunnerToken, self.entropy())?;
-        let event_id = self.admin_event_id(now)?;
-        let mut connection = self.pool().acquire().await?;
+        let token = Minted::draw(CredentialKind::RunnerToken, self.runners.entropy())?;
+        let event_id = self.runners.admin_event_id(now)?;
+        let mut connection = self.runners.pool().acquire().await?;
         let changed: Option<bool> = sqlx::query_scalar(sql::runner::ROTATE_RUNNER_TOKEN)
             .bind(runner)
             .bind(token.digest().as_str())
@@ -45,12 +46,13 @@ impl Runners {
             .bind(EVENT_TOKEN_ROTATED)
             .bind(sql::meta::ACTOR_ID)
             .bind(actor_id)
-            .bind(reach.tenant())
+            .bind(self.owner.tenant())
+            .bind(self.owner.platform())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_ROTATE))?;
         let Some(changed) = changed else {
-            return Err(refused_rotation(reach, runner, &mut connection).await);
+            return Err(refused_rotation(self.owner, runner, &mut connection).await);
         };
         if !changed {
             return Err(rejected(DETAIL_REVOKED));
@@ -68,24 +70,24 @@ impl Runners {
     }
 }
 
-/// Why a rotation matched no row: no such runner in this reach, or a platform
+/// Why a rotation matched no row: no such runner in this scope, or a platform
 /// caller addressing a tenant's runner. Read only on the refusal path.
 async fn refused_rotation(
-    reach: &Reach,
+    owner: Owner<'_>,
     runner: &Uuid7,
     connection: &mut sqlx::PgConnection,
 ) -> crate::error::Error {
-    if reach.tenant().is_some() {
+    if !owner.platform() {
         return runner_not_found();
     }
-    let owner: Result<Option<Option<Uuid7>>> =
-        sqlx::query_scalar(sql::runner::SELECT_RUNNER_TENANT)
+    let platform_owned: Result<Option<bool>> =
+        sqlx::query_scalar(sql::runner::SELECT_RUNNER_PLATFORM_OWNED)
             .bind(runner)
             .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT_ROTATE));
-    match owner {
-        Ok(Some(Some(_))) => tenant_managed(),
+    match platform_owned {
+        Ok(Some(false)) => tenant_managed(),
         Ok(_) => runner_not_found(),
         Err(error) => error,
     }

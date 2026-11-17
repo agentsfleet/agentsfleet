@@ -1,1 +1,1 @@
-SELECT COUNT(*)::bigint FROM runner.runners WHERE ($1::uuid IS NULL OR tenant_id = $1)
+SELECT COUNT(*)::bigint FROM runner.runners WHERE ($2::boolean OR tenant_id = $1::uuid)

@@ -42,11 +42,6 @@ CREATE INDEX idx_admissions_fleet_id ON fleet.admissions (fleet_id);
 CREATE INDEX idx_admissions_delivery_lookup
     ON fleet.admissions (fleet_id, created_at, id) WHERE delivered_at IS NULL;
 
-CREATE INDEX idx_admissions_reply_lookup
-    ON fleet.admissions (fleet_id, created_at, sequence) WHERE reply_provider IS NOT NULL;
-
-GRANT SELECT, INSERT, UPDATE ON fleet.admissions TO api_runtime;
-
 GRANT SELECT, INSERT, UPDATE ON fleet.admissions TO api_runtime;
 
 CREATE INDEX idx_admissions_unsettled
@@ -56,12 +51,6 @@ CREATE INDEX idx_admissions_unsettled
 CREATE INDEX idx_admissions_pending_conversation
     ON fleet.admissions (fleet_id, reply_provider, reply_address, sequence)
     WHERE settled_at IS NULL;
-
-CREATE INDEX idx_admissions_uninterpreted_order ON fleet.admissions (fleet_id, sequence)
-    WHERE settled_at IS NULL AND interpreted_at IS NULL;
-
-CREATE INDEX idx_admissions_task_pending ON fleet.admissions (task_id)
-    WHERE task_id IS NOT NULL AND settled_at IS NULL;
 
 CREATE INDEX idx_admissions_task_item ON fleet.admissions (task_item_id)
     WHERE task_item_id IS NOT NULL;

@@ -50,9 +50,6 @@ CREATE INDEX idx_task_checkpoints_base ON fleet.task_checkpoints (task_base_id) 
 CREATE UNIQUE INDEX uq_task_checkpoint_capture ON fleet.task_checkpoints (task_id)
     WHERE ready_at IS NULL AND abandoned_at IS NULL;
 
-CREATE INDEX idx_task_checkpoints_expiry ON fleet.task_checkpoints ((COALESCE(abandoned_at, expires_at)), id)
-    WHERE ready_at IS NULL;
-
 GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.task_checkpoints TO api_runtime;
 
 ALTER TABLE fleet.tasks

@@ -19,7 +19,6 @@ use crate::integration_identity::Fixture;
 /// The terminal two logins race on, and what each mint records about itself.
 const MACHINE: &str = "identity-race.local";
 const DEPLOYMENT: &str = "https://api.identity.test";
-const FROM_ADDRESS: &str = "127.0.0.1";
 const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
 
 /// The racer's address and account name.
@@ -45,7 +44,6 @@ async fn two_logins_from_one_machine_at_once_leave_one_live_credential() {
         tenant: &fixture.tenant,
         machine: MachineName::parse(MACHINE).expect("a well-formed machine name"),
         deployment: DEPLOYMENT,
-        from_address: FROM_ADDRESS,
     };
 
     let mut blocker = fixture.database.acquire().await.expect("an API connection");

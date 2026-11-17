@@ -18,8 +18,10 @@ use std::sync::Arc;
     delete,path="/v1/workspaces/{workspace_id}/plugins/{plugin_id}",operation_id="delete_workspace_plugin",tag=afd_http::openapi::tag::PLUGIN,
     summary="Delete an owned Plugin entry",params(afd_http::openapi::path::Plugin),
     responses((status=204,description="Entry removed; installed snapshots retained"),
-        (status=400,description="Invalid input"),(status=401,description="Unauthorized"),(status=403,description="Forbidden"),
-        (status=404,description="Owned Plugin unavailable"),(status=429,description="Too many requests"),(status=500,description="Internal failure"),(status=503,description="Dependency unavailable"))
+        (status=400,description="Invalid input"),
+        (status=404,description="Owned Plugin unavailable"),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn one<D: Services>(
     State(services): State<Arc<D>>,

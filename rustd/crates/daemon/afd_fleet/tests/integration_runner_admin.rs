@@ -47,8 +47,8 @@ async fn transition(
 ) -> afd_runner::Result<AdminState> {
     fixtures
         .runners()
+        .platform()
         .transition(
-            &afd_runner::Reach::Platform,
             runner,
             action,
             ACTOR,
@@ -120,13 +120,8 @@ async fn concurrent_identical_transitions_append_one_event() {
         tasks.push(tokio::spawn(async move {
             ready.wait().await;
             runners
-                .transition(
-                    &afd_runner::Reach::Platform,
-                    &runner,
-                    RunnerAdminAction::Cordon,
-                    actor,
-                    cordoned_at,
-                )
+                .platform()
+                .transition(&runner, RunnerAdminAction::Cordon, actor, cordoned_at)
                 .await
         }));
     }
@@ -222,8 +217,8 @@ async fn assign(
     };
     fixtures
         .runners()
+        .platform()
         .edit(
-            &afd_runner::Reach::Platform,
             runner,
             edit,
             af_core::clock::after(

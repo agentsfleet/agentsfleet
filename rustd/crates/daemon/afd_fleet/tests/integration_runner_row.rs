@@ -274,6 +274,58 @@ async fn runner_tenant_cannot_change() {
     fixtures.cleanup().await;
 }
 
+/// Ownership is stated, never inferred from a missing tenant.
+///
+/// A platform runner takes every tenant's work, so a row that is neither, or
+/// both, must not exist, and a stored row's flag must not flip.
+// Value: protects=a missing tenant never reads as the platform; fails_when=the
+// check is dropped or the trigger misses the flag; why_new=`platform_owned`;
+// seam=none.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn runner_ownership_is_stated_and_consistent() {
+    let fixtures = Fixtures::create().await;
+    let tenant = fixtures.seed_tenant().await;
+
+    for (platform_owned, owner, what) in [
+        (false, None, "a tenant runner with no tenant"),
+        (true, Some(&tenant), "a platform runner with a tenant"),
+    ] {
+        let refused = fixtures
+            .insert_owned_runner(platform_owned, owner)
+            .await
+            .expect_err(what);
+        assert!(
+            refused.to_string().contains("ck_runners_owner"),
+            "{what} must be refused by the ownership check, got: {refused}"
+        );
+    }
+
+    let tenant_runner = fixtures.insert_runner(Some(&tenant)).await;
+    let platform_runner = fixtures.insert_runner(None).await;
+    for (runner, to, what) in [
+        (
+            &tenant_runner,
+            true,
+            "promoting a tenant runner to the platform",
+        ),
+        (&platform_runner, false, "demoting a platform runner"),
+    ] {
+        let refused = fixtures
+            .set_runner_platform_owned(runner, to)
+            .await
+            .expect_err(what);
+        assert!(
+            refused.to_string().contains("fixed at registration"),
+            "{what} must be refused by the trigger, got: {refused}"
+        );
+    }
+
+    fixtures.delete_runner(&platform_runner).await;
+    fixtures.delete_tenant(&tenant).await;
+    fixtures.cleanup().await;
+}
+
 /// Dimension 1.2: a tenant runner holds no decision model.
 ///
 /// A platform decision model hands the platform decision key to a host its

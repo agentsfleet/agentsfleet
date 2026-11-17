@@ -1,6 +1,6 @@
 WITH current_state AS (
   SELECT id, status FROM runner.runners
-  WHERE id = $1 AND ($3::uuid IS NULL OR tenant_id = $3)
+  WHERE id = $1 AND ($4::boolean OR tenant_id = $3::uuid)
   FOR UPDATE
 ), updated AS (
   UPDATE runner.runners r

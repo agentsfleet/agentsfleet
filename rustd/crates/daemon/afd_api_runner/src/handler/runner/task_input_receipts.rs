@@ -23,11 +23,10 @@ const MALFORMED: &str = "Input receipt exceeds its supported shape or bounds";
     params(("lease_id" = String, Path, description = "Current lease UUIDv7.")), request_body = TaskInputReceiptInput,
     responses((status = 201, body = af_wire::task::TaskInputReceiptResult, description = "Accepted input receipt"),
         (status = 200, body = af_wire::task::TaskInputReceiptResult, description = "Immutable receipt replay"),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT), (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS), (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE))
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,

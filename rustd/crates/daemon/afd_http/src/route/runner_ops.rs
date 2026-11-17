@@ -10,13 +10,15 @@
 use af_wire::paths;
 use afd_auth::Scope;
 
-use super::path::{admin_runner_path, tenant_runner_path};
+use super::path::admin_runner_path;
 use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
 const RUNNER_REGISTER: &[Scope] = &[Scope::RunnerRegister];
 const RUNNER_READ: &[Scope] = &[Scope::RunnerRead];
 const RUNNER_WRITE: &[Scope] = &[Scope::RunnerWrite];
 const RUNNER_TENANT: &[Scope] = &[Scope::RunnerTenant];
+/// Every tenant runner route needs `runner:tenant`, whatever its method.
+const TENANT: Scopes = Scopes::Always(RUNNER_TENANT);
 
 /// An operator-plane route over runners.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -107,11 +109,9 @@ impl RunnerOpsRoute {
             ),
             Self::Events => (admin_runner_path!("/events"), Scopes::Always(RUNNER_READ)),
             Self::Leases => (admin_runner_path!("/leases"), Scopes::Always(RUNNER_READ)),
-            Self::TenantRegister | Self::TenantList => {
-                (paths::TENANT_RUNNERS, Scopes::Always(RUNNER_TENANT))
-            }
+            Self::TenantRegister | Self::TenantList => (paths::TENANT_RUNNERS, TENANT),
             Self::TenantGet | Self::TenantPatch | Self::TenantDelete => {
-                (tenant_runner_path!(""), Scopes::Always(RUNNER_TENANT))
+                (paths::TENANT_RUNNER, TENANT)
             }
         };
         RouteMeta::new(Guard::Bearer, RouteClass::Api, template, scopes)

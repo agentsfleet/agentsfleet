@@ -7,8 +7,6 @@ CREATE TABLE fleet.task_interpretations (
     plan_digest TEXT NOT NULL,
     message TEXT NOT NULL,
     plan JSONB NOT NULL,
-    accepting_lease_id UUID NOT NULL,
-    accepting_fence BIGINT NOT NULL,
     created_at TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT fk_task_interpretations_fleet FOREIGN KEY (fleet_id, workspace_id, tenant_id)
         REFERENCES fleet.fleets (id, workspace_id, tenant_id) ON DELETE CASCADE,

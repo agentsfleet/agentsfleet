@@ -217,3 +217,39 @@ fn test_every_write_names_the_body_it_reads() {
         mute.join("\n  "),
     );
 }
+
+// Value: protects=a route never words a shared refusal its own way;
+// fails_when=an annotation spells 401, 403 or 500 by hand, as ten did
+// ("Unauthorized", "Internal failure"); why_new=GuardedFailures; seam=none.
+// 429 and 503 stay free: a route may name the limit or dependency it hit, as
+// readiness and the draft stream do.
+#[test]
+fn test_shared_refusals_keep_their_shared_sentences() {
+    use afd_http::openapi::{
+        FORBIDDEN, INTERNAL, SESSION_EXPIRED, UNAUTHORIZED, UNKNOWN_SUBJECT, UNVERIFIED,
+    };
+    let allowed: [(&str, &[&str]); 3] = [
+        ("401", &[UNAUTHORIZED, UNVERIFIED, SESSION_EXPIRED]),
+        ("403", &[FORBIDDEN, UNKNOWN_SUBJECT]),
+        ("500", &[INTERNAL]),
+    ];
+    let document = document();
+    let paths = document["paths"]
+        .as_object()
+        .expect("the document has paths");
+    let mut drifted = Vec::new();
+    for (path, item) in paths {
+        for (method, operation) in item.as_object().expect("a path item is an object") {
+            for (status, sentences) in &allowed {
+                let Some(description) = operation["responses"][*status]["description"].as_str()
+                else {
+                    continue;
+                };
+                if !sentences.contains(&description) {
+                    drifted.push(format!("{method} {path} {status}: {description}"));
+                }
+            }
+        }
+    }
+    assert!(drifted.is_empty(), "shared refusals reworded: {drifted:#?}");
+}

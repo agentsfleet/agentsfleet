@@ -49,9 +49,9 @@ CREATE INDEX idx_task_objects_upload_owner ON fleet.task_objects (owner_checkpoi
 CREATE FUNCTION fleet.task_objects_record_purge() RETURNS trigger AS $$
 BEGIN
     INSERT INTO fleet.task_storage_purges (task_object_id, workspace_id, task_identity_key_id, bucket_reference, accounted_bytes, stored,
-        delete_after_at, next_attempt_at, created_at, updated_at)
+        next_attempt_at, created_at, updated_at)
     VALUES (OLD.id, OLD.workspace_id, OLD.task_identity_key_id, OLD.bucket_reference, OLD.accounted_bytes, OLD.verified_at IS NOT NULL,
-        OLD.reclaim_after_at, OLD.reclaim_after_at, now(), now())
+        OLD.reclaim_after_at, now(), now())
     ON CONFLICT (task_object_id) DO NOTHING;
     RETURN OLD;
 END;

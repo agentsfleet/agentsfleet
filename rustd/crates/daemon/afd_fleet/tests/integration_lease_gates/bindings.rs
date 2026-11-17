@@ -149,7 +149,7 @@ async fn test_an_approved_write_binding_locks_its_egress_to_that_gates_branch() 
     set_config(&fixtures, &seeded.fleet, WRITE_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     seed_gate(&fixtures, &seeded, STATUS_APPROVED).await;
-    let _gate = seed_write_gate(&fixtures, &seeded, STATED_WRITE_BINDING).await;
+    let _gate = seed_write_gate(&fixtures, &seeded).await;
 
     let claimed = claim(&fixtures, &seeded).await;
     let answer = drive(&fixtures, &seeded, claimed).await;

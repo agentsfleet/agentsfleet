@@ -36,8 +36,6 @@ pub(in crate::task) async fn record(tasks: &Tasks, input: &VerifiedCompletion) -
             i32::try_from(input.run_attempt)
                 .map_err(crate::error::task_target_counter("run_attempt"))?,
         )
-        .bind(&input.conclusion)
-        .bind(&input.body_digest)
         .bind("installation_id")
         .bind("repository_id")
         .bind("head")

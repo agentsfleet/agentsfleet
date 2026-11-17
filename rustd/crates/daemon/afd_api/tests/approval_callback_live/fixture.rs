@@ -185,13 +185,13 @@ impl Fixture {
             "INSERT INTO fleet.approval_gates \
                (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
                 proposed_action, evidence, blast_radius, expires_at, resolved_by, status, \
-                detail, created_at, updated_at, event_id, spend_count, spend_ceiling) \
+                detail, created_at, updated_at, event_id) \
              VALUES ($1, $2, $3, $4, 'git', 'push', 'tool', \
                      'open a pull request', '{}', 'one repository', $9::timestamptz, '', \
-                     'pending', '', now(), now(), $5, 0, 32), \
+                     'pending', '', now(), now(), $5), \
                     ($6, $7, $8, $10, 'git', 'push', 'tool', \
                      'open a pull request', '{}', 'one repository', $9::timestamptz, '', \
-                     'pending', '', now(), now(), $11, 0, 32)",
+                     'pending', '', now(), now(), $11)",
         )
         .bind(&self.gate)
         .bind(&self.fleet)

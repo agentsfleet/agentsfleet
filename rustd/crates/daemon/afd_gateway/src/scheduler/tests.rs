@@ -38,6 +38,47 @@ impl SessionFixture {
     }
 }
 
+// Value: protects=an unclaimable wake costs no discovery scan per session;
+// fails_when=the pass runs before or without the pending probe; why_new=the
+// probe gate; seam=the injected probe; no_claim=recovery generations skip it.
+#[tokio::test(start_paused = true)]
+async fn a_wake_with_nothing_pending_asks_no_session_to_claim() -> TestResult {
+    let registry = Arc::new(Registry::default());
+    let mut session = SessionFixture::new(1)?;
+    let _registration = session.register(&registry)?;
+    let wake = Wake::default();
+    let stop = CancellationToken::new();
+    let probes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let job = tokio::spawn({
+        let registry = Arc::clone(&registry);
+        let wake = wake.clone();
+        let stop = stop.clone();
+        let probes = Arc::clone(&probes);
+        async move {
+            notifications(&registry, &wake, stop, || {
+                probes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async { Ok(false) }
+            })
+            .await
+        }
+    });
+    tokio::task::yield_now().await;
+    wake.ring(session.handle.runner.clone());
+    let asked = tokio::select! {
+        request = session.requests.recv() => request.is_some(),
+        () = tokio::time::sleep(Duration::from_secs(1)) => false,
+    };
+    assert!(!asked, "an empty probe skips the pass");
+    assert_eq!(
+        probes.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "one probe per wake"
+    );
+    stop.cancel();
+    job.await??;
+    Ok(())
+}
+
 #[tokio::test(start_paused = true)]
 async fn rings_coalesce_into_one_claim_pass() -> TestResult {
     let registry = Arc::new(Registry::default());
@@ -49,7 +90,7 @@ async fn rings_coalesce_into_one_claim_pass() -> TestResult {
         let registry = Arc::clone(&registry);
         let wake = wake.clone();
         let stop = stop.clone();
-        async move { notifications(&registry, &wake, stop).await }
+        async move { notifications(&registry, &wake, stop, || async { Ok(true) }).await }
     });
     tokio::task::yield_now().await;
     wake.ring(session.handle.runner.clone());

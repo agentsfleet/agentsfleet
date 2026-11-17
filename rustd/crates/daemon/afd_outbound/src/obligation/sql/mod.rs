@@ -37,5 +37,5 @@ pub(crate) const STAMP_DELIVERED: &str = include_str!("stamp_delivered.sql");
 /// count; no row means another holder has it. `$1` id · `$2` token.
 pub(crate) const COUNT_ATTEMPT: &str = include_str!("count_attempt.sql");
 
-/// Gives up on an answer. `$1` id · `$2` token · `$3` reason.
+/// Gives up on an answer. `$1` id · `$2` token.
 pub(crate) const ABANDON: &str = include_str!("abandon.sql");

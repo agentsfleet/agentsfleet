@@ -19,7 +19,7 @@ use http::StatusCode;
 use super::query;
 use crate::handler::{parse_id, refuse};
 use crate::services::Services;
-use afd_runner::Reach;
+use afd_runner::RunnerScope;
 
 /// The scoped event a failed retirement is logged under.
 const EVENT: &str = "runner_delete_failed";
@@ -42,29 +42,29 @@ const EVENT: &str = "runner_delete_failed";
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = "The runner is still in service; revoke it first"),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,
 ) -> Response {
-    retire(&*services, &Reach::Platform, &raw).await
+    retire(&*services, services.runners().platform(), &raw).await
 }
 
-/// Retires a revoked runner within `reach`.
-pub(super) async fn retire<D: Services>(services: &D, reach: &Reach, raw: &str) -> Response {
+/// Retires a revoked runner within `scope`.
+pub(super) async fn retire<D: Services>(
+    services: &D,
+    scope: RunnerScope<'_>,
+    raw: &str,
+) -> Response {
     let runner = match parse_id(raw, query::DETAIL_BAD_RUNNER_ID) {
         Ok(runner) => runner,
         Err(refused) => return refused.into_response(),
     };
-    match services.runners().delete_revoked(reach, &runner).await {
+    match scope.delete_revoked(&runner).await {
         Ok(()) => {
             super::runner_notify::changed(services, &runner).await;
             StatusCode::NO_CONTENT.into_response()

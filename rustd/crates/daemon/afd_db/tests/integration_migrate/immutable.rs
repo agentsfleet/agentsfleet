@@ -7,7 +7,7 @@ use afd_db::test_util::mint_id;
 use super::*;
 
 /// The immutable tables: rows written once, then read or removed.
-const IMMUTABLE: [&str; 21] = [
+const IMMUTABLE: [&str; 22] = [
     "authoring.activity_receipts",
     "authoring.answer_receipts",
     "authoring.candidates",
@@ -29,6 +29,7 @@ const IMMUTABLE: [&str; 21] = [
     "identity.workspaces",
     "model.decision_revisions",
     "runner.events",
+    "runner.registration_receipts",
 ];
 
 /// Every runtime role, none of which may update an immutable table.

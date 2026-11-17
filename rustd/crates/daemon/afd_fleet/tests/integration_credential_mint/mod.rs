@@ -267,14 +267,8 @@ async fn seed_grant(fixtures: &Fixtures, fleet: &Uuid7, service: &str, status: &
 /// The gate kind a write mint spends.
 const KIND_REPOSITORY_WRITE: &str = "repository_write";
 
-/// The ceiling a repository-write card is raised with.
-const WRITE_SPEND_CEILING: i64 = 32;
-
-/// The recorded reach a write-bound fixture fleet declares.
-const STATED_BINDING: &str = r#"{"repositories":["acme/payments"],"access":"write","base":"main"}"#;
-
 /// Writes one answered repository-write gate for `owner`'s fleet and event.
-async fn seed_write_gate(fixtures: &Fixtures, owner: &Bound, stated: &str, spent: i64) -> Uuid7 {
+async fn seed_write_gate(fixtures: &Fixtures, owner: &Bound) -> Uuid7 {
     let workspace = workspace_of(fixtures, &owner.fleet).await;
     let gate_id = mint_id();
     let mut connection = fixtures
@@ -286,12 +280,10 @@ async fn seed_write_gate(fixtures: &Fixtures, owner: &Bound, stated: &str, spent
         "INSERT INTO fleet.approval_gates
            (id, fleet_id, workspace_id, action_id, tool_name, action_name,
             gate_type, proposed_action, evidence, blast_radius, expires_at,
-            resolved_by, status, detail, created_at, updated_at, event_id,
-            stated_binding, spend_count, spend_ceiling)
+            resolved_by, status, detail, created_at, updated_at, event_id)
          VALUES ($1, $2, $3, $4, 'git', 'push',
                  $5, 'open a repair pull request', '{}'::jsonb, 'one repository',
-                 now() + $6::interval, 'fixture:human', 'approved', '', now(), now(), $7,
-                 $8::jsonb, $9, $10)",
+                 now() + $6::interval, 'fixture:human', 'approved', '', now(), now(), $7)",
     )
     .bind(&gate_id)
     .bind(&owner.fleet)
@@ -300,9 +292,6 @@ async fn seed_write_gate(fixtures: &Fixtures, owner: &Bound, stated: &str, spent
     .bind(KIND_REPOSITORY_WRITE)
     .bind(LEASE_WINDOW)
     .bind(&owner.event)
-    .bind(stated)
-    .bind(spent)
-    .bind(WRITE_SPEND_CEILING)
     .execute(&mut *connection)
     .await
     .expect("the gate row must insert");

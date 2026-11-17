@@ -20,7 +20,7 @@ const EVENT_ABANDON_FAILED: &str = "outbound_obligation_abandon_failed";
 /// A stamp that fails is reported and nothing else: the claim lapses and the
 /// row is offered again, the at-least-once direction rather than a lost answer.
 pub(crate) async fn delivery(database: &Db, job: &Claimed, reason: AbandonReason) {
-    match obligation::abandon(database, job, reason).await {
+    match obligation::abandon(database, job).await {
         Ok(Some(attempt_count)) => Abandoned {
             provider: &job.outgoing.provider,
             fleet_id: job.outgoing.fleet_id.as_str(),
@@ -110,7 +110,7 @@ mod tests {
         assert!(rendered.contains("cycles_exhausted") && rendered.contains("12"));
     }
 
-    /// Every reason has its own stored spelling, so an operator filtering on
+    /// Every reason has its own logged spelling, so an operator filtering on
     /// one never collects another.
     #[test]
     fn every_abandon_reason_spells_itself_apart() {

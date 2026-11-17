@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use af_core::id::Uuid7;
 use af_wire::runner::{AssignedPolicy, RegisterRequest, RegisterResponse, RegistrationReplay};
+use afd_http::handler::Refusal;
 use afd_runner::{Enrolled, Registered};
 use axum::Json;
 use axum::body::Bytes;
@@ -18,7 +19,7 @@ use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 use http::{HeaderMap, StatusCode, header};
 
-use crate::handler::{malformed, refuse};
+use crate::handler::refuse;
 use crate::services::Services;
 
 /// The scoped event a failed registration is logged under.
@@ -49,18 +50,14 @@ const DETAIL_MALFORMED_BODY: &str = "Malformed JSON body (host_id, assigned_poli
     responses(
         (status = 201, description = "Runner registered; the bearer token is returned exactly once", body = RegisterResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn platform<D: Services>(State(services): State<Arc<D>>, body: Bytes) -> Response {
     let request = match read(&body) {
         Ok(request) => request,
-        Err(refused) => return refused,
+        Err(refused) => return refused.into_response(),
     };
     match services.runners().register(&request, services.now()).await {
         Ok(registered) => created(&registered, &request.assigned_policy),
@@ -85,7 +82,7 @@ pub(super) async fn tenant<D: Services>(
     };
     let request = match read(body) {
         Ok(request) => request,
-        Err(refused) => return refused,
+        Err(refused) => return refused.into_response(),
     };
     let stored = AssignedPolicy {
         durable_tasks_enabled: false,
@@ -118,12 +115,16 @@ pub(super) async fn tenant<D: Services>(
 
 /// The request, read strictly: a misspelled key at any depth is refused rather
 /// than silently assigning a policy nobody asked for.
-fn read(body: &Bytes) -> Result<RegisterRequest<'_>, Response> {
+fn read(body: &Bytes) -> Result<RegisterRequest<'_>, Refusal> {
     if body.is_empty() {
-        return Err(malformed(DETAIL_BODY_REQUIRED));
+        return Err(Refusal::malformed(DETAIL_BODY_REQUIRED));
     }
-    afd_http::handler::read_strict_body::<RegisterRequest<'_>>(body)
-        .map_err(|_| malformed(DETAIL_MALFORMED_BODY))
+    // The parser's failure names nothing a caller can act on, and the unknown
+    // field it refused is already logged by `read_strict_body`.
+    let Ok(request) = afd_http::handler::read_strict_body::<RegisterRequest<'_>>(body) else {
+        return Err(Refusal::malformed(DETAIL_MALFORMED_BODY));
+    };
+    Ok(request)
 }
 
 /// The `201`, carrying the credential this response exists to reveal, with the

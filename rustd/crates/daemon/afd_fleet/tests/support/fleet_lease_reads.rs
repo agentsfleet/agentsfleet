@@ -87,6 +87,25 @@ impl Fixtures {
         tenant: &Uuid7,
         tag: &str,
     ) {
+        self.seed_fleet_on(
+            fleet,
+            workspace,
+            tenant,
+            tag,
+            afd_credential::provider::PLATFORM_MODEL_REF,
+        )
+        .await;
+    }
+
+    /// [`Self::seed_fleet`], with its setup revision running on `model_ref`.
+    pub(crate) async fn seed_fleet_on(
+        &self,
+        fleet: &Uuid7,
+        workspace: &Uuid7,
+        tenant: &Uuid7,
+        tag: &str,
+        model_ref: &str,
+    ) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         let owned: bool = sqlx::query_scalar(WORKSPACE_EXISTS)
             .bind(workspace)
@@ -120,7 +139,7 @@ impl Fixtures {
             definition: &stored,
             digest: &digest,
             semantics: POLICY_SEMANTICS,
-            model_ref: Some(afd_credential::provider::PLATFORM_MODEL_REF),
+            model_ref: Some(model_ref),
         })
         .insert(&mut *connection)
         .await

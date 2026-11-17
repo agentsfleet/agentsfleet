@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use afd_api_wire::operator::{RunnerDetail, RunnerItem, RunnersResponse};
-use afd_runner::{Reach, RunnerDetail as StoredDetail, RunnerItem as StoredItem};
+use afd_runner::{RunnerDetail as StoredDetail, RunnerItem as StoredItem, RunnerScope};
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse as _, Response};
@@ -34,35 +34,23 @@ const EVENT_DETAIL: &str = "runner_detail_failed";
     responses(
         (status = 200, description = afd_http::openapi::OK, body = RunnersResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    page(&*services, &Reach::Platform, &params).await
+    page(services.runners().platform(), &params).await
 }
 
-/// One page of the runners `reach` covers, newest first.
-pub(super) async fn page<D: Services>(
-    services: &D,
-    reach: &Reach,
-    params: &HashMap<String, String>,
-) -> Response {
+/// One page of the runners `scope` covers, newest first.
+pub(super) async fn page(scope: RunnerScope<'_>, params: &HashMap<String, String>) -> Response {
     let page = match query::page(params) {
         Ok(page) => page,
         Err(detail) => return malformed(detail),
     };
-    match services
-        .runners()
-        .list_runners(reach, page.cursor.as_ref(), page.limit)
-        .await
-    {
+    match scope.list_runners(page.cursor.as_ref(), page.limit).await {
         Ok(rows) => Json(RunnersResponse {
             items: rows.items().iter().map(item).collect(),
             total: rows.total(),
@@ -91,28 +79,24 @@ pub(super) async fn page<D: Services>(
     responses(
         (status = 200, description = afd_http::openapi::OK, body = RunnerDetail<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn detail<D: Services>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,
 ) -> Response {
-    read(&*services, &Reach::Platform, &raw).await
+    read(services.runners().platform(), &raw).await
 }
 
-/// One runner within `reach`; a runner outside it is not found.
-pub(super) async fn read<D: Services>(services: &D, reach: &Reach, raw: &str) -> Response {
+/// One runner within `scope`; a runner outside it is not found.
+pub(super) async fn read(scope: RunnerScope<'_>, raw: &str) -> Response {
     let runner = match parse_id(raw, query::DETAIL_BAD_RUNNER_ID) {
         Ok(runner) => runner,
         Err(refused) => return refused.into_response(),
     };
-    match services.runners().runner_detail(reach, &runner).await {
+    match scope.runner_detail(&runner).await {
         Ok(row) => Json(detail_payload(&row)).into_response(),
         Err(error) => refuse(&error, EVENT_DETAIL),
     }

@@ -94,7 +94,7 @@ pub(crate) async fn seeded_for<const N: usize>(
 /// A host that has never reported reads degraded, and a degraded host may
 /// claim nothing; without this beat every seeded runner would be refused at
 /// issue for a reason no lease test is about.
-async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
+pub(crate) async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
     let request = HeartbeatRequest {
         capability_report: Some(capable()),
         selftest: None,

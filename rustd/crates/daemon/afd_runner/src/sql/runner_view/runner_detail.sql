@@ -25,4 +25,4 @@ LEFT JOIN (
   GROUP BY runner_id
 ) s ON s.runner_id = r.id
 LEFT JOIN runner.lifetime_counters c ON c.runner_id = r.id
-WHERE r.id = $1 AND ($3::uuid IS NULL OR r.tenant_id = $3)
+WHERE r.id = $1 AND ($4::boolean OR r.tenant_id = $3::uuid)

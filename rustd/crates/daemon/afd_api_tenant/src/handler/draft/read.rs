@@ -27,10 +27,9 @@ use std::sync::Arc;
         ("linked_fleet_id" = Option<String>, Query, description = "Related fleet UUIDv7."),
         ("q" = Option<String>, Query, description = "Case-insensitive search of your chat titles and message text, 1..200 characters after trimming. Bound into the cursor.")),
     responses((status = 200, body = CursorPage<DraftCard>, description = "Creator-only page"),
-        (status = 400, description = "Invalid input or cursor"), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = "Workspace unavailable"),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS), (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE))
+        (status = 400, description = "Invalid input or cursor"), (status = 404, description = "Workspace unavailable"),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
@@ -53,10 +52,9 @@ pub(crate) async fn list<D: Services>(
     tag = afd_http::openapi::tag::DRAFTS, summary = "Read your private setup chat",
     params(afd_http::openapi::path::Draft),
     responses((status = 200, body = Draft, description = "Private draft", headers(("ETag" = String))),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = super::DRAFT_UNAVAILABLE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS), (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE))
+        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 404, description = super::DRAFT_UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn one<D: Services>(
     State(services): State<Arc<D>>,

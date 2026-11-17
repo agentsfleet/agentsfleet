@@ -7,7 +7,7 @@ use super::{
     KeysetCursor, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem, RunnerPage, events,
 };
 use crate::error::{Result, query, runner_not_found};
-use crate::reach::Reach;
+use crate::scope::RunnerScope;
 use crate::sql;
 use crate::store::Runners;
 
@@ -19,71 +19,6 @@ const CONTEXT_EVENT_COUNT: &str = "runner event count";
 const CONTEXT_EVENT_LIST: &str = "runner event page";
 
 impl Runners {
-    /// Lists runners newest first, deriving liveness at the database's clock.
-    ///
-    /// # Errors
-    /// Reports datastore failures or malformed stored rows.
-    pub async fn list_runners(
-        &self,
-        reach: &Reach,
-        cursor: Option<&KeysetCursor>,
-        limit: u32,
-    ) -> Result<RunnerPage> {
-        let mut connection = self.pool().acquire().await?;
-        let total = sqlx::query_scalar(sql::runner_view::COUNT_RUNNERS)
-            .bind(reach.tenant())
-            .fetch_one(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RUNNER_COUNT))?;
-        let statement = cursor.map_or_else(
-            || {
-                sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_FIRST)
-                    .bind(sql::LEASE_STATUS_ACTIVE)
-                    .bind(past_page(limit))
-                    .bind(reach.tenant())
-            },
-            |boundary| {
-                sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_AFTER)
-                    .bind(sql::LEASE_STATUS_ACTIVE)
-                    .bind(boundary.created_at().to_sqlx())
-                    .bind(boundary.id())
-                    .bind(past_page(limit))
-                    .bind(reach.tenant())
-            },
-        );
-        let mut rows = statement
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RUNNER_LIST))?;
-        let more = trim_to_page(&mut rows, limit);
-        let items = rows
-            .into_iter()
-            .map(ItemRow::parse)
-            .collect::<Result<Vec<_>>>()?;
-        Ok(RunnerPage {
-            next_cursor: page_cursor(&items, more),
-            items,
-            total,
-        })
-    }
-
-    /// Reads one runner with its current work summary and lifetime counters.
-    ///
-    /// # Errors
-    /// Reports a missing runner, datastore failures, or malformed stored rows.
-    pub async fn runner_detail(&self, reach: &Reach, runner: &Uuid7) -> Result<RunnerDetail> {
-        let mut connection = self.pool().acquire().await?;
-        sqlx::query_as::<_, DetailRow>(sql::runner_view::RUNNER_DETAIL)
-            .bind(runner)
-            .bind(sql::LEASE_STATUS_ACTIVE)
-            .bind(reach.tenant())
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RUNNER_DETAIL))?
-            .ok_or_else(runner_not_found)?
-            .parse()
-    }
-
     /// Lists one runner's append-only history newest first.
     ///
     /// # Errors
@@ -127,6 +62,75 @@ impl Runners {
             items,
             total,
         })
+    }
+}
+
+impl RunnerScope<'_> {
+    /// Lists runners newest first, deriving liveness at the database's clock.
+    ///
+    /// # Errors
+    /// Reports datastore failures or malformed stored rows.
+    pub async fn list_runners(
+        &self,
+        cursor: Option<&KeysetCursor>,
+        limit: u32,
+    ) -> Result<RunnerPage> {
+        let mut connection = self.runners.pool().acquire().await?;
+        let total = sqlx::query_scalar(sql::runner_view::COUNT_RUNNERS)
+            .bind(self.owner.tenant())
+            .bind(self.owner.platform())
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_RUNNER_COUNT))?;
+        let statement = cursor.map_or_else(
+            || {
+                sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_FIRST)
+                    .bind(sql::LEASE_STATUS_ACTIVE)
+                    .bind(past_page(limit))
+                    .bind(self.owner.tenant())
+            },
+            |boundary| {
+                sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_AFTER)
+                    .bind(sql::LEASE_STATUS_ACTIVE)
+                    .bind(boundary.created_at().to_sqlx())
+                    .bind(boundary.id())
+                    .bind(past_page(limit))
+                    .bind(self.owner.tenant())
+            },
+        );
+        let mut rows = statement
+            .bind(self.owner.platform())
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_RUNNER_LIST))?;
+        let more = trim_to_page(&mut rows, limit);
+        let items = rows
+            .into_iter()
+            .map(ItemRow::parse)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(RunnerPage {
+            next_cursor: page_cursor(&items, more),
+            items,
+            total,
+        })
+    }
+
+    /// Reads one runner with its current work summary and lifetime counters.
+    ///
+    /// # Errors
+    /// Reports a missing runner, datastore failures, or malformed stored rows.
+    pub async fn runner_detail(&self, runner: &Uuid7) -> Result<RunnerDetail> {
+        let mut connection = self.runners.pool().acquire().await?;
+        sqlx::query_as::<_, DetailRow>(sql::runner_view::RUNNER_DETAIL)
+            .bind(runner)
+            .bind(sql::LEASE_STATUS_ACTIVE)
+            .bind(self.owner.tenant())
+            .bind(self.owner.platform())
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_RUNNER_DETAIL))?
+            .ok_or_else(runner_not_found)?
+            .parse()
     }
 }
 

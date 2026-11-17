@@ -99,6 +99,7 @@ impl Leases {
             .bind(af_wire::task::TaskState::Running.as_str())
             .bind(crate::task::DECISION_POLICY_PATH)
             .bind(recovery.is_some())
+            .bind(afd_credential::provider::PLATFORM_MODEL_REF)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -139,6 +140,7 @@ impl Leases {
             .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(af_core::event::status::RECEIVED)
             .bind(afd_admission::Producer::Steer.as_str())
+            .bind(afd_credential::provider::PLATFORM_MODEL_REF)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT))?;

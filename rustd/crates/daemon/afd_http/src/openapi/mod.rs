@@ -106,6 +106,38 @@ pub const IGNORED: &str = "The signed event was ignored; the response explains w
 /// What a webhook receiver reads: the provider's own document.
 pub const DELIVERY: &str = "The provider's original event body; requires a valid signature";
 
+/// The five refusals every guarded route can answer around its own handler: no
+/// credential, a credential short a scope, a limit, a failure and an outage. An
+/// annotation lists what is particular to its route, then this, so the shared
+/// sentences are written once.
+#[cfg(feature = "openapi")]
+#[derive(Debug)]
+pub struct GuardedFailures;
+
+#[cfg(feature = "openapi")]
+impl utoipa::IntoResponses for GuardedFailures {
+    fn responses() -> std::collections::BTreeMap<
+        String,
+        utoipa::openapi::RefOr<utoipa::openapi::response::Response>,
+    > {
+        [
+            (401, UNAUTHORIZED),
+            (403, FORBIDDEN),
+            (429, TOO_MANY_REQUESTS),
+            (500, INTERNAL),
+            (503, UNAVAILABLE),
+        ]
+        .into_iter()
+        .map(|(status, description)| {
+            let response = utoipa::openapi::response::ResponseBuilder::new()
+                .description(description)
+                .build();
+            (status.to_string(), response.into())
+        })
+        .collect()
+    }
+}
+
 /// The tags an operation is grouped under, as the published document spells them.
 ///
 /// One module rather than free constants: a tag is a name in the CONTRACT, and
@@ -161,4 +193,37 @@ pub mod tag {
     pub const PLUGIN: &str = "Plugins";
     /// The priced model catalogue.
     pub const MODEL_LIBRARY: &str = "Model Library";
+}
+
+#[cfg(all(test, feature = "openapi"))]
+mod tests {
+    use utoipa::IntoResponses as _;
+    use utoipa::openapi::RefOr;
+
+    use super::{
+        FORBIDDEN, GuardedFailures, INTERNAL, TOO_MANY_REQUESTS, UNAUTHORIZED, UNAVAILABLE,
+    };
+
+    // Value: protects=every guarded route answers the same five refusals in the
+    // same words; fails_when=a status or sentence is dropped or reworded;
+    // why_new=the shared type replaces 123 hand-written row sets; seam=none.
+    #[test]
+    fn guarded_failures_are_the_five_shared_refusals() {
+        let described: Vec<(String, String)> = GuardedFailures::responses()
+            .into_iter()
+            .map(|(status, response)| match response {
+                RefOr::T(response) => (status, response.description),
+                RefOr::Ref(_) => panic!("{status} is a reference, not a response"),
+            })
+            .collect();
+        let expected = [
+            ("401", UNAUTHORIZED),
+            ("403", FORBIDDEN),
+            ("429", TOO_MANY_REQUESTS),
+            ("500", INTERNAL),
+            ("503", UNAVAILABLE),
+        ]
+        .map(|(status, description)| (status.to_owned(), description.to_owned()));
+        assert_eq!(described, expected);
+    }
 }

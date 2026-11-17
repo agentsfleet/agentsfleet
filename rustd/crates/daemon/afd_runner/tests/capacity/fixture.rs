@@ -127,7 +127,7 @@ impl Fixture {
     pub(super) async fn try_claim(&self) -> bool {
         let mut connection = self.db.acquire().await.expect("claim connection");
         let mut tx = connection.begin().await.expect("claim transaction");
-        let capacity = afd_runner::capacity::lock(&mut tx, &self.runner)
+        let capacity = afd_runner::capacity::lock(&mut tx, &self.runner, None)
             .await
             .expect("lock host")
             .expect("isolated host exists");

@@ -13,7 +13,8 @@ CREATE TABLE runner.fleet_slots (
 CREATE INDEX idx_fleet_slots_last_runner_id_held
     ON runner.fleet_slots (last_runner_id) WHERE hold_expires_at IS NOT NULL;
 
-CREATE INDEX idx_fleet_slots_last_runner_id_lease_expires_at
-    ON runner.fleet_slots (last_runner_id, lease_expires_at);
+-- The runner alone: every renewal moves `lease_expires_at`, and an index on it would
+-- block heap-only updates. Serves the foreign key's SET NULL and the slot sweep.
+CREATE INDEX idx_fleet_slots_last_runner_id ON runner.fleet_slots (last_runner_id);
 
 GRANT SELECT, INSERT, UPDATE ON runner.fleet_slots TO api_runtime;

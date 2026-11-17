@@ -12,6 +12,6 @@ SELECT r.id AS id, r.host_id, r.sandbox_tier, r.status, r.labels::text AS labels
        r.decision_platform_model_id AS decision_model_id, r.tenant_id
 FROM runner.runners r
 WHERE (r.created_at, r.id) < ($2::timestamptz, $3)
-  AND ($5::uuid IS NULL OR r.tenant_id = $5)
+  AND ($6::boolean OR r.tenant_id = $5::uuid)
 ORDER BY r.created_at DESC, r.id DESC
 LIMIT $4::bigint

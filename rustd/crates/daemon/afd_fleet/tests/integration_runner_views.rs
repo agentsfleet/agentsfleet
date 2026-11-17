@@ -105,8 +105,8 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) -> (Time
         .expect("the heartbeat lands");
     fixtures
         .runners()
+        .platform()
         .transition(
-            &afd_runner::Reach::Platform,
             live_runner,
             RunnerAdminAction::Cordon,
             ACTOR,
@@ -117,8 +117,8 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) -> (Time
     let after_cordon = fixtures.database_now().await;
     let _rotated = fixtures
         .runners()
+        .platform()
         .rotate_token(
-            &afd_runner::Reach::Platform,
             live_runner,
             ACTOR,
             af_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(3)),
@@ -140,7 +140,8 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
     loop {
         let page = fixtures
             .runners()
-            .list_runners(&afd_runner::Reach::Platform, cursor.as_ref(), limit)
+            .platform()
+            .list_runners(cursor.as_ref(), limit)
             .await
             .expect("the page loads");
         totals.push(page.total());
@@ -202,7 +203,8 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
 async fn assert_runner_detail(fixtures: &Fixtures, runner: &Uuid7) {
     let detail = fixtures
         .runners()
-        .runner_detail(&afd_runner::Reach::Platform, runner)
+        .platform()
+        .runner_detail(runner)
         .await
         .expect("the detail loads");
     assert_eq!(

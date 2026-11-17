@@ -127,10 +127,7 @@ pub(crate) async fn receive<D: Services>(
         fleet_id: fleet.clone(),
         workspace_id: proven.binding.workspace().clone(),
     };
-    if let Some(completion) = delivery.completion(
-        afd_fleet::task::CompletionScope::Fleet(scope),
-        delivery_id.clone(),
-    ) {
+    if let Some(completion) = delivery.completion(afd_fleet::task::CompletionScope::Fleet(scope)) {
         services
             .tasks()
             .record_github_completion(&completion)

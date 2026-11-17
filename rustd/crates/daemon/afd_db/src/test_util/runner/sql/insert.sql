@@ -1,6 +1,7 @@
 INSERT INTO runner.runners
   (id, host_id, token_hash, sandbox_tier, status, labels, network_policy, registry_allowlist,
-   worker_count, degraded_reason, last_seen_at, lease_version, created_at, updated_at)
+   worker_count, degraded_reason, last_seen_at, lease_version, created_at, updated_at,
+   platform_owned)
 VALUES ($1, $13, coalesce($12, $13), $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8,
         coalesce($9::timestamptz, now()), $10, coalesce($11::timestamptz, now()),
-        coalesce($11::timestamptz, now()))
+        coalesce($11::timestamptz, now()), true)

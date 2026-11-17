@@ -17,13 +17,22 @@ pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
         notifications(
             &gateway.inner.registry,
             &gateway.inner.dependencies.wake,
-            stop
+            stop.clone(),
+            || recovery::pending_work(&gateway, &stop),
         )
     )?;
     Ok(())
 }
 
-async fn notifications(registry: &Registry, wake: &Wake, stop: CancellationToken) -> Result<()> {
+/// A wake for work no session can claim, such as a message to a fleet already
+/// running, would cost one discovery scan per ready session. One `pending` probe
+/// per pass answers it first; a recovery generation has already probed.
+async fn notifications<F: Future<Output = Result<bool>>>(
+    registry: &Registry,
+    wake: &Wake,
+    stop: CancellationToken,
+    mut pending: impl FnMut() -> F,
+) -> Result<()> {
     let mut generations = wake.generations();
     let mut observed = *generations.borrow_and_update();
     loop {
@@ -37,6 +46,13 @@ async fn notifications(registry: &Registry, wake: &Wake, stop: CancellationToken
         let current = *generations.borrow_and_update();
         let budget = current.wrapping_sub(observed).max(1);
         observed = current;
+        if wake.recovery().is_none() {
+            match pending().await {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(error) => Gateway::observe(&error, crate::Operation::Offer),
+            }
+        }
         let sessions = registry.candidates(&wake.fleets());
         tokio::select! {
             biased;

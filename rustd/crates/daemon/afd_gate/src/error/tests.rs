@@ -96,34 +96,6 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
     Ok(())
 }
 
-/// A record whose serializer refuses, as a shape that grew one would.
-struct Unwritable;
-
-impl serde::Serialize for Unwritable {
-    fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
-        Err(serde::ser::Error::custom("this record cannot be written"))
-    }
-}
-
-#[test]
-fn an_unwritable_record_is_refused_under_the_sentence_its_caller_names() -> Result<(), &'static str>
-{
-    let refused = super::encoded(&Unwritable, super::DETAIL_GATE_BINDING_UNWRITABLE)
-        .err()
-        .ok_or("a serializer error is a refusal, never a stored half-record")?;
-
-    assert!(refused.is_rejected());
-    assert_eq!(refused.detail(), super::DETAIL_GATE_BINDING_UNWRITABLE);
-    assert_eq!(
-        super::encoded(&["approve"], super::DETAIL_GATE_BINDING_UNWRITABLE)
-            .as_deref()
-            .ok(),
-        Some(r#"["approve"]"#),
-        "a writable record is its JSON text"
-    );
-    Ok(())
-}
-
 #[test]
 fn a_credential_failure_is_classed_by_the_credential_plane() -> Result<(), &'static str> {
     // A database outage behind a credential read recovers on its own, so the

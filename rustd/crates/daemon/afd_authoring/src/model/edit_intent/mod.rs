@@ -10,7 +10,6 @@ use af_wire::{
     authoring::{Proposal, ProposalCall},
     decision::{DecisionAssignment, DecisionRequest},
 };
-use serde::{Deserialize, Serialize};
 
 use super::{ModelCallInput, ModelCalls, provider::Decoded};
 use crate::{Result, lease::guard};
@@ -25,7 +24,7 @@ pub(in crate::model) struct Configuration {
     pub client: reqwest::Client,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 struct Snapshot {
     assignment: DecisionAssignment,
     provider: String,
