@@ -27,7 +27,7 @@ const INSERT_RUNNER: &str = "INSERT INTO runner.runners \
     VALUES ($1, 'tenant-box', $2, $4, $5, '[]'::jsonb, $6, '[]'::jsonb, 1, $7, 0, \
             now(), now(), $3)";
 
-const INSERT_RECEIPT: &str = "INSERT INTO runner.enrolment_receipts \
+const INSERT_RECEIPT: &str = "INSERT INTO runner.registration_receipts \
     (id, tenant_id, operation_id, request_digest, runner_id, created_at) \
     VALUES ($1, $2, $3, 'digest', $4, now())";
 
@@ -128,8 +128,8 @@ impl Fixtures {
             .expect("the seeded platform model must remove");
     }
 
-    /// An enrolment receipt for `tenant` that names `runner`.
-    pub(crate) async fn insert_enrolment_receipt(&self, tenant: &Uuid7, runner: &Uuid7) {
+    /// A registration receipt for `tenant` that names `runner`.
+    pub(crate) async fn insert_registration_receipt(&self, tenant: &Uuid7, runner: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query(INSERT_RECEIPT)
             .bind(mint_id())
@@ -141,10 +141,10 @@ impl Fixtures {
             .expect("the receipt must insert");
     }
 
-    /// How many enrolment receipts `tenant` holds.
-    pub(crate) async fn enrolment_receipts(&self, tenant: &Uuid7) -> i64 {
+    /// How many registration receipts `tenant` holds.
+    pub(crate) async fn registration_receipts(&self, tenant: &Uuid7) -> i64 {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query_scalar("SELECT count(*) FROM runner.enrolment_receipts WHERE tenant_id = $1")
+        sqlx::query_scalar("SELECT count(*) FROM runner.registration_receipts WHERE tenant_id = $1")
             .bind(tenant)
             .fetch_one(&mut *connection)
             .await

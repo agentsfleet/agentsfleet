@@ -304,7 +304,7 @@ async fn tenant_erasure_takes_its_runners() {
     let a_second = fixtures.insert_runner(Some(&a)).await;
     let b_runner = fixtures.insert_runner(Some(&b)).await;
     let platform = fixtures.insert_runner(None).await;
-    fixtures.insert_enrolment_receipt(&a, &a_first).await;
+    fixtures.insert_registration_receipt(&a, &a_first).await;
     let hosts = [a_first, a_second, b_runner.clone(), platform.clone()];
 
     fixtures.delete_tenant(&a).await;
@@ -315,7 +315,7 @@ async fn tenant_erasure_takes_its_runners() {
     expected.sort();
     assert_eq!(survivors, expected, "only A's two runners are gone");
     assert_eq!(
-        fixtures.enrolment_receipts(&a).await,
+        fixtures.registration_receipts(&a).await,
         1,
         "A's receipt outlives its runner and its tenant"
     );
