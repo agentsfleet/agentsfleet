@@ -49,7 +49,15 @@ CREATE TABLE runner.runners (
     -- Canonical default: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED.
     -- Existing hosts start enabled; software capability still fences old workers.
     -- This controls new lease eligibility, never authority of an issued lease.
-    durable_tasks_enabled BOOLEAN NOT NULL DEFAULT true
+    durable_tasks_enabled BOOLEAN NOT NULL DEFAULT true,
+    -- The tenant that enrolled this host; NULL is a platform runner. A tenant
+    -- runner takes only its tenant's work, so the value never changes after
+    -- insert (trigger below): NULL would make it a platform runner.
+    tenant_id UUID REFERENCES identity.tenants (id) ON DELETE CASCADE,
+    -- A platform decision model would hand the platform decision key to a
+    -- host its tenant holds root on.
+    CONSTRAINT ck_runners_tenant_no_decision_model
+        CHECK (tenant_id IS NULL OR decision_platform_model_id IS NULL)
 );
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON runner.runners TO api_runtime;
@@ -57,3 +65,19 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON runner.runners TO api_runtime;
 CREATE INDEX idx_runners_decision_platform_model
     ON runner.runners (decision_platform_model_id)
     WHERE decision_platform_model_id IS NOT NULL;
+
+-- The tenant list, its count and erasure's cascade.
+CREATE INDEX idx_runners_tenant_id_id
+    ON runner.runners (tenant_id, id)
+    WHERE tenant_id IS NOT NULL;
+
+CREATE FUNCTION runner.runners_refuse_tenant_change() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'runners.tenant_id is fixed at registration';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_runners_refuse_tenant_change
+    BEFORE UPDATE OF tenant_id ON runner.runners
+    FOR EACH ROW WHEN (OLD.tenant_id IS DISTINCT FROM NEW.tenant_id)
+    EXECUTE FUNCTION runner.runners_refuse_tenant_change();
