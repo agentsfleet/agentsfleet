@@ -8,7 +8,7 @@ export const TENANT_RUNNERS_PATH = "/v1/tenants/me/runners";
  * and what only the platform offers. Both command groups are built from one of
  * these, so `platform runners` and `runners` share every handler.
  */
-export type RunnerReach = {
+export type RunnerKind = {
   readonly path: string;
   readonly description: string;
   readonly scopes: {readonly read: string; readonly write: string; readonly register: string};
@@ -21,7 +21,7 @@ export type RunnerReach = {
   readonly idempotentRegister: boolean;
 };
 
-export const PLATFORM_RUNNERS: RunnerReach = {
+export const PLATFORM_RUNNERS: RunnerKind = {
   path: ADMIN_RUNNERS_PATH,
   description: "Manage platform execution hosts",
   scopes: {read: "runner:read", write: "runner:write", register: "runner:register"},
@@ -29,7 +29,7 @@ export const PLATFORM_RUNNERS: RunnerReach = {
   idempotentRegister: false,
 };
 
-export const TENANT_RUNNERS: RunnerReach = {
+export const TENANT_RUNNERS: RunnerKind = {
   path: TENANT_RUNNERS_PATH,
   description: "Manage your tenant's own runners, which take only its work",
   scopes: {read: "runner:tenant", write: "runner:tenant", register: "runner:tenant"},

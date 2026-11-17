@@ -62,3 +62,12 @@ test("the tenant group never calls the admin path", async () => {
   expect(result.code).toBe(0);
   expect(fixture.calls[0]?.url.pathname).toBe("/v1/tenants/me/runners");
 });
+
+test("runners register without runner:tenant names the scope", async () => {
+  fixture.respond = () => Response.json({error_code: "UZ-AUTH-022", detail: "Requires scope runner:tenant"}, {status: 403});
+  const result = await register(join(fixture.state, "runner-token"));
+  expect(result.code).toBe(3);
+  const error = JSON.parse(result.stderr).error;
+  expect(JSON.stringify(error)).toContain("runner:tenant");
+  expect(error.suggestion).toBeTruthy();
+});

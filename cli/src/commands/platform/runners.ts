@@ -7,7 +7,7 @@ import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import { ADMIN_RUNNERS_PATH, decodePlatform, invalidInput, platformInput, platformPath, platformQuery, platformRequest, platformResult, readPlatformFile } from "./common.ts";
 import { RegistrationReplaySchema, RunnerDetailSchema, RunnerRegisteredSchema, RunnerEventsSchema, RunnerLabelsSchema, RunnerLeasesSchema, RunnerMutationSchema, RunnerPageSchema, RunnerPolicySchema, RunnerRotatedSchema } from "./runner-schema.ts";
 import { withRunnerTokenFile } from "./token.ts";
-import type { RunnerReach } from "./runner-reach.ts";
+import type { RunnerKind } from "./runner-kind.ts";
 import { v7 as uuidv7 } from "uuid";
 import { ServerError } from "../../errors/index.ts";
 
@@ -16,8 +16,8 @@ type RunnerRead = RunnerPaging & {readonly workspace?: string | undefined; reado
 type RunnerEdit = {readonly policy?: string | undefined; readonly labels?: string | undefined};
 const DEFAULT_ENGINE = "Bubblewrap";
 
-export const runnersList = Effect.fn("runners.list")(function* (reach: RunnerReach, options: RunnerPaging) {
-  const path = reach.path + platformQuery({limit: options.limit, starting_after: options.startingAfter});
+export const runnersList = Effect.fn("runners.list")(function* (kind: RunnerKind, options: RunnerPaging) {
+  const path = kind.path + platformQuery({limit: options.limit, starting_after: options.startingAfter});
   const page = yield* decodePlatform(RunnerPageSchema, yield* platformRequest({path}));
   const output = yield* Output;
   if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
@@ -28,8 +28,8 @@ export const runnersList = Effect.fn("runners.list")(function* (reach: RunnerRea
   if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
 });
 
-export const runnerShow = Effect.fn("runners.show")(function* (reach: RunnerReach, id: string) {
-  const runner = yield* decodePlatform(RunnerDetailSchema, yield* platformRequest({path: platformPath(reach.path, id)}));
+export const runnerShow = Effect.fn("runners.show")(function* (kind: RunnerKind, id: string) {
+  const runner = yield* decodePlatform(RunnerDetailSchema, yield* platformRequest({path: platformPath(kind.path, id)}));
   yield* platformResult(runner, runner.host_id, {
     ID: runner.id, State: runner.status, Connection: runner.liveness, "Default engine": DEFAULT_ENGINE,
     "Isolation tier": runner.assigned_policy.sandbox_tier,
@@ -76,35 +76,35 @@ export const runnerHistory = Effect.fn("runners.history")(function* (id: string,
   }
 });
 
-export const runnerUpdate = Effect.fn("runners.update")(function* (reach: RunnerReach, id: string, edit: RunnerEdit) {
+export const runnerUpdate = Effect.fn("runners.update")(function* (kind: RunnerKind, id: string, edit: RunnerEdit) {
   if (edit.policy === undefined && edit.labels === undefined) return yield* Effect.fail(invalidInput("Supply --policy or --labels"));
   const body = yield* runnerEdit(edit);
   const runner = yield* decodePlatform(RunnerMutationSchema, yield* platformRequest({
-    path: platformPath(reach.path, id), method: HTTP_METHOD.patch, body,
+    path: platformPath(kind.path, id), method: HTTP_METHOD.patch, body,
   }));
   yield* platformResult(runner, "Runner updated", {ID: runner.id, State: runner.status});
 });
 
-export const runnerAction = Effect.fn("runners.action")(function* (reach: RunnerReach, id: string, action: RunnerAction) {
-  const response = yield* platformRequest({path: platformPath(reach.path, id), method: HTTP_METHOD.patch, body: {action}});
+export const runnerAction = Effect.fn("runners.action")(function* (kind: RunnerKind, id: string, action: RunnerAction) {
+  const response = yield* platformRequest({path: platformPath(kind.path, id), method: HTTP_METHOD.patch, body: {action}});
   const runner = yield* decodePlatform(RunnerMutationSchema, response);
   yield* platformResult(runner, "Runner action requested", {ID: runner.id, Action: action, State: runner.status});
 });
 
-export const runnerDelete = Effect.fn("runners.delete")(function* (reach: RunnerReach, id: string) {
-  yield* platformRequest({path: platformPath(reach.path, id), method: HTTP_METHOD.delete});
+export const runnerDelete = Effect.fn("runners.delete")(function* (kind: RunnerKind, id: string) {
+  yield* platformRequest({path: platformPath(kind.path, id), method: HTTP_METHOD.delete});
   yield* platformResult({id, deleted: true}, "Runner deleted", {ID: id});
 });
 
 const REPLAY_DETAIL = "This runner was registered earlier; its token was shown once and is never stored";
 
-export const runnerRegister = Effect.fn("runners.register")(function* (reach: RunnerReach, host: string, edit: RunnerEdit & {readonly policy: string}, tokenFile: string) {
+export const runnerRegister = Effect.fn("runners.register")(function* (kind: RunnerKind, host: string, edit: RunnerEdit & {readonly policy: string}, tokenFile: string) {
   const body = {host_id: host, labels: [], ...yield* runnerEdit(edit)};
   // One key per invocation: the CLI's own retries resend it, so a lost reply
   // inside this run never registers twice. The platform route takes no key.
-  const request = reach.idempotentRegister
-    ? {path: reach.path, method: HTTP_METHOD.post, body, headers: {"Idempotency-Key": uuidv7()}}
-    : {path: reach.path, method: HTTP_METHOD.post, body, retry: {maxAttempts: 1}};
+  const request = kind.idempotentRegister
+    ? {path: kind.path, method: HTTP_METHOD.post, body, headers: {"Idempotency-Key": uuidv7()}}
+    : {path: kind.path, method: HTTP_METHOD.post, body, retry: {maxAttempts: 1}};
   return yield* withRunnerTokenFile(tokenFile, (save) => Effect.gen(function* () {
     const answer = yield* platformRequest(request);
     // A token-carrying answer first: a struct schema ignores extra keys, so the
@@ -123,10 +123,10 @@ export const runnerRegister = Effect.fn("runners.register")(function* (reach: Ru
   }));
 });
 
-export const runnerRotate = Effect.fn("runners.rotate")(function* (reach: RunnerReach, id: string, tokenFile: string) {
+export const runnerRotate = Effect.fn("runners.rotate")(function* (kind: RunnerKind, id: string, tokenFile: string) {
   return yield* withRunnerTokenFile(tokenFile, (save) => Effect.gen(function* () {
     const rotated = yield* decodePlatform(RunnerRotatedSchema, yield* platformRequest({
-      path: platformPath(reach.path, id), method: HTTP_METHOD.patch, body: {action: RunnerAction.Rotate}, retry: {maxAttempts: 1},
+      path: platformPath(kind.path, id), method: HTTP_METHOD.patch, body: {action: RunnerAction.Rotate}, retry: {maxAttempts: 1},
     }));
     yield* save(rotated.runner_token);
     yield* platformResult({id: rotated.id, token_file: tokenFile}, "Runner token rotated", {ID: rotated.id, "Token file": tokenFile});

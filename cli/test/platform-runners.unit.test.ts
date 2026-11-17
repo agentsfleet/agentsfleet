@@ -120,3 +120,12 @@ test.each(["register", "rotate-token"])("never replays %s after a committed requ
   expect(commits).toBe(1); expect(fixture.calls).toHaveLength(1);
   expect(existsSync(file)).toBe(false); expect(result.stdout).toBe("");
 });
+
+test("platform runners still call the admin path", async () => {
+  fixture.respond = () => Response.json({items: [], total: 0, next_cursor: null});
+  for (const verb of [["list"], ["show", RUNNER_ID], ["events", RUNNER_ID], ["leases", RUNNER_ID], ["cordon", RUNNER_ID], ["drain", RUNNER_ID]]) {
+    fixture.calls.length = 0;
+    await fixture.run(["runners", ...verb, "--json"]);
+    expect(fixture.calls[0]?.url.pathname.startsWith("/v1/admin/runners")).toBe(true);
+  }
+});
