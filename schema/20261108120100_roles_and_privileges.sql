@@ -1,15 +1,11 @@
--- Datastore roles and the default-privilege baseline every later slot inherits.
---
--- Runs before any table exists, so the baseline is ALTER DEFAULT PRIVILEGES: a bare
--- `REVOKE … ON ALL TABLES` here would cover the empty set and miss every later table.
--- Per-table grants live with their CREATE TABLE (RULE SGR), never here.
+-- Datastore roles and the default-privilege baseline. It is ALTER DEFAULT PRIVILEGES because no
+-- table exists yet; per-table grants live with each CREATE TABLE.
 DO $$
 DECLARE
     r text;
 BEGIN
-    -- The runner holds no datastore credential, so no role is named after it.
-    -- `memory_runtime` is the one elevation role: api_runtime is a member with
-    -- INHERIT FALSE, so reaching `memory` is an explicit `SET ROLE`.
+    -- The runner holds no datastore credential, so it has no role. api_runtime reaches
+    -- memory_runtime only by an explicit SET ROLE (INHERIT FALSE below).
     FOREACH r IN ARRAY ARRAY[
         'db_migrator',
         'api_runtime',
@@ -18,11 +14,8 @@ BEGIN
         'ops_readonly_fleet'
     ]
     LOOP
-        -- Roles are cluster-global while the migration lock is per database, so
-        -- two databases on one cluster (every test database, staging beside
-        -- production) race the CREATE. 42710 is the loser arriving after the
-        -- winner committed; 23505 is the loser arriving while the winner was in
-        -- flight, failing on pg_authid_rolname_index. Both mean the role exists.
+        -- Roles are cluster-global but the migration lock is per database, so two databases
+        -- on one cluster race the CREATE; either error means the role already exists.
         BEGIN
             EXECUTE format('CREATE ROLE %I NOLOGIN', r);
         EXCEPTION
@@ -55,9 +48,8 @@ REVOKE CREATE ON SCHEMA public, identity, authoring, fleet, runner, connector, m
     billing, vault, memory, audit
 FROM api_runtime, memory_runtime, ops_readonly_human, ops_readonly_fleet;
 
--- Not `FOR ROLE db_migrator`: default privileges bind to the role that creates the
--- tables, which is whatever role the migrate job connects as, and `FOR ROLE` needs
--- inherited membership a managed non-superuser migrator does not hold (42501).
+-- Not FOR ROLE db_migrator: defaults bind to whichever role runs the migration, and FOR ROLE
+-- needs a membership a managed non-superuser migrator lacks.
 ALTER DEFAULT PRIVILEGES
     IN SCHEMA identity, authoring, fleet, runner, connector, model, billing, vault,
         memory, audit

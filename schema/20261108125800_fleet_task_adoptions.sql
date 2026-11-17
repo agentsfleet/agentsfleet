@@ -1,6 +1,5 @@
--- A human's retry key must survive task deletion, so these are opaque scope IDs.
--- task/adoption.rs reads the digest before mutation and records it with the new
--- generation atomically. No goal text, authority or private evidence is copied.
+-- A person's retry key for adopting a task. Ids are opaque so the key survives task deletion;
+-- no goal text, authority or private evidence is copied.
 CREATE TABLE fleet.task_adoptions (
     operation_id UUID NOT NULL,
     task_id UUID NOT NULL,

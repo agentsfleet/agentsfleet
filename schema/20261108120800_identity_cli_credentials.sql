@@ -1,7 +1,5 @@
--- One live CLI login per machine, stored as a hash only. A table, not an api_keys
--- row, because it belongs to a person and dies with them (deletion matrix: User).
--- `revoked_at` is the NULL marker the one-live-login index reads. The metadata
--- columns are pending their reader check (postgres_schemas.md §Settled).
+-- One live CLI login per machine, stored as a hash only. It belongs to a person, so it is
+-- deleted with the user. A live login has `revoked_at IS NULL`.
 CREATE TABLE identity.cli_credentials (
     id                    UUID PRIMARY KEY,
     CONSTRAINT ck_cli_credentials_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),

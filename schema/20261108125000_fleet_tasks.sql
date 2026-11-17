@@ -50,15 +50,14 @@ CREATE TABLE fleet.tasks (
         CHECK ((reply_provider IS NULL) = (reply_address IS NULL)),
     CONSTRAINT ck_tasks_input_coverage CHECK (covered_input_sequence <= input_sequence),
     CONSTRAINT ck_tasks_effect_coverage CHECK (confirmed_effect_watermark <= effect_cursor),
-    -- Close the task/checkpoint cycle after both owners exist.
+    -- Its foreign key closes a cycle and is added with the checkpoint table.
     task_checkpoint_id UUID,
-    -- NULL means no plan allocated; native allocation increments this monotonic cursor.
+    -- NULL means no plan allocated yet; otherwise a monotonic cursor.
     checkpoint_sequence BIGINT CHECK (checkpoint_sequence >= 0),
-    -- checkpoint/maintenance reads this indexed due marker; no queue/dispatcher is added.
     checkpoint_cleanup_at TIMESTAMPTZ(3),
-    -- Monotonic allocation survives deletion of old private waits.
+    -- Monotonic, so it survives deletion of old private waits.
     wait_sequence BIGINT CHECK (wait_sequence >= 0),
-    -- Bounded native reasons explain waits and blockers without retaining model text.
+    -- A bounded reason code, never model text.
     status_reason TEXT,
     last_transition_at TIMESTAMPTZ(3)
 );
@@ -73,8 +72,6 @@ CREATE INDEX idx_tasks_expires_at_unfinished ON fleet.tasks (expires_at, id)
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.tasks TO api_runtime;
 
--- Input association and the current-work list must not scan terminal history
--- to discover at most sixteen unfinished objectives in creation order.
 CREATE INDEX idx_tasks_unfinished_created
     ON fleet.tasks (fleet_id, created_at DESC, id DESC)
     WHERE terminal_at IS NULL;
@@ -84,14 +81,13 @@ CREATE INDEX idx_task_checkpoint ON fleet.tasks (task_checkpoint_id) WHERE task_
 CREATE INDEX idx_task_checkpoint_cleanup ON fleet.tasks (checkpoint_cleanup_at, id)
     WHERE checkpoint_cleanup_at IS NOT NULL;
 
--- A partial containment index uses the native target itself as its sole source.
 CREATE INDEX idx_tasks_dependency_target ON fleet.tasks USING gin (target jsonb_path_ops)
     WHERE terminal_at IS NULL;
 
 CREATE INDEX idx_tasks_unfinished_attempt_limit ON fleet.tasks (id)
     WHERE terminal_at IS NULL AND used_leases >= max_leases;
 
--- The association is assigned in the same binding transaction as the owner.
+-- Deferred, so an item's task is assigned in the transaction that creates the task.
 ALTER TABLE fleet.task_items
     ADD CONSTRAINT fk_task_items_task_scope FOREIGN KEY (task_id, fleet_id, workspace_id)
     REFERENCES fleet.tasks (id, fleet_id, workspace_id)

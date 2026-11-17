@@ -1,17 +1,6 @@
--- One private setup chat. A table, not a fleet state, because a chat exists before
--- any fleet and may never become one.
---
--- Source and publication are separate facts: `source_type` plus one of the
--- `source_*` pointers record where the chat started; `plugin_revision_id` records
--- what it published and `fleet_id` the fleet it saved. All four clear on delete,
--- so deleting a card or purging a fleet never blocks on, or deletes, a draft.
--- `tenant_model_id` NULL is the platform default; the composite reference refuses
--- another tenant's model. `head_candidate_id` closes a cycle (`20261108123600_authoring_drafts.sql`).
---
--- `last_message_sequence` and `cancelled_through_sequence` order and cancel turns;
--- `resource_version` guards edits. Closing stamps `closed_at` and `expires_at =
--- closed_at + 30 days`, both returned by the API; the sweeper deletes past
--- `expires_at` (deletion matrix: Draft).
+-- A private setup chat, which exists before any fleet and may never become one. Source and
+-- publication pointers clear on delete, so a card delete or fleet purge never blocks on a draft.
+-- NULL `tenant_model_id` is the platform default; `expires_at` is 30 days after `closed_at`.
 CREATE TABLE authoring.drafts (
     id                          UUID PRIMARY KEY,
     CONSTRAINT ck_drafts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -43,17 +32,14 @@ CREATE TABLE authoring.drafts (
         REFERENCES model.tenant_models (id, tenant_id) ON DELETE SET NULL (tenant_model_id)
 );
 
--- The user's chat list, most recently touched first.
 CREATE INDEX idx_drafts_workspace_id_user_id_updated_at_id
     ON authoring.drafts (workspace_id, user_id, updated_at DESC, id DESC);
 
 CREATE INDEX idx_drafts_user_id ON authoring.drafts (user_id);
 
--- The retention sweep.
 CREATE INDEX idx_drafts_expires_at_id
     ON authoring.drafts (expires_at, id) WHERE expires_at IS NOT NULL;
 
--- Clearing references on delete and purge.
 CREATE INDEX idx_drafts_fleet_id ON authoring.drafts (fleet_id) WHERE fleet_id IS NOT NULL;
 
 CREATE INDEX idx_drafts_source_plugin_revision_id

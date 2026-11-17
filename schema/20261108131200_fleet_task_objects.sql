@@ -10,7 +10,7 @@ CREATE TABLE fleet.task_objects (
     kind TEXT NOT NULL,
     format_version INTEGER NOT NULL CHECK (format_version > 0),
     bucket_reference TEXT NOT NULL,
-    -- Native quota reservations include the fixed authentication tag.
+    -- Includes the fixed authentication tag.
     accounted_bytes BIGINT NOT NULL CHECK (accounted_bytes > 0),
     owner_checkpoint_id UUID NOT NULL,
     owner_lease_id UUID NOT NULL,

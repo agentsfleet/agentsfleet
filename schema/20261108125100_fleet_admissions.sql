@@ -1,15 +1,5 @@
--- The work ledger: every accepted request, keyed by its producer so a retry cannot
--- duplicate work. A table, not an events column, because admission happens before
--- the event exists and must survive a crash in between.
---
--- `sequence` is the global insertion order the delivery cursor pages on.
--- `receipt` and `delivered_at` are the NULL markers the delivery indexes read.
--- `event_created_at` is the producer's instant billing charges against.
--- `reply_provider` and `reply_address` are the delivery snapshot (rule 5
--- exception): where the answer goes, frozen because the source may change.
--- `replay_claim_expires_at` is a replay pass's claim on an unreceipted row: the
--- pass commits the stamp, appends with no transaction open, then records the
--- receipt and clears it. A claim a dead pass left lapses at this instant.
+-- Every accepted request, keyed by its producer so a retry cannot duplicate work; `id` becomes
+-- the event's `event_id`. The reply columns are frozen at admission because the source may change.
 CREATE TABLE fleet.admissions (
     id                UUID PRIMARY KEY,
     CONSTRAINT ck_admissions_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -31,7 +21,6 @@ CREATE TABLE fleet.admissions (
     CONSTRAINT uq_admissions_producer_producer_key UNIQUE (producer, producer_key),
     CONSTRAINT ck_admissions_reply_both_or_neither
         CHECK ((reply_provider IS NULL) = (reply_address IS NULL)),
-    -- The queue state each admission carries beside its accepted event.
     lease_fence BIGINT,
     parked_at TIMESTAMPTZ(3),
     settled_at TIMESTAMPTZ(3),
@@ -43,19 +32,13 @@ CREATE TABLE fleet.admissions (
         REFERENCES fleet.tasks (id, fleet_id, workspace_id) ON DELETE SET NULL (task_id),
     CONSTRAINT fk_admissions_task_item_scope FOREIGN KEY (task_item_id, fleet_id, workspace_id)
         REFERENCES fleet.task_items (id, fleet_id, workspace_id) ON DELETE SET NULL (task_item_id),
-    -- Exact conversation equality and sequence pagination avoid scanning another
-    -- conversation's backlog. Settled history stays outside the working index.
     interpreted_at TIMESTAMPTZ(3),
-    -- Queue ownership freezes the task generation separately from a lease fence.
-    -- Retain this marker if privacy cleanup removes its nullable task reference.
+    -- Frozen separately from the lease fence, and kept when cleanup clears `task_id`.
     task_generation BIGINT CHECK (task_generation > 0)
 );
 
 CREATE INDEX idx_admissions_fleet_id ON fleet.admissions (fleet_id);
 
--- Not delivered, in event order: a fleet's waiting steers, newest first. Keyed
--- on `id`, the admission's `event_id`, so `ORDER BY created_at, id` comes off
--- the index with no sort.
 CREATE INDEX idx_admissions_delivery_lookup
     ON fleet.admissions (fleet_id, created_at, id) WHERE delivered_at IS NULL;
 

@@ -1,11 +1,5 @@
--- An emailed offer to join a tenant. A table, not a membership state, because the
--- invitee has no user row until they accept.
---
--- `resolved_at` is the NULL marker the pending indexes read (rule 3): NULL while
--- pending, stamped on accept or revoke, so resolution happens once — the resolving
--- UPDATE is guarded on `resolved_at IS NULL`. `status` says which way it resolved.
--- `email_status`, `email_attempt_count` and `email_sent_at` are read by the invite
--- mailer's retry loop and the invite list.
+-- The invitee has no user row until they accept, so an invite is not a membership state.
+-- `resolved_at` is NULL while pending and set once, on accept or revoke; `status` says which.
 CREATE TABLE identity.invites (
     id                   UUID PRIMARY KEY,
     CONSTRAINT ck_invites_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -24,11 +18,9 @@ CREATE TABLE identity.invites (
     updated_at           TIMESTAMPTZ(3) NOT NULL
 );
 
--- One pending invite per address per tenant.
 CREATE UNIQUE INDEX uq_invites_tenant_id_email_pending
     ON identity.invites (tenant_id, email) WHERE resolved_at IS NULL;
 
--- "What is waiting for me", read at sign-in by address.
 CREATE INDEX idx_invites_email_pending
     ON identity.invites (email) WHERE resolved_at IS NULL;
 

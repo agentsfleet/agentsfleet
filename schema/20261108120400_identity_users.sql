@@ -1,5 +1,4 @@
--- One person, bound to one sign-in subject. `tenant_id` is the personal account
--- created at signup; membership in other tenants lives in `identity.memberships`.
+-- `tenant_id` is the personal account created at signup; other tenants come via memberships.
 CREATE TABLE identity.users (
     id            UUID PRIMARY KEY,
     CONSTRAINT ck_users_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -11,7 +10,6 @@ CREATE TABLE identity.users (
     updated_at    TIMESTAMPTZ(3) NOT NULL
 );
 
--- Sign-in resolves the subject to a user on every authenticated request.
 CREATE UNIQUE INDEX uq_users_oidc_subject ON identity.users (oidc_subject);
 
 CREATE INDEX idx_users_tenant_id ON identity.users (tenant_id);

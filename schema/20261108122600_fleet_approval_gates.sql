@@ -1,15 +1,5 @@
--- A risky action waiting for a person. A table, not an event column, because a
--- gate outlives the run that raised it and is resolved from the inbox.
---
--- `resolved_at` is the NULL marker (rule 3): NULL while pending, stamped once on
--- resolution; the resolving UPDATE is guarded on `resolved_at IS NULL`, and the
--- pending indexes read it. `resolved_by` and `resolved_by_name` are filled at the
--- same time. `active_grant_id` is the integration grant an approval activated.
--- `spend_count` / `spend_ceiling` bound how many times an approval may be spent.
---
--- No DELETE grant: a gate goes only when its fleet is purged, and that cascade
--- runs as the table owner. This replaces the old purge session setting (RULE STS).
--- The trigger keeps a resolved gate frozen except for spending one more use.
+-- A risky action waiting for a person; it outlives the run that raised it. `resolved_at` is NULL
+-- while pending and set once. No DELETE grant: a gate goes only with its fleet's purge cascade.
 CREATE TABLE fleet.approval_gates (
     id                UUID PRIMARY KEY,
     CONSTRAINT ck_approval_gates_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -46,11 +36,9 @@ CREATE INDEX idx_approval_gates_fleet_id_event_id
 
 CREATE INDEX idx_approval_gates_fleet_id_status ON fleet.approval_gates (fleet_id, status);
 
--- The expiry sweep over pending gates.
 CREATE INDEX idx_approval_gates_expires_at_pending
     ON fleet.approval_gates (expires_at) WHERE resolved_at IS NULL;
 
--- The inbox, oldest first, and its status filter.
 CREATE INDEX idx_approval_gates_workspace_id_created_at_id
     ON fleet.approval_gates (workspace_id, created_at, id);
 
@@ -66,8 +54,7 @@ BEGIN
         END IF;
         RETURN NEW;
     END IF;
-    -- Resolved: the only change allowed is spending one more use within the
-    -- ceiling. Every other column, including the resolution itself, is frozen.
+    -- Resolved: the only change allowed is spending one more use within the ceiling.
     IF (NEW.id, NEW.fleet_id, NEW.workspace_id, NEW.event_id, NEW.active_grant_id,
         NEW.action_id, NEW.tool_name, NEW.action_name, NEW.gate_type,
         NEW.proposed_action, NEW.evidence, NEW.stated_binding, NEW.blast_radius,
@@ -97,7 +84,6 @@ CREATE TRIGGER trg_approval_gates_guard_update
 
 GRANT SELECT, INSERT, UPDATE ON fleet.approval_gates TO api_runtime;
 
--- Parked heads probe standing access and unexpired event approvals separately.
 CREATE INDEX idx_approval_gates_pending_scope_deadline
     ON fleet.approval_gates (fleet_id, event_id, expires_at)
     WHERE resolved_at IS NULL;

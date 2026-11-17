@@ -1,10 +1,6 @@
--- A fleet's durable memory, reachable only through role `memory_runtime`, which
--- api_runtime must `SET ROLE` into. One entry per (fleet, key).
---
--- `workspace_id` is a scope copy (rule 5 exception): memory_runtime has no grant on
--- `fleet.fleets`, so it filters workspace-shared entries alone. It is written once,
--- from the fleet, with the entry. `workspace_visible` is the share flag the
--- workspace index reads; `category` filters recall.
+-- Reachable only through role `memory_runtime`, which api_runtime must SET ROLE into.
+-- `workspace_id` copies the fleet's workspace, written once with the entry, because
+-- memory_runtime has no grant on `fleet.fleets`.
 CREATE TABLE memory.entries (
     id                 UUID PRIMARY KEY,
     CONSTRAINT ck_entries_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),

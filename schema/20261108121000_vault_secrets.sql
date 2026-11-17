@@ -1,14 +1,6 @@
--- One encrypted secret per (workspace, key_name): the envelope, plus a non-secret
--- projection describing it. Erasing a workspace cascades its secrets.
---
--- `kek_version` has no DEFAULT: every writer binds it, so a forgotten column fails
--- the INSERT instead of minting a row nothing can decrypt. The current version is
--- an application constant, never a CHECK (RULE STS).
---
--- The `meta_` columns are the non-secret projection (rule 5 exception): provider,
--- credential kind, custom endpoint and key presence, read by every secret list.
--- They are written in the same statement as the ciphertext, so they cannot drift
--- from the envelope they describe.
+-- The envelope-encrypted secret plus a non-secret `meta_` projection read by every secret list;
+-- one statement writes both, so they cannot drift. `kek_version` has no DEFAULT, so a writer that
+-- forgets it fails instead of minting a row nothing can decrypt.
 CREATE TABLE vault.secrets (
     id                 UUID PRIMARY KEY,
     CONSTRAINT ck_secrets_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -27,13 +19,9 @@ CREATE TABLE vault.secrets (
     meta_has_key       BOOLEAN,
     created_at         TIMESTAMPTZ(3)  NOT NULL,
     updated_at         TIMESTAMPTZ(3)  NOT NULL,
-    -- Every reader looks a secret up by (workspace_id, key_name); the btree's
-    -- workspace prefix also serves the per-workspace list and the erasure cascade.
     CONSTRAINT uq_secrets_workspace_id_key_name UNIQUE (workspace_id, key_name)
 );
 
--- api_runtime holds the grants directly; narrowing them to an assumed vault role
--- is its own milestone, because the revoke and the elevation ship together.
 GRANT SELECT, INSERT, UPDATE, DELETE ON vault.secrets TO api_runtime;
 
 REVOKE ALL ON vault.secrets FROM ops_readonly_human, ops_readonly_fleet;

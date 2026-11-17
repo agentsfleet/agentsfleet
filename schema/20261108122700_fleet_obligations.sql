@@ -1,16 +1,6 @@
--- An answer owed to a destination until it is delivered or abandoned. A table, not
--- an events column, because delivery retries outlive the run and are scanned
--- across fleets. One obligation per (fleet, event).
---
--- `sequence` orders a lane, one (provider, workspace) pair. `receipt` is the
--- current holder's token: the report writes a fresh one, every claim writes its
--- own, and every stamp, count, release and abandon matches it, so a lapsed
--- holder's late write changes nothing. `claim_expires_at` is the claim deadline
--- and `next_attempt_at` the retry deadline: claim_heads.sql reads both,
--- renew_claim.sql and release_claim.sql write them. `delivered_at` and
--- `abandoned_at` are the NULL markers the open-lane index reads; `abandon_reason`
--- is shown on the event. `destination` is the delivery snapshot (rule 5
--- exception), frozen when the answer is owed.
+-- An answer owed to a destination until delivered or abandoned. A lane is one (provider,
+-- workspace) pair ordered by `sequence`. Every claim writes a fresh `receipt` and every later
+-- write matches it, so a lapsed holder's late write changes nothing.
 CREATE TABLE fleet.obligations (
     id              UUID PRIMARY KEY,
     CONSTRAINT ck_obligations_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -35,8 +25,6 @@ CREATE TABLE fleet.obligations (
         CHECK ((abandoned_at IS NULL) = (abandon_reason IS NULL))
 );
 
--- The claim reads open rows in sequence order and checks each lane for an
--- earlier open row; both walk this index.
 CREATE INDEX idx_obligations_open_lane
     ON fleet.obligations (provider, workspace_id, sequence)
     WHERE delivered_at IS NULL AND abandoned_at IS NULL;

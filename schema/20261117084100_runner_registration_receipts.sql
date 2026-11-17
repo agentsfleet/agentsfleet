@@ -1,12 +1,6 @@
--- One tenant registration's retry key. `operation_id` is the request's
--- Idempotency-Key, and `request_digest` the SHA-256 of the request as parsed,
--- so a replay of the same request and a key reused for another one answer
--- differently. The one-time runner token is never kept here (AUTH-SECRET).
---
--- No foreign keys: the receipt outlives its runner and its tenant, so a key
--- retried after the runner was deleted still registers nothing (SQL-RETRYKEY).
--- Every column is an opaque identifier or a digest, so tenant erasure leaves
--- it in place, as it leaves the other receipts.
+-- A tenant registration's retry key. `request_digest` is the SHA-256 of the parsed request, so a
+-- replay and a reused key answer differently. No foreign keys: the receipt outlives its runner and
+-- tenant, so a retry after deletion registers nothing. The runner token is never kept here.
 CREATE TABLE runner.registration_receipts (
     id              UUID PRIMARY KEY,
     CONSTRAINT ck_registration_receipts_id_uuidv7 CHECK (uuid_extract_version(id) IS NOT DISTINCT FROM 7),

@@ -1,16 +1,6 @@
--- An enrolled host: its assignment, its health and its last self-test. Runners
--- hold no datastore credential; agentsfleetd reads and writes this row for them.
---
--- Assignment (read on every heartbeat and claim): `sandbox_tier`, `labels`,
--- `network_policy`, `registry_allowlist`, `worker_count`, and `sandbox_config` —
--- tier-specific knobs as JSON validated in the application (`{"extra_binds": [...]}`
--- for namespace tiers). Health: degraded is `degraded_reason IS NOT NULL`, derived
--- on read. Self-test pass is derived from `selftest_checks`, keeping "no self-test
--- yet" distinct from "self-test failed".
---
--- `lease_version` is the compare-and-swap counter that serializes the choice of
--- the next lease type on this host; `last_lease_type` is the type it chose last,
--- so a stale poll cannot overwrite the alternation another daemon established.
+-- An enrolled host. Runners hold no datastore credential; agentsfleetd writes this row for them.
+-- Degraded is `degraded_reason IS NOT NULL`. `lease_version` serializes the choice of the next
+-- lease type, so a stale poll cannot overwrite the alternation another daemon set.
 CREATE TABLE runner.runners (
     id                       UUID PRIMARY KEY,
     CONSTRAINT ck_runners_id_uuidv7 CHECK (uuid_extract_version(id) IS NOT DISTINCT FROM 7),
@@ -33,6 +23,7 @@ CREATE TABLE runner.runners (
     last_seen_at             TIMESTAMPTZ(3)  NOT NULL,
     selftest_requested_at    TIMESTAMPTZ(3),
     selftest_completed_at    TIMESTAMPTZ(3),
+    -- NULL means no self-test yet, which is distinct from a failed one.
     selftest_checks          JSONB,
     selftest_sandbox_tier    TEXT,
     selftest_network_policy  TEXT,
@@ -41,18 +32,13 @@ CREATE TABLE runner.runners (
     created_at               TIMESTAMPTZ(3)  NOT NULL,
     updated_at               TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_runners_token_hash UNIQUE (token_hash),
-    -- The operator assigns a catalogue identity, never provider credentials.
-    -- Runner self, heartbeat and operator views read this optional selection.
-    -- Referenced models remain until operators remove their assignments.
+    -- The operator assigns a catalogue identity here, never provider credentials.
     decision_platform_model_id UUID
         REFERENCES model.platform_models (id) ON DELETE RESTRICT,
-    -- Canonical default: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED.
-    -- Existing hosts start enabled; software capability still fences old workers.
-    -- This controls new lease eligibility, never authority of an issued lease.
+    -- Gates new lease eligibility only, never the authority of an issued lease.
     durable_tasks_enabled BOOLEAN NOT NULL DEFAULT true,
-    -- The tenant that enrolled this host; NULL is a platform runner. A tenant
-    -- runner takes only its tenant's work, so the value never changes after
-    -- insert (trigger below): NULL would make it a platform runner.
+    -- The tenant that enrolled this host; NULL is a platform runner. Fixed after insert
+    -- (trigger below), because a tenant runner takes only its tenant's work.
     tenant_id UUID REFERENCES identity.tenants (id) ON DELETE CASCADE,
     -- A platform decision model would hand the platform decision key to a
     -- host its tenant holds root on.
@@ -66,7 +52,6 @@ CREATE INDEX idx_runners_decision_platform_model
     ON runner.runners (decision_platform_model_id)
     WHERE decision_platform_model_id IS NOT NULL;
 
--- The tenant list, its count and erasure's cascade.
 CREATE INDEX idx_runners_tenant_id_id
     ON runner.runners (tenant_id, id)
     WHERE tenant_id IS NOT NULL;

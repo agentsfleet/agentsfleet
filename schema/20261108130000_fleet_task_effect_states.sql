@@ -1,4 +1,4 @@
--- Mutable acknowledgements cannot alter the immutable publication request.
+-- Mutable acknowledgements, kept apart so they cannot alter the immutable publication request.
 CREATE TABLE fleet.task_effect_states (
     task_effect_id UUID PRIMARY KEY REFERENCES fleet.task_effects (id) ON DELETE CASCADE,
     status TEXT NOT NULL,

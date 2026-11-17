@@ -1,5 +1,5 @@
--- Only the verified GitHub adapter writes this short-lived completion inbox.
--- It closes event-before-arm races; conclusions never complete a goal directly.
+-- A short-lived inbox written only by the verified GitHub adapter. It closes event-before-arm
+-- races; a conclusion never completes a goal directly.
 CREATE TABLE fleet.task_completions (
     id UUID PRIMARY KEY,
     CONSTRAINT ck_task_completion_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),

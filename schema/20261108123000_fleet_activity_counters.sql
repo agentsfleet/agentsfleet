@@ -1,7 +1,5 @@
--- Dashboard totals per fleet, maintained by triggers (rule 5 exception: an
--- aggregate kept under the same trigger as its source). Keyed by fleet (an identity
--- exception). `event_count` follows `fleet.events` inserts here; `budget_used_nanos`
--- follows `billing.usage_lines` in `20261108124600_billing_usage_lines.sql`. The runtime only reads it.
+-- Dashboard totals per fleet, kept by triggers on `fleet.events` (`event_count`) and
+-- `billing.usage_lines` (`budget_used_nanos`, nanodollars). The runtime only reads it.
 CREATE TABLE fleet.activity_counters (
     fleet_id           UUID PRIMARY KEY REFERENCES fleet.fleets(id) ON DELETE CASCADE,
     event_count        BIGINT NOT NULL,
@@ -10,8 +8,8 @@ CREATE TABLE fleet.activity_counters (
     updated_at         TIMESTAMPTZ(3) NOT NULL
 );
 
--- SECURITY DEFINER with a pinned search_path: api_runtime inserts events but holds
--- no write grant here, so the counter cannot be set by hand.
+-- SECURITY DEFINER: api_runtime inserts events but holds no write grant here, so the counter
+-- cannot be set by hand.
 CREATE FUNCTION fleet.events_bump_count() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO pg_catalog, fleet

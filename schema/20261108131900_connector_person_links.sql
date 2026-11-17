@@ -36,16 +36,14 @@ $$;
 
 GRANT EXECUTE ON FUNCTION connector.slack_person_allowed(UUID, TEXT, TEXT, TEXT, TEXT) TO api_runtime;
 
--- This is consulted by the existing lease proof, including after admission cleanup.
--- A quoted message never enters these identities; all rows came from native binding.
+-- Holds after admission cleanup. A quoted message never enters these identities.
 CREATE FUNCTION fleet.task_person_allowed(task UUID, source_producer TEXT, provider TEXT, actor_pattern TEXT, separator TEXT)
 RETURNS BOOLEAN LANGUAGE SQL STABLE SET search_path = pg_catalog AS $$
     WITH target AS MATERIALIZED (
         SELECT id, workspace_id, fleet_id, originating_task_item_id, covered_input_sequence
         FROM fleet.tasks WHERE id = $1
     ), senders AS MATERIALIZED (
-        -- Repeated messages by one person require one current membership check.
-        -- UNION also deduplicates the origin against incorporated input sources.
+        -- UNION dedupes repeat senders and the origin, so each person needs one membership check.
         SELECT p.source_actor FROM target t
         JOIN fleet.task_items origin ON origin.id = t.originating_task_item_id
         JOIN fleet.task_interpretations p ON p.admission_id = origin.admission_id

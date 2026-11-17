@@ -1,6 +1,5 @@
--- Replay proof for "the runner posted an answer": a retried report with the same
--- report id returns the first answer. Append-only (rule 9); it goes with its draft,
--- and `expires_at` is the deadline the sweep reads.
+-- Replay proof: a retried answer report with the same report id gets the first answer.
+-- Append-only; it goes with its draft.
 CREATE TABLE authoring.answer_receipts (
     id             UUID PRIMARY KEY,
     CONSTRAINT ck_answer_receipts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
