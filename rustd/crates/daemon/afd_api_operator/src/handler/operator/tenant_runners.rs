@@ -8,8 +8,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use af_core::id::Uuid7;
+// Named only in the OpenAPI annotations below.
+#[cfg(feature = "openapi")]
 use af_wire::runner::{RegisterRequest, RegisterResponse, RegistrationReplay};
+#[cfg(feature = "openapi")]
 use afd_api_wire::admin::{RunnerAdminPatchRequest, RunnerAdminPatchResponse};
+#[cfg(feature = "openapi")]
 use afd_api_wire::operator::{RunnerDetail, RunnersResponse};
 use afd_runner::Reach;
 use axum::body::Bytes;
