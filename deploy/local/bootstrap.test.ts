@@ -184,7 +184,7 @@ describe("runner enrollment", () => {
       pages.push(path);
       return pages.length === 1 ? { items: [{ host_id: "another-host" }], next_cursor: "older/page" }
         : { items: [{ host_id: `local-acceptance-${namespace}` }], next_cursor: null };
-    }), LOCAL_API, namespace, `${file}.orphan`, DECISION_ID)).rejects.toThrow(/already enrolled/);
+    }), LOCAL_API, namespace, `${file}.orphan`, DECISION_ID)).rejects.toThrow(/already registered/);
     expect(pages).toEqual(["/v1/admin/runners", "/v1/admin/runners?starting_after=older%2Fpage"]);
     expect(await Bun.file(`${file}.orphan`).exists()).toBe(false);
   });
