@@ -179,7 +179,10 @@ async fn lapse(fixtures: &Fixtures, fleet: &Uuid7) {
 /// The claim statement alone, bound as the ledger binds it; whether it claimed.
 async fn claim_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool {
     use afd_fleet::lease::sql;
-    sqlx::query(sql::queue::CLAIM_HEAD)
+    use sqlx::Connection as _;
+    let mut connection = fixtures.database.acquire().await.expect("a connection");
+    let mut transaction = connection.begin().await.expect("a claim transaction");
+    let claimed = sqlx::query(sql::queue::CLAIM_HEAD)
         .bind(fleet)
         .bind(runner)
         .bind(af_core::timing::LEASE_TTL)
@@ -195,10 +198,20 @@ async fn claim_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool 
         .bind(af_core::event::status::RECEIVED)
         .bind(afd_admission::Producer::Steer.as_str())
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
-        .fetch_optional(&mut *fixtures.database.acquire().await.expect("a connection"))
+        .fetch_optional(&mut *transaction)
         .await
         .expect("the claim answers")
-        .is_some()
+        .is_some();
+    // As the ledger does: a claim that took no head rolls its slot write back.
+    if claimed {
+        transaction.commit().await.expect("the claim commits");
+    } else {
+        transaction
+            .rollback()
+            .await
+            .expect("the refused claim rolls back");
+    }
+    claimed
 }
 
 const SELF_MANAGED: &str = afd_billing::sql::posture::SELF_MANAGED;

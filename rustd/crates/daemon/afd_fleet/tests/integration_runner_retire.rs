@@ -153,12 +153,24 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
     );
 
     fixtures.expire_lease(&lease).await;
+    let unbilled = fixtures
+        .runners()
+        .platform()
+        .delete_revoked(&runner)
+        .await
+        .err();
+    assert_eq!(
+        unbilled.as_ref().map(afd_runner::Error::code),
+        Some(af_core::error_code::RUNNER_MUST_REVOKE_FIRST),
+        "an expired lease whose runtime tail is unbilled still holds the record"
+    );
+    fixtures.bill_lease_tail(&lease).await;
     fixtures
         .runners()
         .platform()
         .delete_revoked(&runner)
         .await
-        .expect("once its lease is gone, a revoked runner's record retires");
+        .expect("once its lease is gone and billed, a revoked runner's record retires");
 
     fixtures.cleanup().await;
 }

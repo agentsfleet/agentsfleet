@@ -53,6 +53,17 @@ impl Fixtures {
             .expect("the lease write must run");
     }
 
+    /// Advances one lease's runtime cursor to its deadline, as the expiry billing
+    /// sweep leaves a lease once it has billed the tail.
+    pub(crate) async fn bill_lease_tail(&self, lease: &Uuid7) {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query("UPDATE runner.leases SET last_metered_at = lease_expires_at WHERE id = $1")
+            .bind(lease)
+            .execute(&mut *connection)
+            .await
+            .expect("the lease cursor advances");
+    }
+
     /// Removes one lease row, as the retention sweep does once it is old
     /// enough.
     ///
