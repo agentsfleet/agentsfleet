@@ -98,8 +98,9 @@ async fn test_runner_admin_transitions() {
         "each real transition appends one event; repeats and refusals append none"
     );
     assert_eq!(
-        fixtures.admin_event_actors(&runner).await,
-        vec![ACTOR.to_owned(), ACTOR.to_owned()]
+        fixtures.event_actors(&runner).await,
+        vec![ACTOR.to_owned(), ACTOR.to_owned(), ACTOR.to_owned()],
+        "the registration, the cordon and the revoke each name who did them"
     );
 
     fixtures.cleanup().await;
