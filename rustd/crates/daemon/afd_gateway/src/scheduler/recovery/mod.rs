@@ -20,6 +20,7 @@ pub(super) async fn notifications(
     loop {
         let observed = generations.borrow_and_update().recovery();
         if let Some(recovery) = observed {
+            registry.request_recovery(recovery);
             let credited = registry.candidates(
                 &std::collections::HashSet::new(),
                 &std::collections::HashSet::new(),

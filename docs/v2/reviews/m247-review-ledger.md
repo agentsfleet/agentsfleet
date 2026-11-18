@@ -34,7 +34,7 @@ The failed shards prevent a complete coverage grade.
 | --- | --- | --- |
 | API and fleet shard | 478 fleet checks passed; identity retention failed because its fixture names the removed `delete_after_at` column | Fixed the fixture; the reset retention case passed in 2.80 s |
 | Native stream host guard | The host-lock counter timed out because its SQL pattern omits `cordon_reason` | Fixed the pattern; the reset guard case passed in 4.09 s |
-| Native stream fairness | Old work failed to progress within the existing test deadline | Reproduced after reset; the case failed in 31.65 s total; cause unresolved |
+| Native stream fairness | Old work failed to progress within the existing test deadline | Fixed by retaining recovery on busy hosts; the latest focused run passed both fairness cases and 86 gateway/native checks |
 | Runner shard | Image registry quota stopped setup before tests | Retry setup; no runner coverage report exists |
 
 The spec move does not waive these failures.
@@ -46,6 +46,40 @@ This is one observation, not a repeated-run median or a completed burst comparis
 The later all-feature workspace build passed all 197 test targets.
 The reset focused run passed 21 migration checks and the three cases listed above.
 Its one native fairness case failed; final repository verification remains open.
+
+### Native fairness repair
+
+The 1,000-fleet regression failed on unchanged production code at `b5f659290`.
+Its diagnostic recorded 130 completed offers, hot progress, no old progress and 938 matching waiting-work queries.
+
+A separate two-fleet case waited for probes while the sole worker remained busy.
+After capacity returned, it selected hot work instead of the older admission.
+The same assertion passed after the repair.
+
+The replica previously acknowledged recovery after scanning only hosts with available credits.
+Busy hosts retained no recovery intent, and later `Ready` events used ordinary locality ordering.
+Continuous hot hints could therefore keep old work waiting.
+
+The patch stores the observed recovery request on every connected host.
+A returning worker wakes the existing bounded drain, preserving its concurrency limit.
+Only an actual empty scan clears the matching request; an older result cannot clear a newer request.
+
+| Production file | Changed symbol | Effect |
+| --- | --- | --- |
+| `afd_gateway/src/registry/mod.rs` | New `Registry::request_recovery` | Records the request on busy and idle hosts |
+| `scheduler/recovery/mod.rs` | Updated `notifications` | Records intent before selecting credited hosts |
+| `session/mod.rs` | New `SchedulingState::recovery_pending` and `recovered` | Retains and conditionally clears the request |
+| `session/runtime.rs` | Updated `ConfirmedSession::handle` | Initializes the session's request state |
+| `session/supervisor.rs` | Updated `SessionSupervisor::offer` | Returns ordinary capacity to the bounded recovery drain |
+| `session/offer.rs` | Updated `SessionServices::select_offer` | Clears matching intent only after a successful empty scan |
+
+The focused run passed all 88 checks: 44 gateway checks and 44 native-stream checks.
+Its source fingerprint was `e333b93e636d64ab126e606aecd0d641d3d471b4350d260b9bccc675a69cb5e6`.
+The native cases covered outages, renewal, cancellation, supersession, replay and both fairness schedules.
+
+The [evidence record](../../../bench/baselines/recovery-fairness.rig.json) preserves the outcomes and binary hashes.
+No SQL, deadline, test threshold or claim limit changed in this repair.
+Final repository verification and coverage remain due.
 
 ### Database audit requested by Indy
 

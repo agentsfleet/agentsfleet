@@ -260,6 +260,7 @@ fn handle(
             ready_revision: None,
             held: Vec::new(),
             last_offer: Instant::now(),
+            recovery_pending: None,
         }),
     })
 }

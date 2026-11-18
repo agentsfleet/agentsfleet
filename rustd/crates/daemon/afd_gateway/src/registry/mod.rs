@@ -58,6 +58,13 @@ impl Registry {
         })
     }
 
+    /// Busy hosts retain the request until returned capacity completes a recovery scan.
+    pub(crate) fn request_recovery(&self, recovery: afd_bus::wake::Recovery) {
+        for session in &self.sessions {
+            session.snapshot.lock().recovery_pending = Some(recovery);
+        }
+    }
+
     /// Every connected runner, for the probe that names the idle tenant ones.
     pub(crate) fn runners(&self) -> Vec<Uuid7> {
         self.sessions

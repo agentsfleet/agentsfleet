@@ -107,7 +107,15 @@ impl SessionSupervisor {
                     OfferTrigger::Pass(request) if !request.reply.is_closed() => request.mode,
                     OfferTrigger::Pass(_) => return Ok(OperationCompletion::Offer),
                 };
-                let outcome = services.offer(mode).await?;
+                let outcome = if mode == OfferMode::Ordinary
+                    && services.handle.snapshot.lock().recovery_pending.is_some()
+                {
+                    // Only the replica's bounded drain issues recovery claims.
+                    services.gateway.inner.dependencies.wake.recheck();
+                    OfferOutcome::Deferred
+                } else {
+                    services.offer(mode).await?
+                };
                 match trigger {
                     OfferTrigger::Ready if outcome == OfferOutcome::Issued => {
                         services.handle.request_offer();

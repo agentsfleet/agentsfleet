@@ -175,6 +175,17 @@ Recovery wake -> scheduler/recovery/mod.rs::notifications
 
 Credits at the start of the drain bound how much work a session can acquire. PostgreSQL is the final authority on capacity and ownership.
 
+A busy host retains its recovery request after the replica acknowledges that drain.
+When a worker becomes free, `Ready` wakes the existing bounded drain before another ordinary offer can use locality preference.
+Only an actual empty recovery scan clears the host's matching request.
+
+```text
+Probe -> busy host: remember recovery request
+Worker finishes -> Ready -> wake bounded drain -> oldest compatible admission
+Empty recovery scan -> clear the matching request
+Newer request arrives -> an older empty result preserves the newer request
+```
+
 A completed drain acknowledges only its original recovery generation. [Recovery drain](../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/drain.rs) · [Candidate SQL](../../rustd/crates/daemon/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql)
 
 After skipping a full locked page, the session revisits its prefix after a short empty page or 64 later claims. This bounds the delay for older rows that become eligible while newer work stays ready. [Locked-page regression](../../rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/recovery_page.rs)
@@ -266,13 +277,15 @@ Benchmark drivers, test files, documentation and generated output are accounted 
 | [`rustd/crates/daemon/afd_bus/src/wake/queue.rs`](../../rustd/crates/daemon/afd_bus/src/wake/queue.rs) | WakeQueue | Keep fleet reminders in the locality queue and store generation counters in the watch. |
 | [`rustd/crates/daemon/afd_gateway/src/scheduler/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/scheduler/mod.rs) | notifications, pass | Preserve ordinary locality and ring budgets. Route recovery hints to bounded round-robin and acknowledge only the observed generation. |
 | **New** `rustd/crates/daemon/afd_gateway/src/scheduler/recovery/drain.rs` | drain, Host | Rotate credited sessions using a queue and up to eight concurrent claims. An uncertain reply defers that host. |
-| [`rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs) | module declaration | Connect the drain to the existing independent probe. |
+| [`rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs) | notifications, probe_ticks | Record recovery intent on busy hosts and run the existing bounded drain. |
+| [`rustd/crates/daemon/afd_gateway/src/registry/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/registry/mod.rs) | Registry::request_recovery | Give every connected host the observed request, including busy hosts. |
+| [`rustd/crates/daemon/afd_gateway/src/session/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/session/mod.rs) | SchedulingState::recovery_pending, recovered | Retain recovery across capacity updates and protect newer requests from older empty results. |
 | [`rustd/crates/daemon/afd_gateway/src/session/offers.rs`](../../rustd/crates/daemon/afd_gateway/src/session/offers.rs) | OfferMode, OfferOutcome, SessionHandle::claim | Carry the selection mode to the session's existing offer owner and return its claim outcome. |
 | [`rustd/crates/daemon/afd_gateway/src/session/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/session/mod.rs) | SessionHandle | Type the claim channel for the selection mode and its reply. |
 | [`rustd/crates/daemon/afd_gateway/src/session/runtime.rs`](../../rustd/crates/daemon/afd_gateway/src/session/runtime.rs) | session handle construction | Use the typed claim channel for registered physical sessions. |
 | [`rustd/crates/daemon/afd_gateway/src/session/events.rs`](../../rustd/crates/daemon/afd_gateway/src/session/events.rs) | EventSource::next | Deliver queued claims to the supervisor with their original mode. |
-| [`rustd/crates/daemon/afd_gateway/src/session/supervisor.rs`](../../rustd/crates/daemon/afd_gateway/src/session/supervisor.rs) | SessionSupervisor::offer | Pass the mode through the one in-flight offer and return its outcome. |
-| [`rustd/crates/daemon/afd_gateway/src/session/offer.rs`](../../rustd/crates/daemon/afd_gateway/src/session/offer.rs) | SessionServices::offer, issue_offer | Pass recovery selection to fleet issue while preserving advisory credits. |
+| [`rustd/crates/daemon/afd_gateway/src/session/supervisor.rs`](../../rustd/crates/daemon/afd_gateway/src/session/supervisor.rs) | SessionSupervisor::offer | Wake the bounded drain when ordinary capacity returns during unfinished recovery. Preserve one in-flight offer. |
+| [`rustd/crates/daemon/afd_gateway/src/session/offer.rs`](../../rustd/crates/daemon/afd_gateway/src/session/offer.rs) | SessionServices::offer, select_offer, issue_offer | Preserve advisory credits and recovery ordering. Clear only the matching request after an actual empty scan. |
 | [`rustd/crates/daemon/afd_fleet/src/lease/offer.rs`](../../rustd/crates/daemon/afd_fleet/src/lease/offer.rs) | OfferRequest | Carry ordinary or recovery selection context between gateway and fleet placement. |
 | [`rustd/crates/daemon/afd_fleet/src/lease/mod.rs`](../../rustd/crates/daemon/afd_fleet/src/lease/mod.rs) | offer module exports | Expose the selection context alongside OfferRequest. |
 | [`rustd/crates/daemon/afd_fleet/src/lease/pull/select.rs`](../../rustd/crates/daemon/afd_fleet/src/lease/pull/select.rs) | LeaseService::claim_fleet_with | Pass the selection context to the ledger. |

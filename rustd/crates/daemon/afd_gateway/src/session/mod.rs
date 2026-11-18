@@ -51,9 +51,16 @@ pub(crate) struct SchedulingState {
     pub(crate) ready_revision: Option<NonZeroU64>,
     pub(crate) held: Vec<Uuid7>,
     pub(crate) last_offer: Instant,
+    pub(crate) recovery_pending: Option<afd_bus::wake::Recovery>,
 }
 
 impl SchedulingState {
+    fn recovered(&mut self, observed: Option<afd_bus::wake::Recovery>) {
+        if self.recovery_pending == observed {
+            self.recovery_pending = None;
+        }
+    }
+
     fn availability(
         &mut self,
         credits: usize,
@@ -232,6 +239,7 @@ impl SessionHandle {
                 ready_revision: None,
                 held: Vec::new(),
                 last_offer: Instant::now(),
+                recovery_pending: None,
             }),
             stop: CancellationToken::new(),
             drain: CancellationToken::new(),

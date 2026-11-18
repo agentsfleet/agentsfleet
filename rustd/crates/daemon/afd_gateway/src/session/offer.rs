@@ -76,7 +76,14 @@ impl SessionServices {
             *self.handle.recovery_scan.lock() = scan;
             deferred
         });
-        Ok((offered?, deferred))
+        let offered = offered?;
+        if mode == OfferMode::Recovery && offered.is_none() && !deferred {
+            self.handle
+                .snapshot
+                .lock()
+                .recovered(state.recovery_pending);
+        }
+        Ok((offered, deferred))
     }
 
     /// The renderer borrows its encoder. No optional writer or ownership extraction is necessary.

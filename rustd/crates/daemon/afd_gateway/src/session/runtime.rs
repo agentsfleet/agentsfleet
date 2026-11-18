@@ -103,6 +103,7 @@ impl ConfirmedSession {
                 ready_revision: None,
                 held: Vec::new(),
                 last_offer: tokio::time::Instant::now(),
+                recovery_pending: None,
             }),
         }
     }
