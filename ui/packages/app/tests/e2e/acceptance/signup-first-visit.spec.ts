@@ -9,11 +9,13 @@
  * workspace; its error page must never show.
  *
  * Clerk's own delivery may open the account before this test delivers its
- * signed replay, so either the setup screen or the workspace is a correct
- * first page. The replay makes the order deterministic when Clerk is slow.
+ * signed replay, so the workspace is also a correct first page. When the
+ * replay is what opens the account, no tenant existed at the first visit, and
+ * that visit must have waited on setup.
  */
 import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
+import { ACCOUNT_SETUP_GIVE_UP_MS } from "@/app/(dashboard)/AccountSetup";
 import { bootstrapTenant } from "./fixtures/bootstrap";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
 import { FIXTURE_KEY } from "./fixtures/constants";
@@ -25,34 +27,40 @@ const ERROR_PAGE = "Something went wrong";
 /** `(dashboard)/AccountSetup.tsx`'s title. */
 const SETUP_PAGE = "Setting up your workspace";
 const WORKSPACE_PATH = /^\/w\/[0-9a-f-]{36}\//;
-/** Under `AccountSetup`'s 90 s give-up, so a stall fails here first. */
-const OPENED_TIMEOUT_MS = 60_000;
+/** Two thirds of `AccountSetup`'s own give-up, so a stall fails here before the page gives up. */
+const OPENED_TIMEOUT_MS = (ACCOUNT_SETUP_GIVE_UP_MS * 2) / 3;
+/** Signup and the signed delivery get a minute on top of the wait for the workspace. */
+const TEST_TIMEOUT_MS = OPENED_TIMEOUT_MS + 60_000;
+const PROD_API_HOST = "api.agentsfleet.net";
 
 function uniqueEmail(): string {
   const tag = crypto.randomBytes(4).toString("hex");
+  // `first-visit-` is in the global-teardown sweep's prefixes, so a crashed run still gets reaped.
   return `first-visit-${tag}+clerk_test@e2e.agentsfleet.net`;
 }
 
-const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
+const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+const isProdApi = apiUrl ? new URL(apiUrl).hostname === PROD_API_HOST : false;
 
 test.describe("signup first visit", () => {
   test.skip(isProdApi, "Clerk test signups are development-only");
-  test.setTimeout(120_000);
+  test.setTimeout(TEST_TIMEOUT_MS);
 
   let createdEmail: string | null = null;
 
   test.afterEach(async () => {
     if (!createdEmail) return;
-    const userId = await findUserIdByEmail(createdEmail).catch(() => null);
+    const email = createdEmail;
+    createdEmail = null;
+    // A failed lookup throws rather than reading as "no user": a silent miss
+    // here is how users leak, and the global-teardown sweep is only the backstop.
+    const userId = await findUserIdByEmail(email);
     if (userId) await deleteUser(userId).catch((err: unknown) => {
-        // Loud, not silent: a swallowed failure here is how users leak. The
-        // global-teardown sweep is the backstop for anything that slips.
         console.error(`[e2e] fixture user cleanup failed for ${userId}:`, err);
       });
-    createdEmail = null;
   });
 
-  test("a dashboard opened before the account exists waits on setup, then lands in the workspace", {tag: "@post-deploy"}, async ({ page }) => {
+  test("a dashboard opened before signup's writeback reaches the workspace, waiting on setup and never on the error page", {tag: "@post-deploy"}, async ({ page }) => {
     const email = uniqueEmail();
     createdEmail = email;
     const { sessionId, clerkUserId } = await createClerkAccount(page, email, PASSWORD);
@@ -64,7 +72,7 @@ test.describe("signup first visit", () => {
     const firstPage = (await page.getByText(SETUP_PAGE).count()) > 0 ? "setup" : new URL(page.url()).pathname;
 
     // The delivery the daemon may still be waiting for; a replay when Clerk's came first.
-    await bootstrapTenant({ key: FIXTURE_KEY.regular, email, password: PASSWORD, clerkUserId });
+    const delivery = await bootstrapTenant({ key: FIXTURE_KEY.regular, email, password: PASSWORD, clerkUserId });
 
     await expect
       .poll(async () => {
@@ -73,5 +81,8 @@ test.describe("signup first visit", () => {
       }, { timeout: OPENED_TIMEOUT_MS, intervals: [250] })
       .toMatch(WORKSPACE_PATH);
     expect(sawErrorPage, `the error page showed while the account opened (first page: ${firstPage})`).toBe(false);
+    if (delivery.created) {
+      expect(firstPage, "this test's delivery opened the account, so the first visit came before any tenant").toBe("setup");
+    }
   });
 });
