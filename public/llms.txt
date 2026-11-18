@@ -3,7 +3,7 @@
 ## Machine-readable API surfaces
 - OpenAPI spec: /openapi.json
 - agentsfleet manifest: /agentsfleet-manifest.json (JSON Linked Data)
-- Health/status: /heartbeat
+- Health/status: /healthz
 - Documentation: /docs
 
 ## API base
