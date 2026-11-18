@@ -9,6 +9,7 @@ use afd_runner::{
 };
 
 use super::{Fixture, enrolment, refusal::Refusal};
+mod return_health;
 
 async fn connected(fixture: &mut Fixture) -> Authority {
     let enrolled = fixture

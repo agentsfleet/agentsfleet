@@ -18,6 +18,8 @@ mod progress_tests;
 mod restore;
 mod session;
 #[cfg(test)]
+mod supervisor_tests;
+#[cfg(test)]
 mod tests;
 mod transfer;
 #[cfg(test)]

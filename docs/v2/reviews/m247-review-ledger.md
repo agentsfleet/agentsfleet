@@ -45,15 +45,15 @@ The table preserves the 19 findings from the second pass. The verification below
 
 | # | Severity / source | Location | Finding | Disposition at `976883d00` |
 |---|---|---|---|---|
-| F1 | CRITICAL / testing | `rustd/crates/runner/afr_supervisor/src/lease_loop/turn_recovery.rs:11` | Missing ordinary Files offer through production supervisor/model entry, warm-hold retirement, thaw, and failure-before-model proof | Open. The cross-file unit and native database proofs passed. The complete supervisor and model-entry drill remains due. |
-| F2 | CRITICAL / testing | `rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/guard.rs:60` | Missing connection-bound Begin/Commit/Read/Adopt mutation-time supersession and credential-rotation races | Open. The refactor implements shared host authority. Mutation-time supersession and rotation races still need dedicated proof. |
-| F3 | CRITICAL / testing | `rustd/crates/daemon/afd_runner/src/heartbeat/cordon.rs:33` | Missing degraded/invalid/fallback and assignment/connection-race automatic-lift proofs | Open. Healthy-return and legacy-heartbeat proofs exist. The fallback case was added for the next runner integration run. |
-| F4 | CRITICAL / testing | `rustd/crates/daemon/afd_fleet/src/lease/deliver/issue.rs:52` | Missing real NATS issued-reclaim versus fresh/refused/reserved publication proof | Open. The process fixture sees restart and recovery. The four-way publication proof still needs a dedicated NATS subscriber assertion. |
+| F1 | CRITICAL / testing | `rustd/crates/runner/afr_supervisor/src/lease_loop/turn_recovery.rs:11` | Missing ordinary Files offer through production supervisor/model entry, warm-hold retirement, thaw, and failure-before-model proof | Closed. Three supervisor and actual-agent-loop checks passed. They restore encrypted files over pinned HTTPS, retire a matching warm hold, prove thaw before model entry, and refuse corrupt bytes or a failed thaw before the model. The daemon boundary is scripted; full process acceptance remains separate. |
+| F2 | CRITICAL / testing | `rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/guard.rs:60` | Missing connection-bound Begin/Commit/Read/Adopt mutation-time supersession and credential-rotation races | Closed. Both live tests passed across all eight verb/change combinations. Each waits on an observed host-row lock, proves current authority first, then checks `RUN_LEASE_LOST` and unchanged checkpoint, pin and admission state. |
+| F3 | CRITICAL / testing | `rustd/crates/daemon/afd_runner/src/heartbeat/cordon.rs:33` | Missing degraded/invalid/fallback and assignment/connection-race automatic-lift proofs | Closed. All 11 live cordon checks passed together. Malformed and degraded observations reset proof; changed assignments reset it after a lock wait; superseded connections and rotated credentials advance neither liveness nor health proof. The fallback, missed cadence and healthy-lift cases passed in the same run. |
+| F4 | CRITICAL / testing | `rustd/crates/daemon/afd_fleet/src/lease/deliver/issue.rs:52` | Missing real NATS issued-reclaim versus fresh/refused/reserved publication proof | Closed. Three live NATS checks passed. One hundred concurrent claimers yield one reservation, no provisional restart, one issued replacement and one frame matching its stored event, fence and timestamp. Fresh and refused issues emit no restart. |
 | F5 | CRITICAL / state-machines | `rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/pins.rs:267` | untested cell: ApiOnly × Abandon → retain the abandoned pending plan, release its writer pin and preserve the ready head | Verified on the real fleet suite for API-only state. |
 | F6 | CRITICAL / state-machines | `rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/maintenance.rs:98` | untested cell: ApiOnly × CollectTerminal → erase terminal private generations, recovery head and allocation receipts after retention without erasing public source state | Verified on the real fleet suite for API-only state. |
-| F7 | CRITICAL / state-machines | `rustd/crates/daemon/afd_fleet/src/task/checkpoint/transfer/signing.rs:81` | untested cell: Incremental × VerifyUpload → authenticate and persist a newly uploaded incremental object and account its unique stored quota | Open. The existing SDK test verifies a base upload. It needs a newly uploaded object on an incremental plan. |
-| F8 | CRITICAL / state-machines | `rustd/crates/daemon/afd_fleet/src/task/checkpoint/transfer/signing.rs:141` | untested cell: Incremental × Restore → restore the exact committed incremental manifest/object references under reader custody while preserving its base | Open. The test needs an exact incremental restore while retaining its base. |
-| F9 | CRITICAL / state-machines | `rustd/crates/daemon/afd_fleet/src/task/checkpoint/maintenance/mod.rs:75` | untested cell: Incremental × CollectOrphan → erase expired incremental private keys/references and release its physical quota once without retiring a live base | Open. The test needs to collect an incremental orphan while retaining a live base and proving quota correction. |
+| F7 | CRITICAL / state-machines | `rustd/crates/daemon/afd_fleet/src/task/checkpoint/transfer/signing.rs:81` | untested cell: Incremental × VerifyUpload → authenticate and persist a newly uploaded incremental object and account its unique stored quota | Closed. The live private SDK check uploads a new incremental object, authenticates it twice and proves its physical bytes are charged once. |
+| F8 | CRITICAL / state-machines | `rustd/crates/daemon/afd_fleet/src/task/checkpoint/transfer/signing.rs:141` | untested cell: Incremental × Restore → restore the exact committed incremental manifest/object references under reader custody while preserving its base | Closed. The same live check reads the exact committed overlay and retained base pages under reader custody, downloads both exact ciphertexts and repeats the read after orphan cleanup. |
+| F9 | CRITICAL / state-machines | `rustd/crates/daemon/afd_fleet/src/task/checkpoint/maintenance/mod.rs:75` | untested cell: Incremental × CollectOrphan → erase expired incremental private keys/references and release its physical quota once without retiring a live base | Closed. The same live check collects an expired uploaded incremental orphan, proves wrapped-key removal and acknowledged purge custody, retains both live generations and the base, and proves one quota release across repeated collection. |
 | F10 | CRITICAL / state-machines | `rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/pins.rs:287` | untested cell: writer × PinRelease → release the exact writer pin while preserving its pending plan and head, and refuse later protected operations | Verified on the real fleet suite for a pending writer. |
 | F11 | CRITICAL / state-machines | `rustd/crates/runner/afr_supervisor/src/recovery/turn/publication.rs:47` | untested cell: Commit × ReconcileRefusal → clear indeterminate publication only after exact abandonment, or stop when abandonment cannot settle it | Verified in the runner unit suite. A refused replay cannot start a new capture until its exact pending plan is abandoned. |
 | F12 | CRITICAL / native | `rustd/crates/daemon/afd_fleet/src/lease/sql/commit_report.sql:181` | A report can decide a hold before the audit insert's foreign-key check takes a host lock. Exercise expiry and competing issue in that interval, then serialize hold-producing reports from before their decision through commit | Fixed. The real delayed-report regression failed at the baseline and passed after the lock change. |
@@ -63,10 +63,76 @@ The table preserves the 19 findings from the second pass. The verification below
 | F16 | INFORMATIONAL / design | `ui/packages/app/tests/e2e/fixtures/fleet-stream-browser-probe.ts:21` | New reply status adds a second output; transport-status assertions need a dedicated selector | Fixed. Three real Chromium transport and restart tests passed. |
 | F17 | INFORMATIONAL / performance | `rustd/crates/runner/afr_supervisor/src/recovery/turn/capture.rs:149` | Ordinary upload serializes singleton native calls and physical transfers while frozen | Fixed. A four-object HTTPS test proved one authorization and one verification request. |
 | F18 | INFORMATIONAL / performance | `rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/maintenance.rs:35` | First owner lock timeout aborts later maintenance and repeats oldest candidate without cursor | Fixed. The real locked-owner regression failed at the baseline and passed after the cursor change. |
-| F19 | INFORMATIONAL / performance | `rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/sql/maintenance_candidates.sql:2` | LIMIT bounds returned owners but not the joined candidate scan; empty heads are created for uncaptured offers | Implemented. The owner page seeks before inspecting per-owner work. Quantitative maximum-manifest results remain due. |
+| F19 | INFORMATIONAL / performance | `rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/sql/maintenance_candidates.sql:2` | LIMIT bounds returned owners but not the joined candidate scan; empty heads are created for uncaptured offers | Closed. Indexed owner pagination seeks before inspecting each owner's work; the locked-owner regression proves later owners progress. Quantitative maximum-manifest results remain required by R13. |
 
 The state-machine record has nine machines, 90 cells, 83 mapped to tests and seven uncovered.
 The installed matrix checker passed its completeness/path checks; mapping to a test does not prove that test ran or satisfies every other specification dimension.
+
+## Review closure checks
+
+Indy requested that the recorded findings close before final acceptance and
+the implementation PR. The following checks now fill the seven critical
+proof gaps.
+
+Their checks of remaining state passed in the reset focused run.
+Final acceptance, burst measurement and coverage retain their separate
+rubric entries.
+
+| Finding | Added check |
+| --- | --- |
+| F1 | `afr_supervisor/src/recovery/supervisor_tests` drives an ordinary Files offer through the supervisor and agent loop. It retires an existing warm hold, checks the restored root and bytes at model entry, and refuses corrupt ciphertext or a failed thaw before any model call. |
+| F2 | `afd_fleet/tests/integration_turn_checkpoints/authority.rs` proves Begin, Commit, Read and Adopt succeed with current authority, then refuse replay after connection replacement or credential rotation during an observed PostgreSQL host-lock wait. Checkpoint, pin and admission state must stay unchanged. |
+| F3 | `afd_runner/tests/integration_runner_plane/cordon/return_health.rs` adds malformed and degraded observations plus assignment, connection and credential changes after policy read. The existing fallback check remains in the same cordon group. |
+| F4 | `afd_fleet/tests/integration_lease_gates/restart.rs` observes real NATS traffic through a same-connection publication barrier. Fresh issue, reservation and refused issue emit no restart. One hundred competing claimers must create one replacement row and one matching restart frame. |
+| F7–F9 | `afd_fleet/tests/integration_tasks/decisions/checkpoint_remote/incremental` verifies newly uploaded overlay objects twice, checks unique quota, reads the exact overlay and retained base, and collects an expired uploaded orphan without erasing either live generation or releasing quota twice. |
+
+The M246 integration merge is committed at `b4c2d789c`. The first subsequent
+`make test-unit-all` run passed its runner and daemon stages, then stopped on
+a misspelled object-status variant in the new incremental test. That test
+now uses the actual `Missing` variant.
+
+The first workspace-wide all-feature test build then caught a temporary heartbeat value borrowed across
+`tokio::join!` in the new race test. Naming that value fixes its lifetime.
+The second workspace build passed all 197 test targets.
+
+The first focused run caught the canned supervisor fixture's invalid workspace ID before
+restore. Its replacement now uses a valid ID, a real-loop context budget and
+an exactly matching warm sandbox policy. All three file-restore checks then
+passed in 0.94 seconds.
+
+The reset live follow-up passed both authority tests across eight verb/change
+combinations in 15.01 seconds and all 11 cordon checks together in 13.97
+seconds. The fresh/reserved and refused-issue NATS cases passed.
+
+The remaining NATS test incorrectly replayed one reservation through issue
+100 times. Its setup now races 100 actual claimers before issuing the sole winner, matching
+Dimension 3.1. All three NATS cases passed on the corrected setup.
+
+The completed reset closure run passed 32 checks across eight groups.
+
+| Group | Passed | Runtime |
+| --- | --- | --- |
+| Supervisor file restore and model entry | 3 | 1.14 s |
+| Checkpoint authority, eight verb/change combinations | 2 | 12.67 s |
+| Automatic cordon and healthy return | 11 | 9.44 s |
+| NATS restart publication | 3 | 1.44 s |
+| Incremental upload, restore and orphan collection | 1 | 3.29 s |
+| Direct-claim delivery fixtures | 4 | 3.88 s |
+| Parked-head deadline fixtures | 2 | 0.71 s |
+| Configured task rollout fixtures | 6 | 6.13 s |
+
+The workspace all-feature build produced the binaries used by the focused
+run. Its driver checks that each named group selects tests before running
+it. These are focused results, not a repository-wide verification pass.
+
+The fixture corrections above changed test inputs. They did not weaken
+expected production outcomes or change the production statements. Manual
+Cargo commands and Make now use the same local commit stamp to avoid
+rebuilding the API and its dependants when switching invocation paths.
+
+Three older direct-claim fixtures also needed the new resume boolean before
+their platform-model parameter. Production statements are unchanged by that
+fixture repair.
 
 ## Added burst and quality requirements
 
@@ -485,7 +551,9 @@ restored a green `orly doctor` with the new burst configuration keys.
 
 Post-merge `make lint-all` passed. The focused live run passed three rollout
 checks, eight tenant-placement checks, four query-plan checks, 28 runner-plane
-checks and eight CLI checks. The rollout check also proves the coarse waiting
+checks and eight CLI checks.
+
+The rollout check also proves the coarse waiting
 probe leaves a checkpointed head parked while resume is disabled. The query
 checks include the 20,000-idle-fleet case.
 

@@ -20,6 +20,7 @@ use super::{
 
 mod config;
 mod encryption;
+mod incremental;
 mod reuse;
 mod signature;
 mod tamper;

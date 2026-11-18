@@ -1,5 +1,6 @@
 //! Ordinary allocation uses the real lease issuer and API-role PostgreSQL store.
 
+mod authority;
 mod expiry;
 mod files;
 mod folded;
