@@ -132,6 +132,11 @@
         "pull",
         "--quiet",
         "mirror.gcr.io/library/debian:trixie-slim"
+      ],
+      [
+        "bash",
+        "-c",
+        "cd rustd && cargo test --locked --workspace --exclude afd_bench --all-features --test '*' --no-run"
       ]
     ],
     "secrets": {
@@ -157,7 +162,16 @@
     ],
     "directories": [
       "ACCEPTANCE_LOCAL_TOOLBOX_DIR"
-    ]
+    ],
+    "e2e": {
+      "location": "Chennai"
+    },
+    "aws": {
+      "region": "ap-south-1",
+      "instance_types": [
+        "c7i.4xlarge"
+      ]
+    }
   },
   "managed": [
     ".agents/skills/orly-build/SKILL.md",
