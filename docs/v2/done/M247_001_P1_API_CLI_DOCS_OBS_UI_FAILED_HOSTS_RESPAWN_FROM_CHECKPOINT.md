@@ -12,7 +12,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 **Workstream:** 001
 **Date:** Nov 06, 2026
 **Reviewed:** Nov 18, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1, a failed host must not lose a turn or mix two attempts' replies
 **Categories:** API, CLI, DOCS, OBS, UI, PERF
 **Batch:** B1, the only Workstream of M247
@@ -24,12 +24,13 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Goal (testable):** With checkpoint resume enabled, an eligible platform runner reclaims an interrupted event's expired lease, restores its last complete checkpoint, and completes one admission without mixing attempts.
 
-**Readiness:** The platform recovery refactor is committed at `976883d00`. See the [implemented architecture](../../architecture/runner_checkpoint_recovery.md) and the [verification ledger](../reviews/m247-review-ledger.md) for the focused proofs, remaining gaps and the matched benchmark. Tenant runners are parked.
+**Closure:** Indy requested this move to `done/` on Nov 18, 2026. His manual recovery check remains deferred and unperformed. Benchmarks, final acceptance, coverage and the post-M246 database review remain open in the [verification ledger](../reviews/m247-review-ledger.md).
 
-M246 merged at `813ccba56dd1dbfe795992744a8348e2ff700c3c` while this
-branch's configuration tests were running. Reconcile its tenant ownership
-filters and registration receipts with the platform recovery changes before
-final verification. Tenant recovery and M251 placement settings remain
+**Readiness:** The platform changes and review closures are pushed at `2a88201a9`. See the [implemented architecture](../../architecture/runner_checkpoint_recovery.md) for the design. Tenant runners remain parked.
+
+M246 main at `813ccba56dd1dbfe795992744a8348e2ff700c3c` is integrated by
+merge `b4c2d789c`. The branch retains tenant ownership filters and
+registration receipts. Tenant recovery and M251 placement settings remain
 outside this delivery.
 
 ### Deployment configuration extension
@@ -100,7 +101,7 @@ Paths are repository-relative. Braces enumerate files. The [implementation sourc
 
 | File(s) | Action | Methods / functions | Traits | Structs / enums / other change |
 |---|---|---|---|---|
-| `docs/v2/active/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN_FROM_CHECKPOINT.md`, `docs/architecture/runner_checkpoint_recovery.md`, `docs/v2/reviews/m247-review-ledger.md` | EDIT spec; NEW guide; later MOVE spec | Plan, low-level changes, exact CLI commands and manual proof | None | IN_PROGRESS; retain ungraded platform recovery proofs; tenant scope parked |
+| `docs/v2/done/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN_FROM_CHECKPOINT.md`, `docs/architecture/runner_checkpoint_recovery.md`, `docs/v2/reviews/m247-review-ledger.md` | MOVED spec at Indy's request; guide and ledger retained | Plan, low-level changes, exact CLI commands and manual proof | None | DONE status requested by Indy; ungraded acceptance remains in the ledger; tenant scope parked |
 | `rustd/crates/daemon/afd_runner/src/capacity/{mod.rs,sql/mod.rs,sql/census.sql,sql/lock_host.sql}` | EDIT | `lock`, `lock_host`, `Capacity::can_claim`, `Held::{can_claim,can_continue}` | Preserve `Guard` conversions | New `Claimant`; extend `Host`, `Capacity`, `Held` for automatic cordon; claimant-aware hold census; mutation-time host state |
 | `rustd/crates/daemon/afd_fleet/src/lease/store.rs` | EDIT | `Leases::lock_host_capacity`, `lock_host` | None | Thread claimant through full census calls; preserve connection authority |
 | `rustd/crates/daemon/afd_authoring/src/draft/mod.rs` | EDIT | `Drafts::lock_host_capacity` | None | Pass authoring/existing claimant purpose |
@@ -375,7 +376,7 @@ After build and focused unit checks, prepare the dedicated container lab and con
 - **Dimension 6.3**: Test `committed_issue_with_lost_offer_reclaims_after_its_deadline` (integration): crash after commit/before offer; no phantom completion or permanent lock.
 - **Dimension 6.4**: Test `terminal_or_killed_fleet_is_never_respawned` (integration): report/kill before reclaim or during issue prevents a new runnable attempt.
 - **Dimension 6.5**: Test `claim_without_issue_recovers_after_reservation_expiry` (integration): daemon dies after claim; no issued lease or restart hint; the expired reservation becomes claimable.
-- **Dimension 6.6**: `manual_recovery_check` (manual): Indy records receipt, event/runner/lease/fence/deadline, restore proof and quarantine/lift from the companion procedure; streamed text alone fails this proof. Overnight automated checks may precede it; the unperformed human check is never recorded as passed.
+- **Dimension 6.6**: `manual_recovery_check` (manual): Indy records receipt, event/runner/lease/fence/deadline, restore proof and quarantine/lift from the companion procedure; streamed text alone fails this proof. Deferred by Indy on Nov 18, 2026; the human check remains unperformed and is not recorded as passed.
 - **Dimension 6.7**: `platform_recovery_burst` (integration/benchmark): compare 1/10/100/500 interrupted fleets on the frozen and final revisions through registered native sessions. Use bounded round-robin across eligible hosts and oldest eligible admission first, progress past a locked 64-candidate page, preserve ordinary ring budgets, renewal, restore-before-model and one settlement. Record whole-cohort timing, outstanding fleets, SQL/I/O work, memory and workload fingerprints per the [burst review](../reviews/m247-review-ledger.md#performance-and-coverage-acceptance).
 - **Dimension 6.8**: `patch_file_coverage` (coverage): each changed production source file and changed-line set exceeds 99% line coverage; report measured denominators, missing lines and noninstrumentable files. SQL changes have live operation/race proofs; no exclusion or lower threshold supplies a pass.
 
@@ -522,6 +523,7 @@ A durable restart outbox is unnecessary for cosmetic reset when attempt-tagged o
 
 - **Build opening:** Indy: "okay start implementation using orly-build". Worktree `feat/m247-checkpoint-respawn` starts at `97224ed7432c9dd124ea8797d4324156b7022c07`; Section 4 gates remain open.
 - **Review model workflow:** Indy manually changes models when requested. Ask and stop before a review requiring a model switch; do not substitute a model-selected subagent.
+- **Owner-requested closure, Nov 18, 2026:** Indy: "I will do the manual recovery check later, so move the spec to done/". Move this record and set its status to `DONE`. Keep the human check deferred and remaining automated acceptance open in the review ledger.
 - **Final work order, Nov 18, 2026:** Indy: "I prefer that you close out or move all the findings to done and then move on to acceptance and push a PR". Close findings with passing evidence before final acceptance; preserve the greater-than-99% per-file and changed-line requirements.
 - **Post-merge measurement and review, Nov 18, 2026:** Indy: "should we repeat the bench test you did before after the above changed?" and "Shoudl we review with 6.2 sol Max again on the database changes schema changes cleaned up in the PR 850 after you do the bench like before?" Repeat matched measurements on the frozen baseline and the final committed branch after incorporating M246. Review database, schema and merge changes with the requested 6.2 Sol Max afterward, using the manual model workflow above.
 - **Overnight handoff, Nov 17, 2026:** Indy: "Indy is going to bed, ensure the PR is sent, the CI gate is green, greptile are resolved. So indy can eyeball in the morning and merge." Required automated integration may proceed before the human smoke; do not claim the human result, waive M246 or merge.

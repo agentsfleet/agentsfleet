@@ -10,7 +10,7 @@ executable: false
 
 A platform runner resumes an interrupted event from its last complete checkpoint after the previous lease expires. PostgreSQL holds encrypted ordinary-turn conversation history. The private object store holds encrypted workspace chunks and native task history.
 
-The active specification defines acceptance. The review ledger records the timing at `976883d00` and the remaining proofs. [M247 specification](../v2/active/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN_FROM_CHECKPOINT.md) · [Verification ledger](../v2/reviews/m247-review-ledger.md)
+The completed specification records the agreed scope. The review ledger retains measured timings and remaining acceptance checks. [M247 specification](../v2/done/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN_FROM_CHECKPOINT.md) · [Verification ledger](../v2/reviews/m247-review-ledger.md)
 
 ## Deployment settings
 

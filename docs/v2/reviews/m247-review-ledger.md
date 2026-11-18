@@ -14,6 +14,16 @@ Base: `97224ed7432c9dd124ea8797d4324156b7022c07`; pre-refactor implementation: `
 
 The optimized comparison used the same fixture against the refactor commit `976883d00`.
 
+## Spec closure and remaining acceptance
+
+Indy requested closure on Nov 18, 2026: "I will do the manual recovery check later, so move the spec to done/".
+The [specification](../done/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN_FROM_CHECKPOINT.md) now has `Status: DONE` at his request.
+Dimension 6.6 remains deferred and unperformed.
+
+This move does not grade the remaining acceptance checks as passed.
+R13 benchmarks, R14 greater-than-99% coverage, final automated acceptance and the post-M246 SQL/schema review remain open.
+The review closures are pushed at `2a88201a9`, including merge `b4c2d789c` of M246 main.
+
 ## Completed first-pass repairs
 
 | Finding | Evidence / disposition |
