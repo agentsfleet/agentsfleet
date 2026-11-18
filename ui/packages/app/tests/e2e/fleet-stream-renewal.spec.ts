@@ -28,7 +28,8 @@ let historyReads: number;
 
 test.beforeAll(async () => {
   const built = await promisify(execFile)("bun", [
-    "build", "tests/e2e/fixtures/fleet-stream-browser-probe.ts", "--target=browser", "--format=iife", "--minify",
+    "build", "tests/e2e/fixtures/fleet-stream-browser-probe.ts", "--target=browser", "--format=esm", "--minify",
+    "--define", "process.env={}",
     "--define", 'process.env.NEXT_PUBLIC_API_URL="https://api-test.agentsfleet.net"',
     "--define", 'process.env.NODE_ENV="production"',
   ], { cwd: APP_ROOT, maxBuffer: 2_000_000, timeout: BUNDLE_TIMEOUT_MS });
@@ -58,7 +59,7 @@ test.beforeEach(async () => {
       res.end(bundle);
     } else {
       res.writeHead(200, { "content-type": "text/html" });
-      res.end(`<html data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><button id="start">Start</button><button id="stop">Stop</button><output></output><pre></pre><div id="reply-root"></div><script src="/probe.js"></script></body></html>`);
+      res.end(`<html data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><button id="start">Start</button><button id="stop">Stop</button><output id="transport-status"></output><pre></pre><div id="reply-root"></div><script type="module" src="/probe.js"></script></body></html>`);
     }
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -77,7 +78,7 @@ async function startProbe(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await expect.poll(() => streams.length).toBe(1);
   // HTTP headers alone must never turn the connection green.
-  await expect(page.locator("output")).toHaveText("connecting");
+  await expect(page.locator("#transport-status")).toHaveText("connecting");
 }
 
 function currentStream(): http.ServerResponse {
@@ -91,7 +92,7 @@ test("named heartbeat dispatch and quiet EOF renew without status flicker or dup
   const started = performance.now();
   await startProbe(page);
   currentStream().write(HEARTBEAT);
-  await expect(page.locator("output")).toHaveText("live");
+  await expect(page.locator("#transport-status")).toHaveText("live");
   // Real elapsed time and separately flushed bytes establish stable liveness.
   for (let beat = 0; beat < 2; beat += 1) {
     await new Promise<void>((resolve) => setTimeout(resolve, HEARTBEAT_SPACING_MS));
@@ -100,7 +101,7 @@ test("named heartbeat dispatch and quiet EOF renew without status flicker or dup
   // TCP preserves the heartbeat bytes before this clean EOF.
   currentStream().end();
   await expect.poll(() => streams.length).toBe(2);
-  await expect(page.locator("output")).toHaveText("live");
+  await expect(page.locator("#transport-status")).toHaveText("live");
   // History recovery starts on transport open; heartbeat alone proves LIVE.
   await expect.poll(() => historyReads).toBe(1);
   currentStream().write(HEARTBEAT);
@@ -118,12 +119,12 @@ test("an open but silent native stream is replaced automatically and resumes on 
   const started = performance.now();
   await startProbe(page);
   currentStream().write(HEARTBEAT);
-  await expect(page.locator("output")).toHaveText("live");
+  await expect(page.locator("#transport-status")).toHaveText("live");
   // Leave the HTTP socket OPEN: no EOF/error and no more keepalive bytes.
   await expect.poll(() => streams.length, { timeout: OBSERVATION_TIMEOUT_MS }).toBe(2);
-  await expect(page.locator("output")).toHaveText("reconnecting");
+  await expect(page.locator("#transport-status")).toHaveText("reconnecting");
   currentStream().write(HEARTBEAT);
-  await expect(page.locator("output")).toHaveText("live");
+  await expect(page.locator("#transport-status")).toHaveText("live");
   await expect.poll(() => historyReads).toBe(1);
   expect(peakActive).toBe(1);
   await page.getByRole("button", { name: "Stop", exact: true }).click();

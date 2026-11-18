@@ -9,6 +9,7 @@ mod lifecycle;
 mod manifest;
 mod publication;
 mod replacement;
+mod retirement;
 mod storage;
 use crate::integration_tasks::decisions::checkpoint_server as storage_server;
 

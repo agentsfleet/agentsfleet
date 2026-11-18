@@ -9,20 +9,23 @@ use super::{
 };
 use crate::{Result, error::query, lease::Leases};
 
-pub(super) async fn head(owner: &mut TurnLeaseGuard<'_>) -> Result<Option<Uuid7>> {
+pub(super) async fn initialize_head(owner: &mut TurnLeaseGuard<'_>) -> Result<Option<Uuid7>> {
     sqlx::query(include_str!("sql/head_insert.sql"))
         .bind(&owner.current.event_id)
         .execute(&mut *owner.tx)
         .await
         .map_err(query("initialize event-owned recovery head"))?;
-    let (_event, head, _next): (Uuid7, Option<Uuid7>, i64) =
-        sqlx::query_as(include_str!("sql/head.sql"))
-            .bind(&owner.current.event_id)
-            .fetch_one(&mut *owner.tx)
-            .await
-            .map_err(query("hold event-owned recovery head"))?;
+    head(owner).await
+}
+
+pub(super) async fn head(owner: &mut TurnLeaseGuard<'_>) -> Result<Option<Uuid7>> {
+    let row: Option<(Uuid7, Option<Uuid7>, i64)> = sqlx::query_as(include_str!("sql/head.sql"))
+        .bind(&owner.current.event_id)
+        .fetch_optional(&mut *owner.tx)
+        .await
+        .map_err(query("hold event-owned recovery head"))?;
     owner.fresh().await?;
-    Ok(head)
+    Ok(row.and_then(|(_event, head, _next)| head))
 }
 
 pub(super) async fn room(owner: &mut TurnLeaseGuard<'_>, head: Option<&Uuid7>) -> Result<()> {

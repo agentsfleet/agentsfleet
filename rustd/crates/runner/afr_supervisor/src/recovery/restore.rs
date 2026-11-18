@@ -1,6 +1,6 @@
 //! Verify complete base and overlay roots before writing a fresh frozen workspace.
 
-use super::{Object, Session, files::Workspace, transfer::Transfers};
+use super::{Object, Session, transfer::Transfers, window};
 use crate::{Result, client::ControlPlane, error};
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
@@ -10,12 +10,14 @@ use af_wire::task::{
     CheckpointEntry, CheckpointMode, CheckpointPlan, CheckpointReadQuery,
     CheckpointTransferPurpose, DecisionTaskVersion, TaskContext,
 };
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, path::PathBuf};
 use zeroize::Zeroizing;
 
 #[derive(Debug)]
 pub(crate) struct Restore<'a> {
     pub(crate) plane: &'a ControlPlane,
+    pub(crate) transfers: &'a Transfers,
+    pub(crate) permit: Option<&'a afr_agent::FileRecoveryPermit>,
     pub(crate) lease: &'a Uuid7,
     pub(crate) workspace: &'a Uuid7,
     pub(crate) fence: u64,
@@ -83,7 +85,7 @@ impl Restore<'_> {
             activity_id: plan.checkpoint_id.clone(),
             plan,
             progress: &mut progress,
-            transfers: Transfers::new()?,
+            transfers: self.transfers.clone(),
             stop: self.stop,
         };
         let ids = session.plan.page_ids.clone();
@@ -193,14 +195,16 @@ impl Restore<'_> {
             activity_id: activity.to_owned(),
             plan,
             progress,
-            transfers: Transfers::new()?,
+            transfers: self.transfers.clone(),
             stop: self.stop,
         };
         session
             .progress(Operation::Restore, Phase::Verifying, None)
             .await;
         let (entries, history_ids, base_paths) = session.manifest().await?;
-        session.restore_files(destination, entries).await?;
+        session
+            .restore_files(destination, entries, self.permit)
+            .await?;
         let history = session.history(history_ids).await?;
         Ok(Restored {
             plan: session.plan,
@@ -325,6 +329,7 @@ impl Session<'_> {
         &mut self,
         destination: Option<(PathBuf, (u32, u32))>,
         entries: BTreeMap<String, CheckpointEntry>,
+        permit: Option<&afr_agent::FileRecoveryPermit>,
     ) -> Result<()> {
         super::links::validate(entries.values().filter_map(|entry| match entry {
             CheckpointEntry::Symlink { path, target } => Some((path.as_str(), target.as_str())),
@@ -339,54 +344,18 @@ impl Session<'_> {
                 Err(error::config("checkpoint files require a workspace"))
             };
         };
-        let workspace = tokio::task::spawn_blocking(move || {
-            let workspace = Workspace::open(&path)?;
-            workspace.require_empty()?;
-            Ok::<_, crate::Error>(Arc::new(workspace))
+        window::apply(self, (path, owner), entries, permit, |session, ids| {
+            Box::pin(async move {
+                if ids.is_empty() {
+                    session.renew().await?;
+                    return Ok(Vec::new());
+                }
+                let chunks = session.download_batch(ids).await?;
+                session.renew().await?;
+                Ok(chunks)
+            })
         })
-        .await??;
-        for entry in entries.values() {
-            if let CheckpointEntry::Directory { path } = entry {
-                let (workspace, path) = (Arc::clone(&workspace), path.clone());
-                tokio::task::spawn_blocking(move || workspace.make_directory(&path, owner))
-                    .await??;
-            }
-        }
-        for entry in entries.into_values() {
-            self.renew().await?;
-            match entry {
-                CheckpointEntry::File(file) => {
-                    let root = Arc::clone(&workspace);
-                    let mut writer = tokio::task::spawn_blocking(move || {
-                        root.make_file(&file.path, file.size, file.executable, owner)
-                    })
-                    .await??;
-                    for ids in file.objects.chunks(4) {
-                        let chunks = self.download_batch(ids).await?;
-                        writer = tokio::task::spawn_blocking(move || {
-                            for bytes in chunks {
-                                writer.append(bytes.expose())?;
-                            }
-                            Ok::<_, crate::Error>(writer)
-                        })
-                        .await??;
-                    }
-                    tokio::task::spawn_blocking(move || writer.finish()).await??;
-                }
-                CheckpointEntry::Symlink { path, target } => {
-                    let root = Arc::clone(&workspace);
-                    tokio::task::spawn_blocking(move || root.make_link(&path, &target, owner))
-                        .await??;
-                }
-                CheckpointEntry::Directory { .. } => {}
-                CheckpointEntry::Remove { .. } => {
-                    return Err(error::config(
-                        "checkpoint deletion survived overlay expansion",
-                    ));
-                }
-            }
-        }
-        Ok(())
+        .await
     }
 
     async fn history(&mut self, ids: Vec<String>) -> Result<SecretBytes> {

@@ -14,61 +14,87 @@ struct Candidate {
     #[sqlx(rename = "event_id")]
     event: Uuid7,
     #[sqlx(rename = "fleet_id")]
-    fleet: Uuid7,
+    fleet: Option<Uuid7>,
     #[sqlx(rename = "workspace_id")]
-    workspace: Uuid7,
+    workspace: Option<Uuid7>,
+    due: bool,
 }
 
 impl Leases {
-    pub(crate) async fn maintain_turn_checkpoints(&self) -> Result<u64> {
+    pub(crate) async fn maintain_turn_checkpoints(
+        &self,
+        after: &mut Option<Uuid7>,
+    ) -> Result<(u64, u64)> {
         let mut connection = transaction::acquire(self.pool()).await?;
         let candidates: Vec<Candidate> =
             sqlx::query_as(include_str!("sql/maintenance_candidates.sql"))
                 .bind(RETENTION_SECONDS)
                 .bind(BATCH)
+                .bind(after.as_ref())
                 .fetch_all(&mut **connection)
                 .await
-                .map_err(query("select actionable turn checkpoint owners"))?;
+                .map_err(query("page turn checkpoint owners"))?;
         transaction::recycle(connection);
-        let mut removed = 0;
+        let wrapped = candidates.len() < usize::try_from(BATCH).unwrap_or(usize::MAX);
+        let (mut removed, mut deferred) = (0, 0);
         for candidate in candidates {
-            removed += retain(self, &candidate).await?;
+            *after = Some(candidate.event.clone());
+            if let (Some(fleet), Some(workspace), true) =
+                (candidate.fleet, candidate.workspace, candidate.due)
+            {
+                match retain(self, &candidate.event, &fleet, &workspace).await {
+                    Ok(count) => removed += count,
+                    Err(failure) => {
+                        deferred += 1;
+                        tracing::warn!(event = "turn_checkpoint_retention_deferred",
+                            event_id = %candidate.event, error_code = %failure.code());
+                    }
+                }
+            }
         }
-        let mut connection = transaction::acquire(self.pool()).await?;
-        sqlx::query(include_str!("sql/maintenance_orphans.sql"))
-            .bind(RETENTION_SECONDS)
-            .bind(BATCH)
-            .execute(&mut **connection)
-            .await
-            .map_err(query(
-                "collect opaque turn operations after source deletion",
-            ))?;
-        transaction::recycle(connection);
-        Ok(removed)
+        if wrapped {
+            *after = None;
+        }
+        retain_orphans(self).await?;
+        Ok((removed, deferred))
     }
 }
 
-async fn retain(leases: &Leases, candidate: &Candidate) -> Result<u64> {
+async fn retain_orphans(leases: &Leases) -> Result<()> {
+    let mut connection = transaction::acquire(leases.pool()).await?;
+    sqlx::query(include_str!("sql/maintenance_orphans.sql"))
+        .bind(RETENTION_SECONDS)
+        .bind(BATCH)
+        .execute(&mut **connection)
+        .await
+        .map_err(query(
+            "collect opaque turn operations after source deletion",
+        ))?;
+    transaction::recycle(connection);
+    Ok(())
+}
+
+async fn retain(leases: &Leases, event: &Uuid7, fleet: &Uuid7, workspace: &Uuid7) -> Result<u64> {
     let mut connection = transaction::acquire(leases.pool()).await?;
     let mut tx = connection
         .begin()
         .await
         .map_err(query("begin turn checkpoint retention"))?;
     let parent: Option<Uuid7> = sqlx::query_scalar(include_str!("sql/lock_scope.sql"))
-        .bind(&candidate.fleet)
-        .bind(&candidate.workspace)
+        .bind(fleet)
+        .bind(workspace)
         .fetch_optional(&mut *tx)
         .await
         .map_err(query("hold turn retention parents"))?;
     let mut removed = 0;
     if parent.is_some() {
         let head: Option<Uuid7> = sqlx::query_scalar(include_str!("sql/maintenance_lock_head.sql"))
-            .bind(&candidate.event)
+            .bind(event)
             .fetch_optional(&mut *tx)
             .await
             .map_err(query("hold turn retention head"))?;
         if head.is_some() {
-            removed = collect(&mut tx, &candidate.event).await?;
+            removed = collect(&mut tx, event).await?;
         }
     }
     tx.commit()

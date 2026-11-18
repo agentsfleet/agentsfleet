@@ -15,6 +15,7 @@ use zeroize::Zeroizing;
 #[derive(Debug)]
 pub(crate) struct Capture<'a> {
     pub(crate) plane: &'a ControlPlane,
+    pub(crate) transfers: &'a Transfers,
     pub(crate) lease: &'a Uuid7,
     pub(crate) workspace: &'a Uuid7,
     pub(crate) fence: u64,
@@ -122,7 +123,7 @@ impl Capture<'_> {
             plan,
             activity_id: activity.to_owned(),
             progress,
-            transfers: Transfers::new()?,
+            transfers: self.transfers.clone(),
             stop: self.stop,
         };
         let ids = session.capture_chunks(&catalog).await?;
@@ -232,14 +233,12 @@ impl Session<'_> {
                     ));
                 }
                 if !matches!(object.status, CheckpointObjectStatus::Reused) {
-                    let bytes = object.plaintext.size + crate::byte_count(af_crypto::TAG_LEN);
-                    if !pending.is_empty() && pending_bytes + bytes > super::UPLOAD_BATCH_BYTES {
+                    let bytes = super::uploads::ciphertext_size(&object);
+                    if !pending.is_empty() && pending_bytes + bytes > super::uploads::BATCH_BYTES {
                         self.upload_batch(std::mem::take(&mut pending)).await?;
                         pending_bytes = 0;
                     }
-                    let chunk = (**chunk).clone();
-                    let plaintext = tokio::task::spawn_blocking(move || chunk.read()).await??;
-                    pending.push((object, plaintext));
+                    pending.push((object, (**chunk).clone()));
                     pending_bytes += bytes;
                 }
             }

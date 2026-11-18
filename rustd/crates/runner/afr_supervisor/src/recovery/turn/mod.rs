@@ -24,15 +24,22 @@ pub(crate) struct NativeTurn<'a> {
     pub(crate) plane: &'a ControlPlane,
     pub(crate) lease: &'a Uuid7,
     pub(crate) fence: u64,
+    transfers: &'a super::Transfers,
     publication: publication::Publication,
 }
 
 impl<'a> NativeTurn<'a> {
-    pub(crate) fn new(plane: &'a ControlPlane, lease: &'a Uuid7, fence: u64) -> Self {
+    pub(crate) fn new(
+        plane: &'a ControlPlane,
+        lease: &'a Uuid7,
+        fence: u64,
+        transfers: &'a super::Transfers,
+    ) -> Self {
         Self {
             plane,
             lease,
             fence,
+            transfers,
             publication: publication::Publication::default(),
         }
     }

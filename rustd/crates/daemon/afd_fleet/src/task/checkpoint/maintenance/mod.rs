@@ -19,10 +19,15 @@ pub(in crate::task) async fn maintain(
     cursor: &mut crate::task::CheckpointMaintenanceCursor,
 ) -> Result<crate::task::CheckpointMaintenance> {
     let mut result = crate::task::CheckpointMaintenance::default();
-    result.owners = tasks.leases.maintain_turn_checkpoints().await?;
+    let (removed, deferred) = tasks
+        .leases
+        .maintain_turn_checkpoints(&mut cursor.turn_after)
+        .await?;
+    result.owners = removed;
+    result.deferred = deferred;
     let (keys, deferred) = identities::retain(tasks, cursor).await?;
     result.identity_keys = keys;
-    result.deferred = deferred;
+    result.deferred += deferred;
     let Some(storage) = tasks.dependencies.storage.as_ref() else {
         return Ok(result);
     };

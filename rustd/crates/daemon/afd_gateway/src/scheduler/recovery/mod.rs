@@ -1,11 +1,35 @@
 //! This is the spec's backstop, not runner polling: at most one query per replica per tick.
 
+mod drain;
+
+use crate::registry::Registry;
 use crate::{Gateway, Operation, Result, error::within};
 use af_core::timing::{OFFER_FALLBACK_TICK, STREAM_ANSWER_TIMEOUT};
 use afd_authoring::types::{DraftState, MessageState};
 use afd_bus::wake::Wake;
 use tokio::time::{Instant, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
+
+pub(super) async fn notifications(
+    registry: &Registry,
+    wake: &Wake,
+    stop: &CancellationToken,
+) -> Result<()> {
+    let mut generations = wake.generations();
+    loop {
+        let observed = generations.borrow_and_update().recovery();
+        if let Some(recovery) = observed {
+            let credited = registry.candidates(&std::collections::HashSet::new());
+            drain::drain(credited, stop).await;
+            wake.recovered(recovery);
+        }
+        tokio::select! {
+            biased;
+            () = stop.cancelled() => return Ok(()),
+            changed = generations.changed() => if changed.is_err() { return Ok(()); },
+        }
+    }
+}
 
 /// Notifications never reset this timer. A hot fleet cannot postpone lost-work recovery.
 pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()> {

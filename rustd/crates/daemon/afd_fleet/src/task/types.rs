@@ -55,6 +55,7 @@ pub struct CheckpointMaintenance {
 /// Local fairness cursor; it carries no task authority or queued work.
 #[derive(Debug, Default)]
 pub struct CheckpointMaintenanceCursor {
+    pub(crate) turn_after: Option<Uuid7>,
     pub(super) identity_after: Option<(jiff::Timestamp, Uuid7)>,
     pub(super) after: Option<(jiff::Timestamp, Uuid7)>,
     pub(super) cutoff: Option<jiff::Timestamp>,

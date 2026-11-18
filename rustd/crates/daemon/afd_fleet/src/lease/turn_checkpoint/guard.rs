@@ -58,7 +58,7 @@ impl<'a> TurnLeaseGuard<'a> {
             .map_err(query("begin turn checkpoint ownership"))?;
         parents(&mut tx, presented).await?;
         leases
-            .lock_host(&mut tx, presented.runner_id)
+            .share_host(&mut tx, presented.runner_id)
             .await?
             .filter(|host| host.can_continue())
             .ok_or_else(lease_lost)?;

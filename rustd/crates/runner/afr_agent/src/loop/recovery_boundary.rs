@@ -123,12 +123,20 @@ impl Harness<'_, '_> {
             skipped(RecoverySkip::BusySessions);
             return None;
         }
+        let file_permit = match sink.try_reserve(self.task.is_some()) {
+            Ok(file_permit) => file_permit,
+            Err(reason) => {
+                skipped(reason);
+                return None;
+            }
+        };
         let snapshot = match self.snapshot_state(driver, &permit, workspace).await {
             Ok(state) => RecoverySnapshot {
                 lease_id: self.shared.lease_id.to_owned(),
                 event_id: self.shared.payload.event.event_id.to_string(),
                 fencing_token: self.shared.fencing_token,
                 state,
+                file_permit,
             },
             Err(failure) => {
                 tracing::debug!(event = "run_checkpoint_skipped", reason = ?RecoverySkip::Limit, error_code = %failure.code());

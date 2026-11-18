@@ -1,8 +1,8 @@
-//! A durable commit outlives transport retries and the next capture boundary.
+//! A lost commit reply is reconciled against the exact pending generation.
 
 use super::*;
 use af_wire::lease::{
-    TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointPlan,
+    TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointPlan, TurnCheckpointRef,
     TurnCheckpointResponse as Response, TurnId, TurnResume, TurnScope, TurnWorkspace,
 };
 use afr_agent::TurnSnapshot;
@@ -14,7 +14,8 @@ async fn losing_every_commit_ack_does_not_permanently_stall_later_captures() -> 
     let remote = Arc::clone(&ledger);
     let (plane, mut calls) = plane(move |call| remote.lock().unwrap().respond(body(call)));
     let lease = Uuid7::parse(ID)?;
-    let mut native = super::super::NativeTurn::new(&plane, &lease, FENCE);
+    let transfers = crate::recovery::Transfers::new()?;
+    let mut native = super::super::NativeTurn::new(&plane, &lease, FENCE, &transfers);
     let stop = tokio_util::sync::CancellationToken::new();
     assert!(
         native
@@ -35,6 +36,65 @@ async fn losing_every_commit_ack_does_not_permanently_stall_later_captures() -> 
     Ok(())
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_refused_commit_requires_exact_abandonment_before_another_capture() -> crate::Result<()> {
+    let ledger = Arc::new(Mutex::new(Ledger {
+        commit_reply: CommitReply::LoseBeforePublication,
+        ..Ledger::default()
+    }));
+    let remote = Arc::clone(&ledger);
+    let (plane, _calls) = plane(move |call| remote.lock().unwrap().respond(body(call)));
+    let lease = Uuid7::parse(ID)?;
+    let transfers = crate::recovery::Transfers::new()?;
+    let mut native = super::super::NativeTurn::new(&plane, &lease, FENCE, &transfers);
+    let stop = tokio_util::sync::CancellationToken::new();
+    assert!(
+        native
+            .capture(snapshot(), None, &stop)
+            .await
+            .is_err_and(|failure| failure.is_retryable())
+    );
+    let exact = refuse_replay(&ledger);
+    let failure = native.capture(snapshot(), None, &stop).await.unwrap_err();
+    assert_eq!(
+        failure.code(),
+        af_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+    allow_abandonment(&ledger, &exact);
+
+    let saved = native.capture(snapshot(), None, &stop).await?;
+    let remote = ledger.lock().unwrap();
+    assert_eq!(remote.abandonments, [exact.clone(), exact]);
+    assert_eq!(remote.allocated, 2);
+    assert_eq!(saved.generation, 2);
+    assert_eq!(remote.head.as_ref(), Some(&saved));
+    Ok(())
+}
+
+fn refuse_replay(ledger: &Mutex<Ledger>) -> TurnCheckpointRef {
+    let mut ledger = ledger.lock().unwrap();
+    assert_eq!(ledger.allocated, 1);
+    assert!(ledger.head.is_none());
+    ledger.commit_reply = CommitReply::Conflict;
+    ledger.pending_ref()
+}
+
+fn allow_abandonment(ledger: &Mutex<Ledger>, exact: &TurnCheckpointRef) {
+    let mut ledger = ledger.lock().unwrap();
+    assert_eq!(ledger.allocated, 1);
+    assert_eq!(ledger.abandonments.as_slice(), std::slice::from_ref(exact));
+    assert_eq!(&ledger.pending_ref(), exact);
+    assert!(ledger.head.is_none());
+    assert!(ledger.commit_operations.len() >= 2);
+    assert!(
+        ledger
+            .commit_operations
+            .iter()
+            .all(|operation| Some(operation) == ledger.commit_operations.first())
+    );
+    ledger.allow_abandon = true;
+}
+
 fn confirm_commit_and_allow_acks(ledger: &Arc<Mutex<Ledger>>) {
     let mut saved = ledger.lock().unwrap();
     assert_eq!(saved.head.as_ref().unwrap().generation, 1);
@@ -45,7 +105,7 @@ fn confirm_commit_and_allow_acks(ledger: &Arc<Mutex<Ledger>>) {
             .iter()
             .all(|operation| Some(operation) == saved.commit_operations.first())
     );
-    saved.lose_ack = false;
+    saved.commit_reply = CommitReply::Acknowledge;
 }
 
 fn drained(calls: &mut Calls) -> Vec<Call> {
@@ -71,8 +131,17 @@ struct Ledger {
     head: Option<TurnResume>,
     plan: Option<TurnCheckpointPlan>,
     allocated: u64,
-    lose_ack: bool,
+    commit_reply: CommitReply,
     commit_operations: Vec<TurnId>,
+    allow_abandon: bool,
+    abandonments: Vec<TurnCheckpointRef>,
+}
+
+enum CommitReply {
+    Acknowledge,
+    LoseAfterPublication,
+    LoseBeforePublication,
+    Conflict,
 }
 
 impl Default for Ledger {
@@ -81,8 +150,10 @@ impl Default for Ledger {
             head: None,
             plan: None,
             allocated: 0,
-            lose_ack: true,
+            commit_reply: CommitReply::LoseAfterPublication,
             commit_operations: Vec::new(),
+            allow_abandon: false,
+            abandonments: Vec::new(),
         }
     }
 }
@@ -98,8 +169,15 @@ impl Ledger {
                 folds,
             } => {
                 assert_eq!(folds, Vec::<af_wire::lease::FoldRef>::new());
+                assert_eq!(checkpoint, self.pending_ref());
+                self.commit_operations.push(request.operation_id);
+                if matches!(self.commit_reply, CommitReply::Conflict) {
+                    return Self::conflict();
+                }
+                if matches!(self.commit_reply, CommitReply::LoseBeforePublication) {
+                    return Answer::Fail(crate::error::unavailable(Verb::TurnCheckpoint, 503));
+                }
                 let plan = self.plan.as_ref().unwrap();
-                assert_eq!(checkpoint.checkpoint_id, plan.checkpoint_id);
                 assert_eq!(
                     af_core::etag::sha256_hex(root.history.as_bytes()),
                     plan.history_digest
@@ -112,15 +190,34 @@ impl Ledger {
                     manifest_root,
                     history_digest: plan.history_digest.clone(),
                 });
-                self.commit_operations.push(request.operation_id);
-                if self.lose_ack {
+                if matches!(self.commit_reply, CommitReply::LoseAfterPublication) {
                     Answer::Fail(crate::error::unavailable(Verb::TurnCheckpoint, 503))
                 } else {
                     json(&Response::Committed(Box::new(self.head.clone().unwrap())))
                 }
             }
-            Action::Abandon { .. } => Self::conflict(),
+            Action::Abandon { checkpoint } => self.abandon(checkpoint),
             _ => Answer::Fail(crate::error::config("unexpected native action")),
+        }
+    }
+
+    fn pending_ref(&self) -> TurnCheckpointRef {
+        let plan = self.plan.as_ref().unwrap();
+        TurnCheckpointRef {
+            checkpoint_id: plan.checkpoint_id.clone(),
+            pin_id: TurnId(plan.pin.id.clone()),
+        }
+    }
+
+    fn abandon(&mut self, checkpoint: TurnCheckpointRef) -> Answer {
+        assert_eq!(checkpoint, self.pending_ref());
+        self.abandonments.push(checkpoint);
+        if self.allow_abandon && self.head.is_none() {
+            self.plan = None;
+            self.commit_reply = CommitReply::Acknowledge;
+            json(&Response::Abandoned)
+        } else {
+            Self::conflict()
         }
     }
 

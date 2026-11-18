@@ -8,7 +8,7 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 use super::{LeaseRun, recovery::State};
-use crate::{error, report::Ending};
+use crate::{error, recovery::RecoveryResources, report::Ending};
 
 #[derive(Debug)]
 struct Job {
@@ -31,6 +31,7 @@ pub(super) struct Sink<'a> {
     jobs: mpsc::Sender<Job>,
     active: Mutex<()>,
     workspace: Workspace<'a>,
+    resources: &'a RecoveryResources,
 }
 
 #[async_trait::async_trait]
@@ -46,6 +47,23 @@ impl RecoveryBoundarySink for Sink<'_> {
                 })
             }
         }
+    }
+
+    fn try_reserve(
+        &self,
+        task: bool,
+    ) -> std::result::Result<Option<afr_agent::FileRecoveryPermit>, RecoverySkip> {
+        match self.workspace {
+            Workspace::ApiOnly if !task => return Ok(None),
+            Workspace::Building { cell, .. } if cell.get().is_none() => {
+                return Err(RecoverySkip::WorkspaceBuilding);
+            }
+            Workspace::ApiOnly | Workspace::Building { .. } => {}
+        }
+        self.resources
+            .try_file()
+            .map(Some)
+            .ok_or(RecoverySkip::BusyStorage)
     }
 
     async fn save(&self, snapshot: RecoverySnapshot) -> afr_agent::Result<RecoverySave> {
@@ -81,6 +99,7 @@ impl<'a, 'run> BoundaryOwner<'a, 'run> {
                 jobs: send,
                 active: Mutex::new(()),
                 workspace,
+                resources: &run.lessee.recovery,
             },
             Self {
                 run,
@@ -88,6 +107,7 @@ impl<'a, 'run> BoundaryOwner<'a, 'run> {
                     &run.lessee.plane,
                     &run.ids.lease,
                     run.lease.fencing_token,
+                    &run.lessee.recovery.transfers,
                 ),
                 workspace,
                 stop: run.interrupt.child_token(),

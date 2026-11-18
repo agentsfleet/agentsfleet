@@ -4,7 +4,7 @@ use std::{borrow::Cow, num::NonZeroU64};
 
 use af_core::id::Uuid7;
 use af_wire::{
-    lease::{TurnCheckpointCommand, TurnCheckpointResponse},
+    lease::{TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointResponse},
     protocol::{Down, Up},
 };
 use backon::{ExponentialBuilder, Retryable as _};
@@ -55,6 +55,14 @@ struct Turn<'a> {
 impl Command for Turn<'_> {
     const VERB: Option<Verb> = Some(Verb::TurnCheckpoint);
     type Output = TurnCheckpointResponse;
+
+    fn timeout(&self) -> std::time::Duration {
+        if self.request.action.verifies_uploads() {
+            TurnCheckpointAction::VERIFY_ANSWER_TIMEOUT
+        } else {
+            af_core::timing::STREAM_ANSWER_TIMEOUT
+        }
+    }
 
     fn expected(&self) -> Expected {
         Expected::TurnCheckpoint {

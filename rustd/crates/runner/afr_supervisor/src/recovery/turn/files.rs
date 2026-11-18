@@ -1,12 +1,14 @@
 //! Reuse descriptor-relative file restoration, normalized ownership and authenticated chunks.
 
-use super::super::{files::Workspace, links, transfer};
+use super::super::{
+    links, transfer,
+    window::{self, Chunk},
+};
 use super::session::TurnSession;
 use crate::{Result, error};
-use af_crypto::secret::SecretBytes;
 use af_wire::{
     lease::{TurnCheckpointAction as Action, TurnCheckpointResponse as Response, TurnId},
-    task::{CheckpointEntry, CheckpointFile, CheckpointTransferPurpose},
+    task::{CheckpointEntry, CheckpointTransferPurpose},
 };
 use futures_util::{StreamExt as _, TryStreamExt as _, stream};
 use garde::Validate as _;
@@ -30,44 +32,25 @@ impl TurnSession<'_, '_> {
         pages: &[TurnId],
         digest: &str,
         destination: (PathBuf, (u32, u32)),
+        permit: Option<&afr_agent::FileRecoveryPermit>,
     ) -> Result<()> {
         let entries = self.manifest(pages, digest).await?;
         links::validate(entries.values().filter_map(|entry| match entry {
             CheckpointEntry::Symlink { path, target } => Some((path.as_str(), target.as_str())),
             _ => None,
         }))?;
-        let (path, owner) = destination;
-        let root = tokio::task::spawn_blocking(move || {
-            let root = Workspace::open(&path)?;
-            root.require_empty()?;
-            Ok::<_, crate::Error>(Arc::new(root))
+        window::apply(self, destination, entries, permit, |session, ids| {
+            Box::pin(async move {
+                session.renew().await?;
+                if ids.is_empty() {
+                    return Ok(Vec::new());
+                }
+                let chunks = session.download(ids).await?;
+                session.renew().await?;
+                Ok(chunks)
+            })
         })
-        .await??;
-        for entry in entries.values() {
-            if let CheckpointEntry::Directory { path } = entry {
-                self.renew().await?;
-                let (root, path) = (Arc::clone(&root), path.clone());
-                tokio::task::spawn_blocking(move || root.make_directory(&path, owner)).await??;
-            }
-        }
-        for entry in entries.into_values() {
-            self.renew().await?;
-            match entry {
-                CheckpointEntry::File(file) => self.file(Arc::clone(&root), file, owner).await?,
-                CheckpointEntry::Symlink { path, target } => {
-                    let root = Arc::clone(&root);
-                    tokio::task::spawn_blocking(move || root.make_link(&path, &target, owner))
-                        .await??;
-                }
-                CheckpointEntry::Directory { .. } => {}
-                CheckpointEntry::Remove { .. } => {
-                    return Err(error::config(
-                        "ordinary recovery cannot apply a partial manifest",
-                    ));
-                }
-            }
-        }
-        Ok(())
+        .await
     }
 
     async fn manifest(
@@ -130,33 +113,7 @@ impl TurnSession<'_, '_> {
         Ok(entries)
     }
 
-    async fn file(
-        &mut self,
-        root: Arc<Workspace>,
-        file: CheckpointFile,
-        owner: (u32, u32),
-    ) -> Result<()> {
-        let objects = file.objects.clone();
-        let mut writer = tokio::task::spawn_blocking(move || {
-            root.make_file(&file.path, file.size, file.executable, owner)
-        })
-        .await??;
-        for ids in objects.chunks(4) {
-            let chunks = self.download(ids).await?;
-            self.renew().await?;
-            writer = tokio::task::spawn_blocking(move || {
-                for bytes in chunks {
-                    writer.append(bytes.expose())?;
-                }
-                Ok::<_, crate::Error>(writer)
-            })
-            .await??;
-        }
-        tokio::task::spawn_blocking(move || writer.finish()).await??;
-        Ok(())
-    }
-
-    async fn download(&mut self, ids: &[String]) -> Result<Vec<SecretBytes>> {
+    async fn download(&mut self, ids: &[String]) -> Result<Vec<Chunk>> {
         let unique: Vec<_> = ids
             .iter()
             .cloned()
@@ -173,7 +130,7 @@ impl TurnSession<'_, '_> {
             .map(|mut object| async move {
                 let bytes = transfers.download(&object).await?;
                 let plaintext = transfer::open(workspace, &mut object, bytes)?;
-                Ok::<_, crate::Error>((object.object_id.clone(), plaintext))
+                Ok::<_, crate::Error>((object.object_id.clone(), Arc::new(plaintext)))
             })
             .buffered(4)
             .try_collect()
@@ -182,7 +139,7 @@ impl TurnSession<'_, '_> {
             .map(|id| {
                 chunks
                     .get(id)
-                    .map(|bytes| SecretBytes::new(bytes.expose().to_vec()))
+                    .cloned()
                     .ok_or_else(|| error::config("turn download omitted a file chunk"))
             })
             .collect()

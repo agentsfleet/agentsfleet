@@ -51,6 +51,13 @@ impl LeaseRun<'_> {
             .toolbox_digest()
             .ok_or_else(|| error::config("sandbox has no verified recovery toolbox"))?;
         let scope = Uuid7::parse(&self.lease.event.workspace_id)?;
+        let permit = if task.checkpoint_id.is_some()
+            || matches!(task.target, TaskTarget::ExistingPr { .. })
+        {
+            Some(self.lessee.recovery.file(build.stop).await?)
+        } else {
+            None
+        };
         sandbox
             .freeze()
             .await
@@ -62,6 +69,7 @@ impl LeaseRun<'_> {
                 (workspace.root.to_owned(), workspace.owner),
                 &scope,
                 toolbox,
+                permit.as_ref(),
             )
             .await
         }
@@ -98,8 +106,11 @@ impl LeaseRun<'_> {
         }
         let scope = Uuid7::parse(&self.lease.event.workspace_id)?;
         let toolbox = api_toolbox();
+        let permit = self.lessee.recovery.file(&self.interrupt).await?;
         let restored = Restore {
             plane: &self.lessee.plane,
+            transfers: &self.lessee.recovery.transfers,
+            permit: Some(&permit),
             lease: &self.ids.lease,
             workspace: &scope,
             fence: self.lease.fencing_token,
@@ -141,6 +152,7 @@ impl LeaseRun<'_> {
             let scope = Uuid7::parse(&self.lease.event.workspace_id)?;
             let saved = Capture {
                 plane: &self.lessee.plane,
+                transfers: &self.lessee.recovery.transfers,
                 lease: &self.ids.lease,
                 workspace: &scope,
                 fence: self.lease.fencing_token,
@@ -183,10 +195,12 @@ impl LeaseRun<'_> {
             if !matches!(recovery.task.target, TaskTarget::ApiOnly) {
                 return Err(error::config("repository capture has no sandbox"));
             }
+            let _reservation = self.lessee.recovery.file(&self.interrupt).await?;
             let scope = Uuid7::parse(&self.lease.event.workspace_id)?;
             let toolbox = api_toolbox();
             let saved = Capture {
                 plane: &self.lessee.plane,
+                transfers: &self.lessee.recovery.transfers,
                 lease: &self.ids.lease,
                 workspace: &scope,
                 fence: self.lease.fencing_token,

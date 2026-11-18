@@ -1,26 +1,23 @@
 //! One concrete event-owned transfer pin; retries never extend its original deadline.
 
+use super::super::{
+    Object,
+    catalog::Chunk,
+    transfer::Transfers,
+    uploads::{self, UploadBatch},
+};
+use super::NativeTurn;
+use crate::{Result, error};
 use af_core::{clock, id::Uuid7};
 use af_wire::{
     lease::{
         TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response,
         TurnId, TurnScope,
     },
-    task::{
-        CheckpointObjectStatus, CheckpointPin, CheckpointPlaintext, CheckpointTransferPurpose,
-        CheckpointUpload,
-    },
+    task::{CheckpointPin, CheckpointPlaintext, CheckpointTransferPurpose},
 };
 use garde::Validate as _;
 use tokio_util::sync::CancellationToken;
-use zeroize::Zeroizing;
-
-use super::super::{
-    Object,
-    transfer::{self, Transfers},
-};
-use super::NativeTurn;
-use crate::{Result, error};
 
 pub(super) struct TurnSession<'a, 'native> {
     pub native: &'a NativeTurn<'native>,
@@ -46,7 +43,7 @@ impl<'a, 'native> TurnSession<'a, 'native> {
             pin,
             workspace: Uuid7::parse(&scope.workspace_id.0)?,
             namespace: format!("turn:{}", scope.event_id.0),
-            transfers: Transfers::new()?,
+            transfers: native.transfers.clone(),
             stop,
         })
     }
@@ -153,23 +150,17 @@ impl<'a, 'native> TurnSession<'a, 'native> {
         Ok(objects)
     }
 
-    pub(super) async fn upload(
-        &mut self,
-        mut object: Object,
-        plaintext: Zeroizing<Vec<u8>>,
-    ) -> Result<()> {
+    pub(super) async fn upload_batch(&mut self, pending: Vec<(Object, Chunk)>) -> Result<()> {
         self.renew().await?;
-        let bytes = transfer::seal(&self.workspace, &mut object, plaintext)?;
-        let descriptor = CheckpointUpload {
-            object_id: object.object_id.clone(),
-            ciphertext_sha256: af_core::etag::sha256_hex(&bytes),
-            ciphertext_length: crate::byte_count(bytes.len()),
-        };
+        let workspace = self.workspace.clone();
+        let mut batch =
+            tokio::task::spawn_blocking(move || UploadBatch::seal(&workspace, pending)).await??;
+        self.renew().await?;
         let Response::Uploads(objects) = self
             .native
             .command(Action::Uploads {
                 checkpoint: self.reference.clone(),
-                objects: vec![descriptor.clone()],
+                objects: batch.descriptors.clone(),
             })
             .await?
         else {
@@ -177,43 +168,26 @@ impl<'a, 'native> TurnSession<'a, 'native> {
                 "turn upload returned another command's response",
             ));
         };
-        let mut objects: Vec<_> = objects.into_iter().map(Object::from).collect();
-        let authorized = objects
-            .pop()
-            .ok_or_else(|| error::config("turn upload omitted its object"))?;
-        if !objects.is_empty()
-            || authorized.object_id != descriptor.object_id
-            || authorized.repository != self.namespace
-            || authorized.ciphertext_sha256.as_deref()
-                != Some(descriptor.ciphertext_sha256.as_str())
-            || authorized.ciphertext_length != Some(descriptor.ciphertext_length)
-        {
-            return Err(error::config("turn upload changed immutable ciphertext"));
-        }
-        let physical = if matches!(authorized.status, CheckpointObjectStatus::Reused) {
-            Ok(())
-        } else {
-            let transfer = authorized
-                .transfer
-                .as_ref()
-                .ok_or_else(|| error::config("turn upload has no create-only transfer"))?;
-            self.transfers.upload(transfer, bytes).await
-        };
+        let outcomes = batch.put(objects, &self.namespace, &self.transfers).await?;
+        let ids: Vec<_> = batch
+            .descriptors
+            .iter()
+            .map(|item| item.object_id.clone())
+            .collect();
+        // Even an uncertain PUT can reconcile against an exact native receipt.
         let verified = self
-            .authorize(
-                std::slice::from_ref(&descriptor.object_id),
-                CheckpointTransferPurpose::Upload,
-            )
+            .authorize(&ids, CheckpointTransferPurpose::Upload)
             .await?;
-        if verified.iter().all(|object| {
-            matches!(object.status, CheckpointObjectStatus::Reused)
-                && object.ciphertext_sha256.as_deref()
-                    == Some(descriptor.ciphertext_sha256.as_str())
-                && object.ciphertext_length == Some(descriptor.ciphertext_length)
+        if batch.descriptors.iter().all(|descriptor| {
+            verified
+                .iter()
+                .any(|object| uploads::verified(object, descriptor, &self.namespace))
         }) {
             return Ok(());
         }
-        physical?;
+        for outcome in outcomes {
+            outcome?;
+        }
         Err(error::config(
             "turn upload was not authenticated by its durable owner",
         ))

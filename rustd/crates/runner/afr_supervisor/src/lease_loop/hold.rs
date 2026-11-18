@@ -175,6 +175,17 @@ impl LeaseRun<'_> {
             super::recovery::capture_unavailable(ending);
             return self.kill(sandbox).await;
         }
+        let _reservation = if recoverable {
+            match self.lessee.recovery.file(&self.interrupt).await {
+                Ok(permit) => Some(permit),
+                Err(_stopped) => {
+                    super::recovery::capture_unavailable(ending);
+                    return self.kill(sandbox).await;
+                }
+            }
+        } else {
+            None
+        };
         let lease_id = self.ids.lease.as_str();
         let event = EVENT_FREEZE_STARTED;
         tracing::debug!(lease_id, event);

@@ -4,17 +4,17 @@ use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use af_observability::verb_span::{OfferStage, VerbClock};
 use af_stream::Encoder;
 use af_wire::{lease::TaggedLease, protocol::StreamKind};
-use afd_fleet::lease::{OfferRequest, Offered};
+use afd_fleet::lease::{OfferRequest, Offered, RecoveryScan};
 use tokio::time::Instant;
 
-use super::{Message, SchedulingState, SessionServices};
+use super::{Message, OfferMode, OfferOutcome, SchedulingState, SessionServices};
 use crate::{Operation, Result};
 
 impl SessionServices {
     /// Reserve before policy assembly, then transfer the same charged bytes to the writer.
-    pub(crate) async fn offer(&self) -> Result<bool> {
+    pub(crate) async fn offer(&self, mode: OfferMode) -> Result<OfferOutcome> {
         let Some(state) = self.offer_state() else {
-            return Ok(false);
+            return Ok(OfferOutcome::Empty);
         };
         let deadline = Instant::now() + STREAM_ANSWER_TIMEOUT;
         let mut encoder = Encoder::reserve(
@@ -29,8 +29,15 @@ impl SessionServices {
         // A pass that reaches no stage leaves no span (the clock's own rule):
         // the 5 s probe's empty answer, and a claim that failed before
         // selecting. A claim the gates refused reached a stage and keeps one.
-        let Some(offered) = self.issue_offer(&state, &mut encoder, &mut clock).await? else {
-            return Ok(false);
+        let (offered, deferred) = self
+            .select_offer(mode, &state, &mut encoder, &mut clock)
+            .await?;
+        let Some(offered) = offered else {
+            return Ok(if deferred {
+                OfferOutcome::Deferred
+            } else {
+                OfferOutcome::Empty
+            });
         };
         let frame = encoder.finish()?;
         self.cache.insert(offered)?;
@@ -41,7 +48,7 @@ impl SessionServices {
             .await;
         clock.mark(OfferStage::Send);
         sent?;
-        Ok(true)
+        Ok(OfferOutcome::Issued)
     }
 
     /// Credits are advisory; the issue transaction still proves physical capacity.
@@ -51,18 +58,41 @@ impl SessionServices {
             .then(|| state.clone())
     }
 
+    async fn select_offer(
+        &self,
+        mode: OfferMode,
+        state: &SchedulingState,
+        encoder: &mut Encoder,
+        clock: &mut VerbClock<OfferStage>,
+    ) -> Result<(Option<Offered>, bool)> {
+        let mut scan = (mode == OfferMode::Recovery)
+            .then(|| std::mem::take(&mut *self.handle.recovery_scan.lock()));
+        if let Some(scan) = scan.as_mut() {
+            scan.begin_attempt();
+        }
+        let offered = self.issue_offer(state, encoder, clock, scan.as_mut()).await;
+        let deferred = scan.is_some_and(|scan| {
+            let deferred = scan.deferred();
+            *self.handle.recovery_scan.lock() = scan;
+            deferred
+        });
+        Ok((offered?, deferred))
+    }
+
     /// The renderer borrows its encoder. No optional writer or ownership extraction is necessary.
     async fn issue_offer(
         &self,
         state: &SchedulingState,
         encoder: &mut Encoder,
         clock: &mut VerbClock<OfferStage>,
+        recovery: Option<&mut RecoveryScan>,
     ) -> Result<Option<Offered>> {
         let request = OfferRequest {
             runner: &self.handle.runner,
             held: &state.held,
             degraded: state.degraded,
             now: self.gateway.inner.dependencies.wall_clock.now(),
+            recovery,
         };
         let issued = self
             .operation(Operation::Offer, async {

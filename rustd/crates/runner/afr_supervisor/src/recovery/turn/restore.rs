@@ -19,6 +19,7 @@ impl NativeTurn<'_> {
         workspace: TurnWorkspace,
         destination: Option<(PathBuf, (u32, u32))>,
         stop: &CancellationToken,
+        permit: Option<&afr_agent::FileRecoveryPermit>,
     ) -> Result<Option<TurnRecovery>> {
         let Some(descriptor) = &offer.turn_resume else {
             return Ok(None);
@@ -59,6 +60,7 @@ impl NativeTurn<'_> {
                         &saved.page_ids,
                         &saved.descriptor.manifest_root,
                         destination,
+                        permit,
                     )
                     .await?;
             } else {
@@ -69,6 +71,9 @@ impl NativeTurn<'_> {
                         "API-only recovery unexpectedly contains files",
                     ));
                 }
+            }
+            if stop.is_cancelled() {
+                return Err(error::config("ordinary restore ended before adoption"));
             }
             Ok::<_, crate::Error>(())
         }

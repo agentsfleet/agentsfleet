@@ -14,6 +14,7 @@ use af_core::id::Uuid7;
 
 use crate::error::Result;
 use crate::lease::envelope::Acquired;
+use crate::lease::offer::RecoveryScan;
 use crate::lease::store::Leases;
 
 /// One poll's examined candidates. Statement cost is measured from
@@ -36,7 +37,26 @@ impl Leases {
         runner_id: &Uuid7,
         held: &[Uuid7],
     ) -> (Result<Option<Acquired>>, PollMeasurement) {
-        let (selected, cost) = self.select_recording(runner_id, held).await;
+        self.select_counted(runner_id, held, None).await
+    }
+
+    /// Probe one real recovery page and expose its scan count to the fixture.
+    pub async fn select_recovery_measured(
+        &self,
+        runner_id: &Uuid7,
+        scan: &mut RecoveryScan,
+    ) -> (Result<Option<Acquired>>, PollMeasurement) {
+        scan.begin_attempt();
+        self.select_counted(runner_id, &[], Some(scan)).await
+    }
+
+    async fn select_counted(
+        &self,
+        runner_id: &Uuid7,
+        held: &[Uuid7],
+        scan: Option<&mut RecoveryScan>,
+    ) -> (Result<Option<Acquired>>, PollMeasurement) {
+        let (selected, cost) = self.select_recording(runner_id, held, scan).await;
         let measured = PollMeasurement {
             candidates_scanned: cost.candidates_scanned,
         };

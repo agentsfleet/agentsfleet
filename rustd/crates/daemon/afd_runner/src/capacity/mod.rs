@@ -185,14 +185,36 @@ pub async fn lock_host<'a>(
     transaction: &mut Transaction<'_, Postgres>,
     guard: impl Into<Guard<'a>>,
 ) -> Result<Option<Held>> {
-    Ok(locked(transaction, guard).await?.map(|(_, host)| Held {
-        claims_allowed: !host.degraded
-            && host.cordon_reason.is_none()
-            && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
-        continuations_allowed: !host.degraded && renewable_state(&host.status),
-        lease_version: host.lease_version,
-        decision_selected: host.decision_selected,
-    }))
+    held(transaction, guard, sql::LOCK_HOST).await
+}
+
+/// Hold the connection and credential proof while independent fleets use the host.
+/// Exclusive placement and runner-row changes wait until this transaction ends.
+///
+/// # Errors
+/// Preserves a datastore failure while reading or locking the host.
+pub async fn share_host<'a>(
+    transaction: &mut Transaction<'_, Postgres>,
+    guard: impl Into<Guard<'a>>,
+) -> Result<Option<Held>> {
+    held(transaction, guard, sql::SHARE_HOST).await
+}
+
+async fn held<'a>(
+    transaction: &mut Transaction<'_, Postgres>,
+    guard: impl Into<Guard<'a>>,
+    statement: &'static str,
+) -> Result<Option<Held>> {
+    Ok(locked(transaction, guard, statement)
+        .await?
+        .map(|(_, host)| Held {
+            claims_allowed: !host.degraded
+                && host.cordon_reason.is_none()
+                && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
+            continuations_allowed: !host.degraded && renewable_state(&host.status),
+            lease_version: host.lease_version,
+            decision_selected: host.decision_selected,
+        }))
 }
 
 /// What a guard binds: the host, and for a stream call the opening's
@@ -214,9 +236,10 @@ pub fn proof<'g>(guard: impl Into<Guard<'g>>) -> (&'g Uuid7, Option<&'g str>, Op
 async fn locked<'g>(
     transaction: &mut Transaction<'_, Postgres>,
     guard: impl Into<Guard<'g>>,
+    statement: &'static str,
 ) -> Result<Option<(Uuid7, Host)>> {
     let (runner_id, digest, connection) = proof(guard);
-    let host = sqlx::query_as::<_, Host>(sql::LOCK_HOST)
+    let host = sqlx::query_as::<_, Host>(statement)
         .bind(runner_id)
         .bind(digest)
         .bind(connection)
@@ -241,7 +264,7 @@ pub async fn lock<'a>(
     guard: impl Into<Guard<'a>>,
     claimant: Claimant<'_>,
 ) -> Result<Option<Capacity>> {
-    let Some((runner_id, host)) = locked(transaction, guard).await? else {
+    let Some((runner_id, host)) = locked(transaction, guard, sql::LOCK_HOST).await? else {
         return Ok(None);
     };
     let census = sqlx::query_as::<_, Census>(sql::CENSUS)

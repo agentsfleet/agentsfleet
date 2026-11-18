@@ -1,6 +1,6 @@
 //! The boundary owner holds freeze until every scan, upload, publication and cleanup finishes.
 
-use super::super::{catalog::Catalog, files::Workspace};
+use super::super::{catalog::Catalog, files::Workspace, uploads};
 use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
 use af_wire::{
@@ -134,6 +134,8 @@ impl TurnSession<'_, '_> {
                         .collect(),
                 )
                 .await?;
+            let mut pending = Vec::new();
+            let mut pending_bytes = 0;
             for ((key, chunk), object) in batch.iter().zip(objects) {
                 ids.insert((*key).clone(), object.object_id.clone());
                 match object.status {
@@ -144,11 +146,18 @@ impl TurnSession<'_, '_> {
                     }
                     CheckpointObjectStatus::Reused => {}
                     CheckpointObjectStatus::Missing => {
-                        let chunk = (**chunk).clone();
-                        let bytes = tokio::task::spawn_blocking(move || chunk.read()).await??;
-                        self.upload(object, bytes).await?;
+                        let bytes = uploads::ciphertext_size(&object);
+                        if !pending.is_empty() && pending_bytes + bytes > uploads::BATCH_BYTES {
+                            self.upload_batch(std::mem::take(&mut pending)).await?;
+                            pending_bytes = 0;
+                        }
+                        pending.push((object, (**chunk).clone()));
+                        pending_bytes += bytes;
                     }
                 }
+            }
+            if !pending.is_empty() {
+                self.upload_batch(pending).await?;
             }
         }
         let pages = catalog.pages(Some(&ids), af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES)?;

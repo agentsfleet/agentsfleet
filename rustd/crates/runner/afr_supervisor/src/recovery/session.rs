@@ -1,16 +1,19 @@
 //! Bounded registration, immutable ciphertext and native reconciliation share one pin.
 
-use super::{Object, Session, transfer};
+use super::{
+    Object, Session,
+    catalog::Chunk,
+    transfer,
+    uploads::{self, UploadBatch},
+};
 use crate::{Result, error};
 use af_core::{clock, id::Uuid7};
 use af_wire::task::{
-    CHECKPOINT_BATCH, CheckpointAuthorizationInput, CheckpointObjectStatus, CheckpointObjectsInput,
-    CheckpointPinInput, CheckpointPlaintext, CheckpointTransferPurpose, CheckpointUpload,
-    CheckpointUploadsInput,
+    CheckpointAuthorizationInput, CheckpointObjectsInput, CheckpointPinInput, CheckpointPlaintext,
+    CheckpointTransferPurpose, CheckpointUpload, CheckpointUploadsInput,
 };
 use futures_util::{StreamExt as _, stream};
 use std::collections::BTreeMap;
-use zeroize::Zeroizing;
 
 impl Session<'_> {
     pub(super) async fn renew(&mut self) -> Result<()> {
@@ -90,35 +93,12 @@ impl Session<'_> {
 
     /// A native page of immutable ciphertexts shares authorization and readback.
     /// Memory is bounded separately; at most four physical requests run at once.
-    pub(super) async fn upload_batch(
-        &mut self,
-        batch: Vec<(Object, Zeroizing<Vec<u8>>)>,
-    ) -> Result<()> {
-        let bytes = batch.iter().fold(0_u64, |sum, (_, bytes)| {
-            sum.saturating_add(
-                crate::byte_count(bytes.len()) + crate::byte_count(af_crypto::TAG_LEN),
-            )
-        });
-        if batch.is_empty() || batch.len() > CHECKPOINT_BATCH || bytes > super::UPLOAD_BATCH_BYTES {
-            return Err(error::config("checkpoint physical batch exceeds its bound"));
-        }
+    pub(super) async fn upload_batch(&mut self, pending: Vec<(Object, Chunk)>) -> Result<()> {
         self.renew().await?;
-        let mut ciphertexts = BTreeMap::new();
-        let mut descriptors = Vec::with_capacity(batch.len());
-        for (mut object, plaintext) in batch {
-            if !matches!(object.status, CheckpointObjectStatus::Missing) {
-                return Err(error::config(
-                    "checkpoint physical batch has no upload owner",
-                ));
-            }
-            let bytes = transfer::seal(self.workspace, &mut object, plaintext)?;
-            descriptors.push(CheckpointUpload {
-                object_id: object.object_id.clone(),
-                ciphertext_sha256: af_core::etag::sha256_hex(&bytes),
-                ciphertext_length: crate::byte_count(bytes.len()),
-            });
-            ciphertexts.insert(object.object_id.clone(), bytes);
-        }
+        let workspace = self.workspace.clone();
+        let mut batch =
+            tokio::task::spawn_blocking(move || UploadBatch::seal(&workspace, pending)).await??;
+        self.renew().await?;
         let checkpoint = Uuid7::parse(&self.plan.checkpoint_id)?;
         let response = self
             .plane
@@ -129,46 +109,14 @@ impl Session<'_> {
                     fencing_token: self.fence,
                     task: self.task.clone(),
                     pin_id: self.plan.pin.id.clone(),
-                    objects: descriptors.clone(),
+                    objects: batch.descriptors.clone(),
                 },
             )
             .await?;
-        let objects: Vec<Object> = response.items.into_iter().map(Object::from).collect();
-        if objects.len() != descriptors.len() {
-            return Err(error::config("checkpoint upload batch is incomplete"));
-        }
-        let mut sends = Vec::new();
-        for authorized in objects {
-            let descriptor = descriptors
-                .iter()
-                .find(|descriptor| descriptor.object_id == authorized.object_id)
-                .ok_or_else(|| error::config("checkpoint upload names another object"))?;
-            if authorized.repository != self.plan.repository
-                || authorized.ciphertext_sha256.as_deref()
-                    != Some(descriptor.ciphertext_sha256.as_str())
-                || authorized.ciphertext_length != Some(descriptor.ciphertext_length)
-            {
-                return Err(error::config("checkpoint ciphertext authorization differs"));
-            }
-            let bytes = ciphertexts
-                .remove(&authorized.object_id)
-                .ok_or_else(|| error::config("checkpoint upload identity repeated"))?;
-            if !matches!(authorized.status, CheckpointObjectStatus::Reused) {
-                sends.push((authorized, bytes));
-            }
-        }
-        let transfers = &self.transfers;
-        let outcomes = stream::iter(sends.into_iter().map(async move |(object, bytes)| {
-            let transfer = object
-                .transfer
-                .as_ref()
-                .ok_or_else(|| error::config("checkpoint upload transfer is absent"))?;
-            transfers.upload(transfer, bytes).await
-        }))
-        .buffer_unordered(4)
-        .collect::<Vec<_>>()
-        .await;
-        self.verify_uploads(&descriptors, outcomes).await
+        let outcomes = batch
+            .put(response.items, &self.plan.repository, &self.transfers)
+            .await?;
+        self.verify_uploads(&batch.descriptors, outcomes).await
     }
 
     /// Reconcile physical outcomes with native immutable ciphertext receipts.
@@ -199,14 +147,9 @@ impl Session<'_> {
         let objects: Vec<Object> = verified.objects.into_iter().map(Object::from).collect();
         let mut complete = true;
         for descriptor in descriptors {
-            let confirmed = objects.iter().any(|object| {
-                object.object_id == descriptor.object_id
-                    && object.repository == self.plan.repository
-                    && object.ciphertext_sha256.as_deref()
-                        == Some(descriptor.ciphertext_sha256.as_str())
-                    && object.ciphertext_length == Some(descriptor.ciphertext_length)
-                    && matches!(object.status, CheckpointObjectStatus::Reused)
-            });
+            let confirmed = objects
+                .iter()
+                .any(|object| uploads::verified(object, descriptor, &self.plan.repository));
             if confirmed {
                 self.progress.acknowledge(&descriptor.object_id);
             }
@@ -234,7 +177,7 @@ impl Session<'_> {
     pub(super) async fn download_batch(
         &mut self,
         ids: &[String],
-    ) -> Result<Vec<af_crypto::secret::SecretBytes>> {
+    ) -> Result<Vec<super::window::Chunk>> {
         if ids.is_empty() || ids.len() > 4 {
             return Err(error::config("checkpoint restore batch exceeds its bound"));
         }
@@ -302,7 +245,7 @@ impl Session<'_> {
             match outcome {
                 Ok((id, bytes)) => {
                     self.progress.acknowledge(&id);
-                    restored.insert(id, bytes);
+                    restored.insert(id, std::sync::Arc::new(bytes));
                 }
                 Err(error) => {
                     if failure.is_none() {

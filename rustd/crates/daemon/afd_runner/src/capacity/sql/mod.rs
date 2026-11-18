@@ -5,6 +5,9 @@ pub(super) const CONTEXT: &str = "lock and count host lease capacity";
 /// The host row, locked until the caller's transaction ends.
 pub(super) const LOCK_HOST: &str = include_str!("lock_host.sql");
 
+/// The same host proof, shared with other continuing leases.
+pub(super) const SHARE_HOST: &str = include_str!("share_host.sql");
+
 /// Live leases and applicable idle holds, counted at one clock read.
 ///
 /// A separate statement from [`LOCK_HOST`], run after it in the same

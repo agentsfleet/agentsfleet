@@ -193,6 +193,7 @@ impl Leases {
         let failure_reason = outcome.verdict.label();
         let notice = (!outcome.verdict.succeeded())
             .then(|| unanswered::failed_run(&lease.fleet_id, failure_reason.as_deref()));
+        let (host_digest, host_connection) = self.host_proof(report.runner_id);
         ReportStatement {
             lease_id: report.lease_id,
             runner_id: report.runner_id,
@@ -216,6 +217,8 @@ impl Leases {
             tool_calls: outcome.tool_calls,
             checkpoint: &checkpoint,
             held_until: report.held_until,
+            host_digest,
+            host_connection,
             obligation_id: &obligation_id,
             obligation_receipt: &obligation_receipt,
             audit_id: &audit_id,

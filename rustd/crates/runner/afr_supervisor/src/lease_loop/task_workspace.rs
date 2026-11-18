@@ -19,10 +19,13 @@ impl LeaseRun<'_> {
         destination: (std::path::PathBuf, (u32, u32)),
         scope: &Uuid7,
         toolbox: &str,
+        permit: Option<&afr_agent::FileRecoveryPermit>,
     ) -> Result<State> {
         if task.checkpoint_id.is_some() {
             let restored = Restore {
                 plane: &self.lessee.plane,
+                transfers: &self.lessee.recovery.transfers,
+                permit,
                 lease: &self.ids.lease,
                 workspace: scope,
                 fence: self.lease.fencing_token,
@@ -44,7 +47,9 @@ impl LeaseRun<'_> {
         } = &task.target
         {
             verify_fresh_checkout(&destination.0, repository, head).await?;
-            return self.native_base(task, destination.0, scope, toolbox).await;
+            return self
+                .native_base(task, destination.0, scope, toolbox, permit)
+                .await;
         }
         Ok(State {
             turn: None,
@@ -60,9 +65,11 @@ impl LeaseRun<'_> {
         root: std::path::PathBuf,
         scope: &Uuid7,
         toolbox: &str,
+        permit: Option<&afr_agent::FileRecoveryPermit>,
     ) -> Result<State> {
         let base = Capture {
             plane: &self.lessee.plane,
+            transfers: &self.lessee.recovery.transfers,
             lease: &self.ids.lease,
             workspace: scope,
             fence: self.lease.fencing_token,
@@ -76,6 +83,8 @@ impl LeaseRun<'_> {
         .await?;
         let base_paths = Restore {
             plane: &self.lessee.plane,
+            transfers: &self.lessee.recovery.transfers,
+            permit,
             lease: &self.ids.lease,
             workspace: scope,
             fence: self.lease.fencing_token,

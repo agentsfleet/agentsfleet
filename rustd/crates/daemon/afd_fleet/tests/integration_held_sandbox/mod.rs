@@ -20,6 +20,7 @@
 mod beat;
 mod claim;
 mod counted;
+mod expiry_race;
 mod lapse;
 mod poll;
 pub(crate) mod report;

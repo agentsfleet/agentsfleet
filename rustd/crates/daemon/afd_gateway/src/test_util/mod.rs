@@ -4,7 +4,7 @@
 //! Listener authentication, the replica registry and scheduler have separate native tests.
 
 use crate::session::{
-    SchedulingState, SessionHandle, SessionServices,
+    OfferMode, OfferOutcome, SchedulingState, SessionHandle, SessionServices,
     cache::LeaseCache,
     io::{self, IncomingFrame, StreamWriters},
     liveness::Liveness,
@@ -118,16 +118,16 @@ impl Session {
             .readers
             .get_mut(&StreamKind::Work)
             .ok_or(ErrorKind::Protocol)?;
-        let offered = services.offer();
+        let offered = services.offer(OfferMode::Ordinary);
         let receive = reader.next();
         tokio::pin!(offered, receive);
         tokio::select! {
             result = &mut offered => {
-                if result? { Ok(Some(receive.await?.ok_or(ErrorKind::Closed)?)) } else { Ok(None) }
+                if result? == OfferOutcome::Issued { Ok(Some(receive.await?.ok_or(ErrorKind::Closed)?)) } else { Ok(None) }
             }
             frame = &mut receive => {
                 let frame = frame?.ok_or(ErrorKind::Closed)?;
-                if !offered.await? { return Err(ErrorKind::Protocol.into()); }
+                if offered.await? != OfferOutcome::Issued { return Err(ErrorKind::Protocol.into()); }
                 Ok(Some(frame))
             }
         }
@@ -248,6 +248,7 @@ fn handle(
         superseded: CancellationToken::new(),
         offers: Notify::new(),
         claims,
+        recovery_scan: parking_lot::Mutex::default(),
         rechecks: Notify::new(),
         commands,
         snapshot: parking_lot::Mutex::new(SchedulingState {

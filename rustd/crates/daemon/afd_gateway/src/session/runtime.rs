@@ -80,7 +80,7 @@ impl ConfirmedSession {
     fn handle(
         &self,
         commands: mpsc::Sender<afd_bus::Command>,
-        claims: mpsc::Sender<tokio::sync::oneshot::Sender<bool>>,
+        claims: mpsc::Sender<super::ClaimRequest>,
     ) -> SessionHandle {
         SessionHandle {
             runner: self.runner.id().clone(),
@@ -91,6 +91,7 @@ impl ConfirmedSession {
             superseded: CancellationToken::new(),
             offers: Notify::new(),
             claims,
+            recovery_scan: parking_lot::Mutex::default(),
             rechecks: Notify::new(),
             commands,
             snapshot: parking_lot::Mutex::new(SchedulingState {
@@ -163,6 +164,7 @@ impl SessionServices {
             cache,
             output,
             accepted,
+            checkpoint_verifications: tokio::sync::Semaphore::new(2),
             renewal_ticks: std::sync::atomic::AtomicU64::new(0),
             handle,
             gateway,

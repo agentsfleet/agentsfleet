@@ -4,6 +4,10 @@ use super::TurnSnapshot;
 use crate::{Result, TaskRecovery};
 use af_wire::lease::{TurnResume, TurnScope, TurnWorkspace};
 use garde::Validate as _;
+use std::sync::Arc;
+
+/// A runner-wide file-operation reservation stays charged while its owner runs.
+pub type FileRecoveryPermit = Arc<tokio::sync::OwnedSemaphorePermit>;
 
 /// Native tasks and ordinary events use different durable publication owners.
 #[derive(Debug)]
@@ -25,6 +29,8 @@ pub struct RecoverySnapshot {
     pub fencing_token: u64,
     /// Exact private state for the selected durable owner.
     pub state: RecoveryState,
+    /// Admission transferred to the supervisor along with the private state.
+    pub file_permit: Option<FileRecoveryPermit>,
 }
 
 /// The committed identity retains the publication family's compatibility facts.
@@ -67,6 +73,8 @@ pub enum RecoverySkip {
     BusyExecutor,
     /// A frozen tenant process remains.
     BusyProcesses,
+    /// Other checkpoint or restore work is using the runner's file capacity.
+    BusyStorage,
     /// The matching workspace is not ready.
     WorkspaceBuilding,
     /// No capture owner or storage is available.
@@ -92,6 +100,16 @@ pub trait RecoveryBoundarySink: Send + Sync + std::fmt::Debug {
     /// # Errors
     /// A typed skip explains why no matching workspace is ready.
     fn workspace(&self) -> std::result::Result<TurnWorkspace, RecoverySkip>;
+
+    /// Reserve before cloning private state or freezing the workspace.
+    /// Durable task history also needs storage when the task uses no sandbox.
+    ///
+    /// # Errors
+    /// A typed skip explains why the boundary cannot reserve file work.
+    fn try_reserve(
+        &self,
+        task: bool,
+    ) -> std::result::Result<Option<FileRecoveryPermit>, RecoverySkip>;
 
     /// Save at a proved boundary and finish thaw or teardown before replying.
     ///

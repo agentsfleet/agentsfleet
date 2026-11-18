@@ -1381,7 +1381,7 @@
           {
             "name": "event_type",
             "in": "query",
-            "description": "Filter to one runner event type, or a comma-separated set returning the union (multi-value equality). Allowed tags: runner_registered, runner_online, runner_offline, lease_acquired, lease_released, runner_cordoned, runner_draining, runner_drained, runner_revoked. An unrecognised tag or an empty value refuses the whole request.",
+            "description": "Filter to one runner event type, or a comma-separated set returning the union (multi-value equality). Allowed tags: runner_registered, runner_online, runner_offline, lease_acquired, lease_released, runner_cordoned, runner_uncordoned, runner_draining, runner_drained, runner_revoked. An unrecognised tag or an empty value refuses the whole request.",
             "required": false,
             "schema": {
               "type": "string"

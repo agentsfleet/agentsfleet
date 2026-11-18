@@ -212,6 +212,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         clock,
         halt: Halt::new(shutdown),
         whoami: Whoami::default(),
+        recovery: recovery::RecoveryResources::new()?,
     });
     serve_composed(lessee, downlink, offers, &probe).await
 }

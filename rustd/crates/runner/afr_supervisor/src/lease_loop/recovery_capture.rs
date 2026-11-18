@@ -25,7 +25,7 @@ enum Ready<'a> {
 impl BoundaryOwner<'_, '_> {
     pub(super) async fn capture(
         &mut self,
-        snapshot: RecoverySnapshot,
+        mut snapshot: RecoverySnapshot,
     ) -> afr_agent::Result<RecoverySave> {
         if snapshot.lease_id != self.run.ids.lease.as_str()
             || snapshot.event_id != self.run.lease.event.event_id
@@ -43,6 +43,7 @@ impl BoundaryOwner<'_, '_> {
                 None => return Ok(RecoverySave::Skipped(RecoverySkip::WorkspaceBuilding)),
             },
         };
+        let _reservation = snapshot.file_permit.take();
         let result = self.capture_ready(snapshot, ready).await;
         if let Err(failure) = &result {
             self.run.interrupt.cancel();
@@ -173,6 +174,7 @@ impl BoundaryOwner<'_, '_> {
         let digest = af_core::etag::sha256_hex(&task.history);
         let captured = Capture {
             plane: &self.run.lessee.plane,
+            transfers: &self.run.lessee.recovery.transfers,
             lease: &self.run.ids.lease,
             workspace: &scope,
             fence: self.run.lease.fencing_token,

@@ -3,7 +3,11 @@
 mod recovery;
 mod subscriptions;
 
-use crate::{Gateway, Result, registry::Registry, session::SessionHandle};
+use crate::{
+    Gateway, Result,
+    registry::Registry,
+    session::{OfferMode, OfferOutcome, SessionHandle},
+};
 use afd_bus::wake::Wake;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -24,8 +28,20 @@ pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
 }
 
 async fn notifications(registry: &Registry, wake: &Wake, stop: CancellationToken) -> Result<()> {
+    tokio::try_join!(
+        ordinary_notifications(registry, wake, &stop),
+        recovery::notifications(registry, wake, &stop),
+    )?;
+    Ok(())
+}
+
+async fn ordinary_notifications(
+    registry: &Registry,
+    wake: &Wake,
+    stop: &CancellationToken,
+) -> Result<()> {
     let mut generations = wake.generations();
-    let mut observed = *generations.borrow_and_update();
+    let mut observed = generations.borrow_and_update().rings();
     loop {
         tokio::select! {
             biased;
@@ -34,9 +50,12 @@ async fn notifications(registry: &Registry, wake: &Wake, stop: CancellationToken
                 if changed.is_err() { return Ok(()); }
             }
         }
-        let current = *generations.borrow_and_update();
-        let budget = current.wrapping_sub(observed).max(1);
+        let current = generations.borrow_and_update().rings();
+        let budget = current.wrapping_sub(observed);
         observed = current;
+        if budget == 0 {
+            continue;
+        }
         let sessions = registry.candidates(&wake.fleets());
         tokio::select! {
             biased;
@@ -54,7 +73,7 @@ async fn notifications(registry: &Registry, wake: &Wake, stop: CancellationToken
 async fn pass(sessions: Vec<Arc<SessionHandle>>, mut budget: u64) -> Result<()> {
     for session in sessions {
         while budget > 0 {
-            if !session.claim().await? {
+            if session.claim(OfferMode::Ordinary).await? != OfferOutcome::Issued {
                 break;
             }
             budget -= 1;

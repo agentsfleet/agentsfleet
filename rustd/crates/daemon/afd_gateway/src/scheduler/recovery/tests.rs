@@ -4,7 +4,7 @@ use super::probe_ticks;
 use crate::{
     registry::{Registration, Registry},
     scheduler::notifications,
-    session::SessionHandle,
+    session::{ClaimRequest, OfferOutcome, SessionHandle},
 };
 use af_core::{id::Uuid7, timing::OFFER_FALLBACK_TICK};
 use afd_bus::wake::Wake;
@@ -12,14 +12,14 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 type TestResult<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 struct ReplicaFixture {
     registry: Arc<Registry>,
-    requests: Vec<mpsc::Receiver<oneshot::Sender<bool>>>,
+    requests: Vec<mpsc::Receiver<ClaimRequest>>,
     registrations: Vec<Registration>,
 }
 
@@ -75,8 +75,9 @@ async fn the_fallback_tick_probes_once_per_replica() -> TestResult {
         |requests| async move {
             let answer = requests.recv().await.ok_or("fallback pass lost a host")?;
             answer
-                .send(false)
-                .map_err(|unsent| format!("fallback pass lost its empty answer {unsent}"))
+                .reply
+                .send(OfferOutcome::Empty)
+                .map_err(|unsent| format!("fallback pass lost its empty answer {unsent:?}"))
         },
     ));
     let answered = tokio::time::timeout(OFFER_FALLBACK_TICK, replies).await??;

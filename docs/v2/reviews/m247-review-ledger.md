@@ -8,8 +8,7 @@ executable: false
 
 # M247 review and verification ledger
 
-This ledger records completed actions and open findings against the pre-refactor implementation.
-It does not certify the subsequent burst refactor, per-file Rust coverage or final PR gate.
+This ledger records review findings and the focused verification completed on the baseline and refactor. Burst comparison, per-file coverage and the final PR gate have separate evidence.
 
 Base: `97224ed7432c9dd124ea8797d4324156b7022c07`; pre-refactor implementation: `86f481126c1aa053c34ef3bdaaa6f07baa1c74ab` plus candidate prefix `22ac73ab741b`.
 The frozen production baseline is `d4823563e80829b97589846a1c7997964fdf0274`. The Nov 18 Astra direction review and two failing scheduler tests leave its production source intact.
@@ -41,8 +40,7 @@ Raw local logs retain the failures before their repairs; final CI must verify th
 
 ## Open second-pass findings
 
-All 19 items are open until their implementation or meaningful proof is completed.
-The two repeated first-pass test gaps are included in the four testing entries below and are not counted twice.
+The table preserves the 19 findings from the second pass. The verification below records their current evidence.
 
 | # | Severity / source | Location | Finding |
 |---|---|---|---|
@@ -79,7 +77,7 @@ The installed matrix checker passed its completeness/path checks; mapping to a t
 | S4 | Short custody and bulk deadlines | Hold a shared host lock through a hold-producing report, conflict with exclusive issue, and preserve fresh-clock/connection checks. Remove empty quota writes and bound verification deadlines |
 | S5 | Measurement and coverage | 1/10/100/500 interrupted fleets; dist comparisons; >99% per production file and patch lines |
 
-The Astra direction review identified two benchmark fixture limitations. Direct `Session::offer` bypasses scheduler registration and the replica wake path. The default seed gives each fleet a separate workspace and hides contention on shared quota. R13 requires registered, already-idle replacement hosts and both workspace distributions. A paused-clock regression exposed the one-success budget and the slow-host stall. A disposable PostgreSQL 19rc2 experiment confirmed the shared-lock conflict with issue and the locked-prefix behavior. F12 and S1 still need their production-path database tests.
+The Astra direction review identified two benchmark fixture limitations. Direct `Session::offer` bypasses scheduler registration and the replica wake path. The default seed gives each fleet a separate workspace and hides contention on shared quota. R13 requires registered, already-idle replacement hosts and both workspace distributions. The measured baseline uses those registered sessions. The refactor checks below exercise F12 and S1 on PostgreSQL 19rc2.
 
 See [the architecture and benchmark decision](m247-scalability-and-refactor.md) for the concrete design, calculated bounds and implementation map.
 
@@ -98,6 +96,16 @@ See [the architecture and benchmark decision](m247-scalability-and-refactor.md) 
 | Optimized API-only baseline | Seven measured cases across 1, 10, 100 and 500 fleets. The shared 500-fleet run reached the model for 12 fleets by the cutoff. The distributed 500-fleet source preparation timed out twice. [Raw results](../../../bench/baselines/lease-recovery-api.rig.json) |
 | Post-refactor and file-backed performance | NOT RUN |
 | Human smoke / paid acceptance | NOT RUN |
+
+## Focused refactor verification
+
+| Scope | Verified outcome |
+|---|---|
+| Real focused lease and checkpoint integration | 27 passed on PostgreSQL 19rc2 and NATS. A hold-producing report serializes with competing issue. Restore authorization proceeds with a locked quota row. A read of a fleet with no ready checkpoint writes no recovery metadata. Retention progresses past a locked owner. The four cases reproduced their failures on the baseline. |
+| Recovery page | One real recovery pass proceeds past 64 locked slots, leases fleet 65 and retries the older page after wraparound. |
+| Agent, supervisor, gateway and wake-queue unit tests | 833 passed and one ignored. The scheduler tests cover 1, 10, 100 and 500 claims, a slow session and a concurrent ordinary ring. Runner tests cover required admission and optional skip, shared four-object uploads, cross-file restore, cancellation and exact pending abandonment. |
+| Chromium SSE and attempt display | 3 passed. Real browser transport covers heartbeat renewal after quiet EOF, replacement of a silent connection, and one announcement per attempt. |
+| Generated operator API | Regenerated from the daemon. The runner event filter adds `runner_uncordoned` to its documented accepted values. |
 
 An earlier unit attempt failed the old Busy classification assertion, which was corrected to the intended typed unavailable error.
 A later attempt failed the existing expired-deadline HTTP/3 transport test; the full retry passed, and the initial red log remains.

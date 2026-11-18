@@ -10,6 +10,8 @@ async fn restore_verifies_base_and_overlay_before_writing_a_fresh_workspace() ->
     let task = task();
     let restored = Restore {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
+        permit: None,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -62,6 +64,8 @@ async fn retained_base_inspection_returns_verified_paths_without_restoring_histo
     let task = task();
     let paths = Restore {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
+        permit: None,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,

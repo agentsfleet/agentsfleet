@@ -13,6 +13,7 @@ async fn a_busy_task_object_returns_the_nonfatal_unavailable_class_without_commi
     let task = task();
     let failure = Capture {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,

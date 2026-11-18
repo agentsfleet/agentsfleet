@@ -18,6 +18,7 @@ async fn capture_deduplicates_content_and_commits_only_the_acknowledged_boundary
     let stop = CancellationToken::new();
     let saved = Capture {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -51,6 +52,7 @@ async fn cancelled_capture_allocates_nothing_and_never_announces_saved() -> crat
     stop.cancel();
     let error = Capture {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -81,6 +83,7 @@ async fn retained_base_replay_does_not_register_or_republish_objects() -> crate:
     let task = task();
     let saved = Capture {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -127,6 +130,7 @@ async fn incompatible_plan_and_live_writer_refuse_before_publication() -> crate:
         let task = task();
         let error = Capture {
             plane: &plane,
+            transfers: &crate::recovery::Transfers::new()?,
             lease: &identity,
             workspace: &identity,
             fence: FENCE,
@@ -183,6 +187,7 @@ async fn page_and_commit_acknowledgements_cannot_change_the_saved_boundary() -> 
         let task = task();
         let error = Capture {
             plane: &plane,
+            transfers: &crate::recovery::Transfers::new()?,
             lease: &identity,
             workspace: &identity,
             fence: FENCE,

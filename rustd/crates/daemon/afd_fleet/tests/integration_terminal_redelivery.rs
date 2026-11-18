@@ -19,11 +19,12 @@ async fn test_completed_event_redelivery_does_not_execute() {
         .fixtures
         .plane()
         .claim_fleet_with(
-            afd_fleet::lease::OfferRequest {
+            &mut afd_fleet::lease::OfferRequest {
                 runner: &run.spare,
                 held: &[fleet],
                 degraded: false,
                 now: run.now,
+                recovery: None,
             },
             None,
             &mut af_observability::verb_span::VerbClock::untimed(),
@@ -142,11 +143,12 @@ async fn reclaim_terminal(run: &Held) -> Option<()> {
     run.fixtures
         .plane()
         .claim_fleet_with(
-            afd_fleet::lease::OfferRequest {
+            &mut afd_fleet::lease::OfferRequest {
                 runner: &run.spare,
                 held: std::slice::from_ref(&run.fleet),
                 degraded: false,
                 now: run.now,
+                recovery: None,
             },
             None,
             &mut af_observability::verb_span::VerbClock::untimed(),

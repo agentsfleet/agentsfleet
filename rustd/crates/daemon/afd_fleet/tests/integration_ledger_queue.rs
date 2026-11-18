@@ -21,6 +21,7 @@ mod ordering;
 mod parking;
 mod parking_commit;
 mod reclaim;
+mod recovery_page;
 mod settlement;
 
 const WITHIN: Duration = Duration::from_secs(10);

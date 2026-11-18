@@ -53,6 +53,8 @@ pub(crate) struct ReportStatement<'a> {
     pub(crate) tool_calls: Option<&'a str>,
     pub(crate) checkpoint: &'a str,
     pub(crate) held_until: Option<Timestamp>,
+    pub(crate) host_digest: Option<&'a str>,
+    pub(crate) host_connection: Option<&'a Uuid7>,
     pub(crate) obligation_id: &'a Uuid7,
     pub(crate) obligation_receipt: &'a Uuid7,
     pub(crate) audit_id: &'a Uuid7,
@@ -115,6 +117,12 @@ impl<'a> ReportStatement<'a> {
             .bind(af_wire::usage::LineKind::Runtime.as_str())
             .bind(i64::MAX)
             .bind(self.unanswered_notice)
+            .bind(self.host_digest)
+            .bind(self.host_connection)
+            .bind(
+                self.held_until
+                    .map(|_| afd_runner::capacity::renewable_states()),
+            )
             .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;

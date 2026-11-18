@@ -22,6 +22,7 @@ fn fixture() -> crate::Result<(RecoverySnapshot, RecoveryReceipt)> {
         lease_id: "019f0000-0000-7000-8000-000000000010".to_owned(),
         event_id: "019f0000-0000-7000-8000-000000000011".to_owned(),
         fencing_token: 9,
+        file_permit: None,
         state: RecoveryState::Task(task),
     };
     let valid = RecoveryReceipt {

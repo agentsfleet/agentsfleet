@@ -247,9 +247,58 @@ async fn unproved_liveness_resets_health_and_never_lifts() {
         .heartbeat(owner.runner(), &afd_runner::NO_REPORT, None, clock::now())
         .await
         .expect("legacy liveness");
+    assert_proof_reset(&fixture, owner.runner()).await;
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_failed_lift_can_record_liveness_without_proving_healthy_return() {
+    let mut fixture = Fixture::create().await;
+    let owner = connected(&mut fixture).await;
+    let runner = owner.runner();
+    quarantined(&fixture, runner).await;
+    beat(&fixture, &owner).await;
+    prove_elapsed(&fixture, runner).await;
+    let refusal = Refusal::install(
+        &fixture.lane.url(),
+        "runner.runners",
+        "lift",
+        runner.as_str(),
+        &format!("NEW.id = '{runner}'::uuid AND OLD.cordon_reason IS NOT NULL AND NEW.cordon_reason IS NULL"),
+        "RAISE EXCEPTION 'fixture refuses lift'",
+    )
+    .await
+    .expect("refusal trigger");
+    beat(&fixture, &owner).await;
+    assert_proof_reset(&fixture, runner).await;
+    assert!(
+        fixture
+            .history(runner)
+            .await
+            .iter()
+            .all(|event| event.event_type != RunnerEventType::RunnerUncordoned)
+    );
+    drop(refusal);
+    beat(&fixture, &owner).await;
+    prove_elapsed(&fixture, runner).await;
+    beat(&fixture, &owner).await;
+    assert_eq!(
+        fixture
+            .history(runner)
+            .await
+            .iter()
+            .filter(|event| event.event_type == RunnerEventType::RunnerUncordoned)
+            .count(),
+        1
+    );
+    fixture.cleanup().await;
+}
+
+async fn assert_proof_reset(fixture: &Fixture, runner: &Uuid7) {
     let started: Option<jiff_sqlx::Timestamp> =
         sqlx::query_scalar("SELECT cordon_healthy_since_at FROM runner.runners WHERE id = $1")
-            .bind(owner.runner())
+            .bind(runner)
             .fetch_one(&mut *fixture.database.acquire().await.expect("connection"))
             .await
             .expect("proof");
@@ -257,12 +306,11 @@ async fn unproved_liveness_resets_health_and_never_lifts() {
     assert!(
         fixture
             .runners
-            .runner_detail(owner.runner())
+            .runner_detail(runner)
             .await
             .expect("detail")
             .item()
             .cordon()
             .is_some()
     );
-    fixture.cleanup().await;
 }

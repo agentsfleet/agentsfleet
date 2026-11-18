@@ -24,7 +24,7 @@ fn modes() -> [TurnWorkspace; 2] {
     ]
 }
 
-async fn isolated() -> Checked<Files> {
+pub(super) async fn isolated() -> Checked<Files> {
     Files::for_case(Case::with_fixtures(Fixtures::create_isolated().await).await?).await
 }
 

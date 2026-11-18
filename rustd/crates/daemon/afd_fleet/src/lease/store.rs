@@ -120,6 +120,18 @@ impl Leases {
         })
     }
 
+    /// Continue current work under a shared proof of the exact session.
+    pub(crate) async fn share_host(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &af_core::id::Uuid7,
+    ) -> crate::Result<Option<afd_runner::capacity::Held>> {
+        Ok(match &self.authority {
+            Some(authority) => afd_runner::capacity::share_host(tx, (runner, authority)).await?,
+            None => afd_runner::capacity::share_host(tx, runner).await?,
+        })
+    }
+
     pub(super) const fn with_ticket(
         mut self,
         ticket: Option<afd_runner::capacity::choice::Ticket>,

@@ -51,6 +51,8 @@ async fn assert_retained_case(fault: &str) -> crate::Result<()> {
     let task = task();
     let error = Restore {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
+        permit: None,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -146,6 +148,8 @@ async fn assert_bounded(archive: Archive, expected: &str) -> crate::Result<()> {
     let task = task();
     let error = Restore {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
+        permit: None,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,

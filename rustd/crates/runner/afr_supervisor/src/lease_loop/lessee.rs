@@ -37,4 +37,6 @@ pub(crate) struct Lessee {
     pub(crate) halt: Halt,
     /// Which runner this is, for every lease's span.
     pub(crate) whoami: Whoami,
+    /// File admission and signed-object transport shared by every worker.
+    pub(crate) recovery: crate::recovery::RecoveryResources,
 }

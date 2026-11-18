@@ -22,6 +22,7 @@ impl LeaseRun<'_> {
         let actual = TurnWorkspace::Files {
             toolbox_digest: toolbox.to_owned(),
         };
+        let permit = self.lessee.recovery.file(build.stop).await?;
         let restoring = async {
             sandbox.freeze().await.map_err(|source| {
                 error::boundary("ordinary restore could not freeze its sandbox", source)
@@ -35,12 +36,14 @@ impl LeaseRun<'_> {
                 &self.lessee.plane,
                 &self.ids.lease,
                 self.lease.fencing_token,
+                &self.lessee.recovery.transfers,
             )
             .restore(
                 self.lease,
                 actual,
                 Some((workspace.root.to_owned(), workspace.owner)),
                 &self.interrupt,
+                Some(&permit),
             )
             .await
         };

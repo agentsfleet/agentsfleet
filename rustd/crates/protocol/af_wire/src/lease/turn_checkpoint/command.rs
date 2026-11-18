@@ -58,7 +58,7 @@ pub struct TurnCheckpointBegin {
 }
 
 /// Exact generation and pin; these confer no authority without the current lease.
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TurnCheckpointRef {
     /// Native plan identity.
@@ -195,6 +195,21 @@ pub enum TurnCheckpointAction {
 }
 
 impl TurnCheckpointAction {
+    /// Native answer budget for readback, including frame delivery.
+    pub const VERIFY_ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(35);
+
+    /// Upload authorization in verification mode reads the stored ciphertext back.
+    #[must_use]
+    pub const fn verifies_uploads(&self) -> bool {
+        matches!(
+            self,
+            Self::Authorize {
+                purpose: CheckpointTransferPurpose::Upload,
+                ..
+            }
+        )
+    }
+
     /// Correlation never infers a successful action from an optional field.
     #[must_use]
     pub const fn kind(&self) -> TurnCheckpointKind {

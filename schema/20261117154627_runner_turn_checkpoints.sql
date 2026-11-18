@@ -56,6 +56,7 @@ CREATE TABLE runner.turn_checkpoints (
 CREATE UNIQUE INDEX uq_turn_checkpoint_pending ON runner.turn_checkpoints (event_id)
     WHERE ready_at IS NULL AND abandoned_at IS NULL;
 CREATE INDEX idx_turn_checkpoints_workspace ON runner.turn_checkpoints (workspace_id, id);
+CREATE INDEX idx_turn_checkpoints_fleet ON runner.turn_checkpoints (fleet_id);
 CREATE INDEX idx_turn_checkpoints_ready ON runner.turn_checkpoints (event_id, generation)
     WHERE ready_at IS NOT NULL;
 CREATE INDEX idx_turn_checkpoints_expiry ON runner.turn_checkpoints (expires_at, id)

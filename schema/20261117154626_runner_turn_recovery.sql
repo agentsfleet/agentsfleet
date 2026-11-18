@@ -8,5 +8,8 @@ CREATE TABLE runner.turn_recovery (
     updated_at TIMESTAMPTZ(3) NOT NULL
 );
 
+CREATE INDEX idx_turn_recovery_head ON runner.turn_recovery (head_turn_checkpoint_id, event_id)
+    WHERE head_turn_checkpoint_id IS NOT NULL;
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON runner.turn_recovery TO api_runtime;
 

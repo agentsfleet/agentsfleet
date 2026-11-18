@@ -1,8 +1,9 @@
 -- A terminal report in one statement: every write the report's
--- transaction made, under the lease's own row lock and no host lock.
+-- transaction made under the lease's own lock. A potential sandbox hold
+-- shares the host lock through commit to serialize with worker placement.
 --
--- Lock order is the report's and the renewal's: the fleet's scope, then the
--- slot, then the lease. READ COMMITTED re-reads a locked row's latest version,
+-- Lock the fleet's scope before the optional host, slot and lease.
+-- READ COMMITTED re-reads a locked row's latest version,
 -- so the lease's cursor is current, and the runtime line is numbered by its
 -- slice's start: a racing renewal waiting on the same lock bills a later slice
 -- under a later number. A common table expression cannot see its own statement's
@@ -32,24 +33,36 @@
 -- $44 its event type · $45 its metadata · $46 the fleet · $47 its workspace ·
 -- $48 the longest runtime one line may claim · $49 the runtime line kind ·
 -- $50 the largest count a bigint holds ·
--- $51 the notice owed in the answer's place when a failed run wrote none
+-- $51 the notice owed in the answer's place when a failed run wrote none ·
+-- $52-$53 the opening's credential proof and connection · $54 renewable states
 WITH scope AS MATERIALIZED (
   SELECT f.id
   FROM fleet.fleets f
   JOIN identity.lock_workspace($47) w ON w.id = f.workspace_id
   WHERE f.id = $46
   FOR KEY SHARE OF f
+), hold_host AS MATERIALIZED (
+  SELECT r.id
+  FROM scope
+  JOIN runner.runners r ON r.id = $2
+  WHERE $38::timestamptz IS NOT NULL
+    AND r.degraded_reason IS NULL AND r.status = ANY($54::text[])
+    AND ($52::text IS NULL OR (r.token_hash = $52 AND r.connection_id IS NOT DISTINCT FROM $53::uuid))
+  FOR SHARE OF r
 ), locked_slot AS MATERIALIZED (
-  SELECT s.fleet_id, s.fencing_token, s.lease_expires_at AS slot_expires_at
+  SELECT s.fleet_id, s.fencing_token, s.lease_expires_at AS slot_expires_at,
+         h.id IS NOT NULL AS hold_authorized
   FROM runner.fleet_slots s
   JOIN scope sc ON sc.id = s.fleet_id
   JOIN runner.leases l ON l.fleet_id = s.fleet_id
+  LEFT JOIN hold_host h ON h.id = l.runner_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
   FOR UPDATE OF s
 ), probe AS MATERIALIZED (
   SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id, l.fencing_token,
          l.created_at, l.lease_expires_at, l.last_metered_at,
-         l.posture, l.provider, l.model, l.task_id, a.fencing_token AS live_fence, a.slot_expires_at
+         l.posture, l.provider, l.model, l.task_id, a.fencing_token AS live_fence,
+         a.slot_expires_at, a.hold_authorized
   FROM runner.leases l
   JOIN locked_slot a ON a.fleet_id = l.fleet_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
@@ -137,7 +150,8 @@ WITH scope AS MATERIALIZED (
   FROM measured m
   WHERE l.id = m.id
   RETURNING l.id, l.fleet_id, l.event_id, l.fencing_token, l.workspace_id,
-            m.lease_expires_at, m.slot_expires_at, (SELECT checked_at FROM instant) AS checked_at
+            m.lease_expires_at, m.slot_expires_at, m.hold_authorized,
+            (SELECT checked_at FROM instant) AS checked_at
 ), settled AS (
   UPDATE fleet.admissions a
   SET settled_at = clock_timestamp(), parked_at = NULL, updated_at = now()
@@ -179,6 +193,7 @@ WITH scope AS MATERIALIZED (
   UPDATE runner.fleet_slots s
   SET lease_expires_at = clock_timestamp() - interval '1 millisecond', updated_at = now(),
       hold_expires_at = CASE WHEN m.lease_expires_at > m.checked_at AND m.slot_expires_at > m.checked_at
+                             AND m.hold_authorized
                              AND $38::timestamptz > clock_timestamp()
                              THEN LEAST($38::timestamptz, clock_timestamp() + $39::interval) END
   FROM moved m

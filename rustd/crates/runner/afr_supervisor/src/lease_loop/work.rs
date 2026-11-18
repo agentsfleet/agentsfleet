@@ -137,12 +137,14 @@ impl LeaseRun<'_> {
                 &self.lessee.plane,
                 &self.ids.lease,
                 self.lease.fencing_token,
+                &self.lessee.recovery.transfers,
             )
             .restore(
                 self.lease,
                 af_wire::lease::TurnWorkspace::ApiOnly,
                 None,
                 &self.interrupt,
+                None,
             )
             .await
             {

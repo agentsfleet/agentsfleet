@@ -46,7 +46,7 @@ pub(super) struct Connected {
 
 struct ConnectedHost {
     session: Mutex<Session>,
-    generations: Mutex<watch::Receiver<u64>>,
+    generations: Mutex<watch::Receiver<afd_bus::wake::Generation>>,
 }
 
 impl Production {

@@ -149,6 +149,7 @@ impl Rig {
             clock: clock(),
             halt: Halt::new(shutdown.clone()),
             whoami: Whoami::default(),
+            recovery: crate::recovery::RecoveryResources::new().unwrap(),
         });
         let (runs, peak, prepared, destroyed) = counters;
         // No agent lends through this one: its sender is gone, so it reads

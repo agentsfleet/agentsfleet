@@ -11,7 +11,7 @@ WITH instant AS MATERIALIZED (
   WHERE z.status = $1 AND host.cordon_reason IS NULL
     AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
          OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
-    AND EXISTS (SELECT 1 FROM fleet.admissions WHERE settled_at IS NULL)
+    AND EXISTS (SELECT 1 FROM fleet.admissions WHERE settled_at IS NULL AND fleet_id=z.id)
     AND (s.lease_expires_at IS NULL OR s.lease_expires_at < instant.read_at)
     AND (s.hold_expires_at IS NULL
          OR s.hold_expires_at <= instant.read_at
@@ -27,7 +27,7 @@ WITH instant AS MATERIALIZED (
         (SELECT CASE WHEN jsonb_typeof(labels) = 'array' THEN labels ELSE '[]'::jsonb END
          FROM runner.runners WHERE id = $2)) AS e)
 )
-SELECT z.id
+SELECT z.id AS fleet_id, head.id AS admission_id, head.event_created_at
 FROM eligible z
 JOIN LATERAL (
   SELECT a.id, a.parked_at, a.event_created_at
@@ -48,8 +48,8 @@ JOIN LATERAL (
   (SELECT 1 FROM fleet.approval_gates g
   WHERE g.fleet_id = z.id AND g.resolved_at IS NULL
     AND g.event_id = head.id AND g.expires_at > z.read_at LIMIT 1))
--- The independent recovery generation must reach old work even while a hot
--- fleet keeps replacing every disposable hint. Notifications retain locality.
+WHERE $13::timestamptz IS NULL OR (head.event_created_at, head.id)>($13, $14::uuid)
+-- Recovery pages keep the oldest eligible head per fleet and ignore locality.
 ORDER BY CASE WHEN $12 THEN head.event_created_at END,
          CASE WHEN $12 THEN head.id END,
          CASE WHEN NOT $12 THEN z.id = ANY($6) END DESC,

@@ -56,6 +56,7 @@ fn snapshot(fixture: &Fixture) -> Result<RecoverySnapshot> {
         lease_id: fixture.lease.lease_id.to_string(),
         event_id: fixture.lease.event.event_id.to_string(),
         fencing_token: fixture.lease.fencing_token,
+        file_permit: None,
         state: RecoveryState::Task(TaskRecovery {
             task: fixture
                 .prepared

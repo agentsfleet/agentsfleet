@@ -39,7 +39,7 @@ impl Leases {
         let operation = guard::id(&request.operation_id)?;
         let mut connection = transaction::acquire(self.pool()).await?;
         let mut owner = TurnLeaseGuard::lock(self, &mut connection, lease).await?;
-        let head = allocation::head(&mut owner).await?;
+        let head = allocation::initialize_head(&mut owner).await?;
         let response = if let Some(plan) = replay(&mut owner, &operation, &digest).await? {
             plan
         } else {

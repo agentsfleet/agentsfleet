@@ -19,15 +19,41 @@ pub use publish::publish;
 /// Independent subjects distribute notifications across the broker's shard slots.
 pub const SHARDS: u16 = 16;
 
-/// Proof that an independent recovery pass still needs a successful durable claim.
+/// Identity of an independent recovery request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Recovery(u64);
+
+/// Ordinary notification count and independent recovery work observed together.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Generation {
+    rings: u64,
+    recovery_generation: u64,
+    recovery_pending: bool,
+}
+
+impl Generation {
+    /// Ordinary rings grant an equal number of successful offers.
+    #[must_use]
+    pub const fn rings(self) -> u64 {
+        self.rings
+    }
+
+    /// Recovery requests start a bounded drain independently of ring count.
+    #[must_use]
+    pub const fn recovery(self) -> Option<Recovery> {
+        if self.recovery_pending {
+            Some(Recovery(self.recovery_generation))
+        } else {
+            None
+        }
+    }
+}
 
 /// One wake queue and generation counter per replica, shared by its sessions.
 #[derive(Debug, Clone)]
 pub struct Wake {
     queue: Arc<Mutex<queue::WakeQueue>>,
-    generation: watch::Sender<u64>,
+    generation: watch::Sender<Generation>,
 }
 
 impl Default for Wake {
@@ -56,7 +82,7 @@ impl Wake {
     fn bounded(capacity: usize) -> Self {
         Self {
             queue: Arc::new(Mutex::new(queue::WakeQueue::new(capacity))),
-            generation: watch::Sender::new(0),
+            generation: watch::Sender::new(Generation::default()),
         }
     }
 
@@ -65,25 +91,33 @@ impl Wake {
         let outcome = self.lock().ring(fleet);
         producers::fleet::runner::stream::wake_queue(outcome);
         self.generation
-            .send_modify(|generation| *generation = generation.wrapping_add(1));
+            .send_modify(|generation| generation.rings = generation.rings.wrapping_add(1));
     }
 
     /// An unknown loss wakes a full eligible-session pass without fabricating a fleet identifier.
     pub fn recheck(&self) {
-        self.lock().recheck();
-        self.generation
-            .send_modify(|generation| *generation = generation.wrapping_add(1));
+        self.generation.send_modify(|generation| {
+            generation.recovery_generation = generation.recovery_generation.wrapping_add(1);
+            generation.recovery_pending = true;
+        });
     }
 
     /// A recovery request survives empty hosts and ordinary locality notifications.
     #[must_use]
     pub fn recovery(&self) -> Option<Recovery> {
-        self.lock().recovery()
+        self.generation.borrow().recovery()
     }
 
-    /// A successful claim covers this generation, while a newer request remains pending.
+    /// A finished drain covers only the recovery request that started it.
     pub fn recovered(&self, recovery: Recovery) {
-        self.lock().recovered(recovery);
+        self.generation.send_if_modified(|generation| {
+            if generation.recovery() == Some(recovery) {
+                generation.recovery_pending = false;
+                true
+            } else {
+                false
+            }
+        });
     }
 
     /// Consume one fleet; absence never proves that Postgres has no ready work.
@@ -116,7 +150,7 @@ impl Wake {
 
     /// Observe generations before probing so a concurrent ring cannot be missed.
     #[must_use]
-    pub fn generations(&self) -> watch::Receiver<u64> {
+    pub fn generations(&self) -> watch::Receiver<Generation> {
         self.generation.subscribe()
     }
 

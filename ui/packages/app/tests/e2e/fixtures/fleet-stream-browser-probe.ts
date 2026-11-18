@@ -5,7 +5,7 @@ import { __resetRegistryForTests, getSnapshot, subscribe } from "@/tests/helpers
 
 // Runs the real registry in Chromium. No EventSource, clock or fetch replacement.
 const FLEET = "browser-transport";
-const status = document.querySelector("output");
+const status = document.querySelector("#transport-status");
 const history = document.querySelector("pre");
 const start = document.querySelector("#start");
 const stop = document.querySelector("#stop");

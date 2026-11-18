@@ -15,6 +15,8 @@ use af_wire::{
         CheckpointTransferPurpose, CheckpointUpload,
     },
 };
+use sqlx::Connection as _;
+use std::time::Duration;
 
 pub(super) const CONTENT: &[u8] = b"private accepted workspace state";
 
@@ -177,13 +179,15 @@ async fn read(files: &Files, descriptor: TurnResume, digest: &str) -> Checked {
         return Err("saved file".into());
     };
     assert!(file.executable);
-    let Response::Authorized(mut objects) = files
-        .execute(Action::Authorize {
+    let Response::Authorized(mut objects) = authorize_with_quota_busy(
+        files,
+        Action::Authorize {
             checkpoint: reference.clone(),
             purpose: CheckpointTransferPurpose::Restore,
             object_ids: file.objects.iter().cloned().map(TurnId).collect(),
-        })
-        .await?
+        },
+    )
+    .await?
     else {
         return Err("reader object".into());
     };
@@ -192,6 +196,23 @@ async fn read(files: &Files, descriptor: TurnResume, digest: &str) -> Checked {
     download(files, transfer, digest).await?;
     release(files, reference).await?;
     Ok(())
+}
+
+async fn authorize_with_quota_busy(files: &Files, action: Action) -> Checked<Response> {
+    let mut connection = files.case.fixtures.database.acquire().await?;
+    let mut held = connection.begin().await?;
+    let (stored, reserved): (i64, i64) = sqlx::query_as(
+        "SELECT stored_bytes, reserved_bytes FROM fleet.task_storage_quota
+         WHERE workspace_id=$1 FOR UPDATE",
+    )
+    .bind(&files.case.acquired.workspace_id)
+    .fetch_one(&mut *held)
+    .await?;
+    assert_eq!(stored, i64::try_from(CONTENT.len() + af_crypto::TAG_LEN)?);
+    assert_eq!(reserved, 0);
+    let result = tokio::time::timeout(Duration::from_secs(10), files.execute(action)).await;
+    held.rollback().await?;
+    result.map_err(|_elapsed| "restore authorization stalled behind workspace quota")?
 }
 
 async fn download(

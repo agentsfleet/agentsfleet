@@ -147,14 +147,18 @@ async fn confirm(
     let mut connection = transaction::acquire(leases.pool()).await?;
     let mut custody =
         FileOwner::lock(leases, &mut connection, presented, reference, purpose).await?;
-    lock_quota(&mut custody.owner.tx, &custody.owner.current.workspace_id).await?;
+    if !receipts.is_empty() {
+        lock_quota(&mut custody.owner.tx, &custody.owner.current.workspace_id).await?;
+    }
     objects::scoped(&mut custody, ids).await?;
-    sqlx::query(include_str!("../../task/checkpoint/sql/verify.sql"))
-        .bind(&custody.owner.current.workspace_id)
-        .bind(Json(receipts))
-        .execute(&mut *custody.owner.tx)
-        .await
-        .map_err(query("account authenticated turn objects once"))?;
+    if !receipts.is_empty() {
+        sqlx::query(include_str!("../../task/checkpoint/sql/verify.sql"))
+            .bind(&custody.owner.current.workspace_id)
+            .bind(Json(receipts))
+            .execute(&mut *custody.owner.tx)
+            .await
+            .map_err(query("account authenticated turn objects once"))?;
+    }
     custody.commit().await?;
     transaction::recycle(connection);
     Ok(())

@@ -78,19 +78,23 @@ async fn issue_object(
     let verify = verifying && purpose == CheckpointTransferPurpose::Upload && !object.verified;
     let (mut wire, key) = object.open_scoped(storage, &batch.workspace, &batch.namespace)?;
     let receipt = if verify {
-        verify_object(
-            session,
-            &identity,
-            CheckpointScope {
-                workspace_id: &batch.workspace,
-                repository: &batch.namespace,
-                object_id: &id,
-                format_version: batch.format,
-            },
-            &wire,
-            &key,
+        tokio::time::timeout(
+            clock::elapsed(clock::now(), batch.deadline),
+            verify_object(
+                session,
+                &identity,
+                CheckpointScope {
+                    workspace_id: &batch.workspace,
+                    repository: &batch.namespace,
+                    object_id: &id,
+                    format_version: batch.format,
+                },
+                &wire,
+                &key,
+            ),
         )
-        .await?
+        .await
+        .map_err(|_elapsed| TurnCheckpointRefusal::Conflict)??
     } else {
         None
     };
