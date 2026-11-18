@@ -20,89 +20,10 @@ use jiff_sqlx::ToSqlx as _;
 
 use crate::e2e::{GOOD_KEK, PROVIDER};
 
-/// The vault row a seeded provider key is written under.
-///
-/// MINTED, where `e2e_seed.rs`'s catalogue row is a constant, and the difference is
-/// the rule: a catalogue rate is one shared row every scenario writes the same
-/// way, but a provider key belongs to ONE workspace and `scenario` mints a fresh
-/// one per run. So the `ON CONFLICT (workspace_id, key_name)` arm never fires
-/// between two scenarios, the PRIMARY KEY is what they would collide on, and a
-/// shared constant would drop the second scenario's key and leave it resolving
-/// against a workspace that has none. `mint_id` shapes it so
-/// `ck_vault_secrets_id_uuidv7` passes.
-fn vault_row() -> Uuid7 {
-    afd_db::test_util::mint_id()
-}
-
-/// The bearer key every sealed fixture credential carries.
-const FIXTURE_API_KEY: &str = "sk-fixture-not-a-credential";
-
-/// What the tenant plane's write stores beside a provider key, so reads can
-/// rule on it before any decrypt.
-const PROVIDER_KEY_KIND: &str = "provider_key";
-
-/// The credential body runtime resolution reads: it vets the same body
-/// activation does, so the body names its provider.
-fn provider_key_body() -> String {
-    format!(r#"{{"provider":"{PROVIDER}","api_key":"{FIXTURE_API_KEY}"}}"#)
-}
-
-/// Seals a provider key into the default's source workspace.
-///
-/// The final precondition the pull path needs. Runtime resolution opens
-/// `(source_workspace_id, provider)` out of the vault only when the row's
-/// projection names that provider and holds a key, and it vets the body
-/// before dialling, so the seed writes both halves the tenant plane's write
-/// would. A scenario that seeded the DEFAULT without them resolves an operator
-/// gap rather than a runnable fleet.
-///
-/// Sealed rather than inserted as plaintext: `afd_fleet::Vault` is read-only in
-/// this crate (writes are the tenant plane's, M178), and the envelope's
-/// additional authenticated data binds the row to `(workspace_id, key_name)` —
-/// a fixture that wrote the ciphertext columns by hand would decrypt to a tag
-/// failure and look like a corrupt vault. The KEK is the one the daemon booted
-/// under, which is why [`GOOD_KEK`] is a constant both halves read.
-pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &Uuid7, now: Timestamp) {
-    let kek = Kek::from_hex(GOOD_KEK).expect("the lane key is well formed");
-    let envelope = Sealer::new()
-        .seal(
-            &kek,
-            &Aad::new(workspace.as_str(), PROVIDER),
-            provider_key_body().as_bytes(),
-        )
-        .expect("the fixture credential seals");
-
-    let mut connection = booted
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query(
-        "INSERT INTO vault.secrets
-           (id, workspace_id, key_name, kek_version,
-            dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag,
-            created_at, updated_at,
-            meta_kind, meta_provider, meta_has_key)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
-                 $12, $3, TRUE)
-         ON CONFLICT (workspace_id, key_name) DO NOTHING",
-    )
-    .bind(vault_row())
-    .bind(workspace)
-    .bind(PROVIDER)
-    .bind(envelope.kek_version())
-    .bind(envelope.wrapped_dek())
-    .bind(envelope.dek_nonce().as_slice())
-    .bind(envelope.dek_tag().as_slice())
-    .bind(envelope.payload_nonce().as_slice())
-    .bind(envelope.payload_ciphertext())
-    .bind(envelope.payload_tag().as_slice())
-    .bind(now.to_sqlx())
-    .bind(PROVIDER_KEY_KIND)
-    .execute(&mut *connection)
-    .await
-    .expect("the provider key seed must run");
-}
+#[path = "e2e_provider_key.rs"]
+mod provider;
+pub(crate) use provider::seed_provider_key;
+use provider::{PROVIDER_KEY_KIND, provider_key_body, vault_row};
 
 /// The key name a tenant-plane scenario authenticates under.
 ///

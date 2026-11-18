@@ -149,7 +149,7 @@ BENCH_MIGRATE := $(if $(and $(filter rig,$(PROFILE)),$(BENCH_RIG_OWNED)),$(TEST_
 # oversubscribed host or a pool that did not recover exits non-zero.
 BENCH_SHAPE ?= default
 
-bench-lease:  ## Lease throughput, then a drain: rate, p95, statements and commits per lease, idle statement totals (PROFILE=rig [BENCH_SHAPE=default|saturation|burst] [BENCH_FLEETS=n] [BENCH_RUNNERS=n] [BENCH_TURN_MS=n] [BENCH_RATE=n])
+bench-lease:  ## Lease throughput, then a drain: rate, p95, statements and commits per lease, idle statement totals (PROFILE=rig [BENCH_SHAPE=default|saturation|burst|recovery] [BENCH_FLEETS=n] [BENCH_RUNNERS=n] [BENCH_TURN_MS=n] [BENCH_RATE=n])
 bench-steer:  ## Steer ingress: accepted rate, p95, readiness depth (PROFILE=rig [BENCH_FLEETS=n] [BENCH_CONCURRENCY=n])
 bench-outbound:  ## Delivery ceiling: rate, p95, head-of-line and retry cost (PROFILE=rig [BENCH_JOBS=n] [BENCH_SLOW_FRACTION=0..1])
 bench-cardinality:  ## Cost per idle fleet up a ladder (PROFILE=rig [BENCH_FLEETS=n], rig cap 1000000)
@@ -160,6 +160,10 @@ bench-tail:  ## Live tail: allocations, busy time and p95 per delivered frame ov
 
 # Only the lease lane has shapes, so it alone is handed BENCH_SHAPE.
 bench-lease: BENCH_LANE_SHAPE = BENCH_SHAPE="$(BENCH_SHAPE)"
+ifeq ($(BENCH_SHAPE),recovery)
+# This shape boots the full daemon. Its harness owns the separate runner processes.
+bench-lease: BENCH_LANE_RUN = cargo bench --profile dist --locked --manifest-path $(RUSTD_DIR)/Cargo.toml -p agentsfleetd --features test-util --bench
+endif
 
 # One recipe for every lane: the target names the lane binary after `bench-`.
 $(BENCH_LANES): bench-%: _ensure-test-infra $(BENCH_MIGRATE)

@@ -25,6 +25,12 @@ path = "src/lib.rs"
 name = "agentsfleetd"
 path = "src/main.rs"
 
+[[bench]]
+name = "lease"
+path = "benches/lease/main.rs"
+harness = false
+required-features = ["test-util"]
+
 [features]
 # M-TEST-UTIL. Unlocks the mockable cores the boot path reads through.
 test-util = [

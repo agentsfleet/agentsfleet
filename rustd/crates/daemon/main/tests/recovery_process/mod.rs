@@ -2,13 +2,15 @@
 #![cfg(all(feature = "test-util", target_os = "linux", debug_assertions))]
 
 mod model;
+mod population;
 mod process;
 mod proof;
 mod seed;
+mod worker;
 
 use agentsfleetd::supervisor::Supervisor;
 use model::Model;
-use process::Worker;
+use worker::Worker;
 
 type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 

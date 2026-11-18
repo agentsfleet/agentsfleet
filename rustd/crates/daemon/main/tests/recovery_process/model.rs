@@ -1,13 +1,19 @@
 //! A controlled `OpenAI` stream on pinned TLS; every accepted request is observed by the parent.
 
 use super::Checked;
-use af_stream::{Incoming, Outgoing, test_util::IdentityFixture};
-use axum::{Json, Router, body::Body, extract::State, http, response::IntoResponse, routing::post};
+use af_stream::test_util::IdentityFixture;
+use axum::{
+    Json, Router, extract::State, http, response::IntoResponse, routing::post, serve::Listener,
+};
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject as _};
 use serde_json::{Value, json};
-use std::{net::SocketAddr, path::PathBuf};
-use tokio::sync::{mpsc, oneshot};
+use std::{io, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::{mpsc, oneshot},
+};
+use tokio_rustls::{TlsAcceptor, server::TlsStream};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
-use tower::ServiceExt as _;
 
 const HOST: &str = af_providers::testing::tls::HOST;
 
@@ -28,36 +34,29 @@ impl Asked {
 pub(super) struct Model {
     identity: IdentityFixture,
     pub address: SocketAddr,
-    requests: mpsc::Receiver<Asked>,
+    requests: mpsc::Receiver<(jiff::Timestamp, Asked)>,
     stop: CancellationToken,
-    serving: AbortOnDropHandle<af_stream::Result<()>>,
+    serving: AbortOnDropHandle<io::Result<()>>,
 }
 
 impl Model {
     pub(super) async fn start() -> Checked<Self> {
         let identity = IdentityFixture::new(vec![HOST.to_owned()])?;
-        let listener =
-            af_stream::Listener::bind(([127, 0, 0, 1], 0).into(), identity.identity()).await?;
+        // The runner transport caps native lanes per connection. A model
+        // endpoint must be able to answer another wave on the same socket.
+        let listener = ProviderListener::bind(&identity).await?;
         let address = listener.local_addr()?;
         let (sender, requests) = mpsc::channel(8);
         let router = Router::new()
             .route("/v1/chat/completions", post(answer))
             .with_state(sender);
         let stop = CancellationToken::new();
-        let serving = tokio::spawn(listener.serve(
-            move |_info| {
-                let router = router.clone();
-                tower::service_fn(move |request: http::Request<Incoming>| {
-                    let router = router.clone();
-                    async move {
-                        let response = router.oneshot(request.map(Body::new)).await?;
-                        Ok::<_, std::convert::Infallible>(response.map(Outgoing::new))
-                    }
-                })
-            },
-            stop.clone(),
-            stop.clone(),
-        ));
+        let shutdown = stop.clone();
+        let serving = tokio::spawn(async move {
+            axum::serve(listener, router)
+                .with_graceful_shutdown(shutdown.cancelled_owned())
+                .await
+        });
         Ok(Self {
             identity,
             address,
@@ -76,24 +75,82 @@ impl Model {
     }
 
     pub(super) async fn next(&mut self) -> Checked<Asked> {
-        tokio::time::timeout(std::time::Duration::from_secs(75), self.requests.recv())
-            .await?
+        Ok(
+            tokio::time::timeout(Duration::from_secs(75), self.next_timed())
+                .await??
+                .1,
+        )
+    }
+
+    pub(super) async fn next_timed(&mut self) -> Checked<(jiff::Timestamp, Asked)> {
+        self.requests
+            .recv()
+            .await
             .ok_or_else(|| std::io::Error::other("model listener stopped").into())
     }
 
     pub(super) async fn finish(self) -> Checked {
         self.stop.cancel();
+        drop(self.requests);
         self.serving.await??;
         Ok(())
     }
 }
 
+struct ProviderListener {
+    socket: TcpListener,
+    acceptor: TlsAcceptor,
+}
+
+impl ProviderListener {
+    async fn bind(identity: &IdentityFixture) -> Checked<Self> {
+        let chain =
+            CertificateDer::pem_file_iter(identity.chain())?.collect::<Result<Vec<_>, _>>()?;
+        let key = PrivateKeyDer::from_pem_file(identity.key())?;
+        let mut config = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::aws_lc_rs::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()?
+        .with_no_client_auth()
+        .with_single_cert(chain, key)?;
+        config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+        Ok(Self {
+            socket: TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?,
+            acceptor: TlsAcceptor::from(Arc::new(config)),
+        })
+    }
+}
+
+impl Listener for ProviderListener {
+    type Io = TlsStream<TcpStream>;
+    type Addr = SocketAddr;
+
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        loop {
+            let (socket, peer) = Listener::accept(&mut self.socket).await;
+            if let Ok(Ok(stream)) =
+                tokio::time::timeout(Duration::from_secs(5), self.acceptor.accept(socket)).await
+            {
+                return (stream, peer);
+            }
+        }
+    }
+
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.socket.local_addr()
+    }
+}
+
 async fn answer(
-    State(sender): State<mpsc::Sender<Asked>>,
+    State(sender): State<mpsc::Sender<(jiff::Timestamp, Asked)>>,
     Json(body): Json<Value>,
 ) -> axum::response::Response {
     let (answer, received) = oneshot::channel();
-    if sender.send(Asked { body, answer }).await.is_err() {
+    if sender
+        .send((af_core::clock::now(), Asked { body, answer }))
+        .await
+        .is_err()
+    {
         return http::StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
     let Ok(text) = received.await else {
