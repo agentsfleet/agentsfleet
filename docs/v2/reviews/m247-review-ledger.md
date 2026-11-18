@@ -21,7 +21,7 @@ The [specification](../done/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN
 Dimension 6.6 remains deferred and unperformed.
 
 This move does not grade the remaining acceptance checks as passed.
-R13 benchmarks, R14 greater-than-99% coverage, final automated acceptance and the post-M246 SQL/schema review remain open.
+R13 benchmarks, R14 greater-than-99% coverage, final automated acceptance and the SQL repairs below remain open.
 The review closures are pushed at `2a88201a9`, including merge `b4c2d789c` of M246 main.
 
 ### Post-M246 verification
@@ -76,9 +76,8 @@ The [Orly PR #85](https://github.com/agentsfleet/orly/pull/85) merged at `c4127f
 The machine now uses published `0.60.2`, and this branch's pin and managed SQL standard are updated.
 `orly update` reported all 37 files current, and `orly doctor` passed.
 
-The requested second review of these results is 6.2 Astra High.
-Indy requested a manual model switch before that review.
-The initial review below does not claim that second review occurred.
+Indy requested 6.2 Astra High for a second review and 6.1 Sol High for the subsequent fixes.
+The [second SQL review](#second-sql-review) records its verdicts against the pushed source.
 
 ### Initial SQL review and measured plans
 
@@ -90,7 +89,7 @@ Its SQL manifest is `298139a1dacb94552d7e13de75f11a504b751f51ad6de8b60a8fa7352ee
 All 845 files also parsed with `pglast` 8.8.
 Parsing proves syntax; the separately recorded semantic reads establish the initial review coverage.
 
-The following findings remain open for the requested Astra review.
+The initial pass submitted the following findings for review.
 Their caller traces establish concrete source paths, but their race schedules and credential scenarios have not received live reproductions.
 None is labelled fixed or owner-deferred.
 
@@ -152,7 +151,74 @@ The malformed-identifier test now proves that PostgreSQL accepts the value and R
 
 Outbound lane materialization, memory shared-page ordering and ingress candidate fanout remain explicit performance questions.
 The native fairness failure, complete recovery bursts and greater-than-99% coverage remain open.
-The second Astra review must evaluate the findings and these measurement limits before further repairs are called verified.
+The follow-up below reviews these findings and limits.
+
+### Second SQL review
+
+Reviewed source revision `b4b0a93d45e719751806bea833911e8ea2a598bd` against main `813ccba56dd1dbfe795992744a8348e2ff700c3c`.
+All 845 tracked SQL paths and hashes match the first review's inventory.
+This pass retraced the disputed calls and recalculated the timing and buffer-hit medians from all 55 saved plans.
+
+All seven findings stand on source inspection.
+The relevant behaviors already exist on the merged M246 main revision.
+Live concurrency checks and end-to-end verification remain due for the fixes.
+
+| ID | Decision and repair boundary | Evidence required to close |
+| --- | --- | --- |
+| Q1 · P1 | Limit the runner mint to credentials its assignment declared. The scope currently joins the live head. Compare issued and current authority so editing a fleet cannot widen an existing lease or undo a revocation. Preserve the daemon's separately authorized task reads and publication. | Cover a declared static credential, an undeclared static credential, an undeclared approved connector, setup edits in both directions and unreadable setup. Refuse missing authority before vault access. |
+| Q2 · P1 | Read the durable cancellation marker in the lease authority query. Archive commits that marker before sending Cancel. A later mint must refuse even if the old lease has time left. | Check a fresh request after cancellation commits and successful minting before cancellation. Keep upstream network calls outside the database transaction. |
+| Q3 · P1 | Direct and report-carried memory both call `capture_for`. Lock the fleet grant row, validate the exact fleet, slot and lease under compatible locks, then write under the memory role in that transaction. Recheck database time after waits. | Cover supersession and publication revocation with controlled transaction ordering. Check report settlement still succeeds when its optional capture fails. |
+| Q4 · P2 | Use the same fleet row to serialize the entire upsert, sweep and eviction. Uniqueness on the memory key only serializes competing writes to the same key. | Start with 999 entries, complete two concurrent distinct-key writes, and count at most 1,000. Show an unrelated fleet can write during the held lock. |
+| Q5 · P1 | Keep the runner foreign key's deletion semantics. The daemon already holds the reserved attempt and dispatch when the provider returns. Use that durable identity solely for late accounting after retirement. | Retire the runner during a pending call. Record known usage exactly once, keep private output unavailable, and verify that repeating settlement cannot charge twice. |
+| Q6 · P1 | Decide expiry on the database clock after acquiring the gate row. An expired standing card must clear its active reference, leave the grant pending and permit a replacement. Wire bounded batches into existing supervision. | Cover the dashboard and signed webhook, including a lock wait across expiry. A timeout cannot resume setup or create a continuation. Verify unattended expiry and card replacement. |
+| Q7 · P1 | Release the resolution connection before continuation, retry lookup and bus work. Both the winner and `stood` can acquire again. Keep the durable decision and action-keyed retry semantics. | Use a one-connection pool for a winner and retry, then concurrent resolvers. Inject a failed continuation after decision commit and verify one eventual admission. |
+
+The runner mint currently resolves the connector from the stored handle.
+Q1 covers usable credential handles in the lease's workspace.
+The evidence does not establish disclosure of every vault value or another workspace's secrets.
+
+The ordinary issue path records the current setup revision when available.
+Tasks also have an accepted revision, and wait reads verify repository authority against both accepted and live setup.
+
+Keep those authority sources explicit when changing the runner path. [Issue](../../../rustd/crates/daemon/afd_fleet/src/lease/issue.rs) · [Wait authority](../../../rustd/crates/daemon/afd_fleet/src/task/waits/claim.rs)
+
+The memory module already documents the fence race.
+A transaction on the same connection still needs a lock protecting the decision through the write.
+
+Acquire the fleet before the slot and lease, and keep the memory role local to the transaction. [Memory verbs](../../../rustd/crates/daemon/afd_fleet/src/lease/memory.rs) · [Grant lock](../../../rustd/crates/daemon/afd_memory/src/access.rs)
+
+For Q7, preserve the existing split between recording a decision and retrying an owed continuation.
+Scope the borrowed connection to the decision and read counters separately, after continuation work.
+
+Check both retry lookup and admission budget sampling for nested pool access. [Resolution](../../../rustd/crates/daemon/afd_approval/src/inbox/resolve/mod.rs) · [Retry](../../../rustd/crates/daemon/afd_approval/src/inbox/resolve/stood.rs)
+
+#### Performance and schema decisions
+
+Keep the current vault primary key and workspace/name uniqueness.
+The ID participates in generation checks, and exact lookup used four shared-buffer hits at a median 0.123 ms.
+
+Authorization still belongs at the credential boundary. [Generation query](../../../rustd/crates/daemon/afd_vault/src/sql/select_shared_generations.sql)
+
+The catalogue also yielded zero plain, nonunique B-tree indexes fully covered by another index's leading keys under identical ordering, operator classes, collations and predicates.
+This comparison excluded expressions and indexes with included columns on the candidate side.
+An index serving infrequent deletes can still matter under concurrency.
+
+Keep the production foreign keys for this repair.
+In the deletion experiment, the two child indexes took 39.024 ms versus 47.632 ms for composite keys and 85.580 ms for the current schema.
+The composite keys also enforce workspace ownership and require a new parent unique index.
+
+Each variant ran in fixed order against a warm database with one fleet per workspace.
+The write statements rolled back, omitting commit costs and concurrent lock waits.
+The extra child indexes raised median top-level buffer hits for 100 inserts from 1,710 to 1,924 despite the lower elapsed median.
+
+A schema decision needs skewed workspaces, concurrent committed writes and deletes, lock waits, and repeated runs with varied ordering.
+Keep UUIDv7 creation and validation at the typed Rust boundary.
+The review found no reason to restore the 67 SQL version checks.
+
+The existing fairness timeout combines settlement of the designated old event, settlement of hot work and a minimum query count.
+Ordinary notifications and the recovery timer both call the measured waiting-work query.
+
+Record the failed condition and probe source before attributing the timeout to scheduling or an index. [Fairness check](../../../rustd/crates/daemon/main/tests/integration_runner_stream/fairness.rs) · [Scheduler](../../../rustd/crates/daemon/afd_gateway/src/scheduler/mod.rs)
 
 ## Completed first-pass repairs
 
