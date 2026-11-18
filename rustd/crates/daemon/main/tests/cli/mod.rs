@@ -158,43 +158,6 @@ fn test_no_subcommand_checks_the_environment() {
     );
 }
 
-#[test]
-fn test_no_subcommand_validates_the_selected_toml_file() {
-    use std::io::Write as _;
-    let mut file = tempfile::NamedTempFile::new().expect("temporary config");
-    writeln!(file, "[runner.lease]\nttl_seconds = 32").expect("write unsafe clock");
-    let path = file.path().to_str().expect("UTF-8 fixture path");
-    assert_eq!(
-        status(&["agentsfleetd", "--config", path], &parses_but_dead()),
-        FAILURE
-    );
-    file.as_file_mut()
-        .set_len(0)
-        .expect("truncate configuration");
-    std::io::Seek::rewind(file.as_file_mut()).expect("rewind configuration");
-    writeln!(file, "[runner.lease]\nttl_seconds = 40").expect("write valid clock");
-    let path = file.path().to_str().expect("UTF-8 fixture path");
-    assert_eq!(
-        status(&["agentsfleetd", "--config", path], &parses_but_dead()),
-        SUCCESS
-    );
-}
-
-#[test]
-fn test_a_missing_explicit_config_is_a_startup_refusal() {
-    assert_eq!(
-        status(
-            &[
-                "agentsfleetd",
-                "--config",
-                "/missing-config-directory/agentsfleetd.toml"
-            ],
-            &parses_but_dead()
-        ),
-        FAILURE,
-    );
-}
-
 /// An unusable environment is a refusal, whichever subcommand asked.
 ///
 /// Same status from all three, on purpose: an init system reads one number, and
@@ -322,6 +285,8 @@ fn test_migrate_refuses_a_database_that_will_not_answer() {
 
     assert_eq!(status, FAILURE, "a migration that could not run exits 1");
 }
+
+mod configuration;
 
 #[cfg(feature = "openapi")]
 mod openapi;

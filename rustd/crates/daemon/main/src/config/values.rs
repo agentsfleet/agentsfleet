@@ -51,41 +51,27 @@ fn server(values: &mut Values, settings: &ConfigToml) {
     insert(
         values,
         "AGENTSFLEET_DEV_NAMESPACE",
-        settings.bus.dev_namespace.as_ref(),
+        settings.nats.dev_namespace.as_ref(),
     );
     insert(
         values,
         "AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY",
-        settings.bus.wake_queue_capacity,
+        settings.nats.wake_queue_capacity_fleets,
     );
 }
 
 fn runner(values: &mut Values, settings: &ConfigToml) {
     let runner = &settings.runner;
+    listener(values, &runner.listener);
     insert(
         values,
-        "AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR",
-        runner.listener.address.as_ref(),
+        af_stream::CONTROL_BUFFER_BYTES_ENV,
+        runner.stream.control.max_buffered_bytes,
     );
     insert(
         values,
-        "AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE",
-        runner.listener.tls_cert_file.as_ref(),
-    );
-    insert(
-        values,
-        "AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE",
-        runner.listener.tls_key_file.as_ref(),
-    );
-    insert(
-        values,
-        "AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB",
-        runner.stream.control_mib,
-    );
-    insert(
-        values,
-        "AGENTSFLEET_RUNNER_DATA_MEMORY_MIB",
-        runner.stream.data_mib,
+        af_stream::DATA_BUFFER_BYTES_ENV,
+        runner.stream.data.max_buffered_bytes,
     );
     insert(
         values,
@@ -100,12 +86,35 @@ fn runner(values: &mut Values, settings: &ConfigToml) {
     insert(
         values,
         "AGENTSFLEET_OFFER_FALLBACK_SECONDS",
-        runner.recovery.offer_fallback_seconds,
+        runner.scheduling.missed_wake_probe_seconds,
     );
     insert(
         values,
         "AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS",
-        runner.recovery.max_concurrent_claims,
+        runner.scheduling.max_concurrent_recovery_claims,
+    );
+}
+
+fn listener(values: &mut Values, listener: &super::settings::Listener) {
+    insert(
+        values,
+        "AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR",
+        listener.address.as_ref(),
+    );
+    insert(
+        values,
+        "AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE",
+        listener.tls_cert_file.as_ref(),
+    );
+    insert(
+        values,
+        "AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE",
+        listener.tls_key_file.as_ref(),
+    );
+    insert(
+        values,
+        crate::preflight::runner_listener::MAX_UDP_PAYLOAD_BYTES,
+        listener.max_udp_payload_bytes,
     );
 }
 

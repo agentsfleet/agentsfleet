@@ -729,6 +729,18 @@ Shared memory also lets a fleet reading untrusted input plant a "fact" that a fl
 
 **Built.** Every memory read and write in `agentsfleetd` goes through `afd_memory::Memories`, held once by the daemon.
 
+Capture serializes each fleet through its grant row and keeps the lease authority on the transaction that writes memory.
+A final database-clock check rejects a capture that outlived its lease while waiting.
+
+The same transaction holds the upsert, daily sweep and 1,000-entry ceiling. [Capture](../../rustd/crates/daemon/afd_fleet/src/lease/memory.rs)
+
+```text
+capture -> lock fleet -> shared lease lock -> fresh fence
+        -> read locked grants -> memory role -> upsert, sweep, evict
+        -> API role -> fresh fence -> commit -> release locks
+```
+
+
 `afd_memory::Memories` reads each fleet's workspace and grants from `fleet.fleets`, applies them, and calls the Postgres store, `afd_memory::PgStore`. Every entry keeps its writer fleet in its identity, `(workspace_id, fleet_id, key)`, and carries `workspace_visible`.
 
 Access is a workspace setting with read and publish granted apart: `memory_reads_workspace` and `memory_publishes_workspace` on `fleet.fleets`, set by `PATCH …/fleets/{fleet_id}/memory-access` under `fleet:write`. A granted reader's window carries other fleets' shared entries, each naming its writer, within `HYDRATE_SHARED_BYTES` after its own window. A share from a fleet without publish is refused by the `memory_store` tool and skipped and counted at the push.

@@ -38,5 +38,9 @@ LABEL org.opencontainers.image.title="agentsfleet agentsfleetd" \
 
 COPY --chmod=0555 dist/agentsfleetd-rs-linux-${TARGETARCH} /usr/local/bin/agentsfleetd
 
+# Public deployment settings travel with the same immutable image as their loader.
+COPY --chmod=0444 deploy/fly/agentsfleetd-dev/agentsfleetd.toml /etc/agentsfleet/config/dev.toml
+COPY --chmod=0444 deploy/fly/agentsfleetd-prod/agentsfleetd.toml /etc/agentsfleet/config/prod.toml
+
 EXPOSE 3000
 CMD ["/usr/local/bin/agentsfleetd", "serve"]

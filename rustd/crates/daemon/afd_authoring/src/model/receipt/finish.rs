@@ -114,7 +114,8 @@ impl Completion<'_> {
         };
         let locked: Option<Uuid7> = sqlx::query_scalar(sql::LOCK_ATTEMPT)
             .bind(&attempt.id)
-            .bind(runner)
+            .bind(lease)
+            .bind(super::super::dispatch_id(self.request)?)
             .fetch_optional(&mut **tx)
             .await
             .map_err(query(CONTEXT))?;

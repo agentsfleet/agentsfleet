@@ -14,7 +14,7 @@ pub(crate) enum ErrorKind {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
-    #[error("Set {setting} to a whole number of mebibytes between 12 and 512.")]
+    #[error("Set {setting} to a whole number.")]
     MemorySetting {
         setting: &'static str,
         #[source]

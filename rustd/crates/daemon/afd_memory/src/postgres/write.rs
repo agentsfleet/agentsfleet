@@ -3,6 +3,7 @@
 
 use af_wire::memory::{MAX_ENTRIES_PER_FLEET, MemoryDelta, PINNED_CATEGORY};
 use jiff::Timestamp;
+use sqlx::{Acquire as _, PgConnection};
 
 use super::{Failure, PgStore};
 use crate::error::Result;
@@ -33,44 +34,74 @@ impl PgStore {
         entries: &[&MemoryDelta<'_>],
         now: Timestamp,
     ) -> Result<Housekept> {
-        self.as_memory_role(Failure::Runner(CONTEXT_UPSERT), async |connection| {
-            for delta in entries {
-                let row_id = self.entropy.uuid7(now)?;
-                sqlx::query(sql::UPSERT_ENTRY)
-                    .bind(row_id)
-                    .bind(delta.key.as_ref())
-                    .bind(delta.content.as_ref())
-                    .bind(delta.category.as_ref())
-                    .bind(owner.fleet)
-                    .bind(owner.workspace)
-                    .bind(delta.visibility.is_workspace())
-                    .bind(jiff_sqlx::ToSqlx::to_sqlx(now))
-                    .execute(&mut *connection)
-                    .await
-                    .map_err(|source| Failure::Runner(CONTEXT_UPSERT).raise(source))?;
-            }
-            let swept = sqlx::query(sql::DELETE_AGED_IN_CATEGORY)
+        let mut connection = self.database.acquire().await?;
+        let mut tx = connection
+            .begin()
+            .await
+            .map_err(crate::error::query("begin memory capture"))?;
+        sqlx::query(include_str!("../sql/lock_capture.sql"))
+            .bind(owner.fleet)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(crate::error::query(CONTEXT_UPSERT))?;
+        let housekept = self.upsert_on(&mut tx, owner, entries, now).await?;
+        tx.commit()
+            .await
+            .map_err(crate::error::query(CONTEXT_UPSERT))?;
+        Ok(housekept)
+    }
+
+    /// Writes under a caller-owned transaction holding the fleet row lock.
+    pub(crate) async fn upsert_on(
+        &self,
+        connection: &mut PgConnection,
+        owner: Owner<'_>,
+        entries: &[&MemoryDelta<'_>],
+        now: Timestamp,
+    ) -> Result<Housekept> {
+        sqlx::query(sql::ASSUME_MEMORY_ROLE)
+            .execute(&mut *connection)
+            .await
+            .map_err(|source| Failure::Runner(CONTEXT_UPSERT).role(source))?;
+        for delta in entries {
+            let row_id = self.entropy.uuid7(now)?;
+            sqlx::query(sql::UPSERT_ENTRY)
+                .bind(row_id)
+                .bind(delta.key.as_ref())
+                .bind(delta.content.as_ref())
+                .bind(delta.category.as_ref())
                 .bind(owner.fleet)
-                .bind(DAILY_CATEGORY)
-                .bind(jiff_sqlx::ToSqlx::to_sqlx(af_core::clock::before(
-                    now,
-                    DAILY_RETENTION,
-                )))
+                .bind(owner.workspace)
+                .bind(delta.visibility.is_workspace())
+                .bind(jiff_sqlx::ToSqlx::to_sqlx(now))
                 .execute(&mut *connection)
                 .await
-                .map_err(|source| Failure::Runner(CONTEXT_SWEEP).raise(source))?
-                .rows_affected();
-            let evicted = sqlx::query(sql::EVICT_PAST_CAP)
-                .bind(owner.fleet)
-                .bind(i64::try_from(MAX_ENTRIES_PER_FLEET).unwrap_or(i64::MAX))
-                .bind(PINNED_CATEGORY)
-                .execute(&mut *connection)
-                .await
-                .map_err(|source| Failure::Runner(CONTEXT_EVICT).raise(source))?
-                .rows_affected();
-            Ok(Housekept { swept, evicted })
-        })
-        .await
+                .map_err(|source| Failure::Runner(CONTEXT_UPSERT).raise(source))?;
+        }
+        let swept = sqlx::query(sql::DELETE_AGED_IN_CATEGORY)
+            .bind(owner.fleet)
+            .bind(DAILY_CATEGORY)
+            .bind(jiff_sqlx::ToSqlx::to_sqlx(af_core::clock::before(
+                now,
+                DAILY_RETENTION,
+            )))
+            .execute(&mut *connection)
+            .await
+            .map_err(|source| Failure::Runner(CONTEXT_SWEEP).raise(source))?
+            .rows_affected();
+        let evicted = sqlx::query(sql::EVICT_PAST_CAP)
+            .bind(owner.fleet)
+            .bind(i64::try_from(MAX_ENTRIES_PER_FLEET).unwrap_or(i64::MAX))
+            .bind(PINNED_CATEGORY)
+            .execute(&mut *connection)
+            .await
+            .map_err(|source| Failure::Runner(CONTEXT_EVICT).raise(source))?
+            .rows_affected();
+        sqlx::query(include_str!("../sql/restore_api_role.sql"))
+            .execute(connection)
+            .await
+            .map_err(|source| Failure::Runner(CONTEXT_UPSERT).role(source))?;
+        Ok(Housekept { swept, evicted })
     }
 
     /// Removes the fleet's own entry under `key`; whether there was one.

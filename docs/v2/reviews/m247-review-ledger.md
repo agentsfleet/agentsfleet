@@ -100,7 +100,7 @@ None is labelled fixed or owner-deferred.
 | Q3 | P1 | Memory writes can outlive their checked lease fence or publication grant | `afd_fleet/src/lease/memory.rs`, `afd_memory/src/postgres/write.rs`, `afd_memory/src/sql/upsert_entry.sql` | Keep fence, current grants and writes on one caller-owned transaction, using existing lock order |
 | Q4 | P2 | Concurrent distinct-key captures can exceed the durable memory ceiling | `afd_memory/src/sql/evict_past_cap.sql`, `postgres/write.rs` | Serialize through the existing fleet access lock before writing and evicting |
 | Q5 | P1 | Runner deletion can clear the owner needed to record known in-flight authoring usage | `afd_runner/src/sql/runner_admin/delete_runner_if_in_state.sql`, `afd_authoring/src/model/sql/lock_attempt.sql` | Extend retirement's accounting guard or preserve immutable late-accounting authority |
-| Q6 | P1 | Approval resolution omits the deadline, and the expiry routine has no production worker caller | `afd_approval/src/sql/resolve_gate.sql`, `inbox/resolve/mod.rs`, `main/src/sweepers/mod.rs` | Check one post-lock database clock and wire the existing expiry routine into supervised maintenance |
+| Q6 | Withdrawn | Late human approval is intentional; owner reaffirmed this behavior | `afd_approval/tests/integration_inbox_continuation.rs` | Retain late approval and its regression, following Indy’s explicit decision |
 | Q7 | P1 | Approval continuation retains a pool connection while requesting another from the same pool | `afd_approval/src/inbox/resolve/mod.rs`, `afd_admission/src/admit.rs` | Reuse one caller-owned connection through the composed writes; preserve the continuation's retry behavior |
 
 The migrated schema has 326 indexes and 126 foreign keys.
@@ -159,7 +159,9 @@ Reviewed source revision `b4b0a93d45e719751806bea833911e8ea2a598bd` against main
 All 845 tracked SQL paths and hashes match the first review's inventory.
 This pass retraced the disputed calls and recalculated the timing and buffer-hit medians from all 55 saved plans.
 
-All seven findings stand on source inspection.
+The implementation pass confirmed six repair candidates.
+Q6 missed an explicit existing late-approval requirement and is withdrawn below.
+
 The relevant behaviors already exist on the merged M246 main revision.
 Live concurrency checks and end-to-end verification remain due for the fixes.
 
@@ -170,7 +172,7 @@ Live concurrency checks and end-to-end verification remain due for the fixes.
 | Q3 · P1 | Direct and report-carried memory both call `capture_for`. Lock the fleet grant row, validate the exact fleet, slot and lease under compatible locks, then write under the memory role in that transaction. Recheck database time after waits. | Cover supersession and publication revocation with controlled transaction ordering. Check report settlement still succeeds when its optional capture fails. |
 | Q4 · P2 | Use the same fleet row to serialize the entire upsert, sweep and eviction. Uniqueness on the memory key only serializes competing writes to the same key. | Start with 999 entries, complete two concurrent distinct-key writes, and count at most 1,000. Show an unrelated fleet can write during the held lock. |
 | Q5 · P1 | Keep the runner foreign key's deletion semantics. The daemon already holds the reserved attempt and dispatch when the provider returns. Use that durable identity solely for late accounting after retirement. | Retire the runner during a pending call. Record known usage exactly once, keep private output unavailable, and verify that repeating settlement cannot charge twice. |
-| Q6 · P1 | Decide expiry on the database clock after acquiring the gate row. An expired standing card must clear its active reference, leave the grant pending and permit a replacement. Wire bounded batches into existing supervision. | Cover the dashboard and signed webhook, including a lock wait across expiry. A timeout cannot resume setup or create a continuation. Verify unattended expiry and card replacement. |
+| Q6 · Withdrawn | Indy selected "Keep late approvals valid" after the existing regression test exposed the product requirement. | Retain the late-approval regression. The automatic-expiry proposal was removed from this repair. |
 | Q7 · P1 | Release the resolution connection before continuation, retry lookup and bus work. Both the winner and `stood` can acquire again. Keep the durable decision and action-keyed retry semantics. | Use a one-connection pool for a winner and retry, then concurrent resolvers. Inject a failed continuation after decision commit and verify one eventual admission. |
 
 The runner mint currently resolves the connector from the stored handle.
@@ -191,6 +193,316 @@ For Q7, preserve the existing split between recording a decision and retrying an
 Scope the borrowed connection to the decision and read counters separately, after continuation work.
 
 Check both retry lookup and admission budget sampling for nested pool access. [Resolution](../../../rustd/crates/daemon/afd_approval/src/inbox/resolve/mod.rs) · [Retry](../../../rustd/crates/daemon/afd_approval/src/inbox/resolve/stood.rs)
+
+#### SQL repair progress
+
+Indy selected "Keep late approvals valid" on Nov 18, 2026.
+The existing late-approval regression explicitly protects that behavior and explains why no automatic expiry worker runs.
+
+Both review passes missed that requirement. [Late approval regression](../../../rustd/crates/daemon/afd_approval/tests/integration_inbox_continuation.rs)
+
+Q1–Q5 and Q7 have code and regression tests under verification.
+The reset focused lane passed 117 checks across 18 groups on Nov 18, 2026.
+It included 77 live-datastore checks and 40 loader, buffer and transport checks.
+
+The passing source fingerprint was `4a9f2da8b948aa11eb7560cb97a519b61e51fc2fd00d64274a853983c758275f`, based on `16efc0112` plus the recorded working changes.
+The preceding run found one invalid fixture alias; replacing its unsupported hyphen preserved the alias-refusal assertion.
+
+The workspace built 197 test executables with all features before that run.
+Repository lint and version checks also passed before subsequent configuration repairs.
+Full integration, mutation proof, final coverage, acceptance and the post-repair performance comparison remain due.
+
+The later reset run passed 140 checks across 21 groups, with no failures.
+Eight live cases remained ignored within the CLI unit selection; the two configuration process cases ran in their separate live group.
+The approved workflow guard, image profiles and startup-order repairs were included.
+
+#### SQL repair plan comparison
+
+The [repair plans](../../../bench/baselines/sql-repairs.rig.json) use a fresh isolated PostgreSQL 19rc2 database with the current schema.
+It contains 100,000 leases, 10,000 authoring attempts and 100,900 memory entries.
+Each statement received nine warm measured observations after one warm-up.
+
+| Statement | Before median | Repaired median | Interpretation |
+| --- | ---: | ---: | --- |
+| Credential authority lookup | 0.413 ms | 0.461 ms | Issued/current declarations and cancellation add 0.048 ms in this fixture |
+| Authoring accounting lock | 0.126 ms | 0.272 ms | Reserved attempt and dispatch proof add 0.146 ms |
+| Fleet memory serialization lock | Absent | 0.143 ms | New per-fleet lock, avoiding cross-fleet serialization |
+| Current memory grants lock | Absent | 0.144 ms | Keeps publication authority through the write |
+| Memory upsert | Unchanged SQL | 0.777 ms | Runs inside the authority transaction |
+| Memory cap eviction | Unchanged SQL | 1.298 ms | Uses a fleet populated with 1,000 entries |
+
+These are warm, single-session SQL costs, excluding commit, network and concurrent waits.
+The baseline and repaired variants ran in fixed order.
+Their additional authority work is a correctness cost, not a recovery throughput improvement.
+
+The role-switch statement has no query plan.
+The live memory regressions exercise its transaction and role behavior.
+Complete changed-statement coverage, contention measurements and the final recovery comparison remain due.
+
+The credential lookup now reads issued and current credential declarations and the durable cancellation marker.
+Memory capture holds the fleet and lease authority through the write and final deadline check.
+Approval continuation releases its earlier connection, and late usage settlement uses its reserved attempt and dispatch identity.
+
+#### SQL repair file inventory
+
+| Production files | Changed symbols and behavior |
+| --- | --- |
+| `afd_fleet/src/lease/scope.rs`, `lease/sql/lease/select_lease_scope_for_mint.sql` | `Leases::mint_scope` reads assigned and live declarations plus cancellation. `MintScope::runner_credentials` carries their permitted intersection. `config_of` parses the existing definition type. |
+| `afd_fleet/src/lease/mint/mod.rs` | `LeaseService::mint_for` checks runner credential declarations before vault and broker access. Native task purposes keep their separate authority checks. |
+| `afd_fleet/src/task/waits/claim.rs` | The existing native read permit initializes the expanded `MintScope`. |
+| `afd_fleet/src/lease/memory.rs`, `lease/fence/lock_memory_fleet.sql` | `capture_for` calls `capture_locked`. It holds the fleet row and reuses the existing `WriteFence` precondition on the write transaction. |
+| `afd_memory/src/access.rs`, `sql/lock_capture.sql` | `Directory::lock_capture_on` reads current grants under the fleet row lock. |
+| `afd_memory/src/memories.rs` | `Memories::capture_on` supports the caller's transaction. Ordinary `capture` owns its transaction. `Captured::record` reports counts after commit. |
+| `afd_memory/src/postgres/mod.rs`, `postgres/write.rs`, `sql/restore_api_role.sql` | `PgStore::upsert_on` keeps role changes, writes, sweep and eviction on that connection. Standalone `upsert` also locks the fleet. |
+| `afd_authoring/src/model/receipt/finish.rs`, `model/sql/lock_attempt.sql` | `Completion::authorize` proves the daemon's reserved attempt, lease and dispatch for late accounting after runner retirement. |
+| `afd_approval/src/inbox/resolve/mod.rs` | `Inbox::resolve` releases the pooled connection before `won` or `stood`. Counters load after continuation work. |
+
+These repairs reuse `Precondition`, `WriteFence`, `FleetConfig` and the current transaction types.
+They add three query files and no schema columns or indexes.
+
+#### Claude configuration review disposition
+
+Indy supplied Claude's static review of pushed commit `16efc01` on Nov 18, 2026.
+Claude could not inspect the local loader edits or the operational-parameter proposal.
+It ran no builds, tests or benchmarks.
+
+| Finding | Decision and current work |
+| --- | --- |
+| C1 · Draft rejected by pushed loader | The newer names were already implemented locally. Test the final deployment files against their matching loader, then push them together. |
+| C2 · Buffer units and ownership | Accept the exact-byte correction. Use `runner.stream.control.max_buffered_bytes = 16_777_216` and `runner.stream.data.max_buffered_bytes = 50_331_648`. These are daemon-replica budgets, split by direction. The decimal-MB draft is superseded. |
+| C3 · Image/config mismatch and migration order | Package both non-secret deployment profiles in the immutable image. Select the matching profile in Fly. Load and validate the file before entering migration runtime work. The focused regression run passed; final repository verification remains due. |
+| C4 · Duplicate public Fly inputs | Indy approved changing `wf-daemon-log-level` and its test to support TOML ownership. The prepared rule passed four cases. The guard and workflow edits remove staging of log level, audience and collector endpoint. Existing live secrets have not been removed. Add source diagnostics without values. |
+| C5 · Recovery pressure on the database pool | Benchmark requested concurrency 2, 4 and 8 with production-shaped pools before selecting final admission headroom. A claim limit alone cannot reserve connections against every other consumer. |
+| C6 · Startup bridge and duplicated validation | Reuse component-owned bounds and defaults. Correct misleading diagnostics and reject invalid configured levels and pool floors. Keep resolved runtime values typed. Review the legacy `EnvSource` adapter separately from runtime behavior. |
+| C7 · Recovery enabled without a file | Change the daemon default to false. Recovery fixtures explicitly opt in, and default/opt-in checks cover both settings. The focused regression run passed; final repository verification remains due. |
+| C8 · Probe also caps subscription retries | Retain the current behavior and document both uses. The misleading fixed five-second comment is removed. |
+| C9 · UDP ceiling should stay fixed | Retain the validated daemon send ceiling Indy requested. A peer's advertised receive ceiling still applies. It is a send limit, not a promise to change a runner's advertised limit. |
+| C10 · Synchronized maintenance | Add bounded startup staggering while preserving each maintenance cadence and its maximum detection delay. Measure startup contention across replicas. |
+| C11 · Tokio and shutdown comments | Correct the claim that no environment setting can change Tokio worker threads. Trace the shutdown margin against confirmed lease expiry before changing its policy. |
+
+The image must carry configuration compatible with its own binary.
+This avoids pairing an older image with a newer checkout's TOML during rollback.
+Development schema changes remain inline, as Indy requested.
+
+#### Operational parameters for Claude review
+
+Indy requested the remaining cleaner, renewal, dead-host and telemetry timers in the application configuration on Nov 18, 2026.
+He also requested each parameter's call site before naming it.
+The additional timing fields below are a review proposal, with wiring still due.
+
+The deployment files now preserve the original exact byte budgets.
+Control uses 16,777,216 bytes; work, reports and activity share 50,331,648 bytes.
+The proposed timer defaults retain the currently traced values.
+
+The five-second ready-work timer belongs to the daemon scheduler.
+It starts at scheduler boot, ticks independently of notifications and queries Postgres for waiting work.
+
+A positive result requests recovery offers through connected sessions. [Probe](../../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs)
+
+The recent-wake queue contains fleet IDs and coalesces duplicate notifications.
+Its capacity is measured in fleets.
+
+The proposed name is `wake_queue_capacity_fleets`. [Queue](../../../rustd/crates/daemon/afd_bus/src/wake/queue.rs)
+
+| Proposed parameter | Default | Current owner and effect | Current TOML support |
+| --- | ---: | --- | --- |
+| `runner.lease.ttl_seconds` | 35 | `LeaseClock::ttl` sets grant and renewal deadlines | Wired |
+| `runner.lease.max_runtime_seconds` | 43,200 | `MAX_RUNTIME` clamps each lease's total duration | Proposed |
+| `runner.scheduling.missed_wake_probe_seconds` | 5 | `recovery::probe_ticks` queries waiting work independently of notification traffic | Wired under the traced scheduling name; focused checks passed |
+| `runner.scheduling.max_concurrent_recovery_claims` | 8 | `recovery::drain` bounds its concurrent session claims | Wired under the traced scheduling name; focused checks passed |
+| `runner.health.heartbeat_interval_seconds` | 10 | The daemon's heartbeat reply advertises the next heartbeat interval | Proposed |
+| `runner.health.offline_after_seconds` | 105 at default lease TTL | `LeaseClock::offline_after` currently derives three lease lifetimes | Proposed; retain the derived fallback when omitted |
+| `runner.health.healthy_before_uncordon_seconds` | 30 | `heartbeat::cordon` requires continuous healthy native observations | Proposed |
+| `runner.renewal.tick_seconds` | 5 | The runner's host-wide renewal batch loop checks live work | Proposed; requires runner-side delivery and validation |
+| `runner.renewal.authoring_interval_seconds` | 10 | The runner's private authoring loop renews a running attempt | Proposed; requires runner-side delivery and validation |
+| `runner.sandboxes.idle_hold_seconds` | 600 | `SANDBOX_HOLD_IDLE` limits a warm frozen sandbox's idle hold | Proposed |
+| `maintenance.runner_liveness.interval_seconds` | 10 | `Liveness::interval` schedules cordon and drain checks | Proposed |
+| `maintenance.runner_liveness.batch_size` | 100 | `Liveness` bounds each due-runner fetch | Proposed |
+| `maintenance.expired_work.interval_seconds` | 2 | `sweepers::expiry` bills expired fleet leases and expires authoring attempts | Proposed |
+| `maintenance.fleet_census.interval_seconds` | 30 | `Census::interval` samples fleet counters | Proposed |
+| `maintenance.authoring_cleanup.interval_seconds` | 10 | `sweepers::authoring` clears private results and replay receipts | Proposed |
+| `maintenance.billing.interval_seconds` | 5 | `sweepers::billing` settles saved usage lines | Proposed |
+| `maintenance.billing.retry_oldest_after_seconds` | 60 | Billing currently restarts its oldest-line walk every 12 ticks | Proposed |
+| `maintenance.billing.max_drain_passes` | 10 | Billing bounds consecutive passes before yielding | Proposed |
+| `maintenance.durable_tasks.interval_seconds` | 10 | `sweepers::tasks` checks due effects and waits | Proposed |
+| `maintenance.durable_tasks.pass_timeout_seconds` | 30 | Bounds one effects/waits maintenance pass | Proposed |
+| `maintenance.checkpoint_storage.interval_seconds` | 300 | `sweepers::checkpoints` performs private storage cleanup | Proposed |
+| `maintenance.checkpoint_storage.pass_timeout_seconds` | 240 | Bounds one checkpoint cleanup pass | Proposed |
+| `maintenance.runner_history.idle_interval_seconds` | 3,600 | `Retention::interval` waits when the history backlog is clear | Proposed |
+| `maintenance.runner_history.backlog_interval_seconds` | 60 | Retention shortens its interval while a backlog remains | Proposed |
+| `maintenance.runner_history.keep_days` | 30 | Retention keeps settled runner history for this window | Proposed |
+| `maintenance.runner_history.batch_size` | 1,000 | Bounds rows affected per retention statement | Proposed |
+| `maintenance.runner_history.max_batches` | 8 | Bounds batches per table in one cycle | Proposed |
+| `maintenance.outbound_delivery.scan_interval_seconds` | 30 | The outbound worker scans when no notification arrives | Proposed |
+| `telemetry.otlp.metrics_export_interval_seconds` | 60 | `meter_provider` configures periodic metric collection | Proposed |
+| `telemetry.otlp.trace_export_interval_seconds` | 5 | `tracer` configures the span batch processor | Proposed |
+| `telemetry.otlp.log_export_interval_seconds` | 1 | The installed 0.33.1 SDK's batch-log default; existing SDK environment overrides can change it | Proposed; replace the implicit SDK selection with validated inputs |
+| `telemetry.otlp.export_timeout_seconds` | 10 | `OtlpConfig::timeout` bounds one export request | Existing value wired as `telemetry.otlp_timeout_ms`; rename proposed |
+| `telemetry.otlp.trace_queue_capacity` | 2,048 | The trace processor bounds queued spans | Proposed |
+| `telemetry.otlp.trace_batch_size` | 512 | Bounds spans in one export batch | Proposed |
+
+The runner's live lease capacity comes from its saved `worker_count` assignment.
+An assignment of 16 permits that host to occupy 16 work slots, and the supported worker ceiling is 64.
+
+This value belongs to each runner's database row. [Capacity](../../../rustd/crates/daemon/afd_runner/src/capacity/mod.rs)
+
+A separate compiled limit allows 16 unfinished durable tasks per fleet.
+Its current readers are task admission, decision preparation and input selection.
+
+A proposed `fleet.tasks.max_unfinished_per_fleet = 16` must keep those readers consistent and respect wire bounds. [Task bound](../../../rustd/crates/protocol/af_wire/src/task/mod.rs)
+
+The 15-second renewal window appears in safety assertions and the minimum lease TTL calculation.
+It currently schedules no independent timer.
+
+The native activity-request lane also has 16 operation permits.
+Its purpose is request concurrency on one connection. [Operation permits](../../../rustd/crates/daemon/afd_gateway/src/session/requests.rs)
+
+```toml
+# Review proposal. Additional timer fields await implementation.
+[runner.lease]
+ttl_seconds = 35
+max_runtime_seconds = 43200
+
+[runner.scheduling]
+missed_wake_probe_seconds = 5
+max_concurrent_recovery_claims = 8
+
+[runner.recovery]
+resume_from_checkpoint = false
+
+[runner.health]
+heartbeat_interval_seconds = 10
+offline_after_seconds = 105
+healthy_before_uncordon_seconds = 30
+
+[runner.renewal]
+tick_seconds = 5
+authoring_interval_seconds = 10
+
+[runner.sandboxes]
+idle_hold_seconds = 600
+
+[nats]
+wake_queue_capacity_fleets = 64
+
+[fleet.tasks]
+max_unfinished_per_fleet = 16
+
+[maintenance.runner_liveness]
+interval_seconds = 10
+batch_size = 100
+
+[maintenance.expired_work]
+interval_seconds = 2
+
+[maintenance.fleet_census]
+interval_seconds = 30
+
+[maintenance.authoring_cleanup]
+interval_seconds = 10
+
+[maintenance.billing]
+interval_seconds = 5
+retry_oldest_after_seconds = 60
+max_drain_passes = 10
+
+[maintenance.durable_tasks]
+interval_seconds = 10
+pass_timeout_seconds = 30
+
+[maintenance.checkpoint_storage]
+interval_seconds = 300
+pass_timeout_seconds = 240
+
+[maintenance.runner_history]
+idle_interval_seconds = 3600
+backlog_interval_seconds = 60
+keep_days = 30
+batch_size = 1000
+max_batches = 8
+
+[maintenance.outbound_delivery]
+scan_interval_seconds = 30
+
+[telemetry.otlp]
+metrics_export_interval_seconds = 60
+trace_export_interval_seconds = 5
+log_export_interval_seconds = 1
+export_timeout_seconds = 10
+trace_queue_capacity = 2048
+trace_batch_size = 512
+```
+
+Validate the renewal tick, answer timeout, reconnect budget and shared renewal safety budget together against lease TTL.
+Heartbeat, offline and uncordon settings must reach every server-side liveness reader consistently.
+Runner-owned settings require a delivery mechanism before a daemon-file field can control them.
+
+Validate cleanup batch sizes and deadlines before taking locks.
+Retention must exceed maximum runtime.
+A telemetry batch must fit its queue, and the exporter must receive the chosen cadence explicitly.
+
+Source references include [lease timing](../../../rustd/crates/foundation/af_core/src/timing/mod.rs), [sweepers](../../../rustd/crates/daemon/main/src/sweepers/mod.rs), [retention](../../../rustd/crates/daemon/afd_runner/src/sweep/retention/mod.rs) and [exporters](../../../rustd/crates/protocol/af_otlp/src/pipelines/providers.rs).
+
+#### Task limits, retries and chat timing
+
+Indy added the task constants, retry policies and user-turn timing to this configuration audit on Nov 18, 2026.
+Chosen settings must reach the deployment TOML and their consumers together.
+The additions below remain pending implementation.
+
+| Proposed configuration | Traced value | Runtime owner and required handling |
+| --- | ---: | --- |
+| `fleet.tasks.max_unfinished_per_fleet` | 16 | Admission, decision candidates and input candidates share the ceiling. A per-runner worker count is separate. |
+| `fleet.tasks.max_inputs_per_safe_boundary` | 4 | `Tasks::inputs` bounds each accepted-input read. Preserve the saved cursor across restore. |
+| `fleet.tasks.max_actions_per_message` | 4 | `TaskBindingsInput.items` has an inline Garde limit; assessment ordinals also assume four actions. Keep the whole interpretation atomic. |
+| `fleet.tasks.max_objective_bytes` | Declared 16,384 | The named constant has no direct reader. Trace the original admitted message and accepted source span before claiming this value is enforced. |
+| `fleet.tasks.max_title_bytes` | 160 | `TaskProposedItem.title` repeats the value in its Garde declaration. Share the effective policy with its validator. |
+| `fleet.tasks.max_completion_questions` | 6 | Accepted setup uses `af_fleet_runtime::config::decision::MAX_COMPLETION_STATEMENTS`. The task constant is a duplicate declaration. |
+| `fleet.tasks.max_question_text_bytes` | 512 | Accepted question text uses the runtime configuration's 512-byte guard. This differs from the task module's separate 1,024-byte constant. |
+| `fleet.tasks.max_authored_question_bytes` | 1,024 | Bounds the entire authored question and criteria JSON, not just its text. Preserve both checks. |
+| `fleet.tasks.defaults.model_budget_nanodollars` | 5,000,000,000 | The initial task allowance is $5.00. Smaller fleet and available-credit limits still win. |
+| `fleet.tasks.defaults.wall_seconds` | 604,800 | Seven days, including paused and waiting time. Store the accepted lifetime on the task. |
+| `fleet.tasks.defaults.running_seconds` | 7,200 | Two hours accumulated across attempts. Recovery must not reset it. |
+| `fleet.tasks.defaults.max_leases` | 12 | Maximum distinct task leases, including replacements. |
+| `fleet.tasks.defaults.max_publication_attempts` | 8 | Physical repair-publication allowance retained across leases. |
+| `fleet.tasks.defaults.max_decision_calls` | 128 | Cumulative physical decision-call allowance, including eligible retries. |
+| `fleet.tasks.defaults.max_fallback_reads` | 24 | Dependency fallback-read allowance; signed events have separate evidence. |
+| `authoring.turn.max_model_calls` | 8 | The daemon issues this allowance and the runner independently clamps to eight. Both readers must use the same accepted policy. |
+| `authoring.turn.max_wall_seconds` | 300 | Bounds one private setup attempt, including renewals. It is not a deadline for a person to reply. |
+| `authoring.turn.max_proposal_corrections` | 1 | Corrected proposal attempts after a refusal; ordinary conversational refusals have separate handling. |
+| `inference.connect_timeout_seconds` | 10 | Shared physical provider connection deadline. |
+| `inference.stream_idle_timeout_seconds` | 300 | Maximum silent provider interval, subject to the caller's earlier absolute deadline and cancellation. |
+| `retries.provider.max_attempts` | 3 | Includes the original send. Retry only eligible failures before streaming starts. |
+| `retries.provider.initial_backoff_ms` | 1,000 | Jittered exponential backoff when the provider supplies no delay. |
+| `retries.provider.max_retry_after_seconds` | 60 | A longer provider delay ends the attempt instead of sleeping past the policy. |
+| `retries.runner_api.max_attempts` | 5 effective | Existing `RETRY_ATTEMPTS = 4` is passed to `backon::with_max_times`, yielding four retries after the original send. Preserve behavior while correcting the name. |
+| `retries.runner_api.initial_backoff_ms` | 250 | Shared runner-to-daemon retry curve. |
+| `retries.runner_api.max_backoff_ms` | 30,000 | Delay ceiling; reconnect and owed-report paths can retry until cancellation or their enclosing deadline. |
+| `retries.outbound.max_attempts` | 3 | Original vendor delivery plus two eligible retries. |
+| `retries.outbound.initial_backoff_ms` | 200 | Jittered delivery backoff. |
+| `retries.outbound.max_backoff_ms` | 800 | Maximum individual delivery delay. |
+| `database.migration.lock_max_attempts` | 30 | Bounded advisory-lock acquisition polls. Query failures still return immediately. |
+| `database.migration.lock_retry_interval_ms` | 1,000 | Delay between contended lock polls. |
+
+`max_attempts` always includes the first send.
+The pinned `backon` implementation sends before requesting its first backoff delay.
+Reconnect loops and paid decision retries must retain their distinct cancellation and accounting rules.
+
+Task defaults already become saved limits when a new objective is accepted.
+New defaults must not overwrite existing task limits, restart cumulative allowances or invalidate committed replay receipts.
+Runner-owned policies require delivery and validation, not merely a field in the daemon file.
+
+The agent loop has no independent fixed turn-count limit.
+Context, run deadlines, budgets, cancellation and completion bound its work.
+No new human chat idle-expiry policy is implied by exposing these existing controls.
+
+Late approval remains valid, following Indy's decision.
+The one-hour approval window is distinct from task lifetime, active work and a person's reply time.
+
+Sources: [task declarations](../../../rustd/crates/protocol/af_wire/src/task/mod.rs), [task allowances](../../../rustd/crates/protocol/af_wire/src/task/limits.rs), [binding guards](../../../rustd/crates/protocol/af_wire/src/task/binding.rs), [accepted questions](../../../rustd/crates/protocol/af_fleet_runtime/src/config/decision/mod.rs).
+
+Retry sources: [provider](../../../rustd/crates/harness/af_providers/src/retry/mod.rs), [runner](../../../rustd/crates/runner/afr_supervisor/src/client/mod.rs), [delivery](../../../rustd/crates/daemon/afd_outbound/src/retry.rs), [migration lock](../../../rustd/crates/daemon/afd_db/src/migrate/lock.rs).
+
+Timing sources: [provider stream](../../../rustd/crates/protocol/af_inference/src/stream.rs), [private setup budget](../../../rustd/crates/daemon/afd_authoring/src/model/budget.rs), [proposal correction](../../../rustd/crates/runner/afr_supervisor/src/authoring/turn.rs).
 
 #### Performance and schema decisions
 
@@ -589,8 +901,10 @@ ttl_seconds = 35
 
 [runner.recovery]
 resume_from_checkpoint = false
-offer_fallback_seconds = 5
-max_concurrent_claims = 8
+
+[runner.scheduling]
+missed_wake_probe_seconds = 5
+max_concurrent_recovery_claims = 8
 ```
 
 ### Inputs to move into the application file
@@ -599,8 +913,8 @@ max_concurrent_claims = 8
 | --- | --- | --- |
 | `server` | `PORT`, `API_URL`, `APP_URL`, `SSE_MAX_STREAMS`, and fixed API admission of 256 per replica | Keep HTTP port 3000 on Fly to match the readiness and tunnel targets. Let deployments set API and SSE budgets separately. [Server](../../../rustd/crates/daemon/main/src/serve/mod.rs) · [Current knobs](../../../rustd/crates/daemon/main/src/preflight/knobs.rs) |
 | `database.api` | `DATABASE_POOL_SIZE[_API]`, `DATABASE_MIN_POOL_SIZE[_API]`, `DATABASE_ACQUIRE_TIMEOUT_MS[_API]` | Retain the pool defaults and the dev override of 8 and prod override of 5 per replica. Keep database URLs and URL-embedded TLS or authentication settings in the secret source. [Pool resolution](../../../rustd/crates/daemon/afd_db/src/config/mod.rs) · [Dev Fly config](../../../deploy/fly/agentsfleetd-dev/fly.toml) · [Prod Fly config](../../../deploy/fly/agentsfleetd-prod/fly.toml) |
-| `runner.listener`, `runner.stream` | `AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR`, `AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE`, `AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE`, `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB`, `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` | Put the private bind address, file paths and bounded memory settings in TOML. The certificate and key bytes come from Fly file secrets. Reuse `MemorySettings` and its 16/48 MiB defaults. [Listener](../../../rustd/crates/daemon/main/src/preflight/runner_listener/mod.rs) · [Memory limits](../../../rustd/crates/protocol/af_stream/src/framing/memory.rs) |
-| `bus` | `AGENTSFLEET_DEV_NAMESPACE`, `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY` | The namespace belongs to local or dev deployments. The wake queue currently defaults to 64. Resolve credential-bearing `NATS_URL` from the secret source. [NATS configuration](../../../rustd/crates/daemon/afd_bus/src/nats/config.rs) · [Wake queue](../../../rustd/crates/daemon/afd_bus/src/wake/config.rs) |
+| `runner.listener`, `runner.stream.control`, `runner.stream.data` | `AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR`, `AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE`, `AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE`, `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB`, `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` | Put the private bind address, file paths and bounded memory settings in TOML. The certificate and key bytes come from Fly file secrets. The Fly file preserves exact budgets of 16,777,216 control bytes and 50,331,648 data bytes across one daemon replica. The UDP payload ceiling defaults to 1,232 bytes. [Listener](../../../rustd/crates/daemon/main/src/preflight/runner_listener/mod.rs) · [Memory limits](../../../rustd/crates/protocol/af_stream/src/framing/memory.rs) |
+| `nats` | `AGENTSFLEET_DEV_NAMESPACE`, `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY` | The namespace belongs to local or dev deployments. The wake queue currently defaults to 64. Resolve credential-bearing `NATS_URL` from the secret source. [NATS configuration](../../../rustd/crates/daemon/afd_bus/src/nats/config.rs) · [Wake queue](../../../rustd/crates/daemon/afd_bus/src/wake/config.rs) |
 | `identity`, `connectors` | `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_JWKS_URL`, `CLERK_API_BASE`, `PLATFORM_ADMIN_WORKSPACE_ID`, `SLACK_API_URL` | Use TOML for public endpoints and the workspace ID. Resolve Clerk credentials and an authenticated `IDENTITY_HTTP_PROXY_URL` through the existing environment. [Identity and endpoints](../../../rustd/crates/daemon/main/src/preflight/read.rs) |
 | `telemetry` | `AGENTSFLEET_LOG_LEVEL`, `POSTHOG_HOST`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_TIMEOUT` | Use TOML for the level, credential-free destinations, protocol and timeout. Keep project keys, authorization headers, and the collector service's own credentials in their existing sources. [Log bootstrap](../../../rustd/crates/daemon/main/src/main.rs) · [Exporter settings](../../../rustd/crates/protocol/af_otlp/src/config/mod.rs) |
 | `checkpoint.storage` | `R2_CHECKPOINT_STORAGE` JSON with endpoint, private bucket and `credential_name` | Accept the same fields as a typed TOML table. Look up the credential by name in the platform-admin vault. A file-backed deployment needs both the location and that vault row. [Boot reader](../../../rustd/crates/daemon/main/src/preflight/checkpoint.rs) · [Storage settings](../../../rustd/crates/daemon/afd_fleet/src/task/storage/mod.rs) |

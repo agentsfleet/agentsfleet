@@ -35,7 +35,7 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
             }
             Err(source) => timed_out(source),
         }
-        // One outage transition requests one pass. The independent five-second probe covers the outage.
+        // One outage transition requests one pass. The independent probe covers the outage.
         if !lost {
             wake.recheck();
             lost = true;
@@ -45,6 +45,7 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
             () = stop.cancelled() => return Ok(()),
             () = tokio::time::sleep(retry) => {}
         }
+        // Use the configured probe cadence as the subscription-repair backoff ceiling too.
         retry = retry
             .saturating_mul(2)
             .min(gateway.inner.dependencies.recovery.offer_fallback);

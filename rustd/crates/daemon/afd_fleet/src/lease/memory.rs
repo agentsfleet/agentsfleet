@@ -20,15 +20,12 @@
 //! memory is `afd_memory`'s: the grants, the store and the window are decided
 //! there.
 //!
-//! # The residual race, stated
+//! # Capture authority spans its write
 //!
-//! The fence is read, then memory is read or written, as two statements on
-//! two connections; report and renew instead fence inside the write. A reclaim
-//! that commits between the two lets a superseded request through, and a
-//! capture there can overwrite an entry the new holder wrote under the same
-//! key. It is bounded to the requests in flight when the reclaim commits.
-//! `crate::lease::write_fence` is the shape that would close it: the fence
-//! proved inside the write's own transaction.
+//! Reads use a live fence observation. Capture holds the fleet grant row and
+//! the lease on the write transaction, then rechecks the lease after writing.
+//! A reclaim waits for that transaction, and a delayed superseded capture
+//! cannot replace the new holder's entry.
 
 use af_core::id::Uuid7;
 use af_observability::verb_span::{CaptureStage, HydrateStage, VerbClock};
@@ -36,8 +33,10 @@ use af_wire::memory::{
     MemoryDelta, MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest,
     MemoryRecallResponse,
 };
+use afd_db::Precondition as _;
 use afd_memory::Captured;
 use jiff::Timestamp;
+use sqlx::Acquire as _;
 
 use crate::error::{Result, lease_not_found, stale_fence};
 use crate::lease::fence::Fence;
@@ -135,8 +134,11 @@ impl LeaseService {
         clock.mark(CaptureStage::Fence);
         fenced?;
         clock.agent(fleet_id.as_str());
-        let written = self.memories.capture(fleet_id, memory, now).await;
+        let written = self.capture_locked(holder, memory, now).await;
         clock.mark(CaptureStage::MemoryWrite);
+        if written.is_err() {
+            af_observability::producers::memory::push_failed();
+        }
         let counted = written?;
 
         // The CONTENT is never logged — only the tallies and the scope.
@@ -168,6 +170,53 @@ impl LeaseService {
             );
         };
         Ok(counted)
+    }
+
+    async fn capture_locked(
+        &self,
+        holder: Holder<'_>,
+        memory: &[MemoryDelta<'_>],
+        now: Timestamp,
+    ) -> Result<Captured> {
+        let mut connection = self.leases.pool().acquire().await?;
+        let mut tx = connection
+            .begin()
+            .await
+            .map_err(crate::error::query("begin memory capture"))?;
+        sqlx::query(include_str!("fence/lock_memory_fleet.sql"))
+            .bind(holder.fleet_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(crate::error::query("hold memory fleet"))?
+            .ok_or_else(lease_not_found)?;
+        let fence = super::write_fence::WriteFence::new(
+            holder.runner_id.clone(),
+            holder.lease_id.clone(),
+            holder.fencing_token,
+        );
+        if !fence
+            .holds(&mut tx)
+            .await
+            .map_err(crate::error::query("hold memory lease"))?
+        {
+            return Err(stale_fence());
+        }
+        let captured = self
+            .memories
+            .capture_on(&mut tx, holder.fleet_id, memory, now)
+            .await?;
+        if !fence
+            .holds(&mut tx)
+            .await
+            .map_err(crate::error::query("recheck memory lease"))?
+        {
+            return Err(stale_fence());
+        }
+        tx.commit()
+            .await
+            .map_err(crate::error::query("commit fenced memory"))?;
+        captured.record();
+        Ok(captured)
     }
 
     /// The fleet's entries holding the request's query, and — for a fleet

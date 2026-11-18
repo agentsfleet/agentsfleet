@@ -173,3 +173,6 @@ mod verdict_matrix;
 
 #[path = "integration_lease_issue_capacity.rs"]
 mod integration_lease_issue_capacity;
+
+#[path = "integration_memory_capture_race.rs"]
+mod integration_memory_capture_race;

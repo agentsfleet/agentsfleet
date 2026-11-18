@@ -73,7 +73,7 @@ pub(crate) fn read(env: &(impl EnvSource + ?Sized)) -> Result<RuntimeSettings, R
         .map_err(|report| refused("AGENTSFLEET_LEASE_TTL_SECONDS", report.to_string()))?;
     Ok(RuntimeSettings {
         clock: LeaseClock::new(&lease),
-        resume_from_checkpoint: value(env, "AGENTSFLEET_RESUME_FROM_CHECKPOINT", true)?,
+        resume_from_checkpoint: value(env, "AGENTSFLEET_RESUME_FROM_CHECKPOINT", false)?,
         fallback: Duration::from_secs(readings.fallback_seconds),
         claims: NonZeroUsize::new(readings.claims).ok_or_else(|| {
             refused(

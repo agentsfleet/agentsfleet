@@ -13,7 +13,7 @@ pub(super) struct ConfigToml {
     #[garde(dive)]
     pub runner: Runner,
     #[garde(dive)]
-    pub bus: Bus,
+    pub nats: Nats,
     #[garde(dive)]
     pub identity: Identity,
     #[garde(dive)]
@@ -63,11 +63,13 @@ pub(super) struct Runner {
     #[garde(dive)]
     pub listener: Listener,
     #[garde(dive)]
-    pub stream: Memory,
+    pub stream: Stream,
     #[garde(dive)]
     pub lease: Lease,
     #[garde(dive)]
     pub recovery: Recovery,
+    #[garde(dive)]
+    pub scheduling: Scheduling,
 }
 
 #[derive(Default, Deserialize, Validate)]
@@ -79,15 +81,24 @@ pub(super) struct Listener {
     pub tls_cert_file: Option<String>,
     #[garde(skip)]
     pub tls_key_file: Option<String>,
+    #[garde(range(min = af_stream::DatagramLimit::MIN_BYTES, max = af_stream::DatagramLimit::MAX_BYTES))]
+    pub max_udp_payload_bytes: Option<usize>,
 }
 
 #[derive(Default, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
-pub(super) struct Memory {
-    #[garde(range(min = 12, max = 512))]
-    pub control_mib: Option<usize>,
-    #[garde(range(min = 12, max = 512))]
-    pub data_mib: Option<usize>,
+pub(super) struct Stream {
+    #[garde(dive)]
+    pub control: MessageBuffer,
+    #[garde(dive)]
+    pub data: MessageBuffer,
+}
+
+#[derive(Default, Deserialize, Validate)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct MessageBuffer {
+    #[garde(range(min = af_stream::MemoryLimits::MIN_BUFFER_BYTES, max = af_stream::MemoryLimits::MAX_BUFFER_BYTES))]
+    pub max_buffered_bytes: Option<usize>,
 }
 
 #[derive(Default, Deserialize, Validate)]
@@ -102,19 +113,24 @@ pub(super) struct Lease {
 pub(super) struct Recovery {
     #[garde(skip)]
     pub resume_from_checkpoint: Option<bool>,
-    #[garde(range(min = 1, max = 43_198))]
-    pub offer_fallback_seconds: Option<u32>,
-    #[garde(range(min = 1, max = 64))]
-    pub max_concurrent_claims: Option<usize>,
 }
 
 #[derive(Default, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
-pub(super) struct Bus {
+pub(super) struct Scheduling {
+    #[garde(range(min = 1, max = 43_198))]
+    pub missed_wake_probe_seconds: Option<u32>,
+    #[garde(range(min = 1, max = 64))]
+    pub max_concurrent_recovery_claims: Option<usize>,
+}
+
+#[derive(Default, Deserialize, Validate)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct Nats {
     #[garde(skip)]
     pub dev_namespace: Option<String>,
     #[garde(range(min = 1, max = 65_536))]
-    pub wake_queue_capacity: Option<usize>,
+    pub wake_queue_capacity_fleets: Option<usize>,
 }
 
 #[derive(Default, Deserialize, Validate)]
@@ -143,7 +159,7 @@ pub(super) struct Connectors {
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Telemetry {
     #[garde(skip)]
-    pub log_level: Option<String>,
+    pub log_level: Option<LogLevel>,
     #[garde(skip)]
     pub posthog_host: Option<String>,
     #[garde(skip)]
@@ -152,6 +168,30 @@ pub(super) struct Telemetry {
     pub otlp_protocol: Option<String>,
     #[garde(range(min = 1))]
     pub otlp_timeout_ms: Option<u32>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(super) enum LogLevel {
+    Off,
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl std::fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Off => "off",
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Trace => "trace",
+        })
+    }
 }
 
 #[derive(Default, Deserialize, Validate)]

@@ -108,6 +108,7 @@ pub(super) async fn claim(tasks: &Tasks, candidate: &Candidate) -> Result<Option
             fleet_id: scope.fleet_id,
             event_id: owner.id.clone().into(),
             binding: Some(binding),
+            runner_credentials: Vec::new(),
         },
         installation: owner.target.installation_id,
         deadline: until.to_jiff().min(owner.expires_at),

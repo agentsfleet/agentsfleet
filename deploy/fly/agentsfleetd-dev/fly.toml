@@ -36,7 +36,7 @@ primary_region = "iad"
 # 6432: client connections to a pooler are cheap, and it is the bouncer's
 # `default_pool_size` that then counts against the 25.
 [env]
-  AGENTSFLEET_CONFIG_FILE = "/etc/agentsfleet/agentsfleetd.toml"
+  AGENTSFLEET_CONFIG_FILE = "/etc/agentsfleet/config/dev.toml"
 
 # shared-cpu-2x, the smallest size where dev latency means something. A shared
 # vCPU's baseline is 5 ms per 80 ms period (6.25%), pooled across a machine's
@@ -77,10 +77,4 @@ primary_region = "iad"
 [[files]]
   guest_path = "/etc/agentsfleet/runner-stream/server.key"
   secret_name = "RUNNER_STREAM_TLS_KEY_BASE64"
-  processes = ["app"]
-
-# Application settings are delivered with the selected image release.
-[[files]]
-  guest_path = "/etc/agentsfleet/agentsfleetd.toml"
-  local_path = "deploy/fly/agentsfleetd-dev/agentsfleetd.toml"
   processes = ["app"]

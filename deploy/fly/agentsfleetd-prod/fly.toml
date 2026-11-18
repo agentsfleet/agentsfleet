@@ -12,8 +12,8 @@ primary_region = "iad"
 # worker thread per core: four on this machine size. A request and an event
 # stream are each a task, so neither pins a thread while it waits on Postgres,
 # the bus or the client, and the runner lease is a single non-blocking poll
-# (docs/architecture/scaling.md). The core count sizes the runtime, and no
-# environment knob changes it. Watch saturation via the exported runtime families in Grafana; the
+# (docs/architecture/scaling.md). The core count sizes the runtime by default.
+# TOKIO_WORKER_THREADS can override it. Watch saturation via the exported runtime families in Grafana; the
 # next lever is more replicas (the binding constraint per scaling.md).
 #
 # Backpressure:
@@ -51,7 +51,7 @@ primary_region = "iad"
 # server can give does not serve more traffic — it answers 503 to the request
 # that needed connection eighteen.
 [env]
-  AGENTSFLEET_CONFIG_FILE = "/etc/agentsfleet/agentsfleetd.toml"
+  AGENTSFLEET_CONFIG_FILE = "/etc/agentsfleet/config/prod.toml"
 
 [[vm]]
   # Fly applies this size to every machine during a rolling deploy. The release
@@ -88,10 +88,4 @@ primary_region = "iad"
 [[files]]
   guest_path = "/etc/agentsfleet/runner-stream/server.key"
   secret_name = "RUNNER_STREAM_TLS_KEY_BASE64"
-  processes = ["app"]
-
-# Application settings are delivered with the selected image release.
-[[files]]
-  guest_path = "/etc/agentsfleet/agentsfleetd.toml"
-  local_path = "deploy/fly/agentsfleetd-prod/agentsfleetd.toml"
   processes = ["app"]

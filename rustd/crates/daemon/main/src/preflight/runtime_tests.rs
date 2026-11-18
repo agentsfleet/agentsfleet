@@ -15,7 +15,7 @@ fn deployment_defaults_keep_the_current_recovery_budget() -> TestResult {
     assert_eq!(settings.fallback, Duration::from_secs(5));
     assert_eq!(settings.claims.get(), 8);
     assert_eq!(settings.requests.get(), 256);
-    assert!(settings.resume_from_checkpoint);
+    assert!(!settings.resume_from_checkpoint);
     Ok(())
 }
 
@@ -39,14 +39,14 @@ fn configured_clock_and_budget_reach_the_typed_settings() -> TestResult {
         ("AGENTSFLEET_OFFER_FALLBACK_SECONDS", "2"),
         ("AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS", "4"),
         ("AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS", "128"),
-        ("AGENTSFLEET_RESUME_FROM_CHECKPOINT", "false"),
+        ("AGENTSFLEET_RESUME_FROM_CHECKPOINT", "true"),
     ]))?;
     assert_eq!(settings.clock.ttl(), Duration::from_secs(40));
     assert_eq!(settings.clock.offline_after(), Duration::from_secs(120));
     assert_eq!(settings.fallback, Duration::from_secs(2));
     assert_eq!(settings.claims.get(), 4);
     assert_eq!(settings.requests.get(), 128);
-    assert!(!settings.resume_from_checkpoint);
+    assert!(settings.resume_from_checkpoint);
     Ok(())
 }
 

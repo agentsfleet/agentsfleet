@@ -14,20 +14,30 @@ address = "[::]:4443"
 tls_cert_file = "/etc/agentsfleet/runner-stream/server-chain.pem"
 tls_key_file = "/etc/agentsfleet/runner-stream/server.key"
 
-[runner.stream]
-control_mib = 16
-data_mib = 48
+# UDP payload ceiling; the default fits a 1280-byte IPv6 path.
+max_udp_payload_bytes = 1232
+
+# Shared by all runner connections to this daemon; half receive, half send.
+# Control includes heartbeats, renewals, cancellation and small commands/replies.
+[runner.stream.control]
+max_buffered_bytes = 16_777_216
+
+# Work offers, reports and activity share the data budget.
+[runner.stream.data]
+max_buffered_bytes = 50_331_648
 
 [runner.lease]
 ttl_seconds = 35
 
 [runner.recovery]
 resume_from_checkpoint = false
-offer_fallback_seconds = 5
-max_concurrent_claims = 8
 
-[bus]
-wake_queue_capacity = 64
+[runner.scheduling]
+missed_wake_probe_seconds = 5
+max_concurrent_recovery_claims = 8
+
+[nats]
+wake_queue_capacity_fleets = 64
 
 [identity]
 audience = "https://api.agentsfleet.net"

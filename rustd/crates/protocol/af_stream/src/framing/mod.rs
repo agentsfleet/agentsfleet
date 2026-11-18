@@ -14,7 +14,10 @@ use crate::Result;
 
 pub use budget::Budget;
 pub use encoder::Encoder;
-pub use memory::{CONTROL_MEMORY_ENV, DATA_MEMORY_ENV, MemoryLimits, MemorySettings};
+pub use memory::{
+    CONTROL_BUFFER_BYTES_ENV, CONTROL_MEMORY_ENV, DATA_BUFFER_BYTES_ENV, DATA_MEMORY_ENV,
+    MemoryLimits, MemorySettings,
+};
 pub use reader::Reader;
 pub use writer::{encode, write};
 

@@ -341,3 +341,41 @@ Benchmark drivers, test files, documentation and generated output are accounted 
 | [`schema/20261117154626_runner_turn_recovery.sql`](../../schema/20261117154626_runner_turn_recovery.sql) | runner.turn_recovery indexes | Index the referenced head checkpoint and the maintenance cursor key. |
 | [`schema/20261117154627_runner_turn_checkpoints.sql`](../../schema/20261117154627_runner_turn_checkpoints.sql) | runner.turn_checkpoints index | Index the fleet FK used by deletion and retention. |
 | [`rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs`](../../rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs) | list query documentation | Include runner_uncordoned in the operator event filter contract. |
+
+### Native connection settings
+
+Each daemon shares its message-buffer budgets across its connected runners.
+The TOML values below use exact byte counts.
+Each budget gives half its bytes to incoming messages and half to outgoing messages.
+
+```toml
+[runner.listener]
+address = "[::]:4443"
+tls_cert_file = "/etc/agentsfleet/runner-stream/server-chain.pem"
+tls_key_file = "/etc/agentsfleet/runner-stream/server.key"
+max_udp_payload_bytes = 1232
+
+[runner.stream.control]
+max_buffered_bytes = 16_777_216
+
+[runner.stream.data]
+max_buffered_bytes = 50_331_648
+
+[nats]
+wake_queue_capacity_fleets = 64
+```
+
+When incoming work fills its buffer budget, later messages wait for room.
+Heartbeats and commands have their own budget.
+
+The NATS queue retains recent fleet wake-up hints used by the scheduler. [Message budgets](../../rustd/crates/protocol/af_stream/src/framing/budget.rs)
+
+The UDP ceiling controls the daemon's maximum packet payload on a native QUIC connection.
+Its default fits a 1,280-byte IPv6 path after IP and UDP headers.
+
+The peer's advertised receive limit also applies. [Datagram limit](../../rustd/crates/protocol/af_stream/src/mtu.rs)
+
+Tokio chooses daemon worker threads from the CPU capacity visible to the process.
+Fly's configured development machines have two virtual CPUs, and production machines have four.
+
+Runner work slots come from each runner's saved assignment. [Runtime](../../rustd/crates/daemon/main/src/main.rs)

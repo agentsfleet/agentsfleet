@@ -87,8 +87,10 @@ fn malformed_unknown_and_unsafe_settings_refuse_without_echoing_values() -> Test
         "[server]\nport = 'private-invalid-value'",
         "[server]\nunknown = 'private-invalid-value'",
         "[runner.lease]\nttl_seconds = 32",
-        "[runner.recovery]\nmax_concurrent_claims = 0",
-        "[runner.stream]\ndata_mib = 1",
+        "[runner.scheduling]\nmax_concurrent_recovery_claims = 0",
+        "[runner.stream.data]\nmax_buffered_bytes = 1",
+        "[runner.listener]\nmax_udp_payload_bytes = 1199",
+        "[telemetry]\nlog_level = 'private-invalid-value'",
         "[server",
     ] {
         let mut file = tempfile::NamedTempFile::new()?;
@@ -149,6 +151,20 @@ fn every_supported_file_section_reuses_its_existing_startup_input() -> TestResul
     Ok(())
 }
 
+#[test]
+fn every_documented_log_level_reaches_bootstrap_without_fallback() -> TestResult {
+    for level in ["off", "error", "warn", "info", "debug", "trace"] {
+        let mut file = tempfile::NamedTempFile::new()?;
+        writeln!(file, "[telemetry]\nlog_level = '{level}'")?;
+        let environment = MapEnv::default();
+        let source = ConfigBuilder::new(&environment)
+            .file(Some(file.path()))
+            .build()?;
+        assert_eq!(source.get("AGENTSFLEET_LOG_LEVEL").as_deref(), Some(level));
+    }
+    Ok(())
+}
+
 const COMPLETE_SETTINGS: &str = r#"
 [server]
 port = 3001
@@ -164,18 +180,21 @@ acquire_timeout_ms = 4000
 address = "[::]:4443"
 tls_cert_file = "/certs/server.pem"
 tls_key_file = "/certs/server.key"
-[runner.stream]
-control_mib = 16
-data_mib = 64
+[runner.stream.control]
+max_buffered_bytes = 16_777_216
+[runner.stream.data]
+max_buffered_bytes = 67_108_864
 [runner.lease]
 ttl_seconds = 40
 [runner.recovery]
 resume_from_checkpoint = false
-offer_fallback_seconds = 2
-max_concurrent_claims = 4
-[bus]
+
+[runner.scheduling]
+missed_wake_probe_seconds = 2
+max_concurrent_recovery_claims = 4
+[nats]
 dev_namespace = "dev-fixture"
-wake_queue_capacity = 128
+wake_queue_capacity_fleets = 128
 [identity]
 issuer = "https://identity.example.com"
 audience = "https://api.example.com"
@@ -195,3 +214,37 @@ endpoint = "{endpoint}"
 bucket = "fixture-checkpoints"
 credential_name = "checkpoint-fixture"
 "#;
+
+#[test]
+fn fly_files_keep_the_exact_message_buffer_bytes() -> TestResult {
+    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../deploy/fly");
+    for deployment in ["agentsfleetd-dev", "agentsfleetd-prod"] {
+        let path = base.join(deployment).join("agentsfleetd.toml");
+        let environment = MapEnv::from_pairs([]);
+        let source = ConfigBuilder::new(&environment).file(Some(&path)).build()?;
+        let limits = af_stream::MemoryLimits::from_env(&source)?;
+        let (incoming, outgoing) = af_stream::Budget::duplex(limits);
+        assert_eq!(
+            incoming.available(af_wire::protocol::StreamKind::Control),
+            8_388_608
+        );
+        assert_eq!(
+            outgoing.available(af_wire::protocol::StreamKind::Work),
+            25_165_824
+        );
+        assert_eq!(
+            source
+                .get("AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY")
+                .as_deref(),
+            Some("64")
+        );
+        assert_eq!(source.get("AGENTSFLEET_LOG_LEVEL").as_deref(), Some("info"));
+        assert_eq!(
+            source
+                .get(super::super::preflight::runner_listener::MAX_UDP_PAYLOAD_BYTES)
+                .as_deref(),
+            Some("1232")
+        );
+    }
+    Ok(())
+}

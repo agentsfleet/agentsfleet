@@ -68,3 +68,31 @@ fn one_identity_file_does_not_enable_the_listener() {
         );
     }
 }
+
+#[test]
+fn udp_payload_ceiling_is_validated_before_binding() {
+    for value in ["1199", "65508", "invalid"] {
+        let env = MapEnv::from_pairs([
+            (TLS_CERT_FILE, "/run/runner/chain.pem"),
+            (TLS_KEY_FILE, "/run/runner/leaf.pem"),
+            (super::MAX_UDP_PAYLOAD_BYTES, value),
+        ]);
+        let mut faults = Vec::new();
+        assert!(read(&env, &mut faults).is_none());
+        assert_eq!(
+            faults.iter().map(super::Fault::knob).collect::<Vec<_>>(),
+            [super::MAX_UDP_PAYLOAD_BYTES]
+        );
+    }
+    let env = MapEnv::from_pairs([
+        (TLS_CERT_FILE, "/run/runner/chain.pem"),
+        (TLS_KEY_FILE, "/run/runner/leaf.pem"),
+        (super::MAX_UDP_PAYLOAD_BYTES, "1200"),
+    ]);
+    let mut faults = Vec::new();
+    assert_eq!(
+        read(&env, &mut faults).map(|config| config.udp_payload_limit.bytes()),
+        Some(1200)
+    );
+    assert!(faults.is_empty(), "unexpected faults: {faults:?}");
+}

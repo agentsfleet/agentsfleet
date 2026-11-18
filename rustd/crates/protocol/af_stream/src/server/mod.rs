@@ -62,11 +62,10 @@ impl Listener {
         })
     }
 
-    /// Send HTTP/3 datagrams of at most `bytes`, to model a daemon with no ceiling of its own.
-    #[cfg(feature = "test-util")]
+    /// Configure the maximum UDP payload after deployment input validation.
     #[must_use]
-    pub const fn with_datagram_limit(mut self, bytes: usize) -> Self {
-        self.datagram = bytes;
+    pub const fn with_max_udp_payload(mut self, limit: crate::DatagramLimit) -> Self {
+        self.datagram = limit.bytes();
         self
     }
 

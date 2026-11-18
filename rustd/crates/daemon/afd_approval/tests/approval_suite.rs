@@ -65,3 +65,6 @@ mod integration_inbox_tail_runless;
 
 #[path = "error_surface.rs"]
 mod error_surface;
+
+#[path = "integration_inbox_connection.rs"]
+mod integration_inbox_connection;

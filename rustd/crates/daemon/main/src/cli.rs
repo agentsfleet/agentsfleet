@@ -115,10 +115,6 @@ where
     E: EnvSource + ?Sized + Sync,
     F: Future<Output = ()> + Send,
 {
-    if matches!(cli.command, Some(Command::Migrate)) {
-        let _installed = crate::logs::install(env);
-        return on_runtime(runtime, migrate(env));
-    }
     #[cfg(feature = "openapi")]
     if matches!(cli.command, Some(Command::Openapi)) {
         return openapi();

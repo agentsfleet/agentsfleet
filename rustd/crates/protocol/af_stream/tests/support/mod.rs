@@ -89,7 +89,9 @@ impl Fixture {
         let listener = self.bind().await?;
         #[cfg(feature = "test-util")]
         let listener = match datagram {
-            Some(bytes) => listener.with_datagram_limit(bytes),
+            Some(bytes) => {
+                listener.with_max_udp_payload(af_stream::DatagramLimit::try_from(bytes)?)
+            }
             None => listener,
         };
         #[cfg(not(feature = "test-util"))]

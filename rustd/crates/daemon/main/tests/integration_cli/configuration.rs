@@ -15,7 +15,7 @@ fn a_selected_file_drives_the_serving_daemon() {
         file,
         "[server]\nport = {port}\n[runner.lease]\nttl_seconds = 40\n\
          [runner.recovery]\nresume_from_checkpoint = false\n\
-         offer_fallback_seconds = 2\nmax_concurrent_claims = 4"
+         [runner.scheduling]\nmissed_wake_probe_seconds = 2\nmax_concurrent_recovery_claims = 4"
     )
     .expect("deployment settings");
     let path = file.path().to_str().expect("UTF-8 fixture path");
