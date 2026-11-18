@@ -96,7 +96,7 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 | `rustd/crates/runner/afr_sandbox/src/bubblewrap/mod.rs`, `afr_sandbox/src/harden/`, `afr_executor/src/server/launch/` | EDIT, only after Indy's mechanism review | §0: identity mapping, tenant launch placement or child-specific hardening, whichever the probe shows is needed |
 | `rustd/crates/daemon/afd_db/src/migration.rs` and its position assertions | EDIT | §1: register the slots (MIG) |
 | `rustd/crates/daemon/afd_state/src/sql/select_runner_token.sql`, `credentials/mod.rs`, `credentials/rows.rs`, `credentials/tests.rs` | EDIT | §1, §5: the previous digest authenticates inside its window |
-| `rustd/crates/foundation/af_core/src/timing.rs` | EDIT | §3, §5: `PLATFORM_FALLBACK_AFTER`, `RUNNER_TOKEN_OVERLAP`, with their assertions |
+| `rustd/crates/foundation/af_core/src/timing/mod.rs` | EDIT | §3, §5: `PLATFORM_FALLBACK_AFTER`, `RUNNER_TOKEN_OVERLAP`, with their assertions |
 | `rustd/crates/foundation/af_core/src/error_code/fleet.rs`, `error_code/mod.rs`, `problem/fleet.rs` | EDIT | §2: `UZ-RUN-024` const, `REGISTRY` row, problem entry |
 | `rustd/crates/daemon/afd_auth/src/scope.rs` and its tests | EDIT | §2: `Scope::RunnerOwn`; `TENANT_OWNER_GRANT` grows to 11 |
 | `rustd/crates/daemon/afd_runner/src/store.rs`, `rotate.rs`, `sql/runner/insert_runner_with_event.sql`, `sql/runner/rotate_runner_token.sql` | EDIT | §2, §5: owner and receipt at enrolment; overlap rotation |
