@@ -52,6 +52,8 @@ pub struct LeaseService {
     pub leases: Leases,
     /// Native task report evidence, sharing the request-path task owner.
     pub task_reports: Option<std::sync::Arc<dyn crate::task::TaskReportOwner>>,
+    /// Ordinary recovery uses the deployment key even when no file store is configured.
+    pub turn_checkpoints: crate::lease::turn_checkpoint::TurnCheckpoints,
     /// Approval gates and standing integration grants.
     pub gates: Gates,
     /// The payer, the issue-time floor and a fleet's spend: the reads a money

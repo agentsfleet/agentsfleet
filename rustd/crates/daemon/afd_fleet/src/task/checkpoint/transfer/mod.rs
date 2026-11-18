@@ -1,6 +1,10 @@
 //! Persist exact transfer authority, release SQL locks, then sign or verify in parallel.
 
+mod signing;
 mod verify;
+
+use signing::issue;
+pub(crate) use verify::{Receipt as Verification, remote_scope as verify_object};
 
 use super::{
     guard,
@@ -14,15 +18,13 @@ use crate::{
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::task::{
-    CheckpointAuthorizationInput, CheckpointAuthorizations, CheckpointObject,
-    CheckpointObjectsPage, CheckpointReadQuery, CheckpointTransfer, CheckpointTransferPurpose,
-    CheckpointUploadsInput,
+    CheckpointAuthorizationInput, CheckpointAuthorizations, CheckpointObjectsPage,
+    CheckpointReadQuery, CheckpointTransferPurpose, CheckpointUploadsInput,
 };
-use futures_util::{StreamExt as _, stream};
 use jiff_sqlx::ToSqlx as _;
 use serde::Serialize;
 use sqlx::{PgConnection, types::Json};
-use std::{collections::BTreeSet, time::Duration};
+use std::collections::BTreeSet;
 
 struct Batch {
     plan: Plan,
@@ -264,103 +266,6 @@ pub(super) async fn protect(connection: &mut PgConnection, ids: &[Uuid7], pin: &
         return Err(TaskRefusal::StaleState.into());
     }
     Ok(())
-}
-
-async fn issue(
-    tasks: &Tasks,
-    batch: Batch,
-    purpose: CheckpointTransferPurpose,
-    verify: bool,
-) -> Result<Vec<CheckpointObject>> {
-    let storage = guard::storage(tasks)?;
-    let session = storage.session().await?;
-    let workspace = batch.plan.workspace_id.clone();
-    let deadline = batch.pin.expires_at.min(batch.pin.operation_deadline);
-    let plan = &batch.plan;
-    let session = &session;
-    let workspace = &workspace;
-    let outcomes = stream::iter(batch.objects.into_iter().map(|object| async move {
-        let identity = object.identity_key_id.clone();
-        let id = object.id.clone();
-        if object.tombstoned
-            || purpose == CheckpointTransferPurpose::Upload && !object.verified && !object.own(plan)
-        {
-            return Err(TaskRefusal::CheckpointIncompatible.into());
-        }
-        let native_verified =
-            verify && purpose == CheckpointTransferPurpose::Upload && !object.verified;
-        let (mut wire, key) = object.open(storage, plan)?;
-        let receipt = if native_verified {
-            verify::remote(session, workspace, &identity, &id, plan, &wire, &key).await?
-        } else {
-            None
-        };
-        if receipt.is_some() {
-            wire.status = af_wire::task::CheckpointObjectStatus::Reused;
-        }
-        let lifetime =
-            clock::elapsed(clock::now(), deadline).min(Duration::from_secs(super::URL_SECONDS));
-        if lifetime.is_zero() {
-            return Err(TaskRefusal::StaleState.into());
-        }
-        let authorization = match purpose {
-            CheckpointTransferPurpose::Upload
-                if matches!(wire.status, af_wire::task::CheckpointObjectStatus::Reused) =>
-            {
-                None
-            }
-            CheckpointTransferPurpose::Upload => Some(
-                session
-                    .upload(
-                        workspace,
-                        &identity,
-                        &id,
-                        wire.ciphertext_sha256
-                            .as_deref()
-                            .ok_or(TaskRefusal::CheckpointIncompatible)?,
-                        wire.ciphertext_length
-                            .ok_or(TaskRefusal::CheckpointIncompatible)?,
-                        lifetime,
-                    )
-                    .await?,
-            ),
-            CheckpointTransferPurpose::Restore => Some(
-                session
-                    .download(workspace, &identity, &id, lifetime)
-                    .await?,
-            ),
-        };
-        if let Some(authorization) = authorization {
-            wire.transfer = Some(CheckpointTransfer {
-                url: authorization.url,
-                headers: authorization.headers,
-                expires_at: clock::now()
-                    .checked_add(lifetime)
-                    .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?
-                    .min(deadline),
-            });
-        }
-        wire.data_key = Some(base64::Engine::encode(
-            &base64::prelude::BASE64_STANDARD,
-            key.expose(),
-        ));
-        Ok((wire, receipt))
-    }))
-    .buffer_unordered(4)
-    .collect::<Vec<Result<(CheckpointObject, Option<verify::Receipt>)>>>()
-    .await;
-    let mut receipts = Vec::new();
-    let mut objects = Vec::with_capacity(outcomes.len());
-    for outcome in outcomes {
-        objects.push(outcome.map(|(object, receipt)| {
-            if let Some(receipt) = receipt {
-                receipts.push(receipt);
-            }
-            object
-        }));
-    }
-    verify::record(tasks, workspace, &receipts).await?;
-    objects.into_iter().collect()
 }
 
 fn unique(ids: &[Uuid7]) -> Result<()> {

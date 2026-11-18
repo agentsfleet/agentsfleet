@@ -19,6 +19,14 @@ workspace = true
 name = "agentsfleet-runner"
 path = "src/main.rs"
 
+[[bin]]
+name = "agentsfleet-recovery-fixture"
+path = "tests/recovery_process/main.rs"
+required-features = ["test-util"]
+
+[features]
+test-util = ["af_providers/test-util"]
+
 [dependencies]
 # The log-level knob both binaries read, declared once, and the stop `run`
 # waits on (`signal`).

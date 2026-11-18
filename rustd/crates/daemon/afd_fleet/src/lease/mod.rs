@@ -52,6 +52,7 @@ pub mod store;
 mod test_dead;
 mod tool_detail;
 mod tool_trace;
+pub mod turn_checkpoint;
 mod unanswered;
 pub mod usage;
 pub mod verdict;

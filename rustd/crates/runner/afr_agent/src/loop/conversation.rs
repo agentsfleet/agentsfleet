@@ -38,7 +38,16 @@ impl Harness<'_, '_> {
         if let Some(last) = claimed.iter().map(|folded| folded.sequence).max() {
             self.folded_through = last;
         }
-        claimed.into_iter().map(|folded| folded.text).collect()
+        claimed
+            .into_iter()
+            .map(|folded| {
+                self.folded_inputs.push(crate::engine::FoldRef {
+                    event_id: af_wire::lease::TurnId(folded.event_id),
+                    sequence: folded.sequence,
+                });
+                folded.text
+            })
+            .collect()
     }
 
     /// Adds `text` to the conversation, scrubbed like anything the model

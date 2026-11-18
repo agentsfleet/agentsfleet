@@ -135,6 +135,12 @@ fn test_every_fleet_producer_runs_its_body() {
 fn test_every_runner_producer_runs_its_body() {
     install();
 
+    producers::fleet::runner::cordon_changed(
+        af_observability::metrics::label::fleet::CordonChange::Cordoned,
+    );
+    producers::fleet::runner::cordon_changed(
+        af_observability::metrics::label::fleet::CordonChange::Lifted,
+    );
     producers::fleet::runner::processed(RUNNER);
     producers::fleet::runner::seen(RUNNER, jiff::Timestamp::constant(1_767_225_600, 0));
     producers::fleet::runner::lease_taken(RUNNER);

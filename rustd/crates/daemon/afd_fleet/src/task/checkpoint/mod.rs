@@ -14,11 +14,14 @@ mod row;
 mod transfer;
 
 pub(super) use commit::publish;
+pub(crate) use identity::{load as content_identity, quota as lock_quota};
 pub(super) use maintenance::maintain;
+pub(crate) use object_row::Object as StoredObject;
 pub(super) use objects::register;
 pub(super) use page::{read, write};
 pub(super) use pins::renew;
 pub(super) use plan::create;
+pub(crate) use transfer::{Verification, verify_object};
 pub(super) use transfer::{authorize, list, uploads};
 
 const BASE_BYTES: u64 = 16 * 1024 * 1024 * 1024;

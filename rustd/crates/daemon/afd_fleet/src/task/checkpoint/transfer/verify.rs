@@ -16,8 +16,8 @@ use serde::Serialize;
 use sqlx::types::Json;
 
 #[derive(Serialize)]
-pub(super) struct Receipt {
-    id: String,
+pub(crate) struct Receipt {
+    id: Uuid7,
     digest: String,
     length: i64,
 }
@@ -31,6 +31,31 @@ pub(super) async fn remote(
     object: &CheckpointObject,
     key: &SecretBytes,
 ) -> Result<Option<Receipt>> {
+    remote_scope(
+        session,
+        identity,
+        CheckpointScope {
+            workspace_id: workspace,
+            repository: &plan.repository,
+            object_id: id,
+            format_version: u32::try_from(plan.format_version)
+                .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
+        },
+        object,
+        key,
+    )
+    .await
+}
+
+pub(crate) async fn remote_scope(
+    session: &StorageSession<'_>,
+    identity: &Uuid7,
+    scope: CheckpointScope<'_>,
+    object: &CheckpointObject,
+    key: &SecretBytes,
+) -> Result<Option<Receipt>> {
+    let workspace = scope.workspace_id;
+    let id = scope.object_id;
     let digest = object
         .ciphertext_sha256
         .as_deref()
@@ -38,12 +63,31 @@ pub(super) async fn remote(
     let length = object
         .ciphertext_length
         .ok_or(TaskRefusal::CheckpointIncompatible)?;
-    let Some(mut bytes) = session
+    let Some(bytes) = session
         .read_object(workspace, identity, id, digest, length)
         .await?
     else {
         return Ok(None);
     };
+    let plaintext = open(scope, object, key, bytes)?;
+    if u64::try_from(plaintext.expose().len()).unwrap_or(u64::MAX) != object.plaintext.size
+        || af_core::etag::sha256_hex(plaintext.expose()) != object.plaintext.sha256
+    {
+        return Err(TaskRefusal::CheckpointIncompatible.into());
+    }
+    Ok(Some(Receipt {
+        id: id.clone(),
+        digest: digest.to_owned(),
+        length: i64::try_from(length).map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
+    }))
+}
+
+fn open(
+    scope: CheckpointScope<'_>,
+    object: &CheckpointObject,
+    key: &SecretBytes,
+    mut bytes: Vec<u8>,
+) -> Result<SecretBytes> {
     let split = bytes
         .len()
         .checked_sub(af_crypto::TAG_LEN)
@@ -63,27 +107,11 @@ pub(super) async fn remote(
     let nonce: [u8; af_crypto::NONCE_LEN] = nonce
         .try_into()
         .map_err(|_invalid| TaskRefusal::CheckpointIncompatible)?;
-    let plaintext = EncryptedCheckpointObject::from_parts(bytes, tag).open(
+    Ok(EncryptedCheckpointObject::from_parts(bytes, tag).open(
         SecretBytes::new(key.expose().to_vec()),
         &nonce,
-        CheckpointScope {
-            workspace_id: workspace,
-            repository: &plan.repository,
-            object_id: id,
-            format_version: u32::try_from(plan.format_version)
-                .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
-        },
-    )?;
-    if u64::try_from(plaintext.expose().len()).unwrap_or(u64::MAX) != object.plaintext.size
-        || af_core::etag::sha256_hex(plaintext.expose()) != object.plaintext.sha256
-    {
-        return Err(TaskRefusal::CheckpointIncompatible.into());
-    }
-    Ok(Some(Receipt {
-        id: id.as_str().to_owned(),
-        digest: digest.to_owned(),
-        length: i64::try_from(length).map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
-    }))
+        scope,
+    )?)
 }
 
 pub(super) async fn record(tasks: &Tasks, workspace: &Uuid7, receipts: &[Receipt]) -> Result<()> {

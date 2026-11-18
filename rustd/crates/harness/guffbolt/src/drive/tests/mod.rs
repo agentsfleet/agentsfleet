@@ -8,6 +8,7 @@
 
 mod extension;
 mod fixture;
+mod recovery;
 
 use crate::extension::Plain;
 use crate::turn::Ending;
@@ -18,7 +19,7 @@ use super::{ANSWER_JOIN, drive};
 #[tokio::test]
 async fn a_run_with_no_input_answers_after_its_one_turn() {
     let mut run = Scripted::new([answer("Deployed.")]);
-    let ending = drive(&mut run, &mut Plain).await;
+    let ending = drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
     assert_eq!(answered(&ending), Some("Deployed."));
     assert_eq!(run.sent.len(), 1);
 }
@@ -28,7 +29,7 @@ async fn a_message_sent_mid_stream_is_read_by_the_next_call_and_never_cuts_this_
     // "Actually, use staging" arrives while call 1 streams its tool call.
     let mut run = Scripted::new([calling(1), answer("Deployed to staging.")]);
     run.during.insert(1, vec!["actually, use staging"]);
-    let ending = drive(&mut run, &mut Plain).await;
+    let ending = drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
     assert_eq!(answered(&ending), Some("Deployed to staging."));
     assert!(
         !run.call_read(0, "staging"),
@@ -44,7 +45,7 @@ async fn a_correction_sent_while_the_answer_is_written_runs_one_more_turn() {
         answer("Rolled back; staging now."),
     ]);
     run.during.insert(1, vec!["wait, staging not prod"]);
-    let ending = drive(&mut run, &mut Plain).await;
+    let ending = drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
     assert_eq!(
         answered(&ending),
         Some(
@@ -63,7 +64,7 @@ async fn a_correction_sent_while_an_answer_is_written_comes_after_that_answer() 
         answer("Rolled back; staging now."),
     ]);
     run.during.insert(1, vec!["wait, staging not prod"]);
-    drive(&mut run, &mut Plain).await;
+    drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
     assert_eq!(
         run.sent.get(1),
         Some(&vec![
@@ -88,7 +89,7 @@ async fn a_correction_sent_while_an_answer_after_tools_is_written_comes_after_th
         answer("Rolled back; staging now."),
     ]);
     run.during.insert(2, vec!["wait, staging not prod"]);
-    drive(&mut run, &mut Plain).await;
+    drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
     assert_eq!(
         run.sent.get(2),
         Some(&vec![
@@ -106,7 +107,7 @@ async fn a_correction_sent_while_an_answer_after_tools_is_written_comes_after_th
 async fn a_blank_answer_after_a_correction_adds_nothing_to_the_reply() {
     let mut run = Scripted::new([answer("Deployed to prod."), answer("  ")]);
     run.during.insert(1, vec!["wait, staging not prod"]);
-    let ending = drive(&mut run, &mut Plain).await;
+    let ending = drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
     assert_eq!(answered(&ending), Some("Deployed to prod."));
 }
 
@@ -115,7 +116,7 @@ async fn messages_sent_while_tools_run_are_read_by_the_next_call() {
     let mut run = Scripted::new([calling(2), answer("Done.")]);
     run.during_calls
         .insert(1, vec!["also bump the version", "and tag it"]);
-    let ending = drive(&mut run, &mut Plain).await;
+    let ending = drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
     assert_eq!(answered(&ending), Some("Done."));
     assert!(run.call_read(1, "also bump the version"));
     assert!(run.call_read(1, "and tag it"));
@@ -125,7 +126,7 @@ async fn messages_sent_while_tools_run_are_read_by_the_next_call() {
 async fn a_model_that_fails_ends_the_run_failed_and_leaves_late_input_unread() {
     let mut run = Scripted::new([calling(1), Step::Fail]);
     run.during.insert(2, vec!["are you there?"]);
-    let ending = drive(&mut run, &mut Plain).await;
+    let ending = drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
     assert!(
         matches!(ending, Ending::Failed(Failure::Model)),
         "{ending:?}"
@@ -143,7 +144,7 @@ async fn a_model_that_fails_ends_the_run_failed_and_leaves_late_input_unread() {
 async fn a_stop_during_the_tools_keeps_their_results_so_far_and_ends_stopped() {
     let mut run = Scripted::new([calling(3), answer("unreachable")]);
     run.stop_after_calls = Some(1);
-    let ending = drive(&mut run, &mut Plain).await;
+    let ending = drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
     assert!(matches!(ending, Ending::Stopped), "{ending:?}");
     assert_eq!(run.results(), 1, "the one call that ran is remembered");
     assert_eq!(run.sent.len(), 1, "no model call follows a stop");
@@ -152,14 +153,17 @@ async fn a_stop_during_the_tools_keeps_their_results_so_far_and_ends_stopped() {
 #[tokio::test]
 async fn a_stop_during_the_model_call_ends_stopped() {
     let mut run = Scripted::new([Step::Stop]);
-    assert!(matches!(drive(&mut run, &mut Plain).await, Ending::Stopped));
+    assert!(matches!(
+        drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await,
+        Ending::Stopped
+    ));
 }
 
 #[tokio::test]
 async fn a_window_that_cannot_be_fitted_fails_the_run_before_any_call() {
     let mut run = Scripted::new([answer("unreachable")]);
     run.window_fails = true;
-    let ending = drive(&mut run, &mut Plain).await;
+    let ending = drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
     assert!(
         matches!(ending, Ending::Failed(Failure::Window)),
         "{ending:?}"
@@ -171,7 +175,7 @@ async fn a_window_that_cannot_be_fitted_fails_the_run_before_any_call() {
 async fn a_blank_first_turn_is_a_failure_not_an_answer() {
     let mut run = Scripted::new([answer("   ")]);
     assert!(matches!(
-        drive(&mut run, &mut Plain).await,
+        drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await,
         Ending::Failed(Failure::Silent)
     ));
 }
@@ -179,7 +183,10 @@ async fn a_blank_first_turn_is_a_failure_not_an_answer() {
 #[tokio::test]
 async fn a_blank_answer_after_work_is_an_answer() {
     let mut run = Scripted::new([calling(1), answer("")]);
-    assert_eq!(answered(&drive(&mut run, &mut Plain).await), Some(""));
+    assert_eq!(
+        answered(&drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await),
+        Some("")
+    );
 }
 
 /// A small deterministic generator, so the interleavings repeat exactly.
@@ -226,7 +233,7 @@ async fn no_answer_ignores_input_that_arrived_before_it() {
                 _ => {}
             }
         }
-        let ending = drive(&mut run, &mut Plain).await;
+        let ending = drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
         if answered(&ending).is_none() {
             continue;
         }

@@ -9,9 +9,7 @@
 //! that takes it.
 //!
 //! A hold ends when its idle window runs out, when the runner's last free
-//! worker takes a lease for another fleet (a runner with no worker free could
-//! not serve it anyway), when the runner holds as many as it has workers and
-//! it is the oldest, when the daemon names its fleet, when it no longer
+//! worker would be consumed, when fewer workers leave room for it, when the daemon names its fleet, when it no longer
 //! carries the fleet's latest run ([`Release::Superseded`]), and once the
 //! runner takes no new lease. Expiry is checked on every message, and the
 //! heartbeat asks for the list every tick, so no timer runs here and a test
@@ -29,6 +27,9 @@ use tokio::sync::{Notify, mpsc, oneshot};
 
 mod built_under;
 mod keeper;
+mod occupancy;
+
+pub(crate) use occupancy::Occupant;
 
 pub(crate) use self::built_under::BuiltUnder;
 use self::keeper::Keeper;
@@ -122,15 +123,21 @@ enum Request {
     Supersede {
         lease: Uuid7,
     },
+    Accepted {
+        lease: Uuid7,
+        until: Timestamp,
+    },
     Discard {
         fleet: Uuid7,
         sandbox: Box<dyn Sandbox>,
         reason: Release,
     },
     Occupy {
-        fleet: Uuid7,
+        occupant: Occupant,
     },
-    Vacate,
+    Vacate {
+        lease: Uuid7,
+    },
     Resize {
         workers: usize,
     },
@@ -250,6 +257,11 @@ impl Holds {
         let _stopped = self.requests.send(Request::Supersede { lease });
     }
 
+    /// Narrows the exact parked attempt to the daemon's committed deadline.
+    pub(crate) fn accept(&self, lease: Uuid7, until: Timestamp) {
+        let _stopped = self.requests.send(Request::Accepted { lease, until });
+    }
+
     /// Destroys `sandbox`, which was `fleet`'s hold, for `reason`: logged and
     /// counted as every release is.
     pub(crate) async fn discard(&self, fleet: Uuid7, sandbox: Box<dyn Sandbox>, reason: Release) {
@@ -265,15 +277,8 @@ impl Holds {
         }
     }
 
-    /// Counts a worker busy with a lease for `fleet` until the guard drops.
-    /// The worker that leaves none free releases every other fleet's hold.
-    pub(crate) fn occupy(&self, fleet: Uuid7) -> Occupied {
-        let _stopped = self.requests.send(Request::Occupy { fleet });
-        Occupied(self.requests.clone())
-    }
-
-    /// Sets how many workers the runner has, which is also how many sandboxes
-    /// it may hold; the oldest past that go.
+    /// Sets how many workers the runner has, preserving one free worker
+    /// after busy workers and held sandboxes; the oldest past that go.
     pub(crate) fn resize(&self, workers: usize) {
         let _stopped = self.requests.send(Request::Resize { workers });
     }
@@ -302,16 +307,6 @@ impl Holds {
     }
 }
 
-/// A worker busy with a lease; dropping it frees the worker.
-#[derive(Debug)]
-pub(crate) struct Occupied(mpsc::UnboundedSender<Request>);
-
-impl Drop for Occupied {
-    fn drop(&mut self) {
-        let _stopped = self.0.send(Request::Vacate);
-    }
-}
-
 #[cfg(test)]
 mod tests;
 
@@ -320,3 +315,6 @@ mod supersede_tests;
 
 #[cfg(test)]
 mod shutdown_tests;
+
+#[cfg(test)]
+mod transfer_tests;

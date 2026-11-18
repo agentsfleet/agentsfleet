@@ -30,6 +30,8 @@ impl Kind {
 /// The chosen work: a claimed fleet, its fence, and the event to run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Acquired {
+    /// Previous issued attempt, for diagnostics; recovery uses stable event/task identity.
+    pub predecessor_lease_id: Option<Uuid7>,
     /// The fleet whose slot this runner now holds.
     pub fleet_id: Uuid7,
     /// The claim's token, which the issued lease row carries.

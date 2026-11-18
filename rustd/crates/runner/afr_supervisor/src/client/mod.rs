@@ -27,6 +27,7 @@ mod http;
 mod lease_verbs;
 pub(crate) mod stream;
 mod task;
+mod turn_checkpoint;
 mod verb;
 
 pub(crate) use self::http::HttpRunnerApi;

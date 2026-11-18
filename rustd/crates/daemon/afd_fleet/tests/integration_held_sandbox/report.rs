@@ -107,7 +107,7 @@ async fn test_a_report_carrying_held_until_records_the_hold() {
         ),
     ))
     .await;
-    reported.expect("the plane settles the report");
+    let reported = reported.expect("the plane settles the report");
 
     let (stored, holder) = slot(&held.fixtures, &held.fleet).await;
     let stored = stored.expect("the report recorded a hold");
@@ -116,6 +116,24 @@ async fn test_a_report_carrying_held_until_records_the_hold() {
         "the slot holds the fleet one idle window and no longer: {stored} outside {window:?}"
     );
     assert_eq!(holder, Some(held.runner.clone()));
+    let receipt = reported
+        .hold
+        .expect("the native response names the accepted hold");
+    assert_eq!(receipt.expires_at, stored);
+    assert_eq!(receipt.lease_id, held.issued.lease_id.as_str());
+    assert_eq!(receipt.fencing_token, held.fence.as_u64());
+    let repeated = plane
+        .report_with(
+            &held.runner,
+            &request,
+            reported_at,
+            None,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
+        .await
+        .expect("replay reads the hold");
+    assert!(repeated.repeated);
+    assert_eq!(repeated.hold, Some(receipt));
     held.fixtures.cleanup().await;
 }
 
@@ -158,4 +176,46 @@ async fn test_the_stored_hold_is_capped_at_one_idle_window() {
         "no ask holds nothing"
     );
     fixtures.cleanup().await;
+}
+
+/// Expiry may free the worker before a late report settles completion/usage.
+/// The report must not turn that already-reusable worker into a future hold.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_expired_late_report_settles_without_a_new_hold() {
+    let held = held().await;
+    held.fixtures
+        .age(
+            crate::rows::Row::Lease(&held.issued.lease_id),
+            "lease_expires_at",
+            LEASE_TTL.saturating_mul(2),
+        )
+        .await;
+    held.fixtures
+        .age(
+            crate::rows::Row::Slot(&held.fleet),
+            "lease_expires_at",
+            LEASE_TTL.saturating_mul(2),
+        )
+        .await;
+    let request = processed(
+        &held,
+        Some(af_core::clock::after(held.now, SANDBOX_HOLD_IDLE)),
+    );
+    let result = held
+        .fixtures
+        .plane()
+        .report_with(
+            &held.runner,
+            &request,
+            held.now,
+            None,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
+        .await
+        .expect("late completion still settles");
+    assert!(!result.repeated);
+    assert!(result.hold.is_none());
+    assert!(slot(&held.fixtures, &held.fleet).await.0.is_none());
+    held.fixtures.cleanup().await;
 }

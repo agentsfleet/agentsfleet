@@ -5,7 +5,7 @@
 //!    │ implements Conversation: input, the window, the model call, the tools
 //!    │ installs an Extension: what a run of its kind adds, or Plain
 //!    ▼
-//!  drive(conversation, extension) ──► Ending: Answered | Failed | Stopped
+//!  drive(conversation, extension, state) ──► Ending: Answered | Failed | Stopped
 //!    every turn:  take input ─► before_model ─► prepare ─► sample ─► after_turn
 //!    no calls:    on_answer ─► take input again: more input runs another turn
 //!    calls:       run them ─► remember ─► after_group
@@ -35,7 +35,7 @@ pub mod input;
 mod turn;
 
 pub use self::conversation::{Conversation, Prepared, Sampled};
-pub use self::drive::{ANSWER_JOIN, drive};
+pub use self::drive::{ANSWER_JOIN, DriveState, drive};
 pub use self::extension::{Answer, Budget, Extension, Plain};
 pub use self::turn::{Ending, ModelTurn};
 

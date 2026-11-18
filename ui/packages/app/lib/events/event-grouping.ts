@@ -41,6 +41,7 @@ export type ThreadEntry =
  */
 function groupable(event: FleetEvent): boolean {
   return event.role === "system"
+    && event.runRestarted !== true
     && event.reply.trim().length === 0
     && (event.reasoning?.length ?? 0) === 0
     && (event.tools?.length ?? 0) === 0;

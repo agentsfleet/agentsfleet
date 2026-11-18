@@ -15,7 +15,7 @@ use afr_tools::ToolOutput;
 use afr_tools::nested::Nested;
 
 pub(crate) use self::child::{Guard, Tether, run as child};
-pub(crate) use self::registry::{Registry, Seat, Start};
+pub(crate) use self::registry::{CapturePermit, ChildRecovery, Registry, Requests, Seat, Status};
 use crate::harness::Harness;
 
 /// Runs `call` when it names one of the six this loop was offered; `None`

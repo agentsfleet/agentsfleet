@@ -205,6 +205,12 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("20261108131900_connector_person_links.sql"),
     migration!("20261108193000_connector_oauth_nonces.sql"),
     migration!("20261108193100_identity_device_sessions.sql"),
+    migration!("20261117154626_runner_turn_recovery.sql"),
+    migration!("20261117154627_runner_turn_checkpoints.sql"),
+    migration!("20261117154628_runner_turn_checkpoint_pages.sql"),
+    migration!("20261117154629_runner_turn_checkpoint_refs.sql"),
+    migration!("20261117154630_runner_turn_checkpoint_pins.sql"),
+    migration!("20261117154631_runner_turn_checkpoint_operations.sql"),
 ];
 
 /// Derives the version from the filename during constant evaluation: its UTC

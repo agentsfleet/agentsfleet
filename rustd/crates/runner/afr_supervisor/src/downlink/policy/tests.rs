@@ -25,7 +25,7 @@ use crate::test_support::{self, Answer, FakeEngine, INTERVAL_MS, drain, json, pl
 
 /// The fleet whose sandbox the runner holds.
 pub(super) const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
-/// A fleet busy on the runner's only worker.
+/// A fleet consuming the worker reserved for cold work.
 const OTHER_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a2";
 const LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a80b1";
 /// A name in `release_holds` that is no fleet id.
@@ -282,7 +282,7 @@ async fn test_a_released_hold_is_destroyed_as_inactive() {
 #[tokio::test(start_paused = true)]
 async fn test_a_saturation_release_beats_at_once() {
     let engine = FakeEngine::default();
-    let holds = holding(&engine, 1).await;
+    let holds = holding(&engine, 2).await;
     let beats = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&beats);
     let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
@@ -297,7 +297,10 @@ async fn test_a_saturation_release_beats_at_once() {
     let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
     let saturating = async {
         watching.changed().await.unwrap();
-        holds.occupy(Uuid7::parse(OTHER_FLEET).unwrap())
+        holds.occupy(crate::holds::Occupant::Fleet {
+            lease: Uuid7::parse(OTHER_FLEET).unwrap(),
+            fleet: Uuid7::parse(OTHER_FLEET).unwrap(),
+        })
     };
     let (_beaten, _busy) = tokio::join!(beating, saturating);
 

@@ -245,6 +245,19 @@ impl LeaseCgroup {
         )))
     }
 
+    /// Whether the entire tenant subtree is empty after its parent freezes.
+    ///
+    /// # Errors
+    /// The kernel's tenant events cannot be read; unknown content is not proof.
+    pub fn tenant_empty(&self) -> Result<bool> {
+        let events = fs::read_to_string(self.tenant().join(CGROUP_EVENTS))
+            .map_err(cgroup_unreadable(CGROUP_EVENTS))?;
+        Ok(events
+            .lines()
+            .filter(|line| line.starts_with("populated "))
+            .eq([UNPOPULATED]))
+    }
+
     /// Whether the tree still holds a live process.
     fn populated(&self) -> Result<bool> {
         let events = fs::read_to_string(self.dir.join(CGROUP_EVENTS))
@@ -295,3 +308,6 @@ impl LeaseCgroup {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod recovery_tests;

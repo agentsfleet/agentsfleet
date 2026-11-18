@@ -758,9 +758,9 @@ M237_001 and M237_002 built the Nov 02, 2026 decision's five steps, and four sta
 
 What follows is decided and not built.
 
-Workspace snapshots, when they are built, carry a workspace disk's contents and never the toolbox. Every host of a release already holds the toolbox by digest.
+Workspace snapshots carry the recovery workspace and its matching root state; hosts share the toolbox by its verified digest.
 
-A restore writes into the new lease's disk through the host's mount, inside the background build. It takes checkout's place for each repository it restores, so checkout never overwrites restored work. A save reads the disk only after a kill that settled.
+A restore writes into the new lease's disk through the host's mount, inside the background build. It takes checkout's place for each repository it restores, so checkout never overwrites restored work. A live save requires an exclusive safe boundary, confirmed freeze and an empty tenant process group.
 
 An engine whose disk the host cannot mount, such as Firecracker, reports no host workspace. Its restore and checkout must run inside the guest, or write into the disk image before it attaches.
 
@@ -768,23 +768,43 @@ An engine whose disk the host cannot mount, such as Firecracker, reports no host
 
 The [durable repair scenario](scenarios/durable-repair.md) separates trusted task continuation from compatible conversation/file/Git recovery. Neither semantic memory nor context compaction implements workspace snapshots; a new Firecracker backend is not assumed for API-only continuation.
 
-The workspace is the fleet's, not the lease's. Holding a sandbox between messages is built. Workspace snapshots are the target: nothing saves or restores one yet, and the bullets that describe them are marked *Target, not built*.
+Native tasks and ordinary turns have separate recovery owners.
+A new lease reads a complete committed generation, never a pending upload or compaction summary.
+The supervisor restores matching files and private root state before model or tools.
 
-- **Bytes in R2, the record in Postgres**. *Target, not built.* Snapshots live in an R2 bucket under their own prefix, named by content hash.
+| Recovery state | Durable owner | Bytes and authority |
+|---|---|---|
+| Native task | Existing task checkpoint and task generation | Existing encrypted object storage, task input and effect guards |
+| Ordinary API-only turn | Event-owned `runner.turn_recovery` head and generation | Encrypted PostgreSQL root; no file-store dependency |
+| Ordinary turn with files | Same event head plus its complete manifest | Encrypted chunks through the existing private object store and shared workspace quota |
 
-  A Postgres row points at the latest. Any S3-compatible store would work through one `object_store` client with a different endpoint.
+The root contains messages, accepted driver answers, completed child results, local memory changes and exact covered fold IDs.
+Fresh policy and secrets remain authoritative after restore.
+The replacement adopts the covered fold claims under its own lease and fence before continuing.
 
-- **Only the supervisor moves bytes.** *Target, not built.* `agentsfleetd` mints short-lived presigned URLs per lease, fenced the way the memory push is. The `object_store` crate already implements presigning for S3, and the sandbox never sees a URL.
+Capture happens before the next root model call after a completed turn and input reconciliation.
+It skips busy children, open executor sessions, unfinished file work and tenant background processes.
+A file-bearing run also requires a ready workspace with a verified toolbox.
 
-- **Small snapshots.** *Target, not built.* A snapshot holds local commits as a git bundle. It also holds uncommitted edits, untracked files, output files and the lease transcript. Objects re-fetchable from the origin stay out.
+The supervisor owns freeze, file scans, transfer and publication outside the agent future.
+Renewal continues while capture runs; cancellation still joins blocking file work before thaw or teardown.
+A failed thaw stops the run and prevents sandbox reuse.
 
-- **Never saved.** No credential enters a sandbox. *Target, not built:* every snapshot is leak-scanned before upload.
+`afr_supervisor/src/recovery/turn` and `lease_loop/recovery_boundary.rs` own ordinary transfers.
+`afd_fleet/src/lease/turn_checkpoint` checks the current connection, lease, slot and event on each native operation.
+No database transaction spans remote object I/O.
 
-- **Read as hostile.** The supervisor treats `/workspace` as the tenant's. Restore and save never follow a symbolic link out of it. No git command the supervisor runs uses the workspace's configuration, hooks or helpers, including when `propose_change` reads the fleet's commits.
+Save and restore treat tenant files as hostile.
+Descriptor-relative reads and writes reject escapes, unsafe links and incomplete manifests, and restore normalizes ownership and executable modes.
+Process memory and paths outside the recovery workspace remain outside the snapshot.
 
-  A read-only toolbox does nothing against a privileged restore that follows a link.
+Ordinary recovery retains two ready generations and one pending capture.
+Reader and writer pins protect objects during bounded transfers; terminal private state becomes eligible for cleanup after seven days.
+Both task and turn references protect shared physical objects from orphan collection.
 
-- **One writer.** *Target, not built.* The fleet's affinity slot and fencing token already make one lease the live holder. A stale holder's snapshot is refused.
+The ordinary root format is one; the full private native-task root format is two.
+Unsupported history, missing objects and incompatible setup or toolbox refuse before model or tools.
+[The implementation guide](../v2/reviews/m247-implementation-and-manual-check.md#checkpoint-benchmark-plan) separates checkpoint latency from crash-to-resume time.
 
 - **Held between messages.** A lease that ends processed leaves its sandbox held (`afr_supervisor/src/holds/mod.rs`). The lease cgroup is frozen through `cgroup.freeze` and settled on `frozen 1`. The hold is keyed by fleet, workspace, limits and policy (network policy plus repository binding).
 
@@ -800,7 +820,7 @@ The workspace is the fleet's, not the lease's. Holding a sandbox between message
 
   - a failed thaw, or the deadline;
 
-  - the cap of one hold per worker (oldest first), or the runner's last free worker taking a lease;
+  - the keeper retiring oldest holds to preserve a free worker across fleet and authoring work;
 
   - the runner stopping leasing for any cause, or shutting down;
 
@@ -820,11 +840,9 @@ lease ends processed ──► freeze ──► held (≤ 10 min, ≤ 1 per work
    fleet halted or deleted
 ```
 
-- **Retention.** *Target, not built.* The last three snapshots per fleet, a lifecycle rule on the prefix, and a purge when the fleet is deleted.
-
-- **Continuity.** Reports save a checkpoint to `fleet.sessions`, but no lease carries it. Chat leases carry recent thread turns (§Crates).
-
-Files a fleet saves for the user live beside the snapshots. The user downloads them through a presigned URL the daemon authorises.
+The compact session checkpoint in `fleet.sessions` remains a separate semantic record.
+It grants no file-restore or run authority.
+New chat events still load recent finished thread turns; a replacement of the same event reads its committed recovery state.
 
 ## Credentials
 

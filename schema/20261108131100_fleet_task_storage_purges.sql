@@ -16,4 +16,7 @@ CREATE TABLE fleet.task_storage_purges (
 CREATE INDEX idx_task_storage_purges_due ON fleet.task_storage_purges (next_attempt_at, task_object_id)
     WHERE completed_at IS NULL;
 
+CREATE INDEX idx_task_storage_purges_identity ON fleet.task_storage_purges (task_identity_key_id)
+    WHERE completed_at IS NULL;
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.task_storage_purges TO api_runtime;

@@ -9,6 +9,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { applicationCss } from "./fixtures/fleet-output-browser-assets";
 
 const HEARTBEAT = 'event: heartbeat\ndata: {"kind":"heartbeat"}\n\n';
 const OBSERVATION_TIMEOUT_MS = 60_000;
@@ -17,6 +18,7 @@ const HEARTBEAT_SPACING_MS = 15_100;
 const BUNDLE_TIMEOUT_MS = 20_000;
 const APP_ROOT = path.resolve(import.meta.dirname, "../..");
 let bundle: string;
+let css: string;
 let server: http.Server;
 let origin: string;
 let streams: http.ServerResponse[];
@@ -26,9 +28,12 @@ let historyReads: number;
 
 test.beforeAll(async () => {
   const built = await promisify(execFile)("bun", [
-    "build", "tests/e2e/fixtures/fleet-stream-browser-probe.ts", "--target=browser", "--format=iife",
+    "build", "tests/e2e/fixtures/fleet-stream-browser-probe.ts", "--target=browser", "--format=iife", "--minify",
+    "--define", 'process.env.NEXT_PUBLIC_API_URL="https://api-test.agentsfleet.net"',
+    "--define", 'process.env.NODE_ENV="production"',
   ], { cwd: APP_ROOT, maxBuffer: 2_000_000, timeout: BUNDLE_TIMEOUT_MS });
   bundle = built.stdout;
+  css = await applicationCss(APP_ROOT);
 });
 
 test.beforeEach(async () => {
@@ -53,7 +58,7 @@ test.beforeEach(async () => {
       res.end(bundle);
     } else {
       res.writeHead(200, { "content-type": "text/html" });
-      res.end('<button id="start">Start</button><button id="stop">Stop</button><output></output><pre></pre><script src="/probe.js"></script>');
+      res.end(`<html data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><button id="start">Start</button><button id="stop">Stop</button><output></output><pre></pre><div id="reply-root"></div><script src="/probe.js"></script></body></html>`);
     }
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -124,6 +129,41 @@ test("an open but silent native stream is replaced automatically and resumes on 
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   await expect.poll(() => active.size).toBe(0);
   await evidence(testInfo, started);
+});
+
+test("replacement attempts reset the rendered answer and announce once per observed attempt", async ({page}, info) => {
+  const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
+  await startProbe(page);
+  const event_id = "019f0000-0000-7000-8000-000000000001";
+  const send = (kind: string, payload: Record<string, unknown>) => currentStream().write(
+    `event: ${kind}\ndata: ${JSON.stringify({kind, event_id, ...payload})}\n\n`);
+  send("heartbeat", {});
+  send("event_received", {actor: "steer:browser-owner", event_type: "chat", message: "Review the interrupted run"});
+  const chunk = (fencing_token: string, text: string) => send("chunk", {fencing_token, text,
+    text_kind: "answer", stream_start: true, stream_contiguous: true, stream_seq: 0});
+  chunk("9", "Old provisional answer");
+  await expect(page.getByText("Old provisional answer", {exact: true})).toBeVisible();
+  await expect(page.getByText("Run restarted", {exact: true})).toHaveCount(0);
+  send("run_restarted", {fencing_token: "10"});
+  await expect(page.getByText("Run restarted", {exact: true})).toBeVisible();
+  await expect(page.getByText("Old provisional answer", {exact: true})).toHaveCount(0);
+  const announcement = page.getByTestId("settled-reply-status");
+  await expect(announcement).toHaveText("Run restarted.");
+  await announcement.locator("span").evaluate(node => node.setAttribute("data-observed", "kept"));
+  send("run_restarted", {fencing_token: "10"});
+  chunk("10", "Current provisional answer");
+  await expect(page.getByText("Current provisional answer", {exact: true})).toBeVisible();
+  await expect(announcement.locator("span")).toHaveAttribute("data-observed", "kept");
+  chunk("11", "Replacement after a lost restart notice");
+  await expect(page.getByText("Replacement after a lost restart notice", {exact: true})).toBeVisible();
+  await expect(announcement.locator("span")).not.toHaveAttribute("data-observed");
+  chunk("10", "Delayed stale answer");
+  send("event_complete", {status: "processed", final_reply: "Saved winning answer"});
+  await expect(page.getByText("Saved winning answer", {exact: true})).toBeVisible();
+  await expect(page.getByText("Delayed stale answer", {exact: true})).toHaveCount(0);
+  await expect(page.getByText("Run restarted", {exact: true})).toHaveCount(1);
+  expect(errors).toEqual([]);
+  await info.attach("checkpoint-restart-rendered", {body: await page.screenshot(), contentType: "image/png"});
 });
 
 async function evidence(info: TestInfo, started: number): Promise<void> {

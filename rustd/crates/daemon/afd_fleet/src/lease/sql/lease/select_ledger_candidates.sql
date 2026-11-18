@@ -8,7 +8,7 @@ WITH instant AS MATERIALIZED (
   JOIN runner.runners host ON host.id = $2
   LEFT JOIN runner.fleet_slots s ON s.fleet_id = z.id
   LEFT JOIN fleet.revisions setup ON setup.id = z.head_revision_id AND setup.fleet_id = z.id
-  WHERE z.status = $1
+  WHERE z.status = $1 AND host.cordon_reason IS NULL
     AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
          OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
     AND EXISTS (SELECT 1 FROM fleet.admissions WHERE settled_at IS NULL)

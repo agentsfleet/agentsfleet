@@ -38,6 +38,8 @@ pub struct EffectMaintenance {
 /// Bounded private retention and acknowledged storage cleanup.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CheckpointMaintenance {
+    /// Unused event identity secrets erased after object and purge custody ended.
+    pub identity_keys: u64,
     /// Obsolete private checkpoint generations removed.
     pub owners: u64,
     /// Unreferenced retained bases removed.
@@ -53,6 +55,7 @@ pub struct CheckpointMaintenance {
 /// Local fairness cursor; it carries no task authority or queued work.
 #[derive(Debug, Default)]
 pub struct CheckpointMaintenanceCursor {
+    pub(super) identity_after: Option<(jiff::Timestamp, Uuid7)>,
     pub(super) after: Option<(jiff::Timestamp, Uuid7)>,
     pub(super) cutoff: Option<jiff::Timestamp>,
 }

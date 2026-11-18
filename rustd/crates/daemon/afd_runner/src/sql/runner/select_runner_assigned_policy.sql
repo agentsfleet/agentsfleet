@@ -1,4 +1,5 @@
-SELECT sandbox_tier, network_policy, registry_allowlist,
+SELECT jsonb_build_array(sandbox_tier, network_policy, registry_allowlist, worker_count, sandbox_config, durable_tasks_enabled, decision_platform_model_id) AS policy_witness,
+       sandbox_tier, network_policy, registry_allowlist,
        worker_count, degraded_reason, capability_report,
        selftest_requested_at IS NOT NULL AS selftest_requested,
        sandbox_config,

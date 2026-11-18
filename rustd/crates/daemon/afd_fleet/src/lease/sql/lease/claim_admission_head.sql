@@ -16,6 +16,7 @@ WITH fleet AS MATERIALIZED (
   SELECT $1, $2, 1, instant.checked_at + $3::interval, NULL, now(), now()
   FROM instant
   WHERE EXISTS (SELECT 1 FROM fleet)
+    AND EXISTS (SELECT 1 FROM runner.runners host WHERE host.id = $2 AND host.cordon_reason IS NULL)
     AND (EXISTS (SELECT 1 FROM locked_slot)
          OR NOT EXISTS (SELECT 1 FROM runner.fleet_slots WHERE fleet_id = $1))
   ON CONFLICT (fleet_id) DO UPDATE
@@ -42,7 +43,7 @@ WITH fleet AS MATERIALIZED (
   JOIN fleet f ON f.id = a.fleet_id AND f.workspace_id = a.workspace_id
   LEFT JOIN fleet.revisions setup ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
   JOIN runner.runners host ON host.id = $2
-  WHERE a.fleet_id = $1 AND a.settled_at IS NULL
+  WHERE a.fleet_id = $1 AND a.settled_at IS NULL AND host.cordon_reason IS NULL
     AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
          OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
     AND ((a.task_id IS NULL AND a.task_generation IS NULL) OR EXISTS (
@@ -146,7 +147,7 @@ SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        a.request_json, a.event_created_at, a.redelivered,
        slot.fencing_token, slot.lease_expires_at,
        COALESCE(slot.held, false) AS held, slot.holder,
-       b.id IS NOT NULL AS reclaimed,
+       b.id AS predecessor_lease_id, b.id IS NOT NULL AS reclaimed,
        -- The leases this event was issued before this claim. A report settles
        -- its admission, so each one is a run that lapsed without reporting.
        (SELECT count(*) FROM runner.leases x

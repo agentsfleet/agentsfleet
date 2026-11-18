@@ -278,8 +278,10 @@ pub(crate) async fn run_with(
         afr_executor::ExecutorSlot::ready,
     );
     let run = AgentRun {
+        recovery: None,
         prepared_task: None,
         recovered_task: None,
+        recovered_turn: None,
         lease,
         memory: afr_memory::Seed::default(),
         executor: &executor,

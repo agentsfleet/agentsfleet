@@ -24,7 +24,7 @@ const MARKDOWN_TO_SPOKEN: ReadonlyArray<readonly [RegExp, string]> = [
 
 // A reply reports its own settling: only it knows it was seen running. The
 // default does nothing, for a reply drawn outside a transcript.
-const AnnounceSettled = createContext<(text: string) => void>(() => {});
+const AnnounceReply = createContext<(text: string) => void>(() => {});
 
 // Each announcement carries its own number, so the same words twice in a row
 // still replace the status's text node and are read again.
@@ -46,12 +46,12 @@ export function SettledReplyStatus({ children }: { children: ReactNode }) {
     return () => clearTimeout(cleared);
   }, [announcement]);
   return (
-    <AnnounceSettled value={announce}>
+    <AnnounceReply value={announce}>
       {children}
       <output className="sr-only" data-testid={SETTLED_REPLY_STATUS}>
         <span key={announcement.seq}>{announcement.text}</span>
       </output>
-    </AnnounceSettled>
+    </AnnounceReply>
   );
 }
 
@@ -59,7 +59,7 @@ export function SettledReplyStatus({ children }: { children: ReactNode }) {
 // is announced when it settles, and never again.
 // The summary is made only when it is spoken, never per streamed flush.
 export function useSettleAnnouncement(settled: boolean, sender: string, text: string) {
-  const announce = useContext(AnnounceSettled);
+  const announce = useContext(AnnounceReply);
   const seenOpen = useRef(false);
   useEffect(() => {
     if (!settled) {
@@ -70,6 +70,17 @@ export function useSettleAnnouncement(settled: boolean, sender: string, text: st
     seenOpen.current = false;
     announce(`${sender}: ${spokenSummary(text)}`);
   }, [settled, sender, text, announce]);
+}
+
+/** A restart changes the reply without speaking every replacement text chunk. */
+export function useRestartAnnouncement(attempt: string | undefined) {
+  const announce = useContext(AnnounceReply);
+  const seen = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!attempt || seen.current === attempt) return;
+    seen.current = attempt;
+    announce("Run restarted.");
+  }, [attempt, announce]);
 }
 
 /** A reply as a screen reader should hear it: plain words, bounded. */

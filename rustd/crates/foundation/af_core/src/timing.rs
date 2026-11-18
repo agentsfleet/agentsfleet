@@ -68,6 +68,8 @@ pub const RUNNER_OFFLINE_AFTER: Duration = LEASE_TTL.saturating_mul(3);
 /// Strictly below [`RUNNER_OFFLINE_AFTER`], which is what guarantees an idle
 /// host beats before a fleet read would derive it offline.
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+/// Continuous healthy native heartbeats required to lift automatic quarantine.
+pub const UNCORDON_AFTER: Duration = HEARTBEAT_INTERVAL.saturating_mul(3);
 
 /// How long a runner holds a fleet's sandbox, frozen, after a lease that used
 /// it ends processed, for that fleet's next lease to continue in.
@@ -168,6 +170,11 @@ const _: () = assert!(
 const _: () = assert!(
     HEARTBEAT_INTERVAL.as_nanos() < RUNNER_OFFLINE_AFTER.as_nanos(),
     "an idle host must heartbeat before a fleet read would derive it offline"
+);
+const _: () = assert!(
+    HEARTBEAT_INTERVAL.as_nanos() < UNCORDON_AFTER.as_nanos()
+        && UNCORDON_AFTER.as_nanos() < RUNNER_OFFLINE_AFTER.as_nanos(),
+    "lifting quarantine requires several healthy beats before another offline interval"
 );
 const _: () = assert!(
     LEASE_TTL.as_nanos() < MAX_RUNTIME.as_nanos(),

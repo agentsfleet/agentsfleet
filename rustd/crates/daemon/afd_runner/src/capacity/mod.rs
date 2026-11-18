@@ -63,12 +63,24 @@ impl<'a> From<(&'a Uuid7, &'a authority::Authority)> for Guard<'a> {
     }
 }
 
+/// Which work consumes a worker; this never grants connection authority.
+#[derive(Debug, Clone, Copy)]
+pub enum Claimant<'a> {
+    /// Reusing this fleet's hold replaces it without taking another worker.
+    Fleet(&'a Uuid7),
+    /// Private authoring cannot reuse a fleet sandbox.
+    Authoring,
+    /// Current work renews its live slot without charging idle holds.
+    Existing,
+}
+
 /// Capacity observed while holding the host row until transaction completion.
 #[derive(Debug, Clone, Copy)]
 pub struct Capacity {
     now: Timestamp,
     workers: i32,
     occupied: i64,
+    held: i64,
     claims_allowed: bool,
     renewals_allowed: bool,
     lease_version: i64,
@@ -92,7 +104,7 @@ impl Capacity {
     /// Whether one additional lease fits the currently assigned worker limit.
     #[must_use]
     pub fn can_claim(self) -> bool {
-        self.claims_allowed && self.occupied < i64::from(self.workers)
+        self.claims_allowed && self.occupied + self.held < i64::from(self.workers)
     }
 
     /// A renewal retains an already counted, unexpired slot.
@@ -109,6 +121,7 @@ struct Host {
     worker_count: i32,
     status: String,
     degraded: bool,
+    cordon_reason: Option<String>,
     lease_version: i64,
     decision_selected: bool,
 }
@@ -119,6 +132,7 @@ struct Census {
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     checked_at: Timestamp,
     occupied: i64,
+    held: i64,
 }
 
 /// The host row as [`lock_host`] holds it: what the claim checks before the
@@ -126,6 +140,7 @@ struct Census {
 #[derive(Debug, Clone, Copy)]
 pub struct Held {
     claims_allowed: bool,
+    continuations_allowed: bool,
     lease_version: i64,
     decision_selected: bool,
 }
@@ -136,6 +151,13 @@ impl Held {
     #[must_use]
     pub const fn can_claim(self) -> bool {
         self.claims_allowed
+    }
+
+    /// Current work may continue on a cordoned or draining host, while a
+    /// revoked, drained or degraded host may no longer mutate its checkpoint.
+    #[must_use]
+    pub const fn can_continue(self) -> bool {
+        self.continuations_allowed
     }
 
     /// The placement choice's revision, which the insert advances.
@@ -164,7 +186,10 @@ pub async fn lock_host<'a>(
     guard: impl Into<Guard<'a>>,
 ) -> Result<Option<Held>> {
     Ok(locked(transaction, guard).await?.map(|(_, host)| Held {
-        claims_allowed: !host.degraded && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
+        claims_allowed: !host.degraded
+            && host.cordon_reason.is_none()
+            && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
+        continuations_allowed: !host.degraded && renewable_state(&host.status),
         lease_version: host.lease_version,
         decision_selected: host.decision_selected,
     }))
@@ -203,7 +228,7 @@ async fn locked<'g>(
         .map(|host| (runner_id.clone(), host)))
 }
 
-/// Lock a host and count both kinds using a fresh database-time snapshot.
+/// Lock a host and count live work and applicable holds using a fresh snapshot.
 ///
 /// `None` means the authenticated host was removed. Cordoned/draining hosts
 /// may finish current work but cannot claim more; revoked/degraded hosts do
@@ -214,6 +239,7 @@ async fn locked<'g>(
 pub async fn lock<'a>(
     transaction: &mut Transaction<'_, Postgres>,
     guard: impl Into<Guard<'a>>,
+    claimant: Claimant<'_>,
 ) -> Result<Option<Capacity>> {
     let Some((runner_id, host)) = locked(transaction, guard).await? else {
         return Ok(None);
@@ -221,6 +247,11 @@ pub async fn lock<'a>(
     let census = sqlx::query_as::<_, Census>(sql::CENSUS)
         .bind(&runner_id)
         .bind(crate::sql::LEASE_STATUS_ACTIVE)
+        .bind(match claimant {
+            Claimant::Fleet(fleet) => Some(fleet),
+            Claimant::Authoring | Claimant::Existing => None,
+        })
+        .bind(!matches!(claimant, Claimant::Existing))
         .fetch_one(&mut **transaction)
         .await
         .map_err(query(sql::CONTEXT))?;
@@ -228,7 +259,10 @@ pub async fn lock<'a>(
         now: census.checked_at,
         workers: host.worker_count,
         occupied: census.occupied,
-        claims_allowed: !host.degraded && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
+        held: census.held,
+        claims_allowed: !host.degraded
+            && host.cordon_reason.is_none()
+            && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
         renewals_allowed: !host.degraded && renewable_state(&host.status),
         lease_version: host.lease_version,
         decision_selected: host.decision_selected,

@@ -115,6 +115,17 @@ pub(crate) enum ErrorKind {
     TaskPrecondition { current_etag: String },
     #[error("{reason}")]
     TaskRefused { reason: crate::task::TaskRefusal },
+    #[error("{reason}")]
+    TurnCheckpointRefused {
+        reason: crate::lease::turn_checkpoint::TurnCheckpointRefusal,
+    },
+    #[error("a turn checkpoint is invalid during {context}")]
+    TurnCheckpointFailure {
+        reason: crate::lease::turn_checkpoint::TurnCheckpointRefusal,
+        context: &'static str,
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
     #[error("the private working context could not be accessed")]
     Context {
         #[source]

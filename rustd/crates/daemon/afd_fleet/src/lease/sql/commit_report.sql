@@ -40,7 +40,7 @@ WITH scope AS MATERIALIZED (
   WHERE f.id = $46
   FOR KEY SHARE OF f
 ), locked_slot AS MATERIALIZED (
-  SELECT s.fleet_id, s.fencing_token
+  SELECT s.fleet_id, s.fencing_token, s.lease_expires_at AS slot_expires_at
   FROM runner.fleet_slots s
   JOIN scope sc ON sc.id = s.fleet_id
   JOIN runner.leases l ON l.fleet_id = s.fleet_id
@@ -49,7 +49,7 @@ WITH scope AS MATERIALIZED (
 ), probe AS MATERIALIZED (
   SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id, l.fencing_token,
          l.created_at, l.lease_expires_at, l.last_metered_at,
-         l.posture, l.provider, l.model, l.task_id, a.fencing_token AS live_fence
+         l.posture, l.provider, l.model, l.task_id, a.fencing_token AS live_fence, a.slot_expires_at
   FROM runner.leases l
   JOIN locked_slot a ON a.fleet_id = l.fleet_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
@@ -136,7 +136,8 @@ WITH scope AS MATERIALIZED (
       updated_at = now()
   FROM measured m
   WHERE l.id = m.id
-  RETURNING l.id, l.fleet_id, l.event_id, l.fencing_token, l.workspace_id
+  RETURNING l.id, l.fleet_id, l.event_id, l.fencing_token, l.workspace_id,
+            m.lease_expires_at, m.slot_expires_at, (SELECT checked_at FROM instant) AS checked_at
 ), settled AS (
   UPDATE fleet.admissions a
   SET settled_at = clock_timestamp(), parked_at = NULL, updated_at = now()
@@ -177,10 +178,12 @@ WITH scope AS MATERIALIZED (
 ), released AS (
   UPDATE runner.fleet_slots s
   SET lease_expires_at = clock_timestamp() - interval '1 millisecond', updated_at = now(),
-      hold_expires_at = CASE WHEN $38::timestamptz > clock_timestamp()
+      hold_expires_at = CASE WHEN m.lease_expires_at > m.checked_at AND m.slot_expires_at > m.checked_at
+                             AND $38::timestamptz > clock_timestamp()
                              THEN LEAST($38::timestamptz, clock_timestamp() + $39::interval) END
   FROM moved m
   WHERE s.fleet_id = m.fleet_id AND s.fencing_token = m.fencing_token
+  RETURNING s.hold_expires_at
 ), owed AS (
   INSERT INTO fleet.obligations
     (id, fleet_id, workspace_id, provider, destination, event_id, answer,
@@ -201,6 +204,7 @@ WITH scope AS MATERIALIZED (
 )
 SELECT
     (SELECT count(*) FROM moved)::bigint AS claimed,
+    (SELECT hold_expires_at FROM released) AS accepted_hold,
     -- A locking read answers the latest committed version, so a copy that
     -- waited behind the one that settled sees it settled, not its snapshot.
     (SELECT l.status FROM runner.leases l WHERE l.id = $1 AND l.runner_id = $2 FOR SHARE)

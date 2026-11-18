@@ -79,6 +79,13 @@ impl Drop for Slot<'_> {
 }
 
 impl Sessions {
+    /// A capture may proceed only when neither open nor starting sessions exist.
+    #[must_use]
+    pub fn is_quiescent(&self) -> bool {
+        let book = self.book();
+        book.open.is_empty() && book.reserved == 0
+    }
+
     /// Holds a place for one more session, making room first when the lease
     /// already keeps the cap open or held, ending one as the module documents.
     pub(super) async fn make_room(&self, executor: &dyn Executor) -> Slot<'_> {

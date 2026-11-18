@@ -69,7 +69,9 @@ pub(super) async fn drive_in(
     let frames = Frames::default();
     let sink = frames.sink();
     let run = AgentRun {
+        recovery: None,
         recovered_task: None,
+        recovered_turn: None,
         prepared_task: None,
         lease,
         memory: afr_memory::Seed::default(),

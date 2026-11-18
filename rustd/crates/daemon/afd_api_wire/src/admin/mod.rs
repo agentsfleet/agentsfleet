@@ -129,6 +129,8 @@ pub enum RunnerEventType {
     LeaseReleased,
     /// Stopped taking new work.
     RunnerCordoned,
+    /// Continuous proved healthy heartbeats lifted automatic quarantine.
+    RunnerUncordoned,
     /// Began finishing current work.
     RunnerDraining,
     /// Finished draining.

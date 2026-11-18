@@ -79,6 +79,15 @@ export function readReplyRecovering(message: MessageState): boolean {
   return message.metadata.custom["replyRecovering"] === true;
 }
 
+export function readRunRestarted(message: MessageState): boolean {
+  return message.metadata.custom["runRestarted"] === true;
+}
+
+export function readRestartAttempt(message: MessageState): string | undefined {
+  const attempt = message.metadata.custom["restartAttempt"];
+  return typeof attempt === "string" ? attempt : undefined;
+}
+
 export function readSubmittedAtMs(message: MessageState): number | null {
   return finiteNumber(message.metadata.custom["submittedAtMs"]);
 }

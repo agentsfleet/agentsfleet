@@ -122,9 +122,11 @@ pub(super) async fn publish(
     };
     engine
         .run(AgentRun {
+            recovery: None,
             lease: &lease,
             prepared_task: Some(&prepared),
             recovered_task: None,
+            recovered_turn: None,
             memory: afr_memory::Seed::default(),
             executor,
             mint: &af_egress::testing::CountingMint::never(),

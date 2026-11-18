@@ -6,7 +6,7 @@ import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
 import type { ReplyContext } from "./fleet-reply-content";
 import { renderReplyPart } from "./FleetReplyParts";
-import { SETTLED_REPLY_STATUS, SPOKEN_REPLY_MAX_CHARS, spokenSummary } from "./FleetReplyAnnouncements";
+import { SETTLED_REPLY_STATUS, SPOKEN_REPLY_MAX_CHARS, SettledReplyStatus, spokenSummary } from "./FleetReplyAnnouncements";
 import { renderFleetMessage } from "../messages/fleetMessageRenderers";
 import { toReplyMessage } from "./fleetReplyMessage";
 import { convertEvent } from "../../conversation/stream/useFleetEventStream";
@@ -27,10 +27,11 @@ type PartInfo = Parameters<typeof renderReplyPart>[0];
 const REPLY_TEXT = "Opened the PR.";
 
 // One fleet reply through the real renderer, with no transcript around it.
-function Transcriptless({ status, text = REPLY_TEXT }: { status: FleetEvent["status"]; text?: string }) {
+function Transcriptless({ status, text = REPLY_TEXT, restarted = false, announce = false, attempt = "2" }: { status: FleetEvent["status"]; text?: string; restarted?: boolean; announce?: boolean; attempt?: string }) {
   const event: FleetEvent = {
     id: REPLY.eventId, role: "assistant", actor: "fleet", text: "", reply: text, outcome: "",
-    failureLabel: null, failureDetail: null, createdAt: new Date(0), status,
+    failureLabel: null, failureDetail: null, createdAt: new Date(0), status, runRestarted: restarted ? true : undefined,
+    ...(restarted ? { restartAttempt: attempt } : {}),
   };
   const runtime = useExternalStoreRuntime<FleetEvent>({
     isRunning: false,
@@ -38,11 +39,12 @@ function Transcriptless({ status, text = REPLY_TEXT }: { status: FleetEvent["sta
     convertMessage: (row) => toReplyMessage(convertEvent(row), row),
     onNew: async () => {},
   });
-  return (
+  const reply = (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Messages>{renderFleetMessage}</ThreadPrimitive.Messages>
     </AssistantRuntimeProvider>
   );
+  return announce ? <SettledReplyStatus>{reply}</SettledReplyStatus> : reply;
 }
 
 afterEach(cleanup);
@@ -58,6 +60,29 @@ describe("renderReplyPart", () => {
 });
 
 describe("a reply's settling", () => {
+  it("announces each observed restart once while keeping streamed output quiet", () => {
+    const status = AGENTSFLEET_EVENT_STATUS.RECEIVED;
+    const view = render(<Transcriptless status={status} announce />);
+    const spoken = screen.getByTestId(SETTLED_REPLY_STATUS);
+    expect(spoken.textContent).toBe("");
+    view.rerender(<Transcriptless status={status} announce restarted />);
+    expect(spoken.textContent).toBe("Run restarted.");
+    const first = spoken.firstChild;
+    view.rerender(<Transcriptless status={status} text="new streamed text" announce restarted />);
+    expect(spoken.firstChild).toBe(first);
+    view.rerender(<Transcriptless status={status} announce restarted attempt="3" />);
+    expect(spoken.textContent).toBe("Run restarted.");
+    expect(spoken.firstChild).not.toBe(first);
+  });
+
+  it("shows a restart on its existing reply and keeps the marker after settlement", () => {
+    const view = render(<Transcriptless status={AGENTSFLEET_EVENT_STATUS.RECEIVED} restarted />);
+    expect(screen.getByText("Run restarted")).toBeTruthy();
+    view.rerender(<Transcriptless status={AGENTSFLEET_EVENT_STATUS.PROCESSED} restarted />);
+    expect(screen.getByText("Run restarted")).toBeTruthy();
+    expect(screen.getByText(REPLY_TEXT)).toBeTruthy();
+  });
+
   it("keeps selected reply text attached when the run completes", () => {
     const view = render(<Transcriptless status={AGENTSFLEET_EVENT_STATUS.RECEIVED} />);
     const paragraph = screen.getByText(REPLY_TEXT);

@@ -23,6 +23,7 @@ const CONTEXT: &str = "admissions ledger claim";
 /// The admission row whose slot and fence the transaction just won.
 #[derive(Debug, sqlx::FromRow)]
 struct Admission {
+    predecessor_lease_id: Option<Uuid7>,
     event_id: Uuid7,
     workspace_id: Uuid7,
     actor: String,
@@ -168,10 +169,10 @@ impl Admission {
         };
         // A false `inserted` is the insert's conflict arm: the row was already
         // there, and its stored status says whether it is still running.
+        let delivery = self.opened.delivery();
         let OpenedRow {
             inserted,
             opened_at,
-            event_status,
             event_count,
             budget_used_nanos,
             catalogue_version,
@@ -179,17 +180,11 @@ impl Admission {
             platform_secret_digest,
             inputs_waiting,
             tasked,
+            ..
         } = self.opened;
         let platform_key = platform_secret_id
             .zip(platform_secret_digest)
             .map(|(secret, digest)| PlatformKeyKey::observed(catalogue_version, secret, digest));
-        let delivery = if inserted {
-            Delivery::First
-        } else if event_status == af_core::event::status::RECEIVED {
-            Delivery::Repeat
-        } else {
-            Delivery::Terminal
-        };
         let opened = Opened {
             received: Received {
                 delivery,
@@ -215,6 +210,7 @@ impl Admission {
             setup: self.setup,
         };
         Acquired {
+            predecessor_lease_id: self.predecessor_lease_id,
             fleet_id: fleet.clone(),
             fence: Fence::from_i64(self.fencing_token),
             leased_until: self.lease_expires_at,
@@ -229,6 +225,18 @@ impl Admission {
             redelivered: self.redelivered,
             earlier_leases: self.earlier_leases,
             opened,
+        }
+    }
+}
+
+impl OpenedRow {
+    fn delivery(&self) -> Delivery {
+        if self.inserted {
+            Delivery::First
+        } else if self.event_status == af_core::event::status::RECEIVED {
+            Delivery::Repeat
+        } else {
+            Delivery::Terminal
         }
     }
 }

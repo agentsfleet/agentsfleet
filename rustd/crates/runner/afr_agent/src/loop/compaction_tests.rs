@@ -130,22 +130,14 @@ async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, Meter) {
             failure,
         },
     );
-    let mut lease = lease(&[UPDATE_PLAN.name()], unbounded());
-    lease.lease_id = "01900000-0000-7000-8000-000000000001".into();
-    lease.policy.model_context_tokens = 10_000;
-    lease.policy.context.context_cap_tokens = 10_000;
-    lease.policy.context.stage_chunk_threshold = 0.90;
-    lease.policy.inference = Some(af_wire::inference::ModelInference {
-        api: af_wire::inference::InferenceApi::Chat,
-        base_url: "https://models.example.com/v1".into(),
-        dialect: None,
-        max_output_tokens: 2_048,
-    });
+    let lease = compaction_lease();
     let meter = Meter::default();
     let frames = Frames::default();
     let output = engine
         .run(AgentRun {
+            recovery: None,
             recovered_task: None,
+            recovered_turn: None,
             prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
@@ -233,4 +225,19 @@ async fn unusable_summary_retains_known_charge_without_running_more_tools() {
         );
         assert!(output.records.len() < TURNS);
     }
+}
+
+fn compaction_lease() -> af_wire::lease::LeasePayload<'static> {
+    let mut lease = lease(&[UPDATE_PLAN.name()], unbounded());
+    lease.lease_id = "01900000-0000-7000-8000-000000000001".into();
+    lease.policy.model_context_tokens = 10_000;
+    lease.policy.context.context_cap_tokens = 10_000;
+    lease.policy.context.stage_chunk_threshold = 0.90;
+    lease.policy.inference = Some(af_wire::inference::ModelInference {
+        api: af_wire::inference::InferenceApi::Chat,
+        base_url: "https://models.example.com/v1".into(),
+        dialect: None,
+        max_output_tokens: 2_048,
+    });
+    lease
 }

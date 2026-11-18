@@ -106,6 +106,7 @@ pub(crate) async fn detail<D: Services>(
 
 fn item(row: &StoredItem) -> RunnerItem<'static> {
     RunnerItem {
+        cordon: row.cordon().cloned(),
         id: Cow::Owned(row.id().to_string()),
         host_id: Cow::Owned(row.host_id().to_owned()),
         sandbox_tier: Cow::Owned(row.sandbox_tier().to_owned()),

@@ -47,6 +47,12 @@ CREATE TABLE runner.leases (
     -- Physical dispatch must separately prove a live lease, enabled owned profile,
     -- current authority and a native cost reservation before resolving a key.
     decision_snapshot JSONB,
+    -- Opaque immutable setup selected at issue; a resumed ordinary root must
+    -- match this witness. No foreign key: settled leases survive fleet purge.
+    setup_revision_id UUID,
+    CONSTRAINT ck_leases_setup_revision_id_uuidv7 CHECK (
+        setup_revision_id IS NULL OR uuid_extract_version(setup_revision_id) IS NOT DISTINCT FROM 7
+    ),
     -- The lease freezes semantic ownership and meters its own task-running delta.
     -- Opaque task_id already outlives task deletion; these add no privacy owner FK.
     task_generation BIGINT CHECK (task_generation > 0),

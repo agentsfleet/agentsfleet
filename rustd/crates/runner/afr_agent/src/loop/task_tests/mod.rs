@@ -156,9 +156,11 @@ async fn run(
 ) -> crate::Result<crate::RunOutput> {
     engine
         .run(AgentRun {
+            recovery: None,
             lease,
             prepared_task: Some(prepared),
             recovered_task: None,
+            recovered_turn: None,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,

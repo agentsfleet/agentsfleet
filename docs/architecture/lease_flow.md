@@ -137,11 +137,12 @@ Each fleet lease follows these steps:
 
 1. Admit its tools, provider and policy; claim the fleet's local turn.
 2. Load the lease's memory window, or read memory through the retained HTTP route when the window is absent.
-3. Prepare or thaw a sandbox when the admitted tools need one, then run the agent loop.
-4. Request folded inputs before model calls, skipping the first ask when the lease says none waits, and send bounded activity over the native session.
-5. Freeze and hold a completed sandbox, or kill it; post full tool records through the retained HTTP route.
-6. Flush outstanding usage through renewals, then send the report with memory, timing segments and folded-input progress.
-7. Retain the report in the worker's memory until acknowledgement or a terminal refusal, then finish sandbox cleanup and drain activity.
+3. Prepare or thaw a sandbox when tools need one. A resumed ordinary run retires its warm hold and restores into an empty workspace.
+4. Restore and validate a supplied checkpoint, then adopt covered folds before model or tools.
+5. Request folded inputs before model calls, skipping the first ask when the lease says none waits, and send bounded activity over the native session.
+6. Freeze and hold a completed sandbox, or kill it; post full tool records through the retained HTTP route.
+7. Flush outstanding usage through renewals, then send the report with memory, timing segments and folded-input progress.
+8. Retain the report in the worker's memory until acknowledgement or a terminal refusal, then finish sandbox cleanup and drain activity.
 
 The daemon captures reported memory under the lease fence before the settlement transaction.
 
@@ -349,7 +350,8 @@ A fleet with a sandbox tool continues in its held sandbox when the hold is still
 
 **What does not carry over.** The session checkpoint is written to `fleet.sessions` and loaded with the fleet.
 
-No lease carries it ([`runner_execution.md`](./runner_execution.md) §"Workspace between leases"). No workspace restore exists yet.
+That semantic record grants no recovery authority.
+A replacement of the same event uses its committed task or ordinary checkpoint, as described in [workspace recovery](runner_execution.md#workspace-between-leases).
 
 ---
 
@@ -386,8 +388,8 @@ Each gap names what would close it.
 
 1. **The review post is refused.** No write rule admits `/pulls/{n}/reviews`, and Indy parked it until he runs the test. A one-rule change in `afd_gate`'s egress write rules, an exact path with `event` locked to `COMMENT`, closes it.
 2. **No daemon path answers a PR**. The App webhook admits with `Reply::None` (`afd_ingress`'s deliver), and only Slack posters exist (`afd_outbound`'s posters). A GitHub poster in the outbound worker closes it.
-3. **No workspace restore or save.** Snapshots in R2 are design only ([`runner_execution.md`](./runner_execution.md) §"Workspace between leases"). The snapshot workstream closes it.
-4. **The session checkpoint reaches no lease**. It is written and loaded, and `render` never puts it on the lease (`afd_fleet`'s lease answer). A lease field the agent loop reads closes it.
+3. **Recovery stops at the saved boundary.** The paired file/root checkpoint resumes committed work; later external actions can repeat. [Workspace recovery](runner_execution.md#workspace-between-leases) owns the limits.
+4. **Semantic session checkpoints are separate.** `fleet.sessions` supplies no recovery cursor. Task and ordinary recovery descriptors name the state a replacement can restore.
 5. **`propose_change` and the supervisor push are not written.** The sandbox `git` tool refuses `push` (`afr_tools`' sandbox git). The push path in [`runner_execution.md`](./runner_execution.md) §"Repository writes" closes it.
 6. **A gate trip never reaches a running lease**: it writes only the status. Renewal ignores the fleet's status but still enforces its stored budget ceiling. Archive and delete send Cancel ([Runner Fleet](./runner_fleet.md) §"Steer, archive, delete"); a Cancel from the gate's archive closes it.
 7. **Browser tools are refused** under the bubblewrap engine ([`runner_execution.md`](./runner_execution.md) §"Sandbox engines"). A Firecracker engine closes it.

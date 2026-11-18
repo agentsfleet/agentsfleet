@@ -233,6 +233,9 @@ pub const LABEL_KIND: &str = "kind";
 /// Which of the lease path's in-process caches a lookup asked.
 pub const LABEL_CACHE: &str = "cache";
 
+/// Which committed automatic quarantine transition a runner count records.
+pub const LABEL_CHANGE: &str = "change";
+
 /// Which product's work a billing count is about: a fleet lease or a setup
 /// chat attempt.
 pub const LABEL_WORK_TYPE: &str = "work_type";
@@ -272,6 +275,7 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_WORK_TYPE,
     ATTR_PROVIDER_NAME,
     LABEL_CACHE,
+    LABEL_CHANGE,
 ];
 
 /// Role of a database connection pool.

@@ -73,6 +73,9 @@ impl Lessee {
         interrupt: tokio_util::sync::CancellationToken,
     ) -> Result<()> {
         let id = Uuid7::parse(&lease.lease_id)?;
+        let _busy = self
+            .holds
+            .occupy(crate::holds::Occupant::Authoring { lease: id.clone() });
         let observed = Observed::new();
         let turn = Turn {
             plane: &self.plane,

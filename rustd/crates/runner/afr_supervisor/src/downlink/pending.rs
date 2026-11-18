@@ -24,6 +24,11 @@ pub(crate) enum Expected {
     Renewed(Vec<af_core::id::Uuid7>),
     Report(af_core::id::Uuid7),
     Folds(af_core::id::Uuid7),
+    TurnCheckpoint {
+        lease: af_core::id::Uuid7,
+        operation: af_wire::lease::TurnId,
+        kind: af_wire::lease::TurnCheckpointKind,
+    },
     AuthoringModel {
         lease: af_core::id::Uuid7,
         dispatch: String,
@@ -121,6 +126,28 @@ impl Reply {
 impl Expected {
     fn accepts(&self, message: &Down<'_>) -> bool {
         match (self, message) {
+            (
+                Self::TurnCheckpoint {
+                    lease,
+                    operation,
+                    kind,
+                },
+                Down::TurnCheckpoint {
+                    lease_id,
+                    operation_id,
+                    kind: received,
+                    answer,
+                    ..
+                },
+            ) => {
+                lease.as_str() == lease_id
+                    && operation == operation_id
+                    && kind == received
+                    && match answer {
+                        af_wire::protocol::Answer::Ok { response } => response.kind() == *kind,
+                        af_wire::protocol::Answer::Refused { .. } => true,
+                    }
+            }
             (Self::Heartbeat, Down::Heartbeat { .. }) | (Self::Pong, Down::Pong { .. }) => true,
             (Self::Report(expected), Down::ReportAck { lease_id, .. })
             | (Self::Folds(expected), Down::Folded { lease_id, .. })

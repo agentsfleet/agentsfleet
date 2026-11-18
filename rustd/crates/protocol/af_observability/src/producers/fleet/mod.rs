@@ -71,6 +71,7 @@ pub struct Handles {
     steer_dispositions: Counter<u64>,
     lease_folds: Counter<u64>,
     runs_started: Counter<u64>,
+    cordon_changes: Counter<u64>,
     delivery_stage: Histogram<f64>,
     ready_wake_failures: Counter<u64>,
     report_answers: Counter<u64>,
@@ -116,6 +117,7 @@ impl Handles {
             steer_dispositions: instruments.counter_u64(&declared::STEER_DISPOSITIONS_TOTAL)?,
             lease_folds: instruments.counter_u64(&declared::LEASE_FOLDS_TOTAL)?,
             runs_started: instruments.counter_u64(&declared::FLEET_RUNS_STARTED_TOTAL)?,
+            cordon_changes: instruments.counter_u64(&declared::RUNNER_CORDON_CHANGES_TOTAL)?,
             delivery_stage: instruments.histogram_f64(&declared::FLEET_DELIVERY_STAGE_SECONDS)?,
             ready_wake_failures: instruments
                 .counter_u64(&declared::FLEET_READY_WAKE_FAILURES_TOTAL)?,

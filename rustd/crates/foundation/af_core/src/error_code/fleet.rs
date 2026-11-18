@@ -132,6 +132,18 @@ pub const RUN_PROTOCOL_UNSUPPORTED: ErrorCode = ErrorCode::declare("UZ-RUN-023")
 /// The runner's stream ended or stopped answering; the runner reconnects on its own.
 pub const RUN_STREAM_DISCONNECTED: ErrorCode = ErrorCode::declare("UZ-RUN-024");
 
+/// Present recovery state cannot run under the replacement's current setup.
+pub const RUN_CHECKPOINT_INCOMPATIBLE: ErrorCode = ErrorCode::declare("UZ-RUN-025");
+
+/// The expected recovery head or an immutable retry identity changed.
+pub const RUN_CHECKPOINT_CONFLICT: ErrorCode = ErrorCode::declare("UZ-RUN-026");
+
+/// Recovery storage cannot currently provide the exact committed generation.
+pub const RUN_CHECKPOINT_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-RUN-027");
+
+/// A checkpoint exceeds a declared state, manifest, transfer or custody bound.
+pub const RUN_CHECKPOINT_LIMIT: ErrorCode = ErrorCode::declare("UZ-RUN-028");
+
 /// A fleet declared a credential the vault does not hold.
 ///
 /// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the lease path, where it

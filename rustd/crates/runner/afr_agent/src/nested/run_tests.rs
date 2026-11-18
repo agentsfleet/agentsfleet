@@ -240,21 +240,7 @@ async fn test_interrupt_and_list_agents() {
 /// `delegate` call and never a second time for the child's store.
 #[tokio::test]
 async fn test_a_child_writes_no_checkpoint_of_its_own() {
-    let script = Script::new([
-        vec![call("p1", DELEGATE.name(), json!({"task": READS}))],
-        vec![say(DONE)],
-    ])
-    .with_child(
-        READS,
-        [
-            vec![call(
-                "c1",
-                MEMORY_STORE.name(),
-                json!({"key": "found", "content": "x"}),
-            )],
-            vec![say(SUMMARY)],
-        ],
-    );
+    let script = child_memory_script();
     let (transport, _sent) = RecordingTransport::replying(200, "");
     let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
     let every_call = json!({"tool_window": 0, "memory_checkpoint_every": 1,
@@ -266,7 +252,9 @@ async fn test_a_child_writes_no_checkpoint_of_its_own() {
 
     let output = engine
         .run(AgentRun {
+            recovery: None,
             recovered_task: None,
+            recovered_turn: None,
             prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
@@ -325,4 +313,22 @@ async fn test_child_run_carries_no_history() {
         [af_providers::Message::User(READS.to_owned())],
         "the child's first request holds its task alone"
     );
+}
+
+fn child_memory_script() -> Script {
+    Script::new([
+        vec![call("p1", DELEGATE.name(), json!({"task": READS}))],
+        vec![say(DONE)],
+    ])
+    .with_child(
+        READS,
+        [
+            vec![call(
+                "c1",
+                MEMORY_STORE.name(),
+                json!({"key": "found", "content": "x"}),
+            )],
+            vec![say(SUMMARY)],
+        ],
+    )
 }

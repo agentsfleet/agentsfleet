@@ -120,3 +120,36 @@ test.each(["enroll", "rotate-token"])("never replays %s after a committed reques
   expect(commits).toBe(1); expect(fixture.calls).toHaveLength(1);
   expect(existsSync(file)).toBe(false); expect(result.stdout).toBe("");
 });
+
+
+test("platform runners shows automatic cordon and lift events", async () => {
+  const cordon = {reason: "missed_heartbeats", cordoned_at: "2026-11-17T10:43:12Z"};
+  fixture.respond = () => Response.json({...RUNNER_DETAIL, status: "active", cordon});
+  const shown = await fixture.run(["runners", "show", RUNNER_ID, "--json"]);
+  expect(shown.code).toBe(0);
+  expect(JSON.parse(shown.stdout)).toMatchObject({status: "active", cordon});
+  fixture.respond = () => Response.json({items: [{id: RUNNER_ID, runner_id: RUNNER_ID,
+    event_type: "runner_uncordoned", occurred_at: cordon.cordoned_at, metadata: {reason: cordon.reason}}], total: 1, next_cursor: null});
+  const events = await fixture.run(["runners", "events", RUNNER_ID, "--event-type", "runner_uncordoned", "--json"]);
+  expect(events.code).toBe(0);
+  expect(JSON.parse(events.stdout).items[0].event_type).toBe("runner_uncordoned");
+});
+
+test("runner reads refuse an unknown automatic cordon reason", async () => {
+  fixture.respond = () => Response.json({...RUNNER_DETAIL, cordon: {reason: "invented", cordoned_at: "2026-11-17T10:43:12Z"}});
+  const shown = await fixture.run(["runners", "show", RUNNER_ID, "--json"]);
+  expect(shown.code).not.toBe(0);
+  expect(shown.stdout).toBe("");
+});
+
+
+test("runner text shows quarantine independently of policy state", async () => {
+  fixture.respond = () => Response.json({...RUNNER_DETAIL, status: "active", cordon: {
+    reason: "missed_heartbeats", cordoned_at: "2026-11-17T10:43:12Z",
+  }});
+  const shown = await fixture.run(["runners", "show", RUNNER_ID], "", true);
+  expect(shown.code).toBe(0);
+  expect(shown.stdout).toContain("missed_heartbeats");
+  expect(shown.stdout).toContain("30 seconds of continuous healthy heartbeats");
+  expect(shown.stdout).toContain("active");
+});

@@ -35,6 +35,8 @@ export class ActivityPrinter {
 
   constructor(print: (line: string) => void) { this.#print = print; }
 
+  reset(): void { this.#seen.clear(); this.#latest.clear(); }
+
   frame(kind: string, payload: Record<string, unknown>): boolean {
     if (!KINDS.has(kind)) return false;
     const parsed = Schema.decodeUnknownOption(Progress)(payload["progress"]);

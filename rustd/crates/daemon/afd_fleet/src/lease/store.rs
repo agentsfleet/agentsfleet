@@ -79,8 +79,18 @@ impl Leases {
         runner: &af_core::id::Uuid7,
     ) -> crate::Result<Option<afd_runner::capacity::Capacity>> {
         Ok(match &self.authority {
-            Some(authority) => afd_runner::capacity::lock(tx, (runner, authority)).await?,
-            None => afd_runner::capacity::lock(tx, runner).await?,
+            Some(authority) => {
+                afd_runner::capacity::lock(
+                    tx,
+                    (runner, authority),
+                    afd_runner::capacity::Claimant::Existing,
+                )
+                .await?
+            }
+            None => {
+                afd_runner::capacity::lock(tx, runner, afd_runner::capacity::Claimant::Existing)
+                    .await?
+            }
         })
     }
 

@@ -14,6 +14,7 @@
 mod installed;
 mod integration_model_seed;
 mod integration_tasks;
+mod integration_turn_checkpoints;
 mod issue_lifecycle;
 mod lease_renewal;
 
@@ -163,3 +164,6 @@ mod integration_unanswered_notice;
 mod integration_wall_counters;
 #[path = "verdict_matrix.rs"]
 mod verdict_matrix;
+
+#[path = "integration_lease_issue_capacity.rs"]
+mod integration_lease_issue_capacity;

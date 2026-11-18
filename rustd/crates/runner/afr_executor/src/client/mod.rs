@@ -33,8 +33,9 @@ use crate::api::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
 use crate::error::{self, Result};
 use crate::protocol::{
     KillParams, MAX_FRAME_BYTES, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL,
-    METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams,
-    ReadParams, ReadResult, SpawnParams, WriteFileParams, WriteParams, decoded, request,
+    METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_SPAWN, METHOD_WRITE,
+    METHOD_WRITE_FILE, PathParams, ReadParams, ReadResult, RecoveryParams, RecoveryProof,
+    SpawnParams, WriteFileParams, WriteParams, decoded, request,
 };
 use crate::timing::CALL_DEADLINE;
 
@@ -184,6 +185,16 @@ fn not_listening_yet(failure: &io::Error) -> bool {
 
 #[async_trait::async_trait]
 impl Executor for Client {
+    async fn recovery_idle(&self) -> Result<bool> {
+        self.fetch(
+            METHOD_RECOVERY_IDLE,
+            &RecoveryParams {
+                proof: RecoveryProof::FileJobs,
+            },
+        )
+        .await
+    }
+
     async fn spawn(&self, spawn: &Spawn) -> Result<Process> {
         let params = SpawnParams {
             argv: Cow::Borrowed(spawn.argv()),

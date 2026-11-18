@@ -26,7 +26,11 @@ pub(super) fn answer(healthy: &Healthy, message: &Up<'_>) -> Result<Option<Value
             request_id,
             request,
         } => json!({"type":"report_ack", "request_id":request_id,
-            "lease_id":request.lease_id, "answer":ok(healthy, Verb::Report)}),
+        "lease_id":request.lease_id, "answer":{"status":"ok", "response":af_wire::report::ReportResponse {
+            ok: true, hold: request.held_until.map(|expires_at| af_wire::report::AcceptedHold {
+                lease_id: request.lease_id.to_string(), fencing_token: request.fencing_token, expires_at,
+            }),
+        }}}),
         Up::Folds {
             request_id,
             lease_id,
@@ -37,6 +41,14 @@ pub(super) fn answer(healthy: &Healthy, message: &Up<'_>) -> Result<Option<Value
             "leases":leases.iter().map(|lease| json!({"lease_id":lease.lease_id,
                 "answer":ok(healthy, Verb::Renew)})).collect::<Vec<_>>()}),
         Up::Ready { .. } | Up::Activity { .. } => return Ok(None),
+        Up::TurnCheckpoint {
+            request_id,
+            lease_id,
+            request,
+        } => json!({"type":"turn_checkpoint", "request_id":request_id,
+            "lease_id":lease_id, "operation_id":request.operation_id, "kind":request.action.kind(),
+            "answer":{"status":"refused","error_code":af_core::error_code::RUN_CHECKPOINT_UNAVAILABLE.as_str(),
+            "detail":"This scripted peer has no durable checkpoint store.","retryable":false}}),
         _ => return Err(ErrorKind::StreamProtocol.into()),
     };
     Ok(Some(response))

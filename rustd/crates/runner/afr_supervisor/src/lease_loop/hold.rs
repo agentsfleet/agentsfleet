@@ -171,6 +171,10 @@ impl LeaseRun<'_> {
             }
             return self.kill(sandbox).await;
         }
+        if recoverable && !self.capture_idle(sandbox.as_ref()).await {
+            super::recovery::capture_unavailable(ending);
+            return self.kill(sandbox).await;
+        }
         let lease_id = self.ids.lease.as_str();
         let event = EVENT_FREEZE_STARTED;
         tracing::debug!(lease_id, event);
@@ -322,27 +326,24 @@ fn silent() -> afr_executor::Error {
 pub(super) fn mark_reused(reused: bool) {
     tracing::Span::current().record(ATTR_SANDBOX_REUSED, reused);
 }
-
 #[cfg(test)]
-#[path = "tests/holds/reuse.rs"]
-mod tests;
-
-#[cfg(test)]
-#[path = "tests/holds/revive.rs"]
-mod revive_tests;
-
-#[cfg(test)]
-#[path = "tests/holds/release.rs"]
-mod unheld_tests;
-
+#[path = "tests/holds/acknowledgement.rs"]
+mod acknowledgement_tests;
 #[cfg(test)]
 #[path = "tests/holds/reassignment.rs"]
 mod reassign_tests;
-
 #[cfg(test)]
 #[path = "tests/holds/refill.rs"]
 mod refill_tests;
-
 #[cfg(test)]
 #[path = "tests/release.rs"]
 mod release_tests;
+#[cfg(test)]
+#[path = "tests/holds/revive.rs"]
+mod revive_tests;
+#[cfg(test)]
+#[path = "tests/holds/reuse.rs"]
+mod tests;
+#[cfg(test)]
+#[path = "tests/holds/release.rs"]
+mod unheld_tests;

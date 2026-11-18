@@ -18,7 +18,7 @@ pub(super) fn spawn(supervisor: &mut Supervisor, tasks: Tasks) {
                 () = stop.cancelled() => return,
                 result = tokio::time::timeout(PASS_LIMIT, tasks.maintain_checkpoints(&mut cursor)) => {
                     match result {
-                        Ok(Ok(result)) => { let (event, private_generations, bases, objects, purged, deferred,) = (&"dt_storage_collection_completed", &result.owners, &result.bases, &result.objects, &result.purged, &result.deferred,); tracing::info!(event, private_generations, bases, objects, purged, deferred); },
+                        Ok(Ok(result)) => { let (event, private_generations, bases, objects, purged, identity_keys, deferred,) = (&"dt_storage_collection_completed", &result.owners, &result.bases, &result.objects, &result.purged, &result.identity_keys, &result.deferred,); tracing::info!(event, private_generations, bases, objects, purged, identity_keys, deferred); },
                         Ok(Err(error)) => {
                             let error_code = error.code();
                             tracing::warn!(event = "dt_storage_collection_deferred", %error_code);

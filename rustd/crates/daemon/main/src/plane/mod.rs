@@ -240,6 +240,7 @@ fn lease_plane(
     let activity_streams = bus.clone();
     LeaseService {
         task_reports: None,
+        turn_checkpoints: afd_fleet::lease::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&kek)),
         leases: Leases::new(database.clone(), bus.clone(), Entropy::new()),
         gates: Gates::new(database.clone(), bus, Entropy::new()),
         // The same surface the activity group's `grants` holds, over the
@@ -295,6 +296,10 @@ fn task_plane(
                 client.clone(),
             )
         });
+    leases.turn_checkpoints = leases
+        .turn_checkpoints
+        .clone()
+        .with_storage(storage.clone());
     let tasks = afd_fleet::task::Tasks::new(
         leases.leases.clone(),
         admissions,

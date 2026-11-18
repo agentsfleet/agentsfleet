@@ -2,6 +2,7 @@
 
 mod kinds;
 mod payload;
+mod turn_checkpoint;
 
 use serde::{Deserialize, Serialize};
 
@@ -9,6 +10,12 @@ pub use kinds::{AcceptedKinds, LeaseKind};
 pub use payload::{
     ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, HISTORY_BYTES_MAX, HISTORY_TURNS_MAX,
     LeasePayload, TURN_TEXT_BYTES_MAX, Turn,
+};
+pub use turn_checkpoint::{
+    FoldRef, TURN_CHECKPOINT_BYTES, TURN_CHECKPOINT_FORMAT, TURN_CHECKPOINT_PAGE_BYTES,
+    TurnCheckpointAction, TurnCheckpointBegin, TurnCheckpointCommand, TurnCheckpointKind,
+    TurnCheckpointPlan, TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointResponse, TurnId,
+    TurnMessageSize, TurnPrivateRoot, TurnResume, TurnScope, TurnWorkspace,
 };
 
 /// Placement identifies the execution authority carried by a pushed offer.

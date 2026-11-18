@@ -95,6 +95,14 @@ impl Parts {
         self.cgroup.as_ref().map(LeaseCgroup::freezer)
     }
 
+    /// Reads the tenant subtree while the lease owner holds a confirmed freeze.
+    pub(super) fn tenant_empty(&self) -> Result<bool> {
+        self.cgroup
+            .as_ref()
+            .ok_or_else(|| unconfined(NO_CGROUP))?
+            .tenant_empty()
+    }
+
     /// Takes ownership of the lease's cgroup.
     pub(super) fn adopt_cgroup(&mut self, cgroup: LeaseCgroup) -> &LeaseCgroup {
         self.cgroup.insert(cgroup)

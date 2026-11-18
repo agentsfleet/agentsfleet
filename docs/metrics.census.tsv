@@ -147,3 +147,4 @@ agentsfleet_model_cache_read_tokens_total	counter	u64	{token}	cumulative	gen_ai.
 agentsfleet_model_cache_write_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent
 agentsfleet_runner_report_answers_total	counter	u64	1	cumulative	outcome	-	fixed:2	no	traffic	successful report responses separated into first settlement and repeated acknowledgement
 agentsfleet_runner_stream_tls_handshakes_total	counter	u64	{handshake}	cumulative	transport,role,key_exchange,outcome	-	fixed:40	no	health	hybrid-only runner TLS decisions on connectors and acceptors; no unbounded identity labels
+agentsfleet_runner_cordon_changes_total	counter	u64	1	cumulative	change	-	fixed:2	no	health	committed automatic quarantine and healthy-return lift transitions

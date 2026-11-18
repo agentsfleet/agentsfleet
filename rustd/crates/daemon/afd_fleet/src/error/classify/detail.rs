@@ -38,6 +38,7 @@ impl Error {
             ErrorKind::TaskPrecondition { .. } => "the task resource version changed",
             ErrorKind::TaskControlConflict { .. } => crate::task::TaskRefusal::StaleState.detail(),
             ErrorKind::TaskRefused { reason } => reason.detail(),
+            ErrorKind::TurnCheckpointRefused { reason } | ErrorKind::TurnCheckpointFailure { reason, .. } => reason.detail(),
             ErrorKind::TaskTargetCounter { .. } => crate::task::TaskRefusal::InvalidTarget.detail(),
             ErrorKind::Memory { ref source } => source.detail(),
             ErrorKind::Runner { ref source } => source.detail(),

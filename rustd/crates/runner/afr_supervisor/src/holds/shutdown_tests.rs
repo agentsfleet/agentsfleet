@@ -19,7 +19,7 @@ use crate::test_support::{FakeEngine, bounded};
 async fn test_shutdown_destroys_every_hold_and_waits() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
-    let (holds, _clock) = holds(2);
+    let (holds, _clock) = holds(3);
     hold(&holds, &engine, FLEET_A).await;
     hold(&holds, &engine, FLEET_B).await;
 

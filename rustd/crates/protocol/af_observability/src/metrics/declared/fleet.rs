@@ -176,3 +176,7 @@ pub const RUNNER_STREAM_NATIVE_PTO_TOTAL: Declared<CounterKind> =
 /// Retransmitted stream bytes; distinct from the packet counter's unit.
 pub const RUNNER_STREAM_NATIVE_RETRANSMITTED_BYTES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_stream_native_retransmitted_bytes_total");
+
+/// Committed automatic quarantine and lift transitions, labelled only by change.
+pub const RUNNER_CORDON_CHANGES_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_cordon_changes_total");

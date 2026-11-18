@@ -31,17 +31,17 @@ WITH run AS MATERIALIZED (
       ON head.id = l.event_id AND head.fleet_id = l.fleet_id
     WHERE l.id = $1 AND l.runner_id = $2
       AND l.fencing_token = $3 AND l.status = $4
-      AND l.task_id IS NULL
+      AND l.task_id IS NULL AND l.task_generation IS NULL AND head.task_generation IS NULL
       AND l.lease_expires_at > clock_timestamp()
       AND s.lease_expires_at > clock_timestamp()
 ), ahead AS MATERIALIZED (
     -- The conversation's next messages: an addressed conversation by equality,
     -- the unaddressed one by NULL, each in the index's own order. The limit
     -- sits inside the lateral, where the planner stops the index walk at it.
-    SELECT w.id, w.sequence, w.parked_at, w.task_id, w.producer, w.actor, w.workspace_id
+    SELECT w.id, w.sequence, w.parked_at, w.task_id, w.task_generation, w.producer, w.actor, w.workspace_id
     FROM run
     CROSS JOIN LATERAL (
-        (SELECT a.id, a.sequence, a.parked_at, a.task_id, a.producer, a.actor, a.workspace_id
+        (SELECT a.id, a.sequence, a.parked_at, a.task_id, a.task_generation, a.producer, a.actor, a.workspace_id
          FROM fleet.admissions a
          WHERE run.reply_provider IS NOT NULL AND a.fleet_id = run.fleet_id
            AND a.reply_provider = run.reply_provider AND a.reply_address = run.reply_address
@@ -49,7 +49,7 @@ WITH run AS MATERIALIZED (
          ORDER BY a.sequence
          LIMIT $6)
         UNION ALL
-        (SELECT a.id, a.sequence, a.parked_at, a.task_id, a.producer, a.actor, a.workspace_id
+        (SELECT a.id, a.sequence, a.parked_at, a.task_id, a.task_generation, a.producer, a.actor, a.workspace_id
          FROM fleet.admissions a
          WHERE run.reply_provider IS NULL AND a.fleet_id = run.fleet_id
            AND a.reply_provider IS NULL AND a.reply_address IS NULL
@@ -62,7 +62,7 @@ WITH run AS MATERIALIZED (
     SELECT f.id, bool_and(f.foldable) OVER (ORDER BY f.sequence) AS clear
     FROM (
         SELECT id, sequence,
-               parked_at IS NULL AND task_id IS NULL AND CASE
+               parked_at IS NULL AND task_id IS NULL AND task_generation IS NULL AND CASE
                    WHEN producer = $7 THEN actor <> $8 AND actor LIKE $9
                    WHEN producer = $10 THEN COALESCE(
                        connector.slack_person_allowed(workspace_id, actor, $11, $12, $13), false)

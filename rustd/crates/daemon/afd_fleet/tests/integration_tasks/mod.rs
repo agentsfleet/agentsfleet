@@ -5,7 +5,7 @@
 mod bindings;
 mod capacity;
 mod controls;
-mod decisions;
+pub(crate) mod decisions;
 mod exhaustion;
 mod fixture;
 mod fold_barrier;

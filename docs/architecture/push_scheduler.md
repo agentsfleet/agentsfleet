@@ -58,7 +58,7 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 | M244 | `identity.device_sessions`, `connector.oauth_nonces`, and claim columns on `fleet.obligations`. |
 | M245 | `kind` on `billing.usage_lines` (`model`, `runtime`, `decision`), so each line says what it billed and a runtime line is numbered by its slice's start. The platform key cache keys on a digest of the stored key and its endpoint, so the vault gains no column. |
 | M246 | An owner tenant on `runner.runners`, a token overlap pair, and per-tenant runner settings. |
-| M247 | Cordon reason and time on `runner.runners`, and a predecessor link on `runner.leases`. |
+| M247 | Automatic cordon fields on `runner.runners`, frozen setup revision on `runner.leases`, and six event-owned `runner.turn_*` recovery tables. The prior lease ID is diagnostic data from the claim, not a new predecessor column. |
 
 ## Recovery and scheduling fairness
 
@@ -149,12 +149,18 @@ Only the head of each `(provider, workspace)` lane is claimable, so claims never
 ### A host dies mid-turn
 
 ```
-host stops ─► heartbeats stop ─► host cordoned with its offline record
-lease deadline passes ─► another runner claims the same event under a higher fence
-             └─► loads the current turn's last checkpoint ─► run_restarted on the tail
+host stops ──┬─► saved lease deadline ─► eligible runner claims E under fence F+1
+             │                           └─► committed checkpoint ─► resume E
+             └─► heartbeat silence ─► atomic offline record + automatic cordon
 ```
 
-Lease expiry is the only respawn trigger. The new run settles the admission once, and no input is dropped or replayed.
+Lease expiry permits reclaim; automatic quarantine leaves the saved deadline unchanged.
+The issued replacement attempts one `run_restarted` publication before its offer.
+Every output carries the daemon's attempt fence, so clients reject delayed output from older attempts.
+
+The replacement restores the last complete checkpoint and adopts its covered inputs before the next model call.
+Unsaved work can repeat; external effects have no exactly-once guarantee.
+[Runner recovery](runner_fleet.md#failure-recovery-model) owns eligibility, attempt limits and the no-checkpoint path.
 
 ## When a signal is lost
 

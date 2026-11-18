@@ -28,6 +28,7 @@ use crate::nested::Registry;
 pub(crate) struct Shared<'run> {
     pub(crate) payload: &'run af_wire::lease::LeasePayload<'run>,
     pub(crate) recovered_task: Option<&'run crate::TaskRecovery>,
+    pub(crate) recovered_turn: Option<&'run crate::TurnRecovery>,
     pub(crate) prepared_task: Option<&'run crate::PreparedTask>,
     pub(crate) decision: Option<&'run af_wire::decision::DecisionAssignment>,
     pub(crate) fencing_token: u64,
@@ -42,6 +43,7 @@ pub(crate) struct Shared<'run> {
     /// from it.
     pub(crate) stop: &'run CancellationToken,
     pub(crate) checkpoint: &'run dyn Checkpoint,
+    pub(crate) recovery: Option<&'run dyn crate::RecoveryBoundarySink>,
     /// Where the root takes the messages a person sends while it works.
     pub(crate) inbox: &'run dyn crate::Inbox,
     pub(crate) model_context_tokens: u32,
@@ -76,12 +78,14 @@ impl<'run> Shared<'run> {
         scrub: &'run Scrub,
         registry: Registry<'run>,
         instructions: String,
+        memory: Hydrated<'run>,
     ) -> Self {
         let policy = &run.lease.policy;
         let started = Instant::now();
         Self {
             payload: run.lease,
             recovered_task: run.recovered_task,
+            recovered_turn: run.recovered_turn,
             prepared_task: run.prepared_task,
             decision: run.lease.decision.as_deref(),
             fencing_token: run.lease.fencing_token,
@@ -92,6 +96,7 @@ impl<'run> Shared<'run> {
             provider,
             stop: run.stop,
             checkpoint: run.checkpoint,
+            recovery: run.recovery,
             inbox: run.inbox,
             model_context_tokens: policy.model_context_tokens,
             output_tokens: policy
@@ -107,7 +112,7 @@ impl<'run> Shared<'run> {
             // The supervisor refused a lease whose binding does not parse
             // before this turn began, so none reaches here.
             lease: Lease::new(
-                Box::new(Hydrated::new(run.memory)),
+                Box::new(memory),
                 Egress::new(&run.lease.lease_id, policy, run.mint, &SystemClock),
                 run.verbs,
             )

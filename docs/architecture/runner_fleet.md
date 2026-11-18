@@ -151,6 +151,14 @@ A runner's work becomes eligible when its slot expires. The next offer pass push
 A live runner renews through the fenced `/renew` route. Renewal remains credit-gated and bounded by `MAX_RUNTIME`.
 A runner that stops renewing loses its slot at the database deadline.
 
+The replacement keeps the logical event and reads its committed recovery descriptor.
+Native tasks retain their task checkpoint owner; ordinary turns use an event-owned head in `runner.turn_recovery`.
+[Workspace recovery](runner_execution.md#workspace-between-leases) owns capture, restore and file safety.
+
+An absent checkpoint starts from the original accepted input and unsettled folds.
+A present invalid checkpoint refuses restore before model or tools.
+Work after the saved boundary can repeat, including external effects.
+
 ### Per-lease renewal: how a long fleet keeps its lease
 
 A native renewal batch extends active leases every five seconds. Each lease carries the provider-request usage the daemon has not yet recorded.
@@ -366,6 +374,7 @@ Kubernetes needs `status.conditions[]` because dozens of controllers write ortho
 | Category | Where it lives | Examples | Stored? |
 |---|---|---|---|
 | **Operator intent** | `runner.runners.status` (typed enum) | `active` · `cordoned` · `draining` · `drained` · `revoked` | **yes**. `status != 'active'` is the cordon/revoke auth gate (M84_002) |
+| **Automatic quarantine** | `runner.runners.cordon_reason`, `cordoned_at`, `cordon_healthy_since_at` | `missed_heartbeats`; independent of operator intent | **yes**. Guarded claims read it; valid heartbeats own the return proof |
 | **Runtime liveness** | **derived** at read from `last_seen_at` + leases | `registered` · `online` · `busy` · `offline` | **no**. A pure function; storing it would drift |
 | **History** | `runner.events` (append-only) | `runner_registered` · `lease_acquired` · `runner_offline` · `runner_revoked` | **yes**. Answers "last busy?", "runs this period", "offline how long?" |
 
@@ -374,6 +383,28 @@ Liveness is honest because **mint stores `last_seen_at = 0`** (the never-connect
 "Auth failed" is *not* a runner state. Identity is the token, so a bad `agt_r` matches no row. The failure surfaces in logs and metrics, never as a row's liveness.
 
 A Kubernetes-style `status` plus `conditions` JSONB split is adopted **only if** many independent subsystems ever write runner conditions. Examples are health probes, maintenance, capacity and security. Until then, it is not adopted.
+
+### Automatic quarantine and return
+
+After 105 seconds without a valid heartbeat, the liveness sweep records one offline episode and an automatic cordon in one transaction.
+The sweep leaves lease and slot deadlines unchanged.
+New fleet and authoring claims refuse the cordoned host under its row lock.
+
+Healthy heartbeats from the current connection must continue for 30 seconds before the automatic cordon lifts.
+A gap of at least 20 seconds, failed health proof or fallback touch resets that interval.
+Lifting automatic quarantine preserves an operator's cordon, drain or revocation.
+
+`afd_runner/src/sweep/liveness`, `heartbeat/cordon.rs` and their SQL own these transitions.
+The bounded sweep selects actionable silent hosts and drains, so old episodes do not hide new failures.
+
+Operators with `runner:read` inspect the reason, time and return rule through the command-line interface (CLI):
+
+```sh
+agentsfleet platform runners list
+agentsfleet platform runners show <RUNNER_ID>
+agentsfleet platform runners events <RUNNER_ID> --event-type runner_offline,runner_cordoned,runner_uncordoned
+agentsfleet platform runners leases <RUNNER_ID>
+```
 
 ### Operator plane + reassignment
 
@@ -807,7 +838,13 @@ A lease that ends **processed** leaves its sandbox **held** for the same fleet. 
 
 Every lease carries the config of the head revision its claim read, and fresh secrets. A hold whose limits or policy changed is destroyed. Sticky routing remains a hint.
 
-The report writes `runner.fleet_slots.hold_expires_at` during its fencing-guarded release, clamped to that window. Every heartbeat lists the fleets the runner still holds. It clears holds missing from the list, except those reported within the last beat interval.
+The report's guarded release may accept a hold within that window.
+Its reply names the exact lease, fence and deadline; a refused hold releases that local reservation.
+Replaying the report never extends or recreates a hold.
+
+Every heartbeat lists the fleets the runner still holds.
+It clears missing holds, except those reported within the last beat interval.
+An expired late report can settle usage while refusing a hold that would exceed capacity.
 
 A `closing` heartbeat also clears those recently reported holds because the runner's list is final. The heartbeat response names holds whose fleet became inactive or was leased elsewhere. An unreadable, out-of-bounds or empty list holds nothing.
 
@@ -1092,7 +1129,14 @@ It is **not "metrics in Postgres"**. It *reads* already-durable operational stat
 
 Private setup work shares runner capacity with fleet runs. The sections below describe the implemented protocol; verification evidence belongs in the [check ledger](../reviews/workspace-setup/checks.md).
 
-The native session declares `accepted_kinds` and receives offers tagged `kind:"fleet"` or `kind:"authoring"`. Claims lock the runner row, count unexpired active leases across both kinds, and insert the selected lease within that transaction.
+The native session declares `accepted_kinds` and receives offers tagged `kind:"fleet"` or `kind:"authoring"`. Claims lock the runner row, count live leases across both kinds plus valid sandbox holds, and insert within that transaction.
+
+Reusing the claimant fleet's hold transfers its worker once; authoring charges every hold.
+
+Renewal counts live work without charging idle holds again.
+
+The local keeper counts fleet and authoring work together and retires oldest holds to preserve one free worker.
+`afd_runner/src/capacity` and `afr_supervisor/src/holds` own the server and host checks.
 
 The server owns `worker_count`; the session cannot override it. Reducing it below current occupancy stops new claims and refuses renewals until occupancy fits (`afd_runner`'s capacity module). Existing leases can therefore be interrupted.
 

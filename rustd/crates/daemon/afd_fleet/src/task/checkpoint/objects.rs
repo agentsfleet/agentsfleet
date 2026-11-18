@@ -2,43 +2,18 @@
 
 use super::{guard, identity, object_row::Object, row::Plan};
 use crate::task::storage::R2CheckpointStore;
+use crate::task::storage::registration::NewObject;
 use crate::{
     Result,
     error::query,
     task::{TaskLease, TaskRefusal, Tasks, guard as task_guard, transaction},
 };
-use af_core::{clock, id::Uuid7};
-use af_crypto::{
-    checkpoint::{CheckpointScope, PreparedCheckpointKey},
-    envelope::Sealer,
-};
+use af_core::id::Uuid7;
 use af_wire::task::{
     CheckpointObjectsInput, CheckpointObjectsPage, CheckpointPlaintext, CheckpointTransferPurpose,
 };
-use serde::Serialize;
 use sqlx::{PgConnection, types::Json};
 use std::collections::{BTreeMap, BTreeSet};
-
-#[derive(Serialize)]
-struct NewObject {
-    id: String,
-    #[serde(rename = "task_identity_key_id")]
-    identity_key_id: String,
-    content_identity: String,
-    plaintext_digest: String,
-    plaintext_size: i64,
-    kind: String,
-    format_version: i32,
-    accounted_bytes: i64,
-    dek_ciphertext: String,
-    dek_nonce: String,
-    dek_tag: String,
-    secret_nonce: String,
-    secret_ciphertext: String,
-    secret_tag: String,
-    kek_version: i32,
-    object_nonce: String,
-}
 
 pub(in crate::task) async fn register(
     tasks: &Tasks,
@@ -59,73 +34,7 @@ pub(in crate::task) async fn register(
         CheckpointTransferPurpose::Upload,
     )
     .await?;
-    identity::quota(&mut tx, &plan.workspace_id).await?;
-    let workspace = plan.workspace_id.clone();
-    let identity = identity::load(tasks, storage, &mut tx, &workspace, &plan.repository).await?;
-    let content: Vec<_> = input
-        .objects
-        .iter()
-        .map(|object| identity.content(object, plan.format_version))
-        .collect();
-    if content.iter().collect::<BTreeSet<_>>().len() != content.len() {
-        return Err(TaskRefusal::ReplayConflict.into());
-    }
-    let existing: Vec<Object> = sqlx::query_as(include_str!("sql/objects_content.sql"))
-        .bind(&plan.workspace_id)
-        .bind(&identity.id)
-        .bind(&content)
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(query("lock matching immutable content batch"))?;
-    let found: BTreeSet<_> = existing
-        .iter()
-        .map(|object| object.content_identity.as_str())
-        .collect();
-    let mut new = Vec::new();
-    for (descriptor, content) in input
-        .objects
-        .iter()
-        .zip(&content)
-        .filter(|(_object, content)| !found.contains(content.as_str()))
-    {
-        new.push(prepare(
-            tasks,
-            storage,
-            &plan,
-            &workspace,
-            &identity.id,
-            descriptor,
-            content,
-        )?);
-    }
-    reserve(&mut tx, &plan, &new, storage).await?;
-    let objects: Vec<Object> = sqlx::query_as(include_str!("sql/objects_content.sql"))
-        .bind(&plan.workspace_id)
-        .bind(identity.id)
-        .bind(&content)
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(query("read registered content batch"))?;
-    let eligible: Vec<_> = objects
-        .iter()
-        .filter(|object| object.verified || object.own(&plan))
-        .map(|object| object.id.clone())
-        .collect();
-    attach(&mut tx, &plan, &eligible).await?;
-    super::transfer::protect(&mut tx, &eligible, &pin).await?;
-    let mut by_content: BTreeMap<_, _> = objects
-        .into_iter()
-        .map(|object| (object.content_identity.clone(), object))
-        .collect();
-    let items = content
-        .iter()
-        .map(|content| {
-            by_content
-                .remove(content)
-                .ok_or(TaskRefusal::CheckpointIncompatible)?
-                .wire(storage, &plan)
-        })
-        .collect::<Result<_>>()?;
+    let items = registered(tasks, storage, &mut tx, &plan, &pin, input).await?;
     tx.commit()
         .await
         .map_err(query("commit registered object ownership and quota"))?;
@@ -134,6 +43,103 @@ pub(in crate::task) async fn register(
         items,
         next_cursor: None,
     })
+}
+
+async fn registered(
+    tasks: &Tasks,
+    storage: &R2CheckpointStore,
+    connection: &mut PgConnection,
+    plan: &Plan,
+    pin: &super::row::Pin,
+    input: &CheckpointObjectsInput,
+) -> Result<Vec<af_wire::task::CheckpointObject>> {
+    let (identity, content) = allocate(tasks, storage, connection, plan, input).await?;
+    let objects = matching(connection, plan, &identity, &content).await?;
+    let eligible: Vec<_> = objects
+        .iter()
+        .filter(|object| object.verified || object.own(plan))
+        .map(|object| object.id.clone())
+        .collect();
+    attach(connection, plan, &eligible).await?;
+    super::transfer::protect(connection, &eligible, pin).await?;
+    let mut by_content: BTreeMap<_, _> = objects
+        .into_iter()
+        .map(|object| (object.content_identity.clone(), object))
+        .collect();
+    content
+        .iter()
+        .map(|content| {
+            by_content
+                .remove(content)
+                .ok_or(TaskRefusal::CheckpointIncompatible)?
+                .wire(storage, plan)
+        })
+        .collect()
+}
+
+async fn allocate(
+    tasks: &Tasks,
+    storage: &R2CheckpointStore,
+    connection: &mut PgConnection,
+    plan: &Plan,
+    input: &CheckpointObjectsInput,
+) -> Result<(Uuid7, Vec<String>)> {
+    identity::quota(connection, &plan.workspace_id).await?;
+    let identity = identity::load(
+        &tasks.leases,
+        storage,
+        connection,
+        &plan.workspace_id,
+        &plan.repository,
+    )
+    .await?;
+    let content: Vec<_> = input
+        .objects
+        .iter()
+        .map(|object| identity.content(object, plan.format_version))
+        .collect();
+    if content.iter().collect::<BTreeSet<_>>().len() != content.len() {
+        return Err(TaskRefusal::ReplayConflict.into());
+    }
+    let existing = matching(connection, plan, &identity.id, &content).await?;
+    let found: BTreeSet<_> = existing
+        .iter()
+        .map(|object| object.content_identity.as_str())
+        .collect();
+    let new = input
+        .objects
+        .iter()
+        .zip(&content)
+        .filter(|(_, content)| !found.contains(content.as_str()))
+        .map(|(descriptor, content)| {
+            prepare(
+                tasks,
+                storage,
+                plan,
+                &plan.workspace_id,
+                &identity.id,
+                descriptor,
+                content,
+            )
+        })
+        .collect::<Result<Vec<_>>>()?;
+    reserve(connection, plan, &new, storage).await?;
+    Ok((identity.id, content))
+}
+
+async fn matching(
+    connection: &mut PgConnection,
+    plan: &Plan,
+    identity: &Uuid7,
+    content: &[String],
+) -> Result<Vec<Object>> {
+    sqlx::query_as(include_str!("sql/objects_content.sql"))
+        .bind(&plan.workspace_id)
+        .bind(identity)
+        .bind(content)
+        .fetch_all(connection)
+        .await
+        .map_err(query("lock matching immutable content batch"))
 }
 
 async fn reserve(
@@ -196,46 +202,18 @@ fn prepare(
     descriptor: &CheckpointPlaintext,
     content: &str,
 ) -> Result<NewObject> {
-    let id = tasks.leases.entropy().uuid7(clock::now())?;
-    let prepared = PreparedCheckpointKey::create(
-        tasks.leases.entropy(),
-        &Sealer::new(),
-        &storage.master,
-        CheckpointScope {
-            workspace_id: workspace,
-            repository: &plan.repository,
-            object_id: &id,
-            format_version: u32::try_from(plan.format_version)
-                .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
+    crate::task::storage::registration::prepare(
+        &tasks.leases,
+        storage,
+        crate::task::storage::registration::Registration {
+            workspace,
+            namespace: &plan.repository,
+            identity,
+            format: plan.format_version,
         },
-    )?;
-    let (wrapped, key) = prepared.into_parts();
-    drop(key);
-    let envelope = wrapped.envelope();
-    Ok(NewObject {
-        id: id.as_str().to_owned(),
-        identity_key_id: identity.as_str().to_owned(),
-        content_identity: content.to_owned(),
-        plaintext_digest: descriptor.sha256.clone(),
-        plaintext_size: i64::try_from(descriptor.size)
-            .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
-        kind: descriptor.kind.clone(),
-        format_version: plan.format_version,
-        accounted_bytes: i64::try_from(
-            descriptor.size
-                + u64::try_from(af_crypto::TAG_LEN)
-                    .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
-        )
-        .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
-        dek_ciphertext: pg_bytes(envelope.wrapped_dek()),
-        dek_nonce: pg_bytes(envelope.dek_nonce()),
-        dek_tag: pg_bytes(envelope.dek_tag()),
-        secret_nonce: pg_bytes(envelope.payload_nonce()),
-        secret_ciphertext: pg_bytes(envelope.payload_ciphertext()),
-        secret_tag: pg_bytes(envelope.payload_tag()),
-        kek_version: envelope.kek_version(),
-        object_nonce: pg_bytes(wrapped.nonce()),
-    })
+        descriptor,
+        content,
+    )
 }
 
 pub(super) async fn attach(
@@ -260,8 +238,4 @@ pub(super) async fn attach(
             "protect registered objects with owner-scoped references",
         ))?;
     Ok(())
-}
-
-fn pg_bytes(bytes: &[u8]) -> String {
-    format!("\\x{}", hex::encode(bytes))
 }

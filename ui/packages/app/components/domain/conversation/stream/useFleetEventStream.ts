@@ -140,6 +140,8 @@ export function convertEvent(event: FleetEvent): ThreadMessageLike {
         // every streamed word. What is here is the sentence to show when there
         // is no reply (still working, blocked, failed).
         replyRecovering: event.replyRecovering,
+        runRestarted: event.runRestarted,
+        restartAttempt: event.restartAttempt,
         outcome: event.outcome,
         // The failure CLASS, not the sentence — the renderer picks remediation
         // guidance off it (a sentence cannot be matched against reliably).

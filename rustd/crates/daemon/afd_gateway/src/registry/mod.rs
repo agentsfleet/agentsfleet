@@ -25,7 +25,7 @@ impl Registry {
         database: &afd_db::Db,
     ) -> Result<Registration> {
         let mut tx = sqlx::Transaction::begin(database.acquire().await?, None).await?;
-        if afd_runner::capacity::lock(&mut tx, (&session.runner, authority))
+        if afd_runner::capacity::lock_host(&mut tx, (&session.runner, authority))
             .await?
             .is_none()
         {

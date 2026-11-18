@@ -8,6 +8,7 @@ use af_wire::{
     runner::{HeartbeatResponse, HeartbeatStatus},
 };
 use afd_runner::Beat;
+use garde::Validate as _;
 use serde::Serialize;
 use tokio::time::Instant;
 
@@ -26,6 +27,12 @@ impl SessionServices {
             deadline,
         )
         .await?;
+        if matches!(message, Message::TurnCheckpoint { .. }) {
+            af_wire::lease::TurnMessageSize {
+                bytes: frame.as_bytes().len(),
+            }
+            .validate()?;
+        }
         self.output
             .send(kind, frame, &self.handle.stop, deadline)
             .await

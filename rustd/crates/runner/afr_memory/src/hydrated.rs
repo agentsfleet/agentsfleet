@@ -15,7 +15,7 @@ use garde::Validate as _;
 
 use crate::error::{self, Result};
 use crate::seed::{RECALL_MISS_CAP, Recalled, Seed};
-use crate::{Forgotten, MemoryBackend};
+use crate::{Forgotten, MemoryBackend, MemoryRecovery};
 
 /// A recall asked `agentsfleetd` past the window and could not get an answer.
 const EVENT_MISS_FAILED: &str = "memory_recall_miss_failed";
@@ -66,6 +66,63 @@ impl<'run> Hydrated<'run> {
             superseded: HashSet::new(),
             misses: AtomicUsize::new(0),
         }
+    }
+
+    /// Reinstalls a private overlay on the replacement's current seed and grants.
+    ///
+    /// # Errors
+    /// Bounds, duplicate keys, inconsistent custody or revoked publication refuse recovery.
+    pub fn recover(
+        seed: Seed<'run>,
+        saved: MemoryRecovery,
+        scrub: &af_secrets::Scrub,
+    ) -> Result<Self> {
+        saved.validate()?;
+        if saved
+            .superseded
+            .windows(2)
+            .any(|pair| pair.first() >= pair.get(1))
+        {
+            return Err(error::recovery_invalid());
+        }
+        let mut memory = Self::new(seed);
+        for key in saved.superseded {
+            let key = scrub.text(&key).into_owned();
+            if !memory.superseded.insert(key.clone()) {
+                return Err(error::recovery_invalid());
+            }
+            memory.remove(&key);
+        }
+        for delta in saved.pending {
+            let delta = MemoryDelta {
+                key: scrub.text(&delta.key).into_owned().into(),
+                content: scrub.text(&delta.content).into_owned().into(),
+                category: scrub.text(&delta.category).into_owned().into(),
+                visibility: delta.visibility,
+            };
+            delta.validate()?;
+            if !memory.superseded.contains(delta.key.as_ref())
+                || memory
+                    .entries
+                    .iter()
+                    .any(|entry| entry.delta.key == delta.key)
+            {
+                return Err(error::recovery_invalid());
+            }
+            if delta.visibility.is_workspace() && !seed.publish {
+                return Err(error::not_granted());
+            }
+            memory.pending_bytes += delta.bytes();
+            memory.entries.push(Entry {
+                delta,
+                pending: true,
+            });
+        }
+        if memory.pending_bytes > MAX_PUSH_BYTES {
+            return Err(error::full(memory.pending_bytes));
+        }
+        memory.misses.store(saved.misses, Ordering::Relaxed);
+        Ok(memory)
     }
 
     /// Removes the entry under `key`, and its charge when it was pending.
@@ -226,5 +283,20 @@ impl MemoryBackend for Hydrated<'_> {
             .filter(|entry| entry.pending)
             .map(|entry| entry.delta.view())
             .collect()
+    }
+
+    fn snapshot(&self) -> Result<MemoryRecovery> {
+        let mut superseded: Vec<_> = self.superseded.iter().cloned().collect();
+        superseded.sort_unstable();
+        let saved = MemoryRecovery::new(
+            self.pending()
+                .into_iter()
+                .map(MemoryDelta::into_owned)
+                .collect(),
+            superseded,
+            self.misses.load(Ordering::Relaxed).min(RECALL_MISS_CAP),
+        );
+        saved.validate()?;
+        Ok(saved)
     }
 }

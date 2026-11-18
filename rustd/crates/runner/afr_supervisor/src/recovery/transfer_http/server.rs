@@ -9,6 +9,7 @@ use hyper_util::rt::TokioIo;
 use rcgen::{BasicConstraints, CertificateParams, CertifiedIssuer, IsCa, KeyPair};
 use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::{
+    collections::BTreeMap,
     convert::Infallible,
     sync::{
         Arc,
@@ -18,7 +19,7 @@ use std::{
 };
 use tokio::{
     net::TcpListener,
-    sync::{mpsc, oneshot},
+    sync::{Barrier, mpsc, oneshot},
     task::JoinHandle,
 };
 use tokio_rustls::TlsAcceptor;
@@ -30,6 +31,8 @@ struct Reply {
     body: Vec<u8>,
     chunked: bool,
     headers: HeaderMap,
+    payloads: BTreeMap<String, Vec<u8>>,
+    barrier: Option<Arc<Barrier>>,
 }
 pub(in crate::recovery) struct Seen {
     pub(in crate::recovery) method: Method,
@@ -44,6 +47,7 @@ pub(crate) struct Server {
     worker: JoinHandle<Result<()>>,
     stop: oneshot::Sender<()>,
     requests: Arc<AtomicUsize>,
+    expected: usize,
 }
 impl Server {
     pub(in crate::recovery) async fn start(
@@ -60,6 +64,39 @@ impl Server {
         chunked: bool,
         headers: HeaderMap,
     ) -> Result<Self> {
+        Self::configured(
+            Reply {
+                status,
+                body,
+                chunked,
+                headers,
+                payloads: BTreeMap::new(),
+                barrier: None,
+            },
+            1,
+        )
+        .await
+    }
+
+    pub(in crate::recovery) async fn simultaneous(
+        payloads: BTreeMap<String, Vec<u8>>,
+    ) -> Result<Self> {
+        let expected = payloads.len();
+        Self::configured(
+            Reply {
+                status: StatusCode::OK,
+                body: Vec::new(),
+                chunked: false,
+                headers: HeaderMap::new(),
+                payloads,
+                barrier: Some(Arc::new(Barrier::new(expected))),
+            },
+            expected,
+        )
+        .await
+    }
+
+    async fn configured(reply: Reply, expected: usize) -> Result<Self> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
         let (certificate, acceptor) = tls()?;
@@ -80,12 +117,7 @@ impl Server {
             sender,
             stopped,
             Arc::clone(&requests),
-            Reply {
-                status,
-                body,
-                chunked,
-                headers,
-            },
+            reply,
         ));
         Ok(Self {
             transfers: Transfers { client },
@@ -94,6 +126,7 @@ impl Server {
             worker,
             stop,
             requests,
+            expected,
         })
     }
     pub(in crate::recovery) fn transfers(&self) -> Transfers {
@@ -117,7 +150,7 @@ impl Server {
         tokio::time::timeout(Duration::from_secs(5), self.worker).await???;
         assert_eq!(
             self.requests.load(Ordering::SeqCst),
-            1,
+            self.expected,
             "no redirected or repeated physical request"
         );
         Ok(())
@@ -131,34 +164,44 @@ async fn serve(
     requests: Arc<AtomicUsize>,
     reply: Reply,
 ) -> Result<()> {
+    let mut workers = tokio::task::JoinSet::new();
     loop {
         let (socket, _) = tokio::select! {
-            _ = &mut stopped => return Ok(()),
+            _ = &mut stopped => { workers.shutdown().await; return Ok(()); },
+            result = workers.join_next(), if !workers.is_empty() => { result.ok_or("HTTP worker missing")???; continue; },
             accepted = listener.accept() => accepted?,
         };
         let stream = acceptor.accept(socket).await?;
         let (sender, requests, reply) = (sender.clone(), Arc::clone(&requests), reply.clone());
-        let service = service_fn(move |request: hyper::Request<Incoming>| {
-            requests.fetch_add(1, Ordering::SeqCst);
-            let status = if request.uri().path() == "/must-not-follow" {
-                StatusCode::OK
-            } else {
-                reply.status
-            };
-            answer(
-                request,
-                sender.clone(),
-                status,
-                reply.body.clone(),
-                reply.chunked,
-                reply.headers.clone(),
-            )
+        workers.spawn(async move {
+            let service = service_fn(move |request: hyper::Request<Incoming>| {
+                requests.fetch_add(1, Ordering::SeqCst);
+                let (reply, sender) = (reply.clone(), sender.clone());
+                async move {
+                    let status = if request.uri().path() == "/must-not-follow" {
+                        StatusCode::OK
+                    } else {
+                        reply.status
+                    };
+                    let body = reply
+                        .payloads
+                        .get(request.uri().path())
+                        .cloned()
+                        .unwrap_or(reply.body);
+                    if let Some(barrier) = &reply.barrier {
+                        barrier.wait().await;
+                    }
+                    answer(request, sender, status, body, reply.chunked, reply.headers).await
+                }
+            });
+            hyper::server::conn::http1::Builder::new()
+                .serve_connection(TokioIo::new(stream), service)
+                .await?;
+            Ok::<_, Box<dyn std::error::Error + Send + Sync>>(())
         });
-        hyper::server::conn::http1::Builder::new()
-            .serve_connection(TokioIo::new(stream), service)
-            .await?;
     }
 }
+
 async fn answer(
     request: hyper::Request<Incoming>,
     sender: mpsc::UnboundedSender<Seen>,

@@ -46,15 +46,19 @@ export function recoverFinalReply(
   if (read === null || !isCurrent()) return;
   if (entry.replyRecoveries.has(eventId)) return;
   entry.replyRecoveries.add(eventId);
+  const attempt = entry.replyAttempts.get(eventId);
+  const owns = () => isCurrent() && entry.replyAttempts.get(eventId) === attempt;
   const onRead = (detail: EventDetail) => {
     apply((prev) => applyDetail(prev, detail), {});
     entry.replyGaps.delete(eventId);
   };
   // Keep the draft unavailable once the event is gone.
   const onGone = () => apply((prev) => applyReplyGone(prev, eventId), {});
-  void readUntilAnswered(entry, fleetId, eventId, isCurrent, read, onRead, onGone)
+  void readUntilAnswered(entry, fleetId, eventId, owns, read, onRead, onGone)
     .catch(() => {})
-    .finally(() => entry.replyRecoveries.delete(eventId));
+    .finally(() => {
+      if (entry.replyAttempts.get(eventId) === attempt) entry.replyRecoveries.delete(eventId);
+    });
 }
 
 // The read loop every recovery shares: how soon it asks again, and when it
@@ -75,9 +79,10 @@ async function readUntilAnswered(
   for (let attempt = 0; isCurrent(); attempt += 1) {
     let retryMs: number = FINAL_REPLY_RETRY_MS[attempt] ?? TRANSIENT_MAX_RETRY_MS;
     const result = await read(entry.workspaceId, fleetId, eventId).catch(() => null);
+    if (!isCurrent()) return;
     if (result !== null) {
       if (result.ok) {
-        if (isCurrent()) onRead(result.data);
+        onRead(result.data);
         return;
       }
       if (result.status !== undefined && EVENT_GONE_STATUSES.has(result.status)) {
@@ -135,8 +140,10 @@ export function refreshSavedTrace(
 ): void {
   if (read === null || entry.traceReads.has(eventId)) return;
   entry.traceReads.add(eventId);
+  const attempt = entry.replyAttempts.get(eventId);
+  const owns = () => isCurrent() && entry.replyAttempts.get(eventId) === attempt;
   const onRead = (detail: EventDetail) => apply((prev) => mergeBackfill(prev, [detail]), {});
-  void readUntilAnswered(entry, fleetId, eventId, isCurrent, read, onRead).catch(() => {});
+  void readUntilAnswered(entry, fleetId, eventId, owns, read, onRead).catch(() => {});
 }
 
 // A saved row over the live one: its status and figures, then its answer.

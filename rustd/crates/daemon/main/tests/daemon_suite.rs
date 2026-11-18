@@ -152,6 +152,7 @@ mod preflight;
 mod preflight_optional;
 #[path = "presentation.rs"]
 mod presentation;
+mod recovery_process;
 #[path = "serve.rs"]
 mod serve;
 mod shutdown_drain;

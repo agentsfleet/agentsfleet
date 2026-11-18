@@ -155,6 +155,7 @@ EXCLUSIVE_SKIP := $(addprefix --skip ,$(EXCLUSIVE_FILTER))
 
 test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + NATS
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
+	@cd $(RUSTD_DIR) && cargo build --locked --all-features -p agentsfleet_runner --bin agentsfleet-recovery-fixture
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
 	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --locked --workspace --exclude afd_bench --all-features --test "*" -- --ignored $(EXCLUSIVE_SKIP))
 	@echo "→ [rustd] Running the tests that need the cluster to themselves..."; \
@@ -383,6 +384,8 @@ ifneq ($(filter runner,$(RUSTD_SHARD)),)
 	$(call _rust_lane,rustd-coverage-runner-daemon.log,[rustd] coverage: runner against the daemon,$(_RUSTD_COVER) -p agentsfleetd --test daemon_suite -- --include-ignored $(RUSTD_RUNNER_IN_DAEMON))
 endif
 ifneq ($(filter daemon,$(RUSTD_SHARD)),)
+	@cd $(RUSTD_DIR) && cargo llvm-cov run --locked --all-features --no-report \
+	  -p agentsfleet_runner --bin agentsfleet-recovery-fixture -- --help
 	@echo "→ [rustd] Shard daemon: agentsfleetd without runner and native-stream modules..."; \
 	$(call _rust_lane,rustd-coverage-daemon.log,[rustd] coverage: daemon,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_DAEMON_PACKAGES)) -- --include-ignored --skip $(RUSTD_RUNNER_IN_DAEMON) --skip $(RUSTD_STREAM_IN_DAEMON))
 endif

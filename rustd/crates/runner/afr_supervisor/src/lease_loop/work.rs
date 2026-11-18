@@ -133,7 +133,46 @@ impl LeaseRun<'_> {
                         .into();
                 }
             };
-            self.drive(seed, &none, sink, prepared, recovered.as_ref())
+            let recovered_turn = match crate::recovery::NativeTurn::new(
+                &self.lessee.plane,
+                &self.ids.lease,
+                self.lease.fencing_token,
+            )
+            .restore(
+                self.lease,
+                af_wire::lease::TurnWorkspace::ApiOnly,
+                None,
+                &self.interrupt,
+            )
+            .await
+            {
+                Ok(saved) => saved,
+                Err(failure) => {
+                    return self
+                        .refuse(
+                            &failure,
+                            "turn_restore_failed",
+                            "ordinary turn recovery could not be established",
+                        )
+                        .into();
+                }
+            };
+            let (capture, owner) = super::recovery_boundary::BoundaryOwner::new(
+                self,
+                super::recovery_boundary::Workspace::ApiOnly,
+            );
+            owner
+                .beside(self.drive(
+                    seed,
+                    &none,
+                    sink,
+                    prepared,
+                    super::drive::Recovered {
+                        task: recovered.as_ref(),
+                        turn: recovered_turn.as_ref(),
+                    },
+                    &capture,
+                ))
                 .await
                 .into()
         }

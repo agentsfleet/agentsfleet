@@ -11,6 +11,7 @@
 )]
 
 mod connections;
+mod cordon;
 mod decision;
 mod decision_races;
 mod durable_policy;

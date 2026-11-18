@@ -7,9 +7,9 @@ import { FleetMessageRow, ROW_TONE } from "../messages/FleetMessageRow";
 import { FleetReplyFigures, OmittedCalls } from "./FleetReplyFigures";
 import { FleetReplyParts } from "./FleetReplyParts";
 import { FleetReplyActions } from "./FleetReplyActions";
-import { useSettleAnnouncement } from "./FleetReplyAnnouncements";
+import { useRestartAnnouncement, useSettleAnnouncement } from "./FleetReplyAnnouncements";
 import { messageOutcome } from "../messages/fleetFailureCopy";
-import { readOmittedCallCount, readQueued, readReasoningSpan, readReplyFigures, readReplyRecovering, readSubmittedAtMs, readText } from "../messages/fleetMessageReaders";
+import { readOmittedCallCount, readQueued, readReasoningSpan, readReplyFigures, readReplyRecovering, readRestartAttempt, readRunRestarted, readSubmittedAtMs, readText } from "../messages/fleetMessageReaders";
 import { STATUS_AGENT_ERROR } from "../messages/fleetMessageStatus";
 import { STATUS_RUNNING } from "./fleetReplyMessage";
 import { REPLY_ID_SUFFIX } from "../../conversation/thread/useFleetThreadEntries";
@@ -47,6 +47,7 @@ export function FleetReply({
   const eventId = message.id.endsWith(REPLY_ID_SUFFIX) ? message.id.slice(0, -REPLY_ID_SUFFIX.length) : message.id;
   useFirstVisiblePaint(eventId, readSubmittedAtMs(message), message.content.length > 0);
   const sender = senderLabel || DEFAULT_SENDER;
+  useRestartAnnouncement(readRunRestarted(message) ? readRestartAttempt(message) : undefined);
   // Spoken the way the row reads: who replied, then what they said.
   useSettleAnnouncement(!running && !recovering, sender, answer.length > 0 ? answer : messageOutcome(message));
   return (
@@ -57,6 +58,7 @@ export function FleetReply({
       messageRole="assistant"
       failed={errored}
     >
+      {readRunRestarted(message) ? <p className="text-body-sm text-text-subtle">Run restarted</p> : null}
       <TaskActivityTimeline value={message.metadata.custom.taskActivity} running={running} attentionOnly />
       <FleetReplyParts errored={errored} running={running} queued={queued} eventId={eventId}
         reasoning={reasoningText(message)} span={span} content={message.content}

@@ -138,6 +138,7 @@ pub(in crate::lane::lease) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> Leas
     let database = stores.database.clone();
     LeaseService {
         task_reports: None,
+        turn_checkpoints: afd_fleet::lease::turn_checkpoint::TurnCheckpoints::new(Arc::clone(kek)),
         leases: Leases::new(database.clone(), stores.bus.clone(), Entropy::new()),
         gates: Gates::new(database.clone(), stores.bus.clone(), Entropy::new()),
         accounts: Accounts::new(database.clone()),

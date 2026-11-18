@@ -6,6 +6,38 @@ use std::{collections::BTreeMap, fs, sync::Arc};
 use zeroize::Zeroizing;
 
 #[test]
+fn ordinary_manifest_pages_fit_the_native_turn_limit() -> crate::Result<()> {
+    let root = tempfile::tempdir()?;
+    for index in 0..3000 {
+        fs::write(
+            root.path()
+                .join(format!("file-{index:04}-{}", "a".repeat(180))),
+            b"",
+        )?;
+    }
+    let catalog = Catalog::build(
+        Some(&Arc::new(Workspace::open(root.path())?)),
+        Zeroizing::new(Vec::new()),
+        Vec::new(),
+        &tokio_util::sync::CancellationToken::new(),
+    )?;
+    let pages = catalog.pages(None, af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES)?;
+    assert!(
+        pages
+            .iter()
+            .all(|page| af_wire::decision::serialized_within(
+                page,
+                af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES
+            ))
+    );
+    assert_eq!(
+        pages.iter().map(|page| page.entries.len()).sum::<usize>(),
+        3000
+    );
+    Ok(())
+}
+
+#[test]
 fn complete_layout_spans_pages_without_repeating_shared_content() -> crate::Result<()> {
     let root = tempfile::tempdir()?;
     // Empty files still count as entries but allocate no content objects.
@@ -31,7 +63,7 @@ fn complete_layout_spans_pages_without_repeating_shared_content() -> crate::Resu
         .enumerate()
         .map(|(index, key)| (key.clone(), format!("019f0000-0000-7000-8000-{index:012}")))
         .collect();
-    let pages = catalog.pages(Some(&ids))?;
+    let pages = catalog.pages(Some(&ids), af_wire::task::CHECKPOINT_PAGE_BYTES)?;
     assert_eq!(pages.len(), 2);
     assert_eq!(
         pages.iter().map(|page| page.entries.len()).sum::<usize>(),
@@ -44,6 +76,13 @@ fn complete_layout_spans_pages_without_repeating_shared_content() -> crate::Resu
             .sum::<usize>(),
         1
     );
+    assert_paths(&pages);
+    assert_eq!(catalog.logical_bytes, 26);
+    assert_eq!(catalog.entry_count, 4099);
+    Ok(())
+}
+
+fn assert_paths(pages: &[af_wire::task::CheckpointPage]) {
     let names: Vec<_> = pages
         .iter()
         .flat_map(|page| page.entries.iter().map(CheckpointEntry::path))
@@ -59,9 +98,6 @@ fn complete_layout_spans_pages_without_repeating_shared_content() -> crate::Resu
             .flat_map(|page| &page.entries)
             .any(|entry| matches!(entry, CheckpointEntry::Remove { path } if path == "removed"))
     );
-    assert_eq!(catalog.logical_bytes, 26);
-    assert_eq!(catalog.entry_count, 4099);
-    Ok(())
 }
 
 #[test]
@@ -83,7 +119,7 @@ fn a_near_full_manifest_keeps_all_private_history_on_a_separate_bounded_page() -
         .keys()
         .map(|key| (key.clone(), identity.to_owned()))
         .collect();
-    let pages = catalog.pages(Some(&ids))?;
+    let pages = catalog.pages(Some(&ids), af_wire::task::CHECKPOINT_PAGE_BYTES)?;
     assert_eq!(pages.len(), 2);
     let history = pages
         .last()
@@ -118,7 +154,7 @@ fn oversized_history_is_refused_before_a_native_plan_can_be_allocated() -> crate
         return Err(crate::error::config("oversized history was accepted"));
     };
     assert!(
-        matches!(failure.kind(), crate::error::ErrorKind::Config { detail }
+        matches!(failure.kind(), crate::error::ErrorKind::CaptureLimit { detail }
         if *detail == "checkpoint history exceeds its bound")
     );
     Ok(())

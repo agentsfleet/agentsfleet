@@ -160,6 +160,7 @@ impl<'a> ReportStatement<'a> {
 #[derive(Debug, sqlx::FromRow)]
 struct AnswerRow {
     claimed: i64,
+    accepted_hold: Option<jiff_sqlx::Timestamp>,
     lease_status: Option<String>,
     held_posture: Option<String>,
     held_provider: Option<String>,
@@ -195,6 +196,7 @@ pub(crate) enum ReportAnswer {
 /// A settled report's answers.
 #[derive(Debug)]
 pub(crate) struct SettledReport {
+    pub(crate) accepted_hold: Option<Timestamp>,
     /// Whether the lease runs a durable task, whose usage and settlement
     /// follow in the same transaction.
     pub(crate) has_task: bool,
@@ -227,6 +229,7 @@ impl ReportAnswer {
         };
         let tokens = tokens_of(&answer, lease_id);
         Ok(Self::Settled(Box::new(SettledReport {
+            accepted_hold: answer.accepted_hold.map(Into::into),
             has_task: answer.has_task.unwrap_or(false),
             closed,
             owed: answer.owed_id,

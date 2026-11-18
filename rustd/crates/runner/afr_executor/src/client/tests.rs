@@ -29,6 +29,24 @@ const SHORT: Duration = Duration::from_millis(200);
 /// How long a test waits for anything that should be prompt.
 const PATIENCE: Duration = Duration::from_secs(10);
 
+#[tokio::test]
+async fn recovery_idle_preserves_the_executors_explicit_busy_and_idle_answers() {
+    let (client, socket) = silent();
+    let mut executor = BufReader::new(socket);
+    let requesting = async {
+        assert!(!client.recovery_idle().await.unwrap());
+        assert!(client.recovery_idle().await.unwrap());
+    };
+    let replying = async {
+        for idle in [false, true] {
+            let call = answer(&mut executor, json!(idle)).await;
+            assert_eq!(call["method"], crate::protocol::METHOD_RECOVERY_IDLE);
+            assert_eq!(call["params"], json!({"proof": "file_jobs"}));
+        }
+    };
+    tokio::join!(requesting, replying);
+}
+
 /// A client whose calls wait [`SHORT`], and the executor's end of its socket.
 fn silent() -> (Client, UnixStream) {
     let (ours, theirs) = UnixStream::pair().unwrap();

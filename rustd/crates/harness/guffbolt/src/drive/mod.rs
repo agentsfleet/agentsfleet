@@ -1,5 +1,8 @@
 //! The loop itself: the order every turn's steps run in.
 
+mod state;
+pub use state::DriveState;
+
 use crate::conversation::{Conversation, Prepared, Sampled};
 use crate::extension::{Answer, Budget, Extension};
 use crate::turn::{Ending, ModelTurn as _};
@@ -18,16 +21,20 @@ const EVENT_ENDED: &str = "loop_ended";
 ///
 /// The extension's budget bounds the whole loop: a loop it stops ends
 /// [`Ending::Stopped`], and the extension hears of it.
-pub async fn drive<C, E>(conversation: &mut C, extension: &mut E) -> Ending<C::Failure>
+pub async fn drive<C, E>(
+    conversation: &mut C,
+    extension: &mut E,
+    state: &mut DriveState,
+) -> Ending<C::Failure>
 where
     C: Conversation + ?Sized,
     E: Extension<C>,
 {
     match extension.budget(conversation) {
-        Budget::Unbounded => turns(conversation, extension).await,
+        Budget::Unbounded => turns(conversation, extension, state).await,
         Budget::Spent => Ending::Stopped,
         Budget::Within(limit) => {
-            match tokio::time::timeout(limit, turns(conversation, extension)).await {
+            match tokio::time::timeout(limit, turns(conversation, extension, state)).await {
                 Ok(ending) => ending,
                 Err(_elapsed) => {
                     extension.budget_spent(conversation);
@@ -41,19 +48,22 @@ where
 }
 
 /// Every turn, in order, until one ends the loop.
-async fn turns<C, E>(conversation: &mut C, extension: &mut E) -> Ending<C::Failure>
+async fn turns<C, E>(
+    conversation: &mut C,
+    extension: &mut E,
+    state: &mut DriveState,
+) -> Ending<C::Failure>
 where
     C: Conversation + ?Sized,
     E: Extension<C>,
 {
     let mut number: u64 = 0;
-    let mut answers: Vec<String> = Vec::new();
     let ending = loop {
         number += 1;
         if conversation.take_input().await {
             taken(number, false);
         }
-        if let Some(ending) = extension.before_model(conversation, number).await {
+        if let Some(ending) = extension.before_model(conversation, number, state).await {
             break ending;
         }
         match conversation.prepare().await {
@@ -71,14 +81,15 @@ where
             break ending;
         }
         if !turn.has_calls() {
-            match answered(conversation, extension, turn, number, &mut answers).await {
+            match answered(conversation, extension, turn, number, state).await {
                 Next::End(ending) => break ending,
                 Next::Again => continue,
-                Next::Done => break Ending::Answered(answers.join(ANSWER_JOIN)),
+                Next::Done => break Ending::Answered(state.answers.join(ANSWER_JOIN)),
             }
         }
         let results = conversation.run_calls(&turn).await;
         conversation.remember(turn, results);
+        state.completed();
         if conversation.stopped() {
             break Ending::Stopped;
         }
@@ -108,7 +119,7 @@ async fn answered<C, E>(
     extension: &mut E,
     turn: C::Turn,
     number: u64,
-    answers: &mut Vec<String>,
+    state: &mut DriveState,
 ) -> Next<C::Failure>
 where
     C: Conversation + ?Sized,
@@ -123,6 +134,7 @@ where
         Answer::End(ending) => return Next::End(ending),
         Answer::Continue(why) => {
             conversation.remember(turn, C::Results::default());
+            state.completed();
             conversation.push_user(why);
             return Next::Again;
         }
@@ -132,8 +144,9 @@ where
     // the correction, and no message already sent is edited.
     let said = turn.text().to_owned();
     conversation.remember(turn, C::Results::default());
+    state.completed();
     if !said.trim().is_empty() {
-        answers.push(said);
+        state.answers.push(said);
     }
     if conversation.take_input().await {
         taken(number, true);

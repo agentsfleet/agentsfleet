@@ -14,7 +14,7 @@ import {
 import { applyLiveFrame, mergeBackfill } from "./fleet-stream-frames";
 import { applyFinalReplyText, applyReplyDelta, applyReplyGone, applyReplyRecovery } from "./fleet-stream-reply-frames";
 import type { Entry } from "./fleet-stream-entry";
-import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
+import { AGENTSFLEET_EVENT_STATUS, TERMINAL_STATUSES } from "./fleet-stream-row";
 import { closedAnyAtSettle } from "./fleet-stream-tool-trace";
 import { ReplyStream } from "./reply-stream";
 import { sendMarks } from "./send-marks";
@@ -80,8 +80,10 @@ function writeChunk(entry: Entry, frame: ChunkFrame, apply: ApplyEvents, isCurre
   let decoder = entry.replyStreams.get(frame.event_id);
   const alreadyOpen = decoder !== undefined;
   if (decoder === undefined) {
+    const attempt = entry.replyAttempts.get(frame.event_id);
     decoder = new ReplyStream((delta) => {
-      if (isCurrent()) apply((prev) => applyReplyDelta(prev, frame.event_id, delta), {});
+      if (isCurrent() && entry.replyStreams.get(frame.event_id) === decoder
+        && entry.replyAttempts.get(frame.event_id) === attempt) apply((prev) => applyReplyDelta(prev, frame.event_id, delta), {});
     });
     entry.replyStreams.set(frame.event_id, decoder);
   }
@@ -101,6 +103,7 @@ function completeReply(
   apply: ApplyEvents,
   isCurrent: () => boolean,
 ): void {
+  entry.completedReplies.add(frame.event_id);
   const finalReply = typeof frame.final_reply === "string" ? frame.final_reply : null;
   const settle = () => {
     // Set inside `apply`, which runs its update at once (`setEvents`).
@@ -122,18 +125,19 @@ function completeReply(
     entry.replyGaps.delete(frame.event_id);
     // The answer came inline, but a call the turn closed itself may have ended
     // otherwise: the saved trace says how.
-    if (seen.closedCalls) refreshSavedTrace(entry, fleetId, frame.event_id, apply, isCurrent, readEventDetail);
+    if (seen.closedCalls || entry.snapshot.events.some(event => event.id === frame.event_id && event.runRestarted)) refreshSavedTrace(entry, fleetId, frame.event_id, apply, isCurrent, readEventDetail);
   };
   const decoder = entry.replyStreams.get(frame.event_id);
   if (decoder === undefined) {
     settle();
     return;
   }
-  entry.replyStreams.delete(frame.event_id);
   // Completion can overtake queued activity. Close this live pass before the
   // decoder's asynchronous finish so a late chunk cannot open another one.
   entry.replyGaps.add(frame.event_id);
   const finished = () => {
+    if (entry.replyStreams.get(frame.event_id) !== decoder) return;
+    entry.replyStreams.delete(frame.event_id);
     if (isCurrent()) settle();
   };
   void decoder.finish().then(finished, finished);
@@ -156,7 +160,7 @@ export function settleRepliesFromBackfill(
   isCurrent: () => boolean,
 ): void {
   for (const row of rows) {
-    if (row.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) continue;
+    if (!TERMINAL_STATUSES.has(row.status)) continue;
     if (entry.replyGaps.has(row.event_id)) {
       closeLivePass(entry, row.event_id);
       apply((prev) => applyReplyRecovery(prev, row.event_id, false), {});
@@ -168,8 +172,10 @@ export function settleRepliesFromBackfill(
       readMissingBodies(entry, fleetId, row.event_id, apply, isCurrent, readEventDetail);
       continue;
     }
-    entry.replyStreams.delete(row.event_id);
+    entry.completedReplies.add(row.event_id);
     void decoder.finish().then(() => {
+      if (entry.replyStreams.get(row.event_id) !== decoder) return;
+      entry.replyStreams.delete(row.event_id);
       if (!isCurrent()) return;
       entry.replyGaps.add(row.event_id);
       apply((prev) => applyReplyRecovery(prev, row.event_id, false), {});
@@ -181,6 +187,8 @@ export function settleRepliesFromBackfill(
 export function disposeReplyStreams(entry: Entry): void {
   for (const decoder of entry.replyStreams.values()) decoder.dispose();
   entry.replyStreams.clear();
+  entry.replyAttempts.clear();
+  entry.completedReplies.clear();
   entry.replyGaps.clear();
   entry.replyRecoveries.clear();
   entry.replyHeard.clear();
@@ -269,12 +277,14 @@ async function settleFromDetail(
   if (!isCurrent()) return;
   const pending = entry.runningReads.get(eventId);
   if (pending !== undefined) return pending;
-  const reading = readRunningDetail(entry, fleetId, eventId, apply, isCurrent);
+  const attempt = entry.replyAttempts.get(eventId);
+  const owns = () => isCurrent() && entry.replyAttempts.get(eventId) === attempt;
+  const reading = readRunningDetail(entry, fleetId, eventId, apply, owns);
   entry.runningReads.set(eventId, reading);
   try {
     await reading;
   } finally {
-    entry.runningReads.delete(eventId);
+    if (entry.runningReads.get(eventId) === reading) entry.runningReads.delete(eventId);
   }
 }
 

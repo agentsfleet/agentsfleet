@@ -31,6 +31,13 @@ CREATE TABLE runner.runners (
     capability_report        JSONB,
     degraded_reason          TEXT,
     last_seen_at             TIMESTAMPTZ(3)  NOT NULL,
+    -- Automatic quarantine is independent of operator status. Capacity and
+    -- operator readers inspect reason/time; proved heartbeats own healthy_since.
+    cordon_reason            TEXT,
+    cordoned_at              TIMESTAMPTZ(3),
+    cordon_healthy_since_at      TIMESTAMPTZ(3),
+    CONSTRAINT ck_runners_cordon_pair CHECK ((cordon_reason IS NULL) = (cordoned_at IS NULL)),
+    CONSTRAINT ck_runners_cordon_health CHECK (cordon_healthy_since_at IS NULL OR cordon_reason IS NOT NULL),
     selftest_requested_at    TIMESTAMPTZ(3),
     selftest_completed_at    TIMESTAMPTZ(3),
     selftest_checks          JSONB,

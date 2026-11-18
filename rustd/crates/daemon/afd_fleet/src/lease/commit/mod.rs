@@ -74,6 +74,8 @@ pub struct TerminalReport<'a> {
 pub enum Committed {
     /// The report won its fence and every write committed.
     Settled {
+        /// Authoritative retained sandbox deadline, absent for late reports.
+        accepted_hold: Option<Timestamp>,
         /// What the report's lines charged, its runtime line included.
         charged: Nanos,
         /// The run's token sums, this report's lines included.
@@ -275,6 +277,7 @@ impl Leases {
             .await?;
         transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
         Ok(Committed::Settled {
+            accepted_hold: settled.accepted_hold,
             charged: settled.charged,
             tokens: settled.tokens,
             closed: settled.closed.map(Box::new),

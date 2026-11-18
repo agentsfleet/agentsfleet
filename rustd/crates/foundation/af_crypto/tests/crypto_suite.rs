@@ -34,6 +34,7 @@ mod known_answer;
 mod mac;
 #[path = "secret.rs"]
 mod secret;
+mod turn_checkpoint;
 
 #[path = "secret_object.rs"]
 mod secret_object;

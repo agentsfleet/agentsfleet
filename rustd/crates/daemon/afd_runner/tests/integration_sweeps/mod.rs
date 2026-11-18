@@ -33,11 +33,23 @@ async fn liveness_and_retention_converge_real_runner_rows() {
 
     let liveness = Liveness::new(fixture.database.clone(), Entropy::new());
     let first = liveness.sweep().await.expect("liveness sweeps real rows");
-    assert!(first.scanned >= 4, "the four fixture runners are scanned");
-    assert!(first.changed >= 4, "the four stale fixture rows converge");
+    assert!(
+        first.scanned >= 2,
+        "silent and idle draining hosts are actionable"
+    );
+    assert!(
+        first.changed >= 3,
+        "offline, automatic cordon and drain commit"
+    );
     assert_eq!(fixture.runner_state(&fixture.draining).await, "drained");
-    assert!(fixture.slot_is_expired(&fixture.stale_fleet).await);
-    assert!(fixture.slot_is_expired(&fixture.cordoned_fleet).await);
+    assert!(
+        !fixture.slot_is_expired(&fixture.stale_fleet).await,
+        "silence never backdates a live slot"
+    );
+    assert!(
+        !fixture.slot_is_expired(&fixture.cordoned_fleet).await,
+        "operator policy leaves the live deadline alone"
+    );
     assert!(!fixture.slot_is_expired(&fixture.unknown_fleet).await);
     assert_eq!(fixture.offline_events().await, 1);
     // The episode's instant reaches the operator API the way every other
@@ -46,17 +58,7 @@ async fn liveness_and_retention_converge_real_runner_rows() {
 
     // A pass takes one batch of due runners, and the lane may hold more than a
     // batch of other suites' stale rows; the repeat converges once they drain.
-    let mut passes = 0;
-    while liveness
-        .sweep()
-        .await
-        .expect("a repeated pass converges")
-        .changed
-        > 0
-    {
-        passes += 1;
-        assert!(passes < MAX_DRAIN_PASSES, "the lane's due runners drain");
-    }
+    converge(&liveness).await;
     assert_eq!(fixture.offline_events().await, 1);
 
     let retention = Retention::new(fixture.database.clone());
@@ -260,4 +262,18 @@ async fn a_backlog_past_one_cycle_brings_the_next_cycle_forward() {
     );
     assert_eq!(retention.interval(), idle, "a drained cycle idles again");
     fixture.cleanup().await;
+}
+
+async fn converge(liveness: &Liveness) {
+    let mut passes = 0;
+    while liveness
+        .sweep()
+        .await
+        .expect("a repeated pass converges")
+        .changed
+        > 0
+    {
+        passes += 1;
+        assert!(passes < MAX_DRAIN_PASSES, "the lane's due runners drain");
+    }
 }

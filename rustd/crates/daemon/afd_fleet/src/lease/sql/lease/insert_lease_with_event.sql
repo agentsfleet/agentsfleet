@@ -14,10 +14,14 @@ WITH instant AS MATERIALIZED (
       + (SELECT count(*) FROM authoring.attempts a
           WHERE a.runner_id = $2 AND a.status = $11
             AND a.lease_expires_at > i.checked_at)
+      + (SELECT count(*) FROM runner.fleet_slots s
+          WHERE s.last_runner_id = $2 AND s.fleet_id <> $3
+            AND s.hold_expires_at IS NOT NULL
+            AND s.hold_expires_at > i.checked_at)
       < r.worker_count
 ), held AS (
   UPDATE runner.fleet_slots
-  SET updated_at = now()
+  SET hold_expires_at = NULL, updated_at = now()
   WHERE fleet_id = $3 AND fencing_token = $10
     AND lease_expires_at > (SELECT checked_at FROM instant)
     -- The deadline the claim answered, which a pass that outlived it misses.
@@ -34,10 +38,10 @@ WITH instant AS MATERIALIZED (
   INSERT INTO runner.leases
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at,
-   fencing_token, lease_expires_at, status, posted_message_count, decision_snapshot, created_at, updated_at)
+   fencing_token, lease_expires_at, status, posted_message_count, decision_snapshot, setup_revision_id, created_at, updated_at)
   SELECT $1, $2, $3, $4, $5, e.event_id, $15,
          $7, $8, $9, a.checked_at,
-         $10, h.lease_expires_at, $11, 0, $16, a.checked_at, a.checked_at
+         $10, h.lease_expires_at, $11, 0, $16, $20::uuid, a.checked_at, a.checked_at
   FROM held h
   CROSS JOIN after_lock a
   JOIN fleet.events e ON e.fleet_id = $3 AND e.event_id = $6

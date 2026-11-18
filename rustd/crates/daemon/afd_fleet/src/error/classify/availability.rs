@@ -44,6 +44,8 @@ impl Error {
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }
             | ErrorKind::TaskRefused { .. }
+            | ErrorKind::TurnCheckpointRefused { .. }
+            | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
             | ErrorKind::Gate { .. }
             | ErrorKind::Credential { .. }
@@ -107,6 +109,8 @@ impl Error {
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }
             | ErrorKind::TaskRefused { .. }
+            | ErrorKind::TurnCheckpointRefused { .. }
+            | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
             | ErrorKind::Authoring { .. }
             | ErrorKind::Datastore { .. }
@@ -173,6 +177,8 @@ impl Error {
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }
             | ErrorKind::TaskRefused { .. }
+            | ErrorKind::TurnCheckpointRefused { .. }
+            | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
             | ErrorKind::Authoring { .. }
             | ErrorKind::Datastore { .. }

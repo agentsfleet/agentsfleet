@@ -333,3 +333,13 @@ closed_set! {
         Settled => "settled"
     }
 }
+
+closed_set! {
+    /// Committed automatic quarantine transitions; no runner identifier label.
+    CordonChange {
+        /// Silence crossed the offline threshold.
+        Cordoned => "cordoned",
+        /// Continuous healthy beats proved recovery.
+        Lifted => "lifted"
+    }
+}

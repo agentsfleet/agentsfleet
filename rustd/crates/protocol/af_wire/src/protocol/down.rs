@@ -175,6 +175,21 @@ pub enum Down<
         #[serde(borrow)]
         answer: Answer<'a, FoldResponse<'a>>,
     },
+    /// Exact ordinary checkpoint command result; all correlation fields are echoed.
+    TurnCheckpoint {
+        /// Transport request identity.
+        request_id: NonZeroU64,
+        /// Ordinary lease that authorized this command.
+        #[serde(borrow)]
+        lease_id: Cow<'a, str>,
+        /// Stable identity retained when an acknowledgement is lost.
+        operation_id: crate::lease::TurnId,
+        /// Echoed even for refusals, so another operation cannot satisfy this request.
+        kind: crate::lease::TurnCheckpointKind,
+        /// Full response or safe registered refusal.
+        #[serde(borrow)]
+        answer: Answer<'a, crate::lease::TurnCheckpointResponse>,
+    },
     /// Stop the named running lease.
     Cancel {
         /// Lease whose interrupt token must be cancelled.
@@ -197,7 +212,9 @@ impl<C, D, O, I> Down<'_, C, D, O, I> {
     #[must_use]
     pub const fn stream_kind(&self) -> StreamKind {
         match self {
-            Self::ReportAck { .. } | Self::AuthoringReportAck { .. } => StreamKind::Reports,
+            Self::ReportAck { .. }
+            | Self::AuthoringReportAck { .. }
+            | Self::TurnCheckpoint { .. } => StreamKind::Reports,
             Self::Offer { .. }
             | Self::Folded { .. }
             | Self::AuthoringModelResult { .. }
@@ -228,6 +245,7 @@ impl<C, D, O, I> Down<'_, C, D, O, I> {
             | Self::AuthoringRenewed { request_id, .. }
             | Self::AuthoringReportAck { request_id, .. }
             | Self::ReportAck { request_id, .. }
+            | Self::TurnCheckpoint { request_id, .. }
             | Self::Folded { request_id, .. } => Some(*request_id),
             Self::Offer { .. }
             | Self::Assignment { .. }

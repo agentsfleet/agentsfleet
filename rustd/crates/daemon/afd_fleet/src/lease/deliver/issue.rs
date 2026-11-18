@@ -49,6 +49,11 @@ impl LeaseService {
         else {
             return Ok(claim_lost(runner, &admitted.acquired));
         };
+        if admitted.acquired.kind == crate::lease::Kind::Reclaim {
+            self.leases
+                .publish_restarted(&admitted.acquired, &issued)
+                .await;
+        }
         self.leases
             .latest()
             .observe(
@@ -68,11 +73,13 @@ impl LeaseService {
             &admitted.acquired,
             super::queue_wait::issued_at(now, began),
         );
-        self.render_offer(admitted, policy, issued, emit).await
+        self.render_offer(runner, admitted, policy, issued, emit)
+            .await
     }
 
     async fn render_offer<T, F>(
         &self,
+        runner: &Uuid7,
         admitted: &AdmittedFleetWork,
         policy: ExecutionPolicy<'_>,
         issued: Issued,
@@ -82,6 +89,17 @@ impl LeaseService {
         T: Send,
         F: for<'a> FnMut(LeasePayload<'a>, Offered) -> T + Send,
     {
+        let turn_resume = if issued.task.is_none() {
+            self.leases
+                .turn_resume(super::super::turn_checkpoint::TurnLease {
+                    runner_id: runner,
+                    lease_id: &issued.lease_id,
+                    fencing_token: admitted.acquired.fence.as_u64(),
+                })
+                .await?
+        } else {
+            None
+        };
         let (history, memory) = future::join(
             history::turns(
                 self.thread.as_ref(),
@@ -103,6 +121,7 @@ impl LeaseService {
                 memory,
                 decision: issued.decision,
                 task: issued.task,
+                turn_resume,
                 expires_at: issued.expires_at,
             },
         );

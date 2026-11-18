@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
+use afr_executor::Executor;
 use afr_sandbox::{
     Allowlist, Engine, HostWorkspace, Killed, Limits, Network, Sandbox, SandboxRequest,
 };
@@ -15,6 +15,8 @@ use bytes::Bytes;
 use tokio::sync::mpsc;
 
 use crate::egress::Bound;
+mod executor;
+use executor::FakeExecutor;
 
 /// What a fake sandbox does when it is frozen and when it is thawed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -34,6 +36,10 @@ pub(crate) enum Freezer {
     /// Freezes, then refuses the addresses its next lease's hosts resolved
     /// to, as a kernel refusing the swap would.
     RefusesReallow,
+    /// A detached tenant process prevents a live workspace snapshot.
+    BusyTenant,
+    /// An abandoned file worker has not finished its executor-side work.
+    BusyExecutor,
     /// Its processes ended after the run, so it no longer reports running.
     Dead,
 }
@@ -209,6 +215,10 @@ impl Sandbox for FakeSandbox {
         Ok(())
     }
 
+    async fn recovery_quiescent(&self) -> afr_sandbox::Result<bool> {
+        Ok(self.freezer != Freezer::BusyTenant)
+    }
+
     async fn thaw(&self) -> afr_sandbox::Result<()> {
         self.thaw_attempts.fetch_add(1, Ordering::SeqCst);
         if !self.thaw_takes.is_zero() {
@@ -266,60 +276,6 @@ pub(crate) const NO_FREEZER: &str = "cgroup.freeze refused";
 pub(crate) const NO_REFILL: &str = "the egress set refused its new addresses";
 /// What a broken executor says once its sandbox is thawed.
 pub(crate) const EXECUTOR_GONE: &str = "the executor died while frozen";
-
-/// An executor that refuses to spawn, reports the files written into it, and
-/// answers everything else emptily, until its sandbox's freezer says not.
-#[derive(Debug, Default)]
-struct FakeExecutor {
-    written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
-    /// What its sandbox does when thawed.
-    freezer: Freezer,
-    /// Whether its sandbox was thawed.
-    thawed: AtomicBool,
-}
-
-#[async_trait::async_trait]
-impl Executor for FakeExecutor {
-    async fn spawn(&self, _spawn: &Spawn) -> afr_executor::Result<Process> {
-        Err(std::io::Error::other("no processes here").into())
-    }
-
-    async fn write(&self, _process: ProcessId, _data: Bytes) -> afr_executor::Result<()> {
-        Ok(())
-    }
-
-    async fn kill(&self, _process: ProcessId) -> afr_executor::Result<()> {
-        Ok(())
-    }
-
-    async fn read_file(&self, _path: &str, _max_bytes: u64) -> afr_executor::Result<FileContent> {
-        Ok(FileContent {
-            data: Bytes::new(),
-            truncated: false,
-        })
-    }
-
-    async fn write_file(&self, path: &str, data: Bytes) -> afr_executor::Result<()> {
-        if let Some(written) = &self.written {
-            let _reader_gone = written.send((path.to_owned(), data));
-        }
-        Ok(())
-    }
-
-    async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
-        let thawed = self.thawed.load(Ordering::SeqCst);
-        if thawed && self.freezer == Freezer::ThawsSilent {
-            std::future::pending::<()>().await;
-        }
-        if thawed && self.freezer == Freezer::ThawsBroken {
-            return Err(std::io::Error::other(EXECUTOR_GONE).into());
-        }
-        Ok(Listing {
-            entries: Vec::new(),
-            truncated: false,
-        })
-    }
-}
 
 /// The network a sandbox was asked for, owned, so a test reads it back after
 /// the request is gone.

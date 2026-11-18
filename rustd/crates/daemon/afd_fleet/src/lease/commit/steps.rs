@@ -119,6 +119,7 @@ mod tests {
 
     fn settled() -> ReportAnswer {
         ReportAnswer::Settled(Box::new(SettledReport {
+            accepted_hold: None,
             has_task: false,
             closed: None,
             owed: None,

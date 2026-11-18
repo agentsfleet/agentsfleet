@@ -6,7 +6,7 @@
 mod admit;
 mod adoption;
 mod bindings;
-mod checkpoint;
+pub(crate) mod checkpoint;
 mod continuation;
 mod control;
 mod decision;

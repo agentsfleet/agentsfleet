@@ -139,7 +139,14 @@ async fn incompatible_plan_and_live_writer_refuse_before_publication() -> crate:
         .run(None, Zeroizing::new(b"private history".to_vec()), vec![])
         .await
         .unwrap_err();
-        config_failure(&error, expected);
+        if fault == "busy" {
+            assert_eq!(
+                error.code(),
+                af_core::error_code::RUN_CHECKPOINT_UNAVAILABLE
+            );
+        } else {
+            config_failure(&error, expected);
+        }
         assert!(state.lock().unwrap().plan.manifest_root.is_none());
         let requests = drain(&mut calls).await;
         assert!(

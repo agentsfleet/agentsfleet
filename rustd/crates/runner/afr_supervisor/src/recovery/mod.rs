@@ -8,6 +8,8 @@ mod catalog_tests;
 mod files;
 #[cfg(test)]
 mod files_tests;
+mod inventory;
+mod layout;
 mod links;
 mod progress;
 #[cfg(test)]
@@ -19,9 +21,11 @@ mod tests;
 mod transfer;
 #[cfg(test)]
 mod transfer_tests;
+mod turn;
 
 pub(super) use capture::Capture;
 pub(super) use restore::Restore;
+pub(super) use turn::NativeTurn;
 
 #[cfg(test)]
 pub(crate) use transfer::http_tests::server::Server as TestHttpsServer;

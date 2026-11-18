@@ -15,11 +15,12 @@ use zeroize::Zeroizing;
 #[derive(Debug)]
 pub(super) struct State {
     pub(super) history: Option<TaskRecovery>,
-    base: Option<CheckpointPlan>,
-    base_paths: Vec<String>,
+    pub(super) turn: Option<afr_agent::TurnRecovery>,
+    pub(super) base: Option<CheckpointPlan>,
+    pub(super) base_paths: Vec<String>,
 }
 
-fn api_toolbox() -> String {
+pub(super) fn api_toolbox() -> String {
     af_core::etag::sha256_hex(b"agentsfleet.api-only-recovery.v1")
 }
 
@@ -29,6 +30,9 @@ impl LeaseRun<'_> {
         sandbox: &dyn Sandbox,
         build: &Build<'_>,
     ) -> Result<()> {
+        if self.lease.turn_resume.is_some() {
+            return self.prepare_turn_recovery(sandbox, build).await;
+        }
         let Some(prepared) = build
             .prepared_task
             .filter(|prepared| prepared.allow_actions)
@@ -51,66 +55,15 @@ impl LeaseRun<'_> {
             .freeze()
             .await
             .map_err(|source| error::boundary("sandbox could not freeze for recovery", source))?;
-        let restored: Result<State> = async {
-            if task.checkpoint_id.is_some() {
-                let restored = Restore {
-                    plane: &self.lessee.plane,
-                    lease: &self.ids.lease,
-                    workspace: &scope,
-                    fence: self.lease.fencing_token,
-                    task,
-                    toolbox,
-                    stop: &self.interrupt,
-                }
-                .run(Some((workspace.root.to_owned(), workspace.owner)))
-                .await?;
-                Ok(State {
-                    history: Some(recovered_history(task, &restored.plan, &restored.history)),
-                    base: Some(restored.plan),
-                    base_paths: restored.base_paths,
-                })
-            } else if let TaskTarget::ExistingPr {
-                repository, head, ..
-            } = &task.target
-            {
-                let root = workspace.root.to_owned();
-                verify_fresh_checkout(&root, repository, head).await?;
-                let base = Capture {
-                    plane: &self.lessee.plane,
-                    lease: &self.ids.lease,
-                    workspace: &scope,
-                    fence: self.lease.fencing_token,
-                    task,
-                    toolbox,
-                    mode: CheckpointMode::RetainBase,
-                    base: None,
-                    stop: &self.interrupt,
-                }
-                .run(Some(root), Zeroizing::new(Vec::new()), Vec::new())
-                .await?;
-                let base_paths = Restore {
-                    plane: &self.lessee.plane,
-                    lease: &self.ids.lease,
-                    workspace: &scope,
-                    fence: self.lease.fencing_token,
-                    task,
-                    toolbox,
-                    stop: &self.interrupt,
-                }
-                .base_paths(&base)
-                .await?;
-                Ok(State {
-                    history: None,
-                    base: Some(base),
-                    base_paths,
-                })
-            } else {
-                Ok(State {
-                    history: None,
-                    base: None,
-                    base_paths: Vec::new(),
-                })
-            }
+        let restored = async {
+            prove_quiescent(sandbox).await?;
+            self.native_workspace(
+                task,
+                (workspace.root.to_owned(), workspace.owner),
+                &scope,
+                toolbox,
+            )
+            .await
         }
         .await;
         // Failure remains a failed build even when thaw also fails; teardown owns
@@ -176,6 +129,7 @@ impl LeaseRun<'_> {
             let Some(recovery) = output.recovery.as_ref() else {
                 return Ok(());
             };
+            prove_quiescent(sandbox).await?;
             let state =
                 state.ok_or_else(|| error::config("task workspace has no recovery owner"))?;
             let workspace = sandbox
@@ -279,7 +233,11 @@ pub(super) fn capture_unavailable(ending: &mut Ending) {
 
 /// Only a newly created checkout may be read by Git on the host.
 /// Recovered or tenant-modified repositories never take this path.
-async fn verify_fresh_checkout(root: &std::path::Path, repository: &str, head: &str) -> Result<()> {
+pub(super) async fn verify_fresh_checkout(
+    root: &std::path::Path,
+    repository: &str,
+    head: &str,
+) -> Result<()> {
     let name = repository
         .split_once('/')
         .map(|(_, name)| name)
@@ -304,7 +262,7 @@ async fn verify_fresh_checkout(root: &std::path::Path, repository: &str, head: &
 }
 
 /// A restored history carries the cursors authenticated by its saved manifest.
-fn recovered_history(
+pub(super) fn recovered_history(
     task: &af_wire::task::TaskContext<'static>,
     plan: &CheckpointPlan,
     history: &af_crypto::secret::SecretBytes,
@@ -321,3 +279,17 @@ fn recovered_history(
 #[cfg(test)]
 #[path = "tests/recovery/ownership.rs"]
 mod ownership_tests;
+
+/// The owner has confirmed freeze before asking for this separate tenant proof.
+async fn prove_quiescent(sandbox: &dyn Sandbox) -> Result<()> {
+    if !sandbox
+        .recovery_quiescent()
+        .await
+        .map_err(|source| error::boundary("cannot prove frozen tenant quiescence", source))?
+    {
+        return Err(error::config(
+            "a tenant process still owns the recovery workspace",
+        ));
+    }
+    Ok(())
+}

@@ -34,6 +34,8 @@ pub(super) struct ItemRow {
     host_id: String,
     sandbox_tier: String,
     status: String,
+    cordon_reason: Option<String>,
+    cordoned_at: Option<jiff_sqlx::Timestamp>,
     labels: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     last_seen_at: Timestamp,
@@ -91,7 +93,17 @@ impl ItemRow {
             worker_count: self.worker_count,
             sandbox_config_json: self.sandbox_config,
         };
+        let cordon = match (self.cordon_reason, self.cordoned_at) {
+            (None, None) => None,
+            (Some(reason), Some(at)) => Some(afd_api_wire::operator::RunnerCordon {
+                reason: serde_json::from_value(Value::String(reason))
+                    .map_err(stored_json(TABLE_RUNNERS, "cordon_reason"))?,
+                cordoned_at: at.to_jiff(),
+            }),
+            _ => return Err(admin_state_malformed()),
+        };
         Ok(RunnerItem {
+            cordon,
             id: self.id.clone(),
             host_id: self.host_id,
             sandbox_tier: columns.sandbox_tier.clone(),

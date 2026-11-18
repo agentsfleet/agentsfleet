@@ -19,7 +19,7 @@ guffbolt = { git = "https://github.com/agentsfleet/agentsfleet" }
 ## How a loop runs
 
 ```text
-drive(conversation, extension) ──► Ending: Answered | Failed | Stopped
+drive(conversation, extension, state) ──► Ending: Answered | Failed | Stopped
 
 every turn:  take input ─► before_model ─► prepare ─► sample ─► after_turn
 no calls:    on_answer ─► take input again; new input runs one more turn
@@ -114,7 +114,7 @@ async fn main() {
     let mut chat = Chat { messages: vec!["Deploy the fix.".to_owned()], inbox };
     send.send("Use staging.".to_owned()).unwrap();
 
-    match drive(&mut chat, &mut Plain).await {
+    match drive(&mut chat, &mut Plain, &mut guffbolt::DriveState::default()).await {
         // The model read both messages before it answered.
         Ending::Answered(text) => assert_eq!(text, "You said: Use staging."),
         Ending::Failed(why) => panic!("{why}"),
@@ -157,7 +157,7 @@ impl<C: Conversation> Extension<C> for Task {
 /// Runs any conversation as a task.
 async fn run_task<C: Conversation>(conversation: &mut C) -> Ending<C::Failure> {
     let mut task = Task { goal: "deployed", budget: Duration::from_secs(60) };
-    drive(conversation, &mut task).await
+    drive(conversation, &mut task, &mut guffbolt::DriveState::default()).await
 }
 ```
 

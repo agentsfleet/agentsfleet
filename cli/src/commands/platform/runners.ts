@@ -20,8 +20,8 @@ export const platformRunnersList = Effect.fn("platform.runners.list")(function* 
   if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
   yield* output.printEntityTable({name: {key: "host_id", label: "HOST"}, domain: [
     {key: "id", label: "ID"}, {key: "status", label: "STATE"}, {key: "liveness", label: "CONNECTION"},
-    {key: "default_engine", label: "DEFAULT ENGINE"},
-  ], ageKey: null}, page.items.map(({id, host_id, status, liveness}) => ({id, host_id, status, liveness, default_engine: DEFAULT_ENGINE})));
+    {key: "cordon", label: "AUTO CORDON"}, {key: "default_engine", label: "DEFAULT ENGINE"},
+  ], ageKey: null}, page.items.map(({id, host_id, status, liveness, cordon}) => ({id, host_id, status, liveness, cordon: cordon?.reason ?? "None", default_engine: DEFAULT_ENGINE})));
   if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
 });
 
@@ -36,6 +36,9 @@ export const platformRunnerShow = Effect.fn("platform.runners.show")(function* (
     "Active leases": String(runner.active_lease_count), "Active fleets": String(runner.active_fleet_count),
     "Leases succeeded": String(runner.leases_succeeded), "Leases failed": String(runner.leases_failed),
     "Self-test": selftestStatus(runner),
+    "Auto cordon": runner.cordon?.reason ?? "None",
+    ...(runner.cordon ? {"Cordoned at": runner.cordon.cordoned_at,
+      "Return rule": "30 seconds of continuous healthy heartbeats"} : {}),
   });
   if (runner.selftest) {
     const output = yield* Output;

@@ -22,4 +22,6 @@ CREATE TABLE fleet.task_identity_keys (
 CREATE UNIQUE INDEX uq_task_identity_active ON fleet.task_identity_keys (workspace_id, repository)
     WHERE retired_at IS NULL;
 
+CREATE INDEX idx_task_identity_retention ON fleet.task_identity_keys (created_at, id);
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.task_identity_keys TO api_runtime;

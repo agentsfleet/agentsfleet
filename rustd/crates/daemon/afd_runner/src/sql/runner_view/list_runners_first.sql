@@ -1,4 +1,4 @@
-SELECT r.id AS id, r.host_id, r.sandbox_tier, r.status, r.labels::text AS labels,
+SELECT r.id AS id, r.host_id, r.sandbox_tier, r.status, r.cordon_reason, r.cordoned_at, r.labels::text AS labels,
        r.last_seen_at, r.created_at, statement_timestamp() AS checked_at,
        EXISTS (
          SELECT 1 FROM runner.leases l

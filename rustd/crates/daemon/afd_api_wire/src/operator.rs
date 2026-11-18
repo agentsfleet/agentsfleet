@@ -7,11 +7,44 @@ use serde::{Deserialize, Serialize};
 use crate::admin::AdminState;
 use af_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, SelftestReport};
 
+/// Why the daemon has stopped offering new work to an operator-active host.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CordonReason {
+    /// No heartbeat reached the daemon within its offline threshold.
+    MissedHeartbeats,
+}
+
+impl CordonReason {
+    /// Stable database, audit and API spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MissedHeartbeats => "missed_heartbeats",
+        }
+    }
+}
+
+/// Automatic quarantine; operator status remains independently visible.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunnerCordon {
+    /// Trigger that blocks new work.
+    pub reason: CordonReason,
+    /// Committed quarantine instant.
+    #[serde(with = "af_wire::instant")]
+    pub cordoned_at: jiff::Timestamp,
+}
+
 /// One runner in the newest-first operator list.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerItem<'a> {
+    /// Automatic quarantine; absent when the daemon permits new work.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cordon: Option<RunnerCordon>,
     /// Canonical runner identifier.
     #[serde(borrow)]
     pub id: Cow<'a, str>,

@@ -64,17 +64,21 @@ export class FakeEventSource {
     if (!named) return;
     // Most fixtures describe a run from its first chunk. Explicit markers
     // exercise late subscribers, gaps, and reclaim on the same event.
-    let wire: LiveFrame = frame;
+    // Fixtures default to the daemon's first attempt; explicit missing fields stay missing.
+    let wire: LiveFrame = "event_id" in frame && !("fencing_token" in frame)
+      ? {...frame, fencing_token: "1"} : frame;
     if (frame.kind === FRAME_KIND.CHUNK) {
-      const seq = frame.stream_seq ?? this.nextStreamSeq.get(frame.event_id) ?? 0;
+      const fence = "fencing_token" in wire ? wire.fencing_token : undefined;
+      const stream = `${frame.event_id}:${fence}`;
+      const seq = frame.stream_seq ?? this.nextStreamSeq.get(stream) ?? 0;
       wire = {
-        ...frame,
-        stream_start: frame.stream_start ?? !this.startedStreams.has(frame.event_id),
+        ...frame, fencing_token: fence,
+        stream_start: frame.stream_start ?? !this.startedStreams.has(stream),
         stream_contiguous: frame.stream_contiguous ?? true,
         stream_seq: seq,
       };
-      this.startedStreams.add(frame.event_id);
-      this.nextStreamSeq.set(frame.event_id, seq + 1);
+      this.startedStreams.add(stream);
+      this.nextStreamSeq.set(stream, seq + 1);
     }
     this.emitNamed(wire.kind, JSON.stringify(wire));
   }

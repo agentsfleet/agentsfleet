@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MessageState } from "@assistant-ui/react";
 
-import { readFailureDetail, readGroupMembers } from "./fleetMessageReaders";
+import { readFailureDetail, readGroupMembers, readRestartAttempt } from "./fleetMessageReaders";
 import { GROUP_META } from "../../conversation/thread/useFleetThreadEntries";
 
 // The readers take assistant-ui's MessageState; a minimal custom-bag stand-in
@@ -28,5 +28,14 @@ describe("readFailureDetail", () => {
     expect(readFailureDetail(message({ failureDetail: "Runner was unavailable" }))).toBe("Runner was unavailable");
     expect(readFailureDetail(message({ failureDetail: "" }))).toBeNull();
     expect(readFailureDetail(message({}))).toBeNull();
+  });
+});
+
+
+describe("readRestartAttempt", () => {
+  it("keeps the observed attempt and ignores absent or malformed metadata", () => {
+    expect(readRestartAttempt(message({ restartAttempt: "42" }))).toBe("42");
+    expect(readRestartAttempt(message({}))).toBeUndefined();
+    expect(readRestartAttempt(message({ restartAttempt: 42 }))).toBeUndefined();
   });
 });
