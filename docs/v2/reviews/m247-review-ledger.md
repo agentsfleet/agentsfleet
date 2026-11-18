@@ -12,7 +12,7 @@ This ledger records completed actions and open findings against the pre-refactor
 It does not certify the subsequent burst refactor, per-file Rust coverage or final PR gate.
 
 Base: `97224ed7432c9dd124ea8797d4324156b7022c07`; pre-refactor implementation: `86f481126c1aa053c34ef3bdaaa6f07baa1c74ab` plus candidate prefix `22ac73ab741b`.
-Documentation-only updates after that candidate change the full-tree review binding; later reviews must name their own current fingerprint.
+The frozen production baseline is `d4823563e80829b97589846a1c7997964fdf0274`. The Nov 18 Astra direction review and two failing scheduler tests leave its production source intact.
 
 ## Completed first-pass repairs
 
@@ -73,11 +73,13 @@ The installed matrix checker passed its completeness/path checks; mapping to a t
 
 | ID | Area | Required work |
 |---|---|---|
-| S1 | Bounded recovery drain | One fallback wake grants one success per five-second tick; preserve epoch/order for the full bounded drain |
+| S1 | Bounded recovery drain | Use recovery-only bounded round-robin. Keep ordinary ring budgets and avoid retrying a locked prefix of 64 candidates while fleet 65 can run |
 | S2 | Shared resource ownership | Use runner-wide byte/I/O/blocking budgets and reusable transport, with family-specific authority |
 | S3 | Cross-file batches | Batch physical transfers across file boundaries and remove duplicate plaintext buffers |
-| S4 | Short custody and bulk deadlines | Shared host authority proof, read-only quota path, short SQL intervals and separate admitted verification deadline |
+| S4 | Short custody and bulk deadlines | Hold a shared host lock through a hold-producing report, conflict with exclusive issue, and preserve fresh-clock/connection checks. Remove empty quota writes and bound verification deadlines |
 | S5 | Measurement and coverage | 1/10/100/500 interrupted fleets; dist comparisons; >99% per production file and patch lines |
+
+The Astra direction review identified two benchmark fixture limitations. Direct `Session::offer` bypasses scheduler registration and the replica wake path. The default seed gives each fleet a separate workspace and hides contention on shared quota. R13 requires registered, already-idle replacement hosts and both workspace distributions. A paused-clock regression exposed the one-success budget and the slow-host stall. A disposable PostgreSQL 19rc2 experiment confirmed the shared-lock conflict with issue and the locked-prefix behavior. F12 and S1 still need their production-path database tests.
 
 See [the architecture and benchmark decision](m247-scalability-and-refactor.md) for the concrete design, calculated bounds and implementation map.
 
