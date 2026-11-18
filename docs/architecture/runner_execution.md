@@ -766,7 +766,9 @@ An engine whose disk the host cannot mount, such as Firecracker, reports no host
 
 ## Workspace between leases
 
-Platform runners restore a complete committed generation before starting the model or tools. Native tasks and ordinary turns have separate durable owners. The recovery page owns capture boundaries, file safety, fencing, and runner-wide transfer admission. [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) · [Durable repair scenario](scenarios/durable-repair.md)
+Platform runners restore a complete committed generation before starting the model or tools. Native tasks and ordinary turns have separate durable owners.
+
+The recovery page owns capture boundaries, file safety, fencing, and runner-wide transfer admission. [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) · [Durable repair scenario](scenarios/durable-repair.md)
 
 - **Held between messages.** A lease that ends processed leaves its sandbox held (`afr_supervisor/src/holds/mod.rs`). The lease cgroup is frozen through `cgroup.freeze` and settled on `frozen 1`. The hold is keyed by fleet, workspace, limits and policy (network policy plus repository binding).
 

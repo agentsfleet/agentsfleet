@@ -100,16 +100,7 @@ pub(super) async fn apply<S>(
     mut download: impl for<'s> FnMut(&'s mut S, &'s [String]) -> BoxFuture<'s, Result<Vec<Chunk>>>,
 ) -> Result<()> {
     let (path, owner) = destination;
-    let opening = permit.cloned();
-    let root = Arc::new(
-        tokio::task::spawn_blocking(move || {
-            let _charged = opening;
-            let root = Workspace::open(&path)?;
-            root.require_empty()?;
-            Ok::<_, crate::Error>(root)
-        })
-        .await??,
-    );
+    let root = open_empty(path, permit.cloned()).await?;
     let mut directories = entries.values().filter_map(|entry| match entry {
         CheckpointEntry::Directory { path } => Some(path),
         _ => None,
@@ -149,6 +140,19 @@ pub(super) async fn apply<S>(
         return Err(error::config("checkpoint ended with an unfinished file"));
     }
     Ok(())
+}
+
+async fn open_empty(
+    path: PathBuf,
+    permit: Option<afr_agent::FileRecoveryPermit>,
+) -> Result<Arc<Workspace>> {
+    tokio::task::spawn_blocking(move || {
+        let _charged = permit;
+        let root = Workspace::open(&path)?;
+        root.require_empty()?;
+        Ok(Arc::new(root))
+    })
+    .await?
 }
 
 fn write_directories(root: &Workspace, owner: (u32, u32), paths: Vec<String>) -> Result<()> {

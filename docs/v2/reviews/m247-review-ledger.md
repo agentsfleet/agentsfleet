@@ -10,8 +10,9 @@ executable: false
 
 This ledger records the baseline, review dispositions, benchmark evidence, and verification still due for platform runners. The implemented architecture lives in the [recovery guide](../../architecture/runner_checkpoint_recovery.md).
 
-Base: `97224ed7432c9dd124ea8797d4324156b7022c07`; pre-refactor implementation: `86f481126c1aa053c34ef3bdaaa6f07baa1c74ab` plus candidate prefix `22ac73ab741b`.
-The frozen production baseline is `d4823563e80829b97589846a1c7997964fdf0274`. The optimized comparison used the same fixture against the refactor commit `976883d00`.
+Base: `97224ed7432c9dd124ea8797d4324156b7022c07`; pre-refactor implementation: `86f481126c1aa053c34ef3bdaaa6f07baa1c74ab` plus candidate prefix `22ac73ab741b`. The frozen production baseline is `d4823563e80829b97589846a1c7997964fdf0274`.
+
+The optimized comparison used the same fixture against the refactor commit `976883d00`.
 
 ## Completed first-pass repairs
 
@@ -34,8 +35,8 @@ The frozen production baseline is `d4823563e80829b97589846a1c7997964fdf0274`. Th
 | server_link_graph | FIXED before the full pre-refactor unit run; Server accepted cyclic or escaping cross-page link graphs |
 | immutable_cleanup_permissions | FIXED before the full pre-refactor unit run; Cleanup used FOR UPDATE on immutable operation receipts without UPDATE privilege |
 
-Focused evidence includes 19 real turn-checkpoint integration tests, two real capacity tests, migration checks and the API-only two-process crash/restore drill.
-Runner unit tests include lost Commit acknowledgements, page limits, capture bounds and parallel authenticated file restore.
+Focused evidence includes 19 real turn-checkpoint integration tests, two real capacity tests, migration checks and the API-only two-process crash/restore drill. Runner unit tests include lost Commit acknowledgements, page limits, capture bounds and parallel authenticated file restore.
+
 Raw local logs retain the failures before their repairs; final CI must verify the committed refactor.
 
 ## Second-pass findings and dispositions
@@ -64,7 +65,7 @@ The table preserves the 19 findings from the second pass. The verification below
 | F18 | INFORMATIONAL / performance | `rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/maintenance.rs:35` | First owner lock timeout aborts later maintenance and repeats oldest candidate without cursor | Fixed. The real locked-owner regression failed at the baseline and passed after the cursor change. |
 | F19 | INFORMATIONAL / performance | `rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/sql/maintenance_candidates.sql:2` | LIMIT bounds returned owners but not the joined candidate scan; empty heads are created for uncaptured offers | Implemented. The owner page seeks before inspecting per-owner work. Quantitative maximum-manifest results remain due. |
 
-The state-machine artifact has nine machines, 90 cells, 83 mapped to tests and seven uncovered.
+The state-machine record has nine machines, 90 cells, 83 mapped to tests and seven uncovered.
 The installed matrix checker passed its completeness/path checks; mapping to a test does not prove that test ran or satisfies every other specification dimension.
 
 ## Added burst and quality requirements
@@ -77,7 +78,11 @@ The installed matrix checker passed its completeness/path checks; mapping to a t
 | S4 | Short custody and bulk deadlines | Hold a shared host lock through a hold-producing report, conflict with exclusive issue, and preserve fresh-clock/connection checks. Remove empty quota writes and bound verification deadlines |
 | S5 | Measurement and coverage | 1/10/100/500 interrupted fleets; dist comparisons; >99% per production file and patch lines |
 
-The Astra direction review identified two benchmark fixture limitations. Direct `Session::offer` bypasses scheduler registration and the replica wake path. The default seed gives each fleet a separate workspace and hides contention on shared quota. R13 requires registered, already-idle replacement hosts and both workspace distributions. The measured baseline uses those registered sessions. The refactor checks below exercise F12 and S1 on PostgreSQL 19rc2.
+The Astra direction review identified two benchmark fixture limitations. Direct `Session::offer` bypasses scheduler registration and the replica wake path.
+
+The default seed gives each fleet a separate workspace and hides contention on shared quota. R13 requires registered, already-idle replacement hosts and both workspace distributions.
+
+The measured baseline uses those registered sessions. The refactor checks below exercise F12 and S1 on PostgreSQL 19rc2.
 
 See [platform runner checkpoint recovery](../../architecture/runner_checkpoint_recovery.md) for the implemented design, limits, operator walkthrough and source map.
 
@@ -107,35 +112,63 @@ See [platform runner checkpoint recovery](../../architecture/runner_checkpoint_r
 | Chromium SSE and attempt display | 3 passed. Real browser transport covers heartbeat renewal after quiet EOF, replacement of a silent connection, and one announcement per attempt. |
 | Generated operator API | Regenerated from the daemon. The runner event filter adds `runner_uncordoned` to its documented accepted values. |
 
-An earlier unit attempt failed the old Busy classification assertion, which was corrected to the intended typed unavailable error.
-A later attempt failed the existing expired-deadline HTTP/3 transport test; the full retry passed, and the initial red log remains.
+An earlier unit attempt failed the old Busy classification assertion, which was corrected to the intended typed unavailable error. A later attempt failed the existing expired-deadline HTTP/3 transport test; the full retry passed, and the initial red log remains.
+
 No claim of an unrelated baseline defect is made without equivalent reproduction.
 
 ## Performance and coverage acceptance
 
-Compare the frozen pre-refactor revision with the final revision on the same owned local infrastructure.
-Use 1, 10, 100 and 500 interrupted fleets, declare compatible source/replacement worker counts, and use multiple failed hosts where the 64-worker limit requires them.
+Compare the frozen pre-refactor revision with the final revision on the same owned local infrastructure. Use 1, 10, 100 and 500 interrupted fleets, declare compatible source/replacement worker counts, and use multiple failed hosts where the 64-worker limit requires them.
+
 Separate API-only roots, four small files, large multi-chunk files and metadata-heavy manifests.
 
-**Benchmark correction from the Astra review.** The existing lease bench uses `afd_gateway::test_util::Session::offer`, which calls `services.offer()` directly. Its session constructor does not register the host with the scheduler, and its window listens on a separate wake instance. Starting `Gateway::run` alongside that fixture would still miss the recovery path. Use real registered native sessions with the production scheduler, shared wake and normal credit reporting. Keep replacement hosts connected and settled at idle before killing the source hosts. Count ordinary rings, Ready credit increases and fallback probes so their causes can be distinguished. Capture the eligibility deadline for each lease. Hold resumed model responses at a barrier for the dispatch-only scenario so settlement does not create fresh credits. Also run the scenario through settlement to measure the user-visible result.
+**Benchmark correction from the Astra review.** The existing lease bench uses `afd_gateway::test_util::Session::offer`, which calls `services.offer()` directly. Its session constructor does not register the host with the scheduler, and its window listens on a separate wake instance.
 
-The existing lease seed assigns a distinct workspace and tenant per fleet. Add a shared-workspace case to expose quota contention and a distributed-workspace case for comparison. Fit file sizes to the 50-GiB workspace quota and available disk on both revisions. Exercise large multi-chunk and high-entry-count cases with explicitly stated populations. Never extrapolate those timings to a larger population. Record the number of interrupted, eligible, issued, restored, settled, failed and outstanding fleets at the same fixed observation horizon. Report a cohort percentile only when that rank was observed. Retain failures and right-censored results. Repeat matched runs and record per-run spread. Include ordinary single-ring and idle query costs as regression controls.
+Starting `Gateway::run` alongside that fixture would still miss the recovery path. Use real registered native sessions with the production scheduler, shared wake and normal credit reporting.
 
-Baseline production commit `d4823563e80829b97589846a1c7997964fdf0274`. The verified installed PostgreSQL 19rc2 Alpine image index is `sha256:7e3904251ae6f1e80c756b0ea12fbac512d8b9512de0047cdcbe4c6a69dff60b` on linux/amd64. Pin the image in the measurement record along with the benchmark harness hash, runner/daemon binary hashes, fixture seed and concurrency. Run the baseline before any production code edits. Reuse the same harness for the final comparison.
+Keep replacement hosts connected and settled at idle before killing the source hosts. Count ordinary rings, Ready credit increases and fallback probes so their causes can be distinguished.
 
-Record cold/warm storage, unique/reused chunks, concurrency limits, data size, injected storage delays and the actual build profile.
-Published production-performance comparisons use `dist`; debug/instrumented tests establish behavior and must be labelled accordingly.
+Capture the eligibility deadline for each lease. Hold resumed model responses at a barrier for the dispatch-only scenario so settlement does not create fresh credits.
+
+Also run the scenario through settlement to measure the user-visible result.
+
+The existing lease seed assigns a distinct workspace and tenant per fleet. Add a shared-workspace case to expose quota contention and a distributed-workspace case for comparison.
+
+Fit file sizes to the 50-GiB workspace quota and available disk on both revisions. Exercise large multi-chunk and high-entry-count cases with explicitly stated populations.
+
+Never extrapolate those timings to a larger population. Record the number of interrupted, eligible, issued, restored, settled, failed and outstanding fleets at the same fixed observation horizon.
+
+Report a cohort percentile only when that rank was observed. Retain failures and right-censored results.
+
+Repeat matched runs and record per-run spread. Include ordinary single-ring and idle query costs as regression controls.
+
+Baseline production commit `d4823563e80829b97589846a1c7997964fdf0274`. The verified installed PostgreSQL 19rc2 Alpine image index is `sha256:7e3904251ae6f1e80c756b0ea12fbac512d8b9512de0047cdcbe4c6a69dff60b` on linux/amd64.
+
+Pin the image in the measurement record along with the benchmark harness hash, runner/daemon binary hashes, fixture seed and concurrency. Run the baseline before any production code edits.
+
+Reuse the same harness for the final comparison.
+
+Record cold/warm storage, unique/reused chunks, concurrency limits, data size, injected storage delays and the actual build profile. Published production-performance comparisons use `dist`; debug/instrumented tests establish behavior and must be labelled accordingly.
+
 Use controlled model transport for repeatability and identify it in every result.
 
 ### Optimized fixture smoke, 2026-11-18
 
-The first successful `make bench-lease PROFILE=rig BENCH_SHAPE=recovery BENCH_FLEETS=1 BENCH_WORKSPACES=shared` used `dist` at `d4823563e8` with the fixture fingerprint `13f3b7288385869205e5d37bb41d9cddfc81fe8cac9c901367679208849034d7`. The API-only source committed one root before its process was killed. The replacement issued fence 2 at **4,759 ms**, called the model with the recovered prefix at **5,364 ms**, and settled at **5,444 ms**, all measured from the old lease's expiry.
+The first successful `make bench-lease PROFILE=rig BENCH_SHAPE=recovery BENCH_FLEETS=1 BENCH_WORKSPACES=shared` used `dist` at `d4823563e8` with the fixture fingerprint `13f3b7288385869205e5d37bb41d9cddfc81fe8cac9c901367679208849034d7`. The API-only source committed one root before its process was killed.
 
-The first 10-fleet attempt issued all 10 source leases and timed out before creating checkpoints. The fake model shared the runner transport's four-stream connection bound. The comparison requires a fresh one-fleet run alongside the larger cohorts on the regular TLS model fixture. The single-fleet numbers above record the earlier fixture smoke.
+The replacement issued fence 2 at **4,759 ms** and called the model with the recovered prefix at **5,364 ms**. It settled at **5,444 ms**. Each time starts at the old lease's expiry.
+
+The first 10-fleet attempt issued all 10 source leases and timed out before creating checkpoints. The fake model shared the runner transport's four-stream connection bound.
+
+The comparison requires a fresh one-fleet run alongside the larger cohorts on the regular TLS model fixture. The single-fleet numbers above record the earlier fixture smoke.
 
 ### Measured API-only baseline
 
-`make bench-lease PROFILE=rig BENCH_SHAPE=recovery` ran with the regular TLS fixture at `40a579688` against the unchanged production revision `d4823563e8`. Each successful cohort committed its source roots before the failed hosts were killed. The observation window ended 60 seconds after the latest source lease expired. All times below start at each fleet's own eligibility deadline. [Raw results and fingerprints](../../../bench/baselines/lease-recovery-api.rig.json)
+`make bench-lease PROFILE=rig BENCH_SHAPE=recovery` ran with the regular TLS fixture at `40a579688` against the unchanged production revision `d4823563e8`. Each successful cohort committed its source roots before the failed hosts were killed.
+
+The observation window ended 60 seconds after the latest source lease expired. All times below start at each fleet's own eligibility deadline.
+
+[Raw results and fingerprints](../../../bench/baselines/lease-recovery-api.rig.json)
 
 | Workspaces | Fleets | Issued by cutoff | Reached model by cutoff | Settled at collection | First observed model | Last observed model |
 |---|---:|---:|---:|---:|---:|---:|
@@ -148,16 +181,26 @@ The first 10-fleet attempt issued all 10 source leases and timed out before crea
 | Distributed | 100 | 12 | 12 | 12 | 3.952 s | 57.813 s |
 | Distributed | 500 | — | — | — | — | — |
 
-For the shared one-fleet case at `d4823563e8`, the observed P50 was **5.479 s**, or **about 5.5 s**, from one sample. The source committed an API-only root containing its accepted model answer and a folded follow-up. The fixture killed the source process after the idle replacement connected.
+For the shared one-fleet case at `d4823563e8`, the observed P50 was **5.479 s**, or **about 5.5 s**, from one sample. The source committed an API-only root containing its accepted model answer and a folded follow-up.
 
-The timer starts at the source lease's eligibility deadline, the later of the lease and slot expiries. The replacement received fence 2 at **+4.923 s**. Its first model request contained the saved answer and follow-up exactly once at **+5.479 s**. The fixture returned the next answer, and the replacement settled at **+5.545 s**.
+The fixture killed the source process after the idle replacement connected.
 
-The 100- and 500-fleet trials with 12 completions leave 88 and 488 fleets outstanding respectively. Their cohort P50, P95 and P99 remain unobserved. The distributed 500-fleet source preparation timed out twice. Both attempts issued a source lease for each of 500 fleets and produced zero ready checkpoint heads before timing out. The raw record preserves those two attempts and their counts.
+The timer starts at the source lease's eligibility deadline, the later of the lease and slot expiries. The replacement received fence 2 at **+4.923 s**.
+
+Its first model request contained the saved answer and follow-up exactly once at **+5.479 s**. The fixture returned the next answer, and the replacement settled at **+5.545 s**.
+
+The 100- and 500-fleet trials with 12 completions leave 88 and 488 fleets outstanding respectively. Their cohort P50, P95 and P99 remain unobserved.
+
+The distributed 500-fleet source preparation timed out twice. Both attempts issued a source lease for each of 500 fleets and produced zero ready checkpoint heads before timing out.
+
+The raw record preserves those two attempts and their counts.
 
 
 ### Measured API-only comparison
 
-Both builds used the same optimized profile, model fixture and owned PostgreSQL and NATS rig. Times start at each source lease's expiry and end at the first model request containing the saved conversation and folded follow-up. The observation window ended 60 seconds after the final old lease expired. [Refactor samples and fingerprints](../../../bench/baselines/lease-recovery-api.refactor.rig.json)
+Both builds used the same optimized profile, model fixture and owned PostgreSQL and NATS rig. Times start at each source lease's expiry and end at the first model request containing the saved conversation and folded follow-up.
+
+The observation window ended 60 seconds after the final old lease expired. [Refactor samples and fingerprints](../../../bench/baselines/lease-recovery-api.refactor.rig.json)
 
 | Workspace layout | Fleet count | Baseline resumed | Refactor resumed | Baseline P50 | Refactor P50 | Baseline last observed | Refactor last observed |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -170,11 +213,15 @@ Both builds used the same optimized profile, model fixture and owned PostgreSQL 
 | Distributed | 100 | 12/100 | Source timeout | — | — | 57.813 s | — |
 | Distributed | 500 | Source timeout | Source timeout | — | — | — | — |
 
-The shared one-fleet issue, model request and settlement went from **4.923 / 5.479 / 5.545 s** to **4.532 / 5.267 / 5.344 s**. Both medians represent one sample. The shared ten-fleet P50 fell by **19.480 s**.
+The shared one-fleet issue, model request and settlement went from **4.923 / 5.479 / 5.545 s** to **4.532 / 5.267 / 5.344 s**. Both medians represent one sample.
 
-The four larger refactor attempts timed out during source preparation, before the failure and restore measurement. At the end of the distributed 500-fleet attempt the rig had grants for all 500 fleets and zero ready heads. The completed cases establish a ten-fleet improvement and leave the larger recovery cohorts unmeasured.
+The shared ten-fleet P50 fell by **19.480 s**.
 
-A read-only length sample of the live distributed one-fleet source checkpoint in the refactor rig measured **1,138 bytes** of encrypted history plus **88 bytes** of encryption metadata, for **1,226 bytes** total before database row and index overhead. That sample contained zero workspace file bytes and zero manifest pages.
+The four larger refactor attempts timed out during source preparation, before the failure and restore measurement. At the end of the distributed 500-fleet attempt the rig had grants for all 500 fleets and zero ready heads.
+
+The completed cases establish a ten-fleet improvement and leave the larger recovery cohorts unmeasured.
+
+A read-only sample of the refactor's distributed one-fleet source checkpoint measured **1,138 bytes** of encrypted history and **88 bytes** of encryption metadata. The encrypted fields totaled **1,226 bytes** before database row and index overhead. That sample contained zero workspace file bytes and zero manifest pages.
 
 | Measurement | Required evidence |
 |---|---|
@@ -189,16 +236,18 @@ A read-only length sample of the live distributed one-fleet source checkpoint in
 
 ## Fingerprint policy
 
-Review receipts, source fingerprints, exact commands and raw evidence remain separate.
-This repo has no reviewed Orly hermetic reuse policy, so standalone Make passes are not reusable Orly completion records.
-Batch coherent edits, rerun affected proof, and execute the required final gate on the pushed tree; never manufacture an override or a current binding.
+Review receipts, source fingerprints, exact commands and raw evidence remain separate. This repo has no reviewed Orly hermetic reuse policy, so standalone Make passes are not reusable Orly completion records.
+
+Batch coherent edits, rerun affected proof, and run the required final gate on the pushed tree; never manufacture an override or a current binding.
 
 Tenant-runner work is parked by the owner; the human check remains unperformed.
 Thirteen identical full-history secret-scan findings were observed at the exact base and implementation history; no suppression, history rewrite or passing scan is claimed.
 
 ## Manual two-runner drill
 
-Use a disposable fleet and two enrolled platform runners on the same development daemon. Both runners need compatible policies and funded model access. A file-backed check also needs a verified sandbox and private object storage. [Development setup](../../development.md#shared-development-worktrees)
+Use a disposable fleet and two enrolled platform runners on the same development daemon. Both runners need compatible policies and funded model access.
+
+A file-backed check also needs a verified sandbox and private object storage. [Development setup](../../development.md#shared-development-worktrees)
 
 1. Use `agentsfleet platform runners list` and `agentsfleet --json platform runners show <RUNNER_ID>` to check that both intended runners are healthy. Confirm which disposable container belongs to runner A.
 2. Send the prepared recovery task through `agentsfleet fleet steer <FLEET_ID> "<fixture prompt>"`. Keep its controlled second action waiting until the `respawn_checkpoint_committed` receipt proves a usable generation.
@@ -206,7 +255,9 @@ Use a disposable fleet and two enrolled platform runners on the same development
 4. Read B's leases. Require the same event, a greater fence issued at or after expiry, and `respawn_checkpoint_restored` for the exact generation before the next model or tool call. Check the marker file for the file-backed case.
 5. After the offline sweep, inspect A with `agentsfleet platform runners show <RUNNER_A_ID>` and `agentsfleet platform runners events <RUNNER_A_ID>`. Use `docker unpause <RUNNER_A_CONTAINER>` to restore the lab. Watch for one automatic lift after continuous healthy heartbeats.
 
-The operator drill still needs a recorded human run. The automated owned-rig command covers controlled API-only process failure. [Rig command](../../architecture/runner_checkpoint_recovery.md#operator-and-lab-checks)
+The operator drill still needs a recorded human run. The automated owned-rig command covers controlled API-only process failure.
+
+[Rig command](../../architecture/runner_checkpoint_recovery.md#operator-and-lab-checks)
 
 ## Historical drafts
 

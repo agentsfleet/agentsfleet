@@ -8,11 +8,15 @@ executable: false
 
 # Platform runner checkpoint recovery
 
-This page describes the platform runner paths implemented at `976883d00`. The active specification defines acceptance. The review ledger records measured performance and unresolved proofs. [M247 specification](../v2/active/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN_FROM_CHECKPOINT.md) · [Verification ledger](../v2/reviews/m247-review-ledger.md)
+This page describes the platform runner paths implemented at `976883d00`. The active specification defines acceptance.
+
+The review ledger records measured performance and unresolved proofs. [M247 specification](../v2/active/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN_FROM_CHECKPOINT.md) · [Verification ledger](../v2/reviews/m247-review-ledger.md)
 
 ## What gets checkpointed
 
-The runner saves progress automatically at a safe boundary before a continuing model call. The root contains the conversation, accepted driver answers, completed child results, local memory changes, and the exact input folds it covers. Model policy and credentials come from the new lease.
+The runner saves progress automatically at a safe boundary before a continuing model call. The root contains the conversation, accepted driver answers, completed child results, local memory changes, and the exact input folds it covers.
+
+Model policy and credentials come from the new lease.
 
 | Workload | Private state | Durable owner |
 |---|---|---|
@@ -20,7 +24,9 @@ The runner saves progress automatically at a safe boundary before a continuing m
 | Ordinary turn with workspace files | Same history root plus an ordered manifest and encrypted private object-store chunks | Same event head |
 | Native durable task | Task history and file manifest with its bound base and overlay | Existing task checkpoint and task generation |
 
-The agent requests capture after a completed turn and input reconciliation. Busy children, open executor sessions, unfinished file work, and live tenant processes can defer it. File capture requires a verified toolbox and an available runner transfer permit before the agent builds the snapshot. [Agent boundary](../../rustd/crates/runner/afr_agent/src/loop/recovery_boundary.rs) · [Supervisor admission](../../rustd/crates/runner/afr_supervisor/src/recovery/admission.rs)
+The agent requests capture after a completed turn and input reconciliation. Busy children, open executor sessions, unfinished file work, and live tenant processes can defer it.
+
+File capture requires a verified toolbox and an available runner transfer permit before the agent builds the snapshot. [Agent boundary](../../rustd/crates/runner/afr_agent/src/loop/recovery_boundary.rs) · [Supervisor admission](../../rustd/crates/runner/afr_supervisor/src/recovery/admission.rs)
 
 ```text
 Harness::save_boundary                         recovery_boundary.rs
@@ -32,9 +38,13 @@ Harness::save_boundary                         recovery_boundary.rs
          -> thaw -> acknowledge saved generation
 ```
 
-A pending generation becomes usable when its root and required objects are fully verified and its head advances in PostgreSQL. An uncertain publication is reconciled against the original operation and generation. If a refused replay leaves a pending generation, the owner must prove exact abandonment before starting another capture. [Publication reconciliation](../../rustd/crates/runner/afr_supervisor/src/recovery/turn/publication.rs)
+A pending generation becomes usable when its root and required objects are fully verified and its head advances in PostgreSQL. An uncertain publication is reconciled against the original operation and generation.
 
-The complete ordinary native message is capped at 1 MiB. A file capture can describe up to 24 GiB or 200,000 entries, with at most 64 manifest pages of 512 KiB each. Newly uploaded ciphertext is capped at 16 GiB and counts toward the 50 GiB workspace quota. [Wire limits](../../rustd/crates/protocol/af_wire/src/lease/turn_checkpoint/command.rs)
+If a refused replay leaves a pending generation, the owner must prove exact abandonment before starting another capture. [Publication reconciliation](../../rustd/crates/runner/afr_supervisor/src/recovery/turn/publication.rs)
+
+The complete ordinary native message is capped at 1 MiB. A file capture can describe up to 24 GiB or 200,000 entries, with at most 64 manifest pages of 512 KiB each.
+
+Newly uploaded ciphertext is capped at 16 GiB and counts toward the 50 GiB workspace quota. [Wire limits](../../rustd/crates/protocol/af_wire/src/lease/turn_checkpoint/command.rs)
 
 ## What happens when a host fails
 
@@ -54,9 +64,13 @@ saved deadline   +-> event is eligible after its old lease and slot expire
 heartbeat sweep  `-> separate offline record and automatic quarantine
 ```
 
-The 35-second lease TTL starts at the last grant or renewal. It governs reclaim. A separate sweep quarantines a host after 105 seconds without a valid heartbeat. [Lease and liveness timing](../../rustd/crates/foundation/af_core/src/timing.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
+The 35-second lease TTL starts at the last grant or renewal. It governs reclaim.
 
-The lease TTL includes a 5-second tick, 5-second answer window, 7-second reconnect, and 15-second renewal margin. The compile-time sums require 32 seconds within the 35-second lease, and 14 seconds for the second answer and physical cleanup within that 15-second margin. Host quarantine tolerates three lease lifetimes of heartbeat silence and is evaluated by the paced 10-second sweep. [Renewal decision](../v2/done/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md#renewal-recovery-budget-correction) · [Liveness sweep](../../rustd/crates/daemon/afd_runner/src/sweep/liveness/mod.rs)
+A separate sweep quarantines a host after 105 seconds without a valid heartbeat. [Lease and liveness timing](../../rustd/crates/foundation/af_core/src/timing.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
+
+The lease TTL includes a 5-second tick, 5-second answer window, 7-second reconnect, and 15-second renewal margin. The compile-time sums require 32 seconds within the 35-second lease, and 14 seconds for the second answer and physical cleanup within that 15-second margin.
+
+Host quarantine tolerates three lease lifetimes of heartbeat silence and is evaluated by the paced 10-second sweep. [Renewal decision](../v2/done/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md#renewal-recovery-budget-correction) · [Liveness sweep](../../rustd/crates/daemon/afd_runner/src/sweep/liveness/mod.rs)
 
 ```text
 brief link break + reconnect before expiry -> same lease and fence
@@ -68,13 +82,19 @@ replacement + invalid head or file         -> stop before model or tools
 return + 30 s of continuous healthy beats  -> automatic quarantine lifts
 ```
 
-After dispatch, a required file restore waits for runner admission while lease renewal continues. The supervisor validates the exact event, setup, generation, root, and toolbox. It writes files through checked directory descriptors and applies modes before thawing. [Ordinary restore](../../rustd/crates/runner/afr_supervisor/src/recovery/turn/restore.rs) · [Workspace preparation](../../rustd/crates/runner/afr_supervisor/src/lease_loop/turn_recovery.rs)
+After dispatch, a required file restore waits for runner admission while lease renewal continues. The supervisor validates the exact event, setup, generation, root, and toolbox.
 
-The new attempt replaces the provisional answer in the Dashboard. Stale frames carry the old fence and cannot change the current attempt. The final result and usage settle through the report transaction. [Result and lease flow](lease_flow.md) · [Runner stream protocol](runner_protocol.md)
+It writes files through checked directory descriptors and applies modes before thawing. [Ordinary restore](../../rustd/crates/runner/afr_supervisor/src/recovery/turn/restore.rs) · [Workspace preparation](../../rustd/crates/runner/afr_supervisor/src/lease_loop/turn_recovery.rs)
+
+The new attempt replaces the provisional answer in the Dashboard. Stale frames carry the old fence and cannot change the current attempt.
+
+The final result and usage settle through the report transaction. [Result and lease flow](lease_flow.md) · [Runner stream protocol](runner_protocol.md)
 
 ## How a recovery burst drains
 
-A disposable wake can be lost between durable admission and its notification. The replica's independent five-second probe supplies a recovery generation. Ordinary rings retain their successful-issue budget and fleet locality.
+A disposable wake can be lost between durable admission and its notification. The replica's independent five-second probe supplies a recovery generation.
+
+Ordinary rings retain their successful-issue budget and fleet locality.
 
 ```text
 Ordinary ring -> scheduler/mod.rs::pass -> local fleet preference + ring budget
@@ -93,13 +113,19 @@ Recovery wake -> scheduler/recovery/mod.rs::notifications
                  empty or uncertain reply   -> defer that session for this pass
 ```
 
-Credits at the start of the drain bound how much work a session can acquire. PostgreSQL is the final authority on capacity and ownership. A completed drain acknowledges only its original recovery generation. [Recovery drain](../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/drain.rs) · [Candidate SQL](../../rustd/crates/daemon/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql)
+Credits at the start of the drain bound how much work a session can acquire. PostgreSQL is the final authority on capacity and ownership.
 
-The previous recovery pass spent one successful-offer credit per fallback probe. The new drain lets B use its available worker credits after the first probe, and a stalled session can leave other sessions moving. The benchmark ledger records the observed throughput separately. [Measured comparison](../v2/reviews/m247-review-ledger.md#performance-and-coverage-acceptance)
+A completed drain acknowledges only its original recovery generation. [Recovery drain](../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/drain.rs) · [Candidate SQL](../../rustd/crates/daemon/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql)
+
+The previous recovery pass spent one successful-offer credit per fallback probe. The new drain lets B use its available worker credits after the first probe, and a stalled session can leave other sessions moving.
+
+The benchmark ledger records the observed throughput separately. [Measured comparison](../v2/reviews/m247-review-ledger.md#performance-and-coverage-acceptance)
 
 ## Transfer and database limits
 
-Each runner shares one HTTP client and admits up to two file or task recovery operations. An optional file capture can skip a busy pool before freeze. Required restores queue and retain their reservation through their last blocking write.
+Each runner shares one HTTP client and admits up to two file or task recovery operations. An optional file capture can skip a busy pool before freeze.
+
+Required restores queue and retain their reservation through their last blocking write.
 
 ```text
 B:w01..w16 -> Lessee.recovery
@@ -114,9 +140,13 @@ F01 file a [c,d] + file b [a,b]
    -> ordered handles [c,d,a,b] -> checked writes -> release owners
 ```
 
-A restore window holds up to four 8 MiB chunks and can cross a file boundary. Four full chunks charge 32 MiB of plaintext through the writer's last use. Two full windows therefore account for up to 64 MiB of runner plaintext payload before transport and execution overhead. [Restore window](../../rustd/crates/runner/afr_supervisor/src/recovery/window.rs)
+A restore window holds up to four 8 MiB chunks and can cross a file boundary. Four full chunks charge 32 MiB of plaintext through the writer's last use.
 
-For newly uploaded chunks, the runner stages up to four maximum-size ciphertexts or a bounded page of smaller objects. One authorization supplies create-only transfers. One subsequent readback command authenticates the batch before commit. [Upload batch](../../rustd/crates/runner/afr_supervisor/src/recovery/uploads.rs)
+Two full windows therefore account for up to 64 MiB of runner plaintext payload before transport and runner overhead. [Restore window](../../rustd/crates/runner/afr_supervisor/src/recovery/window.rs)
+
+For newly uploaded chunks, the runner stages up to four maximum-size ciphertexts or a bounded page of smaller objects. One authorization supplies create-only transfers.
+
+One subsequent readback command authenticates the batch before commit. [Upload batch](../../rustd/crates/runner/afr_supervisor/src/recovery/uploads.rs)
 
 | Contention case | Mutation boundary |
 |---|---|
@@ -126,25 +156,35 @@ For newly uploaded chunks, the runner stages up to four maximum-size ciphertexts
 | A four-chunk authenticated readback needs more time | Apply a 35-second answer budget with 25 seconds of daemon work, plus limits of two in-flight verifications per session and eight per replica. |
 | The oldest checkpoint owner is locked | Defer it and advance the indexed cursor, keeping later maintenance work moving. |
 
-Remote object I/O runs outside the checkpoint transaction. The return path checks the pin deadline and rechecks custody before recording verified receipts. [Transfer guard](../../rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/transfer.rs) · [Report SQL](../../rustd/crates/daemon/afd_fleet/src/lease/sql/commit_report.sql) · [Maintenance](../../rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/maintenance.rs)
+Remote object I/O runs outside the checkpoint transaction. The return path checks the pin deadline and rechecks custody before recording verified receipts.
+
+[Transfer guard](../../rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/transfer.rs) · [Report SQL](../../rustd/crates/daemon/afd_fleet/src/lease/sql/commit_report.sql) · [Maintenance](../../rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/maintenance.rs)
 
 ## Operator and lab checks
 
-Operators can use `agentsfleet platform runners list`, `agentsfleet platform runners show <RUNNER_ID> --json`, and `agentsfleet platform runners events <RUNNER_ID>` with `runner:read`. Runner details expose liveness, operator status, and optional automatic cordon. [Public recovery guide](https://docs.agentsfleet.net/runners/recovery)
+Operators can use `agentsfleet platform runners list`, `agentsfleet platform runners show <RUNNER_ID> --json`, and `agentsfleet platform runners events <RUNNER_ID>` with `runner:read`. Runner details expose liveness, operator status, and optional automatic cordon.
 
-The one-fleet rig check uses registered runner processes and a controlled model. It waits for a complete source checkpoint, kills the source, verifies the replacement's higher fence and restored inputs, and waits for settlement. Use an owned local rig whose database the target can reset.
+[Public recovery guide](https://docs.agentsfleet.net/runners/recovery)
+
+The one-fleet rig check uses registered runner processes and a controlled model. It waits for a complete source checkpoint, kills the source, verifies the replacement's higher fence and restored inputs, and waits for settlement.
+
+Use an owned local rig whose database the target can reset.
 
 ```bash
 make bench-lease PROFILE=rig BENCH_SHAPE=recovery BENCH_FLEETS=1 BENCH_WORKSPACES=shared
 ```
 
-The reported latency starts at the later of the old lease and slot expiries and ends at the first restored model request. It also records issue and settlement timestamps. [Raw baseline](../../bench/baselines/lease-recovery-api.rig.json) · [Test and commands](../../rustd/crates/daemon/main/benches/lease/measure.rs)
+The reported latency starts at the later of the old lease and slot expiries and ends at the first restored model request. It also records issue and settlement timestamps.
+
+[Raw baseline](../../bench/baselines/lease-recovery-api.rig.json) · [Test and commands](../../rustd/crates/daemon/main/benches/lease/measure.rs)
 
 ## Implementation paths and symbols
 
 The tables cover 68 production Rust and SQL paths and one test-only measurement adapter against `d4823563e80829b97589846a1c7997964fdf0274`. **New** marks added paths.
 
-The daemon generated the [operator API reference](../../public/openapi.json). F16 changes browser test fixtures. Benchmark drivers, test files, documentation and generated output are accounted separately from production sources.
+The daemon generated the [operator API reference](../../public/openapi.json). F16 changes browser test fixtures.
+
+Benchmark drivers, test files, documentation and generated output are accounted separately from production sources.
 
 ### Recovery dispatch
 
