@@ -340,3 +340,44 @@ async fn test_a_rotation_lands_for_a_live_runner_and_is_refused_once_revoked() {
     drop(capture);
     fixture.cleanup().await;
 }
+
+// Value: protects=a runner page never reports fewer runners than it lists;
+// fails_when=the total and the page read two moments, so a runner registered
+// between them is listed but not counted; why_new=tenant runners register
+// concurrently with platform reads; seam=the platform list on live Postgres.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_runner_page_and_its_total_read_one_moment_while_runners_register() {
+    const REGISTRATIONS: usize = 40;
+    let mut fixture = Fixture::create().await;
+    let writer = fixture.runners.clone();
+    let registering = tokio::spawn(async move {
+        let mut registered = Vec::new();
+        for _ in 0..REGISTRATIONS {
+            let enrolled = writer
+                .register(&enrolment(), clock::now())
+                .await
+                .expect("the enrolment lands");
+            registered.push(enrolled.runner_id);
+        }
+        registered
+    });
+    while !registering.is_finished() {
+        let page = fixture
+            .runners
+            .platform()
+            .list_runners(None, 200)
+            .await
+            .expect("a page reads");
+        let listed = i64::try_from(page.items().len()).expect("a page fits an i64");
+        assert!(
+            page.total() >= listed,
+            "the total counts every runner the page lists: total {}, listed {listed}",
+            page.total()
+        );
+    }
+    fixture
+        .enrolled
+        .extend(registering.await.expect("the registrations join"));
+    fixture.cleanup().await;
+}

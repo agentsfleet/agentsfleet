@@ -1,6 +1,7 @@
 use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
+use sqlx::Acquire as _;
 
 use super::decode::{DetailRow, EventRow, ItemRow};
 use super::{
@@ -11,6 +12,7 @@ use crate::scope::RunnerScope;
 use crate::sql;
 use crate::store::Runners;
 
+const CONTEXT_SNAPSHOT: &str = "page read snapshot";
 const CONTEXT_RUNNER_COUNT: &str = "runner list count";
 const CONTEXT_RUNNER_LIST: &str = "runner list page";
 const CONTEXT_RUNNER_DETAIL: &str = "runner detail";
@@ -31,9 +33,14 @@ impl Runners {
         limit: u32,
     ) -> Result<RunnerEventPage> {
         let mut connection = self.pool().acquire().await?;
+        let mut snapshot = connection.begin().await.map_err(query(CONTEXT_SNAPSHOT))?;
+        sqlx::query(sql::runner_view::READ_SNAPSHOT)
+            .execute(&mut *snapshot)
+            .await
+            .map_err(query(CONTEXT_SNAPSHOT))?;
         let exists = sqlx::query(sql::runner_view::RUNNER_EXISTS)
             .bind(runner)
-            .fetch_optional(&mut *connection)
+            .fetch_optional(&mut *snapshot)
             .await
             .map_err(query(CONTEXT_RUNNER_EXISTS))?;
         if exists.is_none() {
@@ -45,13 +52,14 @@ impl Runners {
             .bind(event_types.clone())
             .bind(filter.since().map(Timestamp::to_sqlx))
             .bind(filter.until().map(Timestamp::to_sqlx))
-            .fetch_one(&mut *connection)
+            .fetch_one(&mut *snapshot)
             .await
             .map_err(query(CONTEXT_EVENT_COUNT))?;
         let mut rows = events::statement(runner, filter, event_types, cursor, limit)
-            .fetch_all(&mut *connection)
+            .fetch_all(&mut *snapshot)
             .await
             .map_err(query(CONTEXT_EVENT_LIST))?;
+        snapshot.commit().await.map_err(query(CONTEXT_SNAPSHOT))?;
         let more = trim_to_page(&mut rows, limit);
         let items = rows
             .into_iter()
@@ -67,6 +75,8 @@ impl Runners {
 
 impl RunnerScope<'_> {
     /// Lists runners newest first, deriving liveness at the database's clock.
+    /// The total and the page read one snapshot, so a runner registered
+    /// between them is in both or in neither.
     ///
     /// # Errors
     /// Reports datastore failures or malformed stored rows.
@@ -76,10 +86,15 @@ impl RunnerScope<'_> {
         limit: u32,
     ) -> Result<RunnerPage> {
         let mut connection = self.runners.pool().acquire().await?;
+        let mut snapshot = connection.begin().await.map_err(query(CONTEXT_SNAPSHOT))?;
+        sqlx::query(sql::runner_view::READ_SNAPSHOT)
+            .execute(&mut *snapshot)
+            .await
+            .map_err(query(CONTEXT_SNAPSHOT))?;
         let total = sqlx::query_scalar(sql::runner_view::COUNT_RUNNERS)
             .bind(self.owner.tenant())
             .bind(self.owner.platform())
-            .fetch_one(&mut *connection)
+            .fetch_one(&mut *snapshot)
             .await
             .map_err(query(CONTEXT_RUNNER_COUNT))?;
         let statement = cursor.map_or_else(
@@ -100,9 +115,10 @@ impl RunnerScope<'_> {
         );
         let mut rows = statement
             .bind(self.owner.platform())
-            .fetch_all(&mut *connection)
+            .fetch_all(&mut *snapshot)
             .await
             .map_err(query(CONTEXT_RUNNER_LIST))?;
+        snapshot.commit().await.map_err(query(CONTEXT_SNAPSHOT))?;
         let more = trim_to_page(&mut rows, limit);
         let items = rows
             .into_iter()
