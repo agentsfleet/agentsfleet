@@ -766,45 +766,7 @@ An engine whose disk the host cannot mount, such as Firecracker, reports no host
 
 ## Workspace between leases
 
-The [durable repair scenario](scenarios/durable-repair.md) separates trusted task continuation from compatible conversation/file/Git recovery. Neither semantic memory nor context compaction implements workspace snapshots; a new Firecracker backend is not assumed for API-only continuation.
-
-Native tasks and ordinary turns have separate recovery owners.
-A new lease reads a complete committed generation, never a pending upload or compaction summary.
-The supervisor restores matching files and private root state before model or tools.
-
-| Recovery state | Durable owner | Bytes and authority |
-|---|---|---|
-| Native task | Existing task checkpoint and task generation | Existing encrypted object storage, task input and effect guards |
-| Ordinary API-only turn | Event-owned `runner.turn_recovery` head and generation | Encrypted PostgreSQL root; no file-store dependency |
-| Ordinary turn with files | Same event head plus its complete manifest | Encrypted chunks through the existing private object store and shared workspace quota |
-
-The root contains messages, accepted driver answers, completed child results, local memory changes and exact covered fold IDs.
-Fresh policy and secrets remain authoritative after restore.
-The replacement adopts the covered fold claims under its own lease and fence before continuing.
-
-Capture happens before the next root model call after a completed turn and input reconciliation.
-It skips busy children, open executor sessions, unfinished file work and tenant background processes.
-A file-bearing run also requires a ready workspace with a verified toolbox.
-
-The supervisor owns freeze, file scans, transfer and publication outside the agent future.
-Renewal continues while capture runs; cancellation still joins blocking file work before thaw or teardown.
-A failed thaw stops the run and prevents sandbox reuse.
-
-`afr_supervisor/src/recovery/turn` and `lease_loop/recovery_boundary.rs` own ordinary transfers.
-`afd_fleet/src/lease/turn_checkpoint` checks the current connection, lease, slot and event on each native operation.
-No database transaction spans remote object I/O.
-
-Save and restore treat tenant files as hostile.
-Descriptor-relative reads and writes reject escapes, unsafe links and incomplete manifests, and restore normalizes ownership and executable modes.
-Process memory and paths outside the recovery workspace remain outside the snapshot.
-
-Ordinary recovery retains two ready generations and one pending capture.
-Reader and writer pins protect objects during bounded transfers; terminal private state becomes eligible for cleanup after seven days.
-Both task and turn references protect shared physical objects from orphan collection.
-
-The ordinary root format is one; the full private native-task root format is two.
-Unsupported history, missing objects and incompatible setup or toolbox refuse before model or tools.
-[The implementation guide](../v2/reviews/m247-implementation-and-manual-check.md#checkpoint-benchmark-plan) separates checkpoint latency from crash-to-resume time.
+Platform runners restore a complete committed generation before starting the model or tools. Native tasks and ordinary turns have separate durable owners. The recovery page owns capture boundaries, file safety, fencing, and runner-wide transfer admission. [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) · [Durable repair scenario](scenarios/durable-repair.md)
 
 - **Held between messages.** A lease that ends processed leaves its sandbox held (`afr_supervisor/src/holds/mod.rs`). The lease cgroup is frozen through `cgroup.freeze` and settled on `frozen 1`. The hold is keyed by fleet, workspace, limits and policy (network policy plus repository binding).
 

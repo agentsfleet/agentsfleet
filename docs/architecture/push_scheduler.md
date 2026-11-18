@@ -62,18 +62,11 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 
 ## Recovery and scheduling fairness
 
-The Bus keeps one bounded wake queue shared by producers and the gateway.
-A dropped notification or periodic database probe marks a recovery generation.
-That mark survives later locality hints and hosts with no free capacity.
+The Bus keeps bounded fleet reminders and publishes independent ordinary and recovery generations. Ordinary admission and steering ring immediately. The replica-wide five-second database probe repairs a lost wake.
 
-The five-second probe repairs a crash after admission commits but before its disposable wake is published.
-Normal admission and steering publish a wake immediately and do not wait for that probe.
+A recovery generation starts one bounded round-robin drain across credited native sessions. For each session the database selects the oldest eligible admission by its durable time and ID. An unclaimable full page advances a session-owned cursor.
 
-During recovery, admission selection orders by durable creation time and identifier across eligible fleets.
-It ignores fleet-locality hints until a durable claim covers that recovery generation.
-A claim for an older generation cannot clear a newer probe.
-
-Normal hints resume after recovery, preserving locality without starving an older unhinted fleet.
+The drain acknowledges its starting generation after bounded work and preserves any newer request. Ordinary rings keep their successful-issue budget and locality throughout recovery. [Recovery scheduler and burst proof](runner_checkpoint_recovery.md#how-a-recovery-burst-drains)
 
 ## Sequences
 

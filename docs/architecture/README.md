@@ -44,6 +44,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | Who routes intent and judges goal progress? | [Configurable decision models](goal_evaluation.md) |
 | How long can a fleet run before its lease expires? | [`runner_fleet.md`](./runner_fleet.md) §"Per-lease renewal: how a long fleet keeps its lease" |
 | What happens when a runner dies mid-event? | [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model" |
+| Where are checkpoints saved, and how do many failed fleets resume? | [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) |
 | How is a stale runner's late report rejected? | [`runner_fleet.md`](./runner_fleet.md) §"System guarantees (read this first)" |
 | How does work get assigned, run, and reported? | [`data_flow.md`](./data_flow.md) §"C. EXECUTE  (lease → runner → report)" |
 | Can two runners hold the same fleet at once? | [`data_flow.md`](./data_flow.md) §"One active lease per fleet: the ownership model" |

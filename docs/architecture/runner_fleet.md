@@ -153,7 +153,7 @@ A runner that stops renewing loses its slot at the database deadline.
 
 The replacement keeps the logical event and reads its committed recovery descriptor.
 Native tasks retain their task checkpoint owner; ordinary turns use an event-owned head in `runner.turn_recovery`.
-[Workspace recovery](runner_execution.md#workspace-between-leases) owns capture, restore and file safety.
+[Platform runner checkpoint recovery](runner_checkpoint_recovery.md) owns capture, restore and file safety.
 
 An absent checkpoint starts from the original accepted input and unsettled folds.
 A present invalid checkpoint refuses restore before model or tools.
