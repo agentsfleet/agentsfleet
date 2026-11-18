@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { PlatformFixture, POLICY, RUNNER_ID } from "./helpers-platform.ts";
+import { PlatformFixture, POLICY, RUNNER, RUNNER_ID } from "./helpers-platform.ts";
 
 const UUIDV7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const TOKEN = "agt_r_" + "b".repeat(64);
@@ -71,4 +71,10 @@ test("runners register without runner:tenant names the scope", async () => {
   const error = JSON.parse(result.stderr).error;
   expect(JSON.stringify(error)).toContain("runner:tenant");
   expect(error.suggestion).toBeTruthy();
+});
+
+test("a tenant's own runner table names no owner: every row is the caller's", async () => {
+  fixture.respond = () => Response.json({items: [{...RUNNER, tenant_id: "0199a801-1000-7000-8000-0000000000aa"}], total: 1, next_cursor: null});
+  const table = await fixture.run(["runners", "list"], "", true);
+  expect(table.code).toBe(0); expect(table.stdout).toContain("build-host"); expect(table.stdout).not.toContain("OWNER");
 });

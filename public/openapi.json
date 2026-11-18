@@ -783,7 +783,7 @@
           "Runners"
         ],
         "summary": "List platform runners",
-        "description": "Lists runners newest first. Requires platform administrator access. Each item includes its current connection status, without authentication state or token hashes. Use `next_cursor` to continue.",
+        "description": "Lists every runner newest first, tenant runners included with their `tenant_id`. Requires platform administrator access. Each item includes its current connection status, without authentication state or token hashes. Use `next_cursor` to continue.",
         "operationId": "list_platform_runners",
         "parameters": [
           {
@@ -1235,11 +1235,11 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "The runner's state after the change, or its replacement token after a `rotate`",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunnerAdminPatchResponse"
+                  "$ref": "#/components/schemas/RunnerPatchReply"
                 }
               }
             }
@@ -1285,7 +1285,7 @@
             }
           },
           "409": {
-            "description": "The runner is revoked, so the request can never be honoured",
+            "description": "The runner is revoked, or a rotate addressed a tenant runner, whose tenant rotates its token",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -9887,7 +9887,7 @@
           "Runners"
         ],
         "summary": "Register a tenant runner",
-        "description": "Registers a runner that takes only the calling tenant's work. Requires `runner:tenant`, which a platform admin grants per account. Send a UUIDv7 `Idempotency-Key`. A retry with the same key and body answers 200 with the same runner and no token. The token appears only once, so rotate it to recover. The same key with another body answers 409.",
+        "description": "Registers a runner that takes only the calling tenant's work. Requires `runner:tenant`, which a platform admin grants per account. Send a UUIDv7 `Idempotency-Key`. A retry with the same key and body answers 200 with the same runner and no token. The token appears only once, so rotate it to recover. The same key with another body answers 409. Durable tasks are stored off whatever the body asks; only a platform admin turns them on.",
         "operationId": "register_tenant_runner",
         "parameters": [
           {
@@ -10265,11 +10265,11 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "The runner's state after the change, or its replacement token after a `rotate`",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunnerAdminPatchResponse"
+                  "$ref": "#/components/schemas/RunnerPatchReply"
                 }
               }
             }
@@ -28741,7 +28741,7 @@
         "properties": {
           "assigned_policy": {
             "$ref": "#/components/schemas/AssignedPolicy",
-            "description": "The assignment as stored."
+            "description": "The assignment as first registered; a later edit is read from the runner."
           },
           "runner_id": {
             "type": "string",
@@ -29540,6 +29540,38 @@
           "deny_all_egress",
           "allow_list_egress"
         ]
+      },
+      "RunnerPatchReply": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/RunnerAdminPatchResponse",
+            "description": "The state after an action or an edit."
+          },
+          {
+            "$ref": "#/components/schemas/RunnerTokenRotatedResponse",
+            "description": "The replacement token after a `rotate`, shown once."
+          }
+        ],
+        "description": "The `200` of a runner PATCH, admin or tenant: the runner's state after an\naction or an edit, or its replacement token after a `rotate`. Untagged: the\ntwo shapes already differ (`status` against `runner_token`), so the wire\ncarries no tag and publishes as `oneOf`. `Debug` delegates to each shape's\nown, which redacts the token (`redact.rs`)."
+      },
+      "RunnerTokenRotatedResponse": {
+        "type": "object",
+        "description": "Successful runner-token rotation.\n\nThe replacement token is returned once. The daemon stores only its digest,\nso no later read can recover this value.",
+        "required": [
+          "id",
+          "runner_token"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The runner whose credential changed."
+          },
+          "runner_token": {
+            "type": "string",
+            "description": "The replacement bearer token. Secret — reveal once, then discard."
+          }
+        },
+        "additionalProperties": false
       },
       "RunnersResponse": {
         "type": "object",

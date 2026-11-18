@@ -26,6 +26,8 @@ const runner = Schema.Struct({
   labels: Schema.Array(Schema.String), last_seen_at: instant, created_at: instant,
   assigned_policy: RunnerPolicySchema, achievable: Schema.NullOr(capability),
   degraded: Schema.Boolean, degraded_reason: Schema.NullOr(Schema.String),
+  /** The tenant that registered the runner; absent for a platform runner. */
+  tenant_id: Schema.optionalKey(Schema.NullOr(text)),
 });
 export const RunnerPageSchema = Schema.Struct({
   items: Schema.Array(runner), total: Schema.NullOr(count), next_cursor: Schema.NullOr(text),

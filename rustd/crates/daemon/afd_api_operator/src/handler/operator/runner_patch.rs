@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_api_wire::admin::{
-    RunnerAdminAction, RunnerAdminPatchRequest, RunnerAdminPatchResponse,
+    RunnerAdminAction, RunnerAdminPatchRequest, RunnerAdminPatchResponse, RunnerPatchReply,
     RunnerTokenRotatedResponse,
 };
 use afd_runner::{RunnerEdit, RunnerScope};
@@ -62,7 +62,7 @@ enum OrdinaryMutation<'r, 'a> {
         afd_http::openapi::path::Runner,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = RunnerAdminPatchResponse<'_>),
+        (status = 200, description = "The runner's state after the change, or its replacement token after a `rotate`", body = RunnerPatchReply<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = "The runner is revoked, or a rotate addressed a tenant runner, whose tenant rotates its token"),
@@ -176,7 +176,7 @@ fn finish(
             let actor_id = identity.subject();
             let runner_id = runner.as_str();
             tracing::info!(actor_id, runner_id, event = "runner_patched",);
-            Json(payload).into_response()
+            Json(RunnerPatchReply::Changed(payload)).into_response()
         }
         Err(error) => {
             let actor_id = identity.subject();
@@ -205,10 +205,10 @@ async fn rotate<D: Services>(
             tracing::info!(actor_id, runner_id, event = "runner_token_rotated",);
             (
                 [(header::CACHE_CONTROL, "no-store")],
-                Json(RunnerTokenRotatedResponse {
+                Json(RunnerPatchReply::Rotated(RunnerTokenRotatedResponse {
                     id: Cow::Borrowed(runner.as_str()),
                     runner_token: Cow::Borrowed(rotated.expose()),
-                }),
+                })),
             )
                 .into_response()
         }

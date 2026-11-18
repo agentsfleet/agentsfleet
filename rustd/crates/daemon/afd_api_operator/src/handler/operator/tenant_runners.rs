@@ -12,7 +12,7 @@ use af_core::id::Uuid7;
 #[cfg(feature = "openapi")]
 use af_wire::runner::{RegisterRequest, RegisterResponse, RegistrationReplay};
 #[cfg(feature = "openapi")]
-use afd_api_wire::admin::{RunnerAdminPatchRequest, RunnerAdminPatchResponse};
+use afd_api_wire::admin::{RunnerAdminPatchRequest, RunnerPatchReply};
 #[cfg(feature = "openapi")]
 use afd_api_wire::operator::{RunnerDetail, RunnersResponse};
 use afd_http::handler::Refusal;
@@ -135,7 +135,7 @@ pub(crate) async fn detail<D: Services>(
     request_body = RunnerAdminPatchRequest<'_>,
     params(afd_http::openapi::path::Runner),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = RunnerAdminPatchResponse<'_>),
+        (status = 200, description = "The runner's state after the change, or its replacement token after a `rotate`", body = RunnerPatchReply<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = "The runner is revoked, so the request can never be honoured"),

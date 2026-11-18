@@ -15,6 +15,9 @@ export type RunnerPaging = {readonly limit?: number | undefined; readonly starti
 type RunnerRead = RunnerPaging & {readonly workspace?: string | undefined; readonly fleet?: string | undefined; readonly eventType?: string | undefined; readonly since?: string | undefined; readonly until?: string | undefined};
 type RunnerEdit = {readonly policy?: string | undefined; readonly labels?: string | undefined};
 const DEFAULT_ENGINE = "Bubblewrap";
+/** Who owns a host, as the operator's views name it. */
+const owner = (tenant: string | null | undefined): string => tenant ?? "Platform";
+const isOperator = (kind: RunnerKind): boolean => kind.path === ADMIN_RUNNERS_PATH;
 
 export const runnersList = Effect.fn("runners.list")(function* (kind: RunnerKind, options: RunnerPaging) {
   const path = kind.path + platformQuery({limit: options.limit, starting_after: options.startingAfter});
@@ -22,16 +25,19 @@ export const runnersList = Effect.fn("runners.list")(function* (kind: RunnerKind
   const output = yield* Output;
   if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
   yield* output.printEntityTable({name: {key: "host_id", label: "HOST"}, domain: [
-    {key: "id", label: "ID"}, {key: "status", label: "STATE"}, {key: "liveness", label: "CONNECTION"},
+    {key: "id", label: "ID"}, ...(isOperator(kind) ? [{key: "owner", label: "OWNER"}] : []),
+    {key: "status", label: "STATE"}, {key: "liveness", label: "CONNECTION"},
     {key: "default_engine", label: "DEFAULT ENGINE"},
-  ], ageKey: null}, page.items.map(({id, host_id, status, liveness}) => ({id, host_id, status, liveness, default_engine: DEFAULT_ENGINE})));
+  ], ageKey: null}, page.items.map(({id, host_id, status, liveness, tenant_id}) =>
+    ({id, host_id, owner: owner(tenant_id), status, liveness, default_engine: DEFAULT_ENGINE})));
   if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
 });
 
 export const runnerShow = Effect.fn("runners.show")(function* (kind: RunnerKind, id: string) {
   const runner = yield* decodePlatform(RunnerDetailSchema, yield* platformRequest({path: platformPath(kind.path, id)}));
   yield* platformResult(runner, runner.host_id, {
-    ID: runner.id, State: runner.status, Connection: runner.liveness, "Default engine": DEFAULT_ENGINE,
+    ID: runner.id, ...(isOperator(kind) ? {Owner: owner(runner.tenant_id)} : {}),
+    State: runner.status, Connection: runner.liveness, "Default engine": DEFAULT_ENGINE,
     "Isolation tier": runner.assigned_policy.sandbox_tier,
     "Network policy": runner.assigned_policy.network_policy, Workers: String(runner.assigned_policy.worker_count),
     Labels: runner.labels.join(", ") || "None", "Last seen": runner.last_seen_at,

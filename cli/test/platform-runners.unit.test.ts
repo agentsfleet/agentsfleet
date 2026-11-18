@@ -129,3 +129,20 @@ test("platform runners still call the admin path", async () => {
     expect(fixture.calls[0]?.url.pathname.startsWith("/v1/admin/runners")).toBe(true);
   }
 });
+
+const TENANT_ID = "0199a801-1000-7000-8000-0000000000aa";
+
+test("keeps the owning tenant an operator page names, and none for a platform host", async () => {
+  fixture.respond = () => Response.json({items: [{...RUNNER, tenant_id: TENANT_ID}, RUNNER], total: 2, next_cursor: null});
+  const result = await fixture.run(["runners", "list", "--json"]);
+  expect(result.code).toBe(0);
+  const items = JSON.parse(result.stdout).items;
+  expect(items[0].tenant_id).toBe(TENANT_ID);
+  expect(items[1].tenant_id).toBeUndefined();
+});
+
+test("keeps the owning tenant on one runner's detail", async () => {
+  fixture.respond = () => Response.json({...RUNNER_DETAIL, tenant_id: TENANT_ID});
+  const result = await fixture.run(["runners", "show", RUNNER_ID, "--json"]);
+  expect(result.code).toBe(0); expect(JSON.parse(result.stdout).tenant_id).toBe(TENANT_ID);
+});

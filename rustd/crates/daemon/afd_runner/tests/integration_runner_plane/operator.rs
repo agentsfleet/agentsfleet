@@ -12,7 +12,12 @@ use serde_json::Value;
 
 use super::{Fixture, enrolment};
 use crate::rows::{self, AttemptRow};
+use af_crypto::entropy::Entropy;
+use afd_db::Migrator;
+use afd_db::config::DbRole;
 use afd_db::test_util::mint_id;
+use afd_db::test_util::{TenantSeed, TestDatabase};
+use afd_runner::Runners;
 
 /// Who the operator transitions are recorded as.
 const ACTOR: &str = "user_operator";
@@ -341,43 +346,89 @@ async fn test_a_rotation_lands_for_a_live_runner_and_is_refused_once_revoked() {
     fixture.cleanup().await;
 }
 
-// Value: protects=a runner page never reports fewer runners than it lists;
-// fails_when=the total and the page read two moments, so a runner registered
-// between them is listed but not counted; why_new=tenant runners register
-// concurrently with platform reads; seam=the platform list on live Postgres.
+// Value: protects=a runner page never reports a total that disagrees with the
+// rows it lists; fails_when=the total and the rows read two moments, so a
+// runner registered between them is listed but not counted; why_new=tenant
+// runners register while their owners read; seam=a lock that parks the page
+// between its two reads, on a database of this test's own.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_runner_page_and_its_total_read_one_moment_while_runners_register() {
-    const REGISTRATIONS: usize = 40;
-    let mut fixture = Fixture::create().await;
-    let writer = fixture.runners.clone();
-    let registering = tokio::spawn(async move {
-        let mut registered = Vec::new();
-        for _ in 0..REGISTRATIONS {
-            let enrolled = writer
-                .register(&enrolment(), clock::now())
+    let lane = TestDatabase::create().await;
+    let owner = lane.open(DbRole::Migrator, &[]).await;
+    Migrator::new()
+        .run(&owner)
+        .await
+        .expect("the private database migrates");
+    let tenant = mint_id();
+    TenantSeed::new(&tenant)
+        .insert(&mut *owner.acquire().await.expect("an owner connection"))
+        .await
+        .expect("the tenant seeds");
+    let database = lane.open(DbRole::Api, &[]).await;
+    let runners = Runners::new(database.clone(), Entropy::new());
+    let register = || {
+        let (runners, tenant) = (&runners, &tenant);
+        async move {
+            let (operation, request) = (mint_id(), enrolment());
+            runners
+                .register_tenant(tenant, &operation, &request, clock::now())
                 .await
-                .expect("the enrolment lands");
-            registered.push(enrolled.runner_id);
         }
-        registered
+    };
+    register().await.expect("the first runner registers");
+
+    // The page's rows join `runner.leases` and its total does not, so holding
+    // that table parks the page after its total and before its rows.
+    let mut holder = owner.acquire().await.expect("a holding connection");
+    let mut hold = sqlx::Acquire::begin(&mut *holder).await.expect("a hold");
+    sqlx::query("LOCK TABLE runner.leases IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *hold)
+        .await
+        .expect("the lock");
+    let page = tokio::spawn({
+        let runners = runners.clone();
+        let tenant = tenant.clone();
+        async move { runners.tenant(&tenant).list_runners(None, 200).await }
     });
-    while !registering.is_finished() {
-        let page = fixture
-            .runners
-            .platform()
-            .list_runners(None, 200)
-            .await
-            .expect("a page reads");
-        let listed = i64::try_from(page.items().len()).expect("a page fits an i64");
-        assert!(
-            page.total() >= listed,
-            "the total counts every runner the page lists: total {}, listed {listed}",
-            page.total()
-        );
-    }
-    fixture
-        .enrolled
-        .extend(registering.await.expect("the registrations join"));
-    fixture.cleanup().await;
+    let waiting = "SELECT count(*) FROM pg_locks \
+                   WHERE NOT granted AND relation = 'runner.leases'::regclass";
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let parked: i64 = sqlx::query_scalar(waiting)
+                .fetch_one(&mut *owner.acquire().await.expect("a probe connection"))
+                .await
+                .expect("pg_locks reads");
+            if parked > 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the page parks on the held table");
+
+    register()
+        .await
+        .expect("a second runner registers while the page is parked");
+    hold.rollback().await.expect("the hold releases");
+    drop(holder);
+    let page = page.await.expect("the page joins").expect("the page reads");
+    let listed = i64::try_from(page.items().len()).expect("a page fits an i64");
+    assert_eq!(
+        (page.total(), listed),
+        (1, 1),
+        "the total and the rows both read the moment before the second registration"
+    );
+    let after = runners
+        .tenant(&tenant)
+        .list_runners(None, 200)
+        .await
+        .expect("a later page");
+    assert_eq!(after.total(), 2, "a later page counts both");
+
+    drop(runners);
+    database.close().await;
+    owner.close().await;
+    lane.cleanup().await;
 }
