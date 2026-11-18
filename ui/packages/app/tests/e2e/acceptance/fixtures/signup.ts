@@ -65,21 +65,26 @@ interface SignUpSession {
   workspaceId?: string;
 }
 
-export async function signUpAs(
-  page: Page,
-  email: string,
-  password: string,
-  options: SignUpOptions = {},
-): Promise<SignUpSession> {
-  const key = options.key ?? FIXTURE_KEY.regular;
-  const shouldBootstrap = options.bootstrap ?? true;
+/** A Clerk person and the session signup created for them, not yet active. */
+export interface ClerkAccount {
+  sessionId: string;
+  clerkUserId: string;
+}
+
+/**
+ * Creates the Clerk person only: no tenant bootstrap, no wait for metadata,
+ * and the session left inactive. A caller that activates it at once meets the
+ * dashboard exactly as a person does in the seconds before the daemon's
+ * `user.created` handler has written the tenant back.
+ */
+export async function createClerkAccount(page: Page, email: string, password: string): Promise<ClerkAccount> {
   await setupClerkTestingToken({ page });
   await page.goto("/sign-up");
   await page.waitForFunction(() => {
     const clerk = (window as unknown as { Clerk?: { loaded?: boolean } }).Clerk;
     return Boolean(clerk?.loaded);
   });
-  const { sessionId, clerkUserId } = await page.evaluate(
+  return page.evaluate(
     async ({ emailAddress, pwd, code }) => {
       const clerk = (window as unknown as { Clerk: ClerkBrowserSurface }).Clerk;
       await clerk.client.signUp.create({ emailAddress, password: pwd });
@@ -92,14 +97,30 @@ export async function signUpAs(
     },
     { emailAddress: email, pwd: password, code: TEST_OTP },
   );
-  if (shouldBootstrap) {
-    await bootstrapTenant({ key, email, password, clerkUserId });
-  }
-  await waitForTenantMetadata(clerkUserId);
+}
+
+/** Makes `sessionId` the browser's session, so clerk-js owns its cookies. */
+export async function activateSession(page: Page, sessionId: string): Promise<void> {
   await page.evaluate(async (id) => {
     const clerk = (window as unknown as { Clerk: ClerkBrowserSurface }).Clerk;
     await clerk.setActive({ session: id });
   }, sessionId);
+}
+
+export async function signUpAs(
+  page: Page,
+  email: string,
+  password: string,
+  options: SignUpOptions = {},
+): Promise<SignUpSession> {
+  const key = options.key ?? FIXTURE_KEY.regular;
+  const shouldBootstrap = options.bootstrap ?? true;
+  const { sessionId, clerkUserId } = await createClerkAccount(page, email, password);
+  if (shouldBootstrap) {
+    await bootstrapTenant({ key, email, password, clerkUserId });
+  }
+  await waitForTenantMetadata(clerkUserId);
+  await activateSession(page, sessionId);
   const sessionJwt = await refreshSessionToken(sessionId);
   if (options.requireWorkspaceSession) {
     return {

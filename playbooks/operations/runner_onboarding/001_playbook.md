@@ -49,10 +49,12 @@ Indy creates external state, the agent prepares the host, and the deployment pip
 
    Preparation checks the `cpu`, `io`, `memory` and `pids` cgroup v2 controllers, installs packages, enables IPv4 forwarding and creates directories.
    It installs no binary, writes no token and starts no service.
-2. The agent enrolls the host with the CLI. The host ID is the item's exact `tailscale-hostname`, and the token lands in a new private file:
+2. The agent enrolls the host with the command-line interface (CLI). The host ID is the item's exact `tailscale-hostname`, and the token lands in a new private file.
+   `DECISION_MODEL_ID` is the `id` of the `typesafe` row in `agentsfleet platform models list`; the setup edit check runs on that model:
 
    ```bash
-   printf '%s' '{"durable_tasks_enabled":true,"sandbox_tier":"landlock_full","network_policy":"allow_all","registry_allowlist":[],"worker_count":4,"extra_binds":[]}' > policy.json
+   printf '{"durable_tasks_enabled":true,"sandbox_tier":"landlock_full","network_policy":"allow_all","registry_allowlist":[],"worker_count":4,"extra_binds":[],"decision_model_id":"%s"}' \
+     "$DECISION_MODEL_ID" > policy.json
    agentsfleet platform runners register --host-id "$(op read "op://$VAULT/<RUNNER_ITEM>/tailscale-hostname")" \
      --policy policy.json --labels dev --token-out runner-token
    ```

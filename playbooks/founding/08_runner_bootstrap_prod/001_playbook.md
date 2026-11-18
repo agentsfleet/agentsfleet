@@ -52,7 +52,7 @@ Preparation matches [the development step](../05_runner_bootstrap_dev/001_playbo
 ### 2. Human and Agent prime the database
 
 1. Follow [`admin_bootstrap`](../../operations/admin_bootstrap/001_playbook.md) with `ENV=prod`.
-2. Work through [Prime a clean database](../../README.md#prime-a-clean-database) steps 3 to 7, with vault names from the production environment. Read each model catalogue diff before approving its write; those rows are billing rates.
+2. Work through [Prime a clean database](../../README.md#prime-a-clean-database) steps 3 to 10, with vault names from the production environment. Read each model catalogue diff before approving its write; those rows are billing rates.
 3. Leave runner-dependent live acceptance for step 09.
 4. Restart `agentsfleetd` by rerunning the release while `PROD_RUNNER_READY` is `false`:
 

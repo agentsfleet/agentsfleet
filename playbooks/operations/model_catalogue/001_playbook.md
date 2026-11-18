@@ -77,6 +77,51 @@ agentsfleet platform keys list
 
 `keys list` shows the provider and model with `active: true`. Setup chat also needs an SDK route that supports tools.
 
+## Seed the decision model
+
+The setup edit check calls TypeSafe, a decision-only model the snapshot above does not carry.
+Catalogue applies keep this row: an apply deletes only rows with no decision revision.
+Sync the `typesafe` bag first, and skip this section when `models list` already shows the row.
+
+1. In development, create the decision model from the local bootstrap's definition, which carries an acceptance-only price:
+
+   ```bash
+   bun -e 'import { decisionModel } from "./deploy/local/bootstrap.ts"; console.log(JSON.stringify(decisionModel()))' \
+     | agentsfleet platform models create --file - --json
+   ```
+
+   The reply includes the new row's `id`:
+
+   ```text
+     "id": "<varies>",
+   ```
+
+2. In production, 🤠 Indy states the approved TypeSafe rate as `TYPESAFE_PRICES`: a JSON array of price rows shaped like `decision.prices` in `decisionModel()`.
+   🦉 The agent creates the row with that rate in place of the acceptance price:
+
+   ```bash
+   bun -e 'import { decisionModel } from "./deploy/local/bootstrap.ts"; console.log(JSON.stringify(decisionModel()))' \
+     | jq --argjson prices "$TYPESAFE_PRICES" '.decision.prices = $prices' \
+     | agentsfleet platform models create --file - --json
+   ```
+
+   The reply includes the new row's `id`:
+
+   ```text
+     "id": "<varies>",
+   ```
+
+3. Read the row back; its `ID` is the runner's `decision_model_id`:
+
+   ```bash
+   agentsfleet platform models list
+   ```
+
+   ```text
+   NAME              ID        PROVIDER  MODEL
+   Setup edit check  <varies>  typesafe  jev-latest
+   ```
+
 ## Change connection settings or prices
 
 Change the snapshot in `scripts/model-library-allowlist.json` and rerun the diff and apply above.
