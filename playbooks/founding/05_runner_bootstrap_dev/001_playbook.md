@@ -55,7 +55,7 @@ It installs no runner binary, writes no token and starts no service.
 ### 3. Human and Agent prime the database
 
 1. Follow [`admin_bootstrap`](../../operations/admin_bootstrap/001_playbook.md) with `ENV=dev`. The Human completes dashboard signup and console actions.
-2. Work through [Prime a clean database](../../README.md#prime-a-clean-database) steps 3 to 7, with vault names from the development environment.
+2. Work through [Prime a clean database](../../README.md#prime-a-clean-database) steps 3 to 10, with vault names from the development environment.
 3. Leave runner-dependent live acceptance for step 06.
 4. Restart with the [development deploy commands](../../deploy/dev/001_playbook.md#steps) while the runner stays disabled.
 
