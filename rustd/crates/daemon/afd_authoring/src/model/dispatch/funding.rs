@@ -36,6 +36,7 @@ impl ModelCalls {
                 .invocation(&mut tx, runner, lease, counters)
                 .await?;
             capability::check(&guarded.attempt, request)?;
+            guarded.attempt.policy.admit_call(request.call_index)?;
             guard::current_model(&mut tx, &guarded).await?;
             if i64::from(request.call_index) != i64::from(guarded.attempt.call_count) + 1 {
                 return Ok(None);
@@ -125,7 +126,7 @@ impl Funding {
     fn ceiling(&self, attempt: &guard::Attempt) -> Result<i64> {
         let model = &attempt.model_snapshot;
         let input = input_hold(model, self.prepared.input_tokens)?;
-        Ok(budget::bound(model)?
+        Ok(budget::bound(model, attempt.policy)?
             .checked_add(self.spent)
             .and_then(|value| value.checked_add(input))
             .ok_or(ErrorKind::Balance)?

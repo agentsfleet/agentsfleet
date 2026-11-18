@@ -19,7 +19,8 @@ pub(super) async fn keep(
     clock: &dyn Clock,
     observed: &Observed,
 ) -> Result<()> {
-    let maximum = deadline(lease.deadline, clock).min(Instant::now() + Duration::from_secs(300));
+    let maximum = deadline(lease.deadline, clock)
+        .min(Instant::now() + Duration::from_secs(u64::from(af_wire::authoring::WALL_SECONDS_MAX)));
     let lifetime = plane
         .stream
         .renewing

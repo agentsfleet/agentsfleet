@@ -344,7 +344,7 @@ Four real collector checks passed for span batching, span timing, log batching a
 The browser Appearance check also passed on the current branch.
 The reported deployed Appearance failure remains unreproduced.
 
-Runner-delivery, authoring and retry settings still require implementation.
+Runner-delivery and retry settings still require implementation.
 The lease-health extension below is under validation.
 A configurable maximum lease runtime must be saved when each lease is issued.
 Reading each replica's current runtime setting would break the promised immutable ceiling during a profile change.
@@ -381,6 +381,42 @@ Workspace Rust lint passed with warnings denied.
 
 The live run included every prepared SQL statement, saved-cap issuance, single and batch renewal, and sandbox holds.
 Refreshed SQL performance plans remain due.
+
+#### Authoring policy extension
+
+Both deployment files now include the private setup turn's call, wall-time, correction and provider-timeout limits.
+The daemon saves those four values when it issues an attempt.
+Later profile changes apply to new attempts.
+
+```text
+TOML -> checked TurnPolicy -> Drafts admission
+                            |-- reserve bounded cost
+                            |-- save four numeric policy fields with the attempt
+                            `-- deliver accepted limits to the runner
+
+Saved attempt -> guarded model dispatch + continuation reads
+              -> accepted deadline and provider timeout
+              -> receipt replay preserves the original outcome
+Runner        -> bounded call loop -> accepted correction allowance
+```
+
+| Files | Owner or change | Behavior |
+| --- | --- | --- |
+| `afd_authoring/src/turn_policy.rs` | New `TurnSettings`, `TurnPolicy` and checked call index | Bound new admission and later calls using one accepted policy |
+| `afd_authoring/src/draft/mod.rs`, `lease/claim/issue/*` | `Drafts::with_turn_policy`, `prepare`, `mint`, `insert`, payload builder | Save and deliver the selected allowances; cap the initial lease by the attempt deadline |
+| `schema/20261108123900_authoring_attempts.sql`, `lease/sql/*`, `lease/guard/rows.rs` | Four integer snapshot columns; `AttemptRow::decode` | Read original limits after reconnect or a profile change; add no index or foreign key |
+| `model/budget.rs`, `dispatch/*`, `continuation.rs` | `bound`, `covers`, `Intent::new`, call admission, continuation bound | Apply the saved cost, count and timeout limits |
+| `af_wire/src/authoring/*`, `afr_supervisor/src/authoring/turn.rs` | Accepted correction field; `Progress`; `Turn::{request,invoke,fold,proposals,run}` | Preserve the existing turn outcomes while honoring a lower correction allowance |
+
+The compiled protocol ceilings remain eight calls, five minutes and one correction.
+Human replies and late approvals receive no new expiry rule.
+The clean focused run passed 1570 datastore-free tests and 402 live checks.
+The source fingerprint is `5f4cc7c8606328c9be93aae9b96ece9d05c6a95b5bca73ea9aa7bfa8b8d2649c`.
+Workspace Rust lint and the unused-dependency check passed.
+
+The live group covered the complete authoring draft suite and every SQL file's preparation.
+The new checks passed for saved admission limits, capped dispatch, receipt replay and unreadable saved policy.
+The runner's zero-correction check also passed.
 
 #### Claude configuration review disposition
 

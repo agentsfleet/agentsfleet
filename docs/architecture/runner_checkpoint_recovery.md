@@ -53,6 +53,22 @@ The task policy caps new admissions and interpretation sizes.
 New tasks save their configured allowances in the existing task-limit columns.
 Lowering admission caps preserves committed receipts, saved allowances and existing task candidates.
 
+Private setup turns also save their accepted call, wall-time, correction and provider-timeout limits.
+New defaults apply to new attempts.
+An existing attempt retains its saved limits after reconnect or a replica restart.
+
+```toml
+[authoring.turn]
+max_model_calls = 8
+max_wall_seconds = 300
+max_proposal_corrections = 1
+provider_timeout_seconds = 300
+```
+
+Deployments can lower these values within the compiled protocol ceilings.
+A zero correction allowance stops after the first refused proposal.
+These timers bound model work; they add no deadline for a person to answer or approve.
+
 Maintenance settings control job cadence, page sizes and pass deadlines.
 Bounded startup staggering separates replicas' first passes while retaining each job's maximum initial delay.
 OpenTelemetry settings control actual exporter queues, batch sizes, timeouts and export intervals.

@@ -2,6 +2,7 @@
 
 pub(crate) mod maintenance;
 mod origins;
+mod policies;
 mod settings;
 mod timing;
 mod urls;
@@ -141,18 +142,9 @@ impl<'a, E: EnvSource + ?Sized> Config<'a, E> {
             settings.database.migrator,
         )
         .map_err(|error| budget_invalid("database.migrator", &error))?;
-        let task_settings = garde::Unvalidated::new(settings.fleet.tasks)
-            .validate()
-            .map_err(|report| invalid(format!("fleet.tasks: {report}")))?;
-        let maintenance = maintenance::MaintenancePolicy::resolve(settings.maintenance)
-            .map_err(|report| invalid(format!("maintenance: {report}")))?;
         let runtime = crate::preflight::runtime::configured(
             &source,
-            afd_fleet::task::policy::TaskPolicy::new(&task_settings),
-            maintenance,
-            garde::Unvalidated::new(settings.telemetry.otlp)
-                .validate()
-                .map_err(|report| invalid(format!("telemetry.otlp: {report}")))?,
+            policies::read(settings)?,
             timing::settings(&settings.runner),
         )?;
         Ok(Config {

@@ -38,7 +38,8 @@ impl Common {
         let drafts =
             afd_authoring::Drafts::new(parts.database.clone(), Entropy::new(), Arc::clone(&biller))
                 .with_analytics(parts.analytics.clone())
-                .with_clock(parts.runtime.clock);
+                .with_clock(parts.runtime.clock)
+                .with_turn_policy(parts.runtime.operations.authoring);
         Self {
             providers,
             github_client,

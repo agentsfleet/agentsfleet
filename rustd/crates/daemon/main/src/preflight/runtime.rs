@@ -26,6 +26,7 @@ pub(crate) struct OperationalSettings {
     pub(crate) telemetry: garde::Valid<af_otlp::PipelineSettings>,
     pub(crate) maintenance: crate::config::maintenance::MaintenancePolicy,
     pub(crate) tasks: afd_fleet::task::policy::TaskPolicy,
+    pub(crate) authoring: afd_authoring::turn_policy::TurnPolicy,
 }
 
 impl RuntimeSettings {
@@ -62,25 +63,23 @@ struct Readings {
 
 #[cfg(test)]
 pub(crate) fn read(env: &(impl EnvSource + ?Sized)) -> Result<RuntimeSettings, Refusal> {
-    configured(
-        env,
-        afd_fleet::task::policy::TaskPolicy::default(),
-        crate::config::maintenance::MaintenancePolicy::resolve(
+    let operations = OperationalSettings {
+        tasks: afd_fleet::task::policy::TaskPolicy::default(),
+        authoring: afd_authoring::turn_policy::TurnPolicy::default(),
+        maintenance: crate::config::maintenance::MaintenancePolicy::resolve(
             crate::config::maintenance::Maintenance::default(),
         )
         .map_err(|report| refused("maintenance", report.to_string()))?,
-        garde::Unvalidated::new(af_otlp::PipelineSettings::default())
+        telemetry: garde::Unvalidated::new(af_otlp::PipelineSettings::default())
             .validate()
             .map_err(|report| refused("telemetry.otlp", report.to_string()))?,
-        LeaseSettings::default(),
-    )
+    };
+    configured(env, operations, LeaseSettings::default())
 }
 
 pub(crate) fn configured(
     env: &(impl EnvSource + ?Sized),
-    tasks: afd_fleet::task::policy::TaskPolicy,
-    maintenance: crate::config::maintenance::MaintenancePolicy,
-    telemetry: garde::Valid<af_otlp::PipelineSettings>,
+    operations: OperationalSettings,
     mut lease: LeaseSettings,
 ) -> Result<RuntimeSettings, Refusal> {
     lease.ttl_seconds = value(env, "AGENTSFLEET_LEASE_TTL_SECONDS", lease.ttl_seconds)?;
@@ -109,11 +108,7 @@ pub(crate) fn configured(
     .validate()
     .map_err(|report| refused("runtime", report.to_string()))?;
     Ok(RuntimeSettings {
-        operations: Arc::new(OperationalSettings {
-            telemetry,
-            maintenance,
-            tasks,
-        }),
+        operations: Arc::new(operations),
         clock: readings.clock,
         resume_from_checkpoint: value(env, "AGENTSFLEET_RESUME_FROM_CHECKPOINT", false)?,
         fallback: Duration::from_secs(readings.fallback_seconds),

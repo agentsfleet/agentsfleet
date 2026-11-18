@@ -10,6 +10,8 @@ pub(super) struct ConfigToml {
     pub maintenance: super::maintenance::Maintenance,
     #[garde(skip)]
     pub fleet: Fleet,
+    #[garde(skip)]
+    pub authoring: Authoring,
     #[garde(dive)]
     pub server: Server,
     #[garde(dive)]
@@ -26,6 +28,12 @@ pub(super) struct ConfigToml {
     pub telemetry: Telemetry,
     #[garde(dive)]
     pub checkpoint: Checkpoint,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct Authoring {
+    pub turn: afd_authoring::turn_policy::TurnSettings,
 }
 
 #[derive(Default, Deserialize)]

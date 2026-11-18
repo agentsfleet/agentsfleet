@@ -23,10 +23,10 @@ pub struct Meter {
     #[garde(skip)]
     pub knowledge: Knowledge,
     /// Number of physical dispatches observed by the runner.
-    #[garde(range(max = 8))]
+    #[garde(range(max = super::MODEL_CALLS_MAX))]
     pub calls: u32,
     /// Known cumulative input tokens, when available.
-    #[garde(inner(range(max = u64::from(u32::MAX) * 8)))]
+    #[garde(inner(range(max = u64::from(u32::MAX) * u64::from(super::MODEL_CALLS_MAX))))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_tokens: Option<u64>,
     /// Known cumulative output tokens, when available.
@@ -34,7 +34,7 @@ pub struct Meter {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_tokens: Option<u64>,
     /// Runtime from the attempt's monotonic timer.
-    #[garde(range(max = 300_000))]
+    #[garde(range(max = u64::from(super::WALL_SECONDS_MAX) * 1_000))]
     pub runtime_ms: u64,
     /// Provider cost in billionths of a dollar, as a decimal string. Verified against the
     /// server's request records.

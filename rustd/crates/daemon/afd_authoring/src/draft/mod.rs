@@ -23,6 +23,7 @@ const MAX_CACHED_SEND_GATES: u64 = 1024;
 /// Native private setup service, shared by browser and terminal chat.
 #[derive(Debug, Clone)]
 pub struct Drafts {
+    pub(crate) turn_policy: crate::turn_policy::TurnPolicy,
     pub(crate) clock: af_core::timing::LeaseClock,
     pub(crate) database: Db,
     pub(crate) entropy: Entropy,
@@ -39,6 +40,13 @@ pub struct Drafts {
 }
 
 impl Drafts {
+    /// Applies checked limits to newly admitted attempts; saved attempts retain their own policy.
+    #[must_use]
+    pub fn with_turn_policy(mut self, policy: crate::turn_policy::TurnPolicy) -> Self {
+        self.turn_policy = policy;
+        self
+    }
+
     /// Uses the deployment clock validated before startup.
     #[must_use]
     pub fn with_clock(mut self, clock: af_core::timing::LeaseClock) -> Self {
@@ -54,6 +62,7 @@ impl Drafts {
     pub fn new(database: Db, entropy: Entropy, biller: Arc<dyn Biller>) -> Self {
         Self {
             clock: af_core::timing::LeaseClock::default(),
+            turn_policy: crate::turn_policy::TurnPolicy::default(),
             database,
             entropy,
             analytics: Analytics::silent(),

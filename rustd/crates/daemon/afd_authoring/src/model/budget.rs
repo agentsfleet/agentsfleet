@@ -14,12 +14,9 @@ use crate::{
     lease::guard::{self, Attempt},
 };
 
-pub(crate) const MAX_CALLS: i64 = 8;
 pub(crate) const PROVIDER_TIMEOUT: Duration = af_inference::stream::READ_TIMEOUT;
 /// How long a provider's private result outlives its dispatch.
 pub(crate) const PRIVATE_TTL: Duration = af_core::timing::DAY;
-/// The longest an authoring attempt runs, renewal included.
-pub(crate) const WALL: Duration = Duration::from_secs(300);
 const MILLION: i128 = 1_000_000;
 
 pub(crate) fn output_limit(model: &RegisteredModel) -> i64 {
@@ -35,8 +32,11 @@ pub(crate) fn cost(model: &RegisteredModel, input: i64, output: i64) -> Result<i
         .ok_or_else(|| ErrorKind::Balance.into())
 }
 
-pub(crate) fn bound(model: &RegisteredModel) -> Result<i64> {
-    let seconds = i64::try_from(WALL.as_secs()).map_err(|_overflow| ErrorKind::Balance)?;
+pub(crate) fn bound(
+    model: &RegisteredModel,
+    policy: crate::turn_policy::TurnPolicy,
+) -> Result<i64> {
+    let seconds = i64::try_from(policy.wall().as_secs()).map_err(|_overflow| ErrorKind::Balance)?;
     let runtime = RUN_NANOS_PER_SEC
         .checked_mul(seconds)
         .ok_or(ErrorKind::Balance)?;
@@ -44,7 +44,7 @@ pub(crate) fn bound(model: &RegisteredModel) -> Result<i64> {
         return Ok(runtime);
     }
     let output = ceil(output_limit(model), model.output_nanos_per_million)?
-        .checked_add(MAX_CALLS - 1)
+        .checked_add(policy.calls() - 1)
         .ok_or(ErrorKind::Balance)?;
     runtime
         .checked_add(output)
@@ -107,7 +107,7 @@ pub(crate) async fn covers(
     biller: &dyn Biller,
     attempt: &Attempt,
 ) -> Result<()> {
-    if attempt.reserved_nanos < bound(&attempt.model_snapshot)? {
+    if attempt.reserved_nanos < bound(&attempt.model_snapshot, attempt.policy)? {
         return Err(ErrorKind::Balance.into());
     }
     let logged: i64 = sqlx::query_scalar(include_str!("budget_logged.sql"))
