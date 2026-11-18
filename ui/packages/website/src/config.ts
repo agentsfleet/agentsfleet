@@ -7,7 +7,5 @@ export const GITHUB_URL = "https://github.com/agentsfleet/agentsfleet";
 export const SELF_HOSTED_URL = `${GITHUB_URL}#quick-start`;
 export const DISCORD_URL = "https://discord.gg/H9hH2nqQjh";
 export const MARKETING_SITE_URL = "https://agentsfleet.net";
-// NOTE: the canonical contact address is SUPPORT_EMAIL ("agentsfleet@agentmail.to")
-// in src/lib/contact.ts — used by Pricing, Terms, and Privacy. A second
-// "team@agentsfleet.net" constant used to live here, unused by any component
-// and contradicting the canonical address, so it was removed.
+// The canonical contact address is SUPPORT_EMAIL ("agentsfleet@agentmail.to")
+// in src/lib/contact.ts, used by Pricing, Terms, and Privacy. Add no second one here.
