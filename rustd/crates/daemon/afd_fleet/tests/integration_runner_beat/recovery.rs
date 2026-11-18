@@ -52,7 +52,11 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, fixtures.enrolled_at())
+        .register(
+            &request,
+            "fixture:platform-operator",
+            fixtures.enrolled_at(),
+        )
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.clone();
@@ -103,6 +107,7 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
         .runners()
         .register(
             &enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1),
+            "fixture:platform-operator",
             fixtures.enrolled_at(),
         )
         .await
@@ -155,6 +160,7 @@ async fn test_a_vanished_runner_is_its_own_failure() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            "fixture:platform-operator",
             fixtures.enrolled_at(),
         )
         .await
@@ -194,6 +200,7 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            "fixture:platform-operator",
             fixtures.enrolled_at(),
         )
         .await

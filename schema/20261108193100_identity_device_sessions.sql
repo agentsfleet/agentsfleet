@@ -1,13 +1,6 @@
--- One CLI device-login session (docs/AUTH_DEVICE_LOGIN.md). A table rather
--- than columns elsewhere: a session exists before any credential does, and
--- lives only SESSION_TTL (afd_tenant::session).
--- No plaintext secret: ciphertext is sealed to a CLI key the daemon never holds,
--- and verification_code_hmac is keyed by a pepper held only in process memory.
--- status: enforced by afd_tenant::session::SessionStatus, never a CHECK.
--- Readers: lock_session.sql (every column the verify decides on),
--- select_session.sql (poll), approve_session.sql and abort_owned_sessions.sql
--- (status, approver_subject, expires_at). Nothing deletes an expired row: every
--- read refuses it by expires_at.
+-- One CLI device-login session. No plaintext secret: `ciphertext` is sealed to a CLI key the
+-- daemon never holds, and `verification_code_hmac` is keyed by a pepper held only in memory.
+-- Nothing deletes an expired row; every read refuses it by `expires_at`.
 CREATE TABLE identity.device_sessions (
     id UUID PRIMARY KEY CONSTRAINT ck_device_sessions_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     status TEXT NOT NULL,
@@ -23,9 +16,9 @@ CREATE TABLE identity.device_sessions (
     consumed_client_fingerprint BYTEA,
     created_at TIMESTAMPTZ(3) NOT NULL,
     updated_at TIMESTAMPTZ(3) NOT NULL,
-    -- A deadline: every transition re-stamps it, as the key's life was reset.
+    -- Re-stamped on every transition.
     expires_at TIMESTAMPTZ(3) NOT NULL,
-    -- A deadline: the same-fingerprint replay window after consumption.
+    -- The same-fingerprint replay window after consumption.
     replay_expires_at TIMESTAMPTZ(3)
 );
 
@@ -35,6 +28,5 @@ CREATE INDEX idx_device_sessions_expires_at ON identity.device_sessions (expires
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON identity.device_sessions TO api_runtime;
 
--- A session's sealed ciphertext and code digest stay away from the operator
--- read paths, as vault.secrets does.
+-- The sealed ciphertext and code digest stay off the operator read paths.
 REVOKE ALL ON identity.device_sessions FROM ops_readonly_human, ops_readonly_fleet;

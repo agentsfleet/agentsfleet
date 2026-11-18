@@ -27,13 +27,9 @@ use std::sync::Arc;
     responses(
         (status = 200, description = "Length-prefixed session frames", body = String, content_type = "application/octet-stream"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 409, description = "The previous connection no longer owns this runner"),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn handle<D: Services>(

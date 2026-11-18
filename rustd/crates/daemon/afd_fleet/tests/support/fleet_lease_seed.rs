@@ -94,7 +94,7 @@ pub(crate) async fn seeded_for<const N: usize>(
 /// A host that has never reported reads degraded, and a degraded host may
 /// claim nothing; without this beat every seeded runner would be refused at
 /// issue for a reason no lease test is about.
-async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
+pub(crate) async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
     let request = HeartbeatRequest {
         capability_report: Some(capable()),
         selftest: None,
@@ -132,7 +132,11 @@ pub(crate) async fn seeded_parts<const N: usize>(
         );
         let enrolled = fixtures
             .runners()
-            .register(&request, fixtures.enrolled_at())
+            .register(
+                &request,
+                "fixture:platform-operator",
+                fixtures.enrolled_at(),
+            )
             .await
             .expect("enrolment must succeed");
         reports_capable(fixtures, &enrolled.runner_id).await;

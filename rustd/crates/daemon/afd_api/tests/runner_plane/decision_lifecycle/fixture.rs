@@ -198,6 +198,7 @@ async fn enroll(database: &Db, owner: &Owner, model: &Uuid7) -> [Runner; 2] {
                     },
                     labels: vec![Cow::Borrowed(owner.tag.as_str())],
                 },
+                "fixture:platform-operator",
                 clock::now(),
             )
             .await

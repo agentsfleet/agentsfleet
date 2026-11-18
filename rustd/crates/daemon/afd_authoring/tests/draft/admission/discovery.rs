@@ -48,6 +48,8 @@ async fn should_discover_two_queued_drafts_when_stopped_history_grows() {
             .bind("queued")
             .bind(["awaiting_accounting", "settled"])
             .bind(DISCOVERY_LIMIT)
+            // The fixture's platform runner, which every draft may reach.
+            .bind(&f.runner)
             .fetch_one(&mut owner)
             .await
             .expect("compiled discovery plan");

@@ -10,7 +10,7 @@ const HTTP_METHOD = {get: "GET", post: "POST"} as const;
 const EXCLUSIVE_CREATE = "wx";
 const PROVIDER = "fireworks";
 const MODEL = "accounts/fireworks/models/minimax-m3p1-flash";
-const PLATFORM_SCOPES = ["runner:enroll", "runner:read", "model:read", "model:admin", "platform-key:read", "platform-key:admin"];
+const PLATFORM_SCOPES = ["runner:register", "runner:read", "model:read", "model:admin", "platform-key:read", "platform-key:admin"];
 const RUNNERS = "/v1/admin/runners";
 const FLEET_RUNNERS = "/v1/admin/runners";
 const MODELS = "/v1/admin/models";
@@ -256,9 +256,9 @@ async function requireFreshHost(request: Request, host: string): Promise<void> {
     const suffix: string = cursor ? `?starting_after=${encodeURIComponent(cursor)}` : "";
     const page = runnerPageSchema.parse(await request<unknown>(HTTP_METHOD.get, `${FLEET_RUNNERS}${suffix}`));
     if (page.items.some(row => row.host_id === host))
-      throw new LocalBootstrapError("local runner already enrolled without its credential record; recover it through operator token rotation before retrying");
+      throw new LocalBootstrapError("local runner already registered without its credential record; recover it through operator token rotation before retrying");
     cursor = page.next_cursor;
-    if (cursor && seen.has(cursor)) throw new LocalBootstrapError("local runner list repeated a cursor; refusing enrollment");
+    if (cursor && seen.has(cursor)) throw new LocalBootstrapError("local runner list repeated a cursor; refusing registration");
     if (cursor) seen.add(cursor);
   } while (cursor);
 }
@@ -277,7 +277,7 @@ export async function enroll(request: Request, base: string, namespace: string, 
   const pending = `${record}.enrolling`;
   const temporary = `${record}.new`;
   if (await Bun.file(pending).exists() || await Bun.file(temporary).exists())
-    throw new LocalBootstrapError("local runner enrollment is unfinished; inspect its outcome and recover its credential before retrying");
+    throw new LocalBootstrapError("local runner registration is unfinished; inspect its outcome and recover its credential before retrying");
   const host = `local-acceptance-${namespace}`;
   await requireFreshHost(request, host);
   await writeFile(pending, host, {flag: EXCLUSIVE_CREATE, mode: 0o600});

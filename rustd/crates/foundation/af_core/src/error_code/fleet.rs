@@ -132,6 +132,24 @@ pub const RUN_PROTOCOL_UNSUPPORTED: ErrorCode = ErrorCode::declare("UZ-RUN-023")
 /// The runner's stream ended or stopped answering; the runner reconnects on its own.
 pub const RUN_STREAM_DISCONNECTED: ErrorCode = ErrorCode::declare("UZ-RUN-024");
 
+/// A runner registration's Idempotency-Key was reused for a different request.
+///
+/// A replay of the same request answers the runner it created; a different body
+/// under the same key is a client mistake, refused rather than guessed at.
+pub const RUNNER_REGISTRATION_KEY_REUSED: ErrorCode = ErrorCode::declare("UZ-RUN-025");
+
+/// A platform caller asked to mint a tenant runner's token.
+///
+/// A new token would hand the platform a working credential for a host its
+/// tenant holds; the tenant rotates its own runners.
+pub const RUNNER_TENANT_MANAGED: ErrorCode = ErrorCode::declare("UZ-RUN-026");
+
+/// Issue refused a placement the claim should already have filtered.
+///
+/// Log-only: a foreign tenant's runner, or a tenant runner offered work that
+/// would carry a platform model key. Any occurrence means the claim has a hole.
+pub const RUNNER_PLACEMENT_REFUSED: ErrorCode = ErrorCode::declare("UZ-RUN-027");
+
 /// A fleet declared a credential the vault does not hold.
 ///
 /// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the lease path, where it

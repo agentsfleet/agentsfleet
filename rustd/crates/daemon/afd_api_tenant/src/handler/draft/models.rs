@@ -32,10 +32,9 @@ use std::sync::Arc;
             "purpose, and page size.",
         ))),
     responses((status = 200, body = CursorPage<WorkspaceModel>, description = "Configured priced choices"),
-        (status = 400, description = "Invalid input or cursor"), (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"), (status = 404, description = "Workspace unavailable"),
-        (status = 429, description = "Too many requests"), (status = 500, description = "Internal failure"),
-        (status = 503, description = "Dependency unavailable"))
+        (status = 400, description = "Invalid input or cursor"), (status = 404, description = "Workspace unavailable"),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,

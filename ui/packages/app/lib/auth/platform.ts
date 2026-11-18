@@ -13,7 +13,7 @@ import { expandScopes } from "@/lib/auth/scopes";
  * caller's token can't reach.
  *
  * The documented session-token form is a space-delimited string
- * (`"runner:read runner:enroll model:admin"`); we also accept a JSON array in
+ * (`"runner:read runner:register model:admin"`); we also accept a JSON array in
  * case the template is ever switched to array form. The backend is stricter: it
  * decodes `scopes` as a string (`Claims` in
  * rustd/crates/daemon/afd_identity/src/jwks/claims.rs, split by `parse_claim` in

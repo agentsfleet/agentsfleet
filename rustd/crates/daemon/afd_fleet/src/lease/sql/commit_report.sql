@@ -133,6 +133,9 @@ WITH scope AS MATERIALIZED (
   UPDATE runner.leases l
   SET status = $5,
       last_metered_at = m.metered_until,
+      -- The lease ended at its report. Its cursor then meets its deadline, so it
+      -- leaves the metering sweep's partial index instead of riding it for 30 days.
+      lease_expires_at = m.metered_until,
       updated_at = now()
   FROM measured m
   WHERE l.id = m.id

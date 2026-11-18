@@ -301,7 +301,7 @@ async fn enrolled_runner(booted: &Booted, fleet: &Uuid7, now: jiff::Timestamp) -
     // and stores only its digest, and a seeded row would let the suite present
     // a credential the daemon's own minting never produced.
     let enrolled = Runners::new(booted.database.clone(), Entropy::new())
-        .register(&scenario_enrolment(fleet), now)
+        .register(&scenario_enrolment(fleet), "fixture:platform-operator", now)
         .await
         .expect("enrolment must succeed");
 

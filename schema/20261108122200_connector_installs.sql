@@ -1,6 +1,5 @@
--- An outside account (a Slack team, a GitHub installation) bound to a workspace.
--- Credentials stay in the vault; this row is only the binding. `scopes` is read by
--- the setup review, which blocks a connection whose granted scopes fall short.
+-- An outside account (a Slack team, a GitHub installation) bound to a workspace. Credentials
+-- stay in the vault; this row is only the binding.
 CREATE TABLE connector.installs (
     id                   UUID PRIMARY KEY,
     CONSTRAINT ck_installs_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -10,8 +9,7 @@ CREATE TABLE connector.installs (
     scopes               TEXT[] NOT NULL,
     created_at           TIMESTAMPTZ(3) NOT NULL,
     updated_at           TIMESTAMPTZ(3) NOT NULL,
-    -- An outside account installs into one workspace at a time; webhooks resolve
-    -- the workspace by this pair.
+    -- One workspace per outside account at a time; webhooks resolve the workspace by this pair.
     CONSTRAINT uq_installs_provider_external_account_id UNIQUE (provider, external_account_id)
 );
 

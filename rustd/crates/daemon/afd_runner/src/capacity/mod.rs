@@ -63,6 +63,14 @@ impl<'a> From<(&'a Uuid7, &'a authority::Authority)> for Guard<'a> {
     }
 }
 
+/// Whether a locked host may take the work it was locked for, and whether a
+/// tenant owns it, as the host lock's statement answered both.
+#[derive(Debug, Clone, Copy, sqlx::FromRow)]
+struct Ownership {
+    serves: bool,
+    tenant_owned: bool,
+}
+
 /// Capacity observed while holding the host row until transaction completion.
 #[derive(Debug, Clone, Copy)]
 pub struct Capacity {
@@ -73,9 +81,18 @@ pub struct Capacity {
     renewals_allowed: bool,
     lease_version: i64,
     decision_selected: bool,
+    ownership: Ownership,
 }
 
 impl Capacity {
+    /// Whether this host may take the tenant it was locked for: the platform's
+    /// hosts take any tenant's work, a tenant's host only its own. Postgres
+    /// answers it under the lock, with the predicate the claim uses.
+    #[must_use]
+    pub const fn serves(self) -> bool {
+        self.ownership.serves
+    }
+
     /// Authoritative database time, read once the host lock was held.
     #[must_use]
     pub const fn now(self) -> Timestamp {
@@ -111,6 +128,8 @@ struct Host {
     degraded: bool,
     lease_version: i64,
     decision_selected: bool,
+    #[sqlx(flatten)]
+    ownership: Ownership,
 }
 
 /// [`sql::CENSUS`]'s row.
@@ -128,9 +147,24 @@ pub struct Held {
     claims_allowed: bool,
     lease_version: i64,
     decision_selected: bool,
+    ownership: Ownership,
 }
 
 impl Held {
+    /// Whether this host may take the tenant it was locked for: the platform's
+    /// hosts take any tenant's work, a tenant's host only its own. Postgres
+    /// answers it under the lock, with the predicate the claim uses.
+    #[must_use]
+    pub const fn serves(self) -> bool {
+        self.ownership.serves
+    }
+
+    /// Whether a tenant registered this host, so no platform model key may reach it.
+    #[must_use]
+    pub const fn tenant_owned(self) -> bool {
+        self.ownership.tenant_owned
+    }
+
     /// Whether the host may take new work: active and not degraded. Whether a
     /// worker is free is the insert's to count.
     #[must_use]
@@ -162,12 +196,16 @@ impl Held {
 pub async fn lock_host<'a>(
     transaction: &mut Transaction<'_, Postgres>,
     guard: impl Into<Guard<'a>>,
+    work_tenant: Option<&Uuid7>,
 ) -> Result<Option<Held>> {
-    Ok(locked(transaction, guard).await?.map(|(_, host)| Held {
-        claims_allowed: !host.degraded && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
-        lease_version: host.lease_version,
-        decision_selected: host.decision_selected,
-    }))
+    Ok(locked(transaction, guard, work_tenant)
+        .await?
+        .map(|(_, host)| Held {
+            claims_allowed: !host.degraded && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
+            lease_version: host.lease_version,
+            decision_selected: host.decision_selected,
+            ownership: host.ownership,
+        }))
 }
 
 /// What a guard binds: the host, and for a stream call the opening's
@@ -189,12 +227,18 @@ pub fn proof<'g>(guard: impl Into<Guard<'g>>) -> (&'g Uuid7, Option<&'g str>, Op
 async fn locked<'g>(
     transaction: &mut Transaction<'_, Postgres>,
     guard: impl Into<Guard<'g>>,
+    work_tenant: Option<&Uuid7>,
 ) -> Result<Option<(Uuid7, Host)>> {
+    let guard = guard.into();
+    // Named from the guard's kind, never read off a missing digest.
+    let connected = matches!(guard, Guard::Connected { .. });
     let (runner_id, digest, connection) = proof(guard);
     let host = sqlx::query_as::<_, Host>(sql::LOCK_HOST)
         .bind(runner_id)
         .bind(digest)
         .bind(connection)
+        .bind(work_tenant)
+        .bind(connected)
         .fetch_optional(&mut **transaction)
         .await
         .map_err(query(sql::CONTEXT))?;
@@ -214,8 +258,9 @@ async fn locked<'g>(
 pub async fn lock<'a>(
     transaction: &mut Transaction<'_, Postgres>,
     guard: impl Into<Guard<'a>>,
+    work_tenant: Option<&Uuid7>,
 ) -> Result<Option<Capacity>> {
-    let Some((runner_id, host)) = locked(transaction, guard).await? else {
+    let Some((runner_id, host)) = locked(transaction, guard, work_tenant).await? else {
         return Ok(None);
     };
     let census = sqlx::query_as::<_, Census>(sql::CENSUS)
@@ -232,6 +277,7 @@ pub async fn lock<'a>(
         renewals_allowed: !host.degraded && renewable_state(&host.status),
         lease_version: host.lease_version,
         decision_selected: host.decision_selected,
+        ownership: host.ownership,
     }))
 }
 
@@ -256,4 +302,40 @@ pub fn renewable_states() -> Vec<String> {
         .iter()
         .filter_map(af_core::spelling::to_spelling)
         .collect()
+}
+
+/// Why issue refused a placement the claim should already have filtered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlacementRefusal {
+    /// A tenant's runner was offered another tenant's work.
+    ForeignTenant,
+    /// A tenant's runner was offered work that would carry a platform model key.
+    PlatformModel,
+}
+
+impl PlacementRefusal {
+    /// The log's `reason` value.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ForeignTenant => "foreign_tenant",
+            Self::PlatformModel => "platform_model",
+        }
+    }
+}
+
+/// Logs a refused placement. Any occurrence means the claim's filter has a hole,
+/// so it is an error with its registry code, never a debug line.
+pub fn refused_placement(runner: &Uuid7, refusal: PlacementRefusal, lease_type: &str) {
+    let runner_id = runner.as_str();
+    let reason = refusal.as_str();
+    let error_code = af_core::error_code::RUNNER_PLACEMENT_REFUSED.as_str();
+    tracing::error!(
+        error_code,
+        runner_id,
+        reason,
+        lease_type,
+        event = "runner_placement_refused",
+        "issue refused a placement the claim should have filtered"
+    );
 }

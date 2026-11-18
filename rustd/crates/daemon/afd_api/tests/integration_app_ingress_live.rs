@@ -68,7 +68,7 @@ async fn an_app_delivery_wakes_the_fleet_the_joins_route_it_to() {
     let router = fixture.router();
 
     let body = fixture.delivery(RUN_FAILURE_APP);
-    assert_eq!(fixture.completion_receipts(&body).await, 0);
+    assert_eq!(fixture.completion_receipts().await, 0);
     let woken = deliver(&router, &body, APP_SECRET).await;
     let status = woken.status();
     let document = json_body(woken).await;
@@ -86,13 +86,13 @@ async fn an_app_delivery_wakes_the_fleet_the_joins_route_it_to() {
          dropped after the routing said it belonged somewhere: {document}"
     );
 
-    assert_eq!(fixture.completion_receipts(&body).await, 1);
+    assert_eq!(fixture.completion_receipts().await, 1);
     let replay = deliver(&router, &body, APP_SECRET).await;
     let status = replay.status();
     let document = json_body(replay).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{document}");
     assert_eq!(document.get("enqueued").and_then(Value::as_u64), Some(0));
-    assert_eq!(fixture.completion_receipts(&body).await, 1);
+    assert_eq!(fixture.completion_receipts().await, 1);
 
     fixture.cleanup().await;
 }

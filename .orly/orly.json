@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "orly_version": "0.60.1",
   "packs": [
     "language.rust",
     "persona.indy",
@@ -28,6 +29,12 @@
       [
         "make",
         "check-version"
+      ]
+    ],
+    "burst.integration": [
+      [
+        "make",
+        "test-integration-rustd"
       ]
     ],
     "burst.acceptance": [
@@ -126,6 +133,11 @@
         "pull",
         "--quiet",
         "mirror.gcr.io/library/debian:trixie-slim"
+      ],
+      [
+        "bash",
+        "-c",
+        "cd rustd && cargo test --locked --workspace --exclude afd_bench --all-features --test '*' --no-run"
       ]
     ],
     "secrets": {
@@ -151,7 +163,16 @@
     ],
     "directories": [
       "ACCEPTANCE_LOCAL_TOOLBOX_DIR"
-    ]
+    ],
+    "e2e": {
+      "location": "Chennai"
+    },
+    "aws": {
+      "region": "ap-south-1",
+      "instance_types": [
+        "c7i.4xlarge"
+      ]
+    }
   },
   "managed": [
     ".agents/skills/orly-build/SKILL.md",
@@ -168,10 +189,6 @@
     ".opencode/skills/orly-ship/SKILL.md",
     ".opencode/skills/orly-spec/SKILL.md",
     ".orly/AGENTS.md",
-    ".orly/skills/orly-build/SKILL.md",
-    ".orly/skills/orly-burst/SKILL.md",
-    ".orly/skills/orly-ship/SKILL.md",
-    ".orly/skills/orly-spec/SKILL.md",
     ".orly/standards/changelog.md",
     ".orly/standards/code.md",
     ".orly/standards/docs-pages.md",

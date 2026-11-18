@@ -52,16 +52,18 @@ const STRUCTURAL: [&str; 2] = [
     "INSERT",
 ];
 
-/// The approval-gate guard's two refusals. No caller matches on either.
-const GATE_REFUSALS: [&str; 2] = [
-    "approval_gates spend is fixed before resolution",
-    "approval_gates resolved row is immutable",
-];
+/// The approval-gate guard's refusal. No caller matches on it.
+const GATE_REFUSAL: &str = "approval_gates resolved row is immutable";
 
-/// Whether `literal` is exception text: `<table> is append-only` or a gate
+/// The runner ownership guard's refusal. No caller matches on it.
+const RUNNER_OWNER_REFUSAL: &str = "runner ownership is fixed at registration";
+
+/// Whether `literal` is exception text: `<table> is append-only` or a guard's
 /// refusal. No caller matches on any of them.
 fn is_exception_text(literal: &str) -> bool {
-    literal.ends_with(" is append-only") || GATE_REFUSALS.contains(&literal)
+    literal.ends_with(" is append-only")
+        || literal == GATE_REFUSAL
+        || literal == RUNNER_OWNER_REFUSAL
 }
 
 /// Every single-quoted literal in `text`, with `''` read as one quote.

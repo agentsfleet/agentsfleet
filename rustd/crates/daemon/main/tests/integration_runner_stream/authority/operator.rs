@@ -24,7 +24,9 @@ impl Operator {
         let app = axum::Router::new().route(
             "/users/{subject}",
             axum::routing::get(|| async {
-                axum::Json(json!({"public_metadata":{"scopes":"runner:write fleet:admin"}}))
+                axum::Json(
+                    json!({"public_metadata":{"scopes":"runner:write runner:tenant fleet:admin"}}),
+                )
             }),
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
@@ -74,6 +76,24 @@ impl Operator {
             workspace: &run.workspace,
             subject: self.user.as_str(),
         }
+    }
+
+    /// An action on one of the caller's tenant's runners, through the tenant route.
+    pub(super) async fn tenant_runner(
+        &self,
+        run: &Scenario,
+        runner: &af_core::id::Uuid7,
+        action: &str,
+    ) -> TestResult<Value> {
+        let response = self
+            .http
+            .patch(format!("{}/v1/tenants/me/runners/{runner}", run.base))
+            .bearer_auth(self.token.expose())
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(serde_json::to_vec(&json!({"action":action}))?)
+            .send()
+            .await?;
+        Self::answer(response).await
     }
 
     pub(super) async fn runner(&self, run: &Scenario, action: &str) -> TestResult<Value> {

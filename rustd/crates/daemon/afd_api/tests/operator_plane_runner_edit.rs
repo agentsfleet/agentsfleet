@@ -66,7 +66,7 @@ async fn an_unauthenticated_label_edit_is_refused_before_its_body() {
 async fn a_label_edit_without_runner_write_is_forbidden() {
     for scopes in [
         &[Scope::RunnerRead][..],
-        &[Scope::RunnerEnroll][..],
+        &[Scope::RunnerRegister][..],
         &[Scope::FleetAdmin][..],
     ] {
         let router = operator(scopes);

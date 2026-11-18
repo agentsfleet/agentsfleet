@@ -127,7 +127,7 @@ impl Fixtures {
     }
 
     /// Operator subjects recorded on administrative events, oldest first.
-    pub(crate) async fn admin_event_actors(&self, runner: &Uuid7) -> Vec<String> {
+    pub(crate) async fn event_actors(&self, runner: &Uuid7) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query_scalar(
             "SELECT metadata ->> 'actor_id' FROM runner.events \

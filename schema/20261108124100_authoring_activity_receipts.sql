@@ -1,7 +1,6 @@
--- Replay proof for "the runner posted a setup": a retried activity report with the
--- same sequence and digest returns the first answer. Append-only (rule 9); stays
--- with its attempt. `candidate_id` carries no foreign key, because the candidate is
--- swept with its draft and the receipt must outlive it.
+-- Replay proof: a retried activity report with the same sequence and digest gets the first
+-- answer. Append-only. `candidate_id` has no foreign key: the candidate is swept with its draft
+-- and the receipt must outlive it.
 CREATE TABLE authoring.activity_receipts (
     id              UUID PRIMARY KEY,
     CONSTRAINT ck_activity_receipts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),

@@ -22,10 +22,9 @@ const EVENT: &str = "runner_task_inputs_failed";
     params(("lease_id" = String, Path, description = "Current lease UUIDv7."), TaskInputsQuery),
     responses((status = 200, body = af_wire::task::TaskInputsResponse<'_>, description = "Complete pending input and native work"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED), (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND), (status = 409, description = afd_http::openapi::CONFLICT),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS), (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE))
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn read<D: Services>(
     State(services): State<Arc<D>>,

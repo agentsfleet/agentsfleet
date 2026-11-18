@@ -1,6 +1,4 @@
--- A frozen, numbered setup the model proposed in a chat. A table, not a draft
--- column, because a chat proposes many and a turn points at the one it produced.
--- Append-only (rule 9); it goes with its draft (deletion matrix: Draft).
+-- A frozen, numbered setup the model proposed in a chat. Append-only; it goes with its draft.
 CREATE TABLE authoring.candidates (
     id                UUID PRIMARY KEY,
     CONSTRAINT ck_candidates_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -25,9 +23,7 @@ CREATE TRIGGER trg_candidates_refuse_update
 
 GRANT SELECT, INSERT, DELETE ON authoring.candidates TO api_runtime;
 
--- Closes the draft ↔ candidate cycle. Deferred, so a turn inserts its candidate and
--- moves the pointer in one transaction, checked at commit. Candidates go only with
--- their draft, so the pointer never dangles.
+-- Deferred, so a turn inserts its candidate and moves the pointer in one transaction.
 ALTER TABLE authoring.drafts
     ADD CONSTRAINT fk_drafts_head_candidate FOREIGN KEY (head_candidate_id) REFERENCES authoring.candidates(id)
     DEFERRABLE INITIALLY DEFERRED;

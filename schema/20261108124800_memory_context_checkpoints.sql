@@ -1,9 +1,5 @@
--- Private conversation working state for a setup chat. Separate from semantic
--- memory and immutable revisions: each has a different owner, deletion
--- boundary and conditional-write rule.
--- The draft owns one row and removes it when it is deleted. resource_version
--- is the guarded projection of document.generation; the repository writes both
--- from one validated checkpoint in the same statement.
+-- Private working state for a setup chat, one row per draft. `resource_version` mirrors the
+-- document's generation and is written with it in the same statement.
 CREATE TABLE memory.context_checkpoints (
     id                  UUID PRIMARY KEY,
     CONSTRAINT ck_context_checkpoints_id_uuidv7

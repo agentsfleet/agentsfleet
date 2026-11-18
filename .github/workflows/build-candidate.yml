@@ -90,7 +90,11 @@ jobs:
           retention-days: 3
 
   toolbox:
-    runs-on: ubuntu-latest
+    # The image's bytes are the builder's output, so the builder is pinned like
+    # warm-cache.yml's and test-integration-rustd.yml's. Ubuntu 26.04's
+    # erofs-utils 1.9 writes a corrupt image from this manifest (12 KiB instead
+    # of 61 MiB, rejected by fsck.erofs), so `ubuntu-latest` broke the build.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/build-toolbox

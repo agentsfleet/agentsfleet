@@ -1,8 +1,8 @@
 //! Existing-task inputs retain meaning without granting another task's execution.
 
 use super::super::{
-    PreparedItem, TaskBinding, TaskLease, TaskRefusal, TaskScope, Tasks,
-    continuation::Continuation, fetch, guard, row,
+    PreparedItem, TaskBinding, TaskRefusal, TaskScope, Tasks, continuation::Continuation, fetch,
+    guard, row,
 };
 use super::{prepare::Wake, source::Source};
 use crate::{Result, error::query};
@@ -80,7 +80,6 @@ pub(super) async fn wake(
 pub(super) async fn accept(
     connection: &mut PgConnection,
     current: &guard::LeaseRow,
-    lease: TaskLease<'_>,
     item: &PreparedItem,
     binding: &mut TaskBinding,
     source: &Source,
@@ -141,8 +140,6 @@ pub(super) async fn accept(
         .bind(sequence)
         .bind(message.get(span).ok_or(TaskRefusal::InputAmbiguous)?)
         .bind(item.interpretation())
-        .bind(lease.lease_id)
-        .bind(current.fence)
         .bind(generation)
         .execute(connection)
         .await

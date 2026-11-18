@@ -72,12 +72,15 @@ dev_lock() {
     "$DEV_SHARED/infrastructure.lock") attempts=$DEV_INFRA_LOCK_ATTEMPTS ;;
     "$DEV_SHARED/build.lock") attempts=$DEV_BUILD_LOCK_ATTEMPTS ;;
   esac
-  until mkdir "$DEV_LOCK" 2>/dev/null; do
+  # bash opens a noclobber file with O_EXCL, so exactly one racer creates
+  # it. A directory lock relied on mkdir refusing an existing path, and
+  # uutils' mkdir (Ubuntu 26.04) lets two racers both succeed.
+  until (set -C; : >"$DEV_LOCK") 2>/dev/null; do
     attempt=$((attempt + 1))
     [ "$attempt" -lt "$attempts" ] || dev_fail "lock wait expired: $DEV_LOCK"
     sleep "$DEV_LOCK_INTERVAL"
   done
-  trap 'rmdir "$DEV_LOCK"' EXIT
+  trap 'rm -- "$DEV_LOCK"' EXIT
 }
 
 dev_snapshot_check() {

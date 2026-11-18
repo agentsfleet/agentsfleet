@@ -156,8 +156,14 @@ test_service_restart_enables_the_unit_before_restarting_it() {
 test_unit_passes_systemd_analyze() {
   local name="test_unit_passes_systemd_analyze"
   local copy="$WORK_DIR/agentsfleet-runner.service" output status=0
+  # verify loads the host's own units through this unit's dependencies and
+  # reports their faults too: Ubuntu 26.04's xfs_scrub_all.service warns about
+  # itself. A line systemd attributes to a host unit file is the host's; every
+  # other line is about this unit and fails the test.
+  local host_unit_file='^(/usr)?/lib/systemd/|^/etc/systemd/|^/run/systemd/'
   sed "s|^ExecStart=[^ ]*|ExecStart=$(command -v true)|" "$RUNNER_UNIT" >"$copy"
   output="$(systemd-analyze verify "$copy" 2>&1)" || status=$?
+  output="$(grep -vE "$host_unit_file" <<<"$output")" || output=""
   if [[ "$status" -ne 0 ]]; then
     bad "$name" "systemd-analyze verify exited $status: $output"
   elif [[ -n "$output" ]]; then

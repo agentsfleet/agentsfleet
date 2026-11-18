@@ -1,6 +1,5 @@
--- Decision quotes share catalogue ownership and price values with coding
--- quotes. Separate storage leaves deployed coding writers and their conflict
--- target valid while a release migrates and replaces serving daemons.
+-- Decision quotes per decision revision, in nanodollars per million tokens like
+-- `platform_model_prices`.
 CREATE TABLE model.decision_prices (
     id UUID PRIMARY KEY,
     CONSTRAINT ck_decision_prices_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),

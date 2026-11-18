@@ -66,3 +66,14 @@ test.each([
   const result = await fixture.run(["runners", "show", RUNNER_ID], "", true);
   expect(result.code).toBe(0); expect(result.stdout).toContain(expected);
 });
+
+test("names each host's owner in the operator's runner table and detail", async () => {
+  const tenant = "0199a801-1000-7000-8000-0000000000aa";
+  fixture.respond = () => Response.json({items: [{...RUNNER, tenant_id: tenant}, RUNNER], total: 2, next_cursor: null});
+  const table = await fixture.run(["runners", "list"], "", true);
+  expect(table.code).toBe(0);
+  expect(table.stdout).toContain("OWNER"); expect(table.stdout).toContain(tenant); expect(table.stdout).toContain("Platform");
+  fixture.respond = () => Response.json({...RUNNER_DETAIL, tenant_id: tenant});
+  const detail = await fixture.run(["runners", "show", RUNNER_ID], "", true);
+  expect(detail.code).toBe(0); expect(detail.stdout).toContain("Owner"); expect(detail.stdout).toContain(tenant);
+});

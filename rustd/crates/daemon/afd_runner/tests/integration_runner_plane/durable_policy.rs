@@ -14,7 +14,7 @@ async fn registration_preserves_explicit_durable_policy_in_all_projections() {
         request.assigned_policy.durable_tasks_enabled = enabled;
         let enrolled = fixture
             .runners
-            .register(&request, clock::now())
+            .register(&request, "user_operator", clock::now())
             .await
             .expect("runner enrolled");
         fixture.enrolled.push(enrolled.runner_id.clone());
@@ -69,6 +69,7 @@ async fn disabled_policy_survives_unrelated_edits_and_identical_save_adds_no_eve
 async fn assign(fixture: &Fixture, runner: &Uuid7, policy: &AssignedPolicy<'_>) {
     let result = fixture
         .runners
+        .platform()
         .edit(
             runner,
             RunnerEdit {
@@ -110,6 +111,7 @@ async fn assert_readers(fixture: &Fixture, runner: &Uuid7, expected: bool) {
     );
     let detail = fixture
         .runners
+        .platform()
         .runner_detail(runner)
         .await
         .expect("runner detail");
@@ -124,6 +126,7 @@ async fn assert_readers(fixture: &Fixture, runner: &Uuid7, expected: bool) {
     for cursor in [None, Some(&boundary)] {
         let page = fixture
             .runners
+            .platform()
             .list_runners(cursor, 100)
             .await
             .expect("operator list page");

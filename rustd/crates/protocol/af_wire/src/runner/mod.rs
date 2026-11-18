@@ -218,6 +218,23 @@ pub struct RegisterResponse<'a> {
     pub assigned_policy: AssignedPolicy<'a>,
 }
 
+/// A repeated tenant registration under the same Idempotency-Key and body.
+///
+/// The first response revealed the runner's one-time token, which is never
+/// stored, so the replay answers everything else; the caller rotates the token
+/// to recover it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegistrationReplay<'a> {
+    /// The runner the first request registered.
+    #[serde(borrow)]
+    pub runner_id: Cow<'a, str>,
+    /// The assignment as first registered; a later edit is read from the runner.
+    #[serde(borrow)]
+    pub assigned_policy: AssignedPolicy<'a>,
+}
+
 /// Host liveness carried by the control stream.
 ///
 /// The capability report rides the first beat and any beat where the probe

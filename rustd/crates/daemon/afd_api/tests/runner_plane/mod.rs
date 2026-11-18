@@ -111,7 +111,7 @@ async fn test_planes_refuse_each_others_credentials() {
         .with_person(
             TENANT_KEY,
             OPERATOR,
-            ScopeSet::from_scopes(&[Scope::RunnerEnroll]),
+            ScopeSet::from_scopes(&[Scope::RunnerRegister]),
         )
         .router();
 
@@ -155,7 +155,7 @@ async fn test_runner_auth_pg_outage_503() {
     assert_eq!(code_of(outage).await, "UZ-AUTH-004");
 }
 
-/// Dimension 1.3 — enrolment is gated on `runner:enroll` and nothing weaker.
+/// Dimension 1.3 — enrolment is gated on `runner:register` and nothing weaker.
 ///
 /// The grant is held independently of `runner:read` and `runner:write` because
 /// the host it creates receives every tenant's inline secrets. A caller holding
@@ -183,7 +183,7 @@ async fn test_register_enroll_gate() {
         .with_person(
             TENANT_KEY,
             OPERATOR,
-            ScopeSet::from_scopes(&[Scope::RunnerEnroll]),
+            ScopeSet::from_scopes(&[Scope::RunnerRegister]),
         )
         .router();
 

@@ -45,11 +45,7 @@ const DETAIL_MODEL_UNKNOWN: &str =
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = PlatformKeysResponse<'_>),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Response {
@@ -75,12 +71,8 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
     responses(
         (status = 200, description = afd_http::openapi::OK, body = PlatformKeySetResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn set<D: Services>(
@@ -149,11 +141,7 @@ pub(crate) async fn set<D: Services>(
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = PlatformKeyDeactivateResponse<'_>),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn deactivate<D: Services>(

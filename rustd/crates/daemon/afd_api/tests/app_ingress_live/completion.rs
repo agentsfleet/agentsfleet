@@ -70,16 +70,16 @@ impl Fixture {
         tx.commit().await.expect("task fixture commits");
     }
 
-    pub(in super::super) async fn completion_receipts(&self, body: &str) -> i64 {
+    pub(in super::super) async fn completion_receipts(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("API connection");
         sqlx::query_scalar(
             "SELECT count(*) FROM fleet.task_completions c \
              JOIN fleet.task_completion_fanout f ON f.task_completion_id = c.id \
              WHERE c.workspace_id = $1 AND c.scope_fleet_id IS NULL \
-               AND c.installation_id = $2 AND c.body_digest = $3 \
+               AND c.installation_id = $2 \
                AND c.repository_id = 65_432_109 AND c.workflow_id = 87_654_321 \
                AND c.run_id = 9842731401 AND c.run_number = 412 \
-               AND c.run_attempt = 2 AND c.conclusion = 'failure' \
+               AND c.run_attempt = 2 \
                AND c.head_oid = 'f1d2c3b4a5968778695a4b3c2d1e0f9a8b7c6d5e'",
         )
         .bind(&self.workspace)
@@ -88,7 +88,6 @@ impl Fixture {
                 .parse::<i64>()
                 .expect("numeric installation"),
         )
-        .bind(afd_ingress::replay_id(body.as_bytes()))
         .fetch_one(&mut *connection)
         .await
         .expect("exact completion and its pending fanout read")

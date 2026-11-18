@@ -237,7 +237,6 @@ async fn consume(
     sqlx::query(include_str!("sql/consume.sql"))
         .bind(&owner.id)
         .bind(&probe.claim)
-        .bind(&admitted.stored.id)
         .bind(Json(&snapshot.checks))
         .bind(snapshot.digest()?)
         .execute(&mut *savepoint)

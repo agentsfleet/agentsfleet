@@ -46,8 +46,6 @@ pub struct MintRequest<'a> {
     /// minted it are one fact, and a client-asserted host would let them
     /// disagree.
     pub deployment: &'a str,
-    /// Where the mint was requested from, for the audit trail.
-    pub from_address: &'a str,
 }
 
 /// A credential, and the one view of its plaintext that will ever exist.

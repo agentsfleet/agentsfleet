@@ -101,7 +101,6 @@ pub(super) async fn bind(
                 input::accept(
                     &mut tx,
                     &current,
-                    lease,
                     item,
                     binding,
                     &source,
@@ -172,8 +171,6 @@ async fn authorize(
             .bind(&plan.digest)
             .bind(source.message()?.as_ref())
             .bind(Json(authorization))
-            .bind(lease.lease_id)
-            .bind(current.fence)
             .bind(&source.actor)
             .bind(&source.producer)
             .execute(&mut *connection)

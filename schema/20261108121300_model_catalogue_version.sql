@@ -1,8 +1,5 @@
--- Singleton: the catalogue's compare-and-swap edit counter, read with every price
--- so a cached price list knows when it is stale. One row, pinned to `id = 1` (an
--- identity exception: there is nothing to mint a UUID for).
---
--- The seed row is structural, not vocabulary: id 1, counter 0, stamped when the slot runs.
+-- Singleton edit counter for the model catalogue, read with every price so a cached price list
+-- knows when it is stale. The seed row is structural.
 CREATE TABLE model.catalogue_version (
     id                SMALLINT PRIMARY KEY,
     resource_version  BIGINT NOT NULL,

@@ -12,7 +12,6 @@ CREATE TABLE fleet.task_bases (
     manifest_root TEXT,
     logical_bytes BIGINT NOT NULL CHECK (logical_bytes >= 0),
     entry_count INTEGER NOT NULL CHECK (entry_count >= 0),
-    retained_bytes BIGINT NOT NULL CHECK (retained_bytes >= 0),
     ready_at TIMESTAMPTZ(3),
     retired_at TIMESTAMPTZ(3),
     created_at TIMESTAMPTZ(3) NOT NULL,

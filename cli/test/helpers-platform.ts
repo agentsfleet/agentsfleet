@@ -32,6 +32,9 @@ export type PlatformCall = {url: URL; method: string; body: unknown; headers: He
 
 /** Capture only the HTTP boundary; argument parsing and runtime services remain real. */
 export class PlatformFixture {
+  /** The command path every `run` starts from: `platform` by default, the root for `[]`. */
+  constructor(private readonly root: readonly string[] = ["platform"]) {}
+
   readonly calls: PlatformCall[] = [];
   readonly state = mkdtempSync(join(tmpdir(), "agentsfleet-platform-"));
   respond: (call: PlatformCall) => Response = () => Response.json({});
@@ -47,7 +50,7 @@ export class PlatformFixture {
     fetchImpl.preconnect = () => undefined;
     const stdin = Readable.from([input]);
     Object.defineProperty(stdin, "isTTY", {value: inputTTY});
-    const code = await runCli(["platform", ...args], {
+    const code = await runCli([...this.root, ...args], {
       env: {AGENTSFLEET_API_URL: "http://127.0.0.1:1", AGENTSFLEET_API_KEY: "afk_unit_test",
         AGENTSFLEET_STATE_DIR: this.state, NO_COLOR: "1"},
       stdout: {write: (value: string) => {stdout.push(value); return true;}, isTTY: tty},

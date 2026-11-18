@@ -24,11 +24,11 @@ const MALFORMED: &str = "Publication request exceeds its supported shape or boun
     params(("lease_id" = String, Path, description = "Current lease UUIDv7.")), request_body = TaskEffectInput,
     responses((status = 201, body = af_wire::task::TaskEffect, description = "Confirmed new publication"),
         (status = 200, body = af_wire::task::TaskEffect, description = "Saved operation replay"),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = "Coded problem with the immutable effect receipt; UZ-DT-010 identifies an uncertain publication"),
-        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE), (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL), (status = 503, description = afd_http::openapi::UNAVAILABLE))
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn publish<D: Services>(
     State(services): State<Arc<D>>,
@@ -89,10 +89,10 @@ pub(crate) async fn publish<D: Services>(
     params(("lease_id" = String, Path, description = "Current lease UUIDv7."),
         ("effect_id" = String, Path, description = "Native effect UUIDv7."), TaskEffectQuery),
     responses((status = 200, body = af_wire::task::TaskEffect, description = "Native publication state"),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 409, description = afd_http::openapi::CONFLICT), (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL), (status = 503, description = afd_http::openapi::UNAVAILABLE))
+        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn read<D: Services>(
     State(services): State<Arc<D>>,
@@ -125,10 +125,10 @@ pub(crate) async fn read<D: Services>(
     description = "Pages native task-local effect order, including unresolved and newly confirmed effects. A replacement worker needs no previously returned effect ID.",
     params(("lease_id" = String, Path, description = "Current lease UUIDv7."), TaskEffectsQuery),
     responses((status = 200, body = af_wire::task::TaskEffectsPage, description = "Ordered recoverable publication states"),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 409, description = afd_http::openapi::CONFLICT), (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL), (status = 503, description = afd_http::openapi::UNAVAILABLE))
+        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,

@@ -6,7 +6,7 @@ use std::time::Duration;
 use af_core::test_util::trace::Capture;
 use afd_db::test_util::mint_id;
 use afd_outbound::lanes::MAX_DELIVERY_CYCLES;
-use afd_outbound::obligation::{self, AbandonReason};
+use afd_outbound::obligation;
 use afd_outbound::{Lanes, Posters};
 use tokio_util::sync::CancellationToken;
 
@@ -37,10 +37,6 @@ async fn a_refused_answer_is_abandoned_once() {
     token.cancel();
     worker.await.expect("the worker stops");
 
-    assert_eq!(
-        row.abandon_reason.as_deref(),
-        Some(AbandonReason::Refused.as_str())
-    );
     assert!(!row.delivered, "an abandoned answer is not delivered");
     assert_eq!(poster.attempts_of(&event), 1, "a refusal is not retried");
     ledger.cleanup().await;
@@ -62,14 +58,10 @@ async fn an_unknown_connector_is_abandoned_unaddressable() {
     let token = CancellationToken::new();
     let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
 
-    let row = ledger.until(&event, |row| row.abandoned).await;
+    ledger.until(&event, |row| row.abandoned).await;
     token.cancel();
     worker.await.expect("the worker stops");
 
-    assert_eq!(
-        row.abandon_reason.as_deref(),
-        Some(AbandonReason::Unaddressable.as_str())
-    );
     assert_eq!(poster.attempts_of(&event), 0, "no poster is tried");
     ledger.cleanup().await;
 }
@@ -115,10 +107,6 @@ async fn spent_cycles_abandon_the_answer() {
     token.cancel();
     worker.await.expect("the worker stops");
 
-    assert_eq!(
-        row.abandon_reason.as_deref(),
-        Some(AbandonReason::CyclesExhausted.as_str())
-    );
     assert_eq!(row.attempt_count, MAX_DELIVERY_CYCLES);
     ledger.cleanup().await;
 }

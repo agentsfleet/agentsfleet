@@ -61,7 +61,11 @@ async fn test_the_first_beat_reports_and_comes_online() {
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowListEgress, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, fixtures.enrolled_at())
+        .register(
+            &request,
+            "fixture:platform-operator",
+            fixtures.enrolled_at(),
+        )
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.clone();
@@ -164,7 +168,11 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
         .runners()
-        .register(&request, fixtures.enrolled_at())
+        .register(
+            &request,
+            "fixture:platform-operator",
+            fixtures.enrolled_at(),
+        )
         .await
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.clone();
@@ -268,7 +276,11 @@ async fn enrolled_dev_runner(fixtures: &Fixtures) -> Uuid7 {
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1);
     fixtures
         .runners()
-        .register(&request, fixtures.enrolled_at())
+        .register(
+            &request,
+            "fixture:platform-operator",
+            fixtures.enrolled_at(),
+        )
         .await
         .expect("enrolment must succeed")
         .runner_id

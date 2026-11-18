@@ -114,6 +114,8 @@ mod tenant_model_entry_route;
 mod tenant_models;
 #[path = "tenant_provider_route.rs"]
 mod tenant_provider_route;
+#[path = "tenant_runner_refusals.rs"]
+mod tenant_runner_refusals;
 #[path = "tenant_shape_parity.rs"]
 mod tenant_shape_parity;
 #[path = "tenant_shape_parity_pages.rs"]

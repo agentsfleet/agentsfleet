@@ -13,7 +13,7 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 
-const SCOPES = ["runner:enroll", "runner:write", "model:admin", "platform-key:admin"] as const;
+const SCOPES = ["runner:register", "runner:write", "model:admin", "platform-key:admin"] as const;
 const POLICY = {sandbox_tier: "landlock_full", network_policy: "deny_all_egress", registry_allowlist: [],
   worker_count: 1, extra_binds: [], durable_tasks_enabled: true};
 const rotated = Schema.Struct({id: Schema.String, token_file: Schema.String});
@@ -86,13 +86,13 @@ else describe("Platform operator commands", () => {
     assert.equal(result.stdout, "");
   });
 
-  it("enrolls an isolated host, changes its policy, rotates its token, and retires it", async () => {
+  it("registers an isolated host, changes its policy, rotates its token, and retires it", async () => {
     const file = join(state, "policy.json");
     const tokenFile = join(state, "runner-token");
     await Bun.write(file, JSON.stringify(POLICY));
-    const enrollment = Schema.decodeUnknownSync(Schema.Struct({runner_id: Schema.String, token_file: Schema.String}))(
-      await command(["runners", "enroll", "--host-id", `cli-acceptance-${uuidv7()}`, "--policy", file, "--token-out", tokenFile]));
-    runnerId = enrollment.runner_id;
+    const registration = Schema.decodeUnknownSync(Schema.Struct({runner_id: Schema.String, token_file: Schema.String}))(
+      await command(["runners", "register", "--host-id", `cli-acceptance-${uuidv7()}`, "--policy", file, "--token-out", tokenFile]));
+    runnerId = registration.runner_id;
     assert.equal((await stat(tokenFile)).mode & 0o777, 0o600);
     const token = (await Bun.file(tokenFile).text()).trim();
     assert.match(token, /^agt_r/u);

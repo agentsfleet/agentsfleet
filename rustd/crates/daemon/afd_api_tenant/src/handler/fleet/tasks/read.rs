@@ -31,10 +31,9 @@ const EVENT_READ: &str = "fleet_task_read_failed";
         ("starting_after" = Option<String>, Query, description = "Opaque next_cursor from the previous page."),
         ("limit" = Option<u32>, Query, minimum = 1, maximum = 100, description = "Page size; defaults to 20.")),
     responses((status = 200, body = TasksResponse<'_>, description = "Current work"),
-        (status = 400, description = "Invalid page"), (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"), (status = 404, description = "Workspace or fleet unavailable"),
-        (status = 429, description = "Too many requests"), (status = 500, description = "Internal failure"),
-        (status = 503, description = "Dependency unavailable"))
+        (status = 400, description = "Invalid page"), (status = 404, description = "Workspace or fleet unavailable"),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
@@ -69,10 +68,9 @@ pub(crate) async fn list<D: Services>(
         ("If-None-Match" = Option<String>, Header, description = "Previously returned resource tag.")),
     responses((status = 200, body = TaskResponse<'_>, description = "Task detail", headers(("ETag" = String))),
         (status = 304, description = "Resource unchanged", headers(("ETag" = String))),
-        (status = 400, description = "Invalid task identifier"), (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"), (status = 404, description = "Task unavailable"),
-        (status = 429, description = "Too many requests"), (status = 500, description = "Internal failure"),
-        (status = 503, description = "Dependency unavailable"))
+        (status = 400, description = "Invalid task identifier"), (status = 404, description = "Task unavailable"),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn one<D: Services>(
     State(services): State<Arc<D>>,

@@ -2,7 +2,11 @@ WITH fleet AS MATERIALIZED (
   SELECT f.id, f.workspace_id, f.tenant_id, f.name, f.status, f.head_revision_id,
          f.memory_reads_workspace, f.memory_publishes_workspace
   FROM fleet.fleets f
+  JOIN runner.runners placed ON placed.id = $2
   WHERE f.id = $1 AND f.status = $12
+    -- A tenant's runner takes only its tenant's work. Without this row the slot
+    -- below is never written, so a foreign claim changes nothing.
+    AND (placed.platform_owned OR placed.tenant_id = f.tenant_id)
 ), locked_slot AS MATERIALIZED (
   SELECT s.fleet_id FROM runner.fleet_slots s
   WHERE s.fleet_id = $1
@@ -37,8 +41,8 @@ WITH fleet AS MATERIALIZED (
   RETURNING WITH (OLD AS prior) s.fencing_token, s.lease_expires_at,
             prior.hold_expires_at > (SELECT checked_at FROM instant) AS held,
             prior.last_runner_id AS holder
-), head AS MATERIALIZED (
-  SELECT a.id FROM fleet.admissions a
+), first_head AS MATERIALIZED (
+  SELECT a.id, a.task_id, host.platform_owned AS host_platform FROM fleet.admissions a
   JOIN fleet f ON f.id = a.fleet_id AND f.workspace_id = a.workspace_id
   LEFT JOIN fleet.revisions setup ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
   JOIN runner.runners host ON host.id = $2
@@ -55,6 +59,19 @@ WITH fleet AS MATERIALIZED (
         AND t.used_running_nanos < t.max_running_nanos))
   ORDER BY a.sequence
   LIMIT 1
+), head AS MATERIALIZED (
+  -- A tenant runner never receives the platform model key: the revision this
+  -- head runs must name the tenant's own model. Tested after the head is chosen,
+  -- so a refused head blocks its fleet instead of being jumped.
+  SELECT h.id FROM first_head h
+  CROSS JOIN fleet f
+  WHERE h.host_platform OR EXISTS (
+    SELECT 1 FROM fleet.revisions r
+    WHERE r.fleet_id = f.id
+      AND r.id = COALESCE(
+        (SELECT t.accepted_revision_id FROM fleet.tasks t WHERE t.id = h.task_id AND t.fleet_id = f.id),
+        f.head_revision_id)
+      AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $15::text)
 ), locked AS (
   SELECT a.id FROM fleet.admissions a
   JOIN head h ON h.id = a.id

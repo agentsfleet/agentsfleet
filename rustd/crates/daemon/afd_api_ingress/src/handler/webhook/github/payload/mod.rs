@@ -182,7 +182,6 @@ impl Delivery {
     pub(crate) fn completion(
         &self,
         scope: afd_fleet::task::CompletionScope,
-        digest: String,
     ) -> Option<afd_fleet::task::VerifiedCompletion> {
         let Body::WorkflowRun(event) = &self.body else {
             return None;
@@ -200,8 +199,6 @@ impl Delivery {
             run_number: run.run_number?,
             run_id: u64::try_from(run.id).ok()?,
             run_attempt: u32::try_from(run.run_attempt).ok()?,
-            conclusion: run.conclusion.clone(),
-            body_digest: digest,
         })
     }
 

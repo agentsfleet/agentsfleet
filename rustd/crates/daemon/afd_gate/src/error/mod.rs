@@ -154,9 +154,6 @@ use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
 /// The sentence a statement that would not run earns.
 const DETAIL_OPERATION_FAILED: &str = "The operation could not be completed";
 
-/// The sentence a gate whose binding could not be written earns.
-pub const DETAIL_GATE_BINDING_UNWRITABLE: &str = "The approval binding could not be recorded";
-
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_credential::Error => Credential,
@@ -173,17 +170,4 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 /// Refuses a caller, naming why in their language.
 pub(crate) fn rejected(detail: &'static str) -> Error {
     ErrorKind::Rejected { detail }.into()
-}
-
-/// `value` as the JSON text a store keeps, or the refusal `detail` names.
-///
-/// Every record the gate writes this way is strings and integers, which
-/// `serde_json` has no error to raise for; the refusal is what a shape that
-/// grew a serializer error would earn, so a gate that cannot be written says
-/// so rather than parking an event nothing can find.
-pub(crate) fn encoded<T: serde::Serialize + ?Sized>(
-    value: &T,
-    detail: &'static str,
-) -> Result<String> {
-    serde_json::to_string(value).map_err(|_shape| rejected(detail))
 }

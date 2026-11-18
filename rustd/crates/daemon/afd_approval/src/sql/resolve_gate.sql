@@ -26,7 +26,11 @@ WITH resolved AS (
 ), unparked AS (
   UPDATE fleet.admissions a SET parked_at = NULL, updated_at = now()
   FROM resolved r
+  -- Parked rows and claimed ones: a park in flight holds a claimed row's lock and
+  -- this waits on it, so the park cannot strand its flag. The unclaimed backlog is
+  -- neither rewritten nor locked.
   WHERE a.fleet_id = r.fleet_id AND a.settled_at IS NULL
+    AND (a.parked_at IS NOT NULL OR a.lease_fence IS NOT NULL)
 )
 
 SELECT id AS gate_id, action_id, workspace_id,

@@ -1,16 +1,6 @@
--- One chat turn: what the person typed and what came back. A table, not a draft
--- column, because a chat has many turns, each run by its own attempt.
---
--- `sequence` is the turn's position in its draft. `status` and `created_at` feed
--- the dispatcher's pending scan. `tenant_model_id` is the model the turn ran on
--- (NULL is the platform default). `candidate_id` is the setup this turn produced.
--- `finished_at` is the instant the turn's answer is shown with (rule 4c).
--- `operation_id` is the client's key for the request that queued the turn; the
--- message API returns it for the turn's whole life. The retry window itself is
--- enforced by `authoring.replay_receipts` (rule 6), whose rows are swept 24 hours
--- after they are filed while the turn lives as long as its draft, so the key the
--- API returns cannot be read back from the receipt. Not unique: once the window
--- passes, the same key queues a new turn.
+-- One chat turn. NULL `tenant_model_id` is the platform default. `operation_id` is not unique:
+-- the retry window lives in `authoring.replay_receipts`, and once it passes the same key queues
+-- a new turn.
 CREATE TABLE authoring.messages (
     id               UUID PRIMARY KEY,
     CONSTRAINT ck_messages_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -27,10 +17,8 @@ CREATE TABLE authoring.messages (
     created_at       TIMESTAMPTZ(3) NOT NULL,
     updated_at       TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_messages_draft_id_sequence UNIQUE (draft_id, sequence),
-    -- The report writer reads save_requested to finish the person's accepted save
-    -- in the same transaction as the terminal answer. Existing messages retain
-    -- their previous behavior. The message API returns save_error_code when a
-    -- checked save is refused, while retaining the completed conversation.
+    -- A requested save completes in the same transaction as the terminal answer;
+    -- `save_error_code` records why a checked save was refused.
     save_requested BOOLEAN NOT NULL DEFAULT false,
     save_error_code TEXT
 );

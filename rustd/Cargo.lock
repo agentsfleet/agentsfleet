@@ -1013,7 +1013,6 @@ dependencies = [
  "afd_fleet_lifecycle",
  "base64 0.23.1",
  "jiff 1.0.0",
- "serde",
  "serde_json",
  "sqlx",
  "thiserror 2.0.21",

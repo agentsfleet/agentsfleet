@@ -64,7 +64,8 @@ runs:
         DIGEST: ${{ steps.identity.outputs.digest }}
         SYFT_CACHE_DIR: ${{ runner.temp }}/toolbox-syft-cache
       run: |
-        sudo -E env "PATH=$PATH" bash -euo pipefail -s -- "$(command -v syft)" "$(id -u)" "$(id -g)" <<'SCAN'
+        sudo env "PATH=$PATH" "OUTPUT_DIR=$OUTPUT_DIR" "DIGEST=$DIGEST" "RUNNER_TEMP=$RUNNER_TEMP" "SYFT_CACHE_DIR=$SYFT_CACHE_DIR" \
+          bash -euo pipefail -s -- "$(command -v syft)" "$(id -u)" "$(id -g)" <<'SCAN'
         set -euo pipefail
         scanner="$1" owner_uid="$2" owner_gid="$3"
         out="$PWD/$OUTPUT_DIR"

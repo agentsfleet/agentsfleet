@@ -49,6 +49,7 @@ mod runaway;
 mod seed;
 mod slack;
 mod stops;
+mod tenant_keys;
 mod window;
 mod witness;
 
@@ -87,14 +88,6 @@ const MULTI_REPOSITORY_WRITE_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{
 /// pair is as close as the config language allows two bindings to be.
 const READ_BOUND_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"repositories":["agentsfleet/probe"],"repository_access":"read"}}"#;
 
-/// [`WRITE_BOUND_CONFIG`]'s binding in the shape a gate row records it.
-///
-/// Must describe the config EXACTLY: `matches_recorded` compares the sets both
-/// ways and the access and base by value, so a recorded copy that drifted is
-/// read as no approval at all and the delivery refuses instead of proceeding.
-const STATED_WRITE_BINDING: &str =
-    r#"{"repositories":["agentsfleet/probe"],"access":"write","base":"main"}"#;
-
 /// The status a refused event's row is left in.
 const STATUS_GATE_BLOCKED: &str = "gate_blocked";
 
@@ -114,12 +107,6 @@ const KIND_REPOSITORY_WRITE: &str = "repository_write";
 
 /// The stored spelling of a gate a human said yes to.
 const STATUS_APPROVED: &str = "approved";
-
-/// The allowance a write gate is opened with, mirrored for the reason above.
-///
-/// `approved_write_gate` selects on equality, not on a range, so a fixture that
-/// wrote any other number is read as no gate at all.
-const REPOSITORY_WRITE_SPEND_CEILING: i64 = 32;
 
 /// How long a fixture gate stays unexpired.
 const GATE_WINDOW: std::time::Duration = std::time::Duration::from_secs(600);

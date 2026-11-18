@@ -138,7 +138,7 @@ pub(super) async fn enrol(booted: &Booted, fleet: &Uuid7, now: Timestamp) -> (Uu
     request.assigned_policy.network_policy = NetworkPolicy::AllowAll;
     request.labels.extend(required.into_iter().map(Cow::Owned));
     let enrolled = Runners::new(booted.database.clone(), Entropy::new())
-        .register(&request, now)
+        .register(&request, "fixture:platform-operator", now)
         .await
         .expect("enrolment must succeed");
     afd_fleet::lease::Leases::new(booted.database.clone(), booted.bus.clone(), Entropy::new())

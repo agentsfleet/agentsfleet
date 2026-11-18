@@ -51,6 +51,8 @@ const FLAG_COMPLETIONS = "--completions" as const;
 const FLAG_HELP = "--help" as const;
 const FLAG_HELP_SHORT = "-h" as const;
 const PLATFORM = "platform" as const;
+/** The tenant's own runners: a root group whose verbs depend on `runner:tenant`. */
+const RUNNERS = "runners" as const;
 // Built-ins the tree does not declare, so the walk would otherwise read them
 // as flags that swallow the next token.
 const BUILT_IN_BOOLEANS = ["help", "version"] as const;
@@ -62,8 +64,8 @@ const ScopesBody = Schema.Struct({ scopes: Schema.Array(Schema.String) });
 /**
  * Whether advertising could change what this invocation prints.
  *
- * Visibility only touches root help, root did-you-mean, the `platform`
- * subtree and completion scripts. A reached group at the root or under
+ * Visibility only touches root help, root did-you-mean, the `platform` and
+ * `runners` subtrees and completion scripts. A reached group at the root or under
  * `platform` either prints its help or a did-you-mean for the token it
  * stopped on, so it discovers; a reached platform leaf runs, so it discovers
  * only when asked for its own help.
@@ -74,7 +76,7 @@ const isDiscoveryRequest = (argv: ReadonlyArray<string>, tree: CommandNode): boo
   if (asksForCompletions(flags)) return true;
   const valueless = new Set([...booleanFlagNames(tree), ...BUILT_IN_BOOLEANS]);
   const walk = walkCommandPath(tree, effective, valueless);
-  if (walk.path.length > 0 && walk.path[0] !== PLATFORM) return false;
+  if (walk.path.length > 0 && walk.path[0] !== PLATFORM && walk.path[0] !== RUNNERS) return false;
   return childrenOf(walk.node).length > 0 || asksForHelp(flags);
 };
 

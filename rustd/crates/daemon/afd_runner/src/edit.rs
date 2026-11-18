@@ -16,6 +16,7 @@ use sqlx::{Acquire as _, Postgres, Transaction};
 use crate::admin::stored_state;
 use crate::error::{Result, query, rejected, runner_not_found};
 use crate::policy::SandboxConfig;
+use crate::scope::{Owner, RunnerScope};
 use crate::spelling::{policy_wire, render_list, tier_wire};
 use crate::store::Runners;
 use crate::validate::{assignment, labels};
@@ -26,6 +27,13 @@ const CONTEXT_EDIT: &str = "runner edit";
 const EVENT_POLICY_ASSIGNED: &str = "runner_policy_assigned";
 const DETAIL_REVOKED_NO_POLICY: &str = "revoked runners cannot be re-assigned a policy";
 const DETAIL_EDIT_EMPTY: &str = "a runner edit carries an assigned policy, labels, or both";
+/// A tenant runner never holds a platform decision model: it would carry the
+/// platform decision key to a host its tenant controls.
+pub const DETAIL_TENANT_DECISION_MODEL: &str =
+    "a tenant runner cannot be assigned a decision model";
+/// Durable tasks on a tenant runner are a platform admin's switch.
+pub const DETAIL_TENANT_DURABLE_TASKS: &str =
+    "durable tasks on a tenant runner are enabled by a platform admin";
 
 /// What an edit changes. At least one half is present.
 #[derive(Debug, Clone, Copy)]
@@ -60,11 +68,36 @@ struct Assignment<'a> {
 #[derive(Debug, sqlx::FromRow)]
 struct PatchState {
     decision_model_id: Option<Uuid7>,
+    platform_owned: bool,
+    durable_tasks_enabled: bool,
     status: String,
     capability_report: Option<String>,
 }
 
 impl Runners {
+    /// Proves the assignment, clamps its worker count and renders its lists.
+    fn prepare<'a>(
+        &self,
+        requested: &AssignedPolicy<'a>,
+        now: Timestamp,
+    ) -> Result<Assignment<'a>> {
+        let validated = assignment(requested)?;
+        let mut stored = requested.clone();
+        stored.worker_count = validated.worker_count.get();
+        Ok(Assignment {
+            decision_model_id: validated.decision_model_id,
+            registry_json: render_list(&stored.registry_allowlist),
+            sandbox_config_json: SandboxConfig {
+                extra_binds: stored.extra_binds.clone(),
+            }
+            .render(),
+            event_id: self.admin_event_id(now)?,
+            stored,
+        })
+    }
+}
+
+impl RunnerScope<'_> {
     /// Applies a policy, a label set, or both, in one transaction.
     ///
     /// The row lock covers the capability read, the policy and verdict write,
@@ -89,14 +122,14 @@ impl Runners {
         let labels = edit.labels.map(labels).transpose()?;
         let assignment = edit
             .assigned_policy
-            .map(|requested| self.prepare(requested, now))
+            .map(|requested| self.runners.prepare(requested, now))
             .transpose()?;
         if assignment.is_none() && labels.is_none() {
             return Err(rejected(DETAIL_EDIT_EMPTY));
         }
         let labels_json = labels.as_deref().map(render_list);
 
-        let mut connection = self.pool().acquire().await?;
+        let mut connection = self.runners.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_EDIT))?;
         let selected = crate::decision::lock(
             &mut transaction,
@@ -107,6 +140,8 @@ impl Runners {
         .await?;
         let row = sqlx::query_as::<_, PatchState>(sql::runner_admin::SELECT_RUNNER_PATCH_STATE)
             .bind(runner)
+            .bind(self.owner.tenant())
+            .bind(self.owner.platform())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT_EDIT))?
@@ -116,6 +151,7 @@ impl Runners {
             if status == AdminState::Revoked {
                 return Err(rejected(DETAIL_REVOKED_NO_POLICY));
             }
+            tenant_assignment(self.owner, &row, assignment)?;
             selected.allow_change_from(row.decision_model_id.as_ref().map(Uuid7::as_str))?;
             assign(&mut transaction, runner, assignment, row.capability_report).await?;
         }
@@ -133,27 +169,6 @@ impl Runners {
             status,
             assigned_policy: assignment.map(|assignment| assignment.stored),
             labels,
-        })
-    }
-
-    /// Proves the assignment, clamps its worker count and renders its lists.
-    fn prepare<'a>(
-        &self,
-        requested: &AssignedPolicy<'a>,
-        now: Timestamp,
-    ) -> Result<Assignment<'a>> {
-        let validated = assignment(requested)?;
-        let mut stored = requested.clone();
-        stored.worker_count = validated.worker_count.get();
-        Ok(Assignment {
-            decision_model_id: validated.decision_model_id,
-            registry_json: render_list(&stored.registry_allowlist),
-            sandbox_config_json: SandboxConfig {
-                extra_binds: stored.extra_binds.clone(),
-            }
-            .render(),
-            event_id: self.admin_event_id(now)?,
-            stored,
         })
     }
 }
@@ -192,5 +207,27 @@ async fn assign(
         .fetch_optional(&mut **transaction)
         .await
         .map_err(query(CONTEXT_EDIT))?;
+    Ok(())
+}
+
+/// Refuses what a tenant runner may not be assigned: a platform decision model
+/// from any caller, and durable tasks switched on by its tenant. A tenant may
+/// keep durable tasks a platform admin switched on; a policy edit replaces the
+/// whole assignment, so refusing the value itself would make every later tenant
+/// edit either fail or switch them off.
+fn tenant_assignment(
+    owner: Owner<'_>,
+    row: &PatchState,
+    assignment: &Assignment<'_>,
+) -> Result<()> {
+    if row.platform_owned {
+        return Ok(());
+    }
+    if assignment.decision_model_id.is_some() {
+        return Err(rejected(DETAIL_TENANT_DECISION_MODEL));
+    }
+    if !owner.platform() && assignment.stored.durable_tasks_enabled && !row.durable_tasks_enabled {
+        return Err(rejected(DETAIL_TENANT_DURABLE_TASKS));
+    }
     Ok(())
 }

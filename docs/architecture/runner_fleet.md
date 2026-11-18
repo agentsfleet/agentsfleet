@@ -24,8 +24,8 @@ Every row is taken from the sections below; the owner column names the section t
 | Renewal refused on empty wallet | `UZ-RUN-012` | each `/renew` meters the run's slice and refuses one the wallet cannot cover; reachable for any exhausted tenant | §Money gates |
 | Lost wake recovery | the next recovery probe, at most 5 s later | each replica asks PostgreSQL for pending work every `OFFER_FALLBACK_TICK` (5 s), with or without a wake ring | §Failure recovery model |
 | Runner datastore credentials | zero | no runner crate links `sqlx` or `async-nats`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
-| Control protocol | one enrolment route, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, enrolment in its **Platform** group (`public/openapi.json`); `me` resolves from the token | §The control protocol |
-| Enrollment gate | the `runner:enroll` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
+| Control protocol | two registration routes, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, registration with the runner management routes (`public/openapi.json`); `me` resolves from the token | §The control protocol |
+| Registration gate | `runner:register` for a platform runner, `runner:tenant` for a tenant's own | a caller without the scope, session JWT or `agt_t` key alike → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
 | Fresh-mint liveness | `last_seen_at = 0` sentinel | a never-connected runner reads `registered`, not a fake `online` | §Runner state |
 | Runner "status" | three separate categories | `status` enum + derived liveness + append-only `runner.events` | §Runner state |
 | Memory isolation | one live holder per fleet | `runner.fleet_slots` keyed by `fleet_id` + time gate + capture-time fencing | §Memory continuity |
@@ -50,7 +50,7 @@ Each trap is enforced in its owner section; this list is the index.
 
 - There is no `runner_runtime` Postgres role, and there must never be one (§Datastore role model).
 
-- `runner:enroll` is a token scope, not a Postgres role. It must not become a database `GRANT` (§Datastore role model).
+- `runner:register` is a token scope, not a Postgres role. It must not become a database `GRANT` (§Datastore role model).
 
 - A lost wake needs no repair sweep; the next 5 s recovery probe reads PostgreSQL (§Failure recovery model).
 
@@ -238,13 +238,17 @@ The runner's supervisor, agent loop, tool catalog, outbound guard, in-sandbox se
 
 `agentsfleetd` translates the runner's calls into the Postgres writes and NATS publishes the worker once made directly. The runner never sees a datastore.
 
-The routes, their methods and their request and reply shapes are in the API reference's **Runner plane** group on docs.agentsfleet.net. That group is generated from `public/openapi.json`. The enrolment route sits in its **Platform** group; this doc does not restate them.
+The routes, their methods and their request and reply shapes are in the API reference's **Runner plane** group on docs.agentsfleet.net. That group is generated from `public/openapi.json`. The registration routes sit with the runner management routes; this doc does not restate them.
 
-The shape that matters here has one enrolment route, `POST /v1/admin/runners`, called by an operator (§Registering a runner). Every other route sits under `/v1/runners/me` and is called by the runner with its `agt_r`.
+The shape that matters here has two registration routes (§Registering a runner). `POST /v1/admin/runners` is called by an operator. `POST /v1/tenants/me/runners` is called by a tenant for its own hosts.
 
-`me` resolves from the token. No `runner_id` appears in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints.
+Every other route sits under `/v1/runners/me` and is called by the runner with its `agt_r`.
 
-Identity and auth are covered in [`../AUTH.md`](../AUTH.md); the runner is the first machine principal. `register` is gated by the `runner:enroll` scope. The scope is grantable on its own, because enrolling a host into the shared fleet exposes every tenant's secrets to it.
+`me` resolves from the token. No `runner_id` appears in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human* credential; everything else is authed by the machine credential it mints.
+
+Identity and auth are covered in [`../AUTH.md`](../AUTH.md); the runner is the first machine principal. `register` is gated by the `runner:register` scope. The scope is grantable on its own, because enrolling a host into the shared fleet exposes every tenant's secrets to it.
+
+A tenant's own route is gated by `runner:tenant`, because that host takes only its tenant's work.
 
 A token without that scope is rejected `403`, tenant `admin` JWT and `agt_t` api_key alike.
 
@@ -261,21 +265,21 @@ The [runner guide](runner_protocol.md) describes connection setup, cancellation 
 
 A runner needs a `agt_r` token before it can receive work. The **platform operator pre-mints it through the CLI** and installs it on the host. The host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model).
 
-The operator runs `agentsfleet platform runners enroll --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
+The operator runs `agentsfleet platform runners register --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
 The CLI calls `POST /v1/admin/runners` and saves the one-time runner token in an owner-only file.
 The operator installs that token on the host as `AGENTSFLEET_RUNNER_TOKEN`.
 
 No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the runner validates the `agt_r` prefix and fails loud rather than looping on a silent 401.
 
-It then opens its native session and starts the worker pool. There is no register call, so no host ever holds an enrollment-grade credential.
+It then opens its native session and starts the worker pool. There is no register call, so no host ever holds a registration-grade credential.
 
-There is no enrollment token; the minter must hold `runner:enroll`. The open-fleet, self-enrolling case is mode C, later.
+There is no registration token. The minter must hold `runner:register`, or `runner:tenant` for a tenant's own host. The open-fleet, self-registering case is mode C, later.
 
 ```text
  platform admin                                          agentsfleetd
- (CLI credential carrying runner:enroll)
+ (CLI credential carrying runner:register)
    | CLI enrollment -> POST /v1/admin/runners   GATE 1 - who may enroll:
-   |   Authorization: Bearer <session-JWT>           runner:enroll scope required
+   |   Authorization: Bearer <session-JWT>           runner:register scope required
    |   { host_id, assigned_policy{sandbox_tier,     (tenant admin / agt_t -> 403)
    |     network_policy, registry_allowlist[],
    |     worker_count}, labels[] }
@@ -298,6 +302,29 @@ There is no enrollment token; the minter must hold `runner:enroll`. The open-fle
 The write swaps `token_hash` and appends an actor-attributed event atomically. The write returns the replacement token once, and makes the old token fail the next auth read.
 
 Revoking instead sets `status='revoked'` (M84_002) so every later call gets a 401. The runner's complete environment is `AGENTSFLEET_API_URL` plus `AGENTSFLEET_RUNNER_TOKEN`, with the optional host-local `RUNNER_STORAGE_HOME`. There is no bootstrap credential on the host, no datastore secret, and **no policy in the environment** (M148; §Assigned policy and reconciliation).
+
+### A tenant's own runner
+
+A tenant that holds `runner:tenant` registers a host of its own with `agentsfleet runners register`.
+The CLI calls `POST /v1/tenants/me/runners` with a UUIDv7 `Idempotency-Key`, so a retry never registers a second runner.
+The row records the tenant, and nothing changes it afterwards.
+
+A tenant runner takes only its own tenant's work, and never a fleet that runs on the platform model.
+The platform key therefore never reaches a host that its tenant controls.
+
+```text
+                              runner's tenant_id
+work of tenant T              NULL (platform)    T          U (another tenant)
+fleet on the platform model   leased             refused    refused
+fleet on T's own model        leased             leased     refused
+```
+
+The candidate scan and the claim statement both apply this table.
+Issue applies it again under the host lock, and logs `runner_placement_refused` (`UZ-RUN-027`) when the claim let a placement through.
+Labels place work and carry no security meaning, so a tenant that labels its runner cannot make it take another tenant's work.
+
+A platform admin can cordon, drain, revoke and relabel a tenant runner.
+Only the tenant rotates its token, and a platform rotation answers `409 UZ-RUN-026`.
 
 ## Assigned policy and reconciliation (M148)
 
@@ -444,7 +471,7 @@ The surface shipped; what it should *do* in these four cases did not.
 
 - **All-runners-down.** If every healthy runner is gone, where does cordoned or lapsed work drain to? There is no eligible target, so the work must **hold** (not thrash or fail) until capacity returns.
 
-- **Eligibility.** Label, state, liveness and shared host-capacity checks precede placement. Trust class, tenant and workspace scope and sandbox-engine eligibility remain future work.
+- **Eligibility.** Label, state, liveness, tenant ownership and shared host-capacity checks precede placement (§A tenant's own runner). Trust class, workspace scope and sandbox-engine eligibility remain future work.
 
 - **Cordon rules.** When to cordon; partial versus full drain; the drain deadline; what happens if drain never completes (escalate cordon to revoke?).
 
@@ -456,16 +483,16 @@ Access to the runner-domain tables (`runner.runners`, `runner.leases`, `runner.f
 
 | Layer | Mechanism | Answers | Enforced where |
 |-------|-----------|---------|----------------|
-| **App authorization** | the `runner:enroll` scope on the verified token | *Which API caller* may enroll / list / manage runners | the request handlers' authorization layer |
+| **App authorization** | the `runner:register` scope on the verified token | *Which API caller* may enroll / list / manage runners | the request handlers' authorization layer |
 | **Datastore identity** | `api_runtime` Postgres role | *Which process identity* writes the rows | Postgres `GRANT` |
 
 ```text
-   caller (Clerk JWT, runner:enroll)                  runner (agt_r token, NO db creds)
+   caller (Clerk JWT, runner:register)                  runner (agt_r token, NO db creds)
         |  GET/POST /v1/fleet, /v1/admin/runners                  |  Native runner stream
         v                                                   v
    +-------------------------------------------------------------------------+
    | agentsfleetd                                                            |
-   |   Layer 1 - scope check: does caller hold runner:enroll? (admin routes) |
+   |   Layer 1 - scope check: does caller hold runner:register? (admin routes) |
    |   Layer 2 - writes runner.* connecting to PG as api_runtime             |
    +-------------------------------------------------------------------------+
                                         v
@@ -480,7 +507,7 @@ Three load-bearing facts:
 
    The runner schema slots grant those tables to `api_runtime` only. They never mention `worker_runtime`, dead substrate removed wholesale in the worker-substrate retirement workstream.
 
-2. **`runner:enroll` is not a Postgres role; it is a token scope**. "Whoever may enroll has access to the runner tables" is an *API-authorization* statement, already satisfied at Layer 1. Layer 1 gates `register` and the fleet-management routes; `runner:enroll` is not, and must not become, a database `GRANT`.
+2. **`runner:register` is not a Postgres role; it is a token scope**. "Whoever may enroll has access to the runner tables" is an *API-authorization* statement, already satisfied at Layer 1. Layer 1 gates `register` and the fleet-management routes; `runner:register` is not, and must not become, a database `GRANT`.
 
 3. **Therefore there is no `runner_runtime` role, and there must never be one**. A `runner_*`-named datastore role would assert that the runner connects to the datastore. That is exactly the guarantee this fleet is built to deny.
 
@@ -850,7 +877,7 @@ Each replica's 5 s recovery probe reads PostgreSQL, so missing notifications can
 
 ## Sandbox tiers
 
-The control plane ASSIGNS a tier to each runner row (`agentsfleet platform runners enroll` or the fleet PATCH). It delivers the tier with the runner's identity on enrollment and every heartbeat.
+The control plane ASSIGNS a tier to each runner row (`agentsfleet platform runners register` or the fleet PATCH). It delivers the tier with the runner's identity on enrollment and every heartbeat.
 
 The host probes what its kernel can enforce and reports that upward. A host whose report cannot satisfy its assignment is marked degraded and issued no work (§Assigned policy and reconciliation).
 

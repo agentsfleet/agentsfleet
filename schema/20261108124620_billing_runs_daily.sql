@@ -1,11 +1,6 @@
--- Settled runs counted per tenant, UTC day, work type and fleet. A run counts
--- once, on the day of its first runtime line, in the transaction that settles
--- that line: no smaller runtime slice can arrive later, and a line settles once.
--- Runs are not a column of `usage_daily` because one run spans several models
--- and days. Writer: `ledger/sql/count_run.sql`. Reader: `report/sql/aggregates.sql`.
--- No `id` column: the natural key is the row's identity, because every write
--- is an upsert onto it. No foreign keys, as in `usage_lines`: `tenant_id` and
--- `fleet_id` are opaque so a settle never fails on an erased owner.
+-- Settled runs per tenant, UTC day, work type and fleet. A run counts once, on the day of its
+-- first runtime line. Keyed by its natural key because every write is an upsert; no foreign keys,
+-- so a settle never fails on an erased owner.
 CREATE TABLE billing.runs_daily (
     tenant_id   UUID   NOT NULL,
     day         DATE   NOT NULL,

@@ -1,10 +1,5 @@
--- Append-only runner history: enrolment, offline, self-test, policy changes. Read
--- by the runner detail page and the offline sweep. Append-only (rule 9); DELETE
--- serves the retention sweep.
---
--- `last_seen_at` makes a repeated offline event a no-op: the offline sweep stamps
--- the heartbeat it observed, so two sweeps over one gap write one row. Every
--- other event leaves it NULL.
+-- Append-only; DELETE serves the retention sweep. `last_seen_at` is set only on offline events, to
+-- the heartbeat observed, so two sweeps over one gap write one row.
 CREATE TABLE runner.events (
     id            UUID PRIMARY KEY,
     CONSTRAINT ck_events_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),

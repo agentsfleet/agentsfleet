@@ -53,7 +53,7 @@ Indy creates external state, the agent prepares the host, and the deployment pip
 
    ```bash
    printf '%s' '{"durable_tasks_enabled":true,"sandbox_tier":"landlock_full","network_policy":"allow_all","registry_allowlist":[],"worker_count":4,"extra_binds":[]}' > policy.json
-   agentsfleet platform runners enroll --host-id "$(op read "op://$VAULT/<RUNNER_ITEM>/tailscale-hostname")" \
+   agentsfleet platform runners register --host-id "$(op read "op://$VAULT/<RUNNER_ITEM>/tailscale-hostname")" \
      --policy policy.json --labels dev --token-out runner-token
    ```
 

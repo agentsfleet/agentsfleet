@@ -117,13 +117,9 @@ const REASON_SLOT_SPENT: &str = "state_slot_spent";
         (status = 200, description = "The grant landed and no dashboard page could be named to send the person to", body = afd_api_wire::connector::Connected<'_>),
         (status = 302, description = afd_http::openapi::FOUND),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 502, description = afd_http::openapi::BAD_GATEWAY),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn complete<D: Services>(

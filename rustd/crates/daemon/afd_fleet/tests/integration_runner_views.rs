@@ -80,7 +80,11 @@ async fn enroll_view_runners(fixtures: &Fixtures) -> Vec<Uuid7> {
         request.host_id = Cow::Borrowed(host);
         let enrolled = fixtures
             .runners()
-            .register(&request, fixtures.enrolled_at())
+            .register(
+                &request,
+                "fixture:platform-operator",
+                fixtures.enrolled_at(),
+            )
             .await
             .expect("the runner enrols");
         runners.push(enrolled.runner_id);
@@ -105,6 +109,7 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) -> (Time
         .expect("the heartbeat lands");
     fixtures
         .runners()
+        .platform()
         .transition(
             live_runner,
             RunnerAdminAction::Cordon,
@@ -116,6 +121,7 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) -> (Time
     let after_cordon = fixtures.database_now().await;
     let _rotated = fixtures
         .runners()
+        .platform()
         .rotate_token(
             live_runner,
             ACTOR,
@@ -138,6 +144,7 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
     loop {
         let page = fixtures
             .runners()
+            .platform()
             .list_runners(cursor.as_ref(), limit)
             .await
             .expect("the page loads");
@@ -200,6 +207,7 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
 async fn assert_runner_detail(fixtures: &Fixtures, runner: &Uuid7) {
     let detail = fixtures
         .runners()
+        .platform()
         .runner_detail(runner)
         .await
         .expect("the detail loads");

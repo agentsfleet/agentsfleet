@@ -25,7 +25,6 @@ CREATE TABLE fleet.task_waits (
     observed_signal_sequence BIGINT NOT NULL CHECK (observed_signal_sequence >= 0),
     claim_id UUID,
     claim_expires_at TIMESTAMPTZ(3),
-    consumed_admission_id UUID,
     consumed_at TIMESTAMPTZ(3),
     cancelled_at TIMESTAMPTZ(3),
     created_at TIMESTAMPTZ(3) NOT NULL,
@@ -34,8 +33,7 @@ CREATE TABLE fleet.task_waits (
         REFERENCES fleet.tasks (id, fleet_id, workspace_id) ON DELETE CASCADE,
     CONSTRAINT uq_task_wait_owner UNIQUE (owner_lease_id),
     CONSTRAINT uq_task_wait_generation UNIQUE (task_id, generation),
-    CONSTRAINT ck_task_wait_claim CHECK ((claim_id IS NULL) = (claim_expires_at IS NULL)),
-    CONSTRAINT ck_task_wait_consumed CHECK ((consumed_at IS NULL) = (consumed_admission_id IS NULL))
+    CONSTRAINT ck_task_wait_claim CHECK ((claim_id IS NULL) = (claim_expires_at IS NULL))
 );
 
 CREATE UNIQUE INDEX uq_task_wait_current ON fleet.task_waits (task_id)

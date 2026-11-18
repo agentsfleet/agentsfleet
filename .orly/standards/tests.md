@@ -135,12 +135,14 @@ Coverage gates read the aggregate. Lines the compiler erases, such as `import ty
 
 ## Fixtures and data
 
-### TFX — Test fixtures use the production constants, never copies of their values.
-- **Applies to:** fixtures, seeds and expected values in tests
+### TFX — Fixture setup uses production constants where their values are not the behavior under test.
+- **Applies to:** fixture and seed inputs in tests
 - **Checked by:** review
 - **Bad:** `const DOMAIN = "agentmail.dev"` in a test while production reads `MAIL_DOMAIN`
 - **Good:** `import { MAIL_DOMAIN } from "../config"` in the test
-- **Why:** three copies of one value drift apart, and only one matches production.
+- **Why:** shared setup values stay valid while independent expectations detect behavior changes.
+
+Observable expected values remain literal under TEST-PUBLIC. Importing the value being tested would make the assertion change with the defect.
 
 ### STL — A test stops writing a wire field in the same change that removes the field from the parser.
 - **Applies to:** test request bodies and builders after a wire-protocol field is removed
@@ -329,6 +331,8 @@ A missed budget is a design finding, and the threshold never loosens silently.
 `orly gate pr` verifies every declared command and never infers success from a push. Explicit reuse requires the repository's reviewed hermetic policy and valid current-input completion evidence.
 
 Retain the original command, output, counts and run provenance when a result is reused. Live datastore and network observations remain fresh unless an explicit supported freshness policy exists.
+
+An optional `tracked_inputs` declaration permits cross-revision reuse only when it covers every tracked dependency and the command does not read Git history. Extra ignored dependencies still belong in `inputs` or the toolchain identity. Keep the full-worktree before/after guard; an unchanged subset does not excuse edits during a run.
 
 ### TEST-CLAIM — A claim that tests pass names the command it ran and the counts it printed.
 - **Applies to:** done messages, Pull Request descriptions and Session Notes

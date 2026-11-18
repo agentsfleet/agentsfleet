@@ -59,8 +59,11 @@ const GEOMETRY: &str = "40 160";
 async fn a_terminal_process_leads_a_session_its_sized_terminal_controls() {
     let harness = start().await;
 
+    // `printf` ends the name with exactly one newline: uutils' `tty`
+    // (Ubuntu 26.04) prints none onto a terminal, running the name and the
+    // size together.
     let spawn = Spawn::program("sh")
-        .args(["-c", "tty; stty size < /dev/tty"])
+        .args(["-c", "printf '%s\\n' \"$(tty)\"; stty size < /dev/tty"])
         .terminal();
     let finished = finish(harness.client.spawn(&spawn).await.unwrap()).await;
 

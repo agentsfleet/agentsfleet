@@ -35,7 +35,7 @@ async fn an_authorized_enrolment_reports_a_datastore_outage_without_minting_a_to
         .with_person(
             TENANT_KEY,
             OPERATOR,
-            ScopeSet::from_scopes(&[Scope::RunnerEnroll]),
+            ScopeSet::from_scopes(&[Scope::RunnerRegister]),
         )
         .router();
     let payload = serde_json::json!({

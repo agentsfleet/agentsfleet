@@ -80,7 +80,6 @@ impl Gates {
                     request.event_type,
                     request.actor,
                     request.event_id.as_str(),
-                    request.config.repository_binding(),
                     timeout,
                 );
                 let stated = matched.map_or(stated, |rule| stated.under(rule));

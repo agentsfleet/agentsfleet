@@ -1,14 +1,6 @@
--- Settled usage summed per tenant, UTC day, work type, fleet and model, so a
--- report reads a month as a few rows per fleet instead of every line in it.
--- Writer: `ledger/sql/add_usage_daily.sql`, in the settle transaction, adding
--- exactly the lines that transaction stamps settled. Reader:
--- `report/sql/aggregates.sql`. The ledger stays the source of truth, and this
--- table can be rebuilt from its settled lines.
--- No `id` column: the natural key is the row's identity, because every write
--- is an upsert onto it. No foreign keys, as in `usage_lines`: money outlives
--- every deletion, so `tenant_id` and `fleet_id` are opaque and a settle never
--- fails on an erased owner. `fleet_name` is the name the key's most recent
--- settlement carried.
+-- Settled usage per tenant, UTC day, work type, fleet and model, rebuildable from settled lines.
+-- Keyed by its natural key because every write is an upsert. No foreign keys: money outlives
+-- deletion. `fleet_name` is the name the key's latest settlement carried.
 CREATE TABLE billing.usage_daily (
     tenant_id             UUID   NOT NULL,
     day                   DATE   NOT NULL,

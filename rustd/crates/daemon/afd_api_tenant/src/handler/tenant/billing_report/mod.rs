@@ -33,11 +33,7 @@ const CACHE_CONTROL: &str = "private, no-store";
     responses(
         (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::billing::Report<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn report<D: Services>(
@@ -77,12 +73,8 @@ pub(crate) async fn report<D: Services>(
     description = "Per-activity charges were removed. This route always answers 410 Gone with UZ-REQ-003; read settled totals from GET /v1/tenants/me/billing/reports/current.",
     params(("activity_id" = String, Path, description = "Ignored; the route is removed")),
     responses(
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 410, description = afd_http::openapi::GONE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn removed() -> Refusal {

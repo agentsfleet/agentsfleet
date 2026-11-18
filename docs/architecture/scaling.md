@@ -145,13 +145,17 @@ Runners keep one native session per host and send no idle lease requests. Each h
 The gateway reacts to wake notifications and increased capacity.
 
 A separate daemon recovery timer queries Postgres once every five seconds per replica (`OFFER_FALLBACK_TICK`), even when no work is waiting.
-The probe is one statement, `select_waiting_admission.sql` (`afd_gateway/src/scheduler/recovery/mod.rs`).
+The probe is one statement, `select_waiting_work.sql` (`afd_fleet/src/lease/waiting.rs`), run from `afd_gateway/src/scheduler/recovery/mod.rs`.
 For `R` replicas, that is `R / 5` discovery statements per second.
 
 This backstop repairs missed disposable notifications; it remains database polling.
 A probe that finds pending work starts an offer pass. Wake traffic never resets the probe's timer.
 
 A wake notification starts an offer pass at once. Admission and gate-answer commits publish on `af.wake.<shard>` (`afd_admission/src/wake.rs`, `afd_approval/src/inbox/resolve/mod.rs`).
+
+Before the pass, the same statement names each connected tenant runner whose tenant has nothing waiting.
+The pass skips those runners, since a tenant runner takes only its tenant's work and a claim on one could not lease.
+A recovery pass skips no one.
 
 The pass walks the ready streams that hold credits, those holding a woken fleet first. It claims from Postgres for each stream until a claim comes back empty or the pass spends its budget (`afd_gateway/src/scheduler/mod.rs`).
 
@@ -206,7 +210,7 @@ Each table's own index slot closes that. Every recurring control-plane read belo
 | Recurring read | Was | Now |
 |---|---|---|
 | Liveness sweep, due runners | Sequential scan + top-N sort of `runner.runners`, every cycle | Still a sort, on purpose: `afd_runner`'s `SELECT_DUE_RUNNERS` orders by `updated_at, id` under its batch `LIMIT`, and slot 1800 leaves runner sorts unindexed because runners number about a hundred. M142_001's `idx_runners_updated_at_id` measured 6 shared buffer hits at 20 000 runners; the M154 rebuild dropped it. |
-| Liveness sweep, affinity expiry | Full scan of `runner.fleet_slots`, once **per due runner per cycle** | `idx_fleet_slots_last_runner_id_lease_expires_at`; also covers the unindexed `ON DELETE SET NULL` foreign key |
+| Liveness sweep, affinity expiry | Full scan of `runner.fleet_slots`, once **per due runner per cycle** | The runner's active leases, then each slot by its key; `idx_fleet_slots_last_runner_id` covers the `ON DELETE SET NULL` foreign key |
 | Reclaim, prior active lease | Scan of `runner.leases` on an unindexed `ON DELETE CASCADE` foreign key | `idx_leases_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
 | Workspace event keyset page | Index scan plus a post-filter on the tiebreak column; under a cached generic plan the cursor and `since` fell behind their `IS NULL` guards into filters | One text per scope, cursor and actor filter; `idx_events_workspace_id_created_at_event_id` with the workspace, cursor and `since` in its index condition, walked in order |
 | Fleet event page and chat thread | A cached generic plan multiplied the workspace and fleet selectivities, expected one row, and read the fleet's whole history into a bitmap scan plus sort | `idx_events_fleet_id_created_at_event_id` walked in order, because `stx_events_workspace_id_fleet_id` (slot 1700) tells the planner the fleet implies the workspace. An actor-filtered page still sorts its matches |

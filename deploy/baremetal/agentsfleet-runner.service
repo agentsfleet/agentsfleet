@@ -97,7 +97,6 @@ ProtectSystem=strict
 # a lease's workspace disk throughput.
 Delegate=cpu io memory pids
 DelegateSubgroup=runner
-CPUAccounting=yes
 IOAccounting=yes
 MemoryAccounting=yes
 TasksAccounting=yes

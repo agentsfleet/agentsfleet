@@ -5,6 +5,10 @@
 //! live-lease test inside the statement used, rather than a second clock read
 //! in the daemon a few milliseconds later.
 
+/// The first statement of a page's transaction: every read the page makes
+/// sees one moment, so its total and its rows agree while rows are written.
+pub const READ_SNAPSHOT: &str = include_str!("read_snapshot.sql");
+
 /// Page-stable runner total.
 pub const COUNT_RUNNERS: &str = include_str!("count_runners.sql");
 

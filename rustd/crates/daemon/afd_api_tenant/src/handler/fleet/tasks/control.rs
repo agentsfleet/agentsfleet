@@ -45,13 +45,13 @@ struct Envelope<'a> {
         ("If-Match" = String, Header, description = "Required current strong resource tag.")),
     request_body = PatchTaskRequest,
     responses((status = 200, body = afd_api_wire::fleet::TaskResponse<'_>, description = "Current task", headers(("ETag" = String))),
-        (status = 400, description = "Invalid task control"), (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"), (status = 404, description = "Task unavailable"),
+        (status = 400, description = "Invalid task control"), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = "Task unavailable"),
         (status = 409, description = "Generation or lifecycle refuses mutation"),
         (status = 412, description = "Stale resource tag; problem body carries the current etag"),
         (status = 413, description = "Body too large"), (status = 428, description = "Missing tag"),
-        (status = 429, description = "Task allowance or request limit reached"), (status = 500, description = "Internal failure"),
-        (status = 503, description = "Dependency unavailable"))
+        (status = 429, description = "Task allowance or request limit reached"), (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE))
 ))]
 pub(crate) async fn change<D: Services>(
     State(services): State<Arc<D>>,

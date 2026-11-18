@@ -89,6 +89,22 @@ pub(crate) async fn reselect(
     fleet: &Uuid7,
     definition: &Definition,
 ) {
+    reselect_on(
+        connection,
+        fleet,
+        definition,
+        afd_credential::provider::PLATFORM_MODEL_REF,
+    )
+    .await;
+}
+
+/// [`reselect`], with the revision running the model `model_ref` names.
+pub(crate) async fn reselect_on(
+    connection: &mut sqlx::PgConnection,
+    fleet: &Uuid7,
+    definition: &Definition,
+    model_ref: &str,
+) {
     let stored = Stored::of(definition);
     sqlx::query(APPEND_HEAD_REVISION)
         .bind(fleet)
@@ -96,7 +112,7 @@ pub(crate) async fn reselect(
         .bind(&stored.definition)
         .bind(&stored.digest)
         .bind(POLICY_SEMANTICS)
-        .bind(afd_credential::provider::PLATFORM_MODEL_REF)
+        .bind(model_ref)
         .execute(connection)
         .await
         .expect("append and select the setup");

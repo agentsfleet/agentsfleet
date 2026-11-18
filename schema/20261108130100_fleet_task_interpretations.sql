@@ -1,4 +1,4 @@
--- Complete private interpretation survives admission cleanup, until fleet purge.
+-- The complete private interpretation; it survives admission cleanup until the fleet is purged.
 CREATE TABLE fleet.task_interpretations (
     admission_id UUID PRIMARY KEY,
     fleet_id UUID NOT NULL,
@@ -7,12 +7,10 @@ CREATE TABLE fleet.task_interpretations (
     plan_digest TEXT NOT NULL,
     message TEXT NOT NULL,
     plan JSONB NOT NULL,
-    accepting_lease_id UUID NOT NULL,
-    accepting_fence BIGINT NOT NULL,
     created_at TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT fk_task_interpretations_fleet FOREIGN KEY (fleet_id, workspace_id, tenant_id)
         REFERENCES fleet.fleets (id, workspace_id, tenant_id) ON DELETE CASCADE,
-    -- Preserve the origin's authority identity after admission cleanup.
+    -- The origin's authority identity, kept after admission cleanup.
     source_actor TEXT,
     source_producer TEXT
 );

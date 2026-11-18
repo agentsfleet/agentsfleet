@@ -1,13 +1,6 @@
--- Model identities read by admission, metering and pickers. `model_name` is the
--- exact provider API id and is never a foreign key; rows point here by `id`.
--- `display_name` is its user-facing label. Context evidence is the provider's
--- models API, never a converted marketing label. Dated prices belong in
--- platform_model_prices because one identity has several prices.
---
--- `inference` is the model's non-secret transport settings (API, base URL,
--- dialect, output limit), shaped by `afd_wire::inference::ModelInference`. It is
--- NULL until an administrator saves reviewed settings: there is no seed and no
--- routing fallback. Credentials stay in `vault.secrets`.
+-- `model_name` is the exact provider API id and never a foreign key; rows point here by `id`.
+-- `inference` holds non-secret transport settings. It is NULL until an administrator saves
+-- reviewed settings, and there is no routing fallback.
 CREATE TABLE model.platform_models (
     id                           UUID PRIMARY KEY,
     CONSTRAINT ck_platform_models_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -23,9 +16,7 @@ CREATE TABLE model.platform_models (
     updated_at                   TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_platform_models_provider_model_name UNIQUE (provider, model_name),
     CONSTRAINT ck_platform_models_context_positive CHECK (context_cap_tokens > 0),
-    -- The existing catalogue selects a reviewed decision definition separately
-    -- from its coding transport. The boolean can revoke dispatch without changing
-    -- immutable definitions or erasing old call accounting.
+    -- `decision_enabled` revokes decision dispatch without touching immutable revisions.
     decision_revision_id UUID,
     decision_enabled BOOLEAN NOT NULL DEFAULT false,
     CONSTRAINT ck_platform_models_decision_activation CHECK (decision_revision_id IS NOT NULL OR NOT decision_enabled)

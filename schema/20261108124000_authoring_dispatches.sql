@@ -1,15 +1,6 @@
--- One physical model call inside an attempt: the intent is written before the
--- call, the result after. A table, not attempt columns, because an attempt makes
--- many calls and a crash between intent and result must be visible.
---
--- `result` is private model output, scrubbed (set NULL) at `private_expires_at`
--- and at once on every erasure root (deletion matrix); the expiry index reads it.
--- `usage` is what settlement charges. Rows stay with their attempt.
---
--- `native_reply` is the provider's own assistant message for replay, bound to the
--- attempt, dispatch and conversation digest. It is daemon-private: it carries no
--- credential, never reaches a runner, and shares `result`'s byte limit, scrub and
--- expiry.
+-- One physical model call. The intent is written before the call and the result after, so a
+-- crash between them is visible. `result` and `native_reply` are private, never reach a runner,
+-- and are scrubbed (set NULL) at `private_expires_at` or at once on erasure.
 CREATE TABLE authoring.dispatches (
     id                  UUID PRIMARY KEY,
     CONSTRAINT ck_dispatches_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -24,14 +15,11 @@ CREATE TABLE authoring.dispatches (
     created_at          TIMESTAMPTZ(3)  NOT NULL,
     updated_at          TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_dispatches_attempt_id_sequence UNIQUE (attempt_id, sequence),
-    -- `dispatch_expires_at` is the physical call's own deadline, which the replay
-    -- reader uses; `failure_cause` is a content-free explanation read by private
-    -- message pages.
+    -- `failure_cause` is content-free; it carries no model output.
     dispatch_expires_at TIMESTAMPTZ(3) NOT NULL,
     failure_cause TEXT
 );
 
--- The scrub sweep over private output still held.
 CREATE INDEX idx_dispatches_private_expires_at_id
     ON authoring.dispatches (private_expires_at, id)
     WHERE result IS NOT NULL OR native_reply IS NOT NULL;

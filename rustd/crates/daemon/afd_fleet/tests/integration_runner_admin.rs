@@ -30,6 +30,7 @@ async fn enrol(fixtures: &Fixtures) -> Uuid7 {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            "fixture:platform-operator",
             fixtures.enrolled_at(),
         )
         .await
@@ -47,6 +48,7 @@ async fn transition(
 ) -> afd_runner::Result<AdminState> {
     fixtures
         .runners()
+        .platform()
         .transition(
             runner,
             action,
@@ -96,8 +98,9 @@ async fn test_runner_admin_transitions() {
         "each real transition appends one event; repeats and refusals append none"
     );
     assert_eq!(
-        fixtures.admin_event_actors(&runner).await,
-        vec![ACTOR.to_owned(), ACTOR.to_owned()]
+        fixtures.event_actors(&runner).await,
+        vec![ACTOR.to_owned(), ACTOR.to_owned(), ACTOR.to_owned()],
+        "the registration, the cordon and the revoke each name who did them"
     );
 
     fixtures.cleanup().await;
@@ -119,6 +122,7 @@ async fn concurrent_identical_transitions_append_one_event() {
         tasks.push(tokio::spawn(async move {
             ready.wait().await;
             runners
+                .platform()
                 .transition(&runner, RunnerAdminAction::Cordon, actor, cordoned_at)
                 .await
         }));
@@ -215,6 +219,7 @@ async fn assign(
     };
     fixtures
         .runners()
+        .platform()
         .edit(
             runner,
             edit,

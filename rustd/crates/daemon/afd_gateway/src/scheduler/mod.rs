@@ -4,8 +4,9 @@ mod recovery;
 mod subscriptions;
 
 use crate::{Gateway, Result, registry::Registry, session::SessionHandle};
+use af_core::id::Uuid7;
 use afd_bus::wake::Wake;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
 /// Subscription repair, notification handling and recovery keep independent progress.
@@ -17,13 +18,43 @@ pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
         notifications(
             &gateway.inner.registry,
             &gateway.inner.dependencies.wake,
-            stop
+            stop.clone(),
+            |runners| {
+                let (gateway, stop) = (&gateway, &stop);
+                async move {
+                    let waiting = recovery::waiting_work(gateway, stop, &runners).await?;
+                    Ok(if waiting.pending() {
+                        Probe::Waiting(waiting.idle().iter().cloned().collect())
+                    } else {
+                        Probe::Nothing
+                    })
+                }
+            },
         )
     )?;
     Ok(())
 }
 
-async fn notifications(registry: &Registry, wake: &Wake, stop: CancellationToken) -> Result<()> {
+/// What one probe says about a pass.
+#[derive(Debug)]
+pub(crate) enum Probe {
+    /// No session can claim anything; the pass is skipped.
+    Nothing,
+    /// Work waits. These tenant runners have none of it to take, because a
+    /// tenant runner claims only its tenant's work, so the pass skips them.
+    Waiting(HashSet<Uuid7>),
+}
+
+/// A wake for work no session can claim, such as a message to a fleet already
+/// running, would cost one discovery scan per ready session. One `pending` probe
+/// per pass answers it first, and names the tenant runners the waiting work
+/// cannot reach; a recovery generation has already probed and scans them all.
+async fn notifications<F: Future<Output = Result<Probe>>>(
+    registry: &Registry,
+    wake: &Wake,
+    stop: CancellationToken,
+    mut pending: impl FnMut(Vec<Uuid7>) -> F,
+) -> Result<()> {
     let mut generations = wake.generations();
     let mut observed = *generations.borrow_and_update();
     loop {
@@ -37,7 +68,15 @@ async fn notifications(registry: &Registry, wake: &Wake, stop: CancellationToken
         let current = *generations.borrow_and_update();
         let budget = current.wrapping_sub(observed).max(1);
         observed = current;
-        let sessions = registry.candidates(&wake.fleets());
+        let mut idle = HashSet::new();
+        if wake.recovery().is_none() {
+            match pending(registry.runners()).await {
+                Ok(Probe::Waiting(runners)) => idle = runners,
+                Ok(Probe::Nothing) => continue,
+                Err(error) => Gateway::observe(&error, crate::Operation::Offer),
+            }
+        }
+        let sessions = registry.candidates(&wake.fleets(), &idle);
         tokio::select! {
             biased;
             () = stop.cancelled() => return Ok(()),

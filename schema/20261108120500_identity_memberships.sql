@@ -1,5 +1,4 @@
--- Person ↔ tenant with a role. A table, not a users column, because one person
--- belongs to many tenants. A role change is delete + insert, so rows are immutable.
+-- A role change is a delete plus an insert, so rows never change.
 CREATE TABLE identity.memberships (
     id          UUID PRIMARY KEY,
     CONSTRAINT ck_memberships_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -10,7 +9,6 @@ CREATE TABLE identity.memberships (
     CONSTRAINT uq_memberships_tenant_id_user_id UNIQUE (tenant_id, user_id)
 );
 
--- "Which tenants am I in", read at sign-in.
 CREATE INDEX idx_memberships_user_id ON identity.memberships (user_id);
 
 CREATE FUNCTION identity.memberships_refuse_update() RETURNS trigger AS $$

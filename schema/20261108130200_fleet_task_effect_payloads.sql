@@ -1,4 +1,4 @@
--- Private repository/branch/workflow details purge with their native task owner.
+-- Private repository, branch and workflow details; they purge with their task.
 CREATE TABLE fleet.task_effect_payloads (
     task_effect_id UUID PRIMARY KEY REFERENCES fleet.task_effects (id),
     task_id UUID NOT NULL,

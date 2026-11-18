@@ -6,7 +6,6 @@ CREATE TABLE fleet.task_storage_purges (
     bucket_reference TEXT NOT NULL,
     accounted_bytes BIGINT NOT NULL CHECK (accounted_bytes >= 0),
     stored BOOLEAN NOT NULL,
-    delete_after_at TIMESTAMPTZ(3) NOT NULL,
     next_attempt_at TIMESTAMPTZ(3) NOT NULL,
     completed_at TIMESTAMPTZ(3),
     created_at TIMESTAMPTZ(3) NOT NULL,

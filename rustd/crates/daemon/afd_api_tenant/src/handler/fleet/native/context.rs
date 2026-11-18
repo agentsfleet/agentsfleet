@@ -38,10 +38,9 @@ pub(crate) struct ContextQuery {
     params(afd_http::openapi::path::Fleet,
         ("starting_after" = Option<String>, Query, description = "Use next_cursor unchanged to read older conversations for this creator and fleet.")),
     responses((status = 200, body = AuthoringContext, description = "Bounded private editor context"),
-        (status = 400, description = "Invalid query or cursor"), (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"), (status = 404, description = "Fleet or private draft unavailable"),
-        (status = 429, description = "Too many requests"), (status = 500, description = "Internal failure"),
-        (status = 503, description = "Dependency unavailable"))
+        (status = 400, description = "Invalid query or cursor"), (status = 404, description = "Fleet or private draft unavailable"),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn read<D: Services>(
     State(services): State<Arc<D>>,

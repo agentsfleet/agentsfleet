@@ -75,13 +75,6 @@ const CONTEXT_SUBJECT: &str = "resolve subject user";
 /// primary-key collision is unique too, and no re-login resolves it.
 const MACHINE_CONSTRAINT: &str = "uq_cli_credentials_user_id_machine_name_live";
 
-/// Leading hex characters kept for display beside a credential.
-///
-/// Eight of sixty-four leaves 224 bits unrevealed, so a stored display prefix
-/// narrows an offline search by nothing that matters. It exists so an operator
-/// can tell two credentials apart in a list without either being readable.
-const DISPLAY_HEX_LEN: usize = 8;
-
 /// A person's command-line credentials.
 #[derive(Debug, Clone)]
 pub struct CliCredentials {
@@ -171,9 +164,6 @@ impl CliCredentials {
             .bind(request.tenant)
             .bind(request.machine.as_str())
             .bind(credential.digest().as_str())
-            .bind(display_prefix(credential.expose()))
-            .bind(request.deployment)
-            .bind(request.from_address)
             .execute(&mut *transaction)
             .await
             .map_err(classify_insert)?;
@@ -267,20 +257,6 @@ fn classify_insert(source: sqlx::Error) -> crate::Error {
     } else {
         error::query(CONTEXT_MINT)(source)
     }
-}
-
-/// The non-secret fragment stored beside the digest.
-///
-/// Borrows rather than allocates, and is short-safe: a value shorter than the
-/// display length is returned whole rather than sliced, so this cannot panic on
-/// a boundary. Every credential this module draws is full length, which makes
-/// the guard unreachable in practice and correct anyway.
-fn display_prefix(credential: &str) -> &str {
-    let shown = CredentialKind::CliCredential
-        .prefix()
-        .map_or(0, str::len)
-        .saturating_add(DISPLAY_HEX_LEN);
-    credential.get(..shown).unwrap_or(credential)
 }
 
 #[cfg(test)]

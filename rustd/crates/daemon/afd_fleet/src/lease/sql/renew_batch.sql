@@ -39,8 +39,10 @@ WITH asked AS (
   SELECT r.id, r.worker_count
   FROM runner.runners r
   WHERE r.id = $1 AND r.degraded_reason IS NULL AND r.status = ANY($35::text[])
-    AND ((r.token_hash = $36::text AND r.connection_id IS NOT DISTINCT FROM $37::uuid)
-         OR $36::text IS NULL)
+    -- A stream call ($38) must prove the opening credential and connection; a
+    -- trusted call was proven upstream. A stream call without its proof is refused.
+    AND (NOT $38::boolean
+         OR (r.token_hash = $36::text AND r.connection_id IS NOT DISTINCT FROM $37::uuid))
   FOR SHARE OF r
 ), census AS MATERIALIZED (
   -- Live leases are counted against a clock read once the host row is held, so

@@ -29,6 +29,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            "fixture:platform-operator",
             fixtures.enrolled_at(),
         )
         .await
@@ -36,6 +37,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
 
     let in_service = fixtures
         .runners()
+        .platform()
         .delete_revoked(&enrolled.runner_id)
         .await
         .err()
@@ -48,6 +50,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
 
     fixtures
         .runners()
+        .platform()
         .transition(
             &enrolled.runner_id,
             RunnerAdminAction::Revoke,
@@ -58,12 +61,14 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
         .expect("an active runner may be revoked");
     fixtures
         .runners()
+        .platform()
         .delete_revoked(&enrolled.runner_id)
         .await
         .expect("a revoked runner's record is retired");
 
     let gone = fixtures
         .runners()
+        .platform()
         .delete_revoked(&enrolled.runner_id)
         .await
         .err()
@@ -122,6 +127,7 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
 
     fixtures
         .runners()
+        .platform()
         .transition(
             &runner,
             RunnerAdminAction::Revoke,
@@ -131,7 +137,12 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
         .await
         .expect("an active runner may be revoked");
 
-    let still_leased = fixtures.runners().delete_revoked(&runner).await.err();
+    let still_leased = fixtures
+        .runners()
+        .platform()
+        .delete_revoked(&runner)
+        .await
+        .err();
     assert_eq!(
         still_leased.as_ref().map(afd_runner::Error::code),
         Some(af_core::error_code::RUNNER_MUST_REVOKE_FIRST)
@@ -143,11 +154,24 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
     );
 
     fixtures.expire_lease(&lease).await;
-    fixtures
+    let unbilled = fixtures
         .runners()
+        .platform()
         .delete_revoked(&runner)
         .await
-        .expect("once its lease is gone, a revoked runner's record retires");
+        .err();
+    assert_eq!(
+        unbilled.as_ref().map(afd_runner::Error::code),
+        Some(af_core::error_code::RUNNER_MUST_REVOKE_FIRST),
+        "an expired lease whose runtime tail is unbilled still holds the record"
+    );
+    fixtures.bill_lease_tail(&lease).await;
+    fixtures
+        .runners()
+        .platform()
+        .delete_revoked(&runner)
+        .await
+        .expect("once its lease is gone and billed, a revoked runner's record retires");
 
     fixtures.cleanup().await;
 }

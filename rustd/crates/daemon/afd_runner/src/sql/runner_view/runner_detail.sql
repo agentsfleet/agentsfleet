@@ -5,7 +5,7 @@ SELECT r.id AS id, r.host_id, r.sandbox_tier, r.status, r.labels::text AS labels
        r.capability_report::text AS capability_report, r.degraded_reason,
        r.sandbox_config::text AS sandbox_config,
        r.durable_tasks_enabled,
-       r.decision_platform_model_id AS decision_model_id,
+       r.decision_platform_model_id AS decision_model_id, r.tenant_id,
        COALESCE(s.active_count, 0) AS active_lease_count,
        COALESCE(s.active_fleets, 0) AS active_fleet_count,
        COALESCE(c.acquired_count, 0) AS leases_acquired,
@@ -25,4 +25,4 @@ LEFT JOIN (
   GROUP BY runner_id
 ) s ON s.runner_id = r.id
 LEFT JOIN runner.lifetime_counters c ON c.runner_id = r.id
-WHERE r.id = $1
+WHERE r.id = $1 AND ($4::boolean OR r.tenant_id = $3::uuid)

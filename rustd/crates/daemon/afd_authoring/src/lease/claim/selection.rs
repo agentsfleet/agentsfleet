@@ -67,13 +67,14 @@ pub(super) struct Selected {
     pub(super) model_ref: String,
 }
 
-pub(super) async fn candidates(database: &Db) -> Result<Vec<Hint>> {
+pub(super) async fn candidates(database: &Db, runner: &Uuid7) -> Result<Vec<Hint>> {
     let rows: Vec<HintRow> = sqlx::query_as(sql::CANDIDATES)
         .bind(EDITING)
         .bind(QUEUED)
         // Only a running attempt holds the draft; one awaiting accounting does not.
         .bind(&FINISHED[..])
         .bind(sql::SCAN_LIMIT)
+        .bind(runner)
         .fetch_all(&mut *database.acquire().await?)
         .await
         .map_err(query(sql::CONTEXT))?;

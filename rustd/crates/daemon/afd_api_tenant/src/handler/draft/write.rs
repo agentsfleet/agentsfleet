@@ -29,11 +29,11 @@ use std::sync::Arc;
     ),
     params(afd_http::openapi::path::Workspace), request_body = CreateDraftRequest,
     responses((status = 201, body = Created, description = "Created or exact replay", headers(("Location" = String), ("ETag" = String))),
-        (status = 400, description = "Invalid native setup or input"), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = "Source unavailable"),
+        (status = 400, description = "Invalid native setup or input"), (status = 404, description = "Source unavailable"),
         (status = 409, description = "Changed operation or unavailable model"), (status = 410, description = "Accepted resource purged"),
-        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE), (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS), (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE))
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn create<D: Services>(
     State(services): State<Arc<D>>,
@@ -75,9 +75,9 @@ pub(crate) async fn create<D: Services>(
     tag = afd_http::openapi::tag::DRAFTS, summary = "Delete your private setup chat",
     params(afd_http::openapi::path::Draft),
     responses((status = 204, description = "Private durable text deleted"), (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED), (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 404, description = super::DRAFT_UNAVAILABLE), (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL), (status = 503, description = afd_http::openapi::UNAVAILABLE))
+        (status = 404, description = super::DRAFT_UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn delete<D: Services>(
     State(services): State<Arc<D>>,

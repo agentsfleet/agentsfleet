@@ -8,6 +8,7 @@ use crate::error::{
     Result, admin_state_malformed, query, rejected, runner_not_found, runner_not_revoked,
     runner_still_leased, selftest_refused,
 };
+use crate::scope::RunnerScope;
 use crate::sql;
 use crate::store::Runners;
 
@@ -64,6 +65,12 @@ struct Requested {
 }
 
 impl Runners {
+    pub(super) fn admin_event_id(&self, now: Timestamp) -> Result<Uuid7> {
+        Ok(self.entropy().uuid7(now)?)
+    }
+}
+
+impl RunnerScope<'_> {
     /// Applies an operator action and appends the corresponding event.
     ///
     /// Repeating the current target is successful and writes nothing. A
@@ -82,8 +89,8 @@ impl Runners {
         now: Timestamp,
     ) -> Result<AdminState> {
         let (target, event) = transition(action).ok_or_else(|| rejected(DETAIL_ACTION_REQUIRED))?;
-        let event_id = self.admin_event_id(now)?;
-        let mut connection = self.pool().acquire().await?;
+        let event_id = self.runners.admin_event_id(now)?;
+        let mut connection = self.runners.pool().acquire().await?;
         let row = sqlx::query_as::<_, Transitioned>(sql::runner_admin::TRANSITION_RUNNER_STATUS)
             .bind(runner)
             .bind(state_wire(target))
@@ -95,6 +102,8 @@ impl Runners {
             .bind(sql::meta::TO_STATUS)
             .bind(sql::meta::ACTOR_ID)
             .bind(actor_id)
+            .bind(self.owner.tenant())
+            .bind(self.owner.platform())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_TRANSITION))?
@@ -113,11 +122,13 @@ impl Runners {
     /// Returns a typed refusal for a missing runner, a runner not yet revoked,
     /// a runner still holding an active lease, or an unavailable datastore.
     pub async fn delete_revoked(&self, runner: &Uuid7) -> Result<()> {
-        let mut connection = self.pool().acquire().await?;
+        let mut connection = self.runners.pool().acquire().await?;
         let row = sqlx::query_as::<_, Retired>(sql::runner_admin::DELETE_RUNNER_IF_IN_STATE)
             .bind(runner)
             .bind(state_wire(AdminState::Revoked))
             .bind(sql::LEASE_STATUS_ACTIVE)
+            .bind(self.owner.tenant())
+            .bind(self.owner.platform())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_DELETE))?
@@ -138,10 +149,12 @@ impl Runners {
     /// Returns the dedicated conflict for a revoked runner, not-found for a
     /// missing runner, or the canonical datastore failures.
     pub async fn request_selftest(&self, runner: &Uuid7) -> Result<SelftestRequested> {
-        let mut connection = self.pool().acquire().await?;
+        let mut connection = self.runners.pool().acquire().await?;
         let row = sqlx::query_as::<_, Requested>(sql::runner_admin::PATCH_RUNNER_SELFTEST_REQUEST)
             .bind(runner)
             .bind(state_wire(AdminState::Revoked))
+            .bind(self.owner.tenant())
+            .bind(self.owner.platform())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_SELFTEST))?
@@ -152,10 +165,6 @@ impl Runners {
             status,
             requested_at: requested_at.to_jiff(),
         })
-    }
-
-    pub(super) fn admin_event_id(&self, now: Timestamp) -> Result<Uuid7> {
-        Ok(self.entropy().uuid7(now)?)
     }
 }
 

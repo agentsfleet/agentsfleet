@@ -60,7 +60,11 @@ async fn test_ineligible_work_cannot_hide_eligible_fleets() {
     }
     let runner = fixtures
         .runners()
-        .register(&request, fixtures.enrolled_at())
+        .register(
+            &request,
+            "fixture:platform-operator",
+            fixtures.enrolled_at(),
+        )
         .await
         .expect("runner")
         .runner_id;
@@ -94,7 +98,11 @@ async fn test_one_notification_prioritizes_its_fleet_without_hiding_the_rest() {
     }
     let runner = fixtures
         .runners()
-        .register(&request, fixtures.enrolled_at())
+        .register(
+            &request,
+            "fixture:platform-operator",
+            fixtures.enrolled_at(),
+        )
         .await
         .expect("runner")
         .runner_id;
