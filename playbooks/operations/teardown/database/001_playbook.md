@@ -15,6 +15,7 @@ executable: false
 `teardown.sql` finds user schemas from the catalog and skips PostgreSQL system and `pscale%` schemas.
 Application roles survive, because dropping a schema does not drop roles.
 Each run targets `ENV=dev` or `ENV=prod`; the gate refuses `all`.
+
 🤠 Indy authorizes the target and runs the gate; 🦉 the agent runs the other steps and verifies.
 Never use a production teardown in a routine deployment.
 
@@ -37,7 +38,7 @@ Never use a production teardown in a routine deployment.
    ```
 
    The gate checks the credential, asks you to type `DEVELOPMENT` or `PRODUCTION`, runs `teardown.sql`, and verifies.
-   🤠 Indy runs it in a terminal and types the word. The gate reads standard input, so never pipe the word in.
+   🤠 Indy runs it in a terminal and types the word; the gate reads standard input, so never pipe the word in.
    It runs `psql` in `postgres:18-alpine` with `PGSSLROOTCERT=system` and passes the URL by environment name, never in process arguments.
 
    ```text
