@@ -26,6 +26,31 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Readiness:** The platform recovery refactor is committed at `976883d00`. See the [implemented architecture](../../architecture/runner_checkpoint_recovery.md) and the [verification ledger](../reviews/m247-review-ledger.md) for the focused proofs, remaining gaps and the matched benchmark. Tenant runners are parked.
 
+### Deployment configuration extension
+
+Indy accepted the next implementation step after requesting an inventory of
+non-secret environment variables and hard-coded operational settings. The
+[configuration proposal](../reviews/m247-review-ledger.md#proposed-agentsfleetd-deployment-configuration)
+records the agreed file format, deployment sequence and setting ownership.
+
+- [ ] Typed TOML settings load once through `--config` or `AGENTSFLEET_CONFIG_FILE`.
+  Explicit CLI inputs override TOML, followed by existing environment inputs
+  and defaults. Invalid files refuse startup with safe path and field errors.
+- [ ] Existing public endpoints, listener paths, database pool, stream memory,
+  wake queue, identity, logging, telemetry and checkpoint location settings
+  accept the application file. Secrets use the existing environment and vault.
+- [ ] One validated lease clock reaches grant, renewal, accounting, authoring,
+  affinity, status and liveness. Stored deadlines remain authoritative.
+- [ ] Recovery probe interval and concurrent claims accept bounded settings.
+- [ ] `runner.recovery.resume_from_checkpoint` gates an expired ordinary head
+  with a committed checkpoint on hinted, fallback and locked claim paths.
+  Flag-off preserves that head and its fence, while other fleets can progress.
+- [ ] Dev and prod Fly configurations deliver their application TOML alongside
+  staged credentials and the qualified image. Both start with resume disabled.
+- [ ] Validate defaults, precedence, unsafe timing, flag-off/on recovery,
+  connection budgets and deployment files. Update architecture and public docs
+  with the implemented behavior and measured evidence.
+
 A lease's expiry controls reclaim. Host liveness controls quarantine. These clocks are independent, so recovery can start before the failed host is cordoned.
 
 ```text
