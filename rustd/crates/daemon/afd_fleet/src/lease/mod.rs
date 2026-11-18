@@ -55,6 +55,7 @@ mod tool_trace;
 mod unanswered;
 pub mod usage;
 pub mod verdict;
+pub mod waiting;
 pub mod write_fence;
 
 pub use self::activity::Target;

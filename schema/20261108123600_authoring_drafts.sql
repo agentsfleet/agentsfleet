@@ -37,6 +37,10 @@ CREATE INDEX idx_drafts_workspace_id_user_id_updated_at_id
 
 CREATE INDEX idx_drafts_user_id ON authoring.drafts (user_id);
 
+-- The offer probe asks whether a connected tenant runner's tenant has setup
+-- work waiting (`afd_fleet/src/lease/sql/lease/select_waiting_work.sql`).
+CREATE INDEX idx_drafts_tenant_id ON authoring.drafts (tenant_id);
+
 CREATE INDEX idx_drafts_expires_at_id
     ON authoring.drafts (expires_at, id) WHERE expires_at IS NOT NULL;
 

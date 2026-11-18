@@ -31,6 +31,10 @@ CREATE INDEX idx_fleets_workspace_id_created_at_id
 
 CREATE INDEX idx_fleets_workspace_id_status_id ON fleet.fleets (workspace_id, status, id);
 
+-- The offer probe asks whether a connected tenant runner's tenant has work
+-- waiting (`afd_fleet/src/lease/sql/lease/select_waiting_work.sql`).
+CREATE INDEX idx_fleets_tenant_id ON fleet.fleets (tenant_id);
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.fleets TO api_runtime;
 
 CREATE INDEX idx_fleets_head_revision_id

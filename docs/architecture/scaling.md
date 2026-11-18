@@ -145,13 +145,15 @@ Runners keep one native session per host and send no idle lease requests. Each h
 The gateway reacts to wake notifications and increased capacity.
 
 A separate daemon recovery timer queries Postgres once every five seconds per replica (`OFFER_FALLBACK_TICK`), even when no work is waiting.
-The probe is one statement, `select_waiting_admission.sql` (`afd_gateway/src/scheduler/recovery/mod.rs`).
+The probe is one statement, `select_waiting_work.sql` (`afd_fleet/src/lease/waiting.rs`), run from `afd_gateway/src/scheduler/recovery/mod.rs`.
 For `R` replicas, that is `R / 5` discovery statements per second.
 
 This backstop repairs missed disposable notifications; it remains database polling.
 A probe that finds pending work starts an offer pass. Wake traffic never resets the probe's timer.
 
-A wake notification starts an offer pass at once. Admission and gate-answer commits publish on `af.wake.<shard>` (`afd_admission/src/wake.rs`, `afd_approval/src/inbox/resolve/mod.rs`).
+A wake notification starts an offer pass at once.
+Before the pass, the same statement names the connected tenant runners whose tenant has nothing waiting, and the pass skips them: a tenant runner takes only its tenant's work, so offering it costs a claim scan that cannot lease.
+A recovery pass skips no one. Admission and gate-answer commits publish on `af.wake.<shard>` (`afd_admission/src/wake.rs`, `afd_approval/src/inbox/resolve/mod.rs`).
 
 The pass walks the ready streams that hold credits, those holding a woken fleet first. It claims from Postgres for each stream until a claim comes back empty or the pass spends its budget (`afd_gateway/src/scheduler/mod.rs`).
 

@@ -1,17 +1,22 @@
 //! Real session request queues expose pass order and bounds without a database.
 
-use super::{notifications, pass};
+use super::{Probe, notifications, pass};
 use crate::{
     registry::{Registration, Registry},
     session::SessionHandle,
 };
 use af_core::id::Uuid7;
 use afd_bus::wake::Wake;
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 type TestResult<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+/// A probe that finds work and names no runner idle: every session is asked.
+fn everyone() -> Probe {
+    Probe::Waiting(HashSet::new())
+}
 
 struct SessionFixture {
     handle: Arc<SessionHandle>,
@@ -55,9 +60,9 @@ async fn a_wake_with_nothing_pending_asks_no_session_to_claim() -> TestResult {
         let stop = stop.clone();
         let probes = Arc::clone(&probes);
         async move {
-            notifications(&registry, &wake, stop, || {
+            notifications(&registry, &wake, stop, |_| {
                 probes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                async { Ok(false) }
+                async { Ok(Probe::Nothing) }
             })
             .await
         }
@@ -94,7 +99,7 @@ async fn a_failed_probe_still_runs_the_pass() -> TestResult {
         let wake = wake.clone();
         let stop = stop.clone();
         async move {
-            notifications(&registry, &wake, stop, || async {
+            notifications(&registry, &wake, stop, |_| async {
                 Err(crate::Error::from(sqlx::Error::RowNotFound))
             })
             .await
@@ -123,7 +128,7 @@ async fn rings_coalesce_into_one_claim_pass() -> TestResult {
         let registry = Arc::clone(&registry);
         let wake = wake.clone();
         let stop = stop.clone();
-        async move { notifications(&registry, &wake, stop, || async { Ok(true) }).await }
+        async move { notifications(&registry, &wake, stop, |_| async { Ok(everyone()) }).await }
     });
     tokio::task::yield_now().await;
     wake.ring(session.handle.runner.clone());
@@ -306,10 +311,10 @@ async fn candidates_prefer_locality_then_the_longest_waiting_host() -> TestResul
         .lock()
         .held
         .push(local.handle.runner.clone());
-    let sessions = registry.candidates(&std::collections::HashSet::from([local
-        .handle
-        .runner
-        .clone()]));
+    let sessions = registry.candidates(
+        &HashSet::from([local.handle.runner.clone()]),
+        &HashSet::new(),
+    );
     let order: Vec<_> = sessions
         .into_iter()
         .map(|session| session.runner.clone())
@@ -323,7 +328,7 @@ async fn candidates_prefer_locality_then_the_longest_waiting_host() -> TestResul
         ]
     );
     first.handle.request_offer();
-    let oldest = registry.candidates(&std::collections::HashSet::new());
+    let oldest = registry.candidates(&HashSet::new(), &HashSet::new());
     assert_eq!(
         oldest.first().map(|session| &session.runner),
         Some(&first.handle.runner)
@@ -342,11 +347,172 @@ async fn draining_or_superseded_sessions_are_not_scheduled() -> TestResult {
     let _eligible = eligible.register(&registry)?;
     draining.handle.drain.cancel();
     superseded.handle.supersede();
-    let sessions = registry.candidates(&std::collections::HashSet::new());
+    let sessions = registry.candidates(&HashSet::new(), &HashSet::new());
     assert_eq!(sessions.len(), 1);
     assert_eq!(
         sessions.first().map(|session| &session.runner),
         Some(&eligible.handle.runner)
     );
+    Ok(())
+}
+
+// Value: protects=a wake costs a tenant runner with nothing to take no claim;
+// fails_when=the pass offers a runner the probe named idle, or the probe is
+// not asked about every connected runner; why_new=the idle skip; seam=the
+// injected probe.
+#[tokio::test(start_paused = true)]
+async fn a_pass_skips_the_runner_the_probe_names_idle() -> TestResult {
+    let registry = Arc::new(Registry::default());
+    let mut busy = SessionFixture::new(1)?;
+    let mut idle = SessionFixture::new(2)?;
+    let _busy = busy.register(&registry)?;
+    let _idle = idle.register(&registry)?;
+    let wake = Wake::default();
+    let stop = CancellationToken::new();
+    let named = idle.handle.runner.clone();
+    let asked = Arc::new(parking_lot::Mutex::new(Vec::<Vec<Uuid7>>::new()));
+    let job = tokio::spawn({
+        let registry = Arc::clone(&registry);
+        let wake = wake.clone();
+        let stop = stop.clone();
+        let asked = Arc::clone(&asked);
+        async move {
+            notifications(&registry, &wake, stop, |runners| {
+                asked.lock().push(runners);
+                let named = named.clone();
+                async move { Ok(Probe::Waiting(HashSet::from([named]))) }
+            })
+            .await
+        }
+    });
+    tokio::task::yield_now().await;
+    wake.ring(busy.handle.runner.clone());
+    busy.request()
+        .await?
+        .send(false)
+        .map_err(|unsent| format!("pass lost its empty answer {unsent}"))?;
+    let reached_idle = tokio::select! {
+        request = idle.requests.recv() => request.is_some(),
+        () = tokio::time::sleep(Duration::from_secs(1)) => false,
+    };
+    assert!(
+        !reached_idle,
+        "a runner the probe named idle is never asked"
+    );
+    let probed: Vec<HashSet<Uuid7>> = asked
+        .lock()
+        .iter()
+        .map(|runners| runners.iter().cloned().collect())
+        .collect();
+    assert_eq!(
+        probed,
+        [HashSet::from([
+            busy.handle.runner.clone(),
+            idle.handle.runner.clone()
+        ])],
+        "one probe per wake names every connected runner"
+    );
+    stop.cancel();
+    job.await??;
+    Ok(())
+}
+
+// Value: protects=the idle skip saves the scans it exists to save and strands
+// no work; fails_when=a wake over fifty tenant runners asks more than the one
+// with work, or a recovery pass skips anyone; why_new=the idle skip;
+// seam=the injected probe and the recovery generation.
+#[tokio::test(start_paused = true)]
+async fn a_wake_asks_the_one_runner_with_work_and_a_recovery_pass_asks_all_fifty() -> TestResult {
+    let registry = Arc::new(Registry::default());
+    let mut sessions = (1..=50)
+        .map(SessionFixture::new)
+        .collect::<TestResult<Vec<_>>>()?;
+    let _registrations = sessions
+        .iter()
+        .map(|session| session.register(&registry))
+        .collect::<crate::Result<Vec<_>>>()?;
+    let working = sessions
+        .get(6)
+        .ok_or("fifty sessions")?
+        .handle
+        .runner
+        .clone();
+    let idle: HashSet<Uuid7> = sessions
+        .iter()
+        .map(|session| session.handle.runner.clone())
+        .filter(|runner| *runner != working)
+        .collect();
+    let probes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let wake = Wake::default();
+    let stop = CancellationToken::new();
+    let job = tokio::spawn({
+        let registry = Arc::clone(&registry);
+        let wake = wake.clone();
+        let stop = stop.clone();
+        let probes = Arc::clone(&probes);
+        async move {
+            notifications(&registry, &wake, stop, |_| {
+                probes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let idle = idle.clone();
+                async move { Ok(Probe::Waiting(idle)) }
+            })
+            .await
+        }
+    });
+    tokio::task::yield_now().await;
+
+    wake.ring(working.clone());
+    sessions
+        .get_mut(6)
+        .ok_or("fifty sessions")?
+        .request()
+        .await?
+        .send(false)
+        .map_err(|unsent| format!("pass lost its empty answer {unsent}"))?;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let asked = sessions
+        .iter_mut()
+        .map(|session| session.requests.try_recv().is_ok())
+        .filter(|asked| *asked)
+        .count();
+    assert_eq!(asked, 0, "the 49 idle runners are asked nothing");
+    assert_eq!(probes.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    wake.recheck();
+    let answered = tokio::time::timeout(
+        Duration::from_secs(5),
+        futures_util::future::try_join_all(sessions.iter_mut().map(|session| async move {
+            let answer = session.request().await?;
+            answer
+                .send(false)
+                .map_err(|unsent| format!("recovery pass lost its answer {unsent}"))?;
+            TestResult::Ok(())
+        })),
+    )
+    .await??;
+    assert_eq!(answered.len(), 50, "a recovery pass asks every session");
+    assert_eq!(
+        probes.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "and does not probe"
+    );
+    stop.cancel();
+    job.await??;
+    Ok(())
+}
+
+#[tokio::test(start_paused = true)]
+async fn candidates_leave_out_the_idle_runners() -> TestResult {
+    let registry = Arc::new(Registry::default());
+    let kept = SessionFixture::new(1)?;
+    let idle = SessionFixture::new(2)?;
+    let _kept = kept.register(&registry)?;
+    let _idle = idle.register(&registry)?;
+    let sessions = registry.candidates(
+        &HashSet::new(),
+        &HashSet::from([idle.handle.runner.clone()]),
+    );
+    let order: Vec<_> = sessions.iter().map(|session| &session.runner).collect();
+    assert_eq!(order, [&kept.handle.runner]);
     Ok(())
 }

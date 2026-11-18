@@ -3,6 +3,9 @@
 /// Eligible fleets whose oldest admission is unparked or has no live approval blocker.
 pub const SELECT_CANDIDATES: &str = include_str!("lease/select_ledger_candidates.sql");
 
+/// Whether any work waits, and which probed tenant runners have none to take.
+pub const SELECT_WAITING_WORK: &str = include_str!("lease/select_waiting_work.sql");
+
 /// Claim the slot and its oldest admission, and open the delivery.
 ///
 /// One statement stamps the admission, expires any prior lease, reads the

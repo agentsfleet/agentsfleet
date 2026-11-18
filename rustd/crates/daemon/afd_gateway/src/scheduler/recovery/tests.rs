@@ -1,6 +1,7 @@
 //! The replica clock runs independently of host count and notification traffic.
 
 use super::probe_ticks;
+use crate::scheduler::Probe;
 use crate::{
     registry::{Registration, Registry},
     scheduler::notifications,
@@ -53,7 +54,12 @@ async fn the_fallback_tick_probes_once_per_replica() -> TestResult {
     let scheduler = tokio::spawn({
         let registry = Arc::clone(&fixture.registry);
         let stop = stop.clone();
-        async move { notifications(&registry, &wake, stop, || async { Ok(true) }).await }
+        async move {
+            notifications(&registry, &wake, stop, |_| async {
+                Ok(Probe::Waiting(std::collections::HashSet::new()))
+            })
+            .await
+        }
     });
     tokio::task::yield_now().await;
     for expected in 1..=3 {

@@ -32,12 +32,22 @@ fn dropping_an_old_registration_cannot_remove_its_replacement() -> TestResult {
     assert!(a.is_superseded());
     assert!(!b.is_superseded());
     assert_eq!(
-        registry.candidates(&std::collections::HashSet::new()).len(),
+        registry
+            .candidates(
+                &std::collections::HashSet::new(),
+                &std::collections::HashSet::new()
+            )
+            .len(),
         1
     );
     drop(second);
     assert_eq!(
-        registry.candidates(&std::collections::HashSet::new()).len(),
+        registry
+            .candidates(
+                &std::collections::HashSet::new(),
+                &std::collections::HashSet::new()
+            )
+            .len(),
         0
     );
     Ok(())
@@ -71,7 +81,10 @@ async fn a_delayed_old_owner_cannot_register_over_the_new_owner() -> TestResult 
     let refused = registry.register_current(&delayed, &a, &database).await;
     assert!(refused.is_err_and(|error| error.code() == af_core::error_code::RUN_STREAM_SUPERSEDED));
     assert!(!current.is_superseded());
-    let candidates = registry.candidates(&std::collections::HashSet::new());
+    let candidates = registry.candidates(
+        &std::collections::HashSet::new(),
+        &std::collections::HashSet::new(),
+    );
     assert_eq!(candidates.len(), 1);
     assert_eq!(
         candidates

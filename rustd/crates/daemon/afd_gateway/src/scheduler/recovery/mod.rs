@@ -1,16 +1,19 @@
 //! This is the spec's backstop, not runner polling: at most one query per replica per tick.
 
 use crate::{Gateway, Operation, Result, error::within};
-use af_core::timing::{OFFER_FALLBACK_TICK, STREAM_ANSWER_TIMEOUT};
-use afd_authoring::types::{DraftState, MessageState};
+use af_core::{
+    id::Uuid7,
+    timing::{OFFER_FALLBACK_TICK, STREAM_ANSWER_TIMEOUT},
+};
 use afd_bus::wake::Wake;
+use afd_fleet::lease::waiting::{Waiting, waiting};
 use tokio::time::{Instant, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
 /// Notifications never reset this timer. A hot fleet cannot postpone lost-work recovery.
 pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()> {
-    probe_ticks(&gateway.inner.dependencies.wake, &stop, || {
-        pending_work(&gateway, &stop)
+    probe_ticks(&gateway.inner.dependencies.wake, &stop, || async {
+        Ok(waiting_work(&gateway, &stop, &[]).await?.pending())
     })
     .await;
     Ok(())
@@ -39,21 +42,20 @@ async fn probe_ticks<F: Future<Output = Result<bool>>>(
     }
 }
 
-/// The query only asks whether a pass may help; it does not acquire leases or reimplement admission.
-pub(super) async fn pending_work(gateway: &Gateway, stop: &CancellationToken) -> Result<bool> {
+/// The query only asks whether a pass may help, and which of `runners` it
+/// cannot help; it does not acquire leases or reimplement admission.
+pub(super) async fn waiting_work(
+    gateway: &Gateway,
+    stop: &CancellationToken,
+    runners: &[Uuid7],
+) -> Result<Waiting> {
     within(
         stop,
         Instant::now() + STREAM_ANSWER_TIMEOUT,
         Operation::Recheck,
         async {
-            Ok(sqlx::query_scalar::<_, bool>(include_str!(
-                "../../sql/select_waiting_admission.sql"
-            ))
-            .bind(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE)
-            .bind(DraftState::Editing.as_str())
-            .bind(MessageState::Queued.as_str())
-            .fetch_one(&mut *gateway.inner.dependencies.database.acquire().await?)
-            .await?)
+            let mut connection = gateway.inner.dependencies.database.acquire().await?;
+            Ok(waiting(&mut connection, runners).await?)
         },
     )
     .await
