@@ -211,6 +211,9 @@ run_mmdebstrap() {
 assemble_image() {
   SOURCE_DATE_EPOCH="$epoch" mkfs.erofs "${erofs[@]}" -T"$epoch" -U"$uuid" --all-root --quiet \
     --tar=f "$work/toolbox.erofs" "$work/root.tar"
+  # mkfs.erofs can exit 0 over a corrupt image (erofs-utils 1.9 on this
+  # manifest), which would surface only when a host mounts it; refuse it here.
+  fsck.erofs "$work/toolbox.erofs" >&2 || { echo "build.sh: fsck.erofs rejects the image mkfs.erofs wrote" >&2; exit 1; }
   digest="$(file_sha256 "$work/toolbox.erofs")"
   length="$(stat -c %s "$work/toolbox.erofs")"
   features="$(dump.erofs -s "$work/toolbox.erofs" | sed -n 's/^Filesystem features:[[:space:]]*//p')"

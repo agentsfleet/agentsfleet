@@ -41,6 +41,7 @@ async fn test_kind_preference_survives_a_new_store_handle() {
         &mut tx,
         &fixture.runner,
         afd_runner::capacity::Claimant::Authoring,
+        None,
     )
     .await
     .expect("fresh guard")
@@ -64,6 +65,7 @@ async fn place_authoring(fixture: &Fixture, ticket: Ticket) {
         &mut tx,
         &fixture.runner,
         afd_runner::capacity::Claimant::Authoring,
+        None,
     )
     .await
     .expect("host guard")
@@ -99,6 +101,7 @@ async fn test_failed_placement_does_not_advance_preference() {
         &mut tx,
         &fixture.runner,
         afd_runner::capacity::Claimant::Authoring,
+        None,
     )
     .await
     .expect("guard")
@@ -114,6 +117,7 @@ async fn test_failed_placement_does_not_advance_preference() {
         &mut tx,
         &fixture.runner,
         afd_runner::capacity::Claimant::Authoring,
+        None,
     )
     .await
     .expect("retry guard")

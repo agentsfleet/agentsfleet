@@ -1,5 +1,5 @@
--- One physical call's bounded private evidence and answer. Keeping these in a
--- child permits privacy deletion without erasing paid-call attribution/usage.
+-- A call's private request and answer, kept in a child so privacy deletion leaves the paid
+-- call's attribution and usage intact.
 CREATE TABLE runner.decision_payloads (
     decision_call_id UUID PRIMARY KEY,
     fleet_id UUID NOT NULL,
@@ -21,7 +21,6 @@ CREATE TABLE runner.decision_payloads (
         REFERENCES fleet.tasks (id, fleet_id, workspace_id) ON DELETE CASCADE
 );
 
--- Both owner-deletion cascades must find their payloads without a table scan.
 CREATE INDEX idx_decision_payloads_fleet ON runner.decision_payloads (fleet_id);
 
 CREATE INDEX idx_decision_payloads_task ON runner.decision_payloads (task_id)

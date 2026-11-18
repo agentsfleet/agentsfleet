@@ -288,7 +288,7 @@ pub(in crate::lane::lease) async fn runner_identity(
         // still match and a runner missing this one never will.
         labels: vec![tag.into()],
     };
-    let enrolled = runners.register(&request, now).await?;
+    let enrolled = runners.register(&request, "bench:lease-seed", now).await?;
     let digest = enrolled.token.digest().clone();
     let runner = enrolled.runner_id;
     // The first beat a real host sends before it polls. A host that has never

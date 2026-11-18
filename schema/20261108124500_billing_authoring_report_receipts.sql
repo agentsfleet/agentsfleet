@@ -1,6 +1,5 @@
--- Acknowledges an interim accounting report without settling, so a retried report
--- returns the first acknowledgement. A table, not settlement rows, because an
--- attempt reports many times and settles once. Append-only (rule 9).
+-- Acknowledges an interim accounting report without settling, so a retried report gets the
+-- first acknowledgement. Append-only.
 CREATE TABLE billing.authoring_report_receipts (
     id                 UUID PRIMARY KEY,
     CONSTRAINT ck_authoring_report_receipts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),

@@ -10,7 +10,7 @@ use axum::routing::{MethodRouter, get};
 
 use axum::extract::DefaultBodyLimit;
 
-use crate::route::{Route, RunnerOpsRoute};
+use crate::route::Route;
 
 use super::{Serving, probes};
 
@@ -37,9 +37,6 @@ pub(super) fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D
         }),
         Route::Tenant(verb) => afd_api_tenant::tenant_handler_for::<D>(verb),
         Route::Runner(verb) => Some(afd_api_runner::handler_for::<D>(verb)),
-        Route::RunnerOps(RunnerOpsRoute::Register) => {
-            Some(afd_api_runner::enrolment_handler::<D>())
-        }
         Route::RunnerOps(verb) => afd_api_operator::runner_ops_handler_for::<D>(verb),
         Route::Workspace(verb) => afd_api_tenant::workspace_handler_for::<D>(verb),
         Route::Fleet(verb) => afd_api_tenant::fleet_handler_for::<D>(verb),

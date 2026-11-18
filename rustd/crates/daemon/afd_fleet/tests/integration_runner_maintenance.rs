@@ -25,13 +25,19 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            "fixture:platform-operator",
             fixtures.enrolled_at(),
         )
         .await
         .expect("the runner enrols");
 
     let (requested, asked) = fixtures
-        .clock_around(fixtures.runners().request_selftest(&enrolled.runner_id))
+        .clock_around(
+            fixtures
+                .runners()
+                .platform()
+                .request_selftest(&enrolled.runner_id),
+        )
         .await;
     let requested = requested.expect("a live runner records the ask");
     assert!(
@@ -48,6 +54,7 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
 
     fixtures
         .runners()
+        .platform()
         .transition(
             &enrolled.runner_id,
             RunnerAdminAction::Revoke,
@@ -58,6 +65,7 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
         .expect("the runner is revoked");
     let revoked = fixtures
         .runners()
+        .platform()
         .request_selftest(&enrolled.runner_id)
         .await
         .expect_err("a revoked runner cannot collect an ask");
@@ -67,6 +75,7 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
         .expect("the missing fixture is a UUIDv7");
     let absent = fixtures
         .runners()
+        .platform()
         .request_selftest(&missing)
         .await
         .expect_err("a missing runner stays distinct from revocation");
@@ -83,6 +92,7 @@ async fn test_runner_rotation_takeover() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            "fixture:platform-operator",
             fixtures.enrolled_at(),
         )
         .await
@@ -99,6 +109,7 @@ async fn test_runner_rotation_takeover() {
 
     let rotated = fixtures
         .runners()
+        .platform()
         .rotate_token(
             &enrolled.runner_id,
             ACTOR,

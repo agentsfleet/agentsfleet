@@ -44,14 +44,10 @@ const EVENT_DELETED: &str = "fleet_schedule_deleted";
     responses(
         (status = 200, description = super::schedule::RECONCILED, body = afd_api_wire::schedule::View<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn update<D: Services>(
@@ -116,13 +112,9 @@ pub(crate) async fn update<D: Services>(
         (status = 200, description = super::schedule::RECONCILED, body = afd_api_wire::schedule::View<'_>),
         (status = 204, description = afd_http::openapi::NO_CONTENT),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn remove<D: Services>(

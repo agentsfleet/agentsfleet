@@ -24,6 +24,7 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            "fixture:platform-operator",
             fixtures.enrolled_at(),
         )
         .await
@@ -31,6 +32,7 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
     overwrite_status(&fixtures, &enrolled.runner_id).await;
     let malformed = fixtures
         .runners()
+        .platform()
         .runner_detail(&enrolled.runner_id)
         .await
         .expect_err("an unknown stored state fails the whole detail");
@@ -92,6 +94,7 @@ async fn assert_missing_runner_is_not_found(fixtures: &Fixtures) {
         .expect("the missing identifier is canonical");
     let detail_error = fixtures
         .runners()
+        .platform()
         .runner_detail(&missing)
         .await
         .expect_err("a missing runner has no detail");

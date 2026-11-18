@@ -114,6 +114,7 @@ impl LeaseService {
             .bind(runner_id, self.leases.clock())
             .bind(digest)
             .bind(connection)
+            .bind(self.leases.connected())
             .fetch_all(&mut *self.leases.pool().acquire().await?)
             .await
             .map_err(query(CONTEXT_RENEW))?;

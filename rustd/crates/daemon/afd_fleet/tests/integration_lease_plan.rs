@@ -34,8 +34,9 @@ async fn run(connection: &mut PgConnection, statement: &str) {
         .unwrap_or_else(|failure| panic!("{statement}: {failure}"));
 }
 
-// Value: protects=one head per fleet as backlog grows; fails_when=the probe reads
-// the backlog; why_new=the empty-ledger precheck adds a separate plan branch;
+// Value: protects=one head per fleet as backlog grows; fails_when=a per-fleet read
+// scans the backlog; why_new=the empty-ledger precheck and the per-fleet work check
+// add plan branches;
 // seam=none; no_claim=constant total discovery cost with many active fleets.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -55,32 +56,49 @@ async fn backlog_growth_does_not_expand_each_fleets_head_probe() {
             .bind(&fleet).bind(&workspace).bind(&ids).execute(&mut *tx).await.expect("grow backlog");
         let plan = head_plan(&mut tx, &runner).await;
         let scans = relation_scans(&plan, "admissions");
-        assert_eq!(scans.len(), 2, "empty-ledger check and fleet head: {plan}");
-        let scan = scans
+        assert_eq!(
+            scans.len(),
+            3,
+            "empty-ledger check, per-fleet work check and fleet head: {plan}"
+        );
+        let fleet_scoped: Vec<_> = scans
             .iter()
-            .find(|scan| {
+            .filter(|scan| {
                 scan["Index Cond"]
                     .as_str()
                     .is_some_and(|s| s.contains("fleet_id"))
             })
-            .expect("indexed fleet head");
-        assert_eq!(scan["Index Name"], "idx_admissions_unsettled", "{plan}");
+            .collect();
         assert_eq!(
-            scan["Actual Rows"].as_f64(),
-            Some(1.0),
-            "backlog {size}: {plan}"
-        );
-        assert_eq!(
-            scan["Actual Loops"].as_f64(),
-            Some(1.0),
-            "only the placeable fleet: {plan}"
+            fleet_scoped.len(),
+            2,
+            "the work check and the head are both per fleet: {plan}"
         );
         assert!(
-            scan["Index Cond"]
-                .as_str()
-                .is_some_and(|s| s.contains("fleet_id")),
-            "{plan}"
+            fleet_scoped
+                .iter()
+                .any(|scan| scan["Index Name"] == "idx_admissions_unsettled"),
+            "the fleet head reads in sequence order: {plan}"
         );
+        for scan in fleet_scoped {
+            // Any partial index of unsettled rows that leads on the fleet serves the
+            // work check; the head's order needs `idx_admissions_unsettled`.
+            assert!(
+                scan["Index Name"]
+                    .as_str()
+                    .is_some_and(|name| name.starts_with("idx_admissions_")),
+                "{plan}"
+            );
+            assert!(
+                scan["Actual Rows"].as_f64().is_some_and(|rows| rows <= 1.0),
+                "backlog {size}: a per-fleet read stops at one row: {plan}"
+            );
+            assert_eq!(
+                scan["Actual Loops"].as_f64(),
+                Some(1.0),
+                "only the placeable fleet: {plan}"
+            );
+        }
         previous = size;
     }
     tx.rollback().await.expect("remove backlog");
@@ -107,6 +125,7 @@ async fn head_plan(connection: &mut PgConnection, runner: &Uuid7) -> serde_json:
     .bind(Option::<jiff_sqlx::Timestamp>::None)
     .bind(Option::<Uuid7>::None)
     .bind(true)
+    .bind(afd_credential::provider::PLATFORM_MODEL_REF)
     .fetch_one(connection)
     .await
     .expect("candidate explain")

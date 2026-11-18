@@ -9,7 +9,8 @@ SELECT r.id AS id, r.host_id, r.sandbox_tier, r.status, r.cordon_reason, r.cordo
        r.capability_report::text AS capability_report, r.degraded_reason,
        r.sandbox_config::text AS sandbox_config,
        r.durable_tasks_enabled,
-       r.decision_platform_model_id AS decision_model_id
+       r.decision_platform_model_id AS decision_model_id, r.tenant_id
 FROM runner.runners r
+WHERE ($4::boolean OR r.tenant_id = $3::uuid)
 ORDER BY r.created_at DESC, r.id DESC
 LIMIT $2::bigint

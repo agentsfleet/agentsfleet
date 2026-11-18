@@ -14,10 +14,8 @@ CREATE INDEX idx_task_completion_fanout_due ON fleet.task_completion_fanout (nex
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.task_completion_fanout TO api_runtime;
 
--- Preserve parent-completion -> child-fanout lock order during bounded GC.
--- api_runtime can delete receipts but cannot UPDATE this immutable table, so
--- it cannot take the required explicit row locks without this narrow helper.
--- Canonical runtime limits: task::waits::cleanup::{COMPLETION_RETENTION, COMPLETION_BATCH}.
+-- Locks parents before their fanout rows during cleanup. api_runtime cannot UPDATE the immutable
+-- completions, so it cannot take these row locks without this narrow helper.
 CREATE FUNCTION fleet.lock_expired_task_completions(retention INTERVAL, batch_limit BIGINT)
 RETURNS TABLE (id UUID)
 LANGUAGE sql VOLATILE SECURITY DEFINER

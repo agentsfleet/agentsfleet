@@ -152,6 +152,8 @@ Severity is P0, P1 or P2, and the disposition is `FIXED` or `DEFERRED` with the 
 
 A missing, timed-out or unavailable reviewer is an incomplete review. Record its reason; never convert a launched reviewer, usage-limit response or parent-written summary into a clean finding count.
 
+Name gstack review and the independent standards review separately, with each reviewed revision, outcome, findings and limits. A partial review is not done; another review cannot silently substitute for it.
+
 ### PR-MAKE — The Make section lists each command actually run, with its exit status and decisive output line.
 - **Applies to:** every `## Make` section
 - **Checked by:** review

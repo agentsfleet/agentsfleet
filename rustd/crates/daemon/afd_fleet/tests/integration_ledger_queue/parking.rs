@@ -15,10 +15,10 @@ const BLOCKED: &str = "SELECT EXISTS (SELECT 1 FROM pg_stat_activity
 const GATE: &str = "INSERT INTO fleet.approval_gates
     (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type,
      proposed_action, evidence, blast_radius, expires_at, status, detail,
-     created_at, updated_at, event_id, spend_count, spend_ceiling)
+     created_at, updated_at, event_id)
     VALUES ($1, $2, $3, $1, 'git', 'push', 'repository_write',
       'open a pull request', '{}'::jsonb, 'one repository', now()+interval '1 hour',
-      $4, '', now(), now(), NULL, 0, 32)";
+      $4, '', now(), now(), NULL)";
 
 // Value: protects=answer-first park ordering; fails_when=park uses a stale gate;
 // why_new=the resolver must now wait for an admission lock, so hold the earlier slot;

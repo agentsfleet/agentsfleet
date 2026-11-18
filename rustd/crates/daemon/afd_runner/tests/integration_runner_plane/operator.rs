@@ -12,7 +12,12 @@ use serde_json::Value;
 
 use super::{Fixture, enrolment};
 use crate::rows::{self, AttemptRow};
+use af_crypto::entropy::Entropy;
+use afd_db::Migrator;
+use afd_db::config::DbRole;
 use afd_db::test_util::mint_id;
+use afd_db::test_util::{TenantSeed, TestDatabase};
+use afd_runner::Runners;
 
 /// Who the operator transitions are recorded as.
 const ACTOR: &str = "user_operator";
@@ -36,6 +41,7 @@ async fn test_a_drain_records_its_status_and_a_self_test_ask() {
     let runners = &fixture.runners;
 
     let draining = runners
+        .platform()
         .transition(&runner, RunnerAdminAction::Drain, ACTOR, clock::now())
         .await
         .expect("a drain applies");
@@ -54,11 +60,13 @@ async fn test_a_drain_records_its_status_and_a_self_test_ask() {
     assert_eq!(drained.metadata.get("actor_id"), Some(&Value::from(ACTOR)));
 
     let asked = runners
+        .platform()
         .request_selftest(&runner)
         .await
         .expect("a self-test is asked of a live runner");
     assert_eq!(asked.status(), AdminState::Draining);
     let detail = runners
+        .platform()
         .runner_detail(&runner)
         .await
         .expect("the detail reads");
@@ -75,21 +83,25 @@ async fn test_revoke_is_terminal_until_the_record_retires() {
     let runners = &fixture.runners;
 
     runners
+        .platform()
         .transition(&runner, RunnerAdminAction::Revoke, ACTOR, clock::now())
         .await
         .expect("a revoke applies");
     let refused = runners
+        .platform()
         .request_selftest(&runner)
         .await
         .expect_err("a revoked runner is asked nothing");
     assert_eq!(refused.detail(), DETAIL_SELFTEST_REFUSED);
     let reopened = runners
+        .platform()
         .transition(&runner, RunnerAdminAction::Cordon, ACTOR, clock::now())
         .await
         .expect_err("revoked is terminal");
     assert!(reopened.is_rejected(), "{reopened}");
 
     runners
+        .platform()
         .delete_revoked(&runner)
         .await
         .expect("a revoked runner's record retires");
@@ -110,6 +122,7 @@ async fn test_the_operator_reads_derive_liveness_and_page_by_creation() {
     let runners = &fixture.runners;
 
     let detail = runners
+        .platform()
         .runner_detail(&newer)
         .await
         .expect("the detail reads");
@@ -131,6 +144,7 @@ async fn test_the_operator_reads_derive_liveness_and_page_by_creation() {
         .await
         .expect("the older runner beats");
     let beaten = runners
+        .platform()
         .runner_detail(&older)
         .await
         .expect("the detail reads");
@@ -138,6 +152,7 @@ async fn test_the_operator_reads_derive_liveness_and_page_by_creation() {
 
     let boundary = KeysetCursor::new(item.created_at(), item.id().clone());
     let page = runners
+        .platform()
         .list_runners(Some(&boundary), 1)
         .await
         .expect("a page after the cursor reads");
@@ -168,6 +183,7 @@ async fn test_an_edit_stores_its_binds_in_the_sandbox_configuration() {
 
     let edited = fixture
         .runners
+        .platform()
         .edit(
             &runner,
             RunnerEdit {
@@ -194,6 +210,7 @@ async fn test_an_edit_stores_its_binds_in_the_sandbox_configuration() {
     );
     let detail = fixture
         .runners
+        .platform()
         .runner_detail(&runner)
         .await
         .expect("the detail reads");
@@ -222,11 +239,13 @@ async fn test_retiring_a_runner_keeps_the_attempts_it_ran_and_their_reservations
 
     fixture
         .runners
+        .platform()
         .transition(&runner, RunnerAdminAction::Revoke, ACTOR, clock::now())
         .await
         .expect("a revoke applies");
     fixture
         .runners
+        .platform()
         .delete_revoked(&runner)
         .await
         .expect("a runner that ran an attempt still retires");
@@ -256,6 +275,7 @@ async fn test_an_edit_carrying_nothing_is_refused_before_any_write() {
 
     let refused = fixture
         .runners
+        .platform()
         .edit(
             &runner,
             RunnerEdit {
@@ -287,6 +307,7 @@ async fn test_a_rotation_lands_for_a_live_runner_and_is_refused_once_revoked() {
 
     fixture
         .runners
+        .platform()
         .rotate_token(&runner, ACTOR, clock::now())
         .await
         .expect("a live runner rotates");
@@ -300,11 +321,13 @@ async fn test_a_rotation_lands_for_a_live_runner_and_is_refused_once_revoked() {
 
     fixture
         .runners
+        .platform()
         .transition(&runner, RunnerAdminAction::Revoke, ACTOR, clock::now())
         .await
         .expect("a revoke applies");
     let refused = fixture
         .runners
+        .platform()
         .rotate_token(&runner, ACTOR, clock::now())
         .await
         .expect_err("a revoked runner holds no credential to rotate");
@@ -320,5 +343,153 @@ async fn test_a_rotation_lands_for_a_live_runner_and_is_refused_once_revoked() {
         "the refused rotation appended nothing after the revoke"
     );
     drop(capture);
+    fixture.cleanup().await;
+}
+
+// Value: protects=a runner page never reports a total that disagrees with the
+// rows it lists; fails_when=the total and the rows read two moments, so a
+// runner registered between them is listed but not counted; why_new=tenant
+// runners register while their owners read; seam=a lock that parks the page
+// between its two reads, on a database of this test's own.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_runner_page_and_its_total_read_one_moment_while_runners_register() {
+    let lane = TestDatabase::create().await;
+    let owner = lane.open(DbRole::Migrator, &[]).await;
+    Migrator::new()
+        .run(&owner)
+        .await
+        .expect("the private database migrates");
+    let tenant = mint_id();
+    TenantSeed::new(&tenant)
+        .insert(&mut *owner.acquire().await.expect("an owner connection"))
+        .await
+        .expect("the tenant seeds");
+    let database = lane.open(DbRole::Api, &[]).await;
+    let runners = Runners::new(database.clone(), Entropy::new());
+    let register = || {
+        let (runners, tenant) = (&runners, &tenant);
+        async move {
+            let (operation, request) = (mint_id(), enrolment());
+            runners
+                .register_tenant(
+                    tenant,
+                    &operation,
+                    &request,
+                    "user_tenant_owner",
+                    clock::now(),
+                )
+                .await
+        }
+    };
+    register().await.expect("the first runner registers");
+
+    // The page's rows join `runner.leases` and its total does not, so holding
+    // that table parks the page after its total and before its rows.
+    let mut holder = owner.acquire().await.expect("a holding connection");
+    let mut hold = sqlx::Acquire::begin(&mut *holder).await.expect("a hold");
+    sqlx::query("LOCK TABLE runner.leases IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *hold)
+        .await
+        .expect("the lock");
+    let page = tokio::spawn({
+        let runners = runners.clone();
+        let tenant = tenant.clone();
+        async move { runners.tenant(&tenant).list_runners(None, 200).await }
+    });
+    let waiting = "SELECT count(*) FROM pg_locks \
+                   WHERE NOT granted AND relation = 'runner.leases'::regclass";
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let parked: i64 = sqlx::query_scalar(waiting)
+                .fetch_one(&mut *owner.acquire().await.expect("a probe connection"))
+                .await
+                .expect("pg_locks reads");
+            if parked > 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the page parks on the held table");
+
+    register()
+        .await
+        .expect("a second runner registers while the page is parked");
+    hold.rollback().await.expect("the hold releases");
+    drop(holder);
+    let page = page.await.expect("the page joins").expect("the page reads");
+    let listed = i64::try_from(page.items().len()).expect("a page fits an i64");
+    assert_eq!(
+        (page.total(), listed),
+        (1, 1),
+        "the total and the rows both read the moment before the second registration"
+    );
+    let after = runners
+        .tenant(&tenant)
+        .list_runners(None, 200)
+        .await
+        .expect("a later page");
+    assert_eq!(after.total(), 2, "a later page counts both");
+
+    drop(runners);
+    database.close().await;
+    owner.close().await;
+    lane.cleanup().await;
+}
+
+/// Both registration paths name who registered the runner on its first event,
+/// as every other runner event names its actor.
+// Value: protects=the audit trail names the person who added a host;
+// fails_when=a registration path drops the caller's subject; why_new=Indy
+// chose to record the registrant in this PR; seam=the store on live Postgres.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_registration_event_names_who_registered_the_runner() {
+    let mut fixture = Fixture::create().await;
+    let platform = fixture.enrol().await;
+
+    let tenant = mint_id();
+    TenantSeed::new(&tenant)
+        .insert(&mut *fixture.owner.acquire().await.expect("an owner connection"))
+        .await
+        .expect("the tenant seeds");
+    let registered = fixture
+        .runners
+        .register_tenant(
+            &tenant,
+            &mint_id(),
+            &enrolment(),
+            "user_tenant_owner",
+            clock::now(),
+        )
+        .await
+        .expect("the tenant registers");
+    assert!(
+        matches!(registered, afd_runner::Registered::Created(_)),
+        "a fresh key registers a new runner"
+    );
+    let tenant_runner = match registered {
+        afd_runner::Registered::Created(enrolled) => enrolled.runner_id,
+        afd_runner::Registered::Replayed { runner_id, .. } => runner_id,
+    };
+    fixture.enrolled.push(tenant_runner.clone());
+
+    for (runner, actor) in [
+        (&platform, "user_operator"),
+        (&tenant_runner, "user_tenant_owner"),
+    ] {
+        let history = fixture.history(runner).await;
+        let registered = history
+            .last()
+            .expect("the registration event is the oldest");
+        assert_eq!(registered.event_type, RunnerEventType::RunnerRegistered);
+        assert_eq!(
+            registered.metadata.get("actor_id").and_then(Value::as_str),
+            Some(actor),
+            "the registration names who registered {runner}"
+        );
+    }
     fixture.cleanup().await;
 }

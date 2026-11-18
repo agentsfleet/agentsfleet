@@ -45,6 +45,8 @@ mod rows;
 mod seed;
 #[path = "support/fleet_fixtures.rs"]
 mod support;
+#[path = "support/fleet_tenant_runners.rs"]
+mod tenant_runners;
 #[path = "support/view_heartbeat.rs"]
 mod view_heartbeat;
 
@@ -151,12 +153,16 @@ mod integration_runner_maintenance;
 mod integration_runner_retire;
 #[path = "integration_runner_row.rs"]
 mod integration_runner_row;
+#[path = "integration_runner_tenant.rs"]
+mod integration_runner_tenant;
 #[path = "integration_runner_views.rs"]
 mod integration_runner_views;
 #[path = "integration_runner_views_malformed.rs"]
 mod integration_runner_views_malformed;
 #[path = "integration_steer_admitted_stamp.rs"]
 mod integration_steer_admitted_stamp;
+#[path = "integration_tenant_placement/mod.rs"]
+mod integration_tenant_placement;
 mod integration_terminal_redelivery;
 #[path = "integration_unanswered_notice.rs"]
 mod integration_unanswered_notice;

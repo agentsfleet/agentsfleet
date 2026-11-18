@@ -16,7 +16,7 @@ The specs quote his words.
 | Core NATS is the bus | NATS carries signals only: no JetStream, no key-value (KV) store. Every durable fact lives in Postgres. |
 | Durable tasks are on by default | `durable_tasks_v1` is the default. A failed host's run restarts elsewhere from the current turn's last checkpoint. |
 | Tenants run their own runners | Self-hosted runners point at the cloud daemon through its API. They never connect to NATS. |
-| Placement uses labels; respawn across owners is a tenant setting | The setting has three options: only my runners; mine, then platform hosts; any runner with matching labels. |
+| Placement uses labels; respawn across owners is a tenant setting | A tenant's own runner takes only that tenant's work (M246). The setting has three options: only my runners; mine, then platform hosts; any runner with matching labels. It ships in M251. |
 | Order and fairness | Strict order within a fleet; roughly fair across fleets. A small budget overrun is accepted. |
 | Build small | The smallest version first, measured, then improved. |
 
@@ -57,7 +57,8 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 | M243 | The connection a runner holds, on `runner.runners`. A cancel mark on `runner.leases`. |
 | M244 | `identity.device_sessions`, `connector.oauth_nonces`, and claim columns on `fleet.obligations`. |
 | M245 | `kind` on `billing.usage_lines` (`model`, `runtime`, `decision`), so each line says what it billed and a runtime line is numbered by its slice's start. The platform key cache keys on a digest of the stored key and its endpoint, so the vault gains no column. |
-| M246 | An owner tenant on `runner.runners`, a token overlap pair, and per-tenant runner settings. |
+| M246 | An owner tenant on `runner.runners`, and a receipt table that answers a registration retry. |
+| M251 | The token overlap pair on `runner.runners` and the per-tenant placement setting, as M251_001 designs them. |
 | M247 | Automatic cordon fields on `runner.runners`, frozen setup revision on `runner.leases`, and six event-owned `runner.turn_*` recovery tables. The prior lease ID is diagnostic data from the claim, not a new predecessor column. |
 
 ## Recovery and scheduling fairness
@@ -175,7 +176,7 @@ Every NATS subject is at most once. Each one names its Postgres backstop.
 | M243 | One runner stream; the Bus seam | Activity path near 0 statements; no poll; reconnect and revocation tests |
 | M244 | Core NATS behind the Bus; durable jobs in Postgres | Tail p99 and a kill drill on both buses |
 | M245 | Revision-keyed caches, a one-statement report, batched renewal, an idle-gated checkout ping, lease facts kept by the stream session | About 21 statements per chat, none on pricing after warm-up (Indy set 21, Nov 11, 2026; the history read's fold into the claim follows) |
-| M246 | Tenant-owned runners, a hard ownership filter, the respawn setting | Cross-tenant placement refused; no platform key leaves the daemon |
+| M246 | Tenant-owned runners, a hard ownership filter | Cross-tenant placement refused; no platform key reaches a tenant runner |
 | M247 | Hold-aware capacity, auto-cordon, checkpoint respawn | A killed host's run restarts elsewhere, settled once |
 
 A partitioned scheduler is not planned. It is built only if measured saturation falls below three times the 12-month peak.

@@ -92,12 +92,11 @@ impl Lane {
             "INSERT INTO fleet.approval_gates
                (id, fleet_id, workspace_id, action_id, tool_name, action_name,
                 gate_type, proposed_action, evidence, blast_radius, expires_at,
-                status, detail, created_at, updated_at, event_id,
-                spend_count, spend_ceiling)
+                status, detail, created_at, updated_at, event_id)
              VALUES ($1, $2, $3, $4, 'git', 'push',
                      $5, 'open a pull request', '{}'::jsonb, 'one repository',
                      CASE WHEN $6 THEN now() - $7::interval ELSE now() + $7::interval END,
-                     $8, '', $9, $9, $10, 0, 32)",
+                     $8, '', $9, $9, $10)",
         )
         .bind(mint())
         .bind(&self.fleet)

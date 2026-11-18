@@ -67,6 +67,11 @@ pub struct RegisterRow<'a> {
     pub event_id: &'a Uuid7,
     /// The event type that row records.
     pub event_type: &'a str,
+    /// The registering tenant; `None` exactly when `platform_owned`.
+    pub tenant_id: Option<&'a Uuid7>,
+    /// Whether the platform registered this runner, stated rather than read off a
+    /// missing tenant; the schema refuses a row where the two disagree.
+    pub platform_owned: bool,
     /// Assigned egress posture, as its wire spelling.
     pub network_policy: &'a str,
     /// Assigned registry baseline, already rendered as a JSON array.
@@ -75,6 +80,9 @@ pub struct RegisterRow<'a> {
     pub worker_count: i32,
     /// Why the reconciled verdict reads degraded, or `None` when it does not.
     pub degraded_reason: Option<&'a str>,
+    /// Who registered the runner, recorded on its registration event as every
+    /// other runner event records its actor.
+    pub actor_id: &'a str,
 }
 
 impl<'a> RegisterRow<'a> {
@@ -106,6 +114,10 @@ impl<'a> RegisterRow<'a> {
             .bind(self.sandbox_config_json)
             .bind(self.durable_tasks_enabled)
             .bind(super::meta::DURABLE_TASKS_ENABLED)
+            .bind(self.tenant_id)
+            .bind(self.platform_owned)
+            .bind(super::meta::ACTOR_ID)
+            .bind(self.actor_id)
     }
 }
 
@@ -120,8 +132,20 @@ pub const SELECT_RUNNER_SELF: &str = include_str!("select_runner_self.sql");
 /// A revoked row remains terminal and is returned without changing either
 /// table, so rotation cannot reopen it through a second authority channel.
 /// `$1` runner, `$2` the new digest, `$3` the revoked status, `$4` event id,
-/// `$5` event type, `$6` the actor key, `$7` the actor.
+/// `$5` event type, `$6` the actor key, `$7` the actor, `$8` the scope's tenant,
+/// `$9` whether the scope is the platform's: the platform reaches only platform
+/// runners here, so it never mints a tenant runner's token.
 pub const ROTATE_RUNNER_TOKEN: &str = include_str!("rotate_runner_token.sql");
+
+/// Whether a runner is the platform's, read on a refused rotation to tell `404` from `409`.
+pub const SELECT_RUNNER_PLATFORM_OWNED: &str = include_str!("select_runner_platform_owned.sql");
+
+/// A tenant registration's retry receipt; no row back means the key exists.
+/// `$1` id, `$2` tenant, `$3` operation id, `$4` request digest, `$5` runner.
+pub const INSERT_REGISTRATION_RECEIPT: &str = include_str!("insert_registration_receipt.sql");
+
+/// The stored receipt for `$1` tenant and `$2` operation id.
+pub const SELECT_REGISTRATION_RECEIPT: &str = include_str!("select_registration_receipt.sql");
 
 /// The heartbeat's policy read.
 ///

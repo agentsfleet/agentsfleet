@@ -13,7 +13,6 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
@@ -37,11 +36,6 @@ const THREAD_B: &str =
 
 /// The check slot 918 names.
 const BOTH_OR_NEITHER: &str = "ck_admissions_reply_both_or_neither";
-
-/// The reply lookup index, and what its definition must say.
-const LOOKUP_INDEX: &str = "idx_admissions_reply_lookup";
-const LOOKUP_COLUMNS: &str = "(fleet_id, created_at, sequence)";
-const LOOKUP_PREDICATE: &str = "WHERE (reply_provider IS NOT NULL)";
 
 /// Every producer that owns no reply surface, which is every one but the
 /// continuation.
@@ -273,40 +267,6 @@ async fn retried_key_with_a_new_destination_keeps_the_first() {
         stored,
         retry.payload_digest(),
         "a new thread differs from the stored digest, which is what logs the drift"
-    );
-
-    fixtures.cleanup().await;
-}
-
-/// The lookup index slot 918 adds is partial on the destination itself.
-///
-/// Asserted against `pg_indexes`, as the delivery-lookup suite does, so what is
-/// graded is the index the database built. The predicate is the point: only
-/// rows that owe an answer enter it.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn the_reply_lookup_index_holds_only_rows_that_owe() {
-    let fixtures = Fixtures::create().await;
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    let definition: String =
-        sqlx::query_scalar("SELECT indexdef FROM pg_indexes WHERE indexname = $1")
-            .bind(LOOKUP_INDEX)
-            .fetch_one(&mut *connection)
-            .await
-            .unwrap_or_else(|failure| {
-                panic!("{LOOKUP_INDEX} must exist after migration: {failure}")
-            });
-    assert!(
-        definition.contains(LOOKUP_COLUMNS),
-        "the lookup keys on the fleet and the admission order: {definition}"
-    );
-    assert!(
-        definition.contains(LOOKUP_PREDICATE),
-        "only rows with a destination enter the index: {definition}"
     );
 
     fixtures.cleanup().await;

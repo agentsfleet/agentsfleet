@@ -1,6 +1,5 @@
--- Per-runner tallies shown on the runner page. Keyed by runner (an identity
--- exception: one per runner). A table, not runner columns, because every lease
--- outcome bumps it and would otherwise lock the runner row a heartbeat writes.
+-- Per-runner tallies, kept off the runner row so lease outcomes do not lock the row a heartbeat
+-- writes.
 CREATE TABLE runner.lifetime_counters (
     runner_id        UUID PRIMARY KEY REFERENCES runner.runners(id) ON DELETE CASCADE,
     acquired_count   BIGINT NOT NULL,

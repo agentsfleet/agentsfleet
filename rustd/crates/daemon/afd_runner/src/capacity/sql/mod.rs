@@ -2,7 +2,9 @@
 
 pub(super) const CONTEXT: &str = "lock and count host lease capacity";
 
-/// The host row, locked until the caller's transaction ends.
+/// The host row, locked until the caller's transaction ends. `$1` runner, `$2` and
+/// `$3` a stream's credential digest and connection, `$4` the work's tenant or NULL
+/// for none, `$5` whether the call is a stream's, which must prove `$2` and `$3`.
 pub(super) const LOCK_HOST: &str = include_str!("lock_host.sql");
 
 /// The same host proof, shared with other continuing leases.

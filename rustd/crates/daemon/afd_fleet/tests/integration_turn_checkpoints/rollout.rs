@@ -23,16 +23,7 @@ async fn disabled_resume_preserves_the_head_and_fence_until_enabled() -> Checked
         .select_recovery_measured(&case.foreign, &mut RecoveryScan::default())
         .await;
     assert!(candidate?.is_none());
-    let fence: i64 =
-        sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id=$1")
-            .bind(&case.acquired.fleet_id)
-            .fetch_one(&mut *case.fixtures.database.acquire().await?)
-            .await?;
-    assert_eq!(u64::try_from(fence)?, case.acquired.fence.as_u64());
-    assert_eq!(
-        case.counts().await?.3.map(|id| id.to_string()).as_deref(),
-        Some(saved.checkpoint_id.0.as_str())
-    );
+    assert_preserved(&case, &saved).await?;
     let other = crate::seed::seeded::<1>(&case.fixtures).await;
     sqlx::query(
         "UPDATE fleet.fleets SET required_tags = \
@@ -83,6 +74,36 @@ async fn a_configured_clock_changes_new_grants_and_preserves_existing_deadlines(
     assert!(granted >= clock::after(before, std::time::Duration::from_secs(40)));
     assert!(granted <= clock::after(after, std::time::Duration::from_secs(40)));
     case.fixtures.cleanup().await;
+    Ok(())
+}
+
+async fn assert_preserved(case: &Case, saved: &af_wire::lease::TurnResume) -> Checked {
+    let fence: i64 =
+        sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id=$1")
+            .bind(&case.acquired.fleet_id)
+            .fetch_one(&mut *case.fixtures.database.acquire().await?)
+            .await?;
+    assert_eq!(u64::try_from(fence)?, case.acquired.fence.as_u64());
+    assert_eq!(
+        case.counts().await?.3.map(|id| id.to_string()).as_deref(),
+        Some(saved.checkpoint_id.0.as_str())
+    );
+    // A later admission cannot wake past a checkpointed ordinary head while disabled.
+    crate::queue::enqueue(
+        &case.fixtures.database,
+        &case.acquired.fleet_id,
+        &case.acquired.workspace_id,
+        crate::seed::ACTOR,
+        crate::seed::EVENT_TYPE,
+        crate::seed::REQUEST_JSON,
+        case.fixtures.enrolled_at(),
+    )
+    .await;
+    let mut connection = case.fixtures.database.acquire().await?;
+    for enabled in [false, true] {
+        let waiting = afd_fleet::lease::waiting::waiting(&mut connection, &[], enabled).await?;
+        assert_eq!(waiting.pending(), enabled);
+    }
     Ok(())
 }
 

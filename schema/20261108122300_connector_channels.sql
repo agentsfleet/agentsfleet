@@ -1,6 +1,4 @@
--- A Slack channel bound to its resident fleet. A table, not an installs column,
--- because one account has many channels. When a team moves workspace the binding
--- is rebound in place, which is the only UPDATE this table takes.
+-- Moving a team to another workspace rebinds the row in place; that is the only UPDATE it takes.
 CREATE TABLE connector.channels (
     id                   UUID PRIMARY KEY,
     CONSTRAINT ck_channels_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -17,7 +15,6 @@ CREATE TABLE connector.channels (
 
 CREATE INDEX idx_channels_fleet_id ON connector.channels (fleet_id);
 
--- A rebind moves the fleet and binding type; identity columns stay fixed.
 GRANT SELECT, INSERT ON connector.channels TO api_runtime;
 
 GRANT UPDATE (fleet_id, binding_type, updated_at) ON connector.channels TO api_runtime;

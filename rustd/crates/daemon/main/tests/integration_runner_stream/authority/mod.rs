@@ -10,6 +10,7 @@ mod locks;
 mod operator;
 mod policy;
 mod signals;
+mod tenant_halt;
 
 use std::{error::Error, time::Duration};
 

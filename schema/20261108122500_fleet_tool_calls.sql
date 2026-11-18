@@ -1,11 +1,5 @@
--- Full arguments and output of each tool call, behind the event feed's compact
--- list. A table, not an events column, because one event makes many calls and the
--- detail is read one call at a time.
---
--- `fleet_id` and `workspace_id` are scope copies (rule 5 exception): the detail
--- endpoint authorizes by workspace without joining the event. Both are written
--- once, from the event row, in the same statement. `sequence` is the call's
--- position within one lease (`fencing_token`).
+-- `fleet_id` and `workspace_id` copy the event's scope, written once with it, so the detail
+-- endpoint authorizes without joining the event. `sequence` orders calls within one lease.
 CREATE TABLE fleet.tool_calls (
     id                   UUID PRIMARY KEY,
     CONSTRAINT ck_tool_calls_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),

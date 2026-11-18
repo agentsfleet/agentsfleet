@@ -1,6 +1,5 @@
--- Physical decision accounting outlives lease, admission, task, fleet and model
--- deletion. These opaque attribution ids deliberately have no foreign keys.
--- Private request/answer data lives in the separately cascading payload table.
+-- Physical decision-call accounting. It outlives lease, admission, task, fleet and model
+-- deletion, so its ids are opaque; private payloads live in `runner.decision_payloads`.
 CREATE TABLE runner.decision_calls (
     id UUID PRIMARY KEY,
     CONSTRAINT ck_decision_calls_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -10,8 +9,8 @@ CREATE TABLE runner.decision_calls (
     fleet_id UUID NOT NULL,
     workspace_id UUID NOT NULL,
     tenant_id UUID NOT NULL,
-    -- Budget ownership only: intent is charged to its source admission even
-    -- while another task holds the lease. Its execution stamp stays below.
+    -- Budget owner only: intent is charged to its source admission even while another task
+    -- holds the lease.
     task_id UUID,
     task_generation BIGINT,
     fencing_token BIGINT NOT NULL CHECK (fencing_token >= 0),
@@ -27,23 +26,19 @@ CREATE TABLE runner.decision_calls (
     provider TEXT NOT NULL,
     fleet_name TEXT NOT NULL,
     profile_snapshot JSONB NOT NULL,
-    -- The snapshot's model and revision as typed ids, written by the same insert
-    -- from the same values: what joins and the profile-switch guard read, so no
-    -- statement casts an id out of the JSON. No foreign keys: a call is an
-    -- accounting record and outlives the catalogue rows it names.
+    -- Typed copies of the snapshot's model and revision, so no statement casts an id out of the
+    -- JSON. No foreign keys: the call outlives the catalogue rows it names.
     platform_model_id UUID NOT NULL,
     decision_revision_id UUID NOT NULL,
     price_snapshot JSONB NOT NULL,
-    -- Non-secret policy/task generations and input/effect cursors assessed by
-    -- this call. The recorder compares semantic identity without usage counters.
+    -- Non-secret generations and cursors this call assessed.
     context_snapshot JSONB NOT NULL,
-    -- Decision lines number from 0 under the usage kind `decision`; the native
-    -- allocator takes a lease's next number before insertion.
+    -- Decision usage lines number from 0 per lease under the usage kind `decision`.
     usage_sequence BIGINT NOT NULL CHECK (usage_sequence >= 0),
     reserved_nanos BIGINT NOT NULL CHECK (reserved_nanos >= 0),
-    -- NULL until native dispatch issuance commits; it never becomes NULL again.
+    -- NULL until dispatch is issued; never NULL again after.
     issued_at TIMESTAMPTZ(3),
-    -- NULL while funding or physical usage is unresolved. Read by hold release.
+    -- NULL while funding or physical usage is unresolved.
     accounted_at TIMESTAMPTZ(3),
     known_usage JSONB,
     charged_nanos BIGINT CHECK (charged_nanos >= 0),
@@ -72,7 +67,6 @@ CREATE TABLE runner.decision_calls (
     CONSTRAINT ck_decision_calls_charge_accounted CHECK (charged_nanos IS NULL OR accounted_at IS NOT NULL)
 );
 
--- Renewal, final report and the billing sweeper share this unresolved-work lookup.
 CREATE INDEX idx_decision_calls_unresolved_lease
     ON runner.decision_calls (original_lease_id) WHERE accounted_at IS NULL;
 
@@ -83,7 +77,6 @@ CREATE INDEX idx_decision_calls_expired_unissued
     ON runner.decision_calls (logical_expires_at, id)
     WHERE issued_at IS NULL AND accounted_at IS NULL;
 
--- Task/source bounds include reservations across replacement leases.
 CREATE INDEX idx_decision_calls_task ON runner.decision_calls (task_id, created_at);
 
 CREATE INDEX idx_decision_calls_source ON runner.decision_calls (source_admission_id, created_at);

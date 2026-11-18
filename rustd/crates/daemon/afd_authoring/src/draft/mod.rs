@@ -77,12 +77,13 @@ impl Drafts {
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         runner: &Uuid7,
         claimant: afd_runner::capacity::Claimant<'_>,
+        work_tenant: Option<&Uuid7>,
     ) -> Result<Option<afd_runner::capacity::Capacity>> {
         Ok(match &self.authority {
             Some(authority) => {
-                afd_runner::capacity::lock(tx, (runner, authority), claimant).await?
+                afd_runner::capacity::lock(tx, (runner, authority), claimant, work_tenant).await?
             }
-            None => afd_runner::capacity::lock(tx, runner, claimant).await?,
+            None => afd_runner::capacity::lock(tx, runner, claimant, work_tenant).await?,
         })
     }
 
@@ -94,7 +95,7 @@ impl Drafts {
     ) -> Result<()> {
         if self.authority.is_some() {
             let host = self
-                .lock_host_capacity(tx, runner, afd_runner::capacity::Claimant::Existing)
+                .lock_host_capacity(tx, runner, afd_runner::capacity::Claimant::Existing, None)
                 .await?
                 .ok_or(crate::error::ErrorKind::Hidden)?;
             if !host.can_renew() {

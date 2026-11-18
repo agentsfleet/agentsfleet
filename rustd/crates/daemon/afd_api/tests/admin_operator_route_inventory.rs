@@ -26,6 +26,11 @@ const EXPECTED: &[Endpoint] = &[
     // by Indy's call while merging M179 into M178 — see `route::runner_ops`
     // for the reasoning. A declared divergence, so it is missing from this
     // inventory rather than exempted from it.
+    ("/v1/tenants/me/runners", Verb::Get),
+    ("/v1/tenants/me/runners", Verb::Post),
+    ("/v1/tenants/me/runners/{runner_id}", Verb::Get),
+    ("/v1/tenants/me/runners/{runner_id}", Verb::Patch),
+    ("/v1/tenants/me/runners/{runner_id}", Verb::Delete),
 ];
 
 fn actual() -> BTreeSet<Endpoint> {

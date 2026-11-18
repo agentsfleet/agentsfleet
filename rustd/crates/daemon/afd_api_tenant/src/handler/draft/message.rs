@@ -32,11 +32,11 @@ use std::sync::Arc;
     params(afd_http::openapi::path::Draft),
     request_body = MessageRequest,
     responses((status = 202, body = Accepted, description = "Durably queued or exact replay", headers(("Location" = String))),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = super::DRAFT_UNAVAILABLE),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 404, description = super::DRAFT_UNAVAILABLE),
         (status = 409, description = "State or replay conflict"), (status = 410, description = "Accepted resource purged"),
-        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE), (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS), (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE))
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn send<D: Services>(
     State(services): State<Arc<D>>,
@@ -71,10 +71,9 @@ pub(crate) async fn send<D: Services>(
         ("limit" = Option<u32>, Query, description = "Page size, 1..25; default 20."),
         ("starting_after" = Option<String>, Query, description = "Use the previous `next_cursor` unchanged, for the same creator, draft, and page size.")),
     responses((status = 200, body = CursorPage<Message>, description = "Sequence then role order"),
-        (status = 400, description = "Invalid input or cursor"), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = super::DRAFT_UNAVAILABLE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS), (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE))
+        (status = 400, description = "Invalid input or cursor"), (status = 404, description = super::DRAFT_UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
@@ -100,10 +99,10 @@ pub(crate) async fn list<D: Services>(
     params(afd_http::openapi::path::Draft),
     request_body = CancellationRequest,
     responses((status = 200, body = Cancellation, description = "Standing cutoff and newly cancelled requests"),
-        (status = 400, description = "Invalid or future cutoff"), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = super::DRAFT_UNAVAILABLE),
-        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE), (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS), (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE))
+        (status = 400, description = "Invalid or future cutoff"), (status = 404, description = super::DRAFT_UNAVAILABLE),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn cancel<D: Services>(
     State(services): State<Arc<D>>,

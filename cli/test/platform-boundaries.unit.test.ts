@@ -109,7 +109,7 @@ test("reports an issued token that could not be saved without printing it or ret
   try {
     const result = await fixture.run(["runners", "rotate-token", RUNNER_ID, "--token-out", file, "--json"]);
     expect(sync).toHaveBeenCalledTimes(1); expect(result.code).toBe(1);
-    expect(JSON.parse(result.stderr).error.suggestion).toContain("do not repeat enrollment");
+    expect(JSON.parse(result.stderr).error.suggestion).toContain("do not repeat registration");
     expect(result.stdout + result.stderr).not.toContain(token); expect(fixture.calls).toHaveLength(1);
     expect(fs.existsSync(file)).toBe(false);
   } finally {sync.mockRestore();}

@@ -112,14 +112,26 @@ impl Leases {
                     tx,
                     (runner, authority),
                     afd_runner::capacity::Claimant::Existing,
+                    None,
                 )
                 .await?
             }
             None => {
-                afd_runner::capacity::lock(tx, runner, afd_runner::capacity::Claimant::Existing)
-                    .await?
+                afd_runner::capacity::lock(
+                    tx,
+                    runner,
+                    afd_runner::capacity::Claimant::Existing,
+                    None,
+                )
+                .await?
             }
         })
+    }
+
+    /// Whether this store serves a stream connection, which must prove its
+    /// credential and connection on every host statement.
+    pub(crate) const fn connected(&self) -> bool {
+        self.authority.is_some()
     }
 
     /// The connection's proof for `runner`: its credential digest and
@@ -141,10 +153,14 @@ impl Leases {
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         runner: &af_core::id::Uuid7,
+        work_tenant: &af_core::id::Uuid7,
     ) -> crate::Result<Option<afd_runner::capacity::Held>> {
+        let work = Some(work_tenant);
         Ok(match &self.authority {
-            Some(authority) => afd_runner::capacity::lock_host(tx, (runner, authority)).await?,
-            None => afd_runner::capacity::lock_host(tx, runner).await?,
+            Some(authority) => {
+                afd_runner::capacity::lock_host(tx, (runner, authority), work).await?
+            }
+            None => afd_runner::capacity::lock_host(tx, runner, work).await?,
         })
     }
 

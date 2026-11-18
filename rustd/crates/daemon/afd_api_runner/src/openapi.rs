@@ -43,7 +43,6 @@ afd_http::plane_collector! {
         crate::handler::runner::task_effects::list,
         crate::handler::runner::decisions::reserve,
         crate::handler::runner::decisions::record,
-        crate::handler::runner::enrolment::handle,
         crate::handler::runner::memory::capture,
         crate::handler::runner::tool_call::handle,
         crate::handler::runner::memory::hydrate,
@@ -62,7 +61,7 @@ afd_http::plane_collector! {
 
 /// What the runner plane serves, as an `OpenAPI` document.
 ///
-/// A runner speaking for itself: enrolment, liveness, the lease it runs, and what it reports back.
+/// A runner speaking for itself: liveness, the lease it runs, and what it reports back.
 #[must_use]
 pub fn document() -> utoipa::openapi::OpenApi {
     Plane::openapi()

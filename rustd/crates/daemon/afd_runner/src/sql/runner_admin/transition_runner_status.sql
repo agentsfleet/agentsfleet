@@ -1,7 +1,7 @@
 WITH current_state AS (
   SELECT id, status AS from_status
   FROM runner.runners
-  WHERE id = $1
+  WHERE id = $1 AND ($12::boolean OR tenant_id = $11::uuid)
   FOR UPDATE
 ), updated AS (
   UPDATE runner.runners r

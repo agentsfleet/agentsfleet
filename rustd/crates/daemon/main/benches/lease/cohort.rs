@@ -88,7 +88,7 @@ pub(super) async fn hosts(
         req.assigned_policy.network_policy = af_wire::runner::NetworkPolicy::AllowAll;
         req.assigned_policy.registry_allowlist.clear();
         let host = afd_runner::Runners::new(run.booted.database.clone(), Entropy::new())
-            .register(&req, af_core::clock::now())
+            .register(&req, "lease-recovery-benchmark", af_core::clock::now())
             .await?;
         workers.push(Worker::start_with(
             &current_exe()?,

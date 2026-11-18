@@ -13,6 +13,8 @@ mod integration_admin;
 mod integration_operator_runner;
 #[path = "integration_operator_runner_edit.rs"]
 mod integration_operator_runner_edit;
+#[path = "integration_tenant_runners/mod.rs"]
+mod integration_tenant_runners;
 #[path = "operator_plane.rs"]
 mod operator_plane;
 #[path = "operator_plane_runner_edit.rs"]

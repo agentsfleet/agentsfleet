@@ -64,7 +64,7 @@ async fn post_as(
 /// A runner other than the scenario's, enrolled through the production verb.
 async fn another_runner(run: &Scenario) -> String {
     Runners::new(run.booted.database.clone(), Entropy::new())
-        .register(&enrolment(), run.seeded_at)
+        .register(&enrolment(), "fixture:platform-operator", run.seeded_at)
         .await
         .expect("enrolment must succeed")
         .token

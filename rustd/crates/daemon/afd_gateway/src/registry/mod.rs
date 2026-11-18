@@ -25,7 +25,7 @@ impl Registry {
         database: &afd_db::Db,
     ) -> Result<Registration> {
         let mut tx = sqlx::Transaction::begin(database.acquire().await?, None).await?;
-        if afd_runner::capacity::lock_host(&mut tx, (&session.runner, authority))
+        if afd_runner::capacity::lock_host(&mut tx, (&session.runner, authority), None)
             .await?
             .is_none()
         {
@@ -58,9 +58,19 @@ impl Registry {
         })
     }
 
+    /// Every connected runner, for the probe that names the idle tenant ones.
+    pub(crate) fn runners(&self) -> Vec<Uuid7> {
+        self.sessions
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
+    }
+
+    /// Sessions a pass may ask to claim, skipping the `idle` runners.
     pub(crate) fn candidates(
         &self,
         fleets: &std::collections::HashSet<Uuid7>,
+        idle: &std::collections::HashSet<Uuid7>,
     ) -> Vec<Arc<SessionHandle>> {
         let mut sessions: Vec<_> = self
             .sessions
@@ -74,6 +84,7 @@ impl Registry {
                     || session.stop.is_cancelled()
                     || session.drain.is_cancelled()
                     || session.is_superseded()
+                    || idle.contains(&session.runner)
                 {
                     return None;
                 }

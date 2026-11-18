@@ -54,7 +54,6 @@ impl ModelCalls {
             .bind(attempt.workspace_id)
             .bind(i64::from(request.call_index))
             .bind(prepared.candidate_revision)
-            .bind(sqlx::types::Json(&prepared.snapshot))
             .bind(prepared.reserved_nanos)
             .bind(jiff_sqlx::Timestamp::from(prepared.snapshot.at))
             .execute(&mut *tx)

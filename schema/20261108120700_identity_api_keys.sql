@@ -1,9 +1,5 @@
--- Tenant automation tokens, stored as a hash only. A key outlives the admin who
--- made it, so `created_by_subject` is the sign-in subject as text, not a user FK.
--- `revoked_at` is both the revocation instant the key list returns and the NULL
--- marker authentication reads; a live key is `revoked_at IS NULL`.
--- `display_suffix` is public recognition metadata read by the key-list statements
--- in afd_tenant/src/sql/apikey.rs. NULL means an older key has no recoverable suffix.
+-- Stored as a hash only. A key outlives its creator, so `created_by_subject` is the sign-in
+-- subject as text, not a user foreign key. A live key has `revoked_at IS NULL`.
 CREATE TABLE identity.api_keys (
     id                  UUID PRIMARY KEY,
     CONSTRAINT ck_api_keys_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -11,6 +7,7 @@ CREATE TABLE identity.api_keys (
     name                TEXT NOT NULL,
     description         TEXT NOT NULL,
     key_hash            TEXT NOT NULL,
+    -- NULL when the key was minted without a recoverable suffix.
     display_suffix      TEXT,
     created_by_subject  TEXT NOT NULL,
     revoked_at          TIMESTAMPTZ(3),
@@ -20,7 +17,6 @@ CREATE TABLE identity.api_keys (
     CONSTRAINT uq_api_keys_key_hash UNIQUE (key_hash)
 );
 
--- The tenant's live keys.
 CREATE INDEX idx_api_keys_tenant_id_live
     ON identity.api_keys (tenant_id) WHERE revoked_at IS NULL;
 

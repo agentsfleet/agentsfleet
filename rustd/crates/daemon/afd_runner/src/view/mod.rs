@@ -48,6 +48,8 @@ pub struct RunnerItem {
     cordon: Option<afd_api_wire::operator::RunnerCordon>,
     /// Canonical runner identifier.
     id: Uuid7,
+    /// The tenant that registered this runner; `None` for a platform runner.
+    tenant_id: Option<Uuid7>,
     /// Stable host identity supplied at enrolment.
     host_id: String,
     /// Assigned isolation tier spelling.
@@ -83,6 +85,12 @@ impl RunnerItem {
     #[must_use]
     pub const fn id(&self) -> &Uuid7 {
         &self.id
+    }
+
+    /// The tenant that registered this runner; `None` for a platform runner.
+    #[must_use]
+    pub const fn tenant_id(&self) -> Option<&Uuid7> {
+        self.tenant_id.as_ref()
     }
 
     /// Stable host identity supplied at enrolment.

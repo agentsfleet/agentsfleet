@@ -16,6 +16,12 @@ pub const RUNNERS: &str = "/v1/runners";
 /// Platform operator runner administration.
 pub const ADMIN_RUNNERS: &str = "/v1/admin/runners";
 
+/// A tenant's own runners.
+pub const TENANT_RUNNERS: &str = "/v1/tenants/me/runners";
+
+/// One of the calling tenant's runners.
+pub const TENANT_RUNNER: &str = concatcp!(TENANT_RUNNERS, "/{runner_id}");
+
 /// Runner-token prefix. The wire contract for the machine principal — the daemon
 /// mints and validates it, and the host checks it before the lease loop.
 pub const RUNNER_TOKEN_PREFIX: &str = "agt_r";

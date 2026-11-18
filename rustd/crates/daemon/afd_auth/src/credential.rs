@@ -136,9 +136,8 @@ impl CredentialKind {
 
 /// Whether `haystack` begins with `needle`, in a `const` context.
 ///
-/// Slice patterns rather than indexing, the device `scope.rs`'s `KNOWN_BITS`
-/// already uses: there is no index, so `clippy::indexing_slicing` needs no
-/// exemption to walk a slice at compile time.
+/// Slice patterns rather than indexing: there is no index, so
+/// `clippy::indexing_slicing` needs no exemption to walk a slice at compile time.
 const fn const_starts_with(haystack: &str, needle: &str) -> bool {
     let mut left = haystack.as_bytes();
     let mut right = needle.as_bytes();

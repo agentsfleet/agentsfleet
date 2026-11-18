@@ -13,7 +13,7 @@ use super::{Fixture, enrolment, refusal::Refusal};
 async fn connected(fixture: &mut Fixture) -> Authority {
     let enrolled = fixture
         .runners
-        .register(&enrolment(), clock::now())
+        .register(&enrolment(), "checkpoint-cordon-test", clock::now())
         .await
         .expect("enrolment");
     fixture.enrolled.push(enrolled.runner_id.clone());
@@ -52,6 +52,7 @@ async fn quarantined(fixture: &Fixture, runner: &Uuid7) {
         sweep.sweep().await.expect("liveness sweep");
         if fixture
             .runners
+            .platform()
             .runner_detail(runner)
             .await
             .expect("detail")
@@ -65,6 +66,7 @@ async fn quarantined(fixture: &Fixture, runner: &Uuid7) {
     assert!(
         fixture
             .runners
+            .platform()
             .runner_detail(runner)
             .await
             .expect("detail")
@@ -101,6 +103,7 @@ async fn test_a_silent_host_is_cordoned_with_its_offline_record() {
     quarantined(&fixture, owner.runner()).await;
     let detail = fixture
         .runners
+        .platform()
         .runner_detail(owner.runner())
         .await
         .expect("operator detail");
@@ -172,6 +175,7 @@ async fn test_automatic_lift_requires_continuous_valid_beats() {
     assert!(
         fixture
             .runners
+            .platform()
             .runner_detail(owner.runner())
             .await
             .expect("detail")
@@ -184,6 +188,7 @@ async fn test_automatic_lift_requires_continuous_valid_beats() {
     assert!(
         fixture
             .runners
+            .platform()
             .runner_detail(owner.runner())
             .await
             .expect("detail")
@@ -224,6 +229,7 @@ async fn missed_cadence_resets_an_old_healthy_proof() {
     assert!(
         fixture
             .runners
+            .platform()
             .runner_detail(owner.runner())
             .await
             .expect("detail")
@@ -306,6 +312,7 @@ async fn assert_proof_reset(fixture: &Fixture, runner: &Uuid7) {
     assert!(
         fixture
             .runners
+            .platform()
             .runner_detail(runner)
             .await
             .expect("detail")

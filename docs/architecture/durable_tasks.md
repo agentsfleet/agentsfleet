@@ -321,8 +321,8 @@ Store timestamps as `TIMESTAMPTZ(3)` and money as nonnegative integer nanodollar
 |---|---|
 | `fleet.tasks` | Identity/ownership, originating item, accepted revision/objective digest, target document, state, resource version, stop generation, deadline, limits, cumulative usage, input/effect cursors, recovery pointer, trusted reply destination. Unique originating item. |
 | `fleet.task_items` | Source admission, native item identity/ordinal, immutable interpretation digest, action/association, source text spans, resulting task binding. Unique admission/ordinal; conflicting replay returns 409. |
-| `fleet.task_inputs` | Task/item/sequence, accepted text and interpretation, accepting lease/fence, answer state, applied-effect references. Unique task/item and task/sequence. |
-| `fleet.task_waits` | Task/generation, dependency kind, expected head/check identity/run attempt, due time, expiry, consumed admission. One current wait per task through a partial unique index. |
+| `fleet.task_inputs` | Task/item/sequence, accepted text and interpretation, answer state, applied-effect references. Unique task/item and task/sequence. |
+| `fleet.task_waits` | Task/generation, dependency kind, expected head/check identity/run attempt, due time, expiry, consumption. One current wait per task through a partial unique index. |
 | `fleet.task_effects` | Task/item, native effect ordinal/identity, expected old state, immutable request/tree digests, prepared/issued/confirmed/unknown/refused state, remote receipt. Unique task/ordinal and operation identity. |
 | Proposed `task_decisions` | Physical call identity, lease/task binding, requested/resolved model, question revision, assessed state/input cursor, reservation, usage and native disposition. Unique physical call identity. |
 | `fleet.task_checkpoints` | Task/checkpoint generation, plan state/mode/owner/expiry, declared budgets/page count, history digest, covered-input cursor, Git/base identity, complete manifest digest, format/toolbox compatibility, effect watermark. Unique task/checkpoint generation. Only a ready incremental manifest can become the task recovery pointer. |

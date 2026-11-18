@@ -114,6 +114,7 @@ impl Leases {
             .bind(after.map(|key| key.created.to_sqlx()))
             .bind(after.map(|key| &key.admission))
             .bind(self.checkpoint_resume_enabled())
+            .bind(afd_credential::provider::PLATFORM_MODEL_REF)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -161,6 +162,7 @@ impl Leases {
             .bind(af_core::event::status::RECEIVED)
             .bind(afd_admission::Producer::Steer.as_str())
             .bind(self.checkpoint_resume_enabled())
+            .bind(afd_credential::provider::PLATFORM_MODEL_REF)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT))?;

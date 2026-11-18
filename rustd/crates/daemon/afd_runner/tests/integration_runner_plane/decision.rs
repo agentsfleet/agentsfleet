@@ -27,7 +27,7 @@ async fn selection_round_trips_and_clearing_releases_the_catalogue_reference() {
     });
     let enrolled = fixture
         .runners
-        .register(&request, clock::now())
+        .register(&request, "user_operator", clock::now())
         .await
         .expect("enrol with decisions");
     let runner = enrolled.runner_id;
@@ -81,7 +81,7 @@ async fn unavailable_selections_cannot_partially_edit_a_runner() {
     assert!(
         fixture
             .runners
-            .register(&registration, clock::now())
+            .register(&registration, "user_operator", clock::now())
             .await
             .expect_err("new disabled assignment refused")
             .is_rejected()
@@ -89,6 +89,7 @@ async fn unavailable_selections_cannot_partially_edit_a_runner() {
     assert_refused_edit(&fixture, &runner, &mut policy).await;
     let detail = fixture
         .runners
+        .platform()
         .runner_detail(&runner)
         .await
         .expect("unchanged runner");
@@ -110,6 +111,7 @@ async fn unavailable_selections_cannot_partially_edit_a_runner() {
 async fn assign(fixture: &Fixture, runner: &Uuid7, policy: &AssignedPolicy<'_>) {
     let edited = fixture
         .runners
+        .platform()
         .edit(
             runner,
             RunnerEdit {
@@ -153,6 +155,7 @@ async fn assert_readers(fixture: &Fixture, runner: &Uuid7, selected: Option<&str
     );
     let detail = fixture
         .runners
+        .platform()
         .runner_detail(runner)
         .await
         .expect("operator projection");
@@ -171,6 +174,7 @@ async fn assert_pages(
 ) {
     let first = fixture
         .runners
+        .platform()
         .list_runners(None, 100)
         .await
         .expect("first page");
@@ -186,6 +190,7 @@ async fn assert_pages(
     let boundary = KeysetCursor::new(created_at + Duration::from_secs(1), runner.clone());
     let next = fixture
         .runners
+        .platform()
         .list_runners(Some(&boundary), 100)
         .await
         .expect("cursor page");
@@ -206,6 +211,7 @@ async fn assert_refused_edit(fixture: &Fixture, runner: &Uuid7, policy: &mut Ass
     let labels = [Cow::Borrowed("must-not-land")];
     let refusal = fixture
         .runners
+        .platform()
         .edit(
             runner,
             RunnerEdit {

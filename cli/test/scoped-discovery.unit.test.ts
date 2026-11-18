@@ -17,7 +17,7 @@ const MATRIX: ReadonlyArray<{ readonly scopes: ReadonlyArray<string>; readonly f
   { scopes: ["model:read"], families: { models: ["list", "show"] } },
   { scopes: ["model:admin", "model:read"], families: { models: ["list", "show", "create", "update", "delete"] } },
   { scopes: ["runner:read"], families: { runners: ["list", "show", "events", "leases"] } },
-  { scopes: ["runner:enroll"], families: { runners: ["enroll"] } },
+  { scopes: ["runner:register"], families: { runners: ["register"] } },
   {
     scopes: ["runner:write", "runner:read"],
     families: { runners: ["list", "show", "update", "rotate-token", "delete", "events", "leases", "cordon", "drain", "revoke", "self-test"] },
@@ -42,6 +42,28 @@ describe("platform_discovery_matches_effective_scope_matrix", () => {
       }
     });
   }
+});
+
+describe("tenant runners group hides operator-only verbs", () => {
+  const TENANT_VERBS = ["cordon", "delete", "drain", "list", "register", "revoke", "rotate-token", "self-test", "show", "update"];
+
+  test("[runner:tenant] lists the group with ten verbs and no history", async () => {
+    const root = await withKey(["runner:tenant"], ["--help"]);
+    expect(root.code).toBe(EXIT_OK);
+    expect(rows(root.out).includes("runners")).toBe(true);
+    const help = await withKey(["runner:tenant"], ["runners", "--help"]);
+    expect([...rows(help.out)].sort()).toEqual(TENANT_VERBS);
+  });
+
+  test("[] does not list the group", async () => {
+    const root = await withKey([], ["--help"]);
+    expect(rows(root.out).includes("runners")).toBe(false);
+  });
+
+  test("[runner:read] lists platform runners, never the tenant group", async () => {
+    const root = await withKey(["runner:read"], ["--help"]);
+    expect(rows(root.out).includes("runners")).toBe(false);
+  });
 });
 
 describe("discovery_refuses_malformed_expired_and_unavailable_identity", () => {

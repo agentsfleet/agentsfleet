@@ -7,7 +7,7 @@ use afd_db::test_util::mint_id;
 use super::*;
 
 /// The immutable tables: rows written once, then read or removed.
-const IMMUTABLE: [&str; 23] = [
+const IMMUTABLE: [&str; 24] = [
     "authoring.activity_receipts",
     "authoring.answer_receipts",
     "authoring.candidates",
@@ -29,6 +29,7 @@ const IMMUTABLE: [&str; 23] = [
     "identity.workspaces",
     "model.decision_revisions",
     "runner.events",
+    "runner.registration_receipts",
     "runner.turn_checkpoint_operations",
     "runner.turn_checkpoint_refs",
 ];

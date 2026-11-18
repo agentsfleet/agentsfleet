@@ -15,7 +15,10 @@ use super::{Fixture, enrolment};
 type TestResult<T = ()> = afd_runner::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 async fn enrol(fixture: &mut Fixture) -> TestResult<(Uuid7, Digest)> {
-    let enrolled = fixture.runners.register(&enrolment(), clock::now()).await?;
+    let enrolled = fixture
+        .runners
+        .register(&enrolment(), "user_operator", clock::now())
+        .await?;
     fixture.enrolled.push(enrolled.runner_id.clone());
     Ok((enrolled.runner_id, enrolled.token.digest().clone()))
 }
@@ -43,6 +46,7 @@ async fn can_claim(fixture: &Fixture, authority: &Authority) -> TestResult<bool>
         &mut transaction,
         authority,
         afd_runner::capacity::Claimant::Authoring,
+        None,
     )
     .await?
     .is_some_and(capacity::Capacity::can_claim);
@@ -101,6 +105,7 @@ async fn rotation_refuses_old_acquisition_and_old_locked_grants() -> TestResult 
     let old = acquire(&fixture, &runner, &digest, None).await?;
     let rotated = fixture
         .runners
+        .platform()
         .rotate_token(&runner, "connection-test", clock::now())
         .await?;
     assert_eq!(
@@ -139,7 +144,7 @@ async fn a_connection_proof_never_authorizes_another_host_and_debug_omits_its_di
     assert!(!format!("{guard:?}").contains(digest.as_str()));
     assert!(!format!("{authority:?}").contains(digest.as_str()));
     assert!(
-        capacity::lock(&mut transaction, guard, capacity::Claimant::Existing)
+        capacity::lock(&mut transaction, guard, capacity::Claimant::Existing, None)
             .await?
             .is_none()
     );
@@ -163,6 +168,7 @@ async fn stopped_and_removed_hosts_return_terminal_classified_decisions() -> Tes
         let authority = acquire(&fixture, &runner, &digest, None).await?;
         fixture
             .runners
+            .platform()
             .transition(&runner, action, "connection-test", clock::now())
             .await?;
         assert_eq!(
@@ -178,7 +184,7 @@ async fn stopped_and_removed_hosts_return_terminal_classified_decisions() -> Tes
         );
         assert!(!can_claim(&fixture, &authority).await?);
         if action == RunnerAdminAction::Revoke {
-            fixture.runners.delete_revoked(&runner).await?;
+            fixture.runners.platform().delete_revoked(&runner).await?;
             assert_eq!(
                 fixture.runners.check_connection(&authority).await?,
                 Decision::Refused(Refusal::Credential)

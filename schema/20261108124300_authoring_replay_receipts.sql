@@ -1,11 +1,6 @@
--- Every authoring retry key (rule 6): create draft, send message, publish. The same
--- key and body inside 24 hours of `created_at` return the first result
--- (`REPLAY_WINDOW`); a different body or user is refused; a key whose
--- resource is gone answers Gone. After the window the key is new and the sweep
--- deletes the row. Append-only (rule 9).
---
--- No foreign keys: a retry key must outlive erasure of the thing it created, or a
--- late retry would silently create it again.
+-- Every authoring retry key. The same key and body within 24 hours of `created_at` return the
+-- first result; after that the key is new and the row is swept. Append-only, and no foreign keys:
+-- a key must outlive erasure of what it created, or a late retry would create it again.
 CREATE TABLE authoring.replay_receipts (
     id              UUID PRIMARY KEY,
     CONSTRAINT ck_replay_receipts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -19,7 +14,6 @@ CREATE TABLE authoring.replay_receipts (
     CONSTRAINT uq_replay_receipts_scope_operation_id UNIQUE (scope, operation_id)
 );
 
--- The fixed-age sweep.
 CREATE INDEX idx_replay_receipts_created_at_id ON authoring.replay_receipts (created_at, id);
 
 CREATE FUNCTION authoring.replay_receipts_refuse_update() RETURNS trigger AS $$

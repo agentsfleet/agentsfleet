@@ -75,7 +75,11 @@ async fn enrol<const N: usize>(fixtures: &Fixtures, tag: &str) -> [Uuid7; N] {
         );
         let enrolled = fixtures
             .runners()
-            .register(&request, fixtures.enrolled_at())
+            .register(
+                &request,
+                "fixture:platform-operator",
+                fixtures.enrolled_at(),
+            )
             .await
             .expect("enrolment must succeed");
         runners.push(enrolled.runner_id);

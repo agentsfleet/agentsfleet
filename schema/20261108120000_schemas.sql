@@ -1,11 +1,5 @@
--- The nine owned schemas, one per product area (docs/architecture/postgres_schemas.md §Layout).
---
--- Schema creation runs before any table exists and is split from the role baseline
--- (`20261108120100_roles_and_privileges.sql`): a missing schema fails the next slot loudly, a missing grant fails at
--- runtime under one role, so the two failures stay apart.
---
--- `audit` is created by the migrator itself (`create_schema` in `afd_db::migrate`),
--- because SQLx writes its ledger there before this slot runs.
+-- One schema per product area. `audit` is absent: the migrator creates it before any file runs,
+-- because its own ledger lives there.
 CREATE SCHEMA identity;
 
 CREATE SCHEMA authoring;

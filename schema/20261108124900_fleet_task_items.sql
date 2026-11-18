@@ -1,5 +1,4 @@
--- Immutable interpretation receipts survive source admission cleanup.
--- Accepted task links are added after both owners exist in `20261108124600_billing_usage_lines.sql`.
+-- Immutable interpretation receipts; they survive cleanup of their source admission.
 CREATE TABLE fleet.task_items (
     id                  UUID PRIMARY KEY,
     CONSTRAINT ck_task_items_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),

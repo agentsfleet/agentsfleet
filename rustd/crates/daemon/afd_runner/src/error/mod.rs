@@ -12,34 +12,17 @@
 
 use af_core::error_code::{self, ErrorCode};
 
-/// The sentence an out-of-bounds host identifier earns.
-pub const DETAIL_HOST_ID_BOUNDS: &str = "host_id must be 1-256 chars";
-
-/// The sentence a malformed registry allowlist earns.
-pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be host[:port] names";
-/// The optional selection uses the same canonical identity as the catalogue.
-pub const DETAIL_DECISION_MODEL_ID: &str =
-    "decision_model_id must be a canonical version-7 UUID or null";
-
-/// The sentence a vanished runner earns.
-pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
-
-/// The refusal a self-test ask earns when its runner is terminal.
-pub const DETAIL_SELFTEST_REFUSED: &str = "revoked runners cannot be asked to self-test";
-/// The refusal a delete of a runner still in service earns.
-pub const DETAIL_RUNNER_NOT_REVOKED: &str = "active runner must be revoked before deletion";
-/// The refusal a delete of a runner still holding a lease earns.
-pub const DETAIL_RUNNER_STILL_LEASED: &str =
-    "runner still holds an active lease; retry once it is released";
-
+mod detail;
 mod raise;
+
+pub use self::detail::*;
 
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
 pub(crate) use self::raise::{
-    admin_state_malformed, assignment_malformed, decision_model_id, query, rejected, row_malformed,
-    runner_not_found, runner_not_revoked, runner_still_leased, runner_vanished, selftest_refused,
-    stored_json,
+    admin_state_malformed, assignment_malformed, decision_model_id, query, registration_key_reused,
+    rejected, row_malformed, runner_not_found, runner_not_revoked, runner_still_leased,
+    runner_vanished, selftest_refused, stored_json, tenant_managed, undigestible,
 };
 
 af_core::error_shell!(
@@ -123,13 +106,21 @@ pub(crate) enum ErrorKind {
     #[error("a runner still in service cannot have its record retired")]
     RunnerNotRevoked,
 
-    /// A revoked runner still holds an active lease and was asked to retire.
+    /// A revoked runner still holds a live or unbilled lease and was asked to retire.
     ///
     /// The lease row is what the liveness sweep releases the fleet's slot
     /// through; retiring the runner under it would strand the slot until the
     /// lease's own expiry. The sweep clears it on its next pass.
     #[error("a runner still holding an active lease cannot have its record retired")]
     RunnerStillLeased,
+
+    /// A tenant registration's key was reused for a different request.
+    #[error("a registration key was reused for a different request")]
+    RegistrationKeyReused,
+
+    /// A platform caller asked to mint a tenant runner's token.
+    #[error("a tenant runner's token is rotated by its tenant")]
+    TenantManaged,
 
     /// A revoked runner was asked to collect a self-test.
     ///
@@ -159,6 +150,14 @@ pub(crate) enum ErrorKind {
         /// The decode failure underneath.
         #[source]
         source: serde_json::Error,
+    },
+
+    /// A parsed registration request would not serialise, so it has no digest.
+    #[error("the registration request could not be digested")]
+    RequestDigest {
+        /// The serialisation failure underneath, without the document's text.
+        #[source]
+        source: af_core::json::Unreadable,
     },
 
     /// The caller sent something this plane will not accept.
@@ -214,6 +213,8 @@ impl Error {
             ErrorKind::RunnerVanished | ErrorKind::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
             ErrorKind::RunnerNotRevoked => DETAIL_RUNNER_NOT_REVOKED,
             ErrorKind::RunnerStillLeased => DETAIL_RUNNER_STILL_LEASED,
+            ErrorKind::RegistrationKeyReused => DETAIL_REGISTRATION_KEY_REUSED,
+            ErrorKind::TenantManaged => DETAIL_TENANT_MANAGED,
             ErrorKind::SelftestRefused => DETAIL_SELFTEST_REFUSED,
             // The five datastore-shaped failures — a statement that reached
             // Postgres, and four rows this build cannot read — all answer
@@ -226,7 +227,9 @@ impl Error {
             | ErrorKind::StoredJson { .. }
             | ErrorKind::AdminStateMalformed
             | ErrorKind::AssignmentMalformed { .. } => DETAIL_DATABASE_ERROR,
-            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => DETAIL_OPERATION_FAILED,
+            ErrorKind::Entropy { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::RequestDigest { .. } => DETAIL_OPERATION_FAILED,
             ErrorKind::Datastore { .. } | ErrorKind::TimedOut { .. } => DETAIL_UNAVAILABLE,
             // The ledger already decided what a caller is told, and answering
             // a second sentence for one condition is the drift the shared
@@ -250,11 +253,14 @@ impl Error {
             | ErrorKind::RunnerNotFound
             | ErrorKind::RunnerNotRevoked
             | ErrorKind::RunnerStillLeased
+            | ErrorKind::RegistrationKeyReused
+            | ErrorKind::TenantManaged
             | ErrorKind::SelftestRefused
             | ErrorKind::AdminStateMalformed
             | ErrorKind::AssignmentMalformed { .. }
             | ErrorKind::StoredJson { .. }
             | ErrorKind::Rejected { .. }
+            | ErrorKind::RequestDigest { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::Identifier { .. } => false,
         }
@@ -286,6 +292,8 @@ impl Error {
                 error_code::RUNNER_MUST_REVOKE_FIRST
             }
             ErrorKind::SelftestRefused => error_code::RUN_SELFTEST_REFUSED,
+            ErrorKind::RegistrationKeyReused => error_code::RUNNER_REGISTRATION_KEY_REUSED,
+            ErrorKind::TenantManaged => error_code::RUNNER_TENANT_MANAGED,
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::StoredJson { .. }
@@ -297,7 +305,9 @@ impl Error {
             // A daemon whose clock cannot name an instant, and a host that
             // cannot draw random bytes, are both THIS process failing — never
             // the caller's request being wrong.
-            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Entropy { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::RequestDigest { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Datastore { .. }
             | ErrorKind::TimedOut { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Admission { source } => source.code(),

@@ -123,7 +123,7 @@ impl Ledger {
         let mut connection = self.database.acquire().await.expect("a connection");
         sqlx::query_as(
             "SELECT delivered_at IS NOT NULL AS delivered, abandoned_at IS NOT NULL AS abandoned, \
-             abandon_reason, attempt_count, receipt, \
+             attempt_count, receipt, \
              COALESCE(next_attempt_at > now() + interval '20 seconds', false) AS due_later, \
              extract(epoch FROM claim_expires_at)::float8 AS claim_expires \
              FROM fleet.obligations WHERE event_id = $1",
@@ -200,7 +200,6 @@ impl Ledger {
 pub(super) struct Row {
     pub(super) delivered: bool,
     pub(super) abandoned: bool,
-    pub(super) abandon_reason: Option<String>,
     pub(super) attempt_count: i64,
     pub(super) receipt: Uuid7,
     /// Released with the cycle backoff still ahead of it.

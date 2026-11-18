@@ -34,7 +34,7 @@ async fn platform_operator_rotates_runner_token_once() {
 
     let runners = Runners::new(fixtures.database.clone(), Entropy::new());
     let enrolled = runners
-        .register(&enrolment(), NOW)
+        .register(&enrolment(), "fixture:platform-operator", NOW)
         .await
         .expect("the runner enrols");
     let runner_id = enrolled.runner_id.clone();

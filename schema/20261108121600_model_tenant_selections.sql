@@ -1,8 +1,5 @@
--- The tenant's default model. Keyed by tenant (an identity exception: at most one
--- per tenant). `tenant_model_id` NULL means the platform default.
---
--- The composite reference refuses a pointer to another tenant's model. Deleting
--- the model clears only the pointer, falling back to the platform default.
+-- At most one per tenant. NULL `tenant_model_id` means the platform default; deleting the model
+-- clears the pointer back to it.
 CREATE TABLE model.tenant_selections (
     tenant_id        UUID PRIMARY KEY REFERENCES identity.tenants(id) ON DELETE CASCADE,
     tenant_model_id  UUID,

@@ -37,7 +37,9 @@ pub mod heartbeat;
 pub mod policy;
 pub mod reconcile;
 pub mod record;
+mod register;
 mod rotate;
+mod scope;
 pub mod spelling;
 pub mod sql;
 pub mod store;
@@ -57,6 +59,8 @@ pub use self::heartbeat::{Beat, NO_REPORT};
 pub use self::policy::{AssignmentColumns, StoredVerdict};
 pub use self::reconcile::{Verdict, reconcile};
 pub use self::record::SelfRow;
+pub use self::register::Registered;
+pub use self::scope::RunnerScope;
 pub use self::store::{Enrolled, Runners};
 pub use self::view::{
     KeysetCursor, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem, RunnerPage,

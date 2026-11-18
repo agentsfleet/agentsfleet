@@ -381,7 +381,7 @@ The recovery-head primary key supplies the lookup.
 | `afd_fleet/src/lease/assign/ledger.rs`, `lease/renew/batch/columns.rs`, `lease/sql/meter.rs`, `lease/affinity.rs` | Bind one lease clock and the recovery policy to the existing queries. |
 | `afd_authoring/src/lease/claim/issue/mod.rs`, `lease/renew.rs`, `review/wallet.rs`, `afd_runner/src/sweep/liveness/mod.rs`, `heartbeat/cordon.rs`, `view/decode.rs` | Reuse the derived clock in issuance, accounting, quarantine and status. |
 | `afd_gateway/src/scheduler/recovery/mod.rs`, `scheduler/recovery/drain.rs`, `scheduler/subscriptions.rs` | Use the configured fallback cadence and concurrency in the scheduler and its retry backoff. |
-| `select_ledger_candidates.sql`, `claim_admission_head.sql`, and the coarse `select_waiting_admission.sql` | Check the feature before admitting a checkpointed ordinary retry. Ensure parked heads do not repeatedly generate useless wake work. The existing tables hold the checkpoint, event and fence. |
+| `select_ledger_candidates.sql`, `claim_admission_head.sql`, and the coarse `afd_fleet/src/lease/sql/lease/select_waiting_work.sql` | Check the feature before admitting a checkpointed ordinary retry. Ensure parked heads do not repeatedly generate useless wake work. The existing tables hold the checkpoint, event and fence. |
 
 ### Release and rollback
 
@@ -463,6 +463,65 @@ with the real dev connection budget remain due.
 Lint fixes to the benchmark harness followed the recorded measurements.
 Those results remain tied to `976883d00`; this configuration batch has no new
 matched burst result yet.
+
+### Integration with the merged M246 base
+
+M246 merged as `813ccba56dd1dbfe795992744a8348e2ff700c3c` after the focused
+configuration checks. The pre-merge `make lint-all` passed. The following
+`make test-unit-all` was stopped during its runner build so the branch could
+incorporate the updated base.
+
+The merge preserves tenant ownership and model-key placement checks alongside
+M247 hold accounting, quarantine, checkpoint custody and bounded recovery.
+It also retains the shared waiting probe's idle-tenant filtering. M247's
+unpublished checkpoint error codes move after the three codes already on main.
+
+The merged workspace passed `cargo check --locked --workspace --all-features
+--all-targets`. Eighteen scheduler unit checks passed, including the bounded
+500-claim case and main's idle-tenant probe tests.
+
+The repository pins Orly 0.60.1. Updating the local installation from 0.50.0
+restored a green `orly doctor` with the new burst configuration keys.
+
+Post-merge `make lint-all` passed. The focused live run passed three rollout
+checks, eight tenant-placement checks, four query-plan checks, 28 runner-plane
+checks and eight CLI checks. The rollout check also proves the coarse waiting
+probe leaves a checkpointed head parked while resume is disabled. The query
+checks include the 20,000-idle-fleet case.
+
+Seven shared-loader tests and 95 daemon library tests passed, with one ignored.
+Full repository tests, final acceptance and coverage remain due. Earlier
+results describe their recorded snapshots.
+
+### Deployment job environment inventory
+
+Indy's deploy-job environment list was checked against
+`.github/workflows/deploy-dev-fly.yml`. The application file covers daemon
+policy, while the job also configures the collector, NATS and the image rollout.
+
+| Job input | Delivery or configuration owner |
+| --- | --- |
+| `OTLP_COLLECTOR_APP`, `OTLP_COLLECTOR_DIR`, `OTLP_COLLECTOR_MACHINES` | Deployment workflow selects and sizes the collector app. |
+| `NATS_APP`, `NATS_BUILD_CONTEXT`, `NATS_MACHINES` | Deployment workflow selects, builds and sizes NATS. |
+| `OTLP_COLLECTOR_ENDPOINT` | `telemetry.otlp_endpoint` supplies the daemon destination. The current workflow also stages `OTEL_EXPORTER_OTLP_ENDPOINT`. |
+| `FLY_API_TOKEN` | Deployment-job credential for Fly operations. |
+| `DATABASE_URL_API` | Daemon secret environment input. |
+| `DATABASE_URL_MIGRATOR` | Release-command secret environment input; migration uses its existing environment reader. |
+| `GRAFANA_OTLP_ENDPOINT` | Collector upstream secret input. |
+| `GRAFANA_OTLP_INSTANCE_ID`, `GRAFANA_OTLP_API_KEY` | Collector authentication inputs. The workflow also derives the daemon's masked `OTEL_EXPORTER_OTLP_HEADERS` value. |
+| `POSTHOG_API_KEY` | Daemon secret environment input; `telemetry.posthog_host` may supply its public endpoint. |
+| `OIDC_ISSUER` | Existing environment fallback when `identity.issuer` is absent from TOML. |
+| `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET` | Daemon secret environment inputs. |
+| `RUNNER_STREAM_CERTIFICATE_CHAIN`, `RUNNER_STREAM_PRIVATE_KEY` | Workflow derives the two `RUNNER_STREAM_TLS_*_BASE64` Fly file secrets. TOML supplies their mounted file paths. |
+| `NATS_URL` | Credential-bearing input staged for both NATS and the daemon. |
+| `ENCRYPTION_MASTER_KEY`, `AUTH_SESSION_CODE_PEPPER` | Daemon secret environment inputs. |
+| `OP_MANAGED_VARIABLES` | Secret-loading action metadata within the job. |
+| `CANDIDATE_IMAGE` | Qualified immutable image digest selected by the deployment workflow. The image must include the loader for its application file schema. |
+
+TOML currently overrides the public log level, identity audience and telemetry
+endpoint that the workflow also stages as Fly secrets. Removing duplicate
+staging remains a deployment cleanup item. Live secret removal or deployment
+has not run.
 
 ## Manual two-runner drill
 

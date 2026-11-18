@@ -143,7 +143,7 @@ impl Fixture {
     ) -> afd_runner::capacity::Capacity {
         let mut connection = self.db.acquire().await.expect("capacity connection");
         let mut tx = connection.begin().await.expect("capacity transaction");
-        let capacity = afd_runner::capacity::lock(&mut tx, &self.runner, claimant)
+        let capacity = afd_runner::capacity::lock(&mut tx, &self.runner, claimant, None)
             .await
             .expect("locked census")
             .expect("seeded host exists");
@@ -175,6 +175,7 @@ impl Fixture {
             &mut tx,
             &self.runner,
             afd_runner::capacity::Claimant::Authoring,
+            None,
         )
         .await
         .expect("lock host")

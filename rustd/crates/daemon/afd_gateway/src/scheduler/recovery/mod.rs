@@ -4,9 +4,9 @@ mod drain;
 
 use crate::registry::Registry;
 use crate::{Gateway, Operation, Result, error::within};
-use af_core::timing::STREAM_ANSWER_TIMEOUT;
-use afd_authoring::types::{DraftState, MessageState};
+use af_core::{id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
 use afd_bus::wake::Wake;
+use afd_fleet::lease::waiting::{Waiting, waiting};
 use tokio::time::{Instant, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
@@ -20,7 +20,10 @@ pub(super) async fn notifications(
     loop {
         let observed = generations.borrow_and_update().recovery();
         if let Some(recovery) = observed {
-            let credited = registry.candidates(&std::collections::HashSet::new());
+            let credited = registry.candidates(
+                &std::collections::HashSet::new(),
+                &std::collections::HashSet::new(),
+            );
             drain::drain(credited, claims, stop).await;
             wake.recovered(recovery);
         }
@@ -38,7 +41,7 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
         &gateway.inner.dependencies.wake,
         &stop,
         gateway.inner.dependencies.recovery.offer_fallback,
-        || pending_work(&gateway, &stop),
+        || async { Ok(waiting_work(&gateway, &stop, &[]).await?.pending()) },
     )
     .await;
     Ok(())
@@ -67,20 +70,22 @@ async fn probe_ticks<F: Future<Output = Result<bool>>>(
     }
 }
 
-/// The query only asks whether a pass may help; it does not acquire leases or reimplement admission.
-async fn pending_work(gateway: &Gateway, stop: &CancellationToken) -> Result<bool> {
+/// The query only asks whether a pass may help, and which of `runners` it
+/// cannot help; it does not acquire leases or reimplement admission.
+pub(super) async fn waiting_work(
+    gateway: &Gateway,
+    stop: &CancellationToken,
+    runners: &[Uuid7],
+) -> Result<Waiting> {
     within(
         stop,
         Instant::now() + STREAM_ANSWER_TIMEOUT,
         Operation::Recheck,
         async {
-            Ok(sqlx::query_scalar::<_, bool>(include_str!(
-                "../../sql/select_waiting_admission.sql"
-            ))
-            .bind(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE)
-            .bind(DraftState::Editing.as_str())
-            .bind(MessageState::Queued.as_str())
-            .bind(
+            let mut connection = gateway.inner.dependencies.database.acquire().await?;
+            Ok(waiting(
+                &mut connection,
+                runners,
                 gateway
                     .inner
                     .dependencies
@@ -88,7 +93,6 @@ async fn pending_work(gateway: &Gateway, stop: &CancellationToken) -> Result<boo
                     .leases
                     .checkpoint_resume_enabled(),
             )
-            .fetch_one(&mut *gateway.inner.dependencies.database.acquire().await?)
             .await?)
         },
     )

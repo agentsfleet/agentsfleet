@@ -132,17 +132,35 @@ pub const RUN_PROTOCOL_UNSUPPORTED: ErrorCode = ErrorCode::declare("UZ-RUN-023")
 /// The runner's stream ended or stopped answering; the runner reconnects on its own.
 pub const RUN_STREAM_DISCONNECTED: ErrorCode = ErrorCode::declare("UZ-RUN-024");
 
+/// A runner registration's Idempotency-Key was reused for a different request.
+///
+/// A replay of the same request answers the runner it created; a different body
+/// under the same key is a client mistake, refused rather than guessed at.
+pub const RUNNER_REGISTRATION_KEY_REUSED: ErrorCode = ErrorCode::declare("UZ-RUN-025");
+
+/// A platform caller asked to mint a tenant runner's token.
+///
+/// A new token would hand the platform a working credential for a host its
+/// tenant holds; the tenant rotates its own runners.
+pub const RUNNER_TENANT_MANAGED: ErrorCode = ErrorCode::declare("UZ-RUN-026");
+
+/// Issue refused a placement the claim should already have filtered.
+///
+/// Log-only: a foreign tenant's runner, or a tenant runner offered work that
+/// would carry a platform model key. Any occurrence means the claim has a hole.
+pub const RUNNER_PLACEMENT_REFUSED: ErrorCode = ErrorCode::declare("UZ-RUN-027");
+
 /// Present recovery state cannot run under the replacement's current setup.
-pub const RUN_CHECKPOINT_INCOMPATIBLE: ErrorCode = ErrorCode::declare("UZ-RUN-025");
+pub const RUN_CHECKPOINT_INCOMPATIBLE: ErrorCode = ErrorCode::declare("UZ-RUN-028");
 
 /// The expected recovery head or an immutable retry identity changed.
-pub const RUN_CHECKPOINT_CONFLICT: ErrorCode = ErrorCode::declare("UZ-RUN-026");
+pub const RUN_CHECKPOINT_CONFLICT: ErrorCode = ErrorCode::declare("UZ-RUN-029");
 
 /// Recovery storage cannot currently provide the exact committed generation.
-pub const RUN_CHECKPOINT_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-RUN-027");
+pub const RUN_CHECKPOINT_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-RUN-030");
 
 /// A checkpoint exceeds a declared state, manifest, transfer or custody bound.
-pub const RUN_CHECKPOINT_LIMIT: ErrorCode = ErrorCode::declare("UZ-RUN-028");
+pub const RUN_CHECKPOINT_LIMIT: ErrorCode = ErrorCode::declare("UZ-RUN-031");
 
 /// A fleet declared a credential the vault does not hold.
 ///

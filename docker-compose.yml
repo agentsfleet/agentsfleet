@@ -32,6 +32,9 @@ services:
     # not in a lane's setup. `track=all` counts statements run inside functions
     # and triggers too; the entry ceiling is raised so no statement a lane
     # counts is evicted mid-window, which would make a delta go backwards.
+    # max_connections: the integration lane runs one test per core against
+    # this one server, each with pools that open 5 and grow to 20, and some
+    # boot whole daemons; at the default 100 a busy moment is refused.
     command:
       - sh
       - -c
@@ -39,7 +42,8 @@ services:
         exec docker-entrypoint.sh postgres \
           -c shared_preload_libraries=pg_stat_statements \
           -c pg_stat_statements.track=all \
-          -c pg_stat_statements.max=10000
+          -c pg_stat_statements.max=10000 \
+          -c max_connections=300
     environment:
       POSTGRES_USER: agentsfleet
       POSTGRES_PASSWORD: agentsfleet

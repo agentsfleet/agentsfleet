@@ -126,6 +126,7 @@ pub(super) async fn assert_host_full(running: &Running, order: &str) {
         &mut tx,
         &running.runner,
         afd_runner::capacity::Claimant::Existing,
+        None,
     )
     .await
     .expect("lock host")

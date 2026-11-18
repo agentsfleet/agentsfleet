@@ -128,6 +128,7 @@ pub(super) async fn select(fixtures: &Fixtures, runner: &Uuid7, model: Option<&U
     policy.decision_model_id = model.map(|id| Cow::Borrowed(id.as_str()));
     fixtures
         .runners()
+        .platform()
         .edit(
             runner,
             RunnerEdit {

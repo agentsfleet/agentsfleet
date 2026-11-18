@@ -1,7 +1,5 @@
--- Append-only definitions for a catalogue model's reviewed decision revisions.
--- Current selection lives on platform_models; lease/call snapshots bind the
--- same model/revision. Reusing a revision with different bytes is refused by
--- afd_admin before any configuration or schedule mutation can commit.
+-- Append-only reviewed decision definitions for a catalogue model. `platform_models` selects the
+-- current one; lease and call snapshots bind the same revision.
 CREATE TABLE model.decision_revisions (
     id UUID PRIMARY KEY,
     CONSTRAINT ck_decision_revisions_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -10,7 +8,7 @@ CREATE TABLE model.decision_revisions (
     definition JSONB NOT NULL,
     created_at TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_decision_revisions_model_revision UNIQUE (platform_model_id, revision),
-    -- Decision prices prove the owning model alongside their revision identity.
+    -- Lets decision prices prove the owning model alongside the revision.
     CONSTRAINT uq_decision_revisions_id_model UNIQUE (id, platform_model_id)
 );
 
@@ -26,9 +24,8 @@ CREATE TRIGGER trg_decision_revisions_refuse_update
 
 GRANT SELECT, INSERT ON model.decision_revisions TO api_runtime;
 
--- Match the identity FK's read/lock authority without granting UPDATE on
--- immutable revisions. Current rows allow intermediate changes or deletion
--- in the same transaction; the selected revision stays locked through commit.
+-- Stands in for a foreign key's lock without granting UPDATE on immutable revisions: the selected
+-- revision stays KEY SHARE locked through commit.
 CREATE FUNCTION model.enforce_decision_revision_owner() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $$
@@ -58,9 +55,6 @@ CREATE CONSTRAINT TRIGGER fk_platform_models_decision_revision_owner
     DEFERRABLE INITIALLY DEFERRED
     FOR EACH ROW EXECUTE FUNCTION model.enforce_decision_revision_owner();
 
--- The existing catalogue selects a reviewed decision definition separately
--- from its coding transport. The boolean can revoke dispatch without changing
--- immutable definitions or erasing old call accounting.
 ALTER TABLE model.platform_models
     ADD CONSTRAINT fk_platform_models_decision_revision FOREIGN KEY (decision_revision_id)
         REFERENCES model.decision_revisions (id)

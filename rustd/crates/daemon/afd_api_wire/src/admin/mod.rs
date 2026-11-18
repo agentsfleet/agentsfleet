@@ -90,6 +90,23 @@ pub struct RunnerAdminPatchRequest<'a> {
     pub labels: Option<Vec<Cow<'a, str>>>,
 }
 
+/// The `200` of a runner PATCH, admin or tenant.
+///
+/// The runner's state after an action or an edit, or its replacement token
+/// after a `rotate`. Untagged: the two shapes already differ (`status` against
+/// `runner_token`), so the wire carries no tag and publishes as `oneOf`.
+/// `Debug` delegates to each shape's own, which redacts the token
+/// (`redact.rs`).
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum RunnerPatchReply<'a> {
+    /// The state after an action or an edit.
+    Changed(RunnerAdminPatchResponse<'a>),
+    /// The replacement token after a `rotate`, shown once.
+    Rotated(RunnerTokenRotatedResponse<'a>),
+}
+
 /// `PATCH /v1/admin/runners/{id}` reply.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -62,8 +62,7 @@ pub const SELECT_EVENT_GATE: &str = include_str!("select_event_gate.sql");
 ///
 /// `$1` gate row, `$2` fleet, `$3` workspace, `$4` action, `$5` tool,
 /// `$6` action name, `$7` type, `$8` proposed action, `$9` evidence,
-/// `$10` blast radius, `$11` timeout, `$12` status, `$13` event,
-/// `$14` stated binding, `$15` spend count, `$16` spend ceiling.
+/// `$10` blast radius, `$11` timeout, `$12` status, `$13` event.
 pub const INSERT_GATE: &str = include_str!("insert_gate.sql");
 
 /// Archive a fleet, so nothing else of its work is admitted.
@@ -79,7 +78,7 @@ pub const ARCHIVE_FLEET: &str = include_str!("archive_fleet.sql");
 /// One pending gate, bound to [`INSERT_GATE`] in `$n` order.
 ///
 /// The shape a high-arity statement takes in this workspace (see
-/// `afd_runner`'s `RegisterRow`): sixteen binds, most of them strings that
+/// `afd_runner`'s `RegisterRow`): thirteen binds, most of them strings that
 /// compile clean in any order, so the field names are what a reader checks
 /// rather than a position they have to count to.
 ///
@@ -102,8 +101,6 @@ pub struct PendingRow<'a> {
     pub claim: &'a Claim,
     /// The event this question is about.
     pub event_id: &'a Uuid7,
-    /// The approved reach, as the mint will read it back.
-    pub stated_binding: Option<&'a str>,
 }
 
 impl<'a> PendingRow<'a> {
@@ -128,13 +125,6 @@ impl<'a> PendingRow<'a> {
             .bind(timeout(self.stated.timeout))
             .bind(GateStatus::Pending.as_str())
             .bind(self.event_id)
-            .bind(self.stated_binding)
-            // Both NULL, always. No gate funds credential requests any more:
-            // the standing grant authorises the mint and `budget.daily_nanos`
-            // bounds the money. The columns stay for the spend a resolved gate
-            // may still record, which the schema's guard trigger polices.
-            .bind(None::<i64>)
-            .bind(None::<i64>)
     }
 }
 

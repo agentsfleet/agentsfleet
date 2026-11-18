@@ -1,20 +1,27 @@
 //! Real session request queues expose pass order and bounds without a database.
 
-use super::{notifications, pass};
+use super::{Probe, notifications, pass};
 use crate::{
     registry::{Registration, Registry},
     session::{ClaimRequest, OfferOutcome, SessionHandle},
 };
 use af_core::id::Uuid7;
 use afd_bus::wake::Wake;
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 type TestResult<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+#[path = "probe_tests.rs"]
+mod probes;
+
 #[path = "burst_tests.rs"]
 mod burst;
+/// A probe that finds work and names no runner idle: every session is asked.
+fn everyone() -> Probe {
+    Probe::Waiting(HashSet::new())
+}
 
 struct SessionFixture {
     handle: Arc<SessionHandle>,
@@ -52,7 +59,7 @@ async fn rings_coalesce_into_one_claim_pass() -> TestResult {
         let registry = Arc::clone(&registry);
         let wake = wake.clone();
         let stop = stop.clone();
-        async move { notifications(&registry, &wake, 8, stop).await }
+        async move { notifications(&registry, &wake, 8, stop, |_| async { Ok(everyone()) }).await }
     });
     tokio::task::yield_now().await;
     wake.ring(session.handle.runner.clone());
@@ -244,10 +251,10 @@ async fn candidates_prefer_locality_then_the_longest_waiting_host() -> TestResul
         .lock()
         .held
         .push(local.handle.runner.clone());
-    let sessions = registry.candidates(&std::collections::HashSet::from([local
-        .handle
-        .runner
-        .clone()]));
+    let sessions = registry.candidates(
+        &HashSet::from([local.handle.runner.clone()]),
+        &HashSet::new(),
+    );
     let order: Vec<_> = sessions
         .into_iter()
         .map(|session| session.runner.clone())
@@ -261,7 +268,7 @@ async fn candidates_prefer_locality_then_the_longest_waiting_host() -> TestResul
         ]
     );
     first.handle.request_offer();
-    let oldest = registry.candidates(&std::collections::HashSet::new());
+    let oldest = registry.candidates(&HashSet::new(), &HashSet::new());
     assert_eq!(
         oldest.first().map(|session| &session.runner),
         Some(&first.handle.runner)
@@ -280,7 +287,7 @@ async fn draining_or_superseded_sessions_are_not_scheduled() -> TestResult {
     let _eligible = eligible.register(&registry)?;
     draining.handle.drain.cancel();
     superseded.handle.supersede();
-    let sessions = registry.candidates(&std::collections::HashSet::new());
+    let sessions = registry.candidates(&HashSet::new(), &HashSet::new());
     assert_eq!(sessions.len(), 1);
     assert_eq!(
         sessions.first().map(|session| &session.runner),

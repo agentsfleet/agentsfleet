@@ -31,14 +31,10 @@ const CALL_ID: &str = "call_id must be a UUIDv7";
         (status = 201, description = "One physical send authorized", body = af_wire::task::DecisionReservationResult<'_>),
         (status = 200, description = "Saved call without another credential", body = af_wire::task::DecisionReservationResult<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE)
+        afd_http::openapi::GuardedFailures,
     )
 ))]
 pub(crate) async fn reserve<D: Services>(
@@ -91,14 +87,10 @@ pub(crate) async fn reserve<D: Services>(
     responses(
         (status = 200, description = "Current accounting and answer disposition", body = af_wire::task::DecisionReceiptResult),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE)
+        afd_http::openapi::GuardedFailures,
     )
 ))]
 pub(crate) async fn record<D: Services>(

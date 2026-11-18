@@ -10,6 +10,7 @@ mod history;
 mod identity;
 mod obligations;
 mod offered;
+mod placement;
 mod platform;
 mod recovery;
 mod rejections;

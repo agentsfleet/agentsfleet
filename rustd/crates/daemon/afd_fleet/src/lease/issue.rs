@@ -113,10 +113,17 @@ impl Leases {
         if !crate::task::lease::parents(&mut transaction, acquired).await? {
             return Ok(None);
         }
-        let Some(host) = self.lock_host(&mut transaction, runner_id).await? else {
+        let Some(host) = self
+            .lock_host(&mut transaction, runner_id, billed.tenant_id)
+            .await?
+        else {
             return Ok(None);
         };
         if !self.permits_issue(host) {
+            return Ok(None);
+        }
+        if let Some(refusal) = placement_refusal(host, &billed) {
+            afd_runner::capacity::refused_placement(runner_id, refusal, LeaseKind::Fleet.as_str());
             return Ok(None);
         }
         let (lease_id, event_row_id) = self.mint(now)?;
@@ -236,3 +243,18 @@ fn record_issued(
 /// LOG-EVENT (`.orly/standards/domains/logging.md`) value. Dashboards match on this spelling,
 /// so changing it is an operator-visible change.
 const EVENT_LEASE_ISSUED: &str = "lease_issued";
+
+/// The placement a tenant's runner may not take: another tenant's work, or work
+/// whose model key is the platform's. The claim filters both; this is the check
+/// under the host lock that a hole in that filter cannot pass.
+fn placement_refusal(
+    host: afd_runner::capacity::Held,
+    billed: &Billed<'_>,
+) -> Option<afd_runner::capacity::PlacementRefusal> {
+    use afd_runner::capacity::PlacementRefusal;
+    if !host.serves() {
+        return Some(PlacementRefusal::ForeignTenant);
+    }
+    (host.tenant_owned() && billed.posture == afd_billing::rates::Posture::Platform.as_str())
+        .then_some(PlacementRefusal::PlatformModel)
+}

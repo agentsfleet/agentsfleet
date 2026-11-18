@@ -1,6 +1,5 @@
--- Accepted meaning is a durable receipt, separate from pending queue delivery.
--- answered_at is the NULL marker the response sweep reads. Sequence is native
--- per-task order, allocated under the same row lock as the task's cursor.
+-- Accepted input meaning, kept apart from pending queue delivery. `sequence` is per-task order,
+-- allocated under the task row's lock. NULL `answered_at` means not yet answered.
 CREATE TABLE fleet.task_inputs (
     id                  UUID PRIMARY KEY,
     CONSTRAINT ck_task_inputs_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -11,8 +10,6 @@ CREATE TABLE fleet.task_inputs (
     sequence            BIGINT NOT NULL CHECK (sequence > 0),
     accepted_text       TEXT NOT NULL,
     interpretation      TEXT NOT NULL,
-    accepting_lease_id  UUID NOT NULL,
-    accepting_fence     BIGINT NOT NULL CHECK (accepting_fence >= 0),
     generation          BIGINT NOT NULL CHECK (generation > 0),
     answered_at         TIMESTAMPTZ(3),
     created_at          TIMESTAMPTZ(3) NOT NULL,

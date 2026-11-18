@@ -111,14 +111,10 @@ pub(crate) type StoredSecret = StoredSecretResponse<'static>;
     responses(
         (status = 201, description = afd_http::openapi::CREATED, body = StoredSecretResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn store<D: Services>(
@@ -169,12 +165,8 @@ pub(crate) async fn store<D: Services>(
     responses(
         (status = 200, description = afd_http::openapi::OK, body = SecretsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn list<D: Services>(
@@ -251,13 +243,9 @@ pub(crate) async fn list<D: Services>(
     responses(
         (status = 200, description = afd_http::openapi::OK, body = StoredSecretResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn replace<D: Services>(
@@ -317,13 +305,9 @@ pub(crate) async fn replace<D: Services>(
     responses(
         (status = 204, description = afd_http::openapi::NO_CONTENT),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL),
-        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+        afd_http::openapi::GuardedFailures,
     ),
 ))]
 pub(crate) async fn remove<D: Services>(

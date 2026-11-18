@@ -1,10 +1,5 @@
--- The platform default model per provider and the admin workspace whose vault
--- holds its key. Keyed by `provider` (an identity exception): every statement
--- addresses a row by provider, and there is at most one per provider.
---
--- `base_url` is the custom endpoint the platform default calls; `active` is read
--- by resolution, which skips an inactive provider. The model is a pointer into the
--- catalogue, so deleting a model still in use is refused.
+-- The platform default model per provider, and the admin workspace whose vault holds its key.
+-- Resolution skips a row whose `active` is false.
 CREATE TABLE model.platform_defaults (
     provider             TEXT PRIMARY KEY,
     source_workspace_id  UUID    NOT NULL REFERENCES identity.workspaces(id),

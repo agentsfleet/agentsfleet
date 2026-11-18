@@ -44,7 +44,7 @@ impl Drafts {
     /// # Errors
     /// Preserves admission failures; a concurrent winning poll yields no work.
     pub async fn claim_offered(&self, runner: &Uuid7, ticket: Ticket) -> Result<Option<Claimed>> {
-        for hint in selection::candidates(&self.database).await? {
+        for hint in selection::candidates(&self.database, runner).await? {
             match self.admit(runner, &hint, Some(ticket)).await? {
                 Placement::Admitted(lease) => return Ok(Some(*lease)),
                 Placement::Busy => return Ok(None),
@@ -76,7 +76,12 @@ impl Drafts {
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(sql::CONTEXT))?;
         let Some(host) = self
-            .lock_host_capacity(&mut tx, runner, afd_runner::capacity::Claimant::Authoring)
+            .lock_host_capacity(
+                &mut tx,
+                runner,
+                afd_runner::capacity::Claimant::Authoring,
+                Some(&hint.tenant_id),
+            )
             .await?
         else {
             return Ok(Placement::Busy);
@@ -85,6 +90,15 @@ impl Drafts {
             || ticket.is_some_and(|ticket| !ticket.permits(host, LeaseKind::Authoring))
         {
             return Ok(Placement::Busy);
+        }
+        // Before any write: a foreign runner leaves no attempt and no failure behind.
+        if !host.serves() {
+            afd_runner::capacity::refused_placement(
+                runner,
+                afd_runner::capacity::PlacementRefusal::ForeignTenant,
+                LeaseKind::Authoring.as_str(),
+            );
+            return Ok(Placement::Skipped);
         }
         let mut owed = Owed::default();
         let selected = match selection::authorize(&mut tx, hint, &mut owed).await? {

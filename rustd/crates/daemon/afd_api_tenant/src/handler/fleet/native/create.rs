@@ -25,11 +25,11 @@ use std::sync::Arc;
     params(afd_http::openapi::path::Workspace, ("Idempotency-Key" = String, Header, description = "Required UUIDv7 creation key.")),
     request_body = afd_api_wire::fleet::SaveFleetRequest,
     responses((status = 201, body = afd_api_wire::fleet::FleetResponse, description = "Retained fleet", headers(("Location" = String), ("ETag" = String))),
-        (status = 400, description = "Invalid source or choices"), (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"), (status = 404, description = "Source unavailable"),
+        (status = 400, description = "Invalid source or choices"), (status = 404, description = "Source unavailable"),
         (status = 409, description = "Review or operation changed"), (status = 410, description = "Accepted fleet purged"),
-        (status = 413, description = "Body too large"), (status = 429, description = "Too many requests"),
-        (status = 500, description = "Internal failure"), (status = 503, description = "Dependency unavailable"))
+        (status = 413, description = "Body too large"),
+        afd_http::openapi::GuardedFailures,
+    )
 ))]
 pub(crate) async fn save<D: Services>(
     State(services): State<Arc<D>>,

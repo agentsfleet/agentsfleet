@@ -18,3 +18,4 @@ mod replay_reads;
 mod report_limits;
 mod report_settlement;
 mod stored_state;
+mod tenant_placement;

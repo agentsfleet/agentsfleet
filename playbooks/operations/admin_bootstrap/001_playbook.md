@@ -32,7 +32,7 @@ Production uses `ENV=prod`, its own vault, `agentsfleetd-prod` and `https://api.
 2. **Add platform scopes.** In the Clerk user's public metadata, keep `tenant_id` and append these to `scopes`:
 
    ```text
-   runner:enroll runner:write stream:read model:admin platform-key:admin workspace:any
+   runner:register runner:write stream:read model:admin platform-key:admin workspace:any
    ```
 
 3. **Sign the CLI in.** Run this from an interactive terminal; `login` refuses a shell without one.

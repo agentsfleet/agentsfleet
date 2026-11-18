@@ -80,6 +80,7 @@ impl Fixture {
         let registered = afd_runner::Runners::new(self.run.booted.database.clone(), Entropy::new())
             .register(
                 &crate::e2e_seed::scenario_enrolment(&self.run.fleet),
+                "fixture:platform-operator",
                 clock::now(),
             )
             .await?;

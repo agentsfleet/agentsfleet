@@ -62,12 +62,15 @@ pub(crate) fn mint_tenant_token() -> String {
 /// `public_metadata.scopes` carries space-separated wire scopes; this listener
 /// answers exactly that shape and nothing else.
 pub(crate) async fn provider_listener() -> String {
+    provider_granting("secret:read secret:write connector:read fleet:read schedule:read").await
+}
+
+/// [`provider_listener`], granting exactly the space-separated `scopes`.
+pub(crate) async fn provider_granting(scopes: &'static str) -> String {
     let app = axum::Router::new().route(
         "/users/{subject}",
-        axum::routing::get(|| async {
-            axum::Json(json!({
-                "public_metadata": { "scopes": "secret:read secret:write connector:read fleet:read schedule:read" }
-            }))
+        axum::routing::get(move || async move {
+            axum::Json(json!({ "public_metadata": { "scopes": scopes } }))
         }),
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")

@@ -1,10 +1,5 @@
--- A frozen published version of a Plugin card. A table, not card columns, because
--- a draft and an install pin one exact version while the card moves on.
--- Append-only (rule 9); deleting the card cascades its revisions.
---
--- The definition is copied onto each frozen revision on purpose: a shared
--- definitions table would turn deletion from a cascade into a reference-counted
--- sweep. `canonical_digest` and `policy_semantics` are read by the install review.
+-- Append-only. Each revision carries its own definition copy, so deleting a card stays a cascade
+-- rather than a reference-counted sweep.
 CREATE TABLE authoring.plugin_revisions (
     id                UUID PRIMARY KEY,
     CONSTRAINT ck_plugin_revisions_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
@@ -29,9 +24,7 @@ CREATE TRIGGER trg_plugin_revisions_refuse_update
 
 GRANT SELECT, INSERT, DELETE ON authoring.plugin_revisions TO api_runtime;
 
--- Closes the card ↔ revision cycle: a card points at its live revision, and a
--- revision belongs to its card. Deferred, so publishing inserts the revision and
--- moves the pointer in one transaction, checked at commit.
+-- Deferred, so a publish inserts the revision and moves the card's pointer in one transaction.
 ALTER TABLE authoring.plugin_entries
     ADD CONSTRAINT fk_plugin_entries_head_revision FOREIGN KEY (head_revision_id) REFERENCES authoring.plugin_revisions(id)
     DEFERRABLE INITIALLY DEFERRED;

@@ -1,12 +1,6 @@
--- Admission, authoring and settlement read a model's prompt-tier/date price.
--- Why not columns on platform_models: a model has several prompt tiers and
--- effective date ranges; identity is one row and these prices are many rows.
--- Rates are integer nanodollars per million tokens. A missing cache-write rate
--- means unverified or unsupported, never free. NULL effective_until is an open
--- range, so an undated promotion does not acquire an invented ending.
--- Indy approved these two instant names from #771 on 2026-10-18; every other
--- instant retains the _at suffix. Unqualified cache writes have no reported
--- lifetime and remain distinct from the 5-minute and 1-hour categories.
+-- Rates are integer nanodollars per million tokens. A NULL cache-write rate means unverified or
+-- unsupported, never free; NULL `effective_until` is an open range. The unqualified cache-write
+-- rate has no reported lifetime and is distinct from the 5-minute and 1-hour rates.
 CREATE TABLE model.platform_model_prices (
     id UUID PRIMARY KEY,
     CONSTRAINT ck_platform_model_prices_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),

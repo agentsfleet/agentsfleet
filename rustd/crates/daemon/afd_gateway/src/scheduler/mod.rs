@@ -8,8 +8,9 @@ use crate::{
     registry::Registry,
     session::{OfferMode, OfferOutcome, SessionHandle},
 };
+use af_core::id::Uuid7;
 use afd_bus::wake::Wake;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
 /// Subscription repair, notification handling and recovery keep independent progress.
@@ -27,29 +28,51 @@ pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
                 .recovery
                 .max_concurrent_claims
                 .get(),
-            stop
+            stop.clone(),
+            |runners| {
+                let (gateway, stop) = (&gateway, &stop);
+                async move {
+                    let waiting = recovery::waiting_work(gateway, stop, &runners).await?;
+                    Ok(if waiting.pending() {
+                        Probe::Waiting(waiting.idle().iter().cloned().collect())
+                    } else {
+                        Probe::Nothing
+                    })
+                }
+            },
         )
     )?;
     Ok(())
 }
 
-async fn notifications(
+/// One ordinary probe can skip every tenant runner with no eligible work.
+#[derive(Debug)]
+pub(crate) enum Probe {
+    /// No session can claim pending work.
+    Nothing,
+    /// Work waits; these tenant runners cannot claim it.
+    Waiting(HashSet<Uuid7>),
+}
+
+async fn notifications<F: Future<Output = Result<Probe>>>(
     registry: &Registry,
     wake: &Wake,
     claims: usize,
     stop: CancellationToken,
+    pending: impl FnMut(Vec<Uuid7>) -> F,
 ) -> Result<()> {
     tokio::try_join!(
-        ordinary_notifications(registry, wake, &stop),
+        ordinary_notifications(registry, wake, &stop, pending),
         recovery::notifications(registry, wake, claims, &stop),
     )?;
     Ok(())
 }
 
-async fn ordinary_notifications(
+async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
     registry: &Registry,
     wake: &Wake,
     stop: &CancellationToken,
+    mut pending: impl FnMut(Vec<Uuid7>) -> F,
 ) -> Result<()> {
     let mut generations = wake.generations();
     let mut observed = generations.borrow_and_update().rings();
@@ -67,7 +90,15 @@ async fn ordinary_notifications(
         if budget == 0 {
             continue;
         }
-        let sessions = registry.candidates(&wake.fleets());
+        let idle = match pending(registry.runners()).await {
+            Ok(Probe::Waiting(runners)) => runners,
+            Ok(Probe::Nothing) => continue,
+            Err(error) => {
+                Gateway::observe(&error, crate::Operation::Offer);
+                HashSet::new()
+            }
+        };
+        let sessions = registry.candidates(&wake.fleets(), &idle);
         tokio::select! {
             biased;
             () = stop.cancelled() => return Ok(()),

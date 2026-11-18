@@ -22,9 +22,15 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** After a runner dies, an eligible runner reclaims its expired lease, restores the last complete checkpoint, and completes one admission without mixing attempts.
+**Goal (testable):** With checkpoint resume enabled, an eligible platform runner reclaims an interrupted event's expired lease, restores its last complete checkpoint, and completes one admission without mixing attempts.
 
 **Readiness:** The platform recovery refactor is committed at `976883d00`. See the [implemented architecture](../../architecture/runner_checkpoint_recovery.md) and the [verification ledger](../reviews/m247-review-ledger.md) for the focused proofs, remaining gaps and the matched benchmark. Tenant runners are parked.
+
+M246 merged at `813ccba56dd1dbfe795992744a8348e2ff700c3c` while this
+branch's configuration tests were running. Reconcile its tenant ownership
+filters and registration receipts with the platform recovery changes before
+final verification. Tenant recovery and M251 placement settings remain
+outside this delivery.
 
 ### Deployment configuration extension
 
@@ -58,6 +64,8 @@ records the agreed file format, deployment sequence and setting ownership.
 
 A lease's expiry controls reclaim. Host liveness controls quarantine. These clocks are independent, so recovery can start before the failed host is cordoned.
 
+The illustration uses the default lease clock and enabled checkpoint resume.
+
 ```text
 A dies -> R+35s lease deadline -> eligible B/L2/F+1 -> restore -> one settlement
   |                                  +-- ordinary chat: NEW full-state/files
@@ -74,7 +82,7 @@ Durations come from `af_core::timing`: `LEASE_TTL=35s`, `RUNNER_OFFLINE_AFTER=10
 - **PR title (eventual):** feat(runner): cordon failed hosts and resume fenced attempts from checkpoints
 - **Intent:** A failed host leaves durable work for another eligible runner, and users see one coherent replacement attempt.
 - **Authoring handshake:** Review and update the failure design, draw each scenario, and identify every implementation file and symbol category.
-- **Assumptions:** Indy authorized implementation with orly-build on Nov 17, 2026. After the manual switch back, independent Sections can continue. The reviewed capture/files design is pinned below. Indy narrowed delivery to platform runners; tenant-runner ownership/placement is parked.
+- **Assumptions:** Indy authorized implementation with orly-build on Nov 17, 2026. After the manual switch back, independent Sections can continue. The reviewed capture/files design is pinned below. Indy narrowed recovery delivery to platform runners; M246 ownership filters are retained from main.
 - **Implementer handshake:** Restate the two recovery paths and their limits in Pull Request Session Notes before implementation edits.
 
 ## Implementing agent: read these first
@@ -335,7 +343,7 @@ The expiry biller currently waits 120s after the lease deadline (`lease/billing_
 ### Section 5: Show quarantine through current operator surfaces
 
 Add optional `cordon` to current runner reads, with reason and timestamp. Automatic quarantine leaves the operator status visible independently.
-`agentsfleet platform runners` has `list`, `show`, `events` and `leases`; `runner:read` is required. Add cordon reason/time and return rule to operator reads; tenant-owned list visibility remains M246 work. Add `runner_uncordoned` to both server and CLI enums.
+`agentsfleet platform runners` has `list`, `show`, `events` and `leases`; `runner:read` is required. Add cordon reason/time and return rule to operator reads; M246 supplies scoped tenant-owned visibility on the base. Add `runner_uncordoned` to both server and CLI enums.
 The deleted web admin pages are not implementation targets. The browser receives the chat marker from Section 3.
 
 ```text
@@ -504,7 +512,7 @@ Task workspace restore already exists and is in scope for reuse. Plain-chat matc
 9. **Dashboard restraint:** Chat marker only in the browser; current platform CLI serves operators.
 10. **Next step for a confused user:** Read the restart marker or the runner's quarantine reason and return rule.
 ## Decomposition & alternatives
-After the manual switch back, build Sections 1-3 independently; Section 4 follows the reviewed capture, paired-files and full-state design. Delivery covers platform runners; tenant-runner M246 integration is parked.
+After the manual switch back, build Sections 1-3 independently; Section 4 follows the reviewed capture, paired-files and full-state design. Delivery covers platform recovery and preserves M246's merged ownership filters. Tenant recovery remains parked.
 Section 5 uses the cordon fields; Section 6 proves the complete wired result. Do not label checkpoint work a pointer-only patch.
 
 Rejected: auto-cordon in operator `status`, event-history-derived healthy proof, SQL reads per activity chunk, and a best-effort restart hint as the sole reset authority.

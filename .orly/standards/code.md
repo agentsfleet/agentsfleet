@@ -77,8 +77,8 @@ A directory that a delete or move leaves empty is removed in the same change.
 - **Good:** the spec cites the schema file, the handler and the merged spec that locked the decision
 - **Why:** an internally consistent but ungrounded framing sends review round after round chasing the same error.
 
-Sources are consulted in this order: playbooks, merged specs, pending specs, architecture docs, then schema, handlers and fixtures.
-A conflict between two locked sources goes to the owner before either is overridden.
+Source code, schema, handlers and observed runs prove current behavior. Playbooks, approved specs and architecture pages record intended behavior.
+A conflict between observed and intended behavior goes to the owner before either is silently redefined.
 
 ### PORT — A port to another language carries over observable behaviour and guarantees, never the source language's workarounds.
 - **Applies to:** ports and rewrites from one language to another

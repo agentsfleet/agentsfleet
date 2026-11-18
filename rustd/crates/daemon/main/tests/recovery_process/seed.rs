@@ -34,7 +34,7 @@ async fn runners(run: &Scenario) -> Checked<(Uuid7, String)> {
     request.assigned_policy.registry_allowlist.clear();
     request.assigned_policy.durable_tasks_enabled = false;
     let enrolled = afd_runner::Runners::new(run.booted.database.clone(), Entropy::new())
-        .register(&request, af_core::clock::now())
+        .register(&request, "checkpoint-recovery-test", af_core::clock::now())
         .await?;
     Ok((enrolled.runner_id, enrolled.token.expose().to_owned()))
 }

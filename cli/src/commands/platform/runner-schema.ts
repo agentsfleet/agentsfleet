@@ -27,6 +27,8 @@ const runner = Schema.Struct({
   labels: Schema.Array(Schema.String), last_seen_at: instant, created_at: instant,
   assigned_policy: RunnerPolicySchema, achievable: Schema.NullOr(capability),
   degraded: Schema.Boolean, degraded_reason: Schema.NullOr(Schema.String),
+  /** The tenant that registered the runner; absent for a platform runner. */
+  tenant_id: Schema.optionalKey(Schema.NullOr(text)),
 });
 export const RunnerPageSchema = Schema.Struct({
   items: Schema.Array(runner), total: Schema.NullOr(count), next_cursor: Schema.NullOr(text),
@@ -45,8 +47,10 @@ export const RunnerMutationSchema = Schema.Struct({
   labels: Schema.optionalKey(Schema.NullOr(Schema.Array(Schema.String))),
   selftest_requested_at: Schema.optionalKey(Schema.NullOr(instant)),
 });
-export const RunnerEnrolledSchema = Schema.Struct({runner_id: text, runner_token: text, assigned_policy: RunnerPolicySchema});
+export const RunnerRegisteredSchema = Schema.Struct({runner_id: text, runner_token: text, assigned_policy: RunnerPolicySchema});
 export const RunnerRotatedSchema = Schema.Struct({id: text, runner_token: text});
+/** A tenant registration retried with its first key and body: the runner, never its token. */
+export const RegistrationReplaySchema = Schema.Struct({runner_id: text, assigned_policy: RunnerPolicySchema});
 export const RunnerEventsSchema = Schema.Struct({
   items: Schema.Array(Schema.Struct({id: text, runner_id: text, event_type: Schema.Enum(RunnerEventType), occurred_at: instant, metadata: Schema.Unknown})),
   total: Schema.NullOr(count), next_cursor: Schema.NullOr(text),
