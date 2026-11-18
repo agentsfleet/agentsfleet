@@ -114,7 +114,9 @@ See [platform runner checkpoint recovery](../../architecture/runner_checkpoint_r
 
 The follow-up standards review reproduced a skipped-page starvation case. A live regression kept newer admissions ready while releasing 64 older locks.
 
-The prior cursor starved the oldest admission. The bounded cursor passed both page tests plus five retention cases. The gateway and supervisor follow-up passed 544 unit tests with one ignored. The benchmark source also compiled. [Recovery page tests](../../../rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/recovery_page.rs)
+The prior cursor starved the oldest admission. The bounded cursor passed both page tests plus five retention cases. [Recovery page tests](../../../rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/recovery_page.rs)
+
+The gateway and supervisor follow-up passed 544 unit tests with one ignored. The benchmark source also compiled.
 
 An earlier unit attempt failed the old Busy classification assertion, which was corrected to the intended typed unavailable error. A later attempt failed the existing expired-deadline HTTP/3 transport test; the full retry passed, and the initial red log remains.
 
