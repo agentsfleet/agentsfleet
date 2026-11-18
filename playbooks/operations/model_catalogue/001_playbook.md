@@ -77,6 +77,20 @@ agentsfleet platform keys list
 
 `keys list` shows the provider and model with `active: true`. Setup chat also needs an SDK route that supports tools.
 
+## Seed the decision model
+
+The setup edit check calls TypeSafe, a decision-only model the snapshot above does not carry.
+After the `typesafe` bag is synced, create it once from the local bootstrap's definition:
+
+```bash
+bun -e 'import { decisionModel } from "./deploy/local/bootstrap.ts"; console.log(JSON.stringify(decisionModel()))' \
+  | agentsfleet platform models create --file - --json
+agentsfleet platform models list
+```
+
+`models list` then shows `typesafe` `jev-latest`, and its `id` is the runner's `decision_model_id`.
+Skip this when that row already exists. The profile carries an acceptance-only price, so production needs a reviewed TypeSafe rate first.
+
 ## Change connection settings or prices
 
 Change the snapshot in `scripts/model-library-allowlist.json` and rerun the diff and apply above.

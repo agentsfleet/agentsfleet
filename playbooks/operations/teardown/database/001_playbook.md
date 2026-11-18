@@ -21,6 +21,8 @@ Never use a production teardown in a routine deployment.
 ## Before you begin
 
 1. Stop traffic and every writer in the selected environment.
+   The daemon is the only writer: run `flyctl machine list --app agentsfleetd-<ENV>`, then `flyctl machine stop <ID> --app agentsfleetd-<ENV>`.
+   It has no public service, so nothing starts it again before the deploy.
 2. Confirm Docker and a signed-in 1Password Command-Line Interface (CLI).
 3. Confirm item `planetscale-<ENV>` has `migrator-connection-string`, in the vault `VAULT_DEV` or `VAULT_PROD` names.
 4. Get 🤠 Indy's approval for the target; production approval is separate from development.
@@ -35,6 +37,7 @@ Never use a production teardown in a routine deployment.
    ```
 
    The gate checks the credential, asks you to type `DEVELOPMENT` or `PRODUCTION`, runs `teardown.sql`, and verifies.
+   Run it in a terminal: it reads that word from the keyboard, which an agent session's shell command cannot supply.
    It runs `psql` in `postgres:18-alpine` with `PGSSLROOTCERT=system` and passes the URL by environment name, never in process arguments.
 
    ```text
@@ -47,6 +50,9 @@ Never use a production teardown in a routine deployment.
    Every push to `main` starts `deploy-dev.yml`, so the merge that needed the wipe is enough to deploy.
    A runner deployed onto the empty database keeps its old token, and the daemon refuses it with `UZ-RUN-001`.
 3. Keep traffic stopped until the environment is rebuilt and its migrations are green.
+   - The deploy leaves the stopped machine stopped, and its verify job starts it.
+   - Verify then fails at the `approval-signing` sync until priming mints the `platform-priming` key; rerun that job once priming is done.
+   - Keep the dashboard closed until the administrator's workspace is set: an account opened before that meets a half-primed daemon.
 4. Continue with founding step 04 (development) or 07 (production).
    Founding step 05 (development) or 08 (production) sets the variable back to `true` after storing the new token.
 5. After migrations, prime the model catalogue the teardown emptied, as the gate prints.
