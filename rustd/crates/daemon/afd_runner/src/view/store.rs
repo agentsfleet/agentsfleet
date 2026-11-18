@@ -53,7 +53,7 @@ impl Runners {
         let more = trim_to_page(&mut rows, limit);
         let items = rows
             .into_iter()
-            .map(ItemRow::parse)
+            .map(|row| row.parse(self.clock()))
             .collect::<Result<Vec<_>>>()?;
         Ok(RunnerPage {
             next_cursor: page_cursor(&items, more),
@@ -75,7 +75,7 @@ impl Runners {
             .await
             .map_err(query(CONTEXT_RUNNER_DETAIL))?
             .ok_or_else(runner_not_found)?
-            .parse()
+            .parse(self.clock())
     }
 
     /// Lists one runner's append-only history newest first.

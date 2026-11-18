@@ -40,7 +40,7 @@ use std::net::SocketAddr;
 
 use af_core::env::EnvSource;
 use af_observability::{Analytics, Telemetry};
-use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT};
+use afd_api::Admission;
 use afd_db::Db;
 
 pub use self::accept::Acceptor;
@@ -161,6 +161,7 @@ async fn open(
     port: u16,
     supervisor: &mut Supervisor,
 ) -> Result<Booted, BootFailure> {
+    config.runtime.announce();
     // The exporter first, and its position here is load-bearing. `open_runtime`
     // opens the database, and the records it emits while doing so —
     // `pool_initialized`, `pool_warmed`, `pool_warm_incomplete` — are exactly
@@ -184,7 +185,7 @@ async fn open(
             return Err(failure);
         }
     };
-    let admission = Admission::new(DEFAULT_MAX_IN_FLIGHT);
+    let admission = Admission::new(config.runtime.requests);
     // Before the router takes them: both are the state a gauge reads, and the
     // clones are handles onto the same semaphore and the same ceiling rather
     // than second copies that could disagree with what admission decides.
@@ -274,6 +275,7 @@ async fn start_workers(
         &runtime.database,
         analytics,
         runtime.plane.task_owner(),
+        config.runtime.clock,
     );
     spawn_background(
         supervisor,

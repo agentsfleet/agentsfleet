@@ -23,6 +23,7 @@ const MAX_CACHED_SEND_GATES: u64 = 1024;
 /// Native private setup service, shared by browser and terminal chat.
 #[derive(Debug, Clone)]
 pub struct Drafts {
+    pub(crate) clock: af_core::timing::LeaseClock,
     pub(crate) database: Db,
     pub(crate) entropy: Entropy,
     pub(crate) analytics: Analytics,
@@ -38,6 +39,13 @@ pub struct Drafts {
 }
 
 impl Drafts {
+    /// Uses the deployment clock validated before startup.
+    #[must_use]
+    pub fn with_clock(mut self, clock: af_core::timing::LeaseClock) -> Self {
+        self.clock = clock;
+        self
+    }
+
     /// Shares the daemon's pool and its `biller`; private drafts hold no
     /// provider keys.
     ///
@@ -45,6 +53,7 @@ impl Drafts {
     #[must_use]
     pub fn new(database: Db, entropy: Entropy, biller: Arc<dyn Biller>) -> Self {
         Self {
+            clock: af_core::timing::LeaseClock::default(),
             database,
             entropy,
             analytics: Analytics::silent(),

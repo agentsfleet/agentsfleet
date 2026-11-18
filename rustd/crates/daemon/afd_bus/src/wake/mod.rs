@@ -27,7 +27,7 @@ pub struct Recovery(u64);
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Generation {
     rings: u64,
-    recovery_generation: u64,
+    recovery_sequence: u64,
     recovery_pending: bool,
 }
 
@@ -42,7 +42,7 @@ impl Generation {
     #[must_use]
     pub const fn recovery(self) -> Option<Recovery> {
         if self.recovery_pending {
-            Some(Recovery(self.recovery_generation))
+            Some(Recovery(self.recovery_sequence))
         } else {
             None
         }
@@ -97,7 +97,7 @@ impl Wake {
     /// An unknown loss wakes a full eligible-session pass without fabricating a fleet identifier.
     pub fn recheck(&self) {
         self.generation.send_modify(|generation| {
-            generation.recovery_generation = generation.recovery_generation.wrapping_add(1);
+            generation.recovery_sequence = generation.recovery_sequence.wrapping_add(1);
             generation.recovery_pending = true;
         });
     }

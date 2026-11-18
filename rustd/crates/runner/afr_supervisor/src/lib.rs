@@ -124,7 +124,7 @@ pub fn boot(env: &impl EnvSource) -> Result<(Config, StorageHome)> {
 /// until the daemon says stop.
 ///
 /// Caller shutdown retains accepted work and memory-only delivery for
-/// [`af_core::timing::LEASE_TTL`], then stops remaining work. Process exit
+/// 35 seconds, then stops remaining work. Process exit
 /// after that grace can lose reports or usage that the daemon has not acknowledged.
 ///
 /// # Errors

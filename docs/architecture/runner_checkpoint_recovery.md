@@ -8,9 +8,69 @@ executable: false
 
 # Platform runner checkpoint recovery
 
-A platform runner resumes an interrupted event from its last complete checkpoint after the previous lease expires. PostgreSQL holds the encrypted conversation, and the private object store holds encrypted file chunks.
+A platform runner resumes an interrupted event from its last complete checkpoint after the previous lease expires. PostgreSQL holds encrypted ordinary-turn conversation history. The private object store holds encrypted workspace chunks and native task history.
 
 The active specification defines acceptance. The review ledger records the timing at `976883d00` and the remaining proofs. [M247 specification](../v2/active/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN_FROM_CHECKPOINT.md) · [Verification ledger](../v2/reviews/m247-review-ledger.md)
+
+## Deployment settings
+
+The shared loader is `rustd/crates/foundation/af_config`. It reads an optional
+TOML file, merges explicit invocation overlays, deserializes the caller's
+settings type and validates that type with `garde`.
+
+```text
+daemon ConfigToml --+
+                   +--> af_config::ConfigBuilder --> validated application type
+runner type -------+                                      |
+                                                          +--> service construction
+```
+
+The loader accepts an injectable `FileSource`. It depends on foundation code
+and parsing libraries.
+
+The daemon owns its fields, environment names and
+policy validation in `daemon/main/src/config` and `preflight`. Its existing
+`BootConfig` carries the resolved settings into the stores and scheduler.
+
+The pattern follows the Codex configuration builder reviewed at
+`ca21fe65d18a9b6326759fb4263c65dfbb645aa5`. Invocation overlays merge before
+typed deserialization. [Reference loader](https://github.com/openai/codex/blob/ca21fe65d18a9b6326759fb4263c65dfbb645aa5/codex-rs/config/src/loader/README.md)
+
+Select the daemon file with `--config <FILE>` or `AGENTSFLEET_CONFIG_FILE`.
+For supported settings, an explicit CLI value wins, followed by a present
+TOML field, its environment value, and the current default. Secrets resolve
+through the environment or the platform vault.
+
+The daemon's normal
+no-subcommand preflight reads the same settings as serving.
+
+The Fly application files live beside their respective `fly.toml` files.
+Fly writes the selected file at `/etc/agentsfleet/agentsfleetd.toml`.
+
+Both deployment files set `runner.recovery.resume_from_checkpoint = false`.
+A configuration change takes effect when each daemon replica restarts.
+
+Environment-only startup defaults to resume enabled. Set the flag explicitly
+for a staged rollout and confirm its effective value on every replica.
+
+With resume disabled, an ordinary admission with a committed checkpoint
+waits at its fleet's head after its lease expires. Candidate selection and the
+locked claim both check the setting.
+
+Enabling resume permits a new fenced
+claim. Active leases retain their stored deadlines and can reconnect.
+Checkpoint capture continues while resume is disabled.
+
+The deployment clock controls grants and renewals and derives the offline
+threshold as three lease lifetimes. Its default is 35 seconds.
+
+Startup
+requires a value greater than the existing 32-second renewal/reconnect budget
+and below the twelve-hour runtime ceiling. The recovery probe interval must
+be positive and shorter than the lease lifetime.
+
+The configuration extension is under verification. Source inspection and
+focused checks are recorded in the [review ledger](../v2/reviews/m247-review-ledger.md#proposed-agentsfleetd-deployment-configuration).
 
 ## What gets checkpointed
 
@@ -66,7 +126,7 @@ heartbeat sweep  `-> separate offline record and automatic quarantine
 
 The 35-second lease TTL starts at the last grant or renewal. It governs reclaim.
 
-A separate sweep quarantines a host after 105 seconds without a valid heartbeat. [Lease and liveness timing](../../rustd/crates/foundation/af_core/src/timing.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
+A separate sweep quarantines a host after 105 seconds without a valid heartbeat. [Lease and liveness timing](../../rustd/crates/foundation/af_core/src/timing/mod.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
 
 The lease TTL includes a 5-second tick, 5-second answer window, 7-second reconnect, and 15-second renewal margin. The compile-time sums require 32 seconds within the 35-second lease, and 14 seconds for the second answer and physical cleanup within that 15-second margin.
 

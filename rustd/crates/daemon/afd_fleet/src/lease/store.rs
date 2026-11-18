@@ -18,6 +18,8 @@ use afd_db::Db;
 /// carries the live tail and the disposable notifications.
 #[derive(Debug, Clone)]
 pub struct Leases {
+    clock: af_core::timing::LeaseClock,
+    resume_from_checkpoint: bool,
     database: Db,
     bus: Handle,
     entropy: Entropy,
@@ -33,10 +35,36 @@ pub struct Leases {
 }
 
 impl Leases {
+    pub(crate) const fn clock(&self) -> af_core::timing::LeaseClock {
+        self.clock
+    }
+
+    /// Uses the deployment clock validated before startup.
+    #[must_use]
+    pub fn with_clock(mut self, clock: af_core::timing::LeaseClock) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    /// Gate retries of ordinary admissions carrying a committed checkpoint.
+    #[must_use]
+    pub fn with_checkpoint_resume(mut self, enabled: bool) -> Self {
+        self.resume_from_checkpoint = enabled;
+        self
+    }
+
+    /// Whether this replica may reclaim an ordinary checkpointed admission.
+    #[must_use]
+    pub const fn checkpoint_resume_enabled(&self) -> bool {
+        self.resume_from_checkpoint
+    }
+
     /// A store reading and writing through `database`, announcing on `bus`.
     #[must_use]
     pub fn new(database: Db, bus: Handle, entropy: Entropy) -> Self {
         Self {
+            clock: af_core::timing::LeaseClock::default(),
+            resume_from_checkpoint: true,
             database,
             bus,
             entropy,

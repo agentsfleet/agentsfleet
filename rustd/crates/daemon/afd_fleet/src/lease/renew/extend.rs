@@ -74,7 +74,7 @@ impl Extension<'_> {
         }
         let row = self
             .lease
-            .bind()
+            .bind(self.store.clock())
             .fetch_one(&mut *transaction)
             .await
             .map_err(query(CONTEXT))?;

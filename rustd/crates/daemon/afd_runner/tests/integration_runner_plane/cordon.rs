@@ -96,7 +96,7 @@ async fn prove_elapsed(fixture: &Fixture, runner: &Uuid7) {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_a_silent_host_is_cordoned_with_its_offline_record() {
-    let mut fixture = Fixture::create().await;
+    let mut fixture = Fixture::isolated().await;
     let owner = connected(&mut fixture).await;
     quarantined(&fixture, owner.runner()).await;
     let detail = fixture
@@ -135,7 +135,7 @@ async fn test_a_silent_host_is_cordoned_with_its_offline_record() {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_a_refused_cordon_leaves_no_offline_record() {
-    let mut fixture = Fixture::create().await;
+    let mut fixture = Fixture::isolated().await;
     let owner = connected(&mut fixture).await;
     silence(&fixture, owner.runner()).await;
     let runner = owner.runner();
@@ -165,7 +165,7 @@ async fn test_a_refused_cordon_leaves_no_offline_record() {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_automatic_lift_requires_continuous_valid_beats() {
-    let mut fixture = Fixture::create().await;
+    let mut fixture = Fixture::isolated().await;
     let owner = connected(&mut fixture).await;
     quarantined(&fixture, owner.runner()).await;
     beat(&fixture, &owner).await;
@@ -207,7 +207,7 @@ async fn test_automatic_lift_requires_continuous_valid_beats() {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn missed_cadence_resets_an_old_healthy_proof() {
-    let mut fixture = Fixture::create().await;
+    let mut fixture = Fixture::isolated().await;
     let owner = connected(&mut fixture).await;
     quarantined(&fixture, owner.runner()).await;
     beat(&fixture, &owner).await;
@@ -237,7 +237,7 @@ async fn missed_cadence_resets_an_old_healthy_proof() {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn unproved_liveness_resets_health_and_never_lifts() {
-    let mut fixture = Fixture::create().await;
+    let mut fixture = Fixture::isolated().await;
     let owner = connected(&mut fixture).await;
     quarantined(&fixture, owner.runner()).await;
     beat(&fixture, &owner).await;
@@ -254,7 +254,7 @@ async fn unproved_liveness_resets_health_and_never_lifts() {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_failed_lift_can_record_liveness_without_proving_healthy_return() {
-    let mut fixture = Fixture::create().await;
+    let mut fixture = Fixture::isolated().await;
     let owner = connected(&mut fixture).await;
     let runner = owner.runner();
     quarantined(&fixture, runner).await;

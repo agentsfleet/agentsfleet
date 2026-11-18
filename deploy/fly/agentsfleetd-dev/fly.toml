@@ -12,9 +12,8 @@ primary_region = "iad"
 
 # HTTP concurrency and backpressure match production, which explains each
 # (deploy/fly/agentsfleetd-prod/fly.toml): a tokio runtime sized by the core
-# count, a constant 256-request in-flight ceiling for API-class routes
-# (`DEFAULT_MAX_IN_FLIGHT`, rustd/crates/daemon/afd_http/src/admission/mod.rs), and
-# SSE_MAX_STREAMS (default 256) for Server-Sent Events (SSE) streams.
+# count, a configured 256-request in-flight ceiling for API-class routes,
+# and 256 Server-Sent Events (SSE) streams in agentsfleetd.toml.
 # Postgres connections this replica may open, measured against the cluster's
 # own ceiling rather than left to the code's default.
 #
@@ -26,7 +25,7 @@ primary_region = "iad"
 #
 # The code's default is 20 (`SERVICE_CONNECTION_BUDGET / EXPECTED_REPLICAS`,
 # 80/4 in afd_db/src/config/mod.rs), and that file says in as many words that a
-# deployment knowing its own budget must set this knob — the budget travels
+# deployment knowing its own budget must set its application pool setting — the budget travels
 # with the Postgres a deployment actually runs, which no source file can know.
 # Two replicas at 20 asked 40 of 17, and the instance that had to grow past its
 # warm floor was refused `53300 too_many_connections`; sqlx retried that
@@ -37,18 +36,7 @@ primary_region = "iad"
 # 6432: client connections to a pooler are cheap, and it is the bouncer's
 # `default_pool_size` that then counts against the 25.
 [env]
-  AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR = "[::]:4443"
-  AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE = "/etc/agentsfleet/runner-stream/server-chain.pem"
-  AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE = "/etc/agentsfleet/runner-stream/server.key"
-  DATABASE_POOL_SIZE_API = "8"
-  API_URL = "https://api-dev.agentsfleet.net"
-  APP_URL = "https://app-dev.agentsfleet.net"
-  # Clerk's public REST API base, versioned. Not a secret — Clerk's own host,
-  # not a credential — so it lives here rather than in the 1Password-staged
-  # secrets list. agentsfleetd builds `{CLERK_API_BASE}/users/{id}` directly
-  # (afd_identity/src/provider.rs) with no version segment inserted for it,
-  # so the value has to carry `/v1` itself.
-  CLERK_API_BASE = "https://api.clerk.com/v1"
+  AGENTSFLEET_CONFIG_FILE = "/etc/agentsfleet/agentsfleetd.toml"
 
 # shared-cpu-2x, the smallest size where dev latency means something. A shared
 # vCPU's baseline is 5 ms per 80 ms period (6.25%), pooled across a machine's
@@ -89,4 +77,10 @@ primary_region = "iad"
 [[files]]
   guest_path = "/etc/agentsfleet/runner-stream/server.key"
   secret_name = "RUNNER_STREAM_TLS_KEY_BASE64"
+  processes = ["app"]
+
+# Application settings are delivered with the selected image release.
+[[files]]
+  guest_path = "/etc/agentsfleet/agentsfleetd.toml"
+  local_path = "deploy/fly/agentsfleetd-dev/agentsfleetd.toml"
   processes = ["app"]

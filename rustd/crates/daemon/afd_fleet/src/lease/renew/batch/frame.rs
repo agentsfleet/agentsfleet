@@ -111,7 +111,7 @@ impl LeaseService {
         let columns = Columns::of(bound, self.leases.entropy(), now)?;
         let (digest, connection) = self.leases.host_proof(runner_id);
         let rows: Vec<Judged> = columns
-            .bind(runner_id)
+            .bind(runner_id, self.leases.clock())
             .bind(digest)
             .bind(connection)
             .fetch_all(&mut *self.leases.pool().acquire().await?)

@@ -65,8 +65,9 @@ pub fn spawn(
     database: &Db,
     analytics: &Analytics,
     tasks: afd_fleet::task::Tasks,
+    clock: af_core::timing::LeaseClock,
 ) {
-    let liveness = Liveness::new(database.clone(), Entropy::new());
+    let liveness = Liveness::new(database.clone(), Entropy::new()).with_clock(clock);
     supervisor.spawn(LIVENESS, move |token| sweep::run(liveness, token));
 
     let retention = Retention::new(database.clone());

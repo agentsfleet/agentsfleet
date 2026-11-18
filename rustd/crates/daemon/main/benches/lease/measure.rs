@@ -5,6 +5,7 @@ use super::{
     cohort::{self, Fleet},
     e2e::{self, Scenario},
     model::{Asked, Model},
+    process::Worker,
     seed,
 };
 use af_core::{
@@ -15,6 +16,7 @@ use af_core::{
 use agentsfleetd::supervisor::Supervisor;
 use futures_util::future::try_join_all;
 use serde_json::{Value, json};
+use std::io::Write as _;
 use std::{collections::BTreeMap, time::Duration};
 
 const ACCEPTED: &str = "The source accepted this recovery checkpoint.";
@@ -30,7 +32,7 @@ pub(super) async fn run(n: usize) -> Checked {
     let interrupted = checkpoint(&run, &fleets, &mut model).await?;
     let (survivors, survivor_ids) = cohort::hosts(&run, &model, n).await?;
     tokio::time::sleep(af_core::timing::OFFER_FALLBACK_TICK).await;
-    let _logs = try_join_all(source.into_iter().map(|w| w.kill())).await?;
+    let _logs = try_join_all(source.into_iter().map(Worker::kill)).await?;
     let eligible = eligibility(&run, &fleets, &source_ids).await?;
     drop(interrupted);
     let resumed = observe(&mut model, &eligible).await?;
@@ -43,14 +45,15 @@ pub(super) async fn run(n: usize) -> Checked {
         asked.answer("Finished the recovered turn.")?;
     }
     let issued = outcomes(&run, &fleets, &survivor_ids, &eligible, &raw).await?;
-    let _logs = try_join_all(survivors.into_iter().map(|w| w.kill())).await?;
+    let _logs = try_join_all(survivors.into_iter().map(Worker::kill)).await?;
     let _stopped = daemon.shutdown().await;
     for fleet in fleets.iter().skip(1) {
         super::e2e_retire::retire_fleet(&run.booted, &fleet.id).await;
     }
     run.cleanup().await;
     model.finish().await?;
-    println!(
+    writeln!(
+        std::io::stdout(),
         "{}",
         serde_json::to_string(&json!({
             "shape":"recovery", "workload":"api_only", "fleets":n, "hosts_per_group":n.div_ceil(64),
@@ -58,7 +61,7 @@ pub(super) async fn run(n: usize) -> Checked {
             "revision":ProcessEnv.get("BENCH_REVISION"), "window_from_last_expiry_ms":WINDOW_MS,
             "fleet_samples":raw, "replacement_leases":issued
         }))?
-    );
+    )?;
     Ok(())
 }
 

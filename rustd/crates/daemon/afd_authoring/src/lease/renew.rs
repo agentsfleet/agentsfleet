@@ -11,7 +11,7 @@
 //! refused by `can_renew` either way. Database time is sampled again after the
 //! host lock, so every expiry check reads time after every wait.
 
-use af_core::{clock, id::Uuid7, timing::LEASE_TTL};
+use af_core::{clock, id::Uuid7};
 use af_wire::authoring::{Renew, Renewed};
 use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;
@@ -62,7 +62,7 @@ impl Drafts {
         let until: Option<jiff_sqlx::Timestamp> = sqlx::query_scalar(sql::EXTEND)
             .bind(guarded.attempt.id)
             .bind(now.to_sqlx())
-            .bind(LEASE_TTL)
+            .bind(self.clock.ttl())
             .bind(clock::saturating_millis_signed(verified.runtime))
             .fetch_optional(&mut *tx)
             .await

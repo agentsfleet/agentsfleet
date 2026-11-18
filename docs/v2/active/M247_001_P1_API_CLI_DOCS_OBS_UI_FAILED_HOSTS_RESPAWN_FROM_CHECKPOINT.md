@@ -33,19 +33,24 @@ non-secret environment variables and hard-coded operational settings. The
 [configuration proposal](../reviews/m247-review-ledger.md#proposed-agentsfleetd-deployment-configuration)
 records the agreed file format, deployment sequence and setting ownership.
 
-- [ ] Typed TOML settings load once through `--config` or `AGENTSFLEET_CONFIG_FILE`.
+- [x] Typed TOML settings load once through `--config` or `AGENTSFLEET_CONFIG_FILE`.
   Explicit CLI inputs override TOML, followed by existing environment inputs
   and defaults. Invalid files refuse startup with safe path and field errors.
-- [ ] Existing public endpoints, listener paths, database pool, stream memory,
+- [x] A foundation `af_config` crate owns generic file loading, TOML merge,
+  typed deserialization and `garde` validation. Each binary owns its settings
+  schema. The shared crate depends on neither daemon nor runner. Follow the
+  Codex builder pattern from reference commit `ca21fe65d18a`, as requested by
+  Indy. An injectable file source exercises the loader without process changes.
+- [x] Existing public endpoints, listener paths, database pool, stream memory,
   wake queue, identity, logging, telemetry and checkpoint location settings
   accept the application file. Secrets use the existing environment and vault.
-- [ ] One validated lease clock reaches grant, renewal, accounting, authoring,
+- [x] One validated lease clock reaches grant, renewal, accounting, authoring,
   affinity, status and liveness. Stored deadlines remain authoritative.
-- [ ] Recovery probe interval and concurrent claims accept bounded settings.
-- [ ] `runner.recovery.resume_from_checkpoint` gates an expired ordinary head
+- [x] Recovery probe interval and concurrent claims accept bounded settings.
+- [x] `runner.recovery.resume_from_checkpoint` gates an expired ordinary head
   with a committed checkpoint on hinted, fallback and locked claim paths.
   Flag-off preserves that head and its fence, while other fleets can progress.
-- [ ] Dev and prod Fly configurations deliver their application TOML alongside
+- [x] Dev and prod Fly configurations deliver their application TOML alongside
   staged credentials and the qualified image. Both start with resume disabled.
 - [ ] Validate defaults, precedence, unsafe timing, flag-off/on recovery,
   connection budgets and deployment files. Update architecture and public docs
@@ -101,7 +106,7 @@ Paths are repository-relative. Braces enumerate files. The [implementation sourc
 | `rustd/crates/daemon/afd_runner/tests/capacity/{mod.rs,fixture.rs,choice.rs,holds.rs}`, `rustd/crates/daemon/afd_runner/tests/{integration_hold_plans.rs,integration_runner_plane/connections/mod.rs,integration_runner_plane/cordon.rs,integration_runner_plane/mod.rs}`, `rustd/crates/daemon/afd_fleet/tests/lease_renewal/holders.rs`, `rustd/crates/daemon/afd_gateway/src/registry/mod.rs` | EDIT; NEW `holds.rs` | Capacity contention, renewal, authority and plan tests; register under `lock_host` without census | None | Fixtures include live/expired/own/other holds |
 | `rustd/crates/daemon/afd_fleet/tests/integration_held_sandbox/{resume.rs,counted.rs,report.rs}` | EDIT | Issue consumes hold; refused issue preserves it | None | Counterexamples for both fleet issue paths |
 | `schema/20261108123100_runner_runners.sql`, `schema/20261108123200_runner_leases.sql` | EDIT | Table constraints and grants | None | Frozen `leases.setup_revision_id` for turn compatibility; `cordon_reason`, `cordoned_at`, proposed `cordon_healthy_since_at`; no migration slot 2900 |
-| `rustd/crates/foundation/af_core/src/timing.rs` | EDIT | Compile-time timing assertions | None | New `UNCORDON_AFTER = 3 * HEARTBEAT_INTERVAL`; existing 35s/105s stay |
+| `rustd/crates/foundation/af_core/src/timing/mod.rs` | EDIT | Compile-time timing assertions | None | New `UNCORDON_AFTER = 3 * HEARTBEAT_INTERVAL`; existing 35s/105s stay |
 | `rustd/crates/daemon/afd_runner/src/{cordon.rs,lib.rs}` | NEW / EDIT | Reason parsing and row decoding | Existing spelling traits | Reuse `RunnerCordon` and `CordonReason`; shared automatic-transition constants |
 | `rustd/crates/daemon/afd_runner/src/sweep/liveness/{mod.rs,tests.rs}` | EDIT | `Liveness::{visit,record_offline,due}`; remove `release_slots`, `expire_slots` | Keep `Sweep` implementation | Remove `EXPIRE_PAST`, `CONTEXT_SLOTS`; lock and recheck stale observation |
 | `rustd/crates/daemon/afd_runner/src/sql/sweep/{mod.rs,select_due_runners.sql,cordon_silent_runner.sql,mark_drained_if_idle.sql}` | EDIT; NEW cordon statement | Offline/cordon transaction; fair actionable drain selection | None | Drain checks live fleet leases and authoring attempts; expired-unreported work does not block it |

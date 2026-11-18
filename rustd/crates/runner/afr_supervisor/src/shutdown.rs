@@ -1,10 +1,9 @@
-//! The caller grants pending work one lease interval, then every owned worker is joined.
+//! The process bounds pending work before joining every owned worker.
 
-use af_core::{
-    error_code,
-    timing::{ENGINE_STOP_GRACE, LEASE_TTL},
-};
+use af_core::{error_code, timing::ENGINE_STOP_GRACE};
 use tokio::task::JoinSet;
+
+const SHUTDOWN_GRACE: std::time::Duration = std::time::Duration::from_secs(35);
 
 use crate::halt::Halt;
 
@@ -16,7 +15,10 @@ pub(crate) async fn finish(halt: &Halt, duties: impl Future<Output = ()>) {
         () = halt.serving().cancelled() => {},
     }
     if !halt.stopped().is_cancelled() {
-        if tokio::time::timeout(LEASE_TTL, &mut duties).await.is_ok() {
+        if tokio::time::timeout(SHUTDOWN_GRACE, &mut duties)
+            .await
+            .is_ok()
+        {
             return;
         }
         let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
@@ -59,7 +61,7 @@ pub(crate) async fn workers(halt: &Halt, workers: &mut JoinSet<()>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{LEASE_TTL, finish, workers};
+    use super::{SHUTDOWN_GRACE, finish, workers};
     use crate::{halt::Halt, report::delivery::until_acknowledged};
     use std::{
         sync::{
@@ -85,7 +87,7 @@ mod tests {
             );
         };
         finish(&halt, reporting).await;
-        assert_eq!(started.elapsed(), LEASE_TTL);
+        assert_eq!(started.elapsed(), SHUTDOWN_GRACE);
         assert!(halt.stopped().is_cancelled());
     }
 

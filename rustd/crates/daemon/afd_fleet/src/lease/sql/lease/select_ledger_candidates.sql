@@ -11,7 +11,7 @@ WITH instant AS MATERIALIZED (
   WHERE z.status = $1 AND host.cordon_reason IS NULL
     AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
          OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
-    AND EXISTS (SELECT 1 FROM fleet.admissions WHERE settled_at IS NULL AND fleet_id=z.id)
+    AND EXISTS (SELECT 1 FROM fleet.admissions WHERE settled_at IS NULL)
     AND (s.lease_expires_at IS NULL OR s.lease_expires_at < instant.read_at)
     AND (s.hold_expires_at IS NULL
          OR s.hold_expires_at <= instant.read_at
@@ -30,7 +30,7 @@ WITH instant AS MATERIALIZED (
 SELECT z.id AS fleet_id, head.id AS admission_id, head.event_created_at
 FROM eligible z
 JOIN LATERAL (
-  SELECT a.id, a.parked_at, a.event_created_at
+  SELECT a.id, a.parked_at, a.event_created_at, a.task_id
   FROM fleet.admissions a
   WHERE a.fleet_id = z.id AND a.settled_at IS NULL
     AND ((a.task_id IS NULL AND a.task_generation IS NULL) OR (z.task_capable AND EXISTS (
@@ -48,7 +48,11 @@ JOIN LATERAL (
   (SELECT 1 FROM fleet.approval_gates g
   WHERE g.fleet_id = z.id AND g.resolved_at IS NULL
     AND g.event_id = head.id AND g.expires_at > z.read_at LIMIT 1))
-WHERE $13::timestamptz IS NULL OR (head.event_created_at, head.id)>($13, $14::uuid)
+WHERE ($13::timestamptz IS NULL OR (head.event_created_at, head.id)>($13, $14::uuid))
+  AND ($15::boolean OR head.task_id IS NOT NULL OR NOT EXISTS (
+    SELECT 1 FROM runner.turn_recovery recovery
+    WHERE recovery.event_id = head.id AND recovery.head_turn_checkpoint_id IS NOT NULL
+  ))
 -- Recovery pages keep the oldest eligible head per fleet and ignore locality.
 ORDER BY CASE WHEN $12 THEN head.event_created_at END,
          CASE WHEN $12 THEN head.id END,

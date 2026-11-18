@@ -249,6 +249,221 @@ Batch coherent edits, rerun affected proof, and run the required final gate on t
 Tenant-runner work is parked by the owner; the human check remains unperformed.
 Thirteen identical full-history secret-scan findings were observed at the exact base and implementation history; no suppression, history rewrite or passing scan is claimed.
 
+## Proposed agentsfleetd deployment configuration
+
+The reference checkout is `openai/codex` at
+`ca21fe65d18a9b6326759fb4263c65dfbb645aa5`. Indy asked to follow its settings
+loading approach.
+
+Its `ConfigBuilder` collects layers, merges TOML values
+before typed deserialization, validates the resulting configuration and passes
+it to service owners. The app server shares the result through `Arc<Config>`.
+
+For this daemon, the existing `BootConfig` is the resolved startup value.
+Copyable lease clocks and scheduler limits pass through construction, while
+environment and vault credentials keep their existing injectable sources.
+[Codex builder](https://github.com/openai/codex/blob/ca21fe65d18a9b6326759fb4263c65dfbb645aa5/codex-rs/core/src/config/mod.rs#L1554)
+· [Codex layer loading](https://github.com/openai/codex/blob/ca21fe65d18a9b6326759fb4263c65dfbb645aa5/codex-rs/config/src/loader/README.md)
+· [Codex configuration injection](https://github.com/openai/codex/blob/ca21fe65d18a9b6326759fb4263c65dfbb645aa5/codex-rs/app-server/src/lib.rs#L1039)
+
+```text
+Git  -- application TOML for local, dev or prod --+
+CI   -- tested daemon image by digest ------------+--> agentsfleetd boot
+Fly  -- app secrets and mounted TLS files --------+          |
+                                                              +--> validate once
+                                                              +--> serve, then /readyz
+```
+
+The shared loader uses the upstream `toml` parser with Serde.
+The daemon owns `ConfigToml` and validates it before opening services.
+Select the file with `--config` or `AGENTSFLEET_CONFIG_FILE`.
+
+Precedence is explicit CLI input, a present TOML value, its environment
+variable, then the current default. The no-subcommand preflight uses the
+same resolution as `serve`.
+
+An unreadable file, unknown field or invalid value reports a safe path and
+field error. The existing `EnvSource` supplies environment values and secret
+lookups. [CLI dispatch](../../../rustd/crates/daemon/main/src/cli.rs) · [Boot validation](../../../rustd/crates/daemon/main/src/preflight/mod.rs) · [Environment seam](../../../rustd/crates/foundation/af_core/src/env.rs)
+
+`env_toml` 0.2.5+upstream-1.1.6 was published on 29 September 2026.
+The registry showed 228 downloads and zero published dependents on
+18 November 2026. [Release history](https://docs.rs/crate/env_toml/latest) · [Registry](https://crates.io/crates/env_toml) · [Reverse dependencies](https://crates.io/crates/env_toml/reverse_dependencies)
+
+A standalone Rust probe verified literal numbers and booleans, quoted
+environment references, numeric defaults and a failure for an unset required
+variable. A table reference requires application-side resolution.
+The daemon uses its existing named environment readers for credentials.
+
+```toml
+# deploy/fly/agentsfleetd-dev/agentsfleetd.toml
+[server]
+port = 3000
+api_url = "https://api-dev.agentsfleet.net"
+app_url = "https://app-dev.agentsfleet.net"
+max_in_flight_requests = 256
+max_sse_streams = 256
+
+[database.api]
+max_connections = 8
+
+[runner.listener]
+address = "[::]:4443"
+tls_cert_file = "/etc/agentsfleet/runner-stream/server-chain.pem"
+tls_key_file = "/etc/agentsfleet/runner-stream/server.key"
+
+[runner.lease]
+ttl_seconds = 35
+
+[runner.recovery]
+resume_from_checkpoint = false
+offer_fallback_seconds = 5
+max_concurrent_claims = 8
+```
+
+### Inputs to move into the application file
+
+| Section | Current input | Proposed ownership |
+| --- | --- | --- |
+| `server` | `PORT`, `API_URL`, `APP_URL`, `SSE_MAX_STREAMS`, and fixed API admission of 256 per replica | Keep HTTP port 3000 on Fly to match the readiness and tunnel targets. Let deployments set API and SSE budgets separately. [Server](../../../rustd/crates/daemon/main/src/serve/mod.rs) · [Current knobs](../../../rustd/crates/daemon/main/src/preflight/knobs.rs) |
+| `database.api` | `DATABASE_POOL_SIZE[_API]`, `DATABASE_MIN_POOL_SIZE[_API]`, `DATABASE_ACQUIRE_TIMEOUT_MS[_API]` | Retain the pool defaults and the dev override of 8 and prod override of 5 per replica. Keep database URLs and URL-embedded TLS or authentication settings in the secret source. [Pool resolution](../../../rustd/crates/daemon/afd_db/src/config/mod.rs) · [Dev Fly config](../../../deploy/fly/agentsfleetd-dev/fly.toml) · [Prod Fly config](../../../deploy/fly/agentsfleetd-prod/fly.toml) |
+| `runner.listener`, `runner.stream` | `AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR`, `AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE`, `AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE`, `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB`, `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` | Put the private bind address, file paths and bounded memory settings in TOML. The certificate and key bytes come from Fly file secrets. Reuse `MemorySettings` and its 16/48 MiB defaults. [Listener](../../../rustd/crates/daemon/main/src/preflight/runner_listener/mod.rs) · [Memory limits](../../../rustd/crates/protocol/af_stream/src/framing/memory.rs) |
+| `bus` | `AGENTSFLEET_DEV_NAMESPACE`, `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY` | The namespace belongs to local or dev deployments. The wake queue currently defaults to 64. Resolve credential-bearing `NATS_URL` from the secret source. [NATS configuration](../../../rustd/crates/daemon/afd_bus/src/nats/config.rs) · [Wake queue](../../../rustd/crates/daemon/afd_bus/src/wake/config.rs) |
+| `identity`, `connectors` | `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_JWKS_URL`, `CLERK_API_BASE`, `PLATFORM_ADMIN_WORKSPACE_ID`, `SLACK_API_URL` | Use TOML for public endpoints and the workspace ID. Resolve Clerk credentials and an authenticated `IDENTITY_HTTP_PROXY_URL` through the existing environment. [Identity and endpoints](../../../rustd/crates/daemon/main/src/preflight/read.rs) |
+| `telemetry` | `AGENTSFLEET_LOG_LEVEL`, `POSTHOG_HOST`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_TIMEOUT` | Use TOML for the level, credential-free destinations, protocol and timeout. Keep project keys, authorization headers, and the collector service's own credentials in their existing sources. [Log bootstrap](../../../rustd/crates/daemon/main/src/main.rs) · [Exporter settings](../../../rustd/crates/protocol/af_otlp/src/config/mod.rs) |
+| `checkpoint.storage` | `R2_CHECKPOINT_STORAGE` JSON with endpoint, private bucket and `credential_name` | Accept the same fields as a typed TOML table. Look up the credential by name in the platform-admin vault. A file-backed deployment needs both the location and that vault row. [Boot reader](../../../rustd/crates/daemon/main/src/preflight/checkpoint.rs) · [Storage settings](../../../rustd/crates/daemon/afd_fleet/src/task/storage/mod.rs) |
+
+Keep `ENCRYPTION_MASTER_KEY`, `AUTH_SESSION_CODE_PEPPER`, `DATABASE_URL_API`, `DATABASE_URL_MIGRATOR`, `NATS_URL`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `POSTHOG_API_KEY` and `OTEL_EXPORTER_OTLP_HEADERS` in the deployment secret source. The Fly migration command resolves its own role and environment before starting serving Machines. [Migrate entry point](../../../rustd/crates/daemon/main/src/migrate.rs) · [Current Fly deploy](../../../.github/workflows/deploy-dev-fly.yml)
+
+### Code policies and live runner capacity
+
+| Existing setting | Current value | Proposed action |
+| --- | --- | --- |
+| Lease and offline clocks | TTL 35 s, offline at three TTLs (105 s), 10 s runner heartbeat, 30 s of healthy heartbeats to lift quarantine | Pass the validated TTL and derived offline interval to all daemon consumers. Preserve the heartbeat and uncordon relationship. [Clock contract](../../../rustd/crates/foundation/af_core/src/timing/mod.rs) · [Liveness pass](../../../rustd/crates/daemon/afd_runner/src/sweep/liveness/mod.rs) |
+| Renewal and transport budgets | 5 s renewal tick, 15 s renewal window, 5 s answer, 7 s reconnect made of 2 + 2 + 3 s | Validate TTL against the wire and runner's existing clocks. Keep the renewal and reconnect budgets as one protocol contract. [Clock assertions](../../../rustd/crates/foundation/af_core/src/timing/mod.rs) · [Runner cleanup margin](../../../rustd/crates/runner/afr_supervisor/src/renew/mod.rs) |
+| Recovery backstop and dispatch | 5 s probe per replica, 8 concurrent claims per drain and one per eligible session | Expose the probe interval and concurrent-claim cap with their current defaults. Prove the settings against the per-replica database pool and measure idle probes and burst time. Keep the SQL page size of 64 and the revisit rule together. [Probe](../../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs) · [Drain](../../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/drain.rs) · [Cursor](../../../rustd/crates/daemon/afd_fleet/src/lease/assign/ledger.rs) |
+| Runner workers | Per-host `assigned_policy.worker_count`, shared bounds 1–64 | Set A and B to 16 in each runner's policy if the hosts can support it. `agentsfleet platform runners update <RUNNER_ID> --policy <FILE>` replaces the supplied policy, so use the complete policy. Fly CPU and replica count size the daemon's compute capacity. [Worker bounds](../../../rustd/crates/foundation/af_core/src/limits.rs) · [Runner update CLI](../../../cli/src/program/tree/platform-runners.command.ts) |
+| Other sweep and lifetime controls | 2 s expiry, 10 s host liveness, 30 s census, 5 min checkpoint cleanup, 12 h lease runtime, 10 min sandbox hold, 7 d terminal turn retention, 30 d settled runner history | Treat cadence and retention as separate follow-up settings with their own effect on database load, custody and cleanup. [Expiry](../../../rustd/crates/daemon/main/src/sweepers/expiry.rs) · [Checkpoint cleanup](../../../rustd/crates/daemon/main/src/sweepers/checkpoints.rs) · [Terminal retention](../../../rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/maintenance.rs) · [Lease retention](../../../rustd/crates/daemon/afd_runner/src/sweep/retention/mod.rs) |
+| Storage and scheduler ceilings | 2 verify operations per session and 8 per daemon, 2 file recovery operations per runner, 4 chunks of up to 8 MiB each per window, 50 GiB workspace quota | Treat semaphore counts as performance parameters backed by measured memory and contention. Keep wire sizes, quota accounting, fence increments and retry caps in their owning rules. [Verification admission](../../../rustd/crates/daemon/afd_gateway/src/session/dispatch/turn_checkpoint.rs) · [Runner admission](../../../rustd/crates/runner/afr_supervisor/src/recovery/admission.rs) · [Storage and wire limits](../../architecture/runner_checkpoint_recovery.md) |
+| Other daemon capacities | Database idle timeout 10 min and connection lifetime 30 min, admission backlog 100,000, SSE keepalive 15 s, daemon drain 15 s | Review with the owning database, API and deployment budgets. Authentication and token lifetimes require an identity policy decision. [Database pool](../../../rustd/crates/daemon/afd_db/src/pool/mod.rs) · [Backlog budget](../../../rustd/crates/daemon/afd_admission/src/budget/mod.rs) · [SSE keepalive](../../../rustd/crates/daemon/afd_sse/src/lib.rs) · [Daemon drain](../../../rustd/crates/daemon/main/src/serve/drain/mod.rs) |
+
+`ttl_seconds` passes through construction as one validated clock.
+Grants and renewals write absolute expiry timestamps.
+An existing lease keeps its saved deadline until renewal succeeds.
+
+Fleet claim, metering, authoring, wallet checks, affinity, runner status and
+liveness use that clock. Validation derives the minimum from renewal and
+reconnect timing. The default requires more than 32 seconds and less than
+12 hours.
+
+The fallback interval must be positive and shorter than the lease lifetime.
+Runner shutdown has its own named 35-second grace.
+[Fleet claim](../../../rustd/crates/daemon/afd_fleet/src/lease/assign/ledger.rs) · [Fleet renewal](../../../rustd/crates/daemon/afd_fleet/src/lease/renew/batch/columns.rs) · [Metering](../../../rustd/crates/daemon/afd_fleet/src/lease/sql/meter.rs) · [Authoring lease](../../../rustd/crates/daemon/afd_authoring/src/lease/claim/issue/mod.rs) · [Runner shutdown](../../../rustd/crates/runner/afr_supervisor/src/shutdown.rs)
+
+With `resume_from_checkpoint = false`, captures may still commit and live
+leases may reconnect. An expired ordinary admission with a committed
+checkpoint waits at its fleet's head.
+
+Ordinary admissions without a committed checkpoint and task admissions keep
+their existing retry behavior. Both candidate selection and the locked claim
+check the ordinary head. A refusal preserves its slot, fence and admission.
+
+Enabling resume permits a higher-fence claim and exact-generation restore.
+The recovery-head primary key supplies the lookup.
+[Candidate SQL](../../../rustd/crates/daemon/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql) · [Locked claim SQL](../../../rustd/crates/daemon/afd_fleet/src/lease/sql/lease/claim_admission_head.sql) · [Head schema](../../../schema/20261117154626_runner_turn_recovery.sql)
+
+| Production entry point to edit | Proposed change |
+| --- | --- |
+| `foundation/af_config/src/lib.rs`, `merge.rs`, `error.rs` (new) | Generic `ConfigBuilder::build<T>` reads through `FileSource`, merges invocation overlays and returns `garde::Valid<T>`. Each application supplies its own schema. Dependencies stay in foundation and parsing libraries. |
+| `daemon/main/src/config/mod.rs`, `config/settings.rs`, `config/values.rs` (new), `cli.rs::run`, `preflight/mod.rs::preflight`, `preflight/config.rs::BootConfig` | The daemon owns `ConfigToml`, file selection and mapping to existing startup readers. It uses the shared loader and injects the resulting typed policy through construction. |
+| `foundation/af_core/src/timing/lease.rs` (new) | `LeaseSettings` validates the deployment lifetime. `LeaseClock` exposes the valid lifetime and its derived offline threshold to stores. |
+| `daemon/main/src/serve/mod.rs`, `plane/construction.rs::NativeInputs::build`, `sweepers/mod.rs` | Pass the request ceiling to `Admission::new` and the resolved policy to the stores, gateway and liveness pass. |
+| `afd_fleet/src/lease/assign/ledger.rs`, `lease/renew/batch/columns.rs`, `lease/sql/meter.rs`, `lease/affinity.rs` | Bind one lease clock and the recovery policy to the existing queries. |
+| `afd_authoring/src/lease/claim/issue/mod.rs`, `lease/renew.rs`, `review/wallet.rs`, `afd_runner/src/sweep/liveness/mod.rs`, `heartbeat/cordon.rs`, `view/decode.rs` | Reuse the derived clock in issuance, accounting, quarantine and status. |
+| `afd_gateway/src/scheduler/recovery/mod.rs`, `scheduler/recovery/drain.rs`, `scheduler/subscriptions.rs` | Use the configured fallback cadence and concurrency in the scheduler and its retry backoff. |
+| `select_ledger_candidates.sql`, `claim_admission_head.sql`, and the coarse `select_waiting_admission.sql` | Check the feature before admitting a checkpointed ordinary retry. Ensure parked heads do not repeatedly generate useless wake work. The existing tables hold the checkpoint, event and fence. |
+
+### Release and rollback
+
+1. Point `AGENTSFLEET_CONFIG_FILE` at the local application file, or mount
+   the file read-only into the daemon container.
+   Run the no-subcommand preflight before `serve`.
+   [Development workflow](../../development.md)
+
+2. Keep `agentsfleetd.toml` beside the Fly config and set its path under Fly `[env]`.
+   Run the existing deploy commands from the repository root.
+
+   Fly reads `local_path` from that working directory.
+   [Fly file loading](https://github.com/superfly/flyctl/blob/master/internal/appconfig/config.go#L144)
+
+   ```toml
+   [[files]]
+     local_path = "deploy/fly/agentsfleetd-dev/agentsfleetd.toml"
+     guest_path = "/etc/agentsfleet/agentsfleetd.toml"
+     processes = ["app"]
+   ```
+
+3. Verify each environment file against the candidate binary and record its
+   revision with the image digest. The pipeline stages credentials from
+   1Password and applies the schema with `agentsfleetd migrate`.
+
+   Serving Machines then start and `/readyz` must pass.
+   Confirm the effective recovery settings in each replica's startup event.
+   [Dev deploy](../../../.github/workflows/deploy-dev-fly.yml) · [Readiness checks](../../../.github/workflows/deploy-dev-verify.yml) · [Production workflow](../../../.github/workflows/release.yml) · [Fly secrets](https://fly.io/docs/apps/secrets/)
+
+4. Verify both test hosts have the compatible runner build.
+   Dev starts with the flag false.
+   Commit a disposable checkpoint on A, then stop A.
+
+   Wait past A's saved lease expiry and confirm the admission waits while B
+   is idle. A different fleet must remain eligible.
+   Roll the same image with the dev flag true.
+
+   Verify one higher-fence claim, the exact generation and one settlement.
+   Repeat with workspace files, a private bucket and the platform-admin vault
+   credential.
+
+   Measure from saved expiry to the replacement model request.
+   [Dev runner deploy](../../../.github/workflows/deploy-dev.yml) · [Production runner rollout](../../../.github/workflows/release.yml)
+
+5. Promote the qualified image digest with the production application file.
+   Enable or disable resume by redeploying that digest with the desired file.
+   Confirm the flag on every replica after the rolling update.
+
+   Resumed leases already in flight can settle.
+   Roll file and image together when the settings schema changes.
+
+The loader and policy wiring are under verification.
+The shared crate manifest has no daemon or runner dependencies.
+Static checks confirmed file delivery, matching readiness ports and the
+initial false value in both Fly environments.
+
+Environment-only startup defaults to resume enabled. The deployment files
+explicitly disable it for the staged rollout. Every replica must load the
+selected value before rollout verification.
+
+Focused verification recorded seven shared-loader tests and 94 daemon
+library tests passing, with one ignored. Three live recovery checks and four
+query-plan checks passed on the owned PostgreSQL rig.
+
+The follow-up live run passed all three rollout checks, including compatible
+other-fleet progress, and 26 runner-plane tests together. Eight CLI checks
+passed, including spawned daemon startup from the selected file and explicit
+port precedence.
+
+The fold-barrier regression and populated lease-row check passed after their
+fixtures were updated for the immutable generation and setup witnesses.
+Global cordon fault tests now use isolated databases so their sweeps cannot
+encounter another test's intentional trigger refusal.
+
+Further checks cover the latest clock-edge unit cases, per-file coverage and
+the full repository gates. Deployment drills and a matched burst benchmark
+with the real dev connection budget remain due.
+
+Lint fixes to the benchmark harness followed the recorded measurements.
+Those results remain tied to `976883d00`; this configuration batch has no new
+matched burst result yet.
+
 ## Manual two-runner drill
 
 Use a disposable fleet and two enrolled platform runners on the same development daemon. Both runners need compatible policies and funded model access.

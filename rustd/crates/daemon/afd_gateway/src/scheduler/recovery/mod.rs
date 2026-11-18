@@ -4,7 +4,7 @@ mod drain;
 
 use crate::registry::Registry;
 use crate::{Gateway, Operation, Result, error::within};
-use af_core::timing::{OFFER_FALLBACK_TICK, STREAM_ANSWER_TIMEOUT};
+use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use afd_authoring::types::{DraftState, MessageState};
 use afd_bus::wake::Wake;
 use tokio::time::{Instant, MissedTickBehavior};
@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 pub(super) async fn notifications(
     registry: &Registry,
     wake: &Wake,
+    claims: usize,
     stop: &CancellationToken,
 ) -> Result<()> {
     let mut generations = wake.generations();
@@ -20,7 +21,7 @@ pub(super) async fn notifications(
         let observed = generations.borrow_and_update().recovery();
         if let Some(recovery) = observed {
             let credited = registry.candidates(&std::collections::HashSet::new());
-            drain::drain(credited, stop).await;
+            drain::drain(credited, claims, stop).await;
             wake.recovered(recovery);
         }
         tokio::select! {
@@ -33,9 +34,12 @@ pub(super) async fn notifications(
 
 /// Notifications never reset this timer. A hot fleet cannot postpone lost-work recovery.
 pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()> {
-    probe_ticks(&gateway.inner.dependencies.wake, &stop, || {
-        pending_work(&gateway, &stop)
-    })
+    probe_ticks(
+        &gateway.inner.dependencies.wake,
+        &stop,
+        gateway.inner.dependencies.recovery.offer_fallback,
+        || pending_work(&gateway, &stop),
+    )
     .await;
     Ok(())
 }
@@ -43,10 +47,10 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
 async fn probe_ticks<F: Future<Output = Result<bool>>>(
     wake: &Wake,
     stop: &CancellationToken,
+    interval: std::time::Duration,
     mut probe: impl FnMut() -> F,
 ) {
-    let mut tick =
-        tokio::time::interval_at(Instant::now() + OFFER_FALLBACK_TICK, OFFER_FALLBACK_TICK);
+    let mut tick = tokio::time::interval_at(Instant::now() + interval, interval);
     tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
     loop {
         tokio::select! {
@@ -76,6 +80,14 @@ async fn pending_work(gateway: &Gateway, stop: &CancellationToken) -> Result<boo
             .bind(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE)
             .bind(DraftState::Editing.as_str())
             .bind(MessageState::Queued.as_str())
+            .bind(
+                gateway
+                    .inner
+                    .dependencies
+                    .leases
+                    .leases
+                    .checkpoint_resume_enabled(),
+            )
             .fetch_one(&mut *gateway.inner.dependencies.database.acquire().await?)
             .await?)
         },

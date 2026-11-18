@@ -26,6 +26,7 @@ signal = ["dep:tokio"]
 sqlx = ["dep:sqlx"]
 
 [dependencies]
+garde.workspace = true
 # `paging::Page::parse` reads `?limit` through `af_validate::Limit` with the
 # route's ceiling, the one spelling every list route shares.
 af_validate.workspace = true

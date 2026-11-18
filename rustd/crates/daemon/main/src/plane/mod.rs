@@ -166,6 +166,7 @@ impl ServingPlane {
             .creations
             .with_scheduler(Arc::clone(&outbound.scheduler));
         let native = construction::NativeInputs {
+            runtime: parts.runtime,
             database: &database,
             kek,
             providers: common.providers,

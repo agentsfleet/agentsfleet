@@ -21,7 +21,7 @@
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
 #[cfg(any(test, feature = "test-util"))]
-use af_core::timing::{RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
+use af_core::timing::SANDBOX_HOLD_IDLE;
 use af_observability::metrics::label::fleet::HeldClaim;
 use af_observability::producers;
 #[cfg(any(test, feature = "test-util"))]
@@ -150,7 +150,7 @@ impl Leases {
             .bind(fleet_id)
             .bind(runner_id)
             .bind(ttl)
-            .bind(RUNNER_OFFLINE_AFTER)
+            .bind(self.clock().offline_after())
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .fetch_optional(&mut *connection)
             .await

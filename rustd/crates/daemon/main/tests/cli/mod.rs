@@ -81,7 +81,7 @@ fn test_the_port_is_given_in_either_spelling() {
     ] {
         let parsed = parse(&argv);
         assert!(
-            matches!(parsed.command, Some(Command::Serve { port: 8080 })),
+            matches!(parsed.command, Some(Command::Serve { port: Some(8080) })),
             "{argv:?} names port 8080, got {:?}",
             parsed.command
         );
@@ -155,6 +155,43 @@ fn test_no_subcommand_checks_the_environment() {
         status(&["agentsfleetd"], &parses_but_dead()),
         SUCCESS,
         "every knob resolves, and check does not connect — so it cannot fail on a dead datastore"
+    );
+}
+
+#[test]
+fn test_no_subcommand_validates_the_selected_toml_file() {
+    use std::io::Write as _;
+    let mut file = tempfile::NamedTempFile::new().expect("temporary config");
+    writeln!(file, "[runner.lease]\nttl_seconds = 32").expect("write unsafe clock");
+    let path = file.path().to_str().expect("UTF-8 fixture path");
+    assert_eq!(
+        status(&["agentsfleetd", "--config", path], &parses_but_dead()),
+        FAILURE
+    );
+    file.as_file_mut()
+        .set_len(0)
+        .expect("truncate configuration");
+    std::io::Seek::rewind(file.as_file_mut()).expect("rewind configuration");
+    writeln!(file, "[runner.lease]\nttl_seconds = 40").expect("write valid clock");
+    let path = file.path().to_str().expect("UTF-8 fixture path");
+    assert_eq!(
+        status(&["agentsfleetd", "--config", path], &parses_but_dead()),
+        SUCCESS
+    );
+}
+
+#[test]
+fn test_a_missing_explicit_config_is_a_startup_refusal() {
+    assert_eq!(
+        status(
+            &[
+                "agentsfleetd",
+                "--config",
+                "/missing-config-directory/agentsfleetd.toml"
+            ],
+            &parses_but_dead()
+        ),
+        FAILURE,
     );
 }
 

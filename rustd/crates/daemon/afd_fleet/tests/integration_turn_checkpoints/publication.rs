@@ -39,7 +39,7 @@ pub(super) fn command(case: &Case, action: TurnCheckpointAction) -> TurnCheckpoi
     }
 }
 
-async fn publish(
+pub(super) async fn publish(
     case: &Case,
     store: &TurnCheckpoints,
     root: &TurnPrivateRoot,

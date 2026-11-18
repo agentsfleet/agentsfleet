@@ -2,8 +2,9 @@
 //! enrolment, its beats, an operator's transitions and edits, and the reads
 //! that answer them.
 //!
-//! Each test enrols runners of its own and asserts only on them, so the suite
-//! runs beside every other in the lane.
+//! Each test enrols runners of its own and asserts only on them. Global
+//! liveness sweeps use isolated databases so another test's injected refusal
+//! cannot intercept their work.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -66,7 +67,22 @@ struct Fixture {
 
 impl Fixture {
     async fn create() -> Self {
-        let lane = TestDatabase::shared();
+        Self::from_lane(TestDatabase::shared()).await
+    }
+
+    /// Global sweeps must not encounter another test's intentional write refusal.
+    async fn isolated() -> Self {
+        let lane = TestDatabase::create().await;
+        let owner = lane.open(DbRole::Migrator, &[]).await;
+        afd_db::Migrator::new()
+            .run(&owner)
+            .await
+            .expect("isolated liveness schema");
+        owner.close().await;
+        Self::from_lane(lane).await
+    }
+
+    async fn from_lane(lane: TestDatabase) -> Self {
         let database = lane.open(DbRole::Api, &[]).await;
         Self {
             runners: Runners::new(database.clone(), Entropy::new()),

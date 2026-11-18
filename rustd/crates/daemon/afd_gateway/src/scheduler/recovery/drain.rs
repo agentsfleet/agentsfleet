@@ -8,7 +8,6 @@ use futures_util::{StreamExt as _, stream::FuturesUnordered};
 use std::{collections::VecDeque, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
-const IN_FLIGHT: usize = 8;
 const EXTRA_PAGES_PER_HOST: usize = 4;
 
 struct Host {
@@ -51,11 +50,15 @@ impl Host {
     }
 }
 
-pub(super) async fn drain(sessions: Vec<Arc<SessionHandle>>, stop: &CancellationToken) {
+pub(super) async fn drain(
+    sessions: Vec<Arc<SessionHandle>>,
+    claims: usize,
+    stop: &CancellationToken,
+) {
     let mut queue: VecDeque<_> = sessions.into_iter().map(Host::new).collect();
     let mut running = FuturesUnordered::new();
     loop {
-        while running.len() < IN_FLIGHT {
+        while running.len() < claims {
             let Some(host) = queue.pop_front() else { break };
             if host.ready() {
                 running.push(host.claim());

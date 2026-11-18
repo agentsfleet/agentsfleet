@@ -34,11 +34,16 @@ async fn claim_around_bound_continuations(case: &Case) {
     // The bind made this lease a durable task's, which claims nothing. Making
     // it a plain run again leaves the bound continuations as the only thing
     // that can stop the claim.
-    sqlx::query("UPDATE runner.leases SET task_id = NULL WHERE id = $1")
-        .bind(&held.issued.lease_id)
-        .execute(&mut *held.fixtures.database.acquire().await.expect("connection"))
-        .await
-        .expect("the lease becomes a plain run");
+    assert_eq!(
+        held.leases
+            .claim_folds(&held.runner, &held.issued.lease_id, held.fence.as_u64(), 0)
+            .await
+            .expect("bound task fold refusal")
+            .inputs
+            .len(),
+        0
+    );
+    clear_task_binding(case).await;
     let claimed = held
         .leases
         .claim_folds(&held.runner, &held.issued.lease_id, held.fence.as_u64(), 0)
@@ -55,6 +60,29 @@ async fn claim_around_bound_continuations(case: &Case) {
         "{} waits behind the task-bound messages",
         after.as_str()
     );
+}
+
+async fn clear_task_binding(case: &Case) {
+    // Both immutable generation witnesses distinguish task work from ordinary chat.
+    sqlx::query(
+        "WITH reset AS (UPDATE runner.leases SET task_id = NULL, task_generation = NULL, \
+         task_stop_generation = NULL, task_started_at = NULL, task_runtime_accounted_at = NULL, \
+         task_execution_deadline_at = NULL WHERE id = $1 RETURNING event_id) \
+         UPDATE fleet.admissions a SET task_id = NULL, task_item_id = NULL, task_generation = NULL \
+         FROM reset WHERE a.id = reset.event_id",
+    )
+    .bind(&case.held.issued.lease_id)
+    .execute(
+        &mut *case
+            .held
+            .fixtures
+            .database
+            .acquire()
+            .await
+            .expect("connection"),
+    )
+    .await
+    .expect("the lease and its admission become an ordinary run");
 }
 
 /// The unsettled, unparked, task-bound messages after the run's own.

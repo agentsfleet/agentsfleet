@@ -24,6 +24,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/foundation/af_config",
     "crates/daemon/afd_admin",
     "crates/daemon/afd_admission",
     "crates/daemon/afd_api",
@@ -106,6 +107,7 @@ keywords = ["agentsfleet", "daemon", "runner"]
 categories = ["network-programming"]
 
 [workspace.dependencies]
+af_config = { path = "crates/foundation/af_config" }
 # Exact model tokenization for the daemon authoring boundary.
 tiktoken-rs = { version = "0.12.1", default-features = false }
 percent-encoding = "2.3.2"
@@ -258,6 +260,8 @@ afr_tools = { path = "crates/runner/afr_tools" }
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
 serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
+toml = { version = "1.2.1", default-features = false, features = ["parse", "serde", "std"] }
+serde_path_to_error = { version = "0.1.20", default-features = false }
 # Tagged answer enums retain numeric JSON map keys through Serde's buffered data.
 serde_with = { version = "3.24.0", default-features = false, features = ["std"] }
 # The metric census is a tab-separated contract, and this is the crate that

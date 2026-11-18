@@ -37,7 +37,7 @@ async fn drain_burst(fleets: usize) -> TestResult {
         let registry = Arc::clone(&registry);
         let wake = wake.clone();
         let stop = stop.clone();
-        async move { notifications(&registry, &wake, stop).await }
+        async move { notifications(&registry, &wake, 8, stop).await }
     });
     tokio::task::yield_now().await;
     let started = tokio::time::Instant::now();
@@ -111,7 +111,7 @@ async fn a_slow_host_does_not_hold_back_a_different_eligible_host() -> TestResul
         let registry = Arc::clone(&registry);
         let wake = wake.clone();
         let stop = stop.clone();
-        async move { notifications(&registry, &wake, stop).await }
+        async move { notifications(&registry, &wake, 8, stop).await }
     });
     tokio::task::yield_now().await;
     wake.recheck();
@@ -147,7 +147,7 @@ async fn an_ordinary_ring_can_reach_a_free_host_while_recovery_is_waiting() -> T
         let registry = Arc::clone(&registry);
         let wake = wake.clone();
         let stop = stop.clone();
-        async move { notifications(&registry, &wake, stop).await }
+        async move { notifications(&registry, &wake, 8, stop).await }
     });
     tokio::task::yield_now().await;
     wake.recheck();
@@ -185,7 +185,7 @@ async fn a_new_recovery_wake_survives_the_previous_pass_finishing() -> TestResul
         let registry = Arc::clone(&registry);
         let wake = wake.clone();
         let stop = stop.clone();
-        async move { notifications(&registry, &wake, stop).await }
+        async move { notifications(&registry, &wake, 8, stop).await }
     });
     tokio::task::yield_now().await;
     wake.recheck();

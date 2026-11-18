@@ -41,6 +41,7 @@ pub(super) fn build(inputs: Inputs<'_>) -> ServingPlane {
         schedule_client,
     } = inputs;
     ServingPlane::new(crate::plane::PlaneParts {
+        runtime: config.runtime,
         authoring_transport,
         database: database.clone(),
         bus: bus.clone(),

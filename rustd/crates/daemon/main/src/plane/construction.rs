@@ -37,7 +37,8 @@ impl Common {
         let biller = crate::billing::biller(parts.database.clone(), parts.analytics.clone());
         let drafts =
             afd_authoring::Drafts::new(parts.database.clone(), Entropy::new(), Arc::clone(&biller))
-                .with_analytics(parts.analytics.clone());
+                .with_analytics(parts.analytics.clone())
+                .with_clock(parts.runtime.clock);
         Self {
             providers,
             github_client,
@@ -50,6 +51,7 @@ impl Common {
 }
 
 pub(super) struct NativeInputs<'a> {
+    pub(super) runtime: crate::preflight::RuntimeSettings,
     pub(super) database: &'a Db,
     pub(super) kek: Arc<Kek>,
     pub(super) providers: Providers,
@@ -85,7 +87,11 @@ impl NativeInputs<'_> {
             self.broker,
             self.biller,
         );
-        leases.leases = leases.leases.with_wake(self.wake.clone());
+        leases.leases = leases
+            .leases
+            .with_wake(self.wake.clone())
+            .with_clock(self.runtime.clock)
+            .with_checkpoint_resume(self.runtime.resume_from_checkpoint);
         let tasks = task_plane(
             &mut leases,
             self.admissions,
@@ -94,8 +100,13 @@ impl NativeInputs<'_> {
             self.master,
             self.client,
         );
-        let runners = Runners::new(self.database.clone(), Entropy::new());
+        let runners =
+            Runners::new(self.database.clone(), Entropy::new()).with_clock(self.runtime.clock);
         let streams = afd_gateway::Gateway::new(afd_gateway::GatewayDependencies {
+            recovery: afd_gateway::RecoverySettings {
+                max_concurrent_claims: self.runtime.claims,
+                offer_fallback: self.runtime.fallback,
+            },
             database: self.database.clone(),
             runners: runners.clone(),
             leases: leases.clone(),

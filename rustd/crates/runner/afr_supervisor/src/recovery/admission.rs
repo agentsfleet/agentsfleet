@@ -66,7 +66,9 @@ mod tests {
         tokio::pin!(aborted);
         assert!(matches!(futures_util::poll!(&mut aborted), Poll::Pending));
         cancelled.cancel();
-        let refusal = aborted.await.unwrap_err();
+        let Err(refusal) = aborted.await else {
+            return Err(error::config("cancelled admission must refuse queued work"));
+        };
         assert_eq!(
             refusal.code(),
             af_core::error_code::INTERNAL_OPERATION_FAILED

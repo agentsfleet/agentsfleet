@@ -26,7 +26,7 @@ pub(super) async fn population(run: &Scenario, model: &Model, n: usize) -> Check
     {
         let mut conn = run.booted.database.acquire().await?;
         seed::select(&mut conn, &run.fleet, &entry).await?;
-    }
+    };
     let mut items = vec![Fleet {
         id: run.fleet.clone(),
         workspace: run.workspace.clone(),

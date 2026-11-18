@@ -53,7 +53,7 @@ async fn the_fallback_tick_probes_once_per_replica() -> TestResult {
     let scheduler = tokio::spawn({
         let registry = Arc::clone(&fixture.registry);
         let stop = stop.clone();
-        async move { notifications(&registry, &wake, stop).await }
+        async move { notifications(&registry, &wake, 8, stop).await }
     });
     tokio::task::yield_now().await;
     for expected in 1..=3 {
@@ -96,10 +96,15 @@ fn start_clock(
     calls: watch::Sender<usize>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        probe_ticks(&wake, &stop, || async {
-            calls.send_modify(|count| *count += 1);
-            Ok(pending.load(Ordering::SeqCst))
-        })
+        probe_ticks(
+            &wake,
+            &stop,
+            af_core::timing::OFFER_FALLBACK_TICK,
+            || async {
+                calls.send_modify(|count| *count += 1);
+                Ok(pending.load(Ordering::SeqCst))
+            },
+        )
         .await;
     })
 }

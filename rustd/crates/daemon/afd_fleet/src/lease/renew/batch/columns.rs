@@ -96,7 +96,11 @@ impl<'a> Columns<'a> {
     }
 
     /// [`sql::renew::RENEW_BATCH`] with every parameter bound, in `$n` order.
-    pub(super) fn bind(&self, runner_id: &'a Uuid7) -> Query<'a> {
+    pub(super) fn bind(
+        &self,
+        runner_id: &'a Uuid7,
+        clock: af_core::timing::LeaseClock,
+    ) -> Query<'a> {
         sqlx::query_as(sql::renew::RENEW_BATCH)
             .bind(runner_id)
             .bind(self.ids.clone())
@@ -145,7 +149,7 @@ impl<'a> Columns<'a> {
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(afd_billing::nanos::MS_PER_SEC)
             .bind(afd_billing::RUN_NANOS_PER_SEC)
-            .bind(af_core::timing::LEASE_TTL)
+            .bind(clock.ttl())
             .bind(af_core::timing::MAX_RUNTIME)
             .bind(afd_billing::sql::work::FLEET_LEASE)
             .bind(LineKind::Model.as_str())

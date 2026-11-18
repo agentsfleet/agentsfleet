@@ -2,7 +2,7 @@
 
 mod payload;
 
-use af_core::{clock, error_code, id::Uuid7, timing::LEASE_TTL};
+use af_core::{clock, error_code, id::Uuid7};
 use af_wire::authoring::FailureReason;
 use afd_credential::provider::RegisteredModel;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -119,7 +119,7 @@ async fn mint(drafts: &Drafts, connection: &mut PgConnection, reserved: i64) -> 
         attempt: drafts.mint(now)?,
         lease: drafts.mint(now)?,
         token: URL_SAFE_NO_PAD.encode(bytes),
-        until: clock::after(now, LEASE_TTL),
+        until: clock::after(now, drafts.clock.ttl()),
         deadline: clock::after(now, budget::WALL),
         reserved,
     })

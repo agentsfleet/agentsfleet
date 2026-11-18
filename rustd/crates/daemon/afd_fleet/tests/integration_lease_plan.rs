@@ -104,6 +104,9 @@ async fn head_plan(connection: &mut PgConnection, runner: &Uuid7) -> serde_json:
     .bind(af_wire::task::TaskState::Running.as_str())
     .bind(afd_fleet::task::DECISION_POLICY_PATH)
     .bind(false)
+    .bind(Option::<jiff_sqlx::Timestamp>::None)
+    .bind(Option::<Uuid7>::None)
+    .bind(true)
     .fetch_one(connection)
     .await
     .expect("candidate explain")

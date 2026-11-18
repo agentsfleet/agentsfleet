@@ -26,7 +26,7 @@ use std::time::Duration;
 use af_core::clock;
 use af_core::id::Uuid7;
 use af_core::spelling;
-use af_core::timing::{HEARTBEAT_INTERVAL, RUNNER_OFFLINE_AFTER};
+use af_core::timing::HEARTBEAT_INTERVAL;
 use af_crypto::entropy::Entropy;
 use afd_api_wire::admin::AdminState;
 use afd_db::Db;
@@ -84,9 +84,9 @@ impl Due {
     /// Dimension 6.3 against, and a fetch widened later must not silently make
     /// a never-seen runner offline. Judged at the database's clock, the same
     /// instant the fetch's own staleness test used.
-    fn is_stale(&self) -> bool {
+    fn is_stale(&self, clock: af_core::timing::LeaseClock) -> bool {
         self.last_seen_at != sql::NEVER_SEEN
-            && self.last_seen_at < clock::before(self.checked_at, RUNNER_OFFLINE_AFTER)
+            && self.last_seen_at < clock::before(self.checked_at, clock.offline_after())
     }
 }
 
@@ -121,16 +121,28 @@ impl DueRow {
 #[derive(Debug, Clone)]
 pub struct Liveness {
     /// Where the rows are.
+    clock: af_core::timing::LeaseClock,
     database: Db,
     /// The identifiers the event rows are minted from.
     entropy: Entropy,
 }
 
 impl Liveness {
+    /// Uses the deployment clock validated before startup.
+    #[must_use]
+    pub fn with_clock(mut self, clock: af_core::timing::LeaseClock) -> Self {
+        self.clock = clock;
+        self
+    }
+
     /// A sweeper reading and writing through `database`.
     #[must_use]
     pub const fn new(database: Db, entropy: Entropy) -> Self {
-        Self { database, entropy }
+        Self {
+            database,
+            entropy,
+            clock: af_core::timing::LeaseClock::DEFAULT,
+        }
     }
 
     /// A fresh identifier for one event row.
@@ -143,7 +155,7 @@ impl Liveness {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query_as::<_, DueRow>(sql::sweep::SELECT_DUE_RUNNERS)
             .bind(sql::NEVER_SEEN.to_sqlx())
-            .bind(RUNNER_OFFLINE_AFTER)
+            .bind(self.clock.offline_after())
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(sql::RUNNER_STATUS_DRAINING)
@@ -157,7 +169,7 @@ impl Liveness {
     /// Everything one due runner needs done, and nothing it does not.
     async fn visit(&self, runner: &Due) -> Result<u64> {
         let mut changed = 0;
-        if runner.is_stale() {
+        if runner.is_stale(self.clock) {
             changed += self.record_offline(runner).await?;
         }
         // Operator state remains independent of liveness and automatic quarantine.
@@ -185,7 +197,7 @@ impl Liveness {
         let (changed, cordoned): (i64, bool) = sqlx::query_as(sql::sweep::CORDON_SILENT_RUNNER)
             .bind(&runner.id)
             .bind(sql::NEVER_SEEN.to_sqlx())
-            .bind(RUNNER_OFFLINE_AFTER)
+            .bind(self.clock.offline_after())
             .bind(self.event_id()?)
             .bind(sql::event_type::RUNNER_OFFLINE)
             .bind(sql::meta::LAST_SEEN_AT)

@@ -30,11 +30,15 @@ mod knobs;
 mod otlp;
 mod read;
 pub mod runner_listener;
+pub(crate) mod runtime;
+#[cfg(test)]
+mod runtime_tests;
 #[cfg(test)]
 mod stream_ceiling_tests;
 
 pub use self::checkpoint::CHECKPOINT_STORAGE_KNOB;
 pub use self::config::{BootConfig, IdentityConfig, PostHogConfig};
+pub use self::runtime::RuntimeSettings;
 pub use af_otlp::{
     OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig,
 };
@@ -69,6 +73,8 @@ pub use crate::error::{Fault, Refusal};
 /// that gets one has nothing to retry: the process cannot serve, and the
 /// message is what the operator needs.
 pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> {
+    let source = crate::config::ConfigBuilder::new(env).build()?;
+    let env = &source;
     let mut faults = Vec::new();
     let readings = read_every_knob(env, &mut faults);
     readings.admit(env, faults)
@@ -224,6 +230,7 @@ impl Readings {
                 platform_admin_workspace,
                 checkpoint_storage,
             } if faults.is_empty() => Ok(BootConfig {
+                runtime: runtime::read(env)?,
                 api_pool,
                 bus,
                 kek,

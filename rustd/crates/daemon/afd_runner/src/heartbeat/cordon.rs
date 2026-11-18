@@ -2,7 +2,7 @@
 
 use af_core::{
     id::Uuid7,
-    timing::{HEARTBEAT_INTERVAL, RUNNER_OFFLINE_AFTER, UNCORDON_AFTER},
+    timing::{HEARTBEAT_INTERVAL, UNCORDON_AFTER},
 };
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -36,7 +36,7 @@ impl Runners {
                         .bind(sql::event_type::RUNNER_ONLINE)
                         .bind(sql::meta::LAST_SEEN_AT)
                         .bind(sql::NEVER_SEEN.to_sqlx())
-                        .bind(RUNNER_OFFLINE_AFTER)
+                        .bind(self.clock().offline_after())
                         .bind(health.authority.map(|owner| owner.digest().as_str()))
                         .bind(health.authority.map(Authority::connection))
                         .bind(health.valid)

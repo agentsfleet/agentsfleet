@@ -82,7 +82,7 @@ mod binary;
 mod cli;
 #[path = "daemon.rs"]
 mod daemon;
-#[path = "integration_cli.rs"]
+#[path = "integration_cli/mod.rs"]
 mod integration_cli;
 #[path = "integration_cluster_outcomes.rs"]
 mod integration_cluster_outcomes;

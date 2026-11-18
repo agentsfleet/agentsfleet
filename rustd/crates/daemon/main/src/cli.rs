@@ -37,7 +37,7 @@ pub const FAILURE: u8 = 1;
 /// `about` is spelled out rather than taken from the package `description`:
 /// that string describes the crate to a Rust developer reading a manifest, and
 /// this one is read by an operator deciding what to type next.
-#[derive(Debug, Clone, Copy, Parser)]
+#[derive(Debug, Clone, Parser)]
 #[command(
     name = "agentsfleetd",
     version,
@@ -46,6 +46,9 @@ pub const FAILURE: u8 = 1;
     before_help = crate::nameplate::for_help(),
 )]
 pub struct Cli {
+    /// Application TOML file; falls back to `AGENTSFLEET_CONFIG_FILE`.
+    #[arg(long, global = true, value_name = "FILE")]
+    pub config: Option<std::path::PathBuf>,
     /// What to do. Omitted, the environment is checked and reported.
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -79,11 +82,9 @@ pub enum Command {
         #[arg(
             long,
             value_name = "PORT",
-            env = PORT_KNOB,
-            default_value_t = DEFAULT_PORT,
             value_parser = clap::value_parser!(u16).range(1..),
         )]
-        port: u16,
+        port: Option<u16>,
     },
     /// Apply every migration this binary carries, report what moved, exit.
     Migrate,
@@ -114,8 +115,42 @@ where
     E: EnvSource + ?Sized + Sync,
     F: Future<Output = ()> + Send,
 {
+    if matches!(cli.command, Some(Command::Migrate)) {
+        let _installed = crate::logs::install(env);
+        return on_runtime(runtime, migrate(env));
+    }
+    #[cfg(feature = "openapi")]
+    if matches!(cli.command, Some(Command::Openapi)) {
+        return openapi();
+    }
+    let port = match cli.command {
+        Some(Command::Serve { port }) => port,
+        _ => None,
+    };
+    let source = match crate::config::ConfigBuilder::new(env)
+        .file(cli.config.as_deref())
+        .overrides(crate::config::ConfigOverrides { port })
+        .build()
+    {
+        Ok(source) => source,
+        Err(refusal) => {
+            crate::fatal::die(&refusal);
+            return FAILURE;
+        }
+    };
+    let env = &source;
+    let _installed = crate::logs::install(env);
     match cli.command.as_ref() {
-        Some(&Command::Serve { port }) => on_runtime(runtime, serve(env, port, signal)),
+        Some(&Command::Serve { port }) => {
+            let port = match configured_port(env, port) {
+                Ok(port) => port,
+                Err(refusal) => {
+                    crate::fatal::die(&refusal);
+                    return FAILURE;
+                }
+            };
+            on_runtime(runtime, serve(env, port, signal))
+        }
         Some(&Command::Migrate) => on_runtime(runtime, migrate(env)),
         #[cfg(feature = "openapi")]
         Some(&Command::Openapi) => openapi(),
@@ -126,6 +161,26 @@ where
     }
 }
 
+fn configured_port(
+    env: &(impl EnvSource + ?Sized),
+    explicit: Option<u16>,
+) -> Result<u16, crate::Refusal> {
+    explicit.map_or_else(
+        || {
+            env.get(PORT_KNOB).map_or(Ok(DEFAULT_PORT), |raw| {
+                raw.parse::<std::num::NonZeroU16>()
+                    .map(std::num::NonZeroU16::get)
+                    .map_err(|_invalid| {
+                        crate::Refusal::new(vec![crate::Fault::Invalid {
+                            knob: PORT_KNOB,
+                            why: "requires a TCP port between 1 and 65535".to_owned(),
+                        }])
+                    })
+            })
+        },
+        Ok,
+    )
+}
 /// How long a finished process waits on blocking work nothing can cancel.
 ///
 /// Dropping a runtime WAITS for every running blocking operation, and a

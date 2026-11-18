@@ -1,6 +1,6 @@
 //! The lease clock: how long a claim lives, and how long silence is tolerated.
 //!
-//! Declared here and nowhere else. The daemon sets `leased_until`, treats the
+//! Defaults are declared here. The validated deployment clock sets `leased_until` and treats the
 //! same instant as the kill deadline it sends the host, and derives liveness
 //! from the lapse threshold. Each runner retains its confirmed lease expiry
 //! and uses the heartbeat cadence advertised by the daemon.
@@ -14,6 +14,9 @@
 //! in a `const` block rather than left to a comment.
 
 use std::time::Duration;
+
+mod lease;
+pub use lease::{LeaseClock, LeaseSettings, MAX_LEASE_SECONDS, MIN_LEASE_SECONDS};
 
 /// Authoring provider work keeps its existing five-minute budget plus delivery slack.
 /// Control ping and renewal deadlines remain independent while the model is pending.

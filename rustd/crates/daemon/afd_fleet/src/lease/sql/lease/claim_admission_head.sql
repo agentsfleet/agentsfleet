@@ -61,6 +61,10 @@ WITH fleet AS MATERIALIZED (
   JOIN head h ON h.id = a.id
   CROSS JOIN slot
   WHERE a.settled_at IS NULL
+    AND ($15::boolean OR a.task_id IS NOT NULL OR NOT EXISTS (
+      SELECT 1 FROM runner.turn_recovery recovery
+      WHERE recovery.event_id = a.id AND recovery.head_turn_checkpoint_id IS NOT NULL
+    ))
   FOR UPDATE OF a SKIP LOCKED
 ), stamped AS (
   UPDATE fleet.admissions a

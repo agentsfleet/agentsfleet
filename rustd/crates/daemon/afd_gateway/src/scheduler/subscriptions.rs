@@ -2,7 +2,7 @@
 
 use crate::{Gateway, Operation, Result, error::ErrorKind};
 use af_core::error_code::{Coded as _, Logged};
-use af_core::timing::{OFFER_FALLBACK_TICK, STREAM_ANSWER_TIMEOUT};
+use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use tokio_util::sync::CancellationToken;
 
 pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()> {
@@ -45,7 +45,9 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
             () = stop.cancelled() => return Ok(()),
             () = tokio::time::sleep(retry) => {}
         }
-        retry = retry.saturating_mul(2).min(OFFER_FALLBACK_TICK);
+        retry = retry
+            .saturating_mul(2)
+            .min(gateway.inner.dependencies.recovery.offer_fallback);
     }
 }
 

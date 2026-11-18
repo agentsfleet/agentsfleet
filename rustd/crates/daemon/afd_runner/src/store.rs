@@ -49,15 +49,31 @@ pub struct Enrolled {
 /// `Entropy` is a zero-sized selector over the system source.
 #[derive(Debug, Clone)]
 pub struct Runners {
+    clock: af_core::timing::LeaseClock,
     database: Db,
     entropy: Entropy,
 }
 
 impl Runners {
+    pub(crate) const fn clock(&self) -> af_core::timing::LeaseClock {
+        self.clock
+    }
+
+    /// Uses the deployment clock validated before startup.
+    #[must_use]
+    pub fn with_clock(mut self, clock: af_core::timing::LeaseClock) -> Self {
+        self.clock = clock;
+        self
+    }
+
     /// A store reading and writing through `database`.
     #[must_use]
     pub const fn new(database: Db, entropy: Entropy) -> Self {
-        Self { database, entropy }
+        Self {
+            database,
+            entropy,
+            clock: af_core::timing::LeaseClock::DEFAULT,
+        }
     }
 
     /// The pool this store reads through, for the sibling modules that add

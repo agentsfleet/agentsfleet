@@ -1,0 +1,38 @@
+# Read once at startup. Credentials arrive through the deployment secret source.
+[server]
+port = 3000
+api_url = "https://api.agentsfleet.net"
+app_url = "https://app.agentsfleet.net"
+max_in_flight_requests = 256
+max_sse_streams = 256
+
+[database.api]
+max_connections = 5
+
+[runner.listener]
+address = "[::]:4443"
+tls_cert_file = "/etc/agentsfleet/runner-stream/server-chain.pem"
+tls_key_file = "/etc/agentsfleet/runner-stream/server.key"
+
+[runner.stream]
+control_mib = 16
+data_mib = 48
+
+[runner.lease]
+ttl_seconds = 35
+
+[runner.recovery]
+resume_from_checkpoint = false
+offer_fallback_seconds = 5
+max_concurrent_claims = 8
+
+[bus]
+wake_queue_capacity = 64
+
+[identity]
+audience = "https://api.agentsfleet.net"
+clerk_api_base = "https://api.clerk.com/v1"
+
+[telemetry]
+log_level = "info"
+otlp_endpoint = "http://otelcol-prod.internal:4318"

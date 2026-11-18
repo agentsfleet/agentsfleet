@@ -42,15 +42,9 @@ async fn ordinary_chunks_from_separate_files_share_a_live_batch_in_manifest_orde
             expires_at: clock::after(clock::now(), Duration::from_secs(30)),
         });
     }
-    let ordered: Vec<_> = [3, 1, 2, 0]
-        .into_iter()
-        .map(|index| {
-            objects
-                .get(index)
-                .map(|object| object.object_id.clone())
-                .ok_or_else(|| error::config("ordinary fixture object missing"))
-        })
-        .collect::<Result<_>>()?;
+    let [first, second, third, fourth] = objects.as_slice() else {
+        return Err(error::config("ordinary fixture requires four objects").into());
+    };
     let page = page(vec![
         CheckpointEntry::Directory {
             path: "dir".to_owned(),
@@ -59,13 +53,13 @@ async fn ordinary_chunks_from_separate_files_share_a_live_batch_in_manifest_orde
             path: "dir/script".to_owned(),
             executable: true,
             size: 14,
-            objects: ordered.iter().take(2).cloned().collect(),
+            objects: vec![fourth.object_id.clone(), second.object_id.clone()],
         }),
         CheckpointEntry::File(CheckpointFile {
             path: "dir/text".to_owned(),
             executable: false,
             size: 14,
-            objects: ordered.into_iter().skip(2).collect(),
+            objects: vec![third.object_id.clone(), first.object_id.clone()],
         }),
         CheckpointEntry::Symlink {
             path: "link".to_owned(),

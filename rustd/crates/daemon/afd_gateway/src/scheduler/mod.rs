@@ -21,16 +21,27 @@ pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
         notifications(
             &gateway.inner.registry,
             &gateway.inner.dependencies.wake,
+            gateway
+                .inner
+                .dependencies
+                .recovery
+                .max_concurrent_claims
+                .get(),
             stop
         )
     )?;
     Ok(())
 }
 
-async fn notifications(registry: &Registry, wake: &Wake, stop: CancellationToken) -> Result<()> {
+async fn notifications(
+    registry: &Registry,
+    wake: &Wake,
+    claims: usize,
+    stop: CancellationToken,
+) -> Result<()> {
     tokio::try_join!(
         ordinary_notifications(registry, wake, &stop),
-        recovery::notifications(registry, wake, &stop),
+        recovery::notifications(registry, wake, claims, &stop),
     )?;
     Ok(())
 }

@@ -4,6 +4,17 @@
 SELECT EXISTS (
     SELECT 1 FROM fleet.admissions a
     WHERE a.settled_at IS NULL
+      AND ($4::boolean OR (
+        (a.task_id IS NOT NULL OR NOT EXISTS (
+          SELECT 1 FROM runner.turn_recovery recovery
+          WHERE recovery.event_id = a.id AND recovery.head_turn_checkpoint_id IS NOT NULL
+        ))
+        AND NOT EXISTS (
+          SELECT 1 FROM fleet.admissions earlier
+          WHERE earlier.fleet_id = a.fleet_id AND earlier.settled_at IS NULL
+            AND earlier.sequence < a.sequence
+        )
+      ))
       AND NOT EXISTS (
           SELECT 1 FROM runner.fleet_slots s
           WHERE s.fleet_id = a.fleet_id AND s.lease_expires_at > statement_timestamp()

@@ -47,7 +47,7 @@ struct Arguments {
 async fn main() -> Checked {
     let args = Arguments::parse();
     if let (Some(address), Some(root)) = (args.model_address, args.model_root) {
-        return worker::run(address, &root).await;
+        return Box::pin(worker::run(address, &root)).await;
     }
     if ProcessEnv.get("BENCH_PROFILE").as_deref() != Some("rig")
         || ProcessEnv.get("BENCH_TARGET_OWNED").as_deref() != Some("owned")

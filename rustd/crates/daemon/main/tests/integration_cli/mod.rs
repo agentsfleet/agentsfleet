@@ -30,6 +30,8 @@ use clap::Parser as _;
 
 use crate::support::install_subscriber;
 
+mod configuration;
+
 /// The binary under test, built by Cargo for this suite.
 const DAEMON: &str = env!("CARGO_BIN_EXE_agentsfleetd");
 

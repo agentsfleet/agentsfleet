@@ -52,7 +52,7 @@ async fn rings_coalesce_into_one_claim_pass() -> TestResult {
         let registry = Arc::clone(&registry);
         let wake = wake.clone();
         let stop = stop.clone();
-        async move { notifications(&registry, &wake, stop).await }
+        async move { notifications(&registry, &wake, 8, stop).await }
     });
     tokio::task::yield_now().await;
     wake.ring(session.handle.runner.clone());

@@ -146,7 +146,7 @@ This leaves time to stop the engine and reap its processes.
 | UDP failure history | 30 seconds | How long a new connection skips HTTP/3 after HTTP/3 failed to connect and HTTP/2 connected |
 | Replica work probe | Every 5 seconds | Finds work after a lost notification |
 
-[Timing constants](../../rustd/crates/foundation/af_core/src/timing.rs) assert the renewal and recovery relationship.
+[Timing constants](../../rustd/crates/foundation/af_core/src/timing/mod.rs) assert the renewal and recovery relationship.
 Repeated outages can exceed the recovery window; confirmed lease expiry still stops the running lease.
 Reconnect starts renewal immediately; it never waits for the next periodic tick.
 

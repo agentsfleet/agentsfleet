@@ -40,6 +40,7 @@ const LEASE_SHAPE: &[&str] = &[
     "posted_message_count",
     "created_at",
     "updated_at",
+    "setup_revision_id",
 ];
 
 /// The columns the narrative log's rows carry.

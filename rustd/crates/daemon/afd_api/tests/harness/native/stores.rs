@@ -41,6 +41,7 @@ impl Fleet {
             thread: Arc::new(self.events.clone()),
         };
         Gateway::new(GatewayDependencies {
+            recovery: afd_gateway::RecoverySettings::default(),
             database,
             runners: self.runners.clone(),
             leases,

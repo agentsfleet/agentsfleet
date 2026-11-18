@@ -1,7 +1,7 @@
 //! Claim a slot and its exact oldest unsettled admission in one transaction.
 
 use af_core::id::Uuid7;
-use af_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER};
+
 use af_observability::metrics::label::fleet::HeldClaim;
 use af_observability::producers;
 use jiff::Timestamp;
@@ -102,7 +102,7 @@ impl Leases {
             .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(runner)
             .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
-            .bind(RUNNER_OFFLINE_AFTER)
+            .bind(self.clock().offline_after())
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(&held)
             .bind(hint.as_ref())
@@ -113,6 +113,7 @@ impl Leases {
             .bind(recovery.is_some())
             .bind(after.map(|key| key.created.to_sqlx()))
             .bind(after.map(|key| &key.admission))
+            .bind(self.checkpoint_resume_enabled())
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -147,8 +148,8 @@ impl Leases {
         let row: Option<Admission> = sqlx::query_as(queue::CLAIM_HEAD)
             .bind(fleet)
             .bind(runner)
-            .bind(LEASE_TTL)
-            .bind(RUNNER_OFFLINE_AFTER)
+            .bind(self.clock().ttl())
+            .bind(self.clock().offline_after())
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_EXPIRED)
@@ -159,6 +160,7 @@ impl Leases {
             .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(af_core::event::status::RECEIVED)
             .bind(afd_admission::Producer::Steer.as_str())
+            .bind(self.checkpoint_resume_enabled())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT))?;

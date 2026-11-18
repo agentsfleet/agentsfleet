@@ -36,6 +36,7 @@ pub struct IdentityConfig {
 /// What boot needs resolved before it opens anything.
 #[derive(Debug)]
 pub struct BootConfig {
+    pub(crate) runtime: super::RuntimeSettings,
     pub(super) api_pool: PoolConfig,
     pub(super) bus: afd_bus::nats::Config,
     pub(super) kek: Kek,
