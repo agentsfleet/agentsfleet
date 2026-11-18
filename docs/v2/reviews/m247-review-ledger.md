@@ -337,6 +337,7 @@ The corrected fixture and the full focused selection passed after resetting and 
 The final source fingerprint is `f5b8b4cfbe596fd9c874db477cdbc8b0ee5f12728612630095722501ba1756dc`.
 The run included both recovery fairness cases and native connection reconciliation.
 Workspace Rust lint passed with warnings denied; the unused-dependency check also passed.
+`orly gate verify` passed repository lint, documentation checks and version checks for this configuration batch.
 
 Four real collector checks passed for span batching, span timing, log batching and metric timing.
 The browser Appearance check also passed on the current branch.
@@ -539,6 +540,7 @@ Source references include [lease timing](../../../rustd/crates/foundation/af_cor
 
 Indy added the task constants, retry policies and user-turn timing to this configuration audit on Nov 18, 2026.
 Chosen settings must reach the deployment TOML and their consumers together.
+
 Task settings and migration retries now reach both deployment profiles and their consumers.
 Authoring, inference and delivery retry extensions remain pending.
 
