@@ -254,7 +254,7 @@ class LauncherTests(unittest.TestCase):
     def test_held_lock_has_a_bounded_refusal(self):
         self.run_dev("up", infra=True)
         lock = self.shared() / "infrastructure.lock"
-        lock.mkdir()
+        lock.touch()
         started = time.monotonic()
         result = self.run_dev("up", expected=1)
         self.assertIn("lock wait expired", result.stderr)
