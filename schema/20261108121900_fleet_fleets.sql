@@ -2,7 +2,6 @@
 -- the live one. Purging a fleet cascades everything it owns except money.
 CREATE TABLE fleet.fleets (
     id                          UUID PRIMARY KEY,
-    CONSTRAINT ck_fleets_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id                UUID    NOT NULL,
     tenant_id                   UUID    NOT NULL,
     name                        TEXT    NOT NULL,

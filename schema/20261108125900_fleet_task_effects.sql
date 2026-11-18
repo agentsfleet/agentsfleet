@@ -2,7 +2,6 @@
 -- effect and its receipt survive privacy deletion.
 CREATE TABLE fleet.task_effects (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_task_effect_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     task_id UUID NOT NULL,
     fleet_id UUID NOT NULL,
     workspace_id UUID NOT NULL,

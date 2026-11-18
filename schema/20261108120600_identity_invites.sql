@@ -2,7 +2,6 @@
 -- `resolved_at` is NULL while pending and set once, on accept or revoke; `status` says which.
 CREATE TABLE identity.invites (
     id                   UUID PRIMARY KEY,
-    CONSTRAINT ck_invites_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     tenant_id            UUID NOT NULL REFERENCES identity.tenants(id) ON DELETE CASCADE,
     email                TEXT NOT NULL,
     role                 TEXT NOT NULL,

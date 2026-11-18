@@ -1,7 +1,6 @@
 -- Immutable interpretation receipts; they survive cleanup of their source admission.
 CREATE TABLE fleet.task_items (
     id                  UUID PRIMARY KEY,
-    CONSTRAINT ck_task_items_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     fleet_id            UUID NOT NULL,
     workspace_id        UUID NOT NULL,
     admission_id        UUID NOT NULL,

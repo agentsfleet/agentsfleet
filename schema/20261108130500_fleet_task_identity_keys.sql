@@ -1,7 +1,6 @@
 -- Stable private content identities are independent of master-key rewrapping.
 CREATE TABLE fleet.task_identity_keys (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_task_identity_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id UUID NOT NULL REFERENCES identity.workspaces (id) ON DELETE CASCADE,
     repository TEXT NOT NULL,
     key_version INTEGER NOT NULL CHECK (key_version > 0),

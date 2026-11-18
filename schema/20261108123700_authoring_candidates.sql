@@ -1,7 +1,6 @@
 -- A frozen, numbered setup the model proposed in a chat. Append-only; it goes with its draft.
 CREATE TABLE authoring.candidates (
     id                UUID PRIMARY KEY,
-    CONSTRAINT ck_candidates_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     draft_id          UUID   NOT NULL REFERENCES authoring.drafts(id) ON DELETE CASCADE,
     revision          BIGINT NOT NULL,
     definition        JSONB  NOT NULL,

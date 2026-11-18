@@ -2,7 +2,6 @@
 -- while pending and set once. No DELETE grant: a gate goes only with its fleet's purge cascade.
 CREATE TABLE fleet.approval_gates (
     id                UUID PRIMARY KEY,
-    CONSTRAINT ck_approval_gates_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     fleet_id          UUID   NOT NULL REFERENCES fleet.fleets(id) ON DELETE CASCADE,
     workspace_id      UUID   NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
     event_id          UUID,

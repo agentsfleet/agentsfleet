@@ -1,7 +1,6 @@
 -- Page identities are allocated first; acknowledged bytes never change.
 CREATE TABLE runner.turn_checkpoint_pages (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_turn_page_id_uuidv7 CHECK (uuid_extract_version(id) IS NOT DISTINCT FROM 7),
     turn_checkpoint_id UUID NOT NULL REFERENCES runner.turn_checkpoints (id) ON DELETE CASCADE,
     page_number INTEGER NOT NULL CHECK (page_number >= 0),
     digest TEXT,

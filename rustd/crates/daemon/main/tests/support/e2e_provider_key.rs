@@ -28,8 +28,8 @@ use crate::e2e::{GOOD_KEK, PROVIDER};
 /// one per run. So the `ON CONFLICT (workspace_id, key_name)` arm never fires
 /// between two scenarios, the PRIMARY KEY is what they would collide on, and a
 /// shared constant would drop the second scenario's key and leave it resolving
-/// against a workspace that has none. `mint_id` shapes it so
-/// `ck_vault_secrets_id_uuidv7` passes.
+/// against a workspace that has none. `mint_id` returns the `UUIDv7`
+/// shape the application's typed decoder accepts.
 pub(super) fn vault_row() -> Uuid7 {
     afd_db::test_util::mint_id()
 }

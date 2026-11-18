@@ -2,7 +2,6 @@
 -- the heartbeat observed, so two sweeps over one gap write one row.
 CREATE TABLE runner.events (
     id            UUID PRIMARY KEY,
-    CONSTRAINT ck_events_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     runner_id     UUID   NOT NULL REFERENCES runner.runners(id) ON DELETE CASCADE,
     event_type    TEXT   NOT NULL,
     metadata      JSONB  NOT NULL,

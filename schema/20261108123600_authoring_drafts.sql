@@ -3,7 +3,6 @@
 -- NULL `tenant_model_id` is the platform default; `expires_at` is 30 days after `closed_at`.
 CREATE TABLE authoring.drafts (
     id                          UUID PRIMARY KEY,
-    CONSTRAINT ck_drafts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id                UUID   NOT NULL,
     tenant_id                   UUID   NOT NULL,
     user_id                     UUID   NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,

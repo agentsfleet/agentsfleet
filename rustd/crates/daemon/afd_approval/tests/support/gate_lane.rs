@@ -89,8 +89,8 @@ pub(crate) const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// The tenant every gate in this suite hangs from.
 ///
-/// Fixed, readable and SHARED — see the module note. Version-7 shaped so the
-/// schema's `ck_*_id_uuidv7` admits it.
+/// Fixed, readable and SHARED — see the module note. Its version-7 shape
+/// passes typed identifier decoding.
 const TENANT: &str = "0195b4ba-8d3a-7a11-8abc-000000000001";
 
 /// A migrated database, a bus, and one fleet to hang gates from.
@@ -200,7 +200,7 @@ impl Lane {
 ///
 /// Through `afd_db`'s minting helper rather than a local entropy draw: this
 /// crate has no reason to depend on the crypto crate, and the helper already
-/// shapes a value both `ck_*_id_uuidv7` and [`Uuid7`] accept.
+/// shapes a value [`Uuid7`] accepts.
 pub(crate) fn mint() -> Uuid7 {
     afd_db::test_util::mint_id()
 }

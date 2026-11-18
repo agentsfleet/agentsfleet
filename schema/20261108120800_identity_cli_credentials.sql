@@ -2,7 +2,6 @@
 -- deleted with the user. A live login has `revoked_at IS NULL`.
 CREATE TABLE identity.cli_credentials (
     id                    UUID PRIMARY KEY,
-    CONSTRAINT ck_cli_credentials_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     user_id               UUID NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,
     tenant_id             UUID NOT NULL REFERENCES identity.tenants(id) ON DELETE CASCADE,
     machine_name          TEXT NOT NULL,

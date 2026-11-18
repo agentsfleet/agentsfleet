@@ -24,6 +24,136 @@ This move does not grade the remaining acceptance checks as passed.
 R13 benchmarks, R14 greater-than-99% coverage, final automated acceptance and the post-M246 SQL/schema review remain open.
 The review closures are pushed at `2a88201a9`, including merge `b4c2d789c` of M246 main.
 
+### Post-M246 verification
+
+The [coverage run at `2a88201a9`](https://github.com/agentsfleet/agentsfleet/actions/runs/44309414436) failed.
+Kernel, daemon and substrate shards passed.
+The failed shards prevent a complete coverage grade.
+
+| Check | Observed result | Follow-up |
+| --- | --- | --- |
+| API and fleet shard | 478 fleet checks passed; identity retention failed because its fixture names the removed `delete_after_at` column | Fixed the fixture; the reset retention case passed in 2.80 s |
+| Native stream host guard | The host-lock counter timed out because its SQL pattern omits `cordon_reason` | Fixed the pattern; the reset guard case passed in 4.09 s |
+| Native stream fairness | Old work failed to progress within the existing test deadline | Reproduced after reset; the case failed in 31.65 s total; cause unresolved |
+| Runner shard | Image registry quota stopped setup before tests | Retry setup; no runner coverage report exists |
+
+The spec move does not waive these failures.
+
+The optimized one-fleet smoke at `2a88201a9` passed before the UUID checks changed.
+Its issue, model and settlement offsets from eligibility were 4,572, 5,186 and 5,259 milliseconds.
+This is one observation, not a repeated-run median or a completed burst comparison.
+
+The later all-feature workspace build passed all 197 test targets.
+The reset focused run passed 21 migration checks and the three cases listed above.
+Its one native fairness case failed; final repository verification remains open.
+
+### Database audit requested by Indy
+
+Indy requested: "Review thoroughly on the sql and its datastructure and report back to indy."
+The inventory contains 91 schema files and 845 SQL files across the repository.
+The initial audit covered UUIDv7, indexes, foreign keys, plans, locks and security, with particular attention to `vault.secrets`.
+
+Run representative `EXPLAIN (ANALYZE, BUFFERS)` checks after the recovery benchmark releases the owned database.
+Keep seeded cardinalities, roles and bind values with each plan.
+Flag proposed removals and UUIDv7 gaps before changing production SQL.
+
+The removed substring constraints checked one version digit after converting the UUID to text.
+Rust's `Uuid7` also checks the variant.
+PostgreSQL 19rc2 confirms that `uuid_extract_version` returns NULL for an unsupported variant.
+
+Indy rejected database version checks and requested their removal.
+His full instruction is recorded in the completed specification's Discovery.
+This replaces the earlier native-check proposal.
+
+Keep UUIDv7 generation and typed decoding in Rust.
+Remove both substring and native version checks from the schema.
+The schema changes remove 67 constraints across 63 files.
+
+Indy requested these changes in the M247 PR and authorized a separate Orly PR.
+He then directed: "just push the orly pr and update orly version in this and orly update".
+
+The [Orly PR #85](https://github.com/agentsfleet/orly/pull/85) merged at `c4127fd3fcf21f98689711d311adc376c75b88e8`.
+The machine now uses published `0.60.2`, and this branch's pin and managed SQL standard are updated.
+`orly update` reported all 37 files current, and `orly doctor` passed.
+
+The requested second review of these results is 6.2 Astra High.
+Indy requested a manual model switch before that review.
+The initial review below does not claim that second review occurred.
+
+### Initial SQL review and measured plans
+
+The initial review read all 845 SQL files, including 91 schema files and 10,219 lines.
+The per-file record has no missing, skipped, duplicated or changed SQL entries.
+The complete [evidence record](../../../bench/baselines/sql-audit.rig.json) contains source hashes, caller paths, findings and raw plans.
+
+Its SQL manifest is `298139a1dacb94552d7e13de75f11a504b751f51ad6de8b60a8fa7352ee6c59c`.
+All 845 files also parsed with `pglast` 8.8.
+Parsing proves syntax; the separately recorded semantic reads establish the initial review coverage.
+
+The following findings remain open for the requested Astra review.
+Their caller traces establish concrete source paths, but their race schedules and credential scenarios have not received live reproductions.
+None is labelled fixed or owner-deferred.
+
+| ID | Priority | Finding | Primary source | Smallest proposed repair |
+| --- | --- | --- | --- | --- |
+| Q1 | P1 | A leased runner can request an undeclared static credential from its workspace | `afd_fleet/src/lease/sql/lease/select_lease_scope_for_mint.sql`, `lease/scope.rs`, `lease/mint/admission.rs` | Carry saved credential names through the existing mint scope and check them before vault, cache or broker access |
+| Q2 | P1 | A cancellation-marked lease can still mint fresh credentials | `afd_fleet/src/lease/sql/lease/select_lease_scope_for_mint.sql` | Refuse the durable cancellation marker in the authoritative mint lookup; preserve late accounting separately |
+| Q3 | P1 | Memory writes can outlive their checked lease fence or publication grant | `afd_fleet/src/lease/memory.rs`, `afd_memory/src/postgres/write.rs`, `afd_memory/src/sql/upsert_entry.sql` | Keep fence, current grants and writes on one caller-owned transaction, using existing lock order |
+| Q4 | P2 | Concurrent distinct-key captures can exceed the durable memory ceiling | `afd_memory/src/sql/evict_past_cap.sql`, `postgres/write.rs` | Serialize through the existing fleet access lock before writing and evicting |
+| Q5 | P1 | Runner deletion can clear the owner needed to record known in-flight authoring usage | `afd_runner/src/sql/runner_admin/delete_runner_if_in_state.sql`, `afd_authoring/src/model/sql/lock_attempt.sql` | Extend retirement's accounting guard or preserve immutable late-accounting authority |
+| Q6 | P1 | Approval resolution omits the deadline, and the expiry routine has no production worker caller | `afd_approval/src/sql/resolve_gate.sql`, `inbox/resolve/mod.rs`, `main/src/sweepers/mod.rs` | Check one post-lock database clock and wire the existing expiry routine into supervised maintenance |
+| Q7 | P1 | Approval continuation retains a pool connection while requesting another from the same pool | `afd_approval/src/inbox/resolve/mod.rs`, `afd_admission/src/admit.rs` | Reuse one caller-owned connection through the composed writes; preserve the continuation's retry behavior |
+
+The migrated schema has 326 indexes and 126 foreign keys.
+No exact duplicate index candidate matched the compared keys, operator classes, collations, ordering, predicates and uniqueness.
+Four foreign keys lack an index beginning with any referenced child column.
+
+Those columns are `admissions.workspace_id`, `obligations.workspace_id`, `platform_defaults.source_workspace_id` and `platform_models.decision_revision_id`.
+Small catalogue tables can reasonably scan.
+The larger admission and obligation tables received the private experiments below.
+
+All plans used `api_runtime` on an isolated, migrated PostgreSQL 19rc2 database.
+It held 1,000 workspaces, 1,000 fleets and 100,000 rows each in secrets, admissions and obligations.
+Each statement received five warm observations after `ANALYZE`.
+
+| Vault operation | Median SQL time | Top-level shared buffer hits |
+| --- | ---: | ---: |
+| Exact workspace/name envelope | 0.123 ms | 4 |
+| List 100 metadata rows | 1.128 ms | 107 |
+| Read four envelopes | 0.160 ms | 10 |
+| Lock and derive four generations | 1.085 ms | 18 |
+| Resolve 100 scoped descriptors | 1.091 ms | 304 |
+
+The operator and memory roles each received SQLSTATE `42501` when reading vault ciphertext.
+The scoped API query returned exactly one synthetic row.
+These checks establish grants and SQL scoping, not the credential route's missing declaration check.
+
+Keep the vault's generation identity and workspace/name uniqueness.
+The ID contributes to the resolution-generation digest and cannot simply disappear.
+These plans provide no reason to add another vault index.
+
+The following schema alternatives existed only in the private audit database.
+The composite alternative adds one fleet-scope unique index and replaces four separate foreign keys with two ownership-proving keys.
+Production foreign keys and indexes have not changed.
+
+| Private variant | Index delta | Foreign-key delta | Delete one workspace, median | Insert 100 admissions, median |
+| --- | ---: | ---: | ---: | ---: |
+| Current schema | 0 | 0 | 85.580 ms | 8.732 ms |
+| Two child workspace indexes | +2 | 0 | 39.024 ms | 7.752 ms |
+| Composite fleet-scope keys | +1 | -2 | 47.632 ms | 5.762 ms |
+
+These exploratory timings do not establish production latency or recovery-burst throughput.
+Top-level buffer counts omit some trigger subplans.
+The full raw plans retain trigger timings and each observation.
+
+Before the experiments, catalogue comparison proved that only the 67 UUID checks changed in the main test schema.
+Every remaining constraint, all 326 indexes and all 926 grants matched.
+The malformed-identifier test now proves that PostgreSQL accepts the value and Rust refuses decoding, then succeeds after the valid ID returns.
+
+Outbound lane materialization, memory shared-page ordering and ingress candidate fanout remain explicit performance questions.
+The native fairness failure, complete recovery bursts and greater-than-99% coverage remain open.
+The second Astra review must evaluate the findings and these measurement limits before further repairs are called verified.
+
 ## Completed first-pass repairs
 
 | Finding | Evidence / disposition |

@@ -1,7 +1,6 @@
 -- One renewable native pin protects a capture/restore object's reference set.
 CREATE TABLE fleet.task_object_pins (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_task_pin_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     task_checkpoint_id UUID NOT NULL,
     task_id UUID NOT NULL,
     fleet_id UUID NOT NULL,

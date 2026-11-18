@@ -3,7 +3,6 @@
 -- a new turn.
 CREATE TABLE authoring.messages (
     id               UUID PRIMARY KEY,
-    CONSTRAINT ck_messages_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     draft_id         UUID   NOT NULL REFERENCES authoring.drafts(id) ON DELETE CASCADE,
     sequence         BIGINT NOT NULL,
     operation_id     UUID   NOT NULL,

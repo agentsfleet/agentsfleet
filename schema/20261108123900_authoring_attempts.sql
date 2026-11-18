@@ -3,7 +3,6 @@
 -- every deletion. NULL `runner_id` means the runner was removed, never that none ran it.
 CREATE TABLE authoring.attempts (
     id                      UUID PRIMARY KEY,
-    CONSTRAINT ck_attempts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     lease_id                UUID    NOT NULL,
     runner_id               UUID    REFERENCES runner.runners(id) ON DELETE SET NULL (runner_id),
     workspace_id            UUID    NOT NULL,

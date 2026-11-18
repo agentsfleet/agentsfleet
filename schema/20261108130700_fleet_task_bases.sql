@@ -1,7 +1,6 @@
 -- Verified repository bases can outlive the first task retaining them.
 CREATE TABLE fleet.task_bases (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_task_base_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id UUID NOT NULL REFERENCES identity.workspaces (id) ON DELETE CASCADE,
     repository TEXT NOT NULL,
     commit_oid TEXT NOT NULL,

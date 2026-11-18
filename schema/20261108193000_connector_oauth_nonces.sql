@@ -2,7 +2,7 @@
 -- RETURNING, so exactly one callback sees the row. No sweep runs: a connect abandoned before its
 -- callback leaves its row behind.
 CREATE TABLE connector.oauth_nonces (
-    id UUID PRIMARY KEY CONSTRAINT ck_oauth_nonces_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    id UUID PRIMARY KEY,
     provider TEXT NOT NULL,
     nonce_digest BYTEA NOT NULL,
     created_at TIMESTAMPTZ(3) NOT NULL,

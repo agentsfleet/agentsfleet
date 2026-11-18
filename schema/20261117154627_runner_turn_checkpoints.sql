@@ -1,7 +1,6 @@
 -- Private root state and a matching full workspace publish in one transaction.
 CREATE TABLE runner.turn_checkpoints (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_turn_checkpoint_id_uuidv7 CHECK (uuid_extract_version(id) IS NOT DISTINCT FROM 7),
     event_id UUID NOT NULL REFERENCES runner.turn_recovery (event_id) ON DELETE CASCADE,
     fleet_id UUID NOT NULL REFERENCES fleet.fleets (id) ON DELETE CASCADE,
     workspace_id UUID NOT NULL REFERENCES identity.workspaces (id) ON DELETE CASCADE,

@@ -190,8 +190,8 @@ async fn purge(
 ) -> Checked {
     let object = afd_db::test_util::mint_id();
     sqlx::query("INSERT INTO fleet.task_storage_purges
-        (task_object_id,workspace_id,task_identity_key_id,bucket_reference,accounted_bytes,stored,delete_after_at,next_attempt_at,completed_at,created_at,updated_at)
-        VALUES ($1,$2,$3,$4,0,false,now()+interval '1 day',now()+interval '1 day',CASE WHEN $5 THEN now() ELSE NULL END,now(),now())")
+        (task_object_id,workspace_id,task_identity_key_id,bucket_reference,accounted_bytes,stored,next_attempt_at,completed_at,created_at,updated_at)
+        VALUES ($1,$2,$3,$4,0,false,now()+interval '1 day',CASE WHEN $5 THEN now() ELSE NULL END,now(),now())")
         .bind(&object).bind(workspace).bind(identity).bind(object.to_string()).bind(done)
         .execute(connection).await?;
     Ok(())

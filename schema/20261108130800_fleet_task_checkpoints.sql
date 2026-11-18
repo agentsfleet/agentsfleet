@@ -1,7 +1,6 @@
 -- Plans are not recovery pointers until all immutable pages and objects verify.
 CREATE TABLE fleet.task_checkpoints (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_task_checkpoint_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     task_id UUID NOT NULL,
     fleet_id UUID NOT NULL,
     workspace_id UUID NOT NULL,

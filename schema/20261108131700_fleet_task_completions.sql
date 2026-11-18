@@ -2,7 +2,6 @@
 -- races; a conclusion never completes a goal directly.
 CREATE TABLE fleet.task_completions (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_task_completion_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id UUID NOT NULL REFERENCES identity.workspaces (id) ON DELETE CASCADE,
     scope_fleet_id UUID REFERENCES fleet.fleets (id) ON DELETE CASCADE,
     installation_id BIGINT NOT NULL CHECK (installation_id > 0),

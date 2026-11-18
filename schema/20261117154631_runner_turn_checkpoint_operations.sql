@@ -1,12 +1,10 @@
 -- Opaque allocation receipts survive private plan deletion; old operations never allocate again.
 CREATE TABLE runner.turn_checkpoint_operations (
     turn_checkpoint_id UUID PRIMARY KEY,
-    CONSTRAINT ck_turn_operation_checkpoint_uuidv7 CHECK (uuid_extract_version(turn_checkpoint_id) IS NOT DISTINCT FROM 7),
     event_id UUID NOT NULL,
     fleet_id UUID NOT NULL,
     workspace_id UUID NOT NULL,
     operation_id UUID NOT NULL,
-    CONSTRAINT ck_turn_operation_id_uuidv7 CHECK (uuid_extract_version(operation_id) IS NOT DISTINCT FROM 7),
     request_digest TEXT NOT NULL,
     generation BIGINT NOT NULL CHECK (generation > 0),
     created_at TIMESTAMPTZ(3) NOT NULL,

@@ -3,7 +3,6 @@
 -- The insert proves scope, and a purge deletes the fleet's active leases itself.
 CREATE TABLE runner.leases (
     id                          UUID PRIMARY KEY,
-    CONSTRAINT ck_leases_id_uuidv7 CHECK (uuid_extract_version(id) IS NOT DISTINCT FROM 7),
     runner_id                   UUID    NOT NULL REFERENCES runner.runners(id) ON DELETE CASCADE,
     fleet_id                    UUID    NOT NULL,
     workspace_id                UUID    NOT NULL,
@@ -32,9 +31,6 @@ CREATE TABLE runner.leases (
     -- Opaque immutable setup selected at issue; a resumed ordinary root must
     -- match this witness. No foreign key: settled leases survive fleet purge.
     setup_revision_id UUID,
-    CONSTRAINT ck_leases_setup_revision_id_uuidv7 CHECK (
-        setup_revision_id IS NULL OR uuid_extract_version(setup_revision_id) IS NOT DISTINCT FROM 7
-    ),
     -- The lease freezes semantic ownership and meters its own task-running delta.
     -- Opaque task_id already outlives task deletion; these add no privacy owner FK.
     task_generation BIGINT CHECK (task_generation > 0),

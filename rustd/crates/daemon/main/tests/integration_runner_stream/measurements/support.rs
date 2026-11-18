@@ -73,7 +73,7 @@ const TOKEN: &str = "%SELECT id AS runner, status, degraded_reason IS NOT NULL A
 // afd_fleet/src/lease/sql/select_lease_target.sql; a native cache hit avoids this join.
 const TARGET: &str = "%SELECT l.fleet_id, l.event_id, l.created_at, l.event_created_at,%FROM runner.leases l%JOIN fleet.events e ON e.event_id = l.event_id%WHERE l.id =%";
 // afd_runner/src/capacity/sql/lock_host.sql; Ready must reach this durable guard.
-const HOST: &str = "%SELECT worker_count, status, degraded_reason IS NOT NULL AS degraded, lease_version,%FROM runner.runners%WHERE id =%FOR UPDATE%";
+const HOST: &str = "%SELECT worker_count, status, cordon_reason, degraded_reason IS NOT NULL AS degraded, lease_version,%FROM runner.runners%WHERE id =%FOR UPDATE%";
 // afd_fleet/src/lease/sql/select_lease_for_report.sql; a session that kept
 // the offer's facts reports without it.
 const REPORTED: &str = "%SELECT l.fleet_id, l.workspace_id,%l.tenant_id, l.event_id, e.actor, l.posture%FROM runner.leases l%WHERE l.id = $1 AND l.runner_id = $2%";

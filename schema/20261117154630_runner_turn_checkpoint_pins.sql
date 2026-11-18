@@ -1,11 +1,9 @@
 -- A reader pins an exact generation; renewal never extends its operation deadline.
 CREATE TABLE runner.turn_checkpoint_pins (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_turn_pin_id_uuidv7 CHECK (uuid_extract_version(id) IS NOT DISTINCT FROM 7),
     turn_checkpoint_id UUID NOT NULL REFERENCES runner.turn_checkpoints (id) ON DELETE CASCADE,
     kind TEXT NOT NULL,
     operation_id UUID NOT NULL,
-    CONSTRAINT ck_turn_pin_operation_uuidv7 CHECK (uuid_extract_version(operation_id) IS NOT DISTINCT FROM 7),
     owner_lease_id UUID NOT NULL,
     owner_fence BIGINT NOT NULL CHECK (owner_fence > 0),
     resource_version BIGINT NOT NULL CHECK (resource_version > 0),

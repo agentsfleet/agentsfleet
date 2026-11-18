@@ -2,7 +2,6 @@
 -- deletion, so its ids are opaque; private payloads live in `runner.decision_payloads`.
 CREATE TABLE runner.decision_calls (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_decision_calls_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     original_runner_id UUID NOT NULL,
     original_lease_id UUID NOT NULL,
     source_admission_id UUID NOT NULL,

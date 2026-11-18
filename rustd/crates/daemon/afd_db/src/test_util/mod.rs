@@ -285,7 +285,7 @@ impl TestDatabase {
 /// fixtures that had no lane of their own to put it in.
 ///
 /// The version nibble is `7` and the variant nibble is `8`, so the result
-/// passes both the schema's `ck_*_id_uuidv7` checks and `af_core::id::Uuid7`.
+/// passes `af_core::id::Uuid7` validation.
 ///
 /// # Panics
 /// Only if the fixed spelling above stops being a `UUIDv7`, a fixture bug.

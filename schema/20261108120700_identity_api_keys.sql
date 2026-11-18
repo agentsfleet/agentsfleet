@@ -2,7 +2,6 @@
 -- subject as text, not a user foreign key. A live key has `revoked_at IS NULL`.
 CREATE TABLE identity.api_keys (
     id                  UUID PRIMARY KEY,
-    CONSTRAINT ck_api_keys_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     tenant_id           UUID NOT NULL REFERENCES identity.tenants(id) ON DELETE CASCADE,
     name                TEXT NOT NULL,
     description         TEXT NOT NULL,

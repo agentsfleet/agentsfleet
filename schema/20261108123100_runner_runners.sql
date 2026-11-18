@@ -3,14 +3,10 @@
 -- lease type, so a stale poll cannot overwrite the alternation another daemon set.
 CREATE TABLE runner.runners (
     id                       UUID PRIMARY KEY,
-    CONSTRAINT ck_runners_id_uuidv7 CHECK (uuid_extract_version(id) IS NOT DISTINCT FROM 7),
     host_id                  TEXT    NOT NULL,
     token_hash               TEXT    NOT NULL,
     -- One native runner session owns grants and renewals until replaced.
     connection_id            UUID,
-    CONSTRAINT ck_runners_connection_uuidv7 CHECK (
-        connection_id IS NULL OR uuid_extract_version(connection_id) IS NOT DISTINCT FROM 7
-    ),
     sandbox_tier             TEXT    NOT NULL,
     status                   TEXT    NOT NULL,
     labels                   JSONB   NOT NULL,
