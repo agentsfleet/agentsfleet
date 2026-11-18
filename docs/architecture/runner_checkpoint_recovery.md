@@ -41,8 +41,24 @@ For supported settings, an explicit CLI value wins, followed by a present
 TOML field, its environment value, and the current default. Secrets resolve
 through the environment or the platform vault.
 
-The daemon's normal
-no-subcommand preflight reads the same settings as serving.
+The daemon reads the selected file once before migration or serving.
+Its normal no-subcommand preflight uses the same resolved settings.
+Each service receives checked values from that snapshot.
+
+API and migration pools have separate connection counts, acquisition deadlines,
+connection deadlines, idle lifetimes, maximum lifetimes and idle-ping thresholds.
+Startup rejects an invalid pool budget before opening a connection.
+
+The task policy caps new admissions and interpretation sizes.
+New tasks save their configured allowances in the existing task-limit columns.
+Lowering admission caps preserves committed receipts, saved allowances and existing task candidates.
+
+Maintenance settings control job cadence, page sizes and pass deadlines.
+Bounded startup staggering separates replicas' first passes while retaining each job's maximum initial delay.
+OpenTelemetry settings control actual exporter queues, batch sizes, timeouts and export intervals.
+
+The loader reports overridden environment variable names and their winning source.
+These diagnostics contain no setting values.
 
 The Fly application files live beside their respective `fly.toml` files.
 Fly writes the selected file at `/etc/agentsfleet/agentsfleetd.toml`.
@@ -50,8 +66,8 @@ Fly writes the selected file at `/etc/agentsfleet/agentsfleetd.toml`.
 Both deployment files set `runner.recovery.resume_from_checkpoint = false`.
 A configuration change takes effect when each daemon replica restarts.
 
-Environment-only startup defaults to resume enabled. Set the flag explicitly
-for a staged rollout and confirm its effective value on every replica.
+Environment-only startup also defaults to resume disabled.
+Enable the flag after testing and confirm its effective value on every replica.
 
 With resume disabled, an ordinary admission with a committed checkpoint
 waits at its fleet's head after its lease expires. Candidate selection and the

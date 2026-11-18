@@ -212,6 +212,15 @@ pub(super) async fn spawn_background(
         ),
         outbound_client,
         config.slack_api_base().to_owned(),
+        std::time::Duration::from_secs(
+            config
+                .runtime
+                .operations
+                .maintenance
+                .loops
+                .outbound_delivery
+                .interval_seconds,
+        ),
     );
 }
 

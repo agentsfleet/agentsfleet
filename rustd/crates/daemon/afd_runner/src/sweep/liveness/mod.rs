@@ -38,6 +38,9 @@ use crate::error::{Result, query};
 use crate::sql;
 use crate::sweep::{Sweep, Swept};
 
+mod config;
+pub use config::LivenessSettings;
+
 /// Statement name, for the context a query failure carries.
 const CONTEXT_DUE: &str = "liveness due runners";
 
@@ -120,6 +123,7 @@ impl DueRow {
 /// The liveness pass, over the api-role pool.
 #[derive(Debug, Clone)]
 pub struct Liveness {
+    settings: LivenessSettings,
     /// Where the rows are.
     clock: af_core::timing::LeaseClock,
     database: Db,
@@ -128,6 +132,12 @@ pub struct Liveness {
 }
 
 impl Liveness {
+    /// Uses deployment limits checked before startup opens the stores.
+    #[must_use]
+    pub fn with_settings(mut self, settings: &garde::Valid<LivenessSettings>) -> Self {
+        self.settings = **settings;
+        self
+    }
     /// Uses the deployment clock validated before startup.
     #[must_use]
     pub fn with_clock(mut self, clock: af_core::timing::LeaseClock) -> Self {
@@ -139,6 +149,7 @@ impl Liveness {
     #[must_use]
     pub const fn new(database: Db, entropy: Entropy) -> Self {
         Self {
+            settings: LivenessSettings::DEFAULT,
             database,
             entropy,
             clock: af_core::timing::LeaseClock::DEFAULT,
@@ -159,7 +170,7 @@ impl Liveness {
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(sql::RUNNER_STATUS_DRAINING)
-            .bind(BATCH_LIMIT)
+            .bind(self.settings.batch_size)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_DUE))?;
@@ -254,7 +265,7 @@ impl Sweep for Liveness {
     /// the plane noticing is bounded by the threshold plus one tick, rather
     /// than by twice the threshold.
     fn interval(&self) -> Duration {
-        HEARTBEAT_INTERVAL
+        Duration::from_secs(self.settings.interval_seconds)
     }
 
     async fn sweep(&self) -> Result<Swept> {

@@ -27,6 +27,8 @@ pub(super) fn spawn(
     database: &Db,
     analytics: &Analytics,
     biller: Arc<dyn Biller>,
+    startup: &super::schedule::Startup,
+    settings: crate::config::maintenance::ExpiredWork,
 ) {
     let passes = Passes {
         database: database.clone(),
@@ -35,15 +37,17 @@ pub(super) fn spawn(
         drafts: afd_authoring::Drafts::new(database.clone(), Entropy::new(), biller)
             .with_analytics(analytics.clone()),
     };
+    let mut interval = startup.interval(
+        super::EXPIRY,
+        std::time::Duration::from_secs(settings.interval_seconds),
+    );
     supervisor.spawn(super::EXPIRY, async move |stop| {
-        let mut interval = tokio::time::interval(af_core::timing::EXPIRY_TICK);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
                 () = stop.cancelled() => return,
                 _ = interval.tick() => {},
             }
-            passes.tick().await;
+            tokio::select! { () = stop.cancelled() => return, _ticked = passes.tick() => {} }
         }
     });
 }

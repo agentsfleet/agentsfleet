@@ -89,6 +89,7 @@ pub fn tally(rows: impl IntoIterator<Item = Counted>) -> Tally {
 /// The census pass, over the api-role pool.
 #[derive(Debug, Clone)]
 pub struct Census {
+    interval: Duration,
     /// Where the rows are.
     database: Db,
 }
@@ -97,7 +98,17 @@ impl Census {
     /// A sweeper counting through `database`.
     #[must_use]
     pub const fn new(database: Db) -> Self {
-        Self { database }
+        Self {
+            database,
+            interval: FLEET_CENSUS_INTERVAL,
+        }
+    }
+
+    /// Samples at the deployment's checked cadence.
+    #[must_use]
+    pub const fn with_interval(mut self, interval: Duration) -> Self {
+        self.interval = interval;
+        self
     }
 
     /// Publish the durable queue backlog, withdrawing stale values on failure.
@@ -180,7 +191,7 @@ impl Sweep for Census {
     }
 
     fn interval(&self) -> Duration {
-        FLEET_CENSUS_INTERVAL
+        self.interval
     }
 
     async fn sweep(&self) -> Result<Swept> {

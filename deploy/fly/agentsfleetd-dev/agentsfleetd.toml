@@ -8,6 +8,27 @@ max_sse_streams = 256
 
 [database.api]
 max_connections = 8
+min_connections = 1
+acquire_timeout_ms = 5000
+connect_timeout_ms = 10000
+idle_timeout_seconds = 600
+max_lifetime_seconds = 1800
+ping_after_idle_ms = 1000
+
+# Schema changes use one session and no warm idle sessions.
+[database.migrator]
+max_connections = 1
+min_connections = 0
+acquire_timeout_ms = 5000
+connect_timeout_ms = 10000
+idle_timeout_seconds = 600
+max_lifetime_seconds = 1800
+ping_after_idle_ms = 1000
+
+# Includes the first lock poll; only contention retries.
+[database.migration]
+lock_max_attempts = 30
+lock_retry_interval_ms = 1000
 
 [runner.listener]
 address = "[::]:4443"
@@ -36,6 +57,64 @@ resume_from_checkpoint = false
 missed_wake_probe_seconds = 5
 max_concurrent_recovery_claims = 8
 
+[maintenance]
+startup_spread_ms = 5_000
+
+[maintenance.runner_liveness]
+interval_seconds = 10
+batch_size = 100
+
+[maintenance.expired_work]
+interval_seconds = 2
+
+[maintenance.fleet_census]
+interval_seconds = 30
+
+[maintenance.authoring_cleanup]
+interval_seconds = 10
+
+[maintenance.billing]
+interval_seconds = 5
+retry_oldest_after_seconds = 60
+max_drain_passes = 10
+
+[maintenance.durable_tasks]
+interval_seconds = 10
+pass_timeout_seconds = 30
+
+[maintenance.checkpoint_storage]
+interval_seconds = 300
+pass_timeout_seconds = 240
+
+[maintenance.runner_history]
+idle_interval_seconds = 3_600
+backlog_interval_seconds = 60
+keep_days = 30
+batch_size = 1_000
+max_batches = 8
+
+[maintenance.outbound_delivery]
+interval_seconds = 30
+
+[fleet.tasks]
+max_unfinished_per_fleet = 16
+max_inputs_per_safe_boundary = 4
+max_actions_per_message = 4
+max_objective_bytes = 16_384
+max_title_bytes = 160
+max_completion_questions = 6
+max_question_text_bytes = 512
+max_authored_question_bytes = 1_024
+
+[fleet.tasks.defaults]
+model_budget_nanodollars = 5_000_000_000
+wall_seconds = 604_800
+running_seconds = 7_200
+max_leases = 12
+max_publication_attempts = 8
+max_decision_calls = 128
+max_fallback_reads = 24
+
 [nats]
 wake_queue_capacity_fleets = 64
 
@@ -46,3 +125,13 @@ clerk_api_base = "https://api.clerk.com/v1"
 [telemetry]
 log_level = "info"
 otlp_endpoint = "http://otelcol-dev.internal:4318"
+
+[telemetry.otlp]
+metrics_export_interval_seconds = 60
+trace_export_interval_seconds = 5
+log_export_interval_seconds = 1
+export_timeout_seconds = 10
+trace_queue_capacity = 2_048
+trace_batch_size = 512
+log_queue_capacity = 2_048
+log_batch_size = 512

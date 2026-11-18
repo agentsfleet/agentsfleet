@@ -19,7 +19,7 @@ use tokio::time::Instant;
 use af_core::test_util::trace::Capture;
 use tokio_util::sync::CancellationToken;
 
-use super::{EVENT_FAILED, Sweep, Swept, run};
+use super::{EVENT_FAILED, Sweep, Swept, run, run_starting_in};
 use crate::error::{Result, query};
 
 /// A sweeper that records how often it ran and answers what it was told to.
@@ -86,6 +86,49 @@ const INTERVAL: Duration = Duration::from_hours(1);
 /// Twelve intervals and a half: enough passes that one failed pass stopping
 /// the loop shows as a count of one.
 const SEVERAL_INTERVALS: Duration = Duration::from_mins(12 * 60 + 30);
+
+#[tokio::test(start_paused = true)]
+async fn a_staggered_first_pass_keeps_the_subsequent_cadence() {
+    let sweeper = Counting::new(false);
+    let token = CancellationToken::new();
+    let task = tokio::spawn(run_starting_in(
+        Arc::clone(&sweeper),
+        token.clone(),
+        Duration::from_secs(5),
+    ));
+    tokio::task::yield_now().await;
+    tokio::time::advance(Duration::from_secs(4)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 0);
+    tokio::time::advance(Duration::from_secs(1)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 1);
+    tokio::time::advance(INTERVAL.saturating_sub(Duration::from_secs(1))).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 1);
+    tokio::time::advance(Duration::from_secs(1)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 2);
+    token.cancel();
+    task.await.expect(CANCELLED_RETURNS);
+}
+
+#[tokio::test(start_paused = true)]
+async fn startup_staggering_cannot_delay_the_first_pass_beyond_its_cadence() {
+    let sweeper = Counting::new(false);
+    let token = CancellationToken::new();
+    let task = tokio::spawn(run_starting_in(
+        Arc::clone(&sweeper),
+        token.clone(),
+        INTERVAL * 2,
+    ));
+    tokio::task::yield_now().await;
+    tokio::time::advance(INTERVAL).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 1);
+    token.cancel();
+    task.await.expect(CANCELLED_RETURNS);
+}
 
 #[tokio::test(start_paused = true)]
 async fn a_cancelled_sweeper_stops_without_waiting_out_its_interval() {

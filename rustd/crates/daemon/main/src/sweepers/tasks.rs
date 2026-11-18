@@ -4,13 +4,16 @@ use crate::supervisor::Supervisor;
 use afd_fleet::task::{TaskLifecycle as _, Tasks};
 use std::time::Duration;
 
-const INTERVAL: Duration = Duration::from_secs(10);
-const PASS_DEADLINE: Duration = Duration::from_secs(30);
-
-pub(super) fn spawn(supervisor: &mut Supervisor, tasks: Tasks) {
+pub(super) fn spawn(
+    supervisor: &mut Supervisor,
+    tasks: Tasks,
+    startup: &super::schedule::Startup,
+    settings: crate::config::maintenance::DurableTasks,
+) {
+    let mut interval =
+        startup.interval(super::TASKS, Duration::from_secs(settings.interval_seconds));
+    let pass_timeout = Duration::from_secs(settings.pass_timeout_seconds);
     supervisor.spawn(super::TASKS, async move |stop| {
-        let mut interval = tokio::time::interval(INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
                 () = stop.cancelled() => return,
@@ -18,7 +21,7 @@ pub(super) fn spawn(supervisor: &mut Supervisor, tasks: Tasks) {
             }
             tokio::select! {
                 () = stop.cancelled() => return,
-                result = tokio::time::timeout(PASS_DEADLINE, async {
+                result = tokio::time::timeout(pass_timeout, async {
                     let (effects, waits) = tokio::join!(tasks.maintain_effects(), tasks.maintain_waits());
                     if let Err(error) = effects {
                         let error_code = error.code();

@@ -35,7 +35,7 @@ pub mod resource;
 
 pub use self::config::{
     COMPRESSION_KNOBS, DEFAULT_TIMEOUT, Encoding, HEADER_KNOBS, OTEL_ENDPOINT_KNOB,
-    OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig,
+    OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig, PipelineSettings,
 };
 pub use self::error::{Error, Refused, Result};
 pub use self::pipelines::{

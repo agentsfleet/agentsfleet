@@ -99,6 +99,7 @@ impl NativeInputs<'_> {
             self.storage_config,
             self.master,
             self.client,
+            self.runtime.operations.tasks,
         );
         let runners =
             Runners::new(self.database.clone(), Entropy::new()).with_clock(self.runtime.clock);

@@ -56,7 +56,7 @@ pub const OBJECTIVE_MAX_BYTES: usize = 16 * 1024;
 pub const TITLE_MAX_BYTES: usize = 160;
 /// Maximum semantic completion questions accepted for one objective.
 pub const QUESTIONS_MAX: usize = 6;
-/// Maximum UTF-8 bytes in one completion question.
+/// Maximum encoded bytes in an authored completion question and its criteria.
 pub const QUESTION_MAX_BYTES: usize = 1024;
 /// Runner capability required before task-bound work may be issued.
 pub const CAPABILITY: &str = "durable_tasks_v1";

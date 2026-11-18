@@ -10,6 +10,8 @@ use crate::lease::LeaseService;
 /// Handles only; the task lifecycle owns behavior and introduces no dispatcher.
 #[derive(Debug, Clone)]
 pub struct TaskDependencies {
+    /// Validated limits for new admissions; saved task allowances remain authoritative.
+    pub policy: super::policy::TaskPolicy,
     /// Deployment-owned Secrets workspace, never selected by fleet/model input.
     pub admin_workspace: Option<af_core::id::Uuid7>,
     /// The same payer funds check as fleet leases; the relay settles logged usage.
@@ -25,6 +27,7 @@ pub struct TaskDependencies {
 impl From<&LeaseService> for TaskDependencies {
     fn from(plane: &LeaseService) -> Self {
         Self {
+            policy: super::policy::TaskPolicy::default(),
             admin_workspace: None,
             biller: Arc::clone(&plane.biller),
             providers: plane.providers.clone(),

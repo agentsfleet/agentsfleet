@@ -12,8 +12,11 @@ use std::time::Duration;
 
 use sqlx::postgres::PgConnectOptions;
 
+mod budget;
 mod sizing;
 mod tls;
+
+pub use budget::{PoolOverrides, PoolSettings};
 
 use self::sizing::{
     ACQUIRE_TIMEOUT_DEFAULT, CONNECT_TIMEOUT_DEFAULT, min_connections_default, pool_size_default,
@@ -84,40 +87,43 @@ pub struct PoolConfig {
     min_connections: u32,
     acquire_timeout: Duration,
     connect_timeout: Duration,
+    idle_timeout: Duration,
+    max_lifetime: Duration,
+    ping_after_idle: Duration,
 }
 
 impl PoolConfig {
     /// Resolves a role's URL and limits from `env`.
     ///
     /// # Errors
-    /// Returns a config error when the role's URL knob is unset, blank, or not
-    /// a Postgres connection URL.
+    /// Refuses an invalid pool budget or a missing, blank or unusable role URL.
     pub fn resolve<E: EnvSource + ?Sized>(env: &E, role: DbRole) -> Result<Self> {
+        let settings = PoolSettings::resolve(env, role, PoolOverrides::default())?;
+        Self::configured(env, role, &settings)
+    }
+
+    /// Adds the role's secret URL to an already checked public connection budget.
+    ///
+    /// # Errors
+    /// Refuses a missing or unusable URL before any connection opens.
+    pub fn configured(
+        env: &(impl EnvSource + ?Sized),
+        role: DbRole,
+        settings: &garde::Valid<PoolSettings>,
+    ) -> Result<Self> {
         let knob = role.url_knob();
-        let url = String::from(
-            optional(env, knob)
-                .ok_or_else(|| Error::new(ErrorKind::MissingDatabaseUrl { knob }))?,
-        );
-
-        let max_connections =
-            read_knob(env, POOL_SIZE_KNOB, role).map_or_else(pool_size_default, clamp_pool_size);
-
+        let url = optional(env, knob)
+            .ok_or_else(|| Error::new(ErrorKind::MissingDatabaseUrl { knob }))?;
         Ok(Self {
             role,
-            // main's TLS-aware options, this branch's sizing: the two changed
-            // different fields of the same literal.
             connect: tls::connect_options(role, &url)?,
-            max_connections,
-            // Never above the ceiling: a floor larger than the pool is a pool
-            // that can never satisfy its own maintenance.
-            min_connections: read_knob(env, MIN_POOL_SIZE_KNOB, role)
-                .and_then(|raw| u32::try_from(raw).ok())
-                .unwrap_or_else(|| min_connections_default(max_connections))
-                .min(max_connections),
-            // The knob spells whole milliseconds; this is where they become a span.
-            acquire_timeout: read_knob(env, ACQUIRE_TIMEOUT_KNOB, role)
-                .map_or(ACQUIRE_TIMEOUT_DEFAULT, Duration::from_millis),
-            connect_timeout: CONNECT_TIMEOUT_DEFAULT,
+            max_connections: settings.max_connections,
+            min_connections: settings.min_connections,
+            acquire_timeout: Duration::from_millis(settings.acquire_timeout_ms),
+            connect_timeout: Duration::from_millis(settings.connect_timeout_ms),
+            idle_timeout: Duration::from_secs(settings.idle_timeout_seconds),
+            max_lifetime: Duration::from_secs(settings.max_lifetime_seconds),
+            ping_after_idle: Duration::from_millis(settings.ping_after_idle_ms),
         })
     }
 
@@ -153,6 +159,24 @@ impl PoolConfig {
         self.connect_timeout
     }
 
+    /// How long a pooled connection can remain unused.
+    #[must_use]
+    pub const fn idle_timeout(&self) -> Duration {
+        self.idle_timeout
+    }
+
+    /// How long a pooled connection can remain alive.
+    #[must_use]
+    pub const fn max_lifetime(&self) -> Duration {
+        self.max_lifetime
+    }
+
+    /// Minimum idle interval before a checkout tests the connection.
+    #[must_use]
+    pub const fn ping_after_idle(&self) -> Duration {
+        self.ping_after_idle
+    }
+
     /// The TLS posture this role resolved to, spelled as a connection URL
     /// spells it.
     ///
@@ -182,31 +206,6 @@ impl PoolConfig {
     /// The parsed connection options, for the pool builder.
     pub(crate) fn connect_options(&self) -> PgConnectOptions {
         self.connect.clone()
-    }
-}
-
-/// Reads a numeric knob, preferring the role-scoped override over the base
-/// name. Blank or unparseable is treated as absent — a typo falls back to the
-/// default rather than refusing to boot, because refusing here would take a
-/// serving daemon down over a knob.
-fn read_knob<E: EnvSource + ?Sized>(env: &E, base: &str, role: DbRole) -> Option<u64> {
-    let scoped = format!("{base}{}", role.knob_suffix());
-    parse_knob(env, &scoped).or_else(|| parse_knob(env, base))
-}
-
-fn parse_knob<E: EnvSource + ?Sized>(env: &E, name: &str) -> Option<u64> {
-    env.get(name)?.trim().parse::<u64>().ok()
-}
-
-/// Clamps a configured pool size into a usable connection count.
-///
-/// Zero is the case that matters: a zero-connection pool accepts every acquire
-/// and satisfies none, so it hangs rather than fails, and the wrong knob value
-/// looks like a datastore outage.
-fn clamp_pool_size(raw: u64) -> u32 {
-    match u32::try_from(raw) {
-        Ok(0) | Err(_) => pool_size_default(),
-        Ok(size) => size,
     }
 }
 

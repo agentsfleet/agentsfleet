@@ -16,6 +16,8 @@ use super::{
     reply::known_result,
 };
 
+mod policy;
+
 fn digest(input: &mut TaskBindingsInput) {
     let digest = sha256_hex(
         &serde_json::to_vec(&input.interpretation()).expect("stable interpretation encoding"),

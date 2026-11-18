@@ -294,6 +294,64 @@ Approval continuation releases its earlier connection, and late usage settlement
 These repairs reuse `Precondition`, `WriteFence`, `FleetConfig` and the current transaction types.
 They add three query files and no schema columns or indexes.
 
+#### Configuration repair batch
+
+Both deployment profiles now include typed pool, maintenance, task and telemetry settings.
+The loader resolves public settings before opening services.
+It retains secret environment lookups and reports overridden input names without values.
+
+```text
+ConfigBuilder -> af_config: file + invocation overlay
+              -> checked pool budgets -> role URL -> Db
+              -> shared RuntimeSettings snapshot
+                 |-- TaskPolicy -> new interpretation -> saved task limits
+                 |                 committed receipt replay bypasses new admission caps
+                 |-- MaintenancePolicy -> staggered first pass -> bounded job loops
+                 +-- PipelineSettings -> actual SDK batches and export clocks
+```
+
+| Production files | New or changed owner | Effect |
+| --- | --- | --- |
+| `afd_db/src/config/{mod,budget}.rs`, `pool/open.rs` | `PoolSettings::resolve`, `PoolConfig::configured`, `options` | Strict pool validation, direct typed injection, configured checkout and connection lifetimes |
+| `main/src/config/{mod,origins}.rs`, `preflight/mod.rs`, `serve/process.rs` | `Config`, `ConfigBuilder::build`, `Origins::announce`, `preflight::resolved` | Read the file once and carry checked settings into serving and migration |
+| `main/src/migrate.rs` | `configured` | Use the selected lock retry policy and close the database on failure too |
+| `afd_fleet/src/task/policy/*`, `bindings/preparation.rs` | `TaskPolicy::interpretation`, `prepare`, `new_task` | Validate the complete new interpretation before target reads; snapshot configured allowances |
+| `afd_fleet/src/task/admit/{commit,write,insert}.rs`, `inputs/mod.rs` | `commit`, `Writer`, `Admission`, `insert::task`, `inputs::read` | Apply the unfinished cap under the existing slot lock and bound both input collections |
+| `afd_runner/src/sweep/{liveness,retention}/config.rs` | `LivenessSettings`, `RetentionSettings` | Configure selected host counts, history windows and per-table drains |
+| `main/src/config/maintenance.rs`, `sweepers/*` | `MaintenancePolicy`, `Startup`, supervised `spawn` functions | Configure maintenance cadence, pass deadlines and first-pass staggering |
+| `af_otlp/src/config/pipeline.rs`, `pipelines/providers.rs` | `PipelineSettings`, `OtlpConfig::with_pipeline`, signal builders | Configure metric, span and log exports with explicit queue bounds |
+| `af_core/src/error_code/mod.rs` | `Coded::logged` | Keep log reasons on one line while retaining typed error causes |
+
+This batch adds no SQL column or index.
+The existing task-limit columns retain each accepted objective's allowances.
+Lower admission limits never truncate existing task candidates or invalidate committed interpretation receipts.
+
+Each input collection has its own configured page bound.
+Pending human messages and accepted inputs remain separate collections with their existing cursors.
+Wire ceilings remain compiled compatibility limits.
+
+The final focused run passed 718 datastore-free tests and 83 live checks.
+The earlier capacity fixture named a stale setup revision and failed at the correct earlier guard.
+The corrected fixture and the full focused selection passed after resetting and rebuilding the owned database.
+
+The final source fingerprint is `f5b8b4cfbe596fd9c874db477cdbc8b0ee5f12728612630095722501ba1756dc`.
+The run included both recovery fairness cases and native connection reconciliation.
+Workspace Rust lint passed with warnings denied; the unused-dependency check also passed.
+
+Four real collector checks passed for span batching, span timing, log batching and metric timing.
+The browser Appearance check also passed on the current branch.
+The reported deployed Appearance failure remains unreproduced.
+
+The remaining lease-health, runner-delivery, authoring and retry settings still require implementation.
+A configurable maximum lease runtime must be saved when each lease is issued.
+Reading each replica's current runtime setting would break the promised immutable ceiling during a profile change.
+
+Provider retry exposure also needs two distinct controls.
+The HTTP-send loop and eligible pre-output stream reopening currently each use three attempts.
+A connection failure can traverse both loops; the proposed single three-attempt description needs correction.
+
+Final coverage, full repository verification, matched recovery measurements and SQL plan refresh remain due.
+
 #### Claude configuration review disposition
 
 Indy supplied Claude's static review of pushed commit `16efc01` on Nov 18, 2026.
@@ -305,7 +363,7 @@ It ran no builds, tests or benchmarks.
 | C1 · Draft rejected by pushed loader | The newer names were already implemented locally. Test the final deployment files against their matching loader, then push them together. |
 | C2 · Buffer units and ownership | Accept the exact-byte correction. Use `runner.stream.control.max_buffered_bytes = 16_777_216` and `runner.stream.data.max_buffered_bytes = 50_331_648`. These are daemon-replica budgets, split by direction. The decimal-MB draft is superseded. |
 | C3 · Image/config mismatch and migration order | Package both non-secret deployment profiles in the immutable image. Select the matching profile in Fly. Load and validate the file before entering migration runtime work. The focused regression run passed; final repository verification remains due. |
-| C4 · Duplicate public Fly inputs | Indy approved changing `wf-daemon-log-level` and its test to support TOML ownership. The prepared rule passed four cases. The guard and workflow edits remove staging of log level, audience and collector endpoint. Existing live secrets have not been removed. Add source diagnostics without values. |
+| C4 · Duplicate public Fly inputs | Indy approved changing `wf-daemon-log-level` and its test to support TOML ownership. The committed rule passed four cases. The guard and workflow edits remove staging of log level, audience and collector endpoint. Source diagnostics now name overridden inputs without values. Existing live secrets have not been removed. |
 | C5 · Recovery pressure on the database pool | Benchmark requested concurrency 2, 4 and 8 with production-shaped pools before selecting final admission headroom. A claim limit alone cannot reserve connections against every other consumer. |
 | C6 · Startup bridge and duplicated validation | Reuse component-owned bounds and defaults. Correct misleading diagnostics and reject invalid configured levels and pool floors. Keep resolved runtime values typed. Review the legacy `EnvSource` adapter separately from runtime behavior. |
 | C7 · Recovery enabled without a file | Change the daemon default to false. Recovery fixtures explicitly opt in, and default/opt-in checks cover both settings. The focused regression run passed; final repository verification remains due. |
@@ -350,30 +408,30 @@ The proposed name is `wake_queue_capacity_fleets`. [Queue](../../../rustd/crates
 | `runner.renewal.tick_seconds` | 5 | The runner's host-wide renewal batch loop checks live work | Proposed; requires runner-side delivery and validation |
 | `runner.renewal.authoring_interval_seconds` | 10 | The runner's private authoring loop renews a running attempt | Proposed; requires runner-side delivery and validation |
 | `runner.sandboxes.idle_hold_seconds` | 600 | `SANDBOX_HOLD_IDLE` limits a warm frozen sandbox's idle hold | Proposed |
-| `maintenance.runner_liveness.interval_seconds` | 10 | `Liveness::interval` schedules cordon and drain checks | Proposed |
-| `maintenance.runner_liveness.batch_size` | 100 | `Liveness` bounds each due-runner fetch | Proposed |
-| `maintenance.expired_work.interval_seconds` | 2 | `sweepers::expiry` bills expired fleet leases and expires authoring attempts | Proposed |
-| `maintenance.fleet_census.interval_seconds` | 30 | `Census::interval` samples fleet counters | Proposed |
-| `maintenance.authoring_cleanup.interval_seconds` | 10 | `sweepers::authoring` clears private results and replay receipts | Proposed |
-| `maintenance.billing.interval_seconds` | 5 | `sweepers::billing` settles saved usage lines | Proposed |
-| `maintenance.billing.retry_oldest_after_seconds` | 60 | Billing currently restarts its oldest-line walk every 12 ticks | Proposed |
-| `maintenance.billing.max_drain_passes` | 10 | Billing bounds consecutive passes before yielding | Proposed |
-| `maintenance.durable_tasks.interval_seconds` | 10 | `sweepers::tasks` checks due effects and waits | Proposed |
-| `maintenance.durable_tasks.pass_timeout_seconds` | 30 | Bounds one effects/waits maintenance pass | Proposed |
-| `maintenance.checkpoint_storage.interval_seconds` | 300 | `sweepers::checkpoints` performs private storage cleanup | Proposed |
-| `maintenance.checkpoint_storage.pass_timeout_seconds` | 240 | Bounds one checkpoint cleanup pass | Proposed |
-| `maintenance.runner_history.idle_interval_seconds` | 3,600 | `Retention::interval` waits when the history backlog is clear | Proposed |
-| `maintenance.runner_history.backlog_interval_seconds` | 60 | Retention shortens its interval while a backlog remains | Proposed |
-| `maintenance.runner_history.keep_days` | 30 | Retention keeps settled runner history for this window | Proposed |
-| `maintenance.runner_history.batch_size` | 1,000 | Bounds rows affected per retention statement | Proposed |
-| `maintenance.runner_history.max_batches` | 8 | Bounds batches per table in one cycle | Proposed |
-| `maintenance.outbound_delivery.scan_interval_seconds` | 30 | The outbound worker scans when no notification arrives | Proposed |
-| `telemetry.otlp.metrics_export_interval_seconds` | 60 | `meter_provider` configures periodic metric collection | Proposed |
-| `telemetry.otlp.trace_export_interval_seconds` | 5 | `tracer` configures the span batch processor | Proposed |
+| `maintenance.runner_liveness.interval_seconds` | 10 | `Liveness::interval` schedules cordon and drain checks | Wired; final repository verification remains due |
+| `maintenance.runner_liveness.batch_size` | 100 | `Liveness` bounds each due-runner fetch | Wired; final repository verification remains due |
+| `maintenance.expired_work.interval_seconds` | 2 | `sweepers::expiry` bills expired fleet leases and expires authoring attempts | Wired; final repository verification remains due |
+| `maintenance.fleet_census.interval_seconds` | 30 | `Census::interval` samples fleet counters | Wired; final repository verification remains due |
+| `maintenance.authoring_cleanup.interval_seconds` | 10 | `sweepers::authoring` clears private results and replay receipts | Wired; final repository verification remains due |
+| `maintenance.billing.interval_seconds` | 5 | `sweepers::billing` settles saved usage lines | Wired; final repository verification remains due |
+| `maintenance.billing.retry_oldest_after_seconds` | 60 | Billing currently restarts its oldest-line walk every 12 ticks | Wired; final repository verification remains due |
+| `maintenance.billing.max_drain_passes` | 10 | Billing bounds consecutive passes before yielding | Wired; final repository verification remains due |
+| `maintenance.durable_tasks.interval_seconds` | 10 | `sweepers::tasks` checks due effects and waits | Wired; final repository verification remains due |
+| `maintenance.durable_tasks.pass_timeout_seconds` | 30 | Bounds one effects/waits maintenance pass | Wired; final repository verification remains due |
+| `maintenance.checkpoint_storage.interval_seconds` | 300 | `sweepers::checkpoints` performs private storage cleanup | Wired; final repository verification remains due |
+| `maintenance.checkpoint_storage.pass_timeout_seconds` | 240 | Bounds one checkpoint cleanup pass | Wired; final repository verification remains due |
+| `maintenance.runner_history.idle_interval_seconds` | 3,600 | `Retention::interval` waits when the history backlog is clear | Wired; final repository verification remains due |
+| `maintenance.runner_history.backlog_interval_seconds` | 60 | Retention shortens its interval while a backlog remains | Wired; final repository verification remains due |
+| `maintenance.runner_history.keep_days` | 30 | Retention keeps settled runner history for this window | Wired; final repository verification remains due |
+| `maintenance.runner_history.batch_size` | 1,000 | Bounds rows affected per retention statement | Wired; final repository verification remains due |
+| `maintenance.runner_history.max_batches` | 8 | Bounds batches per table in one cycle | Wired; final repository verification remains due |
+| `maintenance.outbound_delivery.scan_interval_seconds` | 30 | The outbound worker scans when no notification arrives | Wired; final repository verification remains due |
+| `telemetry.otlp.metrics_export_interval_seconds` | 60 | `meter_provider` configures periodic metric collection | Wired; real collector checks passed |
+| `telemetry.otlp.trace_export_interval_seconds` | 5 | `tracer` configures the span batch processor | Wired; real collector checks passed |
 | `telemetry.otlp.log_export_interval_seconds` | 1 | The installed 0.33.1 SDK's batch-log default; existing SDK environment overrides can change it | Proposed; replace the implicit SDK selection with validated inputs |
 | `telemetry.otlp.export_timeout_seconds` | 10 | `OtlpConfig::timeout` bounds one export request | Existing value wired as `telemetry.otlp_timeout_ms`; rename proposed |
-| `telemetry.otlp.trace_queue_capacity` | 2,048 | The trace processor bounds queued spans | Proposed |
-| `telemetry.otlp.trace_batch_size` | 512 | Bounds spans in one export batch | Proposed |
+| `telemetry.otlp.trace_queue_capacity` | 2,048 | The trace processor bounds queued spans | Wired; real collector checks passed |
+| `telemetry.otlp.trace_batch_size` | 512 | Bounds spans in one export batch | Wired; real collector checks passed |
 
 The runner's live lease capacity comes from its saved `worker_count` assignment.
 An assignment of 16 permits that host to occupy 16 work slots, and the supported worker ceiling is 64.
@@ -481,15 +539,16 @@ Source references include [lease timing](../../../rustd/crates/foundation/af_cor
 
 Indy added the task constants, retry policies and user-turn timing to this configuration audit on Nov 18, 2026.
 Chosen settings must reach the deployment TOML and their consumers together.
-The additions below remain pending implementation.
+Task settings and migration retries now reach both deployment profiles and their consumers.
+Authoring, inference and delivery retry extensions remain pending.
 
 | Proposed configuration | Traced value | Runtime owner and required handling |
 | --- | ---: | --- |
-| `fleet.tasks.max_unfinished_per_fleet` | 16 | Admission, decision candidates and input candidates share the ceiling. A per-runner worker count is separate. |
+| `fleet.tasks.max_unfinished_per_fleet` | 16 | New-task admission checks the configured cap under the fleet slot lock. Existing candidate reads retain the compatibility ceiling. A per-runner worker count is separate. |
 | `fleet.tasks.max_inputs_per_safe_boundary` | 4 | `Tasks::inputs` bounds each accepted-input read. Preserve the saved cursor across restore. |
-| `fleet.tasks.max_actions_per_message` | 4 | `TaskBindingsInput.items` has an inline Garde limit; assessment ordinals also assume four actions. Keep the whole interpretation atomic. |
-| `fleet.tasks.max_objective_bytes` | Declared 16,384 | The named constant has no direct reader. Trace the original admitted message and accepted source span before claiming this value is enforced. |
-| `fleet.tasks.max_title_bytes` | 160 | `TaskProposedItem.title` repeats the value in its Garde declaration. Share the effective policy with its validator. |
+| `fleet.tasks.max_actions_per_message` | 4 | The wire validator retains its compatibility ceiling. `TaskPolicy::interpretation` checks the entire new action set before reads or writes. |
+| `fleet.tasks.max_objective_bytes` | 16,384 | `TaskPolicy::interpretation` bounds each accepted original source span before allocating an objective. |
+| `fleet.tasks.max_title_bytes` | 160 | `TaskPolicy::interpretation` checks the configured title cap; wire validation retains its named compatibility ceiling. |
 | `fleet.tasks.max_completion_questions` | 6 | Accepted setup uses `af_fleet_runtime::config::decision::MAX_COMPLETION_STATEMENTS`. The task constant is a duplicate declaration. |
 | `fleet.tasks.max_question_text_bytes` | 512 | Accepted question text uses the runtime configuration's 512-byte guard. This differs from the task module's separate 1,024-byte constant. |
 | `fleet.tasks.max_authored_question_bytes` | 1,024 | Bounds the entire authored question and criteria JSON, not just its text. Preserve both checks. |
@@ -505,7 +564,8 @@ The additions below remain pending implementation.
 | `authoring.turn.max_proposal_corrections` | 1 | Corrected proposal attempts after a refusal; ordinary conversational refusals have separate handling. |
 | `inference.connect_timeout_seconds` | 10 | Shared physical provider connection deadline. |
 | `inference.stream_idle_timeout_seconds` | 300 | Maximum silent provider interval, subject to the caller's earlier absolute deadline and cancellation. |
-| `retries.provider.max_attempts` | 3 | Includes the original send. Retry only eligible failures before streaming starts. |
+| `retries.provider.max_attempts` | 3 | Includes the original HTTP send. Only eligible transport or status failures retry before an accepted response. |
+| `retries.provider.max_stream_open_attempts` | 3 | Includes the original stream opening. Reopening requires no shown output, no known usage and an eligible failure without a provider response. |
 | `retries.provider.initial_backoff_ms` | 1,000 | Jittered exponential backoff when the provider supplies no delay. |
 | `retries.provider.max_retry_after_seconds` | 60 | A longer provider delay ends the attempt instead of sleeping past the policy. |
 | `retries.runner_api.max_attempts` | 5 effective | Existing `RETRY_ATTEMPTS = 4` is passed to `backon::with_max_times`, yielding four retries after the original send. Preserve behavior while correcting the name. |

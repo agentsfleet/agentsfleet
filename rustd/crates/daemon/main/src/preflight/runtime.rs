@@ -1,6 +1,6 @@
 //! Runtime policy is resolved once before opening any service.
 
-use std::{num::NonZeroUsize, time::Duration};
+use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
 use af_core::{
     env::EnvSource,
@@ -11,8 +11,9 @@ use garde::Validate;
 use super::{Fault, Refusal};
 
 /// Deployment budgets passed to the stores and scheduler.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct RuntimeSettings {
+    pub(crate) operations: Arc<OperationalSettings>,
     pub(crate) clock: LeaseClock,
     pub(crate) resume_from_checkpoint: bool,
     pub(crate) fallback: Duration,
@@ -20,8 +21,15 @@ pub struct RuntimeSettings {
     pub(crate) requests: NonZeroUsize,
 }
 
+#[derive(Debug)]
+pub(crate) struct OperationalSettings {
+    pub(crate) telemetry: garde::Valid<af_otlp::PipelineSettings>,
+    pub(crate) maintenance: crate::config::maintenance::MaintenancePolicy,
+    pub(crate) tasks: afd_fleet::task::policy::TaskPolicy,
+}
+
 impl RuntimeSettings {
-    pub(crate) fn announce(self) {
+    pub(crate) fn announce(&self) {
         let (lease_ttl_seconds, resume_from_checkpoint, offer_fallback_seconds) = (
             self.clock.ttl().as_secs(),
             self.resume_from_checkpoint,
@@ -42,52 +50,83 @@ impl RuntimeSettings {
 
 #[derive(Validate)]
 struct Readings {
-    #[garde(dive)]
-    lease: LeaseSettings,
-    #[garde(range(min = 1, max = 64))]
-    claims: usize,
-    #[garde(range(min = 1, max = 65_536))]
-    requests: usize,
-    #[garde(range(min = 1, max = self.lease.ttl_seconds.saturating_sub(1)))]
+    #[garde(skip)]
+    clock: LeaseClock,
+    #[garde(custom(|value: &NonZeroUsize, &()| maximum::<64>(value.get())))]
+    claims: NonZeroUsize,
+    #[garde(custom(|value: &NonZeroUsize, &()| maximum::<65_536>(value.get())))]
+    requests: NonZeroUsize,
+    #[garde(range(min = 1, max = self.clock.ttl().as_secs().saturating_sub(1)))]
     fallback_seconds: u64,
 }
 
+#[cfg(test)]
 pub(crate) fn read(env: &(impl EnvSource + ?Sized)) -> Result<RuntimeSettings, Refusal> {
-    let lease = LeaseSettings {
+    configured(
+        env,
+        afd_fleet::task::policy::TaskPolicy::default(),
+        crate::config::maintenance::MaintenancePolicy::resolve(
+            crate::config::maintenance::Maintenance::default(),
+        )
+        .map_err(|report| refused("maintenance", report.to_string()))?,
+        garde::Unvalidated::new(af_otlp::PipelineSettings::default())
+            .validate()
+            .map_err(|report| refused("telemetry.otlp", report.to_string()))?,
+    )
+}
+
+pub(crate) fn configured(
+    env: &(impl EnvSource + ?Sized),
+    tasks: afd_fleet::task::policy::TaskPolicy,
+    maintenance: crate::config::maintenance::MaintenancePolicy,
+    telemetry: garde::Valid<af_otlp::PipelineSettings>,
+) -> Result<RuntimeSettings, Refusal> {
+    let lease = garde::Unvalidated::new(LeaseSettings {
         ttl_seconds: value(
             env,
             "AGENTSFLEET_LEASE_TTL_SECONDS",
             LeaseSettings::default().ttl_seconds,
         )?,
-    };
+    })
+    .validate()
+    .map_err(|report| refused("runner.lease", report.to_string()))?;
+    let defaults = afd_gateway::RecoverySettings::default();
     let readings = garde::Unvalidated::new(Readings {
-        lease,
-        claims: value(env, "AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS", 8)?,
-        requests: value(env, "AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS", 256)?,
-        fallback_seconds: value(env, "AGENTSFLEET_OFFER_FALLBACK_SECONDS", 5)?,
+        clock: LeaseClock::new(&lease),
+        claims: value(
+            env,
+            "AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS",
+            defaults.max_concurrent_claims,
+        )?,
+        requests: value(
+            env,
+            "AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS",
+            afd_api::DEFAULT_MAX_IN_FLIGHT,
+        )?,
+        fallback_seconds: value(
+            env,
+            "AGENTSFLEET_OFFER_FALLBACK_SECONDS",
+            defaults.offer_fallback.as_secs(),
+        )?,
     })
     .validate()
     .map_err(|report| refused("runtime", report.to_string()))?;
-    let lease = garde::Unvalidated::new(readings.lease)
-        .validate()
-        .map_err(|report| refused("AGENTSFLEET_LEASE_TTL_SECONDS", report.to_string()))?;
     Ok(RuntimeSettings {
-        clock: LeaseClock::new(&lease),
+        operations: Arc::new(OperationalSettings {
+            telemetry,
+            maintenance,
+            tasks,
+        }),
+        clock: readings.clock,
         resume_from_checkpoint: value(env, "AGENTSFLEET_RESUME_FROM_CHECKPOINT", false)?,
         fallback: Duration::from_secs(readings.fallback_seconds),
-        claims: NonZeroUsize::new(readings.claims).ok_or_else(|| {
-            refused(
-                "AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS",
-                "must be positive".to_owned(),
-            )
-        })?,
-        requests: NonZeroUsize::new(readings.requests).ok_or_else(|| {
-            refused(
-                "AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS",
-                "must be positive".to_owned(),
-            )
-        })?,
+        claims: readings.claims,
+        requests: readings.requests,
     })
+}
+
+fn maximum<const CAP: usize>(value: usize) -> garde::Result {
+    garde::rules::range::apply(&value, (None, Some(CAP)))
 }
 
 fn value<T: std::str::FromStr>(

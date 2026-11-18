@@ -110,7 +110,7 @@ async fn offered(session: &Session) -> Proof<Lease> {
 async fn opening_reconciles_retained_missing_and_cancelled_work_without_reoffering_omitted_work()
 -> Proof {
     for transport in [Transport::H2, Transport::H3] {
-        reconcile(transport).await?;
+        Box::pin(reconcile(transport)).await?;
     }
     Ok(())
 }

@@ -112,7 +112,14 @@ pub async fn boot<E: EnvSource + ?Sized + Sync>(
     //    and a preflight that failed is a preflight that did not read it. The
     //    fault is on stderr, which is where an operator reading a container that
     //    will not start is already looking.
-    let config: BootConfig = preflight(env)?;
+    boot_configured(preflight(env)?, port, supervisor).await
+}
+
+async fn boot_configured(
+    config: BootConfig,
+    port: u16,
+    supervisor: &mut Supervisor,
+) -> Result<Booted, BootFailure> {
     let analytics = open_analytics(config.posthog()).await;
 
     match open(config, analytics.clone(), port, supervisor).await {
@@ -275,7 +282,7 @@ async fn start_workers(
         &runtime.database,
         analytics,
         runtime.plane.task_owner(),
-        config.runtime.clock,
+        &config.runtime,
     );
     spawn_background(
         supervisor,

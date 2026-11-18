@@ -60,3 +60,46 @@ fn an_explicit_port_overrides_the_file_before_typed_startup() {
         .expect_err("the environment port was overridden");
     assert_eq!(stop_with("-TERM", child), 0);
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_selected_file_bounds_migration_lock_contention() {
+    use afd_db::config::DbRole;
+    use afd_db::migrate::lock::{MigrationLock, RetryPolicy};
+    use afd_db::test_util::TestDatabase;
+    use agentsfleetd::migrate::MigrateFailure;
+
+    let lane = TestDatabase::create().await;
+    let owner = lane.open(DbRole::Migrator, &[]).await;
+    let held = MigrationLock::acquire(
+        owner.acquire().await.expect("owner connection"),
+        RetryPolicy::new(1, Duration::ZERO),
+    )
+    .await
+    .expect("hold the actual migration lock");
+    let mut file = tempfile::NamedTempFile::new().expect("application file");
+    writeln!(
+        file,
+        "[database.migrator]\nmax_connections = 1\nmin_connections = 0\n\
+         [database.migration]\nlock_max_attempts = 1\nlock_retry_interval_ms = 1"
+    )
+    .expect("short contention budget");
+    let env = lane.env(&[(
+        agentsfleetd::config::FILE_KNOB,
+        file.path().to_str().expect("UTF-8 fixture path"),
+    )]);
+    let failure = tokio::time::timeout(Duration::from_secs(5), agentsfleetd::migrate(&env))
+        .await
+        .expect("the file replaces the default thirty-poll wait")
+        .expect_err("the other migrator holds the lock");
+    match failure {
+        MigrateFailure::Run(error) => {
+            assert!(error.is_migration_refused(), "{error}");
+            assert_eq!(error.code(), af_core::error_code::STARTUP_MIGRATION_CHECK);
+        }
+        other => panic!("expected lock contention, got {other}"),
+    }
+    held.release().await;
+    owner.close().await;
+    lane.cleanup().await;
+}

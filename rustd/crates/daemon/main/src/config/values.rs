@@ -40,14 +40,6 @@ fn server(values: &mut Values, settings: &ConfigToml) {
         server.max_in_flight_requests,
     );
     insert(values, "SSE_MAX_STREAMS", server.max_sse_streams);
-    let pool = &settings.database.api;
-    insert(values, "DATABASE_POOL_SIZE_API", pool.max_connections);
-    insert(values, "DATABASE_MIN_POOL_SIZE_API", pool.min_connections);
-    insert(
-        values,
-        "DATABASE_ACQUIRE_TIMEOUT_MS_API",
-        pool.acquire_timeout_ms,
-    );
     insert(
         values,
         "AGENTSFLEET_DEV_NAMESPACE",
@@ -153,10 +145,5 @@ fn telemetry(values: &mut Values, settings: &ConfigToml) {
         values,
         "OTEL_EXPORTER_OTLP_PROTOCOL",
         telemetry.otlp_protocol.as_ref(),
-    );
-    insert(
-        values,
-        "OTEL_EXPORTER_OTLP_TIMEOUT",
-        telemetry.otlp_timeout_ms,
     );
 }

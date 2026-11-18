@@ -146,14 +146,20 @@ fn a_recovery_request_remains_with_a_host_that_has_no_free_worker() -> TestResul
     registry.request_recovery(recovery);
     assert!(
         registry
-            .candidates(&Default::default(), &Default::default())
+            .candidates(
+                &std::collections::HashSet::default(),
+                &std::collections::HashSet::default()
+            )
             .is_empty()
     );
     assert_eq!(session.snapshot.lock().recovery_pending, Some(recovery));
     session.snapshot.lock().credits = 1;
     assert_eq!(
         registry
-            .candidates(&Default::default(), &Default::default())
+            .candidates(
+                &std::collections::HashSet::default(),
+                &std::collections::HashSet::default()
+            )
             .len(),
         1
     );

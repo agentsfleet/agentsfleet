@@ -26,6 +26,7 @@ pub fn spawn(
     grants: Grants,
     vendor_client: reqwest::Client,
     slack_api_base: String,
+    scan_interval: std::time::Duration,
 ) {
     let worker = Worker::new(
         database.clone(),
@@ -34,6 +35,7 @@ pub fn spawn(
             slack: SlackPoster::new(grants, vendor_client, slack_api_base),
         },
         Entropy::new(),
-    );
+    )
+    .with_claim_pass(scan_interval);
     supervisor.spawn(OUTBOUND_WORKER, move |token| worker.run(token));
 }

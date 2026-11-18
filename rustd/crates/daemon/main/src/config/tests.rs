@@ -23,20 +23,26 @@ fn file_settings_override_environment_and_keep_secret_lookup_injected() -> TestR
     let source = ConfigBuilder::new(&environment)
         .file(Some(file.path()))
         .build()?;
-    assert_eq!(source.get("PORT").as_deref(), Some("3100"));
+    assert_eq!(source.environment().get("PORT").as_deref(), Some("3100"));
     assert_eq!(
-        source.get("DATABASE_URL_API"),
+        source.environment().get("DATABASE_URL_API"),
         environment.get("DATABASE_URL_API")
     );
     assert_eq!(
-        source.get("AGENTSFLEET_RESUME_FROM_CHECKPOINT").as_deref(),
+        source
+            .environment()
+            .get("AGENTSFLEET_RESUME_FROM_CHECKPOINT")
+            .as_deref(),
         Some("false")
     );
     assert_eq!(
-        source.get("AGENTSFLEET_RUNNER_DATA_MEMORY_MIB").as_deref(),
+        source
+            .environment()
+            .get("AGENTSFLEET_RUNNER_DATA_MEMORY_MIB")
+            .as_deref(),
         Some("64")
     );
-    assert_eq!(source.get(FILE_KNOB), None);
+    assert_eq!(source.environment().get(FILE_KNOB), None);
     Ok(())
 }
 
@@ -49,8 +55,13 @@ fn explicit_port_wins_and_preflight_does_not_reopen_the_file() -> TestResult {
         .overrides(ConfigOverrides { port: Some(3300) })
         .build()?;
     file.close()?;
-    let nested = ConfigBuilder::new(&source).build()?;
-    assert_eq!(nested.get("PORT").as_deref(), Some("3300"));
+    assert_eq!(source.environment().get("PORT").as_deref(), Some("3300"));
+    let refusal = source
+        .preflight()
+        .err()
+        .ok_or("serving still requires its secrets")?;
+    assert!(refusal.knobs().contains(&"DATABASE_URL_API"));
+    assert!(!refusal.knobs().contains(&FILE_KNOB));
     Ok(())
 }
 
@@ -66,8 +77,11 @@ fn invocation_overrides_merge_before_the_file_is_typed() -> TestResult {
         .file(Some(file.path()))
         .overrides(ConfigOverrides { port: Some(3300) })
         .build()?;
-    assert_eq!(source.get("PORT").as_deref(), Some("3300"));
-    assert_eq!(source.get("SSE_MAX_STREAMS").as_deref(), Some("123"));
+    assert_eq!(source.environment().get("PORT").as_deref(), Some("3300"));
+    assert_eq!(
+        source.environment().get("SSE_MAX_STREAMS").as_deref(),
+        Some("123")
+    );
     Ok(())
 }
 
@@ -75,8 +89,8 @@ fn invocation_overrides_merge_before_the_file_is_typed() -> TestResult {
 fn absent_file_preserves_environment_values() -> TestResult {
     let environment = MapEnv::from_pairs([("PORT", "3200"), (FILE_KNOB, "  ")]);
     let source = ConfigBuilder::new(&environment).build()?;
-    assert_eq!(source.get("PORT").as_deref(), Some("3200"));
-    assert_eq!(source.get("UNSET"), None);
+    assert_eq!(source.environment().get("PORT").as_deref(), Some("3200"));
+    assert_eq!(source.environment().get("UNSET"), None);
     Ok(())
 }
 
@@ -84,6 +98,8 @@ fn absent_file_preserves_environment_values() -> TestResult {
 fn malformed_unknown_and_unsafe_settings_refuse_without_echoing_values() -> TestResult {
     for contents in [
         "[server]\nport = 0",
+        "[server]\napi_url = 'https://private-invalid-value@api.example.com'",
+        "[telemetry]\notlp_endpoint = 'private-invalid-value'",
         "[server]\nport = 'private-invalid-value'",
         "[server]\nunknown = 'private-invalid-value'",
         "[runner.lease]\nttl_seconds = 32",
@@ -128,16 +144,20 @@ fn every_supported_file_section_reuses_its_existing_startup_input() -> TestResul
     assert!(!format!("{builder:?}").contains("private-env-value"));
     let source = builder.build()?;
     assert_eq!(
-        source.get("AGENTSFLEET_LEASE_TTL_SECONDS").as_deref(),
+        source
+            .environment()
+            .get("AGENTSFLEET_LEASE_TTL_SECONDS")
+            .as_deref(),
         Some("40")
     );
-    assert_eq!(source.get("DATABASE_POOL_SIZE_API").as_deref(), Some("8"));
+    assert_eq!(source.api_pool.max_connections, 8);
     assert_eq!(
-        source.get("OTEL_EXPORTER_OTLP_TIMEOUT").as_deref(),
-        Some("3000")
+        source.runtime.operations.telemetry.export_timeout_seconds,
+        Some(3)
     );
     let storage: serde_json::Value = serde_json::from_str(
         &source
+            .environment()
             .get("R2_CHECKPOINT_STORAGE")
             .ok_or("checkpoint location")?,
     )?;
@@ -160,7 +180,10 @@ fn every_documented_log_level_reaches_bootstrap_without_fallback() -> TestResult
         let source = ConfigBuilder::new(&environment)
             .file(Some(file.path()))
             .build()?;
-        assert_eq!(source.get("AGENTSFLEET_LOG_LEVEL").as_deref(), Some(level));
+        assert_eq!(
+            source.environment().get("AGENTSFLEET_LOG_LEVEL").as_deref(),
+            Some(level)
+        );
     }
     Ok(())
 }
@@ -208,7 +231,8 @@ log_level = "debug"
 posthog_host = "https://events.example.com"
 otlp_endpoint = "http://collector.example.com:4318"
 otlp_protocol = "http/protobuf"
-otlp_timeout_ms = 3000
+[telemetry.otlp]
+export_timeout_seconds = 3
 [checkpoint.storage]
 endpoint = "{endpoint}"
 bucket = "fixture-checkpoints"
@@ -222,7 +246,7 @@ fn fly_files_keep_the_exact_message_buffer_bytes() -> TestResult {
         let path = base.join(deployment).join("agentsfleetd.toml");
         let environment = MapEnv::from_pairs([]);
         let source = ConfigBuilder::new(&environment).file(Some(&path)).build()?;
-        let limits = af_stream::MemoryLimits::from_env(&source)?;
+        let limits = af_stream::MemoryLimits::from_env(source.environment())?;
         let (incoming, outgoing) = af_stream::Budget::duplex(limits);
         assert_eq!(
             incoming.available(af_wire::protocol::StreamKind::Control),
@@ -234,17 +258,40 @@ fn fly_files_keep_the_exact_message_buffer_bytes() -> TestResult {
         );
         assert_eq!(
             source
+                .environment()
                 .get("AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY")
                 .as_deref(),
             Some("64")
         );
-        assert_eq!(source.get("AGENTSFLEET_LOG_LEVEL").as_deref(), Some("info"));
+        assert_eq!(
+            source.environment().get("AGENTSFLEET_LOG_LEVEL").as_deref(),
+            Some("info")
+        );
         assert_eq!(
             source
+                .environment()
                 .get(super::super::preflight::runner_listener::MAX_UDP_PAYLOAD_BYTES)
                 .as_deref(),
             Some("1232")
         );
     }
+    Ok(())
+}
+
+#[test]
+fn a_file_pool_floor_must_fit_the_selected_ceiling() -> TestResult {
+    let mut file = tempfile::NamedTempFile::new()?;
+    write!(
+        file,
+        "[database.api]\nmax_connections = 3\nmin_connections = 4"
+    )?;
+    let environment = MapEnv::default();
+    let failure = ConfigBuilder::new(&environment)
+        .file(Some(file.path()))
+        .build()
+        .err()
+        .ok_or("an impossible pool floor must refuse before startup")?;
+    assert_eq!(failure.knobs(), ["database.api"]);
+    assert!(failure.to_string().contains("min_connections"));
     Ok(())
 }

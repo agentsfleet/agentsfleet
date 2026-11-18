@@ -23,6 +23,7 @@ pub(crate) mod lease;
 mod lifecycle;
 mod list;
 mod observe;
+pub mod policy;
 mod prepared;
 mod read;
 mod refusal;
