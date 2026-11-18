@@ -232,7 +232,7 @@ The owner here is an event's checkpoint state. It can be busy even after the hos
 Setup    B has 15 other live leases. F01 occupies worker 16.
          F01 finishes and asks to keep its sandbox warm. New fleet X waits.
 
-BEFORE   report F01: sees live lease -> prepares future hold .... pauses before COMMIT
+BEFORE   report F01: sees live lease -> decides future hold .... pauses in the statement
          time:                            F01 lease expires
          issue X:                         sees 15 + 0 committed holds -> issues
          report F01:                                              commits hold
@@ -245,7 +245,7 @@ AFTER    report wins shared B lock -> validates -> commits hold -> releases
          late F01 report -> shared B lock -> expiry recheck -> no new hold
 ```
 
-The seventeenth item is a **durable reservation**. This example does not require 17 operating-system processes. A valid late report may still settle usage. A fleet consuming its own valid hold counts the worker once.
+The seventeenth item is a **durable reservation**. A valid late report may still settle usage. A fleet consuming its own valid hold counts the worker once. The audit insert's foreign key takes a key-share lock on B by the time the report statement finishes. The regression must pause the report after it has computed the hold and before that audit lock, while its SQL statement is still running. [Report statement](../../../rustd/crates/daemon/afd_fleet/src/lease/sql/commit_report.sql) · [Audit foreign key](../../../schema/20261108123400_runner_events.sql)
 
 **EDIT** `afd_fleet/src/lease/commit/mod.rs::Leases::run_report_statement`, `lease/sql/report_statement.rs::ReportStatement`, and `lease/sql/commit_report.sql` for a shared host lock through commit on the hold-producing path. **KEEP** exclusive fleet/authoring issue and the fresh capacity read after it obtains that lock. The PostgreSQL lock experiment established compatibility. The production-path race test still has to demonstrate both orderings.
 

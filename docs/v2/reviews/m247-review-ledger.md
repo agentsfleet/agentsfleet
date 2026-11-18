@@ -57,7 +57,7 @@ The two repeated first-pass test gaps are included in the four testing entries b
 | F9 | CRITICAL / state-machines | `rustd/crates/daemon/afd_fleet/src/task/checkpoint/maintenance/mod.rs:75` | untested cell: Incremental × CollectOrphan → erase expired incremental private keys/references and release its physical quota once without retiring a live base |
 | F10 | CRITICAL / state-machines | `rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/pins.rs:287` | untested cell: writer × PinRelease → release the exact writer pin while preserving its pending plan and head, and refuse later protected operations |
 | F11 | CRITICAL / state-machines | `rustd/crates/runner/afr_supervisor/src/recovery/turn/publication.rs:47` | untested cell: Commit × ReconcileRefusal → clear indeterminate publication only after exact abandonment, or stop when abandonment cannot settle it |
-| F12 | CRITICAL / native | `rustd/crates/daemon/afd_fleet/src/lease/sql/commit_report.sql:181` | Expiring report can commit a future hold after an independently issued fleet consumes capacity; serialize hold-producing report through commit |
+| F12 | CRITICAL / native | `rustd/crates/daemon/afd_fleet/src/lease/sql/commit_report.sql:181` | A report can decide a hold before the audit insert's foreign-key check takes a host lock. Exercise expiry and competing issue in that interval, then serialize hold-producing reports from before their decision through commit |
 | F13 | INFORMATIONAL / data-migration | `schema/20261117154627_runner_turn_checkpoints.sql:6` | Missing fleet_id-leading index for fleet purge |
 | F14 | INFORMATIONAL / parent | `schema/20261117154626_runner_turn_recovery.sql:4` | Missing head_turn_checkpoint_id-leading index for referenced checkpoint deletion |
 | F15 | INFORMATIONAL / api-contract | `rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs:31` | Allowed event_type query description omits runner_uncordoned; regenerate OpenAPI |
@@ -95,7 +95,8 @@ See [the architecture and benchmark decision](m247-scalability-and-refactor.md) 
 | Controlled process crash drill | PASS; 111.04 seconds for the entire process/liveness scenario, not checkpoint latency |
 | Rust per-file instrumented coverage | NOT RUN on the refactor |
 | Full final integration and PR gate | NOT RUN on the refactor |
-| 100/500-fleet performance benchmark | NOT RUN |
+| Optimized API-only baseline | Seven measured cases across 1, 10, 100 and 500 fleets. The shared 500-fleet run reached the model for 12 fleets by the cutoff. The distributed 500-fleet source preparation timed out twice. [Raw results](../../../bench/baselines/lease-recovery-api.rig.json) |
+| Post-refactor and file-backed performance | NOT RUN |
 | Human smoke / paid acceptance | NOT RUN |
 
 An earlier unit attempt failed the old Busy classification assertion, which was corrected to the intended typed unavailable error.

@@ -227,6 +227,29 @@ Record cold/warm storage, unique/reused chunks, concurrency limits, data size, i
 Published production-performance comparisons use `dist`; debug/instrumented tests establish behavior and must be labelled accordingly.
 Use controlled model transport for repeatability and identify it in every result.
 
+### Optimized fixture smoke, 2026-11-18
+
+The first successful `make bench-lease PROFILE=rig BENCH_SHAPE=recovery BENCH_FLEETS=1 BENCH_WORKSPACES=shared` used `dist` at `d4823563e8` with the fixture fingerprint `13f3b7288385869205e5d37bb41d9cddfc81fe8cac9c901367679208849034d7`. The API-only source committed one root before its process was killed. The replacement issued fence 2 at **4,759 ms**, called the model with the recovered prefix at **5,364 ms**, and settled at **5,444 ms**, all measured from the old lease's expiry.
+
+The first 10-fleet attempt issued all 10 source leases and timed out before creating checkpoints. The fake model shared the runner transport's four-stream connection bound. The comparison requires a fresh one-fleet run alongside the larger cohorts on the regular TLS model fixture. The single-fleet numbers above record the earlier fixture smoke.
+
+### Measured API-only baseline
+
+`make bench-lease PROFILE=rig BENCH_SHAPE=recovery` ran with the regular TLS fixture at `40a579688` against the unchanged production revision `d4823563e8`. Each successful cohort committed its source roots before the failed hosts were killed. The observation window ended 60 seconds after the latest source lease expired. All times below start at each fleet's own eligibility deadline. [Raw results and fingerprints](../../../bench/baselines/lease-recovery-api.rig.json)
+
+| Workspaces | Fleets | Issued by cutoff | Reached model by cutoff | Settled at collection | First observed model | Last observed model |
+|---|---:|---:|---:|---:|---:|---:|
+| Shared | 1 | 1 | 1 | 1 | 5.479 s | 5.479 s |
+| Shared | 10 | 10 | 10 | 10 | 5.330 s | 49.816 s |
+| Shared | 100 | 12 | 12 | 12 | 4.481 s | 58.983 s |
+| Shared | 500 | 12 | 12 | 12 | 1.901 s | 56.022 s |
+| Distributed | 1 | 1 | 1 | 1 | 6.132 s | 6.132 s |
+| Distributed | 10 | 10 | 10 | 10 | 5.186 s | 49.653 s |
+| Distributed | 100 | 12 | 12 | 12 | 3.952 s | 57.813 s |
+| Distributed | 500 | — | — | — | — | — |
+
+The 100- and 500-fleet trials with 12 completions leave 88 and 488 fleets outstanding respectively. Their cohort P50, P95 and P99 remain unobserved. The distributed 500-fleet source preparation timed out twice. Both attempts issued a source lease for each of 500 fleets and produced zero ready checkpoint heads before timing out. The raw record preserves those two attempts and their counts.
+
 | Measurement | Required evidence |
 |---|---|
 | Eligibility to issue and first resumed model request | Per-fleet timestamps; P50/P95/P99; first/last and total drain time |
