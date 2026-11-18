@@ -66,7 +66,16 @@ mod tests {
         tokio::pin!(aborted);
         assert!(matches!(futures_util::poll!(&mut aborted), Poll::Pending));
         cancelled.cancel();
-        assert!(aborted.await.is_err());
+        let refusal = aborted.await.unwrap_err();
+        assert_eq!(
+            refusal.code(),
+            af_core::error_code::INTERNAL_OPERATION_FAILED
+        );
+        assert!(matches!(
+            refusal.kind(),
+            error::ErrorKind::Config { detail }
+                if *detail == "file recovery stopped while waiting for capacity"
+        ));
 
         drop(writer);
         let next = queued.await?;

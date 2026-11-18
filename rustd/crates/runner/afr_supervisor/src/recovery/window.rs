@@ -35,26 +35,27 @@ struct EntrySteps {
 
 impl EntrySteps {
     fn from_entry(entry: CheckpointEntry) -> Self {
-        let mut steps = Self {
-            leading: None,
-            chunks: Vec::new().into_iter(),
-            trailing: None,
-        };
-        steps.leading = match entry {
-            CheckpointEntry::File(file) => {
-                steps.chunks = file.objects.into_iter();
-                steps.trailing = Some(Step::Finish);
+        let (leading, chunks, trailing) = match entry {
+            CheckpointEntry::File(file) => (
                 Some(Step::Open(FileStart {
                     path: file.path,
                     size: file.size,
                     executable: file.executable,
-                }))
+                })),
+                file.objects,
+                Some(Step::Finish),
+            ),
+            CheckpointEntry::Symlink { path, target } => {
+                (Some(Step::Link { path, target }), Vec::new(), None)
             }
-            CheckpointEntry::Symlink { path, target } => Some(Step::Link { path, target }),
-            CheckpointEntry::Remove { .. } => Some(Step::Remove),
-            CheckpointEntry::Directory { .. } => None,
+            CheckpointEntry::Remove { .. } => (Some(Step::Remove), Vec::new(), None),
+            CheckpointEntry::Directory { .. } => (None, Vec::new(), None),
         };
-        steps
+        Self {
+            leading,
+            chunks: chunks.into_iter(),
+            trailing,
+        }
     }
 }
 

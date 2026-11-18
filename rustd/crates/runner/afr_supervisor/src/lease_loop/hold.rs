@@ -171,20 +171,12 @@ impl LeaseRun<'_> {
             }
             return self.kill(sandbox).await;
         }
-        if recoverable && !self.capture_idle(sandbox.as_ref()).await {
+        let Ok(_reservation) = self
+            .reserve_terminal_capture(sandbox.as_ref(), recoverable)
+            .await
+        else {
             super::recovery::capture_unavailable(ending);
             return self.kill(sandbox).await;
-        }
-        let _reservation = if recoverable {
-            match self.lessee.recovery.file(&self.interrupt).await {
-                Ok(permit) => Some(permit),
-                Err(_stopped) => {
-                    super::recovery::capture_unavailable(ending);
-                    return self.kill(sandbox).await;
-                }
-            }
-        } else {
-            None
         };
         let lease_id = self.ids.lease.as_str();
         let event = EVENT_FREEZE_STARTED;
@@ -207,9 +199,7 @@ impl LeaseRun<'_> {
         tracing::debug!(lease_id, event);
         self.capture_frozen(sandbox.as_ref(), recovery.as_ref(), ending)
             .await;
-        // Durable tasks always restore a fresh workspace from the native
-        // checkpoint. Keeping their old process tree cannot accelerate that
-        // path and must not expose it to a later ordinary lease.
+        // Durable tasks restore a fresh workspace under their native checkpoint.
         if durable || !ending.processed() {
             return self.kill(sandbox).await;
         }

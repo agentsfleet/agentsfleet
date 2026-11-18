@@ -64,7 +64,7 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 
 The Bus keeps bounded fleet reminders and publishes independent ordinary and recovery generations. Ordinary admission and steering ring immediately. The replica-wide five-second database probe repairs a lost wake.
 
-A recovery generation starts one bounded round-robin drain across credited native sessions. For each session the database selects the oldest eligible admission by its durable time and ID. An unclaimable full page advances a session-owned cursor.
+A recovery generation starts one bounded round-robin drain across credited native sessions. The database orders eligible admissions by durable time and ID. An unclaimable full page advances the session cursor, which wraps after a short empty page or 64 later claims.
 
 The drain acknowledges its starting generation after bounded work and preserves any newer request. Ordinary rings keep their successful-issue budget and locality throughout recovery. [Recovery scheduler and burst proof](runner_checkpoint_recovery.md#how-a-recovery-burst-drains)
 

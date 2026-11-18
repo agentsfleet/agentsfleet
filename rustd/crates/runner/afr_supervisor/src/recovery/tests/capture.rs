@@ -112,11 +112,9 @@ async fn retained_base_replay_does_not_register_or_republish_objects() -> crate:
 
 #[tokio::test]
 async fn incompatible_plan_and_live_writer_refuse_before_publication() -> crate::Result<()> {
+    let incompatible = "checkpoint plan differs from capture compatibility";
     for (fault, expected) in [
-        (
-            "toolbox",
-            "checkpoint plan differs from capture compatibility",
-        ),
+        ("toolbox", incompatible),
         ("busy", "checkpoint chunk has another live writer"),
         (
             "registration",

@@ -54,11 +54,7 @@ pub(super) async fn population(run: &Scenario, model: &Model, n: usize) -> Check
             e2e_seed::seed_wallet(&run.booted, &tenant, e2e_seed::DEEP_POOL, run.seeded_at).await;
             seed::model(run, &model.base(), &workspace, &tenant).await?
         };
-        let mut conn = run.booted.database.acquire().await?;
-        sqlx::query("UPDATE fleet.fleets SET required_tags=(SELECT required_tags FROM fleet.fleets WHERE id=$2) WHERE id=$1")
-            .bind(&id).bind(&run.fleet).execute(&mut *conn).await?;
-        seed::select(&mut conn, &id, &selected).await?;
-        drop(conn);
+        match_template(run, &id, &selected).await?;
         let event = seed::admit(run, &id, &workspace, "Begin the recovery check.").await?;
         items.push(Fleet {
             id,
@@ -67,6 +63,13 @@ pub(super) async fn population(run: &Scenario, model: &Model, n: usize) -> Check
         });
     }
     Ok(items)
+}
+
+async fn match_template(run: &Scenario, fleet: &Uuid7, model: &Uuid7) -> Checked {
+    let mut conn = run.booted.database.acquire().await?;
+    sqlx::query("UPDATE fleet.fleets SET required_tags=(SELECT required_tags FROM fleet.fleets WHERE id=$2) WHERE id=$1")
+        .bind(fleet).bind(&run.fleet).execute(&mut *conn).await?;
+    seed::select(&mut conn, fleet, model).await
 }
 
 pub(super) async fn hosts(

@@ -112,6 +112,10 @@ See [platform runner checkpoint recovery](../../architecture/runner_checkpoint_r
 | Chromium SSE and attempt display | 3 passed. Real browser transport covers heartbeat renewal after quiet EOF, replacement of a silent connection, and one announcement per attempt. |
 | Generated operator API | Regenerated from the daemon. The runner event filter adds `runner_uncordoned` to its documented accepted values. |
 
+The follow-up standards review reproduced a skipped-page starvation case. A live regression kept newer admissions ready while releasing 64 older locks.
+
+The prior cursor starved the oldest admission. The bounded cursor passed both page tests plus five retention cases. The gateway and supervisor follow-up passed 544 unit tests with one ignored. The benchmark source also compiled. [Recovery page tests](../../../rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/recovery_page.rs)
+
 An earlier unit attempt failed the old Busy classification assertion, which was corrected to the intended typed unavailable error. A later attempt failed the existing expired-deadline HTTP/3 transport test; the full retry passed, and the initial red log remains.
 
 No claim of an unrelated baseline defect is made without equivalent reproduction.

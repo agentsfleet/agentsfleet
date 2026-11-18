@@ -122,6 +122,9 @@ impl Leases {
                 .ledger_claim(&mut connection, &candidate.fleet_id, runner)
                 .await?
             {
+                if let Some(scan) = recovery {
+                    record_claim(scan);
+                }
                 producers::fleet::run_started(started(acquired.kind));
                 affinity::count_resumed(&acquired);
                 return Ok(Some(acquired));
@@ -173,16 +176,27 @@ impl Leases {
     }
 }
 
+fn record_claim(scan: &mut RecoveryScan) {
+    if scan.after.is_some() {
+        scan.claims_after_skip += 1;
+        if scan.claims_after_skip >= MAX_CANDIDATES_PER_POLL {
+            *scan = RecoveryScan::default();
+        }
+    }
+}
+
 fn record_page_end(scan: &mut RecoveryScan, mut candidates: Vec<Candidate>) {
-    scan.after = if candidates.len() == MAX_CANDIDATES_PER_POLL {
-        candidates.pop().map(|last| RecoveryKey {
+    if candidates.len() == MAX_CANDIDATES_PER_POLL
+        && let Some(last) = candidates.pop()
+    {
+        scan.after = Some(RecoveryKey {
             created: last.event_created_at,
             admission: last.admission_id,
-        })
+        });
+        scan.deferred = true;
     } else {
-        None
-    };
-    scan.deferred = scan.after.is_some();
+        *scan = RecoveryScan::default();
+    }
 }
 
 impl Admission {

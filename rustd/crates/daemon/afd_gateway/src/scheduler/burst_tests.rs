@@ -42,15 +42,10 @@ async fn drain_burst(fleets: usize) -> TestResult {
     tokio::task::yield_now().await;
     let started = tokio::time::Instant::now();
     wake.recheck();
-    let result = tokio::time::timeout(Duration::from_secs(1), async {
-        loop {
-            let observed = completed.notified();
-            if remaining.load(Ordering::SeqCst) == 0 {
-                break;
-            }
-            observed.await;
-        }
-    })
+    let result = tokio::time::timeout(
+        Duration::from_secs(1),
+        claims_drained(&completed, &remaining),
+    )
     .await;
     stop.cancel();
     scheduler.await??;
@@ -63,6 +58,16 @@ async fn drain_burst(fleets: usize) -> TestResult {
     assert!(started.elapsed() < af_core::timing::OFFER_FALLBACK_TICK);
     drop(registrations);
     Ok(())
+}
+
+async fn claims_drained(completed: &Notify, remaining: &AtomicUsize) {
+    loop {
+        let observed = completed.notified();
+        if remaining.load(Ordering::SeqCst) == 0 {
+            return;
+        }
+        observed.await;
+    }
 }
 
 async fn serve_host(

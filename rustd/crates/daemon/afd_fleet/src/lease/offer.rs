@@ -25,6 +25,8 @@ pub struct OfferRequest<'a> {
 pub struct RecoveryScan {
     pub(super) after: Option<RecoveryKey>,
     pub(super) deferred: bool,
+    /// Progress beyond a skipped prefix before retrying its older heads.
+    pub(super) claims_after_skip: usize,
 }
 
 #[derive(Debug)]

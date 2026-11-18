@@ -3,7 +3,7 @@
 use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
 use af_wire::lease::{
-    LeasePayload, TurnCheckpointAction as Action, TurnCheckpointRef,
+    LeasePayload, TurnCheckpointAction as Action, TurnCheckpointRead, TurnCheckpointRef,
     TurnCheckpointResponse as Response, TurnId, TurnWorkspace,
 };
 use afr_agent::TurnRecovery;
@@ -64,13 +64,7 @@ impl NativeTurn<'_> {
                     )
                     .await?;
             } else {
-                let empty =
-                    af_crypto::checkpoint_digest::manifest_root(std::iter::empty::<(&str, &str)>());
-                if !saved.page_ids.is_empty() || saved.descriptor.manifest_root != empty {
-                    return Err(error::config(
-                        "API-only recovery unexpectedly contains files",
-                    ));
-                }
+                require_empty_manifest(&saved)?;
             }
             if stop.is_cancelled() {
                 return Err(error::config("ordinary restore ended before adoption"));
@@ -90,8 +84,18 @@ impl NativeTurn<'_> {
     }
 }
 
+fn require_empty_manifest(saved: &TurnCheckpointRead) -> Result<()> {
+    let empty = af_crypto::checkpoint_digest::manifest_root(std::iter::empty::<(&str, &str)>());
+    if !saved.page_ids.is_empty() || saved.descriptor.manifest_root != empty {
+        return Err(error::config(
+            "API-only recovery unexpectedly contains files",
+        ));
+    }
+    Ok(())
+}
+
 fn validate(
-    saved: &af_wire::lease::TurnCheckpointRead,
+    saved: &TurnCheckpointRead,
     offer: &LeasePayload<'_>,
     workspace: &TurnWorkspace,
 ) -> Result<()> {

@@ -13,7 +13,7 @@ type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 async fn recovery_passes_sixty_four_locked_slots_and_retries_them_after_wrap() -> Checked {
     let fixtures = Fixtures::create_isolated().await;
     let (template, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    let entries = cohort(&fixtures, &template, &workspace, &tenant).await?;
+    let entries = cohort(&fixtures, &template, &workspace, &tenant, 65).await?;
     let (last, prefix) = entries.split_last().ok_or("missing fleet sixty-five")?;
     let fleets: Vec<_> = prefix.iter().map(|(_, fleet)| fleet).collect();
     let mut connection = fixtures.database.acquire().await?;
@@ -59,11 +59,61 @@ async fn recovery_passes_sixty_four_locked_slots_and_retries_them_after_wrap() -
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn unlocked_older_heads_return_while_newer_work_stays_ready() -> Checked {
+    let fixtures = Fixtures::create_isolated().await;
+    let (template, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
+    let entries = cohort(&fixtures, &template, &workspace, &tenant, 129).await?;
+    let (prefix, later) = entries.split_at_checked(64).ok_or("locked page")?;
+    let oldest = prefix.first().ok_or("oldest admission")?;
+    let fleets: Vec<_> = prefix.iter().map(|(_, fleet)| fleet).collect();
+    let mut connection = fixtures.database.acquire().await?;
+    let mut lock = connection.begin().await?;
+    let held: Vec<Uuid7> = sqlx::query_scalar(
+        "SELECT fleet_id FROM runner.fleet_slots WHERE fleet_id=ANY($1::uuid[]) FOR UPDATE",
+    )
+    .bind(&fleets)
+    .fetch_all(&mut *lock)
+    .await?;
+    assert_eq!(held.len(), 64);
+
+    let leases = fixtures.leases_with_dead_bus();
+    let mut scan = RecoveryScan::default();
+    assert!(
+        leases
+            .select_recovery_measured(&runner, &mut scan)
+            .await
+            .0?
+            .is_none()
+    );
+    assert!(scan.deferred());
+    let arrived = leases
+        .select_recovery_measured(&runner, &mut scan)
+        .await
+        .0?
+        .ok_or("newer head")?;
+    assert_eq!(&arrived.event_id, &later.first().ok_or("later queue")?.0);
+    lock.rollback().await?;
+    drop(connection);
+
+    for _ in 0..64 {
+        let (next, _) = leases.select_recovery_measured(&runner, &mut scan).await;
+        let next = next?.ok_or("newer work must remain available throughout the probe")?;
+        if next.event_id == oldest.0 {
+            fixtures.cleanup().await;
+            return Ok(());
+        }
+    }
+    Err("successive newer claims starved the unlocked oldest head".into())
+}
+
 async fn cohort(
     fixtures: &Fixtures,
     template: &Uuid7,
     workspace: &Uuid7,
     tenant: &Uuid7,
+    count: usize,
 ) -> Checked<Vec<(Uuid7, Uuid7)>> {
     let mut connection = fixtures.database.acquire().await?;
     let tag: String = sqlx::query_scalar("SELECT required_tags[1] FROM fleet.fleets WHERE id=$1")
@@ -71,7 +121,7 @@ async fn cohort(
         .fetch_one(&mut *connection)
         .await?;
     let mut entries = Vec::new();
-    for _ in 0..65 {
+    for _ in 0..count {
         let fleet = afd_db::test_util::mint_id();
         fixtures.seed_fleet(&fleet, workspace, tenant, &tag).await;
         let event = enqueue(fixtures, &fleet, workspace).await;

@@ -8,7 +8,7 @@ use af_wire::{
         TurnCheckpointAction as Action, TurnCheckpointBegin, TurnCheckpointRef,
         TurnCheckpointResponse as Response, TurnId, TurnPrivateRoot, TurnResume, TurnWorkspace,
     },
-    task::CheckpointObjectStatus,
+    task::{CheckpointObjectStatus, CheckpointPage},
 };
 use afr_agent::TurnSnapshot;
 use garde::Validate as _;
@@ -161,6 +161,14 @@ impl TurnSession<'_, '_> {
             }
         }
         let pages = catalog.pages(Some(&ids), af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES)?;
+        self.write_file_pages(page_ids, pages).await
+    }
+
+    async fn write_file_pages(
+        &mut self,
+        page_ids: &[TurnId],
+        pages: Vec<CheckpointPage>,
+    ) -> Result<Vec<(String, String)>> {
         if pages.len() != page_ids.len() {
             return Err(error::config("turn page layout changed after registration"));
         }

@@ -5,8 +5,8 @@ use std::panic::AssertUnwindSafe;
 use af_core::{error_code, id::Uuid7};
 use af_wire::task::{CheckpointMode, TaskTarget};
 use afr_agent::{
-    CommittedRecovery, RecoveryReceipt, RecoverySave, RecoverySkip, RecoverySnapshot,
-    RecoveryState, TaskRecovery, TurnSnapshot,
+    CommittedRecovery, FileRecoveryPermit, RecoveryReceipt, RecoverySave, RecoverySkip,
+    RecoverySnapshot, RecoveryState, TaskRecovery, TurnSnapshot,
 };
 use afr_sandbox::Sandbox;
 use futures_util::FutureExt as _;
@@ -223,12 +223,23 @@ impl BoundaryOwner<'_, '_> {
 }
 
 impl super::LeaseRun<'_> {
-    pub(super) async fn capture_idle(&self, sandbox: &dyn Sandbox) -> bool {
+    pub(super) async fn reserve_terminal_capture(
+        &self,
+        sandbox: &dyn Sandbox,
+        recoverable: bool,
+    ) -> Result<Option<FileRecoveryPermit>> {
+        if !recoverable {
+            return Ok(None);
+        }
         match executor_idle(sandbox).await {
-            Ok(idle) => idle,
+            Ok(true) => self.lessee.recovery.file(&self.interrupt).await.map(Some),
+            Ok(false) => Err(error::capture_unavailable(
+                "terminal capture has active file work",
+            )),
             Err(failure) => {
-                tracing::warn!(event = "run_checkpoint_executor_unproved", error_code = %failure.code());
-                false
+                let error_code = failure.code();
+                tracing::warn!(event = "run_checkpoint_executor_unproved", %error_code);
+                Err(failure)
             }
         }
     }

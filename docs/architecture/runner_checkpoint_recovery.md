@@ -8,9 +8,9 @@ executable: false
 
 # Platform runner checkpoint recovery
 
-This page describes the platform runner paths implemented at `976883d00`. The active specification defines acceptance.
+A platform runner resumes an interrupted event from its last complete checkpoint after the previous lease expires. PostgreSQL holds the encrypted conversation, and the private object store holds encrypted file chunks.
 
-The review ledger records measured performance and unresolved proofs. [M247 specification](../v2/active/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN_FROM_CHECKPOINT.md) · [Verification ledger](../v2/reviews/m247-review-ledger.md)
+The active specification defines acceptance. The review ledger records the timing at `976883d00` and the remaining proofs. [M247 specification](../v2/active/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN_FROM_CHECKPOINT.md) · [Verification ledger](../v2/reviews/m247-review-ledger.md)
 
 ## What gets checkpointed
 
@@ -117,6 +117,8 @@ Credits at the start of the drain bound how much work a session can acquire. Pos
 
 A completed drain acknowledges only its original recovery generation. [Recovery drain](../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/drain.rs) · [Candidate SQL](../../rustd/crates/daemon/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql)
 
+After skipping a full locked page, the session revisits its prefix after a short empty page or 64 later claims. This bounds the delay for older rows that become eligible while newer work stays ready. [Locked-page regression](../../rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/recovery_page.rs)
+
 The previous recovery pass spent one successful-offer credit per fallback probe. The new drain lets B use its available worker credits after the first probe, and a stalled session can leave other sessions moving.
 
 The benchmark ledger records the observed throughput separately. [Measured comparison](../v2/reviews/m247-review-ledger.md#performance-and-coverage-acceptance)
@@ -160,6 +162,10 @@ Remote object I/O runs outside the checkpoint transaction. The return path check
 
 [Transfer guard](../../rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/transfer.rs) · [Report SQL](../../rustd/crates/daemon/afd_fleet/src/lease/sql/commit_report.sql) · [Maintenance](../../rustd/crates/daemon/afd_fleet/src/lease/turn_checkpoint/maintenance.rs)
 
+The product database is development-only. Columns and indexes are defined in their owning initial schema files.
+
+Fresh development rigs apply those definitions from an empty database. [Recovery schema](../../schema/20261117154626_runner_turn_recovery.sql) · [Checkpoint schema](../../schema/20261117154627_runner_turn_checkpoints.sql)
+
 ## Operator and lab checks
 
 Operators can use `agentsfleet platform runners list`, `agentsfleet platform runners show <RUNNER_ID> --json`, and `agentsfleet platform runners events <RUNNER_ID>` with `runner:read`. Runner details expose liveness, operator status, and optional automatic cordon.
@@ -172,6 +178,12 @@ Use an owned local rig whose database the target can reset.
 
 ```bash
 make bench-lease PROFILE=rig BENCH_SHAPE=recovery BENCH_FLEETS=1 BENCH_WORKSPACES=shared
+```
+
+```text
+→ [bench-lease] profile=rig shape=recovery
+... Running benches/lease/main.rs (<varies>)
+{"shape":"recovery","workload":"api_only","fleets":1,...}
 ```
 
 The reported latency starts at the later of the old lease and slot expiries and ends at the first restored model request. It also records issue and settlement timestamps.
@@ -206,7 +218,7 @@ Benchmark drivers, test files, documentation and generated output are accounted 
 | [`rustd/crates/daemon/afd_fleet/src/lease/pull/select.rs`](../../rustd/crates/daemon/afd_fleet/src/lease/pull/select.rs) | LeaseService::claim_fleet_with | Pass the selection context to the ledger. |
 | [`rustd/crates/daemon/afd_fleet/src/lease/claim.rs`](../../rustd/crates/daemon/afd_fleet/src/lease/claim.rs) | LeaseService::claim_with | Pass the session-owned scan through native issue. |
 | [`rustd/crates/daemon/afd_fleet/src/lease/assign/mod.rs`](../../rustd/crates/daemon/afd_fleet/src/lease/assign/mod.rs) | Leases::select and internal selection | Keep the ordinary entry point and implement bounded recovery selection. |
-| [`rustd/crates/daemon/afd_fleet/src/lease/assign/ledger.rs`](../../rustd/crates/daemon/afd_fleet/src/lease/assign/ledger.rs) | Leases::ledger_counted, ledger_claim | Advance after an unclaimable candidate page and retain oldest-first order while the recovery round runs. |
+| [`rustd/crates/daemon/afd_fleet/src/lease/assign/ledger.rs`](../../rustd/crates/daemon/afd_fleet/src/lease/assign/ledger.rs) | Leases::ledger_counted, ledger_claim, record_claim | Advance past an unclaimable page and revisit older heads after bounded later claims. |
 | [`rustd/crates/daemon/afd_fleet/src/lease/assign/measured.rs`](../../rustd/crates/daemon/afd_fleet/src/lease/assign/measured.rs) | Leases::select_recovery_measured | Expose the real scan count under `test-util` for the locked-prefix regression. |
 | [`rustd/crates/daemon/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql`](../../rustd/crates/daemon/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql) | candidate query | Return a stable time/ID key. Seek beyond a blocked page while respecting each fleet's unsettled head and placement rules. |
 | [`rustd/crates/daemon/afd_fleet/src/lease/store.rs`](../../rustd/crates/daemon/afd_fleet/src/lease/store.rs) | Leases::for_connection and host guard helpers | Scope disposable scan progress to the connection and expose shared host authority for checkpoint calls. |
@@ -222,9 +234,9 @@ Benchmark drivers, test files, documentation and generated output are accounted 
 | [`rustd/crates/runner/afr_supervisor/src/lib.rs`](../../rustd/crates/runner/afr_supervisor/src/lib.rs) | supervisor startup | Build shared transfer and admission resources once for all platform workers. |
 | [`rustd/crates/runner/afr_supervisor/src/lease_loop/lessee.rs`](../../rustd/crates/runner/afr_supervisor/src/lease_loop/lessee.rs) | Lessee | Own the transfer client and admission limits for the runner process. |
 | [`rustd/crates/runner/afr_supervisor/src/lease_loop/recovery_boundary.rs`](../../rustd/crates/runner/afr_supervisor/src/lease_loop/recovery_boundary.rs) | Sink, Job, BoundaryOwner | Move the reservation to the job that owns cleanup, including on caller cancellation. |
-| [`rustd/crates/runner/afr_supervisor/src/lease_loop/recovery_capture.rs`](../../rustd/crates/runner/afr_supervisor/src/lease_loop/recovery_capture.rs) | BoundaryOwner::capture, publish | Use the admitted operation for optional task and turn capture through thaw. |
+| [`rustd/crates/runner/afr_supervisor/src/lease_loop/recovery_capture.rs`](../../rustd/crates/runner/afr_supervisor/src/lease_loop/recovery_capture.rs) | BoundaryOwner::capture, LeaseRun::reserve_terminal_capture | Keep the reservation through capture and thaw. |
 | [`rustd/crates/runner/afr_supervisor/src/lease_loop/recovery.rs`](../../rustd/crates/runner/afr_supervisor/src/lease_loop/recovery.rs) | LeaseRun::prepare_recovery and task capture/restore callers | Use cancellable admission and shared transfers for required task recovery. |
-| [`rustd/crates/runner/afr_supervisor/src/lease_loop/hold.rs`](../../rustd/crates/runner/afr_supervisor/src/lease_loop/hold.rs) | LeaseRun::keep | Reserve capacity before the terminal task checkpoint enters the freezer. |
+| [`rustd/crates/runner/afr_supervisor/src/lease_loop/hold.rs`](../../rustd/crates/runner/afr_supervisor/src/lease_loop/hold.rs) | LeaseRun::keep | Wait for terminal capture capacity before freezing. |
 | [`rustd/crates/runner/afr_supervisor/src/lease_loop/task_workspace.rs`](../../rustd/crates/runner/afr_supervisor/src/lease_loop/task_workspace.rs) | LeaseRun::native_workspace, native_base | Wait for required base capture or restore before modifying the task workspace. |
 | [`rustd/crates/runner/afr_supervisor/src/lease_loop/turn_recovery.rs`](../../rustd/crates/runner/afr_supervisor/src/lease_loop/turn_recovery.rs) | LeaseRun::prepare_turn_recovery | Acquire required file restore admission before freeze and pin acquisition. |
 | [`rustd/crates/runner/afr_supervisor/src/lease_loop/work.rs`](../../rustd/crates/runner/afr_supervisor/src/lease_loop/work.rs) | ordinary API-only restore call | Supply shared resources to NativeTurn while keeping the no-files path lightweight. |

@@ -137,15 +137,10 @@ fn upload_reply(call: &Call, archive: &mut Archive, fault: &str) -> Option<Answe
 #[tokio::test]
 async fn history_download_requires_exact_object_scope_length_and_read_authority()
 -> crate::Result<()> {
+    let different_objects = "checkpoint restore authorization differs from requested objects";
     for (fault, expected) in [
-        (
-            "missing",
-            "checkpoint restore authorization differs from requested objects",
-        ),
-        (
-            "repository",
-            "checkpoint restore authorization differs from requested objects",
-        ),
+        ("missing", different_objects),
+        ("repository", different_objects),
         ("length", "checkpoint ciphertext length is invalid"),
         ("authority", "checkpoint read authority is absent"),
     ] {
