@@ -22,6 +22,8 @@ Indy requested an adversarial review on 6.2 Astra XHigh before implementation. T
 
 Use bounded round-robin among eligible hosts for recovery and oldest eligible admission first in Postgres. Preserve ordinary admission scheduling and its locality and ring budget. Keep checkpoint ownership and adoption in the existing task and turn implementations. Share the physical transfer code and its resource limits. The changes below specify what to implement and how to distinguish a speedup from issuing more work than the runner can restore.
 
+The [two-host walkthrough](m247-two-host-walkthrough.md) illustrates each finding with 16 workers per runner and identifies the methods involved.
+
 ## What the source review found
 
 All figures in this section are calculations from the reviewed source, not measurements.
