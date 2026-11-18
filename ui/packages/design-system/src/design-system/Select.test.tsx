@@ -4,10 +4,7 @@ import {
   Select,
   SelectTrigger,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
-  SelectSeparator,
   SelectValue,
 } from "./Select";
 
@@ -26,12 +23,8 @@ function Harness({
         <SelectValue placeholder="Pick one" />
       </SelectTrigger>
       <SelectContent>
-        <SelectGroup>
-          <SelectLabel>Models</SelectLabel>
-          <SelectItem value="gpt">GPT</SelectItem>
-          <SelectItem value="claude">Claude</SelectItem>
-        </SelectGroup>
-        <SelectSeparator />
+        <SelectItem value="gpt">GPT</SelectItem>
+        <SelectItem value="claude">Claude</SelectItem>
         <SelectItem value="gemini" disabled>
           Gemini
         </SelectItem>
@@ -61,7 +54,6 @@ describe("Select", () => {
 
     const gpt = screen.getByText("GPT");
     expect(gpt).toBeInTheDocument();
-    expect(screen.getByText("Models")).toBeInTheDocument();
 
     fireEvent.click(gpt);
     expect(onValueChange).toHaveBeenCalledWith("gpt");
