@@ -43,10 +43,13 @@ Run 44351961751 on `650bddef6` failed twice in `workspace-private-chat.spec.ts`.
 Attempt 1 stayed on `fleets/new` for 60 seconds after Save.
 Attempt 2 saved the fleet, then axe reported a `heading-order` violation on an `h3` at phone width.
 
-The cause is unverified, and the page snapshot is in that run's saved test files.
+The `heading-order` failure most likely came from `FleetSetup.tsx`, which renders its `h2` only when the save is not yet recorded.
+`SetupQuestions` always rendered an `h3` after it, so a recorded save left the page at `h1` then `h3`.
+Dev gained a decision model in today's rebuild, so drafts now carry those questions.
+Unverified: the failing page's snapshot, in that run's saved test files, would confirm it.
 
-One likely cause is in `FleetSetup.tsx:31`, which renders its `h2` only when the save is not yet recorded.
-`SetupQuestions` always renders an `h3` after it, so a recorded save leaves the page at `h1` then `h3`.
-Dev only gained a decision model in today's rebuild, which is why drafts now carry those questions.
+This change fixes that path. `SetupQuestions` takes a heading level, and `FleetSetup` passes level 2 when no save heading sits above it.
+A regression test pins both states, and `docs/DESIGN_SYSTEM.md` now states the rule.
 
-The fix is in `ui/packages/app`, a user-surface path, so it needs a docs change or an owner-recorded override.
+Attempt 1, the save that never left `fleets/new`, is still unexplained.
+The next post-deploy run shows whether it repeats.

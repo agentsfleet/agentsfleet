@@ -1,6 +1,6 @@
 # agentsfleet design system
 
-**Direction:** Clear Signal · **Updated:** 2026-11-15
+**Direction:** Clear Signal · **Updated:** 2026-11-18
 
 This document governs the app, website, and shared component library.
 Clear Signal names the visual direction; agentsfleet remains the product name.
@@ -219,6 +219,8 @@ the wordmark. It identifies the product without implying live execution. Use
 - Avoid cards nested inside cards when a divider communicates the same grouping.
 
 App layouts use consistent navigation, page titles, section headings, and action positions.
+Headings never skip a level.
+A section title takes level 2 when no level 2 sits above it, and level 3 beneath one that does.
 PageLayout owns section spacing. PageHeader owns the title and description.
 
 PageHeader separates the route introduction from its working area with a fine divider and readable supporting copy.
