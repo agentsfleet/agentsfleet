@@ -14,7 +14,7 @@ async fn registration_preserves_explicit_durable_policy_in_all_projections() {
         request.assigned_policy.durable_tasks_enabled = enabled;
         let enrolled = fixture
             .runners
-            .register(&request, clock::now())
+            .register(&request, "user_operator", clock::now())
             .await
             .expect("runner enrolled");
         fixture.enrolled.push(enrolled.runner_id.clone());

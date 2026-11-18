@@ -24,6 +24,7 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            "fixture:platform-operator",
             fixtures.enrolled_at(),
         )
         .await

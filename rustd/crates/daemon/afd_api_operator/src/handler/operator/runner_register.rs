@@ -19,6 +19,7 @@ use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 use http::{HeaderMap, StatusCode, header};
 
+use crate::auth::PersonIdentity;
 use crate::handler::refuse;
 use crate::services::Services;
 
@@ -54,12 +55,20 @@ const DETAIL_MALFORMED_BODY: &str = "Malformed JSON body (host_id, assigned_poli
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn platform<D: Services>(State(services): State<Arc<D>>, body: Bytes) -> Response {
+pub(crate) async fn platform<D: Services>(
+    State(services): State<Arc<D>>,
+    identity: PersonIdentity,
+    body: Bytes,
+) -> Response {
     let request = match read(&body) {
         Ok(request) => request,
         Err(refused) => return refused.into_response(),
     };
-    match services.runners().register(&request, services.now()).await {
+    match services
+        .runners()
+        .register(&request, identity.subject(), services.now())
+        .await
+    {
         Ok(registered) => created(&registered, &request.assigned_policy),
         Err(error) => refuse(&error, EVENT),
     }
@@ -73,6 +82,7 @@ pub(crate) async fn platform<D: Services>(State(services): State<Arc<D>>, body: 
 pub(super) async fn tenant<D: Services>(
     services: &D,
     tenant: &Uuid7,
+    actor_id: &str,
     headers: &HeaderMap,
     body: &Bytes,
 ) -> Response {
@@ -90,7 +100,7 @@ pub(super) async fn tenant<D: Services>(
     };
     match services
         .runners()
-        .register_tenant(tenant, &operation, &request, services.now())
+        .register_tenant(tenant, &operation, &request, actor_id, services.now())
         .await
     {
         Ok(Registered::Created(registered)) => created(&registered, &stored),

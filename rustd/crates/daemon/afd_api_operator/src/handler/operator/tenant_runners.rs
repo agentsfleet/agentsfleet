@@ -61,7 +61,10 @@ pub(crate) async fn register<D: Services>(
     body: Bytes,
 ) -> Response {
     match tenant(&*services, &identity).await {
-        Ok(tenant) => super::runner_register::tenant(&*services, &tenant, &headers, &body).await,
+        Ok(tenant) => {
+            super::runner_register::tenant(&*services, &tenant, identity.subject(), &headers, &body)
+                .await
+        }
         Err(refused) => refused.into_response(),
     }
 }

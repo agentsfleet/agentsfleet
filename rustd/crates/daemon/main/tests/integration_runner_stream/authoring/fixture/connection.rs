@@ -15,7 +15,11 @@ use agentsfleetd::{
 
 pub(super) async fn connect(booted: &Booted) -> (Uuid7, String, Config, Session) {
     let registered = Runners::new(booted.database.clone(), Entropy::new())
-        .register(&crate::e2e_seed::enrolment(), clock::now())
+        .register(
+            &crate::e2e_seed::enrolment(),
+            "fixture:platform-operator",
+            clock::now(),
+        )
         .await
         .expect("register native runner");
     let token = registered.token.expose().to_owned();

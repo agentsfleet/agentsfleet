@@ -32,7 +32,13 @@ async fn tenant_runner(case: &Case) -> Uuid7 {
     );
     let registered = fixtures
         .runners()
-        .register_tenant(&case.held.tenant, &mint_id(), &request, case.held.now)
+        .register_tenant(
+            &case.held.tenant,
+            &mint_id(),
+            &request,
+            "fixture:tenant-owner",
+            case.held.now,
+        )
         .await
         .expect("the tenant registers its runner");
     assert!(

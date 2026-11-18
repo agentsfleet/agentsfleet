@@ -27,7 +27,7 @@ async fn selection_round_trips_and_clearing_releases_the_catalogue_reference() {
     });
     let enrolled = fixture
         .runners
-        .register(&request, clock::now())
+        .register(&request, "user_operator", clock::now())
         .await
         .expect("enrol with decisions");
     let runner = enrolled.runner_id;
@@ -81,7 +81,7 @@ async fn unavailable_selections_cannot_partially_edit_a_runner() {
     assert!(
         fixture
             .runners
-            .register(&registration, clock::now())
+            .register(&registration, "user_operator", clock::now())
             .await
             .expect_err("new disabled assignment refused")
             .is_rejected()

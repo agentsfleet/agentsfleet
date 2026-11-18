@@ -113,12 +113,15 @@ impl Runners {
     pub async fn register(
         &self,
         request: &RegisterRequest<'_>,
+        actor_id: &str,
         now: Timestamp,
     ) -> Result<Enrolled> {
         let prepared = Prepared::of(self, request, now)?;
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_REGISTER))?;
-        prepared.insert(&mut transaction, Owner::Platform).await?;
+        prepared
+            .insert(&mut transaction, Owner::Platform, actor_id)
+            .await?;
         transaction
             .commit()
             .await

@@ -83,11 +83,13 @@ impl<'r> Prepared<'r> {
         })
     }
 
-    /// Writes the runner and its registration event inside `transaction`.
+    /// Writes the runner and its registration event, naming `actor_id`,
+    /// inside `transaction`.
     pub(crate) async fn insert(
         &self,
         transaction: &mut Transaction<'_, Postgres>,
         owner: Owner<'_>,
+        actor_id: &str,
     ) -> Result<()> {
         crate::decision::lock(transaction, self.decision_model_id.as_ref())
             .await?
@@ -111,6 +113,7 @@ impl<'r> Prepared<'r> {
             registry_allowlist_json: &self.registry_json,
             worker_count: self.worker_count.cast_signed(),
             degraded_reason: self.verdict.reason(),
+            actor_id,
         }
         .bind()
         .execute(&mut **transaction)
@@ -149,6 +152,7 @@ impl Runners {
         tenant: &Uuid7,
         operation: &Uuid7,
         request: &RegisterRequest<'_>,
+        actor_id: &str,
         now: Timestamp,
     ) -> Result<Registered> {
         if request.assigned_policy.decision_model_id.is_some() {
@@ -189,7 +193,7 @@ impl Runners {
             .await;
         }
         prepared
-            .insert(&mut transaction, Owner::Tenant(tenant))
+            .insert(&mut transaction, Owner::Tenant(tenant), actor_id)
             .await?;
         transaction
             .commit()

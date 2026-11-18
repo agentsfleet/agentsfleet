@@ -29,6 +29,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            "fixture:platform-operator",
             fixtures.enrolled_at(),
         )
         .await

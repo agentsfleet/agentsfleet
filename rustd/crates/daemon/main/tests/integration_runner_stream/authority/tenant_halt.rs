@@ -35,7 +35,13 @@ fn request() -> RegisterRequest<'static> {
 async fn tenant_runner(fixture: &Fixture, tenant: &Uuid7) -> TestResult<(Uuid7, String)> {
     let runners = Runners::new(fixture.run.booted.database.clone(), Entropy::new());
     match runners
-        .register_tenant(tenant, &mint_id(), &request(), af_core::clock::now())
+        .register_tenant(
+            tenant,
+            &mint_id(),
+            &request(),
+            "fixture:tenant-owner",
+            af_core::clock::now(),
+        )
         .await?
     {
         Registered::Created(enrolled) => {

@@ -80,6 +80,9 @@ pub struct RegisterRow<'a> {
     pub worker_count: i32,
     /// Why the reconciled verdict reads degraded, or `None` when it does not.
     pub degraded_reason: Option<&'a str>,
+    /// Who registered the runner, recorded on its registration event as every
+    /// other runner event records its actor.
+    pub actor_id: &'a str,
 }
 
 impl<'a> RegisterRow<'a> {
@@ -113,6 +116,8 @@ impl<'a> RegisterRow<'a> {
             .bind(super::meta::DURABLE_TASKS_ENABLED)
             .bind(self.tenant_id)
             .bind(self.platform_owned)
+            .bind(super::meta::ACTOR_ID)
+            .bind(self.actor_id)
     }
 }
 

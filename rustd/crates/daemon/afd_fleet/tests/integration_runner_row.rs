@@ -38,7 +38,11 @@ async fn test_enrolment_stores_only_the_digest() {
 
     let enrolled = fixtures
         .runners()
-        .register(&request, fixtures.enrolled_at())
+        .register(
+            &request,
+            "fixture:platform-operator",
+            fixtures.enrolled_at(),
+        )
         .await
         .expect("a well-formed enrolment against a reachable datastore");
 
@@ -87,7 +91,11 @@ async fn test_enrolment_stores_the_clamped_assignment() {
 
     let enrolled = fixtures
         .runners()
-        .register(&request, fixtures.enrolled_at())
+        .register(
+            &request,
+            "fixture:platform-operator",
+            fixtures.enrolled_at(),
+        )
         .await
         .expect("an out-of-range worker count is clamped, never refused");
 
@@ -134,7 +142,11 @@ async fn test_enrolment_opens_degraded_with_its_audit_row() {
 
     let enrolled = fixtures
         .runners()
-        .register(&request, fixtures.enrolled_at())
+        .register(
+            &request,
+            "fixture:platform-operator",
+            fixtures.enrolled_at(),
+        )
         .await
         .expect("enrolment must succeed");
 
@@ -171,7 +183,11 @@ async fn test_the_self_read_never_bumps_liveness() {
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 2);
     let enrolled = fixtures
         .runners()
-        .register(&request, fixtures.enrolled_at())
+        .register(
+            &request,
+            "fixture:platform-operator",
+            fixtures.enrolled_at(),
+        )
         .await
         .expect("enrolment must succeed");
 

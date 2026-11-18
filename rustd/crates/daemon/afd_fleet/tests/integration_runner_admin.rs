@@ -30,6 +30,7 @@ async fn enrol(fixtures: &Fixtures) -> Uuid7 {
         .runners()
         .register(
             &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            "fixture:platform-operator",
             fixtures.enrolled_at(),
         )
         .await

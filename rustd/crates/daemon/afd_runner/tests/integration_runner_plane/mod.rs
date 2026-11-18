@@ -80,7 +80,7 @@ impl Fixture {
     async fn enrol(&mut self) -> Uuid7 {
         let enrolled = self
             .runners
-            .register(&enrolment(), clock::now())
+            .register(&enrolment(), "user_operator", clock::now())
             .await
             .expect("the enrolment lands");
         self.enrolled.push(enrolled.runner_id.clone());

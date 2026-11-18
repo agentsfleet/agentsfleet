@@ -15,7 +15,10 @@ use super::{Fixture, enrolment};
 type TestResult<T = ()> = afd_runner::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 async fn enrol(fixture: &mut Fixture) -> TestResult<(Uuid7, Digest)> {
-    let enrolled = fixture.runners.register(&enrolment(), clock::now()).await?;
+    let enrolled = fixture
+        .runners
+        .register(&enrolment(), "user_operator", clock::now())
+        .await?;
     fixture.enrolled.push(enrolled.runner_id.clone());
     Ok((enrolled.runner_id, enrolled.token.digest().clone()))
 }

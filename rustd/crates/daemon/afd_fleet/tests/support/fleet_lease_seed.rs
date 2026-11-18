@@ -132,7 +132,11 @@ pub(crate) async fn seeded_parts<const N: usize>(
         );
         let enrolled = fixtures
             .runners()
-            .register(&request, fixtures.enrolled_at())
+            .register(
+                &request,
+                "fixture:platform-operator",
+                fixtures.enrolled_at(),
+            )
             .await
             .expect("enrolment must succeed");
         reports_capable(fixtures, &enrolled.runner_id).await;

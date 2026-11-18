@@ -372,7 +372,13 @@ async fn a_runner_page_and_its_total_read_one_moment_while_runners_register() {
         async move {
             let (operation, request) = (mint_id(), enrolment());
             runners
-                .register_tenant(tenant, &operation, &request, clock::now())
+                .register_tenant(
+                    tenant,
+                    &operation,
+                    &request,
+                    "user_tenant_owner",
+                    clock::now(),
+                )
                 .await
         }
     };
@@ -431,4 +437,59 @@ async fn a_runner_page_and_its_total_read_one_moment_while_runners_register() {
     database.close().await;
     owner.close().await;
     lane.cleanup().await;
+}
+
+/// Both registration paths name who registered the runner on its first event,
+/// as every other runner event names its actor.
+// Value: protects=the audit trail names the person who added a host;
+// fails_when=a registration path drops the caller's subject; why_new=Indy
+// chose to record the registrant in this PR; seam=the store on live Postgres.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_registration_event_names_who_registered_the_runner() {
+    let mut fixture = Fixture::create().await;
+    let platform = fixture.enrol().await;
+
+    let tenant = mint_id();
+    TenantSeed::new(&tenant)
+        .insert(&mut *fixture.owner.acquire().await.expect("an owner connection"))
+        .await
+        .expect("the tenant seeds");
+    let registered = fixture
+        .runners
+        .register_tenant(
+            &tenant,
+            &mint_id(),
+            &enrolment(),
+            "user_tenant_owner",
+            clock::now(),
+        )
+        .await
+        .expect("the tenant registers");
+    assert!(
+        matches!(registered, afd_runner::Registered::Created(_)),
+        "a fresh key registers a new runner"
+    );
+    let tenant_runner = match registered {
+        afd_runner::Registered::Created(enrolled) => enrolled.runner_id,
+        afd_runner::Registered::Replayed { runner_id, .. } => runner_id,
+    };
+    fixture.enrolled.push(tenant_runner.clone());
+
+    for (runner, actor) in [
+        (&platform, "user_operator"),
+        (&tenant_runner, "user_tenant_owner"),
+    ] {
+        let history = fixture.history(runner).await;
+        let registered = history
+            .last()
+            .expect("the registration event is the oldest");
+        assert_eq!(registered.event_type, RunnerEventType::RunnerRegistered);
+        assert_eq!(
+            registered.metadata.get("actor_id").and_then(Value::as_str),
+            Some(actor),
+            "the registration names who registered {runner}"
+        );
+    }
+    fixture.cleanup().await;
 }

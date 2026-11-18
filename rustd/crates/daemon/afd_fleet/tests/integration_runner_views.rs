@@ -80,7 +80,11 @@ async fn enroll_view_runners(fixtures: &Fixtures) -> Vec<Uuid7> {
         request.host_id = Cow::Borrowed(host);
         let enrolled = fixtures
             .runners()
-            .register(&request, fixtures.enrolled_at())
+            .register(
+                &request,
+                "fixture:platform-operator",
+                fixtures.enrolled_at(),
+            )
             .await
             .expect("the runner enrols");
         runners.push(enrolled.runner_id);

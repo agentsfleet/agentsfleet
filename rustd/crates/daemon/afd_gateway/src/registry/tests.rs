@@ -61,7 +61,9 @@ async fn a_delayed_old_owner_cannot_register_over_the_new_owner() -> TestResult 
     let owner = lane.open(DbRole::Migrator, &[]).await;
     let runners = Runners::new(database.clone(), Entropy::new());
     let request = registration();
-    let enrolled = runners.register(&request, clock::now()).await?;
+    let enrolled = runners
+        .register(&request, "fixture:platform-operator", clock::now())
+        .await?;
     let runner = &enrolled.runner_id;
     let a = allowed(
         runners

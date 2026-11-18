@@ -67,7 +67,13 @@ async fn tenant_runner(fixtures: &Fixtures, tenant: &Uuid7, tag: &str) -> Uuid7 
     );
     let registered = fixtures
         .runners()
-        .register_tenant(tenant, &mint_id(), &request, fixtures.enrolled_at())
+        .register_tenant(
+            tenant,
+            &mint_id(),
+            &request,
+            "fixture:tenant-owner",
+            fixtures.enrolled_at(),
+        )
         .await
         .expect("the tenant registers its runner");
     assert!(
@@ -92,7 +98,11 @@ async fn platform_runner(fixtures: &Fixtures, tag: &str) -> Uuid7 {
     );
     let enrolled = fixtures
         .runners()
-        .register(&request, fixtures.enrolled_at())
+        .register(
+            &request,
+            "fixture:platform-operator",
+            fixtures.enrolled_at(),
+        )
         .await
         .expect("the platform registers its runner");
     reports_capable(fixtures, &enrolled.runner_id).await;
