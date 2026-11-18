@@ -28,3 +28,4 @@ export const platformFileFlag = requiredTextFlag("file", "JSON input file; - rea
 export const platformPolicyFlag = requiredTextFlag("policy", "Complete assigned runner policy JSON file; - reads stdin", METAVAR.path);
 export const platformLabelsFlag = requiredTextFlag("labels", "Comma-separated tags; an empty value clears labels", METAVAR.text).pipe(Flag.optional);
 export const platformTokenFlag = requiredTextFlag("token-out", "New private file for the one-time runner token (mode 0600)", METAVAR.path);
+export const platformEtagFlag = requiredTextFlag("if-match", "Exact inspected resource tag returned by list/show", METAVAR.etag);
