@@ -63,7 +63,7 @@ impl SessionServices {
         }
     }
 
-    pub(super) fn policy(beat: &Beat) -> Result<HeartbeatResponse<'_>> {
+    pub(super) fn policy<'a>(&self, beat: &'a Beat) -> Result<HeartbeatResponse<'a>> {
         Ok(HeartbeatResponse {
             status: HeartbeatStatus::Ok,
             assigned_policy: beat.assignment.decode()?,
@@ -75,7 +75,9 @@ impl SessionServices {
                 .iter()
                 .map(|id| id.as_str().into())
                 .collect(),
-            heartbeat_interval_ms: super::opening::interval_millis()?,
+            heartbeat_interval_ms: super::opening::interval_millis(
+                &self.gateway.inner.dependencies.runners,
+            )?,
         })
     }
 
@@ -111,7 +113,7 @@ impl SessionServices {
             .await?;
         self.apply_policy(&beat);
         self.send(&Message::Assignment {
-            response: Self::policy(&beat)?,
+            response: self.policy(&beat)?,
         })
         .await?;
         self.refresh_cancellations().await

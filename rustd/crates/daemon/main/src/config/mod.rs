@@ -3,6 +3,7 @@
 pub(crate) mod maintenance;
 mod origins;
 mod settings;
+mod timing;
 mod urls;
 mod values;
 
@@ -152,6 +153,7 @@ impl<'a, E: EnvSource + ?Sized> Config<'a, E> {
             garde::Unvalidated::new(settings.telemetry.otlp)
                 .validate()
                 .map_err(|report| invalid(format!("telemetry.otlp: {report}")))?,
+            timing::settings(&settings.runner),
         )?;
         Ok(Config {
             origins: origins::Origins::collect(environment, &source.values, settings, overrides),

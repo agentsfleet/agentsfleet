@@ -194,7 +194,14 @@ impl Runners {
         {
             return Ok(Decision::Refused(Refusal::Superseded));
         }
-        let release_holds = holds::reconcile(connection, runner, held, beat.closing).await;
+        let release_holds = holds::reconcile(
+            connection,
+            runner,
+            held,
+            beat.closing,
+            self.heartbeat_interval(),
+        )
+        .await;
         // The gauge's only input. Liveness is a Postgres row a collection
         // callback cannot read — it is a network round trip, and the SDK
         // collects on a thread that must not make one — so the beat that

@@ -64,7 +64,11 @@ async fn a_configured_clock_changes_new_grants_and_preserves_existing_deadlines(
     };
     let mut case = Case::with_fixtures(Fixtures::create_isolated().await).await?;
     let original = lease_deadline(&case).await?;
-    let settings = garde::Unvalidated::new(LeaseSettings { ttl_seconds: 40 }).validate()?;
+    let settings = garde::Unvalidated::new(LeaseSettings {
+        ttl_seconds: 40,
+        ..LeaseSettings::default()
+    })
+    .validate()?;
     case.leases = case.leases.clone().with_clock(LeaseClock::new(&settings));
     assert_eq!(lease_deadline(&case).await?, original);
     let before = database_time(&case).await?;
@@ -73,6 +77,38 @@ async fn a_configured_clock_changes_new_grants_and_preserves_existing_deadlines(
     let granted = lease_deadline(&case).await?;
     assert!(granted >= clock::after(before, std::time::Duration::from_secs(40)));
     assert!(granted <= clock::after(after, std::time::Duration::from_secs(40)));
+    case.fixtures.cleanup().await;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn issuing_saves_the_runtime_cap_instead_of_using_a_later_profile() -> Checked {
+    use af_core::timing::{LeaseClock, LeaseSettings};
+    let mut case = Case::with_fixtures(Fixtures::create_isolated().await).await?;
+    let settings = garde::Unvalidated::new(LeaseSettings {
+        max_runtime_seconds: 60,
+        ..LeaseSettings::default()
+    })
+    .validate()?;
+    case.leases = case.leases.clone().with_clock(LeaseClock::new(&settings));
+    case.replace().await?;
+    let saved: i32 =
+        sqlx::query_scalar("SELECT max_runtime_seconds FROM runner.leases WHERE id=$1")
+            .bind(&case.issued.lease_id)
+            .fetch_one(&mut *case.fixtures.database.acquire().await?)
+            .await?;
+    assert_eq!(saved, 60);
+    let deadline: jiff_sqlx::Timestamp =
+        sqlx::query_scalar(include_str!("../../src/lease/sql/execution_deadline.sql"))
+            .bind(&case.issued.lease_id)
+            .bind(af_core::timing::MAX_RUNTIME)
+            .fetch_one(&mut *case.fixtures.database.acquire().await?)
+            .await?;
+    assert_eq!(
+        deadline.to_jiff(),
+        af_core::clock::after(case.issued.created_at, std::time::Duration::from_secs(60))
+    );
     case.fixtures.cleanup().await;
     Ok(())
 }

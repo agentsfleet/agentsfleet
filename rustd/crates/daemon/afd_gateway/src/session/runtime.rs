@@ -87,7 +87,9 @@ impl ConfirmedSession {
             connection: self.authority.connection().clone(),
             stop: self.context.native.stop.clone(),
             drain: CancellationToken::new(),
-            liveness: super::liveness::Liveness::default(),
+            liveness: super::liveness::Liveness::new(
+                self.gateway.inner.dependencies.runners.heartbeat_interval(),
+            ),
             superseded: CancellationToken::new(),
             offers: Notify::new(),
             claims,
@@ -113,7 +115,9 @@ impl ConfirmedSession {
         let welcome = Message::Welcome {
             request_id: self.hello.request_id,
             connection_id: self.authority.connection().as_str().into(),
-            heartbeat_interval_ms: opening::interval_millis()?,
+            heartbeat_interval_ms: opening::interval_millis(
+                &self.gateway.inner.dependencies.runners,
+            )?,
         };
         let frame = af_stream::encode(
             &welcome,

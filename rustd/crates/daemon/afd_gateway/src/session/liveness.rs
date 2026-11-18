@@ -2,22 +2,29 @@
 
 use af_core::timing::HEARTBEAT_INTERVAL;
 use parking_lot::Mutex;
+use std::time::Duration;
 use tokio::time::{Instant, sleep_until};
 
 #[derive(Debug)]
 pub(crate) struct Liveness {
     last_heartbeat: Mutex<Instant>,
+    interval: Duration,
 }
 
 impl Default for Liveness {
     fn default() -> Self {
-        Self {
-            last_heartbeat: Mutex::new(Instant::now()),
-        }
+        Self::new(HEARTBEAT_INTERVAL)
     }
 }
 
 impl Liveness {
+    pub(crate) fn new(interval: Duration) -> Self {
+        Self {
+            last_heartbeat: Mutex::new(Instant::now()),
+            interval,
+        }
+    }
+
     pub(super) fn received(&self) {
         *self.last_heartbeat.lock() = Instant::now();
     }
@@ -25,9 +32,9 @@ impl Liveness {
     /// An intervening heartbeat moves the next wait; unrelated traffic never touches this clock.
     pub(super) async fn silence(&self) {
         loop {
-            let deadline = *self.last_heartbeat.lock() + HEARTBEAT_INTERVAL * 2;
+            let deadline = *self.last_heartbeat.lock() + self.interval * 2;
             sleep_until(deadline).await;
-            if Instant::now() >= *self.last_heartbeat.lock() + HEARTBEAT_INTERVAL * 2 {
+            if Instant::now() >= *self.last_heartbeat.lock() + self.interval * 2 {
                 return;
             }
         }
@@ -63,6 +70,21 @@ mod tests {
         tokio::time::advance(HEARTBEAT_INTERVAL).await;
         assert!(matches!(futures_util::poll!(&mut silent), Poll::Pending));
         tokio::time::advance(HEARTBEAT_INTERVAL).await;
+        assert!(matches!(futures_util::poll!(&mut silent), Poll::Ready(())));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_configured_cadence_controls_both_silence_waits() {
+        let interval = std::time::Duration::from_secs(3);
+        let clock = Liveness::new(interval);
+        let silent = clock.silence();
+        tokio::pin!(silent);
+        assert!(matches!(futures_util::poll!(&mut silent), Poll::Pending));
+        tokio::time::advance(interval).await;
+        clock.received();
+        tokio::time::advance(interval).await;
+        assert!(matches!(futures_util::poll!(&mut silent), Poll::Pending));
+        tokio::time::advance(interval).await;
         assert!(matches!(futures_util::poll!(&mut silent), Poll::Ready(())));
     }
 }

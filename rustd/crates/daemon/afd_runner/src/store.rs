@@ -53,6 +53,12 @@ pub struct Runners {
 }
 
 impl Runners {
+    /// Cadence the native gateway advertises and enforces for this deployment.
+    #[must_use]
+    pub const fn heartbeat_interval(&self) -> std::time::Duration {
+        self.clock.heartbeat_interval()
+    }
+
     pub(crate) const fn clock(&self) -> af_core::timing::LeaseClock {
         self.clock
     }

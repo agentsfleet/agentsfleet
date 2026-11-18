@@ -217,6 +217,7 @@ impl Leases {
             tool_calls: outcome.tool_calls,
             checkpoint: &checkpoint,
             held_until: report.held_until,
+            sandbox_idle_hold: self.clock().sandbox_idle_hold(),
             host_digest,
             host_connection,
             obligation_id: &obligation_id,

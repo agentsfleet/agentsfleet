@@ -66,6 +66,39 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
     held.fixtures.cleanup().await;
 }
 
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn single_and_batch_renewals_obey_the_saved_runtime_cap()
+-> Result<(), Box<dyn std::error::Error>> {
+    let held = held().await;
+    let lease = &held.issued.lease_id;
+    sqlx::query("UPDATE runner.leases SET max_runtime_seconds=60, created_at=clock_timestamp()-interval '50 seconds' WHERE id=$1")
+        .bind(lease).execute(&mut *held.fixtures.database.acquire().await?).await?;
+    let started = held
+        .fixtures
+        .instant(Row::Lease(lease), "created_at")
+        .await
+        .ok_or("saved lease creation time")?;
+    let expected = af_core::clock::after(started, std::time::Duration::from_secs(60));
+    let renewed = extend(
+        &held.leases,
+        lease,
+        &held.runner,
+        (&held.lease_key, &held.pricing),
+        held.now,
+    )
+    .await?;
+    assert_eq!(deadline(&renewed), Some(expected));
+    let batch = crate::integration_renew_batch::frame(&held, &[lease], false)
+        .await
+        .into_iter()
+        .next()
+        .ok_or("one batch answer")??;
+    assert_eq!(batch, expected);
+    held.fixtures.cleanup().await;
+    Ok(())
+}
+
 /// Dimension 3.4b — a renewal for a lease that is no longer ours is LOST.
 ///
 /// The other terminal verdict, and the one that must not be confused with the

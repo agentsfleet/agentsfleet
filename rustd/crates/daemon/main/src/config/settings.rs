@@ -87,6 +87,10 @@ pub(super) struct Runner {
     pub stream: Stream,
     #[garde(dive)]
     pub lease: Lease,
+    #[garde(skip)]
+    pub health: super::timing::Health,
+    #[garde(skip)]
+    pub sandboxes: super::timing::Sandboxes,
     #[garde(dive)]
     pub recovery: Recovery,
     #[garde(dive)]
@@ -127,6 +131,8 @@ pub(super) struct MessageBuffer {
 pub(super) struct Lease {
     #[garde(range(min = af_core::timing::MIN_LEASE_SECONDS, max = af_core::timing::MAX_LEASE_SECONDS))]
     pub ttl_seconds: Option<u64>,
+    #[garde(range(min = af_core::timing::MIN_LEASE_SECONDS + 1, max = af_core::timing::MAX_RUNTIME.as_secs()))]
+    pub max_runtime_seconds: Option<u64>,
 }
 
 #[derive(Default, Deserialize, Validate)]

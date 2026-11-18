@@ -53,6 +53,7 @@ pub(crate) struct ReportStatement<'a> {
     pub(crate) tool_calls: Option<&'a str>,
     pub(crate) checkpoint: &'a str,
     pub(crate) held_until: Option<Timestamp>,
+    pub(crate) sandbox_idle_hold: std::time::Duration,
     pub(crate) host_digest: Option<&'a str>,
     pub(crate) host_connection: Option<&'a Uuid7>,
     pub(crate) obligation_id: &'a Uuid7,
@@ -99,7 +100,7 @@ impl<'a> ReportStatement<'a> {
             .bind(afd_api_wire::approval::status::PENDING)
             .bind(self.checkpoint)
             .bind(self.held_until.map(jiff::Timestamp::to_sqlx))
-            .bind(af_core::timing::SANDBOX_HOLD_IDLE)
+            .bind(self.sandbox_idle_hold)
             .bind(self.obligation_id)
             .bind(self.obligation_receipt)
             .bind(

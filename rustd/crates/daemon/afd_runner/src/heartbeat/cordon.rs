@@ -1,9 +1,6 @@
 //! Mutation-time connection proof and uninterrupted healthy return.
 
-use af_core::{
-    id::Uuid7,
-    timing::{HEARTBEAT_INTERVAL, UNCORDON_AFTER},
-};
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgConnection;
@@ -40,8 +37,8 @@ impl Runners {
                         .bind(health.authority.map(|owner| owner.digest().as_str()))
                         .bind(health.authority.map(Authority::connection))
                         .bind(health.valid)
-                        .bind(HEARTBEAT_INTERVAL.saturating_mul(2))
-                        .bind(UNCORDON_AFTER)
+                        .bind(self.clock().heartbeat_interval().saturating_mul(2))
+                        .bind(self.clock().uncordon_after())
                         .bind(lift)
                         .bind(crate::cordon::LIFTED)
                         .bind("reason")

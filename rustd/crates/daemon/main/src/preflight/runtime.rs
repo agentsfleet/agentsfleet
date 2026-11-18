@@ -72,6 +72,7 @@ pub(crate) fn read(env: &(impl EnvSource + ?Sized)) -> Result<RuntimeSettings, R
         garde::Unvalidated::new(af_otlp::PipelineSettings::default())
             .validate()
             .map_err(|report| refused("telemetry.otlp", report.to_string()))?,
+        LeaseSettings::default(),
     )
 }
 
@@ -80,16 +81,12 @@ pub(crate) fn configured(
     tasks: afd_fleet::task::policy::TaskPolicy,
     maintenance: crate::config::maintenance::MaintenancePolicy,
     telemetry: garde::Valid<af_otlp::PipelineSettings>,
+    mut lease: LeaseSettings,
 ) -> Result<RuntimeSettings, Refusal> {
-    let lease = garde::Unvalidated::new(LeaseSettings {
-        ttl_seconds: value(
-            env,
-            "AGENTSFLEET_LEASE_TTL_SECONDS",
-            LeaseSettings::default().ttl_seconds,
-        )?,
-    })
-    .validate()
-    .map_err(|report| refused("runner.lease", report.to_string()))?;
+    lease.ttl_seconds = value(env, "AGENTSFLEET_LEASE_TTL_SECONDS", lease.ttl_seconds)?;
+    let lease = garde::Unvalidated::new(lease)
+        .validate()
+        .map_err(|report| refused("runner.lease", report.to_string()))?;
     let defaults = afd_gateway::RecoverySettings::default();
     let readings = garde::Unvalidated::new(Readings {
         clock: LeaseClock::new(&lease),

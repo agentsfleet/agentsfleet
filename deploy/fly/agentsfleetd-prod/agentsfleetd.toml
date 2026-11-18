@@ -49,6 +49,15 @@ max_buffered_bytes = 50_331_648
 
 [runner.lease]
 ttl_seconds = 35
+max_runtime_seconds = 43_200
+
+[runner.health]
+heartbeat_interval_seconds = 10
+offline_after_seconds = 105
+healthy_before_uncordon_seconds = 30
+
+[runner.sandboxes]
+max_idle_hold_seconds = 600
 
 [runner.recovery]
 resume_from_checkpoint = false

@@ -37,10 +37,10 @@ WITH instant AS MATERIALIZED (
   -- slot lock: stamping the earlier instant would bill the lock wait as runtime.
   INSERT INTO runner.leases
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
-   posture, provider, model, last_metered_at,
+   posture, provider, model, last_metered_at, max_runtime_seconds,
    fencing_token, lease_expires_at, status, posted_message_count, decision_snapshot, setup_revision_id, created_at, updated_at)
   SELECT $1, $2, $3, $4, $5, e.event_id, $15,
-         $7, $8, $9, a.checked_at,
+         $7, $8, $9, a.checked_at, $23,
          $10, h.lease_expires_at, $11, 0, $16, $20::uuid, a.checked_at, a.checked_at
   FROM held h
   CROSS JOIN after_lock a

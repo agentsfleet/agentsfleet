@@ -17,6 +17,8 @@ CREATE TABLE runner.leases (
     last_metered_at             TIMESTAMPTZ(3)  NOT NULL,
     fencing_token               BIGINT  NOT NULL,
     lease_expires_at            TIMESTAMPTZ(3)  NOT NULL,
+    -- Captured at issue; a later deployment profile cannot extend this lease.
+    max_runtime_seconds         INTEGER NOT NULL DEFAULT 43200,
     -- Durable Kill decision; a missed notification cannot restore authority.
     cancel_requested_at         TIMESTAMPTZ(3),
     status                      TEXT    NOT NULL,

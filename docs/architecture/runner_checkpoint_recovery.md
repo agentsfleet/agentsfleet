@@ -77,8 +77,22 @@ Enabling resume permits a new fenced
 claim. Active leases retain their stored deadlines and can reconnect.
 Checkpoint capture continues while resume is disabled.
 
-The deployment clock controls grants and renewals and derives the offline
-threshold as three lease lifetimes. Its default is 35 seconds.
+The deployment clock controls grants, renewals, heartbeat cadence, host quarantine and sandbox holds.
+The lease lifetime defaults to 35 seconds.
+An omitted offline threshold retains three lease lifetimes.
+
+Each new lease saves its maximum runtime in PostgreSQL.
+Renewals and task binding receipts use that saved cap, even after a deployment profile changes.
+The compiled twelve-hour ceiling remains the outer safety bound.
+
+| Setting | Default | Checked relationship |
+| --- | ---: | --- |
+| `runner.lease.ttl_seconds` | 35 seconds | More than 32 seconds and less than the chosen maximum runtime |
+| `runner.lease.max_runtime_seconds` | 43,200 seconds | Greater than the lease lifetime and no more than twelve hours |
+| `runner.health.heartbeat_interval_seconds` | 10 seconds | Positive; two intervals remain shorter than the offline threshold |
+| `runner.health.offline_after_seconds` | Three lease lifetimes | At least one lease lifetime; at most 129,600 seconds |
+| `runner.health.healthy_before_uncordon_seconds` | 30 seconds | Greater than one heartbeat interval and shorter than the offline threshold |
+| `runner.sandboxes.max_idle_hold_seconds` | 600 seconds | From one second through twelve hours |
 
 Startup
 requires a value greater than the existing 32-second renewal/reconnect budget
@@ -87,6 +101,9 @@ be positive and shorter than the lease lifetime.
 
 The configuration extension is under verification. Source inspection and
 focused checks are recorded in the [review ledger](../v2/reviews/m247-review-ledger.md#proposed-agentsfleetd-deployment-configuration).
+
+The sandbox setting caps the daemon's accepted reservation.
+A runner can release its local frozen sandbox earlier.
 
 ## What gets checkpointed
 

@@ -130,6 +130,7 @@ impl Leases {
         let decision =
             super::decision::freeze(&mut transaction, runner_id, host.decision_selected()).await?;
         let Some(created_at) = (sql::lease::LeaseRow {
+            max_runtime: self.clock().max_runtime(),
             lease_id: &lease_id,
             runner_id,
             fleet_id: &acquired.fleet_id,

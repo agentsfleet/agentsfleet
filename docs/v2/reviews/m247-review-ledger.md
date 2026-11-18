@@ -337,13 +337,15 @@ The corrected fixture and the full focused selection passed after resetting and 
 The final source fingerprint is `f5b8b4cfbe596fd9c874db477cdbc8b0ee5f12728612630095722501ba1756dc`.
 The run included both recovery fairness cases and native connection reconciliation.
 Workspace Rust lint passed with warnings denied; the unused-dependency check also passed.
+
 `orly gate verify` passed repository lint, documentation checks and version checks for this configuration batch.
 
 Four real collector checks passed for span batching, span timing, log batching and metric timing.
 The browser Appearance check also passed on the current branch.
 The reported deployed Appearance failure remains unreproduced.
 
-The remaining lease-health, runner-delivery, authoring and retry settings still require implementation.
+Runner-delivery, authoring and retry settings still require implementation.
+The lease-health extension below is under validation.
 A configurable maximum lease runtime must be saved when each lease is issued.
 Reading each replica's current runtime setting would break the promised immutable ceiling during a profile change.
 
@@ -352,6 +354,33 @@ The HTTP-send loop and eligible pre-output stream reopening currently each use t
 A connection failure can traverse both loops; the proposed single three-attempt description needs correction.
 
 Final coverage, full repository verification, matched recovery measurements and SQL plan refresh remain due.
+
+#### Lease timing extension
+
+Both deployment files now include the runtime cap, heartbeat interval, offline threshold, healthy-return interval and sandbox hold window.
+`LeaseSettings` checks their safety relationships before startup.
+`LeaseClock` stores whole-second values and supplies durations to each consumer.
+
+```text
+TOML -> checked LeaseClock
+         |-- native welcome + heartbeat policy -> runner cadence
+         |-- native silence deadline -> same cadence, two missed beats
+         |-- offline reads + liveness sweep + healthy-return guard
+         |-- report and release -> maximum sandbox hold
+         `-- new lease -> saved max_runtime_seconds
+                          -> single renewal + batch renewal + task receipt
+```
+
+The lease table gains one integer runtime snapshot and no index or foreign key.
+The default supports historical test writers; the production issuer always supplies its checked value.
+Existing lock order and deadline rechecks remain in place.
+
+The clean focused run passed 767 datastore-free tests and 128 live checks.
+The source fingerprint is `c4f766cf8eef8b060b1f3ff7f6e2fc677836395e982b00dfc164ec78f546f76f`.
+Workspace Rust lint passed with warnings denied.
+
+The live run included every prepared SQL statement, saved-cap issuance, single and batch renewal, and sandbox holds.
+Refreshed SQL performance plans remain due.
 
 #### Claude configuration review disposition
 
@@ -400,15 +429,15 @@ The proposed name is `wake_queue_capacity_fleets`. [Queue](../../../rustd/crates
 | Proposed parameter | Default | Current owner and effect | Current TOML support |
 | --- | ---: | --- | --- |
 | `runner.lease.ttl_seconds` | 35 | `LeaseClock::ttl` sets grant and renewal deadlines | Wired |
-| `runner.lease.max_runtime_seconds` | 43,200 | `MAX_RUNTIME` clamps each lease's total duration | Proposed |
+| `runner.lease.max_runtime_seconds` | 43,200 | `MAX_RUNTIME` clamps each lease's total duration | Wired; focused checks passed |
 | `runner.scheduling.missed_wake_probe_seconds` | 5 | `recovery::probe_ticks` queries waiting work independently of notification traffic | Wired under the traced scheduling name; focused checks passed |
 | `runner.scheduling.max_concurrent_recovery_claims` | 8 | `recovery::drain` bounds its concurrent session claims | Wired under the traced scheduling name; focused checks passed |
-| `runner.health.heartbeat_interval_seconds` | 10 | The daemon's heartbeat reply advertises the next heartbeat interval | Proposed |
-| `runner.health.offline_after_seconds` | 105 at default lease TTL | `LeaseClock::offline_after` currently derives three lease lifetimes | Proposed; retain the derived fallback when omitted |
-| `runner.health.healthy_before_uncordon_seconds` | 30 | `heartbeat::cordon` requires continuous healthy native observations | Proposed |
+| `runner.health.heartbeat_interval_seconds` | 10 | The daemon's heartbeat reply advertises the next heartbeat interval | Wired; focused checks passed |
+| `runner.health.offline_after_seconds` | 105 at default lease TTL | `LeaseClock::offline_after` currently derives three lease lifetimes | Wired; focused checks passed |
+| `runner.health.healthy_before_uncordon_seconds` | 30 | `heartbeat::cordon` requires continuous healthy native observations | Wired; focused checks passed |
 | `runner.renewal.tick_seconds` | 5 | The runner's host-wide renewal batch loop checks live work | Proposed; requires runner-side delivery and validation |
 | `runner.renewal.authoring_interval_seconds` | 10 | The runner's private authoring loop renews a running attempt | Proposed; requires runner-side delivery and validation |
-| `runner.sandboxes.idle_hold_seconds` | 600 | `SANDBOX_HOLD_IDLE` limits a warm frozen sandbox's idle hold | Proposed |
+| `runner.sandboxes.max_idle_hold_seconds` | 600 | `SANDBOX_HOLD_IDLE` limits a warm frozen sandbox's idle hold | Wired; focused checks passed |
 | `maintenance.runner_liveness.interval_seconds` | 10 | `Liveness::interval` schedules cordon and drain checks | Wired; final repository verification remains due |
 | `maintenance.runner_liveness.batch_size` | 100 | `Liveness` bounds each due-runner fetch | Wired; final repository verification remains due |
 | `maintenance.expired_work.interval_seconds` | 2 | `sweepers::expiry` bills expired fleet leases and expires authoring attempts | Wired; final repository verification remains due |

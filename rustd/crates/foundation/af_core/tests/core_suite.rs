@@ -26,6 +26,7 @@ mod problem;
 #[cfg(all(unix, feature = "signal", feature = "test-util"))]
 #[path = "signal.rs"]
 mod signal;
+mod timing;
 #[cfg(feature = "test-util")]
 #[path = "trace.rs"]
 mod trace;
