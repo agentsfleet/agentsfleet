@@ -20,6 +20,7 @@ describe("the stale fixture sweep's address pattern", () => {
   it("should still match the signups' addresses and the invitees earlier runs left", () => {
     expect(PER_RUN_FIXTURE_RE.test(`signup-fixture-${TAG}+clerk_test@e2e.agentsfleet.net`)).toBe(true);
     expect(PER_RUN_FIXTURE_RE.test(`team-invitee-${TAG}+clerk_test@e2e.agentsfleet.net`)).toBe(true);
+    expect(PER_RUN_FIXTURE_RE.test(`first-visit-${TAG}+clerk_test@e2e.agentsfleet.net`)).toBe(true);
     expect(PER_RUN_FIXTURE_RE.test("admin-fixture@e2e.agentsfleet.net")).toBe(false);
   });
 });

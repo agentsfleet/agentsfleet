@@ -1,8 +1,8 @@
 ---
 type: reference
 audience: operator
-verified: 2026-11-08
-product_version: 0.75.0
+verified: 2026-11-18
+product_version: 0.77.0
 executable: false
 ---
 
@@ -74,15 +74,24 @@ Setup is complete when step 09 and its operational gates pass.
 Run these in order after migrations finish, with `ENV`, `VAULT` and `AGENTSFLEET_API_URL` set for the environment.
 Every value comes from 1Password at runtime; nothing is pasted.
 
-| # | Do | Proof |
-|---|---|---|
-| 1 | [Deploy](./founding/04_deploy_dev/001_playbook.md) with the runner disabled | `/readyz` succeeds |
-| 2 | [Bootstrap the administrator](./operations/admin_bootstrap/001_playbook.md): account, platform scopes, `agentsfleet login`, workspace pointer, API key | `agentsfleet whoami` lists the platform scopes |
-| 3 | Sync every bag in the [bag table](./operations/admin_bootstrap/001_playbook.md#sync-a-provider-secret-bag) | Each sync prints `✓ <bag> created` |
-| 4 | [Seed the model catalogue](./operations/model_catalogue/001_playbook.md), then set the default with `agentsfleet platform keys use` | `agentsfleet platform keys list` shows one active default |
-| 5 | [Enroll the runner](./operations/runner_onboarding/001_playbook.md) and redeploy; the restart also loads the startup-read bags | `agentsfleet platform runners list` shows it online |
-| 6 | [Configure observability](./operations/observability/001_playbook.md) | Runtime series arrive |
-| 7 | Run [development](./founding/06_verify_dev/001_playbook.md) or [production](./founding/09_verify_prod/001_playbook.md) acceptance | Named lanes pass |
+1. [Deploy](./founding/04_deploy_dev/001_playbook.md) with the runner disabled.
+   Proof: `/readyz` succeeds.
+2. [Bootstrap the administrator](./operations/admin_bootstrap/001_playbook.md): account, platform scopes, `agentsfleet login`, workspace pointer, API key.
+   Proof: `agentsfleet whoami` lists the platform scopes.
+3. Sync every bag in the [bag table](./operations/admin_bootstrap/001_playbook.md#sync-a-provider-secret-bag).
+   Proof: each sync prints `✓ <bag> created`.
+4. [Seed the model catalogue](./operations/model_catalogue/001_playbook.md).
+5. Set the default with `agentsfleet platform keys use`.
+   Proof: `agentsfleet platform keys list` shows one active default.
+6. [Seed the decision model](./operations/model_catalogue/001_playbook.md#seed-the-decision-model).
+   Proof: `agentsfleet platform models list` shows `typesafe`.
+7. [Enroll the runner](./operations/runner_onboarding/001_playbook.md) with the decision model.
+8. Redeploy; the restart also loads the startup-read bags.
+   Proof: `agentsfleet platform runners list` shows the runner online.
+9. [Configure observability](./operations/observability/001_playbook.md).
+   Proof: runtime series arrive.
+10. Run [development](./founding/06_verify_dev/001_playbook.md) or [production](./founding/09_verify_prod/001_playbook.md) acceptance.
+    Proof: the named lanes pass.
 
 After a database wipe, an existing Clerk user needs its signed `user.created` event resent; signing in creates no rows.
 A green health check proves neither credentials nor inference.

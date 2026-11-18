@@ -77,6 +77,7 @@ No value reaches process arguments or output; an HTTP 403 or 404 means the key's
 | `github-app` | `github-app`: `app_id`, `app_slug`, `client_id`, `client_secret`, `private_key_pem`, `webhook_secret` | At startup |
 | `slack-app` | `slack-app`: `client_id`, `client_secret`, `signing_secret` | Per request |
 | `linear-app`, `jira-app`, `zoho-app` | Same-named item: `client_id`, `client_secret` | At startup |
+| `typesafe` | `typesafe`: `credential`, stored as `api_key` | Per decision call |
 
 A startup-read bag takes effect at the next restart, such as the runner redeploy.
 
