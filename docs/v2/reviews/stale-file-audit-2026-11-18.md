@@ -46,6 +46,7 @@ Attempt 2 saved the fleet, then axe reported a `heading-order` violation on an `
 The `heading-order` failure most likely came from `FleetSetup.tsx`, which renders its `h2` only when the save is not yet recorded.
 `SetupQuestions` always rendered an `h3` after it, so a recorded save left the page at `h1` then `h3`.
 Dev gained a decision model in today's rebuild, so drafts now carry those questions.
+
 Unverified: the failing page's snapshot, in that run's saved test files, would confirm it.
 
 This change fixes that path. `SetupQuestions` takes a heading level, and `FleetSetup` passes level 2 when no save heading sits above it.
