@@ -44,6 +44,4 @@ CREATE INDEX idx_attempts_tenant_id_status ON authoring.attempts (tenant_id, sta
 
 CREATE INDEX idx_attempts_workspace_id ON authoring.attempts (workspace_id);
 
-CREATE INDEX idx_attempts_user_id ON authoring.attempts (user_id);
-
 GRANT SELECT, INSERT, UPDATE ON authoring.attempts TO api_runtime;

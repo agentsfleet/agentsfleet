@@ -17,4 +17,10 @@ CREATE TABLE identity.cli_credentials (
 CREATE UNIQUE INDEX uq_cli_credentials_user_id_machine_name_live
     ON identity.cli_credentials (user_id, machine_name) WHERE revoked_at IS NULL;
 
+-- A user or tenant delete cascades here; these find its revoked rows too,
+-- which the live-only unique index above cannot.
+CREATE INDEX idx_cli_credentials_user_id ON identity.cli_credentials (user_id);
+
+CREATE INDEX idx_cli_credentials_tenant_id ON identity.cli_credentials (tenant_id);
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON identity.cli_credentials TO api_runtime;

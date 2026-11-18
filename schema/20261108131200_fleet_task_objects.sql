@@ -44,8 +44,6 @@ CREATE INDEX idx_task_objects_scope ON fleet.task_objects (workspace_id, task_id
 
 CREATE INDEX idx_task_objects_orphans ON fleet.task_objects (updated_at, id) WHERE tombstoned_at IS NULL;
 
-CREATE INDEX idx_task_objects_upload_owner ON fleet.task_objects (owner_checkpoint_id, id) WHERE verified_at IS NULL;
-
 CREATE FUNCTION fleet.task_objects_record_purge() RETURNS trigger AS $$
 BEGIN
     INSERT INTO fleet.task_storage_purges (task_object_id, workspace_id, task_identity_key_id, bucket_reference, accounted_bytes, stored,
