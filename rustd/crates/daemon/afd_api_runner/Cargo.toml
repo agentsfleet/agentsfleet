@@ -47,5 +47,9 @@ serde.workspace = true
 tokio = { workspace = true, features = ["time"] }
 tracing.workspace = true
 
+[dev-dependencies]
+# The per-thread trace capture the steer log test reads.
+af_core = { workspace = true, features = ["test-util"] }
+
 [lints]
 workspace = true

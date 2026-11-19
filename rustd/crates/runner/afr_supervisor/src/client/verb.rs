@@ -84,6 +84,12 @@ pub(crate) enum Verb {
     ScheduleRuns,
     /// A line said to the leased event's thread.
     Message,
+    /// The leased fleet's workspace's fleets.
+    FleetList,
+    /// One fleet's recent events, as the leased fleet reads them.
+    FleetEvents,
+    /// Work the leased fleet puts on another fleet.
+    FleetSteer,
     /// The messages a person sent while the run works, claimed for it.
     Folds,
     /// Native event-owned recovery command.
@@ -126,7 +132,7 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 40] = [
+    pub(crate) const ALL: [Self; 43] = [
         Self::Open,
         Self::Heartbeat,
         Self::AuthoringModel,
@@ -149,6 +155,9 @@ impl Verb {
         Self::ScheduleRun,
         Self::ScheduleRuns,
         Self::Message,
+        Self::FleetList,
+        Self::FleetEvents,
+        Self::FleetSteer,
         Self::Folds,
         Self::TurnCheckpoint,
         Self::TaskInputs,
@@ -176,6 +185,8 @@ impl Verb {
             | Self::Me
             | Self::ScheduleList
             | Self::ScheduleRuns
+            | Self::FleetList
+            | Self::FleetEvents
             | Self::TaskInputs
             | Self::TaskEffects
             | Self::TaskEffect
@@ -202,6 +213,7 @@ impl Verb {
             | Self::ScheduleCreate
             | Self::ScheduleRun
             | Self::Message
+            | Self::FleetSteer
             | Self::Folds
             | Self::TurnCheckpoint
             | Self::TaskBindings
@@ -240,6 +252,9 @@ impl Verb {
             Self::ScheduleRun => "schedule_run",
             Self::ScheduleRuns => "schedule_runs",
             Self::Message => "message",
+            Self::FleetList => "fleet_list",
+            Self::FleetEvents => "fleet_events",
+            Self::FleetSteer => "fleet_steer",
             Self::Folds => "folds",
             Self::TurnCheckpoint => "turn_checkpoint",
             Self::TaskInputs => "task_inputs",
@@ -284,6 +299,9 @@ impl Verb {
             | Self::ScheduleRun
             | Self::ScheduleRuns
             | Self::Message
+            | Self::FleetList
+            | Self::FleetEvents
+            | Self::FleetSteer
             | Self::Folds
             | Self::TurnCheckpoint
             | Self::TaskInputs

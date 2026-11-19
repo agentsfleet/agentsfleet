@@ -71,6 +71,12 @@ pub enum RunnerRoute {
     ScheduleRuns,
     /// A line said to the event's thread before the answer.
     Messages,
+    /// Work the leased fleet puts on another fleet in its workspace.
+    Steers,
+    /// The fleets of the leased fleet's workspace.
+    Fleets,
+    /// One fleet's recent events, as the leased fleet reads them.
+    FleetEvents,
 }
 
 impl RunnerRoute {
@@ -101,6 +107,9 @@ impl RunnerRoute {
         Self::Schedule,
         Self::ScheduleRuns,
         Self::Messages,
+        Self::Steers,
+        Self::Fleets,
+        Self::FleetEvents,
     ];
 
     /// The verbs this route identity serves.
@@ -120,9 +129,12 @@ impl RunnerRoute {
             | Self::TaskCheckpointObjects => &[Verb::Get, Verb::Post],
             Self::Schedule => &[Verb::Patch, Verb::Delete],
             Self::TaskDecision | Self::TaskCheckpoint | Self::TaskCheckpointPin => &[Verb::Patch],
-            Self::SelfRecord | Self::MemoryHydrate | Self::TaskInputs | Self::TaskEffect => {
-                &[Verb::Get]
-            }
+            Self::SelfRecord
+            | Self::MemoryHydrate
+            | Self::TaskInputs
+            | Self::TaskEffect
+            | Self::Fleets
+            | Self::FleetEvents => &[Verb::Get],
             Self::Stream
             | Self::CredentialsMint
             | Self::MemoryCapture
@@ -134,7 +146,8 @@ impl RunnerRoute {
             | Self::TaskCheckpoints
             | Self::TaskCheckpointUploads
             | Self::TaskCheckpointAuthorizations
-            | Self::Messages => &[Verb::Post],
+            | Self::Messages
+            | Self::Steers => &[Verb::Post],
         }
     }
 
@@ -169,6 +182,9 @@ impl RunnerRoute {
             Self::Schedule => paths::LEASE_SCHEDULE,
             Self::ScheduleRuns => paths::LEASE_SCHEDULE_RUNS,
             Self::Messages => paths::LEASE_MESSAGES,
+            Self::Steers => paths::LEASE_STEERS,
+            Self::Fleets => paths::LEASE_FLEETS,
+            Self::FleetEvents => paths::LEASE_FLEET_EVENTS,
         };
         RouteMeta::new(
             Guard::RunnerBearer,

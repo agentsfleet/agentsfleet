@@ -124,8 +124,7 @@ Read in this order if you've never seen the project:
 
 1. [`high_level.md`](./high_level.md): what the product is, what it isn't, and why it exists.
 2. [`user_flow.md`](./user_flow.md): how a user gets from "I want a Fleet" to "the Fleet is running on my repo."
-3. [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md): install `github-pr-reviewer` and watch it review a Pull Request.
-4. [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md): trace a failed deployment from evidence to a human-reviewed fix.
+3. [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md): follow one Slack mention to a fleet's answer in the thread.
 
 > [!IMPORTANT]
 > Active and shipped specs cite `user_flow.md` and `scenarios/` by `§`-anchor in acceptance criteria, and so do sibling architecture pages. Both stay here as **contributor-canonical** pages; docs.agentsfleet.net carries its own user coverage. Before moving any user-facing page, `git grep` the spec corpus for references to the file and its anchors.
@@ -157,10 +156,7 @@ After that, dip into whichever of these matches the change you're making:
 | 🦀 [`rust-ownership.md`](./rust-ownership.md) | When Rust code shares an owner or crate. |
 | 🔌 [`connectors.md`](./connectors.md) | Provider connections, App ingress and fleet subscriptions. |
 | 💳 [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | Credits, debit points, provider keys, model library. |
-| 🐙 [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) | Install the reviewer; follow one Pull Request (PR). |
-| 🚑 [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) | Diagnose a failed deploy toward a draft PR. |
 | 🚨 [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) | An installed fleet answering one Slack channel. |
-| 🔀 [`scenarios/two-fleets-github-slack.md`](./scenarios/two-fleets-github-slack.md) | Two fleets end to end, one picture per step. |
 | 🔐 [`../AUTH.md`](../AUTH.md) | Principals, tokens and bearer routing. |
 
 ---
@@ -215,7 +211,7 @@ One-line definitions for quick lookup. The full, canonical definition lives in t
 | **Connector install** (`connector.installs`) | A workspace's link to one provider account, such as a GitHub App installation, unique per `(provider, external_account_id)`. [(more)](./connectors.md#terminology-binding) |
 | **Coding fleet** | The workstation tool a human types into. [(more)](./user_flow.md#80-the-wedge-surface) |
 | **Steer** | A human message; lands as `actor=steer:<user>`. [(more)](./user_flow.md#83-triggering-the-fleet) |
-| **Fleet steer** (proposed, M239) | One fleet's message to another fleet in its workspace, admitted as a steer with `actor=fleet:<fleet_id>` and at most two hops. [(more)](./scenarios/fleet-to-fleet.md) |
+| **Fleet steer** (M252) | One fleet's message to another fleet in its workspace, admitted as a steer with `actor=fleet:<fleet_id>`. [(more)](./scenarios/chief-of-staff.md) |
 | **App webhook trigger** | A provider App delivery; GitHub's lands as `actor=github-app`. [(more)](./connectors.md#github-app-platform-setup-to-fleet-execution) |
 | **Manual webhook trigger** | A post to `/v1/webhooks/{fleet_id}/{source}`, the URL Save returns for that trigger, signed with the fleet's own webhook secret. [(more)](./user_flow.md#83-triggering-the-fleet) |
 | **Trigger panel** | The card on a fleet's page (`/w/{workspaceId}/fleets/{id}`, `TriggerPanel`) showing trigger setup. [(more)](./user_flow.md#84-working-from-claude-or-the-dashboard) |

@@ -89,6 +89,18 @@ describe("private setup proxy", () => {
     await proxy(["models"]);
     expect(new URL(upstream.mock.calls.at(-1)?.[0]).search).toBe("");
   });
+  it("setup_proxy_allows_name_on_the_fleet_list", async () => {
+    upstream.mockResolvedValue(response({items: [], total: null, next_cursor: null}));
+    await proxy(["fleets"], {}, "?name=agentbob&credential=secret");
+    expect(new URL(upstream.mock.calls[0]?.[0]).search).toBe("?name=agentbob");
+    await proxy(["models"], {}, "?name=agentbob&limit=10");
+    expect(new URL(upstream.mock.calls[1]?.[0]).search).toBe("?limit=10");
+    await proxy(["fleets", FLEET_ID], {}, "?name=agentbob");
+    expect(new URL(upstream.mock.calls[2]?.[0]).search).toBe("");
+    // The shared page keys are not widened for the other lists.
+    expect(matchSetupRoute(WORKSPACE, ["fleets"], METHOD.get)?.query).toEqual(["limit", "starting_after", "name"]);
+    expect(matchSetupRoute(WORKSPACE, ["plugins"], METHOD.get)?.query).toEqual(["limit", "starting_after"]);
+  });
   it("preserves the literal private-chat query together with its bound cursor", async () => {
     upstream.mockResolvedValue(response({items: [], next_cursor: null}));
     const query = new URLSearchParams({q: "build_% failures", limit: "50", starting_after: "opaque+cursor", credential: "discard"});

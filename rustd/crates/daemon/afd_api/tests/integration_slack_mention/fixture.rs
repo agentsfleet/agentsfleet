@@ -177,23 +177,36 @@ impl Fixture {
     /// A fleet in the team's workspace, stored from the native `config` a
     /// reviewed setup would store, with `status`.
     pub(super) async fn fleet(&self, config: &str, status: &str) -> Uuid7 {
-        self.fleet_in(&self.workspace, config, status).await
+        self.fleet_in(&self.workspace, config, status, None).await
+    }
+
+    /// The same fleet, saved under `saved` rather than its definition's name,
+    /// as a person who renamed it on save leaves it.
+    pub(super) async fn fleet_saved_as(&self, config: &str, status: &str, saved: &str) -> Uuid7 {
+        self.fleet_in(&self.workspace, config, status, Some(saved))
+            .await
     }
 
     /// The same fleet in the tenant's other workspace: the one a Slack team
     /// that moved has left behind.
     pub(super) async fn fleet_elsewhere(&self, config: &str, status: &str) -> Uuid7 {
-        self.fleet_in(&self.admin, config, status).await
+        self.fleet_in(&self.admin, config, status, None).await
     }
 
-    async fn fleet_in(&self, workspace: &Uuid7, config: &str, status: &str) -> Uuid7 {
+    async fn fleet_in(
+        &self,
+        workspace: &Uuid7,
+        config: &str,
+        status: &str,
+        saved: Option<&str>,
+    ) -> Uuid7 {
         let parsed = af_fleet_runtime::FleetConfig::authored(config)
             .expect("the fixture configuration parses");
         let fleet = mint_id();
         let setup = FixtureSetup::new(config);
         let mut connection = self.database.acquire().await.expect("an API connection");
         FleetSeed::new(&fleet, workspace, &self.tenant, status)
-            .name(parsed.name().as_str())
+            .name(saved.unwrap_or_else(|| parsed.name().as_str()))
             .at(afd_db::test_util::SEEDED_AT)
             .unplaced_setup(SetupRevision {
                 definition: &setup.definition,

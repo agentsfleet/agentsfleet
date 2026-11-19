@@ -255,3 +255,22 @@ fn every_published_handler_entry_is_hosted() {
         "published but not hosted: {unhosted:?}"
     );
 }
+
+/// The two fleet tools are offered only to a lease whose
+/// policy names them, and both are hosted here.
+#[test]
+fn fleet_tools_are_offered_only_when_declared() {
+    let (transport, _sent) = crate::testing::replying(200, "");
+    let catalog = Catalog::hosted(transport);
+
+    let without = catalog.select(&["message"]).unwrap();
+    assert!(!without.offers("fleet_steer"));
+    assert!(!without.offers("fleet_activity"));
+
+    let with = catalog
+        .select(&["message", "fleet_steer", "fleet_activity"])
+        .unwrap();
+    assert!(with.offers("fleet_steer"));
+    assert!(with.offers("fleet_activity"));
+    assert_eq!(PUBLISHED.len(), 41);
+}

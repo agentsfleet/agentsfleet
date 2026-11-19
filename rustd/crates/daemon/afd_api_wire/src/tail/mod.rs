@@ -176,6 +176,8 @@ pub enum TailFrame<'a> {
         /// How the event entered the system.
         event_type: Cow<'a, str>,
         /// What was typed, at most [`af_wire::event::STEER_MESSAGE_MAX_BYTES`].
+        /// Another fleet's steer leads with its sender line, so its message
+        /// runs past that bound by the length of that line.
         message: Cow<'a, str>,
         /// When the admission was recorded.
         #[serde(with = "af_wire::instant")]
@@ -192,8 +194,9 @@ pub enum TailFrame<'a> {
         /// When the row was created.
         #[serde(with = "af_wire::instant")]
         created_at: jiff::Timestamp,
-        /// What a person typed, on a steer only: absent for every other
-        /// actor, above [`af_wire::event::STEER_MESSAGE_MAX_BYTES`], or when the
+        /// What a person typed, or another fleet's sender line and words, on
+        /// a steer only: absent for every other actor, for a person's text
+        /// above [`af_wire::event::STEER_MESSAGE_MAX_BYTES`], or when the
         /// stored body does not parse.
         #[serde(skip_serializing_if = "Option::is_none")]
         message: Option<Cow<'a, str>>,

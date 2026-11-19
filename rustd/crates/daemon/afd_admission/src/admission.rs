@@ -105,8 +105,10 @@ pub enum Reply<'a> {
         /// An address only that connector's poster reads.
         address: &'a str,
     },
-    /// The destination of an earlier event on the same fleet, copied inside
-    /// the admission's own statement so no read can race the write.
+    /// The destination of an earlier event in the same workspace, copied
+    /// inside the admission's own statement so no read can race the write: a
+    /// continuation's from the event it resumes, a fleet's steer from the
+    /// event its sender was running.
     Inherit {
         /// The id of the event whose destination is copied: its admission row's
         /// `UUIDv7`. An event recorded with no destination copies none.

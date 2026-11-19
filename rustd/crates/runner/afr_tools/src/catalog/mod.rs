@@ -23,7 +23,8 @@ use crate::sandbox::{
 };
 use crate::selection::Selection;
 use crate::verbs::{
-    CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate, Message, ScheduleOnce,
+    CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate, FleetActivity, FleetSteer,
+    Message, ScheduleOnce,
 };
 use crate::web_fetch::WebFetch;
 
@@ -74,6 +75,11 @@ pub const MEMORY_FORGET: Entry = Entry::new("memory_forget", Runtime::Supervisor
 pub const UPDATE_PLAN: Entry = Entry::new("update_plan", Runtime::Supervisor);
 /// A message to the event's thread, through a runner verb.
 pub const MESSAGE: Entry = Entry::new("message", Runtime::Supervisor);
+/// Work this fleet puts on another fleet in its workspace, through a runner
+/// verb.
+pub const FLEET_STEER: Entry = Entry::new("fleet_steer", Runtime::Supervisor);
+/// The workspace's fleets and one fleet's recent events, through a runner verb.
+pub const FLEET_ACTIVITY: Entry = Entry::new("fleet_activity", Runtime::Supervisor);
 /// A one-shot or recurring schedule on the daemon's plane.
 pub const SCHEDULE: Entry = Entry::new("schedule", Runtime::Supervisor);
 /// Adds a cron schedule.
@@ -134,7 +140,7 @@ pub const BROWSER_OPEN: Entry = Entry::new("browser_open", Runtime::Sandbox);
 pub const SCREENSHOT: Entry = Entry::new("screenshot", Runtime::Sandbox);
 
 /// Every published tool.
-pub const PUBLISHED: [&Entry; 39] = [
+pub const PUBLISHED: [&Entry; 41] = [
     &HTTP_REQUEST,
     &WEB_FETCH,
     &PUSHOVER,
@@ -145,6 +151,8 @@ pub const PUBLISHED: [&Entry; 39] = [
     &MEMORY_FORGET,
     &UPDATE_PLAN,
     &MESSAGE,
+    &FLEET_STEER,
+    &FLEET_ACTIVITY,
     &SCHEDULE,
     &CRON_ADD,
     &CRON_LIST,
@@ -225,6 +233,8 @@ impl Catalog {
             Typed::boxed(Browser),
             Typed::boxed(Screenshot),
             Typed::boxed(Message),
+            Typed::boxed(FleetSteer),
+            Typed::boxed(FleetActivity),
             Typed::boxed(ScheduleOnce),
             Typed::boxed(CronAdd),
             Typed::boxed(CronList),

@@ -78,7 +78,6 @@ The discovery command is `git grep -l -w -e daily_dollars -e monthly_dollars -e 
 | `docs/architecture/product_analytics.md` | M227_002 carried batch | complete/edit later |
 | `docs/architecture/runner_execution.md` | M227_001 cutover | common architecture updated; implementation proofs pending |
 | `docs/architecture/runner_fleet.md` | M227_001 cutover | complete/edit later |
-| `docs/architecture/scenarios/production-deploy-repair.md` | M227_001 cutover | complete/edit later |
 | `docs/architecture/web_app.md` | M227_001 cutover | common architecture updated; implementation proofs pending |
 | `docs/architecture/website-job-entrance.md` | M227_002 carried batch | complete/edit later |
 | `docs/designs/chat-within-a-workspace.md` | M227_001 cutover | common architecture updated; implementation proofs pending |

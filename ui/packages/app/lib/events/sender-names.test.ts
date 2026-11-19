@@ -58,4 +58,13 @@ describe("isNamedTeammate", () => {
     expect(isNamedTeammate(NAMELESS, NAMES)).toBe(false);
     expect(isNamedTeammate(STRANGER, NAMES)).toBe(false);
   });
+
+  it("shows another fleet's steer under a label that names no fleet", () => {
+    const steer = `${ACTOR.FLEET_STEER_PREFIX}0199a801-1000-7000-8000-0000000000c0`;
+    expect(isNamedTeammate(`continuation:${steer}`, NAMES)).toBe(true);
+    expect(nameSender(`continuation:${steer}`, FLEET, NAMES)).toBe("Another fleet");
+    // Only the `fleet:` prefix itself: this fleet's reply and a lookalike connector stay unlabelled.
+    expect(isNamedTeammate(ACTOR.FLEET, NAMES)).toBe(false);
+    expect(isNamedTeammate("fleetbot:U08ABCXYZ", NAMES)).toBe(false);
+  });
 });

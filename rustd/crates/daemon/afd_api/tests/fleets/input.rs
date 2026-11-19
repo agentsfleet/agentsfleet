@@ -165,3 +165,20 @@ async fn a_body_that_is_not_json_is_refused_before_the_store() {
     let response = authorised(Method::PATCH, &item(), "{not json").await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
+
+/// A name outside the saved-name bound is refused with a
+/// sentence naming `name`, before the store is reached.
+#[tokio::test]
+async fn fleet_list_refuses_a_name_outside_its_bound() {
+    let too_long = "a".repeat(65);
+    for name in ["Agent%20Bob", "", too_long.as_str()] {
+        let path = format!("{}?name={name}", collection());
+        let response = authorised(Method::GET, &path, "").await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{name:?}");
+        let detail = detail_of(response).await;
+        assert!(detail.starts_with("name "), "{name:?}: {detail}");
+    }
+    let response = authorised(Method::GET, &format!("{}?name=agentbob", collection()), "").await;
+    assert_reached_the_verb(response, "a name inside the bound reaches the store").await;
+}

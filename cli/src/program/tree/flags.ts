@@ -19,8 +19,12 @@ import {
 import { API_KEY_SORTS } from "../../constants/api-key.ts";
 import { MAX_RECALL_LIMIT } from "../../constants/memory-limits.ts";
 import { eventTime } from "../../lib/event-time.ts";
+import { readFleetAddress } from "../../lib/fleet-address.ts";
 
 const NOT_A_UUIDV7 = `expected uuidv7 format (e.g. ${EXAMPLE_UUIDV7})` as const;
+const NOT_A_FLEET_NAME = "expected @ and a fleet name of 1 to 64 a-z, 0-9 or - characters (e.g. @support-triage)" as const;
+const FLEET_NAME_PREFIX = "@" as const;
+const FLEET_ID_ARGUMENT = "fleet_id" as const;
 
 // A flag name is the wire form a person types, so each is written once and
 // shared by every variant that spells it — `--limit` means the same thing on
@@ -276,8 +280,27 @@ export const idArgument = (name: string, description: string) =>
     Argument.filter((value: string) => isValidId(value), () => NOT_A_UUIDV7),
   );
 
-export const fleetIdArgument = idArgument("fleet_id", FLEET_ID_DESC);
+export const fleetIdArgument = idArgument(FLEET_ID_ARGUMENT, FLEET_ID_DESC);
 export const fleetIdOptionalArgument = fleetIdArgument.pipe(Argument.optional);
+
+/**
+ * A fleet id, or `@` and the fleet's saved name. Only `fleet steer` takes it.
+ *
+ * A value that opens with `@` is held to the address rule the dashboard shares
+ * (`lib/fleet-address.ts`), with nothing after the name: the message is its own
+ * argument, so a quoted `"@agentbob retry"` is refused here instead of being
+ * read as a name and a message. Any other value is checked as an id, exactly as
+ * every other fleet command checks one. The name stays `fleet_id` in help and
+ * in refusals, so nothing that reads either changes.
+ */
+export const fleetIdOrNameArgument = Argument.String(FLEET_ID_ARGUMENT).pipe(
+  Argument.withDescription("Fleet ID, or @ and the fleet's name"),
+  Argument.filter(
+    (value: string) =>
+      value.startsWith(FLEET_NAME_PREFIX) ? readFleetAddress(value)?.rest === "" : isValidId(value),
+    (value: string) => (value.startsWith(FLEET_NAME_PREFIX) ? NOT_A_FLEET_NAME : NOT_A_UUIDV7),
+  ),
+);
 export const workspaceIdArgument = idArgument("workspace_id", WORKSPACE_ID_DESC);
 export const workspaceIdOptionalArgument = workspaceIdArgument.pipe(Argument.optional);
 export const gateIdArgument = idArgument("gate_id", "Approval gate ID");

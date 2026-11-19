@@ -16,9 +16,11 @@ import {
   THREAD_STATUS,
 } from "./event-summary";
 import { ACCOUNT_ID, PLATFORM_IDENTITY, row } from "@/tests/helpers/event-summary-fixtures";
+import { isNamedTeammate, nameSender, senderNamesFrom } from "./sender-names";
 
 const FLEET_NAME = "github-pr-reviewer";
 const UNFINISHED_REPLY = "This fleet couldn’t complete the reply.";
+const SENDER_FLEET_ID = "0199a801-1000-7000-8000-0000000000c0";
 
 describe("roleFor", () => {
   it("splits operator steers, fleet replies, and everything else", () => {
@@ -99,6 +101,28 @@ describe("senderLabelFor", () => {
 
   it("names the source of a connector actor and drops its member id", () => {
     expect(senderLabelFor("slack:U08ABCXYZ")).toBe("Slack");
+  });
+});
+
+describe("another fleet's steer", () => {
+  it("event_summary_labels_a_fleet_steer_as_another_fleet", () => {
+    const steer = `${ACTOR.FLEET_STEER_PREFIX}${SENDER_FLEET_ID}`;
+    const names = senderNamesFrom(ACCOUNT_ID, []);
+    expect(roleFor(steer)).toBe("user");
+    expect(senderLabelFor(steer, FLEET_NAME)).toBe("Another fleet");
+    expect(nameSender(steer, FLEET_NAME, names)).toBe("Another fleet");
+    expect(isNamedTeammate(steer, names)).toBe(true);
+    // A run that resumed the steer is still that fleet's turn.
+    expect(roleFor(`continuation:${steer}`)).toBe("user");
+    expect(senderLabelFor(`continuation:${steer}`)).toBe("Another fleet");
+    // A person's steer and this fleet's own reply read as they did.
+    const person = `${ACTOR.STEER_PREFIX}user_teammate`;
+    expect(roleFor(person)).toBe("user");
+    expect(senderLabelFor(person, FLEET_NAME)).toBe(SENDER.OPERATOR);
+    expect(isNamedTeammate(person, names)).toBe(false);
+    expect(roleFor(ACTOR.FLEET)).toBe("assistant");
+    expect(senderLabelFor(ACTOR.FLEET, FLEET_NAME)).toBe(FLEET_NAME);
+    expect(isNamedTeammate(ACTOR.FLEET, names)).toBe(false);
   });
 });
 

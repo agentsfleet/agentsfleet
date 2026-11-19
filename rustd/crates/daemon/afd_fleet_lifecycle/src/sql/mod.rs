@@ -45,6 +45,11 @@
 /// comparison, and the column list has one spelling.
 pub(crate) const SELECT_FLEET_PAGE: &str = include_str!("select_fleet_page.sql");
 
+/// One fleet by its saved name, in the page's columns.
+///
+/// `$1` workspace · `$2` name.
+pub(crate) const SELECT_FLEET_BY_NAME: &str = include_str!("select_fleet_by_name.sql");
+
 /// The status alone, for the steer's ingress check.
 ///
 /// `$1` fleet · `$2` workspace.

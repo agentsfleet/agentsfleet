@@ -116,3 +116,57 @@ pub struct SteerAccepted<'a> {
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     pub folded_into_event_id: Option<Cow<'a, str>>,
 }
+
+/// What a fleet's steer stores as its request: the words the target reads,
+/// and which fleet sent them.
+///
+/// `message` is the sender line, a newline, then `text`, composed once by
+/// [`FleetSteerBody::new`]. The model, the chat and the history all read
+/// `message` (`message_of`), so the target is told who asked whichever way it
+/// reads the event, and can answer with the same tool.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FleetSteerBody<'a> {
+    /// The sender line, a newline, then `text`.
+    #[serde(borrow)]
+    pub message: Cow<'a, str>,
+    /// The words the sender wrote, with its secret values masked.
+    #[serde(borrow)]
+    pub text: Cow<'a, str>,
+    /// The fleet that sent it.
+    #[serde(borrow)]
+    pub sender_fleet_id: Cow<'a, str>,
+    /// That fleet's saved name when it sent it.
+    #[serde(borrow)]
+    pub sender_fleet_name: Cow<'a, str>,
+    /// The event the sender was running when it sent it.
+    #[serde(borrow)]
+    pub sender_event_id: Cow<'a, str>,
+}
+
+impl<'a> FleetSteerBody<'a> {
+    /// The body for `text`, sent by the fleet `sender_fleet_id`, saved as
+    /// `sender_fleet_name`, while it ran `sender_event_id`.
+    #[must_use]
+    pub fn new(
+        text: &'a str,
+        sender_fleet_id: &'a str,
+        sender_fleet_name: &'a str,
+        sender_event_id: &'a str,
+    ) -> Self {
+        let line = sender_line(sender_fleet_name, sender_fleet_id);
+        Self {
+            message: Cow::Owned(format!("{line}\n{text}")),
+            text: Cow::Borrowed(text),
+            sender_fleet_id: Cow::Borrowed(sender_fleet_id),
+            sender_fleet_name: Cow::Borrowed(sender_fleet_name),
+            sender_event_id: Cow::Borrowed(sender_event_id),
+        }
+    }
+}
+
+/// The first line of a fleet's steer: who sent it, and how to answer.
+#[must_use]
+pub fn sender_line(name: &str, fleet_id: &str) -> String {
+    format!("[from fleet {name}, fleet_id {fleet_id}; answer with fleet_steer to that id]")
+}

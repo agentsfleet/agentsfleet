@@ -1,4 +1,5 @@
 import { ChatAlignmentFixture, ChatErrorFixture, SetupAlignmentFixture } from "./chat-alignment-probe";
+import { ChatAddressFixture, FleetSteerRowFixture } from "./chat-address-probe";
 import {ThemeProvider} from "next-themes";
 import { createRoot } from "react-dom/client";
 import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
@@ -34,7 +35,7 @@ if (!root) throw new Error("Chat fixture root is missing");
 const query = new URLSearchParams(location.search);
 const blank = {...EMPTY_DRAFT_VIEW, model: MODEL.ref, models: [MODEL]};
 const SETUP_CREATED_AT = new Date("2026-11-01T13:00:00Z");
-createRoot(root).render(<ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem={false}>{query.has("chatError") ? <ChatErrorFixture draft={query.has("fleetSave") ? DRAFT.id : undefined} /> : query.has("usage") ? <UsageBrowserFixture /> : query.has("resourcePages") ? <ResourcePagesFixture /> : query.has("resources") ? <ResourceSettingsFixture /> : query.has("accountSettings") ? <AccountSettingsFixture /> : query.has("visual") ? <RefreshVisualFixture /> : query.has("setupAlignment") ? <SetupAlignmentFixture /> : query.has("alignment") ? <ChatAlignmentFixture /> : query.has("starters") ? <main className="flex h-dvh flex-col bg-background text-foreground">
+createRoot(root).render(<ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem={false}>{query.has("address") ? <ChatAddressFixture /> : query.has("fleetSteer") ? <FleetSteerRowFixture /> : query.has("chatError") ? <ChatErrorFixture draft={query.has("fleetSave") ? DRAFT.id : undefined} /> : query.has("usage") ? <UsageBrowserFixture /> : query.has("resourcePages") ? <ResourcePagesFixture /> : query.has("resources") ? <ResourceSettingsFixture /> : query.has("accountSettings") ? <AccountSettingsFixture /> : query.has("visual") ? <RefreshVisualFixture /> : query.has("setupAlignment") ? <SetupAlignmentFixture /> : query.has("alignment") ? <ChatAlignmentFixture /> : query.has("starters") ? <main className="flex h-dvh flex-col bg-background text-foreground">
   <DraftConversation client={client} view={blank} workspace={WORKSPACE} unfinished={<UnfinishedFixture />} />
 </main> : query.has("scroll") ? <ChatScrollFixture /> : query.has("schedules") ? <ScheduleFixture /> : query.has("tasks") ? <TaskFixture /> : query.has("setup") ? <SetupFixture /> : query.has("activity") ? <ActivityFixture /> : <main className="flex h-dvh flex-col bg-background text-foreground">
   <p className="px-xl py-sm text-eyebrow text-muted-foreground">Sample data · Chat component review</p>

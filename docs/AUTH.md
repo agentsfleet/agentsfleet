@@ -1525,7 +1525,6 @@ Pull Request events and completed failed `workflow_run` events are normalized in
 
 Terminal `deployment_status` deliveries are acknowledged and dropped as unsupported, recording nothing.
 Repair evidence has neither a reader nor writer in this daemon.
-The [repair scenario](architecture/scenarios/production-deploy-repair.md) records this implementation boundary.
 
 The route documents the omission in `rustd/crates/daemon/afd_api_ingress/src/handler/webhook/app_route.rs`.
 The dropped-delivery check is `a_deployment_status_delivery_is_acknowledged_and_records_nothing` in `rustd/crates/daemon/afd_api/tests/app_ingress_route_dropped.rs`.

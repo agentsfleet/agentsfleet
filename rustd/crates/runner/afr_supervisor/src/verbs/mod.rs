@@ -5,9 +5,13 @@
 //! a line that landed and lost its answer would post twice, so the model, not
 //! a retry loop, decides whether to try again.
 
+use std::borrow::Cow;
+
 use af_core::id::Uuid7;
 use af_wire::message_verb::MessagePosted;
+use af_wire::steer_verb::FleetSteerAccepted;
 use afr_agent::{ScheduleCall, Unanswered};
+use afr_tools::FleetsCall;
 
 use crate::client::ControlPlane;
 
@@ -55,6 +59,32 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
     ) -> Result<afr_tools::verbs::DecisionEvaluation, Unanswered> {
         self.evaluate(input)
             .await
+            .map_err(|failure| unanswered(&failure))
+    }
+
+    async fn fleets(&self, call: FleetsCall<'_>) -> Result<String, Unanswered> {
+        self.plane
+            .fleets(self.lease_id, self.fencing_token, call)
+            .await
+            .map(|body| body.text())
+            .map_err(|failure| unanswered(&failure))
+    }
+
+    async fn fleet_steer(
+        &self,
+        fleet: &Uuid7,
+        text: &str,
+    ) -> Result<FleetSteerAccepted<'static>, Unanswered> {
+        let body = self
+            .plane
+            .fleet_steer(self.lease_id, self.fencing_token, fleet, text)
+            .await
+            .map_err(|failure| unanswered(&failure))?;
+        body.decode::<FleetSteerAccepted<'_>>()
+            .map(|accepted| FleetSteerAccepted {
+                event_id: Cow::Owned(accepted.event_id.into_owned()),
+                replayed: accepted.replayed,
+            })
             .map_err(|failure| unanswered(&failure))
     }
 

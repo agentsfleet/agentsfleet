@@ -13,6 +13,9 @@ type MatchedRoute = {readonly stream: boolean; readonly query: readonly string[]
 const ORDINARY: MatchedRoute = {stream: false, query: []};
 const BODYLESS_ACTION: MatchedRoute = {stream: false, query: [], bodyless: true};
 const PAGED: MatchedRoute = {stream: false, query: PAGE};
+// The fleet list alone also takes `name`: an addressed chat message finds the
+// fleet it names through it. Every other list keeps the shared page keys.
+const FLEET_LIST: MatchedRoute = {stream: false, query: [...PAGE, "name"]};
 
 export function matchSetupRoute(workspace: string, parts: readonly string[], method: string): MatchedRoute | undefined {
   if (!uuid.safeParse(workspace).success) return undefined;
@@ -23,7 +26,7 @@ export function matchSetupRoute(workspace: string, parts: readonly string[], met
   if (resource === RESOURCE.drafts) return draft(parts, method);
   if (resource === RESOURCE.plugins) return plugin(parts, method);
   if (resource !== RESOURCE.fleets) return undefined;
-  if (parts.length === 1 && method === SETUP_METHOD.get) return PAGED;
+  if (parts.length === 1 && method === SETUP_METHOD.get) return FLEET_LIST;
   if (parts.length === 1 && method === SETUP_METHOD.post) return ORDINARY;
   if (!uuid.safeParse(id).success) return undefined;
   if (parts.length === 2 && [SETUP_METHOD.get, SETUP_METHOD.patch].some((allowed) => allowed === method)) return ORDINARY;

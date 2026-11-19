@@ -183,7 +183,7 @@ The **Plugin** holds reusable setup. An entry is created only when a person expl
 
 Two first scenarios anchor the product flow:
 
-- **GitHub Pull Request reviewer.** Wakes on GitHub pull request events and reads diff/context through `api.github.com`. Posting review comments stays blocked by repository egress policy; see the [reviewer scenario](scenarios/github-pr-reviewer.md).
+- **GitHub Pull Request reviewer.** Wakes on GitHub pull request events and reads diff/context through `api.github.com`. Posting review comments stays blocked by repository egress policy.
 - **Zoho Recruit outreach.** Reads Zoho Recruit data and optionally sends mail through a separate secret; its provider-specific guidance lives in its instructions.
 
 ## §8.3 Triggering the Fleet
@@ -249,9 +249,8 @@ The current `platform-ops` flow wakes when GitHub Actions reports a failed produ
 
 The approved target adds a bounded code fix and a draft Pull Request (PR). A human still reviews and merges the PR.
 
-The existing deployment pipeline deploys the merge. A later production-health verifier stays a target, not implemented runtime behavior; see the [repair scenario](scenarios/production-deploy-repair.md).
+The existing deployment pipeline deploys the merge. A later production-health verifier stays a target, not implemented runtime behavior.
 
-The full sequence and its proof boundary live in [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md).
 
 ## §8.6 Why Claude is the starting point
 

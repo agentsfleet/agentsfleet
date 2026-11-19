@@ -202,3 +202,17 @@ fn test_logged_carries_the_code_and_reason_under_their_field_names() {
     assert_eq!(error_code, failure.code().as_str());
     assert_eq!(reason, failure.told());
 }
+
+/// The fleet steer's one new code reads back to its constant,
+/// and its problem entry answers 409 with a title and a hint.
+#[test]
+fn registry_round_trips_the_self_steer_code() {
+    assert_eq!(
+        ErrorCode::lookup("UZ-AGT-018"),
+        Some(error_code::FLEET_STEER_SELF)
+    );
+    let problem = af_core::problem::Problem::of(error_code::FLEET_STEER_SELF);
+    assert_eq!(problem.status(), 409);
+    assert_eq!(problem.title(), "Fleet cannot steer itself");
+    assert!(problem.hint().contains("fleet_activity"));
+}

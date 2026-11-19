@@ -79,7 +79,8 @@ pub use self::message::{MESSAGE, message_of};
 pub use self::entry::{ENTRY_FIELD_COUNT, Entry};
 
 pub use self::steer::{
-    OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerAccepted, SteerDisposition, SteerRequest,
+    FleetSteerBody, OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerAccepted,
+    SteerDisposition, SteerRequest, sender_line,
 };
 
 /// An event and its original request body. The runner reads `request_json`; API responses

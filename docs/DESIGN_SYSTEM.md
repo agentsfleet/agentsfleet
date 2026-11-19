@@ -759,7 +759,7 @@ A new authoring request replaces the previous confirmation and its fleet action.
 
 Confirmed saving opens the fleet conversation. The disabled Plugin tree retains its publication confirmation and pinned-revision start for possible reuse.
 
-Attachable capabilities are deferred to the M239 discussion.
+Attachable capabilities are deferred to the M252 discussion.
 Keep those navigation actions separate from the Save changes control.
 
 Completed replies keep the same markdown renderer and text nodes used while streaming.

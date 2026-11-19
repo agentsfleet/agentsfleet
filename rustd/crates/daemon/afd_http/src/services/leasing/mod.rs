@@ -9,6 +9,7 @@ use af_wire::message_verb::MessageRequest;
 use af_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
 use afd_credential::credential::Minted;
 use afd_fleet::lease::Standing;
+use afd_fleet::lease::message::SteerSender;
 use afd_memory::Captured;
 use afd_outbound::Interim;
 use jiff::Timestamp;
@@ -124,6 +125,18 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         standing: &Standing,
         text: &str,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send;
+
+    /// Who a fleet's steer is from: the lease's fleet's saved name, and
+    /// `text` masked as [`Leasing::masked`] masks it, from one read.
+    ///
+    /// # Errors
+    /// Refuses a fleet no longer installed; reports a vault that would not
+    /// answer and a mask that could not be built.
+    fn sender(
+        &self,
+        standing: &Standing,
+        text: &str,
+    ) -> impl Future<Output = afd_fleet::Result<SteerSender>> + Send;
 }
 
 mod lease_service;

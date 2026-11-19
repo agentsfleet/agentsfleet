@@ -33,9 +33,9 @@
 use std::borrow::Cow;
 
 use af_core::error_code;
-use af_wire::event::{STEER_MESSAGE_MAX_BYTES, SteerRequest};
+use af_wire::event::{FleetSteerBody, STEER_MESSAGE_MAX_BYTES, SteerRequest};
 use afd_api_wire::tail::{FleetCounters, TailFrame, TailRow};
-use afd_events::{Closed, is_steer_actor};
+use afd_events::{Closed, is_fleet_actor, is_steer_actor};
 use jiff::Timestamp;
 
 use crate::lease::envelope::Acquired;
@@ -55,13 +55,22 @@ fn inline_final_reply(reply: Option<&str>) -> Option<Cow<'_, str>> {
 }
 
 /// What a person typed, for the received frame: a steer's `message`, within
-/// the bound the route admitted it under, or `None`.
+/// the bound the route admitted it under, a fleet's steer's `message`, or
+/// `None`.
 ///
 /// Every other producer's body is its own shape and names no typed words, so
-/// only a `steer:` actor is read. A steer body that does not parse, or holds
+/// only a `steer:` or a `fleet:` actor is read. A fleet's `message` is the
+/// sender line and the words, composed and stored by the daemon, so it carries
+/// no person's bound. A body that does not parse, or a person's that holds
 /// more than the bound, was never written by the route as it stands; it is
 /// warned once, without its text, and the frame goes out without a message.
 fn steer_message(acquired: &Acquired) -> Option<Cow<'_, str>> {
+    if is_fleet_actor(&acquired.actor) {
+        return serde_json::from_str::<FleetSteerBody<'_>>(&acquired.request_json)
+            .ok()
+            .map(|body| body.message)
+            .or_else(|| unreadable(acquired));
+    }
     if !is_steer_actor(&acquired.actor) {
         return None;
     }
@@ -69,16 +78,19 @@ fn steer_message(acquired: &Acquired) -> Option<Cow<'_, str>> {
         .ok()
         .map(|request| request.message)
         .filter(|message| message.len() <= STEER_MESSAGE_MAX_BYTES)
-        .or_else(|| {
-            let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let fleet_id = acquired.fleet_id.as_str();
-            let event_id = acquired.event_id.as_str();
-            {
-                let (error_code, event) = (&code, &EVENT_STEER_BODY_UNREADABLE);
-                tracing::warn!(error_code, fleet_id, event_id, event);
-            };
-            None
-        })
+        .or_else(|| unreadable(acquired))
+}
+
+/// Warns once, without the text, that a steer body could not be shown.
+fn unreadable(acquired: &Acquired) -> Option<Cow<'static, str>> {
+    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let fleet_id = acquired.fleet_id.as_str();
+    let event_id = acquired.event_id.as_str();
+    {
+        let (error_code, event) = (&code, &EVENT_STEER_BODY_UNREADABLE);
+        tracing::warn!(error_code, fleet_id, event_id, event);
+    };
+    None
 }
 
 impl Leases {
@@ -186,6 +198,40 @@ mod tests {
             steer_message(&continuation),
             None,
             "a continuation is not a new message"
+        );
+    }
+
+    /// A fleet's steer shows its composed message: the sender line, then the
+    /// words, with none of a person's bound. A body that does not parse is
+    /// warned once, without its text, and shows nothing.
+    #[test]
+    fn a_fleet_steer_shows_its_sender_line_and_has_no_person_bound() {
+        use af_wire::event::FleetSteerBody;
+
+        let log = Capture::install();
+        let sender = "0190d5c2-7e1a-7000-8000-000000000002";
+        let event = "0190d5c2-7e1a-7000-8000-000000000004";
+        let actor = format!("fleet:{sender}");
+        let compose = |text: &str| {
+            let body = FleetSteerBody::new(text, sender, "agentmay", event);
+            serde_json::to_string(&body).unwrap_or_default()
+        };
+
+        let short = leased(&actor, &compose("run the check"));
+        let brief = steer_message(&short).unwrap_or_default();
+        assert!(brief.ends_with("\nrun the check"), "{brief}");
+        assert!(brief.starts_with("[from fleet agentmay"), "{brief}");
+
+        let words = "w".repeat(STEER_MESSAGE_MAX_BYTES);
+        let heavy = leased(&actor, &compose(&words));
+        let full = steer_message(&heavy).unwrap_or_default();
+        assert!(full.len() > STEER_MESSAGE_MAX_BYTES, "{}", full.len());
+
+        assert_eq!(steer_message(&leased(&actor, "{")), None);
+        let line = log.only(EVENT_STEER_BODY_UNREADABLE).fields;
+        assert!(
+            line.values().all(|value| !value.contains('{')),
+            "the unreadable body never reaches the log: {line:?}"
         );
     }
 

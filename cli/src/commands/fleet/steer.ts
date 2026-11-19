@@ -1,5 +1,6 @@
 import { Effect, Exit, Layer, Redacted } from "effect";
 import { readSteeredWork } from "./steer-work.ts";
+import { resolveSteerTarget } from "./steer-target.ts";
 import { CliConfig } from "../../services/config.ts";
 import { Credentials } from "../../services/credentials.ts";
 import { HttpClient } from "../../services/http-client.ts";
@@ -278,6 +279,9 @@ export const steerEffectFromArgs = (
 
     const wsId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
+    // Once, before any tail opens: the prompt's every turn and a single message
+    // both go to the fleet a `@name` names.
+    const target = yield* resolveSteerTarget(wsId, fleetId, token);
     const enterRepl = shouldEnterSteerRepl(stdin, message, forceTty);
     if (enterRepl) {
       const turnLayer = Layer.mergeAll(
@@ -292,7 +296,7 @@ export const steerEffectFromArgs = (
             output: stdout,
             ...(deps.signalSource ? { signalSource: deps.signalSource } : {}),
             runTurn: async (line, signal) => {
-              const turn = steerTurnEffect(wsId, fleetId, line, token, streamGet, signal);
+              const turn = steerTurnEffect(wsId, target, line, token, streamGet, signal);
               const exit = await Effect.runPromiseExit(turn.pipe(Effect.provide(turnLayer)));
               if (Exit.isFailure(exit)) throw exitToCliError(exit);
             },
@@ -335,5 +339,5 @@ export const steerEffectFromArgs = (
       );
     }
 
-    yield* steerTurnEffect(wsId, fleetId, singleMessage, token, streamGet);
+    yield* steerTurnEffect(wsId, target, singleMessage, token, streamGet);
   });

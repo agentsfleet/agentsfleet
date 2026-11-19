@@ -176,6 +176,8 @@ GET reports current prerequisites in `setup.checks`; changes to a saved review d
 
 `FleetSummary = {id,name,status,description,triggers?,created_at,updated_at,events_processed,budget_used_nanos}` is one row of `GET /v1/workspaces/{workspace_id}/fleets`. `description` is the head revision's definition `description`, the saved purpose; it is `null` while the fleet has no saved setup. The page reads it in the same statement as the counters (`afd_fleet_lifecycle`'s `select_fleet_page.sql`).
 
+`?name=<saved name>` answers the one fleet saved under exactly that name in the workspace, archived included, or no item; `total` and `next_cursor` are `null`. A name outside 1 to 64 lower-case letters, digits or hyphens is a 400. The dashboard's and the command line's `@name` resolve through it (`select_fleet_by_name.sql`).
+
 `Fleet.name` and creation `name` retain the existing validated fleet slug. `Draft.title` is a separate human display title, 1..100 characters; it does not change authored slugs. Review exposes both without substituting a display title into definition metadata or runtime config.
 
 An idle `instance_name` draft selection chooses the validated instance slug independently of the recipe. It changes the review digest without creating a new candidate revision. An unresolved account default has a null `effective.runtime_model_ref` and a missing model readiness check.

@@ -21,7 +21,7 @@ import { steerEffectFromArgs } from "../../commands/fleet/steer.ts";
 import { approvalsCommand, grantsCommand } from "./access.command.ts";
 import { scheduleCommand } from "./schedule.command.ts";
 import { memoryCommand } from "./memory.command.ts";
-import { actorFlag, cursorFlag, eventsLimitFlag, fleetFlag, fleetIdArgument, fleetIdOptionalArgument, listLimitFlag, messageArgument, opt, optNum, sinceFlag, startingAfterFlag, VERB, workspaceFlag } from "./flags.ts";
+import { actorFlag, cursorFlag, eventsLimitFlag, fleetFlag, fleetIdArgument, fleetIdOptionalArgument, fleetIdOrNameArgument, listLimitFlag, messageArgument, opt, optNum, sinceFlag, startingAfterFlag, VERB, workspaceFlag } from "./flags.ts";
 
 
 const fleetShowCommand = Command.make(VERB.show, { fleetId: fleetIdArgument }).pipe(
@@ -102,7 +102,8 @@ const eventsCommand = Command.make("events", {
 );
 
 const steerCommand = Command.make("steer", {
-  fleetId: fleetIdArgument,
+  // An id or `@name`; the handler looks a name up before the stream opens.
+  fleetId: fleetIdOrNameArgument,
   message: messageArgument,
   // Hidden, because it exists for the tests and for a terminal the runtime
   // misreports — not for anyone to type on purpose.

@@ -1,8 +1,10 @@
 # Scenario — Incident responder in a Slack thread
 
-> Parent: [`README.md`](./README.md) · References: [`github-pr-reviewer.md`](./github-pr-reviewer.md) (the repository subscription this mirrors), [`production-deploy-repair.md`](./production-deploy-repair.md) (the repair crew), [`../connectors.md`](../connectors.md), [`../data_flow.md`](../data_flow.md), [`../memory.md`](../memory.md).
->
-> **Built; the drill is pending.** M206_001–003 live in `docs/v2/done/`; M206_004 is in `docs/v2/done/` with its live drills (its own §3) parked until 001–003 reach `api-dev`. Line citations were rechecked against source on 2026-10-14; the scenario's original "today" claims were read at `b1bc6f0c4`.
+> Parent: [`README.md`](./README.md) · References: [`../connectors.md`](../connectors.md), [`../data_flow.md`](../data_flow.md), [`../memory.md`](../memory.md).
+
+> **Built; the drill is pending.** M206_001–003 live in `docs/v2/done/`. M206_004 is in `docs/v2/done/` with its live drills (its own §3) parked until 001–003 reach `api-dev`.
+
+> Line citations were rechecked against source on 2026-10-14. The scenario's original "today" claims were read at `b1bc6f0c4`.
 
 Legend: ✅ in the Rust daemon · 🟡 in the Rust daemon, broken.
 
@@ -74,7 +76,7 @@ The route does not use historical channel fleets as fallback responders.
 1. Validate the signed event and resolve its Slack team to the current workspace.
 2. Drop bot messages, unsupported event types and replayed deliveries through the existing ingress rules.
 3. Read the channel's reviewed fleet subscriptions.
-4. Match an explicit leading fleet name or choose the sole eligible unaddressed subscriber.
+4. Match a leading fleet name against each subscriber's saved name, or choose the sole eligible unaddressed subscriber.
 5. Admit the selected fleet or record the fixed routing notice described below.
 
 | Subscription state | Native outcome |
@@ -222,4 +224,4 @@ Nothing here is proven live. The Slack registration playbook's live check, a thr
 The [durable repair scenario](durable-repair.md) extends the addressed manual path with later-CI continuation, existing-PR authority, worker recovery and Jev goal evaluation. M236 contains source for these capabilities; combined live acceptance remains unfinished. Saving setup alone does not demonstrate them.
 
 A scheduled Grafana diagnosis needs a configured notification destination and explicit repair authority.
-The fleet receives no implicit cross-fleet handoff or arbitrary channel routing.
+The fleet receives no implicit cross-fleet handoff or arbitrary channel routing. An explicit one is `fleet_steer`, in the [chief of staff scenario](chief-of-staff.md).

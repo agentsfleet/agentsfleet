@@ -6,6 +6,8 @@ pub(crate) type Fallible<T = ()> = Result<T, Box<dyn std::error::Error>>;
 mod budgets;
 mod confirmation;
 mod failures;
+mod guarded;
+mod inherit;
 mod lane;
 mod ledger;
 mod locking;

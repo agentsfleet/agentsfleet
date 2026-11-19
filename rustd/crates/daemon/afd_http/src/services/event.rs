@@ -14,9 +14,10 @@
 
 use af_core::id::Uuid7;
 use afd_api_wire::tail::TailFrame;
+use afd_db::Precondition;
 use afd_events::{
-    CallAddress, Cursor, EventDetailRow, EventRow, Filter, History, Result as EventResult, Steer,
-    Steered, ToolCallRow,
+    CallAddress, Cursor, EventDetailRow, EventRow, Filter, FleetSteer, FleetSteered, History,
+    Result as EventResult, Steer, Steered, ToolCallRow, Unheld,
 };
 
 /// Everything the event-history routes act through.
@@ -180,6 +181,18 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
         operation_id: Option<&str>,
     ) -> impl Future<Output = EventResult<Steered>> + Send;
 
+    /// Puts one fleet's message on another fleet's stream, behind `guard`:
+    /// the sender's lease, proved again inside the admission's transaction.
+    ///
+    /// # Errors
+    /// As [`afd_events::Steer::append_from_fleet`]: a guard that does not
+    /// hold answers `Ok(Err(Unheld))` with nothing written.
+    fn append_from_fleet(
+        &self,
+        steer: FleetSteer<'_>,
+        guard: &dyn Precondition,
+    ) -> impl Future<Output = EventResult<Result<FleetSteered, Unheld>>> + Send;
+
     /// Puts `frame` on `fleet`'s live tail, best-effort — no answer, because
     /// a frame the queue refuses must not change the steer's.
     fn announce(&self, fleet: &str, frame: &TailFrame<'_>) -> impl Future<Output = ()> + Send;
@@ -196,6 +209,14 @@ impl FleetSteering for Steer {
         operation_id: Option<&str>,
     ) -> impl Future<Output = EventResult<Steered>> + Send {
         Self::append(self, fleet, workspace, actor, request_json, operation_id)
+    }
+
+    fn append_from_fleet(
+        &self,
+        steer: FleetSteer<'_>,
+        guard: &dyn Precondition,
+    ) -> impl Future<Output = EventResult<Result<FleetSteered, Unheld>>> + Send {
+        Self::append_from_fleet(self, steer, guard)
     }
 
     fn announce(&self, fleet: &str, frame: &TailFrame<'_>) -> impl Future<Output = ()> + Send {

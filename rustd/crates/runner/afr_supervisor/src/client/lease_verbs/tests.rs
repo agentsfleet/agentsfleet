@@ -151,3 +151,43 @@ fn every_method_is_sent_as_itself() {
         assert_eq!(method.http(), http, "{method:?}");
     }
 }
+
+/// The fleets reads carry the fence and the page in their query, and the
+/// steer posts its fenced body to the lease's steers path.
+#[tokio::test]
+async fn the_fleet_verbs_reach_their_paths_with_the_fence() {
+    let (plane, mut calls) = plane(|_call| json(&serde_json::json!({})));
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let fleet = Uuid7::parse(SCHEDULE).unwrap();
+    let list = afr_tools::FleetsCall::List {
+        limit: Some(3),
+        starting_after: None,
+    };
+    let events = afr_tools::FleetsCall::Events {
+        fleet: &fleet,
+        limit: None,
+        starting_after: Some("c 1"),
+    };
+    plane.fleets(&lease, FENCING, list).await.unwrap();
+    plane.fleets(&lease, FENCING, events).await.unwrap();
+    plane
+        .fleet_steer(&lease, FENCING, &fleet, "run the check")
+        .await
+        .unwrap();
+    let sent = drain(&mut calls);
+    let root = format!("/v1/runners/me/leases/{LEASE_ID}");
+    let fence = format!("fencing_token={FENCING}");
+    assert_eq!(sent[0].verb, Verb::FleetList);
+    assert_eq!(sent[0].path, format!("{root}/fleets?{fence}&limit=3"));
+    assert_eq!(sent[1].verb, Verb::FleetEvents);
+    assert_eq!(
+        sent[1].path,
+        format!("{root}/fleets/{SCHEDULE}/events?{fence}&starting_after=c+1")
+    );
+    assert_eq!(sent[2].verb, Verb::FleetSteer);
+    assert_eq!(sent[2].path, format!("{root}/steers"));
+    let body: serde_json::Value = serde_json::from_slice(sent[2].body.as_ref().unwrap()).unwrap();
+    assert_eq!(body["fencing_token"].as_u64(), Some(FENCING));
+    assert_eq!(body["fleet_id"], SCHEDULE);
+    assert_eq!(body["text"], "run the check");
+}

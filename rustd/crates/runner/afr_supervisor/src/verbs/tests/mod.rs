@@ -171,3 +171,26 @@ impl Host {
         }
     }
 }
+
+/// A steer answers the event it became, owned past the reply it came in.
+#[tokio::test]
+async fn a_fleet_steer_answers_the_event_it_became() {
+    let (plane, _calls) = plane(|call| match call.verb {
+        Verb::FleetSteer => json(&serde_json::json!({"event_id": "e-1", "replayed": true})),
+        _other => json(&serde_json::json!({})),
+    });
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let fleet = Uuid7::parse(LEASE_ID).unwrap();
+    let host = Host::new();
+    let verbs = FencedVerbs::new(
+        &plane,
+        &lease,
+        FENCING,
+        &host.halt,
+        &host.stop,
+        &host.decisions,
+    );
+    let accepted = verbs.fleet_steer(&fleet, "hello").await.unwrap();
+    assert_eq!(accepted.event_id, "e-1");
+    assert!(accepted.replayed);
+}

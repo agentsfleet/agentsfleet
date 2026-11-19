@@ -2,18 +2,19 @@
 
 import { chatMessageText as extractMessageText } from "@/lib/chat-message-text";
 export { chatMessageText as extractMessageText } from "@/lib/chat-message-text";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { MessageNotSentError, type AppendMessage } from "@assistant-ui/react";
 
 import { PENDING_SEND_STATE, type PendingSendOutcome, type PendingSendWriters } from "./useFleetPendingSends";
+import { outcomeOf, releaseRoute, routeOf } from "./useFleetMessageRoute";
 import type { useFleetEventStream } from "../stream/useFleetEventStream";
-import { HTTP_STATUS_UNAUTHORIZED, isDefiniteRefusal } from "@/lib/api/errors";
-import { postSteer, type SteerResult } from "@/lib/api/fleet-steer";
+import { postSteer } from "@/lib/api/fleet-steer";
 import { STEER_DISPOSITION, overSteerLimit, steerBytesNearLimit, type SteerAccepted } from "@/lib/api/fleets-types";
-import { ERROR_CODE } from "@/lib/errors";
 import { ACTOR } from "@/lib/events/event-summary";
 import { mintOperationId } from "@/lib/streaming/operation-id";
 import { SEND_MARK, sendMarks } from "@/lib/streaming/send-marks";
+import { workspacePath } from "@/lib/workspace-routes";
 
 // The tail of the steer delivery chain, lifted out of `FleetThread` at its
 // length cap. Every send is one operation: named before the optimistic append,
@@ -29,6 +30,14 @@ import { SEND_MARK, sendMarks } from "@/lib/streaming/send-marks";
 // back. One on the wire is aborted and ends unknown, with Resend under the same
 // id. A reused id the daemon refuses as another message's ends in `conflict`,
 // and its text goes out again only under a new id.
+//
+// A message that opens with an address (`lib/chat-address.ts`) names its fleet.
+// Addressed to this fleet by its own name, it is sent here without the address;
+// to another, the name resolves first, the words go there, and the page opens
+// that fleet's chat. The ledger keeps the words as typed, so every delivery, a
+// Resend's included, reads the address again and never posts them here. A
+// Resend goes to the fleet its first attempt resolved to, even if the name was
+// renamed or taken since (`useFleetMessageRoute.ts`).
 
 // Placeholder actor on an optimistic row until the stream's matching
 // `EVENT_RECEIVED` lands and reconciliation replaces it with the real
@@ -48,6 +57,10 @@ type StreamApi = ReturnType<typeof useFleetEventStream>;
 type DeliveryCtx = {
   workspaceId: string;
   fleetId: string;
+  /** The open fleet's saved name: a message addressed to it is sent here. */
+  fleetName: string;
+  /** Opens a fleet's chat: where a message addressed to that fleet went. */
+  openFleet: (fleetId: string) => void;
   /** The actor the daemon names this viewer's sends under, when known. */
   sentAs?: string;
   appendOptimistic: StreamApi["appendOptimistic"];
@@ -124,6 +137,19 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
   );
 }
 
+/** Opens a fleet's chat in this workspace: the `openFleet` a thread hands its delivery. */
+export function useOpenFleet(workspaceId: string): (fleetId: string) => void {
+  const router = useRouter();
+  // Read when a send lands: the send callbacks close over this, and keep one
+  // identity for the thread whatever identity the router object has.
+  const latest = useRef(router);
+  useEffect(() => { latest.current = router; }, [router]);
+  return useCallback(
+    (fleetId: string) => latest.current.push(workspacePath(workspaceId, `fleets/${encodeURIComponent(fleetId)}`)),
+    [workspaceId],
+  );
+}
+
 // The draft a failure put back, and the id it was sent under. Only that draft,
 // sent unchanged, reuses the id: the same words typed later are a new message,
 // and an old id would replay an old admission and run nothing.
@@ -168,7 +194,7 @@ function useRestoredDraft(writers: PendingSendWriters) {
 // could reach the server out of submission order, so "stop" could be assigned
 // an earlier event id than the "deploy" it was meant to follow.
 function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: string) => Promise<boolean> {
-  const { workspaceId, fleetId, sentAs, appendOptimistic, discardOptimistic, writers } = ctx;
+  const { workspaceId, fleetId, fleetName, sentAs, appendOptimistic, discardOptimistic, writers } = ctx;
   const acknowledged = useAcknowledgement(ctx);
   return useCallback(
     (operationId: string, text: string): Promise<boolean> => {
@@ -195,30 +221,44 @@ function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: st
       const send = async (): Promise<boolean> => {
         if (deadline.passed()) return unsent();
         dispatched = true;
-        const result = await answerWithin(deadline, () => postSteer(workspaceId, fleetId, text, operationId, deadline.signal));
-        if (result === null) return ended(PENDING_SEND_STATE.UNKNOWN);
-        return result.ok ? acknowledged(operationId, tempId, result.data) : ended(outcomeOf(result));
+        try {
+          const route = await within(deadline, routeOf(text, { workspaceId, fleetId, fleetName }, operationId, deadline.signal));
+          if (route === null) return ended(PENDING_SEND_STATE.UNKNOWN);
+          if (!route.ok) return ended(route.outcome);
+          const result = await within(deadline, postSteer(workspaceId, route.fleetId, route.words, operationId, deadline.signal));
+          if (result === null) return ended(PENDING_SEND_STATE.UNKNOWN);
+          return result.ok ? acknowledged(operationId, tempId, result.data, route.fleetId) : ended(outcomeOf(result));
+        } finally {
+          deadline.clear();
+        }
       };
       const slot = enqueue(`${workspaceId}:${fleetId}`, send);
       return Promise.race([slot, deadline.expired.then(() => (dispatched ? slot : unsent()))]);
     },
-    [workspaceId, fleetId, sentAs, appendOptimistic, discardOptimistic, writers, acknowledged],
+    [workspaceId, fleetId, fleetName, sentAs, appendOptimistic, discardOptimistic, writers, acknowledged],
   );
 }
 
 // The daemon's 202. Settled before the cosmetic reconcile: the daemon holds
-// it, whatever the painting does next.
-function useAcknowledgement({ reconcileOptimistic, writers }: DeliveryCtx) {
+// it, whatever the painting does next. Words another fleet took are its
+// thread's to show, so this one drops its copy and the page opens that chat.
+function useAcknowledgement({ workspaceId, fleetId, reconcileOptimistic, discardOptimistic, openFleet, writers }: DeliveryCtx) {
   return useCallback(
-    (operationId: string, tempId: string, accepted: SteerAccepted): boolean => {
+    (operationId: string, tempId: string, accepted: SteerAccepted, target: string): boolean => {
       writers.settle(operationId);
+      releaseRoute(workspaceId, operationId);
       // Before the reconcile, which lets this send's held frames land.
       sendMarks.mark(SEND_MARK.ACCEPTED, operationId, accepted.event_id);
+      if (target !== fleetId) {
+        discardOptimistic(tempId);
+        openFleet(target);
+        return true;
+      }
       const foldedInto = accepted.disposition === STEER_DISPOSITION.FOLDED ? accepted.folded_into_event_id : null;
       reconcileOptimistic(tempId, accepted.event_id, accepted.replayed, foldedInto);
       return true;
     },
-    [reconcileOptimistic, writers],
+    [workspaceId, fleetId, reconcileOptimistic, discardOptimistic, openFleet, writers],
   );
 }
 
@@ -253,10 +293,10 @@ function startDeadline(): Deadline {
   return { signal: controller.signal, expired, passed, clear: () => clearTimeout(timer) };
 }
 
-// The steer's answer, or null when none came before the clock ran out.
-// Whatever the transport does with the abort, the send ends with it.
-function answerWithin(deadline: Deadline, steer: () => Promise<SteerResult>): Promise<SteerResult | null> {
-  return Promise.race([steer().catch(() => null), deadline.expired]).finally(deadline.clear);
+// The lookup's or the steer's answer, or null when none came before the clock
+// ran out. Whatever the transport does with the abort, the send ends with it.
+function within<T>(deadline: Deadline, answer: Promise<T>): Promise<T | null> {
+  return Promise.race([answer.catch(() => null), deadline.expired]);
 }
 
 // A conflict's text sent from the composer is that conflict's "Send as new":
@@ -266,16 +306,6 @@ function dismissConflictsOf(writers: PendingSendWriters, text: string): void {
   for (const entry of writers.list()) {
     if (entry.state === PENDING_SEND_STATE.CONFLICT && entry.text === text) writers.dismiss(entry.operationId);
   }
-}
-
-// A 401 asks for a sign-in. A reused id is refused for good. Any other client
-// refusal but a timeout means the server saw the request and said no. Anything
-// else — a timeout, a 5xx after the row committed, no status at all — leaves
-// delivery unconfirmed.
-function outcomeOf({ status, errorCode }: Extract<SteerResult, { ok: false }>): PendingSendOutcome {
-  if (status === HTTP_STATUS_UNAUTHORIZED) return PENDING_SEND_STATE.SESSION;
-  if (errorCode === ERROR_CODE.AGENTSFLEET_OPERATION_CONFLICT) return PENDING_SEND_STATE.CONFLICT;
-  return isDefiniteRefusal(status) ? PENDING_SEND_STATE.REFUSED : PENDING_SEND_STATE.UNKNOWN;
 }
 
 // A fresh operation id, or null on a platform with no generator: the send is

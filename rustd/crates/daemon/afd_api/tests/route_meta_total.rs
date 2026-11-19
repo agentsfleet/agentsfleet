@@ -102,6 +102,10 @@ const RETIRED_CATALOGUE_ROUTES: usize = 3;
 /// A tenant's own runners: register, list, read, manage and delete (M246).
 const TENANT_RUNNER_ADDITIONS: usize = 5;
 
+/// A fleet steering another fleet, and reading the workspace's fleets and one
+/// fleet's events, through the lease it runs.
+const FLEET_TO_FLEET_ADDITIONS: usize = 3;
+
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
@@ -113,6 +117,7 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + FOLD_ADDITIONS
     + RUNNER_STREAM_ADDITIONS
     + TENANT_RUNNER_ADDITIONS
+    + FLEET_TO_FLEET_ADDITIONS
     - RETIRED_WEBHOOK_ROUTES
     - RETIRED_RUNNER_HTTP_ROUTES
     - RETIRED_CATALOGUE_ROUTES;

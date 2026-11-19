@@ -75,3 +75,26 @@ fn test_a_joined_lease_route_matches_its_template() {
         paths::LEASE_TOOL_CALLS.replace("{lease_id}", lease_id)
     );
 }
+
+/// The three fleet-to-fleet routes sit under one held lease, so a runner
+/// reaches them only through a lease it proves.
+#[test]
+fn runner_routes_snapshot_lists_the_three_fleet_routes() {
+    let routes = [
+        ("steers", paths::LEASE_STEERS),
+        ("fleets", paths::LEASE_FLEETS),
+        ("fleet_events", paths::LEASE_FLEET_EVENTS),
+    ];
+    let rendered = routes
+        .iter()
+        .fold(String::new(), |mut out, (name, template)| {
+            // Writing to a `String` cannot fail.
+            let _ = writeln!(out, "{name:<12} {template}");
+            out
+        });
+    insta::assert_snapshot!(rendered, @r"
+    steers       /v1/runners/me/leases/{lease_id}/steers
+    fleets       /v1/runners/me/leases/{lease_id}/fleets
+    fleet_events /v1/runners/me/leases/{lease_id}/fleets/{fleet_id}/events
+    ");
+}

@@ -5,11 +5,24 @@ use af_core::error_code::{self, Coded as _, Logged};
 use af_core::id::Uuid7;
 use af_observability::metrics::label::fleet::AdmissionOutcome;
 use af_observability::producers::fleet::admission as metrics;
+use afd_db::Precondition;
 use afd_fleet_lifecycle::FleetStatus;
 use jiff::Timestamp;
 
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, query};
+use crate::stage::insert::Gates;
 use crate::{Admission, Admissions, Admitted, Key, Repeated, Reply};
+
+/// What a guarded admission that failed records against.
+const CONTEXT_GUARDED: &str = "admit one message behind a guard";
+
+/// A guarded admission whose guard did not hold: nothing was written.
+///
+/// A value inside `Ok`, not an error kind, because it is the guard's answer
+/// rather than a ledger failure: the caller refuses its own request for it,
+/// and no admission refusal is counted or logged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unheld;
 
 /// A [`Reply`] as the three parameters `ADMIT_ONE` takes it in.
 ///
@@ -92,12 +105,67 @@ impl Admissions {
             Key::Unrepeatable => row_id.as_str(),
         };
         let digest = admission.payload_digest();
-        let producer = admission.producer.as_str();
-
         let ledger = self
             .commit(&row_id, &admission, key, &digest, now, runnable)
             .await
             .inspect_err(|refused| count_refusal(refused, &admission))?;
+        Ok(self.answered(ledger, &admission, &digest).await)
+    }
+
+    /// [`Admissions::admit_runnable`] behind `guard`, in one transaction.
+    ///
+    /// The guard is proved first, on the transaction the insert then runs on,
+    /// so what it locks stays locked until the commit: a lease a reclaim took
+    /// after its holder last proved it writes nothing. The deployment estimate
+    /// is read before the transaction opens, as [`Admissions::prepare`] reads
+    /// it, so no lock is held across a sample. An `Ok` answer always commits,
+    /// a repeat included, because the statement's conflict arm writes.
+    ///
+    /// # Errors
+    /// As [`Admissions::admit_runnable`]. A guard that does not hold is not an
+    /// error: it answers `Ok(Err(Unheld))`.
+    pub async fn admit_runnable_guarded(
+        &self,
+        admission: Admission<'_>,
+        guard: &dyn Precondition,
+    ) -> Result<core::result::Result<Admitted, Unheld>> {
+        let now = clock::now();
+        let row_id = self.entropy.uuid7(now)?;
+        let key = match admission.key {
+            Key::Repeated(key) => key,
+            Key::Unrepeatable => row_id.as_str(),
+        };
+        let digest = admission.payload_digest();
+        let estimate = self.deployment_estimate(now).await;
+        let mut transaction = sqlx::Transaction::begin(self.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT_GUARDED))?;
+        if !guard
+            .holds(&mut transaction)
+            .await
+            .map_err(query(CONTEXT_GUARDED))?
+        {
+            return Ok(Err(Unheld));
+        }
+        let gates = Gates {
+            estimate,
+            runnable: Some(FleetStatus::Active),
+        };
+        let ledger = self
+            .insert_on(&mut transaction, &row_id, &admission, key, &digest, gates)
+            .await
+            .inspect_err(|refused| count_refusal(refused, &admission))?;
+        transaction.commit().await.map_err(query(CONTEXT_GUARDED))?;
+        if ledger.inserted {
+            self.ceiling.admitted();
+        }
+        Ok(Ok(self.answered(ledger, &admission, &digest).await))
+    }
+
+    /// What a committed ledger answer tells its producer, once the fleet's
+    /// wake has rung.
+    async fn answered(&self, ledger: Ledger, admission: &Admission<'_>, digest: &str) -> Admitted {
+        let producer = admission.producer.as_str();
         let event_id = ledger.stored.id.as_str();
         if ledger.stored.digest != digest && !admission.producer.is_caller_keyed() {
             // The key is the identity and the first payload stands. Logged
@@ -122,10 +190,10 @@ impl Admissions {
             let (fleet_id, event) = (&admission.fleet, &"admission_committed");
             tracing::debug!(producer, %fleet_id, event_id, event, replayed);
         };
-        Ok(Admitted {
+        Admitted {
             replayed,
             stored: ledger.stored,
-        })
+        }
     }
 
     /// Commit acceptance under the deployment ceiling, in one autocommit statement.

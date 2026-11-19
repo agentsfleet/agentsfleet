@@ -263,9 +263,15 @@ pub const TOOL_CALL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-017");
 /// there: an archived fleet still reads, so answering "not found" to its edit
 /// while its read succeeds would tell a client two different things about one
 /// row. Archive is terminal, so the client's next step is delete or a new
-/// fleet, never a retry. `UZ-AGT-018` and `UZ-AGT-019` are reserved for the
-/// fleet-to-fleet steer refusals, so this takes the next free number.
+/// fleet, never a retry.
 pub const AGENTSFLEET_ARCHIVED: ErrorCode = ErrorCode::declare("UZ-AGT-020");
+
+/// A fleet asked to steer itself.
+///
+/// A 409 with `current_state: "self"`: the sender is the target, so the work
+/// would wake the run that sent it. The fleet answers the person instead, or
+/// steers another fleet.
+pub const FLEET_STEER_SELF: ErrorCode = ErrorCode::declare("UZ-AGT-018");
 
 /// The fleet a memory request names is not one this workspace holds.
 ///

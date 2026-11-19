@@ -12,7 +12,9 @@ use std::sync::Arc;
 
 use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
-use afd_fleet_lifecycle::{After, FleetPage, FleetStatus, Result as FleetResult, SecretAccess};
+use afd_fleet_lifecycle::{
+    After, FleetPage, FleetRow, FleetStatus, Result as FleetResult, SecretAccess,
+};
 
 /// Everything the workspace fleets routes act through.
 ///
@@ -35,6 +37,17 @@ pub trait WorkspaceFleets: Send + Sync + std::fmt::Debug + 'static {
         after: Option<&After>,
         limit: u32,
     ) -> impl Future<Output = FleetResult<FleetPage>> + Send;
+
+    /// The fleet this workspace holds under the saved name `name`, or `None`.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, and a row this daemon cannot
+    /// read.
+    fn named(
+        &self,
+        workspace: &Uuid7,
+        name: &str,
+    ) -> impl Future<Output = FleetResult<Option<FleetRow>>> + Send;
 
     /// Whether this fleet will take new work, without reading what it is.
     ///
@@ -105,6 +118,14 @@ impl WorkspaceFleets for afd_fleet_lifecycle::Fleets {
         limit: u32,
     ) -> impl Future<Output = FleetResult<FleetPage>> + Send {
         Self::page(self, workspace, after, limit)
+    }
+
+    fn named(
+        &self,
+        workspace: &Uuid7,
+        name: &str,
+    ) -> impl Future<Output = FleetResult<Option<FleetRow>>> + Send {
+        Self::named(self, workspace, name)
     }
 
     fn ingress_status(

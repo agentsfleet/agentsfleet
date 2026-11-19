@@ -53,6 +53,10 @@ mod e2e_retire;
 mod e2e_seed;
 #[path = "support/e2e_seed_keys.rs"]
 mod e2e_seed_keys;
+#[path = "support/e2e_steer_offers.rs"]
+mod offers;
+#[path = "support/e2e_steers.rs"]
+mod steers;
 use af_egress::testing::upstream as https;
 use af_providers::testing::scripted as fake_model;
 #[path = "support/e2e_reads.rs"]
@@ -86,6 +90,8 @@ mod daemon;
 mod integration_cli;
 #[path = "integration_cluster_outcomes.rs"]
 mod integration_cluster_outcomes;
+#[path = "integration_fleet_list_name.rs"]
+mod integration_fleet_list_name;
 #[path = "integration_readyz.rs"]
 mod integration_readyz;
 #[path = "integration_runner_activity/mod.rs"]
@@ -95,6 +101,10 @@ mod integration_runner_activity_call_id;
 #[path = "integration_runner_brackets.rs"]
 mod integration_runner_brackets;
 mod integration_runner_e2e;
+#[path = "integration_runner_fleets.rs"]
+mod integration_runner_fleets;
+#[path = "integration_runner_fleets_paging.rs"]
+mod integration_runner_fleets_paging;
 #[path = "integration_runner_messages.rs"]
 mod integration_runner_messages;
 #[path = "integration_runner_messages_fence.rs"]
@@ -111,6 +121,14 @@ mod integration_runner_schedules_refusals;
 mod integration_runner_schedules_runs;
 #[path = "integration_runner_shapes.rs"]
 mod integration_runner_shapes;
+#[path = "integration_runner_steers.rs"]
+mod integration_runner_steers;
+#[path = "integration_runner_steers_chain.rs"]
+mod integration_runner_steers_chain;
+#[path = "integration_runner_steers_fence.rs"]
+mod integration_runner_steers_fence;
+#[path = "integration_runner_steers_refusals.rs"]
+mod integration_runner_steers_refusals;
 mod integration_runner_stream;
 #[path = "integration_rust_runner.rs"]
 mod integration_rust_runner;
