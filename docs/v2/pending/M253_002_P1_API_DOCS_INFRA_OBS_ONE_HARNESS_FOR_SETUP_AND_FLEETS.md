@@ -83,7 +83,8 @@ SPEC AUTHORING RULES (the one comment that survives):
 | `rustd/crates/runner/afr_supervisor/src/**` | EDIT | runs a setup run: no sandbox, `propose_setup` only, setup report; the remote model-call client goes |
 | `rustd/crates/protocol/af_wire/src/**` | EDIT | the setup part of `RunPayload` and of the report; the context verb |
 | `rustd/crates/daemon/afd_setup/src/**` | EDIT | the only setup path: assign, report, context verb, refused-proposal record |
-| `rustd/crates/daemon/afd_setup/src/model/**` | DELETE | the daemon's model calls |
+| `rustd/crates/daemon/afd_setup/src/model/**` | DELETE or MOVE | model selection, balance gate and tool schema move to `src/run/**`; the rest is deleted |
+| `rustd/crates/protocol/af_fleet_runtime/src/config/trigger/**`, `rustd/crates/daemon/afd_cron/src/validate.rs` | EDIT | one shared cron check |
 | `rustd/crates/daemon/afd_gateway/src/**` | EDIT | no setup model frames |
 | `rustd/crates/daemon/afd_bench/src/lane/**` | EDIT | no lanes for the daemon's model calls |
 | `schema/*_setup_attempts.sql`, `*_setup_dispatches.sql`, `*_setup_activity_receipts.sql`, `*_setup_answer_receipts.sql`, `*_setup_replay_receipts.sql`, `*_setup_edit_decisions.sql`, `*_billing_setup_report_receipts.sql` | DELETE | tables of the daemon's model calls, named as M253_001 leaves them |
@@ -132,12 +133,11 @@ The crate builds alone from its own manifest and names no repository crate. Its 
 
 The `tools` feature adds files, `ls`, `find`, `grep`, shell, web, memory, a Model Context Protocol (MCP) client, `ask_user`, `tool_search`, clock and plan. agentsfleet adapts these tools and never forks them.
 
-Each model call inside a run is a **step**, so "turn" keeps one meaning. **Implementation default:** the observer's hooks are `step_started` and `step_ended`.
+guffbolt's existing crate, tools and error shape stay; M253_001 renames its per-call `Turn` to `Step`. What changes here is listed per Section.
 
 - **Dimension 1.1** — guffbolt names no repository crate → Test `guffbolt_manifest_names_no_repository_crate` (unit): parse `rustd/guffbolt/Cargo.toml`. Expected: no dependency name or `path` points at an `af_`, `afr_` or `afd_` crate.
 - **Dimension 1.2** — guffbolt packages alone → Test `guffbolt_packages_without_the_workspace` (integration): `cargo package -p guffbolt --list`. Expected: exit 0, with `README.md` and no `crates/` path.
 - **Dimension 1.3** — the core builds without tools → Test `guffbolt_core_builds_without_tools` (integration): `cargo check -p guffbolt --no-default-features`. Expected: exit 0.
-- **Dimension 1.4** — a run counts steps → Test `a_run_reports_each_model_call_as_a_step` (unit): a scripted model making three calls. Expected: `step_started` 1, 2 and 3.
 - **Dimension 1.5** — an unknown tool answers the model → Test `a_call_naming_no_offered_tool_answers_not_offered` (unit): the model calls `ghost`. Expected: a result starting `[tool_not_offered]`, and the loop goes on.
 
 ### §2 — guffbolt's local defaults are safe outside a sandbox
@@ -146,17 +146,19 @@ A standalone embedder gets `LocalEnv`, `LocalOutbound` and `LocalMemory`.
 
 `LocalEnv` starts each process in its own process group with a cleared environment, and a pseudo-terminal (PTY) when asked. A stop or timeout kills the whole group.
 
-`LocalOutbound` refuses private, loopback and link-local addresses after resolution, so a redirect cannot reach them. MCP over HTTP sends every request through the embedder's `Outbound`, so agentsfleet's egress guard covers it.
+`LocalOutbound` refuses private, loopback, link-local, unique-local, CGNAT, unspecified and multicast addresses after resolution, through a `reqwest` DNS resolver hook that tests can replace. A new `[egress_denied]` code joins `tools/code.rs`. MCP over HTTP admits its URL through `Outbound::connect`, and its own client installs the same resolver.
 
 - **Dimension 2.1** — a timeout kills the group → Test `a_timed_out_command_leaves_no_child_running` (integration): `sh -c 'sleep 60 & sleep 60'` with a 1-second timeout. Expected: both sleeps are gone.
 - **Dimension 2.2** — the environment is cleared → Test `a_local_command_sees_only_named_variables` (integration): a parent variable `SECRET_X`. Expected: `env` in the child prints no `SECRET_X`.
 - **Dimension 2.3** — private names are refused → Test `local_outbound_refuses_a_name_resolving_to_loopback` (unit): a host resolving to `127.0.0.1`. Expected: `[egress_denied]`, and no connection opened.
-- **Dimension 2.4** — redirects cannot escape → Test `local_outbound_refuses_a_redirect_to_a_private_address` (integration): a public URL answering 302 to `http://10.0.0.1/`. Expected: refused, and the private host gets no request.
-- **Dimension 2.5** — MCP over HTTP uses Outbound → Test `mcp_http_requests_pass_through_the_embedders_outbound` (unit): a recording `Outbound`. Expected: every MCP request appears in it.
+- **Dimension 2.4** — redirects cannot escape → Test `local_outbound_refuses_a_redirect_to_a_private_address` (integration): a test resolver mapping a public name to a test server, which answers 302 to `https://10.0.0.1/`. Expected: refused, and the private host gets no request.
+- **Dimension 2.5** — MCP over HTTP refuses private addresses → Test `mcp_http_client_refuses_a_private_address` (unit): an MCP server URL resolving to `10.0.0.1`. Expected: `[egress_denied]` before any request.
 
 ### §3 — A run waits for a person only at a quiet point
 
-`ask_user` ends the run as `Waiting { call_id, question }`, and `DriveState::resume` continues it with the answer as that call's result. `call_id` is the model provider's id for one call; agentsfleet stores it on the call's item. A run whose sub-agents are still running waits for them first, so no child work is lost or doubled.
+`ask_user` ends the run as `Waiting { call_id, question }`, and `DriveState::resume` continues it with the answer as that call's result. `call_id` is the model provider's id for one call; agentsfleet stores it on the call's item.
+
+Today the loop ends `Waiting` at once (`drive/mod.rs:137-139`). It will first take guffbolt's pause (`agents/pause.rs`), which is granted only when no child runs, so no child work is lost or duplicated.
 
 - **Dimension 3.1** — a question waits for children → Test `a_question_waits_for_running_children_before_the_run_ends` (unit): a child sleeping 50 ms and a root `ask_user`. Expected: the ending comes after the child's answer is recorded.
 - **Dimension 3.2** — a resumed run gets the answer → Test `a_resumed_run_answers_the_question_call` (unit): resume with "yes". Expected: the next request holds one tool result for that call, text "yes".
@@ -164,62 +166,68 @@ A standalone embedder gets `LocalEnv`, `LocalOutbound` and `LocalMemory`.
 
 ### §4 — `propose_setup` checks a proposal and hands refusals back to the model
 
-guffbolt's proposal tool works over a `Document` trait: the schema the model sees, the parse that applies the rules, and the base revision to match. agentsfleet's `FleetSetup` document parses with `Definition::parse` and checks `base_revision` against the run's head.
+guffbolt's proposal tool works over a `Document` trait with three methods. `schema()` is what the model sees, `apply(head, proposal)` applies the rules, and `base()` is the revision to match. agentsfleet's `FleetSetup` keeps today's proposal: `kind`, `base_candidate_id`, `base_candidate_revision`, `config_ops` and `instruction_edits`. It applies them with `af_fleet_runtime::definition::edit`, then `Definition::parse` and `validate_initial_generation`.
 
-An accepted proposal is kept for the report. A refused one returns its reason as the tool result, and the model may try again in the same run. The model's action, `initialize` or `edit`, is recorded on the usage line.
+Cron syntax checking moves from `afd_cron/src/validate.rs` into `af_fleet_runtime`, so runner and daemon share one check.
+
+An accepted proposal is kept for the report, and the next edit in the same run applies to it; the last accepted one is reported. A refused one returns its reason as the tool result, and the model may try again in the same run. The model's action, `initialize` or `edit`, is recorded on the usage line.
 
 - **Dimension 4.1** — a valid edit is kept → Test `propose_setup_keeps_a_valid_edit_against_the_head` (unit): a cron trigger `{"type":"cron","schedule":"0 9 * * *","timezone":"UTC","message":"Daily check"}` at `/config/x-agentsfleet/triggers/-`, base 1. Expected: kept, with base 1.
 - **Dimension 4.2** — an invalid definition answers the model → Test `propose_setup_returns_the_parse_failure_to_the_model` (unit): schedule `61 * * * *`. Expected: the result names the field, nothing is kept, and the loop goes on.
 - **Dimension 4.3** — a stale base is refused → Test `propose_setup_refuses_a_stale_base_revision` (unit): base 1 while the head is 2. Expected: refused, naming revision 2.
+- **Dimension 4.5** — cron checking is shared → Test `af_fleet_runtime_refuses_an_invalid_cron_schedule` (unit): `61 * * * *`. Expected: refused, and `afd_cron` calls the same function.
 - **Dimension 4.4** — a corrected retry wins → Test `a_refused_proposal_corrected_in_the_same_run_is_reported` (integration): a refusal, then a valid proposal. Expected: the report carries only the valid one.
 
 ### §5 — The runner answers a setup turn
 
 A setup run runs like a fleet run, except that it builds no sandbox, has only `propose_setup`, and reports the kept proposal.
 
-The model key rides the run, as for fleets, and a tenant runner never receives a platform key. The answer's text deltas reach the daemon, which fans them out and stores none. The daemon runs `Definition::parse` and the base check again in the report transaction before writing candidate revision N+1.
+`RunPayload.setup` keeps today's `SetupWork` fields: `sequence`, the candidate's `id`, `revision` and `definition`, `save_requested` and `tool`. The model key is carried in the run payload, and a tenant runner never receives a platform key.
+
+The answer's text deltas reach the daemon, which publishes them on the thread's items subject and stores none. The daemon runs `Definition::parse` and the base check again in the report transaction before writing candidate revision N+1.
 
 - **Dimension 5.1** — a setup turn gets an answer and a candidate → Test `a_setup_run_answer_writes_the_next_candidate` (integration): message 2 asking for a first version. Expected: the turn is answered, and the draft gains candidate revision 1.
 - **Dimension 5.2** — no sandbox for setup → Test `a_setup_run_builds_no_sandbox` (integration): a setup run. Expected: no sandbox prepared, and the run still answers.
-- **Dimension 5.3** — the report check is a safety net → Test `a_report_whose_proposal_fails_the_daemon_check_writes_no_candidate` (integration): a report carrying a definition the daemon refuses. Expected: no candidate, the turn failed, and §7's record written.
-- **Dimension 5.4** — a stale fence writes nothing → Test `a_superseded_setup_run_report_is_refused` (integration): a report at fence 1 after fence 2 was assigned. Expected: 409, and no candidate.
-- **Dimension 5.5** — an expired setup run is rerun → Test `an_expired_setup_run_reruns_the_turn` (integration): a runner that stops renewing. Expected: the turn is assigned again at fence +1, up to the run cap, then fails.
+- **Dimension 5.3** — the report check is a safety net → Test `a_report_whose_proposal_fails_the_daemon_check_writes_no_candidate` (integration): a report carrying a definition the daemon refuses. Expected: no candidate, the turn answered with its text, and one `setup_proposal_refused` event.
+- **Dimension 5.4** — a stale fence writes nothing → Test `a_superseded_setup_run_report_is_refused` (integration): a report at fence 1 after fence 2 was assigned. Expected: refused with `RUN_STALE_FENCING_TOKEN` (`UZ-RUN-005`), and no candidate.
+- **Dimension 5.5** — an expired setup run is rerun → Test `an_expired_setup_run_reruns_the_turn` (integration): a runner that stops renewing. Expected: the turn is assigned again at the next fence, up to `af_core::limits::EVENT_LEASES_MAX` runs, then fails with `ProviderUsageUnknown`.
 - **Dimension 5.6** — no platform key for a tenant runner → Test `a_tenant_runner_is_not_assigned_a_platform_key_setup_run` (integration): a draft using platform inference and a tenant runner. Expected: no assignment to that runner.
 
 ### §6 — A long setup keeps its compacted context
 
-The draft's `memory.context_checkpoints` row holds the compacted setup history, one row per draft. The runner loads and saves it through one fenced verb on its connection. A run below the current fence writes nothing.
+The draft's `memory.context_checkpoints` row holds the compacted setup history as an `af_context::Checkpoint`. The runner loads and saves it with `Up::ContextLoad` and `Up::ContextSave` on its connection. A save keeps today's `resource_version` compare-and-swap and also joins `thread.runs` on the run's fence, so a stale run is refused with `RUN_STALE_FENCING_TOKEN`.
 
 guffbolt's window hook compacts when the window fills, and the saved state is the hook's output.
 
 - **Dimension 6.1** — the context loads on the next turn → Test `the_next_setup_turn_loads_the_saved_context` (integration): turn 20 after a compaction. Expected: its first request holds the summary, not 19 raw messages.
-- **Dimension 6.2** — a stale run cannot overwrite → Test `a_superseded_setup_run_cannot_save_context` (integration): a save at fence 1 after fence 2 saved. Expected: refused, and fence 2's row unchanged.
+- **Dimension 6.2** — a stale run cannot overwrite → Test `a_superseded_setup_run_cannot_save_context` (integration): a save at fence 1 after fence 2 saved. Expected: refused with `RUN_STALE_FENCING_TOKEN`, and fence 2's row unchanged.
 
 ### §7 — Setup's last gaps close
 
-Three gaps close here:
-- **Usage on notices.** A setup turn's notice reads usage from the settled run's usage lines.
+Two gaps close here:
+- **Usage on notices.** A setup turn's notice reads usage from `billing.usage_lines` for its run, not from dispatch receipts (`observe/rows.rs:98-107`).
 - **Refused proposals are recorded.** A proposal refused at report is logged with its `error_code` and kept as the turn's failure detail.
-- **OpenAPI ships alone.** The `RunnerPatch` hunk in `public/openapi.json` ships in its own commit with its route change.
 
 - **Dimension 7.1** — notices show run usage → Test `a_setup_notice_reports_the_runs_usage` (integration): a settled setup run with 1,200 input tokens. Expected: the notice shows 1,200.
 - **Dimension 7.2** — a refused proposal is recorded → Test `a_refused_report_proposal_logs_its_error_code` (integration): §5.3's case. Expected: one `setup_proposal_refused` event with `error_code`, `draft_id` and `run_id`.
 
 ### §8 — The daemon makes no model call
 
-The daemon's model path in `afd_setup/src/model/**`, its runner frames, its tables and its bench lanes are deleted. So are the daemon's `[inference]` and `[authoring.turn]` sections. The runner protocol keeps one version, and a runner speaking another is refused with `RUN_PROTOCOL_UNSUPPORTED` (`UZ-RUN-023`).
+Model selection, the balance gate and the `propose_setup` schema move from `afd_setup/src/model/**` to `afd_setup/src/run/**`. The rest of `model/**` is deleted: dispatch, provider calls, receipts, progress, compaction calls and the edit-intent veto. So are `afd_setup/src/lease/**`, `afr_supervisor/src/authoring/**` after its proposal code moves, the `Up` and `Down` setup model frames, `LeaseKind::Authoring`, `AcceptedKinds::AUTHORING`, the tables, and the bench lanes.
+
+The daemon's `[inference]` and `[authoring.turn]` sections go; the 300-second setup runtime, `max_model_calls` and `max_proposal_corrections` become constants in `afd_setup`. The runner protocol becomes `agentsfleet.runner.v4` alone, and `Revision` and v2 are deleted.
 
 **Implementation default:** the dev database is reset after merge, per Indy's "Rule holds, reset dev".
 
 - **Dimension 8.1** — no setup model frame remains → Test `the_runner_protocol_has_no_setup_model_frames` (unit): every `Down` variant's tag. Expected: none carries a model call.
 - **Dimension 8.2** — another protocol version is refused → Test `a_runner_on_another_protocol_version_is_refused` (integration): hello with an unknown version. Expected: `UZ-RUN-023`, and no run assigned.
-- **Dimension 8.3** — the daemon boots without inference settings → Test `the_daemon_profiles_load_without_inference_sections` (unit): both Fly profiles. Expected: they load and validate.
+- **Dimension 8.3** — no setting feeds setup runs → Test `setup_limits_are_constants` (unit): `afd_setup`'s limits. Expected: 300-second runtime from a constant, and no `TurnSettings` type remains.
 
 ## Interfaces
 
-- **Runner protocol:** one version. `Down::Run { run: RunPayload }`, where the payload names one owner, a fleet or a draft. A setup run's payload carries `setup { head_candidate_id, head_revision, message, history }`.
-- **Setup report:** `ReportRequest.setup` carries the kept proposal as `{ action: "initialize" | "edit", base_revision, definition }`, or none for a text-only answer.
-- **Context verb:** `context.load { run_id, fence }` and `context.save { run_id, fence, state }`, answered on the runner's connection; a lower fence gets 409.
+- **Runner protocol:** `agentsfleet.runner.v4` alone. `Down::Run { run: RunPayload }`, where the payload names one owner, a fleet or a draft. A setup run's payload carries `setup { head_candidate_id, head_revision, message, history }`.
+- **Setup report:** `ReportRequest.setup` carries the kept proposal as today's `SetupProposal`, with `base_candidate_id`, `base_candidate_revision` and the definition as JSON text, or none for a text-only answer.
+- **Context verb:** `Up::ContextLoad { run_id, fence }` and `Up::ContextSave { run_id, fence, resource_version, checkpoint }`, answered in `Down`; a fence below the current one is refused with `RUN_STALE_FENCING_TOKEN`.
 - **guffbolt public API:** `Tool<Cx>`, `Tools<T>`, `Document`, `Env`, `Outbound`, `MemoryStore`, `Ending::{Answered, Waiting, Stopped, Failed}` and `DriveState::resume`.
 
 ## Failure Modes
@@ -239,10 +247,10 @@ The daemon's model path in `afd_setup/src/model/**`, its runner frames, its tabl
 
 ## Invariants
 
-1. A run has exactly one owner. A `CHECK` in `schema/*_thread_runs.sql` requires exactly one of `fleet_id` and `draft_id`.
+1. A thread has exactly one owner. A `CHECK` in `schema/*_thread_threads.sql` requires exactly one of `fleet_id` and `draft_id`, and a run's owner is its thread.
 2. A report or context save below the current fence writes nothing. The settle and save statements match `fencing_token` in their `WHERE`, and zero rows map to 409.
 3. guffbolt depends on no repository crate. Dimension 1.1's test runs in `make test-unit-all`.
-4. The daemon makes no model call. `afd_setup` does not depend on `af_providers`, so a call does not compile.
+4. The daemon cannot use the provider clients. `afd_setup` depends on none of `af_providers`, `af_inference` and `rig-core`.
 
 ## Metrics & Observability
 
@@ -261,7 +269,7 @@ The daemon's model path in `afd_setup/src/model/**`, its runner frames, its tabl
 | R3 | A refused proposal returns to the model, and a corrected one wins (§4) | `make test-integration-rustd` | `a_refused_proposal_corrected_in_the_same_run_is_reported` passes | P0 | |
 | R4 | Stale reports and saves write nothing (§5, §6) | `make test-integration-rustd` | both `superseded` cases pass | P0 | |
 | R5 | Local defaults contain processes and egress (§2) | `make test-unit-all` | `a_timed_out_command_leaves_no_child_running` passes | P1 | |
-| R6 | The daemon calls no model (§8) | `git grep -n -w af_providers -- rustd/crates/daemon/afd_setup/Cargo.toml` | no output | P0 | |
+| R6 | The daemon calls no model (§8) | `git grep -n -w -E "af_providers|af_inference|rig-core" -- rustd/crates/daemon/afd_setup/Cargo.toml` | no output | P0 | |
 | S1 | Declared commands green | `make lint-all` | exit 0 | P0 | |
 | S2 | Declared commands green | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Declared commands green | `make test-integration-rustd` | exit 0 | P0 | |
@@ -272,9 +280,9 @@ The daemon's model path in `afd_setup/src/model/**`, its runner frames, its tabl
 
 | Deleted file or symbol | Verify | Expected |
 |------------------------|--------|----------|
-| `AuthoringModelResult` and the other setup model frames | `git grep -n -w -E "AuthoringModelResult|AuthoringActivityAck|AuthoringRenewed|AuthoringReportAck"` | no output |
-| the daemon's setup model path | `git grep -n "afd_setup::model"` | no output |
-| the runner's remote model client | `git grep -n -w "client::authoring"` | no output |
+| `AuthoringModelResult` and the other setup model frames | `git grep -n -w -E "AuthoringModelResult|AuthoringActivityAck|AuthoringRenewed|AuthoringReportAck|AuthoringModel|AuthoringRenew|AuthoringReport" -- . ':!docs/v2' ':!bench/baselines' ':!CHANGELOG.md'` | no output |
+| the daemon's setup model path | `git grep -n -E "mod model|crate::model" -- rustd/crates/daemon/afd_setup` | no output |
+| the runner's remote model client | `git grep -n -E "mod authoring" -- rustd/crates/runner` | no output |
 | `[authoring.turn]` | `git grep -n -F "[authoring.turn]" -- deploy` | no output |
 
 ## Out of Scope
@@ -328,6 +336,6 @@ The daemon's model path in `afd_setup/src/model/**`, its runner frames, its tabl
   - > Owner (Indy, Nov 19, 2026): "Ensure the rust code for individual files is 99% and overall is 99% if possible or else stick to the numbers we have currently." — context: coverage targets 99% per file and overall, never below the 98% line and 95% patch floors.
   - > Owner (Indy, Nov 19, 2026): "E2E cloud burst" — context: Linux proof, paid, his go per run.
   - > Owner (Indy, Nov 19, 2026): "I think i did the elephant goldfish brainstrome before." and "youalready have the context" — context: orly-spec step 2.
-- **Model reviews** — EGM review, invoked by Indy on Nov 19, 2026; findings recorded here when it finishes.
+- **Model reviews** — EGM Stage 9 (implementation readiness), three reviewers, Claude Opus 5.5, Nov 19, 2026: 9 Blockers, 39 Majors, 30 Nits. Every Blocker is resolved in the Sections as an implementation default, recorded in `.egm/implementation_readiness_report.md`; wording findings are applied, and none is declined.
 - **Open blockers** — none.
 - **Deferrals and transfers** — none.
