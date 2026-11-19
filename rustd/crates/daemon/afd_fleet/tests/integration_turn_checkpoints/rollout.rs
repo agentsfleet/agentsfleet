@@ -99,18 +99,42 @@ async fn issuing_saves_the_runtime_cap_instead_of_using_a_later_profile() -> Che
             .fetch_one(&mut *case.fixtures.database.acquire().await?)
             .await?;
     assert_eq!(saved, 60);
-    let deadline: jiff_sqlx::Timestamp =
-        sqlx::query_scalar(include_str!("../../src/lease/sql/execution_deadline.sql"))
-            .bind(&case.issued.lease_id)
-            .bind(af_core::timing::MAX_RUNTIME)
-            .fetch_one(&mut *case.fixtures.database.acquire().await?)
-            .await?;
+    let deadline = execution_deadline(&case).await?;
     assert_eq!(
-        deadline.to_jiff(),
+        deadline,
         af_core::clock::after(case.issued.created_at, std::time::Duration::from_secs(60))
     );
     case.fixtures.cleanup().await;
     Ok(())
+}
+
+async fn execution_deadline(case: &Case) -> Checked<jiff::Timestamp> {
+    use afd_fleet::task::TaskLifecycle as _;
+    sqlx::query("UPDATE runner.runners SET capability_report=COALESCE(capability_report,'{}'::jsonb) || jsonb_build_object($2::text,true), updated_at=now() WHERE id=$1")
+        .bind(&case.runner)
+        .bind(af_wire::task::CAPABILITY)
+        .execute(&mut *case.fixtures.database.acquire().await?)
+        .await?;
+    let input = case
+        .tasks()
+        .inputs(
+            afd_fleet::task::TaskLease {
+                runner_id: &case.runner,
+                lease_id: &case.issued.lease_id,
+                fencing_token: case.acquired.fence.as_u64(),
+            },
+            &garde::Unvalidated::new(af_wire::task::TaskInputsQuery {
+                fencing_token: case.acquired.fence.as_u64(),
+                starting_after: None,
+                after_input_sequence: None,
+                limit: 4,
+            })
+            .validate()?,
+        )
+        .await?;
+    input
+        .execution_deadline
+        .ok_or_else(|| "native input response must carry the saved execution deadline".into())
 }
 
 async fn assert_preserved(case: &Case, saved: &af_wire::lease::TurnResume) -> Checked {
