@@ -13,8 +13,8 @@
 use af_core::id::Uuid7;
 use std::error::Error;
 
-use af_wire::turn::TurnKind;
-use afd_db::test_util::{RunnerPolicy, RunnerSeed, TurnFacts, TurnSeed, mint_id};
+use af_core::turn::status;
+use afd_db::test_util::{RunnerPolicy, RunnerSeed, mint_id};
 use afd_turns::view::disposition::{Placed, SteerDisposition};
 use afd_turns::view::{Steer, Steered, steer_actor};
 
@@ -42,6 +42,10 @@ INSERT INTO thread.runs
    posted_message_count, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, now(),
         'platform', 'test', 'test', now(), 1, now() + interval '1 hour', $7, 0, now(), now())";
+
+/// Opens a waiting turn as the claim does when a run takes it.
+const OPEN_TURN: &str =
+    "UPDATE thread.turns SET opened_at = now(), status = $2, updated_at = now() WHERE id = $1";
 
 const INSERT_SLOT: &str = "\
 INSERT INTO thread.threads
@@ -86,13 +90,11 @@ async fn go_live(lane: &TurnsLane, head: &str) -> Outcome {
     RunnerSeed::new(&runner, afd_state::sql::RUNNER_STATUS_ACTIVE, POLICY)
         .insert(&mut *connection)
         .await?;
-    let kind = TurnFacts {
-        actor: "steer:api",
-        event_type: TurnKind::Chat.as_str(),
-        status: "received",
-    };
-    TurnSeed::new(&lane.fleet, &lane.workspace, &head, kind)
-        .insert(&mut *connection)
+    // The send wrote the head's turn; a claim opens it, as here.
+    sqlx::query(OPEN_TURN)
+        .bind(&head)
+        .bind(status::RECEIVED)
+        .execute(&mut *connection)
         .await?;
     sqlx::query(INSERT_RUN)
         .bind(mint_id())
