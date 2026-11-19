@@ -1,6 +1,6 @@
 # Scenario — Chief of staff: reach any fleet by name, and let one fleet run the others
 
-> Parent: [`README.md`](./README.md) · Spec: `docs/v2/pending/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md`
+> Parent: [`README.md`](./README.md) · Spec: `docs/v2/active/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md`
 
 > **Proposed.** The spec owns the proofs; this page owns the shape.
 

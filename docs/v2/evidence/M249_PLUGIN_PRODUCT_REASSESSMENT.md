@@ -96,7 +96,7 @@ AgentPhone can therefore be a fleet. The phone number remains a resource; the pr
 A real-time voice path needs appropriate provider or audio support whichever product label is chosen.
 
 A dedicated fleet makes sense for an independent purpose, context, ownership, budget or schedule. Another fleet also brings communication, routing and coordination work.
-The [fleet-to-fleet discussion](../pending/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md) is an alternative to capability composition, not evidence that composition is required.
+The [fleet-to-fleet discussion](../active/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md) is an alternative to capability composition, not evidence that composition is required.
 
 If the existing fleet only needs another permitted action or input channel, a connector and tools might already suffice.
 A Plugin earns an additional concept only when reusable packaging, scoped resources, event routing or versioned distribution improves that experience.

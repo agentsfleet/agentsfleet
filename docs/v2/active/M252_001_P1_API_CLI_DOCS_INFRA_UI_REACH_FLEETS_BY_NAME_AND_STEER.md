@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 19, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, a person relays work between fleets and copies UUIDs to talk to them, and a chief-of-staff fleet cannot exist
 
@@ -64,7 +64,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/pending/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md` | EDIT, then MOVE to `docs/v2/done/` | this spec |
+| `docs/v2/active/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md` | EDIT, then MOVE to `docs/v2/done/` | this spec |
 | `docs/architecture/scenarios/chief-of-staff.md`; `docs/architecture/scenarios/README.md`; `docs/architecture/data_flow.md`; `docs/architecture/README.md` | EDIT (spec commit) | the one scenario page and its pointers; "proposed" removed at close |
 | `docs/architecture/runner_execution.md`; `docs/architecture/scenarios/slack-incident-responder.md`; `docs/architecture/api_resources.md` | EDIT (with the code) | the two tools in §"Tool catalog"; the Slack routing name; the list route's `name` filter |
 | `tests/fixtures/fleet-address/cases.json`; `tests/fixtures/fleets/chief-of-staff/definition.json`; `tests/fixtures/fleets/runner-link-watch/definition.json`; `tests/fixtures/fleets/fleet-to-fleet/cases.json` | CREATE (spec commit) | the address case table; the two fleets of the live test; the hand-graded eval cases. No test reads them by enumeration |
