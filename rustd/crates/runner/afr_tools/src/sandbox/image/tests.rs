@@ -109,7 +109,7 @@ async fn an_image_is_attached_to_the_run_and_the_text_names_no_bytes() {
     assert_eq!(answer.error_code, None, "{answer:?}");
     assert_eq!(
         answer.text,
-        "Attached shot.png (40960 bytes, image/png) for your next turn"
+        "Attached shot.png (40960 bytes, image/png) for your next step"
     );
     let held = held.unwrap();
     assert_eq!(held.kind, ImageKind::Png);

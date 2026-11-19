@@ -161,11 +161,11 @@ impl Run<'_> {
         };
         // RunPlane is a child of serving, so a runner shutting down or stopped
         // counts too: it takes no run that could take the hold.
-        let run_plane = !self.lessee.halt.run_plane().is_cancelled();
+        let taking_runs = !self.lessee.halt.taking_runs().is_cancelled();
         let durable = recovery.is_some();
         let recoverable = matches!(ending, Ending::Ran { output, .. } if output.recovery.is_some());
         let ran_out = (ending.processed() || recoverable) && !self.interrupt.is_cancelled();
-        if !(ran_out && run_plane && sandbox.is_running()) {
+        if !(ran_out && taking_runs && sandbox.is_running()) {
             if durable {
                 super::recovery::capture_unavailable(ending);
             }

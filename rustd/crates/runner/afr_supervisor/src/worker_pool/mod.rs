@@ -60,7 +60,7 @@ pub(crate) async fn serve(
         }
         spawned = spawned.max(workers_wanted);
         tokio::select! {
-            () = lessee.halt.run_plane().cancelled() => break,
+            () = lessee.halt.taking_runs().cancelled() => break,
             changed = assignment.changed() => if changed.is_err() { break; },
         }
     }
@@ -79,7 +79,7 @@ impl Worker {
     async fn run(mut self) {
         let worker = self.number;
         tracing::info!(event = "worker_started", worker);
-        while !self.lessee.halt.run_plane().is_cancelled() {
+        while !self.lessee.halt.taking_runs().is_cancelled() {
             match AssertUnwindSafe(self.next()).catch_unwind().await {
                 Ok(Ok(true)) => {}
                 Ok(Ok(false)) => break,
@@ -101,15 +101,15 @@ impl Worker {
 
     async fn next(&mut self) -> Result<bool> {
         let number = self.number;
-        let run_plane = self.lessee.halt.run_plane().clone();
+        let taking_runs = self.lessee.halt.taking_runs().clone();
         while !self.assignment.borrow_and_update().takes_work(number) {
             tokio::select! {
-                () = run_plane.cancelled() => return Ok(false),
+                () = taking_runs.cancelled() => return Ok(false),
                 changed = self.assignment.changed() => if changed.is_err() { return Ok(false); },
             }
         }
         let offer = tokio::select! {
-            () = run_plane.cancelled() => return Ok(false),
+            () = taking_runs.cancelled() => return Ok(false),
             changed = self.assignment.changed() => return Ok(changed.is_ok()),
             offer = async { self.offers.lock().await.recv().await } => offer,
         };

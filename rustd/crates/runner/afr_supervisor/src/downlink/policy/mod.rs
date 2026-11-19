@@ -127,7 +127,7 @@ impl<'a> Heartbeat<'a> {
             tokio::select! {
                 biased;
                 () = halt.serving().cancelled() => return self.last_beat(halt).await,
-                () = halt.run_plane().cancelled(), if !self.closed => { self.close(); }
+                () = halt.taking_runs().cancelled(), if !self.closed => { self.close(); }
                 changed = updates.changed() => {
                     if changed.is_err() { halt.stop(); return; }
                     let frame = updates.borrow_and_update().clone();

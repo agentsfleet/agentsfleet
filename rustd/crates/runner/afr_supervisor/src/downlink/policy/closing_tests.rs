@@ -108,7 +108,7 @@ async fn test_leasing_stopped_ends_every_hold_and_beats_at_once() {
     let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
     let stopping = async {
         watching.changed().await.unwrap();
-        halt.running().cancel();
+        halt.taking_runs().cancel();
     };
     let ((), ()) = tokio::join!(beating, stopping);
     holds.shutdown().await;
@@ -219,7 +219,7 @@ async fn test_leasing_stopped_brings_one_beat_forward_and_no_more() {
     let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
     let stopping = async {
         watching.changed().await.unwrap();
-        halt.running().cancel();
+        halt.taking_runs().cancel();
     };
     let ((), ()) = tokio::join!(beating, stopping);
     holds.shutdown().await;

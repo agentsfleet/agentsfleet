@@ -186,7 +186,7 @@ async fn test_a_run_under_a_changed_policy_builds_fresh_and_ends_the_hold() {
 }
 
 fn stop_leasing(rig: &Rig) {
-    rig.lessee.halt.running().cancel();
+    rig.lessee.halt.taking_runs().cancel();
 }
 
 fn shut_down(rig: &Rig) {

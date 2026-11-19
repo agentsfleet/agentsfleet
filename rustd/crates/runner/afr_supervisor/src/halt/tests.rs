@@ -11,7 +11,7 @@ fn shutdown_stops_serving_and_leasing_but_not_running_runs() {
 
     shutdown.cancel();
 
-    assert!(halt.serving().is_cancelled() && halt.run_plane().is_cancelled());
+    assert!(halt.serving().is_cancelled() && halt.taking_runs().is_cancelled());
     assert!(
         !halt.stopped().is_cancelled(),
         "shutdown still permits final delivery"
@@ -26,9 +26,9 @@ fn shutdown_stops_serving_and_leasing_but_not_running_runs() {
 fn stopping_leasing_leaves_the_heartbeat_serving() {
     let halt = Halt::new(CancellationToken::new());
 
-    halt.run_plane().cancel();
+    halt.taking_runs().cancel();
 
-    assert!(halt.run_plane().is_cancelled());
+    assert!(halt.taking_runs().is_cancelled());
     assert!(!halt.serving().is_cancelled() && !halt.running().is_cancelled());
 }
 
@@ -49,6 +49,6 @@ fn a_refused_token_stops_everything_and_other_failures_do_not() {
 
     assert!(halt.token_refused());
     assert!(halt.running().is_cancelled() && halt.serving().is_cancelled());
-    assert!(halt.run_plane().is_cancelled());
+    assert!(halt.taking_runs().is_cancelled());
     assert!(halt.stopped().is_cancelled());
 }

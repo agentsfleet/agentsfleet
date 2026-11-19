@@ -194,7 +194,7 @@ async fn test_leasing_that_stops_mid_wait_ends_the_wait() {
     let lessee = Arc::clone(&rig.lessee);
     let stopping = tokio::spawn(async move {
         tokio::time::sleep(STOPS_LEASING_AFTER).await;
-        lessee.halt.running().cancel();
+        lessee.halt.taking_runs().cancel();
     });
     let started = tokio::time::Instant::now();
 
@@ -223,7 +223,7 @@ async fn test_a_runner_that_stopped_leasing_waits_for_no_build() {
         FakeAgent::new(Behaviour::Talks),
     );
     served(&rig);
-    rig.lessee.halt.running().cancel();
+    rig.lessee.halt.taking_runs().cancel();
     let started = tokio::time::Instant::now();
 
     let counted = builds_counted(&rig, &bound()).await;

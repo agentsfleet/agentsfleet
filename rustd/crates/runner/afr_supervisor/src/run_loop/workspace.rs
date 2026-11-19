@@ -178,12 +178,12 @@ impl Run<'_> {
                 // stops mid-wait, ends the wait as surely as the deadline.
                 let waits = ending.processed()
                     && !self.interrupt.is_cancelled()
-                    && !self.lessee.halt.run_plane().is_cancelled();
+                    && !self.lessee.halt.taking_runs().is_cancelled();
                 let built = waits && tokio::select! {
                     biased;
                     () = &mut building => true,
                     () = self.interrupt.cancelled() => false,
-                    () = self.lessee.halt.run_plane().cancelled() => false,
+                    () = self.lessee.halt.taking_runs().cancelled() => false,
                     () = tokio::time::sleep(BUILD_AFTER_ANSWER) => {
                         let run_id = self.ids.run.as_str();
                         let event = EVENT_BUILD_OUTLASTED;

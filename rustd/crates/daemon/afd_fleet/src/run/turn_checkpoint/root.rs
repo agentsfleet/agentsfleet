@@ -54,7 +54,7 @@ struct Proof {
 #[serde(deny_unknown_fields)]
 struct Driver {
     answers: Vec<String>,
-    completed_turns: u64,
+    completed_steps: u64,
 }
 
 #[derive(Validate)]
@@ -86,7 +86,7 @@ pub(super) fn validate(
             pair.first().map(|fold| fold.sequence) >= pair.get(1).map(|fold| fold.sequence)
         })
         || saved.root.pinned > saved.root.messages.len()
-        || usize::try_from(saved.root.driver.completed_turns)
+        || usize::try_from(saved.root.driver.completed_steps)
             .ok()
             .is_none_or(|turns| turns > saved.root.messages.len())
         || saved

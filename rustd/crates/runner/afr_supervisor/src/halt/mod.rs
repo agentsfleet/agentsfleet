@@ -20,7 +20,7 @@ const EVENT_TOKEN_REFUSED: &str = "runner_token_refused";
 #[derive(Debug)]
 pub(crate) struct Halt {
     serving: CancellationToken,
-    run_plane: CancellationToken,
+    taking_runs: CancellationToken,
     running: CancellationToken,
     stopped: CancellationToken,
     refused: AtomicBool,
@@ -30,7 +30,7 @@ impl Halt {
     /// Signals under the caller's `shutdown`, which stops serving and running.
     pub(crate) fn new(shutdown: CancellationToken) -> Self {
         Self {
-            run_plane: shutdown.child_token(),
+            taking_runs: shutdown.child_token(),
             serving: shutdown,
             running: CancellationToken::new(),
             stopped: CancellationToken::new(),
@@ -44,8 +44,8 @@ impl Halt {
     }
 
     /// Cancelled once the runner should take no new run.
-    pub(crate) const fn run_plane(&self) -> &CancellationToken {
-        &self.run_plane
+    pub(crate) const fn taking_runs(&self) -> &CancellationToken {
+        &self.taking_runs
     }
 
     /// Cancelled once runs in flight should end.
