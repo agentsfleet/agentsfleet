@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # egress_host_deps.sh — sourced probe for the runner egress host
-# dependencies. The per-lease egress boundary (own netns + veth + host-side
+# dependencies. The per-run egress boundary (own netns + veth + host-side
 # nftables IP-allowlist) needs THREE host packages plus a capable bubblewrap on
 # every runner box — none of which `deploy/baremetal/deploy.sh` installs (it
 # ships only the binary). This probe records the installed versions and fails
 # loud when a dep is missing or a bwrap lacks the namespace-handoff flags, so a
-# box that cannot enforce egress is caught at readiness, not at first lease.
+# box that cannot enforce egress is caught at readiness, not at first run.
 #
 # Usage (the caller already has an SSH wrapper named `remote_cmd`):
 #   source "$(dirname "$0")/../../lib/egress_host_deps.sh"

@@ -73,7 +73,7 @@ verify_cgroup_controllers() {
 }
 
 # Without IPv4 forwarding the runner's egress probe fails, and the daemon marks
-# every runner assigned an allowlisted egress policy degraded and leases it
+# every runner assigned an allowlisted egress policy degraded and runs it
 # nothing, while the service itself reads healthy.
 verify_ipv4_forwarding() {
   local forwarding

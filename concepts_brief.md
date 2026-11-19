@@ -44,7 +44,7 @@ Boot one pinned guest image on a qualified Linux host, connect the executor, run
 Then prepare a private repository disk, edit code, run tests and return the exact diff.
 The trusted runner owns repository credentials and verifies the selected commit.
 
-Add save and restore of declared task files, Git state and conversation progress across a fresh lease.
+Add save and restore of declared task files, Git state and conversation progress across a fresh run.
 The first recovery proof starts fresh guest compute and verifies interrupted command outcomes before retry.
 It does not require restoring running-process memory.
 
@@ -62,7 +62,7 @@ A completed task save protects declared bytes; a hard crash can lose newer unsav
 | Later approved fix | Continue the same incident's existing draft with fresh permissions, verified remote state and tests. Preserve laptop changes and reject stale publication. |
 | Overlapping outages | Accept queued alerts, keep incident context and writable files separate, and release the responder while approval waits. |
 | Several monitoring fleets | Preserve one active run per fleet; separately configured fleets can run concurrently under existing capacity rules. |
-| Several leases or worker loss | Restore task A after serving B, including saved local commits and declared uncommitted files, without importing B's workspace or authority. |
+| Several runs or worker loss | Restore task A after serving B, including saved local commits and declared uncommitted files, without importing B's workspace or authority. |
 | Long conversations | Keep shared compaction application-owned and independent of the guest backend; retain original history. |
 
 The [revision walkthroughs](docs/architecture/sandbox_evaluation.md#repository-revisions-across-events) retain the details and current application gaps.
