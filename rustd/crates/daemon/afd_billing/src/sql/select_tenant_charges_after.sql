@@ -1,5 +1,5 @@
 WITH page AS MATERIALIZED (
-    SELECT id, tenant_id, workspace_id, fleet_id, fleet_name, event_id, authoring_attempt_id,
+    SELECT id, tenant_id, workspace_id, fleet_id, fleet_name, turn_id, run_id,
            work_type, posture, model, charged_nanos, input_token_count, output_token_count,
            runtime_ms, created_at
       FROM billing.usage_lines
@@ -10,16 +10,16 @@ WITH page AS MATERIALIZED (
 )
 SELECT p.id, p.tenant_id, p.workspace_id,
        COALESCE(p.fleet_id, f.id) AS fleet_id, COALESCE(p.fleet_name, f.name) AS fleet_name,
-       -- A setup line names the draft message it ran in event_id; the charge shows no event.
-       CASE WHEN p.work_type = $6 THEN p.event_id END AS event_id, p.authoring_attempt_id,
+       -- A setup line names the draft message it ran in turn_id; the charge shows no event.
+       CASE WHEN p.work_type = $6 THEN p.turn_id END AS turn_id, p.run_id,
        CASE WHEN p.work_type = $6 THEN $7 ELSE $5 END AS charge_type,
        p.posture, p.model, p.charged_nanos, p.input_token_count, p.output_token_count,
        p.runtime_ms AS wall_ms, p.created_at
   FROM page p
   -- Setup turns the authoring path still runs; this join goes with setup.attempts.
-  LEFT JOIN setup.attempts a ON a.id = p.authoring_attempt_id AND a.tenant_id = p.tenant_id
-  -- A draft run's lines name the run as their authoring_attempt_id.
-  LEFT JOIN thread.runs dl ON dl.id = p.authoring_attempt_id AND dl.draft_id IS NOT NULL
+  LEFT JOIN setup.attempts a ON a.id = p.run_id AND a.tenant_id = p.tenant_id
+  -- A draft run's lines name the run as their run_id.
+  LEFT JOIN thread.runs dl ON dl.id = p.run_id AND dl.draft_id IS NOT NULL
         AND dl.tenant_id = p.tenant_id
   LEFT JOIN setup.drafts d ON d.id = COALESCE(a.draft_id, dl.draft_id)
         AND d.tenant_id = p.tenant_id AND d.workspace_id = p.workspace_id

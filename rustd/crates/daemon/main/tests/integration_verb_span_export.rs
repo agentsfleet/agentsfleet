@@ -177,7 +177,7 @@ async fn one_chat(supervisor: &mut Supervisor, endpoint: &str) -> e2e::Scenario 
     )
     .await;
     let (run_id, fence) = tail::run(&scene).await;
-    let body = wire::report_body(&run_id, &scene.event_id, fence);
+    let body = wire::report_body(&run_id, &scene.turn_id, fence);
     wire::report(&scene, &body)
         .await
         .expect("the native report is acknowledged");
@@ -225,10 +225,10 @@ async fn test_event_identity_joins_the_verb_spans() {
     let (endpoint, mut received) = collector().await;
     let mut supervisor = Supervisor::new();
     let scene = one_chat(&mut supervisor, &endpoint).await;
-    let event = scene.event_id.to_string();
+    let event = scene.turn_id.to_string();
     let ours = |seen: &Exported, name: &str| {
         seen.named(name)
-            .any(|span| attribute(span, semconv::ATTR_EVENT_ID) == Some(event.as_str()))
+            .any(|span| attribute(span, semconv::ATTR_TURN_ID) == Some(event.as_str()))
     };
     let exported = exported_until(&mut received, |seen| {
         ours(seen, semconv::SPAN_FLEET_OFFER) && ours(seen, semconv::SPAN_FLEET_REPORT)
@@ -263,7 +263,7 @@ async fn test_event_identity_joins_the_verb_spans() {
     ] {
         let span = exported
             .named(name)
-            .find(|span| attribute(span, semconv::ATTR_EVENT_ID) == Some(event.as_str()))
+            .find(|span| attribute(span, semconv::ATTR_TURN_ID) == Some(event.as_str()))
             .unwrap_or_else(|| panic!("no {name} span names event {event}: {exported:?}"));
         assert_eq!(
             attribute(span, semconv::ATTR_AGENT_ID),
@@ -304,10 +304,10 @@ async fn test_empty_offer_pass_records_no_span() {
             "an empty pass recorded a span: {offer:?}"
         );
     }
-    let event = scene.event_id.to_string();
+    let event = scene.turn_id.to_string();
     let ours = offers
         .iter()
-        .filter(|offer| attribute(offer, semconv::ATTR_EVENT_ID) == Some(event.as_str()))
+        .filter(|offer| attribute(offer, semconv::ATTR_TURN_ID) == Some(event.as_str()))
         .count();
     assert_eq!(ours, 1, "one offer span names the chat's event: {offers:?}");
     supervisor.shutdown().await;
@@ -382,7 +382,7 @@ async fn test_memory_verbs_record_their_spans() {
             );
         }
     }
-    let body = wire::report_body(&run_id, &scene.event_id, fence);
+    let body = wire::report_body(&run_id, &scene.turn_id, fence);
     wire::report(&scene, &body)
         .await
         .expect("the native report is acknowledged");

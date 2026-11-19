@@ -90,7 +90,7 @@ async fn run(outcome: Outcome) -> Checked {
 
 fn scope(run: &af_wire::run::RunPayload<'_>) -> TurnScope {
     TurnScope {
-        event_id: CheckpointOperationId(run.event.event_id.to_string()),
+        turn_id: CheckpointOperationId(run.event.turn_id.to_string()),
         fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
         workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
         setup_revision_id: CheckpointOperationId(ID.to_owned()),

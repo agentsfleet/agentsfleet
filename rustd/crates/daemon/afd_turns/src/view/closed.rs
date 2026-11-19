@@ -2,7 +2,7 @@
 //!
 //! Both closing statements — the runner's verdict and a gate's refusal — end
 //! with the same select, so one decoder reads both. The leading columns are
-//! [`EventRow`]'s own and are read by its own typed row; the four after them
+//! [`TurnRow`]'s own and are read by its own typed row; the four after them
 //! are the fleet's lifecycle status, its pending gate count, and
 //! its two activity counters, which the live tail's completion frame carries
 //! so a watcher folds the ending in without a read.
@@ -13,7 +13,7 @@ use sqlx::postgres::PgRow;
 use afd_api_wire::tail::FleetCounters;
 
 use crate::view::error::{Error, row_malformed};
-use crate::view::history::{EventRow, Stored};
+use crate::view::history::{Stored, TurnRow};
 
 /// What a refused decode is reported as.
 const ROW: &str = "closed event row";
@@ -34,7 +34,7 @@ struct StoredClosing {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Closed {
     /// The terminal row, as the events list would serve it.
-    pub row: EventRow,
+    pub row: TurnRow,
     /// The fleet's lifecycle status after the run.
     pub fleet_status: String,
     /// How many approvals wait on the fleet after the run.
@@ -52,7 +52,7 @@ impl Closed {
     pub fn read(row: &PgRow) -> Result<Self, Error> {
         let stored = StoredClosing::from_row(row).map_err(row_malformed(ROW))?;
         Ok(Self {
-            row: EventRow::from(stored.row),
+            row: TurnRow::from(stored.row),
             fleet_status: stored.fleet_status,
             pending_approvals: stored.pending_approvals,
             counters: FleetCounters {

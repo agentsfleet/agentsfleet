@@ -41,7 +41,7 @@ async fn existing_uncertain_decisions_never_obtain_another_dispatch_or_receipt()
     let input = af_wire::task::DecisionReservationInput {
         operation_id: call_id.to_owned(),
         fencing_token: 0,
-        source_admission_id: call_id.to_owned(),
+        source_turn_id: call_id.to_owned(),
         task: None,
         retry_of: None,
         assessment: af_wire::task::DecisionAssessment::Message,
@@ -176,7 +176,7 @@ impl Host {
 #[tokio::test]
 async fn a_fleet_steer_answers_the_event_it_became() {
     let (plane, _calls) = plane(|call| match call.verb {
-        Verb::FleetSteer => json(&serde_json::json!({"event_id": "e-1", "replayed": true})),
+        Verb::FleetSteer => json(&serde_json::json!({"turn_id": "e-1", "replayed": true})),
         _other => json(&serde_json::json!({})),
     });
     let run = Uuid7::parse(RUN_ID).unwrap();
@@ -191,6 +191,6 @@ async fn a_fleet_steer_answers_the_event_it_became() {
         &host.decisions,
     );
     let accepted = verbs.fleet_steer(&fleet, "hello").await.unwrap();
-    assert_eq!(accepted.event_id, "e-1");
+    assert_eq!(accepted.turn_id, "e-1");
     assert!(accepted.replayed);
 }

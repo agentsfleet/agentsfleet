@@ -5,18 +5,18 @@ use super::{
     lane::Lane,
     queue::{confirm, over_bus, over_lane},
 };
-use af_wire::event::EventType;
-use afd_turns::{Admission, Key, Producer, Reply as ReplyTo};
+use af_wire::turn::TurnKind;
+use afd_turns::{IncomingTurn, Key, Producer, Reply as ReplyTo};
 use sqlx::Connection as _;
 
-fn request(lane: &Lane) -> Admission<'_> {
-    Admission {
+fn request(lane: &Lane) -> IncomingTurn<'_> {
+    IncomingTurn {
         producer: Producer::Steer,
         key: Key::Repeated(lane.fleet.as_str()),
         fleet: &lane.fleet,
         workspace: &lane.workspace,
         actor: "fixture:staged",
-        event_type: EventType::Chat,
+        event_type: TurnKind::Chat,
         request_json: r#"{"message":"staged initial run"}"#,
         reply: ReplyTo::None,
     }
@@ -69,7 +69,7 @@ async fn a_committed_stage_confirms_without_a_second_queue_record() -> Fallible 
         "a stage rings nothing; its caller's commit does not either"
     );
     let accepted = confirm(&admissions, &lane).await?;
-    assert_eq!(accepted.event_id, first.stored.id);
+    assert_eq!(accepted.turn_id, first.stored.id);
     assert_eq!(confirm(&admissions, &lane).await?, accepted);
     assert_eq!(
         rings.taken().await?,
@@ -90,7 +90,7 @@ async fn an_unrepeatable_stage_is_keyed_by_its_own_row() -> Fallible {
     let mut staged = Vec::new();
     for _ in 0..2 {
         let prepared = admissions
-            .prepare(Admission {
+            .prepare(IncomingTurn {
                 key: Key::Unrepeatable,
                 ..request(&lane)
             })

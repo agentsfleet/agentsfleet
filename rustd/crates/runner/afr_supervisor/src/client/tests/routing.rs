@@ -45,7 +45,7 @@ async fn every_verb_goes_to_its_own_path() {
             "/v1/runners/me/credentials/mint".to_owned(),
             true,
         ),
-        (Verb::Items, format!("{run_root}/tool-calls"), true),
+        (Verb::Items, format!("{run_root}/items"), true),
     ];
     routes.sort_by_key(|route| format!("{:?}", route.0));
     expected.sort_by_key(|route| format!("{:?}", route.0));

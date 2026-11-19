@@ -52,7 +52,7 @@ async fn stale_claim(
     signals::no_offer(&mut old).await?;
     current.ready().await;
     let held = signals::offer(&mut current).await?;
-    assert_eq!(held.event, fixture.scene.event_id);
+    assert_eq!(held.event, fixture.scene.turn_id);
     signals::report(&fixture.scene, &mut current, &held, false).await?;
     current.close().await;
     old.close().await;
@@ -60,14 +60,14 @@ async fn stale_claim(
 }
 
 async fn assert_unissued(fixture: &Fixture, replacement: Replacement) -> TestResult {
-    let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE event_id=$1")
-        .bind(&fixture.scene.event_id)
+    let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE turn_id=$1")
+        .bind(&fixture.scene.turn_id)
         .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
         .await?;
     assert_eq!(issued, 0, "a stale issue wrote a run: {replacement:?}");
     let pending: bool =
         sqlx::query_scalar("SELECT settled_at IS NULL FROM thread.turns WHERE id=$1")
-            .bind(&fixture.scene.event_id)
+            .bind(&fixture.scene.turn_id)
             .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
             .await?;
     assert!(pending, "refused issuance must retain the admitted work");

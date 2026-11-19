@@ -3,7 +3,7 @@
 -- row for a fleet's run or another runner's.
 --
 -- $1 run · $2 runner
-SELECT l.draft_id, l.event_id, l.workspace_id, l.tenant_id, l.posture, l.provider, l.model,
+SELECT l.draft_id, l.turn_id, l.workspace_id, l.tenant_id, l.posture, l.provider, l.model,
        l.fencing_token, l.status, l.created_at,
        l.cancel_requested_at IS NOT NULL AS cancelled
 FROM thread.runs l

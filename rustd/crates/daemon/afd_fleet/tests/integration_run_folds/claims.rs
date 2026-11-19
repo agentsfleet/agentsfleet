@@ -164,9 +164,9 @@ async fn test_an_internal_setup_event_is_not_an_admission_head() -> Checked {
             opened_at, settled_at, created_at, updated_at) \
          SELECT $2, e.thread_id, e.workspace_id, e.actor, e.kind, e.status, e.request_json, \
                 now(), now(), now(), now() \
-         FROM thread.runs l JOIN thread.turns e ON e.id = l.event_id \
+         FROM thread.runs l JOIN thread.turns e ON e.id = l.turn_id \
          WHERE l.id = $1 RETURNING id) \
-         UPDATE thread.runs SET event_id = $2 WHERE id = $1 AND EXISTS (SELECT 1 FROM moved)",
+         UPDATE thread.runs SET turn_id = $2 WHERE id = $1 AND EXISTS (SELECT 1 FROM moved)",
     )
     .bind(&held.run_key)
     .bind(afd_db::test_util::mint_id())

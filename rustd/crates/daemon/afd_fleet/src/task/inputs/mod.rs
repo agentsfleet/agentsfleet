@@ -33,7 +33,7 @@ struct Candidate {
 
 #[derive(sqlx::FromRow)]
 struct InputRow {
-    source_admission_id: Uuid7,
+    source_turn_id: Uuid7,
     plan_digest: String,
     item_id: Uuid7,
     task_id: Uuid7,
@@ -73,17 +73,17 @@ pub(super) async fn read(
     let sources: Vec<_> = humans
         .iter()
         .map(|human| human.id.clone())
-        .chain(std::iter::once(current.source_admission_id.clone()))
+        .chain(std::iter::once(current.source_turn_id.clone()))
         .collect();
     let mut recovered = recover::read(&mut tx, &current, &sources).await?;
-    let current_interpretation = recovered.remove(&current.source_admission_id);
+    let current_interpretation = recovered.remove(&current.source_turn_id);
     let candidates = candidates(&mut tx, &current).await?;
     let inputs = human_inputs(humans, &mut recovered)?;
     let execution_deadline = crate::run::deadline::read(&mut tx, run.run_id).await?;
     tx.commit().await.map_err(query("finish task input read"))?;
     transaction::recycle(connection);
     Ok(TaskInputsResponse {
-        source_admission_id: current.source_admission_id.into(),
+        source_turn_id: current.source_turn_id.into(),
         accepted_revision_id: current.revision_id.map(String::from),
         current_message,
         inputs,
@@ -147,7 +147,7 @@ impl TryFrom<InputRow> for TaskAcceptedInput {
 
     fn try_from(item: InputRow) -> Result<Self> {
         Ok(Self {
-            source_admission_id: item.source_admission_id.into(),
+            source_turn_id: item.source_turn_id.into(),
             plan_digest: item.plan_digest,
             item_id: item.item_id.into(),
             task: DecisionTaskVersion {
@@ -208,7 +208,7 @@ async fn pending_humans(
     let humans: Vec<Human> = sqlx::query_as(include_str!("../sql/pending_inputs.sql"))
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
-        .bind(&current.source_admission_id)
+        .bind(&current.source_turn_id)
         .bind(afd_turns::Producer::Steer.as_str())
         .bind(afd_turns::view::ACTOR_MACHINE)
         .bind(format!("{}%", afd_turns::view::ACTOR_PREFIX))
@@ -253,7 +253,7 @@ fn human_inputs(
         .map(|source| {
             Ok(TaskHumanInput {
                 accepted: recovered.remove(&source.id),
-                source_admission_id: source.id.into(),
+                source_turn_id: source.id.into(),
                 sequence: row::counter(source.sequence, "input sequence")?,
                 message: super::admit::source::message_for(&source.producer, &source.request_json)?
                     .into_owned(),
@@ -267,8 +267,7 @@ async fn current_message(
     connection: &mut sqlx::PgConnection,
     current: &guard::RunRow,
 ) -> Result<Option<String>> {
-    let source =
-        super::admit::source::load(connection, current, &current.source_admission_id).await?;
+    let source = super::admit::source::load(connection, current, &current.source_turn_id).await?;
     let message = if super::admit::source::check_human(&source).is_ok() {
         Some(source.message()?.into_owned())
     } else {

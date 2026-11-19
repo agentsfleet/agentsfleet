@@ -39,7 +39,7 @@ use crate::{Result, error::query};
 /// was billed to the dead run when it expired.
 ///
 /// The run stores no copy of the event body: the reclaim path reads it by
-/// joining `thread.turns` on the run's `event_id`, so the
+/// joining `thread.turns` on the run's `turn_id`, so the
 /// hottest write in the system stops duplicating the largest value in it.
 pub const INSERT_RUN_WITH_EVENT: &str = include_str!("insert_run_with_event.sql");
 
@@ -66,10 +66,10 @@ pub struct RunRow<'a> {
     pub tenant_id: &'a Uuid7,
     /// The event being held: the turn's id. The statement resolves it to the
     /// `thread.turns` row the run references.
-    pub event_id: &'a Uuid7,
+    pub turn_id: &'a Uuid7,
     /// When the event was raised, by the producer's clock; what the run bills
     /// against.
-    pub event_created_at: Timestamp,
+    pub turn_created_at: Timestamp,
     /// The resolved billing posture, as its wire spelling.
     pub posture: &'a str,
     /// The provider resolved at billing, so renew and report key the rate row
@@ -112,7 +112,7 @@ impl RunRow<'_> {
             (afd_runner::sql::meta::FLEET_ID, self.fleet_id.as_str()),
             (
                 afd_runner::sql::meta::AGENTSFLEET_EVENT_ID,
-                self.event_id.as_str(),
+                self.turn_id.as_str(),
             ),
             (afd_runner::sql::meta::KIND, self.kind),
         ]);
@@ -122,7 +122,7 @@ impl RunRow<'_> {
             .bind(self.fleet_id)
             .bind(self.workspace_id)
             .bind(self.tenant_id)
-            .bind(self.event_id)
+            .bind(self.turn_id)
             .bind(self.posture)
             .bind(self.provider)
             .bind(self.model)
@@ -131,7 +131,7 @@ impl RunRow<'_> {
             .bind(self.event_row_id)
             .bind(afd_runner::sql::event_type::RUN_ACQUIRED)
             .bind(sqlx::types::Json(metadata))
-            .bind(self.event_created_at.to_sqlx())
+            .bind(self.turn_created_at.to_sqlx())
             .bind(self.decision_snapshot.map(sqlx::types::Json))
             .bind(self.run_version)
             .bind(self.run_kind)

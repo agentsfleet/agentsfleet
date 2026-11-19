@@ -12,11 +12,11 @@ const RETAINED: &str = "WITH events AS (INSERT INTO thread.turns \
     created_at,updated_at) \
     SELECT l.fleet_id,l.workspace_id,uuidv7(),'fixture','chat','processed','{}',now(),now(), \
     now(),now() \
-    FROM thread.runs l,generate_series(1,4000) n WHERE l.id=$1 RETURNING id AS event_id) \
-    INSERT INTO thread.runs (id,runner_id,fleet_id,workspace_id,tenant_id,event_id, \
-    event_created_at,posture,provider,model,last_metered_at,fencing_token,run_expires_at, \
+    FROM thread.runs l,generate_series(1,4000) n WHERE l.id=$1 RETURNING id AS turn_id) \
+    INSERT INTO thread.runs (id,runner_id,fleet_id,workspace_id,tenant_id,turn_id, \
+    turn_created_at,posture,provider,model,last_metered_at,fencing_token,run_expires_at, \
     status,posted_message_count,created_at,updated_at) \
-    SELECT uuidv7(),l.runner_id,l.fleet_id,l.workspace_id,l.tenant_id,e.event_id,l.event_created_at, \
+    SELECT uuidv7(),l.runner_id,l.fleet_id,l.workspace_id,l.tenant_id,e.turn_id,l.turn_created_at, \
     l.posture,l.provider,l.model,l.last_metered_at,0,l.run_expires_at,$2,0,l.created_at,now() \
     FROM thread.runs l CROSS JOIN events e WHERE l.id=$1";
 const FRESH: &str = "WITH ended AS (UPDATE thread.turns SET settled_at=now() \
@@ -65,13 +65,13 @@ async fn prior_run_lookup_probes_the_run_event_index_for_fresh_and_reclaimed_hea
         }
         let plan = claim_plan(&mut tx, &held.fleet, &held.runner).await;
         // Runs carry the event they ran, so the prior-run lookup is one
-        // index probe on `thread.runs` by `event_id`. The claim reads
+        // index probe on `thread.runs` by `turn_id`. The claim reads
         // `thread.turns` for its head and opens it in the same update.
         let prior = relation_scans(&plan, "runs");
         assert!(
             prior.iter().any(|scan| scan["Index Cond"]
                 .as_str()
-                .is_some_and(|condition| condition.contains("event_id"))),
+                .is_some_and(|condition| condition.contains("turn_id"))),
             "fresh={fresh}: {plan}"
         );
         run(&mut tx, "ROLLBACK TO SAVEPOINT claim_probe").await;
@@ -102,7 +102,7 @@ async fn claim_plan(
     .bind(af_wire::task::TaskState::Running.as_str())
     .bind(afd_fleet::task::DECISION_POLICY_PATH)
     .bind(afd_fleet::run::sql::FLEET_STATUS_ACTIVE)
-    .bind(af_core::event::status::RECEIVED)
+    .bind(af_core::turn::status::RECEIVED)
     .bind(true)
     .bind(afd_credential::provider::PLATFORM_MODEL_REF)
     .fetch_one(connection)

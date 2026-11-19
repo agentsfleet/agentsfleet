@@ -1,14 +1,14 @@
--- Physical decision-call accounting. It outlives run, admission, task, fleet and model
+-- Physical decision-call accounting. It outlives run, turn, task, fleet and model
 -- deletion, so its ids are opaque; private payloads live in `runner.decision_payloads`.
 CREATE TABLE runner.decision_calls (
     id UUID PRIMARY KEY,
     original_runner_id UUID NOT NULL,
     original_run_id UUID NOT NULL,
-    source_admission_id UUID NOT NULL,
+    source_turn_id UUID NOT NULL,
     fleet_id UUID NOT NULL,
     workspace_id UUID NOT NULL,
     tenant_id UUID NOT NULL,
-    -- Budget owner only: intent is charged to its source admission even while another task
+    -- Budget owner only: intent is charged to its source turn even while another task
     -- holds the run.
     task_id UUID,
     task_generation BIGINT,
@@ -78,7 +78,7 @@ CREATE INDEX idx_decision_calls_expired_unissued
 
 CREATE INDEX idx_decision_calls_task ON runner.decision_calls (task_id, created_at);
 
-CREATE INDEX idx_decision_calls_source ON runner.decision_calls (source_admission_id, created_at);
+CREATE INDEX idx_decision_calls_source ON runner.decision_calls (source_turn_id, created_at);
 
 CREATE INDEX idx_decision_calls_overage_fleet ON runner.decision_calls (fleet_id, workspace_id)
     WHERE charged_nanos > reserved_nanos;

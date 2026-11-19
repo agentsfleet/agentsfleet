@@ -1,5 +1,5 @@
 //! The operator's steer: the one request body a person writes to a fleet, and
-//! the answer it gets. Split from `event.rs` at the length cap.
+//! the answer it gets. Split from `turn.rs` at the length cap.
 
 use std::borrow::Cow;
 
@@ -93,8 +93,8 @@ pub enum SteerDisposition {
 
 /// What a steer returns once agentsfleet accepts the request.
 ///
-/// The response carries the id the run is found under. Filter the live event
-/// tail on `event_id` to follow the message you just sent.
+/// The response carries the id the run is found under. Filter the live turn
+/// tail on `turn_id` to follow the message you just sent.
 // Unknown fields are tolerated here, unlike on the request: this is a reply a
 // client reads, and a field a newer daemon adds must not break an older client.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -103,18 +103,18 @@ pub struct SteerAccepted<'a> {
     /// Always `accepted`.
     #[serde(borrow)]
     pub status: Cow<'a, str>,
-    /// The canonical event id the steer became.
+    /// The canonical turn id the steer became.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
+    pub turn_id: Cow<'a, str>,
     /// Whether an earlier send of the same `operation_id` already admitted this
-    /// message. When `true`, `event_id` is that send's event, which may have
+    /// message. When `true`, `turn_id` is that send's turn, which may have
     /// run already. `false` when this call admitted it.
     pub replayed: bool,
     /// Where the message went.
     pub disposition: SteerDisposition,
     /// The run the message joined, when `disposition` is `folded`.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
-    pub folded_into_event_id: Option<Cow<'a, str>>,
+    pub folded_into_turn_id: Option<Cow<'a, str>>,
 }
 
 /// What a fleet's steer stores as its request: the words the target reads,
@@ -123,7 +123,7 @@ pub struct SteerAccepted<'a> {
 /// `message` is the sender line, a newline, then `text`, composed once by
 /// [`FleetSteerBody::new`]. The model, the chat and the history all read
 /// `message` (`message_of`), so the target is told who asked whichever way it
-/// reads the event, and can answer with the same tool.
+/// reads the turn, and can answer with the same tool.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FleetSteerBody<'a> {
@@ -139,20 +139,20 @@ pub struct FleetSteerBody<'a> {
     /// That fleet's saved name when it sent it.
     #[serde(borrow)]
     pub sender_fleet_name: Cow<'a, str>,
-    /// The event the sender was running when it sent it.
+    /// The turn the sender was running when it sent it.
     #[serde(borrow)]
-    pub sender_event_id: Cow<'a, str>,
+    pub sender_turn_id: Cow<'a, str>,
 }
 
 impl<'a> FleetSteerBody<'a> {
     /// The body for `text`, sent by the fleet `sender_fleet_id`, saved as
-    /// `sender_fleet_name`, while it ran `sender_event_id`.
+    /// `sender_fleet_name`, while it ran `sender_turn_id`.
     #[must_use]
     pub fn new(
         text: &'a str,
         sender_fleet_id: &'a str,
         sender_fleet_name: &'a str,
-        sender_event_id: &'a str,
+        sender_turn_id: &'a str,
     ) -> Self {
         let line = sender_line(sender_fleet_name, sender_fleet_id);
         Self {
@@ -160,7 +160,7 @@ impl<'a> FleetSteerBody<'a> {
             text: Cow::Borrowed(text),
             sender_fleet_id: Cow::Borrowed(sender_fleet_id),
             sender_fleet_name: Cow::Borrowed(sender_fleet_name),
-            sender_event_id: Cow::Borrowed(sender_event_id),
+            sender_turn_id: Cow::Borrowed(sender_turn_id),
         }
     }
 }

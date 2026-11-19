@@ -42,7 +42,7 @@ pub struct Acquired {
     pub kind: Kind,
     /// The event to execute — the admission ledger's LOGICAL id, which the
     /// row, the run, the ledger and every read address.
-    pub event_id: Uuid7,
+    pub turn_id: Uuid7,
     /// Who raised it.
     pub actor: String,
     /// Its type.
@@ -60,7 +60,7 @@ pub struct Acquired {
     ///
     /// An instant rather than a bare `i64`, because the run row binds four
     /// other integers beside it and two transposed compile clean.
-    pub event_created_at: Timestamp,
+    pub turn_created_at: Timestamp,
     /// Whether the runner runs this event in the sandbox it holds for the
     /// fleet. Only a fresh event whose claim found this runner's hold live: a
     /// reclaimed event's first attempt may have run in that sandbox, so it

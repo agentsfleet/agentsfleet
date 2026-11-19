@@ -88,7 +88,7 @@ pub(in super::super) async fn claim(case: &Case) -> Acquired {
     let acquired = crate::seed::select_fleet(&case.held.runs, &case.held.runner, &case.held.fleet)
         .await
         .expect("native admission reclaim");
-    assert_eq!(acquired.event_id, case.held.event_id);
+    assert_eq!(acquired.turn_id, case.held.turn_id);
     acquired
 }
 
@@ -137,7 +137,7 @@ pub(super) async fn assert_blocked(case: &Case, task: &Uuid7) {
 }
 
 async fn chat_source(case: &Case) {
-    // The shared direct-issue seed predates EventType and stores the producer
+    // The shared direct-issue seed predates TurnKind and stores the producer
     // spelling as its event kind. Full Plane issuance requires a native Chat.
     let mut connection = case
         .held
@@ -152,8 +152,8 @@ async fn chat_source(case: &Case) {
         "UPDATE thread.turns SET kind=$3 WHERE thread_id=$1 AND id=$2 AND kind='steer'",
     )
     .bind(&case.held.fleet)
-    .bind(&case.held.event_id)
-    .bind(af_wire::event::EventType::Chat.as_str())
+    .bind(&case.held.turn_id)
+    .bind(af_wire::turn::TurnKind::Chat.as_str())
     .execute(&mut *connection)
     .await
     .expect("native human turn kind");

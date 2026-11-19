@@ -9,7 +9,7 @@ use std::error::Error;
 use af_core::id::Uuid7;
 use afd_fleet::run::fold::Folds;
 use afd_fleet::run::{Committed, Verdict};
-use afd_turns::{Admission, Admissions, Key, PersonSteer, Producer, Reply, RunFacts};
+use afd_turns::{IncomingTurn, Key, PersonSteer, Producer, Reply, RunFacts, Turns};
 
 use crate::report_commit::{RESPONSE_ACCEPTED, report};
 use crate::report_seed::Held;
@@ -56,17 +56,17 @@ pub(super) struct Claimed {
 
 /// An event row a fold opened: its status, its reply and the run it names.
 #[derive(Debug, PartialEq, Eq, sqlx::FromRow)]
-pub(super) struct EventRow {
+pub(super) struct TurnRow {
     pub(super) status: String,
     pub(super) response_text: Option<String>,
-    pub(super) resumes_event_id: Option<Uuid7>,
+    pub(super) resumes_turn_id: Option<Uuid7>,
 }
 
 /// Whether an admission is settled, and the event it opened once it has one.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Settlement {
     pub(super) settled: bool,
-    pub(super) event: Option<EventRow>,
+    pub(super) event: Option<TurnRow>,
 }
 
 impl Settlement {
@@ -128,18 +128,18 @@ pub(super) async fn send_as(
     request_json: &str,
     reply: Reply<'_>,
 ) -> Checked<Sent> {
-    let admissions = Admissions::for_tests(
+    let admissions = Turns::for_tests(
         held.fixtures.database.clone(),
         afd_bus::test_util::unreachable(),
     );
     let admitted = admissions
-        .admit(Admission {
+        .admit(IncomingTurn {
             producer,
             key: Key::Unrepeatable,
             fleet: &held.fleet,
             workspace,
             actor,
-            event_type: af_wire::event::EventType::Chat,
+            event_type: af_wire::turn::TurnKind::Chat,
             request_json,
             reply,
         })
@@ -238,7 +238,7 @@ pub(super) async fn claim(
         .into_iter()
         .map(|input| {
             Ok(Claimed {
-                id: Uuid7::parse(&input.event_id)?,
+                id: Uuid7::parse(&input.turn_id)?,
                 sequence: input.sequence,
                 text: input.text.into_owned(),
             })
@@ -261,7 +261,7 @@ pub(super) async fn settled(held: &Held, admission: &Uuid7) -> Checked<Settlemen
             .fetch_one(&mut *connection)
             .await?;
     let event = sqlx::query_as(
-        "SELECT status, answer_text AS response_text, resumes_turn_id AS resumes_event_id \
+        "SELECT status, answer_text AS response_text, resumes_turn_id AS resumes_turn_id \
          FROM thread.turns WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",
     )
     .bind(&held.fleet)
@@ -305,7 +305,7 @@ pub(super) async fn report_read_through(
 pub(super) async fn address_head(held: &Held, address: &str) -> Checked {
     let mut connection = held.fixtures.database.acquire().await?;
     sqlx::query("UPDATE thread.turns SET reply_provider = $2, reply_address = $3 WHERE id = $1")
-        .bind(&held.event_id)
+        .bind(&held.turn_id)
         .bind(afd_connector::Provider::Slack.id())
         .bind(address)
         .execute(&mut *connection)

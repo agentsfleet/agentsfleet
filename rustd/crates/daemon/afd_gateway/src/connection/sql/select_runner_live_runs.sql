@@ -3,9 +3,9 @@
 -- UNION ALL preserves the rows without a deduplication sort; slots uses its primary key.
 -- A fleet's run carries its activity target (fleet, event); a draft's names its draft.
 SELECT l.id AS run_id, l.run_expires_at AS expires_at,
-       l.fleet_id, CASE WHEN l.fleet_id IS NOT NULL THEN l.event_id END AS event_id,
+       l.fleet_id, CASE WHEN l.fleet_id IS NOT NULL THEN l.turn_id END AS turn_id,
        l.created_at,
-       CASE WHEN l.fleet_id IS NOT NULL THEN l.event_created_at END AS event_created_at,
+       CASE WHEN l.fleet_id IS NOT NULL THEN l.turn_created_at END AS turn_created_at,
        l.fencing_token, l.cancel_requested_at IS NOT NULL AS cancelled, l.draft_id
 FROM thread.runs l
 -- A slot's id is its owner's, fleet or draft.

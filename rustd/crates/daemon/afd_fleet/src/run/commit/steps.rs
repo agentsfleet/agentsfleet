@@ -62,10 +62,10 @@ pub(super) async fn apply_notice(
     notice: &str,
     (delivery_id, receipt): &(Uuid7, Uuid7),
 ) -> Result<()> {
-    let checkpoint = crate::run::finalize::checkpoint_document(report.last_event_id, notice);
+    let checkpoint = crate::run::finalize::checkpoint_document(report.last_turn_id, notice);
     let _events: i64 = sqlx::query_scalar(crate::run::sql::report_statement::APPLY_REPORT_NOTICE)
         .bind(&report.run.fleet_id)
-        .bind(&report.run.event_id)
+        .bind(&report.run.turn_id)
         .bind(notice)
         .bind(&checkpoint)
         .bind(delivery_id)
@@ -92,13 +92,13 @@ pub(super) fn warn_unknown_reply(run: &Reported, stored: Option<&str>) {
         return;
     }
     let fleet_id = run.fleet_id.as_str();
-    let agentsfleet_event_id = run.event_id.as_str();
+    let agentsfleet_turn_id = run.turn_id.as_str();
     {
         let (event, message) = (
             &EVENT_REPLY_PROVIDER_UNKNOWN,
             format_args!("the recorded connector names no connector; the answer is owed nowhere"),
         );
-        tracing::warn!(message, fleet_id, agentsfleet_event_id, event);
+        tracing::warn!(message, fleet_id, agentsfleet_turn_id, event);
     };
 }
 

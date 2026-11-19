@@ -28,4 +28,4 @@ UPDATE thread.deliveries o
        updated_at       = now()
   FROM heads
  WHERE o.id = heads.id
-RETURNING o.id, o.fleet_id, o.workspace_id, o.provider, o.destination, o.event_id, o.answer
+RETURNING o.id, o.fleet_id, o.workspace_id, o.provider, o.destination, o.turn_id, o.answer

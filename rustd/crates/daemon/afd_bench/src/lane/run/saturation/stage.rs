@@ -20,7 +20,7 @@ use af_core::clock;
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_credential::provider::PLATFORM_MODEL_REF;
 use afd_db::test_util::{UserSeed, WalletSeed};
 use afd_setup::Access;
@@ -138,7 +138,7 @@ pub(super) async fn stage(
         let fleet = seed::identities(INDEX_BASE + TENANTS + index)?;
         seed::rows(&stores.database, prefix, &fleet, &tag, SEEDED_AT).await?;
         fund(stores, &fleet).await?;
-        seed::enqueue(&stores.database, &stores.bus, &fleet, EventType::Chat).await?;
+        seed::enqueue(&stores.database, &stores.bus, &fleet, TurnKind::Chat).await?;
         ledger.created(ROWS_PER_FLEET);
         staged.fleets.push(fleet);
     }

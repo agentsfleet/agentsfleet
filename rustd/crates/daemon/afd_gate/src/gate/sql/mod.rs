@@ -100,7 +100,7 @@ pub struct PendingRow<'a> {
     /// What the fleet's model claims — bounded and card-safe by construction.
     pub claim: &'a Claim,
     /// The event this question is about.
-    pub event_id: &'a Uuid7,
+    pub turn_id: &'a Uuid7,
 }
 
 impl<'a> PendingRow<'a> {
@@ -124,7 +124,7 @@ impl<'a> PendingRow<'a> {
             .bind(self.stated.radius)
             .bind(timeout(self.stated.timeout))
             .bind(GateStatus::Pending.as_str())
-            .bind(self.event_id)
+            .bind(self.turn_id)
     }
 }
 

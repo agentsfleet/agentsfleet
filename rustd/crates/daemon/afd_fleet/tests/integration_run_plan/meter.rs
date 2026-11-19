@@ -49,7 +49,7 @@ fn assert_indexed_admission(plan: &serde_json::Value, size: i32) {
         assert_eq!(scan["Index Name"], "turns_pkey", "backlog {size}: {plan}");
         assert!(
             scan["Index Cond"].as_str().is_some_and(|condition| {
-                condition.contains("id =") && condition.contains("event_id")
+                condition.contains("id =") && condition.contains("turn_id")
             }),
             "turn identity must bound the index: {plan}"
         );

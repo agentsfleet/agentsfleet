@@ -44,7 +44,7 @@ impl Open {
             axum::serve(listener, router).await.expect("server");
         });
         let response = reqwest::Client::new()
-            .get(format!("http://{address}{item}/events/stream"))
+            .get(format!("http://{address}{item}/turns/stream"))
             .bearer_auth(&fixture.token)
             .send()
             .await

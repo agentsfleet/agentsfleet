@@ -7,8 +7,8 @@
 use super::seed::{seed_gate, seed_provider_resolution};
 use super::*;
 
-use af_core::event::label;
 use af_core::test_util::trace::Capture;
+use af_core::turn::label;
 use afd_db::test_util::statements::{self, Ran, Window};
 
 /// A fleet whose chat events from the fixture actor need a human's approval.
@@ -198,7 +198,7 @@ async fn gates_read_fault_keeps_each_posture() {
         "the approval gate read nothing on a refused read"
     );
     assert_eq!(
-        terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
+        terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id).await,
         Some((STATUS_RECEIVED.to_owned(), String::new())),
         "the event waits as unreadable and nothing ends it"
     );
@@ -227,7 +227,7 @@ async fn recorded_gate_decides_from_gates_read() {
         seed_gate(&fixtures, &seeded, status).await;
 
         let (answer, ran) = driven(&fixtures, &owner, &seeded).await;
-        let ended = terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await;
+        let ended = terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id).await;
 
         match status {
             "approved" => assert!(answer.is_some(), "approved passes"),

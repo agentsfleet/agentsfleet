@@ -116,7 +116,7 @@ That lock permits the foreign-key checks needed to record delivery concurrently.
 The deployment ceiling estimates 100,000 unsettled admissions. It refreshes every 1,000 admissions or five seconds, and every 500 milliseconds while refusing.
 
 Each process adds its own accepted admissions between samples. Concurrent replicas can overshoot this estimate; one fleet's sequence stays serialized.
-The census publishes `agentsfleet_admission_backlog` and `agentsfleet_admission_backlog_oldest_age_seconds` from PostgreSQL, withdrawing them when its query fails.
+The census publishes `agentsfleet_turn_backlog` and `agentsfleet_turn_backlog_oldest_age_seconds` from PostgreSQL, withdrawing them when its query fails.
 
 ### Signals on core NATS, facts in Postgres
 

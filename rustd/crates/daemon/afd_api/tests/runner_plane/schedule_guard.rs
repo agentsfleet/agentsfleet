@@ -62,7 +62,7 @@ async fn a_guarded_change_refuses_an_unheld_run_and_finds_no_unknown_schedule() 
                 SCHEDULE_API_BASE.to_owned(),
             )),
         ),
-        Fire::new(afd_turns::Admissions::for_tests(
+        Fire::new(afd_turns::Turns::for_tests(
             database.clone(),
             harness::bus().await,
         )),

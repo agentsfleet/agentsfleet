@@ -24,7 +24,7 @@ pub(crate) async fn assess(
         .task_decision(DecisionReservationInput {
             operation_id: identity()?,
             fencing_token: fence,
-            source_admission_id: prepared.inputs.source_admission_id.clone(),
+            source_turn_id: prepared.inputs.source_turn_id.clone(),
             assessment: DecisionAssessment::Goal {
                 action_group_id: identity()?,
             },

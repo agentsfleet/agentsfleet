@@ -55,7 +55,7 @@ fn accepted(workspace: &Uuid7, owner: &Uuid7, verdict: &str, owed: Uuid7) -> Out
     let fleet_id = owner.as_str();
     tracing::info!(workspace_id, fleet_id, verdict, event = EVENT_ROUTED);
     Outcome::Accepted(Accepted {
-        event_id: Cow::Owned(owed.into()),
+        turn_id: Cow::Owned(owed.into()),
         replayed: false,
     })
 }

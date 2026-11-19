@@ -32,7 +32,7 @@ use afd_memory::Memories;
 use afd_runner::Runners;
 use afd_sse::Live;
 use afd_state::Credentials;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use afd_turns::view::History;
 use afd_vault::Vault;
 
@@ -285,7 +285,7 @@ mod tests;
 /// One native task owner attaches reporting to the existing run plane.
 fn task_plane(
     runs: &mut RunService,
-    admissions: Admissions,
+    admissions: Turns,
     admin_workspace: Option<Uuid7>,
     storage_config: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
     master: Arc<af_crypto::secret::Kek>,

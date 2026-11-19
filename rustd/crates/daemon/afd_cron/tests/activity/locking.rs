@@ -70,7 +70,7 @@ async fn assert_committed(lane: &CronLane, row: &Schedule, finalized: Schedule) 
         .expect("the session committed");
     assert_eq!(
         saved,
-        json!({"last_event_id":"support-review","last_response":"Support queue reviewed."})
+        json!({"last_turn_id":"support-review","last_response":"Support queue reviewed."})
     );
     no_work(lane).await;
 }
@@ -103,7 +103,7 @@ async fn checkpoint_while_finalizer_waits(
     )
     .bind(&lane.fleet)
     .bind(sqlx::types::Json(
-        json!({"last_event_id":"support-review","last_response":"Support queue reviewed."}),
+        json!({"last_turn_id":"support-review","last_response":"Support queue reviewed."}),
     ))
     .execute(&mut *held)
     .await

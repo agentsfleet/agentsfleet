@@ -2,7 +2,7 @@
 
 use super::chat::Chat;
 use af_core::clock;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_bus::{Received, Subject, Subscription};
 use afd_fleet::run::Kind;
 use futures_util::future::join_all;
@@ -15,7 +15,7 @@ type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fresh_issue_and_unissued_reservation_publish_no_restart() -> Checked {
     let chat = Chat::open().await;
-    chat.ask(EventType::Chat, "Restore saved progress", clock::now())
+    chat.ask(TurnKind::Chat, "Restore saved progress", clock::now())
         .await;
     let mut reader = chat
         .fixtures
@@ -42,7 +42,7 @@ async fn fresh_issue_and_unissued_reservation_publish_no_restart() -> Checked {
 async fn one_hundred_contending_claimers_publish_one_committed_restart() -> Checked {
     let chat = Chat::open().await;
     let event = chat
-        .ask(EventType::Chat, "Resume interrupted work", clock::now())
+        .ask(TurnKind::Chat, "Resume interrupted work", clock::now())
         .await;
     chat.run(&chat.runner, clock::now()).await;
     expire(&chat).await?;
@@ -72,7 +72,7 @@ async fn one_hundred_contending_claimers_publish_one_committed_restart() -> Chec
     let frames = restarts(&chat, &mut reader).await?;
     assert_eq!(frames.len(), 1);
     let frame = frames.first().ok_or("one restart")?;
-    assert_eq!(frame["event_id"], event.as_str());
+    assert_eq!(frame["turn_id"], event.as_str());
     assert_eq!(frame["fencing_token"], selected.fence.as_i64().to_string());
     let created: jiff_sqlx::Timestamp = sqlx::query_scalar(
         "SELECT created_at FROM thread.runs WHERE fleet_id=$1 AND fencing_token=$2",
@@ -92,7 +92,7 @@ async fn one_hundred_contending_claimers_publish_one_committed_restart() -> Chec
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_issue_refused_after_reservation_publishes_no_restart() -> Checked {
     let chat = Chat::open().await;
-    chat.ask(EventType::Chat, "Wait for a healthy host", clock::now())
+    chat.ask(TurnKind::Chat, "Wait for a healthy host", clock::now())
         .await;
     chat.run(&chat.runner, clock::now()).await;
     expire(&chat).await?;

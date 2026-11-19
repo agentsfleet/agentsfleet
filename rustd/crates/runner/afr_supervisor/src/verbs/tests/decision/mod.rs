@@ -19,7 +19,7 @@ fn input() -> DecisionReservationInput {
     DecisionReservationInput {
         operation_id: CALL.to_owned(),
         fencing_token: 0,
-        source_admission_id: CALL.to_owned(),
+        source_turn_id: CALL.to_owned(),
         assessment: af_wire::task::DecisionAssessment::Message,
         task: None,
         retry_of: None,
@@ -41,7 +41,7 @@ fn dispatch(api: &str, purpose: &str) -> serde_json::Value {
             "association":threshold,"single_request_max_bps":2000,"multiple_request_min_bps":8000},
         "goal":{"questions_revision":"dt-goal-v1","statement_min_bps":9000,
             "continue_action":threshold,"wait":threshold,"done":threshold}},
-        "request":{"call_id":CALL,"purpose":purpose,"state":{"task":{"task_id":CALL},"source_admission_id":CALL},
+        "request":{"call_id":CALL,"purpose":purpose,"state":{"task":{"task_id":CALL},"source_turn_id":CALL},
             "questions":[{"name":"matches","question":{"type":"noul","instructions":"Does the evidence match?",
                 "criteria":{"true":"It matches","false":"It does not match"}}}]}
     }})

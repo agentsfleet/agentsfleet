@@ -7,5 +7,5 @@ UPDATE thread.runs l
        updated_at = now()
   FROM thread.turns m
  WHERE l.draft_id = $1 AND l.status = $3
-   AND m.id = l.event_id AND m.thread_id = l.draft_id AND m.sequence <= $2
+   AND m.id = l.turn_id AND m.thread_id = l.draft_id AND m.sequence <= $2
 RETURNING l.runner_id, l.id

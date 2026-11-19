@@ -50,7 +50,7 @@ impl Lane {
         // The callers name the event's wire columns; the turn spells three of them anew.
         let column = match column {
             "event_type" => "kind",
-            "resumes_event_id" => "resumes_turn_id",
+            "resumes_turn_id" => "resumes_turn_id",
             "response_text" => "answer_text",
             other => other,
         };

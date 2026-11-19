@@ -24,7 +24,7 @@
 //! which is the route's own output.
 //!
 //! It does not prove the at-most-once claim. That is the admission ledger's
-//! unique producer key in Postgres ([`afd_turns::Admissions`]), and a claim
+//! unique producer key in Postgres ([`afd_turns::Turns`]), and a claim
 //! re-implemented here would agree with the suite whatever the ledger did. The
 //! claim below exists only so a redelivery reaches the route's replay-rendering
 //! branch; the guarantee itself is the integration lane's, under `#[ignore]`.

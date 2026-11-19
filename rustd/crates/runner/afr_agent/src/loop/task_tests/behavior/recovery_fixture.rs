@@ -145,7 +145,7 @@ pub(super) fn receipts() -> Receipts {
 
 pub(super) fn accepted(item_id: &str, sequence: u64) -> TaskAcceptedInput {
     TaskAcceptedInput {
-        source_admission_id: PENDING.to_owned(),
+        source_turn_id: PENDING.to_owned(),
         plan_digest: "f".repeat(64),
         item_id: item_id.to_owned(),
         task: DecisionTaskVersion {

@@ -133,8 +133,8 @@ impl Runs {
             fleet_id: &acquired.fleet_id,
             workspace_id: &acquired.workspace_id,
             tenant_id: billed.tenant_id,
-            event_id: &acquired.event_id,
-            event_created_at: acquired.event_created_at,
+            turn_id: &acquired.turn_id,
+            turn_created_at: acquired.turn_created_at,
             posture: billed.posture,
             provider: billed.provider,
             model: billed.model,
@@ -209,7 +209,7 @@ fn record_issued(
 ) {
     producers::fleet::delivery_stage(
         DeliveryStage::EventToAssign,
-        af_core::clock::elapsed(acquired.event_created_at, af_core::clock::now()),
+        af_core::clock::elapsed(acquired.turn_created_at, af_core::clock::now()),
     );
 
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
@@ -217,18 +217,18 @@ fn record_issued(
     let run = run_id.as_str();
     let fleet = acquired.fleet_id.as_str();
     let runner = runner_id.as_str();
-    let event_id = acquired.event_id.as_str();
+    let turn_id = acquired.turn_id.as_str();
     let fence = acquired.fence.as_i64();
     let kind = acquired.kind.as_str();
     let decision_model_id = decision.map(|assigned| assigned.profile.model_id.as_str());
     let decision_revision_id = decision.map(|assigned| assigned.revision_id.as_str());
     {
-        let (event, run_id, fleet_id, runner_id, agentsfleet_event_id, fencing_token, message) = (
+        let (event, run_id, fleet_id, runner_id, agentsfleet_turn_id, fencing_token, message) = (
             &EVENT_RUN_ISSUED,
             &run,
             &fleet,
             &runner,
-            &event_id,
+            &turn_id,
             &fence,
             format_args!("a runner now owns this fleet's work"),
         );
@@ -238,7 +238,7 @@ fn record_issued(
             run_id,
             fleet_id,
             runner_id,
-            agentsfleet_event_id,
+            agentsfleet_turn_id,
             fencing_token,
             kind,
             decision_model_id,

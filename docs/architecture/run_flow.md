@@ -49,7 +49,7 @@ Sections 6 and 7 cover the sandbox and host.
                          c lock slot and exact head with SKIP LOCKED
                          d advance slot + admission fences; decode before commit
                          e INSERT fleet.events status=received (+ stamp admission delivered)
-                         f publish event_received bracket on af.fleet.<id>.tail
+                         f publish turn_received bracket on af.fleet.<id>.tail
                          g gates: payer → balance → budget → approval (nothing charged)
                          h vault: static secrets + mintable "github"; build ExecutionPolicy
                              (tools, network.allow, origin rules for api.github.com)
@@ -100,7 +100,7 @@ Under `Policy::AppIngress` every `pull_request` action wakes the fleet except on
 
 ### Admission commits the queue row
 
-Each producer calls `Admissions::admit`. The row carries producer identity, payload, original event time and any reply destination.
+Each producer calls `Turns::admit`. The row carries producer identity, payload, original event time and any reply destination.
 An accepted message costs one write (`admit_one.sql`) and holds no fleet-row lock across round trips; a steer adds one read.
 
 Repeated producer identities return the existing admission.
@@ -201,7 +201,7 @@ Process loss can discard results or usage the daemon has not accepted.
    │                      │                                  model turn 3 → final answer text
    │                      │◄──── HTTP tool records; native report with memory ───────────┤
    │                      settle: fleet.events processed, response_text = the answer
-   │                      admission settled, event_complete frame → dashboard thread
+   │                      admission settled, turn_complete frame → dashboard thread
 ```
 
 **What the run carries for this fleet.** The setup's configuration names three tools, one credential and one network host.
@@ -259,7 +259,7 @@ The platform has no refusal-count ceiling; that remains open scope.
 
 The daemon's `integration_rust_runner_reviews` test verifies zero review POSTs reach GitHub and preserves the final denial code.
 
-**What the operator sees.** The live tail carries `event_received`, `tool_call_started`, `tool_call_completed`, streamed text chunks and `event_complete` ([Runner Fleet](./runner_fleet.md) §"Live activity (the SSE tail)"). The completed frame has `status: failed`, and its output head carries the code.
+**What the operator sees.** The live tail carries `turn_received`, `tool_call_started`, `tool_call_completed`, streamed text chunks and `turn_complete` ([Runner Fleet](./runner_fleet.md) §"Live activity (the SSE tail)"). The completed frame has `status: failed`, and its output head carries the code.
 
 Durably, the `fleet.events` row is `processed`. Its `response_text` is the model's final answer and its `tool_calls` the trace (`afd_fleet`'s run finalize). `thread.items` serves "show all" (`afd_api_runner`).
 
@@ -279,7 +279,7 @@ So writing "post the review" in the instructions (which the fixture already does
 
 The 202 names a `disposition`: `started`, `folded` or `queued`. With no run live, the message waits for the single affinity slot (`queue::CLAIM_HEAD`, `afd_fleet`'s run queue). It then starts a run of its own.
 
-With a run live, the message folds into it, and the 202 also carries `folded_into_event_id`.
+With a run live, the message folds into it, and the 202 also carries `folded_into_turn_id`.
 The run claims it through the native `folds` request before its next model call; the run's answer becomes its reply.
 A parked or task-bound message ahead of it is a barrier, so the new message queues instead.
 

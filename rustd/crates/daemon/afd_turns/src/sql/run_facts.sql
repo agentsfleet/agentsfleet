@@ -23,21 +23,21 @@ WITH message AS MATERIALIZED (
     SELECT l.task_id IS NOT NULL AS durable_task,
            head.sequence AS head_sequence,
            head.reply_provider IS NULL AND head.reply_address IS NULL AS unaddressed,
-           l.event_id AS run_event_id
+           l.turn_id AS run_turn_id
     FROM message m
     JOIN thread.threads s ON s.fleet_id = m.fleet_id
     JOIN thread.runs l
       ON l.fleet_id = s.fleet_id AND l.runner_id = s.last_runner_id
      AND l.fencing_token = s.fencing_token AND l.status = $3
     -- An admitted turn: a run on a history-only receipt has no conversation.
-    JOIN thread.turns head ON head.id = l.event_id AND head.thread_id = l.fleet_id
+    JOIN thread.turns head ON head.id = l.turn_id AND head.thread_id = l.fleet_id
      AND head.producer IS NOT NULL
     WHERE s.run_expires_at > statement_timestamp()
 )
-SELECT r.run_event_id,
+SELECT r.run_turn_id,
        COALESCE(r.durable_task, false) AS run_durable_task,
        COALESCE(r.unaddressed, false) AS same_conversation,
-       CASE WHEN r.run_event_id IS NULL THEN EXISTS (
+       CASE WHEN r.run_turn_id IS NULL THEN EXISTS (
                 SELECT 1 FROM thread.turns a
                 WHERE a.thread_id = m.fleet_id AND a.settled_at IS NULL
                   AND a.sequence < m.sequence)

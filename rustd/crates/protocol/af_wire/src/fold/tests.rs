@@ -27,12 +27,12 @@ fn a_reply_keeps_its_spelling_and_its_order() -> Result<(), serde_json::Error> {
     let reply = FoldResponse {
         inputs: vec![
             FoldedInput {
-                event_id: "e1".into(),
+                turn_id: "e1".into(),
                 sequence: 7,
                 text: "use staging".into(),
             },
             FoldedInput {
-                event_id: "e2".into(),
+                turn_id: "e2".into(),
                 sequence: 9,
                 text: "and tag it".into(),
             },
@@ -41,7 +41,7 @@ fn a_reply_keeps_its_spelling_and_its_order() -> Result<(), serde_json::Error> {
     let json = serde_json::to_string(&reply)?;
     assert_eq!(
         json,
-        r#"{"inputs":[{"event_id":"e1","sequence":7,"text":"use staging"},{"event_id":"e2","sequence":9,"text":"and tag it"}]}"#
+        r#"{"inputs":[{"turn_id":"e1","sequence":7,"text":"use staging"},{"turn_id":"e2","sequence":9,"text":"and tag it"}]}"#
     );
     assert_eq!(serde_json::from_str::<FoldResponse<'_>>(&json)?, reply);
     Ok(())

@@ -27,7 +27,7 @@ WITH probe AS (
               )
         ) OR EXISTS (
             -- A setup draft waiting for a turn: a queued message, or a running one a lapsed
-            -- draft run left behind (its run's `event_id` is the message), with neither a
+            -- draft run left behind (its run's `turn_id` is the message), with neither a
             -- live attempt nor a live draft slot holding the draft.
             SELECT 1 FROM setup.drafts d
             JOIN thread.turns m ON m.thread_id = d.id
@@ -35,7 +35,7 @@ WITH probe AS (
               AND (m.status = $3
                    OR (m.status = $6 AND EXISTS (
                        SELECT 1 FROM thread.runs l
-                       WHERE l.event_id = m.id AND l.draft_id = d.id)))
+                       WHERE l.turn_id = m.id AND l.draft_id = d.id)))
               -- Setup turns the authoring path still runs; this term goes with setup.attempts.
               AND NOT EXISTS (
                   SELECT 1 FROM setup.attempts t
@@ -80,7 +80,7 @@ SELECT
                 AND (m.status = $3
                      OR (m.status = $6 AND EXISTS (
                          SELECT 1 FROM thread.runs l
-                         WHERE l.event_id = m.id AND l.draft_id = d.id)))
+                         WHERE l.turn_id = m.id AND l.draft_id = d.id)))
                 AND NOT EXISTS (
                     SELECT 1 FROM setup.attempts t
                     WHERE t.draft_id = d.id AND t.status = $1

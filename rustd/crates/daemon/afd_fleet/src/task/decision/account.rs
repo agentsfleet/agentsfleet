@@ -109,7 +109,7 @@ fn known(call: &Call, usage: DecisionUsage, uncached: u32, digest: &str) -> Resu
         attribution: Attribution::Fleet {
             fleet: call.fleet_id.clone(),
             fleet_name: call.fleet_name.clone(),
-            event_id: call.source_admission_id.clone(),
+            turn_id: call.source_turn_id.clone(),
         },
         provider: call.provider.clone(),
         model: call.profile_snapshot.0.profile.model.clone(),

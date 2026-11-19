@@ -1,7 +1,7 @@
 //! Where an admission's answer goes: recorded by its producer, copied by a
 //! continuation, and never half-written.
 //!
-//! Driven through `Admissions::admit` and read back with the shipped
+//! Driven through `Turns::admit` and read back with the shipped
 //! `SELECT_REPLY_DESTINATION`, so a predicate added to the real lookup fails
 //! here instead of passing against a copy. Each test mints its own fleet and
 //! reads only that fleet's rows (ISO-1); none takes `RECOVERY_LANE`, because
@@ -17,9 +17,9 @@
 )]
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_db::test_util::mint_id;
-use afd_turns::{Admission, Admitted, Key, Producer, Reply, sql};
+use afd_turns::{Admitted, IncomingTurn, Key, Producer, Reply, sql};
 
 use crate::recovery_seed::{admission, ledger, producer_key};
 use crate::seed::seeded_parts;
@@ -52,8 +52,8 @@ fn replying<'a>(
     workspace: &'a Uuid7,
     key: &'a str,
     reply: Reply<'a>,
-) -> Admission<'a> {
-    Admission {
+) -> IncomingTurn<'a> {
+    IncomingTurn {
         reply,
         ..admission(fleet, workspace, key)
     }
@@ -63,7 +63,7 @@ fn replying<'a>(
 async fn destination(
     fixtures: &Fixtures,
     fleet: &Uuid7,
-    event_id: &Uuid7,
+    turn_id: &Uuid7,
 ) -> Option<(String, String)> {
     let mut connection = fixtures
         .database
@@ -72,14 +72,14 @@ async fn destination(
         .expect("a pooled connection");
     sqlx::query_as(sql::SELECT_REPLY_DESTINATION)
         .bind(fleet)
-        .bind(event_id)
+        .bind(turn_id)
         .fetch_optional(&mut *connection)
         .await
         .expect("the lookup runs")
 }
 
 /// Admits and answers the ledger's reply, failing loudly on a refusal.
-async fn admit(fixtures: &Fixtures, admission: Admission<'_>) -> Admitted {
+async fn admit(fixtures: &Fixtures, admission: IncomingTurn<'_>) -> Admitted {
     ledger(fixtures)
         .admit(admission)
         .await
@@ -100,7 +100,7 @@ async fn existing_producers_record_no_reply_destination() {
         let key = producer_key(&fleet, producer.as_str());
         let admitted = admit(
             &fixtures,
-            Admission {
+            IncomingTurn {
                 producer,
                 key: Key::Repeated(&key),
                 ..admission(&fleet, &workspace, &key)
@@ -194,15 +194,15 @@ async fn continuation_inherits_the_resumed_destination() {
         (&silent.stored.id, None),
         (&foreign, None),
     ];
-    for (event_id, expected) in resumed {
-        let key = producer_key(&fleet, &format!("continues:{event_id}"));
+    for (turn_id, expected) in resumed {
+        let key = producer_key(&fleet, &format!("continues:{turn_id}"));
         let continuation = admit(
             &fixtures,
-            Admission {
+            IncomingTurn {
                 producer: Producer::GateContinuation,
                 key: Key::Repeated(&key),
-                event_type: EventType::Continuation,
-                reply: Reply::Inherit { event_id },
+                event_type: TurnKind::Continuation,
+                reply: Reply::Inherit { turn_id },
                 ..admission(&fleet, &workspace, &key)
             },
         )
@@ -210,7 +210,7 @@ async fn continuation_inherits_the_resumed_destination() {
         assert_eq!(
             destination(&fixtures, &fleet, &continuation.stored.id).await,
             expected,
-            "a continuation of {event_id} answers where it would have"
+            "a continuation of {turn_id} answers where it would have"
         );
     }
 

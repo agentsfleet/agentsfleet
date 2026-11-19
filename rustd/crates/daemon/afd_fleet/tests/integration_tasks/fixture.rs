@@ -6,12 +6,12 @@ use af_core::{etag::sha256_hex, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::{
     decision::{DecisionQuestion, NamedQuestion, NoulCriteria},
-    event::EventType,
     task::TaskLimits,
+    turn::TurnKind,
 };
 use afd_db::test_util::TestDatabase;
 use afd_fleet::task::{PreparedPlan, PreparedTask, TaskRun, TaskScope, Tasks};
-use afd_turns::{Admission, Admissions, Key, Producer, Reply};
+use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 use futures_util::FutureExt as _;
 use serde_json::json;
 
@@ -32,7 +32,7 @@ pub(super) struct Case {
     pub(super) scope: TaskScope,
     pub(super) revision: Uuid7,
     pub(super) revision_number: u64,
-    pub(super) admissions: Admissions,
+    pub(super) admissions: Turns,
 }
 
 impl Case {
@@ -70,7 +70,7 @@ impl Case {
             workspace_id: workspace,
             fleet_id: held.fleet.clone(),
         };
-        let admissions = Admissions::new(
+        let admissions = Turns::new(
             held.fixtures.database.clone(),
             held.fixtures.bus().clone(),
             Entropy::new(),
@@ -104,7 +104,7 @@ impl Case {
 
     pub(super) fn plan(&self, digest: &str, count: usize) -> PreparedPlan {
         self.source_plan(
-            self.held.event_id.clone(),
+            self.held.turn_id.clone(),
             digest,
             count,
             TaskLimits::default(),
@@ -150,13 +150,13 @@ impl Case {
         let request = json!({"message": message}).to_string();
         let admission = self
             .admissions
-            .admit(Admission {
+            .admit(IncomingTurn {
                 producer,
                 key: Key::Repeated(key.as_str()),
                 fleet: &self.scope.fleet_id,
                 workspace: &self.scope.workspace_id,
                 actor,
-                event_type: EventType::Chat,
+                event_type: TurnKind::Chat,
                 request_json: &request,
                 reply: Reply::None,
             })

@@ -23,7 +23,7 @@
 //!
 //! `created_at` and `updated_at` are written by `now()`; no writer binds an
 //! instant. An event is named by its turn's `id`, the table's key, which the
-//! wire still calls `event_id`.
+//! wire still calls `turn_id`.
 //!
 //! [`Acquired`]: https://docs.rs/afd_fleet
 
@@ -81,7 +81,7 @@ pub(crate) const INSERT_ACCESS_ACTIVITY: &str = include_str!("insert_access_acti
 /// status this transition is guarded on, `$6` detail, `$7` the gate status that
 /// counts as pending.
 ///
-/// [`status::RECEIVED`]: af_core::event::status::RECEIVED
+/// [`status::RECEIVED`]: af_core::turn::status::RECEIVED
 pub const UPDATE_FLEET_EVENT_FAILURE: &str = include_str!("update_fleet_event_failure.sql");
 
 /// End an event with the runner's verdict.

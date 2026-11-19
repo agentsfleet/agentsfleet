@@ -186,7 +186,7 @@ fn payload() -> Uuid7 {
 
 fn folded(request: &Value, text: &str) -> Value {
     json!({"type":"folded","request_id":(*request.pointer("/request_id").expect("native response field")),"run_id":(*request.pointer("/run_id").expect("native response field")),
-        "answer":{"status":"ok","response":{"inputs":[{"event_id":crate::test_util::FLEET_ID,
+        "answer":{"status":"ok","response":{"inputs":[{"turn_id":crate::test_util::FLEET_ID,
             "sequence":1,"text":text}]}}})
 }
 

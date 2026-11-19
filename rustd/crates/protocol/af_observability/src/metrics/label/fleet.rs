@@ -188,7 +188,7 @@ closed_set! {
 
 closed_set! {
     /// The result of admitting work to the durable queue.
-    AdmissionOutcome {
+    IncomingTurnOutcome {
         /// The ledger row committed.
         Accepted => "accepted",
         /// Seen before; the first admission's identity stands.
@@ -270,11 +270,11 @@ closed_set! {
         EventToFirstChunk => "event_to_first_chunk",
         /// Execution invocation to its first safe stream chunk, as the runner measured it.
         RunToFirstChunk => "run_to_first_chunk",
-        /// Producer event timestamp to the `event_complete` publish: the whole round trip.
+        /// Producer event timestamp to the `turn_complete` publish: the whole round trip.
         EventToComplete => "event_to_complete",
         /// Run issue to the report's arrival at the daemon.
         AssignToReport => "assign_to_report",
-        /// The report's arrival to the `event_complete` publish.
+        /// The report's arrival to the `turn_complete` publish.
         ReportToComplete => "report_to_complete",
     }
 }

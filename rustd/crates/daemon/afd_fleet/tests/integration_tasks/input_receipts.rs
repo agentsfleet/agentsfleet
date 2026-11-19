@@ -11,7 +11,7 @@ fn receipt(case: &Case, bindings: &TaskBindings, mode: TaskInputMode) -> TaskInp
     TaskInputReceiptInput {
         fencing_token: case.run().fencing_token,
         operation_id: afd_db::test_util::mint_id().into(),
-        source_admission_id: case.held.event_id.clone().into(),
+        source_turn_id: case.held.turn_id.clone().into(),
         plan_digest: "a".repeat(64),
         item_id: item.item_id.to_string(),
         task: Some(DecisionTaskVersion {

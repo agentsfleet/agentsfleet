@@ -36,7 +36,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION connector.slack_person_allowed(UUID, TEXT, TEXT, TEXT, TEXT) TO api_runtime;
 
--- Holds after admission cleanup. A quoted message never enters these identities.
+-- Holds after the source turn is gone. A quoted message never enters these identities.
 CREATE FUNCTION fleet.task_person_allowed(task UUID, source_producer TEXT, provider TEXT, actor_pattern TEXT, separator TEXT)
 RETURNS BOOLEAN LANGUAGE SQL STABLE SET search_path = pg_catalog AS $$
     WITH target AS MATERIALIZED (
@@ -46,14 +46,14 @@ RETURNS BOOLEAN LANGUAGE SQL STABLE SET search_path = pg_catalog AS $$
         -- UNION dedupes repeat senders and the origin, so each person needs one membership check.
         SELECT p.source_actor FROM target t
         JOIN fleet.task_items origin ON origin.id = t.originating_task_item_id
-        JOIN fleet.task_interpretations p ON p.admission_id = origin.admission_id
+        JOIN fleet.task_interpretations p ON p.turn_id = origin.turn_id
             AND p.fleet_id = t.fleet_id AND p.workspace_id = t.workspace_id
         WHERE p.source_producer = $2
         UNION
         SELECT applied.source_actor FROM target t
         JOIN fleet.task_inputs n ON n.task_id = t.id AND n.sequence <= t.covered_input_sequence
         JOIN fleet.task_items i ON i.id = n.task_item_id
-        JOIN fleet.task_interpretations applied ON applied.admission_id = i.admission_id
+        JOIN fleet.task_interpretations applied ON applied.turn_id = i.turn_id
             AND applied.fleet_id = t.fleet_id AND applied.workspace_id = t.workspace_id
         WHERE applied.source_producer = $2
     )

@@ -112,7 +112,7 @@ async fn retention_collects_a_second_owner_while_the_first_head_is_locked() -> C
         committed(files).await?;
         age_source(files).await?;
     }
-    let (older, newer) = if first.case.acquired.event_id < second.case.acquired.event_id {
+    let (older, newer) = if first.case.acquired.turn_id < second.case.acquired.turn_id {
         (&first, &second)
     } else {
         (&second, &first)
@@ -121,10 +121,10 @@ async fn retention_collects_a_second_owner_while_the_first_head_is_locked() -> C
     let mut held = connection.begin().await?;
     let locked: Uuid7 =
         sqlx::query_scalar("SELECT turn_id FROM runner.turn_recovery WHERE turn_id=$1 FOR UPDATE")
-            .bind(&older.case.acquired.event_id)
+            .bind(&older.case.acquired.turn_id)
             .fetch_one(&mut *held)
             .await?;
-    assert_eq!(locked, older.case.acquired.event_id);
+    assert_eq!(locked, older.case.acquired.turn_id);
 
     let tasks = newer.case.tasks();
     let mut cursor = CheckpointMaintenanceCursor::default();
@@ -202,7 +202,7 @@ async fn age_source(files: &Files) -> Checked {
             "UPDATE thread.turns
              SET settled_at=clock_timestamp()-interval '8 days', updated_at=now() WHERE id=$1",
         )
-        .bind(&files.case.acquired.event_id)
+        .bind(&files.case.acquired.turn_id)
         .execute(&mut *connection)
         .await?
         .rows_affected(),
@@ -216,7 +216,7 @@ async fn public_source(files: &Files) -> Checked<String> {
     Ok(sqlx::query_scalar(
         "SELECT to_jsonb(t)::text FROM thread.turns t WHERE t.id=$1 AND t.opened_at IS NOT NULL",
     )
-    .bind(&files.case.acquired.event_id)
+    .bind(&files.case.acquired.turn_id)
     .fetch_one(&mut *connection)
     .await?)
 }
@@ -227,9 +227,9 @@ async fn private_rows(files: &Files) -> Checked<(i64, i64, i64)> {
         "SELECT
          (SELECT count(*) FROM runner.turn_recovery WHERE turn_id=$1),
          (SELECT count(*) FROM runner.turn_checkpoints WHERE turn_id=$1),
-         (SELECT count(*) FROM runner.turn_checkpoint_operations WHERE event_id=$1)",
+         (SELECT count(*) FROM runner.turn_checkpoint_operations WHERE turn_id=$1)",
     )
-    .bind(&files.case.acquired.event_id)
+    .bind(&files.case.acquired.turn_id)
     .fetch_one(&mut *connection)
     .await?)
 }

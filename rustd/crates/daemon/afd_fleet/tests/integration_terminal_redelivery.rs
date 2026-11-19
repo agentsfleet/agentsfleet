@@ -11,7 +11,7 @@ use crate::support::Fixtures;
 async fn test_completed_event_redelivery_does_not_execute() {
     let run = held().await;
     run.fixtures
-        .end_event(&run.fleet, &run.event_id, af_core::event::status::PROCESSED)
+        .end_event(&run.fleet, &run.turn_id, af_core::turn::status::PROCESSED)
         .await;
     age_original_claim(&run).await;
     let fleet = run.fleet.clone();
@@ -36,7 +36,7 @@ async fn test_completed_event_redelivery_does_not_execute() {
     let mut connection = run.fixtures.database.acquire().await.expect("database");
     let settled: bool =
         sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1")
-            .bind(&run.event_id)
+            .bind(&run.turn_id)
             .fetch_one(&mut *connection)
             .await
             .expect("queue state");
@@ -63,7 +63,7 @@ async fn test_completed_event_redelivery_does_not_execute() {
 async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
     let run = held_in(Fixtures::create_isolated().await).await;
     run.fixtures
-        .end_event(&run.fleet, &run.event_id, af_core::event::status::PROCESSED)
+        .end_event(&run.fleet, &run.turn_id, af_core::turn::status::PROCESSED)
         .await;
     // The holder stops renewing, and the finished event is claimed again: the
     // claim answers a terminal redelivery.
@@ -87,7 +87,7 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
          UPDATE thread.turns SET run_fence = (SELECT fencing_token FROM slot) WHERE id = $2",
     )
     .bind(&run.fleet)
-    .bind(&run.event_id)
+    .bind(&run.turn_id)
     .execute(&mut *run.fixtures.database.acquire().await.expect("rival"))
     .await
     .expect("supersede between the claim and settlement");
@@ -110,7 +110,7 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
         answer.is_none(),
         "the terminal event is never reissued: {answer:?}"
     );
-    assert!(run.fixtures.admission_settled(&run.event_id).await);
+    assert!(run.fixtures.admission_settled(&run.turn_id).await);
     run.fixtures.cleanup().await;
 }
 
@@ -121,7 +121,7 @@ async fn assert_superseded_claim_retained(run: &Held, fence: i64) {
          FROM thread.turns a JOIN thread.threads s ON s.fleet_id=a.thread_id \
          WHERE a.id=$1 AND s.last_runner_id=$2",
     )
-    .bind(&run.event_id)
+    .bind(&run.turn_id)
     .bind(&run.runner)
     .fetch_one(&mut *run.fixtures.database.acquire().await.expect("observer"))
     .await

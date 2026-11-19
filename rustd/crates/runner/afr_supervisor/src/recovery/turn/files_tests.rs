@@ -120,7 +120,7 @@ fn scope() -> TurnScope {
     TurnScope {
         workspace_id: CheckpointOperationId(ID.to_owned()),
         fleet_id: CheckpointOperationId(ID.to_owned()),
-        event_id: CheckpointOperationId(ID.to_owned()),
+        turn_id: CheckpointOperationId(ID.to_owned()),
         setup_revision_id: CheckpointOperationId(ID.to_owned()),
         workspace: TurnWorkspace::Files {
             toolbox_digest: "a".repeat(64),

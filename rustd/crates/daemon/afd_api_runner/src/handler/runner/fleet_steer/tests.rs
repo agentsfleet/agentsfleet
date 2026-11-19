@@ -31,7 +31,7 @@ fn standing() -> Standing {
         run_id: id(RUN),
         fleet_id: id(SENDER),
         workspace_id: id(RUN),
-        event_id: id(EVENT),
+        turn_id: id(EVENT),
         actor: "fixture:operator".to_owned(),
     }
 }
@@ -47,7 +47,7 @@ fn fleet_steer_logs_its_refusal_and_its_admission() {
     let target = id(TARGET);
     log_refused(&standing, &target, error_code::FLEET_STEER_SELF);
     let steered = FleetSteered {
-        event_id: EVENT.to_owned(),
+        turn_id: EVENT.to_owned(),
         admitted_at: None,
     };
     log_admitted(&standing, &target, &steered);
@@ -72,12 +72,12 @@ fn fleet_steer_logs_its_refusal_and_its_admission() {
         keys(&admitted),
         BTreeSet::from([
             "event",
-            "event_id",
+            "turn_id",
             "replayed",
             "sender_fleet_id",
             "target_fleet_id"
         ])
     );
-    assert_eq!(admitted.field("event_id"), Some(EVENT));
+    assert_eq!(admitted.field("turn_id"), Some(EVENT));
     assert_eq!(admitted.field("replayed"), Some("true"));
 }

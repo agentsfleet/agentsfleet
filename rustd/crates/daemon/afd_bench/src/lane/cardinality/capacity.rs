@@ -2,7 +2,7 @@
 
 use af_core::clock;
 use af_crypto::entropy::Entropy;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 
 use crate::datastores::Datastores;
 use crate::error::Result;
@@ -20,7 +20,7 @@ const LEDGER_BACKLOG_OLDEST_AGE_MS: &str = "ledger_backlog_oldest_age_ms";
 /// A ledger that would not answer, through the lane's own lifts.
 pub(super) async fn record(stores: &Datastores, report: &mut Report) -> Result<()> {
     // The same ledger shape the daemon holds — see `lane::steer`.
-    let ledger = Admissions::new(stores.database.clone(), stores.bus.clone(), Entropy::new());
+    let ledger = Turns::new(stores.database.clone(), stores.bus.clone(), Entropy::new());
     let backlog = ledger.backlog().await?;
     report.measurement(LEDGER_BACKLOG_ROWS, count(backlog.rows));
     report.measurement(

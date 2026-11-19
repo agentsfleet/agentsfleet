@@ -82,7 +82,7 @@ pub(crate) const SELECT_GATE_BY_ID: &str = include_str!("select_gate_by_id.sql")
 /// transaction, or a crash between them would leave a gate saying yes over a
 /// grant that never heard.
 ///
-/// **`r.event_id IS NULL` is an authorisation predicate, not a filter.** Without
+/// **`r.turn_id IS NULL` is an authorisation predicate, not a filter.** Without
 /// it this arm trusts two columns a fleet controls. `gate_type` is copied
 /// verbatim from the matched rule (`afd_gate::gate::detail::Stated::under`) and
 /// the raw config validates it for length alone, while `evidence` is read out
@@ -95,7 +95,7 @@ pub(crate) const SELECT_GATE_BY_ID: &str = include_str!("select_gate_by_id.sql")
 /// The event column is the discriminator because it is the one thing on this
 /// row a fleet cannot reach. [`super::grant_sql::REQUEST_GRANT`] writes NULL
 /// there by construction, and every rules-path gate carries a real one:
-/// `afd_gate`'s insert binds `event_id: &str`, not an `Option`, so a card raised
+/// `afd_gate`'s insert binds `turn_id: &str`, not an `Option`, so a card raised
 /// from an event can never be NULL. A forged type moves no grant.
 ///
 /// The trailing count is how many of the fleet's gates still wait once this

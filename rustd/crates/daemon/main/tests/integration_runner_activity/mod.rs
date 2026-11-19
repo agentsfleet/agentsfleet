@@ -36,8 +36,8 @@ async fn test_activity_publish() {
     assert_eq!(field(&frame, "kind"), &json!("chunk"));
     assert_eq!(field(&frame, "text"), &json!(CHUNK_TEXT));
     assert_eq!(
-        field(&frame, "event_id"),
-        &json!(tailed.scene.event_id),
+        field(&frame, "turn_id"),
+        &json!(tailed.scene.turn_id),
         "activity is grouped by the event, never the run"
     );
     tailed = tailed

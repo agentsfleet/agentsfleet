@@ -42,7 +42,7 @@ async fn turn_references_survive_an_orphan_snapshot_and_release_shared_quota_onl
     assert_storage(&files, &object, true).await?;
     let mut connection = files.case.fixtures.database.acquire().await?;
     sqlx::query("UPDATE thread.turns SET settled_at=clock_timestamp()-interval '8 days',updated_at=now() WHERE id=$1")
-        .bind(&files.case.acquired.event_id).execute(&mut *connection).await?;
+        .bind(&files.case.acquired.turn_id).execute(&mut *connection).await?;
     drop(connection);
     let mut cursor = CheckpointMaintenanceCursor::default();
     let removed = tasks.maintain_checkpoints(&mut cursor).await?;
@@ -54,7 +54,7 @@ async fn turn_references_survive_an_orphan_snapshot_and_release_shared_quota_onl
 }
 
 fn tasks(files: &Files) -> Tasks {
-    let admissions = afd_turns::Admissions::new(
+    let admissions = afd_turns::Turns::new(
         files.case.fixtures.database.clone(),
         files.case.fixtures.bus().clone(),
         af_crypto::entropy::Entropy::new(),

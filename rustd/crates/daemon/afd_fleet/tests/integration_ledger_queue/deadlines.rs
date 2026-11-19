@@ -3,13 +3,13 @@
 use af_core::id::Uuid7;
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_fleet::run::sql::{self, queue::CLAIM_HEAD};
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use sqlx::Connection as _;
 
 use super::{enqueue, next, parking::seed_gate};
 use crate::{seed::seeded_parts, support::Fixtures};
 
-const SCOPE: &str = "UPDATE fleet.approval_gates SET event_id=$2 WHERE action_id=$1";
+const SCOPE: &str = "UPDATE fleet.approval_gates SET turn_id=$2 WHERE action_id=$1";
 const EXPIRE: &str = "UPDATE fleet.approval_gates \
     SET expires_at=clock_timestamp()-interval '1 second' WHERE action_id=$1";
 const PENDING: &str = "SELECT count(*) FROM fleet.approval_gates \
@@ -59,10 +59,7 @@ async fn deadline_case(first_gate_first: bool) {
     let resumed = next(&runs, &runner)
         .await
         .expect("all matching gates lapsed");
-    assert_eq!(
-        resumed.event_id, head,
-        "the later event's gate is unrelated"
-    );
+    assert_eq!(resumed.turn_id, head, "the later event's gate is unrelated");
     assert!(resumed.fence > first.fence);
     assert_answerable(&fixtures, &fleet, &specific).await;
     drop(runs);
@@ -84,7 +81,7 @@ async fn approve(fixtures: &Fixtures, action: &Uuid7) {
     let inbox = Inbox::new(
         fixtures.database.clone(),
         bus.clone(),
-        Admissions::for_tests(fixtures.database.clone(), bus),
+        Turns::for_tests(fixtures.database.clone(), bus),
     );
     assert!(matches!(
         inbox
@@ -124,10 +121,7 @@ async fn standing_access_waits_for_an_answer_after_its_card_deadline() {
     assert_blocked_claim(&fixtures, &fleet, &runner).await;
     approve(&fixtures, &action).await;
     assert_eq!(
-        next(&runs, &runner)
-            .await
-            .expect("answered access")
-            .event_id,
+        next(&runs, &runner).await.expect("answered access").turn_id,
         head
     );
     drop(runs);
@@ -180,7 +174,7 @@ async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7
         .bind(af_wire::task::TaskState::Running.as_str())
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
         .bind(sql::FLEET_STATUS_ACTIVE)
-        .bind(af_core::event::status::RECEIVED)
+        .bind(af_core::turn::status::RECEIVED)
         .bind(afd_turns::Producer::Steer.as_str())
         .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)

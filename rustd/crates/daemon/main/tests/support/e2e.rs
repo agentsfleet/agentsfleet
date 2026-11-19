@@ -28,7 +28,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use af_core::env::{EnvSource as _, ProcessEnv};
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_runner::Runners;
 use agentsfleetd::serve::{Booted, boot};
 use agentsfleetd::supervisor::Supervisor;
@@ -79,13 +79,13 @@ pub(crate) const ACTOR: &str = "fixture:operator";
 
 /// The type every seeded event carries.
 ///
-/// `Chat`, not the `steer` the store suites next door spell. `EventType` is a
+/// `Chat`, not the `steer` the store suites next door spell. `TurnKind` is a
 /// CLOSED set and the pull path ends any delivery it cannot name — those
 /// suites call `Runs::select` directly and never reach that check, so their
 /// spelling has never had to be one the daemon executes. A §7 scenario does
 /// reach it, and the ledger this seed admits through takes the type itself,
 /// so a scenario cannot spell one the daemon would end.
-pub(crate) const EVENT_TYPE: EventType = EventType::Chat;
+pub(crate) const EVENT_TYPE: TurnKind = TurnKind::Chat;
 
 /// The body every seeded event carries.
 pub(crate) const REQUEST_JSON: &str = r#"{"prompt":"fixture"}"#;
@@ -131,7 +131,7 @@ pub(crate) struct Scenario {
     /// Its billing tenant.
     pub(crate) tenant: Uuid7,
     /// The admission identifier shared by the run, report, and narrative.
-    pub(crate) event_id: Uuid7,
+    pub(crate) turn_id: Uuid7,
     /// The enrolled runner's durable identifier.
     pub(crate) runner_id: Uuid7,
     /// Its bearer token, revealed once at enrolment.
@@ -204,14 +204,14 @@ pub(crate) async fn scenario_with(
 
     let (runner_id, token) = enrolled_runner(&booted, &fleet, now).await;
 
-    let event_id = enqueue(&booted, &fleet, &workspace, EVENT_TYPE).await;
+    let turn_id = enqueue(&booted, &fleet, &workspace, EVENT_TYPE).await;
 
     Scenario {
         base,
         fleet,
         workspace,
         tenant,
-        event_id,
+        turn_id,
         runner_id,
         token,
         native: tokio::sync::OnceCell::new(),
@@ -255,7 +255,7 @@ impl Scenario {
     }
 
     /// Admits another event under this scenario's ready fleet.
-    pub(crate) async fn enqueue_event(&self, event_type: EventType) -> Uuid7 {
+    pub(crate) async fn enqueue_event(&self, event_type: TurnKind) -> Uuid7 {
         enqueue(&self.booted, &self.fleet, &self.workspace, event_type).await
     }
 

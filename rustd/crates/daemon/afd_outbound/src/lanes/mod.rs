@@ -338,10 +338,10 @@ impl<S: Deliver + 'static> Inner<S> {
         // The turn this answer belongs to. Every other layer stamps it, and a
         // delivery line that names only the fleet cannot be joined back to the
         // turn a reader is tracing — nor tell two turns of one fleet apart.
-        let agentsfleet_event_id = job.outgoing.event_id.as_str();
+        let agentsfleet_turn_id = job.outgoing.turn_id.as_str();
         {
             let event = &EVENT_DELIVERED;
-            tracing::debug!(provider, fleet_id, agentsfleet_event_id, attempts, event);
+            tracing::debug!(provider, fleet_id, agentsfleet_turn_id, attempts, event);
         };
     }
 }

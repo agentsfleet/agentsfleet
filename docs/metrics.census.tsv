@@ -98,9 +98,9 @@ agentsfleet_fleet_ready_wake_queue_events_total	counter	u64	1	cumulative	outcome
 agentsfleet_fleets	gauge	u64	{fleet}	-	status	-	fixed:5	yes	traffic	installed fleets by lifecycle status; active is the leasable set, a rising paused count is the anomaly gate holding work
 agentsfleet_runner_retention_swept_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	retention pruning throughput
 agentsfleet_runner_retention_sweep_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	retention sweeps failing
-agentsfleet_admissions_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	accepted, replayed, refused and over-budget admission attempts
-agentsfleet_admission_backlog	gauge	u64	{row}	-	-	-	fixed:1	no	saturation	unsettled admissions, counted by the fleet census; use max across replicas
-agentsfleet_admission_backlog_oldest_age_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest unsettled admission; absent when the census cannot read Postgres
+agentsfleet_turns_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	accepted, replayed, refused and over-budget turn intakes
+agentsfleet_turn_backlog	gauge	u64	{row}	-	-	-	fixed:1	no	saturation	unsettled fleet turns, counted by the fleet census; use max across replicas
+agentsfleet_turn_backlog_oldest_age_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest unsettled fleet turn; absent when the census cannot read Postgres
 agentsfleet_library_stage_duration_seconds_total	counter	f64	s	cumulative	surface,stage	-	fixed:4	no	latency	÷ observations = mean stage cost
 agentsfleet_library_stage_observations_total	counter	u64	1	cumulative	surface,stage	-	fixed:4	no	latency	the denominator above
 agentsfleet_library_read_outcome_total	counter	u64	1	cumulative	surface,outcome	-	fixed:16	no	errors	non-`ok` outcomes per surface

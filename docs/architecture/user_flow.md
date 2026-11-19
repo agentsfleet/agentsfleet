@@ -230,7 +230,7 @@ The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like thi
 4. For GitHub App triggers, the setup carries explicit `repositories` and `events`; the workspace's existing App installation supplies the event source. For a custom webhook, the saved fleet's response carries `webhook_urls` for operator registration.
 5. Claude can also manually invoke the fleet via `agentsfleet fleet steer` for one-off user-triggered tasks.
 6. Later, the fleet wakes on webhook or a QStash fire without the user staying in the terminal or any `agentsfleet` cron daemon running.
-7. When the user returns to Claude, they inspect what happened from durable history (`agentsfleet fleet events {id}` or the dashboard Events tab) instead of reconstructing it from memory.
+7. When the user returns to Claude, they inspect what happened from durable history (`agentsfleet fleet turns {id}` or the dashboard Events tab) instead of reconstructing it from memory.
 
 The dashboard equivalent surface on `/fleets/{id}` matches the CLI path:
 

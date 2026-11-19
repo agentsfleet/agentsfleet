@@ -1,7 +1,7 @@
 //! Queued fires reload before running and promote under their original identity.
 
-use af_core::event::status;
 use af_core::id::Uuid7;
+use af_core::turn::status;
 use afd_cron::{Change, Fire};
 use serde_json::{Value, json};
 
@@ -31,7 +31,7 @@ async fn queued_schedule_fire_history_survives_reload_and_single_row_promotion()
     let queued = cron_rows(&lane).await;
     assert_eq!(queued.len(), 1);
     let queued = queued.first().expect("offline fire");
-    assert_eq!(queued.row.event_id, accepted.event_id);
+    assert_eq!(queued.row.turn_id, accepted.turn_id);
     assert_eq!(queued.row.status, status::QUEUED);
     let payload: Value = serde_json::from_str(&queued.request_json).expect("snapshot");
     assert_eq!(
@@ -49,9 +49,9 @@ async fn queued_schedule_fire_history_survives_reload_and_single_row_promotion()
         .deliver(id, &target, "first-fire")
         .await
         .expect("replay");
-    assert_eq!(repeated.event_id, accepted.event_id);
+    assert_eq!(repeated.turn_id, accepted.turn_id);
     assert!(repeated.replayed);
-    let event = Uuid7::parse(&accepted.event_id).expect("a fire answers a minted event id");
+    let event = Uuid7::parse(&accepted.turn_id).expect("a fire answers a minted event id");
     sqlx::query(DELIVER)
         .bind(&event)
         .bind(status::RECEIVED)
@@ -61,7 +61,7 @@ async fn queued_schedule_fire_history_survives_reload_and_single_row_promotion()
     let delivered = cron_rows(&lane).await;
     assert_eq!(delivered.len(), 1);
     let delivered = delivered.first().expect("single promoted row");
-    assert_eq!(delivered.row.event_id, accepted.event_id);
+    assert_eq!(delivered.row.turn_id, accepted.turn_id);
     assert_eq!(delivered.row.status, status::RECEIVED);
     assert_eq!(
         serde_json::from_str::<Value>(&delivered.request_json).expect("retained payload"),
@@ -69,7 +69,7 @@ async fn queued_schedule_fire_history_survives_reload_and_single_row_promotion()
     );
 }
 
-async fn cron_rows(lane: &CronLane) -> Vec<afd_turns::view::EventDetailRow> {
+async fn cron_rows(lane: &CronLane) -> Vec<afd_turns::view::TurnDetailRow> {
     thread(lane)
         .await
         .into_iter()

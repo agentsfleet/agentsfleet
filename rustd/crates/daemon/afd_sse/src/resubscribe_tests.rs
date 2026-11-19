@@ -52,10 +52,10 @@ async fn tail_sends_catching_up_once_after_subscribing() -> TestResult {
         "{}",
         caught_up.data
     );
-    server.publish(&Subject::FleetTail(fleet), r#"{"kind":"event_admitted"}"#);
+    server.publish(&Subject::FleetTail(fleet), r#"{"kind":"turn_admitted"}"#);
     let admitted = tail.next().await.ok_or("the published frame")?;
     assert!(
-        admitted.data.to_string().contains("event_admitted"),
+        admitted.data.to_string().contains("turn_admitted"),
         "{}",
         admitted.data
     );
@@ -181,9 +181,9 @@ async fn a_tail_that_failed_to_subscribe_recovers_with_catching_up() -> TestResu
         "catching_up",
         "the viewer backfills the outage"
     );
-    server.publish(&Subject::FleetTail(fleet), r#"{"kind":"event_admitted"}"#);
+    server.publish(&Subject::FleetTail(fleet), r#"{"kind":"turn_admitted"}"#);
     let admitted = tail.next().await.ok_or("the published frame")?;
-    assert!(admitted.data.to_string().contains("event_admitted"));
+    assert!(admitted.data.to_string().contains("turn_admitted"));
     Ok(())
 }
 

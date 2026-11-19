@@ -88,7 +88,7 @@ fn job(w: usize, n: u32) -> Box<Claimed> {
             destination: DESTINATION.to_owned(),
             workspace_id: workspace(w),
             fleet_id: id(FLEET_ID),
-            event_id: event(w, n),
+            turn_id: event(w, n),
             answer: format!("answer {n} for workspace {w}"),
         },
     })

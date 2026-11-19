@@ -142,7 +142,7 @@ impl Wake {
                 self.queue.clear_poison();
                 producers::fleet::ready_wake_failed(ReadyWake::Gap);
                 let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                tracing::warn!(event = "admission_wake_queue_recovered", error_code);
+                tracing::warn!(event = "turn_wake_queue_recovered", error_code);
                 queue
             }
         }
@@ -180,7 +180,7 @@ async fn receive(wake: Wake, mut subscription: crate::Subscription, stop: Cancel
                         wake.recheck();
                         producers::fleet::ready_wake_failed(ReadyWake::Gap);
                         let error_code = error.code().as_str();
-                        tracing::warn!(event = "admission_wake_invalid_notification", error_code);
+                        tracing::warn!(event = "turn_wake_invalid_notification", error_code);
                     }
                 },
                 Ok(Received::Lagged(_) | Received::Gap) => {
@@ -191,7 +191,7 @@ async fn receive(wake: Wake, mut subscription: crate::Subscription, stop: Cancel
                     wake.recheck();
                     producers::fleet::ready_wake_failed(ReadyWake::Gap);
                     let error_code = error.code().as_str();
-                    tracing::warn!(event = "admission_wake_subscription_closed", error_code);
+                    tracing::warn!(event = "turn_wake_subscription_closed", error_code);
                     return;
                 }
             }

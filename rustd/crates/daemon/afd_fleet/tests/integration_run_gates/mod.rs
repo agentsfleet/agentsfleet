@@ -13,7 +13,7 @@
 //! process shares. Everything below the claim is deterministic, so the claim is
 //! made here and the verb entered at `Plane::claim_selected`.
 //!
-//! **The event type.** `seed::EVENT_TYPE` is `"steer"`, and `EventType::parse`
+//! **The event type.** `seed::EVENT_TYPE` is `"steer"`, and `TurnKind::parse`
 //! accepts `chat`, `webhook`, `cron` and `continuation` — nothing else. So
 //! every event `seeded()` puts on a stream refuses at `event_type_unsupported`
 //! BEFORE the money gates and the approval gate. These enqueue `chat`.
@@ -61,7 +61,7 @@ use sqlx::Row as _;
 use crate::seed::{ACTOR, REQUEST_JSON, seeded_parts};
 use crate::support::Fixtures;
 
-/// An event type `EventType::parse` accepts. See the module note.
+/// An event type `TurnKind::parse` accepts. See the module note.
 const EVENT_TYPE_CHAT: &str = "chat";
 
 /// A stored document the runtime parser accepts, with a one-dollar ceiling.
@@ -136,7 +136,7 @@ struct Ready {
     /// The fleet holding it.
     fleet: Uuid7,
     /// The logical event id, which the event row addresses.
-    event_id: Uuid7,
+    turn_id: Uuid7,
     /// Its billing tenant.
     tenant: Uuid7,
 }
@@ -144,7 +144,7 @@ struct Ready {
 /// Seeds [`Ready`], enqueuing a `chat` rather than `seed`'s `steer`.
 async fn ready(fixtures: &Fixtures) -> Ready {
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(fixtures).await;
-    let event_id = crate::queue::enqueue(
+    let turn_id = crate::queue::enqueue(
         &fixtures.database,
         &fleet,
         &workspace,
@@ -157,7 +157,7 @@ async fn ready(fixtures: &Fixtures) -> Ready {
     Ready {
         runner,
         fleet,
-        event_id,
+        turn_id,
         tenant,
     }
 }

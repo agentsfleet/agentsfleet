@@ -95,6 +95,6 @@ fn receipts(page: &Value, identities: &mut BTreeSet<String>) {
         assert_eq!(row["event_type"], "activity");
         assert!(row["response_text"].is_null());
         assert!(!row.to_string().contains("runtime body"));
-        assert!(identities.insert(row["event_id"].as_str().expect("event identity").to_owned()));
+        assert!(identities.insert(row["turn_id"].as_str().expect("event identity").to_owned()));
     }
 }

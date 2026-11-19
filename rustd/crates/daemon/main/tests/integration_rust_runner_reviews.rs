@@ -10,7 +10,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afr_tools::ToolErrorCode;
 use agentsfleetd::supervisor::Supervisor;
 use hyper::Method;
@@ -39,7 +39,7 @@ async fn test_pr_reviewer_posts_one_review() {
     let upstream = Upstream::serve(review_routes()).await;
     let (model, transcript) = review_script();
 
-    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
 
     assert_eq!(settled.status, "processed");
     let seen = upstream.seen();
@@ -125,7 +125,7 @@ fn assert_post_refused(transcript: &Transcript) {
 /// A steer: the event's own text is what the model is asked, and the
 /// script, following the fleet's instructions, reaches for no upstream.
 async fn assert_steer_reads_and_posts_nothing(scene: &Scenario) {
-    let steer = scene.enqueue_event(EventType::Chat).await;
+    let steer = scene.enqueue_event(TurnKind::Chat).await;
     let quiet = Upstream::serve(review_routes()).await;
     let (model, transcript) = FakeModel::new(vec![vec![say("Noted; no review for a steer.")]]);
     let settled = run_event(scene, &steer, &quiet, model).await;

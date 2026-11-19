@@ -95,7 +95,7 @@ impl Fixture {
             destination: format!(r#"{{"channel_id":"{CHANNEL}","thread_ts":"{THREAD}"}}"#),
             workspace_id: self.workspace.clone(),
             fleet_id: self.fleet.clone(),
-            event_id: self.event.clone(),
+            turn_id: self.event.clone(),
             answer: ANSWER.to_owned(),
         }
     }

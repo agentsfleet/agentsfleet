@@ -33,8 +33,8 @@
 //! records, which keeps a per-fleet delivery and an App fan-out to the same
 //! fleet from deduplicating against each other.
 
-use af_wire::event::EventType;
-use afd_turns::{Admission, Admitted, Key, Producer, Reply};
+use af_wire::turn::TurnKind;
+use afd_turns::{Admitted, IncomingTurn, Key, Producer, Reply};
 
 use crate::Ingress;
 use crate::binding::Binding;
@@ -106,13 +106,13 @@ impl Ingress {
         let key = format!("{fleet}:{}:{}", binding.source(), delivery.event_id);
         let admitted = self
             .admissions
-            .admit(Admission {
+            .admit(IncomingTurn {
                 producer: surface.producer(),
                 key: Key::Repeated(&key),
                 fleet,
                 workspace,
                 actor: delivery.actor,
-                event_type: EventType::Webhook,
+                event_type: TurnKind::Webhook,
                 request_json: delivery.request_json,
                 // A delivery's sender owns no reply surface this ledger can post to.
                 reply: Reply::None,
@@ -122,13 +122,13 @@ impl Ingress {
         // Hoisted rather than spelled inside the macro: the log bridge
         // duplicates every field expression and coverage instrumentation
         // scores the dead copy (LOG-HOIST, `.orly/standards/domains/logging.md`).
-        let event_id = admitted.stored.id.as_str();
+        let turn_id = admitted.stored.id.as_str();
         let replayed = admitted.replayed;
         let source = binding.source();
         {
             let (fleet_id, workspace_id, event) =
                 (&fleet, &workspace, &"webhook_delivery_appended");
-            tracing::info!(%fleet_id, %workspace_id, source, %event_id, replayed, event);
+            tracing::info!(%fleet_id, %workspace_id, source, %turn_id, replayed, event);
         };
         Ok(admitted)
     }

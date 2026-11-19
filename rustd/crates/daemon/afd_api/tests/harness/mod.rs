@@ -227,7 +227,7 @@ pub(crate) fn unreachable_ingress(database: Db) -> afd_ingress::Ingress {
     afd_ingress::Ingress::new(
         database.clone(),
         vault(database.clone()),
-        afd_turns::Admissions::for_tests(database, afd_bus::test_util::unreachable()),
+        afd_turns::Turns::for_tests(database, afd_bus::test_util::unreachable()),
     )
 }
 

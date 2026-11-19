@@ -21,7 +21,7 @@ async fn native_renewal_keeps_usage_acknowledgements_and_independent_refusals() 
         native.ready().await;
         let offer = native.expect(StreamKind::Work, "offer").await;
         let (run, fence) = wire::claim(offer.pointer("/run").expect("native response field"));
-        let report = wire::report_body(&run, &scene.event_id, fence);
+        let report = wire::report_body(&run, &scene.turn_id, fence);
         mixed_renewal(&mut native, &run, &report).await;
         empty_folds(&mut native, &run, fence).await;
         cancellation(&scene, &mut native, &run).await;
@@ -140,8 +140,8 @@ async fn final_report(
     let settled = native.expect(StreamKind::Reports, "report_ack").await;
     assert_eq!((*crate::wire::pointer(&settled, "/answer/status")), "ok");
     let lines: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM billing.usage_lines WHERE event_id=$1 AND seq=1")
-            .bind(&scene.event_id)
+        sqlx::query_scalar("SELECT count(*) FROM billing.usage_lines WHERE turn_id=$1 AND seq=1")
+            .bind(&scene.turn_id)
             .fetch_one(
                 &mut *scene
                     .booted

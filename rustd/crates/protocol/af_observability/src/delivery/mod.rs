@@ -70,7 +70,7 @@ pub struct Delivery<'a> {
     /// The fleet that ran, which is this product's agent identity.
     pub fleet_id: &'a str,
     /// The event the run executed.
-    pub event_id: &'a str,
+    pub turn_id: &'a str,
     /// The sandbox posture, in the spelling the run row stored.
     pub posture: &'a str,
     /// The provider the run was issued against, as configured.
@@ -111,7 +111,7 @@ pub struct Segments {
     pub sandbox_wait: Option<Duration>,
     /// The runner's settle up to its report post.
     pub settle: Option<Duration>,
-    /// The report's receipt to the `event_complete` publish.
+    /// The report's receipt to the `turn_complete` publish.
     pub complete: Option<Duration>,
 }
 
@@ -258,8 +258,8 @@ impl Delivery<'_> {
             self.tenant_id.to_owned(),
         ));
         attributes.push(KeyValue::new(
-            semconv::ATTR_EVENT_ID,
-            self.event_id.to_owned(),
+            semconv::ATTR_TURN_ID,
+            self.turn_id.to_owned(),
         ));
         // Capped like `wall`: most of these arrive from a runner, and an
         // absurd one must not read as a run longer than any this daemon

@@ -38,7 +38,7 @@ use afd_db::{Db, Migrator};
 use afd_turns::view::READ_TEXTS;
 use sqlx::{AssertSqlSafe, PgConnection, Row as _};
 
-use crate::support::EventsLane;
+use crate::support::TurnsLane;
 
 mod bodies;
 mod expected;
@@ -209,7 +209,7 @@ fn assert_walks_the_index(name: &str, plan: &str, index: &str, bounds: &[&str]) 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_event_list_plans_use_the_index() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let seeded = walk::seed_walk(&lane).await;
     walk::assert_walks(&lane, &seeded).await;
 

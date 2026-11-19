@@ -218,8 +218,8 @@ fn test_only_probes_and_streams_escape_the_request_ceiling() {
         streams,
         vec![
             Route::Workspace(WorkspaceRoute::DraftStream),
-            Route::Workspace(WorkspaceRoute::EventsStream),
-            Route::Fleet(FleetRoute::EventsStream),
+            Route::Workspace(WorkspaceRoute::TurnsStream),
+            Route::Fleet(FleetRoute::TurnsStream),
             Route::Runner(RunnerRoute::Stream),
         ],
         "a route joined the stream class. That moves it off the request \

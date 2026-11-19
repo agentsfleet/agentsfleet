@@ -50,7 +50,7 @@ Every row is extracted from the numbered sections below; the owner column names 
  +-----------------------+
 ```
 
-Postgres holds every durable fact. Admissions, events, runs, outbound deliveries, sessions and usage are all rows.
+Postgres holds every durable fact. Turns, events, runs, outbound deliveries, sessions and usage are all rows.
 
 Core NATS carries disposable signals on five subjects: the fleet tail, draft events, the wake ring, runner commands and the outbound wake. It stores nothing, because JetStream is off.
 

@@ -56,7 +56,7 @@ impl RunVerbs for Goals {
         input: DecisionReservationInput,
     ) -> Result<DecisionEvaluation, Unanswered> {
         assert!(matches!(input.assessment, DecisionAssessment::Goal { .. }));
-        assert_eq!(input.source_admission_id, SOURCE);
+        assert_eq!(input.source_turn_id, SOURCE);
         assert_eq!(
             input.task,
             Some(DecisionTaskVersion {

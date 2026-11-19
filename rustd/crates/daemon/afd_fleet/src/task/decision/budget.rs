@@ -39,7 +39,7 @@ pub(super) async fn check_on(
         goal(task, extra, allocating)?;
     } else if allocating {
         let calls: i64 = sqlx::query_scalar(sql::SOURCE_CALLS)
-            .bind(&context.source_admission_id)
+            .bind(&context.source_turn_id)
             .bind(DecisionPurpose::Intent.as_str())
             .fetch_one(&mut *connection)
             .await
@@ -99,7 +99,7 @@ async fn paid_ready(
         .filter(|_task| context.assessment.purpose() == DecisionPurpose::Goal);
     let overage: bool = sqlx::query_scalar(sql::OVERAGE)
         .bind(&current.run_id)
-        .bind(&context.source_admission_id)
+        .bind(&context.source_turn_id)
         .bind(task.map(|task| &task.task_id))
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
@@ -113,7 +113,7 @@ async fn paid_ready(
             event = "dt_decision_blocked",
             reason = "reservation_overage",
             run_id = current.run_id.as_str(),
-            source_admission_id = context.source_admission_id.as_str()
+            source_turn_id = context.source_turn_id.as_str()
         );
         return Err(TaskRefusal::DecisionOverage.into());
     }

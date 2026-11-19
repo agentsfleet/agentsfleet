@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use garde::Validate as _;
 
 use super::{FLEET_ID_BYTES, FleetSteerAccepted, FleetSteerRequest};
-use crate::event::{FleetSteerBody, STEER_MESSAGE_MAX_BYTES, message_of, sender_line};
+use crate::turn::{FleetSteerBody, STEER_MESSAGE_MAX_BYTES, message_of, sender_line};
 
 const FLEET: &str = "0190d5c2-7e1a-7000-8000-00000000f001";
 const SENDER: &str = "0190d5c2-7e1a-7000-8000-00000000f002";
@@ -81,7 +81,7 @@ fn a_fleet_steer_body_leads_with_the_sender_line() {
 #[test]
 fn the_accepted_reply_tolerates_a_new_field() {
     let reply: FleetSteerAccepted<'_> =
-        serde_json::from_str(r#"{"event_id":"e","replayed":true,"later":1}"#)
+        serde_json::from_str(r#"{"turn_id":"e","replayed":true,"later":1}"#)
             .expect("a newer reply decodes");
     assert!(reply.replayed);
 }

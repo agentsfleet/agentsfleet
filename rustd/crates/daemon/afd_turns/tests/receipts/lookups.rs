@@ -56,7 +56,7 @@ async fn an_inherited_destination_is_copied_from_the_named_row() -> Fallible {
     };
     let earlier = admit(&admissions, steer(&lane, mint_id().as_str(), stated)).await?;
     let inherited = ReplyTo::Inherit {
-        event_id: &earlier.stored.id,
+        turn_id: &earlier.stored.id,
     };
     let later = admit(&admissions, steer(&lane, mint_id().as_str(), inherited)).await?;
 

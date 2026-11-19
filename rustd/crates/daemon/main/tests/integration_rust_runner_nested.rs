@@ -107,7 +107,7 @@ async fn test_delegating_definition_roundtrip() {
     let upstream = Upstream::serve(Vec::new()).await;
     let (model, transcript) = FakeModel::deciding(triager);
 
-    let settled = run_event_from(&scene, &scene.event_id, &upstream, model, Some(origin)).await;
+    let settled = run_event_from(&scene, &scene.turn_id, &upstream, model, Some(origin)).await;
 
     assert_eq!(
         (settled.status.as_str(), settled.answer.as_str()),

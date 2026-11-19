@@ -56,7 +56,7 @@ pub const RUN_ACTIVITY_SUFFIX: &str = "activity";
 
 /// Trailing segment of the per-run tool-call records sub-resource. See
 /// [`RUN_ACTIVITY_SUFFIX`] for why it is a bare segment.
-pub const RUN_TOOL_CALLS_SUFFIX: &str = "tool-calls";
+pub const RUN_ITEMS_SUFFIX: &str = "items";
 
 /// Trailing segment of the per-run schedules sub-resource: the schedules of
 /// the fleet the run runs. See [`RUN_ACTIVITY_SUFFIX`] for why it is a
@@ -81,7 +81,7 @@ pub const RUN_FLEETS_SUFFIX: &str = "fleets";
 
 /// Trailing segment of one fleet's recent events, beneath
 /// `{RUN_FLEETS_SUFFIX}/{fleet_id}`.
-pub const FLEET_EVENTS_SUFFIX: &str = "events";
+pub const FLEET_TURNS_SUFFIX: &str = "turns";
 
 /// One held run, the root every per-run route sits under. The router
 /// matches `{run_id}`; the runner puts the run's id in its place.
@@ -95,7 +95,7 @@ pub const RUNNER_MEMORY_RECALL: &str =
     concatcp!(RUNNER_MEMORY_FLEET, "/", RUNNER_MEMORY_RECALL_SUFFIX);
 
 /// `POST` — finished calls' full records for a held run.
-pub const RUN_TOOL_CALLS: &str = concatcp!(RUN, RUN_TOOL_CALLS_SUFFIX);
+pub const RUN_ITEMS: &str = concatcp!(RUN, RUN_ITEMS_SUFFIX);
 
 /// `GET`/`POST` — the held fleet's schedules.
 pub const RUN_SCHEDULES: &str = concatcp!(RUN, RUN_SCHEDULES_SUFFIX);
@@ -116,7 +116,7 @@ pub const RUN_STEERS: &str = concatcp!(RUN, RUN_STEERS_SUFFIX);
 pub const RUN_FLEETS: &str = concatcp!(RUN, RUN_FLEETS_SUFFIX);
 
 /// `GET` — one fleet's recent events, as the held fleet reads them.
-pub const RUN_FLEET_EVENTS: &str = concatcp!(RUN_FLEETS, "/{fleet_id}/", FLEET_EVENTS_SUFFIX);
+pub const RUN_FLEET_TURNS: &str = concatcp!(RUN_FLEETS, "/{fleet_id}/", FLEET_TURNS_SUFFIX);
 
 /// Physical decision reservations owned by the existing fenced run.
 pub const RUN_TASK_DECISIONS: &str = concatcp!(RUN, "tasks/decisions");

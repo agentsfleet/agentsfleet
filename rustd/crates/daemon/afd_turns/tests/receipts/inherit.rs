@@ -3,7 +3,7 @@
 
 use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_turns::{Admissions, Admitted, Reply as ReplyTo};
+use afd_turns::{Admitted, Reply as ReplyTo, Turns};
 
 use super::{
     Fallible,
@@ -31,9 +31,9 @@ async fn destination(lane: &Lane, id: &Uuid7) -> Fallible<Destination> {
 }
 
 /// A message on `lane`'s fleet that inherits the destination of `source`.
-async fn inherit_from(admissions: &Admissions, lane: &Lane, source: &Uuid7) -> Fallible<Admitted> {
+async fn inherit_from(admissions: &Turns, lane: &Lane, source: &Uuid7) -> Fallible<Admitted> {
     let key = mint_id();
-    let inherit = ReplyTo::Inherit { event_id: source };
+    let inherit = ReplyTo::Inherit { turn_id: source };
     admit(admissions, steer(lane, key.as_str(), inherit)).await
 }
 

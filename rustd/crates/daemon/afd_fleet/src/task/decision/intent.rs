@@ -73,7 +73,7 @@ impl Intent<'_> {
             .bind(self.id)
             .bind(self.run.runner_id)
             .bind(self.run.run_id)
-            .bind(&prepared.context.source_admission_id)
+            .bind(&prepared.context.source_turn_id)
             .bind(&prepared.current.fleet_id)
             .bind(&prepared.current.workspace_id)
             .bind(&prepared.current.tenant_id)

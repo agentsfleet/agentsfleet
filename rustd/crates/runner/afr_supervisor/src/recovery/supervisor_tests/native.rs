@@ -32,7 +32,7 @@ fn api_only() -> Checked<(RunPayload<'static>, TurnCheckpointRead)> {
     run.event.workspace_id = ID.into();
     run.setup_revision_id = Some(ID.into());
     let scope = TurnScope {
-        event_id: CheckpointOperationId(run.event.event_id.to_string()),
+        turn_id: CheckpointOperationId(run.event.turn_id.to_string()),
         fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
         workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
         setup_revision_id: CheckpointOperationId(ID.to_owned()),
@@ -72,7 +72,7 @@ fn owner(
                 }
                 Action::Adopt { .. } if fault == Some(Fault::ChangedAdopt) => {
                     Ok(Response::Adopted(vec![FoldRef {
-                        event_id: CheckpointOperationId(ID.to_owned()),
+                        turn_id: CheckpointOperationId(ID.to_owned()),
                         sequence: 1,
                     }]))
                 }

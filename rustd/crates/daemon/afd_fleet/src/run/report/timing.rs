@@ -37,7 +37,7 @@ const fn stages(
     [
         (
             DeliveryStage::EventToComplete,
-            run.event_created_at,
+            run.turn_created_at,
             completed,
         ),
         (DeliveryStage::AssignToReport, run.run_created_at, received),

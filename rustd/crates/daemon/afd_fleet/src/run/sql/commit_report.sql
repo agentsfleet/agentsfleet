@@ -63,7 +63,7 @@ WITH scope AS MATERIALIZED (
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
   FOR UPDATE OF s
 ), probe AS MATERIALIZED (
-  SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id, l.fencing_token,
+  SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token,
          l.created_at, l.run_expires_at, l.last_metered_at,
          l.posture, l.provider, l.model, l.task_id, a.fencing_token AS live_fence,
          a.slot_expires_at, a.hold_authorized
@@ -86,7 +86,7 @@ WITH scope AS MATERIALIZED (
     AND ($14::bigint IS NULL OR (SELECT resource_version FROM catalogue) = $14::bigint)
     AND EXISTS (
         SELECT 1 FROM thread.turns a
-        WHERE a.id = p.event_id AND a.thread_id = p.fleet_id
+        WHERE a.id = p.turn_id AND a.thread_id = p.fleet_id
           AND a.run_fence = p.fencing_token AND a.settled_at IS NULL)
 ), measured AS MATERIALIZED (
   -- Capped at the longest runtime one line may claim ($48), which is where the
@@ -106,12 +106,12 @@ WITH scope AS MATERIALIZED (
   WHERE m.d_ms > 0
 ), lines AS (
   INSERT INTO billing.usage_lines
-      (id, work_type, work_id, kind, seq, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
-       authoring_attempt_id, provider, model, posture, requested_at, input_token_count,
+      (id, work_type, work_id, kind, seq, tenant_id, workspace_id, fleet_id, fleet_name, turn_id,
+       run_id, provider, model, posture, requested_at, input_token_count,
        cached_input_token_count, cache_write_token_count, cache_write_5m_token_count,
        cache_write_1h_token_count, output_token_count, runtime_ms, platform_model_price_id,
        unpriced_token_count, charged_nanos, created_at, updated_at)
-  SELECT line.id, $7, m.id, line.kind, line.seq, m.tenant_id, m.workspace_id, m.fleet_id, f.name, m.event_id,
+  SELECT line.id, $7, m.id, line.kind, line.seq, m.tenant_id, m.workspace_id, m.fleet_id, f.name, m.turn_id,
          NULL, m.provider, m.model, m.posture, line.requested_at, line.input, line.cached,
          line.write, line.write_5m, line.write_1h, line.output, line.runtime_ms, line.price_id,
          line.unpriced, line.charged, now(), now()
@@ -156,7 +156,7 @@ WITH scope AS MATERIALIZED (
       updated_at = now()
   FROM measured m
   WHERE l.id = m.id
-  RETURNING l.id, l.fleet_id, l.event_id, l.fencing_token, l.workspace_id,
+  RETURNING l.id, l.fleet_id, l.turn_id, l.fencing_token, l.workspace_id,
             m.run_expires_at, m.slot_expires_at, m.hold_authorized,
             (SELECT checked_at FROM instant) AS checked_at
 ), settled AS (
@@ -173,13 +173,13 @@ WITH scope AS MATERIALIZED (
       failure_detail = CASE WHEN a.status = $35 THEN $33 ELSE a.failure_detail END,
       tool_calls = CASE WHEN a.status = $35 THEN $34::jsonb ELSE a.tool_calls END
   FROM moved m
-  WHERE a.id = m.event_id AND a.thread_id = m.fleet_id
+  WHERE a.id = m.turn_id AND a.thread_id = m.fleet_id
     AND a.run_fence = m.fencing_token AND a.settled_at IS NULL
   RETURNING WITH (OLD AS prior)
             a.reply_provider, a.reply_address, prior.status = $35 AS closed,
-            a.thread_id AS fleet_id, a.id AS event_id, a.workspace_id, a.actor,
+            a.thread_id AS fleet_id, a.id AS turn_id, a.workspace_id, a.actor,
             a.kind AS event_type, a.status, a.token_count, a.wall_ms, a.failure_reason,
-            a.failure_detail, a.resumes_turn_id AS resumes_event_id, a.created_at, a.updated_at
+            a.failure_detail, a.resumes_turn_id AS resumes_turn_id, a.created_at, a.updated_at
 ), tally AS (
   INSERT INTO runner.lifetime_counters AS c
     (runner_id, acquired_count, succeeded_count, failed_count, expired_count,
@@ -197,7 +197,7 @@ WITH scope AS MATERIALIZED (
   -- A reclaimed run's records are of a run whose answer does not stand.
   DELETE FROM thread.items t
   USING moved m
-  WHERE t.fleet_id = m.fleet_id AND t.turn_id = m.event_id AND t.fencing_token <> m.fencing_token
+  WHERE t.fleet_id = m.fleet_id AND t.turn_id = m.turn_id AND t.fencing_token <> m.fencing_token
 ), released AS (
   -- The thread's resume context rides the same update that releases the run,
   -- since one statement may change a row once.
@@ -213,17 +213,17 @@ WITH scope AS MATERIALIZED (
   RETURNING s.hold_expires_at
 ), owed AS (
   INSERT INTO thread.deliveries
-    (id, fleet_id, workspace_id, provider, destination, event_id, answer,
+    (id, fleet_id, workspace_id, provider, destination, turn_id, answer,
      receipt, claim_expires_at, delivered_at, attempt_count, created_at, updated_at)
   -- A run that wrote nothing owes nothing, unless it failed: then its thread
   -- is owed the notice, so a person who asked is not left reading silence.
-  SELECT $40, m.fleet_id, m.workspace_id, d.reply_provider, d.reply_address, m.event_id,
+  SELECT $40, m.fleet_id, m.workspace_id, d.reply_provider, d.reply_address, m.turn_id,
          COALESCE(NULLIF($29::text, ''), $51::text), $41, clock_timestamp(), NULL, 0, now(), now()
   FROM moved m
   CROSS JOIN settled d
   WHERE d.reply_provider = ANY($42::text[])
     AND COALESCE(NULLIF($29::text, ''), $51::text) IS NOT NULL
-  ON CONFLICT ON CONSTRAINT uq_deliveries_fleet_id_event_id DO NOTHING
+  ON CONFLICT ON CONSTRAINT uq_deliveries_fleet_id_turn_id DO NOTHING
   RETURNING id
 ), audit AS (
   INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)
@@ -255,16 +255,16 @@ SELECT
         AS output_tokens,
     ad.nanos AS charged_nanos, ad.model_nanos,
     -- The closing row, as `update_fleet_event_result.sql` answered it.
-    c.fleet_id, c.event_id, c.workspace_id, c.actor, c.event_type, c.status, c.token_count,
-    c.wall_ms, c.failure_reason, c.failure_detail, c.resumes_event_id, c.created_at,
+    c.fleet_id, c.turn_id, c.workspace_id, c.actor, c.event_type, c.status, c.token_count,
+    c.wall_ms, c.failure_reason, c.failure_detail, c.resumes_turn_id, c.created_at,
     c.updated_at,
     -- NULL only when the event has no line at all, as before.
     CASE WHEN ad.lines = 0 AND NOT EXISTS (
               SELECT 1 FROM billing.usage_lines charge
-              WHERE charge.event_id = c.event_id AND charge.fleet_id = c.fleet_id)
+              WHERE charge.turn_id = c.turn_id AND charge.fleet_id = c.fleet_id)
          THEN NULL
          ELSE COALESCE((SELECT SUM(charge.charged_nanos) FROM billing.usage_lines charge
-                         WHERE charge.event_id = c.event_id AND charge.fleet_id = c.fleet_id), 0)::bigint
+                         WHERE charge.turn_id = c.turn_id AND charge.fleet_id = c.fleet_id), 0)::bigint
               + ad.nanos
     END AS cost_nanos,
     f.status AS fleet_status,

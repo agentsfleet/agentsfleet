@@ -228,8 +228,8 @@ async fn slack_retry_admits_nothing_new() {
     )
     .await;
     assert_eq!(
-        first.get("event_id"),
-        retried.get("event_id"),
+        first.get("turn_id"),
+        retried.get("turn_id"),
         "{first} / {retried}"
     );
     assert_eq!(retried.get("replayed").and_then(Value::as_bool), Some(true));

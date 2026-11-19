@@ -1,13 +1,13 @@
-//! An event's message: what a person or a producer asked, as the model reads
+//! A turn's message: what a person or a producer asked, as the model reads
 //! it. One reading, so the daemon's earlier turns and the runner's current
 //! message never disagree about the same request.
 
 use std::borrow::Cow;
 
-/// The request field holding the event's message.
+/// The request field holding the turn's message.
 pub const MESSAGE: &str = "message";
 
-/// The event's message: the request's `message` field when it carries one as
+/// The turn's message: the request's `message` field when it carries one as
 /// a string, and the whole request otherwise, so a trigger payload with no
 /// `message` still reaches the model verbatim.
 #[must_use]

@@ -114,7 +114,7 @@ async fn test_member_reaches_owner_workspace() {
         "a member steers the owner's fleet"
     );
 
-    let stream = format!("/v1/workspaces/{}/events/stream", john.workspace.as_str());
+    let stream = format!("/v1/workspaces/{}/turns/stream", john.workspace.as_str());
     let mut body = open(&router, &stream, bob).await;
     assert!(next_chunk(&mut body).await.contains("event: hello"));
     drop(body);
@@ -186,7 +186,7 @@ async fn test_removed_member_stream_ends() {
     let members = Members::create().await;
     let router = members.live(&members.bob, owner_scopes()).await;
     let wall = format!(
-        "/v1/workspaces/{}/events/stream",
+        "/v1/workspaces/{}/turns/stream",
         members.john.workspace.as_str()
     );
     let mut wall_body = open(&router, &wall, &members.bob).await;

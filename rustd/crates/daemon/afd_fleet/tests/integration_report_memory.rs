@@ -18,7 +18,7 @@ use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry}
 use afd_fleet::run::RunService;
 use afd_memory::Memories;
 
-use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_EVENT_ID, RESUME_RESPONSE};
+use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_RESPONSE, RESUME_TURN_ID};
 use crate::report_seed::{Held, SLICE_MS, held};
 
 /// The counter a capture's cut entries are counted on.
@@ -58,7 +58,7 @@ pub(crate) fn report<'a>(
         setup: None,
         task: None,
         run_id: Cow::Borrowed(held.issued.run_id.as_str()),
-        event_id: Cow::Borrowed(held.event_id.as_str()),
+        turn_id: Cow::Borrowed(held.turn_id.as_str()),
         fencing_token: token,
         outcome: Outcome::Processed,
         failure_reason: None,
@@ -72,7 +72,7 @@ pub(crate) fn report<'a>(
             segments: None,
         },
         checkpoint: ReportCheckpoint {
-            last_event_id: Cow::Borrowed(RESUME_EVENT_ID),
+            last_turn_id: Cow::Borrowed(RESUME_TURN_ID),
             last_response: Cow::Borrowed(RESUME_RESPONSE),
         },
         tool_calls: None,
@@ -133,7 +133,7 @@ async fn test_report_memory_lands_before_the_settle() {
     assert_eq!(
         (
             stored(&held).await,
-            held.fixtures.admission_settled(&held.event_id).await,
+            held.fixtures.admission_settled(&held.turn_id).await,
             settled.completed_at.is_some_and(|at| at >= held.now),
             published.field("run_id"),
         ),
@@ -168,7 +168,7 @@ async fn test_superseded_report_writes_no_memory() {
         (
             refused,
             stored(&held).await,
-            held.fixtures.admission_settled(&held.event_id).await,
+            held.fixtures.admission_settled(&held.turn_id).await,
         ),
         (Err(error_code::RUN_STALE_FENCING_TOKEN), Vec::new(), false)
     );
@@ -214,7 +214,7 @@ async fn test_oversize_report_memory_is_cut_and_counted() {
         (
             kept,
             metrics.sum(TRUNCATED, &[]) - truncated_before,
-            held.fixtures.admission_settled(&held.event_id).await,
+            held.fixtures.admission_settled(&held.turn_id).await,
         ),
         (first_fifteen, 5, true),
         "fifteen kept, five counted as cut, the report settled"
@@ -252,7 +252,7 @@ async fn test_failed_capture_still_settles() {
 
     assert_eq!(
         (
-            held.fixtures.admission_settled(&held.event_id).await,
+            held.fixtures.admission_settled(&held.turn_id).await,
             (
                 failed
                     .field("error_code")

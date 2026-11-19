@@ -51,7 +51,7 @@ async fn fleet_steer_refuses_a_settled_run() {
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.sibling("steer-target").await;
     let (run, fence) = crew.speaking.run_seeded().await;
-    let reported = report(crew.run(), &report_body(&run, &crew.run().event_id, fence)).await;
+    let reported = report(crew.run(), &report_body(&run, &crew.run().turn_id, fence)).await;
     assert!(reported.is_ok(), "the seeded run settles: {reported:?}");
 
     let (status, refused) = crew.steer((&run, fence), &target, "too late").await;

@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::abort::Abort;
 use af_crypto::entropy::Entropy;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 
 use crate::datastores::Datastores;
 use crate::error::Result;
@@ -136,7 +136,7 @@ async fn submit(
     let slices = partition(fleets, parameters.concurrency);
     let stop = CancellationToken::new();
     let sampler = tokio::spawn(sample_depth(
-        Admissions::new(stores.database.clone(), stores.bus.clone(), Entropy::new()),
+        Turns::new(stores.database.clone(), stores.bus.clone(), Entropy::new()),
         stop.clone(),
     ));
     let postgres_before = statements::read(&stores.database).await?;
@@ -168,7 +168,7 @@ async fn append_all(
 ) -> Result<Outcomes> {
     let mut tasks = Vec::with_capacity(slices.len());
     for mine in slices {
-        let steer = Steer::new(Admissions::new(
+        let steer = Steer::new(Turns::new(
             stores.database.clone(),
             stores.bus.clone(),
             Entropy::new(),
@@ -241,7 +241,7 @@ async fn append_until(
 /// would be a sample taken at whatever rate that loop happened to run. It
 /// stops on the lane's signal, not on the deadline, so an aborted window does
 /// not leave it running alone.
-async fn sample_depth(admissions: Admissions, stop: CancellationToken) -> Vec<f64> {
+async fn sample_depth(admissions: Turns, stop: CancellationToken) -> Vec<f64> {
     let mut series = Vec::new();
     while !stop.is_cancelled() {
         if let Ok(backlog) = admissions.backlog().await {

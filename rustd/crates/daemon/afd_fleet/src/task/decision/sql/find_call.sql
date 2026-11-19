@@ -1,5 +1,5 @@
 SELECT id, original_runner_id, original_run_id,
-       source_admission_id, fleet_id, workspace_id, tenant_id,
+       source_turn_id, fleet_id, workspace_id, tenant_id,
        task_id, fencing_token, request_digest, assessment_id,
        assessment_key, attempt_number, retry_of_decision_call_id, logical_expires_at,
        purpose, status, provider, fleet_name, profile_snapshot, price_snapshot,

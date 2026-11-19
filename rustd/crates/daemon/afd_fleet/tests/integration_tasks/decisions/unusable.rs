@@ -200,14 +200,14 @@ async fn refuse_unsent(fixture: &Decisions<'_>, call: &str) {
 }
 
 async fn ledger(fixture: &Decisions<'_>) {
-    let lines: Vec<(Uuid7,String,String,Uuid7,i64)> = sqlx::query_as("SELECT workspace_id,provider,model,event_id,charged_nanos FROM billing.usage_lines WHERE work_id=$1 AND kind = $2 ORDER BY seq")
+    let lines: Vec<(Uuid7,String,String,Uuid7,i64)> = sqlx::query_as("SELECT workspace_id,provider,model,turn_id,charged_nanos FROM billing.usage_lines WHERE work_id=$1 AND kind = $2 ORDER BY seq")
         .bind(&fixture.case.held.run_key).bind(af_wire::usage::LineKind::Decision.as_str())
         .fetch_all(&mut *fixture.case.held.fixtures.database.acquire().await.expect("original ledger observer")).await.expect("all five physical charges");
     let expected = (
         fixture.case.scope.workspace_id.clone(),
         "typesafe".to_owned(),
         fixture.model.model.model_name.clone(),
-        fixture.case.held.event_id.clone(),
+        fixture.case.held.turn_id.clone(),
         3,
     );
     assert_eq!(lines, vec![expected; 5]);

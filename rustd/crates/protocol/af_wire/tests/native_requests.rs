@@ -149,10 +149,10 @@ fn native_report_tool_traces_borrow_the_frame_and_preserve_its_answer() -> TestR
 
 fn report(trace: &Value) -> Value {
     json!({"type":"report","request_id":9,"request":{
-        "run_id":RUN,"event_id":RUN,"fencing_token":7,"outcome":"processed",
+        "run_id":RUN,"turn_id":RUN,"fencing_token":7,"outcome":"processed",
         "failure_reason":null,"failure_detail":"","response_text":"private answer",
         "tokens":0,"requests":[],"telemetry":{"time_to_first_token_ms":0,"wall_ms":1},
-        "checkpoint":{"last_event_id":RUN,"last_response":""},"tool_calls":trace
+        "checkpoint":{"last_turn_id":RUN,"last_response":""},"tool_calls":trace
     }})
 }
 

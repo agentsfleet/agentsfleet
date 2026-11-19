@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use afd_cron::{Change, NewSchedule, Schedule, Source};
-use afd_turns::view::{EventDetailRow, History};
+use afd_turns::view::{History, TurnDetailRow};
 use serde_json::{Value, json};
 
 use crate::support::{CronLane, SEED_AT};
@@ -66,7 +66,7 @@ pub(super) async fn stored(lane: &CronLane, id: &Uuid7) -> Option<Schedule> {
         .expect("stored schedule")
 }
 
-pub(super) async fn thread(lane: &CronLane) -> Vec<EventDetailRow> {
+pub(super) async fn thread(lane: &CronLane) -> Vec<TurnDetailRow> {
     History::new(lane.database.clone())
         .thread_page(
             &lane.workspace_id(),

@@ -109,7 +109,7 @@ pub enum StartOutcome {
         state: StartState,
         /// Present once a durable admission exists.
         #[serde(skip_serializing_if = "Option::is_none")]
-        event_id: Option<String>,
+        turn_id: Option<String>,
         /// Stable public refusal code when blocked.
         #[serde(skip_serializing_if = "Option::is_none")]
         error_code: Option<String>,
@@ -128,7 +128,7 @@ impl InitialStart {
             Start::None => StartOutcome::None,
             Start::RunNow { .. } => StartOutcome::RunNow {
                 state: StartState::Pending,
-                event_id: None,
+                turn_id: None,
                 error_code: None,
             },
         };
@@ -136,6 +136,6 @@ impl InitialStart {
     }
 
     pub(crate) const fn unadmitted(&self) -> bool {
-        matches!(self.outcome, StartOutcome::RunNow { event_id: None, .. })
+        matches!(self.outcome, StartOutcome::RunNow { turn_id: None, .. })
     }
 }

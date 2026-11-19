@@ -88,19 +88,19 @@ impl<'a> Row<'a> {
             // within its kind.
             Self::ModelLine(event, seq) => (
                 "billing.usage_lines",
-                "event_id = $1 AND kind = $2 AND seq = $3::bigint",
+                "turn_id = $1 AND kind = $2 AND seq = $3::bigint",
                 event,
                 Some(Second::KindSeq(LineKind::Model, seq)),
             ),
             Self::DecisionLine(event, seq) => (
                 "billing.usage_lines",
-                "event_id = $1 AND kind = $2 AND seq = $3::bigint",
+                "turn_id = $1 AND kind = $2 AND seq = $3::bigint",
                 event,
                 Some(Second::KindSeq(LineKind::Decision, seq)),
             ),
             Self::RuntimeLine(event) => (
                 "billing.usage_lines",
-                "event_id = $1 AND kind = $2",
+                "turn_id = $1 AND kind = $2",
                 event,
                 Some(Second::Kind(LineKind::Runtime)),
             ),

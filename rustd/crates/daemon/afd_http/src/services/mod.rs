@@ -37,7 +37,6 @@ mod billing;
 mod catalogue;
 mod connector;
 mod device_flow;
-mod event;
 mod fleets;
 mod grant;
 mod ingress;
@@ -52,6 +51,7 @@ mod schedule;
 mod signup;
 mod team;
 mod tenant;
+mod turn;
 mod vault;
 
 pub use self::approval::WorkspaceApprovals;
@@ -59,7 +59,6 @@ pub use self::billing::TenantBilling;
 pub use self::catalogue::{ModelCatalogue, metadata_store, metadata_wire, price_store, price_wire};
 pub use self::connector::WorkspaceConnectors;
 pub use self::device_flow::DeviceFlow;
-pub use self::event::{FleetSteering, WorkspaceEvents};
 pub use self::fleets::WorkspaceFleets;
 pub use self::grant::FleetGrants;
 pub use self::ingress::{APPROVAL_IDENTITY, WebhookIngress};
@@ -77,6 +76,7 @@ pub use self::signup::{
 };
 pub use self::team::TenantTeam;
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
+pub use self::turn::{FleetSteering, WorkspaceTurns};
 pub use self::vault::WorkspaceSecrets;
 
 mod http_services;

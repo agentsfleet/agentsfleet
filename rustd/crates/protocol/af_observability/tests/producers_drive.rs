@@ -34,7 +34,7 @@ use core::time::Duration;
 use af_observability::metrics::instrument::Instruments;
 use af_observability::metrics::label::cost::{ChargeClass, ErrorType};
 use af_observability::metrics::label::fleet::{
-    AdmissionOutcome, DeliveryStage, FoldOutcome, ReadyWake, SignupFailure, SteerPlaced,
+    DeliveryStage, FoldOutcome, IncomingTurnOutcome, ReadyWake, SignupFailure, SteerPlaced,
 };
 use af_observability::metrics::label::http::{
     DiscardReason, OmissionReason, OmittedAttribute, Signal,
@@ -104,12 +104,12 @@ fn test_every_fleet_producer_runs_its_body() {
     // its budget, so a variant added without a spelling here is a counter that
     // silently stops distinguishing them.
     for outcome in [
-        AdmissionOutcome::Accepted,
-        AdmissionOutcome::Replayed,
-        AdmissionOutcome::Refused,
-        AdmissionOutcome::OverBudget,
+        IncomingTurnOutcome::Accepted,
+        IncomingTurnOutcome::Replayed,
+        IncomingTurnOutcome::Refused,
+        IncomingTurnOutcome::OverBudget,
     ] {
-        producers::fleet::admission::admitted(outcome);
+        producers::fleet::turn::admitted(outcome);
     }
     // Every arm, because the label is what distinguishes them and a variant
     // added without a spelling is the failure this catches.

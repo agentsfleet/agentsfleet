@@ -48,7 +48,7 @@ impl Lane {
         action
     }
 
-    /// One pending gate that held no run: `event_id` is NULL, the shape of a
+    /// One pending gate that held no run: `turn_id` is NULL, the shape of a
     /// standing grant raised at install time rather than by an event.
     pub(crate) async fn seed_runless_gate(&self, window: Window) -> Uuid7 {
         let action = mint();
@@ -86,13 +86,13 @@ impl Lane {
         action: &Uuid7,
         window: Window,
         created_at: Timestamp,
-        event_id: Option<Uuid7>,
+        turn_id: Option<Uuid7>,
     ) {
         sqlx::query(
             "INSERT INTO fleet.approval_gates
                (id, fleet_id, workspace_id, action_id, tool_name, action_name,
                 gate_type, proposed_action, evidence, blast_radius, expires_at,
-                status, detail, created_at, updated_at, event_id)
+                status, detail, created_at, updated_at, turn_id)
              VALUES ($1, $2, $3, $4, 'git', 'push',
                      $5, 'open a pull request', '{}'::jsonb, 'one repository',
                      CASE WHEN $6 THEN now() - $7::interval ELSE now() + $7::interval END,
@@ -107,7 +107,7 @@ impl Lane {
         .bind(WINDOW)
         .bind(afd_api_wire::approval::status::PENDING)
         .bind(created_at.to_sqlx())
-        .bind(event_id)
+        .bind(turn_id)
         .execute(&mut *self.connection().await)
         .await
         .expect("the gate row must insert");

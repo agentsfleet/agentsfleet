@@ -1,7 +1,7 @@
 //! Read durable event, usage and unsettled admission counts after the drain.
 
-use af_core::event::status::PROCESSED;
 use af_core::id::Uuid7;
+use af_core::turn::status::PROCESSED;
 
 use crate::datastores::Datastores;
 use crate::error::Result;
@@ -22,7 +22,7 @@ pub(super) struct Settled {
 
 /// [`SELECT_EVENT_COUNTS`]'s one row: every event row, then the processed ones.
 #[derive(Debug, sqlx::FromRow)]
-struct EventCounts(i64, i64);
+struct TurnCounts(i64, i64);
 
 /// A population's event rows, and how many of them settled processed.
 const SELECT_EVENT_COUNTS: &str = include_str!("sql/select_event_counts.sql");
@@ -40,7 +40,7 @@ const SELECT_UNSETTLED_COUNT: &str = include_str!("sql/select_unsettled_count.sq
 pub(super) async fn read(stores: &Datastores, fleets: &[SeededFleet]) -> Result<Settled> {
     let ids: Vec<&Uuid7> = fleets.iter().map(|it| &it.fleet).collect();
     let mut connection = stores.database.acquire().await?;
-    let events: EventCounts = sqlx::query_as(SELECT_EVENT_COUNTS)
+    let events: TurnCounts = sqlx::query_as(SELECT_EVENT_COUNTS)
         .bind(&ids)
         .bind(PROCESSED)
         .fetch_one(&mut *connection)

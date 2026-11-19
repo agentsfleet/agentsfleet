@@ -143,10 +143,10 @@ impl Runs {
             inputs: rows
                 .into_iter()
                 .map(|row| FoldedInput {
-                    text: af_wire::event::message_of(&row.request_json)
+                    text: af_wire::turn::message_of(&row.request_json)
                         .into_owned()
                         .into(),
-                    event_id: row.id.into(),
+                    turn_id: row.id.into(),
                     sequence: row.sequence,
                 })
                 .collect(),
@@ -189,8 +189,8 @@ impl Runs {
         sqlx::query(afd_turns::view::sql::OPEN_FOLDED_EVENTS)
             .bind(&run.fleet_id)
             .bind(&settled)
-            .bind(&run.event_id)
-            .bind(af_core::event::status::RECEIVED)
+            .bind(&run.turn_id)
+            .bind(af_core::turn::status::RECEIVED)
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_OPEN))?;

@@ -1,7 +1,7 @@
 //! A held steer keeps the place in its thread it was listed under.
 //!
 //! A thread page merges history rows with the ledger's waiting steers on one
-//! key, `(created_at, event_id)`, and a waiting steer sits at its admission
+//! key, `(created_at, turn_id)`, and a waiting steer sits at its admission
 //! instant. When the run stamped the history row with the run instant, a
 //! steer cut off one page and held before the next jumped above the cursor
 //! that page handed out: the resumed history read skipped it as too new and
@@ -15,8 +15,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::event::status;
 use af_core::id::Uuid7;
+use af_core::turn::status;
 use afd_fleet::run::Delivery;
 use afd_turns::view::{Cursor, History, Steer};
 
@@ -59,7 +59,7 @@ async fn test_steer_assigned_between_pages_stays_on_the_resumed_page() {
     }
     let oldest = admitted.first().expect("three steers were admitted");
     let oldest_id =
-        Uuid7::parse(oldest.event_id.as_str()).expect("the steer names a canonical identifier");
+        Uuid7::parse(oldest.turn_id.as_str()).expect("the steer names a canonical identifier");
     let admission = Row::Admission(&oldest_id);
     fixtures
         .age(admission, "created_at", ADMITTED_EARLIER)
@@ -76,18 +76,18 @@ async fn test_steer_assigned_between_pages_stays_on_the_resumed_page() {
         .take(usize::try_from(PAGE).expect("a page size is positive"))
         .collect();
     assert!(
-        kept.iter().all(|row| row.row.event_id != oldest_id),
+        kept.iter().all(|row| row.row.turn_id != oldest_id),
         "the oldest steer is cut from page one"
     );
     let last = kept.last().expect("page one is full");
-    let cursor = Cursor::after(last.row.created_at, &last.row.event_id);
+    let cursor = Cursor::after(last.row.created_at, &last.row.turn_id);
 
     let runs = fixtures.runs();
     let acquired = select_fleet(&runs, &runner, &fleet)
         .await
         .expect("the fleet holding the steers is leasable");
     assert_eq!(
-        acquired.event_id, oldest_id,
+        acquired.turn_id, oldest_id,
         "the queue hands out its oldest first"
     );
     let received = acquired.opened.received;
@@ -104,7 +104,7 @@ async fn test_steer_assigned_between_pages_stays_on_the_resumed_page() {
         .expect("the resumed thread reads");
     let found: Vec<_> = second
         .iter()
-        .filter(|row| row.row.event_id == oldest_id)
+        .filter(|row| row.row.turn_id == oldest_id)
         .collect();
     assert_eq!(found.len(), 1, "the held steer is on page two, once");
     assert_eq!(

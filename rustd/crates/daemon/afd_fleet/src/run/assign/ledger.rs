@@ -26,13 +26,13 @@ const CONTEXT: &str = "admissions ledger claim";
 #[derive(Debug, sqlx::FromRow)]
 struct Admission {
     predecessor_run_id: Option<Uuid7>,
-    event_id: Uuid7,
+    turn_id: Uuid7,
     workspace_id: Uuid7,
     actor: String,
     event_type: String,
     request_json: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    event_created_at: Timestamp,
+    turn_created_at: Timestamp,
     redelivered: bool,
     fencing_token: i64,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -76,9 +76,9 @@ struct OpenedRow {
 #[derive(sqlx::FromRow)]
 struct Candidate {
     fleet_id: Uuid7,
-    admission_id: Uuid7,
+    turn_id: Uuid7,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    event_created_at: Timestamp,
+    turn_created_at: Timestamp,
 }
 
 impl Runs {
@@ -159,7 +159,7 @@ impl Runs {
             .bind(af_wire::task::TaskState::Running.as_str())
             .bind(crate::task::DECISION_POLICY_PATH)
             .bind(sql::FLEET_STATUS_ACTIVE)
-            .bind(af_core::event::status::RECEIVED)
+            .bind(af_core::turn::status::RECEIVED)
             .bind(self.checkpoint_resume_enabled())
             .bind(afd_credential::provider::PLATFORM_MODEL_REF)
             .fetch_optional(&mut *transaction)
@@ -193,8 +193,8 @@ fn record_page_end(scan: &mut RecoveryScan, mut candidates: Vec<Candidate>) {
         && let Some(last) = candidates.pop()
     {
         scan.after = Some(RecoveryKey {
-            created: last.event_created_at,
-            admission: last.admission_id,
+            created: last.turn_created_at,
+            admission: last.turn_id,
         });
         scan.deferred = true;
     } else {
@@ -260,12 +260,12 @@ impl Admission {
             fence: Fence::from_i64(self.fencing_token),
             held_until: self.run_expires_at,
             kind,
-            event_id: self.event_id,
+            turn_id: self.turn_id,
             actor: self.actor,
             event_type: self.event_type,
             request_json: self.request_json,
             workspace_id: self.workspace_id.clone(),
-            event_created_at: self.event_created_at,
+            turn_created_at: self.turn_created_at,
             resume_hold: self.held && self.holder.as_ref() == Some(runner) && kind == Kind::Fresh,
             redelivered: self.redelivered,
             earlier_runs: self.earlier_runs,
@@ -278,7 +278,7 @@ impl OpenedRow {
     fn delivery(&self) -> Delivery {
         if self.inserted {
             Delivery::First
-        } else if self.event_status == af_core::event::status::RECEIVED {
+        } else if self.event_status == af_core::turn::status::RECEIVED {
             Delivery::Repeat
         } else {
             Delivery::Terminal

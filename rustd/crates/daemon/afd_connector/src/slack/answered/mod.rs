@@ -66,7 +66,7 @@ pub struct AnswerMarker {
     /// The fleet that owes it.
     pub fleet_id: String,
     /// The event it answers.
-    pub event_id: String,
+    pub turn_id: String,
     /// Which interim line of the run this is, or `None` for the answer.
     ///
     /// A run may speak before it answers, and every line it says lands in the
@@ -163,7 +163,7 @@ pub async fn holds_answer(
     author: &str,
 ) -> Result<bool, Unavailable> {
     let endpoint = format!("{api_base}{METHOD_CONVERSATIONS_REPLIES}");
-    let oldest = since(&marker.event_id);
+    let oldest = since(&marker.turn_id);
     let mut found = false;
     let read = walk(
         client,
@@ -186,7 +186,7 @@ pub async fn holds_answer(
     Ok(found)
 }
 
-/// The Slack timestamp a check of `event_id`'s answer reads from:
+/// The Slack timestamp a check of `turn_id`'s answer reads from:
 /// [`CLOCK_SKEW_SECONDS`] before the instant the id opens with.
 ///
 /// `None` for an id that does not open with milliseconds, which reads the
@@ -194,8 +194,8 @@ pub async fn holds_answer(
 // M229: event-id re-key. The `{millis}-{seq}` shape this parses is being
 // re-keyed to a UUIDv7 in its own batch; only the retired `UnixMillis` read is
 // replaced here, with the same truncating division it did.
-fn since(event_id: &str) -> Option<String> {
-    let (millis, _sequence) = event_id.split_once('-')?;
+fn since(turn_id: &str) -> Option<String> {
+    let (millis, _sequence) = turn_id.split_once('-')?;
     let admitted = millis.parse::<i64>().ok()? / MILLIS_PER_SECOND;
     let seconds = admitted.saturating_sub(CLOCK_SKEW_SECONDS).max(0);
     Some(format!("{seconds}.000000"))

@@ -94,7 +94,7 @@ fn span_plan(case: &Case, span: Range<i32>) -> PreparedPlan {
         TaskLimits::default(),
     );
     PreparedPlan::from_parts(
-        case.held.event_id.clone(),
+        case.held.turn_id.clone(),
         case.revision.clone(),
         "invalid-span".to_owned(),
         vec![item],
@@ -143,7 +143,7 @@ async fn revision(case: &Case) {
 async fn accepted_revision(case: &Case, revision: &Uuid7, number: u64) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let plan = PreparedPlan::from_parts(
-        case.held.event_id.clone(),
+        case.held.turn_id.clone(),
         revision.clone(),
         "new-setup".to_owned(),
         items(3, TaskLimits::default()),

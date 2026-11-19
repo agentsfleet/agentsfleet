@@ -98,7 +98,7 @@ pub struct SetupTurn {
     pub tenant_id: Uuid7,
     /// The draft's creator, who sent the message.
     pub user_id: Uuid7,
-    /// The message the run runs: its `event_id`.
+    /// The message the run runs: its `turn_id`.
     pub message_id: Uuid7,
     /// The message's position in the draft.
     pub sequence: i64,

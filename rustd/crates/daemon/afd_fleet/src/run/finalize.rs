@@ -47,15 +47,15 @@ const CONTEXT_TERMINAL: &str = "fleet event terminal";
 /// are escaped the way any JSON reader expects.
 #[derive(Debug, serde::Serialize)]
 struct Checkpoint<'a> {
-    last_event_id: &'a Uuid7,
+    last_turn_id: &'a Uuid7,
     last_response: &'a str,
 }
 
 /// The session document a run's checkpoint stores: the event it resumes
 /// after, and its answer cut to the checkpoint's byte cap.
-pub(crate) fn checkpoint_document(last_event_id: &Uuid7, last_response: &str) -> String {
+pub(crate) fn checkpoint_document(last_turn_id: &Uuid7, last_response: &str) -> String {
     serde_json::json!(Checkpoint {
-        last_event_id,
+        last_turn_id,
         last_response: last_response
             .split_at(last_response.floor_char_boundary(MAX_CHECKPOINT_RESPONSE_BYTES))
             .0,
@@ -84,7 +84,7 @@ impl Runs {
         &self,
         connection: &mut PgConnection,
         fleet_id: &Uuid7,
-        event_id: &Uuid7,
+        turn_id: &Uuid7,
         outcome: Terminal<'_>,
     ) -> Result<Option<Closed>> {
         let Terminal {
@@ -96,13 +96,13 @@ impl Runs {
         } = outcome;
         let closed = sqlx::query(afd_turns::view::sql::UPDATE_FLEET_EVENT_RESULT)
             .bind(fleet_id)
-            .bind(event_id)
+            .bind(turn_id)
             .bind(verdict.status())
             .bind(response_text)
             .bind(tokens)
             .bind(wall_ms)
             .bind(verdict.label())
-            .bind(af_core::event::status::RECEIVED)
+            .bind(af_core::turn::status::RECEIVED)
             .bind(verdict.detail())
             .bind(afd_api_wire::approval::status::PENDING)
             .bind(tool_calls)
@@ -114,7 +114,7 @@ impl Runs {
             let fleet = fleet_id.as_str();
             tracing::warn!(
                 fleet_id = %fleet,
-                agentsfleet_event_id = %event_id,
+                agentsfleet_turn_id = %turn_id,
                 event = "terminal_write_skipped_nonreceived",
                 "the event was already terminal; the settled result stands"
             );
@@ -123,7 +123,7 @@ impl Runs {
         Ok(Some(Closed::read(&row)?))
     }
 
-    /// [`Self::mark_terminal`] for every event in `event_ids` at once, each
+    /// [`Self::mark_terminal`] for every event in `turn_ids` at once, each
     /// closed with the same `outcome`: the folded messages a run answered.
     /// Answers each event it closed; one already terminal keeps its result
     /// and is left out.
@@ -135,7 +135,7 @@ impl Runs {
         &self,
         connection: &mut PgConnection,
         fleet_id: &Uuid7,
-        event_ids: &[Uuid7],
+        turn_ids: &[Uuid7],
         outcome: Terminal<'_>,
     ) -> Result<Vec<Closed>> {
         let Terminal {
@@ -147,20 +147,20 @@ impl Runs {
         } = outcome;
         let rows = sqlx::query(afd_turns::view::sql::CLOSE_FOLDED_EVENTS)
             .bind(fleet_id)
-            .bind(event_ids)
+            .bind(turn_ids)
             .bind(verdict.status())
             .bind(response_text)
             .bind(tokens)
             .bind(wall_ms)
             .bind(verdict.label())
-            .bind(af_core::event::status::RECEIVED)
+            .bind(af_core::turn::status::RECEIVED)
             .bind(verdict.detail())
             .bind(afd_api_wire::approval::status::PENDING)
             .bind(tool_calls)
             .fetch_all(&mut *connection)
             .await
             .map_err(crate::error::query(CONTEXT_TERMINAL))?;
-        let skipped = event_ids.len().saturating_sub(rows.len());
+        let skipped = turn_ids.len().saturating_sub(rows.len());
         if skipped > 0 {
             let fleet = fleet_id.as_str();
             tracing::warn!(

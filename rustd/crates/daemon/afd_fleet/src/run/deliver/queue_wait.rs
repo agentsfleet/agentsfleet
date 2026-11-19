@@ -28,7 +28,7 @@ pub(super) fn issued_at(now: Timestamp, began: Instant) -> Timestamp {
 pub(super) fn of(acquired: &Acquired, issued_at: Timestamp) -> Option<u64> {
     (acquired.kind == Kind::Fresh && !acquired.redelivered).then(|| {
         af_core::clock::saturating_millis(af_core::clock::elapsed(
-            acquired.event_created_at,
+            acquired.turn_created_at,
             issued_at,
         ))
     })

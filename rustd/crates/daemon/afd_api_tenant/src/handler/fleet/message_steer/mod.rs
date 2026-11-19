@@ -34,7 +34,7 @@ use std::sync::Arc;
 
 use af_core::error_code;
 use af_validate::Sentences;
-use af_wire::event::{EventType, SteerAccepted, SteerRequest};
+use af_wire::turn::{SteerAccepted, SteerRequest, TurnKind};
 use afd_api_wire::tail::TailFrame;
 use afd_turns::view::Steered;
 use afd_turns::view::disposition::{Placed, SteerDisposition};
@@ -158,11 +158,11 @@ pub(crate) async fn steer<D: Services>(
         .await;
     clock.mark(SteerStage::Admit);
     let steered = appended.map_err(refuse_steer)?;
-    clock.identify(&steered.event_id, fleet.as_str());
+    clock.identify(&steered.turn_id, fleet.as_str());
     announce_admitted(steering, fleet.as_str(), &steered, &actor, &steer.message).await;
     clock.mark(SteerStage::Announce);
     let replayed = steered.replayed();
-    Ok(accepted(steered.event_id, replayed, steered.placed))
+    Ok(accepted(steered.turn_id, replayed, steered.placed))
 }
 
 /// Tells every screen on the fleet the message was accepted, before the 202.
@@ -180,10 +180,10 @@ async fn announce_admitted(
     let Some(created_at) = steered.admitted_at else {
         return;
     };
-    let frame = TailFrame::EventAdmitted {
-        event_id: Cow::Borrowed(&steered.event_id),
+    let frame = TailFrame::TurnAdmitted {
+        turn_id: Cow::Borrowed(&steered.turn_id),
         actor: Cow::Borrowed(actor),
-        event_type: Cow::Borrowed(EventType::Chat.as_str()),
+        event_type: Cow::Borrowed(TurnKind::Chat.as_str()),
         message: Cow::Borrowed(message),
         created_at,
     };
@@ -229,7 +229,7 @@ const fn counted(replayed: bool, disposition: SteerDisposition) -> Option<SteerP
 
 /// The 202 a steer answers with, for a new message or a repeat alike: which of
 /// the two it is, and where the message went.
-fn accepted(event_id: String, replayed: bool, placed: Placed) -> Response {
+fn accepted(turn_id: String, replayed: bool, placed: Placed) -> Response {
     if let Some(counted) = counted(replayed, placed.disposition) {
         af_observability::producers::fleet::fold::disposition(counted);
     }
@@ -237,10 +237,10 @@ fn accepted(event_id: String, replayed: bool, placed: Placed) -> Response {
         StatusCode::ACCEPTED,
         Json(SteerAccepted {
             status: Cow::Borrowed(STATUS_ACCEPTED),
-            event_id: Cow::Owned(event_id),
+            turn_id: Cow::Owned(turn_id),
             replayed,
             disposition: placed.disposition,
-            folded_into_event_id: placed.folded_into_event_id.map(Cow::Owned),
+            folded_into_turn_id: placed.folded_into_turn_id.map(Cow::Owned),
         }),
     )
         .into_response()

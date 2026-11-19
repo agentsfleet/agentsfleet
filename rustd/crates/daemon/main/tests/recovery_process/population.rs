@@ -77,14 +77,14 @@ pub(super) async fn admit(
     let body = json!({"message":message}).to_string();
     let actor = format!("{}recovery-check", afd_turns::view::ACTOR_PREFIX);
     let accepted =
-        afd_turns::Admissions::for_tests(scene.booted.database.clone(), scene.booted.bus.clone())
-            .admit(afd_turns::Admission {
+        afd_turns::Turns::for_tests(scene.booted.database.clone(), scene.booted.bus.clone())
+            .admit(afd_turns::IncomingTurn {
                 producer: afd_turns::Producer::Steer,
                 key: afd_turns::Key::Unrepeatable,
                 fleet,
                 workspace,
                 actor: &actor,
-                event_type: af_wire::event::EventType::Chat,
+                event_type: af_wire::turn::TurnKind::Chat,
                 request_json: &body,
                 reply: afd_turns::Reply::None,
             })

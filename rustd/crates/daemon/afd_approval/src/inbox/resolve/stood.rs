@@ -27,15 +27,15 @@ impl Inbox {
     pub(super) async fn stood(&self, mut resolved: Resolved) -> Result<Resolved> {
         if leaves_delivery_parked(
             &resolved.status,
-            resolved.event_id.as_ref().map(Uuid7::as_str),
+            resolved.turn_id.as_ref().map(Uuid7::as_str),
         ) {
             self.wake_parked_delivery(&resolved.fleet_id).await;
             return Ok(resolved);
         }
         if resolved.status == status::APPROVED
-            && let Some(event_id) = resolved.event_id.clone()
+            && let Some(turn_id) = resolved.turn_id.clone()
         {
-            resolved.continuation_event_id = self.owed_continuation(&resolved, &event_id).await?;
+            resolved.continuation_turn_id = self.owed_continuation(&resolved, &turn_id).await?;
         }
         Ok(resolved)
     }
@@ -50,7 +50,7 @@ impl Inbox {
     async fn owed_continuation(
         &self,
         resolved: &Resolved,
-        event_id: &Uuid7,
+        turn_id: &Uuid7,
     ) -> Result<Option<Uuid7>> {
         let landed = self
             .admissions
@@ -61,13 +61,13 @@ impl Inbox {
             .await?;
         match landed {
             Some(admitted) => Ok(Some(admitted.id)),
-            None => self.continue_from(resolved, event_id).await,
+            None => self.continue_from(resolved, turn_id).await,
         }
     }
 }
 
 /// Whether the next poll reads the original delivery: a gate that held no
 /// run, or a run the answer ended. An approved run lands a continuation.
-pub(super) fn leaves_delivery_parked(answer: &str, event_id: Option<&str>) -> bool {
-    event_id.is_none() || answer == status::DENIED || answer == status::TIMED_OUT
+pub(super) fn leaves_delivery_parked(answer: &str, turn_id: Option<&str>) -> bool {
+    turn_id.is_none() || answer == status::DENIED || answer == status::TIMED_OUT
 }

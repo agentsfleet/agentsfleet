@@ -28,7 +28,7 @@ async fn steered(
 
 fn accepted(replayed: bool) -> FleetSteerAccepted<'static> {
     FleetSteerAccepted {
-        event_id: Cow::Borrowed(STEERED_EVENT),
+        turn_id: Cow::Borrowed(STEERED_EVENT),
         replayed,
     }
 }

@@ -24,7 +24,7 @@ pub struct RecoverySnapshot {
     /// Current attempt, retained in the native request's authority proof.
     pub run_id: String,
     /// Stable event whose root was captured.
-    pub event_id: String,
+    pub turn_id: String,
     /// Current attempt's database fence.
     pub fencing_token: u64,
     /// Exact private state for the selected durable owner.
@@ -55,7 +55,7 @@ pub struct RecoveryReceipt {
     /// Attempt that authorized publication.
     pub run_id: String,
     /// Stable event owner.
-    pub event_id: String,
+    pub turn_id: String,
     /// Fence proved by publication.
     pub fencing_token: u64,
     /// Committed identity and compatibility facts for the selected family.
@@ -121,7 +121,7 @@ pub trait RecoveryBoundarySink: Send + Sync + std::fmt::Debug {
 /// Correlation witness retained while the capture owner owns the private bytes.
 pub(crate) struct RecoveryWitness {
     run_id: String,
-    event_id: String,
+    turn_id: String,
     fence: u64,
     generation: u64,
     digest: String,
@@ -151,7 +151,7 @@ impl RecoverySnapshot {
         };
         RecoveryWitness {
             run_id: self.run_id.clone(),
-            event_id: self.event_id.clone(),
+            turn_id: self.turn_id.clone(),
             fence: self.fencing_token,
             generation,
             digest,
@@ -164,7 +164,7 @@ impl RecoverySnapshot {
 impl RecoveryReceipt {
     pub(crate) fn matches(&self, expected: &RecoveryWitness) -> bool {
         self.run_id == expected.run_id
-            && self.event_id == expected.event_id
+            && self.turn_id == expected.turn_id
             && self.fencing_token == expected.fence
             && self.checkpoint.generation() > expected.generation
             && af_core::id::Uuid7::parse(self.checkpoint.id()).is_ok()

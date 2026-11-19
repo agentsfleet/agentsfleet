@@ -38,14 +38,14 @@ fn payload() -> Result<Reported, &'static str> {
         fleet_id: id.clone(),
         workspace_id: id.clone(),
         tenant_id: id.clone(),
-        event_id: id,
+        turn_id: id,
         actor: "api".to_owned(),
         posture: "platform".to_owned(),
         provider: "anthropic".to_owned(),
         model: "claude-opus-5".to_owned(),
         fence: Fence::from_i64(1),
         run_created_at: after(40),
-        event_created_at: created(),
+        turn_created_at: created(),
         catalogue_version: None,
     })
 }

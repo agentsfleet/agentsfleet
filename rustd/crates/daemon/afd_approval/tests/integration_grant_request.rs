@@ -81,10 +81,10 @@ async fn grant_rows(lane: &Lane) -> Vec<(String, String, String)> {
 }
 
 /// Every gate this suite's kind raised on the lane's fleet, as
-/// `(action_id, evidence service, event_id)`.
+/// `(action_id, evidence service, turn_id)`.
 async fn cards(lane: &Lane) -> Vec<(Uuid7, Option<String>, Option<Uuid7>)> {
     sqlx::query_as(
-        "SELECT action_id, evidence->>'service', event_id
+        "SELECT action_id, evidence->>'service', turn_id
            FROM fleet.approval_gates
           WHERE fleet_id = $1 AND gate_type = $2",
     )

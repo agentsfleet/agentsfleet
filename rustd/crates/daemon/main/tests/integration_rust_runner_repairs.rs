@@ -13,7 +13,7 @@
               indexes the JSON it just read"
 )]
 
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_gate::policy::repair::branch_for;
 use afr_tools::ToolErrorCode;
 use agentsfleetd::supervisor::Supervisor;
@@ -69,15 +69,15 @@ fn assert_reconciled_for(repo: Repo, branch: &str, seen: &[crate::https::Seen]) 
     );
 }
 
-/// A run's draft and ref went to the branch the daemon named for `event_id`,
+/// A run's draft and ref went to the branch the daemon named for `turn_id`,
 /// as a draft against `repo`'s base, and the model was told that branch.
 fn assert_repaired_on_named_branch(
     repo: Repo,
-    event_id: &str,
+    turn_id: &str,
     seen: &[crate::https::Seen],
     asked: &[crate::fake_model::Asked],
 ) {
-    let branch = branch_for(event_id);
+    let branch = branch_for(turn_id);
     assert!(
         asked[0]
             .instructions
@@ -194,7 +194,7 @@ async fn test_incident_repairer_ships_or_stops() {
     let (model, transcript) =
         FakeModel::deciding(script(AGENTSFLEET, incident_reads(), vec![bulk_write()]));
 
-    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
 
     assert_eq!(settled.status, "processed");
     assert!(settled.answer.contains(DRAFT_URL), "{}", settled.answer);
@@ -219,10 +219,10 @@ async fn test_incident_repairer_ships_or_stops() {
         .and_then(|request| request.headers.get("authorization"))
         .and_then(|value| value.to_str().ok());
     assert_eq!(key, Some("ApiKey es_fixture_key"));
-    assert_repaired_on_named_branch(AGENTSFLEET, scene.event_id.as_str(), &seen, &asked);
+    assert_repaired_on_named_branch(AGENTSFLEET, scene.turn_id.as_str(), &seen, &asked);
     assert_token_stayed_on_the_wire(&seen, &asked);
 
-    let second = scene.enqueue_event(EventType::Chat).await;
+    let second = scene.enqueue_event(TurnKind::Chat).await;
     let forbidden = Reply::json(
         403,
         &json!({"message": "Resource not accessible by integration"}),

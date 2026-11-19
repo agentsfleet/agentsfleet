@@ -73,7 +73,7 @@ pub(crate) fn settlement(
         attribution: Attribution::Fleet {
             fleet: lane.fleet.clone(),
             fleet_name: crate::lane::FLEET_NAME.to_owned(),
-            event_id: mint_id(),
+            turn_id: mint_id(),
         },
         provider: crate::lane::PROVIDER.to_owned(),
         model: "biller-suite".to_owned(),

@@ -48,7 +48,7 @@ pub(crate) async fn reported(held: &Held) -> Reported {
 /// The seeded admission asks for its answer back on a Slack thread.
 async fn owe_to_slack(held: &Held) {
     sqlx::query("UPDATE thread.turns SET reply_provider = $2, reply_address = $3 WHERE id = $1")
-        .bind(&held.event_id)
+        .bind(&held.turn_id)
         .bind(afd_connector::Provider::Slack.id())
         .bind(THREAD)
         .execute(&mut *held.fixtures.database.acquire().await.expect("producer"))
@@ -123,7 +123,7 @@ async fn one_statement_report_commits_every_write() {
     assert_eq!(ran.total(), 1, "{:?}", ran.statements());
     assert_eq!(
         closed.expect("the event closed").row.status,
-        af_core::event::status::PROCESSED
+        af_core::turn::status::PROCESSED
     );
     assert!(owed.is_some(), "the answer is owed to its thread");
     let checkpoint: String =
@@ -199,10 +199,10 @@ async fn one_statement_report_refuses_stale_fence() {
     assert!(runtime_lines(&held).await.is_empty(), "no runtime line");
     assert_eq!(
         held.fixtures
-            .text(Row::Event(&held.fleet, &held.event_id), "status")
+            .text(Row::Event(&held.fleet, &held.turn_id), "status")
             .await
             .as_deref(),
-        Some(af_core::event::status::RECEIVED),
+        Some(af_core::turn::status::RECEIVED),
         "the event row is unchanged"
     );
     held.fixtures.cleanup().await;
@@ -244,8 +244,8 @@ async fn one_statement_report_replay_returns_stored_outcome() {
     assert_eq!(runtime_lines(&held).await.len(), 1, "one runtime line");
     let deliveries = scalar(
         &held,
-        "SELECT count(*) FROM thread.deliveries WHERE event_id = $1",
-        &held.event_id,
+        "SELECT count(*) FROM thread.deliveries WHERE turn_id = $1",
+        &held.turn_id,
     )
     .await;
     assert_eq!(deliveries, 1, "one delivery");

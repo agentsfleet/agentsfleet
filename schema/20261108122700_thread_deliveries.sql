@@ -8,7 +8,7 @@ CREATE TABLE thread.deliveries (
     workspace_id    UUID   NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
     provider        TEXT   NOT NULL,
     destination     TEXT   NOT NULL,
-    event_id        UUID   NOT NULL,
+    turn_id         UUID   NOT NULL,
     answer          TEXT   NOT NULL,
     receipt         UUID NOT NULL,
     claim_expires_at TIMESTAMPTZ(3) NOT NULL,
@@ -18,7 +18,7 @@ CREATE TABLE thread.deliveries (
     abandoned_at    TIMESTAMPTZ(3),
     created_at      TIMESTAMPTZ(3) NOT NULL,
     updated_at      TIMESTAMPTZ(3) NOT NULL,
-    CONSTRAINT uq_deliveries_fleet_id_event_id UNIQUE (fleet_id, event_id)
+    CONSTRAINT uq_deliveries_fleet_id_turn_id UNIQUE (fleet_id, turn_id)
 );
 
 CREATE INDEX idx_deliveries_open_lane

@@ -171,7 +171,7 @@ async fn witness(files: &Files) -> Checked<(serde_json::Value, serde_json::Value
                    ON c.id=p.turn_checkpoint_id WHERE c.turn_id=$1)),
         (SELECT jsonb_agg(jsonb_build_array(id,run_fence,input_claim_run_id,input_claim_fence) ORDER BY id)
          FROM thread.turns WHERE thread_id=$2)",
-    ).bind(&files.case.acquired.event_id).bind(&files.case.acquired.fleet_id)
+    ).bind(&files.case.acquired.turn_id).bind(&files.case.acquired.fleet_id)
       .fetch_one(&mut *files.case.fixtures.database.acquire().await?).await?)
 }
 

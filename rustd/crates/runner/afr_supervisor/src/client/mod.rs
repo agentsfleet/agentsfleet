@@ -133,7 +133,7 @@ impl ControlPlane {
 
     /// Posts one body of finished calls' full records, already encoded.
     pub(crate) async fn tool_calls(&self, run_id: &Uuid7, body: Bytes) -> Result<()> {
-        let path = run_path(run_id, paths::RUN_TOOL_CALLS_SUFFIX);
+        let path = run_path(run_id, paths::RUN_ITEMS_SUFFIX);
         self.send(Verb::Items, path, Some(body)).await.map(drop)
     }
 

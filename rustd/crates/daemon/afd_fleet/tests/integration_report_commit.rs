@@ -9,7 +9,7 @@ use afd_fleet::run::{Committed, Reported, Runs, sql};
 use jiff::Timestamp;
 
 use crate::report_commit::{
-    LEDGER_ROWS_AFTER_SETTLE, RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES, RESUME_EVENT_ID,
+    LEDGER_ROWS_AFTER_SETTLE, RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES, RESUME_TURN_ID,
     assert_nothing_landed, report,
 };
 use crate::report_seed::{DEEP_POOL, Held, SLICE_NANOS, held, run_fee};
@@ -177,11 +177,7 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
         .expect("the seeded run belongs to the seeded runner");
 
     held.fixtures
-        .end_event(
-            &held.fleet,
-            &held.event_id,
-            af_core::event::status::PROCESSED,
-        )
+        .end_event(&held.fleet, &held.turn_id, af_core::turn::status::PROCESSED)
         .await;
 
     let committed = runs
@@ -220,7 +216,7 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Event(&held.fleet, &held.event_id), "answer_text")
+            .text(Row::Event(&held.fleet, &held.turn_id), "answer_text")
             .await,
         None,
         "and the earlier delivery's row is left exactly as it was — a terminal row is \
@@ -238,7 +234,7 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
 async fn assert_all_four_landed(held: &Held, slice: i64) {
     let settled: bool =
         sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1")
-            .bind(&held.event_id)
+            .bind(&held.turn_id)
             .fetch_one(&mut *held.fixtures.database.acquire().await.expect("database"))
             .await
             .expect("admission settlement");
@@ -252,13 +248,13 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
          after commit"
     );
     assert_eq!(
-        held.fixtures.ledger_rows(&held.event_id).await,
+        held.fixtures.ledger_rows(&held.turn_id).await,
         LEDGER_ROWS_AFTER_SETTLE,
         "one usage line for the final slice, however many times the report is sent"
     );
     assert_eq!(
         held.fixtures
-            .text(Row::RuntimeLine(&held.event_id), "charged_nanos")
+            .text(Row::RuntimeLine(&held.turn_id), "charged_nanos")
             .await,
         Some(slice.to_string()),
         "the line is priced at the slice it measured"
@@ -270,15 +266,15 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Event(&held.fleet, &held.event_id), "status")
+            .text(Row::Event(&held.fleet, &held.turn_id), "status")
             .await,
-        Some(af_core::event::status::PROCESSED.to_owned()),
+        Some(af_core::turn::status::PROCESSED.to_owned()),
         "the run's RESULT is durable beside the charge for it — the pairing this dimension \
          exists for"
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Event(&held.fleet, &held.event_id), "answer_text")
+            .text(Row::Event(&held.fleet, &held.turn_id), "answer_text")
             .await,
         Some(RESPONSE_ACCEPTED.to_owned()),
         "and it is the answer the accepted report carried"
@@ -289,7 +285,7 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
         .await
         .expect("the checkpoint rides the same commit");
     assert!(
-        cursor.contains(RESUME_EVENT_ID),
+        cursor.contains(RESUME_TURN_ID),
         "the session resumes after the event this run executed, not before it: {cursor}"
     );
     assert!(

@@ -8,9 +8,7 @@
 
 use std::borrow::Cow;
 
-use af_wire::event::{
-    OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerAccepted, SteerRequest,
-};
+use af_wire::turn::{OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerAccepted, SteerRequest};
 use garde::Validate as _;
 
 use crate::validation::of_len;
@@ -99,10 +97,10 @@ fn test_steer_message_holding_nul_is_refused() {
 #[test]
 #[expect(clippy::expect_used, reason = "the test inspects a JSON document")]
 fn test_steer_answer_tolerates_new_fields() {
-    let answer = r#"{"status":"accepted","event_id":"1790573387481-566","replayed":false,"disposition":"started","added_later":1}"#;
+    let answer = r#"{"status":"accepted","turn_id":"1790573387481-566","replayed":false,"disposition":"started","added_later":1}"#;
     let parsed: SteerAccepted<'_> =
         serde_json::from_str(answer).expect("an extended answer parses");
-    assert_eq!(parsed.event_id, "1790573387481-566");
+    assert_eq!(parsed.turn_id, "1790573387481-566");
     assert!(!parsed.replayed);
 
     let request = r#"{"message":"ship it","added_later":1}"#;

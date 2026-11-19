@@ -111,7 +111,7 @@ async fn a_closed_full_lane_returns_the_waiting_job_to_its_replacement() {
     let delivered = received
         .try_recv()
         .expect("the replacement receives the waiting job");
-    assert_eq!(delivered.outgoing.event_id, answer(next));
+    assert_eq!(delivered.outgoing.turn_id, answer(next));
     assert_eq!(delivered.outgoing.answer, format!("answer {next}"));
     assert!(matches!(
         received.try_recv(),
@@ -123,7 +123,7 @@ async fn a_closed_full_lane_returns_the_waiting_job_to_its_replacement() {
                 .try_recv()
                 .expect("original queued jobs survive")
                 .outgoing
-                .event_id,
+                .turn_id,
             answer(n)
         );
     }
@@ -150,7 +150,7 @@ async fn a_full_lane_waits_without_a_map_guard_then_publishes_once() {
             .try_recv()
             .expect("the first queued job remains")
             .outgoing
-            .event_id,
+            .turn_id,
         answer(0)
     );
     assert!(matches!(
@@ -165,7 +165,7 @@ async fn a_full_lane_waits_without_a_map_guard_then_publishes_once() {
                 .try_recv()
                 .expect("each queued job arrives once")
                 .outgoing
-                .event_id,
+                .turn_id,
             answer(n)
         );
     }
@@ -195,7 +195,7 @@ async fn cancelling_a_full_lane_dispatch_leaves_no_job_or_reserved_capacity() {
                 .try_recv()
                 .expect("cancellation preserves queued jobs")
                 .outgoing
-                .event_id,
+                .turn_id,
             answer(n)
         );
     }
@@ -212,7 +212,7 @@ async fn cancelling_a_full_lane_dispatch_leaves_no_job_or_reserved_capacity() {
             .try_recv()
             .expect("a later send can use the lane")
             .outgoing
-            .event_id,
+            .turn_id,
         answer(cancelled)
     );
     lane.lanes.drain().await;

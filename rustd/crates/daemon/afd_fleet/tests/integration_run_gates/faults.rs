@@ -28,17 +28,17 @@ async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_offered() {
     let claimed = claim(&fixtures, &seeded).await;
 
     let first = drive(&fixtures, &seeded, claimed.clone()).await;
-    let ended = terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await;
+    let ended = terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id).await;
     let second = drive(&fixtures, &seeded, claimed).await;
 
     let expected = Some((
         STATUS_GATE_BLOCKED.to_owned(),
-        af_core::event::label::CONFIG_UNREADABLE.to_owned(),
+        af_core::turn::label::CONFIG_UNREADABLE.to_owned(),
     ));
     assert!(first.is_none() && second.is_none());
     assert_eq!(ended, expected, "the first pass ends the event");
     assert_eq!(
-        terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
+        terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id).await,
         expected,
         "the second pass leaves the ended row as it was"
     );
@@ -55,8 +55,8 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
     fixtures
         .end_event(
             &seeded.fleet,
-            &seeded.event_id,
-            af_core::event::status::PROCESSED,
+            &seeded.turn_id,
+            af_core::turn::status::PROCESSED,
         )
         .await;
     let before = afd_turns::view::fleet_counters(&fixtures.database, &seeded.fleet)
@@ -78,10 +78,10 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
     let answer = drive(&fixtures, &seeded, again).await;
     assert!(answer.is_none());
     assert_eq!(
-        terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
-        Some((af_core::event::status::PROCESSED.to_owned(), String::new()))
+        terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id).await,
+        Some((af_core::turn::status::PROCESSED.to_owned(), String::new()))
     );
-    assert!(fixtures.admission_settled(&seeded.event_id).await);
+    assert!(fixtures.admission_settled(&seeded.turn_id).await);
     assert_eq!(
         afd_turns::view::fleet_counters(&fixtures.database, &seeded.fleet)
             .await
@@ -91,7 +91,7 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
     let rows: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM thread.turns WHERE id=$1 AND opened_at IS NOT NULL",
     )
-    .bind(&seeded.event_id)
+    .bind(&seeded.turn_id)
     .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
     .await
     .expect("one narrative");
@@ -127,11 +127,11 @@ async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recor
     );
     assert!(line.get("error_code").is_some_and(|code| !code.is_empty()));
     assert_eq!(
-        line.get("agentsfleet_event_id").map(String::as_str),
-        Some(seeded.event_id.as_str())
+        line.get("agentsfleet_turn_id").map(String::as_str),
+        Some(seeded.turn_id.as_str())
     );
     assert_eq!(
-        terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
+        terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id).await,
         Some((STATUS_RECEIVED_ROW.to_owned(), String::new())),
         "the row the claim opened stays open when its refusal cannot be recorded"
     );
@@ -172,8 +172,8 @@ async fn should_write_no_run_when_another_runner_won_the_claim_mid_pass() {
         Some(seeded.runner.as_str())
     );
     assert_eq!(
-        lost.get("agentsfleet_event_id").map(String::as_str),
-        Some(seeded.event_id.as_str())
+        lost.get("agentsfleet_turn_id").map(String::as_str),
+        Some(seeded.turn_id.as_str())
     );
 
     fixtures.cleanup().await;
@@ -201,12 +201,12 @@ async fn should_write_no_run_when_the_pass_outlived_its_claim() {
         (
             answer.is_none(),
             lost.field("runner_id"),
-            lost.field("agentsfleet_event_id"),
+            lost.field("agentsfleet_turn_id"),
         ),
         (
             true,
             Some(seeded.runner.as_str()),
-            Some(seeded.event_id.as_str())
+            Some(seeded.turn_id.as_str())
         ),
         "a lapsed claim issued a run: {answer:?}"
     );
@@ -222,7 +222,7 @@ async fn ready_in(
     fleet: Uuid7,
     tenant: Uuid7,
 ) -> Ready {
-    let event_id = crate::queue::enqueue(
+    let turn_id = crate::queue::enqueue(
         &fixtures.database,
         &fleet,
         workspace,
@@ -235,7 +235,7 @@ async fn ready_in(
     Ready {
         runner,
         fleet,
-        event_id,
+        turn_id,
         tenant,
     }
 }

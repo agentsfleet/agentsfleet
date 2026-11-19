@@ -107,7 +107,7 @@ pub(in crate::task) async fn binding(
 }
 
 fn source(evaluated: &Answered, input: &TaskBindingsInput) -> Result<()> {
-    if evaluated.call.source_admission_id != input.source_admission_id
+    if evaluated.call.source_turn_id != input.source_turn_id
         || evaluated.call.context_snapshot.accepted_revision_id != input.accepted_revision_id
     {
         return Err(TaskRefusal::ReplayConflict.into());

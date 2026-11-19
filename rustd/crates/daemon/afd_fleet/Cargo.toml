@@ -28,7 +28,7 @@ test-util = [
   # from that crate's own sample rather than named here, because the kind is
   # private to it.
   "afd_billing/test-util",
-  # Admissions::for_tests seeds the real ledger in run integration tests.
+  # Turns::for_tests seeds the real ledger in run integration tests.
   "afd_turns/test-util",
   # The pointed admission a mixed-kind run suite places its own queued turn
   # with, beside a runtime run on the same host.

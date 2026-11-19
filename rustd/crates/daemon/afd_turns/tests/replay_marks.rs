@@ -7,12 +7,12 @@
 
 use af_core::id::Uuid7;
 
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_bus::test_util::Server;
 use afd_bus::{Handle, Received, Subject, Subscription};
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, DbRole};
-use afd_turns::{Admission, Admissions, Admitted, Key, Producer, Reply as ReplyTo};
+use afd_turns::{Admitted, IncomingTurn, Key, Producer, Reply as ReplyTo, Turns};
 use jiff::Timestamp;
 
 use af_core::test_util::trace::{Capture, install_subscriber};
@@ -24,7 +24,7 @@ const SEEDED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 const FLEET_ARCHIVED: &str = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
 
 /// The line a lost notification is logged under.
-const RING_FAILED: &str = "admission_wake_ring_failed";
+const RING_FAILED: &str = "turn_wake_ring_failed";
 
 /// What the server half sends down a wake shard after the rings it holds.
 const DRAINED: &str = "drained";
@@ -87,15 +87,15 @@ impl Seeded {
     }
 
     /// Admits the one steer this suite resends, under `key`.
-    async fn admit(&self, admissions: &Admissions, key: &str) -> Admitted {
+    async fn admit(&self, admissions: &Turns, key: &str) -> Admitted {
         admissions
-            .admit(Admission {
+            .admit(IncomingTurn {
                 producer: Producer::Steer,
                 key: Key::Repeated(key),
                 fleet: &self.fleet,
                 workspace: &self.workspace,
                 actor: "fixture:replay",
-                event_type: EventType::Chat,
+                event_type: TurnKind::Chat,
                 request_json: r#"{"message":"replay fixture"}"#,
                 reply: ReplyTo::None,
             })
@@ -167,7 +167,7 @@ async fn a_retry_republishes_a_lost_notification_for_the_same_admission() {
     let fleet = Seeded::seed().await;
     let key = mint_id();
 
-    let lost = Admissions::for_tests(fleet.database.clone(), afd_bus::test_util::unreachable());
+    let lost = Turns::for_tests(fleet.database.clone(), afd_bus::test_util::unreachable());
     let capture = Capture::install();
     let first = fleet.admit(&lost, key.as_str()).await;
     let ring = capture.only(RING_FAILED);
@@ -181,7 +181,7 @@ async fn a_retry_republishes_a_lost_notification_for_the_same_admission() {
 
     let (bus, server) = afd_bus::test_util::detached().expect("an in-process bus needs no broker");
     let mut readers = wake_readers(&bus).await;
-    let admissions = Admissions::for_tests(fleet.database.clone(), bus);
+    let admissions = Turns::for_tests(fleet.database.clone(), bus);
     let resent = fleet.admit(&admissions, key.as_str()).await;
     assert!(resent.replayed, "the resend replays the key");
     assert_eq!(

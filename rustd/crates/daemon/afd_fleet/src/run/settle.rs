@@ -29,7 +29,7 @@ pub struct Reported {
     /// The tenant whose wallet the settle draws on.
     pub tenant_id: Uuid7,
     /// The event that was executed — the ledger's logical id.
-    pub event_id: Uuid7,
+    pub turn_id: Uuid7,
     /// Who or what raised the event.
     pub actor: String,
     /// The billing posture resolved at issue.
@@ -43,7 +43,7 @@ pub struct Reported {
     /// When the run was issued, on this daemon's clock.
     pub run_created_at: Timestamp,
     /// When the event it runs was created, as the run row copied it.
-    pub event_created_at: Timestamp,
+    pub turn_created_at: Timestamp,
     /// The catalogue version the report read beside the run; `None` prices
     /// from an uncached read.
     pub catalogue_version: Option<i64>,
@@ -80,7 +80,7 @@ struct RunForReport {
     fleet_id: Uuid7,
     workspace_id: Uuid7,
     tenant_id: Uuid7,
-    event_id: Uuid7,
+    turn_id: Uuid7,
     actor: String,
     posture: String,
     provider: String,
@@ -89,7 +89,7 @@ struct RunForReport {
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    event_created_at: Timestamp,
+    turn_created_at: Timestamp,
     catalogue_version: Option<i64>,
 }
 
@@ -99,14 +99,14 @@ impl RunForReport {
             fleet_id: self.fleet_id,
             workspace_id: self.workspace_id,
             tenant_id: self.tenant_id,
-            event_id: self.event_id,
+            turn_id: self.turn_id,
             actor: self.actor,
             posture: self.posture,
             provider: self.provider,
             model: self.model,
             fence: Fence::from_i64(self.fencing_token),
             run_created_at: self.created_at,
-            event_created_at: self.event_created_at,
+            turn_created_at: self.turn_created_at,
             catalogue_version: self.catalogue_version,
         }
     }

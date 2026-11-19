@@ -44,7 +44,7 @@ async fn final_run_limit_refuses_continuation_before_missing_checkpoint_without_
 }
 
 async fn bind(case: &Case, limits: TaskLimits) -> DecisionTaskVersion {
-    let plan = case.source_plan(case.held.event_id.clone(), "bounded-report", 1, limits);
+    let plan = case.source_plan(case.held.turn_id.clone(), "bounded-report", 1, limits);
     let result = case
         .tasks
         .bind(case.run(), &plan)
@@ -133,10 +133,10 @@ async fn evidence(case: &Case, task: &Uuid7, reason: Option<&str>) -> Value {
         .await
         .expect("accounting observer");
     let row: (Option<String>, bool, i64, bool) = sqlx::query_as("SELECT t.status_reason,t.terminal_at IS NOT NULL,(SELECT count(*) FROM billing.usage_lines WHERE work_id=$2),(SELECT settled_at IS NOT NULL FROM thread.turns WHERE id=$3) FROM fleet.tasks t WHERE t.id=$1")
-        .bind(task).bind(&case.held.run_key).bind(&case.held.event_id).fetch_one(&mut *connection).await.expect("committed task and original accounting");
+        .bind(task).bind(&case.held.run_key).bind(&case.held.turn_id).fetch_one(&mut *connection).await.expect("committed task and original accounting");
     assert_eq!(row, (reason.map(str::to_owned), true, 1, true));
     sqlx::query_scalar("SELECT jsonb_build_object('event',(SELECT to_jsonb(e) FROM thread.turns e WHERE e.thread_id=$1 AND e.id=$2 AND e.opened_at IS NOT NULL),'charges',(SELECT jsonb_agg(to_jsonb(u) ORDER BY u.seq) FROM billing.usage_lines u WHERE u.work_id=$3),'run',(SELECT to_jsonb(l) FROM thread.runs l WHERE l.id=$3))")
-        .bind(&case.scope.fleet_id).bind(&case.held.event_id).bind(&case.held.run_key)
+        .bind(&case.scope.fleet_id).bind(&case.held.turn_id).bind(&case.held.run_key)
         .fetch_one(&mut *connection).await.expect("original event charge and run snapshot")
 }
 
@@ -243,7 +243,7 @@ async fn a_notice_is_owed_when_the_run_answered_nothing() {
         sqlx::query(
             "UPDATE thread.turns SET reply_provider = $2, reply_address = $3 WHERE id = $1",
         )
-        .bind(&case.held.event_id)
+        .bind(&case.held.turn_id)
         .bind(afd_connector::Provider::Slack.id())
         .bind("C0FIXTURE:1700000000.000100")
         .execute(
@@ -291,10 +291,10 @@ async fn a_notice_is_owed_when_the_run_answered_nothing() {
             .expect("the report settles");
 
         let (owed, answered): (Option<String>, String) = sqlx::query_as(
-            "SELECT (SELECT o.answer FROM thread.deliveries o WHERE o.event_id = e.id), \
+            "SELECT (SELECT o.answer FROM thread.deliveries o WHERE o.turn_id = e.id), \
                     e.answer_text FROM thread.turns e WHERE e.id = $1",
         )
-        .bind(&case.held.event_id)
+        .bind(&case.held.turn_id)
         .fetch_one(
             &mut *case
                 .held

@@ -37,11 +37,7 @@ async fn test_records_post_before_report() {
         records < position(&calls, Verb::Report).unwrap(),
         "and before the report"
     );
-    assert!(
-        calls[records]
-            .path
-            .ends_with(&format!("/{RUN_ID}/tool-calls"))
-    );
+    assert!(calls[records].path.ends_with(&format!("/{RUN_ID}/items")));
     let posted: serde_json::Value =
         serde_json::from_slice(calls[records].body.as_ref().unwrap()).unwrap();
     assert_eq!(posted["fencing_token"], 504);

@@ -7,7 +7,7 @@ use std::time::Duration;
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::trace::SpanData;
 
-use super::{Collected, EVENT_ID, FLEET_ID, Moved, millis, tracer};
+use super::{Collected, FLEET_ID, Moved, TURN_ID, millis, tracer};
 use crate::semconv;
 use crate::verb_span::{AssignStage, VerbClock};
 
@@ -15,7 +15,7 @@ use crate::verb_span::{AssignStage, VerbClock};
 fn event_of(span: &SpanData) -> Option<String> {
     span.attributes
         .iter()
-        .find(|pair| pair.key.as_str() == semconv::ATTR_EVENT_ID)
+        .find(|pair| pair.key.as_str() == semconv::ATTR_TURN_ID)
         .map(|pair| pair.value.to_string())
 }
 
@@ -27,7 +27,7 @@ fn test_a_restart_records_the_first_span_and_starts_a_fresh_one() {
     let (provider, tracer) = tracer(&collected);
     let ticks = Moved::new();
     let mut clock = VerbClock::<AssignStage, Moved>::start_on(ticks.clone());
-    clock.identify(EVENT_ID, FLEET_ID);
+    clock.identify(TURN_ID, FLEET_ID);
     ticks.advance(Duration::from_millis(5));
     clock.mark(AssignStage::Claim);
     clock.restart_if_staged_on(|| provider.tracer(semconv::SCOPE_NAME));
@@ -42,7 +42,7 @@ fn test_a_restart_records_the_first_span_and_starts_a_fresh_one() {
         spans.get(1).expect("the second"),
     );
     assert_eq!(millis(first, semconv::ATTR_OFFER_CLAIM_MS), Some(5));
-    assert_eq!(event_of(first).as_deref(), Some(EVENT_ID));
+    assert_eq!(event_of(first).as_deref(), Some(TURN_ID));
     assert_eq!(millis(second, semconv::ATTR_OFFER_CLAIM_MS), Some(7));
     assert_eq!(
         event_of(second),
@@ -59,7 +59,7 @@ fn test_a_clock_that_reached_no_stage_keeps_its_start_and_identity_on_restart() 
     let (provider, tracer) = tracer(&collected);
     let ticks = Moved::new();
     let mut clock = VerbClock::<AssignStage, Moved>::start_on(ticks.clone());
-    clock.identify(EVENT_ID, FLEET_ID);
+    clock.identify(TURN_ID, FLEET_ID);
     ticks.advance(Duration::from_millis(4));
     clock.restart_if_staged_on(|| provider.tracer(semconv::SCOPE_NAME));
     ticks.advance(Duration::from_millis(6));
@@ -70,7 +70,7 @@ fn test_a_clock_that_reached_no_stage_keeps_its_start_and_identity_on_restart() 
     assert_eq!(spans.len(), 1, "{spans:?}");
     let span = spans.first().expect("the one span");
     assert_eq!(millis(span, semconv::ATTR_OFFER_CLAIM_MS), Some(10));
-    assert_eq!(event_of(span).as_deref(), Some(EVENT_ID));
+    assert_eq!(event_of(span).as_deref(), Some(TURN_ID));
 }
 
 /// An untimed clock restarts without recording and without asking for a

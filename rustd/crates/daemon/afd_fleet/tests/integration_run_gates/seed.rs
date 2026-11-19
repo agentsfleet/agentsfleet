@@ -129,7 +129,7 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &Uuid
     sqlx::query(
         "INSERT INTO billing.usage_lines \
            (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, \
-            event_id, provider, model, posture, requested_at, input_token_count, \
+            turn_id, provider, model, posture, requested_at, input_token_count, \
             cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
             cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
             charged_nanos, created_at, updated_at) \
@@ -170,7 +170,7 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) 
         "INSERT INTO fleet.approval_gates \
            (id, fleet_id, workspace_id, action_id, tool_name, action_name, \
             gate_type, proposed_action, evidence, blast_radius, expires_at, \
-            resolved_by, status, detail, created_at, updated_at, event_id) \
+            resolved_by, status, detail, created_at, updated_at, turn_id) \
          VALUES ($1, $2, $3, $4, 'chat', 'run', \
                  $5, 'run the event', '{}'::jsonb, 'one fleet', \
                  now() + $6::interval, 'fixture:human', $7, '', now(), now(), $8)",
@@ -182,7 +182,7 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) 
     .bind(KIND_EVENT)
     .bind(GATE_WINDOW)
     .bind(status)
-    .bind(&ready.event_id)
+    .bind(&ready.turn_id)
     .execute(&mut *connection)
     .await
     .expect("the gate row must insert");
@@ -217,7 +217,7 @@ pub(super) async fn seed_write_gate(fixtures: &Fixtures, ready: &Ready) -> Uuid7
         "INSERT INTO fleet.approval_gates \
            (id, fleet_id, workspace_id, action_id, tool_name, action_name, \
             gate_type, proposed_action, evidence, blast_radius, expires_at, \
-            resolved_by, status, detail, created_at, updated_at, event_id) \
+            resolved_by, status, detail, created_at, updated_at, turn_id) \
          VALUES ($1, $2, $3, $4, 'chat', 'author', \
                  $5, 'author a branch', '{}'::jsonb, 'one repository', \
                  now() + $6::interval, 'fixture:human', $7, '', now(), now(), $8)",
@@ -229,7 +229,7 @@ pub(super) async fn seed_write_gate(fixtures: &Fixtures, ready: &Ready) -> Uuid7
     .bind(KIND_REPOSITORY_WRITE)
     .bind(GATE_WINDOW)
     .bind(STATUS_APPROVED)
-    .bind(&ready.event_id)
+    .bind(&ready.turn_id)
     .execute(&mut *connection)
     .await
     .expect("the write gate row must insert");

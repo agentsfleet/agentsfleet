@@ -58,8 +58,8 @@ async fn assert_decision_frame(
     assert_eq!(frame.get("status"), Some(&json!("denied")));
     assert_eq!(frame.get("resolved_by"), Some(&json!(OPERATOR)));
     assert_eq!(
-        frame.get("event_id"),
-        Some(&json!(lane.gate_column(answered, "event_id").await)),
+        frame.get("turn_id"),
+        Some(&json!(lane.gate_column(answered, "turn_id").await)),
         "the frame names the event the gate held"
     );
     assert_eq!(
@@ -105,13 +105,13 @@ async fn assert_swept_frames(lane: &Lane, tail: &mut afd_bus::Subscription) {
         "the sweeper's frame carries where the fleet stands"
     );
     let mut swept_events = [
-        swept.get("event_id").cloned(),
-        swept_too.get("event_id").cloned(),
+        swept.get("turn_id").cloned(),
+        swept_too.get("turn_id").cloned(),
     ];
     swept_events.sort_by_key(|value| value.as_ref().map(ToString::to_string));
     let mut seeded_events = [
-        Some(json!(lane.gate_column(&lapsed, "event_id").await)),
-        Some(json!(lane.gate_column(&lapsed_too, "event_id").await)),
+        Some(json!(lane.gate_column(&lapsed, "turn_id").await)),
+        Some(json!(lane.gate_column(&lapsed_too, "turn_id").await)),
     ];
     seeded_events.sort_by_key(|value| value.as_ref().map(ToString::to_string));
     assert_eq!(
@@ -168,7 +168,7 @@ async fn a_bus_that_will_not_take_the_frame_does_not_fail_the_decision() {
     let inbox = Inbox::new(
         lane.pool.clone(),
         afd_bus::test_util::unreachable(),
-        afd_turns::Admissions::for_tests(lane.pool.clone(), afd_bus::test_util::unreachable()),
+        afd_turns::Turns::for_tests(lane.pool.clone(), afd_bus::test_util::unreachable()),
     );
     let action = lane.seed_gate(Window::Open).await;
 

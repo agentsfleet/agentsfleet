@@ -24,8 +24,8 @@ use crate::auth::Authenticator;
 use super::TenantSurface;
 use super::{
     DeviceFlow, FleetGrants, FleetMemories, FleetSchedules, FleetSteering, RunPlane,
-    SignupMetadata, WebhookIngress, WorkspaceApprovals, WorkspaceConnectors, WorkspaceEvents,
-    WorkspaceFleets, WorkspaceOwnership, WorkspacePreferences, WorkspaceSecrets,
+    SignupMetadata, WebhookIngress, WorkspaceApprovals, WorkspaceConnectors, WorkspaceFleets,
+    WorkspaceOwnership, WorkspacePreferences, WorkspaceSecrets, WorkspaceTurns,
 };
 
 /// The services one request is served through.
@@ -276,7 +276,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// A concrete type for the reason [`Services::Approvals`] is one: a
     /// Postgres pool and nothing else, with `afd_db::Db::unreachable` as the
     /// seam.
-    type Events: WorkspaceEvents;
+    type Events: WorkspaceTurns;
 
     /// The narrative log a workspace and its fleets wrote.
     fn events(&self) -> &Self::Events;

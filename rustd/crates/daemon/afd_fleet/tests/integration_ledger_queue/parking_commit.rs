@@ -3,7 +3,7 @@
 use af_core::id::Uuid7;
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_db::config::DbRole;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use sqlx::Row as _;
 
 use super::{WITHIN, enqueue, next, parking::seed_gate};
@@ -72,7 +72,7 @@ async fn resolve_during_park(expire: bool) {
         next(&fixtures.runs_with_dead_bus(), &runner)
             .await
             .expect("head runnable")
-            .event_id,
+            .turn_id,
         event
     );
     drop(blocker);
@@ -94,7 +94,7 @@ async fn start_resolution(
     let inbox = Inbox::new(
         fixtures.database.clone(),
         bus.clone(),
-        Admissions::for_tests(fixtures.database.clone(), bus),
+        Turns::for_tests(fixtures.database.clone(), bus),
     );
     tokio::spawn(async move {
         if expire {

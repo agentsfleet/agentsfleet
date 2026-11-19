@@ -38,7 +38,7 @@ pub struct Conversation<D = Value, R = Value> {
 #[derive(Debug, Serialize)]
 pub struct SetupActivity {
     /// Stable event identity.
-    pub event_id: String,
+    pub turn_id: String,
     /// Always activity for this resource.
     pub event_type: String,
     /// Recorded receipt status.

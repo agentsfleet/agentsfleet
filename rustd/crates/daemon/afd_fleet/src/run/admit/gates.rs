@@ -109,7 +109,7 @@ impl Runs {
             .bind(&acquired.workspace_id)
             .bind(&acquired.fleet_id)
             .bind(af_core::timing::DAY)
-            .bind(&acquired.event_id)
+            .bind(&acquired.turn_id)
             .bind(afd_gate::gate::grant_sql::STATUS_APPROVED)
             .fetch_one(&mut *connection)
             .await
@@ -168,20 +168,20 @@ pub(super) async fn balance<F: af_core::error_code::Coded>(
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
     // scores the dead copy.
     let fleet = request.fleet_id.as_str();
-    let event = request.event_id;
+    let event = request.turn_id;
     let floor_nanos = floor.as_i64();
     {
-        let (event, fleet_id, agentsfleet_event_id, estimate_nanos, message) = (
+        let (event, fleet_id, agentsfleet_turn_id, estimate_nanos, message) = (
             &EVENT_BALANCE_EXHAUSTED,
             &fleet,
             &event,
             &floor_nanos,
             format_args!("the tenant's credit pool cannot cover this run's floor cost"),
         );
-        tracing::debug!(message, %event, %fleet_id, %agentsfleet_event_id, estimate_nanos);
+        tracing::debug!(message, %event, %fleet_id, %agentsfleet_turn_id, estimate_nanos);
     };
     Some(Declined::Refuse(Refusal::labelled(
-        af_core::event::label::BALANCE_EXHAUSTED,
+        af_core::turn::label::BALANCE_EXHAUSTED,
     )))
 }
 
@@ -206,10 +206,10 @@ pub(super) fn fleet_budget<E: af_core::error_code::Coded>(
 
     let code = error_code::RUN_BUDGET_EXCEEDED.as_str();
     let fleet = request.fleet_id.as_str();
-    let event = request.event_id;
+    let event = request.turn_id;
     let which = verdict.as_str();
     {
-        let (error_code, event, fleet_id, agentsfleet_event_id, verdict, message) = (
+        let (error_code, event, fleet_id, agentsfleet_turn_id, verdict, message) = (
             &code,
             &EVENT_BUDGET_BREACH,
             &fleet,
@@ -217,9 +217,9 @@ pub(super) fn fleet_budget<E: af_core::error_code::Coded>(
             &which,
             format_args!("the fleet has reached a ceiling its author declared"),
         );
-        tracing::debug!(message, error_code, %event, %fleet_id, %agentsfleet_event_id, verdict);
+        tracing::debug!(message, error_code, %event, %fleet_id, %agentsfleet_turn_id, verdict);
     };
     Some(Declined::Refuse(Refusal::labelled(
-        af_core::event::label::BUDGET_BREACH,
+        af_core::turn::label::BUDGET_BREACH,
     )))
 }

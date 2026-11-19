@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use af_core::event::status::PROCESSED;
+use af_core::turn::status::PROCESSED;
 use af_wire::tool_trace::ToolCallStatus;
 use afd_state::sql::RUN_STATUS_REPORTED;
 use afr_sandbox::{Engine, Sandbox, SandboxRequest, UnsandboxedEngine};
@@ -150,7 +150,7 @@ async fn test_chat_streams_before_sandbox_ready() {
     );
     assert_streamed_first(streamed, &ready);
     assert_tool_succeeded(&later);
-    let status = crate::reads::event_column(&scene, &scene.event_id, "status").await;
+    let status = crate::reads::event_column(&scene, &scene.turn_id, "status").await;
     assert_eq!(status.as_deref(), Some(PROCESSED), "the turn was processed");
 
     shutdown.cancel();

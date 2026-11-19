@@ -176,7 +176,7 @@ async fn assert_thread_lists_the_event_and_admits_a_message(saved: &Saved) -> Ve
         1,
         "one seeded runtime event beside the exact receipt pair"
     );
-    assert_eq!(runtime[0]["event_id"], json!(saved.event));
+    assert_eq!(runtime[0]["turn_id"], json!(saved.event));
     let (status, steered) = saved
         .steer(&saved.thread, mint().as_str(), "ship the next change")
         .await;
@@ -193,7 +193,7 @@ async fn assert_thread_lists_the_event_and_admits_a_message(saved: &Saved) -> Ve
 /// serve the seeded event, its request JSON intact.
 async fn assert_history_serves_the_event(saved: &Saved, identities: &[String]) {
     let workspace_page = format!(
-        "{}/events?fleet_id={}",
+        "{}/turns?fleet_id={}",
         saved.workspace,
         saved.fleet.as_str()
     );
@@ -208,7 +208,7 @@ async fn assert_history_serves_the_event(saved: &Saved, identities: &[String]) {
         listed, identities,
         "the summary page preserves the complete verified history"
     );
-    let events = format!("{}/events", saved.item);
+    let events = format!("{}/turns", saved.item);
     let (status, page) = saved.get(&format!("{events}?actor_prefix=steer")).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(page["items"].as_array().map(Vec::len), Some(1));

@@ -61,7 +61,7 @@ fn a_completed_run_reports_its_answer_tokens_and_timings() {
     assert_eq!(report.fencing_token, FENCING);
     assert_eq!(report.response_text, "done");
     assert_eq!(report.checkpoint.last_response, "done");
-    assert_eq!(report.checkpoint.last_event_id, run.event.event_id);
+    assert_eq!(report.checkpoint.last_turn_id, run.event.turn_id);
     assert_eq!(report.tokens, 8, "the result's total, for the history");
     assert_eq!(
         requests(&report),

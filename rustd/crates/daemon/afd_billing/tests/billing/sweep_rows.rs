@@ -20,7 +20,7 @@ const USAGE_LOG: &str = "CREATE SCHEMA billing; \
     CREATE TABLE billing.usage_lines ( \
       id uuid PRIMARY KEY, work_type text NOT NULL, work_id uuid NOT NULL, \
       kind text NOT NULL, seq bigint NOT NULL, tenant_id uuid NOT NULL, workspace_id uuid NOT NULL, \
-      fleet_id uuid, fleet_name text, event_id uuid, provider text NOT NULL, \
+      fleet_id uuid, fleet_name text, turn_id uuid, provider text NOT NULL, \
       model text NOT NULL, posture text NOT NULL, requested_at timestamptz NOT NULL, \
       input_token_count bigint NOT NULL, cached_input_token_count bigint NOT NULL, \
       cache_write_token_count bigint NOT NULL, cache_write_5m_token_count bigint NOT NULL, \

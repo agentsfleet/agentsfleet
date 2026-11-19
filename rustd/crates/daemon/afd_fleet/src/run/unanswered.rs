@@ -69,7 +69,7 @@ mod tests {
     #[test]
     fn a_refused_event_names_the_gate_that_refused_it() {
         assert_eq!(
-            refused(&fleet(), af_core::event::label::BALANCE_EXHAUSTED),
+            refused(&fleet(), af_core::turn::label::BALANCE_EXHAUSTED),
             "This request was not run (balance_exhausted). A workspace member can read why with \
              `agentsfleet fleet events 019feca5-bc9b-72e8-b71f-e2714f6b0120`."
         );

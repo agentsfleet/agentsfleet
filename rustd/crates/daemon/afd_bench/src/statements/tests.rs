@@ -234,7 +234,7 @@ fn new_statements_match_their_paths() {
 const DELIVERY_READS: &[(&str, Path)] = &[
     ("SET LOCAL ROLE memory_runtime", Path::Issue),
     (
-        "SELECT thread_id AS fleet_id, id AS event_id, workspace_id, actor, kind AS event_type, status, token_count, wall_ms, failure_reason, failure_detail, resumes_turn_id AS resumes_event_id, created_at, updated_at FROM thread.turns",
+        "SELECT thread_id AS fleet_id, id AS turn_id, workspace_id, actor, kind AS event_type, status, token_count, wall_ms, failure_reason, failure_detail, resumes_turn_id AS resumes_turn_id, created_at, updated_at FROM thread.turns",
         Path::Issue,
     ),
     (

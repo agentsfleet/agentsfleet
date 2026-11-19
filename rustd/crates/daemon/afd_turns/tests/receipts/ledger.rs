@@ -6,9 +6,9 @@
 //! construction.
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_db::test_util::mint_id;
-use afd_turns::{Admission, Admissions, Admitted, Key, Producer, Reply as ReplyTo};
+use afd_turns::{Admitted, IncomingTurn, Key, Producer, Reply as ReplyTo, Turns};
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
@@ -29,20 +29,20 @@ struct Stamps {
 }
 
 /// A steer on the lane's fleet under `key`, replying where `reply` says.
-pub(super) fn steer<'a>(lane: &'a Lane, key: &'a str, reply: ReplyTo<'a>) -> Admission<'a> {
-    Admission {
+pub(super) fn steer<'a>(lane: &'a Lane, key: &'a str, reply: ReplyTo<'a>) -> IncomingTurn<'a> {
+    IncomingTurn {
         producer: Producer::Steer,
         key: Key::Repeated(key),
         fleet: &lane.fleet,
         workspace: &lane.workspace,
         actor: "fixture:ledger",
-        event_type: EventType::Chat,
+        event_type: TurnKind::Chat,
         request_json: r#"{"message":"ledger fixture"}"#,
         reply,
     }
 }
 
-pub(super) async fn admit(admissions: &Admissions, admission: Admission<'_>) -> Fallible<Admitted> {
+pub(super) async fn admit(admissions: &Turns, admission: IncomingTurn<'_>) -> Fallible<Admitted> {
     Ok(admissions.admit(admission).await?)
 }
 

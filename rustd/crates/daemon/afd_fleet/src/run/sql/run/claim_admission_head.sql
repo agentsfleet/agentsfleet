@@ -100,11 +100,11 @@ WITH fleet AS MATERIALIZED (
     AND (a.parked_at IS NULL OR NOT EXISTS (
       (SELECT 1 FROM fleet.approval_gates g
       WHERE g.fleet_id = a.thread_id AND g.resolved_at IS NULL
-        AND g.event_id IS NULL LIMIT 1)
+        AND g.turn_id IS NULL LIMIT 1)
       UNION ALL
       (SELECT 1 FROM fleet.approval_gates g
       WHERE g.fleet_id = a.thread_id AND g.resolved_at IS NULL
-        AND g.event_id = a.id
+        AND g.turn_id = a.id
         AND g.expires_at > (SELECT checked_at FROM instant) LIMIT 1)))
   RETURNING WITH (OLD AS prior)
             a.id, a.workspace_id, a.actor, a.kind AS event_type, a.request_json::text AS request_json,
@@ -114,7 +114,7 @@ WITH fleet AS MATERIALIZED (
             prior.opened_at IS NULL AS inserted
 ), prior_run AS MATERIALIZED (
   SELECT l.id, l.runner_id, l.tenant_id, l.posture, l.model
-  FROM thread.runs l JOIN stamped a ON a.id = l.event_id
+  FROM thread.runs l JOIN stamped a ON a.id = l.turn_id
   WHERE l.fleet_id = $1
   ORDER BY l.fencing_token DESC LIMIT 1
   FOR UPDATE OF l
@@ -161,15 +161,15 @@ WITH fleet AS MATERIALIZED (
   ON CONFLICT (runner_id) DO UPDATE
     SET expired_count = c.expired_count + 1, updated_at = now()
 )
-SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
-       a.request_json, a.created_at AS event_created_at, a.redelivered,
+SELECT a.id AS turn_id, a.workspace_id, a.actor, a.event_type,
+       a.request_json, a.created_at AS turn_created_at, a.redelivered,
        slot.fencing_token, slot.run_expires_at,
        COALESCE(slot.held, false) AS held, slot.holder,
        b.id AS predecessor_run_id, b.id IS NOT NULL AS reclaimed,
        -- The runs this event was issued before this claim. A report settles
        -- its admission, so each one is a run that lapsed without reporting.
        (SELECT count(*) FROM thread.runs x
-         WHERE x.event_id = a.id AND x.fleet_id = $1) AS earlier_runs,
+         WHERE x.turn_id = a.id AND x.fleet_id = $1) AS earlier_runs,
        f.tenant_id, f.name, f.status, f.head_revision_id,
        f.memory_reads_workspace, f.memory_publishes_workspace,
        i.definition, i.runtime_model_ref, i.context_json, i.policy_semantics,

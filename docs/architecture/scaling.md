@@ -187,7 +187,7 @@ The process prioritizes recent notification hints, held fleets and previous hold
 An absent or stale notification cannot strand work, because the 5 s recovery probe still queries Postgres.
 A parked oldest admission blocks later admissions while standing access awaits an answer or an event approval stays within its deadline.
 
-The partial `(fleet_id, event_id, expires_at)` gate index serves both probes over unresolved rows.
+The partial `(fleet_id, turn_id, expires_at)` gate index serves both probes over unresolved rows.
 The approval-history plan test grows resolved, expired and unrelated gates from 2,000 to 16,000 rows. It runs both statements through `EXPLAIN (ANALYZE, BUFFERS)` with custom and generic prepared plans.
 
 It checks fleet and event index bounds, deadline bounds for event approvals, and early stopping when many gates match. Total discovery still grows with the eligible fleet population.

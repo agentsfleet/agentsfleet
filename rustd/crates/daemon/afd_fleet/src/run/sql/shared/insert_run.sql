@@ -49,7 +49,7 @@ WITH instant AS MATERIALIZED (
   -- The run and its metering cursor start at the clock read after the slot lock:
   -- stamping the earlier instant would bill the lock wait as runtime.
   INSERT INTO thread.runs
-  (id, runner_id, fleet_id, draft_id, workspace_id, tenant_id, event_id, event_created_at,
+  (id, runner_id, fleet_id, draft_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at, max_runtime_seconds,
    fencing_token, run_expires_at, status, posted_message_count, decision_snapshot,
    created_at, updated_at)

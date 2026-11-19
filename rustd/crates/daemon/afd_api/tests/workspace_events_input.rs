@@ -85,12 +85,12 @@ const CURSOR_EVENT: &str = "0199a0b0-0000-7000-8000-000000000001";
 
 /// The whole workspace's history, with `suffix` appended verbatim.
 fn workspace_history(suffix: &str) -> String {
-    format!("/v1/workspaces/{OWNED_WORKSPACE}/events{suffix}")
+    format!("/v1/workspaces/{OWNED_WORKSPACE}/turns{suffix}")
 }
 
 /// One fleet's history, with `suffix` appended verbatim.
 fn fleet_history(suffix: &str) -> String {
-    format!("/v1/workspaces/{OWNED_WORKSPACE}/fleets/{FLEET}/events{suffix}")
+    format!("/v1/workspaces/{OWNED_WORKSPACE}/fleets/{FLEET}/turns{suffix}")
 }
 
 /// One fully authorised read, so what answers is the parameter under test.

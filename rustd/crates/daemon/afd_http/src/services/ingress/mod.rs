@@ -2,7 +2,7 @@
 //!
 //! One trait over all three steps — resolve, open the secret, append — because
 //! they are one store and a suite that stubbed them apart would be stubbing an
-//! implementation detail. The same argument [`super::event::WorkspaceEvents`]
+//! implementation detail. The same argument [`super::turn::WorkspaceTurns`]
 //! makes for holding its listings and its single read together.
 //!
 //! # Why the whole binding crosses the seam rather than its parts
@@ -15,7 +15,7 @@
 
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
-use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed, NoticeOwner, Subscriber};
+use afd_ingress::slack::{ChannelId, MentionTurn, NoticeOwed, NoticeOwner, Subscriber};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 use jiff::Timestamp;
 
@@ -111,7 +111,7 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
     /// Reports a database that would not record the acceptance.
     fn admit_mention(
         &self,
-        mention: MentionAdmission<'_>,
+        mention: MentionTurn<'_>,
     ) -> impl Future<Output = IngressResult<Admitted>> + Send;
 
     /// The fleet bound as a chat channel's notice owner in `workspace`, and its
@@ -219,7 +219,7 @@ impl WebhookIngress for Ingress {
 
     fn admit_mention(
         &self,
-        mention: MentionAdmission<'_>,
+        mention: MentionTurn<'_>,
     ) -> impl Future<Output = IngressResult<Admitted>> + Send {
         Self::admit_mention(self, mention)
     }

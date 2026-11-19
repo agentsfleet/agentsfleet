@@ -177,7 +177,7 @@ async fn an_empty_answer_owes_nothing_and_a_repeat_owes_once() {
         workspace_id: &lane.workspace,
         provider: Provider::Slack,
         destination: DESTINATION,
-        event_id: &event,
+        turn_id: &event,
         answer,
     };
     assert!(
@@ -216,7 +216,7 @@ async fn a_late_commit_waits_behind_a_held_claim() -> Result<(), &'static str> {
     let [holding] = first.as_slice() else {
         return Err("only the committed row is claimed");
     };
-    assert_eq!(holding.outgoing.event_id, late_event);
+    assert_eq!(holding.outgoing.turn_id, late_event);
     early.commit().await.expect("the earlier report commits");
 
     let while_held = delivery::claim(&ledger.database, 8, &mint_id())
@@ -234,7 +234,7 @@ async fn a_late_commit_waits_behind_a_held_claim() -> Result<(), &'static str> {
     let [next] = after.as_slice() else {
         return Err("the earlier row is offered once the lane is free");
     };
-    assert_eq!(next.outgoing.event_id, early_event);
+    assert_eq!(next.outgoing.turn_id, early_event);
     ledger.cleanup().await;
     Ok(())
 }
@@ -260,7 +260,7 @@ async fn owe_uncommitted(
             workspace_id: &lane.workspace,
             provider: Provider::Slack,
             destination: DESTINATION,
-            event_id: &event,
+            turn_id: &event,
             answer,
         },
     )

@@ -2,7 +2,7 @@
 //! deployment holding its budget of unsettled admissions refuses the producer
 //! with the capacity class and commits nothing. No per-fleet budget exists.
 //!
-//! The budgets are set small through `Admissions::with_budgets`; the
+//! The budgets are set small through `Turns::with_budgets`; the
 //! production numbers are compile-time assertions in `afd_turns::budget`
 //! and are not what this proves. What it proves is the refusal's shape, and
 //! that the row the refusal protects Postgres from is genuinely absent.
@@ -15,10 +15,10 @@
 )]
 
 use af_core::error_code;
-use af_wire::event::EventType;
-use afd_turns::{Admission, Admissions, Budgets, Key, Producer};
+use af_wire::turn::TurnKind;
+use afd_turns::{Budgets, IncomingTurn, Key, Producer, Turns};
 
-use crate::support::EventsLane;
+use crate::support::TurnsLane;
 
 /// A delivery key no earlier run holds.
 ///
@@ -26,26 +26,26 @@ use crate::support::EventsLane;
 /// admitted by a run against a database the lane did not reset
 /// (`KEEP_TEST_STATE=1`) would read as already admitted. The lane's fleet is
 /// minted per run, so prefixing it keeps each run's keys its own.
-fn delivery(lane: &EventsLane, name: &str) -> String {
+fn delivery(lane: &TurnsLane, name: &str) -> String {
     format!("{}-{name}", lane.fleet)
 }
 
 /// One webhook admission for the lane's fleet, keyed by `delivery`.
-fn admission<'a>(lane: &'a EventsLane, delivery: &'a str) -> Admission<'a> {
-    Admission {
+fn admission<'a>(lane: &'a TurnsLane, delivery: &'a str) -> IncomingTurn<'a> {
+    IncomingTurn {
         producer: Producer::Webhook,
         key: Key::Repeated(delivery),
         fleet: &lane.fleet,
         workspace: &lane.workspace,
         actor: "webhook:budget",
-        event_type: EventType::Webhook,
+        event_type: TurnKind::Webhook,
         request_json: r#"{"delivery":"budget"}"#,
         reply: afd_turns::Reply::None,
     }
 }
 
 /// How many ledger rows the lane's fleet holds.
-async fn rows_for(lane: &EventsLane) -> i64 {
+async fn rows_for(lane: &TurnsLane) -> i64 {
     let mut connection = lane.connection().await;
     sqlx::query_scalar(
         "SELECT count(*) FROM thread.turns WHERE producer IS NOT NULL AND thread_id = $1",
@@ -80,7 +80,7 @@ fn assert_capacity_refusal(refused: &afd_turns::Error) {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let open = lane.admissions();
     let admitted = open
         .admit(admission(&lane, &delivery(&lane, "already-admitted")))
@@ -117,9 +117,9 @@ async fn a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry() 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_ledger_reports_its_unsettled_rows_and_the_age_of_the_oldest() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     // Notifications can fail without changing acceptance or backlog.
-    let deferring = Admissions::for_tests(lane.database.clone(), afd_bus::test_util::unreachable());
+    let deferring = Turns::for_tests(lane.database.clone(), afd_bus::test_util::unreachable());
     deferring
         .admit(admission(&lane, &delivery(&lane, "deferred")))
         .await

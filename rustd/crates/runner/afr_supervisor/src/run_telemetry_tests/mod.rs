@@ -9,7 +9,7 @@
 use std::sync::{Arc, PoisonError};
 
 use af_core::env::MapEnv;
-use af_observability::semconv::{ATTR_EVENT_ID, ATTR_RUN_ID, SPAN_RUNNER_RUN};
+use af_observability::semconv::{ATTR_RUN_ID, ATTR_TURN_ID, SPAN_RUNNER_RUN};
 use afr_agent::{AgentEngine, Loop};
 use afr_sandbox::Limits;
 use afr_telemetry::labels::SandboxStart;
@@ -133,7 +133,7 @@ async fn test_runner_exports_spans_and_metrics_when_configured() {
         posted.iter().all(|post| post.path != "/v1/logs"),
         "logs stay on stderr"
     );
-    assert_one_run_trace(&posted, held.event.event_id.as_ref());
+    assert_one_run_trace(&posted, held.event.turn_id.as_ref());
     assert_families_fed(&posted);
 }
 
@@ -179,7 +179,7 @@ fn scripted_lessee(home: &StorageHome) -> Lessee {
 
 /// Every span kind arrived, all under one trace, and the run span names
 /// the run and the event it ran.
-fn assert_one_run_trace(posted: &[Posted], event_id: &str) {
+fn assert_one_run_trace(posted: &[Posted], turn_id: &str) {
     let spans = spans(posted);
     for kind in SPAN_KINDS {
         assert!(
@@ -205,7 +205,7 @@ fn assert_one_run_trace(posted: &[Posted], event_id: &str) {
         .find(|span| span.name == SPAN_RUNNER_RUN)
         .expect("the run span arrived");
     assert_eq!(root.attribute(ATTR_RUN_ID), Some(RUN_ID));
-    assert_eq!(root.attribute(ATTR_EVENT_ID), Some(event_id));
+    assert_eq!(root.attribute(ATTR_TURN_ID), Some(turn_id));
 }
 
 /// Every family one sandboxed run with one tool call feeds reached the

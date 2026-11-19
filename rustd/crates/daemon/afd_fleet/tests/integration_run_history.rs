@@ -15,12 +15,12 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::event::status;
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_core::turn::status;
 use af_wire::run::{ANSWER_FAILED, ANSWER_FAILED_END};
+use af_wire::turn::TurnKind;
 use afd_db::Db;
-use afd_db::test_util::{EventKind, FleetEventSeed, FleetSeed, TenantSeed, WorkspaceSeed, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TurnFacts, TurnSeed, WorkspaceSeed, mint_id};
 use afd_fleet::run::history::turns_before;
 use afd_turns::view::{Cursor, History};
 use jiff::Timestamp;
@@ -84,17 +84,17 @@ impl Threads {
         &self,
         database: &Db,
         fleet: &Uuid7,
-        event_id: &Uuid7,
+        turn_id: &Uuid7,
         at: Timestamp,
         (message, status, answer): (&str, &str, Option<&str>),
     ) {
         let mut connection = database.acquire().await.expect("a connection");
-        let kind = EventKind {
+        let kind = TurnFacts {
             actor: "steer:api",
-            event_type: EventType::Chat.as_str(),
+            event_type: TurnKind::Chat.as_str(),
             status,
         };
-        FleetEventSeed::new(fleet, &self.workspace, event_id, kind)
+        TurnSeed::new(fleet, &self.workspace, turn_id, kind)
             .at(at)
             .insert(&mut *connection)
             .await
@@ -103,7 +103,7 @@ impl Threads {
             "UPDATE thread.turns SET request_json = $2::jsonb, answer_text = $3 \
              WHERE id = $1",
         )
-        .bind(event_id)
+        .bind(turn_id)
         .bind(serde_json::json!({ "message": message }).to_string())
         .bind(answer)
         .execute(&mut *connection)
@@ -111,15 +111,15 @@ impl Threads {
         .expect("the seeded event carries its turn");
     }
 
-    /// Records `label` as the failure `fleet`'s event `event_id` ended on.
-    async fn label(&self, database: &Db, fleet: &Uuid7, event_id: &Uuid7, label: &str) {
+    /// Records `label` as the failure `fleet`'s event `turn_id` ended on.
+    async fn label(&self, database: &Db, fleet: &Uuid7, turn_id: &Uuid7, label: &str) {
         let mut connection = database.acquire().await.expect("a connection");
         sqlx::query(
             "UPDATE thread.turns SET failure_reason = $3
              WHERE thread_id = $1 AND id = $2",
         )
         .bind(fleet)
-        .bind(event_id)
+        .bind(turn_id)
         .bind(label)
         .execute(&mut *connection)
         .await
@@ -131,19 +131,19 @@ impl Threads {
         &self,
         database: &Db,
         fleet: &Uuid7,
-        event_id: &Uuid7,
+        turn_id: &Uuid7,
         at: Timestamp,
     ) -> Vec<(String, String)> {
         let cursor = Cursor {
             created_at: at,
-            event_id: event_id.clone(),
+            turn_id: turn_id.clone(),
         };
         turns_before(
             &History::new(database.clone()),
             &self.workspace,
             fleet,
             &cursor,
-            EventType::Chat,
+            TurnKind::Chat,
         )
         .await
         .into_iter()
@@ -284,9 +284,9 @@ async fn test_history_read_excludes_finished_rows_after_its_event() {
         (&second, ("second", status::RECEIVED, None)),
         (&third, ("third", status::PROCESSED, Some("three"))),
     ];
-    for (offset, (event_id, row)) in (1..).zip(rows) {
+    for (offset, (turn_id, row)) in (1..).zip(rows) {
         threads
-            .event(database, &fleet, event_id, seeded_at(offset), row)
+            .event(database, &fleet, turn_id, seeded_at(offset), row)
             .await;
     }
 

@@ -54,7 +54,7 @@ pub struct TerminalReport<'a> {
     /// The run's ending, as the event row will carry it.
     pub outcome: Terminal<'a>,
     /// The event the fleet's next run resumes after.
-    pub last_event_id: &'a Uuid7,
+    pub last_turn_id: &'a Uuid7,
     /// The answer that run resumes from.
     pub last_response: &'a str,
     /// When the sandbox the run left held for the fleet's next event lapses;
@@ -184,7 +184,7 @@ impl Runs {
             (runtime_line_id?, delivery_id?, delivery_receipt?, audit_id?);
         let outcome = &report.outcome;
         let checkpoint =
-            crate::run::finalize::checkpoint_document(report.last_event_id, report.last_response);
+            crate::run::finalize::checkpoint_document(report.last_turn_id, report.last_response);
         let run = report.run;
         let failure_reason = outcome.verdict.label();
         let notice = (!outcome.verdict.succeeded())
@@ -222,7 +222,7 @@ impl Runs {
             audit_metadata: serde_json::json!({
                 afd_runner::sql::meta::RUN_ID: report.run_id.as_str(),
                 afd_runner::sql::meta::FLEET_ID: run.fleet_id.as_str(),
-                afd_runner::sql::meta::AGENTSFLEET_EVENT_ID: run.event_id.as_str(),
+                afd_runner::sql::meta::AGENTSFLEET_EVENT_ID: run.turn_id.as_str(),
             }),
             unanswered_notice: notice.as_deref(),
         }

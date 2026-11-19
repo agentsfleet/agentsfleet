@@ -4,7 +4,7 @@
 use af_core::id::Uuid7;
 use afd_turns::view::{ACTOR_MACHINE, Steer};
 
-use crate::support::EventsLane;
+use crate::support::TurnsLane;
 
 pub(crate) const REQUEST_JSON: &str = r#"{"message":"redeploy staging"}"#;
 pub(crate) const KEY_SEPARATOR: &str = ":";
@@ -15,7 +15,7 @@ const DISTINCT_OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0998";
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_steer_retry_reuses_its_admission() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
     let first = append_with(&steer, &lane, Some(OPERATION)).await;
     let retried = append_with(&steer, &lane, Some(OPERATION)).await;
@@ -28,7 +28,7 @@ async fn test_steer_retry_reuses_its_admission() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_two_operation_ids_with_equal_text_admit_twice() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
     let first = append_with(&steer, &lane, Some(OPERATION)).await;
     let second = append_with(&steer, &lane, Some(DISTINCT_OPERATION)).await;
@@ -39,7 +39,7 @@ async fn test_two_operation_ids_with_equal_text_admit_twice() {
 
 pub(crate) async fn append_with(
     steer: &Steer,
-    lane: &EventsLane,
+    lane: &TurnsLane,
     operation: Option<&str>,
 ) -> String {
     steer
@@ -52,10 +52,10 @@ pub(crate) async fn append_with(
         )
         .await
         .expect("admitted")
-        .event_id
+        .turn_id
 }
 
-pub(crate) async fn admissions_for(lane: &EventsLane, operation: &str) -> i64 {
+pub(crate) async fn admissions_for(lane: &TurnsLane, operation: &str) -> i64 {
     let key = [lane.fleet.as_str(), operation].join(KEY_SEPARATOR);
     let mut connection = lane.connection().await;
     sqlx::query_scalar(
@@ -68,7 +68,7 @@ pub(crate) async fn admissions_for(lane: &EventsLane, operation: &str) -> i64 {
     .expect("admission count")
 }
 
-pub(crate) async fn queued_ids(lane: &EventsLane) -> Vec<Uuid7> {
+pub(crate) async fn queued_ids(lane: &TurnsLane) -> Vec<Uuid7> {
     let mut connection = lane.connection().await;
     sqlx::query_scalar(
         "SELECT id FROM thread.turns

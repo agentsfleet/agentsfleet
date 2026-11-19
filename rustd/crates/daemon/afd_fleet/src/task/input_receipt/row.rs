@@ -28,7 +28,7 @@ pub(super) async fn item(
         .bind(crate::task::guard::wire(&input.item_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
+        .bind(crate::task::guard::wire(&input.source_turn_id)?)
         .bind(&input.plan_digest)
         .bind(afd_turns::Producer::SlackMention.as_str())
         .bind(afd_connector::Provider::Slack.id())

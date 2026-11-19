@@ -26,7 +26,7 @@ use std::collections::BTreeSet;
 use std::sync::PoisonError;
 
 use af_core::env::MapEnv;
-use af_observability::semconv::{ATTR_EVENT_ID, ATTR_RUN_ID, SPAN_RUNNER_RUN};
+use af_observability::semconv::{ATTR_RUN_ID, ATTR_TURN_ID, SPAN_RUNNER_RUN};
 use afr_telemetry::{Endpoint, Telemetry};
 use agentsfleetd::supervisor::Supervisor;
 use tokio_util::sync::CancellationToken;
@@ -164,7 +164,7 @@ async fn test_e2e_runner_run_trace_reaches_a_collector() {
     });
 
     stop_recording(&scene, shutdown, thread, telemetry).await;
-    assert_run_trace(&received, scene.event_id.as_str());
+    assert_run_trace(&received, scene.turn_id.as_str());
     supervisor.shutdown().await;
     scene.cleanup().await;
 }
@@ -175,7 +175,7 @@ async fn stop_recording(
     thread: std::thread::JoinHandle<afr_supervisor::Result<()>>,
     telemetry: Telemetry,
 ) {
-    let status = settled(scene, &scene.event_id).await;
+    let status = settled(scene, &scene.turn_id).await;
     shutdown.cancel();
     let stopped = tokio::task::spawn_blocking(move || thread.join())
         .await
@@ -188,13 +188,11 @@ async fn stop_recording(
     assert_eq!(status.as_deref(), Some(PROCESSED));
 }
 
-fn assert_run_trace(received: &Received, event_id: &str) {
+fn assert_run_trace(received: &Received, turn_id: &str) {
     let spans = spans(received);
     let root = spans
         .iter()
-        .find(|span| {
-            span.name == SPAN_RUNNER_RUN && span.attribute(ATTR_EVENT_ID) == Some(event_id)
-        })
+        .find(|span| span.name == SPAN_RUNNER_RUN && span.attribute(ATTR_TURN_ID) == Some(turn_id))
         .expect("the run's root span reached the collector, naming the daemon's event");
     assert!(
         root.attribute(ATTR_RUN_ID)

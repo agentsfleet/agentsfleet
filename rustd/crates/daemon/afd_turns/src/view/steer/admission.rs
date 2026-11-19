@@ -1,8 +1,8 @@
 //! A steer builds one scoped ledger key and the same admission on every attempt.
 
-use crate::{Admission, Key, Producer, Reply};
+use crate::{IncomingTurn, Key, Producer, Reply};
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 
 /// Joins the fleet to the caller's operation id in the ledger key.
 const KEY_SEPARATOR: &str = ":";
@@ -20,8 +20,8 @@ pub(super) const fn steer_admission<'a>(
     actor: &'a str,
     request_json: &'a str,
     key: Option<&'a str>,
-) -> Admission<'a> {
-    Admission {
+) -> IncomingTurn<'a> {
+    IncomingTurn {
         producer: Producer::Steer,
         // Mapped explicitly, never by `unwrap_or`-ing into a default: `Key`'s
         // own note warns that an `Option` lets a caller which HAS an identity
@@ -34,7 +34,7 @@ pub(super) const fn steer_admission<'a>(
         fleet,
         workspace,
         actor,
-        event_type: EventType::Chat,
+        event_type: TurnKind::Chat,
         request_json,
         // A steer is read on the event tail that carried it, never posted to a thread.
         reply: Reply::None,
@@ -70,17 +70,17 @@ pub(super) const fn fleet_steer_admission<'a>(
     request_json: &'a str,
     key: &'a str,
     sender_event: &'a Uuid7,
-) -> Admission<'a> {
-    Admission {
+) -> IncomingTurn<'a> {
+    IncomingTurn {
         producer: Producer::Steer,
         key: Key::Repeated(key),
         fleet,
         workspace,
         actor,
-        event_type: EventType::Chat,
+        event_type: TurnKind::Chat,
         request_json,
         reply: Reply::Inherit {
-            event_id: sender_event,
+            turn_id: sender_event,
         },
     }
 }

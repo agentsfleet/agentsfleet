@@ -108,7 +108,7 @@ pub const INSERT_RUN: &str = include_str!("insert_run.sql");
 /// `$5` the run lifetime, `$6` the most a run may run. Answers
 /// `probe_found`, `new_until` (NULL when nothing moved) and `hard_cap`, and the
 /// slice the caller's usage line charges: `checked_at`, `started_at`, `d_ms`,
-/// `runtime_seq`, `tenant_id`, `workspace_id` and `event_id`. Run after
+/// `runtime_seq`, `tenant_id`, `workspace_id` and `turn_id`. Run after
 /// [`LOCK_CANCELLED`], under the host row.
 pub const EXTEND_RUN: &str = include_str!("extend_run.sql");
 

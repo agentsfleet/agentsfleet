@@ -18,7 +18,7 @@ use crate::integration_workspace_members::fixture::{Members, owner_scopes};
 
 /// One workspace's history: the cheapest ownership-checked read.
 fn history(workspace: &str) -> String {
-    format!("/v1/workspaces/{workspace}/events")
+    format!("/v1/workspaces/{workspace}/turns")
 }
 
 /// The status, registry code and sentence a refusal carries.

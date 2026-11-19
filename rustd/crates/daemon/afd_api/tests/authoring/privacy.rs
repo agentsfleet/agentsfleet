@@ -103,7 +103,7 @@ fn verbs(tag: &str) -> Vec<(Method, &'static str, String, Option<String>)> {
             json!({"through_sequence":"1"}).to_string(),
             None,
         ),
-        (Method::GET, "/events/stream", String::new(), None),
+        (Method::GET, "/turns/stream", String::new(), None),
         (Method::DELETE, "", String::new(), None),
     ]
 }

@@ -18,7 +18,7 @@ use std::borrow::Cow;
 use af_wire::fold::FoldResponse;
 use af_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryRecallResponse};
 use af_wire::paths::{
-    RUN_TOOL_CALLS_SUFFIX, RUNNER_MEMORY, RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_RUNS, RUNNER_SELF,
+    RUN_ITEMS_SUFFIX, RUNNER_MEMORY, RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_RUNS, RUNNER_SELF,
 };
 use af_wire::report::{RenewResponse, ReportResponse};
 use af_wire::runner::{AssignedPolicy, HeartbeatResponse, HeartbeatStatus, SelfResponse};
@@ -192,7 +192,7 @@ fn routed(method: &str, path: &str) -> Option<Verb> {
     let memory = path.starts_with(RUNNER_MEMORY);
     match (path, held) {
         (RUNNER_SELF, _) => Some(Verb::Me),
-        (_, Some(RUN_TOOL_CALLS_SUFFIX)) => Some(Verb::Items),
+        (_, Some(RUN_ITEMS_SUFFIX)) => Some(Verb::Items),
         _ if memory && path.ends_with(RUNNER_MEMORY_RECALL_SUFFIX) => Some(Verb::Recall),
         _ if memory && method == GET => Some(Verb::Load),
         _ if memory => Some(Verb::Capture),

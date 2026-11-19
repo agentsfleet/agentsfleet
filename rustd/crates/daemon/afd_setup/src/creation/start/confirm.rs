@@ -23,7 +23,7 @@ impl Creations {
         }
         let StartOutcome::RunNow {
             state: StartState::Pending,
-            event_id: Some(expected),
+            turn_id: Some(expected),
             ..
         } = &row.initial_start.outcome
         else {
@@ -44,12 +44,12 @@ impl Creations {
                 return Ok(());
             }
         };
-        if confirmation.event_id != *expected {
+        if confirmation.turn_id != *expected {
             return Ok(());
         }
         row.initial_start.outcome = StartOutcome::RunNow {
             state: StartState::Accepted,
-            event_id: Some(confirmation.event_id),
+            turn_id: Some(confirmation.turn_id),
             error_code: None,
         };
         let mut connection = self.setup.drafts.database.acquire().await?;

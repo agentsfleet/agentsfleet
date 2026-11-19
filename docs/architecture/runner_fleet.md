@@ -38,7 +38,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Config freshness | named by the claim | the claim returns the head revision id and a replica holds the parsed definition under that id, so the next run sees the change; no reload signal | §Config |
 | Debit point | the run's usage, per renewal | the issued run's hold is reserved; each `/renew` and the report log the slice as a usage line that the biller settles after commit | §Money gates |
 | Production shape | 3 `agentsfleetd` machines | set and verified by the release workflow; runner verbs load-balance across replicas | §Multi-replica |
-| Admissions queue | `fleet.admissions` where `settled_at IS NULL` | oldest unsettled row per fleet; parked heads block later work | §Datastore topology |
+| Turns queue | `fleet.admissions` where `settled_at IS NULL` | oldest unsettled row per fleet; parked heads block later work | §Datastore topology |
 
 ## Traps
 
@@ -592,7 +592,7 @@ bubblewrap, Landlock, seccomp, the run's cgroup and the process boundary under t
 One run is one run. [Conversation compaction](context_lifecycle.md) saves working notes and continues within that run, retaining tool access.
 A report's outcome is `processed` or `fleet_error`; context pressure does not request another run (`af_wire`'s report type).
 
-A continuation event still exists, chained by `resumes_event_id`. An approval's answer writes one, and the next run runs it (`afd_approval`'s inbox resolve). Durable state across runs is in `agentsfleetd`, never runner-local, which is why any runner can take the next event.
+A continuation event still exists, chained by `resumes_turn_id`. An approval's answer writes one, and the next run runs it (`afd_approval`'s inbox resolve). Durable state across runs is in `agentsfleetd`, never runner-local, which is why any runner can take the next event.
 
 Sticky routing (below) prefers the runner that ran the previous event, but correctness never depends on it.
 
@@ -765,7 +765,7 @@ Only a batch that filled while it waited is dropped, counted and logged as `acti
 agent loop -sink-> activity pump -POST .../activity (no ack)-> agentsfleetd -publish-> NATS -> SSE
 ```
 
-The runner's frames reach the channel through `afd_fleet::run::activity`, each stamped with the `event_id` its run runs: `tool_call_started`, `tool_call_progress`, `tool_call_completed` and `chunk`. Frame kinds and fields: API reference › Fleet events (Stream live fleet activity).
+The runner's frames reach the channel through `afd_fleet::run::activity`, each stamped with the `turn_id` its run runs: `tool_call_started`, `tool_call_progress`, `tool_call_completed` and `chunk`. Frame kinds and fields: API reference › Fleet events (Stream live fleet activity).
 
 The runner fills these from each call it runs. Arguments are serialized with every string leaf scrubbed of the redaction set and of known secret patterns first.
 
@@ -787,7 +787,7 @@ A trace that is malformed or over a bound is dropped and logged, and the report 
 
 Each call's full arguments and output ride neither the live tail nor the report. They are capped at 64 KiB each and 1 MiB per run, under the same scrub.
 
-The runner posts them in batches of at most 256 KiB to `POST /v1/runners/me/runs/{run_id}/tool-calls` under the run's fencing token, before the report. That keeps the report far below the runner routes' 2 MB request limit. That limit is axum's default, and the router mounts runner routes with no other.
+The runner posts them in batches of at most 256 KiB to `POST /v1/runners/me/runs/{run_id}/items` under the run's fencing token, before the report. That keeps the report far below the runner routes' 2 MB request limit. That limit is axum's default, and the router mounts runner routes with no other.
 
 The daemon stores them in `thread.items`, a child table of `fleet.events`, keyed by fence and call number. Settlement deletes the event's rows from every other fence, because a reclaimed run restarts its call numbers at 1. A failed post costs only the full view; the run settles as before.
 
@@ -817,9 +817,9 @@ The browser's reply decoder uses Hermes protocol parsing and incremental HTML to
 
 The bracket frames are published by `agentsfleetd` itself (`afd_fleet::run::bracket`, shapes in `afd_api_wire::tail::TailFrame`). So the tail has open and close markers even before the runner forwards a single mid-run frame.
 
-The bracket frames are `event_received`, `event_complete`, and `gate_opened` / `gate_resolved`. The run verb or an approval's resolve writes `event_received` with the row; a report or a gate refusal closes it with `event_complete`.
+The bracket frames are `turn_received`, `turn_complete`, and `gate_opened` / `gate_resolved`. The run verb or an approval's resolve writes `turn_received` with the row; a report or a gate refusal closes it with `turn_complete`.
 
-Each carries what a watcher needs to fold it in without a read. `event_complete` is the terminal row from the closing statement's `RETURNING`. The gate frames carry `pending_approvals` from the statement that moved the gate.
+Each carries what a watcher needs to fold it in without a read. `turn_complete` is the terminal row from the closing statement's `RETURNING`. The gate frames carry `pending_approvals` from the statement that moved the gate.
 
 Frame kinds and fields: API reference › Fleet events (Stream live fleet activity).
 
@@ -851,7 +851,7 @@ Renewal reads the fleet's stored config whatever its status (`afd_fleet`'s run c
 
 - **Steer** — a message to a fleet. The send answers one of three dispositions: `started`, `folded` or `queued`. With no run live and nothing waiting, the message starts a run of its own.
 
-  While a run is live, the message **folds** into that run. The send answers `folded` with `folded_into_event_id`. The running run claims it at its next model call through a native `folds` request.
+  While a run is live, the message **folds** into that run. The send answers `folded` with `folded_into_turn_id`. The running run claims it at its next model call through a native `folds` request.
 
   A run claims a person's messages in its own conversation after its own, oldest first. It stops at the first parked (approval-gated), task-bound or non-person one.
 

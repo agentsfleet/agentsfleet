@@ -15,7 +15,7 @@ use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry}
 use jiff::Timestamp;
 
 use super::slot;
-use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_EVENT_ID, RESUME_RESPONSE};
+use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_RESPONSE, RESUME_TURN_ID};
 use crate::report_seed::{Held, SLICE, SLICE_MS, held};
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
@@ -28,7 +28,7 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
         setup: None,
         task: None,
         run_id: Cow::Borrowed(held.issued.run_id.as_str()),
-        event_id: Cow::Borrowed(held.event_id.as_str()),
+        turn_id: Cow::Borrowed(held.turn_id.as_str()),
         fencing_token: held.fence.as_u64(),
         outcome: Outcome::Processed,
         failure_reason: None,
@@ -42,7 +42,7 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
             segments: None,
         },
         checkpoint: ReportCheckpoint {
-            last_event_id: Cow::Borrowed(RESUME_EVENT_ID),
+            last_turn_id: Cow::Borrowed(RESUME_TURN_ID),
             last_response: Cow::Borrowed(RESUME_RESPONSE),
         },
         tool_calls: None,

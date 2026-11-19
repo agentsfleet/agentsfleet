@@ -137,7 +137,7 @@ async fn write(
 
 async fn swap(owner: &mut TurnRunGuard<'_>, plan: &Plan) -> Result<()> {
     let changed = sqlx::query(include_str!("sql/head_swap.sql"))
-        .bind(&owner.current.event_id)
+        .bind(&owner.current.turn_id)
         .bind(&plan.id)
         .bind(&plan.expected_head_id)
         .execute(&mut *owner.tx)

@@ -13,8 +13,8 @@
 
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
-use af_wire::event::EventType;
-use afd_turns::{Admission, Admissions, Key, Producer, Reply};
+use af_wire::turn::TurnKind;
+use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 
 /// The fleet and workspace the admission names; nothing answers, so any will do.
 const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee2";
@@ -36,20 +36,20 @@ fn told_reason(capture: &Capture, event: &str) -> String {
 #[tokio::test]
 async fn a_refused_admission_reason_carries_no_code_prefix() {
     let capture = Capture::install();
-    let admissions = Admissions::for_tests(
+    let admissions = Turns::for_tests(
         afd_db::test_util::unreachable_db(),
         afd_bus::test_util::unreachable(),
     );
     let fleet = Uuid7::parse(FLEET).expect("a canonical fleet identifier");
 
     let refused = admissions
-        .admit(Admission {
+        .admit(IncomingTurn {
             producer: Producer::ScheduleFire,
             key: Key::Repeated("log-reasons"),
             fleet: &fleet,
             workspace: &fleet,
             actor: "fixture:log-reasons",
-            event_type: EventType::Chat,
+            event_type: TurnKind::Chat,
             request_json: "{}",
             reply: Reply::None,
         })

@@ -159,7 +159,7 @@ pub(crate) async fn receive<D: Services>(
     Ok((
         StatusCode::ACCEPTED,
         Json(webhook::Accepted {
-            event_id: appended.stored.id.as_str().into(),
+            turn_id: appended.stored.id.as_str().into(),
             replayed: appended.replayed,
         }),
     )

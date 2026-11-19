@@ -19,7 +19,7 @@ use crate::e2e::Scenario;
 pub(crate) struct Offered {
     pub(crate) run_id: String,
     pub(crate) fence: u64,
-    pub(crate) event_id: Uuid7,
+    pub(crate) turn_id: Uuid7,
     pub(crate) fleet_id: Uuid7,
     pub(crate) message: String,
     pub(crate) history: Vec<String>,
@@ -42,9 +42,9 @@ pub(crate) async fn next_offer(scene: &Scenario) -> Offered {
             return Offered {
                 run_id: run.run_id.to_string(),
                 fence: run.fencing_token,
-                event_id: Uuid7::parse(&run.event.event_id).expect("an offered event id"),
+                turn_id: Uuid7::parse(&run.event.turn_id).expect("an offered event id"),
                 fleet_id: Uuid7::parse(&run.event.fleet_id).expect("an offered fleet id"),
-                message: af_wire::event::message_of(&run.event.request_json).into_owned(),
+                message: af_wire::turn::message_of(&run.event.request_json).into_owned(),
                 history: run
                     .history
                     .iter()
@@ -58,17 +58,17 @@ pub(crate) async fn next_offer(scene: &Scenario) -> Offered {
         .expect("an event is offered")
 }
 
-/// The offer of `event_id`, when it is the only work the runner is waiting on:
+/// The offer of `turn_id`, when it is the only work the runner is waiting on:
 /// an offer of any other event fails the test, since it would hold the slot.
-pub(crate) async fn offered(scene: &Scenario, event_id: &Uuid7) -> Offered {
+pub(crate) async fn offered(scene: &Scenario, turn_id: &Uuid7) -> Offered {
     let offer = next_offer(scene).await;
-    assert_eq!(&offer.event_id, event_id, "another event was offered first");
+    assert_eq!(&offer.turn_id, turn_id, "another event was offered first");
     offer
 }
 
 /// Settles `offer` with the harness's processed report.
 pub(crate) async fn settle(scene: &Scenario, offer: &Offered) {
-    let body = crate::wire::report_body(&offer.run_id, &offer.event_id, offer.fence);
+    let body = crate::wire::report_body(&offer.run_id, &offer.turn_id, offer.fence);
     let reported = crate::wire::report(scene, &body).await;
     assert!(reported.is_ok(), "the scene settles: {reported:?}");
 }
@@ -76,7 +76,7 @@ pub(crate) async fn settle(scene: &Scenario, offer: &Offered) {
 /// The event id a steer was answered with.
 pub(crate) fn steered(answer: &Value) -> Uuid7 {
     Uuid7::parse(
-        answer["event_id"]
+        answer["turn_id"]
             .as_str()
             .expect("a steer answers its event"),
     )

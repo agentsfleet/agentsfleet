@@ -65,35 +65,35 @@ impl Pickups {
     }
 
     /// One steer's append returned at `at`.
-    pub(super) async fn appended(&self, event_id: String, at: Instant) {
-        self.appended.lock().await.insert(event_id, at);
+    pub(super) async fn appended(&self, turn_id: String, at: Instant) {
+        self.appended.lock().await.insert(turn_id, at);
     }
 
-    /// A runner received the run for `event_id`. An event the burst did not
+    /// A runner received the run for `turn_id`. An event the burst did not
     /// append (the population's seeded one) is not a pickup.
     ///
     /// # Errors
     ///
     /// When the histogram will not hold the wait.
-    pub(in crate::lane::run::drain) async fn held(&self, event_id: &str) -> Result<()> {
-        self.took(event_id).await.map(|_burst| ())
+    pub(in crate::lane::run::drain) async fn held(&self, turn_id: &str) -> Result<()> {
+        self.took(turn_id).await.map(|_burst| ())
     }
 
-    /// A live run folded `event_id` in: a pickup like a run, counted apart.
+    /// A live run folded `turn_id` in: a pickup like a run, counted apart.
     ///
     /// # Errors
     ///
     /// When the histogram will not hold the wait.
-    pub(in crate::lane::run::drain) async fn folded(&self, event_id: &str) -> Result<()> {
-        if self.took(event_id).await? {
+    pub(in crate::lane::run::drain) async fn folded(&self, turn_id: &str) -> Result<()> {
+        if self.took(turn_id).await? {
             self.folded.fetch_add(1, Ordering::Relaxed);
         }
         Ok(())
     }
 
-    /// Records the pickup of `event_id`; answers whether the burst appended it.
-    async fn took(&self, event_id: &str) -> Result<bool> {
-        let Some(at) = self.appended.lock().await.remove(event_id) else {
+    /// Records the pickup of `turn_id`; answers whether the burst appended it.
+    async fn took(&self, turn_id: &str) -> Result<bool> {
+        let Some(at) = self.appended.lock().await.remove(turn_id) else {
             return Ok(false);
         };
         self.held.fetch_add(1, Ordering::Relaxed);

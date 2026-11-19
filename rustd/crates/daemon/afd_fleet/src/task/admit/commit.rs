@@ -10,7 +10,7 @@ use super::{
     write::{Writer, Written},
 };
 use crate::{Result, error::query};
-use afd_turns::PreparedAdmission;
+use afd_turns::PreparedTurn;
 
 pub(super) struct Committed {
     pub bindings: TaskBindings,
@@ -24,7 +24,7 @@ pub(super) async fn commit(
     scope: &TaskScope,
     mut identities: Vec<TaskBinding>,
     continuations: &[Option<Wake>],
-    prepared: Vec<Option<PreparedAdmission<'_>>>,
+    prepared: Vec<Option<PreparedTurn<'_>>>,
 ) -> Result<Committed> {
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;

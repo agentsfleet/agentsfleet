@@ -105,7 +105,7 @@ async fn a_signed_delivery_wakes_the_fleet_and_answers_the_events_id() {
     );
     assert!(
         document
-            .get("event_id")
+            .get("turn_id")
             .and_then(Value::as_str)
             .is_some_and(|id| !id.is_empty()),
         "the sender is answered the id its redelivery will repeat: {document}"
@@ -142,8 +142,8 @@ async fn a_redelivery_repeats_the_first_claim_and_reports_that_it_did() {
     let again = json_body(again).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{again}");
     assert_eq!(
-        again.get("event_id"),
-        first.get("event_id"),
+        again.get("turn_id"),
+        first.get("turn_id"),
         "the redelivery is answered the first attempt's id"
     );
     assert_eq!(

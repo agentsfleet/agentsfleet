@@ -72,20 +72,20 @@ const STREAM_OPEN: &str = "The stream is open; frames follow as Server-Sent Even
 const EVENT_STREAM: &str = "text/event-stream";
 
 /// The scoped event each surface's failures are logged under.
-const EVENT_FLEET_STREAM: &str = "fleet_events_stream_failed";
+const EVENT_FLEET_STREAM: &str = "fleet_turns_stream_failed";
 
 /// The workspace multiplex's.
-const EVENT_WORKSPACE_STREAM: &str = "workspace_events_stream_failed";
+const EVENT_WORKSPACE_STREAM: &str = "workspace_turns_stream_failed";
 
 /// The refusal a fleet this workspace does not hold earns.
 const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
 
-/// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream`.
+/// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream`.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream",
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream",
     tag = afd_http::openapi::tag::FLEETS,
-    operation_id = "stream_fleet_events",
+    operation_id = "stream_fleet_turns",
     summary = "Stream live fleet activity",
     description = concat!(
         "Streams fleet activity using Server-Sent Events (SSE). Each message has `id`, ",
@@ -96,40 +96,40 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         "Activity includes:\n",
         "- `task_changed`: committed `task_id` and `resource_version`. Read the task ",
         "collection or detail for confirmed progress; also reconcile tasks on `hello` and gap recovery.\n",
-        "- `event_admitted`: accepted chat message, with `event_id`, `actor`, ",
+        "- `turn_admitted`: accepted chat message, with `turn_id`, `actor`, ",
         "`event_type`, `message`, and `created_at`.\n",
-        "- `event_received`: run started, with the same fields; `message` appears for ",
+        "- `turn_received`: run started, with the same fields; `message` appears for ",
         "user messages.\n",
-        "- `run_restarted`: a replacement attempt committed, with `event_id`, decimal-string ",
+        "- `run_restarted`: a replacement attempt committed, with `turn_id`, decimal-string ",
         "`fencing_token`, and `restarted_at`. It is best-effort and may be lost.\n",
-        "- `event_complete`: the saved event without fleet or workspace identifiers, plus ",
+        "- `turn_complete`: the saved turn without fleet or workspace identifiers, plus ",
         "`fleet_status` and `pending_approvals`. `final_reply` appears up to 64 KiB; ",
-        "otherwise fetch event details.\n",
-        "- `gate_opened` and `gate_resolved`: `gate_id`, `event_id`, and ",
-        "`pending_approvals`. Requests outside a run use null `event_id`. Resolutions add ",
+        "otherwise fetch turn details.\n",
+        "- `gate_opened` and `gate_resolved`: `gate_id`, `turn_id`, and ",
+        "`pending_approvals`. Requests outside a run use null `turn_id`. Resolutions add ",
         "`status` and `resolved_by`.\n",
         "- `chunk`, `tool_call_started`, `tool_call_progress`, `tool_call_completed`, and `context_progress`: ",
         "live reply and tool activity. Every attempt output includes a decimal-string ",
         "`fencing_token`; discard lower attempts and reset provisional output once on a greater attempt. ",
-        "Tool messages include `event_id` and `name`. Newer ",
+        "Tool messages include `turn_id` and `name`. Newer ",
         "runners add a unique `call_id` per call, shared across its messages.\n",
         "- `task_decision_started`, `task_decision_completed`, and `task_transfer_progress`: ",
-        "`event_id` and a `progress` object with operation identity, phase, selected model and bounded object counts. ",
-        "Event details retain up to 128 steps in `task_activity`; `truncated` marks an incomplete history. ",
+        "`turn_id` and a `progress` object with operation identity, phase, selected model and bounded object counts. ",
+        "Turn details retain up to 128 steps in `task_activity`; `truncated` marks an incomplete history. ",
         "These observations never establish task completion or expose private recovery contents.\n",
         "- Completed tools from newer runners add `status` (`succeeded`, `failed`, or ",
         "`interrupted`), the first and last five output lines, and `output_line_count`. ",
         "These lines are `output_head` and `output_tail`; process calls also include ",
         "`exit_code`.\n\n",
         "`catching_up` reports missed messages through `dropped`; zero means the count is ",
-        "unknown. Reload saved events after this signal. Identifiers restart at zero per ",
+        "unknown. Reload saved turns after this signal. Identifiers restart at zero per ",
         "connection; `Last-Event-ID` is ignored. `hello` and `catching_up` use zero ",
         "without advancing activity identifiers. Heartbeats arrive after 15 idle seconds, ",
         "with `kind: heartbeat` and no identifier.\n\n",
         "Access is checked every 15 seconds. `access_revoked` sends ",
         access_revoked_data!(),
         "one minute; recover as after a disconnect. At capacity, 503 `UZ-API-002` ",
-        "includes `Retry-After`. Fetch missed events before reconnecting.",
+        "includes `Retry-After`. Fetch missed turns before reconnecting.",
     ),
     params(
         afd_http::openapi::path::Fleet,
@@ -168,21 +168,21 @@ pub(crate) async fn fleet<D: Services>(
     Ok(serve(frames, slot))
 }
 
-/// `GET /v1/workspaces/{workspace_id}/events/stream`.
+/// `GET /v1/workspaces/{workspace_id}/turns/stream`.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/workspaces/{workspace_id}/events/stream",
+    path = "/v1/workspaces/{workspace_id}/turns/stream",
     tag = afd_http::openapi::tag::WORKSPACES,
-    operation_id = "stream_workspace_events",
+    operation_id = "stream_workspace_turns",
     summary = "Stream live activity for a whole workspace",
     description = concat!(
         "Streams activity for every fleet you can read using one Server-Sent Events (SSE) ",
         "connection. The first `hello` contains `kind: hello` and readable `fleet_ids`. ",
-        "Activity uses the fleet stream's event types, with `fleet_id` added to each ",
+        "Activity uses the fleet stream's frame kinds, with `fleet_id` added to each ",
         "payload. Fleets join or leave the stream as access changes.\n\n",
         "`catching_up` contains `kind: catching_up` and `dropped`, the number missed ",
-        "since the previous signal. Zero means the count is unknown. Reload missed events ",
-        "through `/v1/workspaces/{workspace_id}/events`. After reconnecting, reload this ",
+        "since the previous signal. Zero means the count is unknown. Reload missed turns ",
+        "through `/v1/workspaces/{workspace_id}/turns`. After reconnecting, reload this ",
         "history to recover the gap.\n\n",
         "Identifiers restart at zero per connection; `Last-Event-ID` is ignored. `hello` ",
         "and `catching_up` use zero without advancing activity identifiers. Heartbeats ",

@@ -42,7 +42,7 @@ WITH instant AS MATERIALIZED (
   -- The run starts, and its metering cursor with it, at the clock read after the
   -- slot lock: stamping the earlier instant would bill the lock wait as runtime.
   INSERT INTO thread.runs
-  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
+  (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at, max_runtime_seconds,
    fencing_token, run_expires_at, status, posted_message_count, decision_snapshot, setup_revision_id, created_at, updated_at)
   SELECT $1, $2, $3, $4, $5, e.id, $15,
@@ -70,7 +70,7 @@ WITH instant AS MATERIALIZED (
           AND COALESCE(r.capability_report @> jsonb_build_object($21::text, true), false))
          OR setup.definition #> $22::text[] IS NULL
          OR setup.definition #> $22::text[] = 'null'::jsonb)
-  RETURNING id, runner_id, fleet_id, event_id, created_at
+  RETURNING id, runner_id, fleet_id, turn_id, created_at
 ), chosen AS (
   -- The placement choice the host lock read: the next offer prefers the other kind.
   UPDATE runner.runners

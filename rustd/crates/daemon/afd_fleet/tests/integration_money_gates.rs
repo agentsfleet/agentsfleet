@@ -91,7 +91,7 @@ pub(crate) const fn request<'a>(
     Request {
         workspace_id: workspace,
         fleet_id: fleet,
-        event_id: event,
+        turn_id: event,
         budget: config.budget(),
         posture: Posture::Platform,
         provider: PROVIDER,
@@ -138,7 +138,7 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
     let Admission::Refuse(refusal) = decided else {
         panic!("an unowned workspace must be refused, got {decided:?}");
     };
-    assert_eq!(refusal.label, af_core::event::label::TENANT_RESOLVE_FAILED);
+    assert_eq!(refusal.label, af_core::turn::label::TENANT_RESOLVE_FAILED);
 
     fixtures.cleanup().await;
 }
@@ -176,7 +176,7 @@ async fn a_fleet_past_its_daily_ceiling_is_refused() {
     let Admission::Refuse(refusal) = decided else {
         panic!("a fleet past its ceiling must be refused, got {decided:?}");
     };
-    assert_eq!(refusal.label, af_core::event::label::BUDGET_BREACH);
+    assert_eq!(refusal.label, af_core::turn::label::BUDGET_BREACH);
 
     fixtures.cleanup().await;
 }
@@ -275,7 +275,7 @@ async fn seed_spend(
         .expect("a pooled connection");
     sqlx::query(
         "INSERT INTO billing.usage_lines \
-           (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, event_id, \
+           (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, turn_id, \
             provider, model, posture, requested_at, input_token_count, cached_input_token_count, \
             cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count, \
             output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at, \

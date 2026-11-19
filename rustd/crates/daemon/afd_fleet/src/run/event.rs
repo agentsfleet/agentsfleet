@@ -120,7 +120,7 @@ pub enum Ended {
 }
 
 impl Runs {
-    /// End `event_id` at a gate, naming what refused it.
+    /// End `turn_id` at a gate, naming what refused it.
     ///
     /// Guarded on the row still being `received`, so a terminal row is never
     /// reopened: a request arriving after a `gate_blocked` is a NEW delivery
@@ -136,7 +136,7 @@ impl Runs {
     pub async fn block(&self, acquired: &Acquired, refusal: Refusal) -> Result<Ended> {
         let notice = unanswered::refused(&acquired.fleet_id, refusal.label);
         let ending = Unreported {
-            status: af_core::event::status::GATE_BLOCKED,
+            status: af_core::turn::status::GATE_BLOCKED,
             label: refusal.label,
             // A gate refusal carries no operator-readable instruction.
             detail: None,
@@ -157,10 +157,10 @@ impl Runs {
     /// # Errors
     /// As [`Self::block`].
     pub async fn abandon(&self, acquired: &Acquired) -> Result<Ended> {
-        let label = af_core::event::label::RUN_EXPIRED;
+        let label = af_core::turn::label::RUN_EXPIRED;
         let notice = unanswered::failed_run(&acquired.fleet_id, Some(label));
         let ending = Unreported {
-            status: af_core::event::status::FLEET_ERROR,
+            status: af_core::turn::status::FLEET_ERROR,
             label,
             detail: Some(DETAIL_RUNS_LAPSED),
             notice: &notice,
@@ -177,7 +177,7 @@ impl Runs {
             .lock_admission_on(
                 &mut transaction,
                 &acquired.fleet_id,
-                &acquired.event_id,
+                &acquired.turn_id,
                 acquired.fence,
             )
             .await?
@@ -186,10 +186,10 @@ impl Runs {
         }
         let closed = sqlx::query(afd_turns::view::sql::UPDATE_FLEET_EVENT_FAILURE)
             .bind(&acquired.fleet_id)
-            .bind(&acquired.event_id)
+            .bind(&acquired.turn_id)
             .bind(ending.status)
             .bind(ending.label)
-            .bind(af_core::event::status::RECEIVED)
+            .bind(af_core::turn::status::RECEIVED)
             .bind(ending.detail)
             .bind(afd_api_wire::approval::status::PENDING)
             .fetch_optional(&mut *transaction)
@@ -222,7 +222,7 @@ impl Runs {
         acquired: &Acquired,
         notice: &str,
     ) -> Result<Option<Uuid7>> {
-        let event = acquired.event_id.as_str();
+        let event = acquired.turn_id.as_str();
         let Some(reply) = Self::reply_destination(connection, &acquired.fleet_id, event).await?
         else {
             return Ok(None);
@@ -234,7 +234,7 @@ impl Runs {
                 workspace_id: &acquired.workspace_id,
                 provider: reply.provider,
                 destination: &reply.address,
-                event_id: &acquired.event_id,
+                turn_id: &acquired.turn_id,
                 answer: notice,
             },
             af_core::clock::now(),

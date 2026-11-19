@@ -95,7 +95,7 @@ fn job() -> Outgoing {
         destination: DESTINATION.to_owned(),
         workspace_id: mint_id(),
         fleet_id: mint_id(),
-        event_id: mint_id(),
+        turn_id: mint_id(),
         answer: "Aurora is healthy.".to_owned(),
     }
 }

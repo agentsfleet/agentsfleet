@@ -98,7 +98,7 @@ impl RunService {
         let Some(run) = loaded? else {
             return Err(run_not_found());
         };
-        clock.identify(run.event_id.as_str(), run.fleet_id.as_str());
+        clock.identify(run.turn_id.as_str(), run.fleet_id.as_str());
 
         let run_key = run_id.clone();
         let task_plan = self
@@ -138,7 +138,7 @@ impl RunService {
                 .await,
             ),
         };
-        let last_event = Uuid7::parse(request.checkpoint.last_event_id.as_ref())?;
+        let last_event = Uuid7::parse(request.checkpoint.last_turn_id.as_ref())?;
         let mut report = terminal(
             Subject {
                 id: run_id,

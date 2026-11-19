@@ -25,8 +25,8 @@ pub(in crate::task) async fn lock(
     current: &RunRow,
     plan: &PreparedPlan,
 ) -> Result<Source> {
-    let source = load(connection, current, &plan.source_admission_id).await?;
-    check_claim(&source, run, current, &plan.source_admission_id)?;
+    let source = load(connection, current, &plan.source_turn_id).await?;
+    check_claim(&source, run, current, &plan.source_turn_id)?;
     Ok(source)
 }
 
@@ -57,7 +57,7 @@ pub(in crate::task) fn check_claim(
 ) -> Result<()> {
     let owns_claim = source.input_claim_run_id.as_ref() == Some(run.run_id)
         && source.input_claim_fence == Some(current.fence);
-    if admission.as_str() != current.source_admission_id && !owns_claim {
+    if admission.as_str() != current.source_turn_id && !owns_claim {
         return Err(TaskRefusal::StaleState.into());
     }
     Ok(())
@@ -123,7 +123,7 @@ pub(in crate::task) fn message_for<'a>(
     body: &'a str,
 ) -> Result<std::borrow::Cow<'a, str>> {
     if producer != Producer::SlackMention.as_str() {
-        return Ok(af_wire::event::message_of(body));
+        return Ok(af_wire::turn::message_of(body));
     }
     let human: SlackPayload<'_> =
         serde_json::from_str(body).map_err(af_core::json::Unreadable::from)?;

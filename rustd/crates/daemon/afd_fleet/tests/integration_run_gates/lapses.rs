@@ -6,10 +6,10 @@
 //! queue, so the pass counts the runs an event was issued and stops at the
 //! cap.
 
-use af_core::event::label::RUN_EXPIRED;
-use af_core::event::status::FLEET_ERROR;
 use af_core::limits::EVENT_RUNS_MAX;
 use af_core::test_util::trace::Capture;
+use af_core::turn::label::RUN_EXPIRED;
+use af_core::turn::status::FLEET_ERROR;
 use afd_fleet::run::Billed;
 use afd_fleet::run::event::DETAIL_RUNS_LAPSED;
 
@@ -23,11 +23,11 @@ use crate::seed::{MODEL, POSTURE, PROVIDER};
 async fn funded(fixtures: &Fixtures) -> (Ready, Uuid7) {
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(fixtures).await;
     set_config(fixtures, &fleet, BUDGETED_CONFIG).await;
-    let event_id = chat(fixtures, &fleet, &workspace).await;
+    let turn_id = chat(fixtures, &fleet, &workspace).await;
     let seeded = Ready {
         runner,
         fleet,
-        event_id,
+        turn_id,
         tenant,
     };
     (seeded, workspace)
@@ -90,15 +90,12 @@ async fn an_event_whose_every_run_lapsed_is_ended_as_failed_and_frees_the_queue(
     );
     assert!(answer.is_none(), "a fourth run was issued: {answer:?}");
     assert_eq!(
-        terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
+        terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id).await,
         Some((FLEET_ERROR.to_owned(), RUN_EXPIRED.to_owned()))
     );
     assert_eq!(
         fixtures
-            .text(
-                Row::Event(&seeded.fleet, &seeded.event_id),
-                "failure_detail"
-            )
+            .text(Row::Event(&seeded.fleet, &seeded.turn_id), "failure_detail")
             .await
             .as_deref(),
         Some(DETAIL_RUNS_LAPSED)
@@ -107,7 +104,7 @@ async fn an_event_whose_every_run_lapsed_is_ended_as_failed_and_frees_the_queue(
     let next = chat(&fixtures, &seeded.fleet, &workspace).await;
     let held = claim(&fixtures, &seeded).await;
     assert_eq!(
-        (held.event_id, held.earlier_runs),
+        (held.turn_id, held.earlier_runs),
         (next, 0),
         "the fleet's next event is at the head of the queue, counted from nothing"
     );
@@ -128,7 +125,7 @@ async fn an_event_one_lapse_short_of_the_cap_is_assigned_again() {
 
     assert!(answer.is_some(), "the last run the cap allows was refused");
     assert_eq!(
-        terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
+        terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id).await,
         Some((STATUS_RECEIVED.to_owned(), String::new())),
         "the event is still open, running under its third holder"
     );
@@ -154,13 +151,13 @@ async fn an_event_ended_at_the_cap_is_logged_as_abandoned_and_never_as_a_refusal
     let cap = EVENT_RUNS_MAX.to_string();
     assert_eq!(
         (
-            line.field("agentsfleet_event_id"),
+            line.field("agentsfleet_turn_id"),
             line.field("label"),
             line.field("earlier_runs"),
             line.field("reason"),
         ),
         (
-            Some(seeded.event_id.as_str()),
+            Some(seeded.turn_id.as_str()),
             Some(RUN_EXPIRED),
             Some(cap.as_str()),
             Some(DETAIL_RUNS_LAPSED),

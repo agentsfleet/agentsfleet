@@ -85,11 +85,11 @@ pub(crate) fn claim(run: &Value) -> (String, u64) {
 
 /// Read the pushed offer for this scenario's event through the production runner downlink.
 pub(crate) async fn wait_for_seeded_offer(scene: &Scenario) -> (String, u64) {
-    wait_for_offer(scene, &scene.event_id).await
+    wait_for_offer(scene, &scene.turn_id).await
 }
 
 /// Wait for the requested event without issuing another run request.
-pub(crate) async fn wait_for_offer(scene: &Scenario, event_id: &Uuid7) -> (String, u64) {
+pub(crate) async fn wait_for_offer(scene: &Scenario, turn_id: &Uuid7) -> (String, u64) {
     let client = scene.native_session().await;
     let reading = async {
         let mut elsewhere = Vec::new();
@@ -102,7 +102,7 @@ pub(crate) async fn wait_for_offer(scene: &Scenario, event_id: &Uuid7) -> (Strin
             else {
                 panic!("this fleet fixture received an authoring offer")
             };
-            if run.event.event_id == event_id.as_str() {
+            if run.event.turn_id == turn_id.as_str() {
                 return (run.run_id.to_string(), run.fencing_token);
             }
             elsewhere.push(run.event.fleet_id.to_string());
@@ -192,10 +192,10 @@ where
 /// sends it TWICE — three literals of eleven fields is three chances for the
 /// cumulative counts to disagree and for the dedup assertion to be measuring a
 /// different report rather than the same one.
-pub(crate) fn report_body(run_id: &str, event_id: &Uuid7, fence: u64) -> Value {
+pub(crate) fn report_body(run_id: &str, turn_id: &Uuid7, fence: u64) -> Value {
     json!({
         "run_id": run_id,
-        "event_id": event_id,
+        "turn_id": turn_id,
         "fencing_token": fence,
         "outcome": "processed",
         "failure_reason": null,
@@ -209,7 +209,7 @@ pub(crate) fn report_body(run_id: &str, event_id: &Uuid7, fence: u64) -> Value {
             "output_tokens": OUTPUT_TOKENS,
         }],
         "telemetry": {"time_to_first_token_ms": 42, "wall_ms": 1_500},
-        "checkpoint": {"last_event_id": event_id, "last_response": "the fixture scene produced this"},
+        "checkpoint": {"last_turn_id": turn_id, "last_response": "the fixture scene produced this"},
     })
 }
 

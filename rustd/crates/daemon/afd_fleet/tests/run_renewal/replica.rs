@@ -12,7 +12,7 @@ use afd_db::{Db, config::DbRole, test_util::TestDatabase};
 use afd_fleet::run::{Billed, Kind, Runs};
 
 const ORIGINAL: &str = "\
-SELECT e.id, l.status FROM thread.runs l JOIN thread.turns e ON e.id = l.event_id
+SELECT e.id, l.status FROM thread.runs l JOIN thread.turns e ON e.id = l.turn_id
 WHERE l.id = $1";
 
 pub(super) struct Replica {
@@ -70,7 +70,7 @@ impl Replica {
             .await
             .expect("issue reaches Postgres")
             .expect("the freed slot admits the re-held event");
-        (acquired.event_id, issued.run_id)
+        (acquired.turn_id, issued.run_id)
     }
 
     pub(super) async fn stop(self) {

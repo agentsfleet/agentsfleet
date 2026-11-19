@@ -85,7 +85,7 @@ mod tests {
                     .to_owned(),
                 workspace_id: afd_db::test_util::mint_id(),
                 fleet_id: afd_db::test_util::mint_id(),
-                event_id: afd_db::test_util::mint_id(),
+                turn_id: afd_db::test_util::mint_id(),
                 answer: "the private answer text".to_owned(),
             },
         };

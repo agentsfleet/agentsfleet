@@ -103,7 +103,7 @@ async fn assert_model_notice(fleet: &Fleet, selected: &str) {
         fleet.case.base.model.as_str()
     );
     assert_eq!(
-        events(fleet, "events").await["items"]
+        fleet_read(fleet, "turns").await["items"]
             .as_array()
             .expect("history items")
             .iter()
@@ -154,7 +154,7 @@ async fn select_model(fleet: &Fleet, draft: &str, model: &str) -> Value {
     json!({"draft_candidate_id":edited["candidate"]["id"],"review_digest":edited["review"]["review_digest"]})
 }
 
-async fn events(fleet: &Fleet, suffix: &str) -> Value {
+async fn fleet_read(fleet: &Fleet, suffix: &str) -> Value {
     let response = send(
         &fleet.case.router,
         Method::GET,
@@ -169,7 +169,7 @@ async fn events(fleet: &Fleet, suffix: &str) -> Value {
 
 /// Assert every saved revision's receipts while keeping model notices distinct.
 async fn history_with_receipts(fleet: &Fleet, revision: u32) -> Vec<Value> {
-    let history = events(fleet, "messages").await;
+    let history = fleet_read(fleet, "messages").await;
     let items = history["items"].as_array().expect("thread items");
     let mut receipts = Vec::new();
     let mut notices = Vec::new();

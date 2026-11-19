@@ -3,7 +3,7 @@ use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::Acquire as _;
 
-use super::decode::{DetailRow, EventRow, ItemRow};
+use super::decode::{DetailRow, ItemRow, TurnRow};
 use super::{
     KeysetCursor, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem, RunnerPage, events,
 };
@@ -63,7 +63,7 @@ impl Runners {
         let more = trim_to_page(&mut rows, limit);
         let items = rows
             .into_iter()
-            .map(EventRow::parse)
+            .map(TurnRow::parse)
             .collect::<Result<Vec<_>>>()?;
         Ok(RunnerEventPage {
             next_cursor: events::cursor(&items, more)?,

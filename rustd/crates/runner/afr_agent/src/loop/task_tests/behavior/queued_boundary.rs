@@ -58,7 +58,7 @@ impl RunVerbs for Queued {
         input: TaskInputReceiptInput,
     ) -> Result<TaskInputReceiptResult, Unanswered> {
         assert_eq!(input.mode, TaskInputMode::Answered);
-        assert_eq!(input.source_admission_id, SOURCE);
+        assert_eq!(input.source_turn_id, SOURCE);
         let result = TaskInputReceiptResult {
             item_id: input.item_id.clone(),
             mode: input.mode,
@@ -92,7 +92,7 @@ fn queued() -> Queued {
     {
         let mut inputs = intake.inputs.lock().expect("queued source");
         inputs.inputs.push(TaskHumanInput {
-            source_admission_id: SOURCE.to_owned(),
+            source_turn_id: SOURCE.to_owned(),
             sequence: 1,
             message: "hello".to_owned(),
             accepted: None,

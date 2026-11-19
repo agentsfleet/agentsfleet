@@ -38,7 +38,7 @@
 )]
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
@@ -50,10 +50,10 @@ use crate::tail::{next_frame, settle};
 use crate::wire::{capable_beat, field, report_body, wait_for_offer, wait_for_seeded_offer};
 
 /// The event type the daemon has an execution path for, so an extra append is
-/// leasable rather than ended as unsupported. `EventType` is a closed set and
+/// leasable rather than ended as unsupported. `TurnKind` is a closed set and
 /// the ledger takes the type itself, so this cannot drift to a spelling the
 /// pull path would end.
-const SUPPORTED_EVENT: EventType = EventType::Chat;
+const SUPPORTED_EVENT: TurnKind = TurnKind::Chat;
 
 /// The text a forwarded chunk carries.
 const CHUNK_TEXT: &str = "the cluster carried this across its nodes";
@@ -86,7 +86,7 @@ async fn prove_capabilities(scene: &Scenario) {
 async fn a_second_admission_is_a_second_event(scene: &Scenario) -> Uuid7 {
     let second = scene.enqueue_event(SUPPORTED_EVENT).await;
     assert_ne!(
-        second, scene.event_id,
+        second, scene.turn_id,
         "the append minted a new logical event rather than returning the first"
     );
     second
@@ -152,8 +152,8 @@ async fn a_frame_crosses_the_cluster_to_its_subscriber(scene: &Scenario, run_id:
         "and it carries the payload that was posted, not an empty envelope"
     );
     assert_eq!(
-        field(&frame, "event_id"),
-        &json!(scene.event_id),
+        field(&frame, "turn_id"),
+        &json!(scene.turn_id),
         "stamped with the event the run is executing, which is how the \
          dashboard groups a fleet's tail"
     );
@@ -170,7 +170,7 @@ async fn a_frame_crosses_the_cluster_to_its_subscriber(scene: &Scenario, run_id:
 /// assumed.
 async fn a_report_settles_once(scene: &Scenario, run_id: &str, fence: u64) {
     let before = balance(scene).await;
-    let report = report_body(run_id, &scene.event_id, fence);
+    let report = report_body(run_id, &scene.turn_id, fence);
 
     let settled = crate::wire::report(scene, &report).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");

@@ -39,31 +39,31 @@ fn decimal<S: serde::Serializer, T: std::fmt::Display>(
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum Frame<'a> {
     TaskDecisionStarted {
-        event_id: &'a Uuid7,
+        turn_id: &'a Uuid7,
         progress: &'a af_wire::activity::TaskActivity,
     },
     TaskDecisionCompleted {
-        event_id: &'a Uuid7,
+        turn_id: &'a Uuid7,
         progress: &'a af_wire::activity::TaskActivity,
     },
     TaskTransferProgress {
-        event_id: &'a Uuid7,
+        turn_id: &'a Uuid7,
         progress: &'a af_wire::activity::TaskActivity,
     },
     ContextProgress {
-        event_id: &'a Uuid7,
+        turn_id: &'a Uuid7,
         #[serde(flatten)]
         progress: af_wire::context::ContextProgress,
     },
     ToolCallStarted {
-        event_id: &'a Uuid7,
+        turn_id: &'a Uuid7,
         name: &'a str,
         /// Spliced in verbatim, NOT re-encoded — see [`Published::of`].
         args_redacted: &'a RawValue,
         call_id: String,
     },
     ToolCallProgress {
-        event_id: &'a Uuid7,
+        turn_id: &'a Uuid7,
         name: &'a str,
         elapsed_ms: i64,
         call_id: String,
@@ -71,7 +71,7 @@ enum Frame<'a> {
     /// The one rename in the bridge: `fleet_response_chunk` on the wire.
     #[serde(rename = "chunk")]
     Chunk {
-        event_id: &'a Uuid7,
+        turn_id: &'a Uuid7,
         text: &'a str,
         text_kind: af_wire::activity::StreamTextKind,
         /// A subscriber trusts raw model text only from this first frame.
@@ -82,7 +82,7 @@ enum Frame<'a> {
         stream_seq: u64,
     },
     ToolCallCompleted {
-        event_id: &'a Uuid7,
+        turn_id: &'a Uuid7,
         name: &'a str,
         ms: i64,
         call_id: String,
@@ -112,36 +112,36 @@ impl<'a> Published<'a> {
         target: &'a Target,
         frame: &'a ActivityFrame<'a>,
     ) -> Result<Self, serde_json::Error> {
-        let event_id = &target.event_id;
+        let turn_id = &target.turn_id;
         let call_id = |call: &str| fenced_call_id(target.fence, call);
         let frame = match frame {
             ActivityFrame::TaskDecisionStarted(progress) => {
-                Frame::TaskDecisionStarted { event_id, progress }
+                Frame::TaskDecisionStarted { turn_id, progress }
             }
             ActivityFrame::TaskDecisionCompleted(progress) => {
-                Frame::TaskDecisionCompleted { event_id, progress }
+                Frame::TaskDecisionCompleted { turn_id, progress }
             }
             ActivityFrame::TaskTransferProgress(progress) => {
-                Frame::TaskTransferProgress { event_id, progress }
+                Frame::TaskTransferProgress { turn_id, progress }
             }
             ActivityFrame::ContextProgress(progress) => Frame::ContextProgress {
-                event_id,
+                turn_id,
                 progress: *progress,
             },
             ActivityFrame::ToolCallStarted(body) => Frame::ToolCallStarted {
-                event_id,
+                turn_id,
                 name: &body.name,
                 args_redacted: serde_json::from_str(&body.args_redacted)?,
                 call_id: call_id(&body.call_id),
             },
             ActivityFrame::ToolCallProgress(body) => Frame::ToolCallProgress {
-                event_id,
+                turn_id,
                 name: &body.name,
                 elapsed_ms: body.elapsed_ms,
                 call_id: call_id(&body.call_id),
             },
             ActivityFrame::FleetResponseChunk(body) => Frame::Chunk {
-                event_id,
+                turn_id,
                 text: &body.text,
                 text_kind: body.text_kind,
                 stream_start: body.stream_start && body.stream_seq == 0 && target.timing_eligible,
@@ -149,7 +149,7 @@ impl<'a> Published<'a> {
                 stream_seq: body.stream_seq,
             },
             ActivityFrame::ToolCallCompleted(body) => Frame::ToolCallCompleted {
-                event_id,
+                turn_id,
                 name: &body.name,
                 ms: body.ms,
                 call_id: call_id(&body.call_id),

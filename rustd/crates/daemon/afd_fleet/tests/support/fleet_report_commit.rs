@@ -29,7 +29,7 @@ pub(crate) const RESPONSE_POSTGRES_REFUSES: &str = "the answer\u{0}with a null i
 pub(crate) const RESPONSE_ACCEPTED: &str = "the fleet finished and said this";
 
 /// The event the fleet's next run resumes after, as the wire spells it.
-pub(crate) const RESUME_EVENT_ID: &str = "0198c3d2-1e00-7000-8000-00000000e5e0";
+pub(crate) const RESUME_TURN_ID: &str = "0198c3d2-1e00-7000-8000-00000000e5e0";
 
 /// The answer that next run resumes from.
 pub(crate) const RESUME_RESPONSE: &str = "resume from here";
@@ -71,7 +71,7 @@ pub(crate) fn report<'a>(
             wall_ms: SLICE_MS,
             tool_calls: None,
         },
-        last_event_id: crate::report_seed::resume_event(),
+        last_turn_id: crate::report_seed::resume_event(),
         last_response: RESUME_RESPONSE,
         held_until: None,
         now,
@@ -83,7 +83,7 @@ pub(crate) fn report<'a>(
 /// `why` names the route that got here, because three different empty claims
 /// share this assertion set and a bare failure would not say which one broke.
 pub(crate) async fn assert_nothing_landed(held: &Held, why: &str) {
-    let settled = held.fixtures.admission_settled(&held.event_id).await;
+    let settled = held.fixtures.admission_settled(&held.turn_id).await;
     assert!(!settled, "{why}: the admission remains runnable");
 
     assert_eq!(
@@ -94,9 +94,9 @@ pub(crate) async fn assert_nothing_landed(held: &Held, why: &str) {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Event(&held.fleet, &held.event_id), "status")
+            .text(Row::Event(&held.fleet, &held.turn_id), "status")
             .await,
-        Some(af_core::event::status::RECEIVED.to_owned()),
+        Some(af_core::turn::status::RECEIVED.to_owned()),
         "{why}: the event was never ended"
     );
     assert_eq!(
@@ -108,7 +108,7 @@ pub(crate) async fn assert_nothing_landed(held: &Held, why: &str) {
          would feed the next run an answer nobody was charged for"
     );
     assert_eq!(
-        held.fixtures.ledger_rows(&held.event_id).await,
+        held.fixtures.ledger_rows(&held.turn_id).await,
         LEDGER_ROWS_BEFORE_SETTLE,
         "{why}: no usage line was logged; it belongs to a report that did not commit"
     );

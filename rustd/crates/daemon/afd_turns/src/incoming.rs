@@ -2,7 +2,7 @@
 //! on, where its answer goes, and the digest a retry is checked against.
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use sha2::{Digest as _, Sha256};
 
 /// Who is asking a fleet to run something.
@@ -112,7 +112,7 @@ pub enum Reply<'a> {
     Inherit {
         /// The id of the event whose destination is copied: its admission row's
         /// `UUIDv7`. An event recorded with no destination copies none.
-        event_id: &'a Uuid7,
+        turn_id: &'a Uuid7,
     },
 }
 
@@ -121,7 +121,7 @@ pub enum Reply<'a> {
 /// Borrowed throughout: every field is a slice of something the caller holds
 /// and the ledger reads each once.
 #[derive(Debug, Clone, Copy)]
-pub struct Admission<'a> {
+pub struct IncomingTurn<'a> {
     /// Who is asking.
     pub producer: Producer,
     /// What this unit of work is deduplicated on.
@@ -133,7 +133,7 @@ pub struct Admission<'a> {
     /// Who the history records as having woken the fleet.
     pub actor: &'a str,
     /// How the event entered the system.
-    pub event_type: EventType,
+    pub event_type: TurnKind,
     /// The trigger payload, already serialized.
     pub request_json: &'a str,
     /// Where the answer goes. No default: every producer states it, so one
@@ -147,7 +147,7 @@ const DIGEST_REPLY_TO: &str = "reply_to";
 /// Opens an inherited destination's parts in the payload digest.
 const DIGEST_REPLY_INHERIT: &str = "reply_inherit";
 
-impl Admission<'_> {
+impl IncomingTurn<'_> {
     /// The digest a producer key is checked against on a retry.
     ///
     /// Over the fields that make the event what it is — actor, type,
@@ -181,8 +181,8 @@ impl Admission<'_> {
                     .into_iter()
                     .for_each(absorb);
             }
-            Reply::Inherit { event_id } => {
-                [DIGEST_REPLY_INHERIT, event_id.as_str()]
+            Reply::Inherit { turn_id } => {
+                [DIGEST_REPLY_INHERIT, turn_id.as_str()]
                     .into_iter()
                     .for_each(absorb);
             }

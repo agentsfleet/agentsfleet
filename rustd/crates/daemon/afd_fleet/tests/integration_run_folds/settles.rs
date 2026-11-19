@@ -1,11 +1,11 @@
 //! What a report settles of the messages its run claimed.
 
-use af_core::event::status::PROCESSED;
+use af_core::turn::status::PROCESSED;
 use afd_fleet::run::Verdict;
 use afd_turns::Producer;
 
 use super::support::{
-    Checked, EventRow, STEER_JSON, Settlement, claim_as_holder, report_read_through, send, settled,
+    Checked, STEER_JSON, Settlement, TurnRow, claim_as_holder, report_read_through, send, settled,
     workspace_of,
 };
 use crate::report_commit::RESPONSE_ACCEPTED;
@@ -29,10 +29,10 @@ async fn test_a_succeeded_report_settles_what_the_run_read() -> Checked {
         settled(&held, &read.id).await?,
         Settlement {
             settled: true,
-            event: Some(EventRow {
+            event: Some(TurnRow {
                 status: PROCESSED.to_owned(),
                 response_text: Some(RESPONSE_ACCEPTED.to_owned()),
-                resumes_event_id: Some(held.event_id.clone()),
+                resumes_turn_id: Some(held.turn_id.clone()),
             }),
         }
     );

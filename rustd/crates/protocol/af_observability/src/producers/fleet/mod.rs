@@ -4,13 +4,13 @@
 //! path that calls them: [`runner`] is the per-runner table's, and what is left here is the account, run-poll,
 //! readiness and retention paths — each of which is one or two call sites.
 
-pub mod admission;
 pub mod cache;
 pub mod census;
 pub mod fold;
 pub mod history;
 pub mod hold;
 pub mod runner;
+pub mod turn;
 
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};
@@ -32,26 +32,26 @@ use crate::semconv;
 /// difference rather than for the failure.
 pub(super) const UNMODELLED_REASON: &str = "unknown";
 
-/// Unsettled admissions counted by the fleet census.
-static ADMISSION_BACKLOG: Observed = Observed::new();
+/// Unsettled fleet turns counted by the fleet census.
+static TURN_BACKLOG: Observed = Observed::new();
 
 /// How long the oldest of them had waited, in seconds.
-static ADMISSION_OLDEST: Observed = Observed::new();
+static TURN_BACKLOG_OLDEST: Observed = Observed::new();
 
 /// Publishes the unsettled backlog counted by a completed census pass.
 ///
 /// Both readings together, because they describe one backlog: rows without
 /// an age cannot say whether the sweeper is keeping up. An empty backlog
 /// publishes zero rows and zero age, which is a measurement, not a gap.
-pub fn admission_backlog_observed(rows: u64, oldest_age_seconds: u64) {
-    ADMISSION_BACKLOG.publish(rows);
-    ADMISSION_OLDEST.publish(oldest_age_seconds);
+pub fn turn_backlog_observed(rows: u64, oldest_age_seconds: u64) {
+    TURN_BACKLOG.publish(rows);
+    TURN_BACKLOG_OLDEST.publish(oldest_age_seconds);
 }
 
 /// Withdraw a failed census reading rather than publishing an invented zero.
-pub fn admission_backlog_withdrawn() {
-    ADMISSION_BACKLOG.withdraw();
-    ADMISSION_OLDEST.withdraw();
+pub fn turn_backlog_withdrawn() {
+    TURN_BACKLOG.withdraw();
+    TURN_BACKLOG_OLDEST.withdraw();
 }
 
 /// The instruments the runner plane and the sweepers record through.
@@ -77,7 +77,7 @@ pub struct Handles {
     report_answers: Counter<u64>,
     retention_swept: Counter<u64>,
     retention_failures: Counter<u64>,
-    admissions: Counter<u64>,
+    turns: Counter<u64>,
     runner_failures: Counter<u64>,
     runner_failures_overflow: Counter<u64>,
     runner_executions: Counter<u64>,
@@ -125,7 +125,7 @@ impl Handles {
             retention_swept: instruments.counter_u64(&declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
             retention_failures: instruments
                 .counter_u64(&declared::RUNNER_RETENTION_SWEEP_FAILURES_TOTAL)?,
-            admissions: instruments.counter_u64(&declared::ADMISSIONS_TOTAL)?,
+            turns: instruments.counter_u64(&declared::TURNS_TOTAL)?,
             runner_failures: instruments.counter_u64(&declared::RUNNER_FAILURES_TOTAL)?,
             runner_failures_overflow: instruments
                 .counter_u64(&declared::RUNNER_FAILURES_OVERFLOW_TOTAL)?,
@@ -146,10 +146,10 @@ impl Handles {
     /// Whatever [`Instruments`] refuses — see [`super::install`].
     fn observe_gauges(instruments: &Instruments, runners: &Arc<RunnerMetrics>) -> Result<()> {
         instruments.gauge_u64(&declared::FLEETS, census::fleet_census_readings)?;
-        instruments.gauge_u64(&declared::ADMISSION_BACKLOG, unlabelled(&ADMISSION_BACKLOG))?;
+        instruments.gauge_u64(&declared::TURN_BACKLOG, unlabelled(&TURN_BACKLOG))?;
         instruments.gauge_u64(
-            &declared::ADMISSION_BACKLOG_OLDEST_AGE_SECONDS,
-            unlabelled(&ADMISSION_OLDEST),
+            &declared::TURN_BACKLOG_OLDEST_AGE_SECONDS,
+            unlabelled(&TURN_BACKLOG_OLDEST),
         )?;
 
         let seen = Arc::clone(runners);

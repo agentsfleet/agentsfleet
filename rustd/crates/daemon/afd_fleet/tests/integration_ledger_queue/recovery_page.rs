@@ -34,7 +34,7 @@ async fn recovery_passes_sixty_four_locked_slots_and_retries_them_after_wrap() -
     assert!(scan.deferred());
     let (outcome, cost) = runs.select_recovery_measured(&runner, &mut scan).await;
     assert_eq!(
-        outcome?.ok_or("fleet outside the locked page")?.event_id,
+        outcome?.ok_or("fleet outside the locked page")?.turn_id,
         last.0
     );
     assert_eq!(cost.candidates_scanned, 1);
@@ -50,10 +50,7 @@ async fn recovery_passes_sixty_four_locked_slots_and_retries_them_after_wrap() -
     );
     let oldest = prefix.first().ok_or("old head")?;
     let (outcome, _) = runs.select_recovery_measured(&runner, &mut scan).await;
-    assert_eq!(
-        outcome?.ok_or("oldest fleet after wrap")?.event_id,
-        oldest.0
-    );
+    assert_eq!(outcome?.ok_or("oldest fleet after wrap")?.turn_id, oldest.0);
     fixtures.cleanup().await;
     Ok(())
 }
@@ -91,14 +88,14 @@ async fn unlocked_older_heads_return_while_newer_work_stays_ready() -> Checked {
         .await
         .0?
         .ok_or("newer head")?;
-    assert_eq!(&arrived.event_id, &later.first().ok_or("later queue")?.0);
+    assert_eq!(&arrived.turn_id, &later.first().ok_or("later queue")?.0);
     lock.rollback().await?;
     drop(connection);
 
     for _ in 0..64 {
         let (next, _) = runs.select_recovery_measured(&runner, &mut scan).await;
         let next = next?.ok_or("newer work must remain available throughout the probe")?;
-        if next.event_id == oldest.0 {
+        if next.turn_id == oldest.0 {
             fixtures.cleanup().await;
             return Ok(());
         }

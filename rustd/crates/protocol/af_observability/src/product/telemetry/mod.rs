@@ -109,7 +109,7 @@ pub enum Telemetry {
         /// The fleet.
         fleet_id: String,
         /// The stream entry that woke it.
-        event_id: String,
+        turn_id: String,
         /// What kind of producer that was.
         source: String,
     },
@@ -122,7 +122,7 @@ pub enum Telemetry {
         /// The fleet.
         fleet_id: String,
         /// The stream entry it ran from.
-        event_id: String,
+        turn_id: String,
         /// Tokens spent.
         tokens: u64,
         /// Wall milliseconds it took.

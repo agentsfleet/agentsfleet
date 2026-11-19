@@ -11,7 +11,7 @@ use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use afd_connector::Provider;
 use afd_db::{Db, DbRole, PoolConfig};
-use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed};
+use afd_ingress::slack::{ChannelId, MentionTurn, NoticeOwed};
 use afd_ingress::{Binding, Delivery, Ingress, Surface};
 use afd_vault::Vault;
 use jiff::Timestamp;
@@ -49,7 +49,7 @@ fn refusing() -> Ingress {
         Entropy::new(),
     );
     let admissions =
-        afd_turns::Admissions::for_tests(database.clone(), afd_bus::test_util::unreachable());
+        afd_turns::Turns::for_tests(database.clone(), afd_bus::test_util::unreachable());
     Ingress::new(database, vault, admissions)
 }
 
@@ -144,8 +144,8 @@ async fn every_reader_on_the_seam_reaches_a_store() {
 }
 
 /// One Slack mention of `fleet`, as the admission reader takes it.
-fn mention<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> MentionAdmission<'a> {
-    MentionAdmission {
+fn mention<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> MentionTurn<'a> {
+    MentionTurn {
         fleet,
         workspace,
         team_id: "TSEAM",

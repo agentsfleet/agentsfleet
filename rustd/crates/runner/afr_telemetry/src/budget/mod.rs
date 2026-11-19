@@ -13,7 +13,7 @@
 //! # Why the root is always kept
 //!
 //! Each run is its own trace, joined to the daemon's `fleet.delivery` span by
-//! its `agentsfleet.event.id`; its `agentsfleet.run.id` tells a redelivered
+//! its `agentsfleet.turn.id`; its `agentsfleet.run.id` tells a redelivered
 //! event's runs apart. A trace
 //! whose root was shed is a pile of children an operator cannot find, so the
 //! root spends one of its run's spans and is never refused. It is charged to

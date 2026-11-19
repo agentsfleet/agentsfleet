@@ -67,7 +67,7 @@ fn read_permit(
         scope: MintScope {
             workspace_id: scope.workspace_id,
             fleet_id: scope.fleet_id,
-            event_id: owner.id.clone().into(),
+            turn_id: owner.id.clone().into(),
             binding: Some(binding),
             runner_credentials: Vec::new(),
         },

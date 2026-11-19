@@ -18,7 +18,7 @@ use afd_setup::{
     SavedFleet,
     types::{DraftState, SaveFleet, Start, StartOutcome, StartState},
 };
-use afd_turns::{Admissions, Budgets};
+use afd_turns::{Budgets, Turns};
 
 /// The initial run each case asks for, so a repeated stage would show as a
 /// second admission.
@@ -35,7 +35,7 @@ fn accepted(saved: &SavedFleet) -> &str {
     match &saved.start {
         StartOutcome::RunNow {
             state: StartState::Accepted,
-            event_id: Some(event),
+            turn_id: Some(event),
             error_code: None,
         } => event,
         other => unreachable_outcome(other),
@@ -106,7 +106,7 @@ async fn an_aborted_activation_rolls_back_its_run_and_the_same_key_finishes_it_o
         "the stage before stays done"
     );
     assert!(
-        matches!(stalled.start, StartOutcome::RunNow { event_id: None, .. }),
+        matches!(stalled.start, StartOutcome::RunNow { turn_id: None, .. }),
         "the staged run rolled back with the activation"
     );
     assert_eq!(c.admissions(&fleet).await, NO_ADMISSIONS);
@@ -127,10 +127,9 @@ async fn an_aborted_activation_rolls_back_its_run_and_the_same_key_finishes_it_o
 async fn an_initial_run_over_the_deployment_backlog_budget_activates_blocked() {
     let c = Case::create().await;
     c.fund().await;
-    let full =
-        Admissions::new(c.base.db.clone(), c.bus.clone(), Entropy::new()).with_budgets(Budgets {
-            deployment_backlog: 0,
-        });
+    let full = Turns::new(c.base.db.clone(), c.bus.clone(), Entropy::new()).with_budgets(Budgets {
+        deployment_backlog: 0,
+    });
     let creations = Creations::new(c.setup.clone(), full);
     let start = Start::RunNow {
         message: "Run once setup finishes".to_owned(),
@@ -145,7 +144,7 @@ async fn an_initial_run_over_the_deployment_backlog_budget_activates_blocked() {
         &saved.start,
         StartOutcome::RunNow {
             state: StartState::Blocked,
-            event_id: None,
+            turn_id: None,
             error_code: Some(code),
         } if code == error_code::INTERNAL_DB_UNAVAILABLE.as_str()
     );

@@ -230,8 +230,8 @@ there is no generic repository trait.
 | `task_object_pins` | One current capture/restore operation and deadline | versioned run/fence; retention serializes with task pin acquisition |
 | `task_storage_purges` | Durable remote-delete custody and quota-release receipt | opaque object/location plus charged bytes/disposition; no owner foreign key |
 | `schedules` | Cron or one-shot runs, synced to the external scheduler |  |
-| `sessions` | Resume bookmark `{last_event_id, last_response}` |  |
-| `events` | One row per delivery into the fleet | `UNIQUE(fleet_id, event_id)`; `task_activity` keeps an array of at most 128 public stages / 120 KB; native sequence and truncation are separate typed columns, within the public 128 KiB ceiling |
+| `sessions` | Resume bookmark `{last_turn_id, last_response}` |  |
+| `events` | One row per delivery into the fleet | `UNIQUE(fleet_id, turn_id)`; `task_activity` keeps an array of at most 128 public stages / 120 KB; native sequence and truncation are separate typed columns, within the public 128 KiB ceiling |
 | `admissions` | Sole work queue; retries cannot duplicate work; claims and reports fence each row | optional task/item association; `input_claim_run_id` and `input_claim_fence` stamp a message a live run claimed |
 | `approval_gates` | A risky action waiting for a person |  |
 | `deliveries` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; `next_attempt_at` defers a released row |
@@ -248,7 +248,7 @@ omit its model and review then resolves the tenant default.
 ## runner
 
 ```
- runners ◀── runs ··▶ fleet.events (event_id), fleet.fleets (fleet_id): opaque, no FK
+ runners ◀── runs ··▶ fleet.events (turn_id), fleet.fleets (fleet_id): opaque, no FK
          ◀── events, lifetime_counters (1:1)
  fleet_slots (1 per fleet) ──▶ runners (last_runner_id), fleet.fleets
  runners ──▶ identity.tenants (tenant_id, NULL for a platform runner)   ON DELETE CASCADE
@@ -270,7 +270,7 @@ omit its model and review then resolves the tenant default.
 Degraded and self-test pass are derived on read (`degraded_reason IS NOT NULL`, every check passed),
 keeping "no self-test yet" distinct from "self-test failed".
 
-`runs.event_created_at` is the producer's instant billing uses, which the event row does not hold.
+`runs.turn_created_at` is the producer's instant billing uses, which the event row does not hold.
 The run's `actor` and `event_type` come from a join to `fleet.events`, as reclaim already does.
 
 The metering sweep finds expired runs with an unbilled tail through
@@ -324,7 +324,7 @@ Nothing is set aside before work runs. A funds check reads the balance less the 
 lines, and no `holds` table exists (billing §11).
 
 Money outlives every deletion. `usage_lines` carries opaque `tenant_id`, `workspace_id`,
-`fleet_id` and `authoring_attempt_id` values with no foreign key, and `usage_daily` and
+`fleet_id` and `run_id` values with no foreign key, and `usage_daily` and
 `runs_daily` carry opaque `tenant_id` and `fleet_id` the same way. `setup.attempts` keeps
 its workspace, tenant and user identifiers without a foreign key.
 

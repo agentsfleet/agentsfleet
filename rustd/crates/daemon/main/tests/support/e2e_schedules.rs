@@ -162,7 +162,7 @@ impl Assigned {
 
     /// Settles the held run, so the fleet takes its next event.
     pub(crate) async fn settle(&self) {
-        let report = report_body(self.run_id.as_str(), &self.scene.event_id, self.fence);
+        let report = report_body(self.run_id.as_str(), &self.scene.turn_id, self.fence);
         let reported = crate::wire::report(&self.scene, &report).await;
         assert!(reported.is_ok(), "native report refused: {reported:?}");
     }
@@ -264,7 +264,7 @@ impl Assigned {
         let mut connection = self.connection().await;
         sqlx::query(
             "UPDATE thread.turns SET actor = $2 \
-             WHERE id = (SELECT event_id FROM thread.runs WHERE id = $1)",
+             WHERE id = (SELECT turn_id FROM thread.runs WHERE id = $1)",
         )
         .bind(&self.run_id)
         .bind(format!(

@@ -16,7 +16,7 @@ use crate::lane::Lane;
 use crate::release::{INNER, MARKER, small_image};
 use crate::run::{expect, runtime};
 
-/// Admissions raced against the swapping path.
+/// Turns raced against the swapping path.
 const ADMISSIONS: usize = 1000;
 /// What the authorized image and the decoy say in their marker file.
 const AUTHORIZED: &str = "authorized";

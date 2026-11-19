@@ -9,7 +9,7 @@ use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
 use afd_api::services::WebhookIngress;
 use afd_db::test_util::mint_id;
-use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed, NoticeOwner, Subscriber};
+use afd_ingress::slack::{ChannelId, MentionTurn, NoticeOwed, NoticeOwner, Subscriber};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Result as IngressResult, Surface};
 use afd_turns::Repeated;
 use jiff::Timestamp;
@@ -109,7 +109,7 @@ impl WebhookIngress for HarnessIngress {
         }
     }
 
-    async fn admit_mention(&self, mention: MentionAdmission<'_>) -> IngressResult<Admitted> {
+    async fn admit_mention(&self, mention: MentionTurn<'_>) -> IngressResult<Admitted> {
         match self {
             Self::Unreachable(ingress) => ingress.admit_mention(mention).await,
             Self::Scripted(scripted) => {

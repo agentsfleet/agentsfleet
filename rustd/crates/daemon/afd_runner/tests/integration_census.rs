@@ -36,10 +36,10 @@ async fn test_census_publishes_every_status() {
     assert_statuses(swept.scanned);
     fixture.seed_backlog().await;
     census.sweep().await.expect("the backlog counts");
-    assert_eq!(capture.gauge("agentsfleet_admission_backlog", &[]), Some(3));
+    assert_eq!(capture.gauge("agentsfleet_turn_backlog", &[]), Some(3));
     assert!(
         capture
-            .gauge("agentsfleet_admission_backlog_oldest_age_seconds", &[])
+            .gauge("agentsfleet_turn_backlog_oldest_age_seconds", &[])
             .is_some_and(|age| age >= 299)
     );
 
@@ -48,9 +48,9 @@ async fn test_census_publishes_every_status() {
         .sweep()
         .await
         .expect_err("a closed database withdraws its readings");
-    assert_eq!(capture.gauge("agentsfleet_admission_backlog", &[]), None);
+    assert_eq!(capture.gauge("agentsfleet_turn_backlog", &[]), None);
     assert_eq!(
-        capture.gauge("agentsfleet_admission_backlog_oldest_age_seconds", &[]),
+        capture.gauge("agentsfleet_turn_backlog_oldest_age_seconds", &[]),
         None
     );
     assert!(fleet_census_readings().is_empty());
@@ -148,10 +148,10 @@ impl Fixture {
             .bind(&self.fleets.first().expect("seeded fleet").0)
             .bind(&self.workspace)
             .bind(afd_turns::Producer::Steer.as_str())
-            .bind(af_wire::event::EventType::Chat.as_str())
+            .bind(af_wire::turn::TurnKind::Chat.as_str())
             .bind(ordinal == 1)
             .bind(ordinal == 3)
-            .bind(af_core::event::status::QUEUED)
+            .bind(af_core::turn::status::QUEUED)
             .execute(&mut *connection)
             .await
             .expect("backlog fixture");

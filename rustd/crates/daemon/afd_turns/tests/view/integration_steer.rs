@@ -2,11 +2,11 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_turns::view::{ACTOR_MACHINE, Steer};
 
 use crate::integration_steer_retry::{REQUEST_JSON, append_with, queued_ids};
-use crate::support::EventsLane;
+use crate::support::TurnsLane;
 
 #[derive(Debug, sqlx::FromRow)]
 struct Envelope {
@@ -22,7 +22,7 @@ struct Envelope {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_steer_returns_the_queued_identity_and_preserves_its_envelope() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let accepted = Steer::new(lane.admissions())
         .append(
             &lane.fleet,
@@ -43,9 +43,9 @@ async fn test_steer_returns_the_queued_identity_and_preserves_its_envelope() {
     .fetch_one(&mut *connection)
     .await
     .expect("one serving queue row");
-    assert_eq!(row.id, accepted.event_id);
+    assert_eq!(row.id, accepted.turn_id);
     assert_eq!(row.actor, ACTOR_MACHINE);
-    assert_eq!(row.event_type, EventType::Chat.as_str());
+    assert_eq!(row.event_type, TurnKind::Chat.as_str());
     assert_eq!(row.workspace, lane.workspace);
     // JSONB keeps the body's meaning, not its bytes.
     assert_eq!(
@@ -60,7 +60,7 @@ async fn test_steer_returns_the_queued_identity_and_preserves_its_envelope() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_two_keyless_sends_of_equal_text_are_two_queued_messages() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
     let first = append_with(&steer, &lane, None).await;
     let second = append_with(&steer, &lane, None).await;

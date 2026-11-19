@@ -73,7 +73,7 @@ WITH asked AS (
   ORDER BY s.fleet_id
   FOR UPDATE OF s
 ), probe AS MATERIALIZED (
-  SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id, l.fencing_token,
+  SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token,
          l.created_at, l.run_expires_at, l.last_metered_at, l.posture, l.provider,
          l.model, l.task_id, l.max_runtime_seconds, l.cancel_requested_at IS NOT NULL AS cancelled,
          s.fencing_token AS live_fence, s.run_expires_at AS slot_expires_at
@@ -127,7 +127,7 @@ WITH asked AS (
              AS over_budget,
          EXISTS (SELECT 1 FROM census) AS host_renews,
          EXISTS (SELECT 1 FROM thread.turns ad
-                 WHERE ad.id = p.event_id AND ad.thread_id = p.fleet_id
+                 WHERE ad.id = p.turn_id AND ad.thread_id = p.fleet_id
                    AND ad.run_fence = p.fencing_token AND ad.settled_at IS NULL)
              AS admitted
   FROM probe p
@@ -169,12 +169,12 @@ WITH asked AS (
 ), lines AS (
   INSERT INTO billing.usage_lines
       (id, work_type, work_id, kind, seq, tenant_id, workspace_id, fleet_id, fleet_name,
-       event_id, authoring_attempt_id, provider, model, posture, requested_at,
+       turn_id, run_id, provider, model, posture, requested_at,
        input_token_count, cached_input_token_count, cache_write_token_count,
        cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms,
        platform_model_price_id, unpriced_token_count, charged_nanos, created_at, updated_at)
   SELECT line.id, $30, g.id, line.kind, line.seq, g.tenant_id, g.workspace_id, g.fleet_id,
-         f.name, g.event_id, NULL, g.provider, g.model, g.posture, line.requested_at,
+         f.name, g.turn_id, NULL, g.provider, g.model, g.posture, line.requested_at,
          line.input, line.cached, line.write, line.write_5m, line.write_1h, line.output,
          line.runtime_ms, line.price_id, line.unpriced, line.charged, now(), now()
   FROM (

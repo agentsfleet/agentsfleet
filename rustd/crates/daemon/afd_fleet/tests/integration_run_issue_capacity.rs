@@ -156,7 +156,7 @@ async fn a_failed_task_source_attach_restores_the_exact_idle_hold_and_issue_tall
     let mut connection = case.fixtures.database.acquire().await?;
     // Deleting a task clears its foreign key while retaining its claimed generation.
     sqlx::query("UPDATE thread.turns SET task_generation=1 WHERE id=$1")
-        .bind(&warm.event_id)
+        .bind(&warm.turn_id)
         .execute(&mut *connection)
         .await?;
     assert!(case.issue(&warm).await?.is_none());
@@ -166,7 +166,7 @@ async fn a_failed_task_source_attach_restores_the_exact_idle_hold_and_issue_tall
         "attach refusal rolls back the consumed hold, run, choice and counters"
     );
     sqlx::query("UPDATE thread.turns SET task_generation=NULL WHERE id=$1")
-        .bind(&warm.event_id)
+        .bind(&warm.turn_id)
         .execute(&mut *connection)
         .await?;
     required(case.issue(&warm).await?)?;

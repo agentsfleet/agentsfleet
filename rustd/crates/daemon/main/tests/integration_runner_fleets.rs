@@ -64,12 +64,12 @@ fn item_of<'a>(page: &'a Value, fleet: &Uuid7) -> &'a Value {
 async fn assert_waiting_message_is_queued(crew: &Crew, run: &str, fence: u64) {
     let waiting = crew
         .run()
-        .enqueue_event(af_wire::event::EventType::Chat)
+        .enqueue_event(af_wire::turn::TurnKind::Chat)
         .await;
     let fleet = &crew.run().fleet;
     let (status, events) = crew
         .read(&format!(
-            "/v1/runners/me/runs/{run}/fleets/{fleet}/events?fencing_token={fence}"
+            "/v1/runners/me/runs/{run}/fleets/{fleet}/turns?fencing_token={fence}"
         ))
         .await;
     assert_eq!(status, 200, "{events}");
@@ -77,7 +77,7 @@ async fn assert_waiting_message_is_queued(crew: &Crew, run: &str, fence: u64) {
         .as_array()
         .expect("items")
         .iter()
-        .find(|item| item["event_id"] == waiting.as_str())
+        .find(|item| item["turn_id"] == waiting.as_str())
         .expect("the waiting message is listed");
     assert_eq!(queued["status"], "queued");
     assert!(queued.get("response_excerpt").is_none(), "{queued}");
@@ -126,7 +126,7 @@ async fn fleets_read_refuses_a_fleet_from_another_workspace() {
 
     let (status, refused) = crew
         .read(&format!(
-            "/v1/runners/me/runs/{run}/fleets/{foreign}/events?fencing_token={fence}"
+            "/v1/runners/me/runs/{run}/fleets/{foreign}/turns?fencing_token={fence}"
         ))
         .await;
     assert_eq!(
@@ -139,7 +139,7 @@ async fn fleets_read_refuses_a_fleet_from_another_workspace() {
 
     let (status, _refused) = crew
         .read(&format!(
-            "/v1/runners/me/runs/{run}/fleets/docs-bot/events?fencing_token={fence}"
+            "/v1/runners/me/runs/{run}/fleets/docs-bot/turns?fencing_token={fence}"
         ))
         .await;
     assert_eq!(status, 400);
@@ -154,7 +154,7 @@ async fn fleets_read_refuses_a_run_the_runner_does_not_hold() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let (settled, fence) = crew.speaking.run_seeded().await;
-    let body = report_body(&settled, &crew.run().event_id, fence);
+    let body = report_body(&settled, &crew.run().turn_id, fence);
     let reported = report(crew.run(), &body).await;
     assert!(reported.is_ok(), "the seeded run settles: {reported:?}");
     assert_refused(read_fleets(&crew, &settled, fence).await, 404, "UZ-RUN-006");
@@ -164,7 +164,7 @@ async fn fleets_read_refuses_a_run_the_runner_does_not_hold() {
 
     let next = crew
         .run()
-        .enqueue_event(af_wire::event::EventType::Chat)
+        .enqueue_event(af_wire::turn::TurnKind::Chat)
         .await;
     let (live, fence) = wait_for_offer(crew.run(), &next).await;
     crew.speaking.supersede().await;

@@ -39,7 +39,6 @@ pub mod error_code;
 #[macro_use]
 mod error_shell;
 pub mod etag;
-pub mod event;
 pub mod id;
 pub mod json;
 pub mod limits;
@@ -51,6 +50,7 @@ pub mod problem;
 #[cfg(feature = "signal")]
 pub mod signal;
 pub mod spelling;
+pub mod turn;
 // The `tracing` capture every crate's suites share. Behind `test-util` so a
 // production build links none of it.
 #[cfg(feature = "test-util")]

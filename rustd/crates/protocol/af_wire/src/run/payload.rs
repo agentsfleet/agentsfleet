@@ -1,6 +1,6 @@
 //! Installed fleet work and the bounded history it carries.
 
-use crate::{event::EventEnvelope, policy::ExecutionPolicy};
+use crate::{policy::ExecutionPolicy, turn::TurnEnvelope};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
@@ -22,7 +22,7 @@ pub const ANSWER_FAILED_END: &str = "]";
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Turn<'a> {
-    /// The event's message, as `event::message_of` reads it.
+    /// The turn's message, as `turn::message_of` reads it.
     #[serde(borrow)]
     pub message: Cow<'a, str>,
     /// The fleet's answer, or the fixed text a reply-less or failed run reads as.
@@ -46,12 +46,12 @@ pub struct RunPayload<'a> {
     /// Exact committed ordinary-turn state; private bytes require a fenced native read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn_resume: Option<super::TurnResume>,
-    /// The instant after which the event becomes reclaimable.
+    /// The instant after which the turn becomes reclaimable.
     #[serde(with = "crate::instant")]
     pub run_expires_at: jiff::Timestamp,
-    /// The event to run.
+    /// The turn to run.
     #[serde(borrow)]
-    pub event: EventEnvelope<'a>,
+    pub event: TurnEnvelope<'a>,
     /// What the run is permitted to do.
     #[serde(borrow)]
     pub policy: ExecutionPolicy<'a>,
@@ -60,12 +60,12 @@ pub struct RunPayload<'a> {
     /// hard tool and secret policy stays in `policy`.
     #[serde(borrow)]
     pub instructions: Cow<'a, str>,
-    /// The fleet's earlier turns, oldest first, ahead of this event; empty
-    /// unless the event is a chat message.
+    /// The fleet's earlier turns, oldest first, ahead of this turn; empty
+    /// unless the turn is a chat message.
     #[serde(borrow)]
     pub history: Vec<Turn<'a>>,
-    /// True when the runner can reuse its latest held sandbox for a new event. Reassigned
-    /// events and expired or outdated sandboxes require a fresh sandbox.
+    /// True when the runner can reuse its latest held sandbox for a new turn. Reassigned
+    /// turns and expired or outdated sandboxes require a fresh sandbox.
     pub resume_hold: bool,
     /// Reviewed runner decision selection frozen at issue; no provider key.
     /// Absent on hosts without an enabled reviewed selection.
@@ -87,8 +87,8 @@ pub struct RunPayload<'a> {
     /// message that lands after the claim folds on the ask after the answer.
     pub inputs_waiting: bool,
     /// Whose work this is. Absent on a fleet's run, whose owner is the fleet
-    /// `event.fleet_id` names. A draft's run names the draft here, and its
-    /// `event` is the draft's message: `event_id` the message, `fleet_id` the
+    /// `turn.fleet_id` names. A draft's run names the draft here, and its
+    /// `turn` is the draft's message: `turn_id` the message, `fleet_id` the
     /// draft. Offered only to a protocol v3 runner.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<super::Owner<'a>>,

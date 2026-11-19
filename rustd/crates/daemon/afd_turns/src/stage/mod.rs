@@ -3,26 +3,26 @@
 pub(crate) mod insert;
 mod verdict;
 
-use crate::{Admission, Admissions, Admitted, Key, Result};
+use crate::{Admitted, IncomingTurn, Key, Result, Turns};
 use af_core::{clock, id::Uuid7};
 use sqlx::PgConnection;
 
 /// An immutable admission whose external budget reads completed before taking locks.
 #[derive(Debug)]
-pub struct PreparedAdmission<'a> {
-    admission: Admission<'a>,
+pub struct PreparedTurn<'a> {
+    admission: IncomingTurn<'a>,
     row_id: Uuid7,
     estimate: u64,
 }
 
-impl Admissions {
+impl Turns {
     /// Reads queue and deployment ceilings before a caller opens its transaction.
     ///
     /// # Errors
     /// Preserves capacity, entropy and datastore failures without recording acceptance.
-    pub async fn prepare<'a>(&self, admission: Admission<'a>) -> Result<PreparedAdmission<'a>> {
+    pub async fn prepare<'a>(&self, admission: IncomingTurn<'a>) -> Result<PreparedTurn<'a>> {
         let now = clock::now();
-        Ok(PreparedAdmission {
+        Ok(PreparedTurn {
             admission,
             row_id: self.entropy.uuid7(now)?,
             estimate: self.deployment_estimate(now).await,
@@ -41,7 +41,7 @@ impl Admissions {
     pub async fn stage(
         &self,
         connection: &mut PgConnection,
-        prepared: PreparedAdmission<'_>,
+        prepared: PreparedTurn<'_>,
     ) -> Result<Admitted> {
         let key = match prepared.admission.key {
             Key::Repeated(key) => key,

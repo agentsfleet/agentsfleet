@@ -35,7 +35,7 @@ use af_core::id::Uuid7;
 use afd_api_wire::approval::GateStatus;
 use afd_bus::Handle;
 use afd_db::Db;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use jiff_sqlx::ToSqlx as _;
 
 pub use self::row::{Cursor, Filter, GateRow, Resolution, Resolved};
@@ -64,14 +64,14 @@ pub struct Inbox {
     /// Where an approved gate's continuation is accepted, before anything is
     /// queued. Distinct from [`Self::bus`], which still publishes the
     /// answer frame a watcher sees.
-    admissions: Admissions,
+    admissions: Turns,
 }
 
 impl Inbox {
     /// A queue over `database`, continuing approved runs through
     /// `admissions` and announcing them on `queue`.
     #[must_use]
-    pub const fn new(database: Db, bus: Handle, admissions: Admissions) -> Self {
+    pub const fn new(database: Db, bus: Handle, admissions: Turns) -> Self {
         Self {
             database,
             bus,

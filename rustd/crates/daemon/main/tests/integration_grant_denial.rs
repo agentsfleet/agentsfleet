@@ -7,7 +7,7 @@ use crate::reads::event_column;
 use crate::wire::capable_beat;
 use af_core::id::Uuid7;
 use af_crypto::{entropy::Entropy, secret::Kek};
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_approval::{Decision, Inbox};
 use afd_fleet::run::Runs;
 use afd_vault::{SecretBody, SecretName, Vault};
@@ -103,7 +103,7 @@ async fn deny(scene: &Scenario) {
     Inbox::new(
         scene.booted.database.clone(),
         scene.booted.bus.clone(),
-        afd_turns::Admissions::for_tests(scene.booted.database.clone(), scene.booted.bus.clone()),
+        afd_turns::Turns::for_tests(scene.booted.database.clone(), scene.booted.bus.clone()),
     )
     .resolve(
         actions.first().expect("card").as_str(),
@@ -140,23 +140,23 @@ async fn refusal_drains(preended: bool) {
         sqlx::query_scalar::<_, bool>(
             "SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1",
         )
-        .bind(&scene.event_id)
+        .bind(&scene.turn_id)
         .fetch_one(&mut *scene.booted.database.acquire().await.expect("connection"))
         .await
         .expect("admission settlement reads")
     })
     .await;
-    let first_label = event_column(&scene, &scene.event_id, LABEL).await;
+    let first_label = event_column(&scene, &scene.turn_id, LABEL).await;
     let settled: bool =
         sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1")
-            .bind(&scene.event_id)
+            .bind(&scene.turn_id)
             .fetch_one(&mut *scene.booted.database.acquire().await.expect("database"))
             .await
             .expect("queue state");
-    let second = scene.enqueue_event(EventType::Chat).await;
+    let second = scene.enqueue_event(TurnKind::Chat).await;
     wait_without_offer(&scene, "the next denied event never settled", || async {
         event_column(&scene, &second, LABEL).await.as_deref()
-            == Some(af_core::event::label::GRANT_DENIED)
+            == Some(af_core::turn::label::GRANT_DENIED)
     })
     .await;
     let second_label = event_column(&scene, &second, LABEL).await;
@@ -202,20 +202,20 @@ async fn preend(scene: &Scenario, preended: bool) {
     if preended {
         // A pre-existing terminal narrative must settle the queue without executing.
         sqlx::query("UPDATE thread.turns SET status = $3, failure_reason = $4 WHERE thread_id = $1 AND id = $2")
-            .bind(&scene.fleet).bind(&scene.event_id)
-            .bind(af_core::event::status::GATE_BLOCKED)
-            .bind(af_core::event::label::GRANT_DENIED)
+            .bind(&scene.fleet).bind(&scene.turn_id)
+            .bind(af_core::turn::status::GATE_BLOCKED)
+            .bind(af_core::turn::label::GRANT_DENIED)
             .execute(&mut *scene.booted.database.acquire().await.expect("database"))
             .await.expect("terminal narrative");
     }
 }
 
 fn assert_denied_labels(first_label: Option<&str>, settled: bool, second_label: Option<&str>) {
-    assert_eq!(first_label, Some(af_core::event::label::GRANT_DENIED));
+    assert_eq!(first_label, Some(af_core::turn::label::GRANT_DENIED));
     assert!(settled, "a terminal refusal must settle its admission");
     assert_eq!(
         second_label,
-        Some(af_core::event::label::GRANT_DENIED),
+        Some(af_core::turn::label::GRANT_DENIED),
         "the next event must be reached after the denied one"
     );
 }

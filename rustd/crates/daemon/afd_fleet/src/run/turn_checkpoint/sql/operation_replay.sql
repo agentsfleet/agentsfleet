@@ -1,3 +1,3 @@
-SELECT turn_checkpoint_id AS checkpoint_id, event_id, fleet_id, workspace_id, request_digest, generation
+SELECT turn_checkpoint_id AS checkpoint_id, turn_id, fleet_id, workspace_id, request_digest, generation
 FROM runner.turn_checkpoint_operations
-WHERE event_id = $1 AND operation_id = $2
+WHERE turn_id = $1 AND operation_id = $2

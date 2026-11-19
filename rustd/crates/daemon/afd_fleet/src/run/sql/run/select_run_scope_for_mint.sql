@@ -3,7 +3,7 @@ WITH instant AS MATERIALIZED (
 )
 SELECT l.workspace_id, l.fleet_id,
        r.definition::text AS definition, CASE WHEN issued.id <> r.id THEN issued.definition::text END AS issued_definition,
-       COALESCE(issued.id = r.id, FALSE) AS issued_is_current, l.event_id
+       COALESCE(issued.id = r.id, FALSE) AS issued_is_current, l.turn_id
 FROM thread.runs l
 CROSS JOIN instant
 JOIN fleet.fleets f ON f.id = l.fleet_id

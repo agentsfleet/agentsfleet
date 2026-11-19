@@ -39,7 +39,7 @@ pub enum WorkKey {
     FleetRun(Uuid7),
     /// A setup-chat attempt, or a draft-owned run: setup work's own id. A
     /// draft run's lines keep this kind, so the charges page still shows
-    /// them as `authoring` with the run as their `authoring_attempt_id`.
+    /// them as `setup` with the run as their `run_id`.
     AuthoringAttempt(Uuid7),
 }
 
@@ -74,19 +74,19 @@ pub struct Account {
 /// What a charge names beside its work, for the charges page and budgets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Attribution {
-    /// A fleet run: the fleet, its name at charge time, and the event it ran.
+    /// A fleet run: the fleet, its name at charge time, and the turn it ran.
     Fleet {
         /// The fleet.
         fleet: Uuid7,
         /// The fleet's name when the line was written.
         fleet_name: String,
-        /// The event the run answered.
-        event_id: Uuid7,
+        /// The turn the run answered.
+        turn_id: Uuid7,
     },
     /// A setup-chat attempt; the attempt is the work itself.
     SetupChat,
     /// A draft-owned run's setup turn: the run is the work, and the line
-    /// names the draft message it ran as its `event_id`, so a line reaches its
+    /// names the draft message it ran as its `turn_id`, so a line reaches its
     /// draft through the run and its message directly.
     SetupRun {
         /// The draft message the run ran.

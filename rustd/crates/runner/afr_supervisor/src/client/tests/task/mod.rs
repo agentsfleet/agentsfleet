@@ -97,7 +97,7 @@ async fn typed_reads_preserve_fences_cursors_and_native_effect_receipts() {
     server.finish();
 }
 fn inputs() -> Value {
-    json!({"source_admission_id":ID,"accepted_revision_id":ID,"current_message":"private accepted message","inputs":[],"accepted_inputs":[],"current_task":null,"current_interpretation":null,"tasks":[],"next_cursor":"next-input"})
+    json!({"source_turn_id":ID,"accepted_revision_id":ID,"current_message":"private accepted message","inputs":[],"accepted_inputs":[],"current_task":null,"current_interpretation":null,"tasks":[],"next_cursor":"next-input"})
 }
 fn read_requests(inputs: &Value) -> Vec<Request> {
     vec![

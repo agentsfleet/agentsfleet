@@ -155,7 +155,7 @@ impl RecordingVerbs {
             answer,
             delivered,
             steered: Ok(af_wire::steer_verb::FleetSteerAccepted {
-                event_id: std::borrow::Cow::Borrowed(STEERED_EVENT),
+                turn_id: std::borrow::Cow::Borrowed(STEERED_EVENT),
                 replayed: false,
             }),
             asked: std::sync::Mutex::new(Vec::new()),

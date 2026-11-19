@@ -46,12 +46,12 @@ async fn thread_pages_use_one_statement_snapshot_before_and_after_delivery() {
     let queued = one_read(&history, &mut owner, &workspace, &fleet, None).await;
     assert_eq!(queued.len(), 1);
     let first = queued.first().expect("queued row");
-    assert_eq!(first.row.event_id, event);
+    assert_eq!(first.row.turn_id, event);
     assert_eq!(first.row.status, status::QUEUED);
     let cursor = Cursor::after(first.row.created_at, &event);
     assert_eq!(
         one_read(&history, &mut owner, &workspace, &fleet, Some(&cursor)).await,
-        [] as [afd_turns::view::EventDetailRow; 0]
+        [] as [afd_turns::view::TurnDetailRow; 0]
     );
     sqlx::query(DELIVER)
         .bind(&event)
@@ -62,7 +62,7 @@ async fn thread_pages_use_one_statement_snapshot_before_and_after_delivery() {
     let delivered = one_read(&history, &mut owner, &workspace, &fleet, None).await;
     assert_eq!(delivered.len(), 1);
     let delivered = delivered.first().expect("delivered row");
-    assert_eq!(delivered.row.event_id, event);
+    assert_eq!(delivered.row.turn_id, event);
     assert_eq!(delivered.row.status, status::RECEIVED);
     drop((history, owner));
     runtime.close().await;
@@ -76,7 +76,7 @@ async fn one_read(
     workspace: &Uuid7,
     fleet: &Uuid7,
     cursor: Option<&Cursor>,
-) -> Vec<afd_turns::view::EventDetailRow> {
+) -> Vec<afd_turns::view::TurnDetailRow> {
     let before: i64 = sqlx::query_scalar(READ_CALLS)
         .fetch_one(&mut *owner)
         .await

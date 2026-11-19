@@ -26,7 +26,7 @@ pub(super) async fn validate(
     };
     let pattern = format!("{}%", afd_turns::view::ACTOR_PREFIX);
     let actual: Vec<ClaimRow> = sqlx::query_as(include_str!("sql/validate_folds.sql"))
-        .bind(&owner.current.event_id)
+        .bind(&owner.current.turn_id)
         .bind(&owner.current.fleet_id)
         .bind(&owner.current.workspace_id)
         .bind(last.sequence)
@@ -44,7 +44,7 @@ pub(super) async fn validate(
     owner.fresh().await?;
     if actual.len() != folds.len()
         || actual.iter().zip(folds).any(|(row, saved)| {
-            row.id.as_str() != saved.event_id.0
+            row.id.as_str() != saved.turn_id.0
                 || row.sequence != saved.sequence
                 || !row.foldable
                 || writer.is_some_and(|(run, fence)| {

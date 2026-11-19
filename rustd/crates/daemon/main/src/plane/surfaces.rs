@@ -14,7 +14,7 @@ use af_crypto::secret::Kek;
 use afd_credential::provider::Providers;
 use afd_db::Db;
 use afd_tenant::session::Sessions as Logins;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 
 use super::config::{LoginConfig, ScheduleConfig};
 use super::{config, platform};
@@ -41,7 +41,7 @@ pub(super) fn authoring(
     drafts: afd_setup::Drafts,
     kek: &Arc<Kek>,
     providers: &Providers,
-    admissions: &Admissions,
+    admissions: &Turns,
     transport: afd_setup::Network,
     decisions: Option<&af_core::id::Uuid7>,
 ) -> Authoring {
@@ -82,7 +82,7 @@ pub(super) struct Outbound {
 pub(super) struct OutboundParts {
     pub(super) schedule: ScheduleConfig,
     pub(super) admin: Option<af_core::id::Uuid7>,
-    pub(super) admissions: Admissions,
+    pub(super) admissions: Turns,
     pub(super) vendor_client: reqwest::Client,
     pub(super) slack_api_base: String,
 }

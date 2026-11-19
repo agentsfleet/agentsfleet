@@ -8,7 +8,7 @@
 //! suites has nothing to race on. The support module is declared once and
 //! reached as `crate::support`.
 
-#[path = "support/events_lane.rs"]
+#[path = "support/turns_lane.rs"]
 mod support;
 
 // No datastore: a source scan over the workspace, so it carries no `#[ignore]`

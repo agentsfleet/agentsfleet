@@ -82,7 +82,7 @@ impl afr_agent::RunVerbs for FencedVerbs<'_> {
             .map_err(|failure| unanswered(&failure))?;
         body.decode::<FleetSteerAccepted<'_>>()
             .map(|accepted| FleetSteerAccepted {
-                event_id: Cow::Owned(accepted.event_id.into_owned()),
+                turn_id: Cow::Owned(accepted.turn_id.into_owned()),
                 replayed: accepted.replayed,
             })
             .map_err(|failure| unanswered(&failure))
@@ -205,7 +205,7 @@ impl afr_agent::Inbox for FencedVerbs<'_> {
                             .inputs
                             .into_iter()
                             .map(|input| afr_agent::Folded {
-                                event_id: input.event_id.into_owned(),
+                                turn_id: input.turn_id.into_owned(),
                                 sequence: input.sequence,
                                 text: input.text.into_owned(),
                             })

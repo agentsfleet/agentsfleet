@@ -38,8 +38,8 @@ WITH runner AS (
             NULL, NULL, now(), now(), now(), now())
 ), line AS (
     INSERT INTO billing.usage_lines
-      (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
-       authoring_attempt_id, provider, model, posture, requested_at, input_token_count,
+      (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, turn_id,
+       run_id, provider, model, posture, requested_at, input_token_count,
        cached_input_token_count, cache_write_token_count, cache_write_5m_token_count,
        cache_write_1h_token_count, output_token_count, runtime_ms, platform_model_price_id,
        unpriced_token_count, charged_nanos, created_at, updated_at)
@@ -48,7 +48,7 @@ WITH runner AS (
             now(), now())
 )
 INSERT INTO thread.runs
-  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
+  (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at, fencing_token, run_expires_at, status, posted_message_count,
    created_at, updated_at)
 VALUES ($5, $4, $3, $2, $1, $6, now(), 'platform',

@@ -29,12 +29,12 @@ fn test_the_events_answer_adds_no_bytes_around_either_document() {
         Some(r#"{"ignored":"fleet_not_active"}"#),
     );
     let accepted = EventsAnswer::Accepted(Accepted {
-        event_id: Cow::Borrowed("1700000000000-7"),
+        turn_id: Cow::Borrowed("1700000000000-7"),
         replayed: true,
     });
     assert_eq!(
         serde_json::to_string(&accepted).ok().as_deref(),
-        Some(r#"{"event_id":"1700000000000-7","replayed":true}"#),
+        Some(r#"{"turn_id":"1700000000000-7","replayed":true}"#),
     );
 }
 

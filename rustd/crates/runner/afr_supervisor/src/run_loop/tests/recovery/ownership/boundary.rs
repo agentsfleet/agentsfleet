@@ -31,7 +31,7 @@ async fn an_oversized_ordinary_workspace_skips_after_thaw_without_stopping() -> 
                 fixture.run.event.workspace_id.to_string(),
             ),
             fleet_id: af_wire::run::CheckpointOperationId(fixture.run.event.fleet_id.to_string()),
-            event_id: af_wire::run::CheckpointOperationId(fixture.run.event.event_id.to_string()),
+            turn_id: af_wire::run::CheckpointOperationId(fixture.run.event.turn_id.to_string()),
             setup_revision_id: af_wire::run::CheckpointOperationId(ID.to_owned()),
             workspace: af_wire::run::TurnWorkspace::Files {
                 toolbox_digest: "a".repeat(64),
@@ -56,7 +56,7 @@ async fn an_oversized_ordinary_workspace_skips_after_thaw_without_stopping() -> 
 fn snapshot(fixture: &Fixture) -> Result<RecoverySnapshot> {
     Ok(RecoverySnapshot {
         run_id: fixture.run.run_id.to_string(),
-        event_id: fixture.run.event.event_id.to_string(),
+        turn_id: fixture.run.event.turn_id.to_string(),
         fencing_token: fixture.run.fencing_token,
         file_permit: None,
         state: RecoveryState::Task(TaskRecovery {
@@ -117,7 +117,7 @@ async fn a_foreign_snapshot_cancels_before_native_io() -> Result<()> {
         let mut snapshot = snapshot(&fixture)?;
         match field {
             0 => snapshot.run_id = PAGE.to_owned(),
-            1 => snapshot.event_id = PAGE.to_owned(),
+            1 => snapshot.turn_id = PAGE.to_owned(),
             _ => snapshot.fencing_token += 1,
         }
         assert!(

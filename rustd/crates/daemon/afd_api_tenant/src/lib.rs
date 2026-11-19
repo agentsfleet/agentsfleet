@@ -93,8 +93,8 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
         WorkspaceRoute::Approvals => Some(get(handler::approval::list::<D>)),
         WorkspaceRoute::Approval => Some(get(handler::approval::detail::<D>)),
         WorkspaceRoute::ApprovalResolve => Some(post(handler::approval::resolve::resolve::<D>)),
-        WorkspaceRoute::Events => Some(get(handler::event::workspace_list::<D>)),
-        WorkspaceRoute::EventsStream => Some(get(handler::stream::workspace::<D>)),
+        WorkspaceRoute::Turns => Some(get(handler::turn::workspace_list::<D>)),
+        WorkspaceRoute::TurnsStream => Some(get(handler::stream::workspace::<D>)),
         WorkspaceRoute::Plugin => Some(
             get(handler::plugin::list::gallery::<D>).post(handler::plugin::publish::create::<D>),
         ),
@@ -133,8 +133,8 @@ fn draft_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<A
         | WorkspaceRoute::Fleets
         | WorkspaceRoute::Secrets
         | WorkspaceRoute::Secret
-        | WorkspaceRoute::Events
-        | WorkspaceRoute::EventsStream
+        | WorkspaceRoute::Turns
+        | WorkspaceRoute::TurnsStream
         | WorkspaceRoute::Onboarding
         | WorkspaceRoute::Preference
         | WorkspaceRoute::Approvals
@@ -156,11 +156,11 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
             fleet::native::context::read::<D>,
         ))),
         FleetRoute::Revisions => Some(post(fleet::native::revision::apply::<D>)),
-        FleetRoute::Events => Some(get(handler::event::fleet_list::<D>)),
+        FleetRoute::Turns => Some(get(handler::turn::fleet_list::<D>)),
         FleetRoute::Tasks => Some(get(fleet::tasks::list::<D>)),
         FleetRoute::Task => Some(get(fleet::tasks::one::<D>).patch(fleet::tasks::change::<D>)),
-        FleetRoute::Event => Some(get(handler::event::detail::<D>)),
-        FleetRoute::ToolCall => Some(get(handler::event::tool_call::read::<D>)),
+        FleetRoute::Turn => Some(get(handler::turn::detail::<D>)),
+        FleetRoute::Item => Some(get(handler::turn::tool_call::read::<D>)),
         FleetRoute::Grants => Some(get(handler::grant::list::<D>)),
         FleetRoute::Grant => Some(delete(handler::grant::revoke::<D>)),
         FleetRoute::Memories => Some(get(fleet::memory::list::<D>)),
@@ -169,7 +169,7 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
         FleetRoute::Messages => {
             Some(get(fleet::message::thread::<D>).post(fleet::message_steer::steer::<D>))
         }
-        FleetRoute::EventsStream => Some(get(handler::stream::fleet::<D>)),
+        FleetRoute::TurnsStream => Some(get(handler::stream::fleet::<D>)),
         // No PUT beside the PATCH: a schedule is edited field by field, and a
         // whole-row replace would let a caller silently drop the upstream
         // handle the sync reconciles against.

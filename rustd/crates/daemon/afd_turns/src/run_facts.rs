@@ -5,7 +5,7 @@ use af_core::id::Uuid7;
 use af_wire::fold::FOLDS_PER_CLAIM_MAX;
 
 use crate::error::{Result, query};
-use crate::{Admissions, LiveRun, Producer, RunFacts, sql};
+use crate::{LiveRun, Producer, RunFacts, Turns, sql};
 
 /// The context a run-facts read that failed carries.
 const CONTEXT_RUN_FACTS: &str = "read a steer's run facts";
@@ -16,7 +16,7 @@ const CLAIMS_LOOKED_AT: i64 = 2;
 /// The statement's one row.
 #[derive(Debug, sqlx::FromRow)]
 struct FactsRow {
-    run_event_id: Option<Uuid7>,
+    run_turn_id: Option<Uuid7>,
     run_durable_task: bool,
     same_conversation: bool,
     earlier_waiting: bool,
@@ -32,7 +32,7 @@ pub struct PersonSteer<'a> {
     pub actor_pattern: &'a str,
 }
 
-impl Admissions {
+impl Turns {
     /// What a steer `admission` on `fleet` meets: the fleet's live run, if
     /// any, and whether a message it must not pass waits ahead of it.
     ///
@@ -59,8 +59,8 @@ impl Admissions {
             .await
             .map_err(query(CONTEXT_RUN_FACTS))?;
         Ok(row.map_or_else(RunFacts::default, |row| RunFacts {
-            live_run: row.run_event_id.map(|event_id| LiveRun {
-                event_id: event_id.into(),
+            live_run: row.run_turn_id.map(|turn_id| LiveRun {
+                turn_id: turn_id.into(),
                 durable_task: row.run_durable_task,
                 same_conversation: row.same_conversation,
             }),

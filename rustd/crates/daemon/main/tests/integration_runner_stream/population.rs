@@ -9,12 +9,12 @@ use crate::{
 use af_core::{clock, id::Uuid7};
 use afd_db::test_util::{FleetSeed, mint_id};
 use afd_fleet_lifecycle::FleetStatus;
-use afd_turns::{Admission, Admissions, Key, Producer, Reply};
+use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 
 pub(super) async fn sibling(scene: &Scenario, name: &str) -> (Uuid7, Uuid7) {
     let fleet = seed_sibling(scene, name).await;
-    let admitted = Admissions::for_tests(scene.booted.database.clone(), scene.booted.bus.clone())
-        .admit(Admission {
+    let admitted = Turns::for_tests(scene.booted.database.clone(), scene.booted.bus.clone())
+        .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Unrepeatable,
             fleet: &fleet,

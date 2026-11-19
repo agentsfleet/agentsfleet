@@ -19,8 +19,8 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use af_core::event::label::{BALANCE_EXHAUSTED, RUN_EXPIRED};
-use af_core::event::status::FLEET_ERROR;
+use af_core::turn::label::{BALANCE_EXHAUSTED, RUN_EXPIRED};
+use af_core::turn::status::FLEET_ERROR;
 use af_wire::report::FailureClass;
 use afd_fleet::run::admit::Refusal;
 use afd_fleet::run::event::DETAIL_RUNS_LAPSED;

@@ -3,15 +3,15 @@
 use af_core::clock;
 use af_core::error_code::{self, Coded as _, Logged};
 use af_core::id::Uuid7;
-use af_observability::metrics::label::fleet::AdmissionOutcome;
-use af_observability::producers::fleet::admission as metrics;
+use af_observability::metrics::label::fleet::IncomingTurnOutcome;
+use af_observability::producers::fleet::turn as metrics;
 use afd_db::Precondition;
 use afd_fleet_lifecycle::FleetStatus;
 use jiff::Timestamp;
 
 use crate::error::{Error, Result, query};
 use crate::stage::insert::Gates;
-use crate::{Admission, Admissions, Admitted, Key, Repeated, Reply};
+use crate::{Admitted, IncomingTurn, Key, Repeated, Reply, Turns};
 
 /// What a guarded admission that failed records against.
 const CONTEXT_GUARDED: &str = "admit one message behind a guard";
@@ -42,7 +42,7 @@ impl<'a> From<Reply<'a>> for ReplyBinds<'a> {
         let (connector, address, inherited) = match reply {
             Reply::None => (None, None, None),
             Reply::To { connector, address } => (Some(connector), Some(address), None),
-            Reply::Inherit { event_id } => (None, None, Some(event_id.clone())),
+            Reply::Inherit { turn_id } => (None, None, Some(turn_id.clone())),
         };
         Self {
             connector,
@@ -61,7 +61,7 @@ pub(crate) struct Ledger {
     pub(crate) inserted: bool,
 }
 
-impl Admissions {
+impl Turns {
     /// Admits one unit of work, at most once per producer key.
     ///
     /// Answers the event id and whether an earlier call already
@@ -74,23 +74,23 @@ impl Admissions {
     /// recorded — plus a fleet outside the caller's workspace and a setup
     /// needing review. A lost wake notification leaves the committed admission
     /// available to every poll.
-    pub async fn admit(&self, admission: Admission<'_>) -> Result<Admitted> {
+    pub async fn admit(&self, admission: IncomingTurn<'_>) -> Result<Admitted> {
         self.admit_under(admission, None).await
     }
 
-    /// [`Admissions::admit`] for a fleet that must be runnable: a new key on a
+    /// [`Turns::admit`] for a fleet that must be runnable: a new key on a
     /// fleet in any other status is refused `NotRunnable`, while a repeat is
     /// still answered.
     ///
     /// # Errors
-    /// As [`Admissions::admit`], and `NotRunnable` with the fleet's status.
-    pub async fn admit_runnable(&self, admission: Admission<'_>) -> Result<Admitted> {
+    /// As [`Turns::admit`], and `NotRunnable` with the fleet's status.
+    pub async fn admit_runnable(&self, admission: IncomingTurn<'_>) -> Result<Admitted> {
         self.admit_under(admission, Some(FleetStatus::Active)).await
     }
 
     async fn admit_under(
         &self,
-        admission: Admission<'_>,
+        admission: IncomingTurn<'_>,
         runnable: Option<FleetStatus>,
     ) -> Result<Admitted> {
         let now = clock::now();
@@ -112,21 +112,21 @@ impl Admissions {
         Ok(self.answered(ledger, &admission, &digest).await)
     }
 
-    /// [`Admissions::admit_runnable`] behind `guard`, in one transaction.
+    /// [`Turns::admit_runnable`] behind `guard`, in one transaction.
     ///
     /// The guard is proved first, on the transaction the insert then runs on,
     /// so what it locks stays locked until the commit: a run a reclaim took
     /// after its holder last proved it writes nothing. The deployment estimate
-    /// is read before the transaction opens, as [`Admissions::prepare`] reads
+    /// is read before the transaction opens, as [`Turns::prepare`] reads
     /// it, so no lock is held across a sample. An `Ok` answer always commits,
     /// a repeat included, because the statement's conflict arm writes.
     ///
     /// # Errors
-    /// As [`Admissions::admit_runnable`]. A guard that does not hold is not an
+    /// As [`Turns::admit_runnable`]. A guard that does not hold is not an
     /// error: it answers `Ok(Err(Unheld))`.
     pub async fn admit_runnable_guarded(
         &self,
-        admission: Admission<'_>,
+        admission: IncomingTurn<'_>,
         guard: &dyn Precondition,
     ) -> Result<core::result::Result<Admitted, Unheld>> {
         let now = clock::now();
@@ -164,9 +164,14 @@ impl Admissions {
 
     /// What a committed ledger answer tells its producer, once the fleet's
     /// wake has rung.
-    async fn answered(&self, ledger: Ledger, admission: &Admission<'_>, digest: &str) -> Admitted {
+    async fn answered(
+        &self,
+        ledger: Ledger,
+        admission: &IncomingTurn<'_>,
+        digest: &str,
+    ) -> Admitted {
         let producer = admission.producer.as_str();
-        let event_id = ledger.stored.id.as_str();
+        let turn_id = ledger.stored.id.as_str();
         if ledger.stored.digest != digest && !admission.producer.is_caller_keyed() {
             // The key is the identity and the first payload stands. Logged
             // at warn because a body this daemon renders differently than it
@@ -176,19 +181,19 @@ impl Admissions {
             {
                 let (error_code, fleet_id, event) =
                     (&code, &admission.fleet, &"admission_payload_drifted");
-                tracing::warn!(error_code, producer, %fleet_id, event_id, event);
+                tracing::warn!(error_code, producer, %fleet_id, turn_id, event);
             };
         }
         self.wake(&ledger.stored.fleet).await;
         metrics::admitted(if ledger.inserted {
-            AdmissionOutcome::Accepted
+            IncomingTurnOutcome::Accepted
         } else {
-            AdmissionOutcome::Replayed
+            IncomingTurnOutcome::Replayed
         });
         let replayed = !ledger.inserted;
         {
             let (fleet_id, event) = (&admission.fleet, &"admission_committed");
-            tracing::debug!(producer, %fleet_id, event_id, event, replayed);
+            tracing::debug!(producer, %fleet_id, turn_id, event, replayed);
         };
         Admitted {
             replayed,
@@ -204,7 +209,7 @@ impl Admissions {
     async fn commit(
         &self,
         row_id: &Uuid7,
-        admission: &Admission<'_>,
+        admission: &IncomingTurn<'_>,
         key: &str,
         digest: &str,
         now: Timestamp,
@@ -234,7 +239,7 @@ impl Admissions {
 /// Two refusals, kept apart on the counter and in the log: a spent budget is
 /// the deployment doing what it was told, and a database that would not answer
 /// is an incident.
-fn count_refusal(refused: &Error, admission: &Admission<'_>) {
+fn count_refusal(refused: &Error, admission: &IncomingTurn<'_>) {
     // A missing or archived fleet is the caller's answer, not an admission
     // failure: the ledger's own statement now refuses both, where the route
     // once did before the ledger saw them.
@@ -243,11 +248,11 @@ fn count_refusal(refused: &Error, admission: &Admission<'_>) {
     }
     let (outcome, event) = if refused.is_over_capacity() {
         (
-            AdmissionOutcome::OverBudget,
+            IncomingTurnOutcome::OverBudget,
             "admission_refused_over_capacity",
         )
     } else {
-        (AdmissionOutcome::Refused, "admission_failed")
+        (IncomingTurnOutcome::Refused, "admission_failed")
     };
     metrics::admitted(outcome);
     let Logged { error_code, reason } = refused.logged();

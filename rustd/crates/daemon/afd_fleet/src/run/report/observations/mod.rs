@@ -39,7 +39,7 @@ pub fn observe(
         actor: settled.workspace_id.as_str().to_owned(),
         workspace_id: settled.workspace_id.as_str().to_owned(),
         fleet_id: settled.fleet_id.as_str().to_owned(),
-        event_id: settled.event_id.as_str().to_owned(),
+        turn_id: settled.turn_id.as_str().to_owned(),
         tokens: request.tokens,
         wall_ms: request.telemetry.wall_ms,
         exit_status: request.outcome.as_str().to_owned(),
@@ -121,14 +121,14 @@ fn delivery_of<'a>(
         tenant_id: settled.tenant_id.as_str(),
         workspace_id: settled.workspace_id.as_str(),
         fleet_id: settled.fleet_id.as_str(),
-        event_id: settled.event_id.as_str(),
+        turn_id: settled.turn_id.as_str(),
         posture: &settled.posture,
         provider: &settled.provider,
         model: &settled.model,
         input_tokens: usage.prompt,
         output_tokens: usage.output,
         wall: reported_wall(request),
-        opened_at: Some(af_core::clock::system_time(settled.event_created_at)),
+        opened_at: Some(af_core::clock::system_time(settled.turn_created_at)),
         segments: segments_of(settled, request.telemetry.segments, complete),
     }
 }
@@ -145,7 +145,7 @@ fn segments_of(
     let reported = |ms: Option<u64>| ms.map(Duration::from_millis);
     Segments {
         queue_wait: Some(af_core::clock::elapsed(
-            settled.event_created_at,
+            settled.turn_created_at,
             settled.run_created_at,
         )),
         memory: reported(runner.memory_ms),

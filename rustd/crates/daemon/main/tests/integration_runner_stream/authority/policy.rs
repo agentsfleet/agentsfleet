@@ -63,7 +63,7 @@ async fn rotated(
     current.heartbeat().await;
     current.ready().await;
     let held = signals::offer(&mut current).await?;
-    assert_eq!(held.event, fixture.scene.event_id);
+    assert_eq!(held.event, fixture.scene.turn_id);
     signals::report(&fixture.scene, &mut current, &held, false).await?;
     current.close().await;
     Ok(())
@@ -88,8 +88,8 @@ async fn a_lost_revocation_push_is_fenced_at_issue_and_the_next_native_heartbeat
             offered.is_err(),
             "revoked cached capacity offered work: {offered:?}"
         );
-        let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE event_id=$1")
-            .bind(&fixture.scene.event_id)
+        let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE turn_id=$1")
+            .bind(&fixture.scene.turn_id)
             .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
             .await?;
         assert_eq!(runs, 0, "revoked cached capacity must not issue a run");
@@ -159,7 +159,7 @@ async fn a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers
         current.heartbeat().await;
         current.ready().await;
         let held = signals::offer(&mut current).await?;
-        assert_eq!(held.event, fixture.scene.event_id);
+        assert_eq!(held.event, fixture.scene.turn_id);
         signals::report(&fixture.scene, &mut current, &held, false).await?;
         current.close().await;
         old.close().await;

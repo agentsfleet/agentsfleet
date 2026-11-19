@@ -40,7 +40,7 @@ async fn test_a_fleet_with_no_trigger_accepts_a_steer() {
     let (status, admitted) = saved.steer(&saved.thread, OPERATION, MESSAGE).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{admitted}");
     assert!(
-        admitted["event_id"]
+        admitted["turn_id"]
             .as_str()
             .is_some_and(|event| !event.is_empty()),
         "a steer to a trigger-less fleet is admitted as an event: {admitted}"
@@ -65,7 +65,7 @@ async fn test_steer_202_names_a_replay() {
     saved.archive().await;
     let (_, archived) = saved.steer(&saved.thread, OPERATION, MESSAGE).await;
     assert_eq!(replayed(&archived), Some(true), "{archived}");
-    assert_eq!(fresh.get("event_id"), archived.get("event_id"));
+    assert_eq!(fresh.get("turn_id"), archived.get("turn_id"));
 
     saved.case.cleanup().await;
 }
@@ -79,7 +79,7 @@ async fn test_replay_bypasses_ingress_refusal() {
 
     let (status, first) = saved.steer(&saved.thread, OPERATION, MESSAGE).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{first}");
-    let event = first["event_id"]
+    let event = first["turn_id"]
         .as_str()
         .expect("a 202 names its event")
         .to_owned();
@@ -91,7 +91,7 @@ async fn test_replay_bypasses_ingress_refusal() {
         StatusCode::ACCEPTED,
         "answered, archived or not: {retried}"
     );
-    assert_eq!(retried["event_id"].as_str(), Some(event.as_str()));
+    assert_eq!(retried["turn_id"].as_str(), Some(event.as_str()));
 
     let (status, changed) = saved
         .steer(&saved.thread, OPERATION, "roll back production")

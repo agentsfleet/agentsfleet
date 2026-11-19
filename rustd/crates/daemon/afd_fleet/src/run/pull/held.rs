@@ -25,7 +25,7 @@ use crate::run::envelope::Acquired;
 struct Held {
     fleet_id: Uuid7,
     fence: Fence,
-    event_id: Uuid7,
+    turn_id: Uuid7,
 }
 
 impl RunService {
@@ -49,9 +49,9 @@ impl RunService {
         let held = Held {
             fleet_id: acquired.fleet_id.clone(),
             fence: acquired.fence,
-            event_id: acquired.event_id.clone(),
+            turn_id: acquired.turn_id.clone(),
         };
-        clock.identify(held.event_id.as_str(), held.fleet_id.as_str());
+        clock.identify(held.turn_id.as_str(), held.fleet_id.as_str());
         let admitted = self.admit_claimed(acquired, runner_id, now).await;
         clock.mark(AssignStage::Admit);
         let pass = match admitted.map(Step::proceed) {
@@ -85,7 +85,7 @@ impl RunService {
             Ok(Step::Park) => {
                 if let Err(fault) = self
                     .runs
-                    .park(&held.fleet_id, &held.event_id, held.fence)
+                    .park(&held.fleet_id, &held.turn_id, held.fence)
                     .await
                 {
                     self.let_go(&held).await;

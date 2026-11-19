@@ -10,11 +10,10 @@ use crate::error::Result;
 use crate::sql;
 
 use super::KeysetCursor;
-use super::decode::EventRow;
+use super::decode::TurnRow;
 
 /// The statement an event page runs: its rows decode by name.
-type EventPage<'a> =
-    sqlx::query::QueryAs<'a, sqlx::Postgres, EventRow, sqlx::postgres::PgArguments>;
+type EventPage<'a> = sqlx::query::QueryAs<'a, sqlx::Postgres, TurnRow, sqlx::postgres::PgArguments>;
 
 /// Validated filters over one runner's append-only history.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

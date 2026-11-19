@@ -21,7 +21,7 @@ pub(super) struct UnsettledRow {
     pub(super) workspace_id: Uuid7,
     pub(super) fleet_id: Option<Uuid7>,
     pub(super) fleet_name: Option<String>,
-    pub(super) event_id: Option<Uuid7>,
+    pub(super) turn_id: Option<Uuid7>,
     pub(super) provider: String,
     pub(super) model: String,
     pub(super) posture: String,
@@ -95,11 +95,11 @@ impl UnsettledRow {
         posture: Posture,
         lines: Vec<RatedLine>,
     ) -> Settlement {
-        let attribution = match (self.fleet_id, self.event_id) {
-            (Some(fleet), Some(event_id)) => Attribution::Fleet {
+        let attribution = match (self.fleet_id, self.turn_id) {
+            (Some(fleet), Some(turn_id)) => Attribution::Fleet {
                 fleet,
                 fleet_name: self.fleet_name.unwrap_or_default(),
-                event_id,
+                turn_id,
             },
             _ => Attribution::SetupChat,
         };

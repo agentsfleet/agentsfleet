@@ -75,7 +75,7 @@ async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
 
     edit_labels(&scene, &[ENROLLED_LABEL, &tag]).await;
     let (run_id, fence) = wait_for_seeded_offer(&scene).await;
-    let report = report_body(&run_id, &scene.event_id, fence);
+    let report = report_body(&run_id, &scene.turn_id, fence);
     let settled = crate::wire::report(&scene, &report).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
 

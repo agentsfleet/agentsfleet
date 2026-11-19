@@ -1,4 +1,4 @@
-//! Admission errors keep their registry codes, caller sentences, and source chains.
+//! Turn intake errors keep their registry codes, caller sentences, and source chains.
 
 #![cfg(feature = "test-util")]
 #![expect(

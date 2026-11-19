@@ -33,7 +33,7 @@ const fn input_page_size() -> u32 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskHumanInput {
     /// Native source admission identity used for decision and consumption.
-    pub source_admission_id: String,
+    pub source_turn_id: String,
     /// Native FIFO position, independent of task-local input positions.
     pub sequence: u64,
     /// Complete user text; never a truncated interpretation.
@@ -61,7 +61,7 @@ pub struct TaskInputCandidate {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskInputsResponse<'a> {
     /// Native admission owned by this run, including signed continuation events.
-    pub source_admission_id: String,
+    pub source_turn_id: String,
     /// Installed revision under which a new human interpretation may bind.
     pub accepted_revision_id: Option<String>,
     /// Complete current human message, absent for native machine continuations.
@@ -94,7 +94,7 @@ impl TaskInputsResponse<'_> {
     #[must_use]
     pub fn into_owned(self) -> TaskInputsResponse<'static> {
         TaskInputsResponse {
-            source_admission_id: self.source_admission_id,
+            source_turn_id: self.source_turn_id,
             accepted_revision_id: self.accepted_revision_id,
             current_message: self.current_message,
             inputs: self.inputs,
@@ -113,7 +113,7 @@ impl TaskInputsResponse<'_> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskAcceptedInterpretation {
     /// Original admitted source.
-    pub source_admission_id: String,
+    pub source_turn_id: String,
     /// Complete accepted plan digest.
     pub plan_digest: String,
     /// Complete original human text.
@@ -141,7 +141,7 @@ pub struct TaskRecoveredItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskAcceptedInput {
     /// Original native admission, retained even after queue settlement.
-    pub source_admission_id: String,
+    pub source_turn_id: String,
     /// Immutable complete interpretation digest.
     pub plan_digest: String,
     /// Immutable interpreted item.

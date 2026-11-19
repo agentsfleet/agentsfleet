@@ -36,7 +36,7 @@ impl RootRecovery {
     pub(crate) fn check(&self) -> Result<()> {
         self.validate()?;
         self.children.check()?;
-        let ids: BTreeSet<_> = self.folds.iter().map(|fold| &fold.event_id).collect();
+        let ids: BTreeSet<_> = self.folds.iter().map(|fold| &fold.turn_id).collect();
         if ids.len() != self.folds.len()
             || self.folds.windows(2).any(|pair| {
                 pair.first().map(|fold| fold.sequence) >= pair.get(1).map(|fold| fold.sequence)

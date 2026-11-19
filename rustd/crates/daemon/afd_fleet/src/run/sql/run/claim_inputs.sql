@@ -29,7 +29,7 @@ WITH run AS MATERIALIZED (
      AND s.fencing_token = l.fencing_token
     -- An admitted turn: a run on a history-only receipt has no conversation.
     JOIN thread.turns head
-      ON head.id = l.event_id AND head.thread_id = l.fleet_id AND head.producer IS NOT NULL
+      ON head.id = l.turn_id AND head.thread_id = l.fleet_id AND head.producer IS NOT NULL
     WHERE l.id = $1 AND l.runner_id = $2
       AND l.fencing_token = $3 AND l.status = $4
       AND l.task_id IS NULL AND l.task_generation IS NULL AND head.task_generation IS NULL

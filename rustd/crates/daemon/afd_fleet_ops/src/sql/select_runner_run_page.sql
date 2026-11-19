@@ -7,7 +7,7 @@ SELECT l.id,
        f.id IS NOT NULL AS fleet_exists,
        l.workspace_id,
        l.tenant_id,
-       l.event_id,
+       l.turn_id,
        e.kind AS event_type,
        e.actor,
        l.status AS run_status,
@@ -26,12 +26,12 @@ SELECT l.id,
        e.wall_ms,
        EXISTS (
            SELECT 1 FROM thread.runs p
-           WHERE p.event_id = l.event_id
+           WHERE p.turn_id = l.turn_id
              AND p.fencing_token < l.fencing_token
        ) AS is_reclaim
 FROM thread.runs l
 LEFT JOIN fleet.fleets f ON f.id = l.fleet_id
-LEFT JOIN thread.turns e ON e.id = l.event_id AND e.thread_id = l.fleet_id AND e.opened_at IS NOT NULL
+LEFT JOIN thread.turns e ON e.id = l.turn_id AND e.thread_id = l.fleet_id AND e.opened_at IS NOT NULL
 -- The tokens the run's usage lines record: one index range per run row.
 LEFT JOIN LATERAL (
     SELECT sum(input_token_count) AS input_tokens,

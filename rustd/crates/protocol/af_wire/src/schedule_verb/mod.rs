@@ -74,7 +74,7 @@ pub struct ScheduleRunRequest {
 pub struct ScheduleRun<'a> {
     /// The event that is the new run.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
+    pub turn_id: Cow<'a, str>,
 }
 
 /// The query parameter that carries the run's fencing token.

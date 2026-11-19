@@ -3,7 +3,7 @@
 //!
 //! A draft's run is a fleet-like run the draft owns
 //! ([`super::RunOwner::Draft`]): the draft's slot (`thread.threads.id` is the
-//! draft's id) fences it, its `event_id` is the draft message it runs, and the
+//! draft's id) fences it, its `turn_id` is the draft message it runs, and the
 //! runner reaches the daemon only through the same fenced verbs a fleet run
 //! uses. The draft's own rows (which message, its finish, the one candidate)
 //! are `afd_setup::setup_run`'s, written in these transactions.
@@ -42,7 +42,7 @@ pub struct DraftTarget {
 #[derive(Debug, sqlx::FromRow)]
 struct DraftRun {
     draft_id: Uuid7,
-    event_id: Uuid7,
+    turn_id: Uuid7,
     workspace_id: Uuid7,
     tenant_id: Uuid7,
     posture: String,

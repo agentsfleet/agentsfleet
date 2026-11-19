@@ -62,12 +62,12 @@ const _: () = {
 ///
 /// One per ledger, shared by every clone of it, so the figure a sample
 /// publishes is the figure the next admission reads. Held behind
-/// [`crate::Admissions`]; `budget.rs` owns the refresh that writes it.
+/// [`crate::Turns`]; `budget.rs` owns the refresh that writes it.
 #[derive(Debug)]
 pub(crate) struct Ceiling {
     /// Unsettled admissions at the last sample.
     sampled: AtomicU64,
-    /// Admissions this process has committed since that read.
+    /// Turns this process has committed since that read.
     since: AtomicU64,
     /// When that read happened, or [`NEVER`].
     read_at: AtomicI64,

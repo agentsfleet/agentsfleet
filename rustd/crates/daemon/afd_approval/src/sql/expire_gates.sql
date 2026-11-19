@@ -3,7 +3,7 @@ WITH swept AS (
   SET status = $1, resolved_by = $2, detail = $3,
       resolved_at = now(), updated_at = now(), active_grant_id = NULL
   WHERE resolved_at IS NULL AND expires_at <= now()
-  RETURNING id, fleet_id, event_id
+  RETURNING id, fleet_id, turn_id
 ), unparked AS (
   UPDATE thread.turns a SET parked_at = NULL, updated_at = now()
   FROM swept r
@@ -14,7 +14,7 @@ WITH swept AS (
     AND (a.parked_at IS NOT NULL OR a.run_fence IS NOT NULL)
 )
 
-SELECT s.id AS gate, s.fleet_id AS fleet, s.event_id AS event,
+SELECT s.id AS gate, s.fleet_id AS fleet, s.turn_id AS event,
        (SELECT COUNT(*) FROM fleet.approval_gates g
          WHERE g.fleet_id = s.fleet_id AND g.resolved_at IS NULL
            AND g.id NOT IN (SELECT id FROM swept)) AS pending

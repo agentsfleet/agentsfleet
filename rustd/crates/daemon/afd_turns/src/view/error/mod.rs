@@ -73,7 +73,7 @@ pub(crate) enum ErrorKind {
 
     /// The acceptance could not be recorded.
     #[error("the message could not be admitted")]
-    Admission {
+    TurnWrite {
         #[source]
         source: crate::Error,
     },
@@ -99,7 +99,7 @@ impl Error {
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 DETAIL_DATABASE_UNAVAILABLE,
             ),
-            ErrorKind::Admission { source } => (source.code(), source.detail()),
+            ErrorKind::TurnWrite { source } => (source.code(), source.detail()),
             ErrorKind::OperationConflict => (
                 error_code::AGENTSFLEET_OPERATION_CONFLICT,
                 DETAIL_OPERATION_CONFLICT,
@@ -130,7 +130,7 @@ impl Error {
     pub const fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
-            ErrorKind::Admission { source } => source.is_datastore_unavailable(),
+            ErrorKind::TurnWrite { source } => source.is_datastore_unavailable(),
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::CursorMalformed
@@ -153,7 +153,7 @@ impl Error {
     #[must_use]
     pub const fn is_fleet_absent(&self) -> bool {
         match self.kind() {
-            ErrorKind::Admission { source } => source.is_fleet_absent(),
+            ErrorKind::TurnWrite { source } => source.is_fleet_absent(),
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::CursorMalformed
@@ -166,7 +166,7 @@ impl Error {
     #[must_use]
     pub const fn not_runnable(&self) -> Option<afd_fleet_lifecycle::FleetStatus> {
         match self.kind() {
-            ErrorKind::Admission { source } => source.not_runnable(),
+            ErrorKind::TurnWrite { source } => source.not_runnable(),
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::CursorMalformed

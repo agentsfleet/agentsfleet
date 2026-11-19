@@ -64,7 +64,7 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
 
     let frame = parked_frame(&mut tail).await;
     assert_eq!(frame.get("kind"), Some(&json!("gate_opened")));
-    assert_eq!(frame.get("event_id"), Some(&json!(event)));
+    assert_eq!(frame.get("turn_id"), Some(&json!(event)));
     assert!(
         frame
             .get("gate_id")

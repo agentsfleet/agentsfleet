@@ -44,7 +44,7 @@ impl NativeContext {
             workspace_id: current.workspace_id.clone(),
         };
         let task = execution(connection, &current, &scope, input).await?;
-        let source_id = guard::id(&input.source_admission_id, "source_admission_id")?;
+        let source_id = guard::id(&input.source_turn_id, "source_turn_id")?;
         let source = source::load(connection, &current, &source_id).await?;
         authorize_source(
             connection,
@@ -83,7 +83,7 @@ impl NativeContext {
         candidates: &[Candidate],
     ) -> Result<AssessedContext> {
         Ok(AssessedContext {
-            source_admission_id: crate::task::guard::wire(&input.source_admission_id)?,
+            source_turn_id: crate::task::guard::wire(&input.source_turn_id)?,
             assessment: input.assessment.clone(),
             accepted_revision_id: crate::task::guard::wire(
                 self.revision(input.assessment.purpose())?,
@@ -145,17 +145,17 @@ pub(super) async fn authorize_source(
     purpose: DecisionPurpose,
 ) -> Result<()> {
     if purpose == DecisionPurpose::Goal {
-        if source_id.as_str() != current.source_admission_id {
+        if source_id.as_str() != current.source_turn_id {
             return Err(TaskRefusal::InvalidTarget.into());
         }
         return Ok(());
     }
     source::check_human(input)?;
-    if source_id.as_str() != current.source_admission_id {
+    if source_id.as_str() != current.source_turn_id {
         sqlx::query_scalar::<_, Uuid7>(sql::CLAIM_SOURCE)
             .bind(&current.fleet_id)
             .bind(&current.workspace_id)
-            .bind(&current.source_admission_id)
+            .bind(&current.source_turn_id)
             .bind(afd_turns::Producer::Steer.as_str())
             .bind(afd_turns::view::ACTOR_MACHINE)
             .bind(format!("{}%", afd_turns::view::ACTOR_PREFIX))

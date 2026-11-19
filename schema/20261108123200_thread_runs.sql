@@ -1,8 +1,8 @@
--- One unit of work handed to one runner: a fleet's event or a setup draft's message. Work can
+-- One unit of work handed to one runner: a fleet's turn or a setup draft's turn. Work can
 -- be held more than once, each fenced. A run names exactly one owner, the one whose
 -- `thread.threads` row it holds, so the statements both kinds share reach the slot by
 -- `COALESCE(fleet_id, draft_id)`; `fleet_id` alone is read by the fleet's own statements.
--- No foreign key to fleets, drafts or events: a settled run is history that outlives its
+-- No foreign key to fleets, drafts or turns: a settled run is history that outlives its
 -- owner. The insert proves scope, and an owner's deletion deletes its active runs itself.
 CREATE TABLE thread.runs (
     id                          UUID PRIMARY KEY,
@@ -11,10 +11,10 @@ CREATE TABLE thread.runs (
     draft_id                    UUID,
     workspace_id                UUID    NOT NULL,
     tenant_id                   UUID    NOT NULL,
-    -- The fleet event, or the draft message, this run runs.
-    event_id                    UUID    NOT NULL,
-    -- The producer's instant, which billing uses and the event row does not hold.
-    event_created_at            TIMESTAMPTZ(3)  NOT NULL,
+    -- The fleet turn, or the setup draft turn, this run runs.
+    turn_id                     UUID    NOT NULL,
+    -- The turn's intake instant, copied so billing reads it without a join.
+    turn_created_at             TIMESTAMPTZ(3)  NOT NULL,
     posture                     TEXT    NOT NULL,
     provider                    TEXT    NOT NULL,
     model                       TEXT    NOT NULL,
@@ -48,8 +48,8 @@ CREATE TABLE thread.runs (
     CONSTRAINT ck_runs_one_owner CHECK (num_nonnulls(fleet_id, draft_id) = 1)
 );
 
-CREATE INDEX idx_runs_event_id_fencing_token
-    ON thread.runs (event_id, fencing_token);
+CREATE INDEX idx_runs_turn_id_fencing_token
+    ON thread.runs (turn_id, fencing_token);
 
 CREATE INDEX idx_runs_fleet_id_status_fencing_token
     ON thread.runs (fleet_id, status, fencing_token DESC);

@@ -4,16 +4,16 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use af_core::event::status;
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
+use af_core::turn::status;
 use af_observability::metrics::label::fleet::HistoryCut;
-use af_wire::event::EventType;
 use af_wire::run::{
     ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, HISTORY_BYTES_MAX, HISTORY_TURNS_MAX,
     TURN_TEXT_BYTES_MAX, Turn,
 };
-use afd_turns::view::{Cursor, EventDetailRow};
+use af_wire::turn::TurnKind;
+use afd_turns::view::{Cursor, TurnDetailRow};
 use jiff::Timestamp;
 
 use super::{EVENT_HISTORY_UNAVAILABLE, Thread, turns_before, within_caps};
@@ -24,13 +24,13 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 const EVENT: &str = "01924f4e-0000-7000-8000-0000000000e9";
 
 /// One thread row: `message` asked, answered `answer`, ended in `status`.
-fn row(index: i64, status: &str, message: &str, answer: Option<&str>) -> EventDetailRow {
+fn row(index: i64, status: &str, message: &str, answer: Option<&str>) -> TurnDetailRow {
     let at = af_core::clock::after(
         Timestamp::UNIX_EPOCH,
         std::time::Duration::from_millis(index.unsigned_abs()),
     );
     let event = Uuid7::parse(&format!("0199a0b0-0000-7000-8000-{index:012x}")).unwrap();
-    let mut row = EventDetailRow::fixture(&event, at, String::new());
+    let mut row = TurnDetailRow::fixture(&event, at, String::new());
     status.clone_into(&mut row.row.status);
     row.request_json = serde_json::json!({ "message": message }).to_string();
     row.response_text = answer.map(str::to_owned);
@@ -39,7 +39,7 @@ fn row(index: i64, status: &str, message: &str, answer: Option<&str>) -> EventDe
 
 /// `count` processed turns, newest first as the statement returns them, each
 /// asked `m{index}` and answered `answer`.
-fn processed(count: usize, answer: &str) -> Vec<EventDetailRow> {
+fn processed(count: usize, answer: &str) -> Vec<TurnDetailRow> {
     (1..=i64::try_from(count).unwrap())
         .rev()
         .map(|index| row(index, status::PROCESSED, &format!("m{index}"), Some(answer)))
@@ -56,12 +56,12 @@ fn filling_answer() -> String {
 /// statement's limit does, or fails, and counts how often it was read.
 #[derive(Debug)]
 struct Fake {
-    rows: Option<Vec<EventDetailRow>>,
+    rows: Option<Vec<TurnDetailRow>>,
     reads: std::sync::atomic::AtomicUsize,
 }
 
 impl Fake {
-    fn new(rows: Option<Vec<EventDetailRow>>) -> Self {
+    fn new(rows: Option<Vec<TurnDetailRow>>) -> Self {
         Self {
             rows,
             reads: std::sync::atomic::AtomicUsize::new(0),
@@ -77,7 +77,7 @@ impl Thread for Fake {
         _fleet: &Uuid7,
         _at: &Cursor,
         limit: i64,
-    ) -> afd_turns::view::Result<Vec<EventDetailRow>> {
+    ) -> afd_turns::view::Result<Vec<TurnDetailRow>> {
         self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let limit = usize::try_from(limit).unwrap();
         self.rows
@@ -88,13 +88,13 @@ impl Thread for Fake {
 }
 
 /// Reads `thread` for a run whose event is `event_type`.
-async fn turns_for(thread: &Fake, event_type: EventType) -> Vec<Turn<'static>> {
+async fn turns_for(thread: &Fake, event_type: TurnKind) -> Vec<Turn<'static>> {
     let at = Cursor {
         created_at: af_core::clock::after(
             Timestamp::UNIX_EPOCH,
             std::time::Duration::from_millis(100),
         ),
-        event_id: Uuid7::parse(EVENT).unwrap(),
+        turn_id: Uuid7::parse(EVENT).unwrap(),
     };
     let workspace = Uuid7::parse(WORKSPACE).unwrap();
     let fleet = Uuid7::parse(FLEET).unwrap();
@@ -134,7 +134,7 @@ fn test_history_keeps_finished_turns_only() {
 /// boundary; and the oldest dropped until the rest fit the byte budget.
 #[test]
 fn test_history_caps_turns_and_bytes() {
-    let rows: Vec<EventDetailRow> = (1..=9)
+    let rows: Vec<TurnDetailRow> = (1..=9)
         .rev()
         .map(|index| row(index, status::PROCESSED, &format!("m{index}"), Some("a")))
         .collect();
@@ -150,7 +150,7 @@ fn test_history_caps_turns_and_bytes() {
     // Eight turns of 16,386 bytes are 131,088 against a 65,536 budget: the
     // oldest five go, and the newest three, 49,158 bytes, fit.
     let full = "y".repeat(TURN_TEXT_BYTES_MAX);
-    let heavy: Vec<EventDetailRow> = (1..=8)
+    let heavy: Vec<TurnDetailRow> = (1..=8)
         .rev()
         .map(|index| row(index, status::PROCESSED, &format!("m{index}"), Some(&full)))
         .collect();
@@ -239,7 +239,7 @@ fn test_a_long_answer_is_cut_on_a_character_boundary() {
 /// Webhook, cron and continuation runs carry no turns, and never read.
 #[tokio::test]
 async fn test_non_chat_run_carries_no_history() {
-    for event_type in [EventType::Webhook, EventType::Cron, EventType::Continuation] {
+    for event_type in [TurnKind::Webhook, TurnKind::Cron, TurnKind::Continuation] {
         let thread = Fake::new(Some(vec![row(1, status::PROCESSED, "m", Some("a"))]));
         let found = turns_for(&thread, event_type).await;
         assert!(found.is_empty(), "{found:?}");
@@ -263,7 +263,7 @@ async fn test_history_read_failure_fails_open() {
     let capture = Capture::install();
     let thread = Fake::new(None);
 
-    let turns = turns_for(&thread, EventType::Chat).await;
+    let turns = turns_for(&thread, TurnKind::Chat).await;
 
     assert!(turns.is_empty(), "{turns:?}");
     let logged = capture.only(EVENT_HISTORY_UNAVAILABLE);
@@ -294,16 +294,16 @@ async fn test_history_metrics_recorded() {
 
     // Nine finished turns, one of them past the text cap: two caps cut.
     let long = "z".repeat(TURN_TEXT_BYTES_MAX + 1);
-    let rows: Vec<EventDetailRow> = (1..=9)
+    let rows: Vec<TurnDetailRow> = (1..=9)
         .rev()
         .map(|index| row(index, status::PROCESSED, &long, Some("a")))
         .collect();
-    let carried: usize = turns_for(&Fake::new(Some(rows)), EventType::Chat)
+    let carried: usize = turns_for(&Fake::new(Some(rows)), TurnKind::Chat)
         .await
         .iter()
         .map(|turn| turn.message.len() + turn.answer.len())
         .sum();
-    turns_for(&Fake::new(None), EventType::Chat).await;
+    turns_for(&Fake::new(None), TurnKind::Chat).await;
 
     assert_eq!(
         metrics.histogram_count(BYTES, &[]),

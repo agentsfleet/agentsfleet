@@ -25,7 +25,7 @@ pub async fn publish(bus: &Handle, owner: Uuid7) {
     let fleet_id = payload.as_str();
     {
         let (event, error_code, reason, message) = (
-            &"admission_wake_ring_failed",
+            &"turn_wake_ring_failed",
             &logged.error_code,
             &logged.reason,
             format_args!("notification was lost; the next Postgres probe finds the admission"),

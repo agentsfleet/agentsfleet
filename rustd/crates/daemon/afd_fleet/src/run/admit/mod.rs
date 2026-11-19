@@ -134,7 +134,7 @@ pub struct Request<'a> {
     /// The fleet whose ceiling applies.
     pub fleet_id: &'a Uuid7,
     /// The event being admitted.
-    pub event_id: &'a Uuid7,
+    pub turn_id: &'a Uuid7,
     /// The fleet's declared ceiling, from the config resolved this run.
     pub budget: Budget,
     /// Who supplies the provider key.
@@ -256,7 +256,7 @@ fn unowned_workspace(workspace_id: &Uuid7) -> Declined {
         tracing::warn!(message, event, workspace_id);
     };
     Declined::Refuse(Refusal::labelled(
-        af_core::event::label::TENANT_RESOLVE_FAILED,
+        af_core::turn::label::TENANT_RESOLVE_FAILED,
     ))
 }
 

@@ -41,7 +41,7 @@ fn job(id: &str, destination: &str) -> Outgoing {
         destination: REPLY_ADDRESS.to_owned(),
         workspace_id: mint_id(),
         fleet_id: Uuid7::parse(destination).expect("a canonical destination fleet"),
-        event_id: Uuid7::parse(id).expect("a fixture job id"),
+        turn_id: Uuid7::parse(id).expect("a fixture job id"),
         answer: "a".to_owned(),
     }
 }

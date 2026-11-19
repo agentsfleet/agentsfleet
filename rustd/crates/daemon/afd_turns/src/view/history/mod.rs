@@ -20,8 +20,8 @@
 //!
 //! # Newest-first, and the tie-break is not decoration
 //!
-//! `ORDER BY created_at DESC, event_id DESC`, and the cursor compares the PAIR
-//! (`(created_at, event_id) < ($1, $2)`). Ordering on the timestamp alone would
+//! `ORDER BY created_at DESC, turn_id DESC`, and the cursor compares the PAIR
+//! (`(created_at, turn_id) < ($1, $2)`). Ordering on the timestamp alone would
 //! drop or repeat rows whenever two events share a millisecond, which under a
 //! webhook burst is most of them.
 
@@ -34,8 +34,8 @@ mod row;
 pub(crate) mod statement;
 mod tool_call;
 
-use af_core::event::status;
 use af_core::id::Uuid7;
+use af_core::turn::status;
 use afd_db::Db;
 use jiff_sqlx::ToSqlx as _;
 
@@ -47,10 +47,10 @@ use self::statement::{
 };
 
 pub use self::cursor::Cursor;
-pub use self::detail::EventDetailRow;
+pub use self::detail::TurnDetailRow;
 pub use self::filter::{Filter, Since, WIDEST_WINDOW, glob_to_like, parse_since, prefix_to_like};
-pub use self::row::EventRow;
 pub(crate) use self::row::Stored;
+pub use self::row::TurnRow;
 pub use self::tool_call::{CallAddress, ToolCallRow};
 
 /// What each read was doing, for the operator's log line.
@@ -107,7 +107,7 @@ impl History {
         filter: &Filter,
         cursor: Option<&Cursor>,
         limit: i64,
-    ) -> Result<Vec<EventRow>> {
+    ) -> Result<Vec<TurnRow>> {
         let context = if fleet.is_some() {
             CONTEXT_FLEET_PAGE
         } else {
@@ -133,17 +133,17 @@ impl History {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &Uuid7,
-    ) -> Result<Option<EventDetailRow>> {
+        turn_id: &Uuid7,
+    ) -> Result<Option<TurnDetailRow>> {
         let mut connection = self.database.acquire().await?;
         let found = sqlx::query(SELECT_DETAIL)
             .bind(workspace)
             .bind(fleet)
-            .bind(event_id)
+            .bind(turn_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_DETAIL))?;
-        found.as_ref().map(EventDetailRow::read).transpose()
+        found.as_ref().map(TurnDetailRow::read).transpose()
     }
 
     /// One page of a fleet's chat thread, newest first, bodies included.
@@ -162,7 +162,7 @@ impl History {
         fleet: &Uuid7,
         cursor: Option<&Cursor>,
         limit: i64,
-    ) -> Result<Vec<EventDetailRow>> {
+    ) -> Result<Vec<TurnDetailRow>> {
         let scoped = cursor.map_or_else(
             || sqlx::query(SELECT_THREAD_PAGE).bind(workspace).bind(fleet),
             |at| {
@@ -170,7 +170,7 @@ impl History {
                     .bind(workspace)
                     .bind(fleet)
                     .bind(at.created_at.to_sqlx())
-                    .bind(&at.event_id)
+                    .bind(&at.turn_id)
             },
         );
         let bound = limit.clamp(1, THREAD_MAX_LIMIT + 1);
@@ -186,7 +186,7 @@ impl History {
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_THREAD))?;
-        rows.iter().map(EventDetailRow::read).collect()
+        rows.iter().map(TurnDetailRow::read).collect()
     }
 
     /// The finished rows of a fleet's thread before `at`, newest first, bodies
@@ -202,13 +202,13 @@ impl History {
         fleet: &Uuid7,
         at: &Cursor,
         limit: i64,
-    ) -> Result<Vec<EventDetailRow>> {
+    ) -> Result<Vec<TurnDetailRow>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query(SELECT_THREAD_FINISHED_BEFORE)
             .bind(workspace)
             .bind(fleet)
             .bind(at.created_at.to_sqlx())
-            .bind(&at.event_id)
+            .bind(&at.turn_id)
             .bind(status::PROCESSED)
             .bind(status::FLEET_ERROR)
             .bind(limit.clamp(1, THREAD_MAX_LIMIT + 1))
@@ -216,7 +216,7 @@ impl History {
             .await
             .map_err(error::query(CONTEXT_FINISHED))?
             .iter()
-            .map(EventDetailRow::read)
+            .map(TurnDetailRow::read)
             .collect()
     }
 
@@ -230,7 +230,7 @@ impl History {
         cursor: Option<&Cursor>,
         limit: i64,
         context: &'static str,
-    ) -> Result<Vec<EventRow>> {
+    ) -> Result<Vec<TurnRow>> {
         let actor = filter.actor_like.as_deref();
         let text = listing_text(fleet.is_some(), cursor.is_some(), actor.is_some());
         let query = sqlx::query(text).bind(workspace);
@@ -239,7 +239,7 @@ impl History {
             None => query,
         };
         let query = match cursor {
-            Some(at) => query.bind(at.created_at.to_sqlx()).bind(&at.event_id),
+            Some(at) => query.bind(at.created_at.to_sqlx()).bind(&at.turn_id),
             None => query,
         };
         let query = match actor {
@@ -255,7 +255,7 @@ impl History {
             .await
             .map_err(error::query(context))?;
 
-        rows.iter().map(EventRow::read).collect()
+        rows.iter().map(TurnRow::read).collect()
     }
 }
 
@@ -266,12 +266,12 @@ impl History {
 /// out to be empty — the alternative is a second count query per page to find
 /// out, which is a round trip spent to save a client one.
 #[must_use]
-pub fn next_cursor(page: &[EventRow], limit: i64) -> Option<Cursor> {
+pub fn next_cursor(page: &[TurnRow], limit: i64) -> Option<Cursor> {
     let last = page.last()?;
     if i64::try_from(page.len()).is_ok_and(|len| len < limit) {
         return None;
     }
-    Some(Cursor::after(last.created_at, &last.event_id))
+    Some(Cursor::after(last.created_at, &last.turn_id))
 }
 
 #[cfg(test)]
@@ -283,12 +283,12 @@ mod tests {
         Uuid7::parse(&format!("0199a0b0-0000-7000-8000-{ordinal:012x}"))
     }
 
-    fn row_at(second: i64, event_id: &Uuid7) -> EventRow {
+    fn row_at(second: i64, turn_id: &Uuid7) -> TurnRow {
         let created_at = jiff::Timestamp::constant(second, 0);
-        EventRow {
-            fleet_id: event_id.to_owned(),
-            event_id: event_id.to_owned(),
-            workspace_id: event_id.to_owned(),
+        TurnRow {
+            fleet_id: turn_id.to_owned(),
+            turn_id: turn_id.to_owned(),
+            workspace_id: turn_id.to_owned(),
             actor: String::new(),
             event_type: String::new(),
             status: String::new(),
@@ -296,7 +296,7 @@ mod tests {
             wall_ms: None,
             failure_label: None,
             failure_detail: None,
-            resumes_event_id: None,
+            resumes_turn_id: None,
             created_at,
             updated_at: created_at,
             cost_nanos: None,

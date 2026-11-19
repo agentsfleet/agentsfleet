@@ -41,7 +41,7 @@ pub(crate) const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 
 /// A tenant, a workspace and a fleet nothing else in the suite addresses, over
 /// the live database and the lane's NATS.
-pub(crate) struct EventsLane {
+pub(crate) struct TurnsLane {
     lane: TestDatabase,
     pub(crate) database: Db,
     pub(crate) bus: Handle,
@@ -50,7 +50,7 @@ pub(crate) struct EventsLane {
     pub(crate) fleet: Uuid7,
 }
 
-impl EventsLane {
+impl TurnsLane {
     /// Opens the database and a bus, and seeds the row chain a fleet event needs.
     pub(crate) async fn open() -> Self {
         let lane = TestDatabase::shared();
@@ -75,8 +75,8 @@ impl EventsLane {
     ///
     /// Built from the lane's own pool and bus, so a test names what it is
     /// exercising rather than restating how a ledger is assembled.
-    pub(crate) fn admissions(&self) -> afd_turns::Admissions {
-        afd_turns::Admissions::for_tests(self.database.clone(), self.bus.clone())
+    pub(crate) fn admissions(&self) -> afd_turns::Turns {
+        afd_turns::Turns::for_tests(self.database.clone(), self.bus.clone())
     }
 
     /// A pooled connection, or a failed test.
@@ -94,7 +94,7 @@ impl EventsLane {
     /// `created_at` is a parameter rather than a clock read: every claim these
     /// suites make about a `since` window is a claim about ROW TIMESTAMPS, and
     /// a fixture that stamped rows with "now" could only ever seed one instant.
-    pub(crate) async fn seed_event(&self, event_id: &Uuid7, created_at: Timestamp) {
+    pub(crate) async fn seed_event(&self, turn_id: &Uuid7, created_at: Timestamp) {
         let mut connection = self.connection().await;
         sqlx::query(
             "INSERT INTO thread.turns AS t
@@ -109,22 +109,22 @@ impl EventsLane {
         )
         .bind(&self.fleet)
         .bind(&self.workspace)
-        .bind(event_id)
+        .bind(turn_id)
         .bind(created_at.to_sqlx())
         .execute(&mut *connection)
         .await
         .expect("seeding a fleet event");
     }
 
-    /// Whether the lane holds a row under `event_id`.
-    pub(crate) async fn has_event(&self, event_id: &Uuid7) -> bool {
+    /// Whether the lane holds a row under `turn_id`.
+    pub(crate) async fn has_event(&self, turn_id: &Uuid7) -> bool {
         let mut connection = self.connection().await;
         let count: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM thread.turns
              WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",
         )
         .bind(&self.fleet)
-        .bind(event_id)
+        .bind(turn_id)
         .fetch_one(&mut *connection)
         .await
         .expect("the count must run");

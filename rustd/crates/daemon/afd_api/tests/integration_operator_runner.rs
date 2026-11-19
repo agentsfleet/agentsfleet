@@ -231,7 +231,7 @@ async fn assert_runner_events(router: &axum::Router, token: &str, runner_path: &
     let events = send(
         router,
         Method::GET,
-        &format!("{runner_path}/events?limit=2&event_type=runner_revoked,runner_cordoned"),
+        &format!("{runner_path}/history?limit=2&event_type=runner_revoked,runner_cordoned"),
         Some(token),
         "",
     )
@@ -254,8 +254,8 @@ async fn assert_runner_events(router: &axum::Router, token: &str, runner_path: &
     );
 
     for path in [
-        "/v1/admin/runners/not-a-runner/events".to_owned(),
-        format!("{runner_path}/events?limit=0"),
+        "/v1/admin/runners/not-a-runner/history".to_owned(),
+        format!("{runner_path}/history?limit=0"),
     ] {
         let malformed = send(router, Method::GET, &path, Some(token), "").await;
         assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);

@@ -18,7 +18,7 @@ mod system;
 
 use crate::Setup;
 use afd_approval::IntegrationGrants;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 
 pub use progress::{SetupCheck, SetupProgress};
 pub use read::SavedFleet;
@@ -28,7 +28,7 @@ pub use system::SystemSetup;
 #[derive(Debug, Clone)]
 pub struct Creations {
     pub(crate) setup: Setup,
-    admissions: Admissions,
+    admissions: Turns,
     grants: IntegrationGrants,
     schedules: afd_cron::Schedules,
     /// What a chat save registers an active fleet's trigger schedules
@@ -62,7 +62,7 @@ impl Creations {
 
     /// Shares the daemon's ledger, queue, pool and credential inspection service.
     #[must_use]
-    pub fn new(setup: Setup, admissions: Admissions) -> Self {
+    pub fn new(setup: Setup, admissions: Turns) -> Self {
         Self {
             schedules: afd_cron::Schedules::new(
                 setup.drafts.database.clone(),

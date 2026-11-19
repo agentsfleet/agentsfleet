@@ -41,7 +41,7 @@ VALUES ($1, $2, $3, now(), $4)";
 /// have accumulated it.
 const INSERT_LINE: &str = "\
 INSERT INTO billing.usage_lines
-  (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
+  (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, turn_id,
    provider, model, posture, requested_at, input_token_count, cached_input_token_count,
    cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
    output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at, updated_at)

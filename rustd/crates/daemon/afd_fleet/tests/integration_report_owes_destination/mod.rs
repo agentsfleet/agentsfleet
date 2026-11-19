@@ -1,7 +1,7 @@
 //! A report owes its answer only to the destination its event was admitted
 //! with, and never to the run's model provider.
 //!
-//! Driven end to end through the real verbs: `Admissions::admit` records the
+//! Driven end to end through the real verbs: `Turns::admit` records the
 //! event and its destination, the run path takes it, and `commit_report`
 //! settles it. What is read back is `thread.deliveries` for this test's
 //! own fleet (ISO-1). No suite drove a report into that table before this one,
@@ -67,7 +67,7 @@ async fn answers_without_a_destination_owe_nothing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn answer_is_owed_to_the_recorded_destination() {
     let stage = stage().await;
-    let event_id = stage
+    let turn_id = stage
         .admit(
             Producer::Webhook,
             "asked-in-a-thread",
@@ -84,7 +84,7 @@ async fn answer_is_owed_to_the_recorded_destination() {
         vec![Delivery {
             provider: Provider::Slack.id().to_owned(),
             destination: Some(THREAD.to_owned()),
-            event_id,
+            turn_id,
             answer: RESPONSE_ACCEPTED.to_owned(),
         }],
         "one row, owed to the thread the question came from"
@@ -216,13 +216,13 @@ async fn an_unknown_recorded_connector_owes_nothing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_plane_appends_and_receipts_what_it_owed() {
     let stage = stage().await;
-    let event_id = stage.admit_thread("asked-and-answered").await;
+    let turn_id = stage.admit_thread("asked-and-answered").await;
     let now = stage.fixtures.enrolled_at();
     let (run_id, run) = stage.assign_next(now).await;
 
     stage.report_through_plane(&run_id, &run, now).await;
 
-    let receipt = stage.receipt(&event_id).await;
+    let receipt = stage.receipt(&turn_id).await;
     assert!(
         receipt.is_some(),
         "the plane appended the owed answer and recorded the entry it landed on"

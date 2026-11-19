@@ -19,12 +19,12 @@ mod read;
 mod retry;
 mod snapshot;
 
-use af_core::event::status;
 use af_core::id::Uuid7;
+use af_core::turn::status;
 use afd_turns::view::{Cursor, History, QUEUED_READ_TEXTS, Steer};
 
 use crate::integration_list_plans::{explain_generic, private_database};
-use crate::support::EventsLane;
+use crate::support::TurnsLane;
 
 /// A person's actor, as a steer records it.
 const ACTOR: &str = "steer:user_waiting";

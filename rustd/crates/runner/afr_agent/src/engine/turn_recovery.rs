@@ -178,7 +178,7 @@ fn scope(run: &RunPayload<'_>, workspace: TurnWorkspace) -> Result<TurnScope> {
     let scope = TurnScope {
         workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
         fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
-        event_id: CheckpointOperationId(run.event.event_id.to_string()),
+        turn_id: CheckpointOperationId(run.event.turn_id.to_string()),
         setup_revision_id: CheckpointOperationId(revision.to_string()),
         workspace,
     };

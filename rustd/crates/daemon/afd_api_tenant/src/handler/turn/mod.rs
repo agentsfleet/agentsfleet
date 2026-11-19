@@ -7,15 +7,15 @@
 //!
 //! # Two listings, one statement
 //!
-//! `/events` and `/fleets/{id}/events` answer the same question with the fleet
+//! `/turns` and `/fleets/{id}/turns` answer the same question with the fleet
 //! free or fixed, and the console's Live Wall drills from the first to the
 //! second without changing endpoint. They bind one statement through
-//! [`crate::services::WorkspaceEvents`], so the two cannot disagree about a
+//! [`crate::services::WorkspaceTurns`], so the two cannot disagree about a
 //! fleet's history.
 //!
 //! # Rows are borrowed onto the wire, never copied
 //!
-//! `EventSummary<'a>` and `EventDetail<'a>` are `#[serde(borrow)]` throughout,
+//! `TurnSummary<'a>` and `TurnDetail<'a>` are `#[serde(borrow)]` throughout,
 //! so a page of two hundred rows serializes out of the strings the store
 //! already allocated. The page is held by the caller for exactly as long as the
 //! response is built, which is what makes the borrow sound.
@@ -25,7 +25,7 @@
 //! No such event, an event of another fleet, and an event of another workspace
 //! answer identically. The statement carries both scopes as predicates, so this
 //! handler receives one empty result for all three and could not tell them
-//! apart if it wanted to — see `af_core::error_code::EVENT_NOT_FOUND`.
+//! apart if it wanted to — see `af_core::error_code::TURN_NOT_FOUND`.
 
 mod query;
 pub(crate) mod tool_call;
@@ -35,8 +35,8 @@ use std::sync::Arc;
 
 use af_core::error_code;
 use af_core::id::Uuid7;
-use af_wire::event::{EventDetail, EventsResponse};
-use afd_turns::view::{Cursor, EventDetailRow, EventRow, next_cursor};
+use af_wire::turn::{TurnDetail, TurnsResponse};
+use afd_turns::view::{Cursor, TurnDetailRow, TurnRow, next_cursor};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
@@ -47,14 +47,14 @@ use afd_http::handler::{FleetPath, parse_id};
 
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspaceEvents as _};
+use crate::services::{Services, WorkspaceTurns as _};
 
 use self::query::{Listing, WorkspaceListing};
 
 /// The scoped events each verb's failures are logged under.
-const EVENT_WORKSPACE_LIST: &str = "workspace_events_list_failed";
-const EVENT_FLEET_LIST: &str = "fleet_events_list_failed";
-const EVENT_DETAIL: &str = "fleet_event_detail_failed";
+const EVENT_WORKSPACE_LIST: &str = "workspace_turns_list_failed";
+const EVENT_FLEET_LIST: &str = "fleet_turns_list_failed";
+const EVENT_DETAIL: &str = "fleet_turn_detail_failed";
 
 /// The refusal a fleet segment that is not an identifier earns.
 const DETAIL_FLEET_ID: &str = "fleet_id must be a UUIDv7";
@@ -63,53 +63,53 @@ const DETAIL_FLEET_ID: &str = "fleet_id must be a UUIDv7";
 ///
 /// Names the bound rather than presence: an over-long identifier was sent,
 /// and telling its sender it is missing sends them looking for the wrong fix.
-const DETAIL_EVENT_ID: &str = concatcp!("event_id must be 1-", EVENT_ID_MAX_LEN, " bytes");
+const DETAIL_TURN_ID: &str = concatcp!("turn_id must be 1-", TURN_ID_MAX_LEN, " bytes");
 
 /// The refusal an event this workspace and fleet do not hold earns.
 ///
 /// `S_EVENT_NOT_FOUND`, kept verbatim.
-const DETAIL_EVENT_NOT_FOUND: &str = "Event not found";
+const DETAIL_TURN_NOT_FOUND: &str = "Turn not found";
 
 /// The longest event identifier this surface will look up.
 ///
-/// `EVENT_ID_MAX_LEN`, mirrored. `event_id` is the producer's key on `thread.turns` and
+/// `TURN_ID_MAX_LEN`, mirrored. `turn_id` is the producer's key on `thread.turns` and
 /// arrives on the wire from the producer rather than being minted here, so
 /// there is no shape to validate. This bound only refuses an identifier long
 /// enough to be an attack on the index rather than a lookup.
-const EVENT_ID_MAX_LEN: usize = 256;
+const TURN_ID_MAX_LEN: usize = 256;
 
 /// The segments the expanded read's template carries.
 #[derive(Debug, Deserialize, garde::Validate)]
-pub(crate) struct EventPath {
+pub(crate) struct TurnPath {
     /// The fleet named in the path, still text.
     // Parsed rather than bounded: an identifier has one length.
     #[garde(skip)]
     pub fleet_id: String,
     /// The event named in the path. Free-form TEXT, never an identifier this
     /// daemon minted.
-    #[garde(length(bytes, min = 1, max = EVENT_ID_MAX_LEN))]
-    pub event_id: String,
+    #[garde(length(bytes, min = 1, max = TURN_ID_MAX_LEN))]
+    pub turn_id: String,
 }
 
-/// `GET /v1/workspaces/{workspace_id}/events` — the whole workspace's history.
+/// `GET /v1/workspaces/{workspace_id}/turns` — the whole workspace's history.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/workspaces/{workspace_id}/events",
+    path = "/v1/workspaces/{workspace_id}/turns",
     tag = afd_http::openapi::tag::WORKSPACES,
-    operation_id = "list_workspace_events",
-    summary = "List workspace event history",
+    operation_id = "list_workspace_turns",
+    summary = "List workspace turn history",
     description = concat!(
-        "Lists workspace events newest first. Filter by `fleet_id`, `actor` pattern, or ",
+        "Lists workspace turns newest first. Filter by `fleet_id`, `actor` pattern, or ",
         "`since` time. `since` accepts a duration or RFC 3339 timestamp and cannot be ",
         "combined with `cursor`.",
     ),
     params(
         afd_http::openapi::path::Workspace,
         ("fleet_id" = Option<String>, Query, description = "Drill down to one fleet within the workspace."),
-        afd_http::openapi::query::EventFilter,
+        afd_http::openapi::query::TurnFilter,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = EventsResponse<'_>),
+        (status = 200, description = afd_http::openapi::OK, body = TurnsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         afd_http::openapi::GuardedFailures,
     ),
@@ -135,23 +135,23 @@ pub(crate) async fn workspace_list<D: Services>(
     Ok(Json(page_response(&page, asked.listing.limit)).into_response())
 }
 
-/// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events` — one fleet's.
+/// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns` — one fleet's.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events",
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns",
     tag = afd_http::openapi::tag::FLEETS,
-    operation_id = "list_fleet_events",
-    summary = "List a fleet's event history",
+    operation_id = "list_fleet_turns",
+    summary = "List a fleet's turn history",
     description = concat!(
-        "Returns fleet events with the newest event first. Filter with ",
+        "Returns fleet turns with the newest turn first. Filter with ",
         "`actor` or `since`. You cannot use `since` and `cursor` together. ",
     ),
     params(
         afd_http::openapi::path::Fleet,
-        afd_http::openapi::query::EventFilter,
+        afd_http::openapi::query::TurnFilter,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = EventsResponse<'_>),
+        (status = 200, description = afd_http::openapi::OK, body = TurnsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         afd_http::openapi::GuardedFailures,
     ),
@@ -179,23 +179,23 @@ pub(crate) async fn fleet_list<D: Services>(
     Ok(Json(page_response(&page, asked.limit)).into_response())
 }
 
-/// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}`.
+/// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/{turn_id}`.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}",
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/{turn_id}",
     tag = afd_http::openapi::tag::FLEETS,
-    operation_id = "get_fleet_event",
-    summary = "Read one fleet event",
+    operation_id = "get_fleet_turn",
+    summary = "Read one fleet turn",
     description = concat!(
-        "Returns one event's request body and full reply. Event lists omit these bodies; ",
-        "fetch details when opening an event. Missing events and events outside your ",
+        "Returns one turn's request body and full reply. Turn lists omit these bodies; ",
+        "fetch details when opening a turn. Missing turns and turns outside your ",
         "workspace both return 404.",
     ),
     params(
-        afd_http::openapi::path::Event,
+        afd_http::openapi::path::Turn,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = EventDetail<'_>),
+        (status = 200, description = afd_http::openapi::OK, body = TurnDetail<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         afd_http::openapi::GuardedFailures,
@@ -204,7 +204,7 @@ pub(crate) async fn fleet_list<D: Services>(
 pub(crate) async fn detail<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
-    Path(path): Path<EventPath>,
+    Path(path): Path<TurnPath>,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet(&path.fleet_id)?;
     let path = bounded_path(path)?;
@@ -215,26 +215,26 @@ pub(crate) async fn detail<D: Services>(
             &owned.workspace,
             &fleet,
             // An id that is not a UUIDv7 names no event: the same 404.
-            &af_core::id::Uuid7::parse(&path.event_id).map_err(|_text| {
-                Refusal::coded(error_code::EVENT_NOT_FOUND, DETAIL_EVENT_NOT_FOUND)
+            &af_core::id::Uuid7::parse(&path.turn_id).map_err(|_text| {
+                Refusal::coded(error_code::TURN_NOT_FOUND, DETAIL_TURN_NOT_FOUND)
             })?,
         )
         .await
         .map_err(Refusal::at(EVENT_DETAIL))?;
 
     let event =
-        found.ok_or_else(|| Refusal::coded(error_code::EVENT_NOT_FOUND, DETAIL_EVENT_NOT_FOUND))?;
+        found.ok_or_else(|| Refusal::coded(error_code::TURN_NOT_FOUND, DETAIL_TURN_NOT_FOUND))?;
     Ok(Json(expanded(&event)).into_response())
 }
 
-/// A path whose `event_id` its bound has proved, or the refusal naming it.
+/// A path whose `turn_id` its bound has proved, or the refusal naming it.
 ///
 /// The bound is the only one either event path declares, so any report is
 /// that one; the store is never asked for an identifier it could not hold.
 fn bounded_path<P: garde::Validate<Context = ()>>(path: P) -> Result<garde::Valid<P>, Refusal> {
     garde::Unvalidated::new(path)
         .validate()
-        .map_err(|_report| Refusal::malformed(DETAIL_EVENT_ID))
+        .map_err(|_report| Refusal::malformed(DETAIL_TURN_ID))
 }
 
 /// The fleet the path names, or the refusal a non-identifier earns.
@@ -246,9 +246,9 @@ fn parse_fleet(fleet_id: &str) -> Result<Uuid7, Refusal> {
 }
 
 /// One page, with the cursor the next one resumes from.
-fn page_response(page: &[EventRow], limit: i64) -> EventsResponse<'_> {
-    EventsResponse {
-        items: page.iter().map(EventRow::summary).collect(),
+fn page_response(page: &[TurnRow], limit: i64) -> TurnsResponse<'_> {
+    TurnsResponse {
+        items: page.iter().map(TurnRow::summary).collect(),
         next_cursor: next_cursor(page, limit)
             .as_ref()
             .map(Cursor::encode)
@@ -260,13 +260,13 @@ fn page_response(page: &[EventRow], limit: i64) -> EventsResponse<'_> {
 ///
 /// The bodies sit between `status` and `tokens` because that is the order the
 /// daemon this ports already emits, and the tool trace joins them there. See
-/// `af_wire::event::EventDetail` on why the two wire types are not one type
+/// `af_wire::turn::TurnDetail` on why the two wire types are not one type
 /// plus its body fields.
-pub(crate) fn expanded(event: &EventDetailRow) -> EventDetail<'_> {
+pub(crate) fn expanded(event: &TurnDetailRow) -> TurnDetail<'_> {
     let row = &event.row;
-    EventDetail {
+    TurnDetail {
         fleet_id: Cow::Borrowed(row.fleet_id.as_str()),
-        event_id: Cow::Borrowed(row.event_id.as_str()),
+        turn_id: Cow::Borrowed(row.turn_id.as_str()),
         workspace_id: Cow::Borrowed(row.workspace_id.as_str()),
         actor: Cow::Borrowed(&row.actor),
         event_type: Cow::Borrowed(&row.event_type),
@@ -284,8 +284,8 @@ pub(crate) fn expanded(event: &EventDetailRow) -> EventDetail<'_> {
         wall_ms: row.wall_ms,
         failure_label: row.failure_label.as_deref().map(Cow::Borrowed),
         failure_detail: row.failure_detail.as_deref().map(Cow::Borrowed),
-        resumes_event_id: row
-            .resumes_event_id
+        resumes_turn_id: row
+            .resumes_turn_id
             .as_ref()
             .map(|id| Cow::Borrowed(id.as_str())),
         created_at: row.created_at,

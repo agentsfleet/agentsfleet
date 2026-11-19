@@ -54,14 +54,14 @@
 //!
 //! # Announcing is the route's, and best-effort
 //!
-//! [`Steer::announce`] puts an `event_admitted` frame on the fleet's live tail
+//! [`Steer::announce`] puts an `turn_admitted` frame on the fleet's live tail
 //! so every screen shows the message while it waits for a runner. The route
 //! calls it with the words it read, after [`Steer::append`] answered with an
 //! admission instant; a repeat has none, because its first send announced it.
 //! A frame the queue refuses is logged by the publisher and costs nothing
 //! else: the message is durable, and a reload reads it from the ledger.
 
-use crate::{Admission, Admissions, Key, PersonSteer, Repeated, RunFacts};
+use crate::{IncomingTurn, Key, PersonSteer, Repeated, RunFacts, Turns};
 use af_core::error_code;
 use af_core::id::Uuid7;
 use afd_api_wire::tail::TailFrame;
@@ -116,7 +116,7 @@ pub mod disposition;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Steered {
     /// The event the message became.
-    pub event_id: String,
+    pub turn_id: String,
     /// Where the message went, and the run it joined when folded.
     pub placed: disposition::Placed,
     /// When THIS call admitted the message, or `None` when an
@@ -130,9 +130,9 @@ impl Steered {
     /// The answer to a repeat: the first send's event, placed as the ledger
     /// sees its fleet now. The ledger keeps no record of where the first send
     /// went, so a repeat after its run ended is placed afresh.
-    const fn repeat(event_id: String, placed: disposition::Placed) -> Self {
+    const fn repeat(turn_id: String, placed: disposition::Placed) -> Self {
         Self {
-            event_id,
+            turn_id,
             placed,
             admitted_at: None,
         }
@@ -148,13 +148,13 @@ impl Steered {
 /// The ingress side of the narrative log.
 #[derive(Debug, Clone)]
 pub struct Steer {
-    admissions: Admissions,
+    admissions: Turns,
 }
 
 impl Steer {
     /// Admits through `admissions`.
     #[must_use]
-    pub const fn new(admissions: Admissions) -> Self {
+    pub const fn new(admissions: Turns) -> Self {
         Self { admissions }
     }
 
@@ -187,12 +187,12 @@ impl Steer {
                 // The insert never ran, so no live-run facts came back.
                 let queued = disposition::Placed {
                     disposition: disposition::SteerDisposition::Queued,
-                    folded_into_event_id: None,
+                    folded_into_turn_id: None,
                 };
                 return self
                     .repeat_despite(&admission, refused)
                     .await
-                    .map(|event_id| Steered::repeat(event_id, queued));
+                    .map(|turn_id| Steered::repeat(turn_id, queued));
             }
             Err(failed) => return Err(failed.into()),
         };
@@ -203,7 +203,7 @@ impl Steer {
             let run = self.run_facts(fleet, &admitted.stored.id).await;
             let placed = disposition::of(&run, actor, admitted.stored.id.as_str());
             return answer_repeat(&admission, admitted.stored)
-                .map(|event_id| Steered::repeat(event_id, placed));
+                .map(|turn_id| Steered::repeat(turn_id, placed));
         }
 
         // Hoisted rather than spelled inside the macro: the log bridge
@@ -211,14 +211,14 @@ impl Steer {
         // scores the dead copy (LOG-HOIST, `.orly/standards/domains/logging.md`).
         let id = admitted.stored.id.as_str();
         {
-            let (fleet_id, workspace_id, event_id, event) =
+            let (fleet_id, workspace_id, turn_id, event) =
                 (&fleet, &workspace, &id, &"steer_appended");
-            tracing::debug!(%fleet_id, %workspace_id, actor, %event_id, event);
+            tracing::debug!(%fleet_id, %workspace_id, actor, %turn_id, event);
         };
         let run = self.run_facts(fleet, &admitted.stored.id).await;
         Ok(Steered {
             placed: disposition::of(&run, actor, admitted.stored.id.as_str()),
-            event_id: admitted.stored.id.into(),
+            turn_id: admitted.stored.id.into(),
             admitted_at: Some(admitted.stored.created_at),
         })
     }
@@ -240,7 +240,7 @@ impl Steer {
                 let error_code = unread.code().as_str();
                 tracing::warn!(
                     fleet_id = %fleet,
-                    event_id = %admission,
+                    turn_id = %admission,
                     error_code,
                     event = "steer_run_facts_unread",
                 );
@@ -276,7 +276,7 @@ impl Steer {
     /// A capacity refusal, unless the key is a repeat: then its event.
     async fn repeat_despite(
         &self,
-        admission: &Admission<'_>,
+        admission: &IncomingTurn<'_>,
         refused: crate::Error,
     ) -> Result<String> {
         despite(self.repeat_of(admission).await, refused)
@@ -284,7 +284,7 @@ impl Steer {
 
     /// The first admission's event for a keyed steer with the same payload,
     /// looked up for the paths that never reached the insert.
-    async fn repeat_of(&self, admission: &Admission<'_>) -> Result<Option<String>> {
+    async fn repeat_of(&self, admission: &IncomingTurn<'_>) -> Result<Option<String>> {
         let Key::Repeated(key) = admission.key else {
             return Ok(None);
         };
@@ -314,11 +314,11 @@ fn despite(repeat: Result<Option<String>>, refused: crate::Error) -> Result<Stri
 /// The row a steer's key already holds, as this caller's answer: its event when
 /// the payload and fleet are this caller's, a conflict otherwise.
 ///
-/// The digest covers actor, workspace and body (`Admission::payload_digest`),
+/// The digest covers actor, workspace and body (`IncomingTurn::payload_digest`),
 /// so a different person reusing the id is a conflict too, never a read of
 /// somebody else's event; and a row some other fleet holds under this key is
 /// refused the same way rather than answered.
-fn answer_repeat(admission: &Admission<'_>, repeated: Repeated) -> Result<String> {
+fn answer_repeat(admission: &IncomingTurn<'_>, repeated: Repeated) -> Result<String> {
     let cause = if repeated.fleet != *admission.fleet {
         CONFLICT_CAUSE_FLEET
     } else if repeated.digest != admission.payload_digest() {
@@ -331,10 +331,10 @@ fn answer_repeat(admission: &Admission<'_>, repeated: Repeated) -> Result<String
     // a fixed word, so the warn never carries the message or the key.
     let code = error_code::AGENTSFLEET_OPERATION_CONFLICT.as_str();
     let fleet_id = admission.fleet;
-    let event_id = repeated.id.as_str();
+    let turn_id = repeated.id.as_str();
     {
         let (error_code, event) = (&code, &"steer_operation_conflict");
-        tracing::warn!(error_code, %fleet_id, %event_id, cause, event);
+        tracing::warn!(error_code, %fleet_id, %turn_id, cause, event);
     };
     Err(operation_conflict())
 }

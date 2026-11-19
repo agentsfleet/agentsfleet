@@ -8,8 +8,8 @@ use std::borrow::Cow;
 
 use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
-use af_wire::event::EventType;
 use af_wire::memory::{MemoryDelta, Visibility};
+use af_wire::turn::TurnKind;
 use afd_db::test_util::unreachable_db;
 use afd_fleet::run::RunService;
 use afd_memory::Memories;
@@ -52,7 +52,7 @@ fn remembered() -> Vec<(String, String)> {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_run_carries_the_memory_window() {
     let chat = Chat::open().await;
-    chat.ask(EventType::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
+    chat.ask(TurnKind::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
     let first = chat.run(&chat.runner, chat.fixtures.enrolled_at()).await;
     chat.answer_remembering(
@@ -63,7 +63,7 @@ async fn test_run_carries_the_memory_window() {
         chat.fixtures.after(SLICE),
     )
     .await;
-    chat.ask(EventType::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
+    chat.ask(TurnKind::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
         .await;
 
     let follow_up = chat.run(&chat.runner, chat.fixtures.after(SLICE * 2)).await;
@@ -83,9 +83,9 @@ async fn test_run_carries_the_memory_window() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_window_follows_the_slot() {
     let chat = Chat::open().await;
-    chat.ask(EventType::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
+    chat.ask(TurnKind::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
-    chat.ask(EventType::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
+    chat.ask(TurnKind::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
         .await;
 
     let first = chat.run(&chat.runner, chat.fixtures.enrolled_at()).await;
@@ -113,7 +113,7 @@ async fn test_window_follows_the_slot() {
 async fn test_window_read_failure_issues_without_a_window() {
     let chat = Chat::open().await;
     let asked = chat
-        .ask(EventType::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
+        .ask(TurnKind::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
     let forgetful = RunService {
         task_reports: None,
@@ -130,7 +130,7 @@ async fn test_window_read_failure_issues_without_a_window() {
 
     assert_eq!(
         (
-            held.event_id,
+            held.turn_id,
             held.memory,
             failed
                 .field("error_code")

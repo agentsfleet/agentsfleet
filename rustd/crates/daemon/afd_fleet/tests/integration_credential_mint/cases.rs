@@ -24,7 +24,7 @@ async fn test_mint_scope_is_the_presenting_runners_run() {
         .expect("the owner's own run resolves");
     assert_eq!(scope.workspace_id, owner.workspace);
     assert_eq!(scope.fleet_id, owner.fleet);
-    assert_eq!(&*scope.event_id, owner.event.as_str());
+    assert_eq!(&*scope.turn_id, owner.event.as_str());
 
     // The IDOR negative: a real, live run belonging to somebody else.
     assert!(

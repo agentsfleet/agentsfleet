@@ -15,7 +15,7 @@ async fn admitted_work_reaches_an_idle_native_worker_without_a_run_poll() {
     let mut scene = scenario(&mut supervisor).await;
     wire::heartbeat(&scene, &wire::capable_beat()).await;
     let (run, fence) = wire::wait_for_seeded_offer(&scene).await;
-    wire::report(&scene, &wire::report_body(&run, &scene.event_id, fence))
+    wire::report(&scene, &wire::report_body(&run, &scene.turn_id, fence))
         .await
         .expect("settle seeded work");
     let event = scene.enqueue_event(EVENT_TYPE).await;

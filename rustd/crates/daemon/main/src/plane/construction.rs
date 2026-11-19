@@ -10,7 +10,7 @@ use afd_credential::provider::Providers;
 use afd_db::Db;
 use afd_fleet::run::RunService;
 use afd_runner::Runners;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use std::sync::Arc;
 
 type StorageConfig = Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>;
@@ -19,7 +19,7 @@ pub(super) struct Common {
     pub(super) providers: Providers,
     pub(super) github_client: reqwest::Client,
     pub(super) task_master: Arc<Kek>,
-    pub(super) admissions: Admissions,
+    pub(super) admissions: Turns,
     pub(super) biller: Arc<dyn Biller>,
     pub(super) drafts: afd_setup::Drafts,
 }
@@ -33,7 +33,7 @@ impl Common {
         );
         let github_client = parts.storage_client.clone();
         let task_master = Arc::clone(&parts.kek);
-        let admissions = Admissions::new(parts.database.clone(), parts.bus.clone(), Entropy::new());
+        let admissions = Turns::new(parts.database.clone(), parts.bus.clone(), Entropy::new());
         let biller = crate::billing::biller(parts.database.clone(), parts.analytics.clone());
         let drafts =
             afd_setup::Drafts::new(parts.database.clone(), Entropy::new(), Arc::clone(&biller))
@@ -61,7 +61,7 @@ pub(super) struct NativeInputs<'a> {
     pub(super) broker: Arc<afd_credential::credential::Broker>,
     pub(super) biller: Arc<dyn Biller>,
     pub(super) wake: afd_bus::wake::Wake,
-    pub(super) admissions: Admissions,
+    pub(super) admissions: Turns,
     pub(super) admin_workspace: Option<Uuid7>,
     pub(super) storage_config: StorageConfig,
     pub(super) master: Arc<Kek>,

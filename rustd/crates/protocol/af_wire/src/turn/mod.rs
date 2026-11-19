@@ -1,4 +1,4 @@
-//! The normalized event every producer emits and every consumer reads.
+//! The normalized turn every producer emits and every consumer reads.
 
 use std::borrow::Cow;
 
@@ -8,11 +8,11 @@ use crate::tool_trace::RawToolTrace;
 #[cfg(feature = "openapi")]
 use crate::tool_trace::ToolTrace;
 
-/// How an event entered the system.
+/// How a turn entered the system.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum EventType {
+pub enum TurnKind {
     /// An operator or user message.
     Chat,
     /// An inbound webhook from a connected integration.
@@ -25,7 +25,7 @@ pub enum EventType {
 
 /// The stored spellings, declared once (RULE UFS).
 ///
-/// `parse` and [`EventType::as_str`] are inverses, so each word appeared twice
+/// `parse` and [`TurnKind::as_str`] are inverses, so each word appeared twice
 /// — and a pair that drifted would make a type this daemon writes one it cannot
 /// read back. Naming them here leaves one edit site per spelling and keeps the
 /// two matches beside each other, which is what makes a missing variant a build
@@ -35,7 +35,7 @@ const WEBHOOK: &str = "webhook";
 const CRON: &str = "cron";
 const CONTINUATION: &str = "continuation";
 
-impl EventType {
+impl TurnKind {
     /// The type `stored` names, or nothing when it names none.
     ///
     /// The set is CLOSED, and an unrecognised spelling answers `None` rather
@@ -83,35 +83,35 @@ pub use self::steer::{
     SteerDisposition, SteerRequest, sender_line,
 };
 
-/// An event and its original request body. The runner reads `request_json`; API responses
+/// A turn and its original request body. The runner reads `request_json`; API responses
 /// return it unchanged.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EventEnvelope<'a> {
-    /// The canonical event identifier, the same on every surface that shows
-    /// the event.
+pub struct TurnEnvelope<'a> {
+    /// The canonical turn identifier, the same on every surface that shows
+    /// the turn.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
-    /// The fleet this event belongs to.
+    pub turn_id: Cow<'a, str>,
+    /// The fleet this turn belongs to.
     #[serde(borrow)]
     pub fleet_id: Cow<'a, str>,
     /// The workspace the fleet belongs to.
     #[serde(borrow)]
     pub workspace_id: Cow<'a, str>,
-    /// Who or what produced the event.
+    /// Who or what produced the turn.
     #[serde(borrow)]
     pub actor: Cow<'a, str>,
-    /// How the event entered the system.
-    pub event_type: EventType,
+    /// How the turn entered the system.
+    pub event_type: TurnKind,
     /// Original request body, returned unchanged.
     #[serde(borrow)]
     pub request_json: Cow<'a, str>,
-    /// When the event was created.
+    /// When the turn was created.
     #[serde(with = "crate::instant")]
     pub created_at: jiff::Timestamp,
 }
 
-/// One event as the operator surface renders it.
+/// One turn as the operator surface renders it.
 //
 // Field order is load-bearing. `serde_json` emits the struct's field set in
 // DECLARATION order, and the tenant shape suite pins key set AND order — a
@@ -125,23 +125,23 @@ pub struct EventEnvelope<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct EventSummary<'a> {
-    /// The fleet this event belongs to.
+pub struct TurnSummary<'a> {
+    /// The fleet this turn belongs to.
     #[serde(borrow)]
     pub fleet_id: Cow<'a, str>,
-    /// The canonical event identifier — the stream entry id that produced it.
+    /// The canonical turn identifier — the stream entry id that produced it.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
+    pub turn_id: Cow<'a, str>,
     /// The workspace the fleet belongs to.
     #[serde(borrow)]
     pub workspace_id: Cow<'a, str>,
-    /// Who or what produced the event.
+    /// Who or what produced the turn.
     #[serde(borrow)]
     pub actor: Cow<'a, str>,
-    /// How the event entered the system, as stored.
+    /// How the turn entered the system, as stored.
     #[serde(borrow)]
     pub event_type: Cow<'a, str>,
-    /// Where the event's run got to, as stored.
+    /// Where the turn's run got to, as stored.
     #[serde(borrow)]
     pub status: Cow<'a, str>,
     /// Tokens the run spent, absent until a runner reports.
@@ -154,16 +154,16 @@ pub struct EventSummary<'a> {
     /// The operator-readable cause line, absent when none was carried.
     #[serde(borrow)]
     pub failure_detail: Option<Cow<'a, str>>,
-    /// The event this one continues, set on a continuation.
+    /// The turn this one continues, set on a continuation.
     #[serde(borrow)]
-    pub resumes_event_id: Option<Cow<'a, str>>,
+    pub resumes_turn_id: Option<Cow<'a, str>>,
     /// When the row was created.
     #[serde(with = "crate::instant")]
     pub created_at: jiff::Timestamp,
     /// When the row last changed.
     #[serde(with = "crate::instant")]
     pub updated_at: jiff::Timestamp,
-    /// What this event actually cost, summed over its telemetry rows.
+    /// What this turn actually cost, summed over its telemetry rows.
     //
     // `null` when the event recorded no telemetry, which the console renders
     // as UNKNOWN and never as a zero charge — an unbilled run and a free run
@@ -174,28 +174,28 @@ pub struct EventSummary<'a> {
     pub cost_nanos: Option<i64>,
 }
 
-/// A page of event history.
+/// A page of turn history.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct EventsResponse<'a> {
-    /// The events on this page, newest first.
-    pub items: Vec<EventSummary<'a>>,
+pub struct TurnsResponse<'a> {
+    /// The turns on this page, newest first.
+    pub items: Vec<TurnSummary<'a>>,
     /// Where the next page resumes, or `null` on the last one.
     #[serde(borrow)]
     pub next_cursor: Option<Cow<'a, str>>,
 }
 
-/// One event as the expanded view renders it — bodies included.
+/// One turn as the expanded view renders it — bodies included.
 //
-// The sibling of [`EventSummary`], and the two are separate types because the
+// The sibling of [`TurnSummary`], and the two are separate types because the
 // list and the detail read different columns: a page of up to two hundred rows
 // pays for every column it selects, and the trigger payload and the agent's
 // full answer are wanted one row at a time.
 //
 // Field order is load-bearing here for the same reason it is on
-// [`EventSummary`], and the two bodies sit in the MIDDLE of the field set
-// rather than at the end — which is why this cannot be [`EventSummary`] plus
+// [`TurnSummary`], and the two bodies sit in the MIDDLE of the field set
+// rather than at the end — which is why this cannot be [`TurnSummary`] plus
 // two fields.
 //
 // `request_json` is the stored payload serialized to TEXT and carried as a
@@ -204,23 +204,23 @@ pub struct EventsResponse<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct EventDetail<'a> {
-    /// The fleet this event belongs to.
+pub struct TurnDetail<'a> {
+    /// The fleet this turn belongs to.
     #[serde(borrow)]
     pub fleet_id: Cow<'a, str>,
-    /// The canonical event identifier — the stream entry id that produced it.
+    /// The canonical turn identifier — the stream entry id that produced it.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
+    pub turn_id: Cow<'a, str>,
     /// The workspace the fleet belongs to.
     #[serde(borrow)]
     pub workspace_id: Cow<'a, str>,
-    /// Who or what produced the event.
+    /// Who or what produced the turn.
     #[serde(borrow)]
     pub actor: Cow<'a, str>,
-    /// How the event entered the system, as stored.
+    /// How the turn entered the system, as stored.
     #[serde(borrow)]
     pub event_type: Cow<'a, str>,
-    /// Where the event's run got to, as stored.
+    /// Where the turn's run got to, as stored.
     #[serde(borrow)]
     pub status: Cow<'a, str>,
     /// The trigger payload as stored, serialized to text.
@@ -250,18 +250,18 @@ pub struct EventDetail<'a> {
     /// The operator-readable cause line, absent when none was carried.
     #[serde(borrow)]
     pub failure_detail: Option<Cow<'a, str>>,
-    /// The event this one continues, set on a continuation.
+    /// The turn this one continues, set on a continuation.
     #[serde(borrow)]
-    pub resumes_event_id: Option<Cow<'a, str>>,
+    pub resumes_turn_id: Option<Cow<'a, str>>,
     /// When the row was created.
     #[serde(with = "crate::instant")]
     pub created_at: jiff::Timestamp,
     /// When the row last changed.
     #[serde(with = "crate::instant")]
     pub updated_at: jiff::Timestamp,
-    /// What this event actually cost, summed over its telemetry rows.
+    /// What this turn actually cost, summed over its telemetry rows.
     //
-    // `null` when the event recorded no telemetry — see [`EventSummary`] on
+    // `null` when the event recorded no telemetry — see [`TurnSummary`] on
     // why that is never rendered as a zero charge.
     #[serde(with = "crate::nanos::option")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<crate::nanos::Decimal>))]
@@ -270,8 +270,8 @@ pub struct EventDetail<'a> {
 
 /// A page of one fleet's chat thread, bodies included.
 //
-// The sibling of [`EventsResponse`], and it carries [`EventDetail`] where
-// that carries [`EventSummary`]: the chat view needs the newest turns WITH
+// The sibling of [`TurnsResponse`], and it carries [`TurnDetail`] where
+// that carries [`TurnSummary`]: the chat view needs the newest turns WITH
 // their payload and answer, and used to fan out one detail request per turn
 // to get them.
 //
@@ -286,7 +286,7 @@ pub struct EventDetail<'a> {
 #[serde(deny_unknown_fields)]
 pub struct ThreadResponse<'a> {
     /// The turns on this page, newest first.
-    pub items: Vec<EventDetail<'a>>,
+    pub items: Vec<TurnDetail<'a>>,
     /// How many turns the thread holds in total. Never populated.
     pub total: Option<u32>,
     /// Where the next page resumes, or `null` when this one ends the walk.

@@ -1,6 +1,6 @@
 WITH held AS MATERIALIZED (
     SELECT l.id AS run_id, l.fleet_id, l.workspace_id, l.tenant_id,
-           l.event_id AS source_admission_id, l.task_id, l.task_generation, l.task_stop_generation,
+           l.turn_id AS source_turn_id, l.task_id, l.task_generation, l.task_stop_generation,
            l.fencing_token AS fence, s.fencing_token AS live_fence,
            f.head_revision_id AS revision_id,
            f.status AS fleet_status, f.name AS fleet_name,
@@ -17,7 +17,7 @@ WITH held AS MATERIALIZED (
     SELECT clock_timestamp() AS checked_at FROM held
 )
 SELECT held.run_id, held.fleet_id, held.workspace_id, held.tenant_id,
-       held.source_admission_id,
+       held.source_turn_id,
        held.task_id, held.task_generation, held.task_stop_generation, held.fence, held.live_fence, held.revision_id,
        held.fleet_status, held.fleet_name,
        held.decision_snapshot, held.capable, instant.checked_at, held.run_expires_at, held.slot_expires_at

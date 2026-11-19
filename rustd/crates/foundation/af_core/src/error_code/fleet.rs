@@ -236,7 +236,7 @@ pub const AGENTSFLEET_NOT_ACTIVE: ErrorCode = ErrorCode::declare("UZ-AGT-012");
 /// predicate and hands back one empty result for all three. A code that told
 /// them apart would be disclosing across a tenant boundary what a caller is not
 /// entitled to ask.
-pub const EVENT_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-015");
+pub const TURN_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-015");
 
 /// A steer's `operation_id` names a message this fleet already admitted with
 /// different text, or by another sender.
@@ -250,7 +250,7 @@ pub const AGENTSFLEET_OPERATION_CONFLICT: ErrorCode = ErrorCode::declare("UZ-AGT
 /// No kept record for that tool call, on that event, in that fleet and
 /// workspace.
 ///
-/// The sibling of [`EVENT_NOT_FOUND`], and one code for the same reasons: an
+/// The sibling of [`TURN_NOT_FOUND`], and one code for the same reasons: an
 /// unknown call, a call id that is not one, a call whose full output was never
 /// posted, and a call of another workspace's fleet all answer alike, because
 /// the statement carries the scope as a predicate. Telling them apart would

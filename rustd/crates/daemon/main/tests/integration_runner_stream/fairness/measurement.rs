@@ -44,7 +44,7 @@ pub(super) async fn offered(scene: &Scenario) -> Offered {
     .expect("only fleet work was seeded");
     Offered {
         fleet: Uuid7::parse(&run.event.fleet_id).expect("fleet id"),
-        event: Uuid7::parse(&run.event.event_id).expect("event id"),
+        event: Uuid7::parse(&run.event.turn_id).expect("event id"),
         run: run.run_id.to_string(),
         fence: run.fencing_token,
     }
@@ -67,7 +67,7 @@ pub(super) async fn progress(
             .await
             .expect("the native report settles");
         witness.offers += 1;
-        witness.old |= next.event == scene.event_id;
+        witness.old |= next.event == scene.turn_id;
         witness.hot |= next.fleet == hot.fleet;
         if witness.old && witness.hot && probes(owner).await >= before + 2 {
             break;
@@ -77,7 +77,7 @@ pub(super) async fn progress(
     let settled: bool = sqlx::query_scalar(
         "SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1 AND thread_id = $2",
     )
-    .bind(&scene.event_id)
+    .bind(&scene.turn_id)
     .bind(&scene.fleet)
     .fetch_one(&mut *owner.acquire().await.expect("the result connection"))
     .await

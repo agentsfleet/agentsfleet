@@ -7,26 +7,21 @@
 //! admits them, rather than straight onto the stream: the ledger's key is what
 //! makes a redelivery the same event, and so the same branch.
 
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_gate::policy::repair;
-use afd_turns::{Admission, Admissions, Admitted, Key, Producer};
+use afd_turns::{Admitted, IncomingTurn, Key, Producer, Turns};
 
 use super::seed::seed_provider_resolution;
 use super::*;
 use crate::recovery_seed::{admission, ledger};
 
 /// One Slack mention, admitted as the mention route admits it.
-async fn admit_mention(
-    ledger: &Admissions,
-    fleet: &Uuid7,
-    workspace: &Uuid7,
-    key: &str,
-) -> Admitted {
+async fn admit_mention(ledger: &Turns, fleet: &Uuid7, workspace: &Uuid7, key: &str) -> Admitted {
     ledger
-        .admit(Admission {
+        .admit(IncomingTurn {
             producer: Producer::SlackMention,
             key: Key::Repeated(key),
-            event_type: EventType::Chat,
+            event_type: TurnKind::Chat,
             ..admission(fleet, workspace, key)
         })
         .await
@@ -54,7 +49,7 @@ async fn one_slack_request_is_one_attempt() {
     let ready = Ready {
         runner,
         fleet: fleet.clone(),
-        event_id: first.stored.id.clone(),
+        turn_id: first.stored.id.clone(),
         tenant,
     };
     let claimed = claim(&fixtures, &ready).await;
@@ -84,11 +79,7 @@ async fn one_slack_request_is_one_attempt() {
     fixtures.cleanup().await;
 }
 
-async fn two_mentions(
-    ledger: &Admissions,
-    fleet: &Uuid7,
-    workspace: &Uuid7,
-) -> (Admitted, Admitted) {
+async fn two_mentions(ledger: &Turns, fleet: &Uuid7, workspace: &Uuid7) -> (Admitted, Admitted) {
     // Keyed off the minted fleet, so no two runs of the suite share a key.
     let first_key = format!("{fleet}:EvSlack01");
     let first = admit_mention(ledger, fleet, workspace, &first_key).await;

@@ -5,7 +5,7 @@ use std::error::Error as _;
 use af_crypto::entropy::Entropy;
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_db::config::DbRole;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 
 use super::super::seed::{seed_gate, seed_provider_resolution};
 use super::super::*;
@@ -64,7 +64,7 @@ async fn assert_failed_park_recovers(injection: &'static str) {
         .expect_err("the park transaction fails");
     assert_original_park_error(&failure);
     assert_eq!(
-        admission_state(&fixtures, &seeded.event_id).await,
+        admission_state(&fixtures, &seeded.turn_id).await,
         (false, false, Some(fence))
     );
     assert!(
@@ -74,7 +74,7 @@ async fn assert_failed_park_recovers(injection: &'static str) {
 
     approve(&fixtures, &seeded, &action).await;
     let retry = claim(&fixtures, &seeded).await;
-    assert_eq!(retry.event_id, seeded.event_id);
+    assert_eq!(retry.turn_id, seeded.turn_id);
     assert!(
         retry.fence.as_i64() > fence,
         "retry takes a fresh fenced claim"
@@ -109,7 +109,7 @@ async fn approve(fixtures: &Fixtures, seeded: &Ready, action: &Uuid7) {
     let resolved = Inbox::new(
         fixtures.database.clone(),
         fixtures.bus().clone(),
-        Admissions::new(
+        Turns::new(
             fixtures.database.clone(),
             fixtures.bus().clone(),
             Entropy::new(),

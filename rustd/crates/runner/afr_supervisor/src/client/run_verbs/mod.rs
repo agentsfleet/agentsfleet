@@ -137,7 +137,7 @@ impl ControlPlane {
                 limit,
                 starting_after,
             } => {
-                let events = member(&collection, fleet, Some(paths::FLEET_EVENTS_SUFFIX));
+                let events = member(&collection, fleet, Some(paths::FLEET_TURNS_SUFFIX));
                 let page = Page {
                     limit,
                     starting_after,

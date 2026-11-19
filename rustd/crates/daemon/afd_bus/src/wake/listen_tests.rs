@@ -108,7 +108,7 @@ async fn a_closed_subscription_stops_its_listener_after_asking_for_a_recheck() -
     let closed: Vec<_> = capture
         .events()
         .into_iter()
-        .filter(|event| event.field("event") == Some("admission_wake_subscription_closed"))
+        .filter(|event| event.field("event") == Some("turn_wake_subscription_closed"))
         .collect();
     assert_eq!(closed.len(), usize::from(SHARDS));
     for event in closed {

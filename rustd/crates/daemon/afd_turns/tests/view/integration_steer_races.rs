@@ -14,13 +14,13 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_turns::view::{ACTOR_MACHINE, Steer};
-use afd_turns::{Admission, Key, Producer, Reply};
+use afd_turns::{IncomingTurn, Key, Producer, Reply};
 
 use crate::integration_steer_replay::{CHANGED_JSON, OPERATION};
 use crate::integration_steer_retry::{KEY_SEPARATOR, REQUEST_JSON, admissions_for, append_with};
-use crate::support::EventsLane;
+use crate::support::TurnsLane;
 
 /// Rounds of two concurrent sends per race test: enough that the two reach
 /// the insert together on some of them, whichever way the scheduler leans.
@@ -34,7 +34,7 @@ const OTHER_ACTOR: &str = "steer:user_other";
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_racing_repeats_admit_once() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
     for round in 0..RACE_ROUNDS {
         let operation = format!("{OPERATION}-same-{round}");
@@ -52,7 +52,7 @@ async fn test_racing_repeats_admit_once() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_racing_drift_is_refused() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
     for round in 0..RACE_ROUNDS {
         let operation = format!("{OPERATION}-drift-{round}");
@@ -92,7 +92,7 @@ async fn test_racing_drift_is_refused() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_reused_id_by_another_caller_is_refused() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
     append_with(&steer, &lane, Some(OPERATION)).await;
     let refused = steer
@@ -114,19 +114,19 @@ async fn test_reused_id_by_another_caller_is_refused() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_key_another_fleet_holds_is_refused() {
-    let holder = EventsLane::open().await;
-    let steered = EventsLane::open().await;
+    let holder = TurnsLane::open().await;
+    let steered = TurnsLane::open().await;
     // A row admitted for one fleet whose key spells the other fleet's.
     let foreign_key = [steered.fleet.as_str(), OPERATION].join(KEY_SEPARATOR);
     holder
         .admissions()
-        .admit(Admission {
+        .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Repeated(&foreign_key),
             fleet: &holder.fleet,
             workspace: &holder.workspace,
             actor: ACTOR_MACHINE,
-            event_type: EventType::Chat,
+            event_type: TurnKind::Chat,
             request_json: REQUEST_JSON,
             reply: Reply::None,
         })
@@ -156,7 +156,7 @@ const RACING_REPEATS: usize = 100;
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn sixty_four_concurrent_sends_to_one_fleet_each_land_once() {
-    let lane = std::sync::Arc::new(EventsLane::open().await);
+    let lane = std::sync::Arc::new(TurnsLane::open().await);
     let steer = std::sync::Arc::new(Steer::new(lane.admissions()));
     let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(CONCURRENT_SENDS));
     let mut sends = tokio::task::JoinSet::new();
@@ -197,7 +197,7 @@ async fn sixty_four_concurrent_sends_to_one_fleet_each_land_once() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_hundred_racing_repeats_admit_one_row() {
-    let lane = std::sync::Arc::new(EventsLane::open().await);
+    let lane = std::sync::Arc::new(TurnsLane::open().await);
     let steer = std::sync::Arc::new(Steer::new(lane.admissions()));
     let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(RACING_REPEATS));
     let operation = format!("{OPERATION}-hundred");

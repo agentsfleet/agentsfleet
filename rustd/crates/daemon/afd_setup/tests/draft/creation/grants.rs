@@ -5,7 +5,7 @@ use super::fixture::{Case, NO_ADMISSIONS, check};
 use af_crypto::{entropy::Entropy, secret::Kek};
 use afd_approval::{Decision, Inbox, IntegrationGrants, Origin, Resolution, Wanted};
 use afd_setup::types::{CheckKind, SaveSource, Start};
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::json;
 use std::sync::Arc;
@@ -130,7 +130,7 @@ async fn pending_grant_blocks_activation_until_a_real_approval_then_retry_activa
     let inbox = Inbox::new(
         c.base.db.clone(),
         c.bus.clone(),
-        Admissions::new(c.base.db.clone(), c.bus.clone(), Entropy::new()),
+        Turns::new(c.base.db.clone(), c.bus.clone(), Entropy::new()),
     );
     let resolved = inbox
         .resolve(
@@ -163,7 +163,7 @@ async fn a_denied_grant_blocks_setup_and_a_retry_opens_no_second_card() {
     let inbox = Inbox::new(
         c.base.db.clone(),
         c.bus.clone(),
-        Admissions::new(c.base.db.clone(), c.bus.clone(), Entropy::new()),
+        Turns::new(c.base.db.clone(), c.bus.clone(), Entropy::new()),
     );
     let resolved = inbox
         .resolve(

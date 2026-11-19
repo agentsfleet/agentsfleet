@@ -7,7 +7,7 @@ use sqlx::PgConnection;
 use super::verdict::{self, Answer, Bound};
 use crate::admit::{Ledger, ReplyBinds};
 use crate::error::{Result, query};
-use crate::{Admission, Admissions, sql};
+use crate::{IncomingTurn, Turns, sql};
 
 const CONTEXT_ADMIT: &str = "admit one message";
 
@@ -21,13 +21,13 @@ pub(crate) struct Gates {
     pub(crate) runnable: Option<FleetStatus>,
 }
 
-impl Admissions {
+impl Turns {
     /// Runs `admit_one.sql` and names its answer.
     pub(crate) async fn insert_on(
         &self,
         connection: &mut PgConnection,
         row_id: &Uuid7,
-        admission: &Admission<'_>,
+        admission: &IncomingTurn<'_>,
         key: &str,
         digest: &str,
         gates: Gates,
@@ -52,7 +52,7 @@ impl Admissions {
             .bind(reply.inherited.as_ref())
             .bind(af_fleet_runtime::definition::POLICY_SEMANTICS)
             .bind(runnable.map(FleetStatus::as_str))
-            .bind(af_core::event::status::QUEUED)
+            .bind(af_core::turn::status::QUEUED)
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_ADMIT))?;

@@ -62,7 +62,7 @@ pub(super) async fn proposed(
 fn input(fixture: &Decisions<'_>, call: String, action: TaskInputAction) -> TaskBindingsInput {
     let mut input = TaskBindingsInput {
         fencing_token: fixture.case.run().fencing_token,
-        source_admission_id: fixture.case.held.event_id.clone().into(),
+        source_turn_id: fixture.case.held.turn_id.clone().into(),
         accepted_revision_id: fixture.revision.to_string(),
         plan_digest: "0".repeat(64),
         message_decision_call_id: call,
@@ -115,8 +115,8 @@ async fn conversation(case: &Case) {
     assert_eq!(replay.items, accepted.items);
     assert_eq!(case.counts().await, (0, 1, 1));
     let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.task_interpretations WHERE admission_id=$1")
-            .bind(&case.held.event_id)
+        sqlx::query_scalar("SELECT count(*) FROM fleet.task_interpretations WHERE turn_id=$1")
+            .bind(&case.held.turn_id)
             .fetch_one(
                 &mut *case
                     .held

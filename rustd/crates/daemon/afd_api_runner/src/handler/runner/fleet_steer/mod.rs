@@ -26,8 +26,8 @@ use std::sync::Arc;
 use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
 use af_validate::Sentences;
-use af_wire::event::{EventType, STEER_MESSAGE_MAX_BYTES};
 use af_wire::steer_verb::{FleetSteerAccepted, FleetSteerRequest};
+use af_wire::turn::{STEER_MESSAGE_MAX_BYTES, TurnKind};
 use afd_api_wire::tail::TailFrame;
 use afd_fleet::run::Standing;
 use afd_fleet::run::message::SteerSender;
@@ -92,7 +92,7 @@ const DESCRIPTION: &str = concat!(
     "Puts work on another fleet in the running fleet's workspace, as a chat message ",
     "that names the sender. The target answers in the sender's thread and runs ",
     "under its own setup. The same words from the same event return the first ",
-    "`event_id` with `replayed` true. A steer to the sender returns 409 `UZ-AGT-018`. ",
+    "`turn_id` with `replayed` true. A steer to the sender returns 409 `UZ-AGT-018`. ",
     "A fleet outside the workspace returns 404 `UZ-AGT-009`.",
 );
 
@@ -149,7 +149,7 @@ pub(crate) async fn handle<D: Services>(
         target: &target,
         workspace: &standing.workspace_id,
         sender_fleet: &standing.fleet_id,
-        sender_event: &standing.event_id,
+        sender_event: &standing.turn_id,
         masked_text: &sender.text,
         request_json: &sender.request_json,
     };
@@ -159,7 +159,7 @@ pub(crate) async fn handle<D: Services>(
     announce(&*services, &target, &standing, &sender, &steered).await;
     let accepted = FleetSteerAccepted {
         replayed: steered.replayed(),
-        event_id: Cow::Owned(steered.event_id),
+        turn_id: Cow::Owned(steered.turn_id),
     };
     Ok((StatusCode::ACCEPTED, Json(accepted)).into_response())
 }
@@ -238,10 +238,10 @@ async fn announce<D: Services>(
         return;
     };
     let actor = fleet_actor(&standing.fleet_id);
-    let frame = TailFrame::EventAdmitted {
-        event_id: Cow::Borrowed(&steered.event_id),
+    let frame = TailFrame::TurnAdmitted {
+        turn_id: Cow::Borrowed(&steered.turn_id),
         actor: Cow::Borrowed(&actor),
-        event_type: Cow::Borrowed(EventType::Chat.as_str()),
+        event_type: Cow::Borrowed(TurnKind::Chat.as_str()),
         message: Cow::Borrowed(&sender.message),
         created_at,
     };
@@ -267,12 +267,12 @@ fn log_refused(standing: &Standing, target: &Uuid7, code: ErrorCode) {
 /// Logs an admitted or repeated steer; never its words.
 fn log_admitted(standing: &Standing, target: &Uuid7, steered: &FleetSteered) {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-    let event_id = steered.event_id.as_str();
+    let turn_id = steered.turn_id.as_str();
     let sender_fleet_id = standing.fleet_id.as_str();
     let target_fleet_id = target.as_str();
     let replayed = steered.replayed();
     tracing::info!(
-        event_id,
+        turn_id,
         sender_fleet_id,
         target_fleet_id,
         replayed,

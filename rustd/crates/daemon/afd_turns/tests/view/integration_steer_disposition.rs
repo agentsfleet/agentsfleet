@@ -13,13 +13,13 @@
 use af_core::id::Uuid7;
 use std::error::Error;
 
-use af_wire::event::EventType;
-use afd_db::test_util::{EventKind, FleetEventSeed, RunnerPolicy, RunnerSeed, mint_id};
+use af_wire::turn::TurnKind;
+use afd_db::test_util::{RunnerPolicy, RunnerSeed, TurnFacts, TurnSeed, mint_id};
 use afd_turns::view::disposition::{Placed, SteerDisposition};
 use afd_turns::view::{Steer, Steered, steer_actor};
 
 use crate::integration_steer_retry::REQUEST_JSON;
-use crate::support::EventsLane;
+use crate::support::TurnsLane;
 
 type Outcome = Result<(), Box<dyn Error>>;
 
@@ -37,7 +37,7 @@ const POLICY: RunnerPolicy<'static> = RunnerPolicy {
 
 const INSERT_RUN: &str = "\
 INSERT INTO thread.runs
-  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
+  (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at, fencing_token, run_expires_at, status,
    posted_message_count, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, now(),
@@ -53,7 +53,7 @@ ON CONFLICT (id) DO UPDATE SET last_runner_id = EXCLUDED.last_runner_id, fencing
 /// Sends the person's message, keyed by `operation` when it has one.
 async fn send(
     steer: &Steer,
-    lane: &EventsLane,
+    lane: &TurnsLane,
     operation: Option<&str>,
 ) -> Result<Steered, Box<dyn Error>> {
     let actor = steer_actor(PERSON);
@@ -73,25 +73,25 @@ async fn send(
 fn placed(disposition: SteerDisposition, joined: Option<&str>) -> Placed {
     Placed {
         disposition,
-        folded_into_event_id: joined.map(str::to_owned),
+        folded_into_turn_id: joined.map(str::to_owned),
     }
 }
 
 /// Makes the run `head` began the fleet's live run: a runner, the event the
 /// run serves, an active run on it and the fleet's slot held under it.
-async fn go_live(lane: &EventsLane, head: &str) -> Outcome {
+async fn go_live(lane: &TurnsLane, head: &str) -> Outcome {
     let head = Uuid7::parse(head)?;
     let runner = mint_id();
     let mut connection = lane.connection().await;
     RunnerSeed::new(&runner, afd_state::sql::RUNNER_STATUS_ACTIVE, POLICY)
         .insert(&mut *connection)
         .await?;
-    let kind = EventKind {
+    let kind = TurnFacts {
         actor: "steer:api",
-        event_type: EventType::Chat.as_str(),
+        event_type: TurnKind::Chat.as_str(),
         status: "received",
     };
-    FleetEventSeed::new(&lane.fleet, &lane.workspace, &head, kind)
+    TurnSeed::new(&lane.fleet, &lane.workspace, &head, kind)
         .insert(&mut *connection)
         .await?;
     sqlx::query(INSERT_RUN)
@@ -113,7 +113,7 @@ async fn go_live(lane: &EventsLane, head: &str) -> Outcome {
 }
 
 /// Parks `admission`, so a send behind it must wait for it.
-async fn park(lane: &EventsLane, admission: &str) -> Outcome {
+async fn park(lane: &TurnsLane, admission: &str) -> Outcome {
     let admission = Uuid7::parse(admission)?;
     sqlx::query("UPDATE thread.turns SET parked_at = now() WHERE id = $1")
         .bind(&admission)
@@ -126,7 +126,7 @@ async fn park(lane: &EventsLane, admission: &str) -> Outcome {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_send_to_a_fleet_with_nothing_running_starts_a_run() -> Outcome {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let started = send(&Steer::new(lane.admissions()), &lane, None).await?;
     assert_eq!(started.placed, placed(SteerDisposition::Started, None));
     assert!(!started.replayed());
@@ -138,16 +138,16 @@ async fn a_send_to_a_fleet_with_nothing_running_starts_a_run() -> Outcome {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_send_behind_a_live_run_folds_into_it() -> Outcome {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
     let head = send(&steer, &lane, None).await?;
-    go_live(&lane, &head.event_id).await?;
+    go_live(&lane, &head.turn_id).await?;
 
     let folded = send(&steer, &lane, None).await?;
-    assert_ne!(folded.event_id, head.event_id);
+    assert_ne!(folded.turn_id, head.turn_id);
     assert_eq!(
         folded.placed,
-        placed(SteerDisposition::Folded, Some(&head.event_id))
+        placed(SteerDisposition::Folded, Some(&head.turn_id))
     );
     lane.cleanup().await;
     Ok(())
@@ -158,12 +158,12 @@ async fn a_send_behind_a_live_run_folds_into_it() -> Outcome {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_send_behind_a_parked_message_waits_its_turn() -> Outcome {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
     let head = send(&steer, &lane, None).await?;
-    go_live(&lane, &head.event_id).await?;
+    go_live(&lane, &head.turn_id).await?;
     let gated = send(&steer, &lane, None).await?;
-    park(&lane, &gated.event_id).await?;
+    park(&lane, &gated.turn_id).await?;
 
     let behind = send(&steer, &lane, None).await?;
     assert_eq!(behind.placed, placed(SteerDisposition::Queued, None));
@@ -176,15 +176,15 @@ async fn a_send_behind_a_parked_message_waits_its_turn() -> Outcome {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_retry_of_the_send_that_started_the_run_is_still_started() -> Outcome {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
     let first = send(&steer, &lane, Some(OPERATION)).await?;
     assert_eq!(first.placed, placed(SteerDisposition::Started, None));
-    go_live(&lane, &first.event_id).await?;
+    go_live(&lane, &first.turn_id).await?;
 
     let retried = send(&steer, &lane, Some(OPERATION)).await?;
     assert!(retried.replayed());
-    assert_eq!(retried.event_id, first.event_id);
+    assert_eq!(retried.turn_id, first.turn_id);
     assert_eq!(retried.placed, placed(SteerDisposition::Started, None));
     lane.cleanup().await;
     Ok(())
@@ -194,17 +194,17 @@ async fn a_retry_of_the_send_that_started_the_run_is_still_started() -> Outcome 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_retry_of_a_folded_send_stays_folded() -> Outcome {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
     let head = send(&steer, &lane, None).await?;
-    go_live(&lane, &head.event_id).await?;
+    go_live(&lane, &head.turn_id).await?;
     let first = send(&steer, &lane, Some(OPERATION)).await?;
-    let joined = placed(SteerDisposition::Folded, Some(&head.event_id));
+    let joined = placed(SteerDisposition::Folded, Some(&head.turn_id));
     assert_eq!(first.placed, joined);
 
     let retried = send(&steer, &lane, Some(OPERATION)).await?;
     assert!(retried.replayed());
-    assert_eq!(retried.event_id, first.event_id);
+    assert_eq!(retried.turn_id, first.turn_id);
     assert_eq!(retried.placed, joined);
     lane.cleanup().await;
     Ok(())

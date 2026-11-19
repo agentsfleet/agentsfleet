@@ -52,7 +52,7 @@ impl RunService {
         let Some(run) = self.runs.draft_run(&run_id, runner).await? else {
             return Err(run_not_found());
         };
-        if request.event_id.as_ref() != run.event_id.as_str() {
+        if request.turn_id.as_ref() != run.turn_id.as_str() {
             return Err(run_not_found());
         }
         if i64::try_from(request.fencing_token).ok() != Some(run.fencing_token) {
@@ -72,13 +72,13 @@ impl RunService {
             .map_err(query(CONTEXT))?;
         // The owner first, then the slot and the run inside the settlement.
         let scope = creations
-            .lock_setup_report(&mut tx, &run.draft_id, &run.event_id)
+            .lock_setup_report(&mut tx, &run.draft_id, &run.turn_id)
             .await?;
         let succeeded = request.outcome == Outcome::Processed;
         let audit_id = self.runs.entropy().uuid7(now)?;
         let metadata = serde_json::json!({
             (afd_runner::sql::meta::RUN_ID): run_id.as_str(),
-            (afd_runner::sql::meta::AGENTSFLEET_EVENT_ID): run.event_id.as_str(),
+            (afd_runner::sql::meta::AGENTSFLEET_EVENT_ID): run.turn_id.as_str(),
         });
         let (digest, connection_id) = self.runs.host_proof(runner);
         let row = sqlx::query(sql::shared::SETTLE_RUN)

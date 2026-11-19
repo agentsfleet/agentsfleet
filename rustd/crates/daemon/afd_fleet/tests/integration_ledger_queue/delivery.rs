@@ -5,10 +5,10 @@
 //! fence and opens its event, so a fault in any of them leaves none behind.
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_db::config::DbRole;
 use afd_fleet::run::Delivery;
-use afd_turns::{Admission, Admissions, Key, Producer, Reply};
+use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 use sqlx::Connection as _;
 
 use super::{STAMPS, UNCLAIMED, WITHIN, enqueue, next};
@@ -90,16 +90,15 @@ async fn first_delivery_finishes_while_a_producer_holds_the_fleet_budget_lock() 
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     let runs = fixtures.runs_with_dead_bus();
-    let admissions =
-        Admissions::for_tests(fixtures.database.clone(), afd_bus::test_util::unreachable());
+    let admissions = Turns::for_tests(fixtures.database.clone(), afd_bus::test_util::unreachable());
     let prepared = admissions
-        .prepare(Admission {
+        .prepare(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Repeated("held-producer"),
             fleet: &fleet,
             workspace: &workspace,
             actor: "fixture:producer",
-            event_type: EventType::Chat,
+            event_type: TurnKind::Chat,
             request_json: "{}",
             reply: Reply::None,
         })
@@ -114,7 +113,7 @@ async fn first_delivery_finishes_while_a_producer_holds_the_fleet_budget_lock() 
     // `next` bounds the claim by WITHIN: the producer stays uncommitted until
     // delivery finishes, so a claim that waited on it would time out.
     let acquired = next(&runs, &runner).await.expect("claim");
-    assert_eq!(acquired.event_id, event);
+    assert_eq!(acquired.turn_id, event);
     assert_eq!(acquired.opened.received.delivery, Delivery::First);
     assert_eq!(delivery_state(&fixtures, &event).await, (1, true));
     pending.rollback().await.expect("discard pending producer");

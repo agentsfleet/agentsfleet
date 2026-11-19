@@ -1,4 +1,4 @@
-//! `GET …/events/{event_id}/tool-calls/{call_id}` — one tool call, in full.
+//! `GET …/turns/{turn_id}/items/{item_id}` — one tool call, in full.
 //!
 //! The read behind "show all" under a call in the thread. The thread carries
 //! the call's id as `{fence}:{n}`, and this splits it into the two halves the
@@ -18,13 +18,13 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use serde::Deserialize;
 
-use super::{EVENT_ID_MAX_LEN, bounded_path, parse_fleet};
+use super::{TURN_ID_MAX_LEN, bounded_path, parse_fleet};
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspaceEvents as _};
+use crate::services::{Services, WorkspaceTurns as _};
 
 /// The scoped event a failed read is logged under.
-const EVENT_TOOL_CALL: &str = "fleet_tool_call_detail_failed";
+const EVENT_TOOL_CALL: &str = "fleet_turn_item_detail_failed";
 
 /// The refusal a call this workspace, fleet and event do not hold earns.
 const DETAIL_TOOL_CALL_NOT_FOUND: &str = "Tool call not found";
@@ -37,12 +37,12 @@ pub(crate) struct ToolCallPath {
     // Parsed rather than bounded: an identifier has one length.
     #[garde(skip)]
     pub fleet: String,
-    /// The event named in the path.
-    #[serde(rename = "event_id")]
-    #[garde(length(bytes, min = 1, max = EVENT_ID_MAX_LEN))]
+    /// The turn named in the path.
+    #[serde(rename = "turn_id")]
+    #[garde(length(bytes, min = 1, max = TURN_ID_MAX_LEN))]
     pub event: String,
-    /// The call, as the thread names it.
-    #[serde(rename = "call_id")]
+    /// The item, as the thread names its call.
+    #[serde(rename = "item_id")]
     // Parsed rather than bounded: `{fence}:{n}` is a grammar.
     #[garde(skip)]
     pub call: String,
@@ -70,18 +70,18 @@ fn detail(call: CallAddress, row: &ToolCallRow) -> ToolCallDetail<'_> {
 /// Reads one tool call's full arguments and output.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}/tool-calls/{call_id}",
+    path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/{turn_id}/items/{item_id}",
     tag = afd_http::openapi::tag::FLEETS,
-    operation_id = "get_fleet_event_tool_call",
+    operation_id = "get_fleet_turn_item",
     summary = "Read one tool call in full",
     description = concat!(
-        "Returns full tool arguments and output with secrets masked. URL-encode the event's ",
-        "`call_id`. Each may contain at most 65536 bytes; `truncated_arguments` and ",
+        "Returns full tool arguments and output with secrets masked. URL-encode the `item_id`, ",
+        "the trace's `call_id`. Each may contain at most 65536 bytes; `truncated_arguments` and ",
         "`truncated` indicate shortened content. Missing, unrecorded, or inaccessible calls ",
         "return 404.",
     ),
     params(
-        afd_http::openapi::path::ToolCall,
+        afd_http::openapi::path::Item,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ToolCallDetail<'_>),

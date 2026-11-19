@@ -20,8 +20,8 @@
 
 use af_core::id::Uuid7;
 use af_secrets::{Scrub, StaticSecrets};
-use af_wire::event::FleetSteerBody;
 use af_wire::message_verb::{MESSAGES_PER_RUN_MAX, MessageRequest};
+use af_wire::turn::FleetSteerBody;
 use afd_outbound::Interim;
 
 use crate::error::{Result, message_limit_reached, message_no_channel, query, run_not_found};
@@ -45,7 +45,7 @@ pub struct SteerSender {
     pub text: String,
     /// The sender line, a newline, then `text`: what the target reads.
     pub message: String,
-    /// The stored body, `af_wire::event::FleetSteerBody`, serialized.
+    /// The stored body, `af_wire::turn::FleetSteerBody`, serialized.
     pub request_json: String,
 }
 
@@ -71,7 +71,7 @@ impl RunService {
             Runs::reply_destination(
                 &mut connection,
                 &standing.fleet_id,
-                standing.event_id.as_str(),
+                standing.turn_id.as_str(),
             )
             .await?
         }
@@ -93,7 +93,7 @@ impl RunService {
             run_id,
             fleet_id,
             workspace_id,
-            event_id,
+            turn_id,
             ..
         } = standing;
         Ok(Interim {
@@ -101,7 +101,7 @@ impl RunService {
             destination: reply.address,
             workspace_id,
             fleet_id,
-            event_id,
+            turn_id,
             run_id,
             text,
             part,
@@ -135,7 +135,7 @@ impl RunService {
             &text,
             standing.fleet_id.as_str(),
             &installed.name,
-            standing.event_id.as_str(),
+            standing.turn_id.as_str(),
         );
         let request_json = serde_json::to_string(&body).map_err(af_core::json::Unreadable::from)?;
         let message = body.message.into_owned();

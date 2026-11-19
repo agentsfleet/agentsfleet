@@ -70,7 +70,7 @@ impl Private {
         drop(connection);
         let runtime = lane.open(DbRole::Api, &[]).await;
         let bus = afd_bus::test_util::lane().await?;
-        let steer = Steer::new(afd_turns::Admissions::for_tests(runtime.clone(), bus));
+        let steer = Steer::new(afd_turns::Turns::for_tests(runtime.clone(), bus));
         Ok(Self {
             lane,
             owner,
@@ -92,7 +92,7 @@ impl Private {
                 operation,
             )
             .await?;
-        Ok(steered.event_id)
+        Ok(steered.turn_id)
     }
 
     async fn scalar(&self, statement: &'static str) -> Result<i64, Box<dyn Error>> {

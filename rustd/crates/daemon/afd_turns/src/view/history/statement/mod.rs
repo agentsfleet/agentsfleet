@@ -15,7 +15,7 @@
 //!
 //! `cost_nanos` is a correlated subselect rather than a `LEFT JOIN`: billing
 //! writes up to two charge rows per event — unique on
-//! `(event_id, charge_type, fleet_id)` — so a join would duplicate the event
+//! `(turn_id, charge_type, fleet_id)` — so a join would duplicate the event
 //! row per leg and a page of 50 would render as 100.
 //!
 //! # One text per scope, cursor and actor filter

@@ -164,7 +164,7 @@ async fn bobs_wall(members: &Members, pool: &Db) -> BodyDataStream {
         .with_live_bus(harness::bus().await)
         .router();
     let path = format!(
-        "/v1/workspaces/{}/events/stream",
+        "/v1/workspaces/{}/turns/stream",
         members.john.workspace.as_str()
     );
     let response = send(&router, Method::GET, &path, Some(&bob.token), "").await;

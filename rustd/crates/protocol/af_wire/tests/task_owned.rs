@@ -51,15 +51,15 @@ fn owned_bindings_preserve_deadline_and_association_after_transport_drop() -> se
 }
 
 fn inputs(current: &Value) -> Value {
-    json!({"source_admission_id":"source","accepted_revision_id":"revision",
-        "current_message":"original message", "inputs":[{"source_admission_id":"next",
+    json!({"source_turn_id":"source","accepted_revision_id":"revision",
+        "current_message":"original message", "inputs":[{"source_turn_id":"next",
             "sequence":4,"message":"next message","accepted":null}],
-        "accepted_inputs":[{"source_admission_id":"source","plan_digest":"plan",
+        "accepted_inputs":[{"source_turn_id":"source","plan_digest":"plan",
             "item_id":"item","task":{"task_id":"task","generation":7},"sequence":5,
             "action":"steer","original_message":"original message","accepted_text":"message",
             "interpretation":"accepted meaning","applied":true,"response_text":"confirmed reply"}],
         "current_task":current,"execution_deadline":"2026-10-31T00:00:00Z",
-        "current_interpretation":{"source_admission_id":"source","plan_digest":"plan",
+        "current_interpretation":{"source_turn_id":"source","plan_digest":"plan",
             "message":"original message","items":[]},
         "tasks":[{"task_id":"task","title":"Repair","state":"running","generation":7}],
         "next_cursor":"opaque-next"})

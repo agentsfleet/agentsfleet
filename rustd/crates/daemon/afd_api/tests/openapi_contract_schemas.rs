@@ -78,8 +78,8 @@ fn media_types(document: &serde_json::Value, path: &str) -> Option<Vec<String>> 
 fn test_the_streams_publish_under_their_own_media_type() {
     let document = document();
     for path in [
-        "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream",
-        "/v1/workspaces/{workspace_id}/events/stream",
+        "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream",
+        "/v1/workspaces/{workspace_id}/turns/stream",
     ] {
         assert_eq!(
             media_types(&document, path),

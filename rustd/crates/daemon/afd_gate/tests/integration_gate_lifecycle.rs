@@ -35,7 +35,7 @@ async fn test_m202_001_write_fleet_and_its_continuations_pass_without_a_card() {
         Verdict::Pass
     );
     // 2.2 — the turns after it. Each carries its own event identifier, which is
-    // exactly why the retired park re-asked: it read no `resumes_event_id` and
+    // exactly why the retired park re-asked: it read no `resumes_turn_id` and
     // saw every turn as a first encounter.
     for turn in [mint_id(), mint_id(), mint_id()] {
         assert_eq!(

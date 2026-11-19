@@ -9,16 +9,16 @@
 use std::borrow::Cow;
 use std::fmt::Debug;
 
-use af_core::event::status;
 use af_core::id::Uuid7;
+use af_core::turn::status;
 use af_observability::metrics::label::fleet::HistoryCut;
 use af_observability::producers::fleet::history as metrics;
-use af_wire::event::{EventType, message_of};
 use af_wire::run::{
     ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, HISTORY_BYTES_MAX, HISTORY_TURNS_MAX,
     TURN_TEXT_BYTES_MAX, Turn,
 };
-use afd_turns::view::{Cursor, EventDetailRow, History};
+use af_wire::turn::{TurnKind, message_of};
+use afd_turns::view::{Cursor, History, TurnDetailRow};
 
 use crate::run::envelope::Acquired;
 
@@ -40,7 +40,7 @@ pub trait Thread: Send + Sync + Debug {
         fleet: &Uuid7,
         at: &Cursor,
         limit: i64,
-    ) -> afd_turns::view::Result<Vec<EventDetailRow>>;
+    ) -> afd_turns::view::Result<Vec<TurnDetailRow>>;
 }
 
 #[async_trait::async_trait]
@@ -51,7 +51,7 @@ impl Thread for History {
         fleet: &Uuid7,
         at: &Cursor,
         limit: i64,
-    ) -> afd_turns::view::Result<Vec<EventDetailRow>> {
+    ) -> afd_turns::view::Result<Vec<TurnDetailRow>> {
         Self::finished_before(self, workspace, fleet, at, limit).await
     }
 }
@@ -61,11 +61,11 @@ impl Thread for History {
 pub(super) async fn turns(
     thread: &dyn Thread,
     acquired: &Acquired,
-    event_type: EventType,
+    event_type: TurnKind,
 ) -> Vec<Turn<'static>> {
     let at = Cursor {
-        created_at: acquired.event_created_at,
-        event_id: acquired.event_id.clone(),
+        created_at: acquired.turn_created_at,
+        turn_id: acquired.turn_id.clone(),
     };
     turns_before(
         thread,
@@ -84,9 +84,9 @@ pub async fn turns_before(
     workspace: &Uuid7,
     fleet: &Uuid7,
     at: &Cursor,
-    event_type: EventType,
+    event_type: TurnKind,
 ) -> Vec<Turn<'static>> {
-    if event_type != EventType::Chat {
+    if event_type != TurnKind::Chat {
         return Vec::new();
     }
     // One finished row more than is kept, so a window the cap cut is known
@@ -103,9 +103,9 @@ pub async fn turns_before(
             metrics::read_failed();
             let error_code = failure.code().as_str();
             let fleet_id = fleet.as_str();
-            let agentsfleet_event_id = at.event_id.as_str();
+            let agentsfleet_turn_id = at.turn_id.as_str();
             let event = EVENT_HISTORY_UNAVAILABLE;
-            tracing::warn!(error_code, fleet_id, agentsfleet_event_id, event);
+            tracing::warn!(error_code, fleet_id, agentsfleet_turn_id, event);
             Vec::new()
         }
     }
@@ -123,7 +123,7 @@ pub(super) struct Window {
 /// The finished rows among `rows`, newest first, as turns oldest first: at
 /// most [`HISTORY_TURNS_MAX`], each text cut to [`TURN_TEXT_BYTES_MAX`], and
 /// the oldest dropped until the rest fit [`HISTORY_BYTES_MAX`].
-pub(super) fn within_caps(rows: Vec<EventDetailRow>) -> Window {
+pub(super) fn within_caps(rows: Vec<TurnDetailRow>) -> Window {
     let (mut finished, text_cuts): (Vec<Turn<'static>>, Vec<bool>) =
         rows.into_iter().filter_map(turn).unzip();
     let text_cut = text_cuts.contains(&true);
@@ -155,7 +155,7 @@ pub(super) fn within_caps(rows: Vec<EventDetailRow>) -> Window {
 
 /// One finished row as a turn, and whether either text had to be cut; a row
 /// still running, queued or refused at a gate is no turn.
-fn turn(row: EventDetailRow) -> Option<(Turn<'static>, bool)> {
+fn turn(row: TurnDetailRow) -> Option<(Turn<'static>, bool)> {
     let answer = match row.row.status.as_str() {
         status::PROCESSED => row.response_text.unwrap_or_else(|| ANSWER_NONE.to_owned()),
         status::FLEET_ERROR => {

@@ -42,7 +42,7 @@ impl<'a, 'native> TurnSession<'a, 'native> {
             reference,
             pin,
             workspace: Uuid7::parse(&scope.workspace_id.0)?,
-            namespace: format!("turn:{}", scope.event_id.0),
+            namespace: format!("turn:{}", scope.turn_id.0),
             transfers: native.transfers.clone(),
             stop,
         })

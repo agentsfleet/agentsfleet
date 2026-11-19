@@ -75,9 +75,9 @@ impl Runs {
     pub(crate) async fn reply_destination(
         connection: &mut PgConnection,
         fleet_id: &Uuid7,
-        event_id: &str,
+        turn_id: &str,
     ) -> Result<Option<ReplyDestination>> {
-        let Ok(admission) = Uuid7::parse(event_id) else {
+        let Ok(admission) = Uuid7::parse(turn_id) else {
             return Ok(None);
         };
         let stored: Option<(String, String)> =
@@ -93,7 +93,7 @@ impl Runs {
             if parsed.is_none() {
                 tracing::warn!(
                     fleet_id = %fleet_id,
-                    agentsfleet_event_id = %event_id,
+                    agentsfleet_turn_id = %turn_id,
                     event = %EVENT_REPLY_PROVIDER_UNKNOWN,
                     "the recorded connector names no connector; the answer is owed nowhere"
                 );

@@ -90,7 +90,7 @@ async fn replay(
     digest: &str,
 ) -> Result<Option<TurnCheckpointPlan>> {
     let receipt: Option<Receipt> = sqlx::query_as(include_str!("sql/operation_replay.sql"))
-        .bind(&owner.current.event_id)
+        .bind(&owner.current.turn_id)
         .bind(operation)
         .fetch_optional(&mut *owner.tx)
         .await

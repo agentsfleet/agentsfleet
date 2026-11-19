@@ -5,7 +5,7 @@ SELECT w.id, w.task_id, w.fleet_id, w.workspace_id,
        w.claim_id, w.claim_expires_at > statement_timestamp() AS claim_valid, w.expires_at,
        t.status, t.generation AS live_generation, t.stop_generation AS live_stop_generation,
        t.accepted_revision_id, t.target, t.used_fallback_reads, t.max_fallback_reads,
-       t.reply_provider, t.reply_address, i.admission_id AS source_admission_id,
+       t.reply_provider, t.reply_address, i.turn_id AS source_turn_id,
        t.expires_at > statement_timestamp() AND t.used_model_nanos < t.max_model_nanos - t.reserved_model_nanos
          AND t.used_running_nanos < t.max_running_nanos AND t.used_runs < t.max_runs AS within_limits,
        w.due_at <= statement_timestamp() AND w.cooldown_expires_at <= statement_timestamp() AS due

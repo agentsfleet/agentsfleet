@@ -9,7 +9,7 @@ use afd_fleet::{
     run::Runs,
     task::{TaskLifecycle as _, TaskScope, Tasks},
 };
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use tokio::time::{Instant, timeout};
 
 use super::fixture::{Case, exercise};
@@ -99,7 +99,7 @@ async fn single_pool(case: &Case) -> (Db, Tasks) {
             case.held.fixtures.bus().clone(),
             Entropy::new(),
         ),
-        Admissions::new(
+        Turns::new(
             database.clone(),
             case.held.fixtures.bus().clone(),
             Entropy::new(),

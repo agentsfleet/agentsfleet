@@ -20,7 +20,7 @@ mod notice;
 mod notice_owner;
 mod route;
 
-pub use self::admit::MentionAdmission;
+pub use self::admit::MentionTurn;
 pub use self::message::{
     Composed, MESSAGE_CAP, THREAD_CAP, THREAD_HEADING, THREAD_UNAVAILABLE, compose,
 };

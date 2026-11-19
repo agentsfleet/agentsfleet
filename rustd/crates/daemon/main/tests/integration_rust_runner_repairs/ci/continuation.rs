@@ -37,7 +37,7 @@ async fn continue_repair(acknowledgement: Acknowledgement, readback: Readback) {
     let scene = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
     let remote = Remote::new(
         LINKWARDEN,
-        &branch_for(scene.event_id.as_str()),
+        &branch_for(scene.turn_id.as_str()),
         acknowledgement,
         readback,
     );
@@ -46,7 +46,7 @@ async fn continue_repair(acknowledgement: Acknowledgement, readback: Readback) {
         LINKWARDEN,
         head_reads(LINKWARDEN),
     ));
-    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
     let succeeded = readback == Readback::Exact && acknowledgement != Acknowledgement::RejectUpdate;
     assert_eq!(
         settled.answer,

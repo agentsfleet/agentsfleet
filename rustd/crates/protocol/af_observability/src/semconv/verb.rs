@@ -1,7 +1,7 @@
 //! The daemon verb spans' vocabulary: each verb's span name, its stage keys,
 //! and every key a verb span may carry.
 
-use super::{ATTR_AGENT_ID, ATTR_EVENT_ID};
+use super::{ATTR_AGENT_ID, ATTR_TURN_ID};
 
 /// The span one steer leaves: admission to the announce.
 pub const SPAN_FLEET_STEER: &str = "fleet.steer";
@@ -72,7 +72,7 @@ pub const ATTR_CAPTURE_MEMORY_WRITE_MS: &str = "agentsfleet.capture.memory_write
 /// Every key a daemon verb span may carry: its identity, then each verb's
 /// stages. A verb span writes nothing outside this list.
 pub const VERB_SPAN_KEYS: &[&str] = &[
-    ATTR_EVENT_ID,
+    ATTR_TURN_ID,
     ATTR_AGENT_ID,
     ATTR_STEER_ADMIT_MS,
     ATTR_STEER_ANNOUNCE_MS,

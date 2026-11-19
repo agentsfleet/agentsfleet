@@ -166,7 +166,7 @@ mod tests {
     impl Inbox for Waiting {
         async fn claim(&self, _after_sequence: i64) -> Vec<Folded> {
             vec![Folded {
-                event_id: "019f0000-0000-7000-8000-000000000001".to_owned(),
+                turn_id: "019f0000-0000-7000-8000-000000000001".to_owned(),
                 sequence: 1,
                 text: "use staging".to_owned(),
             }]
@@ -177,7 +177,7 @@ mod tests {
         PreparedTask {
             execution_deadline: None,
             inputs: TaskInputsResponse {
-                source_admission_id: "admission".to_owned(),
+                source_turn_id: "admission".to_owned(),
                 accepted_revision_id: None,
                 current_message: None,
                 inputs: Vec::new(),

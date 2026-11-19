@@ -8,7 +8,7 @@
 WITH prior_run AS MATERIALIZED (
   SELECT l.id
   FROM thread.runs l
-  WHERE l.event_id = $3 AND COALESCE(l.fleet_id, l.draft_id) = COALESCE($1::uuid, $2::uuid)
+  WHERE l.turn_id = $3 AND COALESCE(l.fleet_id, l.draft_id) = COALESCE($1::uuid, $2::uuid)
   ORDER BY l.fencing_token DESC
   LIMIT 1
   FOR UPDATE OF l
@@ -28,7 +28,7 @@ WITH prior_run AS MATERIALIZED (
 -- one is a run that lapsed without reporting.
 SELECT p.id AS predecessor_run_id,
        (SELECT count(*) FROM thread.runs x
-         WHERE x.event_id = $3
+         WHERE x.turn_id = $3
            AND COALESCE(x.fleet_id, x.draft_id) = COALESCE($1::uuid, $2::uuid))
            AS earlier_runs
 FROM (SELECT 1) AS one

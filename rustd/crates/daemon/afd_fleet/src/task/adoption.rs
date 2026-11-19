@@ -23,7 +23,7 @@ struct Locked {
 
 #[derive(sqlx::FromRow)]
 struct Origin {
-    admission_id: Uuid7,
+    turn_id: Uuid7,
     reply_provider: Option<String>,
     reply_address: Option<String>,
     generation: i64,
@@ -258,7 +258,7 @@ impl Origin {
                     row::counter(self.generation, "generation")?
                         .checked_add(1)
                         .ok_or(TaskRefusal::LimitExhausted)?,
-                    &self.admission_id,
+                    &self.turn_id,
                 )
                 .with_reply(
                     self.reply_provider.as_deref(),

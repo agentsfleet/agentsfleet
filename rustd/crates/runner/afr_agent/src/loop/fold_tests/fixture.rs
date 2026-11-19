@@ -36,7 +36,7 @@ impl Arriving {
         locked(&self.scheduled).push((
             claim,
             Folded {
-                event_id: format!("019f0000-0000-7000-8000-{sequence:012}"),
+                turn_id: format!("019f0000-0000-7000-8000-{sequence:012}"),
                 sequence,
                 text: text.to_owned(),
             },
@@ -95,7 +95,7 @@ impl Inbox for Interrupted {
         self.stop.cancel();
         tokio::task::yield_now().await;
         vec![Folded {
-            event_id: "019f0000-0000-7000-8000-000000000003".to_owned(),
+            turn_id: "019f0000-0000-7000-8000-000000000003".to_owned(),
             sequence: 3,
             text: "too late".to_owned(),
         }]

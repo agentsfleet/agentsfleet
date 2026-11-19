@@ -31,7 +31,7 @@ const EVENT: &str = "01924f4e-0000-7000-8000-0000000e7e01";
 
 /// The read for `call_id` on a fixture event of `fleet`.
 fn tool_call(fleet: &str, call_id: &str) -> String {
-    format!("/v1/workspaces/{OWNED_WORKSPACE}/fleets/{fleet}/events/{EVENT}/tool-calls/{call_id}")
+    format!("/v1/workspaces/{OWNED_WORKSPACE}/fleets/{fleet}/turns/{EVENT}/items/{call_id}")
 }
 
 /// One GET at a fresh router holding one scoped person.
@@ -82,7 +82,7 @@ async fn a_fleet_or_event_this_surface_will_not_look_up_is_malformed() {
     assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
 
     let long_event = format!(
-        "/v1/workspaces/{OWNED_WORKSPACE}/fleets/{FLEET}/events/{}/tool-calls/7:3",
+        "/v1/workspaces/{OWNED_WORKSPACE}/fleets/{FLEET}/turns/{}/items/7:3",
         "e".repeat(257)
     );
     let refused = read(FLEET_READ, &long_event, Some(TENANT_KEY)).await;

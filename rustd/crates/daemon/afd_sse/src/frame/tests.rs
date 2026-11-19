@@ -37,8 +37,8 @@ fn published(payload: &str) -> Arc<Message> {
 fn should_name_the_frame_after_the_payloads_leading_kind() {
     assert_eq!(kind_of(CHUNK), Some("chunk"));
     assert_eq!(
-        kind_of(r#"{"kind":"event_received","event_id":"x"}"#),
-        Some("event_received")
+        kind_of(r#"{"kind":"turn_received","turn_id":"x"}"#),
+        Some("turn_received")
     );
 }
 
@@ -50,7 +50,7 @@ fn should_name_the_frame_after_the_payloads_leading_kind() {
 #[test]
 fn should_read_no_kind_from_anywhere_but_the_leading_field() {
     for payload in [
-        r#"{"event_id":"x","kind":"chunk"}"#,
+        r#"{"turn_id":"x","kind":"chunk"}"#,
         r#"{"text":"\"kind\":\"fake\""}"#,
         r#"{"kind":""}"#,
         "{}",

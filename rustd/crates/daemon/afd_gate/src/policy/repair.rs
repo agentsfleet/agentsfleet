@@ -50,7 +50,7 @@ pub const PREFIX: &str = "agentsfleet-repair/";
 /// characters sixteen raw bytes produced.
 pub const MIN_REFERENCE_LEN: usize = 2;
 
-/// The branch a run authorises for `event_id`.
+/// The branch a run authorises for `turn_id`.
 ///
 /// Infallible, and total over any identifier the events table can hold: the
 /// encoding is applied to the bytes it is given rather than to a shape it
@@ -62,8 +62,8 @@ pub const MIN_REFERENCE_LEN: usize = 2;
 /// guessed or empty name here would hand the egress rules a ref the run cannot
 /// push to.
 #[must_use]
-pub fn branch_for(event_id: &str) -> String {
-    format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(event_id.as_bytes()))
+pub fn branch_for(turn_id: &str) -> String {
+    format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(turn_id.as_bytes()))
 }
 
 #[cfg(test)]

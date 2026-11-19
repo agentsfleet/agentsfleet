@@ -204,7 +204,7 @@ async fn claim_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool 
         .bind(af_wire::task::TaskState::Running.as_str())
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
         .bind(sql::FLEET_STATUS_ACTIVE)
-        .bind(af_core::event::status::RECEIVED)
+        .bind(af_core::turn::status::RECEIVED)
         .bind(afd_turns::Producer::Steer.as_str())
         .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)

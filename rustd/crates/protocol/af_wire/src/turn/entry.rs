@@ -1,4 +1,4 @@
-//! One fleet-stream entry, assembled whole. Split from `event.rs` at the
+//! One fleet-stream entry, assembled whole. Split from `turn.rs` at the
 //! length cap.
 
 /// Every field a fleet-stream entry carries, assembled in one place.
@@ -8,7 +8,7 @@
 /// four of five appends work nothing can run — silently, because the entry
 /// is durable, delivered, and undecodable. That is not hypothetical. It shipped:
 /// the producers wrote `event_type`/`request_json` and no `created_at` while
-/// the reader asked for `type`/`request`/`created_at`, and every event appended
+/// the reader asked for `type`/`request`/`created_at`, and every turn appended
 /// after the cutover was unleasable until this type made the set indivisible.
 ///
 /// Named fields rather than positional arguments, because five strings in a row
@@ -16,9 +16,9 @@
 /// refusal that names the wrong thing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Entry<'a> {
-    /// Who or what produced the event.
+    /// Who or what produced the turn.
     pub actor: &'a str,
-    /// How the event entered the system — an [`EventType`](super::EventType) spelling.
+    /// How the turn entered the system — an [`TurnKind`](super::TurnKind) spelling.
     pub event_type: &'a str,
     /// The workspace the fleet belongs to.
     pub workspace_id: &'a str,

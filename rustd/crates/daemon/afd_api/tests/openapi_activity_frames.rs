@@ -17,7 +17,7 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 /// The fleet stream's path in the document.
-const FLEET_STREAM: &str = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream";
+const FLEET_STREAM: &str = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream";
 
 /// The field every frame's kind is written under.
 const KIND: &str = "kind";
@@ -30,10 +30,10 @@ fn target() -> Target {
     Target {
         fleet_id: Uuid7::encode(Timestamp::UNIX_EPOCH, [0; ENTROPY_LEN])
             .expect("a fixed identifier encodes"),
-        event_id: Uuid7::encode(Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])
+        turn_id: Uuid7::encode(Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])
             .expect("a fixed identifier encodes"),
         run_created_at: Timestamp::UNIX_EPOCH,
-        event_created_at: Timestamp::UNIX_EPOCH,
+        turn_created_at: Timestamp::UNIX_EPOCH,
         timing_eligible: true,
         fence: 1,
     }

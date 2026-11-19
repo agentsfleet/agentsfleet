@@ -7,12 +7,12 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
-mod admission;
 mod admit;
 mod backlog;
 pub mod budget;
 mod confirm;
 pub mod error;
+mod incoming;
 mod repeat;
 mod run_facts;
 pub mod sql;
@@ -26,16 +26,16 @@ use af_crypto::entropy::Entropy;
 use afd_bus::Handle;
 use afd_db::Db;
 
-pub use self::admission::{Admission, Key, Producer, Reply};
 pub use self::admit::Unheld;
 pub use self::backlog::LedgerBacklog;
 pub use self::budget::Budgets;
 use self::budget::Ceiling;
 pub use self::confirm::Confirmation;
 pub use self::error::{Error, Result};
+pub use self::incoming::{IncomingTurn, Key, Producer, Reply};
 pub use self::repeat::Repeated;
 pub use self::run_facts::PersonSteer;
-pub use self::stage::PreparedAdmission;
+pub use self::stage::PreparedTurn;
 
 /// What an admission decided.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,7 +49,7 @@ pub struct Admitted {
     pub stored: Repeated,
 }
 
-/// What a steer's disposition is named from: [`Admissions::run_facts`].
+/// What a steer's disposition is named from: [`Turns::run_facts`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RunFacts {
     /// The run holding the fleet's slot, when its run has not expired.
@@ -64,7 +64,7 @@ pub struct RunFacts {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveRun {
     /// The event the run serves.
-    pub event_id: String,
+    pub turn_id: String,
     /// Whether the run is a durable task.
     pub durable_task: bool,
     /// Whether this message is in the run's conversation: the same reply
@@ -75,7 +75,7 @@ pub struct LiveRun {
 /// The durable queue, its entropy source and best-effort notification transport.
 /// Clones share the deployment ceiling sample.
 #[derive(Debug, Clone)]
-pub struct Admissions {
+pub struct Turns {
     database: Db,
     bus: Handle,
     entropy: Entropy,
@@ -83,7 +83,7 @@ pub struct Admissions {
     ceiling: Arc<Ceiling>,
 }
 
-impl Admissions {
+impl Turns {
     /// Binds the ledger to an already-connected pool and queue, under the
     /// production budgets.
     #[must_use]
@@ -99,7 +99,7 @@ impl Admissions {
 
     /// The same ledger under other budgets.
     ///
-    /// A builder step rather than a fourth argument to [`Admissions::new`]:
+    /// A builder step rather than a fourth argument to [`Turns::new`]:
     /// every production caller wants the defaults, and the one caller that
     /// does not — a suite proving a refusal without a hundred thousand rows —
     /// should have to say so by name.
@@ -111,12 +111,12 @@ impl Admissions {
 
     /// The same ledger, with the host's own entropy supplied for a suite.
     ///
-    /// Every crate whose lane drives a producer needs an `Admissions`, and the
+    /// Every crate whose lane drives a producer needs an `Turns`, and the
     /// only argument any of them has an opinion about is the pool and the
     /// bus their own harness already opened. Handing the third one out here
     /// keeps `af_crypto` out of eight `[dev-dependencies]` blocks and means a
     /// suite that wants a CONTROLLED entropy source has to say so, by calling
-    /// [`Admissions::new`] with one, rather than getting it by accident.
+    /// [`Turns::new`] with one, rather than getting it by accident.
     #[cfg(feature = "test-util")]
     #[must_use]
     pub fn for_tests(database: Db, bus: afd_bus::Handle) -> Self {

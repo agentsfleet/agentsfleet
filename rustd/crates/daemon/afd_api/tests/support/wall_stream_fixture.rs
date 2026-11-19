@@ -28,7 +28,7 @@ use crate::harness::{self, Fleet, OneWorkspace, send};
 const QUIET: Duration = Duration::from_millis(1_500);
 
 /// A frame of activity, as the runner's chunk publishes it.
-const CHUNK: &str = r#"{"kind":"chunk","event_id":"e","text":"live"}"#;
+const CHUNK: &str = r#"{"kind":"chunk","turn_id":"e","text":"live"}"#;
 
 /// The subject the fixture's workspace and key are created by.
 pub(crate) const SUBJECT: &str = "user_live_workspace_stream";
@@ -37,10 +37,7 @@ pub(crate) async fn open_stream(router: &axum::Router, fixture: &Fixture) -> Bod
     let response = send(
         router,
         Method::GET,
-        &format!(
-            "/v1/workspaces/{}/events/stream",
-            fixture.workspace.as_str()
-        ),
+        &format!("/v1/workspaces/{}/turns/stream", fixture.workspace.as_str()),
         Some(&fixture.token),
         "",
     )

@@ -120,7 +120,7 @@ async fn a_worker_claims_only_what_its_lanes_can_start() -> Result<(), &'static 
     let [spare_row] = replica.as_slice() else {
         return Err("the row beyond the slots is left for another replica");
     };
-    assert_eq!(spare_row.outgoing.event_id, spare);
+    assert_eq!(spare_row.outgoing.turn_id, spare);
     assert!(
         delivery::stamp_delivered(&ledger.database, spare_row)
             .await

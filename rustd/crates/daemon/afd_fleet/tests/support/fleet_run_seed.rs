@@ -50,8 +50,8 @@ pub(crate) struct Seeded<const N: usize> {
     pub(crate) runners: [Uuid7; N],
     /// The LOGICAL event id the fixture admitted under.
     ///
-    /// `Acquired::event_id`, the `thread.turns` id and `billing.usage_lines` share it.
-    pub(crate) event_id: Uuid7,
+    /// `Acquired::turn_id`, the `thread.turns` id and `billing.usage_lines` share it.
+    pub(crate) turn_id: Uuid7,
     /// The fleet holding the event.
     pub(crate) fleet: Uuid7,
     /// Its billing tenant.
@@ -70,7 +70,7 @@ pub(crate) async fn seeded_for<const N: usize>(
     request_json: &str,
 ) -> Seeded<N> {
     let (fleet, workspace, tenant, runners) = seeded_parts::<N>(fixtures).await;
-    let event_id = crate::queue::enqueue(
+    let turn_id = crate::queue::enqueue(
         &fixtures.database,
         &fleet,
         &workspace,
@@ -82,7 +82,7 @@ pub(crate) async fn seeded_for<const N: usize>(
     .await;
     Seeded {
         runners,
-        event_id,
+        turn_id,
         fleet,
         tenant,
     }

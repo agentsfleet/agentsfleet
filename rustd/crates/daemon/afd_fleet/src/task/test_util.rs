@@ -36,13 +36,13 @@ impl PreparedPlan {
     /// Assembles one complete fixture interpretation without exposing fields.
     #[must_use]
     pub fn from_parts(
-        source_admission_id: Uuid7,
+        source_turn_id: Uuid7,
         accepted_revision_id: Uuid7,
         digest: String,
         items: Vec<PreparedTask>,
     ) -> Self {
         Self {
-            source_admission_id,
+            source_turn_id,
             accepted_revision_id,
             digest,
             items: items

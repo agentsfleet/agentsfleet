@@ -42,7 +42,7 @@ async fn test_a_retired_report_route_cannot_settle_a_run() {
     )]
     let http = reqwest::Client::new();
     let (run_id, fence) = run(&scene).await;
-    let mut body = report_body(&run_id, &scene.event_id, fence);
+    let mut body = report_body(&run_id, &scene.turn_id, fence);
     let report = body.as_object_mut().expect("a report is a JSON object");
     report.insert(FUTURE.to_owned(), serde_json::Value::from(1));
 
@@ -175,9 +175,9 @@ async fn assert_settled(scene: &crate::e2e::Scenario) {
         settled_status(scene).await.as_deref(),
         Some(RUN_STATUS_REPORTED)
     );
-    let status = crate::reads::event_column(scene, &scene.event_id, "status").await;
+    let status = crate::reads::event_column(scene, &scene.turn_id, "status").await;
     assert_eq!(status.as_deref(), Some("processed"));
-    let answer = crate::reads::event_column(scene, &scene.event_id, "answer_text").await;
+    let answer = crate::reads::event_column(scene, &scene.turn_id, "answer_text").await;
     assert_eq!(answer.as_deref(), Some(ANSWER));
 }
 

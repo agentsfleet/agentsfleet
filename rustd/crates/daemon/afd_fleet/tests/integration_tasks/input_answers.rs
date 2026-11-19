@@ -2,12 +2,12 @@
 
 use af_core::{error_code, id::Uuid7};
 use af_wire::{
-    event::EventType,
     task::{DecisionTaskVersion, TaskInputMode, TaskInputReceiptInput, TaskLimits},
+    turn::TurnKind,
 };
 use afd_connector::Provider;
 use afd_fleet::task::{TaskBinding, TaskLifecycle as _};
-use afd_turns::{Admission, Key, Producer, Reply};
+use afd_turns::{IncomingTurn, Key, Producer, Reply};
 use serde_json::{Value, json};
 
 use super::fixture::{Case, GOALS, exercise};
@@ -84,20 +84,20 @@ async fn source(case: &Case, reply: Reply<'_>) -> Uuid7 {
     let request = json!({"message": GOALS.join("; ")}).to_string();
     let admitted = case
         .admissions
-        .admit(Admission {
+        .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Repeated(key.as_str()),
             fleet: &case.scope.fleet_id,
             workspace: &case.scope.workspace_id,
             actor: &actor,
-            event_type: EventType::Chat,
+            event_type: TurnKind::Chat,
             request_json: &request,
             reply,
         })
         .await
         .expect("separate human source with original reply destination");
     let source = admitted.stored.id.clone();
-    assert_ne!(source.as_str(), case.held.event_id);
+    assert_ne!(source.as_str(), case.held.turn_id);
     case.claim(&source).await;
     source
 }
@@ -122,7 +122,7 @@ fn receipt(
     garde::Unvalidated::new(TaskInputReceiptInput {
         fencing_token: case.run().fencing_token,
         operation_id: afd_db::test_util::mint_id().into(),
-        source_admission_id: source.to_string(),
+        source_turn_id: source.to_string(),
         plan_digest: "a".repeat(64),
         item_id: item.item_id.to_string(),
         task: Some(DecisionTaskVersion {
@@ -145,7 +145,7 @@ async fn assert_pending(case: &Case, source: &Uuid7) {
         .await
         .expect("completion observer");
     let state: (bool, i64, i64) = sqlx::query_as(
-        "SELECT settled_at IS NOT NULL, (SELECT count(*) FROM thread.turns WHERE thread_id=$2 AND id=$1 AND opened_at IS NOT NULL), (SELECT count(*) FROM thread.deliveries WHERE fleet_id=$2 AND event_id=$1) FROM thread.turns WHERE id=$1"
+        "SELECT settled_at IS NOT NULL, (SELECT count(*) FROM thread.turns WHERE thread_id=$2 AND id=$1 AND opened_at IS NOT NULL), (SELECT count(*) FROM thread.deliveries WHERE fleet_id=$2 AND turn_id=$1) FROM thread.turns WHERE id=$1"
     ).bind(source).bind(&case.scope.fleet_id).fetch_one(&mut *connection).await.expect("incomplete source");
     assert_eq!(
         state,
@@ -181,7 +181,7 @@ async fn assert_completed(case: &Case, source: &Uuid7, reply: Reply<'_>) -> Valu
     .await
     .expect("settled original source");
     assert!(settled);
-    let deliveries: Vec<(String, Option<String>, String)> = sqlx::query_as("SELECT provider,destination,answer FROM thread.deliveries WHERE fleet_id=$1 AND event_id=$2")
+    let deliveries: Vec<(String, Option<String>, String)> = sqlx::query_as("SELECT provider,destination,answer FROM thread.deliveries WHERE fleet_id=$1 AND turn_id=$2")
         .bind(&case.scope.fleet_id).bind(source).fetch_all(&mut *connection).await.expect("original reply deliveries");
     let expected = match reply {
         Reply::To { connector, address } => vec![(
@@ -250,10 +250,10 @@ fn assert_event(event: &Value) {
         event.get("request_json"),
         Some(&json!({"message": GOALS.join("; ")}))
     );
-    assert_eq!(event.get("kind"), Some(&json!(EventType::Chat.as_str())));
+    assert_eq!(event.get("kind"), Some(&json!(TurnKind::Chat.as_str())));
     assert_eq!(
         event.get("status"),
-        Some(&json!(af_core::event::status::PROCESSED))
+        Some(&json!(af_core::turn::status::PROCESSED))
     );
     assert_eq!(event.get("answer_text"), Some(&json!(ANSWER)));
     assert_eq!(event.get("token_count"), Some(&json!(0)));

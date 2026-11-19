@@ -37,11 +37,11 @@
 use af_core::id::Uuid7;
 use sqlx::Row as _;
 
-use crate::support::EventsLane;
+use crate::support::TurnsLane;
 
 /// The event a person unblocked, which the continuation resumes: a turn of
 /// its own, since `resumes_turn_id` names a row of `thread.turns`.
-async fn seed_predecessor(lane: &EventsLane) -> Uuid7 {
+async fn seed_predecessor(lane: &TurnsLane) -> Uuid7 {
     let predecessor = afd_db::test_util::mint_id();
     insert(lane, &predecessor, None).await;
     predecessor
@@ -52,17 +52,17 @@ async fn seed_predecessor(lane: &EventsLane) -> Uuid7 {
 /// The binds mirror the production caller exactly — `afd_approval`'s
 /// `continue_from` — because a fixture that bound its own column order would
 /// prove something about itself.
-async fn insert(lane: &EventsLane, event_id: &Uuid7, resumes: Option<&Uuid7>) -> bool {
+async fn insert(lane: &TurnsLane, turn_id: &Uuid7, resumes: Option<&Uuid7>) -> bool {
     let mut connection = lane.connection().await;
     sqlx::query(afd_turns::view::sql::INSERT_FLEET_EVENT)
         .bind(&lane.fleet)
-        .bind(event_id)
+        .bind(turn_id)
         .bind(&lane.workspace)
         .bind("continuation:test")
         .bind("continuation")
         .bind(sqlx::types::Json(serde_json::json!({})))
         .bind(resumes)
-        .bind(af_core::event::status::RECEIVED)
+        .bind(af_core::turn::status::RECEIVED)
         .fetch_one(&mut *connection)
         .await
         .expect("the narrative insert must run")
@@ -70,15 +70,15 @@ async fn insert(lane: &EventsLane, event_id: &Uuid7, resumes: Option<&Uuid7>) ->
         .expect("the statement returns whether it inserted")
 }
 
-/// What the row under `event_id` names as its predecessor.
-async fn stored_predecessor(lane: &EventsLane, event_id: &Uuid7) -> Option<Uuid7> {
+/// What the row under `turn_id` names as its predecessor.
+async fn stored_predecessor(lane: &TurnsLane, turn_id: &Uuid7) -> Option<Uuid7> {
     let mut connection = lane.connection().await;
     sqlx::query(
         "SELECT resumes_turn_id FROM thread.turns
          WHERE thread_id = $1 AND id = $2",
     )
     .bind(&lane.fleet)
-    .bind(event_id)
+    .bind(turn_id)
     .fetch_one(&mut *connection)
     .await
     .expect("the row must be readable")
@@ -90,14 +90,14 @@ async fn stored_predecessor(lane: &EventsLane, event_id: &Uuid7) -> Option<Uuid7
 ///
 /// Asserted everywhere below, because a conflict arm that stopped conflicting
 /// would satisfy every lineage assertion here by writing a second row.
-async fn row_count(lane: &EventsLane, event_id: &Uuid7) -> i64 {
+async fn row_count(lane: &TurnsLane, turn_id: &Uuid7) -> i64 {
     let mut connection = lane.connection().await;
     sqlx::query(
         "SELECT count(*) FROM thread.turns
          WHERE thread_id = $1 AND id = $2",
     )
     .bind(&lane.fleet)
-    .bind(event_id)
+    .bind(turn_id)
     .fetch_one(&mut *connection)
     .await
     .expect("the count must run")
@@ -113,7 +113,7 @@ async fn row_count(lane: &EventsLane, event_id: &Uuid7) -> i64 {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn lineage_survives_run_before_approval() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let event = afd_db::test_util::mint_id();
     let predecessor = seed_predecessor(&lane).await;
 
@@ -139,7 +139,7 @@ async fn lineage_survives_run_before_approval() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn lineage_kept_when_approval_writes_first() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let event = afd_db::test_util::mint_id();
     let predecessor = seed_predecessor(&lane).await;
 
@@ -166,7 +166,7 @@ async fn lineage_kept_when_approval_writes_first() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_redelivery_never_clears_lineage() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let event = afd_db::test_util::mint_id();
     let predecessor = seed_predecessor(&lane).await;
 
@@ -196,7 +196,7 @@ async fn a_redelivery_never_clears_lineage() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn only_a_fresh_insert_reports_inserted() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let event = afd_db::test_util::mint_id();
     let predecessor = seed_predecessor(&lane).await;
 
@@ -222,8 +222,8 @@ async fn only_a_fresh_insert_reports_inserted() {
 /// event arrives.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn the_event_id_is_the_row_key_and_stable_across_arms() {
-    let lane = EventsLane::open().await;
+async fn the_turn_id_is_the_row_key_and_stable_across_arms() {
+    let lane = TurnsLane::open().await;
     let event = afd_db::test_util::mint_id();
 
     let first = inserted_id(&lane, &event).await;
@@ -237,29 +237,29 @@ async fn the_event_id_is_the_row_key_and_stable_across_arms() {
 }
 
 /// Runs the shared insert, then reads back the id of the row it wrote.
-async fn inserted_id(lane: &EventsLane, event_id: &Uuid7) -> Uuid7 {
+async fn inserted_id(lane: &TurnsLane, turn_id: &Uuid7) -> Uuid7 {
     let mut connection = lane.connection().await;
     sqlx::query(afd_turns::view::sql::INSERT_FLEET_EVENT)
         .bind(&lane.fleet)
-        .bind(event_id)
+        .bind(turn_id)
         .bind(&lane.workspace)
         .bind("continuation:test")
         .bind("continuation")
         .bind(sqlx::types::Json(serde_json::json!({})))
         .bind(None::<&Uuid7>)
-        .bind(af_core::event::status::RECEIVED)
+        .bind(af_core::turn::status::RECEIVED)
         .execute(&mut *connection)
         .await
         .expect("the narrative insert must run");
     sqlx::query(
-        "SELECT id AS event_id FROM thread.turns
+        "SELECT id AS turn_id FROM thread.turns
          WHERE thread_id = $1 AND id = $2",
     )
     .bind(&lane.fleet)
-    .bind(event_id)
+    .bind(turn_id)
     .fetch_one(&mut *connection)
     .await
     .expect("the row the insert wrote must read back")
-    .try_get("event_id")
+    .try_get("turn_id")
     .expect("the row carries its event id")
 }

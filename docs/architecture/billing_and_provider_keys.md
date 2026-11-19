@@ -313,7 +313,7 @@ After a restart, its first pass settles what the crash left.
 
 The page is cut by the `(tenant_id, created_at, id)` index before any join, under one descending `(created_at, id)` cursor. Reading history never changes the wallet.
 
-Setup rows have `charge_type: authoring` and `authoring_attempt_id`; `event_id` is null. A retained private draft supplies only its public saved-fleet link and current public fleet name. No draft title, instructions, messages, answers, or credential metadata enters the billing response.
+Setup rows have `charge_type: setup` and `run_id`; `turn_id` is null. A retained private draft supplies only its public saved-fleet link and current public fleet name. No draft title, instructions, messages, answers, or credential metadata enters the billing response.
 
 Setup costs stay visible after private chat deletion because a setup line names its content-free attempt. Without a kept public fleet link, `fleet_id` and `fleet_name` are null.
 
@@ -486,9 +486,9 @@ The same `FleetConfig` parser that accepted the budget at ingest parses the stor
 
 When the gate blocks, the user's surfaces show:
 
-- **`agentsfleet fleet events <fleet_id>`** shows the gate-blocked row with `status='gate_blocked'`, `failure_label='balance_exhausted'`.
+- **`agentsfleet fleet turns <fleet_id>`** shows the gate-blocked row with `status='gate_blocked'`, `failure_label='balance_exhausted'`.
 - **`agentsfleet usage show`** reads `$0.00`, or a negative amount while the tenant owes a debt. The CLI prints *⚠ Out of credits. See https://app.agentsfleet.net/settings/billing*, and below it the most recent charge rows showing where the credits went.
-- **Dashboard events list** (`/w/{workspaceId}/events`) renders the row with an amber `gate_blocked` status.
+- **Dashboard events list** (`/w/{workspaceId}/turns`) renders the row with an amber `gate_blocked` status.
 - **Slack thread**, when the event was a mention: the thread gets one fixed notice naming `balance_exhausted`.
 - **Dashboard `/settings/billing`** shows period and fleet controls, settled totals, daily spending and a by-fleet table. **Add credits** opens a support email; the shared dashboard header shows the balance. Pending or unavailable usage is excluded and explained; [Billing reporting](billing_reporting.md) owns filters and unavailable states.
 
@@ -788,7 +788,7 @@ Each pass resumes after the last line the previous one read, across ticks, so a 
 
 **Removed from the fleet path:** `Accounts`' money statements, the receive charge, and the pricing and debit inside the run metering statement. The base-tier-only price read, `slice_charge` and its round-down rule went too.
 
-Fleet runs write only usage lines. The event-history reads sum an event's cost from its usage lines through `idx_usage_lines_fleet_id_event_id`. That covering index took the read from 183 ms to 5 ms in the design audit.
+Fleet runs write only usage lines. The event-history reads sum an event's cost from its usage lines through `idx_usage_lines_fleet_id_turn_id`. That covering index took the read from 183 ms to 5 ms in the design audit.
 
 The run `metered_*` token cursors and the slot's runtime cursor are gone. Runners report each request, and each run meters its own run time. The fleet charges table, its trigger and schema slot 2010 are gone.
 

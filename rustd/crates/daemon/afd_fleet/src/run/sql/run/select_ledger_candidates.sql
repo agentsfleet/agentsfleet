@@ -34,7 +34,7 @@ WITH instant AS MATERIALIZED (
         (SELECT CASE WHEN jsonb_typeof(labels) = 'array' THEN labels ELSE '[]'::jsonb END
          FROM runner.runners WHERE id = $2)) AS e)
 )
-SELECT z.id AS fleet_id, head.id AS admission_id, head.created_at AS event_created_at
+SELECT z.id AS fleet_id, head.id AS turn_id, head.created_at AS turn_created_at
 FROM eligible z
 JOIN LATERAL (
   SELECT a.id, a.parked_at, a.created_at, a.task_id
@@ -51,11 +51,11 @@ JOIN LATERAL (
 ) head ON (head.parked_at IS NULL OR NOT EXISTS (
   (SELECT 1 FROM fleet.approval_gates g
   WHERE g.fleet_id = z.id AND g.resolved_at IS NULL
-    AND g.event_id IS NULL LIMIT 1)
+    AND g.turn_id IS NULL LIMIT 1)
   UNION ALL
   (SELECT 1 FROM fleet.approval_gates g
   WHERE g.fleet_id = z.id AND g.resolved_at IS NULL
-    AND g.event_id = head.id AND g.expires_at > z.read_at LIMIT 1)))
+    AND g.turn_id = head.id AND g.expires_at > z.read_at LIMIT 1)))
   -- A tenant runner skips a fleet whose head runs on the platform model.
   AND (z.host_platform OR EXISTS (
     SELECT 1 FROM fleet.revisions r

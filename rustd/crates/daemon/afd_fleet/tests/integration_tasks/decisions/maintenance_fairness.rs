@@ -264,7 +264,7 @@ pub(super) async fn extra_unissued(fixture: &Decisions<'_>) -> Uuid7 {
     let mut input: DecisionReservationInput = fixture
         .reservation(DecisionAssessment::Message, None)
         .into_inner();
-    input.source_admission_id = source.to_string();
+    input.source_turn_id = source.to_string();
     let input = garde::Unvalidated::new(input)
         .validate()
         .expect("distinct claimed human source");

@@ -51,7 +51,7 @@ pub struct MintScope {
     ///
     /// The gate that parked THIS event is the answer this run's mint spends
     /// — an approval given for one event cannot fund another.
-    pub event_id: Box<str>,
+    pub turn_id: Box<str>,
     /// How far a repository-scoped token may reach, if the fleet declared it.
     pub binding: Option<RepositoryBinding>,
     /// Credentials present in both the assignment and current setup.
@@ -106,7 +106,7 @@ impl Runs {
         Ok(Some(MintScope {
             workspace_id: found.workspace_id.clone(),
             fleet_id: found.fleet_id.clone(),
-            event_id: found.event_id.into(),
+            turn_id: found.turn_id.into(),
             binding: current.and_then(|config| config.repository_binding().cloned()),
             runner_credentials,
         }))
@@ -188,7 +188,7 @@ struct ScopeRow {
     definition: String,
     issued_definition: Option<String>,
     issued_is_current: bool,
-    event_id: Uuid7,
+    turn_id: Uuid7,
 }
 
 #[cfg(test)]

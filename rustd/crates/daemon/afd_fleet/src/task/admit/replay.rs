@@ -27,7 +27,7 @@ pub(super) async fn read(
     plan: &PreparedPlan,
 ) -> Result<Option<TaskBindings>> {
     let rows: Vec<Existing> = sqlx::query_as(sql::REPLAY)
-        .bind(&plan.source_admission_id)
+        .bind(&plan.source_turn_id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_all(&mut *connection)

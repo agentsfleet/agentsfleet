@@ -28,7 +28,7 @@ WITH hold_host AS MATERIALIZED (
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
   FOR UPDATE OF s
 ), probe AS MATERIALIZED (
-  SELECT l.id, l.workspace_id, l.tenant_id, l.event_id, l.fencing_token, l.created_at,
+  SELECT l.id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token, l.created_at,
          l.run_expires_at, l.last_metered_at,
          s.id AS slot_id, s.fencing_token AS live_fence, s.slot_expires_at, s.hold_authorized
   FROM thread.runs l
@@ -97,7 +97,7 @@ SELECT
           $12::bigint) AS d_ms,
     -- The runtime line's number: the milliseconds from the run's start to the slice's.
     (EXTRACT(EPOCH FROM m.last_metered_at - m.created_at) * $3::bigint)::bigint AS runtime_seq,
-    p.tenant_id, p.workspace_id, p.event_id
+    p.tenant_id, p.workspace_id, p.turn_id
 FROM (SELECT 1) AS one
 LEFT JOIN probe p ON true
 LEFT JOIN measured m ON true

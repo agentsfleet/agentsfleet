@@ -19,12 +19,12 @@ async fn should_keep_one_draft_for_replayed_producer_event() {
     let (scene, producer) = ready_producer(&mut supervisor).await;
     let receipts = concurrent_deliveries(&producer, &scene).await;
     let event = Uuid7::parse(
-        receipts[0]["event_id"]
+        receipts[0]["turn_id"]
             .as_str()
             .expect("the producer returned its event"),
     )
     .expect("the producer answers a canonical event id");
-    assert_replayed_receipts(&receipts, &event, &scene.event_id);
+    assert_replayed_receipts(&receipts, &event, &scene.turn_id);
     producer.assert_admission(&scene, &event).await;
     let remote = Remote::new(
         LINKWARDEN,
@@ -51,7 +51,7 @@ async fn should_keep_one_draft_for_replayed_producer_event() {
     );
     assert_eq!(
         producer.deliver(&scene).await,
-        serde_json::json!({"event_id": event, "replayed": true})
+        serde_json::json!({"turn_id": event, "replayed": true})
     );
     producer.assert_admission(&scene, &event).await;
     assert_one_execution(&scene, &event).await;
@@ -72,7 +72,7 @@ fn assert_replayed_receipts(receipts: &[serde_json::Value], event: &Uuid7, initi
     assert!(
         receipts
             .iter()
-            .all(|receipt| receipt["event_id"] == event.as_str())
+            .all(|receipt| receipt["turn_id"] == event.as_str())
     );
     assert_eq!(
         receipts
@@ -87,13 +87,13 @@ async fn ready_producer(supervisor: &mut Supervisor) -> (crate::e2e::Scenario, P
     let (scene, producer) = Producer::install(supervisor).await;
     let remote = Remote::new(
         LINKWARDEN,
-        &branch_for(scene.event_id.as_str()),
+        &branch_for(scene.turn_id.as_str()),
         Acknowledgement::Delivered,
         Readback::Exact,
     );
     let harmless = Upstream::serve(remote.routes()).await;
     let (model, _) = FakeModel::new(vec![vec![say("Fixture ready.")]]);
-    run_event(&scene, &scene.event_id, &harmless, model).await;
+    run_event(&scene, &scene.turn_id, &harmless, model).await;
     (scene, producer)
 }
 
@@ -132,7 +132,7 @@ async fn assert_one_execution(scene: &crate::e2e::Scenario, event: &Uuid7) {
     .fetch_one(&mut *connection)
     .await
     .expect("the event count");
-    let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs l JOIN thread.turns e ON e.id=l.event_id WHERE e.thread_id=$1 AND e.id=$2")
+    let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs l JOIN thread.turns e ON e.id=l.turn_id WHERE e.thread_id=$1 AND e.id=$2")
         .bind(&scene.fleet).bind(event).fetch_one(&mut *connection).await.expect("the run count");
     assert_eq!((events, runs), (1, 1));
 }

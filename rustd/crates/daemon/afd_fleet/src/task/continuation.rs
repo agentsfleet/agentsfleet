@@ -1,8 +1,8 @@
 //! Native continuations are ordinary admissions with an immutable task payload.
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
-use afd_turns::{Admission, Key, Producer, Reply};
+use af_wire::turn::TurnKind;
+use afd_turns::{IncomingTurn, Key, Producer, Reply};
 
 use super::{TaskScope, Tasks};
 
@@ -50,14 +50,14 @@ impl Continuation {
         Ok(self)
     }
 
-    pub(super) fn admission(&self) -> Admission<'_> {
-        Admission {
+    pub(super) fn admission(&self) -> IncomingTurn<'_> {
+        IncomingTurn {
             producer: Producer::TaskContinuation,
             key: Key::Repeated(&self.key),
             fleet: &self.scope.fleet_id,
             workspace: &self.scope.workspace_id,
             actor: &self.actor,
-            event_type: EventType::Continuation,
+            event_type: TurnKind::Continuation,
             request_json: &self.payload,
             reply: match &self.destination {
                 Destination::Recorded(provider, address) => Reply::To {
@@ -65,7 +65,7 @@ impl Continuation {
                     address,
                 },
                 Destination::None => Reply::None,
-                Destination::Inherit(source) => Reply::Inherit { event_id: source },
+                Destination::Inherit(source) => Reply::Inherit { turn_id: source },
             },
         }
     }

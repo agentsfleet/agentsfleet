@@ -94,7 +94,7 @@ async fn test_a_lapsed_run_is_reclaimed_not_re_pulled() {
         "a lapsed holder's work is taken BACK, never pulled fresh and billed twice"
     );
     assert_eq!(
-        reclaimed.event_id, held.event_id,
+        reclaimed.turn_id, held.turn_id,
         "the reclaimed envelope is the one the dead holder never finished"
     );
     assert!(

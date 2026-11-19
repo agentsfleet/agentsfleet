@@ -140,7 +140,7 @@ pub struct LoginConfig {
 pub(super) fn schedule_plane(
     database: &Db,
     scheduler: Arc<dyn afd_cron::Scheduler>,
-    admissions: afd_turns::Admissions,
+    admissions: afd_turns::Turns,
 ) -> afd_api::SchedulePlane {
     afd_api::SchedulePlane::new(
         afd_cron::ScheduleService::new(

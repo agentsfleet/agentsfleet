@@ -32,7 +32,7 @@ pub(super) const RUN_READ: &str =
 
 /// Closes [`RUN_READ`] and keeps its row only while the run is live.
 pub(super) const RUN_JUDGED: &str = "\n)\n\
-SELECT fleet_id, workspace_id, event_id, fence, live_seq, actor\n\
+SELECT fleet_id, workspace_id, turn_id, fence, live_seq, actor\n\
   FROM run\n\
  WHERE run_expires_at > clock_timestamp()\n";
 

@@ -16,7 +16,7 @@ pub(super) struct Current {
     pub id: Uuid7,
     pub fleet_id: Uuid7,
     pub workspace_id: Uuid7,
-    pub event_id: Uuid7,
+    pub turn_id: Uuid7,
     pub setup_revision_id: Option<Uuid7>,
     pub fence: i64,
     pub slot_fence: i64,
@@ -107,7 +107,7 @@ impl<'a> TurnRunGuard<'a> {
         TurnScope {
             workspace_id: CheckpointOperationId(self.current.workspace_id.as_str().to_owned()),
             fleet_id: CheckpointOperationId(self.current.fleet_id.as_str().to_owned()),
-            event_id: CheckpointOperationId(self.current.event_id.as_str().to_owned()),
+            turn_id: CheckpointOperationId(self.current.turn_id.as_str().to_owned()),
             setup_revision_id: CheckpointOperationId(self.setup.as_str().to_owned()),
             workspace,
         }
@@ -152,14 +152,14 @@ async fn current(connection: &mut PgConnection, presented: TurnRun<'_>) -> Resul
 
 async fn admission(connection: &mut PgConnection, current: &Current) -> Result<()> {
     let admission: Admission = sqlx::query_as(include_str!("sql/lock_admission.sql"))
-        .bind(&current.event_id)
+        .bind(&current.turn_id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_optional(connection)
         .await
         .map_err(query("hold ordinary source admission"))?
         .ok_or_else(run_not_found)?;
-    if admission.id != current.event_id
+    if admission.id != current.turn_id
         || admission.run_fence != Some(current.fence)
         || admission.parked
         || admission.settled

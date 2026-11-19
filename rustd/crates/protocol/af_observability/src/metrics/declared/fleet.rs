@@ -56,7 +56,7 @@ pub const RUN_FOLDS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_ru
 pub const RUN_HISTORY_READ_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_run_history_read_failures_total");
 
-/// Runs granted; fresh ÷ accepted admissions is pickup, a rising reclaimed
+/// Runs granted; fresh ÷ accepted turns is pickup, a rising reclaimed
 /// share is runners dying mid-run.
 ///
 /// Labels: `kind`.
@@ -92,17 +92,17 @@ pub const RUNNER_RETENTION_SWEPT_TOTAL: Declared<CounterKind> =
 pub const RUNNER_RETENTION_SWEEP_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_retention_sweep_failures_total");
 
-/// Accepted and replayed admissions, database refusals, and budget refusals.
+/// Accepted and replayed turns, database refusals, and budget refusals.
 ///
 /// Labels: `outcome`.
-pub const ADMISSIONS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_admissions_total");
+pub const TURNS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_turns_total");
 
-/// Unsettled admissions counted by the last fleet census pass.
-pub const ADMISSION_BACKLOG: Declared<GaugeKind> = Declared::new("agentsfleet_admission_backlog");
+/// Unsettled fleet turns counted by the last fleet census pass.
+pub const TURN_BACKLOG: Declared<GaugeKind> = Declared::new("agentsfleet_turn_backlog");
 
-/// How long the oldest unsettled admission has waited.
-pub const ADMISSION_BACKLOG_OLDEST_AGE_SECONDS: Declared<GaugeKind> =
-    Declared::new("agentsfleet_admission_backlog_oldest_age_seconds");
+/// How long the oldest unsettled fleet turn has waited.
+pub const TURN_BACKLOG_OLDEST_AGE_SECONDS: Declared<GaugeKind> =
+    Declared::new("agentsfleet_turn_backlog_oldest_age_seconds");
 
 /// Failure rate per reason.
 ///

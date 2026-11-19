@@ -45,11 +45,11 @@ pub(crate) const SLICE: std::time::Duration =
 /// are checking; [`run_fee`] rounds a partial nano up, as the rater does.
 pub(crate) const SLICE_NANOS: i64 = SLICE_MS * RUN_NANOS_PER_SEC / MS_PER_SEC;
 
-/// [`RESUME_EVENT_ID`](crate::report_commit::RESUME_EVENT_ID) as the
+/// [`RESUME_TURN_ID`](crate::report_commit::RESUME_TURN_ID) as the
 /// identifier a terminal report carries, parsed once.
 pub(crate) fn resume_event() -> &'static Uuid7 {
     static RESUME: LazyLock<Uuid7> = LazyLock::new(|| {
-        Uuid7::parse(crate::report_commit::RESUME_EVENT_ID)
+        Uuid7::parse(crate::report_commit::RESUME_TURN_ID)
             .expect("the resume event id is a canonical UUIDv7")
     });
     &RESUME
@@ -76,7 +76,7 @@ pub(crate) struct Held {
     pub(crate) fence: Fence,
     pub(crate) fleet: Uuid7,
     pub(crate) tenant: Uuid7,
-    pub(crate) event_id: Uuid7,
+    pub(crate) turn_id: Uuid7,
     /// When the run was issued, by the database clock.
     pub(crate) now: Timestamp,
 }
@@ -113,7 +113,7 @@ pub(crate) async fn held_admission(fixtures: Fixtures, actor: &str, request_json
         "a newly held event has no row yet"
     );
     let issued = issue_received(&runs, &runner, &acquired, &tenant, now).await;
-    let event_id = acquired.event_id.clone();
+    let turn_id = acquired.turn_id.clone();
     let run_key = issued.run_id.clone();
     let pricing = fixtures.pricing(&issued.run_id).await;
     // The issue instant, which issue stamps from the database clock; a slice
@@ -132,7 +132,7 @@ pub(crate) async fn held_admission(fixtures: Fixtures, actor: &str, request_json
         acquired,
         fleet,
         tenant,
-        event_id,
+        turn_id,
         now,
     }
 }
@@ -176,12 +176,12 @@ impl Held {
     /// row as a test has aged it: whether the run is still the live holder
     /// decides whether the frames it forwards count toward delivery timing.
     pub(crate) async fn activity_target(&self) -> afd_fleet::run::activity::Target {
-        let (created_at, event_created_at, live): (
+        let (created_at, turn_created_at, live): (
             jiff_sqlx::Timestamp,
             jiff_sqlx::Timestamp,
             bool,
         ) = sqlx::query_as(
-            "SELECT l.created_at, l.event_created_at,
+            "SELECT l.created_at, l.turn_created_at,
                     l.status = $3 AND l.run_expires_at > statement_timestamp()
                         AND EXISTS (SELECT 1 FROM thread.threads s
                                     WHERE s.fleet_id = l.fleet_id
@@ -205,9 +205,9 @@ impl Held {
         .expect("the held run reads");
         afd_fleet::run::activity::Target {
             fleet_id: self.fleet.clone(),
-            event_id: self.event_id.clone(),
+            turn_id: self.turn_id.clone(),
             run_created_at: created_at.to_jiff(),
-            event_created_at: event_created_at.to_jiff(),
+            turn_created_at: turn_created_at.to_jiff(),
             timing_eligible: live,
             fence: self.fence.as_i64(),
         }

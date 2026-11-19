@@ -3,7 +3,7 @@
 use super::seed::{seed_gate, seed_provider_resolution, seed_spend};
 use super::*;
 
-use af_core::event::label;
+use af_core::turn::label;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -26,7 +26,7 @@ async fn test_a_fleet_past_its_ceiling_ends_the_event_rather_than_retrying_it() 
         answer.is_none(),
         "a drained budget issued a run: {answer:?}"
     );
-    let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.event_id)
+    let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id)
         .await
         .expect("a refused event has a narrative row");
     assert_eq!(status, STATUS_GATE_BLOCKED, "the row must be terminal");
@@ -56,7 +56,7 @@ async fn test_a_denied_gate_ends_the_event_and_names_the_denial() {
     let answer = drive(&fixtures, &seeded, claimed).await;
 
     assert!(answer.is_none(), "a denied gate issued a run: {answer:?}");
-    let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.event_id)
+    let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id)
         .await
         .expect("a denied event has a narrative row");
     assert_eq!(status, STATUS_GATE_BLOCKED, "the row must be terminal");
@@ -90,7 +90,7 @@ async fn test_an_unanswered_gate_parks_the_event_without_ending_it() {
         answer.is_none(),
         "an unanswered gate issued a run: {answer:?}"
     );
-    let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.event_id)
+    let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id)
         .await
         .expect("a parked event still opens its narrative row");
     assert_eq!(

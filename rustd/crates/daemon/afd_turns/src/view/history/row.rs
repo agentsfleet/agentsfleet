@@ -5,14 +5,14 @@
 //! [`Stored`] is the row as the table spells it — `token_count`,
 //! `failure_reason` — decoded by `sqlx::FromRow`, which binds by COLUMN NAME,
 //! so a `SELECT` list edited into another order cannot swap two same-typed
-//! columns the way a positional decoder could. [`EventRow`] is the row as the
-//! wire spells it (`af_wire::event::EventSummary`), and the one `From` between
+//! columns the way a positional decoder could. [`TurnRow`] is the row as the
+//! wire spells it (`af_wire::turn::TurnSummary`), and the one `From` between
 //! them is the only place the two vocabularies meet.
 
 use af_core::id::Uuid7;
 use std::borrow::Cow;
 
-use af_wire::event::EventSummary;
+use af_wire::turn::TurnSummary;
 use jiff::Timestamp;
 use sqlx::FromRow as _;
 use sqlx::postgres::PgRow;
@@ -26,11 +26,11 @@ const ROW: &str = "event row";
 /// One event, with everything the console renders about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct EventRow {
+pub struct TurnRow {
     /// The fleet this event belongs to.
     pub fleet_id: Uuid7,
     /// The canonical event identifier.
-    pub event_id: Uuid7,
+    pub turn_id: Uuid7,
     /// The workspace the fleet belongs to.
     pub workspace_id: Uuid7,
     /// Who or what produced the event.
@@ -49,7 +49,7 @@ pub struct EventRow {
     /// The operator-readable cause line, absent when none was carried.
     pub failure_detail: Option<String>,
     /// The event this one continues, set on a continuation.
-    pub resumes_event_id: Option<Uuid7>,
+    pub resumes_turn_id: Option<Uuid7>,
     /// When the row was created.
     pub created_at: Timestamp,
     /// When the row last changed.
@@ -66,7 +66,7 @@ pub struct EventRow {
 #[derive(sqlx::FromRow)]
 pub(crate) struct Stored {
     fleet_id: Uuid7,
-    event_id: Uuid7,
+    turn_id: Uuid7,
     workspace_id: Uuid7,
     actor: String,
     event_type: String,
@@ -75,7 +75,7 @@ pub(crate) struct Stored {
     wall_ms: Option<i64>,
     failure_reason: Option<String>,
     failure_detail: Option<String>,
-    resumes_event_id: Option<Uuid7>,
+    resumes_turn_id: Option<Uuid7>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -83,11 +83,11 @@ pub(crate) struct Stored {
     cost_nanos: Option<i64>,
 }
 
-impl From<Stored> for EventRow {
+impl From<Stored> for TurnRow {
     fn from(stored: Stored) -> Self {
         Self {
             fleet_id: stored.fleet_id,
-            event_id: stored.event_id,
+            turn_id: stored.turn_id,
             workspace_id: stored.workspace_id,
             actor: stored.actor,
             event_type: stored.event_type,
@@ -96,7 +96,7 @@ impl From<Stored> for EventRow {
             wall_ms: stored.wall_ms,
             failure_label: stored.failure_reason,
             failure_detail: stored.failure_detail,
-            resumes_event_id: stored.resumes_event_id,
+            resumes_turn_id: stored.resumes_turn_id,
             created_at: stored.created_at,
             updated_at: stored.updated_at,
             cost_nanos: stored.cost_nanos,
@@ -104,7 +104,7 @@ impl From<Stored> for EventRow {
     }
 }
 
-impl EventRow {
+impl TurnRow {
     /// Decode one row by column name.
     ///
     /// # Errors
@@ -124,10 +124,10 @@ impl EventRow {
     /// beside either emitter, so a column added here cannot reach one and not
     /// the other.
     #[must_use]
-    pub fn summary(&self) -> EventSummary<'_> {
-        EventSummary {
+    pub fn summary(&self) -> TurnSummary<'_> {
+        TurnSummary {
             fleet_id: Cow::Borrowed(self.fleet_id.as_str()),
-            event_id: Cow::Borrowed(self.event_id.as_str()),
+            turn_id: Cow::Borrowed(self.turn_id.as_str()),
             workspace_id: Cow::Borrowed(self.workspace_id.as_str()),
             actor: Cow::Borrowed(&self.actor),
             event_type: Cow::Borrowed(&self.event_type),
@@ -136,8 +136,8 @@ impl EventRow {
             wall_ms: self.wall_ms,
             failure_label: self.failure_label.as_deref().map(Cow::Borrowed),
             failure_detail: self.failure_detail.as_deref().map(Cow::Borrowed),
-            resumes_event_id: self
-                .resumes_event_id
+            resumes_turn_id: self
+                .resumes_turn_id
                 .as_ref()
                 .map(|id| Cow::Borrowed(id.as_str())),
             created_at: self.created_at,

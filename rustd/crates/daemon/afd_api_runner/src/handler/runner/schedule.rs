@@ -248,8 +248,8 @@ pub(super) fn log_written(run: &Standing, schedule: &Uuid7, event: &'static str)
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let fleet_id = run.fleet_id.as_str();
     let schedule_id = schedule.as_str();
-    let agentsfleet_event_id = run.event_id.as_str();
-    tracing::info!(fleet_id, schedule_id, agentsfleet_event_id, event);
+    let agentsfleet_turn_id = run.turn_id.as_str();
+    tracing::info!(fleet_id, schedule_id, agentsfleet_turn_id, event);
 }
 
 /// The schedule a path names.

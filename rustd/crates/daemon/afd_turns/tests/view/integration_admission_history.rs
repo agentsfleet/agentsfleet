@@ -1,5 +1,5 @@
 //! Dimension 4.9 — an admitted event is named by its `thread.turns` row id,
-//! and the history keyset `(created_at, event_id)` reads two such events in one
+//! and the history keyset `(created_at, turn_id)` reads two such events in one
 //! millisecond newest-first, each once, across a page boundary. An id no
 //! admission minted names nothing.
 //!
@@ -10,25 +10,25 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_db::test_util::mint_id;
 use afd_turns::view::{Filter, History, next_cursor};
-use afd_turns::{Admission, Key, Producer};
+use afd_turns::{IncomingTurn, Key, Producer};
 use jiff::Timestamp;
 
-use crate::support::EventsLane;
+use crate::support::TurnsLane;
 
 /// The one millisecond both events are recorded at.
 const SHARED_INSTANT: Timestamp = Timestamp::constant(1_800_000_000, 7_000_000);
 
-fn admission<'a>(lane: &'a EventsLane, key: &'a str) -> Admission<'a> {
-    Admission {
+fn admission<'a>(lane: &'a TurnsLane, key: &'a str) -> IncomingTurn<'a> {
+    IncomingTurn {
         producer: Producer::Steer,
         key: Key::Repeated(key),
         fleet: &lane.fleet,
         workspace: &lane.workspace,
         actor: "steer:api",
-        event_type: EventType::Chat,
+        event_type: TurnKind::Chat,
         request_json: r#"{"message":"history fixture"}"#,
         reply: afd_turns::Reply::None,
     }
@@ -37,7 +37,7 @@ fn admission<'a>(lane: &'a EventsLane, key: &'a str) -> Admission<'a> {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn two_admissions_in_one_millisecond_list_once_newest_first() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let ledger = lane.admissions();
     let mut ids = Vec::new();
     for name in ["first", "second"] {
@@ -62,7 +62,7 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
         .page_for_workspace(workspace, Some(fleet), &filter, None, 10)
         .await
         .expect("a page reads");
-    let listed: Vec<_> = whole.iter().map(|row| row.event_id.clone()).collect();
+    let listed: Vec<_> = whole.iter().map(|row| row.turn_id.clone()).collect();
     assert_eq!(listed, newest_first);
 
     // One row a page: the cursor pair carries the tie across the boundary.
@@ -73,7 +73,7 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
             .page_for_workspace(workspace, Some(fleet), &filter, cursor.as_ref(), 1)
             .await
             .expect("a page reads");
-        walked.extend(page.iter().map(|row| row.event_id.clone()));
+        walked.extend(page.iter().map(|row| row.turn_id.clone()));
         match next_cursor(&page, 1) {
             Some(next) => cursor = Some(next),
             None => break,
@@ -87,7 +87,7 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
         .await
         .expect("the detail reads")
         .expect("the row id names the event");
-    assert_eq!(&found.row.event_id, first);
+    assert_eq!(&found.row.turn_id, first);
     let unadmitted = history
         .detail(workspace, fleet, &mint_id())
         .await

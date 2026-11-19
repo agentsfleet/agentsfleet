@@ -21,7 +21,7 @@ fn interim(fixture: &Fixture, part: u32) -> Interim {
         destination: job.destination,
         workspace_id: job.workspace_id,
         fleet_id: job.fleet_id,
-        event_id: job.event_id,
+        turn_id: job.turn_id,
         run_id: Uuid7::parse(RUN).expect("the fixture run is canonical"),
         text: LINE.to_owned(),
         part,
@@ -122,7 +122,7 @@ async fn a_line_whose_acknowledgement_was_lost_is_not_posted_twice() {
     let landed = interim(&fixture, 4);
     let marker = afd_connector::slack::AnswerMarker {
         fleet_id: landed.fleet_id.clone().into(),
-        event_id: landed.event_id.clone().into(),
+        turn_id: landed.turn_id.clone().into(),
         part: Some(afd_connector::slack::Part {
             run_id: RUN.to_owned(),
             line: 4,

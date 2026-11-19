@@ -1,6 +1,6 @@
 -- One priced provider request or runtime slice. No foreign keys: a line outlives what it names,
 -- so references are opaque and `fleet_name` is the name at write time. Amounts are nanodollars.
--- Exactly one of `fleet_id` and `authoring_attempt_id` is set, by `work_type`.
+-- By `work_type`: a fleet line sets `fleet_id` and `turn_id`, a setup line sets `run_id`.
 CREATE TABLE billing.usage_lines (
     id                          UUID   PRIMARY KEY,
     work_type                   TEXT   NOT NULL,
@@ -11,8 +11,8 @@ CREATE TABLE billing.usage_lines (
     workspace_id                UUID   NOT NULL,
     fleet_id                    UUID,
     fleet_name                  TEXT,
-    event_id                    UUID,
-    authoring_attempt_id        UUID,
+    turn_id                     UUID,
+    run_id                      UUID,
     provider                    TEXT   NOT NULL,
     model                       TEXT   NOT NULL,
     posture                     TEXT   NOT NULL,
@@ -46,9 +46,9 @@ CREATE INDEX idx_usage_lines_tenant_id_created_at_id
 CREATE INDEX idx_usage_lines_fleet_id_created_at
     ON billing.usage_lines (fleet_id, created_at) WHERE fleet_id IS NOT NULL;
 
--- INCLUDE lets an event's cost be summed without visiting the table.
-CREATE INDEX idx_usage_lines_fleet_id_event_id
-    ON billing.usage_lines (fleet_id, event_id) INCLUDE (charged_nanos)
+-- INCLUDE lets a turn's cost be summed without visiting the table.
+CREATE INDEX idx_usage_lines_fleet_id_turn_id
+    ON billing.usage_lines (fleet_id, turn_id) INCLUDE (charged_nanos)
     WHERE fleet_id IS NOT NULL;
 
 CREATE INDEX idx_usage_lines_created_at_unsettled

@@ -11,17 +11,17 @@ WITH closed AS (
   SET status = $3, answer_text = $4, token_count = $5, wall_ms = $6, updated_at = now(),
       failure_reason = $7, failure_detail = $9, tool_calls = $11::jsonb
   WHERE thread_id = $1 AND id = ANY($2) AND status = $8
-  RETURNING thread_id AS fleet_id, id AS event_id, workspace_id, actor, kind AS event_type,
+  RETURNING thread_id AS fleet_id, id AS turn_id, workspace_id, actor, kind AS event_type,
             status, token_count, wall_ms, failure_reason, failure_detail,
-            resumes_turn_id AS resumes_event_id, created_at, updated_at
+            resumes_turn_id, created_at, updated_at
 )
-SELECT c.fleet_id AS fleet_id, c.event_id AS event_id, c.workspace_id AS workspace_id,
+SELECT c.fleet_id AS fleet_id, c.turn_id AS turn_id, c.workspace_id AS workspace_id,
        c.actor, c.event_type, c.status, c.token_count, c.wall_ms,
-       c.failure_reason, c.failure_detail, c.resumes_event_id AS resumes_event_id,
+       c.failure_reason, c.failure_detail, c.resumes_turn_id AS resumes_turn_id,
        c.created_at, c.updated_at,
        (SELECT SUM(charge.charged_nanos)::bigint
           FROM billing.usage_lines charge
-         WHERE charge.event_id = c.event_id
+         WHERE charge.turn_id = c.turn_id
            AND charge.fleet_id = c.fleet_id) AS cost_nanos,
        f.status AS fleet_status,
        (SELECT COUNT(*) FROM fleet.approval_gates g
@@ -32,4 +32,4 @@ SELECT c.fleet_id AS fleet_id, c.event_id AS event_id, c.workspace_id AS workspa
                   WHERE k.fleet_id = c.fleet_id), 0) AS budget_used_nanos
 FROM closed c
 JOIN fleet.fleets f ON f.id = c.fleet_id
-ORDER BY c.created_at, c.event_id
+ORDER BY c.created_at, c.turn_id

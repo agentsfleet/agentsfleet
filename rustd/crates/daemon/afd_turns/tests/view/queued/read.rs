@@ -7,7 +7,7 @@ use super::*;
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_thread_read_includes_queued_steers() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steered = Steer::new(lane.admissions())
         .append(&lane.fleet, &lane.workspace, ACTOR, BODY, None)
         .await
@@ -20,7 +20,7 @@ async fn test_thread_read_includes_queued_steers() {
         .await
         .expect("the thread reads");
     let first = page.first().expect("the waiting message is on the page");
-    assert_eq!(first.row.event_id, steered.event_id);
+    assert_eq!(first.row.turn_id, steered.turn_id);
     assert_eq!(first.row.status, status::QUEUED);
     assert_eq!(first.row.actor, ACTOR);
     assert_eq!(first.request_json, BODY);
@@ -36,7 +36,7 @@ async fn test_thread_read_includes_queued_steers() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_thread_read_dedupes_assigned_steer() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steered = Steer::new(lane.admissions())
         .append(&lane.fleet, &lane.workspace, ACTOR, BODY, None)
         .await
@@ -51,7 +51,7 @@ async fn test_thread_read_dedupes_assigned_steer() {
         .await
         .expect("the run's delivery stamp lands");
     drop(connection);
-    lane.seed_event(&uuid(&steered.event_id), admitted_at).await;
+    lane.seed_event(&uuid(&steered.turn_id), admitted_at).await;
 
     let page = History::new(lane.database.clone())
         .thread_page(&lane.workspace, &lane.fleet, None, PAGE)
@@ -59,7 +59,7 @@ async fn test_thread_read_dedupes_assigned_steer() {
         .expect("the thread reads");
     let rows: Vec<_> = page
         .iter()
-        .filter(|row| row.row.event_id == steered.event_id)
+        .filter(|row| row.row.turn_id == steered.turn_id)
         .collect();
     assert_eq!(rows.len(), 1, "one event, one row");
     assert_ne!(
@@ -74,13 +74,13 @@ async fn test_thread_read_dedupes_assigned_steer() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn task_history_preserves_records_and_truncation_in_detail_and_thread() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let event = afd_db::test_util::mint_id();
     lane.seed_event(&event, jiff::Timestamp::now()).await;
     let items = serde_json::json!([{
         "kind": "task_decision_started",
         "progress": {
-            "activity_id": event, "task_id": null, "source_admission_id": null,
+            "activity_id": event, "task_id": null, "source_turn_id": null,
             "operation": "intent", "phase": "starting", "provider": null,
             "model": null, "completed": 0, "total": null, "sequence": 2
         }
@@ -110,7 +110,7 @@ async fn task_history_preserves_records_and_truncation_in_detail_and_thread() {
         .expect("thread decodes split storage");
     let thread = page
         .iter()
-        .find(|row| row.row.event_id == event)
+        .find(|row| row.row.turn_id == event)
         .expect("saved event appears in thread");
     assert_eq!(detail.task_activity, thread.task_activity);
     assert!(detail.task_activity.truncated);

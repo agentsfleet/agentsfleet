@@ -53,7 +53,7 @@ impl RunVerbs for Native {
         &self,
         input: TaskInputReceiptInput,
     ) -> Result<TaskInputReceiptResult, Unanswered> {
-        assert_eq!(input.source_admission_id, PENDING);
+        assert_eq!(input.source_turn_id, PENDING);
         assert_eq!(input.item_id, ITEM);
         assert_eq!(input.mode, TaskInputMode::Answered);
         assert_eq!(
@@ -79,7 +79,7 @@ fn inputs() -> TaskInputsResponse<'static> {
             af_core::clock::now(),
             std::time::Duration::from_mins(10),
         )),
-        source_admission_id: SOURCE.to_owned(),
+        source_turn_id: SOURCE.to_owned(),
         accepted_revision_id: Some(SOURCE.to_owned()),
         current_message: None,
         current_task: None,
@@ -123,11 +123,11 @@ fn pending_inputs() -> TaskInputsResponse<'static> {
     input.current_task = Some(task());
     input.next_cursor = Some("a later source page".to_owned());
     input.inputs.push(TaskHumanInput {
-        source_admission_id: PENDING.to_owned(),
+        source_turn_id: PENDING.to_owned(),
         sequence: 1,
         message: "hello".to_owned(),
         accepted: Some(TaskAcceptedInterpretation {
-            source_admission_id: PENDING.to_owned(),
+            source_turn_id: PENDING.to_owned(),
             plan_digest: "b".repeat(64),
             message: "hello".to_owned(),
             items: vec![TaskRecoveredItem {

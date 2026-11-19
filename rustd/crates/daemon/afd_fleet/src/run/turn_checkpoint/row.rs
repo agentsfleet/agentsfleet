@@ -41,7 +41,7 @@ impl Plan {
     pub(super) async fn load(owner: &mut TurnRunGuard<'_>, id: &Uuid7) -> Result<Self> {
         sqlx::query_as(include_str!("sql/plan.sql"))
             .bind(id)
-            .bind(&owner.current.event_id)
+            .bind(&owner.current.turn_id)
             .bind(&owner.current.fleet_id)
             .bind(&owner.current.workspace_id)
             .fetch_optional(&mut *owner.tx)
@@ -123,7 +123,7 @@ impl Plan {
             .iter()
             .zip(sequences)
             .map(|(id, sequence)| FoldRef {
-                event_id: CheckpointOperationId(id.as_str().to_owned()),
+                turn_id: CheckpointOperationId(id.as_str().to_owned()),
                 sequence: *sequence,
             })
             .collect())

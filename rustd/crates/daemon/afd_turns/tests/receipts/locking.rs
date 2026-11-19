@@ -196,7 +196,7 @@ async fn a_send_behind_a_held_fleet_row_times_out() -> Fallible {
 
 /// A archived fleet's refusal is the caller's answer, not an admission failure:
 /// no `admission_failed` and no capacity line, and so no tick of
-/// `agentsfleet_admissions_total`, which `count_refusal` records beside that
+/// `agentsfleet_turns_total`, which `count_refusal` records beside that
 /// log.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

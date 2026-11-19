@@ -41,9 +41,9 @@ struct LiveRunRow {
     run_id: Uuid7,
     expires_at: jiff_sqlx::Timestamp,
     fleet_id: Option<Uuid7>,
-    event_id: Option<Uuid7>,
+    turn_id: Option<Uuid7>,
     created_at: jiff_sqlx::Timestamp,
-    event_created_at: Option<jiff_sqlx::Timestamp>,
+    turn_created_at: Option<jiff_sqlx::Timestamp>,
     fencing_token: i64,
     cancelled: bool,
     draft_id: Option<Uuid7>,
@@ -53,12 +53,12 @@ impl TryFrom<&LiveRunRow> for RunRecord {
     type Error = crate::Error;
 
     fn try_from(row: &LiveRunRow) -> Result<Self> {
-        let target = match (&row.fleet_id, &row.event_id, &row.event_created_at) {
-            (Some(fleet), Some(event), Some(event_created_at)) => Some(Target {
+        let target = match (&row.fleet_id, &row.turn_id, &row.turn_created_at) {
+            (Some(fleet), Some(event), Some(turn_created_at)) => Some(Target {
                 fleet_id: fleet.clone(),
-                event_id: event.clone(),
+                turn_id: event.clone(),
                 run_created_at: row.created_at.to_jiff(),
-                event_created_at: event_created_at.to_jiff(),
+                turn_created_at: turn_created_at.to_jiff(),
                 timing_eligible: !row.cancelled,
                 fence: row.fencing_token,
             }),

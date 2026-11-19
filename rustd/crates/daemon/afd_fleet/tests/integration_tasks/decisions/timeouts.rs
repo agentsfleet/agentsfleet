@@ -40,7 +40,7 @@ async fn blocked(case: &Case, capture: &Capture) {
         .await
         .expect("source blocker transaction");
     sqlx::query("SELECT id FROM thread.turns WHERE id=$1 FOR UPDATE")
-        .bind(&case.held.event_id)
+        .bind(&case.held.turn_id)
         .execute(&mut *blocker)
         .await
         .expect("hold source after slot can be acquired");

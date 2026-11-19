@@ -12,7 +12,7 @@
 //!
 //! # Why the token is a type
 //!
-//! A run row binds five `i64`s in a row — `event_created_at`,
+//! A run row binds five `i64`s in a row — `turn_created_at`,
 //! `fencing_token`, `run_expires_at`, and two instants — and two of them
 //! transposed compiles clean and writes a run that can never be reported
 //! against. [`Fence`] exists so that only the value a claim minted can reach

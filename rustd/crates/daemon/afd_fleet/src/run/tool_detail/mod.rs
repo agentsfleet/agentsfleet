@@ -182,7 +182,7 @@ impl RunService {
 /// One skipped record, by position and size; its content is never logged.
 fn log_skip(target: &LiveRun, skip: Skip) {
     let fleet_id = target.fleet_id.as_str();
-    let event_id = target.event_id.as_str();
+    let turn_id = target.turn_id.as_str();
     let Skip {
         position,
         reason,
@@ -190,10 +190,10 @@ fn log_skip(target: &LiveRun, skip: Skip) {
     } = skip;
     let reason = reason.as_str();
     {
-        let (agentsfleet_event_id, event) = (&event_id, &EVENT_SKIPPED);
+        let (agentsfleet_turn_id, event) = (&turn_id, &EVENT_SKIPPED);
         tracing::info!(
             fleet_id,
-            agentsfleet_event_id,
+            agentsfleet_turn_id,
             position,
             reason,
             bytes,

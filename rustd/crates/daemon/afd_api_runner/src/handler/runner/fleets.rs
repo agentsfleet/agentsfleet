@@ -23,19 +23,19 @@ use af_core::paging::{
     CEILING, Cursor as PageCursor, PagingRefusal, QUERY_LIMIT, QUERY_STARTING_AFTER,
 };
 use af_validate::{Ceiling, Limit};
-use af_wire::event::message_of;
-use af_wire::fleets_verb::{FleetEventItem, FleetEventsPage, FleetItem, FleetsPage, excerpt};
+use af_wire::fleets_verb::{FleetItem, FleetTurnItem, FleetTurnsPage, FleetsPage, excerpt};
+use af_wire::turn::message_of;
 use afd_fleet::run::Standing;
 use afd_fleet_lifecycle::{After, FleetPage, FleetRow};
 use afd_http::handler::{Refusal, decoded_parameter, parameter, parse_id};
-use afd_turns::view::{Cursor, EventDetailRow};
+use afd_turns::view::{Cursor, TurnDetailRow};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
 
 use super::schedule::{fence, run};
 use crate::auth::RunnerIdentity;
-use crate::services::{RunPlane as _, Services, WorkspaceEvents as _, WorkspaceFleets as _};
+use crate::services::{RunPlane as _, Services, WorkspaceFleets as _, WorkspaceTurns as _};
 
 /// The scoped event a fleets read that failed is logged under.
 const EVENT_FAILED: &str = "runner_fleets_failed";
@@ -119,10 +119,10 @@ pub(crate) async fn list<D: Services>(
 /// runner included.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = af_wire::paths::RUN_FLEET_EVENTS,
+    path = af_wire::paths::RUN_FLEET_TURNS,
     tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "runner_list_fleet_events",
-    summary = "List one fleet's recent events",
+    operation_id = "runner_list_fleet_turns",
+    summary = "List one fleet's recent turns",
     description = concat!(
         "Lists one fleet's events in the running fleet's workspace, newest first. Each ",
         "row carries at most 1024 bytes of what was asked and what was answered. ",
@@ -137,7 +137,7 @@ pub(crate) async fn list<D: Services>(
         ("limit" = Option<u32>, Query, description = "Page size, 1 to 25. Defaults to 20."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = FleetEventsPage<'_>),
+        (status = 200, description = afd_http::openapi::OK, body = FleetTurnsPage<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
@@ -262,14 +262,14 @@ fn fleet_item(row: &FleetRow) -> FleetItem<'_> {
 
 /// One page of events from `fetched`, which holds one row more than `rows`
 /// when a page follows.
-fn events_page(fetched: &[EventDetailRow], rows: i64) -> FleetEventsPage<'_> {
+fn events_page(fetched: &[TurnDetailRow], rows: i64) -> FleetTurnsPage<'_> {
     let kept = usize::try_from(rows).unwrap_or(usize::MAX);
     let items = fetched.get(..kept).unwrap_or(fetched);
     let next_cursor = (fetched.len() > items.len())
         .then(|| items.last())
         .flatten()
-        .map(|last| Cow::Owned(Cursor::after(last.row.created_at, &last.row.event_id).encode()));
-    FleetEventsPage {
+        .map(|last| Cow::Owned(Cursor::after(last.row.created_at, &last.row.turn_id).encode()));
+    FleetTurnsPage {
         items: items.iter().map(event_item).collect(),
         total: None,
         next_cursor,
@@ -277,14 +277,14 @@ fn events_page(fetched: &[EventDetailRow], rows: i64) -> FleetEventsPage<'_> {
 }
 
 /// One event as another fleet reads it, its bodies cut to excerpts.
-fn event_item(detail: &EventDetailRow) -> FleetEventItem<'_> {
+fn event_item(detail: &TurnDetailRow) -> FleetTurnItem<'_> {
     let row = &detail.row;
     let request_excerpt = match message_of(&detail.request_json) {
         Cow::Borrowed(text) => Cow::Borrowed(excerpt(text)),
         Cow::Owned(text) => Cow::Owned(excerpt(&text).to_owned()),
     };
-    FleetEventItem {
-        event_id: Cow::Borrowed(row.event_id.as_str()),
+    FleetTurnItem {
+        turn_id: Cow::Borrowed(row.turn_id.as_str()),
         actor: Cow::Borrowed(&row.actor),
         event_type: Cow::Borrowed(&row.event_type),
         status: Cow::Borrowed(&row.status),

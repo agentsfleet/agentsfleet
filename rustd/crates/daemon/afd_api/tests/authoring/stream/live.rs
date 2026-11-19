@@ -71,7 +71,7 @@ impl Live {
         send(
             &self.router,
             Method::GET,
-            &format!("{}/events/stream", self.item),
+            &format!("{}/turns/stream", self.item),
             Some(&self.f.token),
             "",
         )

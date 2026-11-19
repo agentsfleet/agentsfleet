@@ -57,7 +57,7 @@ impl Speaking {
     /// and runs it: the run a line has somewhere to go from.
     pub(crate) async fn run_thread(&self) -> (String, u64) {
         let (run_id, fence) = self.run_seeded().await;
-        let report = report_body(&run_id, &self.scene.event_id, fence);
+        let report = report_body(&run_id, &self.scene.turn_id, fence);
         let reported = crate::wire::report(&self.scene, &report).await;
         assert!(reported.is_ok(), "native report refused: {reported:?}");
         let event = enqueue_from_thread(&self.scene).await;

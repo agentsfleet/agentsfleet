@@ -1,8 +1,8 @@
 //! The brackets the daemon puts around a run on the live tail.
 //!
 //! [`super::activity`] forwards the runner's mid-run frames; this module
-//! publishes the two the daemon owns — `event_received` when the run verb
-//! opens the narrative log, `event_complete` when a report or a gate refusal
+//! publishes the two the daemon owns — `turn_received` when the run verb
+//! opens the narrative log, `turn_complete` when a report or a gate refusal
 //! closes it. `docs/architecture/runner_fleet.md` §Live activity names them
 //! the bracket frames: open and close markers that reach a watcher even for a
 //! run the runner never forwarded a single frame from.
@@ -18,7 +18,7 @@
 //!
 //! # The completion is the row, not a pointer to it
 //!
-//! `event_complete` carries the terminal row as the events list would serve
+//! `turn_complete` carries the terminal row as the events list would serve
 //! it, plus the fleet's status, pending gate count, and activity counters, all
 //! read by the closing statement in the same round trip that ended the run. A
 //! watcher folds the frame in and issues no read — which is why the dashboard's
@@ -33,7 +33,7 @@
 use std::borrow::Cow;
 
 use af_core::error_code;
-use af_wire::event::{FleetSteerBody, STEER_MESSAGE_MAX_BYTES, SteerRequest};
+use af_wire::turn::{FleetSteerBody, STEER_MESSAGE_MAX_BYTES, SteerRequest};
 use afd_api_wire::tail::{FleetCounters, TailFrame, TailRow};
 use afd_turns::view::{Closed, is_fleet_actor, is_steer_actor};
 use jiff::Timestamp;
@@ -85,10 +85,10 @@ fn steer_message(acquired: &Acquired) -> Option<Cow<'_, str>> {
 fn unreadable(acquired: &Acquired) -> Option<Cow<'static, str>> {
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let fleet_id = acquired.fleet_id.as_str();
-    let event_id = acquired.event_id.as_str();
+    let turn_id = acquired.turn_id.as_str();
     {
         let (error_code, event) = (&code, &EVENT_STEER_BODY_UNREADABLE);
-        tracing::warn!(error_code, fleet_id, event_id, event);
+        tracing::warn!(error_code, fleet_id, turn_id, event);
     };
     None
 }
@@ -97,7 +97,7 @@ impl Runs {
     /// One best-effort announcement after a replacement issue commits.
     pub(crate) async fn publish_restarted(&self, acquired: &Acquired, issued: &crate::run::Issued) {
         let frame = TailFrame::RunRestarted {
-            event_id: Cow::Borrowed(acquired.event_id.as_str()),
+            turn_id: Cow::Borrowed(acquired.turn_id.as_str()),
             fencing_token: Cow::Owned(acquired.fence.as_i64().to_string()),
             restarted_at: issued.created_at,
         };
@@ -118,8 +118,8 @@ impl Runs {
         opened_at: Timestamp,
         counters: Option<FleetCounters>,
     ) {
-        let frame = TailFrame::EventReceived {
-            event_id: Cow::Borrowed(acquired.event_id.as_str()),
+        let frame = TailFrame::TurnReceived {
+            turn_id: Cow::Borrowed(acquired.turn_id.as_str()),
             actor: Cow::Borrowed(&acquired.actor),
             event_type: Cow::Borrowed(&acquired.event_type),
             created_at: opened_at,
@@ -141,7 +141,7 @@ impl Runs {
         closed: &Closed,
         final_reply: Option<&str>,
     ) -> afd_bus::Result<()> {
-        let frame = TailFrame::EventComplete {
+        let frame = TailFrame::TurnComplete {
             event: Box::new(TailRow::from(closed.row.summary())),
             final_reply: inline_final_reply(final_reply),
             fleet_status: Cow::Borrowed(&closed.fleet_status),
@@ -160,7 +160,7 @@ impl Runs {
 #[cfg(test)]
 mod tests {
     use af_core::test_util::trace::Capture;
-    use af_wire::event::STEER_MESSAGE_MAX_BYTES;
+    use af_wire::turn::STEER_MESSAGE_MAX_BYTES;
 
     use super::{
         EVENT_STEER_BODY_UNREADABLE, MAX_INLINE_FINAL_REPLY_BYTES, inline_final_reply,
@@ -202,7 +202,7 @@ mod tests {
     /// warned once, without its text, and shows nothing.
     #[test]
     fn a_fleet_steer_shows_its_sender_line_and_has_no_person_bound() {
-        use af_wire::event::FleetSteerBody;
+        use af_wire::turn::FleetSteerBody;
 
         let log = Capture::install();
         let sender = "0190d5c2-7e1a-7000-8000-000000000002";
@@ -238,8 +238,8 @@ mod tests {
         assert_eq!(steer_message(&broken), None);
         let line = log.only(EVENT_STEER_BODY_UNREADABLE).fields;
         assert_eq!(
-            line.get("event_id").map(String::as_str),
-            Some(broken.event_id.as_str())
+            line.get("turn_id").map(String::as_str),
+            Some(broken.turn_id.as_str())
         );
         assert!(
             line.values().all(|value| !value.contains('{')),

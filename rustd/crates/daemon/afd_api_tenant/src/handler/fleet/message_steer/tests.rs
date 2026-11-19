@@ -11,7 +11,7 @@
 )]
 
 use af_observability::metrics::label::fleet::SteerPlaced;
-use af_wire::event::STEER_MESSAGE_MAX_BYTES;
+use af_wire::turn::STEER_MESSAGE_MAX_BYTES;
 use afd_turns::view::disposition::{Placed, SteerDisposition};
 use axum::body::Bytes;
 use axum::response::{IntoResponse as _, Response};
@@ -168,23 +168,23 @@ async fn an_archived_fleet_refusal_names_its_status() {
 
 /// The 202 body of an accepted steer, read back as the client reads it.
 async fn accepted_body(
-    event_id: &str,
+    turn_id: &str,
     replayed: bool,
     disposition: SteerDisposition,
     joined: Option<&str>,
 ) -> Result<Value, Box<dyn std::error::Error>> {
     let placed = Placed {
         disposition,
-        folded_into_event_id: joined.map(str::to_owned),
+        folded_into_turn_id: joined.map(str::to_owned),
     };
-    let response: Response = accepted(event_id.to_owned(), replayed, placed);
+    let response: Response = accepted(turn_id.to_owned(), replayed, placed);
     assert_eq!(response.status(), StatusCode::ACCEPTED);
     let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
 /// The 202 names where the message went, and the run a fold joined; a send
-/// that joins no run carries no `folded_into_event_id` at all.
+/// that joins no run carries no `folded_into_turn_id` at all.
 #[tokio::test]
 async fn the_accepted_body_names_where_the_message_went() -> Result<(), Box<dyn std::error::Error>>
 {
@@ -192,10 +192,10 @@ async fn the_accepted_body_names_where_the_message_went() -> Result<(), Box<dyn 
         accepted_body(EVENT, false, SteerDisposition::Folded, Some(RUN)).await?,
         json!({
             "status": "accepted",
-            "event_id": EVENT,
+            "turn_id": EVENT,
             "replayed": false,
             "disposition": "folded",
-            "folded_into_event_id": RUN,
+            "folded_into_turn_id": RUN,
         })
     );
     for (disposition, word) in [
@@ -206,7 +206,7 @@ async fn the_accepted_body_names_where_the_message_went() -> Result<(), Box<dyn 
             accepted_body(EVENT, false, disposition, None).await?,
             json!({
                 "status": "accepted",
-                "event_id": EVENT,
+                "turn_id": EVENT,
                 "replayed": false,
                 "disposition": word,
             })
@@ -222,10 +222,10 @@ async fn a_repeats_accepted_body_says_so() -> Result<(), Box<dyn std::error::Err
         accepted_body(EVENT, true, SteerDisposition::Folded, Some(RUN)).await?,
         json!({
             "status": "accepted",
-            "event_id": EVENT,
+            "turn_id": EVENT,
             "replayed": true,
             "disposition": "folded",
-            "folded_into_event_id": RUN,
+            "folded_into_turn_id": RUN,
         })
     );
     Ok(())

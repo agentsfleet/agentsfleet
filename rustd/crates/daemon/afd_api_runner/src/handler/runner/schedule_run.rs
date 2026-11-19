@@ -23,14 +23,14 @@ use std::sync::Arc;
 use af_core::error_code;
 use af_core::paging::{CEILING, PagingRefusal, QUERY_LIMIT, QUERY_STARTING_AFTER};
 use af_validate::Limit;
-use af_wire::event::EventsResponse;
 use af_wire::schedule_verb::{ScheduleRun, ScheduleRunRequest};
+use af_wire::turn::TurnsResponse;
 use afd_cron::{ACTOR_PREFIX, FireTarget, schedule_actor};
 use afd_fleet::run::Standing;
 use afd_fleet_lifecycle::FleetStatus;
 use afd_http::handler::schedule::not_found;
 use afd_http::handler::{Refusal, parameter, read_strict_body};
-use afd_turns::view::{Cursor, EventRow, next_cursor};
+use afd_turns::view::{Cursor, TurnRow, next_cursor};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
@@ -39,7 +39,7 @@ use http::StatusCode;
 
 use super::schedule::{DETAIL_MALFORMED, EVENT_FAILED, fence, log_refused, schedule_id, standing};
 use crate::auth::RunnerIdentity;
-use crate::services::{FleetSchedules as _, Services, WorkspaceEvents as _};
+use crate::services::{FleetSchedules as _, Services, WorkspaceTurns as _};
 
 /// The refusal a page size outside the served band earns: the paging
 /// vocabulary's own sentence, which names [`CEILING`].
@@ -118,7 +118,7 @@ pub(crate) async fn run<D: Services>(
         .filter(|target| target.fleet == run.fleet_id)
         .ok_or_else(not_found)?;
     runnable(&run, &target)?;
-    let key = format!("{RUN_KEY_PREFIX}{}", run.event_id);
+    let key = format!("{RUN_KEY_PREFIX}{}", run.turn_id);
     let fired = services
         .schedules()
         .fire(&schedule, &target, &key, now)
@@ -127,7 +127,7 @@ pub(crate) async fn run<D: Services>(
     Ok((
         StatusCode::CREATED,
         Json(ScheduleRun {
-            event_id: Cow::Owned(fired.event_id),
+            turn_id: Cow::Owned(fired.turn_id),
         }),
     )
         .into_response())
@@ -147,7 +147,7 @@ pub(crate) async fn run<D: Services>(
     ),
     params(afd_http::openapi::path::RunSchedule, afd_http::openapi::query::ScheduleRunsPage),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = EventsResponse<'_>),
+        (status = 200, description = afd_http::openapi::OK, body = TurnsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
@@ -197,8 +197,8 @@ pub(crate) async fn runs<D: Services>(
             .map_err(Refusal::at(EVENT_FAILED))?
             .ok_or_else(not_found)?;
     }
-    Ok(Json(EventsResponse {
-        items: page.iter().map(EventRow::summary).collect(),
+    Ok(Json(TurnsResponse {
+        items: page.iter().map(TurnRow::summary).collect(),
         next_cursor: next_cursor(&page, rows).map(|after| Cow::Owned(after.encode())),
     })
     .into_response())

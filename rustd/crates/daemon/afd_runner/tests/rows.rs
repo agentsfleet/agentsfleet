@@ -11,7 +11,7 @@
 )]
 
 use af_core::id::Uuid7;
-use afd_db::test_util::{EventKind, FleetEventSeed, RunnerPolicy, mint_id};
+use afd_db::test_util::{RunnerPolicy, TurnFacts, TurnSeed, mint_id};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgConnection;
@@ -23,7 +23,7 @@ pub(crate) const POLICY: RunnerPolicy<'static> = RunnerPolicy {
 };
 
 /// The event every seeded run executes.
-pub(crate) const EVENT: EventKind<'static> = EventKind {
+pub(crate) const EVENT: TurnFacts<'static> = TurnFacts {
     actor: "test",
     event_type: "chat",
     status: "received",
@@ -31,7 +31,7 @@ pub(crate) const EVENT: EventKind<'static> = EventKind {
 
 const INSERT_RUN: &str = "\
 INSERT INTO thread.runs
-  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
+  (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at, fencing_token,
    run_expires_at, status, posted_message_count, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6,
@@ -83,7 +83,7 @@ pub(crate) struct RunRow<'a> {
 /// id, which the run names.
 pub(crate) async fn payload(connection: &mut PgConnection, row: RunRow<'_>) -> Uuid7 {
     let event = mint_id();
-    let mut seed = FleetEventSeed::new(row.fleet, row.workspace, &event, EVENT);
+    let mut seed = TurnSeed::new(row.fleet, row.workspace, &event, EVENT);
     if let Some(instant) = row.stamped_at {
         seed = seed.at(instant);
     }

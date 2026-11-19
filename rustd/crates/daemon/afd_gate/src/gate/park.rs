@@ -63,7 +63,7 @@ pub struct Park<'a> {
     /// The workspace it belongs to.
     pub workspace_id: &'a Uuid7,
     /// The event being parked.
-    pub event_id: &'a Uuid7,
+    pub turn_id: &'a Uuid7,
     /// What the daemon and the workspace assert.
     pub stated: Stated<'a>,
     /// What the fleet's model claims.
@@ -109,14 +109,14 @@ impl Gates {
         let fleet = request.fleet_id.as_str();
         let action = reference.action_id().as_str();
         {
-            let (event, fleet_id, agentsfleet_event_id, action_id, message) = (
+            let (event, fleet_id, agentsfleet_turn_id, action_id, message) = (
                 &EVENT_PARK_PENDING,
                 &fleet,
-                &request.event_id,
+                &request.turn_id,
                 &action,
                 format_args!("a human has been asked, and this event waits for the answer"),
             );
-            tracing::debug!(message, %event, %fleet_id, %agentsfleet_event_id, %action_id);
+            tracing::debug!(message, %event, %fleet_id, %agentsfleet_turn_id, %action_id);
         };
         Parked::Awaiting(reference)
     }
@@ -132,7 +132,7 @@ impl Gates {
     async fn announce(&self, request: &Park<'_>, recorded: &Recorded) {
         let frame = TailFrame::GateOpened {
             gate_id: Cow::Borrowed(recorded.gate_id.as_str()),
-            event_id: Cow::Borrowed(request.event_id.as_str()),
+            turn_id: Cow::Borrowed(request.turn_id.as_str()),
             pending_approvals: recorded.pending_approvals,
             counters: recorded.counters,
         };
@@ -160,7 +160,7 @@ impl Gates {
             action_id: reference.action_id(),
             stated: request.stated,
             claim: request.claim,
-            event_id: request.event_id,
+            turn_id: request.turn_id,
         }
         .bind()
         .fetch_one(&mut *connection)
@@ -200,15 +200,15 @@ impl Gates {
             Error::to_string,
         );
         {
-            let (event, fleet_id, agentsfleet_event_id, message) = (
+            let (event, fleet_id, agentsfleet_turn_id, message) = (
                 &EVENT_PARK_UNAVAILABLE,
                 &fleet,
-                &request.event_id,
+                &request.turn_id,
                 format_args!(
                     "the gate could not be raised; the event waits rather than running ungated"
                 ),
             );
-            tracing::warn!(message, %event, %fleet_id, %agentsfleet_event_id, write, reason);
+            tracing::warn!(message, %event, %fleet_id, %agentsfleet_turn_id, write, reason);
         };
         Parked::Unavailable
     }

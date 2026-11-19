@@ -130,7 +130,7 @@ impl Harness<'_, '_> {
         let snapshot = match self.snapshot_state(driver, &pause, workspace).await {
             Ok(state) => RecoverySnapshot {
                 run_id: self.shared.run_id.to_owned(),
-                event_id: self.shared.payload.event.event_id.to_string(),
+                turn_id: self.shared.payload.event.turn_id.to_string(),
                 fencing_token: self.shared.fencing_token,
                 state,
                 file_permit,
@@ -215,14 +215,14 @@ impl Harness<'_, '_> {
 
 fn committed(receipt: &crate::RecoveryReceipt) {
     let run_id = receipt.run_id.as_str();
-    let event_id = receipt.event_id.as_str();
+    let turn_id = receipt.turn_id.as_str();
     let fencing_token = receipt.fencing_token;
     let checkpoint_id = receipt.checkpoint.id();
     let generation = receipt.checkpoint.generation();
     tracing::debug!(
         event = "respawn_checkpoint_committed",
         run_id,
-        event_id,
+        turn_id,
         fencing_token,
         checkpoint_id,
         generation
@@ -247,12 +247,12 @@ pub(super) fn restored(run: &AgentRun<'_>) {
         return;
     };
     let run_id = run.run.run_id.as_ref();
-    let event_id = run.run.event.event_id.as_ref();
+    let turn_id = run.run.event.turn_id.as_ref();
     let fencing_token = run.run.fencing_token;
     tracing::debug!(
         event = "respawn_checkpoint_restored",
         run_id,
-        event_id,
+        turn_id,
         fencing_token,
         checkpoint_id,
         generation

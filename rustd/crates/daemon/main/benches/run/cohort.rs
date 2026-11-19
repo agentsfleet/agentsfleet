@@ -30,7 +30,7 @@ pub(super) async fn population(run: &Scenario, model: &Model, n: usize) -> Check
     let mut items = vec![Fleet {
         id: run.fleet.clone(),
         workspace: run.workspace.clone(),
-        event: run.event_id.clone(),
+        event: run.turn_id.clone(),
     }];
     for index in 1..n {
         let (id, tenant, workspace) = if layout == "shared" {

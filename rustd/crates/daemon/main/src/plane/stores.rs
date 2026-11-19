@@ -26,7 +26,7 @@ use afd_tenant::preference::Preferences;
 use afd_tenant::signup::Signups;
 use afd_tenant::team::Team;
 use afd_tenant::workspace::Workspaces;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use afd_turns::view::History;
 use afd_vault::Vault as SecretVault;
 
@@ -115,7 +115,7 @@ pub(super) struct Activity {
 /// share of [`Tenant::secrets`] because the two are different surfaces over
 /// one table — that one seals and never opens, this one opens exactly one name
 /// and never lists.
-pub(super) fn activity(database: &Db, kek: &Arc<Kek>, admissions: &Admissions) -> Activity {
+pub(super) fn activity(database: &Db, kek: &Arc<Kek>, admissions: &Turns) -> Activity {
     Activity {
         approvals: Inbox::new(database.clone(), admissions.streams(), admissions.clone()),
         grants: IntegrationGrants::new(database.clone(), Entropy::new()),

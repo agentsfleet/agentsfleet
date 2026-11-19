@@ -32,7 +32,7 @@ pub(super) async fn finish(tasks: &Tasks, probe: Probe) -> Result<bool> {
             .ok()
             .and_then(|value| value.checked_add(1))
             .ok_or(crate::task::TaskRefusal::LimitExhausted)?,
-        &probe.owner.source_admission_id,
+        &probe.owner.source_turn_id,
     )
     .with_reply(
         probe.owner.reply_provider.as_deref(),
@@ -88,7 +88,7 @@ async fn apply(
     connection: &mut PgConnection,
     owner: &Wait,
     probe: &Probe,
-    prepared: Option<afd_turns::PreparedAdmission<'_>>,
+    prepared: Option<afd_turns::PreparedTurn<'_>>,
 ) -> Result<bool> {
     if !owner.within_limits {
         claim::stop(
@@ -188,7 +188,7 @@ async fn consume(
     connection: &mut PgConnection,
     owner: &Wait,
     probe: &Probe,
-    prepared: Option<afd_turns::PreparedAdmission<'_>>,
+    prepared: Option<afd_turns::PreparedTurn<'_>>,
     snapshot: &Snapshot,
 ) -> Result<bool> {
     let Some(prepared) = prepared else {

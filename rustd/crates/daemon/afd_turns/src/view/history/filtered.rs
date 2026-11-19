@@ -1,6 +1,6 @@
 //! Equality-filtered thread pages walk an event-type index before reading bodies.
 
-use super::{Cursor, EventDetailRow, History, THREAD_MAX_LIMIT};
+use super::{Cursor, History, THREAD_MAX_LIMIT, TurnDetailRow};
 use crate::view::{Result, error};
 use af_core::id::Uuid7;
 use jiff_sqlx::ToSqlx as _;
@@ -17,7 +17,7 @@ impl History {
         cursor: Option<&Cursor>,
         limit: i64,
         event_type: Option<&str>,
-    ) -> Result<Vec<EventDetailRow>> {
+    ) -> Result<Vec<TurnDetailRow>> {
         let Some(event_type) = event_type else {
             return self.thread_page(workspace, fleet, cursor, limit).await;
         };
@@ -34,7 +34,7 @@ impl History {
                     .bind(fleet)
                     .bind(event_type)
                     .bind(at.created_at.to_sqlx())
-                    .bind(&at.event_id)
+                    .bind(&at.turn_id)
             },
         );
         let mut connection = self.database.acquire().await?;
@@ -44,7 +44,7 @@ impl History {
             .await
             .map_err(error::query("read filtered fleet messages"))?
             .iter()
-            .map(EventDetailRow::read)
+            .map(TurnDetailRow::read)
             .collect()
     }
 }

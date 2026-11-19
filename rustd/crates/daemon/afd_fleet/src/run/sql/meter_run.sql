@@ -7,7 +7,7 @@ WITH locked_slot AS MATERIALIZED (
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
     FOR UPDATE OF s
 ), probe AS (
-    SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id,
+    SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id,
            l.fencing_token, l.created_at, l.run_expires_at, l.last_metered_at, l.max_runtime_seconds,
            a.fencing_token AS live_fence, a.run_expires_at AS slot_expires_at,
            l.task_id, l.task_generation, l.task_stop_generation, l.task_execution_deadline_at,
@@ -52,7 +52,7 @@ WITH locked_slot AS MATERIALIZED (
           AND task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000) > checked_at))
       AND EXISTS (
           SELECT 1 FROM thread.turns a
-          WHERE a.id = metered.event_id AND a.thread_id = metered.fleet_id
+          WHERE a.id = metered.turn_id AND a.thread_id = metered.fleet_id
             AND a.run_fence = metered.fencing_token AND a.settled_at IS NULL
       )
 ), moved AS (
@@ -76,7 +76,7 @@ SELECT
     (SELECT LEAST(created_at + LEAST($6::interval, make_interval(secs => max_runtime_seconds)), task_execution_deadline_at) FROM probe) AS hard_cap,
     g.metered_until AS checked_at, g.created_at AS started_at, g.d_ms,
     g.tenant_id AS tenant_id, g.workspace_id AS workspace_id,
-    g.fleet_id AS fleet_id, g.event_id AS event_id,
+    g.fleet_id AS fleet_id, g.turn_id AS turn_id,
     (SELECT f.name FROM fleet.fleets f WHERE f.id = g.fleet_id) AS fleet_name,
     -- The runtime line's number: the milliseconds from the run's start to the
     -- slice's. The cursor only moves forward under the run's row lock, so no

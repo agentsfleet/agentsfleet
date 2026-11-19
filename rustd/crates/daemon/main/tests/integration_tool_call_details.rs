@@ -42,7 +42,7 @@ pub(crate) async fn post_records(
     (run_id, fence): (&str, u64),
     calls: &[Value],
 ) -> (u16, Value) {
-    let path = format!("/v1/runners/me/runs/{run_id}/tool-calls");
+    let path = format!("/v1/runners/me/runs/{run_id}/items");
     let body = json!({"fencing_token": fence, "calls": calls});
     let response = post(http, scene, &path, &body).await;
     let status = response.status().as_u16();
@@ -54,7 +54,7 @@ pub(crate) async fn scalar(scene: &Scenario, statement: &str, fence: Option<u64>
     let mut connection = scene.booted.database.acquire().await.expect("a connection");
     let query = sqlx::query_scalar(AssertSqlSafe(statement.to_owned()))
         .bind(&scene.fleet)
-        .bind(&scene.event_id);
+        .bind(&scene.turn_id);
     let query = match fence {
         Some(fence) => query.bind(i64::try_from(fence).expect("a fence fits")),
         None => query,
@@ -94,7 +94,7 @@ pub(crate) async fn execute(scene: &Scenario, statement: &str) {
     let mut connection = scene.booted.database.acquire().await.expect("a connection");
     sqlx::query(AssertSqlSafe(statement.to_owned()))
         .bind(&scene.fleet)
-        .bind(&scene.event_id)
+        .bind(&scene.turn_id)
         .execute(&mut *connection)
         .await
         .expect("the statement runs");
@@ -241,7 +241,7 @@ async fn test_settle_drops_dead_run_details() {
     );
 
     plant_dead_record(&scene, fence - 1).await;
-    let settled = crate::wire::report(&scene, &report_body(&run_id, &scene.event_id, fence)).await;
+    let settled = crate::wire::report(&scene, &report_body(&run_id, &scene.turn_id, fence)).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(
         rows_at(&scene, fence - 1).await,
@@ -287,11 +287,11 @@ async fn test_member_reads_tool_call_detail() {
     assert_eq!(status, 200);
 
     let events = format!(
-        "/v1/workspaces/{}/fleets/{}/events",
+        "/v1/workspaces/{}/fleets/{}/turns",
         scene.workspace, scene.fleet
     );
     for call_id in [format!("{fence}:3"), format!("{fence}%3A3")] {
-        let path = format!("{events}/{}/tool-calls/{call_id}", scene.event_id);
+        let path = format!("{events}/{}/items/{call_id}", scene.turn_id);
         let (status, body) = tenant_status(&http, &scene, &token, &path).await;
         assert_eq!(status, 200, "{path}: {body}");
         assert_eq!(body["call_id"], json!(format!("{fence}:3")));
@@ -321,8 +321,8 @@ async fn test_tool_call_detail_absent_is_not_found() {
         (scene.fleet.as_str(), "x:y:z".to_owned()),
     ] {
         let path = format!(
-            "/v1/workspaces/{workspace}/fleets/{fleet}/events/{}/tool-calls/{call_id}",
-            scene.event_id
+            "/v1/workspaces/{workspace}/fleets/{fleet}/turns/{}/items/{call_id}",
+            scene.turn_id
         );
         let (status, body) = tenant_status(&http, &scene, &token, &path).await;
         assert_eq!(status, 404, "{path}: {body}");

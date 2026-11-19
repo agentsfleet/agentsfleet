@@ -5,17 +5,17 @@ use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use af_wire::event::EventType;
 use af_wire::runner::{
     AssignedPolicy, CapabilityReport, HeartbeatRequest, HeldFleets, NetworkPolicy, RegisterRequest,
     SandboxTier,
 };
+use af_wire::turn::TurnKind;
 use afd_bus::Handle;
 use afd_db::Db;
 use afd_db::test_util::{FleetSeed, TenantSeed, WorkspaceSeed};
 use afd_runner::Runners;
 use afd_runner::heartbeat::holds::prove;
-use afd_turns::{Admission, Admissions, Key, Producer, Reply};
+use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 use jiff::Timestamp;
 
 use crate::error::{Result, seed_refused};
@@ -38,7 +38,7 @@ pub const ROWS_PER_RUNNER: u64 = 1;
 pub const BENCH_ACTOR: &str = "steer:bench";
 
 /// The event type every seeded event carries: a steer is a chat.
-const EVENT_TYPE: EventType = EventType::Chat;
+const EVENT_TYPE: TurnKind = TurnKind::Chat;
 
 /// The body every bench-written event carries.
 ///
@@ -198,7 +198,7 @@ pub(crate) async fn rows(
 /// One event of `event_type` admitted onto the fleet, through the ledger's own
 /// write path.
 ///
-/// `Admissions::admit` is what ingress runs: it commits the `thread.turns`
+/// `Turns::admit` is what ingress runs: it commits the `thread.turns`
 /// row, then publishes a best-effort wake on the Bus. Seeding through it
 /// leaves exactly the state ingress leaves, so the run path's delivery stamp
 /// meets a real row, as in production.
@@ -209,10 +209,10 @@ pub(crate) async fn enqueue(
     database: &Db,
     bus: &Handle,
     seeded: &SeededFleet,
-    event_type: EventType,
+    event_type: TurnKind,
 ) -> Result<String> {
-    let admitted = Admissions::new(database.clone(), bus.clone(), Entropy::new())
-        .admit(Admission {
+    let admitted = Turns::new(database.clone(), bus.clone(), Entropy::new())
+        .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Unrepeatable,
             fleet: &seeded.fleet,

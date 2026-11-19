@@ -13,7 +13,7 @@ fn job(address: &str) -> Outgoing {
         destination: address.to_owned(),
         workspace_id: mint_id(),
         fleet_id: mint_id(),
-        event_id: mint_id(),
+        turn_id: mint_id(),
         answer: "the answer".to_owned(),
     }
 }
@@ -106,7 +106,7 @@ fn test_the_body_escapes_an_answer_carrying_json_punctuation() {
     let answer = "she said \"yes\"\nand {\"ok\": false}";
     let marker = AnswerMarker {
         fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
-        event_id: "0199a0b0-0000-7000-8000-000000000003".to_owned(),
+        turn_id: "0199a0b0-0000-7000-8000-000000000003".to_owned(),
         part: None,
     };
     let round_tripped: Option<serde_json::Value> = serde_json::to_vec(&Message {
@@ -134,7 +134,7 @@ fn test_the_body_escapes_an_answer_carrying_json_punctuation() {
 fn every_post_carries_its_answer_marker() {
     let marker = AnswerMarker {
         fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
-        event_id: "0199a0b0-0000-7000-8000-000000000003".to_owned(),
+        turn_id: "0199a0b0-0000-7000-8000-000000000003".to_owned(),
         part: None,
     };
     let body: Option<serde_json::Value> = serde_json::to_vec(&Message {
@@ -156,7 +156,7 @@ fn every_post_carries_its_answer_marker() {
     let payload = metadata.and_then(|metadata| metadata.get("event_payload"));
     for (field, expected) in [
         ("fleet_id", marker.fleet_id.as_str()),
-        ("event_id", marker.event_id.as_str()),
+        ("turn_id", marker.turn_id.as_str()),
     ] {
         assert_eq!(
             payload

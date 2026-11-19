@@ -5,12 +5,12 @@ mod confirm;
 mod recover;
 mod store;
 
-use afd_turns::PreparedAdmission;
+use afd_turns::PreparedTurn;
 
 pub(super) use store::{key, payload, store};
 
 pub(super) enum Prepared<'a> {
     None,
-    Ready(PreparedAdmission<'a>),
+    Ready(PreparedTurn<'a>),
     Blocked(String),
 }

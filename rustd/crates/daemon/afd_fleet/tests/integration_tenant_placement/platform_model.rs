@@ -97,7 +97,7 @@ async fn held_fleet_on_the_platform_model_waits_for_its_hold() {
     execute(
         &fixtures,
         "UPDATE thread.turns SET settled_at = clock_timestamp() WHERE id = $1",
-        &first.event_id,
+        &first.turn_id,
     )
     .await;
     execute(

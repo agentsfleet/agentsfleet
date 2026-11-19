@@ -28,7 +28,7 @@ pub(super) async fn finish(
     input: &TaskInputReceiptInput,
 ) -> Result<Option<Completion>> {
     let rows: Vec<Option<String>> = sqlx::query_scalar(include_str!("sql/answers.sql"))
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
+        .bind(crate::task::guard::wire(&input.source_turn_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_all(&mut *connection)
@@ -40,10 +40,10 @@ pub(super) async fn finish(
     let answer = rows.into_iter().flatten().collect::<Vec<_>>().join("\n\n");
     let closed = complete_history(tasks, connection, current, input, &answer).await?;
     let reply =
-        Runs::reply_destination(connection, &current.fleet_id, &input.source_admission_id).await?;
+        Runs::reply_destination(connection, &current.fleet_id, &input.source_turn_id).await?;
     let owed = owe_reply(tasks, connection, current, input, &answer, reply.as_ref()).await?;
     sqlx::query(include_str!("sql/settle_source.sql"))
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
+        .bind(crate::task::guard::wire(&input.source_turn_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .execute(connection)
@@ -66,7 +66,7 @@ async fn complete_history(
     answer: &str,
 ) -> Result<Option<afd_turns::view::Closed>> {
     let source: Uuid7 = sqlx::query_scalar(include_str!("sql/source.sql"))
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
+        .bind(crate::task::guard::wire(&input.source_turn_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_optional(&mut *connection)
@@ -78,8 +78,8 @@ async fn complete_history(
     sqlx::query(afd_turns::view::sql::OPEN_FOLDED_EVENTS)
         .bind(&current.fleet_id)
         .bind(std::slice::from_ref(&source))
-        .bind(&current.source_admission_id)
-        .bind(af_core::event::status::RECEIVED)
+        .bind(&current.source_turn_id)
+        .bind(af_core::turn::status::RECEIVED)
         .execute(&mut *connection)
         .await
         .map_err(query("open accepted input history before completing it"))?;
@@ -88,7 +88,7 @@ async fn complete_history(
         .mark_terminal(
             connection,
             &current.fleet_id,
-            &crate::task::guard::wire(&input.source_admission_id)?,
+            &crate::task::guard::wire(&input.source_turn_id)?,
             Terminal {
                 verdict: Verdict::Succeeded,
                 response_text: answer,
@@ -118,7 +118,7 @@ async fn owe_reply(
                     workspace_id: &current.workspace_id,
                     provider: reply.provider,
                     destination: &reply.address,
-                    event_id: &crate::task::guard::wire(&input.source_admission_id)?,
+                    turn_id: &crate::task::guard::wire(&input.source_turn_id)?,
                     answer,
                 },
                 clock::now(),

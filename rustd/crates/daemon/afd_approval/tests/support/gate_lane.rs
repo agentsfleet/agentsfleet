@@ -137,7 +137,7 @@ impl Lane {
             inbox: Inbox::new(
                 pool.clone(),
                 bus.clone(),
-                afd_turns::Admissions::for_tests(pool.clone(), bus.clone()),
+                afd_turns::Turns::for_tests(pool.clone(), bus.clone()),
             ),
             _database: database,
             pool,

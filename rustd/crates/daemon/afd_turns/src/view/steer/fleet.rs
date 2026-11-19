@@ -51,7 +51,7 @@ pub struct FleetSteer<'a> {
     pub sender_event: &'a Uuid7,
     /// The sender's words, with its secret values masked.
     pub masked_text: &'a str,
-    /// The stored body, `af_wire::event::FleetSteerBody`, serialized.
+    /// The stored body, `af_wire::turn::FleetSteerBody`, serialized.
     pub request_json: &'a str,
 }
 
@@ -59,7 +59,7 @@ pub struct FleetSteer<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FleetSteered {
     /// The event the steer became on the target.
-    pub event_id: String,
+    pub turn_id: String,
     /// When THIS call admitted it, or `None` when an earlier send of the same
     /// words from the same event already had.
     pub admitted_at: Option<jiff::Timestamp>,
@@ -73,9 +73,9 @@ impl FleetSteered {
     }
 
     /// The answer to a repeat: the first send's event.
-    const fn repeat(event_id: String) -> Self {
+    const fn repeat(turn_id: String) -> Self {
         Self {
-            event_id,
+            turn_id,
             admitted_at: None,
         }
     }
@@ -116,16 +116,16 @@ impl Steer {
                 return self
                     .repeat_despite(&admission, refused)
                     .await
-                    .map(|event_id| Ok(FleetSteered::repeat(event_id)));
+                    .map(|turn_id| Ok(FleetSteered::repeat(turn_id)));
             }
             Err(failed) => return Err(failed.into()),
         };
         if admitted.replayed {
             return answer_repeat(&admission, admitted.stored)
-                .map(|event_id| Ok(FleetSteered::repeat(event_id)));
+                .map(|turn_id| Ok(FleetSteered::repeat(turn_id)));
         }
         Ok(Ok(FleetSteered {
-            event_id: admitted.stored.id.into(),
+            turn_id: admitted.stored.id.into(),
             admitted_at: Some(admitted.stored.created_at),
         }))
     }

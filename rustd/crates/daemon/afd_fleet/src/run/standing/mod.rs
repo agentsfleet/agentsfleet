@@ -30,7 +30,7 @@ pub struct Standing {
     /// The workspace that fleet belongs to.
     pub workspace_id: Uuid7,
     /// The event it is running, as the ledger names it.
-    pub event_id: Uuid7,
+    pub turn_id: Uuid7,
     /// Who woke the fleet for that event, as the ledger recorded it: a
     /// schedule's fire reads `cron:<schedule_id>`.
     pub actor: String,
@@ -45,7 +45,7 @@ pub(crate) struct LiveRun {
     /// The workspace that fleet belongs to.
     pub(crate) workspace_id: Uuid7,
     /// The event the run runs.
-    pub(crate) event_id: Uuid7,
+    pub(crate) turn_id: Uuid7,
     /// Who woke the fleet for that event.
     pub(crate) actor: String,
     /// The run's own fencing token, which keys every row it writes.
@@ -111,7 +111,7 @@ impl RunService {
             run_id,
             fleet_id: read.fleet_id.clone(),
             workspace_id: read.workspace_id.clone(),
-            event_id: read.event_id,
+            turn_id: read.turn_id,
             actor: read.actor,
         })
     }

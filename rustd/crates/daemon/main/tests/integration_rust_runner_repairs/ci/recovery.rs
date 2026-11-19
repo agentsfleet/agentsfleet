@@ -26,14 +26,14 @@ async fn recover(loss: Acknowledgement, readback: Readback) {
     let scene = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
     let remote = Remote::new(
         LINKWARDEN,
-        &branch_for(scene.event_id.as_str()),
+        &branch_for(scene.turn_id.as_str()),
         loss,
         readback,
     );
     let upstream = Upstream::serve(remote.routes()).await;
     let (model, transcript) =
         FakeModel::deciding(repair_walk::script(LINKWARDEN, head_reads(LINKWARDEN)));
-    let result = run_event(&scene, &scene.event_id, &upstream, model).await;
+    let result = run_event(&scene, &scene.turn_id, &upstream, model).await;
     assert_eq!(
         result.answer,
         if readback == Readback::Exact {

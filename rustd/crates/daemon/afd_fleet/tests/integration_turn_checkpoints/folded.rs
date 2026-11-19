@@ -65,7 +65,7 @@ async fn reader_expiry_during_a_fold_lock_wait_rolls_back_every_adopted_claim() 
     let mut held = connection.begin().await?;
     let controller: i32 =
         sqlx::query_scalar("SELECT pg_backend_pid() FROM thread.turns WHERE id=$1 FOR UPDATE")
-            .bind(Uuid7::parse(&fold.event_id.0)?)
+            .bind(Uuid7::parse(&fold.turn_id.0)?)
             .fetch_one(&mut *held)
             .await?;
     let (result, released) = tokio::join!(
@@ -170,7 +170,7 @@ fn history(
 }
 
 async fn incorporate(files: &Files) -> Checked<FoldRef> {
-    let admissions = afd_turns::Admissions::new(
+    let admissions = afd_turns::Turns::new(
         files.case.fixtures.database.clone(),
         files.case.fixtures.bus().clone(),
         af_crypto::entropy::Entropy::new(),
@@ -178,13 +178,13 @@ async fn incorporate(files: &Files) -> Checked<FoldRef> {
     let body = serde_json::json!({"message": MESSAGE}).to_string();
     let actor = afd_turns::view::steer_actor("checkpoint-owner");
     let admitted = admissions
-        .admit(afd_turns::Admission {
+        .admit(afd_turns::IncomingTurn {
             producer: afd_turns::Producer::Steer,
             key: afd_turns::Key::Unrepeatable,
             fleet: &files.case.acquired.fleet_id,
             workspace: &files.case.acquired.workspace_id,
             actor: &actor,
-            event_type: af_wire::event::EventType::Chat,
+            event_type: af_wire::turn::TurnKind::Chat,
             request_json: &body,
             reply: afd_turns::Reply::None,
         })
@@ -201,9 +201,9 @@ async fn incorporate(files: &Files) -> Checked<FoldRef> {
         .await?;
     let input = claimed.inputs.first().ok_or("incorporated follow-up")?;
     assert_eq!(claimed.inputs.len(), 1);
-    assert_eq!(input.event_id, admitted.stored.id.as_str());
+    assert_eq!(input.turn_id, admitted.stored.id.as_str());
     Ok(FoldRef {
-        event_id: CheckpointOperationId(input.event_id.to_string()),
+        turn_id: CheckpointOperationId(input.turn_id.to_string()),
         sequence: input.sequence,
     })
 }
@@ -235,5 +235,5 @@ struct Claim {
 async fn claim(files: &Files, fold: &FoldRef) -> Checked<Claim> {
     let mut connection = files.case.fixtures.database.acquire().await?;
     Ok(sqlx::query_as("SELECT input_claim_run_id AS owner,input_claim_fence AS fence,settled_at IS NOT NULL AS settled FROM thread.turns WHERE id=$1")
-        .bind(Uuid7::parse(&fold.event_id.0)?).fetch_one(&mut *connection).await?)
+        .bind(Uuid7::parse(&fold.turn_id.0)?).fetch_one(&mut *connection).await?)
 }

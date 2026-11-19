@@ -89,11 +89,7 @@ pub(crate) async fn prepare(
         meter,
         stop,
     }
-    .bind(
-        &prepared.inputs,
-        &prepared.inputs.source_admission_id,
-        message,
-    )
+    .bind(&prepared.inputs, &prepared.inputs.source_turn_id, message)
     .await;
     if let Ok(binding) = &accepted {
         prepared.execution_deadline = binding.execution_deadline;
@@ -157,7 +153,7 @@ impl Intake<'_> {
             .task_decision(DecisionReservationInput {
                 operation_id: identity()?,
                 fencing_token: run.fencing_token,
-                source_admission_id: source.to_owned(),
+                source_turn_id: source.to_owned(),
                 assessment: DecisionAssessment::Message,
                 task: inputs.current_task.as_ref().map(version),
                 retry_of: None,
@@ -172,7 +168,7 @@ impl Intake<'_> {
                 .await?;
         let mut binding = TaskBindingsInput {
             fencing_token: run.fencing_token,
-            source_admission_id: source.to_owned(),
+            source_turn_id: source.to_owned(),
             accepted_revision_id: inputs
                 .accepted_revision_id
                 .clone()
@@ -197,7 +193,7 @@ impl Intake<'_> {
                     .task_decision(DecisionReservationInput {
                         operation_id: identity()?,
                         fencing_token: run.fencing_token,
-                        source_admission_id: binding.source_admission_id.clone(),
+                        source_turn_id: binding.source_turn_id.clone(),
                         assessment: DecisionAssessment::Item {
                             ordinal: u8::try_from(ordinal).map_err(|source| {
                                 boundary("interpretation item ordinal", source)

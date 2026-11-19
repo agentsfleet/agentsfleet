@@ -139,7 +139,7 @@ mod tests {
                 destination: "thread".to_owned(),
                 workspace_id: id("0199a0b0-0002-7000-8000-000000000002"),
                 fleet_id: id("0199a0b0-0002-7000-8000-000000000003"),
-                event_id: event.clone(),
+                turn_id: event.clone(),
                 answer: "answer".to_owned(),
             },
         });
@@ -162,7 +162,7 @@ mod tests {
             retiring.join().expect("the retiring look completes")
         });
 
-        assert_eq!(taken.map(|job| job.outgoing.event_id), Some(event));
+        assert_eq!(taken.map(|job| job.outgoing.turn_id), Some(event));
         assert!(
             lanes.inner.lanes.contains_key(&destination),
             "a lane that found work does not retire"

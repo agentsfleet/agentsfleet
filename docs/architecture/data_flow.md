@@ -25,7 +25,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Event ingress | Seven producers, one queue | `Producer` names `steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `task_continuation` and `slack_mention`. Each commits `fleet.admissions` and attempts a wake notification. | §B. TRIGGER |
 | Message disposition | `started`, `folded` or `queued` | a message accepted while its fleet's run is live folds into that run; the run claims it at its next model call, and the message's own event gets the run's reply | §"C. EXECUTE" |
 | Queue ownership | Postgres | Admission, claim and settlement use the same ledger row. Outbound replies are `thread.deliveries` rows; core NATS carries only notifications. | §Steer flow end-to-end |
-| Durable stores | 5 tables, join key `(fleet_id, event_id)` | `fleet.admissions` (one row per acceptance, UNIQUE `(producer, producer_key)`) · `fleet.events` (one row per delivery) · `thread.deliveries` (one row per answer, UNIQUE `(fleet_id, event_id)`) · `fleet.sessions` (one row per fleet, UPSERT) · `billing.usage_lines` (one row per measured slice of a run, UNIQUE `(work_type, work_id, kind, seq)`, charged by the billing relay) | §The five durable stores |
+| Durable stores | 5 tables, join key `(fleet_id, turn_id)` | `fleet.admissions` (one row per acceptance, UNIQUE `(producer, producer_key)`) · `fleet.events` (one row per delivery) · `thread.deliveries` (one row per answer, UNIQUE `(fleet_id, turn_id)`) · `fleet.sessions` (one row per fleet, UPSERT) · `billing.usage_lines` (one row per measured slice of a run, UNIQUE `(work_type, work_id, kind, seq)`, charged by the billing relay) | §The five durable stores |
 | Replay safety | Stable producer and event identities | Admission deduplicates `(producer, producer_key)`; redelivery keeps the event and billing identities. | §"C. EXECUTE" |
 | Stale-writer rejection | `UZ-RUN-005` | Slot, run and admission fences guard the report transaction. | §"C. EXECUTE" |
 | Bus connection | One NATS connection per daemon process | Publishes and subscriptions share it; one native subscription per subject with local readers. Inbound queue and outbound claims use Postgres. | §Connection topology |
@@ -182,7 +182,7 @@ The poster stamps `delivered_at` only after successful delivery. Abandoning an e
 
 ## The five durable stores: who owns what
 
-These five tables answer different questions. Admissions record accepted work; events describe each run; deliveries record replies still owed.
+These five tables answer different questions. Turns record accepted work; events describe each run; deliveries record replies still owed.
 Sessions hold the resume checkpoint, and usage lines record measured work.
 
 The admissions ledger is the inbound queue. Outbound deliveries are claimed per lane from their own rows, and `receipt` names the current holder.
@@ -191,8 +191,8 @@ Read the primary keys and the shape falls out:
 
 ```
   fleet.admissions   PK id  + UNIQUE (producer, producer_key)   one row per ACCEPTANCE
-  fleet.events       PK id  + UNIQUE (fleet_id, event_id)       one row per EVENT
-  thread.deliveries  PK id  + UNIQUE (fleet_id, event_id)       one row per ANSWER
+  fleet.events       PK id  + UNIQUE (fleet_id, turn_id)       one row per EVENT
+  thread.deliveries  PK id  + UNIQUE (fleet_id, turn_id)       one row per ANSWER
   fleet.sessions     PK fleet_id                                one row per FLEET
 ```
 
@@ -229,10 +229,10 @@ The spellings live in `af_core::event::status` and are never literals in schema 
 | Table | Cardinality | Mutability | Answers |
 |---|---|---|---|
 | `fleet.admissions` | **One row per acceptance** | INSERT; update `run_fence`, `parked_at`, `delivered_at`, `settled_at` and the claim stamps `input_claim_run_id` and `input_claim_fence` | Accepted work, its current ownership and completion. `UNIQUE (producer, producer_key)` deduplicates producer retries. |
-| `thread.deliveries` | **One row per answer** | INSERT in the report's transaction, then UPDATE `receipt` and `delivered_at` | "Do we still owe somebody this answer?" Committed with the money and the result, so no window exists where a run is charged and its answer exists nowhere. `UNIQUE (fleet_id, event_id)` makes a replayed report owe one delivery, not two. |
+| `thread.deliveries` | **One row per answer** | INSERT in the report's transaction, then UPDATE `receipt` and `delivered_at` | "Do we still owe somebody this answer?" Committed with the money and the result, so no window exists where a run is charged and its answer exists nowhere. `UNIQUE (fleet_id, turn_id)` makes a replayed report owe one delivery, not two. |
 | `fleet.sessions` | **One row per Fleet** | UPSERT, replaced at each report | "Where did this Fleet leave off?" The resume bookmark, and only that. The run path reads it with the fleet row and hands it to no run; the report path replaces it. "Which fleet is running right now" is `thread.runs`, which has the fencing token and the expiry that make the answer trustworthy. |
 | `fleet.events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `fleet_error` \| `gate_blocked`) | "What did this Fleet do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" The user's narrative log. The single source of truth for the Events tab and `agentsfleet fleet events`. |
-| `billing.usage_lines` | **One row per measured slice** of a run: each renewal and the report log the runtime and tokens since the last slice, priced. UNIQUE `(work_type, work_id, kind, seq)`, where the work is the run and `kind` says whether the line is a model call, a runtime slice or a decision call. No money is set aside: the billing relay takes it from `billing.wallets` within seconds of the commit (billing §3, §11). | INSERT in the run's own transaction; `settled_at` is stamped once the biller has charged the line, and nothing else changes. | "What did event X's run use, and what did it cost?" Billing audit and the source of fleet budgets. Joinable to `fleet.events` via `(fleet_id, event_id`), NOT `event_id` alone, which is not unique across fleets. |
+| `billing.usage_lines` | **One row per measured slice** of a run: each renewal and the report log the runtime and tokens since the last slice, priced. UNIQUE `(work_type, work_id, kind, seq)`, where the work is the run and `kind` says whether the line is a model call, a runtime slice or a decision call. No money is set aside: the billing relay takes it from `billing.wallets` within seconds of the commit (billing §3, §11). | INSERT in the run's own transaction; `settled_at` is stamped once the biller has charged the line, and nothing else changes. | "What did event X's run use, and what did it cost?" Billing audit and the source of fleet budgets. Joinable to `fleet.events` via `(fleet_id, turn_id`), NOT `turn_id` alone, which is not unique across fleets. |
 
 Why a narrative table and a usage table (`fleet.events` + `billing.usage_lines`) instead of one? They have different write authorities and retention rules:
 
@@ -253,9 +253,9 @@ The events table and fleet header use summaries. The chat transcript reads bodie
 
 A row from before the column existed holds `NULL`, which reads as "not recorded", never as "no tools ran".
 
-A call's full arguments and output are a fourth body that no page read selects. They live in `thread.items` (slot 1710), a child table of `fleet.events`, one row per saved call, cascading on `(fleet_id, event_id)`. The rows are keyed by the run's fencing token and the runner's call number.
+A call's full arguments and output are a fourth body that no page read selects. They live in `thread.items` (slot 1710), a child table of `fleet.events`, one row per saved call, cascading on `(fleet_id, turn_id)`. The rows are keyed by the run's fencing token and the runner's call number.
 
-A page never reads them: "show all" reads one call through `GET …/events/{event_id}/tool-calls/{call_id}`. That keeps a thread page at its 512 KiB budget however much a run's tools returned.
+A page never reads them: "show all" reads one call through `GET …/turns/{turn_id}/items/{item_id}`. That keeps a thread page at its 512 KiB budget however much a run's tools returned.
 
 Runner runs keep no duplicate request body. Claim and reclaim read the payload from the admission row and join fleet events to identify prior runs. Settled runs can outlive deleted fleets or events; their identifiers then stay opaque history.
 
@@ -288,7 +288,7 @@ So a dashboard tab that drops its SSE connection misses every frame published du
 
 The registry fetches the bounded `fleet.events` list on every reconnect open, never on the SSR-seeded initial connect. The fetch is keyed `since` the last server-delivered event minus a 2-second overlap, and the registry merges by event id.
 
-The fetch goes through the same-origin token-minting proxy `/live/v1/workspaces/{ws}/fleets/{id}/events`, the mirror of the SSE proxy. The `/live/*` prefix keeps these routes outside the `/backend/:path*` rewrite that shadowed them on Vercel. No server, channel, or frame-shape change: the durable table stays the recovery source of truth.
+The fetch goes through the same-origin token-minting proxy `/live/v1/workspaces/{ws}/fleets/{id}/turns`, the mirror of the SSE proxy. The `/live/*` prefix keeps these routes outside the `/backend/:path*` rewrite that shadowed them on Vercel. No server, channel, or frame-shape change: the durable table stays the recovery source of truth.
 
 A fleet tail sends one `catching_up` with `dropped: 0` right after `hello` (`afd_sse/src/live.rs`).
 NATS interest reaches other nodes after the subscribe returns, so frames published in that window exist only in Postgres.
@@ -492,7 +492,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
    The row's UUIDv7 id is the canonical event identity across redelivery.
 
        actor         steer:<user> | steer:api | webhook:<source> | github-app
-                     | cron:<schedule_id> | continuation:<event_id> | slack:<user>
+                     | cron:<schedule_id> | continuation:<turn_id> | slack:<user>
                      | fleet:<fleet_id>  (scenarios/chief-of-staff.md)
        type          chat | webhook | cron | continuation
        workspace_id  <uuid>
@@ -507,16 +507,16 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                       actor=steer:kishore  type=chat
                       workspace_id=<ws>    request=<msg>
                       created_at=<rfc3339>
-               → 202 { event_id, disposition }   ← CLI uses event_id
+               → 202 { turn_id, disposition }   ← CLI uses turn_id
                                                    to filter SSE frames
-                 disposition: started | folded (+ folded_into_event_id) | queued.
+                 disposition: started | folded (+ folded_into_turn_id) | queued.
                  A folded message is claimed by the live run at its next
                  model call and its event gets the run's reply.
 
    FLEET      (scenarios/chief-of-staff.md): a fleet's run calls
    STEER        fleet_steer → POST /v1/runners/me/runs/{run_id}/steers
                → the same INSERT: actor=fleet:<sender_fleet_id>  type=chat
-                 key <target_fleet_id>:<sender_event_id>:<text digest>
+                 key <target_fleet_id>:<sender_turn_id>:<text digest>
                  reply copied from the sender's event; target is any fleet in
                  the sender's workspace; the write proves the run
 
@@ -566,10 +566,10 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
 
    CONTINUATION  an approved gate resumes the run it parked
                → INSERT fleet.admissions keyed by the gate's action
-                      actor=continuation:<parked_event_id>  type=continuation
+                      actor=continuation:<parked_turn_id>  type=continuation
                       workspace_id=<ws>  request=<continuation-msg>
                       reply copied from the parked event (Reply::Inherit)
-                 The new row carries resumes_event_id=<parked_event_id>;
+                 The new row carries resumes_turn_id=<parked_turn_id>;
                  the parked row is never reopened (afd_approval's inbox resolve).
 
    TASK          a durable task's matched completion or wake
@@ -616,8 +616,8 @@ The [durable repair scenario](scenarios/durable-repair.md) uses this existing sc
 - **Three authors.** A schedule's `source` is `trigger`, `api` or `fleet`. `trigger` is the cron trigger in the reviewed setup, `api` a person, and `fleet` the fleet itself through its run's schedules verb.
 - **A fleet edits only its own.** The fleet is the run's, so a body cannot name another. A fleet holds at most 16 schedules it made and changes or deletes only those.
 - **Every write proves the run again** on its own transaction (`afd_fleet::run::write_fence`), holding the run row shared until commit. A reclaim, renew or settle waits for it. An old holder resumed after a reclaim writes nothing: `UZ-RUN-005`, `current_state` `superseded`.
-- **Run-now** admits through the same `schedule_fire` producer a QStash fire does, keyed `run:<event_id>` by the held event, so a reclaimed run replays the run. Both record `actor=cron:<schedule_id>`. Its refusals are listed in API reference › Runner plane (Run a schedule now).
-- **A schedule's runs** are its history rows under that actor, read through slot 1700's `(fleet_id, actor, created_at, event_id)` index. A page never walks the fleet's whole history.
+- **Run-now** admits through the same `schedule_fire` producer a QStash fire does, keyed `run:<turn_id>` by the held event, so a reclaimed run replays the run. Both record `actor=cron:<schedule_id>`. Its refusals are listed in API reference › Runner plane (Run a schedule now).
+- **A schedule's runs** are its history rows under that actor, read through slot 1700's `(fleet_id, actor, created_at, turn_id)` index. A page never walks the fleet's whole history.
 - **A `once` schedule** (slot 1750) retires inside the fire seam: the fire is admitted, then the schedule is claimed `deleting` and removed from QStash. Its fire is keyed by the schedule alone, so a run-now racing the QStash fire replays it rather than admitting a second run.
 - **A dropped `once` fire** (the fleet takes no work) retires the schedule too, since its moment has passed. A retirement whose claim is held answers `UZ-SCHED-006`, so QStash repeats the fire.
 - **`fire_at`** (slot 1750) keeps the instant a `once` row was set for. A sync after that instant removes a `once` QStash never registered, rather than registering an expression whose next match is a year away. One QStash already holds stays, so a delayed callback finds it.
@@ -646,7 +646,7 @@ The native report commits its terminal outcome.
 10. Commit the report under the host, slot, run and admission guards. One transaction records usage, terminal history, the checkpoint, admission settlement, slot release and any outbound delivery.
 11. After commit, publish terminal activity and attempt outbound delivery.
 
-**Folded messages.** A message admitted while the fleet's run is live answers `folded` with `folded_into_event_id`.
+**Folded messages.** A message admitted while the fleet's run is live answers `folded` with `folded_into_turn_id`.
 
 At its next model call the running run claims a person's later unsettled messages in its own conversation. The claim stops at the first parked, task-bound or non-person message and stamps `input_claim_run_id` and `input_claim_fence` on each row.
 
@@ -676,7 +676,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 
 ```
    CLI       agentsfleet fleet steer <fleet_id> "<message>"   (batch mode)
-               → opens GET /v1/.../fleets/{id}/events/stream (SSE) BEFORE
+               → opens GET /v1/.../fleets/{id}/turns/stream (SSE) BEFORE
                  posting the message, and waits (bounded, 2 s) for response
                  headers. The hub flushes the subscription to the socket before
                  the stream returns. NATS interest reaches other nodes later,
@@ -695,7 +695,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 
    UI        Fleet Console /fleets/{id}
                → browser EventSource opens the same-origin
-                 /live/v1/workspaces/{ws}/fleets/{id}/events/stream proxy.
+                 /live/v1/workspaces/{ws}/fleets/{id}/turns/stream proxy.
                → one registry entry owns the connection and retry timers.
                  Connection attempts expire after 30 seconds. Open connections
                  expire after 45 seconds without a heartbeat or application frame.
@@ -715,7 +715,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
                → the core chat data starts with two reads: fleet detail
                  (status, pending_approvals) and GET /messages?limit=20 (the
                  thread, bodies included). The summary strip is a view
-                 over the stream from there: event_complete carries the
+                 over the stream from there: turn_complete carries the
                  terminal row plus fleet_status and pending_approvals,
                  gate_opened / gate_resolved carry the count, and the
                  reconnect backfill's durable rows fold in the same way;
@@ -725,7 +725,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 
    UI        Fleets Wall /fleets
                → opens ONE same-origin
-                 /live/v1/workspaces/{id}/events/stream SSE connection
+                 /live/v1/workspaces/{id}/turns/stream SSE connection
                  shared by the workspace's fleet tiles.
                → agentsfleetd authorizes the workspace and fans in only its
                  readable af.fleet.<fleet_id>.tail subjects through bounded
@@ -740,7 +740,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
    Browser authentication
      EventSource + session cookie --> Next.js /live/* Route Handler
        --> Clerk auth().getToken()
-       --> fetch API /v1/.../events/stream with Authorization: Bearer JWT
+       --> fetch API /v1/.../turns/stream with Authorization: Bearer JWT
        <-- upstream streaming body <-- agentsfleetd
 
    The Node.js proxy forwards request cancellation to the upstream fetch.
@@ -752,8 +752,8 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
    reference › Fleet events); clients backfill from the events list with the
    server's `next_cursor`, never one derived from an event id.
 
-   HISTORY   agentsfleet fleet events {id} [--actor=…] [--since=2h]
-             Dashboard /fleets/{id}/events
+   HISTORY   agentsfleet fleet turns {id} [--actor=…] [--since=2h]
+             API GET …/fleets/{id}/turns
                → reads fleet.events (cursor-paginated).
 
    RESUME    no user-facing command reads fleet.sessions. The run

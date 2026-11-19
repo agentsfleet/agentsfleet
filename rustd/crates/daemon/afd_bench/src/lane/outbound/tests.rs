@@ -119,7 +119,7 @@ async fn test_the_window_ends_when_the_last_answer_lands_not_when_it_is_asked_fo
         destination: DESTINATION.to_owned(),
         workspace_id: mint_id(),
         fleet_id: fleet,
-        event_id: mint_id(),
+        turn_id: mint_id(),
         answer: "a".to_owned(),
     };
 
@@ -129,7 +129,7 @@ async fn test_the_window_ends_when_the_last_answer_lands_not_when_it_is_asked_fo
     assert_eq!(poster.settled(), 1, "the answer is what settles it");
 
     let seen = poster.seen();
-    let asked = seen.attempts()[&job.event_id][0].at;
+    let asked = seen.attempts()[&job.turn_id][0].at;
     assert_eq!(
         window_end(&seen, asked).saturating_duration_since(asked),
         slow,
@@ -156,10 +156,10 @@ async fn test_a_drained_job_is_timed_by_the_event_the_poster_stamped() -> Result
             destination: DESTINATION.to_owned(),
             workspace_id: mint_id(),
             fleet_id: fleet.clone(),
-            event_id: mint_id(),
+            turn_id: mint_id(),
             answer: "a".to_owned(),
         };
-        queued_at.insert(job.event_id.clone(), started);
+        queued_at.insert(job.turn_id.clone(), started);
         poster.deliver(&job).await;
     }
     let drained = Drained {

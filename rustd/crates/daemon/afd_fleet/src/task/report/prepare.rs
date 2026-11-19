@@ -117,7 +117,7 @@ async fn snapshot(
     let mut tx = transaction::begin(&mut connection).await?;
     let owned = execution::load(&mut tx, run, &input.task).await?;
     decision::goal(&mut tx, run, input, &owned.snapshot.context).await?;
-    let source = owned.current.source_admission_id.clone();
+    let source = owned.current.source_turn_id.clone();
     let target = if matches!(owned.snapshot.context.target, TaskTarget::ApiOnly) {
         None
     } else {

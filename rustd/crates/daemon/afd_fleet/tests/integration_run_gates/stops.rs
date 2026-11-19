@@ -5,7 +5,7 @@ use super::*;
 
 use af_crypto::entropy::Entropy;
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_turns::Admissions;
+use afd_turns::Turns;
 
 use crate::rows::Row;
 use crate::run_reads::COLUMN_LAST_RUNNER;
@@ -25,11 +25,11 @@ async fn test_stop_releases_the_claim() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     set_config(&fixtures, &fleet, BUDGETED_CONFIG).await;
-    let event_id = send(&fixtures, &fleet, &workspace, EVENT_TYPE_UNKNOWN).await;
+    let turn_id = send(&fixtures, &fleet, &workspace, EVENT_TYPE_UNKNOWN).await;
     let seeded = Ready {
         runner,
         fleet,
-        event_id,
+        turn_id,
         tenant,
     };
 
@@ -54,7 +54,7 @@ async fn test_stop_releases_the_claim() {
     let held = crate::seed::select_fleet(&fixtures.runs(), &seeded.runner, &seeded.fleet)
         .await
         .expect("the fleet's next event runs on the next poll");
-    assert_eq!(held.event_id, next);
+    assert_eq!(held.turn_id, next);
 
     fixtures.cleanup().await;
 }
@@ -82,13 +82,13 @@ async fn test_approval_resolution_runs_next_poll() {
         "the park freed the claim"
     );
     assert!(
-        parked(&fixtures, &seeded.event_id).await,
+        parked(&fixtures, &seeded.turn_id).await,
         "the admission is durably parked"
     );
 
     approve_parked(&fixtures, &seeded, &action).await;
     assert!(
-        !parked(&fixtures, &seeded.event_id).await,
+        !parked(&fixtures, &seeded.turn_id).await,
         "the answer durably unparked the admission"
     );
 
@@ -96,7 +96,7 @@ async fn test_approval_resolution_runs_next_poll() {
         .await
         .expect("the answered delivery runs on the next poll");
     assert_eq!(
-        held.event_id, seeded.event_id,
+        held.turn_id, seeded.turn_id,
         "the parked delivery comes back first, ahead of its continuation"
     );
 
@@ -116,19 +116,19 @@ async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event
     let action = seed_gate(&fixtures, &seeded, afd_api_wire::approval::status::PENDING).await;
     let claimed = claim(&fixtures, &seeded).await;
     assert!(drive(&fixtures, &seeded, claimed).await.is_none());
-    assert!(parked(&fixtures, &seeded.event_id).await);
+    assert!(parked(&fixtures, &seeded.turn_id).await);
     let workspace = seed::workspace_of(&fixtures, &seeded.fleet).await;
     let later = send(&fixtures, &seeded.fleet, &workspace, EVENT_TYPE_CHAT).await;
     sqlx::query("UPDATE fleet.approval_gates SET expires_at=clock_timestamp()-interval '1 second' WHERE action_id=$1")
         .bind(&action).execute(&mut *fixtures.database.acquire().await.expect("deadline"))
         .await.expect("elapsed approval deadline");
     let resumed = claim(&fixtures, &seeded).await;
-    assert_eq!(resumed.event_id, seeded.event_id);
+    assert_eq!(resumed.turn_id, seeded.turn_id);
     assert!(drive(&fixtures, &seeded, resumed).await.is_none());
-    assert_expired_settlement(&fixtures, &seeded.event_id, &action).await;
+    assert_expired_settlement(&fixtures, &seeded.turn_id, &action).await;
     let next = claim(&fixtures, &seeded).await;
     assert_eq!(
-        next.event_id, later,
+        next.turn_id, later,
         "expiry released the tail without a sweeper"
     );
     fixtures.cleanup().await;
@@ -169,7 +169,7 @@ async fn approve_parked(fixtures: &Fixtures, seeded: &Ready, action: &Uuid7) {
     let resolved = Inbox::new(
         fixtures.database.clone(),
         fixtures.bus().clone(),
-        Admissions::new(
+        Turns::new(
             fixtures.database.clone(),
             fixtures.bus().clone(),
             Entropy::new(),

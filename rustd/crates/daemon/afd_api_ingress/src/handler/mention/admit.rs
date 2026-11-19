@@ -22,7 +22,7 @@ use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
 use afd_api_wire::ingress::{Accepted, MentionRequest, MentionRoute};
 use afd_connector::Provider;
-use afd_ingress::slack::{MentionAdmission, Subscriber, compose};
+use afd_ingress::slack::{MentionTurn, Subscriber, compose};
 use std::borrow::Cow;
 
 use super::{Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, address, unserialisable};
@@ -83,7 +83,7 @@ pub(super) async fn routed<D: Services>(
 
     let admitted = services
         .ingress()
-        .admit_mention(MentionAdmission {
+        .admit_mention(MentionTurn {
             fleet: &fleet.fleet,
             workspace,
             team_id: &asked.team_id,
@@ -99,7 +99,7 @@ pub(super) async fn routed<D: Services>(
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let workspace_id = workspace.as_str();
     let fleet_id = fleet.fleet.as_str();
-    let event_id = admitted.stored.id.as_str();
+    let turn_id = admitted.stored.id.as_str();
     let thread_unavailable = read.as_ref().err().map(|reason| reason.as_str());
     {
         let (replayed, thread_fetched, message_count, event) = (
@@ -112,7 +112,7 @@ pub(super) async fn routed<D: Services>(
             workspace_id,
             fleet_id,
             verdict,
-            event_id,
+            turn_id,
             replayed,
             thread_fetched,
             message_count,
@@ -121,7 +121,7 @@ pub(super) async fn routed<D: Services>(
         );
     };
     Ok(Outcome::Accepted(Accepted {
-        event_id: Cow::Owned(admitted.stored.id.into()),
+        turn_id: Cow::Owned(admitted.stored.id.into()),
         replayed: admitted.replayed,
     }))
 }

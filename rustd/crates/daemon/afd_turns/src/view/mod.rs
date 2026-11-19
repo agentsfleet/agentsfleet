@@ -26,7 +26,7 @@
 //!
 //! # The column vocabulary is lower still
 //!
-//! `status` and `failure_reason` spellings live in [`af_wire::event`], not
+//! `status` and `failure_reason` spellings live in [`af_wire::turn`], not
 //! here, because they cross the wire — an events listing renders both. This
 //! crate reads them from there like everybody else, which is what stops a row
 //! one plane writes from being one another cannot recognise.
@@ -52,8 +52,8 @@ pub use self::error::{Error, Result};
 #[cfg(feature = "test-util")]
 pub use self::history::statement::{QUEUED_READ_TEXTS, READ_TEXTS};
 pub use self::history::{
-    CallAddress, Cursor, DEFAULT_LIMIT, EventDetailRow, EventRow, Filter, History, MAX_LIMIT,
-    Since, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, ToolCallRow, WIDEST_WINDOW, glob_to_like,
+    CallAddress, Cursor, DEFAULT_LIMIT, Filter, History, MAX_LIMIT, Since, THREAD_DEFAULT_LIMIT,
+    THREAD_MAX_LIMIT, ToolCallRow, TurnDetailRow, TurnRow, WIDEST_WINDOW, glob_to_like,
     next_cursor, parse_since, prefix_to_like,
 };
 /// Where an accepted steer went.

@@ -31,7 +31,7 @@
       "operationId": "delete_fleet",
       "method": "DELETE",
       "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
-      "description": "Hard-delete a Fleet in any status and cascade its history (events, telemetry, sessions, approval gates, memory entries). Live work is cancelled first. Returns 204 on success.",
+      "description": "Hard-delete a Fleet in any status and cascade its history (turns, telemetry, sessions, approval gates, memory entries). Live work is cancelled first. Returns 204 on success.",
       "actionClass": "critical"
     },
     {
@@ -42,17 +42,17 @@
       "actionClass": "sensitive"
     },
     {
-      "operationId": "list_fleet_events",
+      "operationId": "list_fleet_turns",
       "method": "GET",
-      "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events",
-      "description": "List the Fleet's event history with pagination.",
+      "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns",
+      "description": "List the Fleet's turn history with pagination.",
       "actionClass": "safe"
     },
     {
-      "operationId": "stream_fleet_events",
+      "operationId": "stream_fleet_turns",
       "method": "GET",
-      "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream",
-      "description": "Server-Sent Events stream of new events as they arrive.",
+      "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream",
+      "description": "Server-Sent Events stream of new turns as they arrive.",
       "actionClass": "safe"
     },
     {
@@ -116,8 +116,8 @@
   },
   "policyClasses": {
     "safe": [
-      "list_fleet_events",
-      "stream_fleet_events",
+      "list_fleet_turns",
+      "stream_fleet_turns",
       "get_tenant_billing",
       "get_tenant_billing_charges",
       "get_model_library",

@@ -99,7 +99,7 @@ pub(crate) fn report<'a>(
             Ending::Ran { .. } | Ending::Failed { .. } => None,
         },
         run_id: Cow::Borrowed(&run.run_id),
-        event_id: Cow::Borrowed(&run.event.event_id),
+        turn_id: Cow::Borrowed(&run.event.turn_id),
         fencing_token: run.fencing_token,
         outcome,
         failure_reason,
@@ -109,7 +109,7 @@ pub(crate) fn report<'a>(
         requests: meter.unrecorded(),
         telemetry: report_telemetry(first_chunk, wall),
         checkpoint: ReportCheckpoint {
-            last_event_id: Cow::Borrowed(&run.event.event_id),
+            last_turn_id: Cow::Borrowed(&run.event.turn_id),
             last_response: response_text,
         },
         tool_calls: trace,

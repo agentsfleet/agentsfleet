@@ -29,7 +29,7 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
         "DefinitionNetwork",
         &["http_egress", "package_manager_domains"],
     ),
-    ("EventDetail", &["tool_calls"]),
+    ("TurnDetail", &["tool_calls"]),
     (
         "ToolCallDetail",
         &[
@@ -44,7 +44,7 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     ("ToolCallRecordsStored", &["stored_count", "skipped_count"]),
     // The runner's schedules and messages verbs are new, and so is the Rust
     // runner that reads them; either may reshape what a reply carries.
-    ("ScheduleRun", &["event_id"]),
+    ("ScheduleRun", &["turn_id"]),
     ("MessagePosted", &["delivered"]),
     // A schedule's view gained who made it and whether it retires after one
     // fire. `source` grew a third value with the fleet as an author, and both
@@ -53,11 +53,11 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     // The memory window travels in native offers and may still change shape.
     ("RunPayload", &["memory"]),
     // Where a steer went is new, and folding may reshape it.
-    ("SteerAccepted", &["disposition", "folded_into_event_id"]),
+    ("SteerAccepted", &["disposition", "folded_into_turn_id"]),
     // A run claiming the messages its fleet receives is new, and so is the
     // runner release that reads the claim.
     ("FoldResponse", &["inputs"]),
-    ("FoldedInput", &["event_id", "sequence", "text"]),
+    ("FoldedInput", &["turn_id", "sequence", "text"]),
     // The fleet-to-fleet verbs are new, and so is the runner release that
     // calls them; their replies may still reshape.
     (
@@ -71,11 +71,11 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "FleetEventItem",
+        "FleetTurnItem",
         &[
             "actor",
             "created_at",
-            "event_id",
+            "turn_id",
             "event_type",
             "failure_label",
             "request_excerpt",
@@ -83,9 +83,9 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
             "status",
         ],
     ),
-    ("FleetSteerAccepted", &["event_id", "replayed"]),
+    ("FleetSteerAccepted", &["turn_id", "replayed"]),
     ("FleetsPage", &["items", "next_cursor", "total"]),
-    ("FleetEventsPage", &["items", "next_cursor", "total"]),
+    ("FleetTurnsPage", &["items", "next_cursor", "total"]),
 ];
 
 /// Publishes `fields` as `beta`, answering the entries the document lacks.

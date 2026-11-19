@@ -8,7 +8,7 @@
 //! depends on nothing but serde ON PURPOSE — its own module documentation says
 //! so, because a validated newtype reaching that layer would break the fixture
 //! byte-equality the crate exists to guarantee. Neither of these columns is on
-//! that wire: `EventEnvelope` carries `event_type` and not `status`, so putting
+//! that wire: `TurnEnvelope` carries `event_type` and not `status`, so putting
 //! stored vocabulary there would have widened a frozen contract crate into a
 //! general dictionary.
 //!

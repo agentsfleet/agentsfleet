@@ -37,7 +37,7 @@ pub struct Reconciled {
     /// The run's copy, never the request's. A runner names an event in its
     /// report and this is the one the run was issued for; where they could
     /// differ, the row is the authority.
-    pub event_id: Uuid7,
+    pub turn_id: Uuid7,
     /// The billing posture the run was issued under, in the stored spelling.
     pub posture: String,
     /// The provider resolved at issue, as configured.
@@ -57,10 +57,10 @@ pub struct Reconciled {
     /// report's: what its cost metrics and delivery span describe.
     pub tokens: RunTokens,
     /// When the event was created, as the run row carries it.
-    pub event_created_at: Timestamp,
+    pub turn_created_at: Timestamp,
     /// When the run was issued.
     pub run_created_at: Timestamp,
-    /// When `event_complete` was published; none on a repeated report, and
+    /// When `turn_complete` was published; none on a repeated report, and
     /// none when the settle closed no event row.
     pub completed_at: Option<Timestamp>,
 }

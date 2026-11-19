@@ -1,4 +1,4 @@
-use af_core::event::status;
+use af_core::turn::status;
 use af_wire::report::{FailureClass, Outcome};
 use afd_turns::view::sql::MAX_FAILURE_DETAIL_BYTES;
 
@@ -80,7 +80,7 @@ fn a_breached_budget_is_stored_as_the_gate_spells_its_refusal() {
 
     assert_eq!(
         verdict.label().as_deref(),
-        Some(af_core::event::label::BUDGET_BREACH)
+        Some(af_core::turn::label::BUDGET_BREACH)
     );
 }
 
@@ -90,6 +90,6 @@ fn a_lapsed_run_is_stored_as_the_daemon_spells_an_event_it_stopped_re_leasing() 
 
     assert_eq!(
         verdict.label().as_deref(),
-        Some(af_core::event::label::RUN_EXPIRED)
+        Some(af_core::turn::label::RUN_EXPIRED)
     );
 }

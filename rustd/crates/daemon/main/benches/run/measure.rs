@@ -113,7 +113,7 @@ async fn eligibility(
 ) -> Checked<BTreeMap<Uuid7, i64>> {
     let events: Vec<_> = fleets.iter().map(|f| f.event.clone()).collect();
     let mut conn = run.booted.database.acquire().await?;
-    let rows: Vec<(Uuid7,i64)> = sqlx::query_as("SELECT l.fleet_id,(extract(epoch from greatest(l.run_expires_at,s.run_expires_at))*1000)::bigint FROM thread.runs l JOIN thread.threads s ON s.fleet_id=l.fleet_id AND l.fencing_token=s.fencing_token WHERE l.event_id=ANY($1::uuid[]) AND l.runner_id=ANY($2::uuid[])")
+    let rows: Vec<(Uuid7,i64)> = sqlx::query_as("SELECT l.fleet_id,(extract(epoch from greatest(l.run_expires_at,s.run_expires_at))*1000)::bigint FROM thread.runs l JOIN thread.threads s ON s.fleet_id=l.fleet_id AND l.fencing_token=s.fencing_token WHERE l.turn_id=ANY($1::uuid[]) AND l.runner_id=ANY($2::uuid[])")
         .bind(&events).bind(sources).fetch_all(&mut *conn).await?;
     let eligible: BTreeMap<_, _> = rows.into_iter().collect();
     if eligible.len() != fleets.len() {
@@ -172,7 +172,7 @@ async fn outcomes(
     let began = tokio::time::Instant::now();
     loop {
         let mut conn = run.booted.database.acquire().await?;
-        let rows:Vec<(Uuid7,i64,i64,Option<i64>,String)>=sqlx::query_as("SELECT l.fleet_id,l.fencing_token,(extract(epoch from l.created_at)*1000)::bigint,(extract(epoch from a.settled_at)*1000)::bigint,l.status FROM thread.runs l JOIN thread.turns a ON a.id=l.event_id WHERE l.event_id=ANY($1::uuid[]) AND l.runner_id=ANY($2::uuid[]) ORDER BY l.fleet_id,l.fencing_token")
+        let rows:Vec<(Uuid7,i64,i64,Option<i64>,String)>=sqlx::query_as("SELECT l.fleet_id,l.fencing_token,(extract(epoch from l.created_at)*1000)::bigint,(extract(epoch from a.settled_at)*1000)::bigint,l.status FROM thread.runs l JOIN thread.turns a ON a.id=l.turn_id WHERE l.turn_id=ANY($1::uuid[]) AND l.runner_id=ANY($2::uuid[]) ORDER BY l.fleet_id,l.fencing_token")
             .bind(&events).bind(hosts).fetch_all(&mut *conn).await?;
         if rows.iter().filter(|r| r.3.is_some()).count() >= expected
             || began.elapsed() > Duration::from_secs(10)

@@ -75,7 +75,7 @@ pub(crate) async fn settlement(held: &Held) -> Settlement {
         attribution: Attribution::Fleet {
             fleet: held.fleet.clone(),
             fleet_name: held.fleet.clone().into(),
-            event_id: held.event_id.clone(),
+            turn_id: held.turn_id.clone(),
         },
         provider: crate::seed::PROVIDER.to_owned(),
         model: crate::seed::MODEL.to_owned(),

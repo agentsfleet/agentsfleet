@@ -54,7 +54,7 @@ fn no_destination_keeps_the_digest_rows_were_stored_with() {
 fn every_destination_digests_apart() {
     let digests = [
         sample().payload_digest(),
-        Admission {
+        IncomingTurn {
             reply: Reply::To {
                 connector: CONNECTOR,
                 address: THREAD_A,
@@ -62,7 +62,7 @@ fn every_destination_digests_apart() {
             ..sample()
         }
         .payload_digest(),
-        Admission {
+        IncomingTurn {
             reply: Reply::To {
                 connector: CONNECTOR,
                 address: THREAD_B,
@@ -70,9 +70,9 @@ fn every_destination_digests_apart() {
             ..sample()
         }
         .payload_digest(),
-        Admission {
+        IncomingTurn {
             reply: Reply::Inherit {
-                event_id: &resumed(),
+                turn_id: &resumed(),
             },
             ..sample()
         }
@@ -109,7 +109,7 @@ fn a_reply_binds_at_most_one_pair() {
     );
 
     let resumed = resumed();
-    let inherited = ReplyBinds::from(Reply::Inherit { event_id: &resumed });
+    let inherited = ReplyBinds::from(Reply::Inherit { turn_id: &resumed });
     assert_eq!(
         (inherited.connector, inherited.address, inherited.inherited),
         (None, None, Some(resumed.clone()))

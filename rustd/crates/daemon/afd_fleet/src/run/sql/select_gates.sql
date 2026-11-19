@@ -19,7 +19,7 @@ WITH floors AS (
 ), recorded AS (
   SELECT g.action_id
   FROM fleet.approval_gates g
-  WHERE g.fleet_id = $2 AND g.event_id = $4
+  WHERE g.fleet_id = $2 AND g.turn_id = $4
   ORDER BY g.created_at DESC, g.id DESC
   LIMIT 1
 ), standing AS (

@@ -26,7 +26,7 @@ async fn test_reclaimed_row_is_assigned_as_redelivered() {
     let reclaimed = next(&runs, &poller)
         .await
         .expect("expired slot requalifies");
-    assert_eq!(reclaimed.event_id, event, "no sweeper or stream repair ran");
+    assert_eq!(reclaimed.turn_id, event, "no sweeper or stream repair ran");
     assert!(reclaimed.redelivered);
     assert!(reclaimed.fence > first.fence);
     assert_eq!(reclaimed.kind, Kind::Reclaim);

@@ -7,13 +7,13 @@ WITH slot AS MATERIALIZED (
       AND s.run_expires_at > statement_timestamp()
     FOR UPDATE OF s SKIP LOCKED
 ), run AS MATERIALIZED (
-    SELECT l.event_id FROM thread.runs l JOIN slot s ON s.fleet_id = l.fleet_id
+    SELECT l.turn_id FROM thread.runs l JOIN slot s ON s.fleet_id = l.fleet_id
     WHERE l.id = $4 AND l.runner_id = $5 AND l.fencing_token = $6
       AND l.status = $7 AND l.run_expires_at > statement_timestamp()
     FOR UPDATE OF l SKIP LOCKED
 ), held AS MATERIALIZED (
     SELECT e.id, e.task_activity, e.task_activity_sequence, e.task_activity_truncated
-    FROM thread.turns e JOIN run l ON l.event_id = e.id
+    FROM thread.turns e JOIN run l ON l.turn_id = e.id
     WHERE e.thread_id = $1 AND e.id = $2 AND e.opened_at IS NOT NULL
     FOR UPDATE OF e SKIP LOCKED
 ), combined AS (

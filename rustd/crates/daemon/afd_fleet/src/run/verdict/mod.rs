@@ -66,8 +66,8 @@ impl<'a> Verdict<'a> {
     /// The status the event's terminal row takes.
     pub(super) const fn status(self) -> &'static str {
         match self {
-            Self::Succeeded => af_core::event::status::PROCESSED,
-            Self::Failed { .. } => af_core::event::status::FLEET_ERROR,
+            Self::Succeeded => af_core::turn::status::PROCESSED,
+            Self::Failed { .. } => af_core::turn::status::FLEET_ERROR,
         }
     }
 
@@ -76,7 +76,7 @@ impl<'a> Verdict<'a> {
     /// The wire enum's own `snake_case` serde spelling, so a stored class
     /// reads the same as the reported one and a new class is spelled the
     /// moment it is declared. `budget_breach` is also the gate's refusal label
-    /// (`af_core::event::label::BUDGET_BREACH`): one string for the ceiling
+    /// (`af_core::turn::label::BUDGET_BREACH`): one string for the ceiling
     /// hit at issue and the ceiling hit mid-run, so an operator greps once.
     pub(super) fn label(self) -> Option<String> {
         match self {

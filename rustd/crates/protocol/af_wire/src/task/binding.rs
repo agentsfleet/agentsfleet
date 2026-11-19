@@ -109,7 +109,7 @@ pub struct TaskBindingsInput {
     pub fencing_token: u64,
     /// Complete native source admission; queued human claims use this same ID.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
-    pub source_admission_id: String,
+    pub source_turn_id: String,
     /// Reviewed setup used for the message's questions and new objectives.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
     pub accepted_revision_id: String,
@@ -129,7 +129,7 @@ impl TaskBindingsInput {
     #[must_use]
     pub fn interpretation(&self) -> impl Serialize + '_ {
         (
-            &self.source_admission_id,
+            &self.source_turn_id,
             &self.accepted_revision_id,
             self.items
                 .iter()

@@ -28,7 +28,7 @@ fn a_workspace_that_resolves_to_no_tenant_is_refused_terminally() {
     assert_eq!(
         decided,
         Declined::Refuse(Refusal::labelled(
-            af_core::event::label::TENANT_RESOLVE_FAILED
+            af_core::turn::label::TENANT_RESOLVE_FAILED
         )),
         "an unowned workspace must end the event, not leave it leasable"
     );
@@ -44,7 +44,7 @@ fn a_workspace_that_resolves_to_no_tenant_is_refused_terminally() {
 /// one would make these refusals invisible among every other ended event.
 #[test]
 fn the_refusal_carries_the_stored_failure_label() {
-    let expected = Refusal::labelled(af_core::event::label::TENANT_RESOLVE_FAILED);
+    let expected = Refusal::labelled(af_core::turn::label::TENANT_RESOLVE_FAILED);
 
     assert_eq!(unowned_workspace(&workspace()), Declined::Refuse(expected));
     assert!(!expected.label.is_empty(), "{:?}", expected.label);
@@ -65,7 +65,7 @@ fn an_unowned_payer_is_declined_as_a_refusal() {
     assert_eq!(
         judged,
         Err(Declined::Refuse(Refusal::labelled(
-            af_core::event::label::TENANT_RESOLVE_FAILED
+            af_core::turn::label::TENANT_RESOLVE_FAILED
         )))
     );
 }
@@ -112,7 +112,7 @@ async fn decided_on_a_dead_ledger(
         Request {
             workspace_id: &workspace,
             fleet_id: &fleet,
-            event_id: &event,
+            turn_id: &event,
             budget: config.budget(),
             posture,
             provider: "anthropic",

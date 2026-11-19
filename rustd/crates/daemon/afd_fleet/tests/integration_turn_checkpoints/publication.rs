@@ -17,7 +17,7 @@ pub(super) fn root(case: &Case, workspace: TurnWorkspace) -> TurnPrivateRoot {
     let scope = TurnScope {
         workspace_id: CheckpointOperationId(case.acquired.workspace_id.as_str().to_owned()),
         fleet_id: CheckpointOperationId(case.acquired.fleet_id.as_str().to_owned()),
-        event_id: CheckpointOperationId(case.acquired.event_id.as_str().to_owned()),
+        turn_id: CheckpointOperationId(case.acquired.turn_id.as_str().to_owned()),
         setup_revision_id: CheckpointOperationId(case.setup.as_str().to_owned()),
         workspace,
     };
@@ -83,7 +83,7 @@ async fn assert_sealed(case: &Case, root: &TurnPrivateRoot, descriptor: &TurnRes
     let mut connection = case.fixtures.database.acquire().await?;
     let (head, ready, sealed): (Uuid7, bool, Vec<u8>) = sqlx::query_as("SELECT h.head_turn_checkpoint_id,p.ready_at IS NOT NULL,p.root_secret_ciphertext
         FROM runner.turn_recovery h JOIN runner.turn_checkpoints p ON p.id=h.head_turn_checkpoint_id WHERE h.turn_id=$1")
-        .bind(&case.acquired.event_id).fetch_one(&mut *connection).await?;
+        .bind(&case.acquired.turn_id).fetch_one(&mut *connection).await?;
     assert_eq!(head.as_str(), descriptor.checkpoint_id.0);
     assert!(ready);
     assert_ne!(sealed.as_slice(), root.history.as_bytes());

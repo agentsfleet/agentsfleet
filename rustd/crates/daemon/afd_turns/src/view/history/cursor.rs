@@ -2,7 +2,7 @@
 //!
 //! # What the token carries
 //!
-//! The boundary pair, `(created_at, event_id)`, as `{instant}|{event_id}` in
+//! The boundary pair, `(created_at, turn_id)`, as `{instant}|{turn_id}` in
 //! base64url without padding: the instant in RFC 3339 exactly as the API
 //! serializes one (`…:49Z`, `…:49.123Z`), never as epoch digits, because an
 //! instant is never a number anywhere this product speaks. The separator is a
@@ -35,17 +35,17 @@ const FIELD_SEPARATOR: char = '|';
 pub struct Cursor {
     /// The `created_at` of the last row on the previous page.
     pub created_at: Timestamp,
-    /// The `event_id` of that row, breaking ties within one millisecond.
-    pub event_id: Uuid7,
+    /// The `turn_id` of that row, breaking ties within one millisecond.
+    pub turn_id: Uuid7,
 }
 
 impl Cursor {
     /// The cursor a page ending on this row hands back.
     #[must_use]
-    pub fn after(created_at: Timestamp, event_id: &Uuid7) -> Self {
+    pub fn after(created_at: Timestamp, turn_id: &Uuid7) -> Self {
         Self {
             created_at,
-            event_id: event_id.to_owned(),
+            turn_id: turn_id.to_owned(),
         }
     }
 
@@ -57,7 +57,7 @@ impl Cursor {
     pub fn encode(&self) -> String {
         BASE64.encode(format!(
             "{}{FIELD_SEPARATOR}{}",
-            self.created_at, self.event_id
+            self.created_at, self.turn_id
         ))
     }
 
@@ -77,8 +77,8 @@ impl Cursor {
             .split_once(FIELD_SEPARATOR)
             .ok_or_else(cursor_malformed)?;
         let created_at: Timestamp = head.parse().map_err(|_instant| cursor_malformed())?;
-        let event_id = Uuid7::parse(id).map_err(|_id| cursor_malformed())?;
-        Ok(Self::after(created_at, &event_id))
+        let turn_id = Uuid7::parse(id).map_err(|_id| cursor_malformed())?;
+        Ok(Self::after(created_at, &turn_id))
     }
 }
 

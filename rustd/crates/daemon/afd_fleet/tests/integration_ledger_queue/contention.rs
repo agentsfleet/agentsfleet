@@ -59,7 +59,7 @@ async fn test_concurrent_claims_run_one_row() {
     blocker.rollback().await.expect("release claim barrier");
     let winners = winners(tasks).await;
     assert_eq!(winners.len(), 1);
-    assert_eq!(winners.first().expect("one winner").event_id, event);
+    assert_eq!(winners.first().expect("one winner").turn_id, event);
     assert_eq!(stamps(&fixtures, &event).await, (Some(1), Some(1)));
     drop((connection, observer, replicas));
     owner.close().await;

@@ -7,8 +7,8 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use af_core::event::status;
 use af_core::id::Uuid7;
+use af_core::turn::status;
 use afd_db::config::DbRole;
 use afd_db::test_util::statements::{self, Ran, Window};
 use afd_fleet::run::{Acquired, Delivery, Runs};
@@ -65,7 +65,7 @@ async fn claim_opens_event_and_stamps_delivery() {
     let Seeded {
         runners: [runner],
         fleet,
-        event_id,
+        turn_id,
         tenant,
     } = seeded::<1>(&fixtures).await;
     let runs = fixtures.runs_with_dead_bus();
@@ -73,18 +73,18 @@ async fn claim_opens_event_and_stamps_delivery() {
     let (acquired, ran) = claim_counted(&owner, &runs, &runner, &fleet).await;
     let acquired = acquired.expect("the seeded fleet is claimed");
 
-    assert_eq!(acquired.event_id, event_id);
+    assert_eq!(acquired.turn_id, turn_id);
     assert_eq!(acquired.opened.received.delivery, Delivery::First);
     assert_eq!(
         acquired.opened.tenant_id, tenant,
         "the payer rides the claim"
     );
-    let (fence, delivered, token, rows) = delivery(&fixtures, &event_id).await;
+    let (fence, delivered, token, rows) = delivery(&fixtures, &turn_id).await;
     assert!(delivered, "the claim stamped the fence");
     assert_eq!(rows, 1, "the event is open");
     assert_eq!(fence, token, "the admission carries the slot's fence");
     let status: String = sqlx::query_scalar("SELECT status FROM thread.turns WHERE id = $1")
-        .bind(&event_id)
+        .bind(&turn_id)
         .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
         .await
         .expect("event status");
@@ -110,10 +110,10 @@ async fn claim_on_archived_fleet_takes_nothing() {
     let Seeded {
         runners: [runner],
         fleet,
-        event_id,
+        turn_id,
         ..
     } = seeded::<1>(&fixtures).await;
-    let before = delivery(&fixtures, &event_id).await;
+    let before = delivery(&fixtures, &turn_id).await;
     // The archive lands after a scan found the fleet: the claim statement is
     // run alone, with the binds the claim path sends.
     sqlx::query("UPDATE fleet.fleets SET status = 'archived' WHERE id = $1")
@@ -143,7 +143,7 @@ async fn claim_on_archived_fleet_takes_nothing() {
 
     assert!(claimed.is_none(), "an archived fleet claims nothing");
     assert_eq!(
-        delivery(&fixtures, &event_id).await,
+        delivery(&fixtures, &turn_id).await,
         before,
         "no fence moved, nothing was stamped and no row opened"
     );
@@ -160,7 +160,7 @@ async fn claim_redelivery_reports_repeat_in_one_statement() {
     let Seeded {
         runners: [runner],
         fleet,
-        event_id,
+        turn_id,
         ..
     } = seeded::<1>(&fixtures).await;
     let runs = fixtures.runs_with_dead_bus();
@@ -175,7 +175,7 @@ async fn claim_redelivery_reports_repeat_in_one_statement() {
         .await;
     let (repeat, ran) = claim_counted(&owner, &runs, &runner, &fleet).await;
     let repeat = repeat.expect("the lapsed admission is claimed again");
-    assert_eq!(repeat.event_id, event_id);
+    assert_eq!(repeat.turn_id, turn_id);
     assert_eq!(repeat.opened.received.delivery, Delivery::Repeat);
     assert_eq!(
         repeat.opened.received.counters, None,
@@ -186,7 +186,7 @@ async fn claim_redelivery_reports_repeat_in_one_statement() {
 
     // The event finished while its turn was still unsettled.
     sqlx::query("UPDATE thread.turns SET status = $2 WHERE id = $1")
-        .bind(&event_id)
+        .bind(&turn_id)
         .bind(status::PROCESSED)
         .execute(&mut *fixtures.database.acquire().await.expect("observer"))
         .await

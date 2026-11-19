@@ -34,7 +34,7 @@ CREATE TABLE runner.turn_checkpoints (
     abandoned_at TIMESTAMPTZ(3),
     created_at TIMESTAMPTZ(3) NOT NULL,
     updated_at TIMESTAMPTZ(3) NOT NULL,
-    CONSTRAINT uq_turn_checkpoint_event UNIQUE (id, turn_id),
+    CONSTRAINT uq_turn_checkpoint_turn UNIQUE (id, turn_id),
     CONSTRAINT uq_turn_checkpoint_workspace UNIQUE (id, workspace_id),
     CONSTRAINT uq_turn_checkpoint_generation UNIQUE (turn_id, generation),
     CONSTRAINT ck_turn_checkpoint_api_only CHECK (has_workspace OR (

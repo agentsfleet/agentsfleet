@@ -8,7 +8,7 @@
 //! waits its turn.
 
 use crate::RunFacts;
-pub use af_wire::event::SteerDisposition;
+pub use af_wire::turn::SteerDisposition;
 
 use super::{ACTOR_MACHINE, is_steer_actor};
 
@@ -18,7 +18,7 @@ pub struct Placed {
     /// Where the message went.
     pub disposition: SteerDisposition,
     /// The run's event, when `disposition` is `folded`.
-    pub folded_into_event_id: Option<String>,
+    pub folded_into_turn_id: Option<String>,
 }
 
 /// Names where a steer from `actor` went, given the run the ledger saw.
@@ -34,7 +34,7 @@ pub struct Placed {
 #[must_use]
 pub fn of(run: &RunFacts, actor: &str, message_id: &str) -> Placed {
     if let Some(live) = &run.live_run {
-        if live.event_id == message_id {
+        if live.turn_id == message_id {
             return without_run(SteerDisposition::Started);
         }
         let person = is_steer_actor(actor) && actor != ACTOR_MACHINE;
@@ -42,7 +42,7 @@ pub fn of(run: &RunFacts, actor: &str, message_id: &str) -> Placed {
         if folds {
             return Placed {
                 disposition: SteerDisposition::Folded,
-                folded_into_event_id: Some(live.event_id.clone()),
+                folded_into_turn_id: Some(live.turn_id.clone()),
             };
         }
     }
@@ -57,7 +57,7 @@ pub fn of(run: &RunFacts, actor: &str, message_id: &str) -> Placed {
 const fn without_run(disposition: SteerDisposition) -> Placed {
     Placed {
         disposition,
-        folded_into_event_id: None,
+        folded_into_turn_id: None,
     }
 }
 
@@ -75,7 +75,7 @@ mod tests {
     fn live_task() -> RunFacts {
         RunFacts {
             live_run: Some(LiveRun {
-                event_id: RUN_EVENT.to_owned(),
+                turn_id: RUN_EVENT.to_owned(),
                 durable_task: true,
                 same_conversation: true,
             }),
@@ -96,7 +96,7 @@ mod tests {
         let person = steer_actor("user_2folder");
         let folded = of(&live_task(), &person, LATER);
         assert_eq!(folded.disposition, SteerDisposition::Folded);
-        assert_eq!(folded.folded_into_event_id.as_deref(), Some(RUN_EVENT));
+        assert_eq!(folded.folded_into_turn_id.as_deref(), Some(RUN_EVENT));
 
         assert_eq!(
             of(&RunFacts::default(), &person, LATER).disposition,
@@ -202,7 +202,7 @@ mod tests {
         ] {
             let placed = of(&facts, actor, RUN_EVENT);
             assert_eq!(placed.disposition, SteerDisposition::Started, "{actor}");
-            assert_eq!(placed.folded_into_event_id, None, "{actor}");
+            assert_eq!(placed.folded_into_turn_id, None, "{actor}");
         }
     }
 }

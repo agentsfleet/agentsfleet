@@ -68,7 +68,7 @@ impl Runs {
             .lock_admission_on(
                 &mut transaction,
                 &acquired.fleet_id,
-                &acquired.event_id,
+                &acquired.turn_id,
                 acquired.fence,
             )
             .await?
@@ -86,9 +86,9 @@ impl Runs {
     ) -> Result<()> {
         sqlx::query(queue::SETTLE_TERMINAL)
             .bind(&acquired.fleet_id)
-            .bind(&acquired.event_id)
+            .bind(&acquired.turn_id)
             .bind(acquired.fence.as_i64())
-            .bind(af_core::event::status::RECEIVED)
+            .bind(af_core::turn::status::RECEIVED)
             .execute(connection)
             .await
             .map_err(query(CONTEXT))?;

@@ -11,7 +11,7 @@ pub(super) struct Stores {
 
 pub(super) fn stores(
     database: &Db,
-    ledger: &afd_turns::Admissions,
+    ledger: &afd_turns::Turns,
     providers: &HarnessProviders,
 ) -> Stores {
     let drafts = afd_setup::Drafts::new(

@@ -54,7 +54,7 @@ impl<'a> FileOwner<'a> {
             }
             _ => {}
         }
-        let namespace = format!("turn:{}", owner.current.event_id);
+        let namespace = format!("turn:{}", owner.current.turn_id);
         let mut locked = Self {
             owner,
             plan,

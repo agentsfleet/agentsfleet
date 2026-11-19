@@ -90,7 +90,7 @@ fn capture_authority_cannot_name_another_event_or_bucket() -> Checked {
     parsed.validate()?;
     assert_eq!(parsed.action.kind(), TurnCheckpointKind::Begin);
     for extra in [
-        "event_id",
+        "turn_id",
         "fleet_id",
         "workspace_id",
         "bucket",

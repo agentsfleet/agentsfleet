@@ -115,17 +115,14 @@ impl Census {
     async fn backlog(&self) -> Result<()> {
         let counted = async {
             let mut connection = self.database.acquire().await?;
-            sqlx::query_as::<_, BacklogRow>(sql::sweep::COUNT_ADMISSION_BACKLOG)
+            sqlx::query_as::<_, BacklogRow>(sql::sweep::COUNT_TURN_BACKLOG)
                 .fetch_one(&mut *connection)
                 .await
                 .map_err(query(CONTEXT_CENSUS))
         }
         .await;
-        let row = counted.inspect_err(|_| fleet::admission_backlog_withdrawn())?;
-        fleet::admission_backlog_observed(
-            row.rows.unsigned_abs(),
-            row.oldest_seconds.unsigned_abs(),
-        );
+        let row = counted.inspect_err(|_| fleet::turn_backlog_withdrawn())?;
+        fleet::turn_backlog_observed(row.rows.unsigned_abs(), row.oldest_seconds.unsigned_abs());
         Ok(())
     }
 

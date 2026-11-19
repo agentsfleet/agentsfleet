@@ -2,8 +2,8 @@
 
 use std::borrow::Cow;
 
-use af_core::event::status::{FLEET_ERROR, PROCESSED};
 use af_core::id::Uuid7;
+use af_core::turn::status::{FLEET_ERROR, PROCESSED};
 use afd_api_wire::operator::{
     RunDestination, RunKind, RunOutcome, RunnerRunItem, RunnerRunsResponse,
 };
@@ -121,7 +121,7 @@ struct RunRow {
     fleet_exists: bool,
     workspace_id: Uuid7,
     tenant_id: Uuid7,
-    event_id: Uuid7,
+    turn_id: Uuid7,
     event_type: Option<String>,
     actor: Option<String>,
     run_status: String,
@@ -153,7 +153,7 @@ impl RunRow {
             fleet_id: Cow::Owned(self.fleet_id.into()),
             fleet_name: self.fleet_name.map(Cow::Owned),
             workspace_id: Cow::Owned(self.workspace_id.into()),
-            event_id: Cow::Owned(self.event_id.into()),
+            turn_id: Cow::Owned(self.turn_id.into()),
             event_type: self.event_type.map(Cow::Owned),
             actor: self.actor.map(Cow::Owned),
             failure_label: self.failure_reason.map(Cow::Owned),

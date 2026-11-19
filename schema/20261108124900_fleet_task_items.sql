@@ -1,9 +1,9 @@
--- Immutable interpretation receipts; they survive cleanup of their source admission.
+-- Immutable interpretation receipts; they outlive their source turn, so `turn_id` is opaque.
 CREATE TABLE fleet.task_items (
     id                  UUID PRIMARY KEY,
     fleet_id            UUID NOT NULL,
     workspace_id        UUID NOT NULL,
-    admission_id        UUID NOT NULL,
+    turn_id             UUID NOT NULL,
     ordinal             INTEGER NOT NULL CHECK (ordinal >= 0),
     plan_digest         TEXT NOT NULL,
     action              TEXT NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE fleet.task_items (
     created_at          TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT fk_task_items_fleet FOREIGN KEY (fleet_id)
         REFERENCES fleet.fleets (id) ON DELETE CASCADE,
-    CONSTRAINT uq_task_items_source_ordinal UNIQUE (admission_id, ordinal),
+    CONSTRAINT uq_task_items_source_ordinal UNIQUE (turn_id, ordinal),
     CONSTRAINT uq_task_items_id_scope UNIQUE (id, fleet_id, workspace_id)
 );
 

@@ -30,7 +30,7 @@ pub(crate) struct TraceOwner<'a> {
     /// The fleet that ran.
     pub fleet_id: &'a Uuid7,
     /// The event the run answered.
-    pub event_id: &'a Uuid7,
+    pub turn_id: &'a Uuid7,
     /// The fence the run holds, which scopes every call id.
     pub fence: i64,
 }
@@ -46,18 +46,18 @@ pub(crate) fn stored(raw: Option<RawToolTrace<'_>>, owner: TraceOwner<'_>) -> Op
         Ok(trace) => trace,
         Err(rejection) => {
             let fleet_id = owner.fleet_id;
-            let event_id = owner.event_id;
+            let turn_id = owner.turn_id;
             let reason = rejection.as_str();
             let bytes = raw.byte_len();
             {
-                let (agentsfleet_event_id, event, message) = (
-                    &event_id,
+                let (agentsfleet_turn_id, event, message) = (
+                    &turn_id,
                     &EVENT_TRACE_DROPPED,
                     format_args!(
                         "the run's tool trace was not stored; the report settles without it"
                     ),
                 );
-                tracing::warn!(message, %fleet_id, %agentsfleet_event_id, reason, bytes, %event);
+                tracing::warn!(message, %fleet_id, %agentsfleet_turn_id, reason, bytes, %event);
             };
             return None;
         }

@@ -1,4 +1,4 @@
-//! `POST /v1/runners/me/runs/{run_id}/tool-calls` — each finished call,
+//! `POST /v1/runners/me/runs/{run_id}/items` — each finished call,
 //! in full, for an operator's "show all".
 //!
 //! Its own verb rather than a field of the report. A large record set beside an
@@ -36,7 +36,7 @@ const DETAIL_TOO_LARGE: &str = "A tool-call records post is at most 262144 bytes
 /// Keeps each finished call's full arguments and output.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = af_wire::paths::RUN_TOOL_CALLS,
+    path = af_wire::paths::RUN_ITEMS,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_record_tool_calls",
     summary = "Save full tool call output",

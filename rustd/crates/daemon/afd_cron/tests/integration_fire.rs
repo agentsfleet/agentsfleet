@@ -77,7 +77,7 @@ async fn a_verified_fire_reaches_the_stream_once() {
         "the first delivery of a fire is not a replay"
     );
     assert!(
-        !fired.event_id.is_empty(),
+        !fired.turn_id.is_empty(),
         "the entry id is what the caller answers with"
     );
 }
@@ -102,7 +102,7 @@ async fn the_schedulers_retry_is_claimed_by_the_first_attempt() {
     assert!(!first.replayed);
     assert!(retry.replayed, "a repeated message id is the same fire");
     assert_eq!(
-        retry.event_id, first.event_id,
+        retry.turn_id, first.turn_id,
         "the retry must be told the id the FIRST attempt wrote, or the caller \
          answers the scheduler with an entry that does not exist"
     );
@@ -162,9 +162,9 @@ async fn many_daemons_receiving_one_retry_together_append_once() {
         "exactly one caller claimed the fire and every other found it taken; \
          more than one claim means the check and the write came apart"
     );
-    let first = &outcomes.first().expect("a hundred outcomes").event_id;
+    let first = &outcomes.first().expect("a hundred outcomes").turn_id;
     assert!(
-        outcomes.iter().all(|fired| &fired.event_id == first),
+        outcomes.iter().all(|fired| &fired.turn_id == first),
         "every daemon must answer with the one entry that exists"
     );
     assert_eq!(admissions(&lane).await, 1, "the fleet holds one admission");
@@ -209,7 +209,7 @@ async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
         !second.replayed,
         "a different schedule is a different fire, even under the same message id"
     );
-    assert_ne!(first.event_id, second.event_id, "two fires, two entries");
+    assert_ne!(first.turn_id, second.turn_id, "two fires, two entries");
 }
 
 /// A second delivery of the same schedule under a new id is a new fire.
@@ -238,7 +238,7 @@ async fn the_next_tick_of_one_schedule_is_a_new_fire() {
         !tomorrow.replayed,
         "suppressing this would skip a run the operator asked for"
     );
-    assert_ne!(tonight.event_id, tomorrow.event_id);
+    assert_ne!(tonight.turn_id, tomorrow.turn_id);
 }
 
 /// A one-off fires once, whichever path asks: the scheduler's callback and a
@@ -268,7 +268,7 @@ async fn a_once_schedule_fires_once_whichever_path_asks() {
         run_now.replayed,
         "a one-off's second fire is its first's replay"
     );
-    assert_eq!(run_now.event_id, scheduled.event_id);
+    assert_eq!(run_now.turn_id, scheduled.turn_id);
 }
 
 /// Two fleets cannot claim over each other, even on one schedule id.
@@ -315,7 +315,7 @@ async fn a_fire_logs_the_workspace_and_event_it_appended() {
         appended.field("workspace_id"),
         Some(lane.workspace.as_str())
     );
-    assert_eq!(appended.field("event_id"), Some(fired.event_id.as_str()));
+    assert_eq!(appended.field("turn_id"), Some(fired.turn_id.as_str()));
 }
 
 /// The event a fire logs once its append lands.

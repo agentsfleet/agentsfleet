@@ -123,7 +123,7 @@ impl Inbox {
         self.announce(Answer {
             fleet_id: &swept.fleet,
             gate_id: swept.gate.as_str(),
-            event_id: swept.event.as_ref().map(Uuid7::as_str),
+            turn_id: swept.event.as_ref().map(Uuid7::as_str),
             status: status::TIMED_OUT,
             resolved_by: SWEEPER,
             pending_approvals: swept.pending,

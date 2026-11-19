@@ -111,7 +111,7 @@ pub(super) fn answer(
 }
 
 pub(super) fn encrypted(scope: &TurnScope) -> Checked<(CheckpointObject, Vec<u8>)> {
-    let namespace = format!("turn:{}", scope.event_id.0);
+    let namespace = format!("turn:{}", scope.turn_id.0);
     let nonce = [7; af_crypto::NONCE_LEN];
     let key = [17; af_crypto::KEY_LEN];
     let encrypted = EncryptedCheckpointObject::seal(

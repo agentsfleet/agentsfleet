@@ -9,13 +9,13 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
-use af_core::event::status;
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_core::turn::status;
 use af_wire::memory::MemoryDelta;
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use af_wire::run::TaggedRun;
-use afd_db::test_util::{EventKind, FleetEventSeed, PlatformDefault, mint_id};
+use af_wire::turn::TurnKind;
+use afd_db::test_util::{PlatformDefault, TurnFacts, TurnSeed, mint_id};
 use afd_fleet::run::RunService;
 use jiff::Timestamp;
 
@@ -51,7 +51,7 @@ pub(super) struct Chat {
 /// What a case reads off an issued run.
 pub(super) struct Issued {
     run_id: Uuid7,
-    pub(super) event_id: Uuid7,
+    pub(super) turn_id: Uuid7,
     fencing_token: u64,
     pub(super) history: Vec<(String, String)>,
     /// The memory window's entries, key and content, or `None` when the run
@@ -77,7 +77,7 @@ impl Chat {
     }
 
     /// Admits one `event_type` event asking `message`, stamped `at`.
-    pub(super) async fn ask(&self, event_type: EventType, message: &str, at: Timestamp) -> Uuid7 {
+    pub(super) async fn ask(&self, event_type: TurnKind, message: &str, at: Timestamp) -> Uuid7 {
         let request = serde_json::json!({ "message": message }).to_string();
         crate::queue::enqueue(
             &self.fixtures.database,
@@ -100,14 +100,14 @@ impl Chat {
             .acquire()
             .await
             .expect("a connection");
-        let kind = EventKind {
+        let kind = TurnFacts {
             actor: ACTOR,
-            event_type: EventType::Chat.as_str(),
+            event_type: TurnKind::Chat.as_str(),
             status: status::PROCESSED,
         };
         // A run the fleet finished after the event a case runs.
         let later = mint_id();
-        FleetEventSeed::new(&self.fleet, &self.workspace, &later, kind)
+        TurnSeed::new(&self.fleet, &self.workspace, &later, kind)
             .at(at)
             .insert(&mut *connection)
             .await
@@ -161,7 +161,7 @@ impl Chat {
         };
         Issued {
             run_id: Uuid7::parse(&run.run_id).expect("the run names a UUIDv7"),
-            event_id: Uuid7::parse(&run.event.event_id).expect("the event is a UUIDv7"),
+            turn_id: Uuid7::parse(&run.event.turn_id).expect("the event is a UUIDv7"),
             fencing_token: run.fencing_token,
             history: run
                 .history
@@ -198,7 +198,7 @@ impl Chat {
             setup: None,
             task: None,
             run_id: Cow::Borrowed(run.run_id.as_str()),
-            event_id: Cow::Borrowed(run.event_id.as_str()),
+            turn_id: Cow::Borrowed(run.turn_id.as_str()),
             fencing_token: run.fencing_token,
             outcome: Outcome::Processed,
             failure_reason: None,
@@ -212,7 +212,7 @@ impl Chat {
                 segments: None,
             },
             checkpoint: ReportCheckpoint {
-                last_event_id: Cow::Borrowed(run.event_id.as_str()),
+                last_turn_id: Cow::Borrowed(run.turn_id.as_str()),
                 last_response: Cow::Borrowed(answer),
             },
             tool_calls: None,
@@ -235,7 +235,7 @@ impl Chat {
     /// Asks [`FIRST_MESSAGE`], runs it and answers [`FIRST_ANSWER`]: one
     /// finished turn, settled one [`SLICE`] after the fixture's instant.
     pub(super) async fn first_turn(&self) {
-        self.ask(EventType::Chat, FIRST_MESSAGE, self.fixtures.enrolled_at())
+        self.ask(TurnKind::Chat, FIRST_MESSAGE, self.fixtures.enrolled_at())
             .await;
         let first = self.run(&self.runner, self.fixtures.enrolled_at()).await;
         self.answer(

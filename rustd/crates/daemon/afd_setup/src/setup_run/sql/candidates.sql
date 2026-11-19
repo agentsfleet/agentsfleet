@@ -2,7 +2,7 @@
 -- the claim rereads every fact under the draft's lock.
 --
 -- The head is the oldest message above the Stop watermark still queued or running. A running
--- head is taken again only when a draft run ran it before (`thread.runs.event_id` is the
+-- head is taken again only when a draft run ran it before (`thread.runs.turn_id` is the
 -- message): that run lapsed, so this claim reoffers it. A running head the authoring
 -- attempt path owns waits for that path.
 --
@@ -33,7 +33,7 @@ SELECT d.id AS id, d.workspace_id AS workspace_id, d.tenant_id AS tenant_id,
  WHERE d.status = $1
    AND (head.status = $2
         OR EXISTS (SELECT 1 FROM thread.runs l
-                    WHERE l.event_id = head.id AND l.draft_id = d.id))
+                    WHERE l.turn_id = head.id AND l.draft_id = d.id))
    -- A tenant runner never receives the platform model key. Tested on the head, so a head
    -- on the platform default blocks its draft for this runner instead of being jumped, as
    -- the fleet claim's head does (`afd_fleet/.../claim_admission_head.sql`).

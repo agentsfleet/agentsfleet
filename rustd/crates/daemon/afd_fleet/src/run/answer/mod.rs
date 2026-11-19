@@ -7,10 +7,10 @@
 
 use af_core::id::Uuid7;
 use af_wire::decision::DecisionAssignment;
-use af_wire::event::{EventEnvelope, EventType};
 use af_wire::memory::MemoryHydrateResponse;
 use af_wire::policy::ExecutionPolicy;
 use af_wire::run::{RunPayload, Turn};
+use af_wire::turn::{TurnEnvelope, TurnKind};
 
 use crate::run::envelope::Acquired;
 use crate::run::installed::Installed;
@@ -52,7 +52,7 @@ pub(super) struct Context<'a> {
 pub(super) fn payload<'a>(
     run_id: &'a Uuid7,
     acquired: &'a Acquired,
-    event_type: EventType,
+    event_type: TurnKind,
     installed: &'a Installed,
     policy: ExecutionPolicy<'a>,
     context: Context<'a>,
@@ -66,14 +66,14 @@ pub(super) fn payload<'a>(
             .map(|proof| proof.current.as_str().into()),
         turn_resume: context.turn_resume,
         run_expires_at: context.expires_at,
-        event: EventEnvelope {
-            event_id: acquired.event_id.as_str().into(),
+        event: TurnEnvelope {
+            turn_id: acquired.turn_id.as_str().into(),
             fleet_id: acquired.fleet_id.as_str().into(),
             workspace_id: acquired.workspace_id.as_str().into(),
             actor: acquired.actor.as_str().into(),
             event_type,
             request_json: acquired.request_json.as_str().into(),
-            created_at: acquired.event_created_at,
+            created_at: acquired.turn_created_at,
         },
         policy,
         instructions: installed.instructions.as_str().into(),

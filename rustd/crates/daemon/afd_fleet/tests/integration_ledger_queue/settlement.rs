@@ -31,7 +31,7 @@ async fn failed_admission_settlement_rolls_back_the_report_and_retry_settles_onc
         .expect_err("the settlement trigger refuses the report");
     assert_nothing_landed(&held, "admission settlement failed").await;
     assert!(
-        !held.fixtures.admission_settled(&held.event_id).await,
+        !held.fixtures.admission_settled(&held.turn_id).await,
         "a rollback cannot settle the admission"
     );
     assert_eq!(
@@ -47,12 +47,12 @@ async fn failed_admission_settlement_rolls_back_the_report_and_retry_settles_onc
         commit(&held).await.expect("retry"),
         Committed::Settled { .. }
     ));
-    assert!(held.fixtures.admission_settled(&held.event_id).await);
+    assert!(held.fixtures.admission_settled(&held.turn_id).await);
     assert!(matches!(
         commit(&held).await.expect("repeat"),
         Committed::AlreadySettled
     ));
-    assert_eq!(held.fixtures.ledger_rows(&held.event_id).await, 1);
+    assert_eq!(held.fixtures.ledger_rows(&held.turn_id).await, 1);
     owner.close().await;
     held.fixtures.cleanup().await;
 }
@@ -63,7 +63,7 @@ async fn a_report_cannot_settle_an_admission_with_a_different_fence() {
     let held = held_in(Fixtures::create_isolated().await).await;
     let mut connection = held.fixtures.database.acquire().await.expect("database");
     sqlx::query("UPDATE thread.turns SET run_fence = run_fence + 1 WHERE id = $1")
-        .bind(&held.event_id)
+        .bind(&held.turn_id)
         .execute(&mut *connection)
         .await
         .expect("supersede admission");
@@ -73,7 +73,7 @@ async fn a_report_cannot_settle_an_admission_with_a_different_fence() {
     ));
     assert_nothing_landed(&held, "the admission fence changed").await;
     assert!(
-        !held.fixtures.admission_settled(&held.event_id).await,
+        !held.fixtures.admission_settled(&held.turn_id).await,
         "a superseded report cannot settle"
     );
     assert_eq!(
@@ -81,7 +81,7 @@ async fn a_report_cannot_settle_an_admission_with_a_different_fence() {
         Some(afd_fleet::run::sql::RUN_STATUS_ACTIVE.to_owned())
     );
     sqlx::query("UPDATE thread.turns SET run_fence = $2 WHERE id = $1")
-        .bind(&held.event_id)
+        .bind(&held.turn_id)
         .bind(held.fence.as_i64())
         .execute(&mut *connection)
         .await
@@ -91,7 +91,7 @@ async fn a_report_cannot_settle_an_admission_with_a_different_fence() {
         commit(&held).await.expect("retry"),
         Committed::Settled { .. }
     ));
-    assert!(held.fixtures.admission_settled(&held.event_id).await);
+    assert!(held.fixtures.admission_settled(&held.turn_id).await);
     held.fixtures.cleanup().await;
 }
 

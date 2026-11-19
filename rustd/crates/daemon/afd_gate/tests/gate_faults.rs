@@ -69,7 +69,7 @@ async fn every_failed_gate_read_and_write_reason_carries_no_code_prefix() {
     let check = Check {
         fleet_id: &fleet,
         workspace_id: &fleet,
-        event_id: &event,
+        turn_id: &event,
         event_type: "chat",
         actor: "user:fixture",
         request_json: "{}",
@@ -107,7 +107,7 @@ async fn a_gated_event_whose_lookup_failed_waits_instead_of_asking_again() {
     let check = Check {
         fleet_id: &fleet,
         workspace_id: &fleet,
-        event_id: &event,
+        turn_id: &event,
         event_type: "chat",
         actor: "user:fixture",
         request_json: "{}",
@@ -142,7 +142,7 @@ async fn a_park_whose_row_cannot_be_written_fails_closed_naming_the_row() {
             Park {
                 fleet_id: &fleet,
                 workspace_id: &fleet,
-                event_id: &event,
+                turn_id: &event,
                 stated: Stated::of("chat", "user:fixture", "event-row-unwritable", PARK_TIMEOUT),
                 claim: &Claim::of(None),
             },

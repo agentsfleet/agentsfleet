@@ -174,7 +174,7 @@ async fn an_unrotated_refresh_token_reason_carries_no_code_prefix() {
     let scope = MintScope {
         workspace_id: test_dead::id(2),
         fleet_id: test_dead::id(1),
-        event_id: "1767225600000-1".into(),
+        turn_id: "1767225600000-1".into(),
         binding: None,
         runner_credentials: Vec::new(),
     };

@@ -57,14 +57,14 @@ impl Handler for FleetSteer {
 
 /// What the model reads once the other fleet has the work.
 fn sentence(fleet: &Uuid7, accepted: &FleetSteerAccepted<'_>) -> String {
-    let event_id = &accepted.event_id;
+    let turn_id = &accepted.turn_id;
     if accepted.replayed {
         format!(
-            "fleet {fleet} already has this request as event {event_id}; this is the same run, not a new one"
+            "fleet {fleet} already has this request as event {turn_id}; this is the same run, not a new one"
         )
     } else {
         format!(
-            "asked fleet {fleet}: event {event_id}. It runs on its own and can answer with fleet_steer."
+            "asked fleet {fleet}: event {turn_id}. It runs on its own and can answer with fleet_steer."
         )
     }
 }

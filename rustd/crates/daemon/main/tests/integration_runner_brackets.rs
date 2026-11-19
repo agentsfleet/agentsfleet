@@ -1,6 +1,6 @@
 //! The bracket frames — the daemon opens and closes a run on the tail itself.
 //!
-//! `event_received` when run issuance writes the row, `event_complete` when
+//! `turn_received` when run issuance writes the row, `turn_complete` when
 //! a report or a refusal closes it. Proven end to end because the property is
 //! the ORDER: the row is written before the frame that names it, so a watcher
 //! reacting to the frame can never find the row missing. Beside the runner's
@@ -25,7 +25,7 @@ use crate::wire::{capable_beat, field, report_body, wait_without_offer};
 
 /// The bracket frames — the daemon opens and closes a run on the tail itself.
 ///
-/// `event_received` when run issuance writes the row, `event_complete` when
+/// `turn_received` when run issuance writes the row, `turn_complete` when
 /// the report closes it, and the second carries the row as the events list
 /// would serve it plus the fleet's status and pending gate count. Proven end
 /// to end because the property is the ORDER: the row is written before the
@@ -46,15 +46,15 @@ async fn test_bracket_frames_open_and_close_a_run() {
     let opened = next_frame(&mut tail)
         .await
         .expect("the run announces the row it opened");
-    assert_opened(&opened, &scene.event_id);
+    assert_opened(&opened, &scene.turn_id);
 
-    let reported = crate::wire::report(&scene, &report_body(&run_id, &scene.event_id, fence)).await;
+    let reported = crate::wire::report(&scene, &report_body(&run_id, &scene.turn_id, fence)).await;
     assert!(reported.is_ok(), "native report refused: {reported:?}");
 
     let closed = next_frame(&mut tail)
         .await
         .expect("the report announces the row it closed");
-    assert_completed(&closed, &scene.event_id);
+    assert_completed(&closed, &scene.turn_id);
 
     drop(tail);
     supervisor.shutdown().await;
@@ -82,7 +82,7 @@ async fn test_a_refused_run_closes_the_run_on_the_tail() {
     );
     // No work may be offered before the durable money-gate refusal is visible.
     let refused = wait_without_offer(&scene, || async {
-        event_column(&scene, &scene.event_id, "status")
+        event_column(&scene, &scene.turn_id, "status")
             .await
             .as_deref()
             == Some("gate_blocked")
@@ -96,11 +96,11 @@ async fn test_a_refused_run_closes_the_run_on_the_tail() {
     let opened = next_frame(&mut tail)
         .await
         .expect("the row is opened before the money is checked");
-    assert_eq!(field(&opened, "kind"), &json!("event_received"));
+    assert_eq!(field(&opened, "kind"), &json!("turn_received"));
     let closed = next_frame(&mut tail)
         .await
         .expect("and the refusal closes it on the same tail");
-    assert_refused(&closed, &scene.event_id);
+    assert_refused(&closed, &scene.turn_id);
 
     drop(tail);
     supervisor.shutdown().await;
@@ -108,9 +108,9 @@ async fn test_a_refused_run_closes_the_run_on_the_tail() {
 }
 
 fn assert_opened(opened: &serde_json::Value, event: &af_core::id::Uuid7) {
-    assert_eq!(field(opened, "kind"), &json!("event_received"));
+    assert_eq!(field(opened, "kind"), &json!("turn_received"));
     assert_eq!(
-        field(opened, "event_id"),
+        field(opened, "turn_id"),
         &json!(event),
         "the frame names the event the run was issued for"
     );
@@ -125,8 +125,8 @@ fn assert_opened(opened: &serde_json::Value, event: &af_core::id::Uuid7) {
 }
 
 fn assert_completed(closed: &serde_json::Value, event: &af_core::id::Uuid7) {
-    assert_eq!(field(closed, "kind"), &json!("event_complete"));
-    assert_eq!(field(closed, "event_id"), &json!(event));
+    assert_eq!(field(closed, "kind"), &json!("turn_complete"));
+    assert_eq!(field(closed, "turn_id"), &json!(event));
     assert_eq!(field(closed, "status"), &json!("processed"));
     assert_eq!(
         field(closed, "wall_ms"),
@@ -156,8 +156,8 @@ fn assert_completed(closed: &serde_json::Value, event: &af_core::id::Uuid7) {
 }
 
 fn assert_refused(closed: &serde_json::Value, event: &af_core::id::Uuid7) {
-    assert_eq!(field(closed, "kind"), &json!("event_complete"));
-    assert_eq!(field(closed, "event_id"), &json!(event));
+    assert_eq!(field(closed, "kind"), &json!("turn_complete"));
+    assert_eq!(field(closed, "turn_id"), &json!(event));
     assert_eq!(field(closed, "status"), &json!("gate_blocked"));
     assert!(
         field(closed, "failure_label")

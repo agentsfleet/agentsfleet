@@ -60,7 +60,7 @@ pub struct Interim {
     /// The fleet that is speaking.
     pub fleet_id: Uuid7,
     /// The event whose thread it lands in.
-    pub event_id: Uuid7,
+    pub turn_id: Uuid7,
     /// The run that said it, whose count `part` is.
     pub run_id: Uuid7,
     /// What to say, already scrubbed of the fleet's secret values.
@@ -94,7 +94,7 @@ impl Interjector {
             destination,
             workspace_id,
             fleet_id,
-            event_id,
+            turn_id,
             run_id,
             text,
             part,
@@ -105,7 +105,7 @@ impl Interjector {
             destination,
             workspace_id,
             fleet_id,
-            event_id,
+            turn_id,
             answer: text,
         };
         let posters = Posters {
@@ -122,18 +122,11 @@ impl Interjector {
         let delivered = verdict == Verdict::Delivered;
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let fleet_id = job.fleet_id.as_str();
-        let agentsfleet_event_id = job.event_id.as_str();
+        let agentsfleet_turn_id = job.turn_id.as_str();
         let bytes = job.answer.len();
         {
             let event = &EVENT_POSTED;
-            tracing::info!(
-                fleet_id,
-                agentsfleet_event_id,
-                part,
-                delivered,
-                bytes,
-                event
-            );
+            tracing::info!(fleet_id, agentsfleet_turn_id, part, delivered, bytes, event);
         };
         delivered
     }

@@ -101,7 +101,7 @@ async fn offered(session: &Session) -> Proof<Run> {
     };
     Ok(Run {
         id: Uuid7::parse(&run.run_id)?,
-        event: Uuid7::parse(&run.event.event_id)?,
+        event: Uuid7::parse(&run.event.turn_id)?,
         fence: run.fencing_token,
     })
 }
@@ -118,7 +118,7 @@ async fn opening_reconciles_retained_missing_and_cancelled_work_without_reofferi
 
 async fn reconcile(transport: Transport) -> Proof {
     let case = Case::open().await?;
-    let listed = case.run(&case.scene.event_id)?;
+    let listed = case.run(&case.scene.turn_id)?;
     let [(omitted_fleet, omitted_event), (_, marked_event)] = &case.siblings;
     let omitted = case.run(omitted_event)?;
     let marked = case.run(marked_event)?;
@@ -148,7 +148,7 @@ async fn reconcile(transport: Transport) -> Proof {
     afd_bus::wake::publish(&bus, omitted_fleet.clone()).await;
     let offered = current.expect(StreamKind::Work, "offer").await;
     assert_eq!(
-        wire::pointer(&offered, "/run/event/event_id"),
+        wire::pointer(&offered, "/run/event/turn_id"),
         omitted_event.as_str()
     );
     let (replacement, fence) = wire::claim(wire::pointer(&offered, "/run"));

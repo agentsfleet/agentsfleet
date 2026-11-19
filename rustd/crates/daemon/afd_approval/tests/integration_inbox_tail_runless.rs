@@ -39,7 +39,7 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
         .await
         .expect("the resolve must not fault");
     let continued = match outcome {
-        Resolution::Resolved(resolved) => resolved.continuation_event_id,
+        Resolution::Resolved(resolved) => resolved.continuation_turn_id,
         Resolution::AlreadyResolved(_) | Resolution::NotFound => Some(afd_db::test_util::mint_id()),
     };
     assert_eq!(continued, None, "nothing to continue, and nothing invented");
@@ -49,7 +49,7 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
         .expect("the answer reaches the fleet's tail");
     assert_eq!(frame.get("kind"), Some(&json!("gate_resolved")));
     assert_eq!(frame.get("status"), Some(&json!("approved")));
-    assert_eq!(frame.get("event_id"), Some(&Value::Null));
+    assert_eq!(frame.get("turn_id"), Some(&Value::Null));
     assert_eq!(lane.status_of(&runless).await, "approved");
     assert!(
         delivery_unparked(&lane).await,
@@ -140,7 +140,7 @@ async fn a_runless_gate_with_a_lost_notification_still_resolves() {
     let inbox = Inbox::new(
         lane.pool.clone(),
         afd_bus::test_util::unreachable(),
-        afd_turns::Admissions::for_tests(lane.pool.clone(), afd_bus::test_util::unreachable()),
+        afd_turns::Turns::for_tests(lane.pool.clone(), afd_bus::test_util::unreachable()),
     );
     let runless = lane.seed_runless_gate(Window::Open).await;
 

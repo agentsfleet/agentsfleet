@@ -13,7 +13,7 @@ WITH locked_slot AS MATERIALIZED (
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
     FOR UPDATE OF s
 ), probe AS MATERIALIZED (
-    SELECT l.id, l.workspace_id, l.tenant_id, l.event_id, l.fencing_token, l.created_at,
+    SELECT l.id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token, l.created_at,
            l.run_expires_at, l.last_metered_at,
            l.created_at + LEAST($6::interval, make_interval(secs => l.max_runtime_seconds))
                AS hard_cap,
@@ -58,6 +58,6 @@ SELECT
     -- The runtime line's number: the milliseconds from the run's start to the slice's.
     -- The cursor only moves forward under the run's lock, so no two slices share one.
     (EXTRACT(EPOCH FROM g.last_metered_at - g.created_at) * $3::bigint)::bigint AS runtime_seq,
-    g.tenant_id, g.workspace_id, g.event_id
+    g.tenant_id, g.workspace_id, g.turn_id
 FROM (SELECT 1) AS one
 LEFT JOIN guard g ON true

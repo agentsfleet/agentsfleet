@@ -19,7 +19,7 @@ pub(super) struct Call {
     pub id: Uuid7,
     pub original_runner_id: Uuid7,
     pub original_run_id: Uuid7,
-    pub source_admission_id: Uuid7,
+    pub source_turn_id: Uuid7,
     pub fleet_id: Uuid7,
     pub workspace_id: Uuid7,
     pub tenant_id: Uuid7,

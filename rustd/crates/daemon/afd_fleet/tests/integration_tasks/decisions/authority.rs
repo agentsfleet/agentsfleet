@@ -100,7 +100,7 @@ async fn refused(
     foreign: &str,
     before: &TaskSnapshot,
 ) {
-    let source_before = admission(fixture, &fixture.case.held.event_id).await;
+    let source_before = admission(fixture, &fixture.case.held.turn_id).await;
     for (version, expected) in [
         (None, error_code::TASK_INVALID_TARGET),
         (
@@ -131,7 +131,7 @@ async fn refused(
         assert_eq!(fault.code(), expected);
         assert_eq!(fixture.goal_snapshot(task).await, *before);
         assert_eq!(
-            admission(fixture, &fixture.case.held.event_id).await,
+            admission(fixture, &fixture.case.held.turn_id).await,
             source_before
         );
         assert_eq!(fixture.counts().await, (0, 0, 0));
@@ -149,7 +149,7 @@ async fn wrong_source(fixture: &Decisions<'_>, task: &DecisionTaskVersion, befor
         .await;
     let source_before = admission(fixture, &source).await;
     let mut input = (*fixture.goal_reservation(task)).clone();
-    input.source_admission_id = source.to_string();
+    input.source_turn_id = source.to_string();
     let input = garde::Unvalidated::new(input)
         .validate()
         .expect("distinct admitted source");

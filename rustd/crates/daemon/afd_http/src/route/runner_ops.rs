@@ -34,7 +34,7 @@ pub enum RunnerOpsRoute {
     /// Retire one revoked runner's record.
     Delete,
     /// One runner's events.
-    Events,
+    History,
     /// One runner's runs.
     Runs,
     /// Register one of the calling tenant's runners.
@@ -64,7 +64,7 @@ impl RunnerOpsRoute {
         Self::Get,
         Self::Patch,
         Self::Delete,
-        Self::Events,
+        Self::History,
         Self::Runs,
         Self::TenantRegister,
         Self::TenantList,
@@ -80,7 +80,7 @@ impl RunnerOpsRoute {
             Self::Register | Self::TenantRegister => &[Verb::Post],
             Self::List
             | Self::Get
-            | Self::Events
+            | Self::History
             | Self::Runs
             | Self::TenantList
             | Self::TenantGet => &[Verb::Get],
@@ -107,7 +107,7 @@ impl RunnerOpsRoute {
                 admin_runner_path!(""),
                 Scopes::rw(RUNNER_READ, RUNNER_WRITE),
             ),
-            Self::Events => (admin_runner_path!("/events"), Scopes::Always(RUNNER_READ)),
+            Self::History => (admin_runner_path!("/history"), Scopes::Always(RUNNER_READ)),
             Self::Runs => (admin_runner_path!("/runs"), Scopes::Always(RUNNER_READ)),
             Self::TenantRegister | Self::TenantList => (paths::TENANT_RUNNERS, TENANT),
             Self::TenantGet | Self::TenantPatch | Self::TenantDelete => {

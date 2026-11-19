@@ -12,8 +12,8 @@ use std::borrow::Cow;
 
 use af_core::money::NANOS_PER_USD;
 use af_fleet_runtime::FleetConfig;
-use af_wire::event::EventType;
 use af_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy};
+use af_wire::turn::TurnKind;
 use serde_json::Value;
 
 use super::{Context, payload};
@@ -92,7 +92,7 @@ fn rendered(resume_hold: bool) -> Value {
     let run = payload(
         &run_id,
         &acquired,
-        EventType::Chat,
+        TurnKind::Chat,
         &installed,
         policy(),
         Context {

@@ -12,12 +12,12 @@ use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
 use af_wire::{
     authoring::FailureReason,
-    event::{EventEnvelope, EventType},
     policy::{ExecutionPolicy, NetworkPolicy},
     run::{
         HISTORY_BYTES_MAX, Owner, RunKind, RunPayload, SetupCandidate, SetupWork,
         TURN_TEXT_BYTES_MAX, Turn,
     },
+    turn::{TurnEnvelope, TurnKind},
 };
 use afd_billing::rates::Posture;
 use afd_runner::capacity::choice::Ticket;
@@ -341,20 +341,20 @@ impl DraftOffer {
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default();
         let context_tokens = u32::try_from(model.context_window_tokens).unwrap_or_default();
-        let request = serde_json::json!({ (af_wire::event::MESSAGE): turn.user_text });
+        let request = serde_json::json!({ (af_wire::turn::MESSAGE): turn.user_text });
         RunPayload {
             run_id: Cow::Owned(self.run_id.to_string()),
             fencing_token: u64::try_from(self.fence).unwrap_or_default(),
             setup_revision_id: None,
             turn_resume: None,
             run_expires_at: self.expires_at,
-            event: EventEnvelope {
-                event_id: Cow::Owned(turn.message_id.to_string()),
+            event: TurnEnvelope {
+                turn_id: Cow::Owned(turn.message_id.to_string()),
                 // A draft's run names its draft where a fleet's names its fleet.
                 fleet_id: Cow::Owned(turn.draft_id.to_string()),
                 workspace_id: Cow::Owned(turn.workspace_id.to_string()),
                 actor: Cow::Owned(turn.user_id.to_string()),
-                event_type: EventType::Chat,
+                event_type: TurnKind::Chat,
                 request_json: Cow::Owned(request.to_string()),
                 created_at: turn.message_created_at,
             },

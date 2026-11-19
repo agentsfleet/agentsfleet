@@ -32,7 +32,7 @@ const ADMIT: &str = include_str!("../sql/message/admit.sql");
 
 /// A setup draft's turn is a person's chat message, so `thread.turns.kind`
 /// stores the chat event type for it.
-const TURN_KIND: &str = af_wire::event::EventType::Chat.as_str();
+const TURN_KIND: &str = af_wire::turn::TurnKind::Chat.as_str();
 
 #[derive(sqlx::FromRow)]
 struct Admission {

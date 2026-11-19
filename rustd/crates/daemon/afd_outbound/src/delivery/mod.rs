@@ -67,7 +67,7 @@ pub struct Delivery<'a> {
     /// Where that connector posts it, as the producer recorded it at admission.
     pub destination: &'a str,
     /// The event the answer is threaded onto.
-    pub event_id: &'a Uuid7,
+    pub turn_id: &'a Uuid7,
     /// What to say.
     pub answer: &'a str,
 }
@@ -89,7 +89,7 @@ pub struct Outgoing {
     /// Where that connector posts it.
     pub destination: String,
     /// The event the answer is threaded onto.
-    pub event_id: Uuid7,
+    pub turn_id: Uuid7,
     /// What to say.
     pub answer: String,
 }
@@ -142,7 +142,7 @@ pub async fn owe(
         .bind(delivery.fleet_id)
         .bind(delivery.workspace_id)
         .bind(delivery.provider.id())
-        .bind(delivery.event_id)
+        .bind(delivery.turn_id)
         .bind(delivery.answer)
         .bind(delivery.destination)
         .bind(token)

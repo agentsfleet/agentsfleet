@@ -75,10 +75,10 @@ pub struct MemoryFilter {
     pub limit: Option<String>,
 }
 
-/// What an event history is narrowed by.
+/// What a turn history is narrowed by.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
-pub struct EventFilter {
+pub struct TurnFilter {
     /// Use the returned `next_cursor` unchanged. Cannot be combined with `since`.
     pub cursor: Option<String>,
     /// Glob filter against the row's actor. `*` is a wildcard.

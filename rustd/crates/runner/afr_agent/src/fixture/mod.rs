@@ -37,7 +37,7 @@ pub(crate) const GITHUB_TOKEN: &str = "ghp_fixture_token_abcdef";
 pub(crate) fn payload(tools: &[&str], budget: serde_json::Value) -> RunPayload<'static> {
     let mut document = serde_json::json!({
         "run_id": "run-1", "fencing_token": 7, "run_expires_at": AT,
-        "event": {"event_id": "event-1", "fleet_id": "fleet-1", "workspace_id": "ws-1",
+        "event": {"turn_id": "event-1", "fleet_id": "fleet-1", "workspace_id": "ws-1",
             "actor": "operator-1", "event_type": "chat",
             "request_json": "{\"message\":\"triage the failed run\"}", "created_at": AT},
         "policy": {"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},

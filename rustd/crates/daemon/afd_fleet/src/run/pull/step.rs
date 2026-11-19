@@ -64,7 +64,7 @@ pub(in crate::run) fn claim_lost<T>(runner_id: &Uuid7, acquired: &Acquired) -> S
     // scores the dead copy.
     let runner = runner_id.as_str();
     let fleet_id = acquired.fleet_id.as_str();
-    let agentsfleet_event_id = acquired.event_id.as_str();
+    let agentsfleet_turn_id = acquired.turn_id.as_str();
     let fence = acquired.fence.as_i64();
     {
         let (event, runner_id, fencing_token, message) = (
@@ -78,7 +78,7 @@ pub(in crate::run) fn claim_lost<T>(runner_id: &Uuid7, acquired: &Acquired) -> S
             event,
             runner_id,
             fleet_id,
-            agentsfleet_event_id,
+            agentsfleet_turn_id,
             fencing_token
         );
     };

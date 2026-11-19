@@ -57,7 +57,7 @@ pub(super) fn terminal<'a>(
             wall_ms: i64::try_from(request.telemetry.wall_ms).unwrap_or(i64::MAX),
             tool_calls,
         },
-        last_event_id: run.last_event,
+        last_turn_id: run.last_event,
         last_response: request.checkpoint.last_response.as_ref(),
         held_until: request.held_until,
         task_settlement: None,
@@ -70,7 +70,7 @@ pub(super) fn terminal<'a>(
 pub(super) fn stored_trace(run: &Reported, request: &ReportRequest<'_>) -> Option<String> {
     let owner = TraceOwner {
         fleet_id: &run.fleet_id,
-        event_id: &run.event_id,
+        turn_id: &run.turn_id,
         fence: run.fence.as_i64(),
     };
     tool_trace::stored(request.tool_calls, owner)
@@ -93,12 +93,12 @@ pub(super) fn reconciled(
         fleet_id: run.fleet_id,
         workspace_id: run.workspace_id,
         tenant_id: run.tenant_id,
-        event_id: run.event_id,
+        turn_id: run.turn_id,
         posture: run.posture,
         provider: run.provider,
         model: run.model,
         repeated,
-        event_created_at: run.event_created_at,
+        turn_created_at: run.turn_created_at,
         run_created_at: run.run_created_at,
         completed_at,
     }

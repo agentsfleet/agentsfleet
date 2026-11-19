@@ -32,7 +32,7 @@ pub(super) async fn offer(native: &mut Native) -> TestResult<Held> {
                 .ok_or("fleet id missing")?,
         )?,
         event: Uuid7::parse(
-            wire::pointer(run, "/event/event_id")
+            wire::pointer(run, "/event/turn_id")
                 .as_str()
                 .ok_or("event id missing")?,
         )?,
@@ -118,9 +118,9 @@ async fn assert_settled(scene: &Scenario, held: &Held, cancelled: bool) -> TestR
     assert_eq!(
         saved.0,
         if cancelled {
-            af_core::event::status::FLEET_ERROR
+            af_core::turn::status::FLEET_ERROR
         } else {
-            af_core::event::status::PROCESSED
+            af_core::turn::status::PROCESSED
         }
     );
     assert_eq!(saved.1.as_deref(), cancelled.then_some("renewal_terminate"));

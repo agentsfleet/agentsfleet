@@ -14,7 +14,7 @@
 
 use af_crypto::entropy::Entropy;
 use afd_tenant::preference::Preferences;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use afd_turns::view::{Filter, History, Steer, prefix_to_like, steer_actor};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
@@ -116,10 +116,10 @@ async fn fleet_steer_refuses_a_key_a_person_took() {
     let (run, fence) = crew.speaking.run_seeded().await;
     let text = "open the fix";
     let digest = af_core::etag::sha256_hex(text.as_bytes());
-    let operation = format!("{}:{}", crew.run().event_id, &digest[..KEY_DIGEST_HEX]);
+    let operation = format!("{}:{}", crew.run().turn_id, &digest[..KEY_DIGEST_HEX]);
 
     let scene = crew.run();
-    let admissions = Admissions::for_tests(scene.booted.database.clone(), scene.booted.bus.clone());
+    let admissions = Turns::for_tests(scene.booted.database.clone(), scene.booted.bus.clone());
     let person = steer_actor(PERSON);
     Steer::new(admissions)
         .append(

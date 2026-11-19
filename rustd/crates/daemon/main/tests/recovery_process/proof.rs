@@ -43,7 +43,7 @@ pub(super) async fn checkpoint(scene: &Scenario, covered: &Uuid7) -> Checked<Uui
     let (id, ready, sealed, folds): (Uuid7, bool, bool, Vec<Uuid7>) = sqlx::query_as(
         "SELECT p.id,p.ready_at IS NOT NULL,p.root_secret_ciphertext IS NOT NULL,p.covered_fold_ids
         FROM runner.turn_recovery h JOIN runner.turn_checkpoints p ON p.id=h.head_turn_checkpoint_id WHERE h.turn_id=$1")
-        .bind(&scene.event_id).fetch_one(&mut *connection).await?;
+        .bind(&scene.turn_id).fetch_one(&mut *connection).await?;
     assert!(ready && sealed);
     assert_eq!(folds, vec![covered.clone()]);
     Ok(id)
@@ -54,9 +54,9 @@ pub(super) async fn deadline(scene: &Scenario) -> Checked<jiff::Timestamp> {
     let expiry: jiff_sqlx::Timestamp = sqlx::query_scalar(
         "SELECT GREATEST(l.run_expires_at,s.run_expires_at) FROM thread.runs l
         JOIN thread.threads s ON s.fleet_id=l.fleet_id
-        WHERE l.event_id=$1 AND l.runner_id=$2 ORDER BY l.created_at DESC LIMIT 1",
+        WHERE l.turn_id=$1 AND l.runner_id=$2 ORDER BY l.created_at DESC LIMIT 1",
     )
-    .bind(&scene.event_id)
+    .bind(&scene.turn_id)
     .bind(&scene.runner_id)
     .fetch_one(&mut *connection)
     .await?;
@@ -73,9 +73,9 @@ pub(super) async fn no_early_issue(
             let mut connection = scene.booted.database.acquire().await?;
             let (live, issued): (bool, bool) = sqlx::query_as(
                 "SELECT clock_timestamp()<$3::timestamptz,EXISTS(
-                    SELECT 1 FROM thread.runs WHERE event_id=$1 AND runner_id=$2)",
+                    SELECT 1 FROM thread.runs WHERE turn_id=$1 AND runner_id=$2)",
             )
-            .bind(&scene.event_id)
+            .bind(&scene.turn_id)
             .bind(runner)
             .bind(deadline.to_sqlx())
             .fetch_one(&mut *connection)
@@ -103,18 +103,18 @@ pub(super) async fn replacement(
     let mut connection = scene.booted.database.acquire().await?;
     let (run, fence, previous, issued): (Uuid7, i64, i64, jiff_sqlx::Timestamp) = sqlx::query_as(
         "SELECT b.id,b.fencing_token,a.fencing_token,b.created_at FROM thread.runs b
-        JOIN thread.runs a ON a.event_id=b.event_id AND a.runner_id=$3
-        WHERE b.event_id=$1 AND b.runner_id=$2",
+        JOIN thread.runs a ON a.turn_id=b.turn_id AND a.runner_id=$3
+        WHERE b.turn_id=$1 AND b.runner_id=$2",
     )
-    .bind(&scene.event_id)
+    .bind(&scene.turn_id)
     .bind(runner)
     .bind(&scene.runner_id)
     .fetch_one(&mut *connection)
     .await?;
     assert_eq!(fence, previous + 1);
     assert!(issued.to_jiff() >= deadline);
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE event_id=$1")
-        .bind(&scene.event_id)
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE turn_id=$1")
+        .bind(&scene.turn_id)
         .fetch_one(&mut *connection)
         .await?;
     assert_eq!(count, 2);
@@ -142,8 +142,8 @@ pub(super) async fn settled(scene: &Scenario, winner: &Winner, folds: &[Uuid7]) 
             let result: Option<String> = sqlx::query_scalar(
                 "SELECT answer_text FROM thread.turns WHERE id=$1 AND status=$2",
             )
-            .bind(&scene.event_id)
-            .bind(af_core::event::status::PROCESSED)
+            .bind(&scene.turn_id)
+            .bind(af_core::turn::status::PROCESSED)
             .fetch_optional(&mut *connection)
             .await?;
             if let Some(answer) = result {
@@ -160,7 +160,7 @@ pub(super) async fn settled(scene: &Scenario, winner: &Winner, folds: &[Uuid7]) 
         "SELECT answer_text FROM thread.turns WHERE id=ANY($1::uuid[]) AND status=$2",
     )
     .bind(folds)
-    .bind(af_core::event::status::PROCESSED)
+    .bind(af_core::turn::status::PROCESSED)
     .fetch_all(&mut *connection)
     .await?;
     assert_eq!(responses, vec![outcome.clone(), outcome]);

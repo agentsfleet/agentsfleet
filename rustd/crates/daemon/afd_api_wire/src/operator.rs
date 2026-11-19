@@ -136,9 +136,9 @@ pub struct RunnerDetail<'a> {
 pub enum RunOutcome {
     /// The run remains held by this runner.
     Running,
-    /// Its Fleet event settled successfully.
+    /// Its fleet turn settled successfully.
     Succeeded,
-    /// Its Fleet event settled as a fleet error.
+    /// Its fleet turn settled as a fleet error.
     Failed,
     /// This holder was superseded by a reclaim.
     Expired,
@@ -159,12 +159,12 @@ pub enum RunDestination {
     NotPermitted,
 }
 
-/// Whether the run was the event's first claim or a later reclaim.
+/// Whether the run was the turn's first claim or a later reclaim.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunKind {
-    /// First claim of the Fleet event.
+    /// First claim of the fleet turn.
     Fresh,
     /// Claim after an earlier holder expired.
     Reclaim,
@@ -178,7 +178,7 @@ pub struct RunnerRunItem<'a> {
     /// Run identifier and external pagination cursor.
     #[serde(borrow)]
     pub id: Cow<'a, str>,
-    /// Fleet whose event was held.
+    /// Fleet whose turn was held.
     #[serde(borrow)]
     pub fleet_id: Cow<'a, str>,
     /// Current display name, absent if the fleet row is gone.
@@ -186,16 +186,16 @@ pub struct RunnerRunItem<'a> {
     pub fleet_name: Option<Cow<'a, str>>,
     /// Whether the caller can open the fleet. Never inferred from the name.
     pub destination: RunDestination,
-    /// Workspace owning the Fleet event.
+    /// Workspace owning the fleet turn.
     #[serde(borrow)]
     pub workspace_id: Cow<'a, str>,
-    /// Fleet event identifier.
+    /// Fleet turn identifier.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
-    /// Fleet event type, absent once the event row is gone.
+    pub turn_id: Cow<'a, str>,
+    /// Fleet turn type, absent once the turn row is gone.
     #[serde(borrow)]
     pub event_type: Option<Cow<'a, str>>,
-    /// Actor recorded on the Fleet event, absent once the event row is gone.
+    /// Actor recorded on the fleet turn, absent once the turn row is gone.
     #[serde(borrow)]
     pub actor: Option<Cow<'a, str>>,
     /// Server-derived closed outcome.
@@ -267,7 +267,7 @@ mod tests {
                 fleet_name: Some(Cow::Borrowed("Production")),
                 destination: RunDestination::Available,
                 workspace_id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb012"),
-                event_id: Cow::Borrowed("1725000000000-0"),
+                turn_id: Cow::Borrowed("1725000000000-0"),
                 event_type: Some(Cow::Borrowed("chat")),
                 actor: Some(Cow::Borrowed("user:operator")),
                 outcome: RunOutcome::Failed,
@@ -298,7 +298,7 @@ mod tests {
                     "fleet_name": "Production",
                     "destination": "available",
                     "workspace_id": "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb012",
-                    "event_id": "1725000000000-0",
+                    "turn_id": "1725000000000-0",
                     "event_type": "chat",
                     "actor": "user:operator",
                     "outcome": "failed",

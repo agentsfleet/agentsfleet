@@ -35,7 +35,7 @@ WITH runner AS (
             NULL, NULL, now(), now(), now(), now())
 )
 INSERT INTO thread.runs
-  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
+  (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at, fencing_token, run_expires_at,
    status, posted_message_count,
    created_at, updated_at)

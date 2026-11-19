@@ -20,7 +20,7 @@ impl Admission {
     /// the money gates that answer the same shape.
     ///
     /// [`Verdict::Archived`] ends the event under
-    /// [`af_core::event::label::FLEET_ARCHIVED`], through the same refusal a
+    /// [`af_core::turn::label::FLEET_ARCHIVED`], through the same refusal a
     /// human's no takes. Archive is terminal, so a retry would leave the event
     /// waiting forever on a fleet that never runs again.
     #[must_use]
@@ -30,13 +30,13 @@ impl Admission {
             Verdict::Pass => None,
             Verdict::Await(waiting) => Some(Self::Await(waiting)),
             Verdict::Refuse(Refused::Denied) => Some(Self::Refuse(Refusal::labelled(
-                af_core::event::label::APPROVAL_DENIED,
+                af_core::turn::label::APPROVAL_DENIED,
             ))),
             Verdict::Refuse(Refused::Expired) => Some(Self::Refuse(Refusal::labelled(
-                af_core::event::label::APPROVAL_EXPIRED,
+                af_core::turn::label::APPROVAL_EXPIRED,
             ))),
             Verdict::Archived => Some(Self::Refuse(Refusal::labelled(
-                af_core::event::label::FLEET_ARCHIVED,
+                af_core::turn::label::FLEET_ARCHIVED,
             ))),
             Verdict::Unavailable => Some(Self::Retry(Transient { at: GATE })),
         }
@@ -99,13 +99,13 @@ mod tests {
         assert_eq!(
             Admission::of_gate(Verdict::Refuse(Refused::Denied)),
             Some(Admission::Refuse(crate::run::admit::Refusal::labelled(
-                af_core::event::label::APPROVAL_DENIED
+                af_core::turn::label::APPROVAL_DENIED
             )))
         );
         assert_eq!(
             Admission::of_gate(Verdict::Refuse(Refused::Expired)),
             Some(Admission::Refuse(crate::run::admit::Refusal::labelled(
-                af_core::event::label::APPROVAL_EXPIRED
+                af_core::turn::label::APPROVAL_EXPIRED
             )))
         );
     }
@@ -117,7 +117,7 @@ mod tests {
         assert_eq!(
             Admission::of_gate(Verdict::Archived),
             Some(Admission::Refuse(crate::run::admit::Refusal::labelled(
-                af_core::event::label::FLEET_ARCHIVED
+                af_core::turn::label::FLEET_ARCHIVED
             )))
         );
     }

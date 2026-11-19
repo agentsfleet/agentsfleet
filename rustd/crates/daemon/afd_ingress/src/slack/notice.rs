@@ -91,7 +91,7 @@ impl Ingress {
                 workspace_id: owed.workspace,
                 provider: owed.provider,
                 destination: owed.address,
-                event_id: &row,
+                turn_id: &row,
                 answer: owed.text,
             },
         )

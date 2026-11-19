@@ -1,7 +1,7 @@
 //! Routes addressed by a workspace alone.
 //!
 //! The fleet-addressed half lives in [`super::fleet`]. What is left here is
-//! the workspace's own surface: its secrets, its event tail, its approval
+//! the workspace's own surface: its secrets, its turn tail, its approval
 //! inbox, and the preferences a person sets on it.
 
 use afd_auth::Scope;
@@ -46,10 +46,10 @@ pub enum WorkspaceRoute {
     Secrets,
     /// One secret, by name.
     Secret,
-    /// The workspace's event history.
-    Events,
-    /// The workspace's live event stream.
-    EventsStream,
+    /// The workspace's turn history.
+    Turns,
+    /// The workspace's live turn stream.
+    TurnsStream,
     /// Onboarding state.
     Onboarding,
     /// One preference.
@@ -80,8 +80,8 @@ impl WorkspaceRoute {
         Self::Fleets,
         Self::Secrets,
         Self::Secret,
-        Self::Events,
-        Self::EventsStream,
+        Self::Turns,
+        Self::TurnsStream,
         Self::Onboarding,
         Self::Preference,
         Self::Approvals,
@@ -101,8 +101,8 @@ impl WorkspaceRoute {
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
             Self::Models
-            | Self::Events
-            | Self::EventsStream
+            | Self::Turns
+            | Self::TurnsStream
             | Self::DraftStream
             | Self::Onboarding
             | Self::Approvals
@@ -131,7 +131,7 @@ impl WorkspaceRoute {
     /// rather than a wildcard, so a new route has to say which it is.
     const fn class(self) -> RouteClass {
         match self {
-            Self::DraftStream | Self::EventsStream => RouteClass::Stream,
+            Self::DraftStream | Self::TurnsStream => RouteClass::Stream,
             Self::Models
             | Self::Drafts
             | Self::Draft
@@ -144,7 +144,7 @@ impl WorkspaceRoute {
             | Self::Fleets
             | Self::Secrets
             | Self::Secret
-            | Self::Events
+            | Self::Turns
             | Self::Onboarding
             | Self::Preference
             | Self::Approvals
@@ -162,7 +162,7 @@ impl WorkspaceRoute {
             Self::Draft => workspace_path!("/drafts/{draft_id}"),
             Self::DraftMessages => workspace_path!("/drafts/{draft_id}/messages"),
             Self::DraftCancellations => workspace_path!("/drafts/{draft_id}/cancellations"),
-            Self::DraftStream => workspace_path!("/drafts/{draft_id}/events/stream"),
+            Self::DraftStream => workspace_path!("/drafts/{draft_id}/turns/stream"),
             Self::Plugin => workspace_path!("/plugins"),
             Self::PluginItem => workspace_path!("/plugins/{plugin_id}"),
             Self::PluginRevisions => {
@@ -174,8 +174,8 @@ impl WorkspaceRoute {
             Self::Fleets => workspace_path!("/fleets"),
             Self::Secrets => workspace_path!("/secrets"),
             Self::Secret => workspace_path!("/secrets/{name}"),
-            Self::Events => workspace_path!("/events"),
-            Self::EventsStream => workspace_path!("/events/stream"),
+            Self::Turns => workspace_path!("/turns"),
+            Self::TurnsStream => workspace_path!("/turns/stream"),
             Self::Onboarding => workspace_path!("/onboarding"),
             Self::Preference => workspace_path!("/preferences/{pref_key}"),
             Self::Approvals => workspace_path!("/approvals"),
@@ -200,8 +200,8 @@ impl WorkspaceRoute {
         match self {
             Self::Models
             | Self::PluginRevision
-            | Self::Events
-            | Self::EventsStream
+            | Self::Turns
+            | Self::TurnsStream
             | Self::Members => Scopes::Always(FLEET_READ),
             Self::Drafts
             | Self::Draft

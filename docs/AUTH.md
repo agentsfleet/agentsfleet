@@ -684,7 +684,7 @@ A confirmed remote sign-out remains visible even if the following refresh fails.
 
 ### SSE stream: Next Route Handler injects Bearer
 
-The seven token-minting proxy routes (per-fleet and workspace `events` + `events/stream`, the per-fleet event detail `events/{eventId}`, one tool call in full `events/{eventId}/tool-calls/{callId}`, and the steer `POST messages`) live under `/live/*`, deliberately OUTSIDE the `/backend/:path*` rewrite: on Vercel the edge router let the rewrite shadow same-prefix filesystem route handlers, sending EventSource requests cookie-only to the API (401 `UZ-AUTH-002`). A prefix the rewrite cannot match makes the routing unambiguous on every platform. `tests/stream-proxy-routing.test.ts` checks that no proxy URL starts with a rewrite prefix and that each has a handler on disk.
+The seven token-minting proxy routes (per-fleet and workspace `turns` + `turns/stream`, the per-fleet turn detail `turns/{turnId}`, one tool call in full `turns/{turnId}/items/{itemId}`, and the steer `POST messages`) live under `/live/*`, deliberately OUTSIDE the `/backend/:path*` rewrite: on Vercel the edge router let the rewrite shadow same-prefix filesystem route handlers, sending EventSource requests cookie-only to the API (401 `UZ-AUTH-002`). A prefix the rewrite cannot match makes the routing unambiguous on every platform. `tests/stream-proxy-routing.test.ts` checks that no proxy URL starts with a rewrite prefix and that each has a handler on disk.
 
 Each route mints through `credential()` (`ui/packages/app/lib/auth/credential.ts`), the one place the dashboard resolves a bearer, the same way a Server Action does. The four JSON reads share `lib/api/live-json-proxy.ts`, so their dot-segment guard, bearer minting and error passthrough live once.
 
@@ -704,17 +704,17 @@ A request with no session is answered 401 `UZ-AUTH-401`. The browser's `postStee
 ```mermaid
 sequenceDiagram
     participant Browser
-    participant Next as Next.js<br/>Route Handler<br/>(/live/v1/workspaces/{workspaceId}/fleets/{fleetId}/events/stream)
+    participant Next as Next.js<br/>Route Handler<br/>(/live/v1/workspaces/{workspaceId}/fleets/{fleetId}/turns/stream)
     participant Clerk as Clerk SDK
     participant API as agentsfleetd
 
-    Browser->>Next: EventSource("/live/v1/workspaces/{workspaceId}/fleets/{fleetId}/events/stream")<br/>Cookie: __session (same origin as the dashboard)
+    Browser->>Next: EventSource("/live/v1/workspaces/{workspaceId}/fleets/{fleetId}/turns/stream")<br/>Cookie: __session (same origin as the dashboard)
     Note over Next: /live/* sits outside the /backend rewrite,<br/>so this handler always answers
 
     Next->>Clerk: credential() → auth().getToken()<br/>(server-side, from the request's session)
     Clerk-->>Next: customized session token (aud = OIDC_AUDIENCE)
 
-    Next->>API: GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream<br/>Authorization: Bearer <session token><br/>Accept: text/event-stream
+    Next->>API: GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream<br/>Authorization: Bearer <session token><br/>Accept: text/event-stream
     API-->>Next: 200 text/event-stream
 
     Next-->>Browser: 200 Content-Type: text/event-stream<br/>(streams upstream body through)
@@ -826,7 +826,7 @@ That scope is a discrete capability held only by platform operators, revocable i
 
 There is no open registration token.
 
-The operator plane has its own scopes (`rustd/crates/daemon/afd_http/src/route/runner_ops.rs`). `runner:read` fronts the list `GET /v1/admin/runners`, one runner `GET /v1/admin/runners/{runner_id}`, and its `/events` and `/runs`; `runner:write` fronts `PATCH` and `DELETE /v1/admin/runners/{runner_id}`.
+The operator plane has its own scopes (`rustd/crates/daemon/afd_http/src/route/runner_ops.rs`). `runner:read` fronts the list `GET /v1/admin/runners`, one runner `GET /v1/admin/runners/{runner_id}`, and its `/history` and `/runs`; `runner:write` fronts `PATCH` and `DELETE /v1/admin/runners/{runner_id}`.
 
 Sending `{"action":"rotate"}` atomically replaces the stored runner-token digest and returns the replacement `runner_token` once. The old token fails the next authentication read. The response and audit log never expose the old token, and the audit event records the operator subject.
 

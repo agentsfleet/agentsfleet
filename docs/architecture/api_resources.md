@@ -156,7 +156,7 @@ Exact accepted replay is checked first. Retrying uses an explicit new message an
 
 Grant checks record actual approved access; missing approval cannot be logged as ready.
 
-`Start` request is `{kind:"none"}` or `{kind:"run_now",message}` (message 1..32,768 UTF-8 bytes). Result is `{kind:"none"}` or `{kind:"run_now",state:"pending"|"accepted"|"blocked",event_id?,error_code?}`. Derive the initial admission's one identity from creation, not another client key.
+`Start` request is `{kind:"none"}` or `{kind:"run_now",message}` (message 1..32,768 UTF-8 bytes). Result is `{kind:"none"}` or `{kind:"run_now",state:"pending"|"accepted"|"blocked",turn_id?,error_code?}`. Derive the initial admission's one identity from creation, not another client key.
 
 `start.accepted` requires confirmation of the committed initial admission with the expected event identity (`afd_setup`'s start confirm). Ordinary fleet-message acceptance also requires a committed admission. Wake notifications are best effort.
 
@@ -207,7 +207,7 @@ The next two tables preserve the workspace-chat cutover's 17 new and seven chang
 | N7 | POST D/messages | `{message,save?,operation_id}`; text1..32,768 bytes; body UUIDv7 only; `editing`; omitted `save` is false | 202 `{status:"accepted",sequence,replayed}`; `Location:D/messages`; queued answer not implied | INPUT, STATE, REPLAY, GONE, HIDDEN, UNKNOWN, DEPENDENCY |
 | N8 | GET D/messages | No body; creator; limit default 20/max 25, starting_after | 200 Page of Message; ordered sequence then role; states/usage included | HIDDEN, CURSOR, INPUT, DEPENDENCY |
 | N9 | POST D/cancellations | `{through_sequence}` decimal string, at most current last accepted sequence; no If-Match | 200 `{cancelled_through,stopped:[{sequence,state:"cancelled"}]}`; lower repeated cutoff returns standing watermark | INPUT, HIDDEN, DEPENDENCY |
-| N10 | GET D/events/stream | Creator; `Last-Event-ID` optional ephemeral hint; no body | 200 `text/event-stream`; typed progress described below; reconnect reconciles GET D/messages and GET D | HIDDEN, AUTH, DEPENDENCY |
+| N10 | GET D/turns/stream | Creator; `Last-Event-ID` optional ephemeral hint; no body | 200 `text/event-stream`; typed progress described below; reconnect reconciles GET D/messages and GET D | HIDDEN, AUTH, DEPENDENCY |
 | N11 | POST F/revisions | If-Match setup tag + Idempotency-Key; `{draft_candidate_id,review_digest,origin?}`; own authorized idle improvement draft targets this fleet | 201 `{fleet_id,setup_revision,setup_etag,etag,review_digest,schedules[]}`; Location F, ETag resource tag | PRECONDITION, STALE, REVIEW, POLICY, REPLAY, HIDDEN, STATE |
 | N13 | GET G | No body; optional `revision_id` to Inspect a pinned revision; fleet:read | 200 Plugin; selected revision and review; ETag | HIDDEN, INPUT, DEPENDENCY |
 | N14 | DELETE G | No body; plugins:write; owned only | 204 deletes entry and Plugin history; installed fleets retain independent fleet revisions | HIDDEN (foreign), AUTH, DEPENDENCY |
@@ -228,7 +228,7 @@ Title is a human display name, independent of validated definition slugs. Runtim
 | C1 | POST W/fleets | Idempotency-Key; `{source:{kind:"draft",draft_candidate_id}|{kind:"plugin",plugin_id,revision_id},name,review_digest,start:Start,origin?}`; draft must be creator-owned/idle, Plugin install can bypass drafts | 201 Fleet with `status:active|installing`, setup checks, start outcome, schedules; Location F and ETag; key retry resumes same identity | REPLAY, GONE, REVIEW, HIDDEN, INPUT, POLICY, DEPENDENCY |
 | C2 | GET F | No body; fleet:read | 200 Fleet including current setup/start and both resource/setup tags | existing fleet404 `UZ-AGT-009`, AUTH, DEPENDENCY |
 | C3 | PATCH F | Required If-Match resource tag; `{status?,name?}` only; at least one. `active` on installing retries checks, `archived` cancels setup and live work | 200 Fleet and ETag; cancelled linked draft returns editing | PRECONDITION, STALE, STATE, INPUT, AUTH, DEPENDENCY; an archived fleet returns 409 `UZ-AGT-020` with `current_state: archived` after write preconditions pass; a fleet that does not exist returns 404 `UZ-AGT-009` |
-| C4 | POST F/messages | `{message,operation_id?}`; message 1..8,192 bytes; operation_id 1..200 bytes when supplied; neither permits NUL; no header key | 202 `{status:"accepted",event_id,replayed,disposition,folded_into_event_id?}`; `disposition` is `started`, `folded` or `queued`, and `folded_into_event_id` names the live run a folded message joined; Location F/messages; recovery through existing message read/stream | INPUT, REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
+| C4 | POST F/messages | `{message,operation_id?}`; message 1..8,192 bytes; operation_id 1..200 bytes when supplied; neither permits NUL; no header key | 202 `{status:"accepted",turn_id,replayed,disposition,folded_into_turn_id?}`; `disposition` is `started`, `folded` or `queued`, and `folded_into_turn_id` names the live run a folded message joined; Location F/messages; recovery through existing message read/stream | INPUT, REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
 | C5 | PATCH F/schedules/{schedule_id} | Required If-Match schedule tag; `{override:ScheduleOverride|null}` for inherited recipe; independent schedule uses `{cron?,timezone?,message?,status?}` and cannot Restore | 200 Schedule and ETag; tag covers recipe revision + instance setup revision + override revision; null restores exact inherited setup | PRECONDITION, STALE, INPUT, STATE, existing schedule404 `UZ-SCHED-002`, DEPENDENCY |
 | C6 | POST W/plugins | Idempotency-Key; `{draft_candidate_id,label}`; creator-owned valid idle candidate; plugins:write | 201 `{plugin_id,revision_id,head_revision_id,etag}`; Location G; explicit publication receipt on linked draft | INPUT, REPLAY, GONE, POLICY, STATE, AUTH, DEPENDENCY |
 | C7 | GET W/plugins | Bounded limit/starting_after paging; no body | 200 Page of account-owned PluginCard, including head_revision_id, its decimal head_revision and etag | existing plugin input/cursor errors, AUTH, DEPENDENCY |
@@ -250,7 +250,7 @@ The fleet, conversations, and receipts are bounded independent reads, rather tha
 
 The existing GET F/messages includes undelivered, unsettled steer admissions alongside delivered history in one statement snapshot (`afd_turns`'s thread-page statements). It preserves the queued-message shape, logical event ID, ordering, cursor, and authorization across delivery and settlement.
 
-A message that folded into a live run keeps its own event. Once the run's report succeeds, that event carries `resumes_event_id`, naming the run, and the run's answer as its reply.
+A message that folded into a live run keeps its own event. Once the run's report succeeds, that event carries `resumes_turn_id`, naming the run, and the run's answer as its reply.
 
 This is an internal read change, not another route. Retry after an uncertain acceptance reuses the original operation ID.
 
@@ -285,7 +285,7 @@ Removal is immediate; there is no alias. The following are absent:
 
 - Fleet creation/attempt resources.
 
-- Draft revisions/events collections and preview POST.
+- Draft revisions/turns collections and preview POST.
 
 - Publication/deletion resources and definition-update resources.
 

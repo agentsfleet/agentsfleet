@@ -17,12 +17,12 @@ use afd_api_wire::tail::TailFrame;
 use afd_db::Precondition;
 use afd_turns::Unheld;
 use afd_turns::view::{
-    CallAddress, Cursor, EventDetailRow, EventRow, Filter, FleetSteer, FleetSteered, History,
-    Result as EventResult, Steer, Steered, ToolCallRow,
+    CallAddress, Cursor, Filter, FleetSteer, FleetSteered, History, Result as EventResult, Steer,
+    Steered, ToolCallRow, TurnDetailRow, TurnRow,
 };
 
 /// Everything the event-history routes act through.
-pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
+pub trait WorkspaceTurns: Send + Sync + std::fmt::Debug + 'static {
     /// One page of a workspace's history, newest first.
     ///
     /// `fleet` narrows the page to one fleet without changing the statement.
@@ -38,7 +38,7 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         filter: &Filter,
         cursor: Option<&Cursor>,
         limit: i64,
-    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send;
+    ) -> impl Future<Output = EventResult<Vec<TurnRow>>> + Send;
 
     /// One page of `actor`'s events in a single fleet, newest first, matched
     /// exactly: a schedule's runs, under `cron:<schedule_id>`.
@@ -52,7 +52,7 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         actor: &str,
         cursor: Option<&Cursor>,
         limit: i64,
-    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send;
+    ) -> impl Future<Output = EventResult<Vec<TurnRow>>> + Send;
 
     /// One page of a fleet's chat thread, newest first, bodies included.
     ///
@@ -69,11 +69,11 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         cursor: Option<&Cursor>,
         limit: i64,
         event_type: Option<&str>,
-    ) -> impl Future<Output = EventResult<Vec<EventDetailRow>>> + Send;
+    ) -> impl Future<Output = EventResult<Vec<TurnDetailRow>>> + Send;
 
     /// One event, inside this workspace and fleet, bodies included.
     ///
-    /// [`EventDetailRow`] rather than the listing's row, because this is the
+    /// [`TurnDetailRow`] rather than the listing's row, because this is the
     /// only read that carries `request_json` and `response_text`. A page of up
     /// to two hundred rows would pay for both on every one of them; an expanded
     /// row is asked for one.
@@ -86,8 +86,8 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &Uuid7,
-    ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send;
+        turn_id: &Uuid7,
+    ) -> impl Future<Output = EventResult<Option<TurnDetailRow>>> + Send;
 
     /// One tool call's kept record, inside this workspace, fleet and event.
     ///
@@ -98,13 +98,13 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &Uuid7,
+        turn_id: &Uuid7,
         call: CallAddress,
     ) -> impl Future<Output = EventResult<Option<ToolCallRow>>> + Send;
 }
 
 /// The production reader answers each directly.
-impl WorkspaceEvents for History {
+impl WorkspaceTurns for History {
     fn page_for_workspace(
         &self,
         workspace: &Uuid7,
@@ -112,7 +112,7 @@ impl WorkspaceEvents for History {
         filter: &Filter,
         cursor: Option<&Cursor>,
         limit: i64,
-    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send {
+    ) -> impl Future<Output = EventResult<Vec<TurnRow>>> + Send {
         Self::page_for_workspace(self, workspace, fleet, filter, cursor, limit)
     }
 
@@ -123,7 +123,7 @@ impl WorkspaceEvents for History {
         actor: &str,
         cursor: Option<&Cursor>,
         limit: i64,
-    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send {
+    ) -> impl Future<Output = EventResult<Vec<TurnRow>>> + Send {
         Self::page_of_actor(self, workspace, fleet, actor, cursor, limit)
     }
 
@@ -134,7 +134,7 @@ impl WorkspaceEvents for History {
         cursor: Option<&Cursor>,
         limit: i64,
         event_type: Option<&str>,
-    ) -> impl Future<Output = EventResult<Vec<EventDetailRow>>> + Send {
+    ) -> impl Future<Output = EventResult<Vec<TurnDetailRow>>> + Send {
         Self::filtered_thread_page(self, workspace, fleet, cursor, limit, event_type)
     }
 
@@ -142,25 +142,25 @@ impl WorkspaceEvents for History {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &Uuid7,
-    ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send {
-        Self::detail(self, workspace, fleet, event_id)
+        turn_id: &Uuid7,
+    ) -> impl Future<Output = EventResult<Option<TurnDetailRow>>> + Send {
+        Self::detail(self, workspace, fleet, turn_id)
     }
 
     fn tool_call(
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &Uuid7,
+        turn_id: &Uuid7,
         call: CallAddress,
     ) -> impl Future<Output = EventResult<Option<ToolCallRow>>> + Send {
-        Self::tool_call(self, workspace, fleet, event_id, call)
+        Self::tool_call(self, workspace, fleet, turn_id, call)
     }
 }
 
 /// What the steer verb acts through.
 ///
-/// Its own trait rather than a method on [`WorkspaceEvents`], because it is
+/// Its own trait rather than a method on [`WorkspaceTurns`], because it is
 /// its own store: the reads hold a Postgres pool, and this holds the admission
 /// ledger and the bus it notifies through — which is exactly the seam a suite
 /// proving the refusal matrix must not have to construct.

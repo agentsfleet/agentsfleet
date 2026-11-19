@@ -5,7 +5,7 @@ use std::time::Duration;
 use sqlx::postgres::types::PgInterval;
 
 use crate::error::{Result, query};
-use crate::{Admissions, sql};
+use crate::{Turns, sql};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_BACKLOG: &str = "read the admission backlog";
@@ -19,7 +19,7 @@ pub struct LedgerBacklog {
     pub oldest_age: Option<Duration>,
 }
 
-impl Admissions {
+impl Turns {
     /// How many rows remain unsettled, and how long the oldest has waited.
     ///
     /// Read whole rather than from a replay batch: a batch is capped, and a

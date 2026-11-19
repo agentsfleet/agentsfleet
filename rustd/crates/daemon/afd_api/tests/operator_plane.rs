@@ -80,7 +80,7 @@ async fn assert_runner_reads_reach_store(runner_reader: &axum::Router) {
     let events = send(
         runner_reader,
         Method::GET,
-        &format!("/v1/admin/runners/{RUNNER}/events"),
+        &format!("/v1/admin/runners/{RUNNER}/history"),
         Some(TENANT_KEY),
         "",
     )
@@ -108,7 +108,7 @@ async fn runner_events_reject_filter_shape_before_io() {
         let malformed = send(
             &runner_reader,
             Method::GET,
-            &format!("/v1/admin/runners/{RUNNER}/events?{query}"),
+            &format!("/v1/admin/runners/{RUNNER}/history?{query}"),
             Some(TENANT_KEY),
             "",
         )
@@ -320,7 +320,7 @@ async fn every_runner_route_refuses_a_malformed_runner_id_with_one_sentence() {
         .router();
     for (method, tail) in [
         (Method::GET, ""),
-        (Method::GET, "/events"),
+        (Method::GET, "/history"),
         (Method::GET, "/runs"),
         (Method::PATCH, ""),
         (Method::DELETE, ""),

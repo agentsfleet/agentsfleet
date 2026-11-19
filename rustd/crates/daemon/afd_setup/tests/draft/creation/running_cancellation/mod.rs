@@ -16,7 +16,7 @@ use super::{
 pub(super) type TestResult<T = ()> = afd_setup::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 const RUN: &str = "INSERT INTO thread.runs \
-    (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at, \
+    (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at, \
      posture, provider, model, last_metered_at, fencing_token, run_expires_at, \
      status, posted_message_count, created_at, updated_at) \
     VALUES ($1,$2,$3,$4,$5,$6,now(),$7,$8,$9,now(),$10, \
@@ -38,7 +38,7 @@ async fn archive_marks_running_runs_before_another_replica_receives_the_cancel()
         database: case.base.db.clone(),
         observed,
     });
-    let admissions = afd_turns::Admissions::new(
+    let admissions = afd_turns::Turns::new(
         case.base.db.clone(),
         publisher,
         af_crypto::entropy::Entropy::new(),

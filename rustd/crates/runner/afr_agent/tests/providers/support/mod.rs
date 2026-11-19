@@ -218,7 +218,7 @@ pub(crate) fn payload(provider: &str, tools: &[&str], message: &str) -> RunPaylo
     let request = serde_json::json!({ "message": message }).to_string();
     let document = serde_json::json!({
         "run_id": RUN_ID, "fencing_token": 1, "run_expires_at": AT,
-        "event": {"event_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
+        "event": {"turn_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
             "event_type": "chat", "request_json": request, "created_at": AT},
         "policy": {"model_context_tokens": 200_000,"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
             "tools": tools, "secrets_map": {"github": {"token": TOKEN, "host": "api.github.com"}},

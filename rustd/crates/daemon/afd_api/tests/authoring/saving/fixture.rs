@@ -1,8 +1,8 @@
 //! Each Save owns its private draft, wallet and model.
 
 use super::super::{fixture::Fixture, json_body, mint, send, send_with_headers};
-use af_core::event::status::RECORDED;
 use af_core::id::Uuid7;
+use af_core::turn::status::RECORDED;
 use afd_auth::Scope;
 use afd_db::test_util::{RunnerPolicy, RunnerSeed};
 use afd_turns::view::activity::{ACTOR_ACTIVITY, EVENT_TYPE_ACTIVITY};
@@ -151,7 +151,7 @@ const RUNNER_STATUS_ACTIVE: &str = afd_runner::sql::RUNNER_STATUS_ACTIVE;
 const RUN_STATUS_ACTIVE: &str = afd_state::sql::RUN_STATUS_ACTIVE;
 /// One live run, expiring a run TTL from now.
 const LIVE_RUN: &str = "INSERT INTO thread.runs \
-    (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at, \
+    (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at, \
      posture, provider, model, last_metered_at, fencing_token, run_expires_at, \
      status, posted_message_count, created_at, updated_at) \
     VALUES ($1,$2,$3,$4,$5,$6,now(),'self_managed','fixture-provider','fixture-model', \
@@ -230,7 +230,7 @@ pub(super) fn history_identities(page: &Value, fleet: &str, workspace: &str) -> 
     for row in rows {
         assert_eq!(row["fleet_id"], fleet);
         assert_eq!(row["workspace_id"], workspace);
-        let id = row["event_id"].as_str().expect("event identity");
+        let id = row["turn_id"].as_str().expect("event identity");
         assert!(
             identities.insert(id.to_owned()),
             "unique history identities"

@@ -141,7 +141,7 @@ pub struct RunSegments {
 pub struct ReportCheckpoint<'a> {
     /// The last event this session processed.
     #[serde(borrow)]
-    pub last_event_id: Cow<'a, str>,
+    pub last_turn_id: Cow<'a, str>,
     /// The last response it produced.
     #[serde(borrow)]
     pub last_response: Cow<'a, str>,
@@ -161,7 +161,7 @@ pub struct ReportRequest<'a> {
     pub run_id: Cow<'a, str>,
     /// The event this report is about.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
+    pub turn_id: Cow<'a, str>,
     /// Monotonic guard, verified against the fleet's live sequence.
     pub fencing_token: u64,
     /// The binary verdict.

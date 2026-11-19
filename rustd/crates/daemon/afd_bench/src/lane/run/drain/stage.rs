@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_approval::IntegrationGrants;
 use afd_billing::Accounts;
 use afd_credential::credential::platform::Platform;
@@ -82,7 +82,7 @@ pub(super) async fn stage(
     };
     platform::stage(stores, &staged.kek, INDEX_BASE).await?;
     for fleet in &staged.fleets {
-        seed::enqueue(&stores.database, &stores.bus, fleet, EventType::Chat).await?;
+        seed::enqueue(&stores.database, &stores.bus, fleet, TurnKind::Chat).await?;
     }
     for index in 0..parameters.runners {
         let host = prefix.name(&format!("{HOST_SUFFIX}-{index}"));

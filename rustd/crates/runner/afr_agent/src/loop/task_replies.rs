@@ -61,7 +61,7 @@ impl Harness<'_, '_> {
                     .task_input_receipt(TaskInputReceiptInput {
                         fencing_token: self.shared.fencing_token,
                         operation_id: crate::decision::identity()?,
-                        source_admission_id: accepted.source_admission_id.clone(),
+                        source_turn_id: accepted.source_turn_id.clone(),
                         plan_digest: accepted.plan_digest.clone(),
                         item_id: binding.item_id.clone(),
                         task,

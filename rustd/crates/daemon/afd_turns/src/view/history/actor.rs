@@ -5,7 +5,7 @@ use af_core::id::Uuid7;
 use jiff_sqlx::ToSqlx as _;
 
 use super::statement::{SELECT_FLEET_PAGE_OF_ACTOR, SELECT_FLEET_PAGE_OF_ACTOR_AFTER};
-use super::{Cursor, EventRow, History, MAX_LIMIT};
+use super::{Cursor, History, MAX_LIMIT, TurnRow};
 use crate::view::error::{self, Result};
 
 /// What the read was doing, for the operator's log line.
@@ -23,7 +23,7 @@ impl History {
         actor: &str,
         cursor: Option<&Cursor>,
         limit: i64,
-    ) -> Result<Vec<EventRow>> {
+    ) -> Result<Vec<TurnRow>> {
         let query = cursor.map_or_else(
             || {
                 sqlx::query(SELECT_FLEET_PAGE_OF_ACTOR)
@@ -35,7 +35,7 @@ impl History {
                     .bind(workspace)
                     .bind(fleet)
                     .bind(at.created_at.to_sqlx())
-                    .bind(&at.event_id)
+                    .bind(&at.turn_id)
             },
         );
         let mut connection = self.database.acquire().await?;
@@ -45,6 +45,6 @@ impl History {
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_ACTOR_PAGE))?;
-        rows.iter().map(EventRow::read).collect()
+        rows.iter().map(TurnRow::read).collect()
     }
 }

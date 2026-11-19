@@ -62,7 +62,7 @@ where
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Folded {
     /// Stable admission identity retained for exact checkpoint publication and adoption.
-    pub event_id: String,
+    pub turn_id: String,
     /// Its place in the fleet's order; the report names the last one read.
     pub sequence: i64,
     /// What the person wrote, unscrubbed: the run masks it with everything else.

@@ -40,7 +40,7 @@ async fn disabled_resume_preserves_the_head_and_fence_until_enabled() -> Checked
     assert_eq!(unrelated.fleet_id, other.fleet);
     case.runs = disabled.with_checkpoint_resume(true);
     case.replace().await?;
-    assert_eq!(case.acquired.event_id.as_str(), saved.scope.event_id.0);
+    assert_eq!(case.acquired.turn_id.as_str(), saved.scope.turn_id.0);
     case.fixtures.cleanup().await;
     Ok(())
 }

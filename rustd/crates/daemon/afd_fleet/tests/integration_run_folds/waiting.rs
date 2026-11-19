@@ -28,7 +28,7 @@ async fn reclaimed_says_waiting(held: &Held) -> Checked<bool> {
     let reclaimed = crate::seed::select_fleet(&held.runs, &held.spare, &held.fleet)
         .await
         .ok_or("the spare reclaims the lapsed head")?;
-    assert_eq!(reclaimed.event_id, held.event_id, "the same head");
+    assert_eq!(reclaimed.turn_id, held.turn_id, "the same head");
     Ok(reclaimed.opened.inputs_waiting)
 }
 

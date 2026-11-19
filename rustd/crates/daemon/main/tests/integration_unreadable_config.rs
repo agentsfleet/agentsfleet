@@ -32,7 +32,7 @@
 )]
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_db::test_util::{
     FIXTURE_SETUP_MODEL_REF, FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
 };
@@ -94,7 +94,7 @@ async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
     );
 
     let poisoned = seed_unreadable_fleet(&scene).await;
-    let poisoned_event = enqueue(&scene.booted, &poisoned, &scene.workspace, EventType::Chat).await;
+    let poisoned_event = enqueue(&scene.booted, &poisoned, &scene.workspace, TurnKind::Chat).await;
 
     // The deployment still serves work. Every poll on the way is asserted to
     // answer 200, which is the regression this file exists for: before the
@@ -103,7 +103,7 @@ async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
     let (run_id, fence) = wait_for_seeded_offer(&scene).await;
 
     // Settled so the runner's one run slot is free for the polls below.
-    let settled = crate::wire::report(&scene, &report_body(&run_id, &scene.event_id, fence)).await;
+    let settled = crate::wire::report(&scene, &report_body(&run_id, &scene.turn_id, fence)).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
 
     // And the neighbour is ended rather than retried forever, which is what

@@ -3,10 +3,10 @@
 use super::{Fallible, lane::Lane};
 use af_core::test_util::trace::Capture;
 use af_core::test_util::trace::install_subscriber;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_bus::test_util::Server;
 use afd_bus::{Bus, Handle, Received, Subject, Subscription};
-use afd_turns::{Admission, Admissions, Admitted, Key, Producer, Reply as ReplyTo};
+use afd_turns::{Admitted, IncomingTurn, Key, Producer, Reply as ReplyTo, Turns};
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -20,7 +20,7 @@ const REQUEST_JSON: &str = r#"{"message":"receipt fixture"}"#;
 const FIELD_EVENT: &str = "event";
 
 /// The line a lost notification is logged under.
-pub(super) const RING_FAILED: &str = "admission_wake_ring_failed";
+pub(super) const RING_FAILED: &str = "turn_wake_ring_failed";
 
 /// What the server half sends down a wake shard after the rings it holds.
 const DRAINED: &str = "drained";
@@ -128,7 +128,7 @@ pub(super) fn silent() -> Handle {
 
 /// The lane's admissions over an in-process bus, and a reader on every wake
 /// shard of it, for a case that drives the server half to read the rings.
-pub(super) async fn over_bus(lane: &Lane) -> Fallible<(Rings, Admissions)> {
+pub(super) async fn over_bus(lane: &Lane) -> Fallible<(Rings, Turns)> {
     let (bus, server) = afd_bus::test_util::detached()?;
     let rings = Rings::open(&bus, server).await?;
     Ok((rings, over(lane, bus)))
@@ -136,21 +136,18 @@ pub(super) async fn over_bus(lane: &Lane) -> Fallible<(Rings, Admissions)> {
 
 /// The lane's admissions over the integration lane's NATS, for a case that
 /// reads no wake ring.
-pub(super) async fn over_lane(lane: &Lane) -> Fallible<Admissions> {
+pub(super) async fn over_lane(lane: &Lane) -> Fallible<Turns> {
     let bus = afd_bus::test_util::lane().await?;
     Ok(over(lane, bus))
 }
 
 /// The lane's admissions over `bus`.
-pub(super) fn over(lane: &Lane, bus: Handle) -> Admissions {
+pub(super) fn over(lane: &Lane, bus: Handle) -> Turns {
     install_subscriber();
-    Admissions::for_tests(lane.database.clone(), bus)
+    Turns::for_tests(lane.database.clone(), bus)
 }
 
-pub(super) async fn confirm(
-    admissions: &Admissions,
-    lane: &Lane,
-) -> Fallible<afd_turns::Confirmation> {
+pub(super) async fn confirm(admissions: &Turns, lane: &Lane) -> Fallible<afd_turns::Confirmation> {
     admissions
         .confirm(Producer::Steer, lane.fleet.as_str())
         .await?
@@ -161,15 +158,15 @@ pub(super) async fn confirm(
 /// the admission logged on this thread.
 pub(crate) async fn admit_against(
     lane: &Lane,
-    admissions: &Admissions,
+    admissions: &Turns,
 ) -> Run<afd_turns::Result<Admitted>> {
-    recording(admissions.admit(Admission {
+    recording(admissions.admit(IncomingTurn {
         producer: Producer::Steer,
         key: Key::Repeated(lane.fleet.as_str()),
         fleet: &lane.fleet,
         workspace: &lane.workspace,
         actor: ACTOR,
-        event_type: EventType::Chat,
+        event_type: TurnKind::Chat,
         request_json: REQUEST_JSON,
         reply: ReplyTo::None,
     }))

@@ -15,7 +15,7 @@ pub(super) fn request(case: &Case, task: Option<TaskReport>) -> ReportRequest<'_
         setup: None,
         task,
         run_id: Cow::Borrowed(case.held.run_key.as_str()),
-        event_id: Cow::Borrowed(case.held.event_id.as_str()),
+        turn_id: Cow::Borrowed(case.held.turn_id.as_str()),
         fencing_token: case.run().fencing_token,
         outcome: Outcome::Processed,
         failure_reason: None,
@@ -29,7 +29,7 @@ pub(super) fn request(case: &Case, task: Option<TaskReport>) -> ReportRequest<'_
             segments: None,
         },
         checkpoint: ReportCheckpoint {
-            last_event_id: Cow::Borrowed(case.held.event_id.as_str()),
+            last_turn_id: Cow::Borrowed(case.held.turn_id.as_str()),
             last_response: Cow::Borrowed("ordinary session cursor"),
         },
         tool_calls: None,
@@ -176,7 +176,7 @@ async fn assert_accounted(case: &Case, task_id: &Uuid7, reason: &str) {
     assert!(
         case.held
             .fixtures
-            .admission_settled(&case.held.event_id)
+            .admission_settled(&case.held.turn_id)
             .await
     );
 }
@@ -213,7 +213,7 @@ async fn malformed_stale_and_unpaid_semantic_reports_never_prepare_a_permit() {
             !case
                 .held
                 .fixtures
-                .admission_settled(&case.held.event_id)
+                .admission_settled(&case.held.turn_id)
                 .await
         );
         assert_eq!(case.counts().await, (1, 1, 1));

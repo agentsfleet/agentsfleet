@@ -46,9 +46,9 @@ async fn enqueue(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) -> Uuid7
         .bind(fleet)
         .bind(workspace)
         .bind(afd_turns::Producer::Steer.as_str())
-        .bind(af_wire::event::EventType::Chat.as_str())
+        .bind(af_wire::turn::TurnKind::Chat.as_str())
         .bind(fixtures.enrolled_at().to_sqlx())
-        .bind(af_core::event::status::QUEUED)
+        .bind(af_core::turn::status::QUEUED)
         .execute(
             &mut *fixtures
                 .database
@@ -118,7 +118,7 @@ async fn test_fleet_rows_run_in_order_behind_a_park() {
         .expect("answer gate");
     for event in events {
         let acquired = next(&runs, &runner).await.expect("unparked head");
-        assert_eq!(acquired.event_id, event);
+        assert_eq!(acquired.turn_id, event);
         finish(&runs, &mut connection, acquired).await;
     }
     assert!(
@@ -133,7 +133,7 @@ async fn test_fleet_rows_run_in_order_behind_a_park() {
 /// Advance the ordering fixture; the benchmark separately drives real reports.
 async fn finish(runs: &Runs, connection: &mut sqlx::PgConnection, acquired: Acquired) {
     sqlx::query(FINISH)
-        .bind(&acquired.event_id)
+        .bind(&acquired.turn_id)
         .execute(connection)
         .await
         .expect("fixture settled");
@@ -169,7 +169,7 @@ async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
     );
     transaction.rollback().await.expect("unlock head");
     assert_eq!(
-        next(&runs, &runner).await.expect("head available").event_id,
+        next(&runs, &runner).await.expect("head available").turn_id,
         head
     );
     drop(connection);

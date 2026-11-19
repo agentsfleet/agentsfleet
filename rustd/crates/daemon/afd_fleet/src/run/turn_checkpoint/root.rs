@@ -80,7 +80,7 @@ pub(super) fn validate(
     {
         return Err(TurnCheckpointRefusal::Incompatible.into());
     }
-    let unique: BTreeSet<_> = folds.iter().map(|fold| &fold.event_id).collect();
+    let unique: BTreeSet<_> = folds.iter().map(|fold| &fold.turn_id).collect();
     if unique.len() != folds.len()
         || folds.windows(2).any(|pair| {
             pair.first().map(|fold| fold.sequence) >= pair.get(1).map(|fold| fold.sequence)
@@ -160,7 +160,7 @@ fn aad(owner: &TurnRunGuard<'_>, plan: &Plan, wrapping: i32) -> Aad {
     Aad::turn_recovery(
         &owner.current.workspace_id,
         &owner.current.fleet_id,
-        &owner.current.event_id,
+        &owner.current.turn_id,
         plan.generation,
         plan.format_version,
         wrapping,
@@ -183,6 +183,6 @@ where
 pub(super) fn fold_ids(folds: &[FoldRef]) -> Result<Vec<Uuid7>> {
     folds
         .iter()
-        .map(|fold| super::guard::id(&fold.event_id))
+        .map(|fold| super::guard::id(&fold.turn_id))
         .collect()
 }

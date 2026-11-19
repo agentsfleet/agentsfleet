@@ -67,7 +67,7 @@ fn assert_item(request: &af_wire::decision::DecisionRequest, source: &Uuid7) {
         Some(&json!("café 🦉"))
     );
     assert_eq!(
-        request.state.get("source_admission_id"),
+        request.state.get("source_turn_id"),
         Some(&json!(source.as_str()))
     );
     assert_eq!(
@@ -131,7 +131,7 @@ fn item(
             None,
         )
         .into_inner();
-    input.source_admission_id = source.to_string();
+    input.source_turn_id = source.to_string();
     garde::Unvalidated::new(input)
         .validate()
         .expect("bounded independent item request")

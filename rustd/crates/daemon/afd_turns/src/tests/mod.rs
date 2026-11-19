@@ -7,11 +7,11 @@ use std::sync::LazyLock;
 
 use af_core::id::Uuid7;
 
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 
 use super::admit::ReplyBinds;
 use super::budget::DEPLOYMENT_BACKLOG_BUDGET;
-use super::{Admission, Budgets, Key, Producer, Reply};
+use super::{Budgets, IncomingTurn, Key, Producer, Reply};
 
 /// Every producer, so spelling and key ownership stay exhaustive.
 ///
@@ -37,14 +37,14 @@ static OTHER_WORKSPACE: LazyLock<Uuid7> =
     LazyLock::new(|| afd_db::test_util::fixed_id("019feca5-bc9b-72e8-b71f-e2714f6b0999"));
 
 /// An admission whose fields a test then varies one at a time.
-fn sample() -> Admission<'static> {
-    Admission {
+fn sample() -> IncomingTurn<'static> {
+    IncomingTurn {
         producer: Producer::Webhook,
         key: Key::Repeated("fleet-1:delivery-9"),
         fleet: &FLEET,
         workspace: &WORKSPACE,
         actor: "steer:user_1",
-        event_type: EventType::Webhook,
+        event_type: TurnKind::Webhook,
         request_json: r#"{"message":"hello"}"#,
         reply: Reply::None,
     }
@@ -89,19 +89,19 @@ fn one_payload_digests_the_same_however_often_it_is_admitted() {
 fn every_digested_field_changes_the_digest() {
     let base = sample().payload_digest();
     let varied = [
-        Admission {
+        IncomingTurn {
             actor: "steer:user_2",
             ..sample()
         },
-        Admission {
-            event_type: EventType::Chat,
+        IncomingTurn {
+            event_type: TurnKind::Chat,
             ..sample()
         },
-        Admission {
+        IncomingTurn {
             workspace: &OTHER_WORKSPACE,
             ..sample()
         },
-        Admission {
+        IncomingTurn {
             request_json: r#"{"message":"goodbye"}"#,
             ..sample()
         },
@@ -123,14 +123,14 @@ fn every_digested_field_changes_the_digest() {
 /// payload.
 #[test]
 fn two_fields_cannot_slide_into_each_other() {
-    let left = Admission {
+    let left = IncomingTurn {
         reply: Reply::To {
             connector: "ab",
             address: "c",
         },
         ..sample()
     };
-    let right = Admission {
+    let right = IncomingTurn {
         reply: Reply::To {
             connector: "a",
             address: "bc",

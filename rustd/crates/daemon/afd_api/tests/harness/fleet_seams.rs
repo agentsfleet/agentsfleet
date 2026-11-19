@@ -124,7 +124,7 @@ impl Fleet {
         self.memories = self.memories.with_activity_streams(bus.clone());
         self.creations = afd_setup::Creations::new(
             self.authoring_setup.clone(),
-            afd_turns::Admissions::for_tests(database.clone(), bus).with_budgets(budgets),
+            afd_turns::Turns::for_tests(database.clone(), bus).with_budgets(budgets),
         );
         self.fleets = Fleets::new(database);
         self
@@ -147,7 +147,7 @@ impl Fleet {
     /// admission. The bus receives the notification after acceptance.
     pub(crate) fn with_live_ingress(mut self, database: Db, bus: afd_bus::Handle) -> Self {
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
-        let ledger = afd_turns::Admissions::for_tests(database.clone(), bus);
+        let ledger = afd_turns::Turns::for_tests(database.clone(), bus);
         self.ingress = HarnessIngress::Unreachable(Box::new(Ingress::new(
             database.clone(),
             SecretVault::new(database, kek, Entropy::new()),
@@ -158,7 +158,7 @@ impl Fleet {
 
     /// Admit a verified schedule fire to the live ledger and notify through `bus`.
     pub(crate) fn with_live_fire(mut self, database: Db, bus: afd_bus::Handle) -> Self {
-        let ledger = afd_turns::Admissions::for_tests(database.clone(), bus);
+        let ledger = afd_turns::Turns::for_tests(database.clone(), bus);
         self.schedules = SchedulePlane::new(
             ScheduleService::new(
                 CronSchedules::new(database, Entropy::new()),
@@ -177,7 +177,7 @@ impl Fleet {
 
     /// Admit fleet messages to the live ledger and send wake notifications.
     pub(crate) fn with_steering_queue(mut self, database: Db, bus: afd_bus::Handle) -> Self {
-        self.steering = Steer::new(afd_turns::Admissions::for_tests(database, bus));
+        self.steering = Steer::new(afd_turns::Turns::for_tests(database, bus));
         self
     }
 

@@ -16,7 +16,7 @@ pub(super) struct RunRow {
     pub fleet_id: Uuid7,
     pub workspace_id: Uuid7,
     pub tenant_id: Uuid7,
-    pub source_admission_id: Uuid7,
+    pub source_turn_id: Uuid7,
     pub task_id: Option<Uuid7>,
     pub capable: bool,
     pub task_generation: Option<i64>,

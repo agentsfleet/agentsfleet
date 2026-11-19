@@ -17,7 +17,7 @@ const AT: &str = "1970-01-01T00:00:00.001Z";
 fn payload(provider: &str) -> RunPayload<'static> {
     let document = serde_json::json!({
         "run_id": "run-1", "fencing_token": 1, "run_expires_at": AT,
-        "event": {"event_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
+        "event": {"turn_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
             "event_type": "chat", "request_json": "{}", "created_at": AT},
         "policy": {"model_context_tokens": 200_000,"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
             "tools": [], "secrets_map": null, "mintable": [], "provider": provider,

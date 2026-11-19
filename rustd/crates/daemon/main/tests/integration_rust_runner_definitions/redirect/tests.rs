@@ -43,7 +43,7 @@ async fn an_interrupted_job_log_returns_no_usable_source_text() {
         vec![github_get("log", JOB_LOG)],
         vec![say("Required log unavailable.")],
     ]);
-    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
     assert_eq!(settled.answer, "Required log unavailable.");
     let asked = transcript.asked();
     let result = asked
@@ -78,7 +78,7 @@ async fn read_redirect_case(provider: &str, redirect: u16, status: u16) {
         vec![github_get("log", JOB_LOG)],
         vec![say("Source read inspected.")],
     ]);
-    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
     assert_eq!(
         (settled.status.as_str(), settled.answer.as_str()),
         ("processed", "Source read inspected.")
@@ -118,8 +118,8 @@ async fn assert_retained_read(scene: &Scenario, status: u16) {
     let call = &trace["calls"][2];
     let id = call["call_id"].as_str().expect("fenced call id");
     let path = format!(
-        "/v1/workspaces/{}/fleets/{}/events/{}/tool-calls/{id}",
-        scene.workspace, scene.fleet, scene.event_id
+        "/v1/workspaces/{}/fleets/{}/turns/{}/items/{id}",
+        scene.workspace, scene.fleet, scene.turn_id
     );
     let detail = tenant_get(&http, scene, &token, &path).await;
     assert_eq!(detail["truncated"], false);

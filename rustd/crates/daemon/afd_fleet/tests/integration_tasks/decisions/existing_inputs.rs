@@ -119,7 +119,7 @@ pub(super) async fn proposed(
         }),
     );
     let mut reservation = (*reservation).clone();
-    reservation.source_admission_id = source.to_string();
+    reservation.source_turn_id = source.to_string();
     let reservation = garde::Unvalidated::new(reservation)
         .validate()
         .expect("claimed message reservation");
@@ -152,7 +152,7 @@ fn binding(
 ) -> TaskBindingsInput {
     let mut input = TaskBindingsInput {
         fencing_token: fixture.case.run().fencing_token,
-        source_admission_id: source.to_string(),
+        source_turn_id: source.to_string(),
         accepted_revision_id: fixture.revision.to_string(),
         plan_digest: "0".repeat(64),
         message_decision_call_id: call,

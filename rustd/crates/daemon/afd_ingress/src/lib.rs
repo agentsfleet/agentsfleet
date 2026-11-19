@@ -67,7 +67,7 @@ pub mod sql;
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use afd_vault::Vault;
 
 pub use self::app::{Fanout, MAX_FANOUT, replay_id};
@@ -86,7 +86,7 @@ const CONTEXT_BINDING: &str = "resolve a webhook binding";
 
 /// The three stores a signed delivery is resolved through.
 ///
-/// Cheap to clone: [`Db`] and [`Admissions`] are handles over shared pools and
+/// Cheap to clone: [`Db`] and [`Turns`] are handles over shared pools and
 /// [`Vault`] holds its key behind an `Arc`, so every clone shares one
 /// connection set and one copy of the key.
 #[derive(Debug, Clone)]
@@ -100,7 +100,7 @@ pub struct Ingress {
     /// checked against a projection.
     vault: Vault,
     /// Where the verified delivery is accepted, before anything is queued.
-    pub(crate) admissions: Admissions,
+    pub(crate) admissions: Turns,
     /// What a channel binding's identifier is minted from.
     entropy: Entropy,
 }
@@ -108,7 +108,7 @@ pub struct Ingress {
 impl Ingress {
     /// Binds the ingress to an already-connected pool, vault and ledger.
     #[must_use]
-    pub const fn new(database: Db, vault: Vault, admissions: Admissions) -> Self {
+    pub const fn new(database: Db, vault: Vault, admissions: Turns) -> Self {
         Self {
             database,
             vault,

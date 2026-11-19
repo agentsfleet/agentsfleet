@@ -90,7 +90,7 @@ impl Ledger {
                 workspace_id: &lane.workspace,
                 provider: Provider::Slack,
                 destination: DESTINATION,
-                event_id: &event,
+                turn_id: &event,
                 answer,
             },
         )
@@ -126,7 +126,7 @@ impl Ledger {
              attempt_count, receipt, \
              COALESCE(next_attempt_at > now() + interval '20 seconds', false) AS due_later, \
              extract(epoch FROM claim_expires_at)::float8 AS claim_expires \
-             FROM thread.deliveries WHERE event_id = $1",
+             FROM thread.deliveries WHERE turn_id = $1",
         )
         .bind(event)
         .fetch_one(&mut *connection)
@@ -153,7 +153,7 @@ impl Ledger {
     pub(super) async fn steal(&self, event: &Uuid7) {
         sql(
             &self.database,
-            "UPDATE thread.deliveries SET receipt = $2 WHERE event_id = $1",
+            "UPDATE thread.deliveries SET receipt = $2 WHERE turn_id = $1",
             &[event, &thief()],
         )
         .await;

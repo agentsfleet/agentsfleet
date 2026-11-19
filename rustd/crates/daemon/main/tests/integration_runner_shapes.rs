@@ -20,7 +20,7 @@ use crate::wire::{
 ///
 /// `posted_message_count` is `NOT NULL`, so every run carries it from the
 /// moment it is written, and the messages verb counts against it under the
-/// run's fence. The run names its event by its id (`event_id`); the
+/// run's fence. The run names its event by its id (`turn_id`); the
 /// actor and type are read from the event, not copied onto the run.
 const RUN_SHAPE: &[&str] = &[
     "id",
@@ -28,8 +28,8 @@ const RUN_SHAPE: &[&str] = &[
     "fleet_id",
     "workspace_id",
     "tenant_id",
-    "event_id",
-    "event_created_at",
+    "turn_id",
+    "turn_created_at",
     "posture",
     "provider",
     "model",
@@ -53,7 +53,7 @@ const EVENT_SHAPE: &[&str] = &["id", "runner_id", "event_type", "metadata", "cre
 /// `platform_model_price_id` the catalogue row it was priced at — so their
 /// presence HERE, on a line the booted daemon wrote through the real report
 /// and settle path, proves both reach production rather than merely the
-/// statement text. `authoring_attempt_id` belongs to setup chat and stays
+/// statement text. `run_id` belongs to setup chat and stays
 /// empty on a fleet line.
 const LEDGER_SHAPE: &[&str] = &[
     "id",
@@ -65,7 +65,7 @@ const LEDGER_SHAPE: &[&str] = &[
     "workspace_id",
     "fleet_id",
     "fleet_name",
-    "event_id",
+    "turn_id",
     "provider",
     "model",
     "posture",
@@ -147,7 +147,7 @@ async fn complete_cycle(http: &reqwest::Client, scene: &Scenario) -> String {
     .await;
     assert_eq!(captured.status().as_u16(), 200, "the memory capture lands");
 
-    let settled = crate::wire::report(scene, &report_body(&run_id, &scene.event_id, fence)).await;
+    let settled = crate::wire::report(scene, &report_body(&run_id, &scene.turn_id, fence)).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
     run_id
 }
@@ -168,9 +168,9 @@ async fn assert_rows(scene: &Scenario, run_id: &str) {
     assert_shape(
         scene,
         "billing.usage_lines",
-        "id = (SELECT id FROM billing.usage_lines WHERE event_id = $1 \
+        "id = (SELECT id FROM billing.usage_lines WHERE turn_id = $1 \
          ORDER BY requested_at DESC, id DESC LIMIT 1)",
-        &scene.event_id,
+        &scene.turn_id,
         LEDGER_SHAPE,
     )
     .await;
@@ -207,7 +207,7 @@ async fn assert_settled_in_the_ledger(scene: &Scenario) {
         "SELECT run_fence IS NOT NULL AND opened_at IS NOT NULL AND settled_at IS NOT NULL \
          FROM thread.turns WHERE id = $1 AND thread_id = $2",
     )
-    .bind(&scene.event_id)
+    .bind(&scene.turn_id)
     .bind(&scene.fleet)
     .fetch_one(&mut *scene.booted.database.acquire().await.expect("database"))
     .await

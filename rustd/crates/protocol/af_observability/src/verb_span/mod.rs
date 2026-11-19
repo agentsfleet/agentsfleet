@@ -157,7 +157,7 @@ pub struct VerbClock<S: Stage, C: Ticks = HostTicks> {
     started: Instant,
     last: Instant,
     stages: Vec<(S, Duration)>,
-    event_id: Option<String>,
+    turn_id: Option<String>,
     agent_id: Option<String>,
     discarded: bool,
 }
@@ -189,7 +189,7 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
             last: started,
             ticks,
             stages: Vec::with_capacity(MOST_STAGES),
-            event_id: None,
+            turn_id: None,
             agent_id: None,
             discarded: false,
         }
@@ -208,8 +208,8 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
     }
 
     /// The event this verb served and the fleet it belongs to.
-    pub fn identify(&mut self, event_id: &str, agent_id: &str) {
-        self.event_id = Some(event_id.to_owned());
+    pub fn identify(&mut self, turn_id: &str, agent_id: &str) {
+        self.turn_id = Some(turn_id.to_owned());
         self.agent_id = Some(agent_id.to_owned());
     }
 
@@ -255,7 +255,7 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
         self.started = now;
         self.last = now;
         self.stages.clear();
-        self.event_id = None;
+        self.turn_id = None;
         self.agent_id = None;
     }
 
@@ -295,7 +295,7 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
     /// The identity, then each reached stage in whole milliseconds.
     fn attributes(&self) -> Vec<KeyValue> {
         let identity = [
-            (semconv::ATTR_EVENT_ID, &self.event_id),
+            (semconv::ATTR_TURN_ID, &self.turn_id),
             (semconv::ATTR_AGENT_ID, &self.agent_id),
         ];
         let named = identity

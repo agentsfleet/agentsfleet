@@ -22,7 +22,7 @@ use crate::run::Offered;
 use crate::run::answer::{EVENT_ASSIGNED, no_work};
 use crate::run::envelope::Acquired;
 use crate::run::pull::{AdmittedFleetWork, Assigned, RunService, Step};
-use af_core::event::label;
+use af_core::turn::label;
 use af_wire::run::RunPayload;
 use afd_gate::policy::build::{self, Assembled};
 use afd_gate::policy::repair;
@@ -53,7 +53,7 @@ impl RunService {
         )
         .await?;
         let branch = Self::repair_branch(
-            admitted.acquired.event_id.as_str(),
+            admitted.acquired.turn_id.as_str(),
             &admitted.installed.config,
         );
         let granted = match admitted.granted.clone() {
@@ -116,7 +116,7 @@ impl RunService {
     /// redelivery cadence raises one card rather than sixty a minute.
     ///
     /// A DENIED grant ends the event. The gate that denied it carries no
-    /// `event_id` and so could not end anything itself; this is where a
+    /// `turn_id` and so could not end anything itself; this is where a
     /// person's no stops the redelivery. An open card parks the delivery, and
     /// anything else stops it for the next poll to ask again.
     async fn ungranted<T>(
@@ -180,7 +180,7 @@ impl RunService {
     ///
     /// Still no fleet and no workspace in the name: an identifier read off a
     /// public repository says when, never whose.
-    fn repair_branch(event_id: &str, config: &FleetConfig) -> Option<String> {
+    fn repair_branch(turn_id: &str, config: &FleetConfig) -> Option<String> {
         let binding = config.repository_binding()?;
         if binding.access() != Access::Write {
             return None;
@@ -190,7 +190,7 @@ impl RunService {
         // thing that mints one and it spells `<millis>-<sequence>`, so every
         // write-bound delivery lost its branch and the assembly refused the
         // event.
-        Some(repair::branch_for(event_id))
+        Some(repair::branch_for(turn_id))
     }
 }
 
@@ -297,7 +297,7 @@ fn log_issued(runner_id: &Uuid7, run_id: &Uuid7, acquired: &Acquired, issued_at:
     let runner_id = runner_id.as_str();
     let run_id = run_id.as_str();
     let fleet_id = acquired.fleet_id.as_str();
-    let agentsfleet_event_id = acquired.event_id.as_str();
+    let agentsfleet_turn_id = acquired.turn_id.as_str();
     let queue_wait_ms = queue_wait::of(acquired, issued_at);
     {
         let (event, message) = (&EVENT_ASSIGNED, format_args!("a run was issued"));
@@ -307,7 +307,7 @@ fn log_issued(runner_id: &Uuid7, run_id: &Uuid7, acquired: &Acquired, issued_at:
             runner_id,
             run_id,
             fleet_id,
-            agentsfleet_event_id,
+            agentsfleet_turn_id,
             queue_wait_ms
         );
     };

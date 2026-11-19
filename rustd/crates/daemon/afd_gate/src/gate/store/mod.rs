@@ -73,19 +73,19 @@ impl Gates {
         &self.entropy
     }
 
-    /// The gate `event_id` is already waiting on, if any.
+    /// The gate `turn_id` is already waiting on, if any.
     ///
-    /// Read from `fleet.approval_gates` on `idx_approval_gates_fleet_id_event_id`:
+    /// Read from `fleet.approval_gates` on `idx_approval_gates_fleet_id_turn_id`:
     /// the recorded question still decides that event, even after a policy edit.
     ///
     /// # Errors
     /// Reports an unreadable database or stored identifier. The caller must not
     /// treat an unreadable reference as an event with no prior gate.
-    pub async fn recorded(&self, fleet_id: &Uuid7, event_id: &Uuid7) -> Result<Option<GateRef>> {
+    pub async fn recorded(&self, fleet_id: &Uuid7, turn_id: &Uuid7) -> Result<Option<GateRef>> {
         let mut connection = self.database.acquire().await?;
         let action: Option<Uuid7> = sqlx::query_scalar(sql::SELECT_EVENT_GATE)
             .bind(fleet_id)
-            .bind(event_id)
+            .bind(turn_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_REFERENCE))?;

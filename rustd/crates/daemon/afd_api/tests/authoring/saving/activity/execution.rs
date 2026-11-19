@@ -88,7 +88,7 @@ async fn assert_runtime_context(saved: &Saved) {
         1,
         "the positive runtime turn remains while all receipts are excluded"
     );
-    assert_eq!(turns[0].row.event_id, control);
+    assert_eq!(turns[0].row.turn_id, control);
     assert_eq!(turns[0].response_text.as_deref(), Some("Runtime reply"));
     assert_eq!(turns[0].row.event_type, "chat");
     let foreign = super::super::super::mint();

@@ -17,13 +17,13 @@
 )]
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_turns::view::{ACTOR_MACHINE, Steer, Steered};
-use afd_turns::{Admission, Key, Producer, Reply};
+use afd_turns::{IncomingTurn, Key, Producer, Reply};
 
 use crate::integration_steer_replay::{CAUSE_PAYLOAD, CHANGED_JSON};
 use crate::integration_steer_retry::{KEY_SEPARATOR, PRODUCER_STEER, REQUEST_JSON};
-use crate::support::EventsLane;
+use crate::support::TurnsLane;
 use af_core::test_util::trace::Capture;
 
 /// The operation id these tests send twice.
@@ -56,7 +56,7 @@ const CAUSE_FLEET: &str = "fleet";
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_replayed_append_decides_from_its_insert() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
 
     let first = send(&steer, &lane, REQUEST_JSON)
@@ -71,8 +71,8 @@ async fn test_replayed_append_decides_from_its_insert() {
         "a fresh admission answers with its instant, which its frame carries"
     );
     assert_eq!(
-        (again.event_id, again.admitted_at),
-        (first.event_id, None),
+        (again.turn_id, again.admitted_at),
+        (first.turn_id, None),
         "a repeat names the first event and admits nothing"
     );
 }
@@ -82,8 +82,8 @@ async fn test_replayed_append_decides_from_its_insert() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_replayed_append_never_answers_unchecked() {
-    let lane = EventsLane::open().await;
-    let elsewhere = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
+    let elsewhere = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
     send(&steer, &lane, REQUEST_JSON)
         .await
@@ -113,7 +113,7 @@ async fn test_replayed_append_never_answers_unchecked() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_steer_reuse_is_not_an_internal_failure() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
     send(&steer, &lane, REQUEST_JSON)
         .await
@@ -154,7 +154,7 @@ async fn test_steer_reuse_is_not_an_internal_failure() {
 /// One steer of `request_json` under [`OPERATION`].
 async fn send(
     steer: &Steer,
-    lane: &EventsLane,
+    lane: &TurnsLane,
     request_json: &str,
 ) -> afd_turns::view::Result<Steered> {
     steer
@@ -170,7 +170,7 @@ async fn send(
 
 /// Rewrites the payload digest of the row [`OPERATION`] holds on the lane's
 /// fleet.
-async fn set_stored_digest(lane: &EventsLane, digest: &str) {
+async fn set_stored_digest(lane: &TurnsLane, digest: &str) {
     let mut connection = lane.connection().await;
     let updated = sqlx::query(SET_DIGEST)
         .bind(PRODUCER_STEER)
@@ -183,7 +183,7 @@ async fn set_stored_digest(lane: &EventsLane, digest: &str) {
 }
 
 /// [`set_stored_digest`] for the fleet, which binds as the `uuid` it is.
-async fn set_stored_fleet(lane: &EventsLane, fleet: &Uuid7) {
+async fn set_stored_fleet(lane: &TurnsLane, fleet: &Uuid7) {
     let mut connection = lane.connection().await;
     let updated = sqlx::query(SET_FLEET)
         .bind(PRODUCER_STEER)
@@ -196,19 +196,19 @@ async fn set_stored_fleet(lane: &EventsLane, fleet: &Uuid7) {
 }
 
 /// The producer key the operation's row is stored under.
-fn operation_key(lane: &EventsLane) -> String {
+fn operation_key(lane: &TurnsLane) -> String {
     [lane.fleet.as_str(), OPERATION].join(KEY_SEPARATOR)
 }
 
 /// A webhook delivery on the lane's fleet under `key`.
-fn delivery<'a>(lane: &'a EventsLane, key: &'a str, request_json: &'a str) -> Admission<'a> {
-    Admission {
+fn delivery<'a>(lane: &'a TurnsLane, key: &'a str, request_json: &'a str) -> IncomingTurn<'a> {
+    IncomingTurn {
         producer: Producer::Webhook,
         key: Key::Repeated(key),
         fleet: &lane.fleet,
         workspace: &lane.workspace,
         actor: ACTOR_MACHINE,
-        event_type: EventType::Webhook,
+        event_type: TurnKind::Webhook,
         request_json,
         reply: Reply::None,
     }

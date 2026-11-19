@@ -25,7 +25,7 @@ use afd_turns::view::{ACTOR_MACHINE, Steer};
 use tracing::Level;
 
 use crate::integration_steer_retry::{REQUEST_JSON, admissions_for, append_with};
-use crate::support::EventsLane;
+use crate::support::TurnsLane;
 use af_core::test_util::trace::Capture;
 
 /// One operation id, used on two fleets and against a changed message.
@@ -50,8 +50,8 @@ pub(crate) const CAUSE_PAYLOAD: &str = "payload";
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_operation_ids_are_scoped_to_the_fleet() {
-    let first = EventsLane::open().await;
-    let second = EventsLane::open().await;
+    let first = TurnsLane::open().await;
+    let second = TurnsLane::open().await;
 
     let on_first = append_with(&Steer::new(first.admissions()), &first, Some(OPERATION)).await;
     let on_second = append_with(&Steer::new(second.admissions()), &second, Some(OPERATION)).await;
@@ -69,7 +69,7 @@ async fn test_operation_ids_are_scoped_to_the_fleet() {
 ///
 /// A ceiling of zero rather than a small count, because the estimate samples
 /// the whole lane's rows and a parallel suite could cross a count first.
-fn spent(lane: &EventsLane) -> Steer {
+fn spent(lane: &TurnsLane) -> Steer {
     Steer::new(lane.admissions().with_budgets(Budgets {
         deployment_backlog: 0,
     }))
@@ -80,7 +80,7 @@ fn spent(lane: &EventsLane) -> Steer {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_replay_bypasses_the_deployment_ceiling() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let admitted = append_with(&Steer::new(lane.admissions()), &lane, Some(OPERATION)).await;
     let steer = spent(&lane);
     // The ceiling is now spent. The retry is the same message, already
@@ -96,7 +96,7 @@ async fn test_replay_bypasses_the_deployment_ceiling() {
         .await
         .expect("a retry of an admitted message is answered despite the budget");
     assert_eq!(
-        (retried.event_id.as_str(), retried.admitted_at),
+        (retried.turn_id.as_str(), retried.admitted_at),
         (admitted.as_str(), None),
         "a retry of an admitted message must not be refused by the budget it \
          already spent -- the sender would read it as never delivered"
@@ -142,7 +142,7 @@ async fn test_replay_bypasses_the_deployment_ceiling() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_drift_under_spent_budget_is_a_conflict() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     append_with(&Steer::new(lane.admissions()), &lane, Some(OPERATION)).await;
     let steer = spent(&lane);
     let refused = steer
@@ -164,7 +164,7 @@ async fn test_drift_under_spent_budget_is_a_conflict() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_an_admission_the_ledger_refuses_is_an_error() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
 
     // No fleet row holds this id, so the admission's foreign key refuses it.
@@ -184,7 +184,7 @@ async fn test_an_admission_the_ledger_refuses_is_an_error() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_payload_drift_is_refused() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let steer = Steer::new(lane.admissions());
 
     let admitted = append_with(&steer, &lane, Some(OPERATION)).await;
@@ -255,7 +255,7 @@ async fn test_payload_drift_is_refused() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_twin_committed_behind_the_fleet_lock_is_answered_under_a_spent_ceiling() {
     use sqlx::Connection as _;
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let operation = "019feca5-bc9b-72e8-b71f-e2714f6b0d01";
     let mut connection = lane.connection().await;
     let holder: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
@@ -306,13 +306,13 @@ async fn a_twin_committed_behind_the_fleet_lock_is_answered_under_a_spent_ceilin
     let key = [lane.fleet.as_str(), operation].join(crate::integration_steer_retry::KEY_SEPARATOR);
     let admissions = lane.admissions();
     let prepared = admissions
-        .prepare(afd_turns::Admission {
+        .prepare(afd_turns::IncomingTurn {
             producer: afd_turns::Producer::Steer,
             key: afd_turns::Key::Repeated(&key),
             fleet: &lane.fleet,
             workspace: &lane.workspace,
             actor: ACTOR_MACHINE,
-            event_type: af_wire::event::EventType::Chat,
+            event_type: af_wire::turn::TurnKind::Chat,
             request_json: REQUEST_JSON,
             reply: afd_turns::Reply::None,
         })
@@ -329,14 +329,14 @@ async fn a_twin_committed_behind_the_fleet_lock_is_answered_under_a_spent_ceilin
         .expect("the waiting send's task")
         .expect("the waiting send is answered, not refused");
     assert_eq!(
-        answered.event_id, twin.stored.id,
+        answered.turn_id, twin.stored.id,
         "the twin's event answers the waiter"
     );
     assert_eq!(
         answered.placed,
         Placed {
             disposition: SteerDisposition::Queued,
-            folded_into_event_id: None,
+            folded_into_turn_id: None,
         }
     );
     assert_eq!(admissions_for(&lane, operation).await, 1);

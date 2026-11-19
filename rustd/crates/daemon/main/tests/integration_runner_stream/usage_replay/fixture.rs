@@ -49,7 +49,7 @@ pub(super) async fn offers(session: &Session, first: &Uuid7, second: &Uuid7) -> 
         };
         held.push(Held {
             run: Uuid7::parse(&run.run_id).expect("run UUIDv7"),
-            event: Uuid7::parse(&run.event.event_id).expect("event UUIDv7"),
+            event: Uuid7::parse(&run.event.turn_id).expect("event UUIDv7"),
             fence: run.fencing_token,
             expires: run.run_expires_at,
         });

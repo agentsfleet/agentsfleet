@@ -244,7 +244,7 @@ impl TaskLifecycle for Tasks {
         let span = tracing::info_span!(
             "task_decision_reserve",
             run_id = run.run_id.as_str(),
-            source_admission_id = input.source_admission_id.as_str()
+            source_turn_id = input.source_turn_id.as_str()
         );
         observe::traced(
             TaskOperation::DecisionReserve,

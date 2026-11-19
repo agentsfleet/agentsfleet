@@ -73,7 +73,7 @@ pub(super) struct DetailRow {
 
 /// One history row, by name.
 #[derive(Debug, sqlx::FromRow)]
-pub(super) struct EventRow {
+pub(super) struct TurnRow {
     id: Uuid7,
     runner_id: Uuid7,
     event_type: String,
@@ -150,7 +150,7 @@ impl DetailRow {
     }
 }
 
-impl EventRow {
+impl TurnRow {
     /// The history item, its identifiers, type and metadata proven.
     pub(super) fn parse(self) -> Result<RunnerEventItem<'static>> {
         let event_type = serde_json::from_value::<RunnerEventType>(Value::String(self.event_type))

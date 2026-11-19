@@ -73,7 +73,7 @@ fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
     let progress = af_wire::activity::TaskActivity {
         activity_id: "019a42b0-0000-7000-8000-000000000123".to_owned(),
         task_id: None,
-        source_admission_id: None,
+        source_turn_id: None,
         operation: af_wire::activity::TaskActivityOperation::Intent,
         phase: af_wire::activity::TaskActivityPhase::Starting,
         provider: Some("typesafe".to_owned()),

@@ -8,12 +8,12 @@ use std::borrow::Cow;
 use af_core::{clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::{
-    event::EventType,
     runner::{
         AssignedPolicy, CapabilityReport, HeartbeatRequest, NetworkPolicy, RegisterRequest,
         SandboxTier,
     },
     task::{DecisionAssessment, DecisionReservationInput},
+    turn::TurnKind,
 };
 use afd_auth::scope::ScopeSet;
 use afd_db::{
@@ -26,7 +26,7 @@ use afd_fleet::{
     task::Tasks,
 };
 use afd_runner::Runners;
-use afd_turns::{Admission, Admissions, Key, Producer, Reply};
+use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 use afd_vault::{Deleted, SecretBody, SecretName};
 use axum::Router;
 use serde_json::{json, value::RawValue};
@@ -94,7 +94,7 @@ impl Fixture {
         );
         let [runner, other] = enroll(&database, &owner, &model.model.id).await;
         let bus = harness::bus().await;
-        let admissions = Admissions::for_tests(database.clone(), bus.clone());
+        let admissions = Turns::for_tests(database.clone(), bus.clone());
         let runs = Runs::new(database.clone(), bus, Entropy::new());
         let run = acquire(&runs, &admissions, &owner, &runner).await;
         let key = format!("decision-http-fixture-{}", mint_id());
@@ -138,7 +138,7 @@ impl Fixture {
         DecisionReservationInput {
             operation_id: mint_id().into(),
             fencing_token: self.run.fence,
-            source_admission_id: self.run.source.to_string(),
+            source_turn_id: self.run.source.to_string(),
             assessment: DecisionAssessment::Message,
             task: None,
             retry_of: None,
@@ -215,7 +215,7 @@ async fn enroll(database: &Db, owner: &Owner, model: &Uuid7) -> [Runner; 2] {
         .expect("exactly two registered runners")
 }
 
-async fn acquire(runs: &Runs, admissions: &Admissions, owner: &Owner, runner: &Runner) -> Run {
+async fn acquire(runs: &Runs, admissions: &Turns, owner: &Owner, runner: &Runner) -> Run {
     let admitted = admit(admissions, owner).await;
     let acquired = runs
         .select(&runner.id, &[])
@@ -223,7 +223,7 @@ async fn acquire(runs: &Runs, admissions: &Admissions, owner: &Owner, runner: &R
         .expect("native claim")
         .expect("owned work is runnable");
     assert_eq!(
-        (&acquired.fleet_id, &acquired.event_id),
+        (&acquired.fleet_id, &acquired.turn_id),
         (&owner.fleet, &admitted)
     );
     let issued = runs
@@ -249,17 +249,17 @@ async fn acquire(runs: &Runs, admissions: &Admissions, owner: &Owner, runner: &R
     }
 }
 
-async fn admit(admissions: &Admissions, owner: &Owner) -> Uuid7 {
+async fn admit(admissions: &Turns, owner: &Owner) -> Uuid7 {
     let body = json!({"message":setup::MESSAGE}).to_string();
     let key = mint_id();
     let admitted = admissions
-        .admit(Admission {
+        .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Repeated(key.as_str()),
             fleet: &owner.fleet,
             workspace: &owner.workspace,
             actor: &afd_turns::view::steer_actor("native_decision_http"),
-            event_type: EventType::Chat,
+            event_type: TurnKind::Chat,
             request_json: &body,
             reply: Reply::None,
         })

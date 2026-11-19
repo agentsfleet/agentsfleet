@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use afd_turns::view::Steer;
 
 use super::append_until;
@@ -32,7 +32,7 @@ fn refusing_steer() -> Steer {
         ("DATABASE_ACQUIRE_TIMEOUT_MS", ACQUIRE_TIMEOUT_MS),
     ]);
     let pool = afd_db::config::PoolConfig::resolve(&env, role).expect("a URL resolves");
-    Steer::new(Admissions::new(
+    Steer::new(Turns::new(
         afd_db::Db::unreachable(&pool),
         afd_bus::test_util::unreachable(),
         Entropy::new(),

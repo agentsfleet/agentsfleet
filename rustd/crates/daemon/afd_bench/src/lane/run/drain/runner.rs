@@ -150,7 +150,7 @@ async fn step(session: &mut RunnerConnection, shared: &Shared, tally: &mut Tally
     }
     tally.run_latency.record(started.elapsed())?;
     if let Some(pickups) = &shared.pickups {
-        pickups.held(&run.event.event_id).await?;
+        pickups.held(&run.event.turn_id).await?;
     }
     let folded_through = run_turn(session, &run, shared).await?;
     let request = processed(&run, folded_through);
@@ -285,7 +285,7 @@ async fn ask(
     for input in native::accepted(answer)?.inputs {
         through = through.max(input.sequence);
         if let Some(pickups) = &shared.pickups {
-            pickups.folded(&input.event_id).await?;
+            pickups.folded(&input.turn_id).await?;
         }
     }
     Ok(through)
@@ -314,7 +314,7 @@ fn processed<'a>(run: &'a RunPayload<'a>, folded_through: Option<i64>) -> Report
         setup: None,
         task: None,
         run_id: Cow::Borrowed(&run.run_id),
-        event_id: Cow::Borrowed(&run.event.event_id),
+        turn_id: Cow::Borrowed(&run.event.turn_id),
         fencing_token: run.fencing_token,
         outcome: Outcome::Processed,
         failure_reason: None,
@@ -328,7 +328,7 @@ fn processed<'a>(run: &'a RunPayload<'a>, folded_through: Option<i64>) -> Report
             segments: None,
         },
         checkpoint: ReportCheckpoint {
-            last_event_id: Cow::Borrowed(&run.event.event_id),
+            last_turn_id: Cow::Borrowed(&run.event.turn_id),
             last_response: Cow::Borrowed(RESPONSE),
         },
         tool_calls: None,

@@ -47,7 +47,7 @@ fn an_unrecorded_destination_is_inherited_from_the_source_event() {
     let admission = continuation.admission();
     let source = id(SOURCE);
 
-    assert_eq!(admission.reply, Reply::Inherit { event_id: &source });
+    assert_eq!(admission.reply, Reply::Inherit { turn_id: &source });
     assert_eq!(admission.actor, "task:01924f4e-0000-7000-8000-0000000000a1");
 }
 

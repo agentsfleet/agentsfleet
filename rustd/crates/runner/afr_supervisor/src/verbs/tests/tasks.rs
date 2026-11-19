@@ -36,7 +36,7 @@ async fn bindings_use_the_supervisor_fence_without_retrying_failures() {
     one_attempt(Verb::TaskBindings, async |verbs| {
         let mut bindings = TaskBindingsInput {
             fencing_token: 0,
-            source_admission_id: ID.to_owned(),
+            source_turn_id: ID.to_owned(),
             accepted_revision_id: ID.to_owned(),
             plan_digest: "a".repeat(64),
             message_decision_call_id: ID.to_owned(),
@@ -68,7 +68,7 @@ async fn input_receipts_use_the_supervisor_fence_without_retrying_failures() {
         let receipt = TaskInputReceiptInput {
             fencing_token: 0,
             operation_id: ID.to_owned(),
-            source_admission_id: ID.to_owned(),
+            source_turn_id: ID.to_owned(),
             plan_digest: "a".repeat(64),
             item_id: ID.to_owned(),
             task: Some(DecisionTaskVersion {

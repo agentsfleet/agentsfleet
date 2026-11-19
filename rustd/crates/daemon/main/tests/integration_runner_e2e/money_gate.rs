@@ -30,7 +30,7 @@ async fn test_run_money_gate_refusal() {
 
     // Durable refusal proves the claim ran; silence alone would not.
     let refused = wait_without_offer(&scene, || async {
-        event_column(&scene, &scene.event_id, "status")
+        event_column(&scene, &scene.turn_id, "status")
             .await
             .as_deref()
             == Some("gate_blocked")

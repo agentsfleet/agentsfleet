@@ -49,7 +49,7 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::MemoryHydrate => get(handler::runner::memory::hydrate::<D>),
         RunnerRoute::MemoryCapture => post(handler::runner::memory::capture::<D>),
         RunnerRoute::MemoryRecall => post(handler::runner::memory::recall::<D>),
-        RunnerRoute::ToolCalls => post(handler::runner::tool_call::handle::<D>),
+        RunnerRoute::Items => post(handler::runner::tool_call::handle::<D>),
         RunnerRoute::CredentialsMint => post(handler::runner::credential::handle::<D>),
         RunnerRoute::Schedules => {
             get(handler::runner::schedule::list::<D>).post(handler::runner::schedule::create::<D>)
@@ -61,6 +61,6 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::Messages => post(handler::runner::message::handle::<D>),
         RunnerRoute::Steers => post(handler::runner::fleet_steer::handle::<D>),
         RunnerRoute::Fleets => get(handler::runner::fleets::list::<D>),
-        RunnerRoute::FleetEvents => get(handler::runner::fleets::events::<D>),
+        RunnerRoute::FleetTurns => get(handler::runner::fleets::events::<D>),
     }
 }

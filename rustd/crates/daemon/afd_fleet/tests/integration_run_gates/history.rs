@@ -8,7 +8,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_db::test_util::unreachable_db;
 use afd_fleet::run::RunService;
 use afd_turns::view::History;
@@ -24,12 +24,12 @@ async fn test_follow_up_run_carries_the_previous_turn() {
     let chat = Chat::open().await;
     chat.first_turn().await;
     let asked = chat
-        .ask(EventType::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
+        .ask(TurnKind::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
         .await;
 
     let follow_up = chat.run(&chat.runner, chat.fixtures.after(SLICE * 2)).await;
 
-    assert_eq!(follow_up.event_id, asked);
+    assert_eq!(follow_up.turn_id, asked);
     assert_eq!(follow_up.history, first_turn());
     chat.fixtures.cleanup().await;
 }
@@ -42,10 +42,10 @@ async fn test_follow_up_run_carries_the_previous_turn() {
 async fn test_second_message_waits_for_the_first_and_carries_it() {
     let chat = Chat::open().await;
     let asked = chat
-        .ask(EventType::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
+        .ask(TurnKind::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
     let second = chat
-        .ask(EventType::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
+        .ask(TurnKind::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
         .await;
 
     let first = chat.run(&chat.runner, chat.fixtures.enrolled_at()).await;
@@ -59,13 +59,13 @@ async fn test_second_message_waits_for_the_first_and_carries_it() {
     .await;
     let follow_up = chat.run(&chat.spare, chat.fixtures.after(SLICE * 2)).await;
 
-    assert_eq!(first.event_id, asked);
+    assert_eq!(first.turn_id, asked);
     assert!(
         first.history.is_empty(),
         "nothing finished before the first"
     );
     assert!(waiting.is_none(), "one fleet, one holder: the second waits");
-    assert_eq!(follow_up.event_id, second);
+    assert_eq!(follow_up.turn_id, second);
     assert_eq!(follow_up.history, first_turn());
     chat.fixtures.cleanup().await;
 }
@@ -79,7 +79,7 @@ async fn test_non_chat_run_carries_no_history_through_the_plane() {
     chat.first_turn().await;
     let delivered = chat
         .ask(
-            EventType::Webhook,
+            TurnKind::Webhook,
             "a push landed",
             chat.fixtures.after(ASKED_LATER),
         )
@@ -87,7 +87,7 @@ async fn test_non_chat_run_carries_no_history_through_the_plane() {
 
     let webhook = chat.run(&chat.runner, chat.fixtures.after(SLICE * 2)).await;
 
-    assert_eq!(webhook.event_id, delivered);
+    assert_eq!(webhook.turn_id, delivered);
     assert!(webhook.history.is_empty(), "{:?}", webhook.history);
     chat.fixtures.cleanup().await;
 }
@@ -100,7 +100,7 @@ async fn test_follow_up_run_is_issued_when_its_thread_will_not_answer() {
     let chat = Chat::open().await;
     chat.first_turn().await;
     let asked = chat
-        .ask(EventType::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
+        .ask(TurnKind::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
         .await;
     let silent = RunService {
         task_reports: None,
@@ -112,7 +112,7 @@ async fn test_follow_up_run_is_issued_when_its_thread_will_not_answer() {
         .run_through(&silent, &chat.runner, chat.fixtures.after(SLICE * 2))
         .await;
 
-    assert_eq!(follow_up.event_id, asked);
+    assert_eq!(follow_up.turn_id, asked);
     assert!(follow_up.history.is_empty(), "{:?}", follow_up.history);
     chat.fixtures.cleanup().await;
 }
@@ -124,14 +124,14 @@ async fn test_follow_up_run_is_issued_when_its_thread_will_not_answer() {
 async fn test_run_history_stops_at_its_own_event() {
     let chat = Chat::open().await;
     let asked = chat
-        .ask(EventType::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
+        .ask(TurnKind::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
     chat.finished(FOLLOW_UP, FIRST_ANSWER, chat.fixtures.after(SLICE))
         .await;
 
     let held = chat.run(&chat.runner, chat.fixtures.after(SLICE * 2)).await;
 
-    assert_eq!(held.event_id, asked);
+    assert_eq!(held.turn_id, asked);
     assert!(held.history.is_empty(), "{:?}", held.history);
     chat.fixtures.cleanup().await;
 }
@@ -145,7 +145,7 @@ async fn test_runner_run_issued_logs_queue_wait() {
     const WAITED_MS: i64 = 350;
     const WAITED: Duration = Duration::from_millis(WAITED_MS.unsigned_abs());
     let chat = Chat::open().await;
-    chat.ask(EventType::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
+    chat.ask(TurnKind::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
 
     let log = af_core::test_util::trace::Capture::install();

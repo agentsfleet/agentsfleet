@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 /// Opens a bounded, creator-only hint stream; ordinary reads recover missed state.
 #[cfg_attr(feature = "openapi", utoipa::path(
-    get, path = "/v1/workspaces/{workspace_id}/drafts/{draft_id}/events/stream",
+    get, path = "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/stream",
     operation_id = "stream_workspace_draft", tag = afd_http::openapi::tag::DRAFTS,
     summary = "Stream your private setup progress",
     description = concat!(

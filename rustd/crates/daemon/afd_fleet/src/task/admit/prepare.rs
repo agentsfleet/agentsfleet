@@ -24,7 +24,7 @@ pub(super) async fn identities(
         let (task_id, wake) = match item {
             PreparedItem::New { .. } => {
                 let task = tasks.runs.entropy().uuid7(now)?;
-                let continuation = Continuation::new(scope, &task, 1, &plan.source_admission_id);
+                let continuation = Continuation::new(scope, &task, 1, &plan.source_turn_id);
                 (
                     Some(task),
                     Some(Wake {

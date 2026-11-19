@@ -12,7 +12,7 @@ fn payload() -> RunPayload<'static> {
     let mut run = crate::fixture::payload(&[], crate::fixture::unbounded());
     run.event.workspace_id = id(1).0.into();
     run.event.fleet_id = id(2).0.into();
-    run.event.event_id = id(3).0.into();
+    run.event.turn_id = id(3).0.into();
     run.setup_revision_id = Some(id(4).0.into());
     run.run_id = id(5).0.into();
     run
@@ -36,7 +36,7 @@ fn root() -> crate::Result<RootRecovery> {
         }))?,
         pinned: 1,
         folds: vec![FoldRef {
-            event_id: id(7),
+            turn_id: id(7),
             sequence: 1,
         }],
         ..RootRecovery::default()
@@ -120,7 +120,7 @@ fn changed_setup_scope_workspace_digest_or_adopted_membership_refuses() -> crate
         let mut workspace = TurnWorkspace::ApiOnly;
         match case {
             0 => run.setup_revision_id = Some(id(8).0.into()),
-            1 => run.event.event_id = id(8).0.into(),
+            1 => run.event.turn_id = id(8).0.into(),
             2 => run.event.fleet_id = id(8).0.into(),
             3 => run.event.workspace_id = id(8).0.into(),
             4 => {

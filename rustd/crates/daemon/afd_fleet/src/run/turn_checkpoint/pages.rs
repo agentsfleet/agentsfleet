@@ -185,7 +185,7 @@ pub(super) async fn validate(
         }
     }
     let ids: Vec<_> = ids.into_iter().collect();
-    let namespace = format!("turn:{}", owner.current.event_id);
+    let namespace = format!("turn:{}", owner.current.turn_id);
     let stored = objects::scoped_held(owner, plan, &namespace, &ids).await?;
     if stored.iter().any(|object| {
         !object.verified

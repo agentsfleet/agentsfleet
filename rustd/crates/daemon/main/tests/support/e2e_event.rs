@@ -10,8 +10,8 @@
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use af_wire::event::EventType;
-use afd_turns::{Admission, Admissions, Key, Producer};
+use af_wire::turn::TurnKind;
+use afd_turns::{IncomingTurn, Key, Producer, Turns};
 use agentsfleetd::serve::Booted;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -24,17 +24,17 @@ const UNCHECKED_DIGEST: &str = "fixture";
 
 /// Admits one event on the fleet and answers the ledger's logical id.
 ///
-/// The type is an [`EventType`] rather than a string because the ledger takes
+/// The type is an [`TurnKind`] rather than a string because the ledger takes
 /// one: the set is CLOSED, and a scenario that wants a spelling the daemon
 /// cannot name is testing a different thing — see [`enqueue_unsupported`].
 pub(crate) async fn enqueue(
     booted: &Booted,
     fleet: &Uuid7,
     workspace: &Uuid7,
-    event_type: EventType,
+    event_type: TurnKind,
 ) -> Uuid7 {
-    let admitted = Admissions::for_tests(booted.database.clone(), booted.bus.clone())
-        .admit(Admission {
+    let admitted = Turns::for_tests(booted.database.clone(), booted.bus.clone())
+        .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Unrepeatable,
             fleet,
@@ -97,7 +97,7 @@ async fn insert_admission(
     .bind(event_type)
     .bind(REQUEST_JSON)
     .bind(now.to_sqlx())
-    .bind(af_core::event::status::QUEUED)
+    .bind(af_core::turn::status::QUEUED)
     .execute(
         &mut *booted
             .database

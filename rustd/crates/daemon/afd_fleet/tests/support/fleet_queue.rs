@@ -25,7 +25,7 @@ pub(crate) async fn enqueue(
         .bind(&event).bind(fleet)
         .bind(workspace).bind(actor).bind(event_type)
         .bind(request_json).bind(created_at.to_sqlx())
-        .bind(af_core::event::status::QUEUED)
+        .bind(af_core::turn::status::QUEUED)
         .execute(&mut *database.acquire().await.expect("runtime connection"))
         .await.expect("durable admission");
     event

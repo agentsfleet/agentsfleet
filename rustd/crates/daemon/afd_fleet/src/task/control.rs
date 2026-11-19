@@ -14,7 +14,7 @@ const CONTEXT: &str = "control durable task";
 
 #[derive(sqlx::FromRow)]
 struct Origin {
-    source_admission_id: Uuid7,
+    source_turn_id: Uuid7,
     reply_provider: Option<String>,
     reply_address: Option<String>,
     generation: i64,
@@ -125,7 +125,7 @@ async fn queue(
     tasks: &Tasks,
     connection: &mut PgConnection,
     task_id: &Uuid7,
-    prepared: Option<afd_turns::PreparedAdmission<'_>>,
+    prepared: Option<afd_turns::PreparedTurn<'_>>,
     previous: TaskState,
 ) -> Result<()> {
     if let Some(prepared) = prepared {
@@ -182,7 +182,7 @@ async fn prepare_resume(tasks: &Tasks, scope: &TaskScope, task_id: &Uuid7) -> Re
     let generation = row::counter(origin.generation, "generation")?
         .checked_add(1)
         .ok_or(TaskRefusal::LimitExhausted)?;
-    Continuation::new(scope, task_id, generation, &origin.source_admission_id).with_reply(
+    Continuation::new(scope, task_id, generation, &origin.source_turn_id).with_reply(
         origin.reply_provider.as_deref(),
         origin.reply_address.as_deref(),
     )

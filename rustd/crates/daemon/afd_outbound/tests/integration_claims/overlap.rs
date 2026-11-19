@@ -42,13 +42,13 @@ async fn a_claim_beside_an_uncommitted_claim_takes_nothing_from_its_lane()
     let [held] = held.as_slice() else {
         return Err("the first claim takes the committed row");
     };
-    assert_eq!(held.outgoing.event_id, late_event);
+    assert_eq!(held.outgoing.turn_id, late_event);
     early.commit().await.expect("the earlier report commits");
 
     let beside = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the overlapping claim");
-    let taken: Vec<_> = beside.iter().map(|job| &job.outgoing.event_id).collect();
+    let taken: Vec<_> = beside.iter().map(|job| &job.outgoing.turn_id).collect();
     assert!(
         taken.is_empty(),
         "a lane whose claim is still being written offers nothing, took {taken:?} \

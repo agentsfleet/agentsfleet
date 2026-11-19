@@ -4,8 +4,8 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use af_wire::event::message_of;
 use af_wire::run::{RunPayload, Turn};
+use af_wire::turn::message_of;
 use afr_tools::catalog::DELEGATE;
 use guffbolt::{Message, Replay};
 use serde_json::json;

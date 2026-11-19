@@ -20,7 +20,7 @@ const EXPECTED: &[Endpoint] = &[
     ("/v1/admin/runners/{runner_id}", Verb::Get),
     ("/v1/admin/runners/{runner_id}", Verb::Patch),
     ("/v1/admin/runners/{runner_id}", Verb::Delete),
-    ("/v1/admin/runners/{runner_id}/events", Verb::Get),
+    ("/v1/admin/runners/{runner_id}/history", Verb::Get),
     ("/v1/admin/runners/{runner_id}/runs", Verb::Get),
     // `/v1/fleets/streams` is absent on purpose: this daemon does not serve it,
     // by Indy's call while merging M179 into M178 — see `route::runner_ops`

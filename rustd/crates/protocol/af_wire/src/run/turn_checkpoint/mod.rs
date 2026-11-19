@@ -96,7 +96,7 @@ pub struct TurnScope {
     pub fleet_id: CheckpointOperationId,
     /// Stable root event across every replacement run.
     #[garde(dive)]
-    pub event_id: CheckpointOperationId,
+    pub turn_id: CheckpointOperationId,
     /// Setup frozen during run issuance, independent of the later fleet head.
     #[garde(dive)]
     pub setup_revision_id: CheckpointOperationId,
@@ -112,7 +112,7 @@ pub struct TurnScope {
 pub struct FoldRef {
     /// Logical admission claimed and incorporated by the writer.
     #[garde(dive)]
-    pub event_id: CheckpointOperationId,
+    pub turn_id: CheckpointOperationId,
     /// Monotonic conversation position.
     #[garde(range(min = 1))]
     pub sequence: i64,

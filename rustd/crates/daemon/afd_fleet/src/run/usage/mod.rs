@@ -241,7 +241,7 @@ impl Pricing {
                     .fleet_name
                     .unwrap_or_else(|| slice.fleet_id.clone().into()),
                 fleet: slice.fleet_id,
-                event_id: slice.event_id,
+                turn_id: slice.turn_id,
             },
             provider: self.provider.clone(),
             model: self.model.clone(),

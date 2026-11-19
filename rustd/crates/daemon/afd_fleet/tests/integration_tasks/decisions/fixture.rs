@@ -137,7 +137,7 @@ impl<'a> Decisions<'a> {
         garde::Unvalidated::new(DecisionReservationInput {
             operation_id: mint_id().into(),
             fencing_token: self.case.run().fencing_token,
-            source_admission_id: self.case.held.event_id.clone().into(),
+            source_turn_id: self.case.held.turn_id.clone().into(),
             assessment,
             task,
             retry_of: None,
@@ -206,7 +206,7 @@ impl<'a> Decisions<'a> {
             limits,
         );
         let plan = PreparedPlan::from_parts(
-            self.case.held.event_id.clone(),
+            self.case.held.turn_id.clone(),
             self.revision.clone(),
             "accepted-decision-goal".to_owned(),
             vec![item],

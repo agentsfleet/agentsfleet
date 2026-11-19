@@ -12,7 +12,7 @@ use serde_json::json;
 use crate::run::expect;
 use crate::supervisor::Observed;
 use crate::supervisor_model::{ANSWER, INSTRUCTIONS, STEER};
-use crate::supervisor_plane::{GRAFANA, Received, SCHEDULE_EVENT_ID, SCHEDULE_ID, TOKEN};
+use crate::supervisor_plane::{GRAFANA, Received, SCHEDULE_ID, SCHEDULE_TURN_ID, TOKEN};
 
 pub(crate) fn received<'a>(observed: &'a Observed, suffix: &str) -> Result<&'a Received, Failed> {
     observed
@@ -170,7 +170,7 @@ fn schedules_sent(observed: &Observed) -> Result<(), Failed> {
         "run-now targets the created schedule with the run's fence",
     )?;
     expect(
-        observed.output("run")?.contains(SCHEDULE_EVENT_ID),
+        observed.output("run")?.contains(SCHEDULE_TURN_ID),
         "the admitted run's event identifier reaches the model",
     )
 }

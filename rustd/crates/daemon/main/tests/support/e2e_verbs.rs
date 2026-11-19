@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use af_core::id::Uuid7;
 use afd_connector::Provider;
 use afd_connector::test_util::FakeSlack;
-use afd_turns::{Admission, Admissions, Key, Producer, Reply};
+use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 use axum::Router;
 use axum::extract::Path;
 use axum::http::HeaderMap;
@@ -213,8 +213,8 @@ pub(crate) async fn seal_slack_grant(scene: &Scenario) {
 pub(crate) async fn enqueue_from_thread(scene: &Scenario) -> Uuid7 {
     let address = json!({"team_id": "T0FIXTURE", "channel_id": CHANNEL, "thread_ts": THREAD});
     let address = address.to_string();
-    let admitted = Admissions::for_tests(scene.booted.database.clone(), scene.booted.bus.clone())
-        .admit(Admission {
+    let admitted = Turns::for_tests(scene.booted.database.clone(), scene.booted.bus.clone())
+        .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Unrepeatable,
             fleet: &scene.fleet,

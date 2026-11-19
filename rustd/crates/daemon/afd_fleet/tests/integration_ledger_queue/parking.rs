@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use sqlx::Connection as _;
 
 use super::{WITHIN, enqueue, next};
@@ -15,7 +15,7 @@ const BLOCKED: &str = "SELECT EXISTS (SELECT 1 FROM pg_stat_activity
 const GATE: &str = "INSERT INTO fleet.approval_gates
     (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type,
      proposed_action, evidence, blast_radius, expires_at, status, detail,
-     created_at, updated_at, event_id)
+     created_at, updated_at, turn_id)
     VALUES ($1, $2, $3, $1, 'git', 'push', 'repository_write',
       'open a pull request', '{}'::jsonb, 'one repository', now()+interval '1 hour',
       $4, '', now(), now(), NULL)";
@@ -58,7 +58,7 @@ async fn an_answer_during_the_park_lock_wait_cannot_strand_the_admission() {
         next(&runs, &runner)
             .await
             .expect("answered head runs")
-            .event_id,
+            .turn_id,
         event
     );
     drop((connection, runs));
@@ -132,7 +132,7 @@ async fn answer_while_blocked(
     let inbox = Inbox::new(
         fixtures.database.clone(),
         bus.clone(),
-        Admissions::for_tests(fixtures.database.clone(), bus),
+        Turns::for_tests(fixtures.database.clone(), bus),
     );
     let answer = inbox
         .resolve(

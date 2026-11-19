@@ -25,7 +25,7 @@
 //! It is the one thing on the row a fleet cannot reach. `REQUEST_GRANT` writes
 //! NULL there by construction (Invariant 5 — a continuation event beside a
 //! still-leasable delivery would run the work twice), and every rules-path gate
-//! carries a real one, because `afd_gate`'s insert binds `event_id: &str` rather
+//! carries a real one, because `afd_gate`'s insert binds `turn_id: &str` rather
 //! than an `Option`. There is no way to author a card that is both fleet-raised
 //! and event-less.
 //!
@@ -69,7 +69,7 @@ const FORGED_CARD: &str = "\
 INSERT INTO fleet.approval_gates
   (id, fleet_id, workspace_id, action_id, tool_name, action_name,
    gate_type, proposed_action, evidence, blast_radius, expires_at,
-   status, detail, created_at, updated_at, event_id)
+   status, detail, created_at, updated_at, turn_id)
 VALUES ($1, $2, $3, $4, $5, $6,
         $7, $8, $9::jsonb, $10, now() + $11::interval,
         $12, '', now(), now(), $13)";

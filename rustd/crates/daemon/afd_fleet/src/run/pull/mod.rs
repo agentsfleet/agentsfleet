@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use jiff::Timestamp;
 
 use crate::error::Result;
@@ -17,7 +17,7 @@ use crate::run::answer::no_work;
 use crate::run::envelope::{Acquired, HeadKind};
 use crate::run::installed::Installed;
 use crate::run::store::Runs;
-use af_core::event::label;
+use af_core::turn::label;
 use afd_billing::Accounts;
 use afd_credential::provider::{Providers, Resolved};
 use afd_gate::gate::{Check, Gates};
@@ -102,7 +102,7 @@ pub(super) struct AdmittedFleetWork {
     /// That fleet as installed.
     pub(super) installed: Installed,
     /// The event's type, proven spellable before anything was written.
-    pub(super) event_type: EventType,
+    pub(super) event_type: TurnKind,
     /// The provider this run was billed against.
     pub(super) resolved: Resolved,
     /// What the money pass resolved.
@@ -174,7 +174,7 @@ impl RunService {
         runner_id: &Uuid7,
         now: Timestamp,
     ) -> Result<Step<AdmittedFleetWork>> {
-        let Some(event_type) = EventType::parse(&acquired.event_type) else {
+        let Some(event_type) = TurnKind::parse(&acquired.event_type) else {
             let reason = acquired.event_type.clone();
             let label = label::EVENT_TYPE_UNSUPPORTED;
             return self
@@ -222,13 +222,13 @@ impl RunService {
     ) -> Result<Step<AdmittedFleetWork>> {
         self.runs.settle_terminal(acquired).await?;
         let fleet_id = acquired.fleet_id.as_str();
-        let agentsfleet_event_id = acquired.event_id.as_str();
+        let agentsfleet_turn_id = acquired.turn_id.as_str();
         {
             let (event, message) = (
                 &EVENT_TERMINAL_SUPPRESSED,
                 format_args!("the redelivered event already has a durable ending"),
             );
-            tracing::info!(message, fleet_id, agentsfleet_event_id, event);
+            tracing::info!(message, fleet_id, agentsfleet_turn_id, event);
         };
         no_work(runner_id, REDELIVERED_FINISHED);
         Ok(Step::Stop)
@@ -248,7 +248,7 @@ impl RunService {
         let request = Request {
             workspace_id: &acquired.workspace_id,
             fleet_id: &acquired.fleet_id,
-            event_id: &acquired.event_id,
+            turn_id: &acquired.turn_id,
             budget: installed.config.budget(),
             posture: resolved.posture,
             provider: resolved.provider.as_ref(),
@@ -309,7 +309,7 @@ impl RunService {
                 Check {
                     fleet_id: &acquired.fleet_id,
                     workspace_id: &acquired.workspace_id,
-                    event_id: &acquired.event_id,
+                    turn_id: &acquired.turn_id,
                     event_type: &acquired.event_type,
                     actor: &acquired.actor,
                     request_json: &acquired.request_json,

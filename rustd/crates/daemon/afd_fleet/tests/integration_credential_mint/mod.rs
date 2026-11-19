@@ -40,7 +40,7 @@ use af_core::id::Uuid7;
 use af_crypto::aad::Aad;
 use af_crypto::envelope::Sealer;
 use af_crypto::secret::Kek;
-use afd_db::test_util::{EventKind, FleetEventSeed, mint_id};
+use afd_db::test_util::{TurnFacts, TurnSeed, mint_id};
 
 use self::seed::{Seeded, seeded};
 use self::support::Fixtures;
@@ -163,18 +163,18 @@ async fn seed_run(
         .acquire()
         .await
         .expect("a pooled connection");
-    let kind = EventKind {
+    let kind = TurnFacts {
         actor: "fixture:steer",
         event_type: "chat",
-        status: af_core::event::status::RECEIVED,
+        status: af_core::turn::status::RECEIVED,
     };
-    FleetEventSeed::new(fleet, workspace, event, kind)
+    TurnSeed::new(fleet, workspace, event, kind)
         .insert(&mut *connection)
         .await
         .expect("the held event row must insert");
     sqlx::query(
         "INSERT INTO thread.runs
-           (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
+           (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
             posture, provider, model, last_metered_at,
             fencing_token, run_expires_at, status, posted_message_count, setup_revision_id, created_at, updated_at)
          SELECT $1, $2, $3, $4, f.tenant_id, $5, now(),
@@ -295,7 +295,7 @@ async fn seed_write_gate(fixtures: &Fixtures, owner: &Bound) -> Uuid7 {
         "INSERT INTO fleet.approval_gates
            (id, fleet_id, workspace_id, action_id, tool_name, action_name,
             gate_type, proposed_action, evidence, blast_radius, expires_at,
-            resolved_by, status, detail, created_at, updated_at, event_id)
+            resolved_by, status, detail, created_at, updated_at, turn_id)
          VALUES ($1, $2, $3, $4, 'git', 'push',
                  $5, 'open a repair pull request', '{}'::jsonb, 'one repository',
                  now() + $6::interval, 'fixture:human', 'approved', '', now(), now(), $7)",

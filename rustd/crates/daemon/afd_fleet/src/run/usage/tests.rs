@@ -29,7 +29,7 @@ fn slice(runtime_ms: i64, runtime_seq: i64) -> Slice {
         workspace_id: test_dead::id(3),
         fleet_id: test_dead::id(1),
         fleet_name: None,
-        event_id: test_dead::id(5),
+        turn_id: test_dead::id(5),
     }
 }
 
@@ -234,7 +234,7 @@ fn expected_boundary(seq: u32) -> Settlement {
         attribution: Attribution::Fleet {
             fleet: test_dead::id(1),
             fleet_name: test_dead::id(1).as_str().to_owned(),
-            event_id: test_dead::id(5),
+            turn_id: test_dead::id(5),
         },
         provider: "anthropic".to_owned(),
         model: "claude-opus-5-5".to_owned(),

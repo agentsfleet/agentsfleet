@@ -128,7 +128,7 @@ async fn capture_memory(http: &reqwest::Client, scene: &Scenario, run_id: &str, 
 
 async fn settle_report(scene: &Scenario, run_id: &str, fence: u64) {
     let before = balance(scene).await;
-    let report = report_body(run_id, &scene.event_id, fence);
+    let report = report_body(run_id, &scene.turn_id, fence);
     let settled = crate::wire::report(scene, &report).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(

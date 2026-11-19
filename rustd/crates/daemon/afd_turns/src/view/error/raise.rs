@@ -13,7 +13,7 @@ use super::{Error, ErrorKind};
 // [`query`] instead of a blanket lift.
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    crate::Error => Admission,
+    crate::Error => TurnWrite,
 );
 
 /// Reports a statement that would not run, naming what it was doing.
@@ -91,7 +91,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("operation conflict", operation_conflict()),
         (
             "admission",
-            ErrorKind::Admission { source: admission }.into(),
+            ErrorKind::TurnWrite { source: admission }.into(),
         ),
     ]
 }

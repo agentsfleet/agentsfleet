@@ -57,11 +57,11 @@ pub const PING_AFTER_IDLE: std::time::Duration = crate::pool::PING_AFTER_IDLE;
 mod billing;
 mod connector;
 mod fleet;
-mod fleet_event;
 mod handle;
 mod identity;
 mod platform_default;
 mod platform_model;
+mod turn_seed;
 // A trigger that refuses one fixture fleet's chosen updates, removed on drop.
 pub mod refusal;
 mod rows;
@@ -76,12 +76,12 @@ pub use self::fleet::{
     FIXTURE_SETUP_DEFINITION, FIXTURE_SETUP_DIGEST, FIXTURE_SETUP_MODEL_REF,
     FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
 };
-pub use self::fleet_event::{EventKind, FleetEventSeed};
 pub use self::identity::{ApiKeySeed, TenantSeed, UserSeed, WorkspaceSeed};
 pub use self::platform_default::{DefaultSeed, PlatformDefault};
 pub use self::platform_model::ModelSeed;
 pub use self::rows::OwnedRows;
 pub use self::runner::{RunnerPolicy, RunnerSeed};
+pub use self::turn_seed::{TurnFacts, TurnSeed};
 pub use self::unreachable::unreachable_db;
 
 /// The fixed instant fixtures stamp on the rows they seed: one millisecond past

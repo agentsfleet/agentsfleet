@@ -185,7 +185,7 @@ impl Fixture {
             "INSERT INTO fleet.approval_gates \
                (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
                 proposed_action, evidence, blast_radius, expires_at, resolved_by, status, \
-                detail, created_at, updated_at, event_id) \
+                detail, created_at, updated_at, turn_id) \
              VALUES ($1, $2, $3, $4, 'git', 'push', 'tool', \
                      'open a pull request', '{}', 'one repository', $9::timestamptz, '', \
                      'pending', '', now(), now(), $5), \

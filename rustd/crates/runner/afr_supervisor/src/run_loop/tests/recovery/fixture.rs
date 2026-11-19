@@ -63,7 +63,7 @@ pub(super) fn inputs() -> Value {
         usage: TaskUsage::default(),
     };
     serde_json::to_value(TaskInputsResponse {
-        source_admission_id: ID.to_owned(),
+        source_turn_id: ID.to_owned(),
         accepted_revision_id: Some(ID.to_owned()),
         current_message: None,
         inputs: vec![],
@@ -109,7 +109,7 @@ pub(super) fn plan(input: &CheckpointPlanInput) -> CheckpointPlan {
 }
 pub(super) fn decision(input: &DecisionReservationInput) -> Value {
     assert!(matches!(input.assessment, DecisionAssessment::Goal { .. }));
-    assert_eq!(input.source_admission_id, ID);
+    assert_eq!(input.source_turn_id, ID);
     assert_eq!(
         input
             .task

@@ -182,7 +182,7 @@ async fn the_fleet_verbs_reach_their_paths_with_the_fence() {
     assert_eq!(sent[1].verb, Verb::FleetEvents);
     assert_eq!(
         sent[1].path,
-        format!("{root}/fleets/{SCHEDULE}/events?{fence}&starting_after=c+1")
+        format!("{root}/fleets/{SCHEDULE}/turns?{fence}&starting_after=c+1")
     );
     assert_eq!(sent[2].verb, Verb::FleetSteer);
     assert_eq!(sent[2].path, format!("{root}/steers"));

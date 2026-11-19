@@ -22,7 +22,7 @@ fn row(work: u8, work_type: &str, kind: &str, seq: i64) -> UnsettledRow {
         workspace_id: id(3),
         fleet_id: None,
         fleet_name: None,
-        event_id: None,
+        turn_id: None,
         provider: "anthropic".to_owned(),
         model: "claude-opus-5-5".to_owned(),
         posture: "platform".to_owned(),

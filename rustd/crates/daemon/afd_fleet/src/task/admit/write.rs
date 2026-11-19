@@ -4,7 +4,7 @@ use super::super::{PreparedItem, PreparedPlan, TaskBinding, TaskRun, Tasks, guar
 use super::{input, insert, prepare::Wake, source::Source};
 use crate::Result;
 use af_core::id::Uuid7;
-use afd_turns::PreparedAdmission;
+use afd_turns::PreparedTurn;
 
 pub(super) struct Writer<'a> {
     pub tasks: &'a Tasks,
@@ -25,7 +25,7 @@ impl Writer<'_> {
         connection: &mut sqlx::PgConnection,
         identities: &mut [TaskBinding],
         continuations: &[Option<Wake>],
-        prepared: Vec<Option<PreparedAdmission<'_>>>,
+        prepared: Vec<Option<PreparedTurn<'_>>>,
     ) -> Result<Written> {
         let mut queued = Vec::new();
         let mut bound = self.current.task_id.clone();
@@ -94,7 +94,7 @@ impl Writer<'_> {
         binding.task_generation = Some(1);
         if active {
             insert::run(connection, self.run, binding).await?;
-            insert::admission(connection, &self.plan.source_admission_id, binding).await?;
+            insert::admission(connection, &self.plan.source_turn_id, binding).await?;
             bound.clone_from(&binding.task_id);
         }
         Ok(!active)

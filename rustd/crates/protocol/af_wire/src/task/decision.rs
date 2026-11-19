@@ -35,7 +35,7 @@ pub struct DecisionReservationInput {
     pub fencing_token: u64,
     /// Admitted source whose meaning the call is assessing.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
-    pub source_admission_id: String,
+    pub source_turn_id: String,
     /// Logical role; native state derives its identity and accepted questions.
     #[garde(dive)]
     pub assessment: DecisionAssessment,

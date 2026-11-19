@@ -27,11 +27,11 @@ async fn human_input_pages_keep_complete_fifo_messages_without_claiming_or_consu
         let first = case.source_message(afd_turns::Producer::Steer, &actor, "First: café 🦉").await;
         let second = case.source_message(afd_turns::Producer::Steer, &actor, "Second: preserve middleware").await;
         let page = case.tasks.inputs(case.run(), &query(case, None, None)).await.expect("first FIFO page");
-        assert_eq!(page.source_admission_id, case.held.event_id);
+        assert_eq!(page.source_turn_id, case.held.turn_id);
         assert_eq!(page.current_message.as_deref(), Some(GOALS.join("; ").as_str()));
         assert_eq!(page.inputs.len(), 1);
         let item = page.inputs.first().expect("first human message");
-        assert_eq!(item.source_admission_id, first.as_str());
+        assert_eq!(item.source_turn_id, first.as_str());
         assert_eq!(item.message, "First: café 🦉");
         assert!(item.accepted.is_none());
         let cursor = page.next_cursor.expect("second input remains");
@@ -39,7 +39,7 @@ async fn human_input_pages_keep_complete_fifo_messages_without_claiming_or_consu
         let next = case.tasks.inputs(case.run(), &query(case, Some(cursor), None)).await.expect("second FIFO page");
         assert_eq!(next.inputs.len(), 1);
         let later = next.inputs.first().expect("second human message");
-        assert_eq!(later.source_admission_id, second.as_str());
+        assert_eq!(later.source_turn_id, second.as_str());
         assert_eq!(later.message, "Second: preserve middleware");
         assert!(later.sequence > item.sequence);
         assert!(next.next_cursor.is_none());
@@ -155,7 +155,7 @@ fn assert_recovered(
     assert_eq!(page.accepted_inputs.len(), 1);
     let input = page.accepted_inputs.first().expect("one retained input");
     assert_eq!(input.item_id, item);
-    assert_eq!(input.source_admission_id, plan.source_admission_id);
+    assert_eq!(input.source_turn_id, plan.source_turn_id);
     assert_eq!(input.plan_digest, plan.plan_digest);
     assert_eq!(input.sequence, 1);
     assert_eq!(input.task.generation, 1);
@@ -182,7 +182,7 @@ fn apply_receipt(
     garde::Unvalidated::new(TaskInputReceiptInput {
         fencing_token: case.run().fencing_token,
         operation_id: afd_db::test_util::mint_id().into(),
-        source_admission_id: plan.source_admission_id.clone(),
+        source_turn_id: plan.source_turn_id.clone(),
         plan_digest: plan.plan_digest.clone(),
         item_id: item.to_owned(),
         task: Some(task),

@@ -2,7 +2,7 @@
 //! accepted, over live Postgres and the lane's NATS.
 //!
 //! Bob, a member of John's account, steers John's fleet while John watches
-//! it: John's open stream carries `event_admitted` before any runner has the
+//! it: John's open stream carries `turn_admitted` before any runner has the
 //! message, under the id Bob's 202 names. A repeat announces nothing, and a
 //! bus that will not take the frame costs the steer nothing.
 #![cfg(feature = "test-util")]
@@ -29,7 +29,7 @@ use crate::integration_workspace_members::fixture::{Members, owner_scopes};
 const MESSAGE: &str = "check the tests";
 
 /// The frame's `event:` line, as the SSE layer names it from the payload.
-const ADMITTED_EVENT: &str = "event: event_admitted";
+const ADMITTED_EVENT: &str = "event: turn_admitted";
 
 /// The publisher's event for a frame the bus would not take.
 const EVENT_FRAME_DROPPED: &str = "tail_frame_dropped";
@@ -90,7 +90,7 @@ async fn test_steer_publishes_admitted_frame() {
         "nothing ran and nothing waited, so the message starts a run"
     );
     assert!(
-        accepted.get("folded_into_event_id").is_none(),
+        accepted.get("folded_into_turn_id").is_none(),
         "a message that joins no run names none: {accepted}"
     );
 
@@ -98,7 +98,7 @@ async fn test_steer_publishes_admitted_frame() {
     assert!(event.contains(ADMITTED_EVENT), "{event}");
     let frame = data_of(&event);
     assert_eq!(
-        frame["event_id"], accepted["event_id"],
+        frame["turn_id"], accepted["turn_id"],
         "one id, frame and 202"
     );
     assert_eq!(frame["message"], json!(MESSAGE));
@@ -129,7 +129,7 @@ async fn test_replayed_steer_publishes_nothing() {
     let (status, again) = steer(&bob, &members, &body).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{again}");
     assert_eq!(again["replayed"], json!(true));
-    assert_eq!(again["event_id"], first["event_id"]);
+    assert_eq!(again["turn_id"], first["turn_id"]);
     assert!(stays_quiet(&mut johns).await, "a repeat announces nothing");
 
     members.cleanup().await;

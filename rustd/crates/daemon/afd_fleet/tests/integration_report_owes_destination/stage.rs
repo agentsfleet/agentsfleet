@@ -10,12 +10,12 @@ use af_core::id::Uuid7;
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_connector::Provider;
 use afd_fleet::run::{Billed, Committed, Owing, Reported, Runs};
-use afd_turns::{Admission, Key, Producer, Reply};
+use afd_turns::{IncomingTurn, Key, Producer, Reply};
 use jiff::Timestamp;
 use sqlx::Row as _;
 
 use crate::recovery_seed::{admission, ledger, producer_key};
-use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_EVENT_ID, RESUME_RESPONSE, report};
+use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_RESPONSE, RESUME_TURN_ID, report};
 use crate::report_seed::{DEEP_POOL, SLICE_MS};
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts};
 use crate::support::Fixtures;
@@ -29,7 +29,7 @@ const RUN_SPACING_MS: i64 = 10 * SLICE_MS;
 pub(crate) struct Delivery {
     pub(crate) provider: String,
     pub(crate) destination: Option<String>,
-    pub(crate) event_id: Uuid7,
+    pub(crate) turn_id: Uuid7,
     pub(crate) answer: String,
 }
 
@@ -41,7 +41,7 @@ pub(crate) async fn deliveries(fixtures: &Fixtures, fleet: &Uuid7) -> Vec<Delive
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "SELECT provider, destination, event_id, answer FROM thread.deliveries \
+        "SELECT provider, destination, turn_id, answer FROM thread.deliveries \
          WHERE fleet_id = $1 ORDER BY created_at, sequence",
     )
     .bind(fleet)
@@ -52,7 +52,7 @@ pub(crate) async fn deliveries(fixtures: &Fixtures, fleet: &Uuid7) -> Vec<Delive
     .map(|row| Delivery {
         provider: row.try_get(0).expect("provider is text"),
         destination: row.try_get(1).expect("destination is nullable text"),
-        event_id: row.try_get(2).expect("event_id is a uuid"),
+        turn_id: row.try_get(2).expect("turn_id is a uuid"),
         answer: row.try_get(3).expect("answer is text"),
     })
     .collect()
@@ -107,7 +107,7 @@ impl Stage {
             setup: None,
             task: None,
             run_id: Cow::Borrowed(run_id.as_str()),
-            event_id: Cow::Borrowed(run.event_id.as_str()),
+            turn_id: Cow::Borrowed(run.turn_id.as_str()),
             fencing_token: run.fence.as_u64(),
             outcome: Outcome::Processed,
             failure_reason: None,
@@ -121,7 +121,7 @@ impl Stage {
                 segments: None,
             },
             checkpoint: ReportCheckpoint {
-                last_event_id: Cow::Borrowed(RESUME_EVENT_ID),
+                last_turn_id: Cow::Borrowed(RESUME_TURN_ID),
                 last_response: Cow::Borrowed(RESUME_RESPONSE),
             },
             tool_calls: None,
@@ -156,7 +156,7 @@ impl Stage {
             .expect("a pooled connection");
         sqlx::query_scalar(
             "SELECT receipt FROM thread.deliveries
-          WHERE fleet_id = $1 AND event_id = $2",
+          WHERE fleet_id = $1 AND turn_id = $2",
         )
         .bind(&self.fleet)
         .bind(event)
@@ -174,7 +174,7 @@ impl Stage {
     ) -> Uuid7 {
         let key = producer_key(&self.fleet, delivery);
         ledger(&self.fixtures)
-            .admit(Admission {
+            .admit(IncomingTurn {
                 producer,
                 key: Key::Repeated(&key),
                 reply,

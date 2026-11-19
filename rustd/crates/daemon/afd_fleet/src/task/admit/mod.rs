@@ -75,7 +75,7 @@ pub(super) async fn bind(
 async fn prepare_admissions<'a>(
     tasks: &Tasks,
     continuations: &'a [Option<prepare::Wake>],
-) -> Result<Vec<Option<afd_turns::PreparedAdmission<'a>>>> {
+) -> Result<Vec<Option<afd_turns::PreparedTurn<'a>>>> {
     // Budget sampling precedes locks; staging uses the caller's transaction.
     let mut prepared = Vec::with_capacity(continuations.len());
     for wake in continuations {
@@ -116,7 +116,7 @@ async fn authorize(
     if let Some(authorization) = &plan.authorization {
         decision::authorize::binding(connection, run, authorization).await?;
         sqlx::query(include_str!("sql/interpretation.sql"))
-            .bind(&plan.source_admission_id)
+            .bind(&plan.source_turn_id)
             .bind(&current.fleet_id)
             .bind(&current.workspace_id)
             .bind(&current.tenant_id)
@@ -163,7 +163,7 @@ async fn mark_interpreted(
 ) -> Result<()> {
     if plan.authorization.is_some() {
         sqlx::query(include_str!("sql/interpreted.sql"))
-            .bind(&plan.source_admission_id)
+            .bind(&plan.source_turn_id)
             .bind(&current.fleet_id)
             .bind(&current.workspace_id)
             .execute(&mut *connection)

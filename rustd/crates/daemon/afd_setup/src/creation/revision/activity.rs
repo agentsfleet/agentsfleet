@@ -32,7 +32,7 @@ pub(super) async fn record(
         .bind(MODEL_CHANGED)
         .bind(sqlx::types::Json(payload))
         .bind(None::<&Uuid7>)
-        .bind(af_core::event::status::PROCESSED)
+        .bind(af_core::turn::status::PROCESSED)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

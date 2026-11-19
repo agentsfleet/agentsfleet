@@ -130,7 +130,7 @@ async fn assert_delivery_receipts(
         .await
         .expect("claim")
         .expect("work");
-    assert_eq!(&acquired.event_id, admission);
+    assert_eq!(&acquired.turn_id, admission);
     // The claim statement opened the event row, so its first claim answers a
     // first delivery.
     assert_eq!(

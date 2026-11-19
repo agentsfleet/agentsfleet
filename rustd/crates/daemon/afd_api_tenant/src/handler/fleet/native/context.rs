@@ -7,7 +7,7 @@ use crate::{
         draft,
         fleet::detail::{FleetPath, parse_fleet_id},
     },
-    services::{FleetSchedules as _, Services, WorkspaceEvents as _},
+    services::{FleetSchedules as _, Services, WorkspaceTurns as _},
 };
 use afd_api_wire::authoring::{AuthoringContext, Conversation, CursorPage, SetupActivity};
 use afd_http::handler::{Refusal, authoring_refusal};
@@ -83,7 +83,7 @@ async fn activity_history<D: Services>(
     services: &D,
     workspace: &af_core::id::Uuid7,
     fleet: &af_core::id::Uuid7,
-) -> Result<Vec<afd_turns::view::EventDetailRow>, Refusal> {
+) -> Result<Vec<afd_turns::view::TurnDetailRow>, Refusal> {
     services
         .events()
         .thread_for_fleet(
@@ -115,15 +115,15 @@ async fn current<D: Services>(
     Ok((saved, schedules))
 }
 
-fn activity_page(receipts: Vec<afd_turns::view::EventDetailRow>) -> CursorPage<SetupActivity> {
+fn activity_page(receipts: Vec<afd_turns::view::TurnDetailRow>) -> CursorPage<SetupActivity> {
     let next = receipts.get(25).and_then(|_| receipts.get(24)).map(|last| {
-        afd_turns::view::Cursor::after(last.row.created_at, &last.row.event_id).encode()
+        afd_turns::view::Cursor::after(last.row.created_at, &last.row.turn_id).encode()
     });
     let activities = receipts
         .into_iter()
         .take(25)
         .map(|event| SetupActivity {
-            event_id: event.row.event_id.into(),
+            turn_id: event.row.turn_id.into(),
             event_type: event.row.event_type,
             status: event.row.status,
             request_json: event.request_json,

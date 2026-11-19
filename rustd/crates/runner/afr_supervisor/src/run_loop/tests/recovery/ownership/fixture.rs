@@ -64,7 +64,7 @@ impl Fixture {
             prepared: PreparedTask {
                 execution_deadline: None,
                 inputs: TaskInputsResponse {
-                    source_admission_id: ID.to_owned(),
+                    source_turn_id: ID.to_owned(),
                     accepted_revision_id: Some(ID.to_owned()),
                     current_message: None,
                     inputs: vec![],

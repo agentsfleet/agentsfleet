@@ -96,7 +96,7 @@ impl<'a> ReportStatement<'a> {
             .bind(self.failure_reason.as_deref())
             .bind(self.failure_detail)
             .bind(self.tool_calls)
-            .bind(af_core::event::status::RECEIVED)
+            .bind(af_core::turn::status::RECEIVED)
             .bind(afd_api_wire::approval::status::PENDING)
             .bind(self.checkpoint)
             .bind(self.held_until.map(jiff::Timestamp::to_sqlx))
@@ -185,7 +185,7 @@ struct AnswerRow {
     output_tokens: Option<i64>,
     charged_nanos: i64,
     model_nanos: i64,
-    event_id: Option<Uuid7>,
+    turn_id: Option<Uuid7>,
 }
 
 /// What the report statement answered.
@@ -232,7 +232,7 @@ impl ReportAnswer {
         if answer.claimed == 0 {
             return Ok(Self::unclaimed(answer));
         }
-        let closed = match answer.event_id {
+        let closed = match answer.turn_id {
             Some(_) => Some(Closed::read(row)?),
             None => None,
         };

@@ -9,7 +9,7 @@ WITH resolved AS (
   WHERE action_id = $4 AND resolved_at IS NULL
     AND (fleet_id = $5 OR $5 IS NULL)
   RETURNING id, action_id, workspace_id, fleet_id, status, resolved_at,
-            resolved_by, detail, gate_type, evidence, event_id
+            resolved_by, detail, gate_type, evidence, turn_id
 ), granted AS (
   UPDATE connector.integration_grants g
   SET status      = CASE WHEN r.status = $6 THEN $7 ELSE $8 END,
@@ -20,7 +20,7 @@ WITH resolved AS (
   WHERE g.fleet_id = r.fleet_id
     AND g.service  = r.evidence->>'service'
     AND r.gate_type = $9
-    AND r.event_id IS NULL
+    AND r.turn_id IS NULL
     AND g.status != $8
   RETURNING g.id
 ), unparked AS (
@@ -34,7 +34,7 @@ WITH resolved AS (
 )
 
 SELECT id AS gate_id, action_id, workspace_id,
-       fleet_id, status, resolved_at, resolved_by, detail, event_id,
+       fleet_id, status, resolved_at, resolved_by, detail, turn_id,
        (SELECT COUNT(*) FROM fleet.approval_gates g
          WHERE g.fleet_id = resolved.fleet_id AND g.resolved_at IS NULL
            AND g.id NOT IN (SELECT id FROM resolved)) AS pending_approvals

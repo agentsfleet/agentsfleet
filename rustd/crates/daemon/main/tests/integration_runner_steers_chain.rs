@@ -14,8 +14,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use af_core::id::Uuid7;
-use af_wire::event::{EventType, sender_line};
-use afd_turns::Admissions;
+use af_wire::turn::{TurnKind, sender_line};
+use afd_turns::Turns;
 use afd_turns::view::{Steer, Steered, steer_actor};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::Value;
@@ -36,7 +36,7 @@ fn folded(answer: &Value) -> Vec<(String, i64)> {
     inputs
         .iter()
         .map(|input| {
-            let event = input["event_id"]
+            let event = input["turn_id"]
                 .as_str()
                 .expect("an input names its event")
                 .to_owned();
@@ -51,7 +51,7 @@ fn folded(answer: &Value) -> Vec<(String, i64)> {
 /// A person's message to `target`, admitted into the conversation the busy
 /// run is in.
 async fn person_message(scene: &Scenario, target: &Uuid7) -> Steered {
-    let admissions = Admissions::for_tests(scene.booted.database.clone(), scene.booted.bus.clone());
+    let admissions = Turns::for_tests(scene.booted.database.clone(), scene.booted.bus.clone());
     Steer::new(admissions)
         .append(
             target,
@@ -90,7 +90,7 @@ async fn fleet_steer_runs_as_its_own_run_on_a_busy_target() {
     crew.workers(2).await;
     let scene = crew.run();
     let busy =
-        crate::e2e_event::enqueue(&scene.booted, &target, &scene.workspace, EventType::Chat).await;
+        crate::e2e_event::enqueue(&scene.booted, &target, &scene.workspace, TurnKind::Chat).await;
     let live = offered(scene, &busy).await;
 
     let person = person_message(scene, &target).await;
@@ -103,7 +103,7 @@ async fn fleet_steer_runs_as_its_own_run_on_a_busy_target() {
     let (answer, claimed) = folded_by(scene, &live).await;
     let (_, read_through) = claimed
         .iter()
-        .find(|(event, _)| event == &person.event_id)
+        .find(|(event, _)| event == &person.turn_id)
         .expect("the person's message is folded into the live scene");
     let stolen = claimed
         .iter()
@@ -112,7 +112,7 @@ async fn fleet_steer_runs_as_its_own_run_on_a_busy_target() {
 
     // The run reports the last folded message it read, as a runner does, so
     // the person's message settles with it and only the steer is left.
-    let mut report = crate::wire::report_body(&live.run_id, &live.event_id, live.fence);
+    let mut report = crate::wire::report_body(&live.run_id, &live.turn_id, live.fence);
     report["folded_through_sequence"] = serde_json::json!(read_through);
     let reported = crate::wire::report(scene, &report).await;
     assert!(reported.is_ok(), "the live scene settles: {reported:?}");
@@ -187,7 +187,7 @@ async fn fleet_steer_chain_has_no_limit_and_the_receiver_answers() {
         &mut expected,
     )
     .await;
-    let seeded = crate::wire::report_body(&run, &crew.run().event_id, fence);
+    let seeded = crate::wire::report_body(&run, &crew.run().turn_id, fence);
     assert!(
         crate::wire::report(crew.run(), &seeded).await.is_ok(),
         "the seeded scene settles"
@@ -197,7 +197,7 @@ async fn fleet_steer_chain_has_no_limit_and_the_receiver_answers() {
     while !expected.is_empty() {
         let offer = next_offer(crew.run()).await;
         let line = expected
-            .remove(&offer.event_id.to_string())
+            .remove(&offer.turn_id.to_string())
             .expect("only a steer this chain sent is offered");
         assert!(
             offer.message.starts_with(&format!("{line}\n")),

@@ -174,7 +174,7 @@ impl Harness<'_, '_> {
                 meter: self.shared.meter,
                 stop: &self.stop,
             }
-            .bind(&inputs, &input.source_admission_id, &input.message)
+            .bind(&inputs, &input.source_turn_id, &input.message)
             .await?;
             prepared.execution_deadline =
                 match (prepared.execution_deadline, binding.execution_deadline) {
@@ -264,7 +264,7 @@ async fn record_input(
         .task_input_receipt(TaskInputReceiptInput {
             fencing_token,
             operation_id: crate::decision::identity()?,
-            source_admission_id: input.source_admission_id.clone(),
+            source_turn_id: input.source_turn_id.clone(),
             plan_digest: input.plan_digest.clone(),
             item_id: input.item_id.clone(),
             task: Some(input.task.clone()),

@@ -58,7 +58,7 @@ A fleet's intake writes the turn `queued`. The claim that first runs it stamps i
 
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|
-| `id` | `UUID` PK | no | `admissions.id` = `events.event_id`; `messages.id` | the turn id; the wire still calls a fleet's `event_id` |
+| `id` | `UUID` PK | no | `admissions.id` = `events.event_id`; `messages.id` | the turn id, which every table and the wire name `turn_id` |
 | `sequence` | `BIGINT` identity by default | no | `admissions.sequence`; `messages.sequence` | unique with `thread_id`. A fleet's turns draw it in intake order, a history-only receipt included; a setup draft numbers its own from 1, because its watermarks and attempts name turns by it |
 | `thread_id` | `UUID` | no | `fleet_id`; `messages.draft_id` | FK `thread.threads(id)` ON DELETE CASCADE |
 | `workspace_id` | `UUID` | no | `workspace_id`; the draft's | FK `identity.workspaces(id)` ON DELETE CASCADE |
@@ -176,15 +176,20 @@ It replaces `runner.events`, column for column, except that `event_type` becomes
 
 ## Tables that point at the replaced ones
 
+Every column that holds a turn id is named `turn_id` (or `source_turn_id`), and the wire says `turn_id` too. A foreign key is added only where nothing outlives the turn; a table that keeps its row after the turn holds the id opaque.
+
 | Table | Old column | New column and FK |
 |-------|------------|-------------------|
 | `runner.turn_recovery` | `event_id` → `fleet.events` | `turn_id` → `thread.turns(id)` ON DELETE CASCADE (done) |
-| `runner.turn_checkpoints`, `turn_checkpoint_pins`, `turn_checkpoint_operations`, `turn_checkpoint_refs` | `event_id`, `lease_id` | `turn_id`, `run_id`, FKs ON DELETE CASCADE; `turn_checkpoints.event_id`, which points at `turn_recovery`, is `turn_id` now |
+| `runner.turn_checkpoints`, `turn_checkpoint_pins`, `turn_checkpoint_refs` | `event_id` | `turn_id`, which points at `turn_recovery` (done) |
+| `runner.turn_checkpoint_operations` | `event_id` | `turn_id`, `fk_turn_checkpoint_operations_turn_id` → `thread.turns(id)` ON DELETE CASCADE (done): an allocation is made only under the turn's recovery head, so the turn always exists |
 | `thread.items` | `event_id` → `fleet.events` | `turn_id` → `thread.turns(id)` ON DELETE CASCADE (done; the file moved to `20261108125110` to follow `thread.turns`) |
-| `fleet.approval_gates` | `event_id` | `turn_id` → `thread.turns(id)` ON DELETE CASCADE, null for an install grant card, which has no turn |
-| `billing.usage_lines` | `event_id`, `authoring_attempt_id`, `work_type` | `turn_id`, `run_id`, `work_type` values `turn`, `stage`, `setup` |
-| `runner.decision_calls` | `lease_id` | `run_id` |
-| `fleet.task_effects`, `task_input_receipts`, `task_checkpoints`, `task_objects`, `task_object_pins`, `task_waits` | `event_id`, `lease_id` | `turn_id`, `run_id` |
+| `fleet.approval_gates` | `event_id` | `turn_id` (done), null for an install grant card. The FK to `thread.turns(id)` ON DELETE CASCADE waits for M253_003: the gate fixtures still bind a minted id with no turn behind it |
+| `thread.deliveries` | `event_id` | `turn_id` (done). No FK yet: a Slack notice owes a delivery that names its own row id (`afd_ingress/src/slack/notice.rs`), so it has no turn |
+| `thread.runs` | `event_id`, `event_created_at` | `turn_id`, `turn_created_at` (done). No FK yet: a settled run outlives its owner, so the FK arrives with the `thread_id` change |
+| `billing.usage_lines` | `event_id`, `authoring_attempt_id` | `turn_id`, `run_id` (done; `run_id` names a setup run, a fleet line names its run in `work_id`). No FK: a line outlives what it names. `work_type` values are unchanged |
+| `runner.decision_calls` | `source_admission_id` | `source_turn_id` (done). No FK: the call outlives its run and turn |
+| `fleet.task_items`, `fleet.task_interpretations` | `admission_id` | `turn_id` (done). No FK: an interpretation receipt outlives its source turn |
 
 ## Bus subjects
 

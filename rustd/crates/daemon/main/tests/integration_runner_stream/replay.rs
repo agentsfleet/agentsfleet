@@ -24,10 +24,10 @@ async fn a_report_resent_after_a_native_cut_is_charged_once() {
         let run = offer.pointer("/run").expect("native response field");
         let (id, fence) = wire::claim(run);
         assert_eq!(
-            (*crate::wire::pointer(run, "/event/event_id")),
-            scene.event_id.as_str()
+            (*crate::wire::pointer(run, "/event/turn_id")),
+            scene.turn_id.as_str()
         );
-        let body = wire::report_body(&id, &scene.event_id, fence);
+        let body = wire::report_body(&id, &scene.turn_id, fence);
         first
             .send(
                 StreamKind::Reports,
@@ -55,8 +55,8 @@ async fn a_report_resent_after_a_native_cut_is_charged_once() {
             "{transport:?}: the resent report answers with the saved result"
         );
         crate::reads::relay_settled(&scene).await;
-        let counts: (i64, i64) = sqlx::query_as("SELECT count(*) FILTER(WHERE seq=1), count(*) FILTER(WHERE settled_at IS NULL) FROM billing.usage_lines WHERE event_id=$1")
-            .bind(&scene.event_id)
+        let counts: (i64, i64) = sqlx::query_as("SELECT count(*) FILTER(WHERE seq=1), count(*) FILTER(WHERE settled_at IS NULL) FROM billing.usage_lines WHERE turn_id=$1")
+            .bind(&scene.turn_id)
             .fetch_one(&mut *scene.booted.database.acquire().await.expect("receipt observer"))
             .await.expect("read scoped receipt counts");
         assert_eq!(counts, (1, 0));

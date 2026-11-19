@@ -47,7 +47,7 @@ impl Runs {
         drop_others(
             &mut transaction,
             &target.fleet_id,
-            &target.event_id,
+            &target.turn_id,
             target.fence,
         )
         .await?;
@@ -97,7 +97,7 @@ impl Runs {
         sqlx::query(statement::UPSERT_RECORDS)
             .bind(&target.workspace_id)
             .bind(&target.fleet_id)
-            .bind(&target.event_id)
+            .bind(&target.turn_id)
             .bind(target.fence)
             .bind(columns.ids)
             .bind(columns.numbers)
@@ -137,14 +137,14 @@ async fn spend(
 ) -> Result<(usize, BTreeMap<u64, usize>)> {
     let spent: i64 = sqlx::query_scalar(statement::SELECT_KEPT_BYTES)
         .bind(&target.fleet_id)
-        .bind(&target.event_id)
+        .bind(&target.turn_id)
         .bind(target.fence)
         .fetch_one(&mut *connection)
         .await
         .map_err(query(CONTEXT_KEEP))?;
     let rows: Vec<(i64, i64)> = sqlx::query_as(statement::SELECT_REPLACED_BYTES)
         .bind(&target.fleet_id)
-        .bind(&target.event_id)
+        .bind(&target.turn_id)
         .bind(target.fence)
         .bind(numbers)
         .fetch_all(&mut *connection)
@@ -167,12 +167,12 @@ fn to_usize(stored: i64) -> usize {
 async fn drop_others(
     connection: &mut PgConnection,
     fleet_id: &Uuid7,
-    event_id: &Uuid7,
+    turn_id: &Uuid7,
     fence: i64,
 ) -> Result<()> {
     sqlx::query(statement::DELETE_OTHER_FENCES)
         .bind(fleet_id)
-        .bind(event_id)
+        .bind(turn_id)
         .bind(fence)
         .execute(&mut *connection)
         .await

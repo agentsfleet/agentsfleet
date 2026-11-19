@@ -24,7 +24,7 @@ use crate::supervisor_model::{INSTRUCTIONS, STEER};
 pub(crate) const TOKEN: &str = "kernel-fixture-credential";
 pub(crate) const GRAFANA: &str = "grafana.example.test";
 pub(crate) const SCHEDULE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
-pub(crate) const SCHEDULE_EVENT_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805c";
+pub(crate) const SCHEDULE_TURN_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805c";
 const WORKSPACE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805b";
 /// How long the fixture grants a run and a minted credential for.
 const GRANTED_FOR: Duration = Duration::from_secs(60);
@@ -177,7 +177,7 @@ fn response(plane: &Plane, method: &Method, path: &str) -> Value {
         _ if path.ends_with("/messages") => json!({ "delivered": true }),
         _ if path.ends_with("/schedules") => json!({ "schedule_id": SCHEDULE_ID }),
         _ if path.ends_with(&format!("/{SCHEDULE_RUNS_SUFFIX}")) => json!(ScheduleRun {
-            event_id: SCHEDULE_EVENT_ID.into()
+            turn_id: SCHEDULE_TURN_ID.into()
         }),
         _ if path.ends_with("/recall") => json!({
             "memory": [{ "key": "prior", "content": "earlier fleet finding", "category": "core" }],

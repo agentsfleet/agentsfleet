@@ -91,7 +91,7 @@ pub(super) async fn one_charge(fixture: &Fixture) {
     assert_eq!(counts(fixture).await, (1, 1, 1));
     assert_eq!(balance(fixture).await, BALANCE - 3);
     let row: (i64,i64,i64,i64,i64,String,String,Uuid7,Uuid7,Uuid7,Uuid7) = sqlx::query_as(
-        "SELECT seq,input_token_count,cached_input_token_count,output_token_count,charged_nanos,provider,model,tenant_id,workspace_id,work_id,event_id FROM billing.usage_lines WHERE work_id=$1 AND kind = $2")
+        "SELECT seq,input_token_count,cached_input_token_count,output_token_count,charged_nanos,provider,model,tenant_id,workspace_id,work_id,turn_id FROM billing.usage_lines WHERE work_id=$1 AND kind = $2")
         .bind(&fixture.run.id).bind(LineKind::Decision.as_str())
         .fetch_one(&mut *fixture.database.acquire().await.expect("canonical charge observer")).await.expect("one original-owner line");
     assert_eq!(

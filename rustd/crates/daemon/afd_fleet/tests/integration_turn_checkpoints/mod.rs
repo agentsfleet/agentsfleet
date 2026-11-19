@@ -110,7 +110,7 @@ impl Case {
     }
 
     fn tasks(&self) -> afd_fleet::task::Tasks {
-        let admissions = afd_turns::Admissions::new(
+        let admissions = afd_turns::Turns::new(
             self.fixtures.database.clone(),
             self.fixtures.bus().clone(),
             af_crypto::entropy::Entropy::new(),
@@ -127,11 +127,11 @@ impl Case {
         Ok(sqlx::query_as(
             "SELECT
             (SELECT count(*) FROM runner.turn_checkpoints WHERE turn_id=$1),
-            (SELECT count(*) FROM runner.turn_checkpoint_operations WHERE event_id=$1),
+            (SELECT count(*) FROM runner.turn_checkpoint_operations WHERE turn_id=$1),
             (SELECT next_generation FROM runner.turn_recovery WHERE turn_id=$1),
             (SELECT head_turn_checkpoint_id FROM runner.turn_recovery WHERE turn_id=$1)",
         )
-        .bind(&self.acquired.event_id)
+        .bind(&self.acquired.turn_id)
         .fetch_one(&mut *connection)
         .await?)
     }
@@ -161,7 +161,7 @@ async fn a_lost_begin_acknowledgement_reuses_the_exact_generation_and_pin() -> C
     assert_eq!(first.pin.expires_at, replay.pin.expires_at);
     assert!(!first.replayed);
     assert!(replay.replayed);
-    assert_eq!(first.scope.event_id.0, case.acquired.event_id.as_str());
+    assert_eq!(first.scope.turn_id.0, case.acquired.turn_id.as_str());
     assert_eq!(first.scope.fleet_id.0, case.acquired.fleet_id.as_str());
     assert_eq!(
         first.scope.workspace_id.0,
@@ -195,7 +195,7 @@ async fn a_changed_begin_or_a_retired_plan_cannot_reallocate_its_operation() -> 
     let mut connection = case.fixtures.database.acquire().await?;
     sqlx::query("DELETE FROM runner.turn_checkpoints WHERE id=$1 AND turn_id=$2")
         .bind(Uuid7::parse(&saved.checkpoint_id.0)?)
-        .bind(&case.acquired.event_id)
+        .bind(&case.acquired.turn_id)
         .execute(&mut *connection)
         .await?;
     drop(connection);
@@ -239,7 +239,7 @@ async fn a_foreign_runner_or_wrong_fence_allocates_no_checkpoint() -> Checked {
     let mut connection = case.fixtures.database.acquire().await?;
     let count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM runner.turn_recovery WHERE turn_id=$1")
-            .bind(&case.acquired.event_id)
+            .bind(&case.acquired.turn_id)
             .fetch_one(&mut *connection)
             .await?;
     assert_eq!(count, 0);
@@ -257,7 +257,7 @@ async fn a_parked_or_settled_source_cannot_begin_recovery() -> Checked {
             parked_at=CASE WHEN $2 THEN clock_timestamp() ELSE NULL END,
             settled_at=CASE WHEN $2 THEN NULL ELSE clock_timestamp() END WHERE id=$1",
         )
-        .bind(&case.acquired.event_id)
+        .bind(&case.acquired.turn_id)
         .bind(parked)
         .execute(&mut *connection)
         .await?;
@@ -271,9 +271,9 @@ async fn a_parked_or_settled_source_cannot_begin_recovery() -> Checked {
     }
     let mut connection = case.fixtures.database.acquire().await?;
     let count: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM runner.turn_checkpoint_operations WHERE event_id=$1",
+        "SELECT count(*) FROM runner.turn_checkpoint_operations WHERE turn_id=$1",
     )
-    .bind(&case.acquired.event_id)
+    .bind(&case.acquired.turn_id)
     .fetch_one(&mut *connection)
     .await?;
     assert_eq!(count, 0);
@@ -304,7 +304,7 @@ async fn a_revoked_drained_or_degraded_host_cannot_allocate_a_checkpoint() -> Ch
         let mut connection = case.fixtures.database.acquire().await?;
         let count: i64 =
             sqlx::query_scalar("SELECT count(*) FROM runner.turn_recovery WHERE turn_id=$1")
-                .bind(&case.acquired.event_id)
+                .bind(&case.acquired.turn_id)
                 .fetch_one(&mut *connection)
                 .await?;
         assert_eq!(count, 0);

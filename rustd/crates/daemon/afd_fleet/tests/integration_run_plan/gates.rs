@@ -8,7 +8,7 @@ use super::{Fixtures, prepared, relation_scans, run};
 
 // Mix resolved gates, expired matching gates and live gates for other events.
 const HISTORY: &str = "INSERT INTO fleet.approval_gates \
-    (id,fleet_id,workspace_id,event_id,action_id,tool_name,action_name,gate_type, \
+    (id,fleet_id,workspace_id,turn_id,action_id,tool_name,action_name,gate_type, \
      proposed_action,evidence,blast_radius,expires_at,status,detail,resolved_at, \
      created_at,updated_at) \
     SELECT uuidv7(),a.thread_id,a.workspace_id, \
@@ -32,14 +32,14 @@ async fn parked_head_probes_skip_unrelated_and_expired_approval_history() {
     let mut tx = connection.begin().await.expect("isolated plan transaction");
     prepared::prepare(&mut tx).await;
     sqlx::query("UPDATE thread.turns SET parked_at=now() WHERE id=$1")
-        .bind(&seeded.event_id)
+        .bind(&seeded.turn_id)
         .execute(&mut *tx)
         .await
         .expect("park head");
     let mut previous = 0;
     for size in [2000, 4000, 8000, 16000] {
         sqlx::query(HISTORY)
-            .bind(&seeded.event_id)
+            .bind(&seeded.turn_id)
             .bind(previous + 1)
             .bind(size)
             .bind(afd_api_wire::approval::status::PENDING)
@@ -50,7 +50,7 @@ async fn parked_head_probes_skip_unrelated_and_expired_approval_history() {
         probe_plans(&mut tx, &seeded.fleet, runner, size).await;
         previous = size;
     }
-    assert_dense_matches(&mut tx, &seeded.event_id, &seeded.fleet, runner).await;
+    assert_dense_matches(&mut tx, &seeded.turn_id, &seeded.fleet, runner).await;
     assert_other_fleet_history(&mut tx, &seeded, runner).await;
     prepared::release(&mut tx).await;
     tx.rollback().await.expect("discard history");
@@ -97,7 +97,7 @@ async fn assert_dense_matches(
     fleet: &Uuid7,
     runner: &Uuid7,
 ) {
-    sqlx::query("UPDATE fleet.approval_gates SET event_id=$1, expires_at=clock_timestamp()+interval '1 hour' WHERE fleet_id=$2 AND resolved_at IS NULL")
+    sqlx::query("UPDATE fleet.approval_gates SET turn_id=$1, expires_at=clock_timestamp()+interval '1 hour' WHERE fleet_id=$2 AND resolved_at IS NULL")
         .bind(event).bind(fleet).execute(&mut *connection).await.expect("many live matching gates");
     run(connection, "ANALYZE fleet.approval_gates").await;
     let live = prepared::candidates(connection, runner).await;
@@ -183,7 +183,7 @@ async fn assert_other_fleet_history(
     .await
     .expect("unrelated fleet");
     for copies in [1_i32, 1, 2] {
-        sqlx::query("INSERT INTO fleet.approval_gates SELECT (jsonb_populate_record(NULL::fleet.approval_gates,to_jsonb(g)||jsonb_build_object('id',uuidv7(),'fleet_id',$2,'event_id',uuidv7(),'expires_at',clock_timestamp()+interval '30 minutes'))).* FROM fleet.approval_gates g,generate_series(1,$3) WHERE g.fleet_id=$1 AND g.resolved_at IS NULL")
+        sqlx::query("INSERT INTO fleet.approval_gates SELECT (jsonb_populate_record(NULL::fleet.approval_gates,to_jsonb(g)||jsonb_build_object('id',uuidv7(),'fleet_id',$2,'turn_id',uuidv7(),'expires_at',clock_timestamp()+interval '30 minutes'))).* FROM fleet.approval_gates g,generate_series(1,$3) WHERE g.fleet_id=$1 AND g.resolved_at IS NULL")
             .bind(&seeded.fleet).bind(&other).bind(copies).execute(&mut *connection).await.expect("unrelated earlier deadlines");
         run(connection, "ANALYZE fleet.approval_gates").await;
         let plan = prepared::candidates(connection, runner).await;
@@ -205,7 +205,7 @@ fn assert_index_work(node: &serde_json::Value) {
         );
         let bounds = node["Index Cond"].as_str().expect("index bounds");
         assert!(
-            ["fleet_id", "event_id"]
+            ["fleet_id", "turn_id"]
                 .iter()
                 .all(|key| bounds.contains(key)),
             "{node}"

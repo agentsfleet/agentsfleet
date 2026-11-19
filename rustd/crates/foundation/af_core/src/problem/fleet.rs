@@ -261,7 +261,7 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: Some("This Fleet isn't active, so it can't take new work."),
     },
     Problem {
-        code: error_code::EVENT_NOT_FOUND,
+        code: error_code::TURN_NOT_FOUND,
         status: 404,
         title: "Event not found",
         hint: "This fleet has no event with that identifier in this workspace. An event in another workspace answers the same.",

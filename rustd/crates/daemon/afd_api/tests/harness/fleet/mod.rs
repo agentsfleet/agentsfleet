@@ -7,8 +7,8 @@ use super::*;
 use clients::{connectors, interjector, logins, schedules};
 
 /// One durable ledger shared by this fixture's admission producers.
-pub(crate) fn admissions(database: &Db, bus: &afd_bus::Handle) -> afd_turns::Admissions {
-    afd_turns::Admissions::for_tests(database.clone(), bus.clone())
+pub(crate) fn admissions(database: &Db, bus: &afd_bus::Handle) -> afd_turns::Turns {
+    afd_turns::Turns::for_tests(database.clone(), bus.clone())
 }
 
 impl Fleet {
@@ -110,7 +110,7 @@ impl Fleet {
 struct Inputs {
     database: Db,
     bus: afd_bus::Handle,
-    ledger: afd_turns::Admissions,
+    ledger: afd_turns::Turns,
     providers: HarnessProviders,
     mock_directory: MockDirectory,
     directory: Directory,
@@ -151,7 +151,7 @@ impl Inputs {
 fn tasks(
     database: &Db,
     bus: &afd_bus::Handle,
-    ledger: &afd_turns::Admissions,
+    ledger: &afd_turns::Turns,
 ) -> afd_fleet::task::Tasks {
     afd_fleet::task::Tasks::new(
         afd_fleet::run::Runs::new(database.clone(), bus.clone(), Entropy::new()),

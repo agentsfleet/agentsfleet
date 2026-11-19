@@ -39,10 +39,10 @@ const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 const SILENCE_BUDGET: Duration = Duration::from_millis(500);
 
 /// The frame kind the receive publishes.
-const EVENT_RECEIVED: &str = "event_received";
+const EVENT_RECEIVED: &str = "turn_received";
 
 /// The frame kind a closing would publish, and which a park never does.
-const EVENT_COMPLETE: &str = "event_complete";
+const EVENT_COMPLETE: &str = "turn_complete";
 
 /// A seeded fleet whose narrative log this test opens and then leaves parked.
 struct Parked {
@@ -142,7 +142,7 @@ async fn a_parked_event_still_reports_its_event_count() {
     );
 
     // Nothing closes a parked event, so the tail hears nothing more — and in
-    // particular never an `event_complete` for it.
+    // particular never an `turn_complete` for it.
     let silence = tokio::time::timeout(SILENCE_BUDGET, run.tail.recv()).await;
     assert!(
         silence.is_err(),
@@ -194,7 +194,7 @@ async fn a_parked_event_moves_no_budget() {
     .expect("status is text");
     assert_eq!(
         status,
-        af_core::event::status::RECEIVED,
+        af_core::turn::status::RECEIVED,
         "the parked row is still open — a retry, not a settled charge"
     );
 }

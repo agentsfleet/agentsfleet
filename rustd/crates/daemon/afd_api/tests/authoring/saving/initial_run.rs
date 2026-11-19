@@ -48,7 +48,7 @@ async fn resume_after_reload_recovers_a_capacity_blocked_initial_run_once() {
     assert_eq!(resumed["id"], blocked["id"]);
     assert_eq!(resumed["setup_revision"], blocked["setup_revision"]);
     assert_eq!(resumed["start"]["state"], "accepted");
-    assert!(resumed["start"]["event_id"].is_string());
+    assert!(resumed["start"]["turn_id"].is_string());
     assert_eq!(count(&case, &resumed).await, 1);
     let repeated = resume(
         &case,
@@ -128,7 +128,7 @@ async fn a_lost_notification_keeps_the_first_run_accepted_through_reload_and_ret
     );
     let event = accepted_after_reload(&case, &path).await;
     assert_eq!(
-        body["start"]["event_id"],
+        body["start"]["turn_id"],
         event.as_str(),
         "the identity is stable"
     );
@@ -138,7 +138,7 @@ async fn a_lost_notification_keeps_the_first_run_accepted_through_reload_and_ret
         let resumed = json_body(response).await;
         assert_eq!(resumed["id"], fleet.as_str());
         assert_eq!(resumed["start"]["state"], "accepted");
-        assert_eq!(resumed["start"]["event_id"], event.as_str());
+        assert_eq!(resumed["start"]["turn_id"], event.as_str());
         assert_eq!(
             thread(&case, &path, &fleet).await,
             std::slice::from_ref(&event)
@@ -175,7 +175,7 @@ async fn accepted_after_reload(case: &Case, path: &str) -> String {
     let reloaded = json_body(response).await;
     assert_eq!(reloaded["status"], "active");
     assert_eq!(reloaded["start"]["state"], "accepted", "{reloaded}");
-    let event = reloaded["start"]["event_id"]
+    let event = reloaded["start"]["turn_id"]
         .as_str()
         .expect("an accepted run keeps its event identity")
         .to_owned();
@@ -203,6 +203,6 @@ async fn thread(case: &Case, path: &str, fleet: &str) -> Vec<String> {
     let listed = json_body(response).await;
     runtime_history(&listed, fleet, case.base.workspace.as_str())
         .into_iter()
-        .map(|item| item["event_id"].as_str().expect("event id").to_owned())
+        .map(|item| item["turn_id"].as_str().expect("event id").to_owned())
         .collect()
 }

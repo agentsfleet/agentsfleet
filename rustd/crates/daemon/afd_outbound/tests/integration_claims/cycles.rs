@@ -50,7 +50,7 @@ async fn an_unknown_connector_is_abandoned_unaddressable() {
     let event = ledger.owe(&lane, "nowhere").await;
     crate::sql(
         &ledger.database,
-        "UPDATE thread.deliveries SET provider = 'retired' WHERE event_id = $1",
+        "UPDATE thread.deliveries SET provider = 'retired' WHERE turn_id = $1",
         &[&event],
     )
     .await;
@@ -95,7 +95,7 @@ async fn spent_cycles_abandon_the_answer() {
     let event = ledger.owe(&lane, "spent").await;
     crate::sql(
         &ledger.database,
-        "UPDATE thread.deliveries SET attempt_count = 11 WHERE event_id = $1",
+        "UPDATE thread.deliveries SET attempt_count = 11 WHERE turn_id = $1",
         &[&event],
     )
     .await;

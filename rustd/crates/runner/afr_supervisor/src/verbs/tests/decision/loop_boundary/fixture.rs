@@ -16,7 +16,7 @@ pub(super) fn assignment() -> DecisionAssignment {
 pub(super) fn inputs() -> TaskInputsResponse<'static> {
     let deadline = af_core::clock::after(af_core::clock::now(), std::time::Duration::from_mins(5));
     TaskInputsResponse {
-        source_admission_id: CALL.into(),
+        source_turn_id: CALL.into(),
         accepted_revision_id: Some(CALL.into()),
         current_message: None,
         inputs: vec![],

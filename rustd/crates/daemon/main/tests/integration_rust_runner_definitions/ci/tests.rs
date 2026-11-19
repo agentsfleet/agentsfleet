@@ -23,7 +23,7 @@ async fn test_responder_reads_exact_ci_evidence() {
     let scene = install_definition(&mut supervisor, "ci-responder", &[], None).await;
     let upstream = Upstream::serve(responder_upstream(200)).await;
     let (model, transcript) = FakeModel::new(responder_turns());
-    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
     assert_eq!(
         (settled.status.as_str(), settled.answer.as_str()),
         ("processed", DIAGNOSIS)
@@ -132,7 +132,7 @@ async fn test_responder_stops_on_required_source_gap() {
     let scene = install_definition(&mut supervisor, "ci-responder", &[], None).await;
     let upstream = Upstream::serve(responder_upstream(403)).await;
     let (model, transcript) = FakeModel::new(responder_stopping_turns());
-    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
     assert_eq!(settled.answer, SOURCE_GAP);
     let seen = upstream.seen();
     assert!(
@@ -167,7 +167,7 @@ async fn a_completed_definition_turn_reports_known_zero_tool_calls() {
     let scene = install_definition(&mut supervisor, "github-log-reader", &[], None).await;
     let upstream = Upstream::serve(Vec::new()).await;
     let (model, _transcript) = FakeModel::new(vec![vec![say("No operation was requested.")]]);
-    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
     assert_eq!(settled.answer, "No operation was requested.");
     let trace = stored_trace(&scene)
         .await

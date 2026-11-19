@@ -54,7 +54,7 @@ One segment per fleet; swap in any attribute from the table:
 Every span one chat left, daemon and runner, by its event:
 
 ```traceql
-{ span."agentsfleet.event.id" = "$event_id" }
+{ span."agentsfleet.turn.id" = "$turn_id" }
 ```
 
 That returns `fleet.steer`, `fleet.offer`, `fleet.report`, `fleet.delivery` and `runner.run`.

@@ -13,7 +13,7 @@ use crate::e2e::{Scenario, scenario, scenario_with};
 use crate::wire::{field, json, post};
 use af_core::error_code::{GRANT_NOT_FOUND, INVALID_REQUEST, RUN_NOT_FOUND};
 use af_core::id::Uuid7;
-use afd_db::test_util::{EventKind, FleetEventSeed, mint_id};
+use afd_db::test_util::{TurnFacts, TurnSeed, mint_id};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
@@ -35,8 +35,8 @@ VALUES($1,$2,$3,$4,$5,$6,$7,1,1,$1,'{}'::jsonb,
 'active',now()+interval '1 minute',now()+interval '1 minute',0,false,0,0,0,0,now(),now())";
 
 const RUNTIME: &str = "\
-INSERT INTO thread.runs(id,runner_id,fleet_id,workspace_id,tenant_id,event_id,
-event_created_at,posture,provider,model,last_metered_at,fencing_token,
+INSERT INTO thread.runs(id,runner_id,fleet_id,workspace_id,tenant_id,turn_id,
+turn_created_at,posture,provider,model,last_metered_at,fencing_token,
 run_expires_at,status,setup_revision_id,
 posted_message_count,created_at,updated_at)
 VALUES($1,$2,$3,$4,$5,$6,now(),'platform','test',
@@ -44,7 +44,7 @@ VALUES($1,$2,$3,$4,$5,$6,now(),'platform','test',
 (SELECT head_revision_id FROM fleet.fleets WHERE id=$3),0,now(),now())";
 
 /// The event the runtime run executes: a chat a person sent, received.
-const EVENT: EventKind<'static> = EventKind {
+const EVENT: TurnFacts<'static> = TurnFacts {
     actor: "fixture",
     event_type: "chat",
     status: "received",
@@ -149,7 +149,7 @@ async fn a_run_id_that_is_not_an_identifier_is_a_bad_request_not_a_server_error(
         ("x".to_owned(), 400, INVALID_REQUEST),
         (mint_id().to_string(), 404, RUN_NOT_FOUND),
     ] {
-        let path = format!("/v1/runners/me/runs/{run}/tool-calls");
+        let path = format!("/v1/runners/me/runs/{run}/items");
         let response = post(
             &http,
             &scene,
@@ -157,12 +157,12 @@ async fn a_run_id_that_is_not_an_identifier_is_a_bad_request_not_a_server_error(
             &json!({"fencing_token": 7, "calls": []}),
         )
         .await;
-        assert_eq!(response.status().as_u16(), status, "tool-calls {run}");
+        assert_eq!(response.status().as_u16(), status, "items {run}");
         let answer = json(response).await;
         assert_eq!(
             field(&answer, "error_code"),
             &json!(code.as_str()),
-            "tool-calls {run}"
+            "items {run}"
         );
     }
     supervisor.shutdown().await;
@@ -182,7 +182,7 @@ async fn seed_runs(scene: &Scenario, attempt: &Uuid7, authoring_run: &Uuid7, run
     ];
     execute(scene, AUTHORING, &ids).await;
     // The runtime run executes an event of its own id.
-    FleetEventSeed::new(&scene.fleet, &scene.workspace, runtime_run, EVENT)
+    TurnSeed::new(&scene.fleet, &scene.workspace, runtime_run, EVENT)
         .insert(&mut *scene.booted.database.acquire().await.expect("connection"))
         .await
         .expect("the runtime run's event seeds");

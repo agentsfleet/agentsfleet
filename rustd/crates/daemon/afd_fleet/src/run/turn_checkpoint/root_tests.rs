@@ -14,7 +14,7 @@ fn scope() -> TurnScope {
     TurnScope {
         workspace_id: CheckpointOperationId(ID.into()),
         fleet_id: CheckpointOperationId(ID.into()),
-        event_id: CheckpointOperationId(ID.into()),
+        turn_id: CheckpointOperationId(ID.into()),
         setup_revision_id: CheckpointOperationId(ID.into()),
         workspace: TurnWorkspace::ApiOnly,
     }
@@ -41,7 +41,7 @@ fn saved_roots_bind_the_issued_model_and_each_scope_dimension() -> crate::Result
         match field {
             0 => changed.workspace_id = CheckpointOperationId(OTHER.into()),
             1 => changed.fleet_id = CheckpointOperationId(OTHER.into()),
-            2 => changed.event_id = CheckpointOperationId(OTHER.into()),
+            2 => changed.turn_id = CheckpointOperationId(OTHER.into()),
             _ => changed.setup_revision_id = CheckpointOperationId(OTHER.into()),
         }
         assert!(
@@ -66,7 +66,7 @@ fn saved_roots_bind_the_issued_model_and_each_scope_dimension() -> crate::Result
 fn a_root_cannot_silently_advance_only_its_fold_cursor() -> crate::Result<()> {
     let scope = scope();
     let fold = FoldRef {
-        event_id: CheckpointOperationId(OTHER.into()),
+        turn_id: CheckpointOperationId(OTHER.into()),
         sequence: 3,
     };
     let bytes = saved(&scope, std::slice::from_ref(&fold));

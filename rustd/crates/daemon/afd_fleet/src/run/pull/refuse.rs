@@ -9,8 +9,8 @@
 //! already had.
 
 use af_core::error_code::{Coded as _, Logged};
-use af_core::event::label;
 use af_core::id::Uuid7;
+use af_core::turn::label;
 
 use super::step::{Step, waited};
 use super::{AdmittedFleetWork, RunService};
@@ -107,13 +107,13 @@ impl RunService {
         self.close_tail(ended).await;
         let runner_id_field = runner_id.as_str();
         let fleet_id_field = acquired.fleet_id.as_str();
-        let event_id_field = acquired.event_id.as_str();
+        let turn_id_field = acquired.turn_id.as_str();
         {
-            let (event, runner_id, fleet_id, agentsfleet_event_id, message) = (
+            let (event, runner_id, fleet_id, agentsfleet_turn_id, message) = (
                 &EVENT_REFUSED,
                 &runner_id_field,
                 &fleet_id_field,
-                &event_id_field,
+                &turn_id_field,
                 format_args!("the event was ended at a gate"),
             );
             tracing::warn!(
@@ -121,7 +121,7 @@ impl RunService {
                 event,
                 runner_id,
                 fleet_id,
-                agentsfleet_event_id,
+                agentsfleet_turn_id,
                 label,
                 reason
             );
@@ -140,14 +140,14 @@ impl RunService {
         self.close_tail(ended).await;
         let runner_id_field = runner_id.as_str();
         let fleet_id_field = acquired.fleet_id.as_str();
-        let event_id_field = acquired.event_id.as_str();
+        let turn_id_field = acquired.turn_id.as_str();
         let earlier_runs = acquired.earlier_runs;
         {
-            let (event, runner_id, fleet_id, agentsfleet_event_id, label, reason, message) = (
+            let (event, runner_id, fleet_id, agentsfleet_turn_id, label, reason, message) = (
                 &EVENT_ABANDONED,
                 &runner_id_field,
                 &fleet_id_field,
-                &event_id_field,
+                &turn_id_field,
                 &label::RUN_EXPIRED,
                 &DETAIL_RUNS_LAPSED,
                 format_args!("the event was ended after its runs kept lapsing"),
@@ -157,7 +157,7 @@ impl RunService {
                 event,
                 runner_id,
                 fleet_id,
-                agentsfleet_event_id,
+                agentsfleet_turn_id,
                 label,
                 earlier_runs,
                 reason
@@ -241,15 +241,15 @@ impl RunService {
             // error code.
             Err(unrecorded) => {
                 let fleet_id_field = acquired.fleet_id.as_str();
-                let event_id_field = acquired.event_id.as_str();
+                let turn_id_field = acquired.turn_id.as_str();
                 let Logged {
                     error_code,
                     reason: unrecorded_reason,
                 } = unrecorded.logged();
                 {
-                    let (fleet_id, agentsfleet_event_id, reason, config_reason, event, message) = (
+                    let (fleet_id, agentsfleet_turn_id, reason, config_reason, event, message) = (
                         &fleet_id_field,
-                        &event_id_field,
+                        &turn_id_field,
                         &unrecorded_reason,
                         &reason,
                         &EVENT_CONFIG_REFUSAL_UNRECORDED,
@@ -262,7 +262,7 @@ impl RunService {
                         message,
                         error_code,
                         fleet_id,
-                        agentsfleet_event_id,
+                        agentsfleet_turn_id,
                         reason,
                         config_error_code,
                         config_reason,

@@ -63,7 +63,7 @@ pub(super) async fn offer(scene: &Scenario, native: &mut Native) -> Result<Held>
     let run = response
         .get("run")
         .ok_or("the native offer lacks its run")?;
-    assert_eq!(run.pointer("/event/event_id"), Some(&json!(scene.event_id)));
+    assert_eq!(run.pointer("/event/turn_id"), Some(&json!(scene.turn_id)));
     let (id, fence) = wire::claim(run);
     Ok(Held { id, fence })
 }
@@ -71,12 +71,12 @@ pub(super) async fn offer(scene: &Scenario, native: &mut Native) -> Result<Held>
 // afd_state/src/sql/select_runner_token.sql; other owner checks read by runner id.
 const TOKEN: &str = "%SELECT id AS runner, status, degraded_reason IS NOT NULL AS degraded%FROM runner.runners%WHERE token_hash =%";
 // afd_fleet/src/run/sql/select_run_target.sql; a native cache hit avoids this join.
-const TARGET: &str = "%SELECT l.fleet_id, l.event_id, l.created_at, l.event_created_at,%FROM thread.runs l%JOIN thread.turns e ON e.id = l.event_id%WHERE l.id =%";
+const TARGET: &str = "%SELECT l.fleet_id, l.turn_id, l.created_at, l.turn_created_at,%FROM thread.runs l%JOIN thread.turns e ON e.id = l.turn_id%WHERE l.id =%";
 // afd_runner/src/capacity/sql/lock_host.sql; Ready must reach this durable guard.
 const HOST: &str = "%SELECT worker_count, status, cordon_reason, degraded_reason IS NOT NULL AS degraded, run_version,%FROM runner.runners%WHERE id =%FOR UPDATE%";
 // afd_fleet/src/run/sql/select_run_for_report.sql; a session that kept
 // the offer's facts reports without it.
-const REPORTED: &str = "%SELECT l.fleet_id, l.workspace_id,%l.tenant_id, l.event_id, e.actor, l.posture%FROM thread.runs l%WHERE l.id = $1 AND l.runner_id = $2%";
+const REPORTED: &str = "%SELECT l.fleet_id, l.workspace_id,%l.tenant_id, l.turn_id, e.actor, l.posture%FROM thread.runs l%WHERE l.id = $1 AND l.runner_id = $2%";
 const COUNTS: &str = "SELECT \
     COALESCE(sum(calls) FILTER (WHERE query LIKE $1), 0)::bigint, \
     COALESCE(sum(calls) FILTER (WHERE query LIKE $2), 0)::bigint, \
@@ -134,7 +134,7 @@ impl Tail {
         Ok(Self {
             bus,
             subscription,
-            event: scene.event_id.to_string(),
+            event: scene.turn_id.to_string(),
             seen: HashSet::new(),
         })
     }
@@ -154,7 +154,7 @@ impl Tail {
                 continue;
             }
             assert_eq!(
-                frame.get("event_id").and_then(Value::as_str),
+                frame.get("turn_id").and_then(Value::as_str),
                 Some(self.event.as_str())
             );
             assert_eq!(

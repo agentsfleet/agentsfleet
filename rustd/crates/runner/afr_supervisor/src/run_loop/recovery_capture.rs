@@ -28,7 +28,7 @@ impl BoundaryOwner<'_, '_> {
         mut snapshot: RecoverySnapshot,
     ) -> afr_agent::Result<RecoverySave> {
         if snapshot.run_id != self.run.ids.run.as_str()
-            || snapshot.event_id != self.run.payload.event.event_id
+            || snapshot.turn_id != self.run.payload.event.turn_id
             || snapshot.fencing_token != self.run.payload.fencing_token
         {
             self.run.interrupt.cancel();
@@ -142,7 +142,7 @@ impl BoundaryOwner<'_, '_> {
         match result {
             Ok(descriptor) => Ok(RecoverySave::Committed(Box::new(RecoveryReceipt {
                 run_id: self.run.ids.run.to_string(),
-                event_id: self.run.payload.event.event_id.to_string(),
+                turn_id: self.run.payload.event.turn_id.to_string(),
                 fencing_token: self.run.payload.fencing_token,
                 checkpoint: CommittedRecovery::Turn(descriptor),
             }))),
@@ -193,7 +193,7 @@ impl BoundaryOwner<'_, '_> {
         match captured {
             Ok(plan) => Ok(RecoverySave::Committed(Box::new(RecoveryReceipt {
                 run_id: self.run.ids.run.to_string(),
-                event_id: self.run.payload.event.event_id.to_string(),
+                turn_id: self.run.payload.event.turn_id.to_string(),
                 fencing_token: self.run.payload.fencing_token,
                 checkpoint: CommittedRecovery::Task {
                     checkpoint_id: plan.checkpoint_id,

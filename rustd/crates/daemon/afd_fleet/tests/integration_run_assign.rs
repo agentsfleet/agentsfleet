@@ -38,7 +38,7 @@ async fn test_select_assigns_a_ready_fleets_event() {
     let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [runner],
-        event_id,
+        turn_id,
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
@@ -50,13 +50,13 @@ async fn test_select_assigns_a_ready_fleets_event() {
     assert_eq!(acquired.kind, Kind::Fresh, "a first pull is not a reclaim");
     assert_eq!(acquired.fleet_id.as_str(), fleet);
     assert_eq!(
-        acquired.event_id, event_id,
+        acquired.turn_id, turn_id,
         "the stream entry id IS the event id"
     );
     assert_eq!(acquired.actor, ACTOR);
     assert_eq!(acquired.event_type, EVENT_TYPE);
     assert_eq!(acquired.request_json, REQUEST_JSON);
-    assert_eq!(acquired.event_created_at, fixtures.enrolled_at());
+    assert_eq!(acquired.turn_created_at, fixtures.enrolled_at());
     assert_eq!(
         acquired.fence.as_i64(),
         1,
@@ -151,7 +151,7 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
         .expect("a lapsed claim is winnable");
 
     assert_eq!(
-        regained.event_id, held.event_id,
+        regained.turn_id, held.turn_id,
         "the entry survives a lapsed claim; it is re-delivered, never dropped"
     );
     assert!(

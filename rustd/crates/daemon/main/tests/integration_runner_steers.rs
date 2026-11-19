@@ -15,7 +15,7 @@
               indexes the JSON it was answered"
 )]
 
-use af_wire::event::{FleetSteerBody, STEER_MESSAGE_MAX_BYTES};
+use af_wire::turn::{FleetSteerBody, STEER_MESSAGE_MAX_BYTES};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -47,7 +47,7 @@ fn expected_body(crew: &Crew, text: &str) -> Value {
         text,
         scene.fleet.as_str(),
         FLEET_NAME,
-        scene.event_id.as_str(),
+        scene.turn_id.as_str(),
     );
     serde_json::to_value(&body).expect("the body serializes")
 }
@@ -92,7 +92,7 @@ async fn fleet_steer_admits_once_under_the_fleet_actor() {
     assert_eq!(stored, expected_body(&crew, text));
     for (status, answer) in &answers {
         assert_eq!(*status, 202, "{answer}");
-        assert_eq!(answer["event_id"], row.id.as_str(), "{answer}");
+        assert_eq!(answer["turn_id"], row.id.as_str(), "{answer}");
     }
     let fresh = answers
         .iter()
@@ -102,7 +102,7 @@ async fn fleet_steer_admits_once_under_the_fleet_actor() {
 
     let (status, again) = crew.steer((&run, fence), &target, text).await;
     assert_eq!((status, &again["replayed"]), (202, &json!(true)), "{again}");
-    assert_eq!(again["event_id"], row.id.as_str());
+    assert_eq!(again["turn_id"], row.id.as_str());
     crew.finish(supervisor).await;
 }
 
@@ -122,7 +122,7 @@ async fn fleet_steer_copies_the_sender_reply_destination() {
     assert_eq!(status, 202);
     let reported = report(
         crew.run(),
-        &report_body(&seeded, &crew.run().event_id, fence),
+        &report_body(&seeded, &crew.run().turn_id, fence),
     )
     .await;
     assert!(reported.is_ok(), "{reported:?}");
@@ -164,7 +164,7 @@ async fn fleet_steer_replays_before_status() {
     assert_eq!(status, 202, "{first}");
     let (status, again) = crew.steer((&run, fence), &target, "open the fix").await;
     assert_eq!((status, &again["replayed"]), (202, &json!(true)), "{again}");
-    assert_eq!(again["event_id"], first["event_id"]);
+    assert_eq!(again["turn_id"], first["turn_id"]);
 
     crew.alter(
         "UPDATE fleet.fleets SET status = 'archived' WHERE id = $1",
@@ -173,8 +173,8 @@ async fn fleet_steer_replays_before_status() {
     .await;
     let (status, archived) = crew.steer((&run, fence), &target, "open the fix").await;
     assert_eq!(
-        (status, &archived["event_id"]),
-        (202, &first["event_id"]),
+        (status, &archived["turn_id"]),
+        (202, &first["turn_id"]),
         "{archived}"
     );
     assert_eq!(crew.admissions(&target).await.len(), 1);
@@ -195,10 +195,10 @@ async fn fleet_steer_body_reaches_the_target_turn() {
         .steer((&run, fence), &target, "scene the hourly check")
         .await;
     let (_, long_answer) = crew.steer((&run, fence), &target, &long).await;
-    let reported = report(crew.run(), &report_body(&run, &crew.run().event_id, fence)).await;
+    let reported = report(crew.run(), &report_body(&run, &crew.run().turn_id, fence)).await;
     assert!(reported.is_ok(), "{reported:?}");
 
-    let line = af_wire::event::sender_line(FLEET_NAME, crew.run().fleet.as_str());
+    let line = af_wire::turn::sender_line(FLEET_NAME, crew.run().fleet.as_str());
     for (answer, text) in [
         (&short_answer, "scene the hourly check"),
         (&long_answer, long.as_str()),
@@ -211,7 +211,7 @@ async fn fleet_steer_body_reaches_the_target_turn() {
         &crew.run().booted,
         &target,
         &crew.run().workspace,
-        af_wire::event::EventType::Chat,
+        af_wire::turn::TurnKind::Chat,
     )
     .await;
     let turn = offered(crew.run(), &next).await;

@@ -124,7 +124,7 @@ async fn the_task_verbs_a_seam_leaves_out_refuse_without_a_code() {
     assert_eq!(CLOSED.task_inputs(inputs).await.err(), refused);
     let bindings = TaskBindingsInput {
         fencing_token: 1,
-        source_admission_id: ID.to_owned(),
+        source_turn_id: ID.to_owned(),
         accepted_revision_id: ID.to_owned(),
         plan_digest: "0".repeat(64),
         message_decision_call_id: ID.to_owned(),
@@ -134,7 +134,7 @@ async fn the_task_verbs_a_seam_leaves_out_refuse_without_a_code() {
     let receipt = TaskInputReceiptInput {
         fencing_token: 1,
         operation_id: ID.to_owned(),
-        source_admission_id: ID.to_owned(),
+        source_turn_id: ID.to_owned(),
         plan_digest: "0".repeat(64),
         item_id: ID.to_owned(),
         task: None,
@@ -145,7 +145,7 @@ async fn the_task_verbs_a_seam_leaves_out_refuse_without_a_code() {
     let decision = DecisionReservationInput {
         operation_id: ID.to_owned(),
         fencing_token: 1,
-        source_admission_id: ID.to_owned(),
+        source_turn_id: ID.to_owned(),
         assessment: DecisionAssessment::Message,
         task: Some(task_version()),
         retry_of: None,

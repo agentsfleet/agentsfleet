@@ -97,7 +97,7 @@ async fn runner_tool_call_records_validate_and_render() {
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
-    let path = format!("/v1/runners/me/runs/{RUN_ID}/tool-calls");
+    let path = format!("/v1/runners/me/runs/{RUN_ID}/items");
 
     let malformed = send(&router, Method::POST, &path, Some(RUNNER_TOKEN), "{}").await;
     assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
@@ -182,7 +182,7 @@ async fn run_routes_refuse_a_path_id_that_is_not_an_identifier() {
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
-    for (suffix, body) in [("tool-calls", r#"{"fencing_token":7,"calls":[]}"#)] {
+    for (suffix, body) in [("items", r#"{"fencing_token":7,"calls":[]}"#)] {
         let path = format!("/v1/runners/me/runs/x/{suffix}");
         let refused = send(&router, Method::POST, &path, Some(RUNNER_TOKEN), body).await;
         assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "{suffix}");

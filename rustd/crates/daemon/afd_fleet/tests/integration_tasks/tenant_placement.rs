@@ -102,7 +102,7 @@ async fn queued_continuation(case: &Case) -> Uuid7 {
         .task_id
         .clone()
         .expect("its task");
-    execute(case, SETTLE, &case.held.event_id).await;
+    execute(case, SETTLE, &case.held.turn_id).await;
     lapse(case).await;
     sqlx::query_scalar("SELECT id FROM thread.turns WHERE task_id = $1 AND settled_at IS NULL")
         .bind(&task)
@@ -259,7 +259,7 @@ async fn tenant_runner_never_jumps_a_platform_model_head() {
             .await
             .expect("a platform runner takes the head");
         assert_eq!(
-            head.event_id, continuation,
+            head.turn_id, continuation,
             "the platform runner took the head"
         );
 
@@ -269,7 +269,7 @@ async fn tenant_runner_never_jumps_a_platform_model_head() {
         let next = select_fleet(&case.held.runs, &tenant, &case.held.fleet)
             .await
             .expect("once the head settles, the tenant runner takes the chat");
-        assert_eq!(next.event_id, chat);
+        assert_eq!(next.turn_id, chat);
     })
     .await;
 }

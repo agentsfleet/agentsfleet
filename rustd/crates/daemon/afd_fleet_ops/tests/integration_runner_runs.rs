@@ -49,11 +49,11 @@ WITH inserted_runners AS (
 
 )
 INSERT INTO thread.runs
-  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
+  (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at, fencing_token, run_expires_at, status, posted_message_count,
    created_at, updated_at)
-SELECT v.id, v.runner_id, v.fleet_id, v.workspace_id, $1, v.event_id,
-       v.event_created_at, v.posture, v.provider, v.model, v.created_at,
+SELECT v.id, v.runner_id, v.fleet_id, v.workspace_id, $1, v.turn_id,
+       v.turn_created_at, v.posture, v.provider, v.model, v.created_at,
        v.fencing_token, v.expires_at, v.status, 0, v.created_at, v.created_at
 FROM (VALUES
   ($8, $6, $4, $2, $13, '2025-10-09 08:00:00.050+00'::timestamptz, 'platform', 'anthropic', 'model-a', 10, 2, 3, 1, '2025-10-09 08:00:00.130+00'::timestamptz, 'expired', '2025-10-09 08:00:00.100+00'::timestamptz),
@@ -61,7 +61,7 @@ FROM (VALUES
   ($10, $6, $5, $3, $15, '2025-10-09 08:00:00.052+00', 'bring_your_own', 'openai', 'model-c', 30, 6, 9, 1, '2025-10-09 08:00:00.330+00', 'active', '2025-10-09 08:00:00.300+00'),
   ($11, $6, $5, $3, $14, '2025-10-09 08:00:00.051+00', 'platform', 'anthropic', 'model-b', 40, 8, 12, 1, '2025-10-09 08:00:00.330+00', 'reported', '2025-10-09 08:00:00.300+00'),
   ($12, $7, $4, $2, $13, '2025-10-09 08:00:00.050+00', 'platform', 'anthropic', 'model-a', 1, 0, 1, 3, '2025-10-09 08:00:00.430+00', 'reported', '2025-10-09 08:00:00.400+00')
-) AS v(id, runner_id, fleet_id, workspace_id, event_id, event_created_at,
+) AS v(id, runner_id, fleet_id, workspace_id, turn_id, turn_created_at,
        posture, provider, model, input, cached, output, fencing_token, expires_at, status,
        created_at)
 ";

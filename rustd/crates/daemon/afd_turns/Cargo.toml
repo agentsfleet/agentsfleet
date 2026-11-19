@@ -25,7 +25,7 @@ afd_bus.workspace = true
 # Identifiers, the instant a row is stamped with, and the registry codes.
 af_core = { workspace = true, features = ["sqlx"] }
 # The row identifier's entropy. Held by the ledger rather than drawn per call
-# — see `Admissions`.
+# — see `Turns`.
 af_crypto.workspace = true
 # The Postgres pool the ledger lives on.
 afd_db.workspace = true

@@ -25,7 +25,7 @@ fn live_task_frames_use_the_saved_counter_and_sequence() {
     let incoming = TaskActivity {
         activity_id: "019a42b0-0000-7000-8000-000000000123".to_owned(),
         task_id: None,
-        source_admission_id: None,
+        source_turn_id: None,
         operation: TaskActivityOperation::Capture,
         phase: TaskActivityPhase::Uploading,
         provider: None,
@@ -76,9 +76,9 @@ fn target() -> Target {
     const FIXTURE: Timestamp = Timestamp::constant(1, 0);
     Target {
         fleet_id: Uuid7::encode(FIXTURE, [0; ENTROPY_LEN]).expect("fixture fleet id"),
-        event_id: Uuid7::encode(FIXTURE, [1; ENTROPY_LEN]).expect("fixture event id"),
+        turn_id: Uuid7::encode(FIXTURE, [1; ENTROPY_LEN]).expect("fixture event id"),
         run_created_at: Timestamp::UNIX_EPOCH,
-        event_created_at: Timestamp::UNIX_EPOCH,
+        turn_created_at: Timestamp::UNIX_EPOCH,
         timing_eligible: true,
         fence: FENCE,
     }

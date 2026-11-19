@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use afd_fleet::run::{Acquired, Kind, Runs};
-use afd_turns::{Admission, Admissions, Key, Producer, Reply};
+use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 use sqlx::Connection as _;
 
 use super::{next, reclaim::issue};
@@ -21,8 +21,7 @@ const ORDER: &str = "SELECT claimed.sequence < delayed.sequence \
 async fn a_late_committing_admission_does_not_displace_the_claimed_head() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [holder, poller]) = seeded_parts::<2>(&fixtures).await;
-    let admissions =
-        Admissions::for_tests(fixtures.database.clone(), afd_bus::test_util::unreachable());
+    let admissions = Turns::for_tests(fixtures.database.clone(), afd_bus::test_util::unreachable());
     let delayed = admissions
         .prepare(input(&fleet, &workspace))
         .await
@@ -44,7 +43,7 @@ async fn a_late_committing_admission_does_not_displace_the_claimed_head() {
         .expect("newer commits first");
     let runs = fixtures.runs_with_dead_bus();
     let first = next(&runs, &holder).await.expect("first claim");
-    assert_eq!(first.event_id, claimed.stored.id);
+    assert_eq!(first.turn_id, claimed.stored.id);
     let issued = issue(&fixtures, &runs, &first, &holder, &tenant).await;
     let delayed = admissions
         .stage(&mut tx, delayed)
@@ -72,7 +71,7 @@ async fn assert_reclaimed(
     issued: &Uuid7,
 ) {
     let recovered = next(runs, poller).await.expect("recover unfinished run");
-    assert_eq!(recovered.event_id, first.event_id);
+    assert_eq!(recovered.turn_id, first.turn_id);
     assert!(recovered.redelivered);
     assert!(recovered.fence > first.fence);
     assert_eq!(recovered.kind, Kind::Reclaim);
@@ -82,14 +81,14 @@ async fn assert_reclaimed(
     );
 }
 
-const fn input<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> Admission<'a> {
-    Admission {
+const fn input<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> IncomingTurn<'a> {
+    IncomingTurn {
         producer: Producer::Steer,
         key: Key::Unrepeatable,
         fleet,
         workspace,
         actor: crate::seed::ACTOR,
-        event_type: af_wire::event::EventType::Chat,
+        event_type: af_wire::turn::TurnKind::Chat,
         request_json: crate::seed::REQUEST_JSON,
         reply: Reply::None,
     }
@@ -109,8 +108,7 @@ const BLOCKED_ON: &str =
 async fn a_send_queued_behind_the_fleet_lock_takes_the_later_sequence() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    let admissions =
-        Admissions::for_tests(fixtures.database.clone(), afd_bus::test_util::unreachable());
+    let admissions = Turns::for_tests(fixtures.database.clone(), afd_bus::test_util::unreachable());
     let prepared = admissions
         .prepare(input(&fleet, &workspace))
         .await
@@ -166,7 +164,7 @@ async fn a_send_queued_behind_the_fleet_lock_takes_the_later_sequence() {
     let runs = fixtures.runs_with_dead_bus();
     let first = next(&runs, &runner).await.expect("the claim");
     assert_eq!(
-        first.event_id, staged.stored.id,
+        first.turn_id, staged.stored.id,
         "the staged row is claimed first"
     );
 }

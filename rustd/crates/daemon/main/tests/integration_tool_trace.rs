@@ -46,7 +46,7 @@ pub(crate) fn trace(count: usize) -> Value {
 
 /// The report a run sends, carrying `tool_calls`.
 pub(crate) fn report_with(run_id: &str, scene: &Scenario, fence: u64, tool_calls: Value) -> Value {
-    let mut body = report_body(run_id, &scene.event_id, fence);
+    let mut body = report_body(run_id, &scene.turn_id, fence);
     body["tool_calls"] = tool_calls;
     body
 }
@@ -63,7 +63,7 @@ async fn nullable_column(scene: &Scenario, column: &str) -> Option<String> {
     let mut connection = scene.booted.database.acquire().await.expect("a connection");
     let row = sqlx::query(statement)
         .bind(&scene.fleet)
-        .bind(&scene.event_id)
+        .bind(&scene.turn_id)
         .fetch_one(&mut *connection)
         .await
         .expect("the event row exists once held");
@@ -103,7 +103,7 @@ async fn test_report_writes_tool_calls_with_result() {
 
     assert_eq!(stored_trace(&scene).await, Some(fenced(&sent, fence)));
     assert_eq!(
-        event_column(&scene, &scene.event_id, "answer_text")
+        event_column(&scene, &scene.turn_id, "answer_text")
             .await
             .as_deref(),
         Some("the fixture scene produced this"),
@@ -127,7 +127,7 @@ async fn test_oversize_tool_trace_dropped_report_settles() {
     assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(stored_trace(&scene).await, None, "the trace is not stored");
     assert_eq!(
-        event_column(&scene, &scene.event_id, "status")
+        event_column(&scene, &scene.turn_id, "status")
             .await
             .as_deref(),
         Some("processed"),
@@ -226,8 +226,8 @@ async fn test_event_detail_serves_tool_calls() {
     let (scene, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
     let detail = format!(
-        "/v1/workspaces/{}/fleets/{}/events/{}",
-        scene.workspace, scene.fleet, scene.event_id
+        "/v1/workspaces/{}/fleets/{}/turns/{}",
+        scene.workspace, scene.fleet, scene.turn_id
     );
 
     // The row is written when a runner takes the event, before any report.
@@ -255,7 +255,7 @@ async fn test_event_detail_serves_tool_calls() {
         .and_then(|items| {
             items
                 .iter()
-                .find(|item| item["event_id"] == json!(scene.event_id))
+                .find(|item| item["turn_id"] == json!(scene.turn_id))
         })
         .expect("the settled turn is on the thread");
     assert_eq!(field(turn, "tool_calls"), &fenced(&sent, fence));
@@ -275,14 +275,14 @@ async fn test_event_list_omits_tool_calls() {
     settle_with(&scene, claimed, trace(2)).await;
 
     let list = format!(
-        "/v1/workspaces/{}/fleets/{}/events",
+        "/v1/workspaces/{}/fleets/{}/turns",
         scene.workspace, scene.fleet
     );
     let page = tenant_get(&http, &scene, &token, &list).await;
     let items = page["items"].as_array().expect("a page of items");
     let ours = items
         .iter()
-        .find(|item| item["event_id"] == json!(scene.event_id))
+        .find(|item| item["turn_id"] == json!(scene.turn_id))
         .expect("the settled event is listed");
     assert!(ours.get("tool_calls").is_none(), "{ours}");
 
@@ -298,8 +298,8 @@ async fn a_reported_empty_trace_is_served_as_known_zero_calls() {
     let (scene, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
     let detail = format!(
-        "/v1/workspaces/{}/fleets/{}/events/{}",
-        scene.workspace, scene.fleet, scene.event_id
+        "/v1/workspaces/{}/fleets/{}/turns/{}",
+        scene.workspace, scene.fleet, scene.turn_id
     );
     let claimed = run(&scene).await;
     let before = tenant_get(&http, &scene, &token, &detail).await;

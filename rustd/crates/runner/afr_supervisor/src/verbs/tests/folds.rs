@@ -46,7 +46,7 @@ async fn claim(answer: impl Fn(&Call) -> Answer + Send + Sync + 'static) -> Clai
 
 fn input(sequence: i64, text: &'static str) -> FoldedInput<'static> {
     FoldedInput {
-        event_id: format!("019f0000-0000-7000-8000-{sequence:012}").into(),
+        turn_id: format!("019f0000-0000-7000-8000-{sequence:012}").into(),
         sequence,
         text: text.into(),
     }
@@ -105,12 +105,12 @@ async fn a_claim_of_two_messages_hands_them_over_oldest_first() {
         claimed.folded,
         [
             Folded {
-                event_id: input(8, "").event_id.into_owned(),
+                turn_id: input(8, "").turn_id.into_owned(),
                 sequence: 8,
                 text: "use staging".to_owned()
             },
             Folded {
-                event_id: input(9, "").event_id.into_owned(),
+                turn_id: input(9, "").turn_id.into_owned(),
                 sequence: 9,
                 text: "and tag it".to_owned()
             },

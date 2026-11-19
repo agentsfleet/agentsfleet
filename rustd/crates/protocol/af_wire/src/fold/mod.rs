@@ -39,7 +39,7 @@ pub struct FoldRequest {
 pub struct FoldedInput<'a> {
     /// The message's event id; its own reply lands on that event.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
+    pub turn_id: Cow<'a, str>,
     /// Its place in the fleet's order.
     pub sequence: i64,
     /// The message's text. It is the request's `message` string when it has

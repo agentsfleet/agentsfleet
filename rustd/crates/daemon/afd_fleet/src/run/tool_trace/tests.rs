@@ -30,7 +30,7 @@ static EVENT: LazyLock<Uuid7> = LazyLock::new(|| {
 fn owner() -> TraceOwner<'static> {
     TraceOwner {
         fleet_id: &FLEET,
-        event_id: &EVENT,
+        turn_id: &EVENT,
         fence: FENCE,
     }
 }
@@ -87,8 +87,8 @@ fn a_trace_over_a_bound_is_dropped_with_a_log_line_carrying_no_content() {
         Some(Uuid7::as_str(owner().fleet_id))
     );
     assert_eq!(
-        line.field("agentsfleet_event_id"),
-        Some(Uuid7::as_str(owner().event_id))
+        line.field("agentsfleet_turn_id"),
+        Some(Uuid7::as_str(owner().turn_id))
     );
     assert_eq!(line.field("bytes"), Some(sent.len().to_string().as_str()));
     assert!(

@@ -31,7 +31,7 @@ use crate::reads::event_column;
 const SETTLE_DEADLINE: Duration = Duration::from_secs(90);
 /// How often the event row is read while waiting.
 const SETTLE_POLL: Duration = Duration::from_millis(250);
-/// The statuses an event ends in (`af_core::event::status`).
+/// The statuses an event ends in (`af_core::turn::status`).
 const SETTLED: [&str; 3] = ["processed", "fleet_error", "gate_blocked"];
 
 /// A settled event's answer, NULL when no run produced one.
@@ -47,16 +47,16 @@ pub(crate) struct Settled {
     pub(crate) answer: String,
 }
 
-/// Runs `event_id` of `run` through the real loop, the model answering as
+/// Runs `turn_id` of `run` through the real loop, the model answering as
 /// `model` and every upstream as `upstream`, and stops the runner once the
 /// event settles.
 pub(crate) async fn run_event(
     scene: &Scenario,
-    event_id: &Uuid7,
+    turn_id: &Uuid7,
     upstream: &Upstream,
     model: FakeModel,
 ) -> Settled {
-    run_event_from(scene, event_id, upstream, model, None).await
+    run_event_from(scene, turn_id, upstream, model, None).await
 }
 
 /// [`run_event`], the runner fetching the fleet's bound repositories from
@@ -64,7 +64,7 @@ pub(crate) async fn run_event(
 /// is given.
 pub(crate) async fn run_event_from(
     scene: &Scenario,
-    event_id: &Uuid7,
+    turn_id: &Uuid7,
     upstream: &Upstream,
     model: FakeModel,
     origin: Option<String>,
@@ -83,9 +83,9 @@ pub(crate) async fn run_event_from(
     // A runner that stops on its own before the event settles failed to
     // boot or to run; that is the failure to report, not a 90 s silence.
     let status = tokio::select! {
-        status = settled(scene, event_id) => status,
+        status = settled(scene, turn_id) => status,
         exited = &mut runner => {
-            panic!("the runner stopped before event {event_id} settled: {exited:?}")
+            panic!("the runner stopped before event {turn_id} settled: {exited:?}")
         }
     };
     shutdown.cancel();
@@ -94,13 +94,13 @@ pub(crate) async fn run_event_from(
         .expect("the runner task joins")
         .expect("the runner stops cleanly on shutdown");
     let status = status
-        .unwrap_or_else(|| panic!("event {event_id} did not settle within {SETTLE_DEADLINE:?}"));
-    let answer = answer_of(scene, event_id).await.unwrap_or_default();
+        .unwrap_or_else(|| panic!("event {turn_id} did not settle within {SETTLE_DEADLINE:?}"));
+    let answer = answer_of(scene, turn_id).await.unwrap_or_default();
     Settled { status, answer }
 }
 
 /// What the run answered, or `None` for an event that ended without a run.
-async fn answer_of(scene: &Scenario, event_id: &Uuid7) -> Option<String> {
+async fn answer_of(scene: &Scenario, turn_id: &Uuid7) -> Option<String> {
     let mut connection = scene
         .booted
         .database
@@ -109,17 +109,17 @@ async fn answer_of(scene: &Scenario, event_id: &Uuid7) -> Option<String> {
         .expect("a pooled connection");
     sqlx::query_scalar(ANSWER)
         .bind(&scene.fleet)
-        .bind(event_id)
+        .bind(turn_id)
         .fetch_one(&mut *connection)
         .await
         .expect("the settled event's row reads")
 }
 
 /// The event's status once it settles, or `None` past the deadline.
-pub(crate) async fn settled(scene: &Scenario, event_id: &Uuid7) -> Option<String> {
+pub(crate) async fn settled(scene: &Scenario, turn_id: &Uuid7) -> Option<String> {
     let deadline = tokio::time::Instant::now() + SETTLE_DEADLINE;
     while tokio::time::Instant::now() < deadline {
-        let status = event_column(scene, event_id, "status").await;
+        let status = event_column(scene, turn_id, "status").await;
         if status
             .as_deref()
             .is_some_and(|seen| SETTLED.contains(&seen))

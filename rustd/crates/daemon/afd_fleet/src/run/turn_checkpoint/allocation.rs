@@ -11,7 +11,7 @@ use crate::{Result, error::query, run::Runs};
 
 pub(super) async fn initialize_head(owner: &mut TurnRunGuard<'_>) -> Result<Option<Uuid7>> {
     sqlx::query(include_str!("sql/head_insert.sql"))
-        .bind(&owner.current.event_id)
+        .bind(&owner.current.turn_id)
         .execute(&mut *owner.tx)
         .await
         .map_err(query("initialize event-owned recovery head"))?;
@@ -20,7 +20,7 @@ pub(super) async fn initialize_head(owner: &mut TurnRunGuard<'_>) -> Result<Opti
 
 pub(super) async fn head(owner: &mut TurnRunGuard<'_>) -> Result<Option<Uuid7>> {
     let row: Option<(Uuid7, Option<Uuid7>, i64)> = sqlx::query_as(include_str!("sql/head.sql"))
-        .bind(&owner.current.event_id)
+        .bind(&owner.current.turn_id)
         .fetch_optional(&mut *owner.tx)
         .await
         .map_err(query("hold event-owned recovery head"))?;
@@ -30,14 +30,14 @@ pub(super) async fn head(owner: &mut TurnRunGuard<'_>) -> Result<Option<Uuid7>> 
 
 pub(super) async fn room(owner: &mut TurnRunGuard<'_>, head: Option<&Uuid7>) -> Result<()> {
     sqlx::query(include_str!("sql/abandon_stale.sql"))
-        .bind(&owner.current.event_id)
+        .bind(&owner.current.turn_id)
         .bind(&owner.current.id)
         .bind(owner.current.fence)
         .execute(&mut *owner.tx)
         .await
         .map_err(query("abandon only obsolete turn capture owners"))?;
     let pending: Option<Uuid7> = sqlx::query_scalar(include_str!("sql/pending.sql"))
-        .bind(&owner.current.event_id)
+        .bind(&owner.current.turn_id)
         .fetch_optional(&mut *owner.tx)
         .await
         .map_err(query("prove one pending turn capture"))?;
@@ -45,13 +45,13 @@ pub(super) async fn room(owner: &mut TurnRunGuard<'_>, head: Option<&Uuid7>) -> 
         return Err(TurnCheckpointRefusal::Conflict.into());
     }
     let ready: i64 = sqlx::query_scalar(include_str!("sql/ready_count.sql"))
-        .bind(&owner.current.event_id)
+        .bind(&owner.current.turn_id)
         .fetch_one(&mut *owner.tx)
         .await
         .map_err(query("count retained ready turn generations"))?;
     if ready >= super::READY_GENERATIONS {
         let retired: Option<Uuid7> = sqlx::query_scalar(include_str!("sql/retire_ready.sql"))
-            .bind(&owner.current.event_id)
+            .bind(&owner.current.turn_id)
             .bind(head)
             .fetch_optional(&mut *owner.tx)
             .await
@@ -74,7 +74,7 @@ pub(super) async fn create(
     let expected = input.expected_head.as_ref().map(guard::id).transpose()?;
     let (_head, generation): (Option<Uuid7>, i64) =
         sqlx::query_as(include_str!("sql/head_allocate.sql"))
-            .bind(&owner.current.event_id)
+            .bind(&owner.current.turn_id)
             .bind(&expected)
             .bind(i64::MAX)
             .fetch_optional(&mut *owner.tx)
@@ -89,7 +89,7 @@ pub(super) async fn create(
     insert(owner, input, &id, generation, expected.as_ref(), &pages).await?;
     sqlx::query(include_str!("sql/operation_insert.sql"))
         .bind(&id)
-        .bind(&owner.current.event_id)
+        .bind(&owner.current.turn_id)
         .bind(&owner.current.fleet_id)
         .bind(&owner.current.workspace_id)
         .bind(operation)
@@ -121,7 +121,7 @@ async fn insert(
     };
     sqlx::query(include_str!("sql/plan_insert.sql"))
         .bind(id)
-        .bind(&owner.current.event_id)
+        .bind(&owner.current.turn_id)
         .bind(&owner.current.fleet_id)
         .bind(&owner.current.workspace_id)
         .bind(&owner.setup)

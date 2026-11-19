@@ -6,8 +6,8 @@ use crate::{
     Result,
     types::{InitialStart, StartOutcome, StartState},
 };
-use af_wire::event::EventType;
-use afd_turns::{Admission, Key, Producer, Reply};
+use af_wire::turn::TurnKind;
+use afd_turns::{IncomingTurn, Key, Producer, Reply};
 use sqlx::PgConnection;
 
 impl Creations {
@@ -22,13 +22,13 @@ impl Creations {
         let (Some(payload), Some(actor)) = (payload, &row.accepted.context.creator_id) else {
             return Ok(Prepared::None);
         };
-        let admission = Admission {
+        let admission = IncomingTurn {
             producer: Producer::Steer,
             key: Key::Repeated(key),
             fleet: &row.id,
             workspace: &row.workspace_id,
             actor: actor.as_str(),
-            event_type: EventType::Chat,
+            event_type: TurnKind::Chat,
             request_json: payload,
             reply: Reply::None,
         };
@@ -53,7 +53,7 @@ impl Creations {
             Prepared::Ready(prepared) => match self.admissions.stage(connection, prepared).await {
                 Ok(admitted) => StartOutcome::RunNow {
                     state: StartState::Pending,
-                    event_id: Some(admitted.stored.id.into()),
+                    turn_id: Some(admitted.stored.id.into()),
                     error_code: None,
                 },
                 Err(refused) if refused.is_over_capacity() => blocked(refused.code().to_string()),
@@ -67,7 +67,7 @@ impl Creations {
 const fn blocked(code: String) -> StartOutcome {
     StartOutcome::RunNow {
         state: StartState::Blocked,
-        event_id: None,
+        turn_id: None,
         error_code: Some(code),
     }
 }

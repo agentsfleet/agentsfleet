@@ -44,21 +44,18 @@ async fn post_as(
     (run_id, fence): (&str, u64),
     calls: &[Value],
 ) -> u16 {
-    http.post(format!(
-        "{}/v1/runners/me/runs/{run_id}/tool-calls",
-        scene.base
-    ))
-    .bearer_auth(token)
-    .header(reqwest::header::CONTENT_TYPE, "application/json")
-    .body(
-        serde_json::to_vec(&json!({"fencing_token": fence, "calls": calls}))
-            .expect("the body serializes"),
-    )
-    .send()
-    .await
-    .expect("the daemon answers")
-    .status()
-    .as_u16()
+    http.post(format!("{}/v1/runners/me/runs/{run_id}/items", scene.base))
+        .bearer_auth(token)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(
+            serde_json::to_vec(&json!({"fencing_token": fence, "calls": calls}))
+                .expect("the body serializes"),
+        )
+        .send()
+        .await
+        .expect("the daemon answers")
+        .status()
+        .as_u16()
 }
 
 /// A runner other than the scenario's, enrolled through the production verb.
@@ -102,7 +99,7 @@ async fn test_tool_call_details_refused_for_a_run_not_held() {
         &scene,
         &format!(
             "UPDATE thread.runs SET run_expires_at = to_timestamp(0) \
-             WHERE id = '{run_id}'::uuid AND fleet_id = $1 AND event_id = $2"
+             WHERE id = '{run_id}'::uuid AND fleet_id = $1 AND turn_id = $2"
         ),
     )
     .await;
@@ -161,8 +158,8 @@ async fn test_tool_call_detail_repost_replaces_its_record() {
         "a replacement at the cap swaps its old size for its new one"
     );
     let path = format!(
-        "/v1/workspaces/{}/fleets/{}/events/{}/tool-calls/{fence}:16",
-        scene.workspace, scene.fleet, scene.event_id
+        "/v1/workspaces/{}/fleets/{}/turns/{}/items/{fence}:16",
+        scene.workspace, scene.fleet, scene.turn_id
     );
     let read = http
         .get(format!("{}{path}", scene.base))
@@ -203,8 +200,8 @@ async fn test_tool_call_detail_of_another_workspace_is_not_found() {
     seed_tenant_key(&scene.booted, &tenant, &token, scene.seeded_at).await;
 
     let path = format!(
-        "/v1/workspaces/{workspace}/fleets/{}/events/{}/tool-calls/{fence}:3",
-        scene.fleet, scene.event_id
+        "/v1/workspaces/{workspace}/fleets/{}/turns/{}/items/{fence}:3",
+        scene.fleet, scene.turn_id
     );
     let answer = http
         .get(format!("{}{path}", scene.base))
@@ -237,7 +234,7 @@ async fn test_nul_tool_trace_dropped_report_settles() {
     assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(stored_trace(&scene).await, None);
     assert_eq!(
-        event_column(&scene, &scene.event_id, "status")
+        event_column(&scene, &scene.turn_id, "status")
             .await
             .as_deref(),
         Some("processed")
@@ -257,7 +254,7 @@ async fn test_concurrent_posts_never_pass_the_event_budget() {
     let (scene, http, run_id, fence) = held(&mut supervisor).await;
     let output = "a".repeat(DETAIL_FIELD_MAX_BYTES - 2);
     let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(24));
-    let url = format!("{}/v1/runners/me/runs/{run_id}/tool-calls", scene.base);
+    let url = format!("{}/v1/runners/me/runs/{run_id}/items", scene.base);
     let mut posts = tokio::task::JoinSet::new();
     for n in 1..=24_u64 {
         let (http, url, token, barrier) = (

@@ -79,7 +79,7 @@ async fn proposed(fixture: &Decisions<'_>) -> TaskBindingsInput {
         .await;
     let reservation = fixture.reservation(DecisionAssessment::Message, None);
     let mut reservation = (*reservation).clone();
-    reservation.source_admission_id = source.to_string();
+    reservation.source_turn_id = source.to_string();
     let reservation = garde::Unvalidated::new(reservation)
         .validate()
         .expect("explicit human request");
@@ -107,7 +107,7 @@ async fn proposed(fixture: &Decisions<'_>) -> TaskBindingsInput {
 fn binding(case: &Case, source: String, revision: String, call: String) -> TaskBindingsInput {
     let mut input = TaskBindingsInput {
         fencing_token: case.run().fencing_token,
-        source_admission_id: source,
+        source_turn_id: source,
         accepted_revision_id: revision,
         plan_digest: "0".repeat(64),
         message_decision_call_id: call,

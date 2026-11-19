@@ -98,7 +98,7 @@ async fn refuse_stale_input_read(fixture: &Fixture) {
     )
     .await;
     assert_eq!(
-        recovered.get("source_admission_id"),
+        recovered.get("source_turn_id"),
         Some(&json!(fixture.run.source))
     );
 }

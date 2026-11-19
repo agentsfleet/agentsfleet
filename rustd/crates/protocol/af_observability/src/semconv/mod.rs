@@ -114,7 +114,7 @@ pub const ATTR_WORKSPACE_ID: &str = "agentsfleet.workspace.id";
 pub const ATTR_TENANT_ID: &str = "agentsfleet.tenant.id";
 
 /// The event a run executed.
-pub const ATTR_EVENT_ID: &str = "agentsfleet.event.id";
+pub const ATTR_TURN_ID: &str = "agentsfleet.turn.id";
 
 /// Event creation to run issue, both instants on the run row.
 pub const ATTR_DELIVERY_QUEUE_WAIT_MS: &str = "agentsfleet.delivery.queue_wait_ms";
@@ -134,7 +134,7 @@ pub const ATTR_DELIVERY_SANDBOX_WAIT_MS: &str = "agentsfleet.delivery.sandbox_wa
 /// The runner's hold-or-destroy up to the start of its report post.
 pub const ATTR_DELIVERY_SETTLE_MS: &str = "agentsfleet.delivery.settle_ms";
 
-/// The report's receipt to the `event_complete` publish, on this daemon.
+/// The report's receipt to the `turn_complete` publish, on this daemon.
 pub const ATTR_DELIVERY_COMPLETE_MS: &str = "agentsfleet.delivery.complete_ms";
 
 /// Which direction a token count is: prompt, or completion.
@@ -165,7 +165,7 @@ pub const DELIVERY_SPAN_KEYS: &[&str] = &[
     ATTR_EXECUTION_POSTURE,
     ATTR_WORKSPACE_ID,
     ATTR_TENANT_ID,
-    ATTR_EVENT_ID,
+    ATTR_TURN_ID,
     ATTR_DELIVERY_QUEUE_WAIT_MS,
     ATTR_DELIVERY_MEMORY_MS,
     ATTR_DELIVERY_MODEL_MS,

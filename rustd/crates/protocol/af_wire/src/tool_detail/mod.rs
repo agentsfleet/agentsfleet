@@ -190,7 +190,7 @@ impl DetailRejection {
     }
 }
 
-/// `POST /v1/runners/me/runs/{run_id}/tool-calls` request.
+/// `POST /v1/runners/me/runs/{run_id}/items` request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -213,7 +213,7 @@ pub struct ToolCallRecordsStored {
     pub skipped_count: usize,
 }
 
-/// `GET …/events/{event_id}/tool-calls/{call_id}` reply: one call, in full.
+/// `GET …/turns/{turn_id}/items/{item_id}` reply: one call, in full.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

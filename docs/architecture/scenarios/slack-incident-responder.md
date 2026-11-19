@@ -180,7 +180,7 @@ The installed grant bounds writes as described in [trust anchors](../connectors.
 | Capability | Rust daemon today | Required | Workstream |
 |---|---|---|---|
 | Signed Slack delivery | ✅ signature, 5-minute window, `url_verification` echo (`afd_api_ingress/src/handler/events/mod.rs:156,197`, `afd_connector/src/registry/mod.rs:271-277`) | unchanged | — |
-| Mention becomes an event | ✅ one `slack_mention` admission per Slack event, keyed `<team_id>:<event_id>` (`afd_ingress/src/slack/admit.rs:59-64`, `afd_turns/src/admission.rs:33`) | — | M206_002 |
+| Mention becomes an event | ✅ one `slack_mention` admission per Slack event, keyed `<team_id>:<event_id>` (`afd_ingress/src/slack/admit.rs:59-64`, `afd_turns/src/incoming.rs:33`) | — | M206_002 |
 | Channel → fleet | Reviewed subscriptions route only configured Addressed/Sole fleets. Unconfigured channels return `channel_not_configured`; existing bindings carry fixed notices only. | Combined live drill remains pending. | M236 |
 | Thread context | ✅ `conversations.replies` under 1.5 s, parent plus latest replies, capped, under a fixed untrusted-data heading (`afd_connector/src/slack/replies/mod.rs:48-51,183`, `afd_ingress/src/slack/message.rs:20,52`) | — | M206_002 |
 | Answer delivery | ✅ owed only to a recorded destination; a failed run with no text, a gate refusal, or an event ended after its runs lapsed owes a fixed notice (`afd_fleet/src/run/sql/commit_report.sql:184-197`, `afd_fleet/src/run/event.rs:136-240`); abandoned when refused or out of cycles (slot 1740) | — | M206_001 |

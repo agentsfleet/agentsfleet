@@ -7,7 +7,7 @@ use af_observability::Telemetry;
 use af_wire::protocol::StreamKind;
 use afd_auth::scope::ScopeSet;
 use afd_fleet::run::Runs;
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use serde_json::{Value, json};
 
 // Value: protects=acknowledged failed native reports emit their completion outcomes;
@@ -31,7 +31,7 @@ async fn failed_native_reports_emit_classified_and_unclassified_fleet_errors() {
         .expect("the enrolled runner opens a native session");
     report(&mut session, &fixture, 2, Some("timeout_kill")).await;
     let bus = harness::bus().await;
-    let admissions = Admissions::for_tests(fixture.database.clone(), bus.clone());
+    let admissions = Turns::for_tests(fixture.database.clone(), bus.clone());
     let runs = Runs::new(fixture.database.clone(), bus, Entropy::new());
     fixture.run = acquire(&runs, &admissions, &fixture.owner, &fixture.runner).await;
     report(&mut session, &fixture, 3, None).await;
@@ -55,11 +55,11 @@ async fn report(session: &mut Session, fixture: &Fixture, request_id: u64, reaso
         .write(
             StreamKind::Reports,
             &json!({"type":"report","request_id":request_id,"request":{
-                "run_id":run.id,"event_id":run.source,"fencing_token":run.fence,
+                "run_id":run.id,"turn_id":run.source,"fencing_token":run.fence,
                 "outcome":"fleet_error","failure_reason":reason,"failure_detail":"",
                 "response_text":"","tokens":0,"requests":[],
                 "telemetry":{"time_to_first_token_ms":0,"wall_ms":1},
-                "checkpoint":{"last_event_id":run.source,"last_response":""}
+                "checkpoint":{"last_turn_id":run.source,"last_response":""}
             }}),
         )
         .await;

@@ -49,7 +49,7 @@ async fn test_definition_run_trace_is_readable() {
         vec![say("Run 101 failed.")],
     ]);
 
-    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
 
     assert_eq!(settled.status, "processed");
     assert_readable_trace(&scene, &token).await;
@@ -62,8 +62,8 @@ async fn assert_readable_trace(scene: &crate::e2e::Scenario, token: &str) {
         .build()
         .expect("tenant client");
     let event = format!(
-        "/v1/workspaces/{}/fleets/{}/events/{}",
-        scene.workspace, scene.fleet, scene.event_id
+        "/v1/workspaces/{}/fleets/{}/turns/{}",
+        scene.workspace, scene.fleet, scene.turn_id
     );
     let detail = tenant_get(&http, scene, token, &event).await;
     let calls = detail["tool_calls"]["calls"]
@@ -75,13 +75,7 @@ async fn assert_readable_trace(scene: &crate::e2e::Scenario, token: &str) {
         (Some("http_request"), Some("succeeded"))
     );
     let call_id = calls[0]["call_id"].as_str().expect("a call id");
-    assert_readable_record(
-        &http,
-        scene,
-        token,
-        &format!("{event}/tool-calls/{call_id}"),
-    )
-    .await;
+    assert_readable_record(&http, scene, token, &format!("{event}/items/{call_id}")).await;
 }
 
 async fn assert_readable_record(
@@ -120,7 +114,7 @@ async fn test_code_running_definition_roundtrip() {
     let upstream = Upstream::serve(Vec::new()).await;
     let (model, transcript) = FakeModel::new(fixer_turns());
 
-    let settled = run_event_from(&scene, &scene.event_id, &upstream, model, Some(origin)).await;
+    let settled = run_event_from(&scene, &scene.turn_id, &upstream, model, Some(origin)).await;
 
     assert_eq!(
         (settled.status.as_str(), settled.answer.as_str()),

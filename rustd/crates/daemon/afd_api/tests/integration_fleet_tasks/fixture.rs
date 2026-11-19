@@ -57,8 +57,7 @@ impl<'lane> Tasks<'lane> {
         let bus = afd_bus::test_util::unreachable();
         let runs =
             afd_fleet::run::Runs::new(self.base.database.clone(), bus.clone(), Entropy::new());
-        let admissions =
-            afd_turns::Admissions::new(self.base.database.clone(), bus, Entropy::new());
+        let admissions = afd_turns::Turns::new(self.base.database.clone(), bus, Entropy::new());
         afd_fleet::task::Tasks::new(
             runs,
             admissions,

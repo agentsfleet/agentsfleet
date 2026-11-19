@@ -14,7 +14,7 @@ use crate::run::fold::Folds;
 use crate::run::pull::RunService;
 use crate::run::settle::Reported;
 
-/// The `event_complete` frame was published for a settled report.
+/// The `turn_complete` frame was published for a settled report.
 pub(super) const EVENT_COMPLETION_PUBLISHED: &str = "completion_published";
 
 /// A settled report was written.
@@ -46,23 +46,16 @@ impl RunService {
         let run_id = request.run_id.as_ref();
         // Hoisted for the `log` bridge's duplicated field expressions.
         let fleet = run.fleet_id.as_str();
-        let event = run.event_id.as_str();
+        let event = run.turn_id.as_str();
         let nanos = charged.as_i64();
         {
-            let (fleet_id, agentsfleet_event_id, event, message) = (
+            let (fleet_id, agentsfleet_turn_id, event, message) = (
                 &fleet,
                 &event,
                 &EVENT_SETTLED,
                 format_args!("the report won its fence and its final slice was charged"),
             );
-            tracing::debug!(
-                message,
-                fleet_id,
-                agentsfleet_event_id,
-                run_id,
-                nanos,
-                event
-            );
+            tracing::debug!(message, fleet_id, agentsfleet_turn_id, run_id, nanos, event);
         };
 
         // After the fence is won, so a refused report does not decrement a
@@ -132,15 +125,15 @@ impl RunService {
     /// A repeated report returns the stored outcome without duplicating side effects.
     pub(super) fn record_repeat(run: &Reported, run_id: &str) {
         let fleet = run.fleet_id.as_str();
-        let event = run.event_id.as_str();
+        let event = run.turn_id.as_str();
         {
-            let (fleet_id, agentsfleet_event_id, event, message) = (
+            let (fleet_id, agentsfleet_turn_id, event, message) = (
                 &fleet,
                 &event,
                 &EVENT_ALREADY_SETTLED,
                 format_args!("the runner re-sent a settled report; its stored outcome stands"),
             );
-            tracing::info!(message, fleet_id, agentsfleet_event_id, run_id, event);
+            tracing::info!(message, fleet_id, agentsfleet_turn_id, run_id, event);
         };
     }
 }

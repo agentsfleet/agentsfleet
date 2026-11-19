@@ -1,6 +1,6 @@
 //! What an approval lands, and what it leaves untouched.
 //!
-//! The continuation row is a NEW event carrying `resumes_event_id`; the
+//! The continuation row is a NEW event carrying `resumes_turn_id`; the
 //! blocked row is never reopened. Both halves are proven here over live
 //! Postgres: the row that appears, the row that does not change, and the
 //! idempotence that keeps a second answer from continuing the run twice.
@@ -11,7 +11,7 @@
 
 use af_core::id::Uuid7;
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_turns::{Admissions, Budgets};
+use afd_turns::{Budgets, Turns};
 
 use crate::lane::{Lane, Window, sweeper_exclusive};
 
@@ -40,7 +40,7 @@ async fn an_approved_gate_lands_a_continuation_naming_what_it_resumes() {
         other => unreachable!("the first answer wins, got {other:?}"),
     };
     let continuation = resolved
-        .continuation_event_id
+        .continuation_turn_id
         .expect("an approval continues the run it unblocked");
 
     let actor = lane
@@ -52,14 +52,14 @@ async fn an_approved_gate_lands_a_continuation_naming_what_it_resumes() {
         .await
         .expect("a continuation row carries a type");
     let resumes = lane
-        .event_column(continuation.as_str(), "resumes_event_id")
+        .event_column(continuation.as_str(), "resumes_turn_id")
         .await;
 
     // The chain reads forward: the blocked row says what stopped, and this one
     // says what it resumed from — so a reader never joins back through the gate
     // table to reconstruct the history.
     let held = resolved
-        .event_id
+        .turn_id
         .as_ref()
         .map(Uuid7::as_str)
         .expect("a gate raised on a run names the event it held");
@@ -84,7 +84,7 @@ async fn a_denied_gate_continues_nothing() {
 
     match outcome {
         Resolution::Resolved(resolved) => assert!(
-            resolved.continuation_event_id.is_none(),
+            resolved.continuation_turn_id.is_none(),
             "a refusal is the end of the run, not a pause in it"
         ),
         other => unreachable!("the first answer wins, got {other:?}"),
@@ -215,12 +215,12 @@ async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
     // that changed a status and continued nothing is a person told "done" over
     // work that never resumed.
     let continuation = resolved
-        .continuation_event_id
+        .continuation_turn_id
         .expect("a late approval must still continue the run it unblocked");
     assert_eq!(
-        lane.event_column(continuation.as_str(), "resumes_event_id")
+        lane.event_column(continuation.as_str(), "resumes_turn_id")
             .await,
-        resolved.event_id.map(String::from),
+        resolved.turn_id.map(String::from),
         "the continuation names the blocked event it resumes"
     );
 }
@@ -248,7 +248,7 @@ async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
         unreachable!("the first answer already moved the row, got {retried:?}");
     };
     let continuation = retried
-        .continuation_event_id
+        .continuation_turn_id
         .expect("the retry lands the continuation the first answer owed");
     assert_eq!(
         lane.event_count().await,
@@ -256,9 +256,9 @@ async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
         "exactly one continuation"
     );
     assert_eq!(
-        lane.event_column(continuation.as_str(), "resumes_event_id")
+        lane.event_column(continuation.as_str(), "resumes_turn_id")
             .await,
-        retried.event_id.map(String::from),
+        retried.turn_id.map(String::from),
         "the continuation names the blocked event it resumes"
     );
 
@@ -277,7 +277,7 @@ async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
         unreachable!("the row stays answered, got {third:?}");
     };
     assert_eq!(
-        third.continuation_event_id.as_ref().map(Uuid7::as_str),
+        third.continuation_turn_id.as_ref().map(Uuid7::as_str),
         Some(continuation.as_str()),
         "the third answer finds the continuation already landed"
     );
@@ -292,7 +292,7 @@ async fn refuse_continuation(lane: &Lane, action: &Uuid7, before: i64) {
     let refusing = Inbox::new(
         lane.pool.clone(),
         lane.bus.clone(),
-        Admissions::for_tests(lane.pool.clone(), lane.bus.clone()).with_budgets(full),
+        Turns::for_tests(lane.pool.clone(), lane.bus.clone()).with_budgets(full),
     );
     refusing
         .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)

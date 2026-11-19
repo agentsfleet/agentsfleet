@@ -50,7 +50,7 @@ pub(super) fn inputs(config: &Config) -> Result<Value, Failed> {
         usage: TaskUsage::default(),
     };
     Ok(serde_json::to_value(TaskInputsResponse {
-        source_admission_id: TASK.to_owned(),
+        source_turn_id: TASK.to_owned(),
         accepted_revision_id: Some(TASK.to_owned()),
         current_message: None,
         inputs: vec![],
@@ -134,7 +134,7 @@ fn reservation(input: &DecisionReservationInput) -> Result<(), Failed> {
         "one native goal decision",
     )?;
     crate::run::expect(
-        input.source_admission_id == TASK
+        input.source_turn_id == TASK
             && input
                 .task
                 .as_ref()

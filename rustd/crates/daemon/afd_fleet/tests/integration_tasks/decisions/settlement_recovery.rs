@@ -173,7 +173,7 @@ async fn completed_run(fixture: &Decisions<'_>) -> i64 {
             .iter()
             .any(|event| event.field("event") == Some("run_release_deferred"))
     );
-    assert!(held.fixtures.admission_settled(&held.event_id).await);
+    assert!(held.fixtures.admission_settled(&held.turn_id).await);
     // What the report charged: every line of the run that is not a decision
     // call's, which the receipts charged on their own.
     sqlx::query_scalar(
@@ -205,7 +205,7 @@ async fn age_recovery(fixture: &Decisions<'_>, first: &Uuid7) {
     let elapsed = GRACE.saturating_add(Duration::from_secs(1));
     held.fixtures
         .age(
-            Row::DecisionLine(&held.event_id, &sequence.to_string()),
+            Row::DecisionLine(&held.turn_id, &sequence.to_string()),
             "created_at",
             elapsed,
         )
@@ -278,7 +278,7 @@ async fn swept(fixture: &Decisions<'_>) -> BillingSwept {
 
 async fn original_attribution(fixture: &Decisions<'_>) {
     let held = &fixture.case.held;
-    let actual: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('seq',seq,'work_id',work_id,'tenant_id',tenant_id,'workspace_id',workspace_id,'fleet_id',fleet_id,'event_id',event_id,'provider',provider,'model',model,'charged_nanos',charged_nanos,'settled',settled_at IS NOT NULL) FROM billing.usage_lines WHERE work_id=$1 AND kind = $2 ORDER BY seq")
+    let actual: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('seq',seq,'work_id',work_id,'tenant_id',tenant_id,'workspace_id',workspace_id,'fleet_id',fleet_id,'turn_id',turn_id,'provider',provider,'model',model,'charged_nanos',charged_nanos,'settled',settled_at IS NOT NULL) FROM billing.usage_lines WHERE work_id=$1 AND kind = $2 ORDER BY seq")
         .bind(&held.run_key).bind(LineKind::Decision.as_str())
         .fetch_all(&mut *held.fixtures.database.acquire().await.expect("original decision lines"))
         .await.expect("both original attributions remain available");
@@ -286,7 +286,7 @@ async fn original_attribution(fixture: &Decisions<'_>) {
         serde_json::json!({
             "seq":seq,"work_id":held.run_key.as_str(),"tenant_id":held.tenant,
             "workspace_id":fixture.case.scope.workspace_id.as_str(),"fleet_id":held.fleet,
-        "event_id":held.event_id,"provider":"typesafe","model":fixture.model.model.model_name,
+        "turn_id":held.turn_id,"provider":"typesafe","model":fixture.model.model.model_name,
             "charged_nanos":3,"settled":true
         })
     });

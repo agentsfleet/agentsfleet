@@ -7,7 +7,7 @@ use af_crypto::{entropy::Entropy, secret::Kek};
 use af_stream::Transport;
 use afd_bus::Handle;
 use afd_setup::{Creations, Drafts, Setup, SystemSetup};
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use agentsfleetd::{
     serve::{Booted, boot},
     supervisor::Supervisor,
@@ -87,7 +87,7 @@ impl Fixture {
                 .await?;
         self.scene.runner_id = registered.runner_id;
         registered.token.expose().clone_into(&mut self.scene.token);
-        self.scene.event_id = self.scene.enqueue_event(e2e::EVENT_TYPE).await;
+        self.scene.turn_id = self.scene.enqueue_event(e2e::EVENT_TYPE).await;
         Ok(())
     }
 
@@ -112,7 +112,7 @@ impl Fixture {
         let setup = Setup::new(drafts, Arc::new(Kek::from_hex(e2e::GOOD_KEK)?));
         Ok(Creations::new(
             setup,
-            Admissions::new(database, bus, Entropy::new()),
+            Turns::new(database, bus, Entropy::new()),
         ))
     }
 

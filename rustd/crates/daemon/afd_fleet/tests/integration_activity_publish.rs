@@ -27,8 +27,8 @@
 use crate::report_seed;
 use std::borrow::Cow;
 
-use af_core::event::label;
 use af_core::id::Uuid7;
+use af_core::turn::label;
 use af_observability::test_util::Capture;
 use af_wire::activity::{ActivityFrame, FleetResponseChunk};
 use afd_fleet::run::Ended;
@@ -150,7 +150,7 @@ async fn test_bracket_publish_bus_down_does_not_fail_the_closing() {
         Ended::Now(closed) => closed,
         Ended::Already => unreachable!("a held run's row is still open"),
     };
-    assert_eq!(closed.row.status, af_core::event::status::GATE_BLOCKED);
+    assert_eq!(closed.row.status, af_core::turn::status::GATE_BLOCKED);
 
     // Returns, rather than erroring or hanging: the bus is asked once and its
     // refusal is accounted in the log, not on the verb.
@@ -218,7 +218,7 @@ async fn seed_gate(run: &report_seed::Held, status: &str) {
         "INSERT INTO fleet.approval_gates
            (id, fleet_id, workspace_id, action_id, tool_name, action_name,
             gate_type, proposed_action, evidence, blast_radius, expires_at,
-            resolved_by, status, detail, created_at, updated_at, event_id)
+            resolved_by, status, detail, created_at, updated_at, turn_id)
          VALUES ($1, $2, $3, $4, 'git', 'push',
                  'repository_write', 'open a pull request', '{}'::jsonb,
                  'one repository', now(), '', $5, '', now(), now(), $6)",
@@ -228,7 +228,7 @@ async fn seed_gate(run: &report_seed::Held, status: &str) {
     .bind(&workspace)
     .bind(afd_db::test_util::mint_id())
     .bind(status)
-    .bind(&run.event_id)
+    .bind(&run.turn_id)
     .execute(&mut *connection)
     .await
     .expect("the gate row must insert");
@@ -288,7 +288,7 @@ async fn backdate_run(run: &report_seed::Held) {
     sqlx::query(
         "UPDATE thread.runs
          SET created_at = clock_timestamp() - $2::interval,
-             event_created_at = clock_timestamp() - $3::interval,
+             turn_created_at = clock_timestamp() - $3::interval,
              run_expires_at = clock_timestamp() + $4::interval
          WHERE id = $1",
     )

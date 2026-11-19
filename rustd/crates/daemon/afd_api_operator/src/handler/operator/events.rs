@@ -13,13 +13,13 @@ use super::query;
 use crate::handler::{malformed, parse_id, refuse};
 use crate::services::Services;
 
-const EVENT: &str = "runner_events_failed";
+const EVENT: &str = "runner_history_failed";
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/admin/runners/{runner_id}/events",
+    path = "/v1/admin/runners/{runner_id}/history",
     tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "list_platform_runner_events",
+    operation_id = "list_platform_runner_history",
     summary = "List runner activity",
     description = concat!(
         "Lists a runner's recorded activity newest first. Requires platform administrator ",

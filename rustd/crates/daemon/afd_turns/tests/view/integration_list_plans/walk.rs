@@ -9,10 +9,10 @@ use std::time::Duration;
 
 use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_turns::view::{Cursor, EventRow, Filter, History, Since, next_cursor, prefix_to_like};
+use afd_turns::view::{Cursor, Filter, History, Since, TurnRow, next_cursor, prefix_to_like};
 use jiff::Timestamp;
 
-use crate::support::EventsLane;
+use crate::support::TurnsLane;
 
 /// Events the walks page through, two to a millisecond.
 const EVENTS: i64 = 24;
@@ -21,7 +21,7 @@ const PAGE: i64 = 5;
 /// The oldest walked event's instant; each later pair is one step newer.
 const FIRST_AT: Timestamp = Timestamp::constant(1_800_000_000, 0);
 const STEP: Duration = Duration::from_secs(1);
-/// The prefix of the actor every walked event carries (`EventsLane::seed_event`),
+/// The prefix of the actor every walked event carries (`TurnsLane::seed_event`),
 /// and one none of them does.
 const SEEDED_ACTOR: &str = "steer:";
 const OTHER_ACTOR: &str = "webhook:";
@@ -35,7 +35,7 @@ struct Scope {
 }
 
 impl Scope {
-    fn of(lane: &EventsLane) -> Self {
+    fn of(lane: &TurnsLane) -> Self {
         Self {
             workspace: lane.workspace.clone(),
             fleet: lane.fleet.clone(),
@@ -58,16 +58,16 @@ fn pair_at(nth: i64) -> Timestamp {
         .expect("a walk instant is in range")
 }
 
-/// Seeds the walked events and answers `(created_at, event_id)` for each,
+/// Seeds the walked events and answers `(created_at, turn_id)` for each,
 /// newest first, as every page orders them. Ids are `UUIDv7`s, as an admitted
 /// event's are, and each pair shares an instant so the id breaks the tie.
-pub(super) async fn seed_walk(lane: &EventsLane) -> Vec<(Timestamp, Uuid7)> {
+pub(super) async fn seed_walk(lane: &TurnsLane) -> Vec<(Timestamp, Uuid7)> {
     let mut seeded = Vec::new();
     for nth in 0..EVENTS {
         let created_at = pair_at(nth / 2);
-        let event_id = mint_id();
-        lane.seed_event(&event_id, created_at).await;
-        seeded.push((created_at, event_id));
+        let turn_id = mint_id();
+        lane.seed_event(&turn_id, created_at).await;
+        seeded.push((created_at, turn_id));
     }
     seeded.sort_by(|older, newer| newer.cmp(older));
     seeded
@@ -80,7 +80,7 @@ async fn listing_page(
     listing: Listing,
     filter: &Filter,
     cursor: Option<&Cursor>,
-) -> Vec<EventRow> {
+) -> Vec<TurnRow> {
     let (workspace, fleet) = (&scope.workspace, &scope.fleet);
     match listing {
         Listing::Fleet => {
@@ -108,7 +108,7 @@ async fn walk_listing(
     let mut cursor = None;
     loop {
         let page = listing_page(history, scope, listing, filter, cursor.as_ref()).await;
-        seen.extend(page.iter().map(|row| row.event_id.clone()));
+        seen.extend(page.iter().map(|row| row.turn_id.clone()));
         match next_cursor(&page, PAGE) {
             Some(next) => cursor = Some(next),
             None => return seen,
@@ -125,7 +125,7 @@ async fn walk_actor(history: &History, scope: &Scope, actor: &str) -> Vec<Uuid7>
             .page_of_actor(&scope.workspace, &scope.fleet, actor, cursor.as_ref(), PAGE)
             .await
             .expect("an actor page must read");
-        seen.extend(page.iter().map(|row| row.event_id.clone()));
+        seen.extend(page.iter().map(|row| row.turn_id.clone()));
         match next_cursor(&page, PAGE) {
             Some(next) => cursor = Some(next),
             None => return seen,
@@ -142,10 +142,10 @@ async fn walk_thread(history: &History, scope: &Scope) -> Vec<Uuid7> {
             .thread_page(&scope.workspace, &scope.fleet, cursor.as_ref(), PAGE)
             .await
             .expect("a thread page must read");
-        seen.extend(page.iter().map(|detail| detail.row.event_id.clone()));
+        seen.extend(page.iter().map(|detail| detail.row.turn_id.clone()));
         let full = i64::try_from(page.len()).is_ok_and(|len| len == PAGE);
         match page.last().filter(|_| full) {
-            Some(last) => cursor = Some(Cursor::after(last.row.created_at, &last.row.event_id)),
+            Some(last) => cursor = Some(Cursor::after(last.row.created_at, &last.row.turn_id)),
             None => return seen,
         }
     }
@@ -170,7 +170,7 @@ fn filter(actor_prefix: Option<&str>, since: Option<Timestamp>) -> Filter {
 
 /// Every listing walks exactly the events each filter admits, so every text
 /// `History` picks runs with its binds, and the thread walks them all.
-pub(super) async fn assert_walks(lane: &EventsLane, seeded: &[(Timestamp, Uuid7)]) {
+pub(super) async fn assert_walks(lane: &TurnsLane, seeded: &[(Timestamp, Uuid7)]) {
     let history = History::new(lane.database.clone());
     let scope = Scope::of(lane);
     let since = pair_at(EVENTS / 4);

@@ -109,7 +109,7 @@ pub struct PreparedTask {
 /// Complete immutable interpretation; partial item acceptance is forbidden.
 #[derive(Debug, Clone)]
 pub struct PreparedPlan {
-    pub(super) source_admission_id: Uuid7,
+    pub(super) source_turn_id: Uuid7,
     pub(super) accepted_revision_id: Uuid7,
     pub(super) digest: String,
     pub(super) items: Vec<super::PreparedItem>,

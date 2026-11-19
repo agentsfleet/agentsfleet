@@ -134,7 +134,7 @@ async fn accepted_key_refuses_changed_body_and_foreign_creator() {
 
 /// A bus no broker answers: the stream stage of Save fails, nothing else.
 fn unreachable(c: &Case) -> afd_setup::Creations {
-    let admissions = afd_turns::Admissions::new(
+    let admissions = afd_turns::Turns::new(
         c.base.db.clone(),
         afd_bus::test_util::unreachable(),
         af_crypto::entropy::Entropy::new(),

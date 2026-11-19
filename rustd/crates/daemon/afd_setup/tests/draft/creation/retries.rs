@@ -34,7 +34,7 @@ fn named_event(saved: &SavedFleet) -> Option<&str> {
     match &saved.start {
         StartOutcome::RunNow {
             state: StartState::Accepted | StartState::Pending,
-            event_id: Some(event),
+            turn_id: Some(event),
             error_code: None,
         } => Some(event),
         _ => None,

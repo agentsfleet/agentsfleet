@@ -18,7 +18,7 @@ use crate::harness::{self, Fleet};
 pub(super) const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 
 /// The completed event's stamps, its update a millisecond after its creation.
-const EVENT_CREATED_AT: jiff::Timestamp = jiff::Timestamp::constant(0, 10_000_000);
+const TURN_CREATED_AT: jiff::Timestamp = jiff::Timestamp::constant(0, 10_000_000);
 const EVENT_UPDATED_AT: jiff::Timestamp = jiff::Timestamp::constant(0, 11_000_000);
 
 /// The sequence a control frame rides.
@@ -80,7 +80,7 @@ impl Watched {
 
     fn events_path(&self) -> String {
         format!(
-            "/v1/workspaces/{}/fleets/{}/events",
+            "/v1/workspaces/{}/fleets/{}/turns",
             self.fixture.workspace, self.fixture.fleet
         )
     }
@@ -144,7 +144,7 @@ impl Watched {
     }
 
     pub(super) async fn commit_without_publish(&self) -> String {
-        let event_id = afd_db::test_util::mint_id();
+        let turn_id = afd_db::test_util::mint_id();
         sqlx::query(
             "INSERT INTO thread.turns \
             (thread_id, workspace_id, id, actor, kind, status, request_json, \
@@ -156,7 +156,7 @@ impl Watched {
         )
         .bind(&self.fixture.fleet)
         .bind(&self.fixture.workspace)
-        .bind(&event_id)
+        .bind(&turn_id)
         .bind(Outcome::Processed.as_str())
         .execute(
             self.database()
@@ -167,7 +167,7 @@ impl Watched {
         )
         .await
         .expect("the history row commits without publishing");
-        event_id.into()
+        turn_id.into()
     }
 
     pub(super) async fn history(&self) -> Value {
@@ -224,15 +224,15 @@ pub(super) fn assert_frame(frame: &str, sequence: u64, payload: &Value) {
 
 /// The activity bridge's private `Published::Chunk` names the pub/sub kind;
 /// `ActivityFrame::FleetResponseChunk` names a different runner HTTP payload.
-pub(super) fn chunk(event_id: &str, text: &str) -> Value {
+pub(super) fn chunk(turn_id: &str, text: &str) -> Value {
     const CHUNK_KIND: &str = "chunk";
-    json!({"kind": CHUNK_KIND, "event_id": event_id, "text": text})
+    json!({"kind": CHUNK_KIND, "turn_id": turn_id, "text": text})
 }
 
-pub(super) fn completion(event_id: &str) -> Value {
-    serde_json::to_value(TailFrame::EventComplete {
+pub(super) fn completion(turn_id: &str) -> Value {
+    serde_json::to_value(TailFrame::TurnComplete {
         event: Box::new(TailRow {
-            event_id: event_id.into(),
+            turn_id: turn_id.into(),
             actor: "steer:api".into(),
             event_type: "chat".into(),
             status: Outcome::Processed.as_str().into(),
@@ -240,8 +240,8 @@ pub(super) fn completion(event_id: &str) -> Value {
             wall_ms: Some(12),
             failure_label: None,
             failure_detail: None,
-            resumes_event_id: None,
-            created_at: EVENT_CREATED_AT,
+            resumes_turn_id: None,
+            created_at: TURN_CREATED_AT,
             updated_at: EVENT_UPDATED_AT,
             cost_nanos: None,
         }),

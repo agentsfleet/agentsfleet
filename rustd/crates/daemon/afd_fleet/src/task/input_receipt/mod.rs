@@ -14,7 +14,7 @@ pub(super) async fn accept(
 ) -> Result<TaskInputReceiptResult> {
     let digest = af_core::etag::sha256_hex(
         &serde_json::to_vec(&(
-            &input.source_admission_id,
+            &input.source_turn_id,
             &input.plan_digest,
             &input.item_id,
             &input.task,
@@ -63,12 +63,11 @@ pub(super) async fn accept(
             .await
             .map_err(query("retain fulfilled input reply delivery"))?;
     }
-    let completion =
-        if input.source_admission_id != current.source_admission_id && response.is_some() {
-            answer::finish(tasks, &mut tx, &current, input).await?
-        } else {
-            None
-        };
+    let completion = if input.source_turn_id != current.source_turn_id && response.is_some() {
+        answer::finish(tasks, &mut tx, &current, input).await?
+    } else {
+        None
+    };
     let item = row::item(&mut tx, &current, input).await?;
     let result = row::result(input, &item, false)?;
     tx.commit()

@@ -1,8 +1,8 @@
 //! A routed mention becomes one admission, owed back to its thread.
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
-use afd_turns::{Admission, Admitted, Key, Producer, Reply};
+use af_wire::turn::TurnKind;
+use afd_turns::{Admitted, IncomingTurn, Key, Producer, Reply};
 
 use crate::Ingress;
 use crate::error::Result;
@@ -13,7 +13,7 @@ use crate::error::Result;
 /// team and the event, or the address and the body, admits a wrong row and
 /// compiles clean.
 #[derive(Debug, Clone, Copy)]
-pub struct MentionAdmission<'a> {
+pub struct MentionTurn<'a> {
     /// The fleet routing chose.
     pub fleet: &'a Uuid7,
     /// The workspace the team resolved to.
@@ -45,8 +45,8 @@ impl Ingress {
     ///
     /// # Errors
     /// Reports a database that would not record the acceptance.
-    pub async fn admit_mention(&self, mention: MentionAdmission<'_>) -> Result<Admitted> {
-        let MentionAdmission {
+    pub async fn admit_mention(&self, mention: MentionTurn<'_>) -> Result<Admitted> {
+        let MentionTurn {
             fleet,
             workspace,
             team_id,
@@ -60,13 +60,13 @@ impl Ingress {
         let actor = format!("{connector}:{team_id}:{user}");
         Ok(self
             .admissions
-            .admit(Admission {
+            .admit(IncomingTurn {
                 producer: Producer::SlackMention,
                 key: Key::Repeated(&key),
                 fleet,
                 workspace,
                 actor: &actor,
-                event_type: EventType::Chat,
+                event_type: TurnKind::Chat,
                 request_json,
                 reply: Reply::To { connector, address },
             })

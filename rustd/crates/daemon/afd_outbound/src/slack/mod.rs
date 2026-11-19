@@ -177,7 +177,7 @@ impl SlackPoster {
 
         let marker = AnswerMarker {
             fleet_id: job.fleet_id.clone().into(),
-            event_id: job.event_id.clone().into(),
+            turn_id: job.turn_id.clone().into(),
             part: part.cloned(),
         };
         Ok(Inputs {

@@ -111,7 +111,7 @@ async fn renew(native: &mut Native, held: &Held, request_id: u64) {
 }
 
 async fn report(fixture: &Fixture, native: &mut Native, held: &Held) -> Result<()> {
-    let body = wire::report_body(&held.id, &fixture.scene.event_id, held.fence);
+    let body = wire::report_body(&held.id, &fixture.scene.turn_id, held.fence);
     native
         .send(
             StreamKind::Reports,
@@ -130,7 +130,7 @@ async fn report(fixture: &Fixture, native: &mut Native, held: &Held) -> Result<(
     let settled: bool = sqlx::query_scalar(
         "SELECT settled_at IS NOT NULL FROM thread.turns WHERE id=$1 AND thread_id=$2",
     )
-    .bind(&fixture.scene.event_id)
+    .bind(&fixture.scene.turn_id)
     .bind(&fixture.scene.fleet)
     .fetch_one(&mut *fixture.owner.acquire().await?)
     .await?;
@@ -218,7 +218,7 @@ async fn census(fixture: &Fixture) -> Result<(i64, i64)> {
         (SELECT count(*) FROM thread.turns WHERE id=$2 AND thread_id=$3 AND settled_at IS NULL)",
     )
     .bind(&fixture.scene.runner_id)
-    .bind(&fixture.scene.event_id)
+    .bind(&fixture.scene.turn_id)
     .bind(&fixture.scene.fleet)
     .fetch_one(&mut *fixture.owner.acquire().await?)
     .await?)

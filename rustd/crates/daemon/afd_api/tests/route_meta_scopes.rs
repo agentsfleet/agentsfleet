@@ -114,7 +114,7 @@ fn test_each_method_resolves_to_its_own_rung() {
     );
 
     // A fixed requirement ignores the method entirely.
-    let events = Route::Fleet(FleetRoute::Events).meta().scopes;
+    let events = Route::Fleet(FleetRoute::Turns).meta().scopes;
     for method in [Method::GET, Method::POST, Method::DELETE] {
         assert_eq!(events.required(&method), &[Scope::FleetRead]);
     }

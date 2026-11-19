@@ -15,7 +15,7 @@ fn payload(fence: i64, live_seq: i64) -> Checked<LiveRun> {
     Ok(LiveRun {
         fleet_id: Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7")?,
         workspace_id: Uuid7::parse("01924f4e-0000-7000-8000-000000000001")?,
-        event_id: Uuid7::parse("01924f4e-0000-7000-8000-0000000000e9")?,
+        turn_id: Uuid7::parse("01924f4e-0000-7000-8000-0000000000e9")?,
         actor: "steer:api".to_owned(),
         fence,
         live_seq,

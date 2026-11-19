@@ -212,7 +212,7 @@ impl Members {
 
     /// The live tail of John's fleet.
     pub(crate) fn tail(&self) -> String {
-        format!("{}/{}/events/stream", self.fleets(), self.fleet.as_str())
+        format!("{}/{}/turns/stream", self.fleets(), self.fleet.as_str())
     }
 
     pub(crate) async fn cleanup(self) {

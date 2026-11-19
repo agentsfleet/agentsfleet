@@ -47,7 +47,7 @@ const LIBRARY_INPUT_OUT_OF_BOUNDS: &str = "UZ-LIBRARY-003";
 const MAX_KEY_LEN: usize = 255;
 
 /// The longest event identifier a path may name.
-const EVENT_ID_MAX_LEN: usize = 256;
+const TURN_ID_MAX_LEN: usize = 256;
 
 /// The longest provider a platform-key path may name.
 const KEY_PROVIDER_MAX_BYTES: usize = 32;
@@ -108,15 +108,15 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
     assert_accepted(Method::DELETE, &fleet_path(&format!("memories/{encoded}"))).await;
 
     // An over-long event id is told its bound, on both paths that name one.
-    let event = "e".repeat(EVENT_ID_MAX_LEN + 1);
+    let event = "e".repeat(TURN_ID_MAX_LEN + 1);
     for path in [
-        fleet_path(&format!("events/{event}")),
-        fleet_path(&format!("events/{event}/tool-calls/fence:1")),
+        fleet_path(&format!("turns/{event}")),
+        fleet_path(&format!("turns/{event}/items/fence:1")),
     ] {
         assert_refused(Method::GET, &path, INVALID_REQUEST).await;
     }
-    let at_bound = "e".repeat(EVENT_ID_MAX_LEN);
-    assert_accepted(Method::GET, &fleet_path(&format!("events/{at_bound}"))).await;
+    let at_bound = "e".repeat(TURN_ID_MAX_LEN);
+    assert_accepted(Method::GET, &fleet_path(&format!("turns/{at_bound}"))).await;
 
     // The platform-key path is held to the body's provider bound.
     let provider = "p".repeat(KEY_PROVIDER_MAX_BYTES + 1);
@@ -130,7 +130,7 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
 
 #[tokio::test]
 async fn test_unbounded_filters_now_refuse_oversize() {
-    let events = format!("/v1/workspaces/{OWNED_WORKSPACE}/events");
+    let events = format!("/v1/workspaces/{OWNED_WORKSPACE}/turns");
     let over = "a".repeat(MAX_ACTOR_FILTER_BYTES + 1);
     for filter in ["actor", "actor_prefix"] {
         let path = format!("{events}?{filter}={over}");

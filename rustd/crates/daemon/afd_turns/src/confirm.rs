@@ -1,15 +1,15 @@
 //! Activation confirms committed acceptance by its immutable producer key.
 
-use crate::{Admissions, Producer, Result};
+use crate::{Producer, Result, Turns};
 
 /// The committed admission's identity. No second datastore acknowledges it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Confirmation {
     /// The event admitted under this producer key.
-    pub event_id: String,
+    pub turn_id: String,
 }
 
-impl Admissions {
+impl Turns {
     /// Read the committed row and ring its hint. Never holds a lock across publish.
     ///
     /// # Errors
@@ -20,7 +20,7 @@ impl Admissions {
         };
         self.wake(&row.fleet).await;
         Ok(Some(Confirmation {
-            event_id: row.id.into(),
+            turn_id: row.id.into(),
         }))
     }
 }

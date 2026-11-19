@@ -163,7 +163,7 @@ async fn dispatch<D: Services>(
     Ok((
         StatusCode::ACCEPTED,
         Json(Fired {
-            event_id: fired.event_id.as_str().into(),
+            turn_id: fired.turn_id.as_str().into(),
             replayed: fired.replayed,
         }),
     )

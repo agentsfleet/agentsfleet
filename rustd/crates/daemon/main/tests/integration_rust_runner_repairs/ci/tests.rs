@@ -16,7 +16,7 @@ use crate::definition_responder::{
 use crate::definition_run::{assert_token_stayed_on_the_wire, posts, run_event};
 use crate::fake_model::FakeModel;
 use crate::https::{Seen, Upstream};
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_gate::policy::repair::branch_for;
 
 #[path = "continuation.rs"]
@@ -37,7 +37,7 @@ async fn test_addressed_repair_reads_evidence_before_draft() {
     let refused = vec![json!({"url":format!("https://{LOG_READER_HOST}/write"),
         "method":"POST","body":"{}"})];
     let (model, transcript) = FakeModel::deciding(script(LINKWARDEN, reads, refused));
-    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
     assert!(settled.answer.contains(DRAFT_URL));
     let (seen, asked) = (upstream.seen(), transcript.asked());
     assert_eq!(posts(&seen), writes(LINKWARDEN));
@@ -49,8 +49,8 @@ async fn test_addressed_repair_reads_evidence_before_draft() {
             .iter()
             .any(|result| result.starts_with("[method_not_allowed]"))
     );
-    assert_reconciled_for(LINKWARDEN, &branch_for(scene.event_id.as_str()), &seen);
-    assert_repaired_on_named_branch(LINKWARDEN, scene.event_id.as_str(), &seen, &asked);
+    assert_reconciled_for(LINKWARDEN, &branch_for(scene.turn_id.as_str()), &seen);
+    assert_repaired_on_named_branch(LINKWARDEN, scene.turn_id.as_str(), &seen, &asked);
     assert_token_stayed_on_the_wire(&seen, &asked);
     assert_existing_draft_is_returned_without_writes(&scene).await;
     supervisor.shutdown().await;
@@ -84,7 +84,7 @@ fn assert_ci_reads_before_writes(seen: &[Seen]) {
 }
 
 async fn assert_existing_draft_is_returned_without_writes(scene: &crate::e2e::Scenario) {
-    let second = scene.enqueue_event(EventType::Chat).await;
+    let second = scene.enqueue_event(TurnKind::Chat).await;
     let found = branch_for(second.as_str());
     let upstream = Upstream::serve(routes(LINKWARDEN, Some(&found), file_at_head())).await;
     let (model, transcript) =
@@ -106,7 +106,7 @@ async fn a_required_ci_log_failure_prevents_all_repair_writes() {
     let mut reads = ci_evidence_reads();
     reads.extend(head_reads(LINKWARDEN));
     let (model, transcript) = FakeModel::deciding(script(LINKWARDEN, reads, Vec::new()));
-    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.turn_id, &upstream, model).await;
     assert_eq!(settled.answer, DIAGNOSIS_ONLY);
     let seen = upstream.seen();
     assert_eq!(posts(&seen), Vec::<String>::new());

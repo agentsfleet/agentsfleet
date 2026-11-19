@@ -16,7 +16,7 @@ async fn decision_routes_preserve_runner_auth_strict_input_and_datastore_failure
     let collection = format!("/v1/runners/me/runs/{RUN_ID}/tasks/decisions");
     let receipt = format!("{collection}/{FLEET_ID}");
     let reservation = json!({"operation_id": FLEET_ID, "fencing_token": 7,
-        "source_admission_id": RUN_ID, "assessment": {"kind": "message"}, "evidence": {}});
+        "source_turn_id": RUN_ID, "assessment": {"kind": "message"}, "evidence": {}});
     let accounted = json!({"fencing_token": 7,
         "receipt": {"outcome": "unknown", "cause": {"reason": "timeout"}}});
     for (method, path, body) in [

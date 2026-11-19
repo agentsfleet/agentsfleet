@@ -61,7 +61,7 @@ pub enum RunnerRoute {
     /// Searching a fleet's memory past the window a run was seeded with.
     MemoryRecall,
     /// Keeping each finished tool call's full arguments and output.
-    ToolCalls,
+    Items,
     /// The schedules of the fleet a held run runs: listing them, and a
     /// fleet creating its own.
     Schedules,
@@ -76,7 +76,7 @@ pub enum RunnerRoute {
     /// The fleets of the held fleet's workspace.
     Fleets,
     /// One fleet's recent events, as the held fleet reads them.
-    FleetEvents,
+    FleetTurns,
 }
 
 impl RunnerRoute {
@@ -102,14 +102,14 @@ impl RunnerRoute {
         Self::MemoryHydrate,
         Self::MemoryCapture,
         Self::MemoryRecall,
-        Self::ToolCalls,
+        Self::Items,
         Self::Schedules,
         Self::Schedule,
         Self::ScheduleRuns,
         Self::Messages,
         Self::Steers,
         Self::Fleets,
-        Self::FleetEvents,
+        Self::FleetTurns,
     ];
 
     /// The verbs this route identity serves.
@@ -134,12 +134,12 @@ impl RunnerRoute {
             | Self::TaskInputs
             | Self::TaskEffect
             | Self::Fleets
-            | Self::FleetEvents => &[Verb::Get],
+            | Self::FleetTurns => &[Verb::Get],
             Self::Stream
             | Self::CredentialsMint
             | Self::MemoryCapture
             | Self::MemoryRecall
-            | Self::ToolCalls
+            | Self::Items
             | Self::TaskDecisions
             | Self::TaskBindings
             | Self::TaskInputReceipts
@@ -177,14 +177,14 @@ impl RunnerRoute {
             Self::CredentialsMint => paths::RUNNER_CREDENTIALS_MINT,
             Self::MemoryHydrate | Self::MemoryCapture => paths::RUNNER_MEMORY_FLEET,
             Self::MemoryRecall => paths::RUNNER_MEMORY_RECALL,
-            Self::ToolCalls => paths::RUN_TOOL_CALLS,
+            Self::Items => paths::RUN_ITEMS,
             Self::Schedules => paths::RUN_SCHEDULES,
             Self::Schedule => paths::RUN_SCHEDULE,
             Self::ScheduleRuns => paths::RUN_SCHEDULE_RUNS,
             Self::Messages => paths::RUN_MESSAGES,
             Self::Steers => paths::RUN_STEERS,
             Self::Fleets => paths::RUN_FLEETS,
-            Self::FleetEvents => paths::RUN_FLEET_EVENTS,
+            Self::FleetTurns => paths::RUN_FLEET_TURNS,
         };
         RouteMeta::new(
             Guard::RunnerBearer,

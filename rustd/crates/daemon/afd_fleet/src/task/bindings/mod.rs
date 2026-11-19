@@ -18,7 +18,7 @@ pub(super) async fn accept(
         return Err(TaskRefusal::ReplayConflict.into());
     }
     let mut plan = PreparedPlan {
-        source_admission_id: guard::id(&input.source_admission_id, "source_admission_id")?,
+        source_turn_id: guard::id(&input.source_turn_id, "source_turn_id")?,
         accepted_revision_id: guard::id(&input.accepted_revision_id, "accepted_revision_id")?,
         digest,
         items: Vec::new(),

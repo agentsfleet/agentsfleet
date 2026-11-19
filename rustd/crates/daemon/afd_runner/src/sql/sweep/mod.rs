@@ -101,4 +101,4 @@ pub const EXPIRE_ABANDONED_ACTIVE_RUNS_BATCH: &str =
 pub const COUNT_FLEETS_BY_STATUS: &str = include_str!("count_fleets_by_status.sql");
 
 /// Unsettled admissions and age of the oldest, from the queue index.
-pub const COUNT_ADMISSION_BACKLOG: &str = include_str!("count_admission_backlog.sql");
+pub const COUNT_TURN_BACKLOG: &str = include_str!("count_turn_backlog.sql");

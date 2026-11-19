@@ -164,9 +164,9 @@ fn progress_of(call_id: &str, dispatch: &DecisionDispatch<'_>) -> af_wire::activ
             .and_then(|task| task.get("task_id"))
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
-        source_admission_id: request
+        source_turn_id: request
             .state
-            .get("source_admission_id")
+            .get("source_turn_id")
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
         operation: if request.purpose == af_wire::decision::DecisionPurpose::Goal {

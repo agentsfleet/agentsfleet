@@ -182,7 +182,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     // carries (`select_thread_finished_before.sql`): both ride the delivery.
     ("SET LOCAL ROLE memory_runtime", Path::Issue),
     (
-        "SELECT thread_id AS fleet_id, id AS event_id, workspace_id, actor, kind AS event_type, status",
+        "SELECT thread_id AS fleet_id, id AS turn_id, workspace_id, actor, kind AS event_type, status",
         Path::Issue,
     ),
     // Host: the capacity lock, its census and the run-type record.
@@ -219,7 +219,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Report,
     ),
     (
-        "l.tenant_id, l.event_id, e.actor, l.posture, l.provider",
+        "l.tenant_id, l.turn_id, e.actor, l.posture, l.provider",
         Path::Report,
     ),
     ("WITH closed AS ( UPDATE thread.turns", Path::Report),

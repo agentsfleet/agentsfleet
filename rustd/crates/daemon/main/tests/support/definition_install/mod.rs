@@ -26,7 +26,7 @@ pub(crate) mod slack;
 use std::sync::Arc;
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
+use af_wire::turn::TurnKind;
 use afd_credential::credential::{Ask, Exchanger, Minted, Outcome};
 use afd_credential::secrets::connector::Connector;
 use agentsfleetd::serve::{Booted, boot_with_connector_boundary, boot_with_exchanger};
@@ -117,13 +117,13 @@ pub(super) async fn install_with(
     seal_credentials(&booted, &workspace, secrets, now).await;
     let fleet = install(&booted, &workspace, &tenant, fleet_name, now, channel).await;
     let enrolled = enrol(&booted, &fleet, now).await;
-    let event_id = enqueue(&booted, &fleet, &workspace, EventType::Chat).await;
+    let turn_id = enqueue(&booted, &fleet, &workspace, TurnKind::Chat).await;
     Scenario {
         base: format!("http://{}", booted.address),
         fleet,
         workspace,
         tenant,
-        event_id,
+        turn_id,
         runner_id: enrolled.0,
         token: enrolled.1,
         native: tokio::sync::OnceCell::new(),

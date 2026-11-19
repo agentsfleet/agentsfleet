@@ -36,7 +36,7 @@ pub(super) async fn item(
         .bind(&binding.item_id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
-        .bind(&plan.source_admission_id)
+        .bind(&plan.source_turn_id)
         .bind(ordinal)
         .bind(&plan.digest)
         .bind(item.action().as_str())

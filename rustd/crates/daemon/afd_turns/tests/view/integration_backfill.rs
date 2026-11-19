@@ -51,7 +51,7 @@ use afd_turns::view::{Filter, History, MAX_LIMIT, Since};
 use futures_util::StreamExt as _;
 use jiff::Timestamp;
 
-use crate::support::{DELIVERY_BUDGET, EventsLane};
+use crate::support::{DELIVERY_BUDGET, TurnsLane};
 
 /// The instant the fixture calls "now".
 ///
@@ -103,7 +103,7 @@ fn after_now(span: Duration) -> Timestamp {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_sse_reconnect_backfill() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
 
     // Five events across the drop. An admitted event is named by its
     // admission row's UUIDv7, so the fixture mints ids of that shape rather
@@ -197,7 +197,7 @@ fn assert_merged(
 /// Publishes each event's frame on the lane's bus and reads it back off a tail
 /// subscribed to it, so the returned set is what a connection ACTUALLY
 /// received rather than what the fixture intended it to.
-async fn deliver_live(lane: &EventsLane, ids: &[Uuid7]) -> Vec<Uuid7> {
+async fn deliver_live(lane: &TurnsLane, ids: &[Uuid7]) -> Vec<Uuid7> {
     let activity = Subject::FleetTail(lane.fleet.clone());
     let mut stream = Box::pin(tail(
         lane.bus
@@ -218,7 +218,7 @@ async fn deliver_live(lane: &EventsLane, ids: &[Uuid7]) -> Vec<Uuid7> {
             .await
             .expect("a frame must arrive inside the delivery budget")
             .expect("the tail must not end while a frame is owed");
-        received.push(event_id_of(&frame.data.text()));
+        received.push(turn_id_of(&frame.data.text()));
     }
     received
 }
@@ -226,22 +226,22 @@ async fn deliver_live(lane: &EventsLane, ids: &[Uuid7]) -> Vec<Uuid7> {
 /// One activity frame's payload, as a producer publishes one.
 ///
 /// `kind` leads because that is the anchor the frame's `event:` name is read
-/// from, and `event_id` carries the value the merge is performed on — the same
+/// from, and `turn_id` carries the value the merge is performed on — the same
 /// id the row is stored under.
-fn activity_payload(event_id: &Uuid7) -> String {
-    format!(r#"{{"kind":"run_output","event_id":"{event_id}"}}"#)
+fn activity_payload(turn_id: &Uuid7) -> String {
+    format!(r#"{{"kind":"run_output","turn_id":"{turn_id}"}}"#)
 }
 
-/// The `event_id` a delivered frame carries.
+/// The `turn_id` a delivered frame carries.
 ///
 /// Parsed rather than assumed: the frame's data is the publisher's bytes
 /// forwarded unrewritten, and reading the id back out is precisely what a
 /// client does before merging.
-fn event_id_of(data: &str) -> Uuid7 {
+fn turn_id_of(data: &str) -> Uuid7 {
     let parsed: serde_json::Value =
         serde_json::from_str(data).expect("a delivered frame carries JSON");
     let text = parsed
-        .get("event_id")
+        .get("turn_id")
         .and_then(serde_json::Value::as_str)
         .expect("every activity frame names the event it belongs to");
     Uuid7::parse(text).expect("a delivered frame's event id is a UUIDv7")
@@ -255,7 +255,7 @@ fn event_id_of(data: &str) -> Uuid7 {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_since_span_is_measured_on_the_database_clock() {
-    let lane = EventsLane::open().await;
+    let lane = TurnsLane::open().await;
     let (old, recent) = (mint_id(), mint_id());
     let now = Timestamp::now();
     let ago = |span: Duration| now.checked_sub(span).expect("an instant in range");
@@ -273,7 +273,7 @@ async fn test_since_span_is_measured_on_the_database_clock() {
 }
 
 /// The event ids the history returns for this fleet from `since` onward.
-async fn page_since(lane: &EventsLane, since: Since) -> BTreeSet<Uuid7> {
+async fn page_since(lane: &TurnsLane, since: Since) -> BTreeSet<Uuid7> {
     let history = History::new(lane.database.clone());
     let filter = Filter {
         actor_like: None,
@@ -285,6 +285,6 @@ async fn page_since(lane: &EventsLane, since: Since) -> BTreeSet<Uuid7> {
         .await
         .expect("the history read must run")
         .into_iter()
-        .map(|row| row.event_id)
+        .map(|row| row.turn_id)
         .collect()
 }

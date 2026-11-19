@@ -11,7 +11,7 @@ use af_validate::nul_free;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::event::STEER_MESSAGE_MAX_BYTES;
+use crate::turn::STEER_MESSAGE_MAX_BYTES;
 
 /// The length of a fleet identifier as text: a hyphenated UUID.
 ///
@@ -47,9 +47,9 @@ pub struct FleetSteerRequest<'a> {
 pub struct FleetSteerAccepted<'a> {
     /// The event the steer became on the target fleet.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
+    pub turn_id: Cow<'a, str>,
     /// Whether an earlier send of the same words from the same event already
-    /// admitted it. When `true`, `event_id` is that send's event.
+    /// admitted it. When `true`, `turn_id` is that send's event.
     pub replayed: bool,
 }
 

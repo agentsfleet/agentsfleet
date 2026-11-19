@@ -44,7 +44,7 @@ impl TaskStamp {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct AssessedContext {
-    pub source_admission_id: Uuid7,
+    pub source_turn_id: Uuid7,
     pub assessment: DecisionAssessment,
     pub accepted_revision_id: Uuid7,
     pub profile_revision_id: Uuid7,
@@ -64,7 +64,7 @@ enum Subject<'a> {
 impl AssessedContext {
     pub(super) fn subject(&self) -> Result<String> {
         subject(
-            self.source_admission_id.as_str(),
+            self.source_turn_id.as_str(),
             &self.assessment,
             self.execution
                 .as_ref()
@@ -79,7 +79,7 @@ impl AssessedContext {
             DecisionAssessment::Goal { action_group_id } => Subject::Goal { action_group_id },
         };
         let source = (!matches!(self.assessment, DecisionAssessment::Goal { .. }))
-            .then_some(&self.source_admission_id);
+            .then_some(&self.source_turn_id);
         let bytes = serde_json::to_vec(&(
             source,
             subject,

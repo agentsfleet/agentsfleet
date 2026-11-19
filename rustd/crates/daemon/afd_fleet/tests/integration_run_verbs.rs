@@ -52,7 +52,7 @@ async fn test_standing_answers_only_the_live_holder() {
     let lapsed = plane.standing(&held.runner, run, token).await;
 
     assert_eq!(standing.fleet_id.as_str(), held.fleet);
-    assert_eq!(standing.event_id, held.event_id);
+    assert_eq!(standing.turn_id, held.turn_id);
     let code = |answer: afd_fleet::Result<_>| answer.err().map(|error| error.code());
     assert_eq!(code(stale), Some(afd_fleet::Error::stale_fence().code()));
     let not_found = Some(afd_fleet::Error::run_not_found().code());

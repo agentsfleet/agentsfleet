@@ -58,12 +58,12 @@ pub struct Target {
     /// The fleet whose channel carries the tail.
     pub fleet_id: Uuid7,
     /// The event the frames describe.
-    pub event_id: Uuid7,
+    pub turn_id: Uuid7,
     /// Both instants are stamped by the control plane, so their differences
     /// from activity receipt do not compare clocks across hosts.
     pub run_created_at: Timestamp,
     /// Producer event timestamp in epoch milliseconds.
-    pub event_created_at: Timestamp,
+    pub turn_created_at: Timestamp,
     /// Expired or superseded holders can publish cosmetic frames but cannot
     /// contribute a latency sample to the active-run histogram.
     pub timing_eligible: bool,
@@ -90,7 +90,7 @@ impl Runs {
         let history: Option<sqlx::types::Json<af_wire::activity::TaskActivityHistory>> =
             sqlx::query_scalar(include_str!("task_history.sql"))
                 .bind(&target.fleet_id)
-                .bind(&target.event_id)
+                .bind(&target.turn_id)
                 .bind(sqlx::types::Json(records))
                 .bind(run_id)
                 .bind(runner_id)
@@ -222,7 +222,7 @@ fn record_first_chunk(target: &Target, frames: &[ActivityFrame<'_>]) {
     let received_at = af_core::clock::now();
     for (stage, since) in [
         (DeliveryStage::AssignToFirstChunk, target.run_created_at),
-        (DeliveryStage::EventToFirstChunk, target.event_created_at),
+        (DeliveryStage::EventToFirstChunk, target.turn_created_at),
     ] {
         producers::fleet::delivery_stage(stage, af_core::clock::elapsed(since, received_at));
     }

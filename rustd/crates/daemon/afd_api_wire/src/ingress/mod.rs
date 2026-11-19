@@ -13,7 +13,7 @@
 //! # The two digests are stream payloads, not HTTP bodies
 //!
 //! [`WorkflowRunDigest`] and [`PullRequestDigest`] are what a verified GitHub
-//! delivery BECOMES on the fleet's event stream. They are wire all the same, and
+//! delivery BECOMES on the fleet's turn stream. They are wire all the same, and
 //! more strictly so than a response: a fleet's prose reads these field names, so
 //! renaming one silently changes what every fleet sees. The struct is the shape
 //! of record, and its field order is part of it.
@@ -23,15 +23,15 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-/// An accepted delivery and its event identifier. Repeated deliveries return the original
+/// An accepted delivery and its turn identifier. Repeated deliveries return the original
 /// identifier without starting another run.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Accepted<'a> {
-    /// The event the fleet will run, or already ran.
+    /// The turn the fleet will run, or already ran.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
-    /// True when an earlier delivery already created this event; no additional run was
+    pub turn_id: Cow<'a, str>,
+    /// True when an earlier delivery already created this turn; no additional run was
     /// started.
     pub replayed: bool,
 }
@@ -46,13 +46,13 @@ pub struct Ignored<'a> {
     pub ignored: Cow<'a, str>,
 }
 
-/// Result of a provider delivery, including how many matching fleets received an event.
+/// Result of a provider delivery, including how many matching fleets received a turn.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct FannedOut {
     /// How many fleets subscribed to this delivery.
     pub matched: usize,
-    /// Fleets given a new event. May be lower than `matched` when some already received this
+    /// Fleets given a new turn. May be lower than `matched` when some already received this
     /// delivery. Retrying starts only newly matched fleets.
     pub enqueued: usize,
 }
@@ -92,9 +92,9 @@ pub struct Resolved<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct Fired<'a> {
-    /// The event the fleet will run, or already ran.
+    /// The turn the fleet will run, or already ran.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
+    pub turn_id: Cow<'a, str>,
     /// Whether an earlier attempt already produced it.
     pub replayed: bool,
 }
@@ -132,8 +132,8 @@ pub enum EventsAnswer<'a> {
     Echo(EchoAnswer<'a>),
     /// A signed delivery that was ignored, with the reason.
     Ignored(Ignored<'a>),
-    /// A delivery that woke a fleet, and the event it runs as. A provider's
-    /// retry answers the first delivery's event, with `replayed` set.
+    /// A delivery that woke a fleet, and the turn it runs as. A provider's
+    /// retry answers the first delivery's turn, with `replayed` set.
     Accepted(Accepted<'a>),
 }
 
@@ -165,11 +165,11 @@ pub enum IdentityAnswer<'a> {
     Ignored(Ignored<'a>),
 }
 
-/// What a fleet woken by a chat mention is told: its event's `request_json`.
+/// What a fleet woken by a chat mention is told: its turn's `request_json`.
 ///
 /// `message` is the field a chat run reads, the same one a steer carries; the
 /// rest says where the question was asked and how it was routed, so a fleet
-/// and an operator reading the event both see why this fleet answered.
+/// and an operator reading the turn both see why this fleet answered.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct MentionRequest<'a> {

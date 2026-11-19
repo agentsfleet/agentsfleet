@@ -17,7 +17,7 @@ use afd_api_wire::tail::{TailFrame, TailRow};
 use serde_json::Value;
 
 /// The fleet stream's path in the document.
-const FLEET_STREAM: &str = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream";
+const FLEET_STREAM: &str = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream";
 
 /// The field `TailFrame`'s internal tag is written under.
 const KIND: &str = "kind";
@@ -28,9 +28,9 @@ const VARIANTS: usize = 7;
 /// Which variant `frame` is. The guard, not the source of the kinds.
 const fn slot(frame: &TailFrame<'_>) -> usize {
     match frame {
-        TailFrame::EventAdmitted { .. } => 0,
-        TailFrame::EventReceived { .. } => 1,
-        TailFrame::EventComplete { .. } => 2,
+        TailFrame::TurnAdmitted { .. } => 0,
+        TailFrame::TurnReceived { .. } => 1,
+        TailFrame::TurnComplete { .. } => 2,
         TailFrame::GateOpened { .. } => 3,
         TailFrame::GateResolved { .. } => 4,
         TailFrame::TaskChanged { .. } => 5,
@@ -43,19 +43,19 @@ fn one_of_each() -> Vec<TailFrame<'static>> {
     let text = || Cow::Borrowed("x");
     vec![
         TailFrame::RunRestarted {
-            event_id: text(),
+            turn_id: text(),
             fencing_token: Cow::Borrowed("1"),
             restarted_at: jiff::Timestamp::UNIX_EPOCH,
         },
-        TailFrame::EventAdmitted {
-            event_id: text(),
+        TailFrame::TurnAdmitted {
+            turn_id: text(),
             actor: text(),
             event_type: text(),
             message: text(),
             created_at: jiff::Timestamp::UNIX_EPOCH,
         },
-        TailFrame::EventReceived {
-            event_id: text(),
+        TailFrame::TurnReceived {
+            turn_id: text(),
             actor: text(),
             event_type: text(),
             created_at: jiff::Timestamp::UNIX_EPOCH,
@@ -65,13 +65,13 @@ fn one_of_each() -> Vec<TailFrame<'static>> {
         completion(),
         TailFrame::GateOpened {
             gate_id: text(),
-            event_id: text(),
+            turn_id: text(),
             pending_approvals: 0,
             counters: None,
         },
         TailFrame::GateResolved {
             gate_id: text(),
-            event_id: None,
+            turn_id: None,
             status: text(),
             resolved_by: text(),
             pending_approvals: 0,
@@ -87,9 +87,9 @@ fn one_of_each() -> Vec<TailFrame<'static>> {
 /// The smallest completion: a run's terminal row with nothing optional set.
 fn completion() -> TailFrame<'static> {
     let text = || Cow::Borrowed("x");
-    TailFrame::EventComplete {
+    TailFrame::TurnComplete {
         event: Box::new(TailRow {
-            event_id: text(),
+            turn_id: text(),
             actor: text(),
             event_type: text(),
             status: text(),
@@ -97,7 +97,7 @@ fn completion() -> TailFrame<'static> {
             wall_ms: None,
             failure_label: None,
             failure_detail: None,
-            resumes_event_id: None,
+            resumes_turn_id: None,
             created_at: jiff::Timestamp::UNIX_EPOCH,
             updated_at: jiff::Timestamp::UNIX_EPOCH,
             cost_nanos: None,

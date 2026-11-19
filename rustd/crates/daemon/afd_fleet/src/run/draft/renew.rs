@@ -225,7 +225,7 @@ pub(super) fn requested(
         runtime_ms: 0,
         tenant_id: run.tenant_id.clone(),
         workspace_id: run.workspace_id.clone(),
-        message_id: run.event_id.clone(),
+        message_id: run.turn_id.clone(),
     };
     pricing.draft_settlement(run_id, slice, requests)
 }

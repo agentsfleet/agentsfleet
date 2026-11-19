@@ -27,7 +27,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Library read series | 124 total, the sum of the census ceilings | closed enums; a member that outgrows its family's ceiling fails `every_declared_ceiling_admits_its_label_product` | §Library read stages are metrics, not spans |
 | Trace budget | daemon: none yet, one span per matched request · runner: 256 per run, 128 per second | the daemon has no sampler, so it sheds nothing and counts nothing | §Traces |
 | OTLP loss | drop, never block; no exporter retry | bounded queues; later cumulative metric collections can recover totals while the source process survives | §The Rust daemon's export path, as built |
-| PostHog events | 11 captured, 2 declared-uncaptured | `FleetCompleted` fires only on a report's first settle; `$insert_id` = SHA-256 of `fleet_id \|\| 0x00 \|\| event_id` | §PostHog is product analytics |
+| PostHog events | 11 captured, 2 declared-uncaptured | `FleetCompleted` fires only on a report's first settle; `$insert_id` = SHA-256 of `fleet_id \|\| 0x00 \|\| turn_id` | §PostHog is product analytics |
 | Per-runner label ceiling | 4096 exact `runner_id` slots | counters overflow to `_other`, gauges drop | §Label registry |
 | Tenant identity on metrics | never | exact per-workspace cost is a Postgres ledger query, which is exact rather than bounded | §Label registry |
 | Log sink | stderr always; OTLP when configured | the log exporter counts its failures without warning, so a failing exporter cannot feed itself | §The shared logging module |
@@ -113,11 +113,11 @@ a pickup objective is measured.
 
 | Indicator | Good events over valid events | Target | Where the target came from |
 |---|---|---|---|
-| Admission availability | `agentsfleet_admissions_total{outcome=~"accepted\|replayed"}` over the same family excluding `over_budget` | 99% | unproven. Historical development measurement on 2026-09-17: 13 `appended`, 1 `replayed`, no refusals or deferrals. The current ledger producer labels committed work `accepted`. |
+| Admission availability | `agentsfleet_turns_total{outcome=~"accepted\|replayed"}` over the same family excluding `over_budget` | 99% | unproven. Historical development measurement on 2026-09-17: 13 `appended`, 1 `replayed`, no refusals or deferrals. The current ledger producer labels committed work `accepted`. |
 | Runner success | `agentsfleet_runner_executions_total{outcome="processed"}` over the same family excluding `fault="workload"` | 95% | unproven. Measured the same day: 7 `processed`, 3 `fleet_error`, the failures split 2 `startup_posture` and 1 `runner_crash`, both platform classes, so the blame split leaves the measured 70% unchanged. |
-| Admitted fleets that started | `agentsfleet_fleet_runs_started_total{kind="fresh"}` over `agentsfleet_admissions_total{outcome="accepted"}` | 99% | unproven. Measure both families from a ledger-queue daemon before assigning this target. |
+| Admitted fleets that started | `agentsfleet_fleet_runs_started_total{kind="fresh"}` over `agentsfleet_turns_total{outcome="accepted"}` | 99% | unproven. Measure both families from a ledger-queue daemon before assigning this target. |
 
-`agentsfleet_admission_backlog_oldest_age_seconds` reports the oldest unsettled
+`agentsfleet_turn_backlog_oldest_age_seconds` reports the oldest unsettled
 admission. Parked work remains unsettled, so backlog age includes time waiting
 for an answer. The ledger has no replay interval that defines a pickup deadline.
 
@@ -187,7 +187,7 @@ Every family the census declares has a producer
 has no census row. What follows is what no family measures yet.
 
 **End-to-end fleet availability has both halves.**
-`agentsfleet_fleet_runs_started_total{kind}` is incremented at the one run grant point. `agentsfleet_admissions_total{outcome="accepted"}` is the ledger queue's denominator. The retired stream queue labelled the same outcome
+`agentsfleet_fleet_runs_started_total{kind}` is incremented at the one run grant point. `agentsfleet_turns_total{outcome="accepted"}` is the ledger queue's denominator. The retired stream queue labelled the same outcome
 `appended`, which the table above still records.
 
 **API latency is measured.** `agentsfleet_api_request_duration_seconds`
@@ -281,7 +281,7 @@ no telemetry knob, so hardening still sees a single thread.
   an event.
 
   Each run is its own root trace carrying `agentsfleet.run.id`
-  and `agentsfleet.event.id`. When the run concludes, `runner.run` gains
+  and `agentsfleet.turn.id`. When the run concludes, `runner.run` gains
   each segment it reached as `agentsfleet.runner.<segment>_ms`, the values its
   `run_completed` line logs. `RUNNER_SEGMENT_KEYS` in `semconv` declares
   the ten keys, and an unreached segment stays off the span.
@@ -420,7 +420,7 @@ rate, sampling and retry limits and its proof.
 | runner semantic metrics | `agentsfleetd`, from accepted fleet verbs | OTLP push (streamed per-runner families) | 4096 runner slots; overflow → `_other` |
 | runner own metrics | the runner (`afr_telemetry`), for facts no verb carries | OTLP → runner collector → backends | closed label sets in `docs/metrics.runner.census.tsv`; no tenant, fleet, run or event identifier |
 | runner host metrics | node exporter, if operators want it | direct to metrics backend | outside the runner API |
-| runner traces | the runner's four span kinds | OTLP → runner collector → backends | 256 spans per run, root included, and 128 per second, roots never refused, the rest counted; joins `fleet.delivery` by the `event_id` attribute, and the run identifier tells a redelivered event's runs apart |
+| runner traces | the runner's four span kinds | OTLP → runner collector → backends | 256 spans per run, root included, and 128 per second, roots never refused, the rest counted; joins `fleet.delivery` by the `turn_id` attribute, and the run identifier tells a redelivered event's runs apart |
 | control-plane logs | structured logger | stderr + OTLP through `otelcol-{env}` to Loki | the SDK batch log processor's queue (2048 records by default); a full queue drops, enqueue never blocks |
 | control-plane metrics | runtime + cost families | one OTLP push; no pull endpoint | fixed labels or explicit caps |
 | control-plane traces | HTTP ingress + settled delivery | OTLP to Tempo | no route policy yet: one span per matched request; the 2048-span batch queue drops past its cap without counting |
@@ -467,10 +467,10 @@ The Rust runner exports its spans to the runner collector under a fixed
 per-run and per-second budget. Its verbs carry no trace field. See §`agentsfleet-runner` has a collector of its own.
 
 Each run is its own root trace
-carrying `agentsfleet.run.id` and `agentsfleet.event.id`. It joins
+carrying `agentsfleet.run.id` and `agentsfleet.turn.id`. It joins
 `fleet.delivery` by attribute, and no W3C context crosses the runner protocol.
 
-**`fleet.delivery` is the chat round trip.** It starts at the event's creation and ends when `event_complete` publishes, both on this daemon's clock. The start is the run row's `event_created_at`; the end is the publish instant `Plane::announce` reads.
+**`fleet.delivery` is the chat round trip.** It starts at the event's creation and ends when `turn_complete` publishes, both on this daemon's clock. The start is the run row's `turn_created_at`; the end is the publish instant `Plane::announce` reads.
 
 Beside its identity the span carries one attribute per segment. `agentsfleet.delivery.queue_wait_ms` (event creation to run issue) and `complete_ms` (report receipt to publish) are measured here. `memory_ms`, `model_ms`, `tools_ms`, `sandbox_wait_ms` and `settle_ms` come from the runner's `telemetry.segments`.
 
@@ -488,7 +488,7 @@ A verb that reaches no stage records nothing. The common case is an offer pass t
 
 Each stage is `agentsfleet.<verb>.<stage>_ms`, the integer milliseconds since the previous mark. A stage never reached is absent. `issue` ends where the offer frame is built, or where the delivery returns without building one, so a refused claim shows `claim`, `admit` and `issue` and no `encode` or `send`.
 
-The spans carry `agentsfleet.event.id` and `gen_ai.agent.id` and join `fleet.delivery` and `runner.run` by attribute. `VERB_SPAN_KEYS` in `semconv` declares every key, and each verb's stages are a closed enum, so no free-form key compiles.
+The spans carry `agentsfleet.turn.id` and `gen_ai.agent.id` and join `fleet.delivery` and `runner.run` by attribute. `VERB_SPAN_KEYS` in `semconv` declares every key, and each verb's stages are a closed enum, so no free-form key compiles.
 
 **`fleet.delivery` is a custom control-plane span.** It has its own root
 (`af_observability`'s `delivery` module). `DELIVERY_SPAN_KEYS` in the crate's
@@ -499,7 +499,7 @@ fact matches: `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.id` (the
 fleet), `gen_ai.provider.name`, `gen_ai.request.model`,
 `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens`.
 Product-namespaced keys carry the rest: `agentsfleet.execution.posture` and
-the correlation identifiers `agentsfleet.event.id`, `agentsfleet.workspace.id`
+the correlation identifiers `agentsfleet.turn.id`, `agentsfleet.workspace.id`
 and `agentsfleet.tenant.id`.
 
 Public providers without a well-known spelling keep their own canonical
@@ -529,8 +529,8 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 
 | Step | Logs | Metrics | Trace |
 |---|---|---|---|
-| Steer admitted (`afd_api_tenant` steer handler, `afd_turns`) | `fleet_steer_failed` on refusal | `agentsfleet_admissions_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | `fleet.steer` with `admit` and `announce` |
-| Wake ring (`afd_bus::wake`) | `admission_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
+| Steer admitted (`afd_api_tenant` steer handler, `afd_turns`) | `fleet_steer_failed` on refusal | `agentsfleet_turns_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | `fleet.steer` with `admit` and `announce` |
+| Wake ring (`afd_bus::wake`) | `turn_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
 | Run issued (`afd_fleet` run delivery) | `runner_run_issued` with `queue_wait_ms`; `run_window_read_failed` | Gateway claim attempts and candidate counts; `delivery_stage{event_to_assign}` | `fleet.offer` with its stages; none for an empty pass |
 | Fold claimed (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_run_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |
 | Run (runner `run_loop`) | `run_completed` / `run_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.run` with its segment attributes, same condition |
@@ -662,7 +662,7 @@ variant goes.
 
 `FleetCompleted` fires only when a report settles for the first time. A repeated report returns early, so replays emit nothing (the report handler in
 `afd_api_runner`). Its `$insert_id` is the SHA-256 hex digest of
-`fleet_id || 0x00 || event_id`.
+`fleet_id || 0x00 || turn_id`.
 
 Scheduler mechanics, raw logs, spans, heartbeats, renewals, and activity frames
 never become PostHog events.

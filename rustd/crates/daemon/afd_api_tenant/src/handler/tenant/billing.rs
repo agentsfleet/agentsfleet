@@ -167,11 +167,8 @@ fn summary(row: &ChargeRow) -> ChargeSummary<'_> {
         workspace_id: Cow::Borrowed(row.workspace_id.as_str()),
         fleet_id: row.fleet_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
         fleet_name: row.fleet_name.as_deref().map(Cow::Borrowed),
-        event_id: row.event_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
-        authoring_attempt_id: row
-            .authoring_attempt_id
-            .as_ref()
-            .map(|id| Cow::Borrowed(id.as_str())),
+        turn_id: row.turn_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
+        run_id: row.run_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
         charge_type: Cow::Borrowed(&row.charge_type),
         posture: Cow::Borrowed(&row.posture),
         model: Cow::Borrowed(&row.model),

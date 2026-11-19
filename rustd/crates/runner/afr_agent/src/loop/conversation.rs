@@ -31,7 +31,7 @@ impl Harness<'_, '_> {
             .into_iter()
             .map(|folded| {
                 self.folded_inputs.push(crate::engine::FoldRef {
-                    event_id: af_wire::run::CheckpointOperationId(folded.event_id),
+                    turn_id: af_wire::run::CheckpointOperationId(folded.turn_id),
                     sequence: folded.sequence,
                 });
                 folded.text

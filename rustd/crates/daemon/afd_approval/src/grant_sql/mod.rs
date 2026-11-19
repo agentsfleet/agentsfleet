@@ -62,7 +62,7 @@ pub(crate) const ENSURE_GRANT: &str = include_str!("ensure_grant.sql");
 /// Raises a card using the existing grant's identity, including when a
 /// concurrent insert won. Locking the grant serializes requests with its
 /// approval/revocation; the unique active reference arbitrates cards without a
-/// status-dependent index. A NULL `event_id` prevents approval from enqueueing
+/// status-dependent index. A NULL `turn_id` prevents approval from enqueueing
 /// duplicate delivery work. The card lapses `$13` after the database clock.
 ///
 /// `$1` fleet, `$2` service, `$3` grant status, `$4` card, `$5` workspace,

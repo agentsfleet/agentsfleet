@@ -14,7 +14,7 @@ use afd_db::{
     test_util::{FleetSeed, TenantSeed, TestDatabase, WalletSeed, WorkspaceSeed, mint_id},
 };
 use afd_fleet_lifecycle::FleetStatus;
-use afd_turns::{Admission, Admissions, Key, Producer, Reply};
+use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 use agentsfleetd::supervisor::Supervisor;
 use std::sync::{
     Arc,
@@ -157,7 +157,7 @@ impl Population {
         for number in 1..count {
             let (fleet, workspace) = seed_fleet(scene, &common).await;
             let source = Hot {
-                admissions: Admissions::for_tests(
+                admissions: Turns::for_tests(
                     scene.booted.database.clone(),
                     scene.booted.bus.clone(),
                 ),
@@ -244,7 +244,7 @@ async fn set_status(database: &Db, fleets: &[Uuid7], status: FleetStatus) {
 
 #[derive(Clone)]
 struct Hot {
-    admissions: Admissions,
+    admissions: Turns,
     fleet: Uuid7,
     workspace: Uuid7,
 }
@@ -252,7 +252,7 @@ struct Hot {
 impl Hot {
     async fn admit(&self) {
         self.admissions
-            .admit(Admission {
+            .admit(IncomingTurn {
                 producer: Producer::Steer,
                 key: Key::Unrepeatable,
                 fleet: &self.fleet,

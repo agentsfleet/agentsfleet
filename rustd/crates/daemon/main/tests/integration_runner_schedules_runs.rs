@@ -42,7 +42,7 @@ async fn test_schedule_run_now_admits_one_event() {
     let (status, again) = assigned.run_now(&schedule).await;
     assert_eq!(status, 201, "{again}");
     assert_eq!(
-        first["event_id"], again["event_id"],
+        first["turn_id"], again["turn_id"],
         "one event's retry is one scene"
     );
 
@@ -76,7 +76,7 @@ async fn test_scheduled_run_is_assigned_with_its_message() {
     let schedule = created["schedule_id"].as_str().expect("an id").to_owned();
     let (status, fired) = assigned.run_now(&schedule).await;
     assert_eq!(status, 201, "{fired}");
-    let event = Uuid7::parse(fired["event_id"].as_str().expect("an event id"))
+    let event = Uuid7::parse(fired["turn_id"].as_str().expect("an event id"))
         .expect("the scene answers a canonical event id");
 
     assigned.settle().await;
@@ -214,7 +214,7 @@ async fn test_schedule_runs_lists_events() {
     let first = format!("{}&limit=2", assigned.fenced(&format!("/{schedule}/runs")));
     let (status, page) = assigned.call(Method::GET, &first, None).await;
     assert_eq!(status, 200, "{page}");
-    assert_eq!(event_ids(&page), [&json!(runs[2]), &json!(runs[1])]);
+    assert_eq!(turn_ids(&page), [&json!(runs[2]), &json!(runs[1])]);
     let cursor = page["next_cursor"]
         .as_str()
         .expect("a full page names its successor");
@@ -222,7 +222,7 @@ async fn test_schedule_runs_lists_events() {
     let next = format!("{first}&starting_after={cursor}");
     let (status, page) = assigned.call(Method::GET, &next, None).await;
     assert_eq!(status, 200, "{page}");
-    assert_eq!(event_ids(&page), [&json!(runs[0])]);
+    assert_eq!(turn_ids(&page), [&json!(runs[0])]);
     assert_eq!(page["next_cursor"], Value::Null);
     assigned.finish(supervisor).await;
 }
@@ -251,7 +251,7 @@ async fn test_once_schedule_retires_after_fire() {
     );
 
     // Its run outlives the row: the history still lists it.
-    let event = Uuid7::parse(scene["event_id"].as_str().expect("the scene's event"))
+    let event = Uuid7::parse(scene["turn_id"].as_str().expect("the scene's event"))
         .expect("the scene answers a canonical event id");
     record_event(
         &assigned.scene,
@@ -262,7 +262,7 @@ async fn test_once_schedule_retires_after_fire() {
     let runs = assigned.fenced(&format!("/{schedule}/runs"));
     let (status, page) = assigned.call(Method::GET, &runs, None).await;
     assert_eq!(status, 200, "{page}");
-    assert_eq!(event_ids(&page), [&json!(event)]);
+    assert_eq!(turn_ids(&page), [&json!(event)]);
     assigned.finish(supervisor).await;
 }
 
@@ -304,18 +304,18 @@ async fn test_once_retirement_held_is_repeated_not_dropped() {
 }
 
 /// The event ids a runs page carries, in order.
-fn event_ids(page: &Value) -> Vec<&Value> {
+fn turn_ids(page: &Value) -> Vec<&Value> {
     page["items"]
         .as_array()
         .expect("items")
         .iter()
-        .map(|item| &item["event_id"])
+        .map(|item| &item["turn_id"])
         .collect()
 }
 
 /// Writes one history row for the scenario's fleet. The statement stamps
 /// `created_at` with `now()`, so rows order by the sequence the test writes
-/// them in, with `event_id` breaking a same-millisecond tie the same way.
+/// them in, with `turn_id` breaking a same-millisecond tie the same way.
 async fn record_event(scene: &Scenario, event: &Uuid7, actor: &str) {
     let mut connection = scene.booted.database.acquire().await.expect("a connection");
     sqlx::query(afd_turns::view::sql::INSERT_FLEET_EVENT)

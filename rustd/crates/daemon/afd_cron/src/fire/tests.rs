@@ -2,7 +2,7 @@
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
 use af_core::id::Uuid7;
-use af_wire::event::message_of;
+use af_wire::turn::message_of;
 use serde_json::json;
 
 use super::{FireTarget, body};

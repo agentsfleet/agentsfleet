@@ -49,7 +49,7 @@ impl RunVerbs for Replies {
         &self,
         input: TaskInputReceiptInput,
     ) -> Result<TaskInputReceiptResult, Unanswered> {
-        assert_eq!(input.source_admission_id, SOURCE);
+        assert_eq!(input.source_turn_id, SOURCE);
         assert_eq!(input.mode, TaskInputMode::Answered);
         let result = TaskInputReceiptResult {
             item_id: if self.wrong_ack {
@@ -89,7 +89,7 @@ pub(super) fn source(items: Vec<TaskRecoveredItem>) -> Replies {
         .join("\n");
     input.current_message = Some(message.clone());
     input.current_interpretation = Some(TaskAcceptedInterpretation {
-        source_admission_id: SOURCE.to_owned(),
+        source_turn_id: SOURCE.to_owned(),
         plan_digest: "b".repeat(64),
         message,
         items,

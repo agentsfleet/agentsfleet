@@ -51,7 +51,7 @@ pub(crate) async fn attach(
         return Ok(Some((None, acquired.held_until)));
     }
     let selected: Option<Selected> = sqlx::query_as(include_str!("sql/issue_source.sql"))
-        .bind(&acquired.event_id)
+        .bind(&acquired.turn_id)
         .bind(&acquired.fleet_id)
         .bind(runner)
         .bind(af_wire::task::CAPABILITY)
@@ -152,7 +152,7 @@ impl crate::run::Runs {
             self.definitions(),
             &mut tx,
             &acquired.fleet_id,
-            Some(&acquired.event_id),
+            Some(&acquired.turn_id),
         )
         .await
         {
@@ -161,7 +161,7 @@ impl crate::run::Runs {
             Ok(_) => return Ok(()),
         }
         let changed: Option<(Uuid7, i64)> = sqlx::query_as(include_str!("sql/changed_setup.sql"))
-            .bind(&acquired.event_id)
+            .bind(&acquired.turn_id)
             .bind(&acquired.fleet_id)
             .bind(&acquired.workspace_id)
             .bind(acquired.fence.as_i64())

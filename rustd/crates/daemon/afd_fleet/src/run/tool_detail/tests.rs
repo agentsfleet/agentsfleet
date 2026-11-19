@@ -36,7 +36,7 @@ fn target(fence: i64, live_seq: i64) -> LiveRun {
         fleet_id: Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7").expect("fixture fleet id"),
         workspace_id: Uuid7::parse("01924f4e-0000-7000-8000-000000000001")
             .expect("fixture workspace id"),
-        event_id: Uuid7::parse(EVENT).expect("fixture event id"),
+        turn_id: Uuid7::parse(EVENT).expect("fixture event id"),
         actor: "steer:api".to_owned(),
         fence,
         live_seq,
@@ -137,7 +137,7 @@ fn a_skip_is_logged_by_position_and_size_never_content() {
     assert_eq!(line.field("reason"), Some("too_large"));
     assert_eq!(line.field("position"), Some("2"));
     assert_eq!(line.field("bytes"), Some("70000"));
-    assert_eq!(line.field("agentsfleet_event_id"), Some(EVENT));
+    assert_eq!(line.field("agentsfleet_turn_id"), Some(EVENT));
 }
 
 /// One KiB, the unit the budget cases below are written in.

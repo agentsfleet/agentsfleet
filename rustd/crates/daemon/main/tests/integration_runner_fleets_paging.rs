@@ -55,7 +55,7 @@ fn assert_cut_at_a_boundary(pages: &[&Value], event: &Uuid7, answer: &str) {
         .iter()
         .filter_map(|page| page["items"].as_array())
         .flatten()
-        .find(|item| item["event_id"] == event.as_str())
+        .find(|item| item["turn_id"] == event.as_str())
         .expect("the long answer's event is on a page");
     let excerpt = cut["response_excerpt"]
         .as_str()
@@ -121,16 +121,16 @@ async fn events_read_walks_its_pages_and_cuts_answers() {
         crew.answered_event(&target, answer).await;
     }
     let (run, fence) = crew.speaking.run_seeded().await;
-    let events = format!("fleets/{target}/events");
+    let events = format!("fleets/{target}/turns");
 
     let (status, first) = crew.read(&route(&run, &events, fence, "&limit=2")).await;
     assert_eq!(status, 200, "{first}");
-    let (head, cursor) = page(&first, "event_id");
+    let (head, cursor) = page(&first, "turn_id");
     let cursor = cursor.expect("two of three events leave a next page");
     let (_, second) = crew
         .read(&route(&run, &events, fence, &continuing(&cursor)))
         .await;
-    let (tail, last) = page(&second, "event_id");
+    let (tail, last) = page(&second, "turn_id");
     assert_eq!(
         (head.len(), tail.len(), last),
         (2, 1, None),
@@ -149,7 +149,7 @@ async fn fleets_reads_refuse_a_bad_bound_cursor_and_missing_fence() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let (run, fence) = crew.speaking.run_seeded().await;
-    let events = format!("fleets/{}/events", crew.run().fleet);
+    let events = format!("fleets/{}/turns", crew.run().fleet);
 
     for (tail, query, sentence) in [
         (

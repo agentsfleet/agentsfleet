@@ -30,7 +30,7 @@
 use super::seed::{seed_gate, seed_provider_resolution, seed_write_gate};
 use super::*;
 
-use af_core::event::label;
+use af_core::turn::label;
 use af_observability::verb_span::{AssignStage, VerbClock};
 use afd_fleet::run::OfferRequest;
 use afd_gate::policy::repair;
@@ -63,7 +63,7 @@ async fn test_a_write_binding_it_cannot_enforce_ends_the_event() {
         answer.is_none(),
         "an unenforceable binding issued a run: {answer:?}"
     );
-    let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.event_id)
+    let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id)
         .await
         .expect("an unenforceable binding opens a narrative row");
     assert_eq!(
@@ -155,7 +155,7 @@ async fn test_an_approved_write_binding_locks_its_egress_to_that_gates_branch() 
     let claimed = claim(&fixtures, &seeded).await;
     let answer = drive(&fixtures, &seeded, claimed).await;
 
-    let branch = repair::branch_for(seeded.event_id.as_str());
+    let branch = repair::branch_for(seeded.turn_id.as_str());
     assert!(
         answer
             .as_ref()
@@ -167,7 +167,7 @@ async fn test_an_approved_write_binding_locks_its_egress_to_that_gates_branch() 
         "an approved write binding issued no run: {answer:?}"
     );
     assert_eq!(
-        terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
+        terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id).await,
         Some((STATUS_RECEIVED.to_owned(), String::new())),
         "a delivered event has not failed"
     );
@@ -203,7 +203,7 @@ async fn test_a_read_binding_is_delivered_without_asking_for_an_approval() {
         "a read binding was given a repair branch it never asked for: {answer:?}"
     );
     assert_eq!(
-        terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
+        terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id).await,
         Some((STATUS_RECEIVED.to_owned(), String::new())),
         "a delivered event has not failed"
     );

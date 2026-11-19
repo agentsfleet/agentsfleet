@@ -13,7 +13,7 @@
               restriction set is for the daemon"
 )]
 
-use afd_turns::view::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
+use afd_turns::view::{Cursor, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, TurnDetailRow};
 
 use super::{PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, requested_limit};
 use crate::handler::paging::store_ceiling;
@@ -35,12 +35,12 @@ fn entry_id(ordinal: i64) -> af_core::id::Uuid7 {
 }
 
 /// One row whose answer costs `response_bytes` before escaping.
-fn row(ordinal: i64, response_bytes: usize) -> EventDetailRow {
-    EventDetailRow::fixture(&entry_id(ordinal), at(ordinal), "a".repeat(response_bytes))
+fn row(ordinal: i64, response_bytes: usize) -> TurnDetailRow {
+    TurnDetailRow::fixture(&entry_id(ordinal), at(ordinal), "a".repeat(response_bytes))
 }
 
 /// A thread of `count` rows, each cheap enough that only the row cap can cut.
-fn cheap_thread(count: i64) -> Vec<EventDetailRow> {
+fn cheap_thread(count: i64) -> Vec<TurnDetailRow> {
     (0..count).map(|ordinal| row(ordinal, 2)).collect()
 }
 
@@ -152,7 +152,7 @@ fn should_include_nothing_when_the_cap_admits_nothing() {
 /// heads — the operator would see an empty page and no way to page past it.
 #[test]
 fn should_ship_the_first_row_whatever_it_costs() {
-    let thread: Vec<EventDetailRow> = (0..3)
+    let thread: Vec<TurnDetailRow> = (0..3)
         .map(|ordinal| row(ordinal, PAGE_BUDGET_BYTES))
         .collect();
     assert_eq!(included_under_budget(&thread, THREAD_MAX_LIMIT), 1);
@@ -166,7 +166,7 @@ fn should_ship_the_first_row_whatever_it_costs() {
 #[test]
 fn should_join_rows_until_the_budget_is_spent() {
     let quarter = PAGE_BUDGET_BYTES / 4;
-    let thread: Vec<EventDetailRow> = (0..6).map(|ordinal| row(ordinal, quarter)).collect();
+    let thread: Vec<TurnDetailRow> = (0..6).map(|ordinal| row(ordinal, quarter)).collect();
     assert!(i64::try_from(thread.len()).unwrap() < THREAD_MAX_LIMIT);
     assert_eq!(included_under_budget(&thread, THREAD_MAX_LIMIT), 3);
 }
@@ -203,7 +203,7 @@ fn should_continue_from_the_last_row_served() {
 /// A page the BUDGET cut continues from the cut, not from the row cap.
 #[test]
 fn should_continue_from_the_budget_cut() {
-    let thread: Vec<EventDetailRow> = (0..3)
+    let thread: Vec<TurnDetailRow> = (0..3)
         .map(|ordinal| row(ordinal, PAGE_BUDGET_BYTES))
         .collect();
     let served = page(&thread, THREAD_MAX_LIMIT);
@@ -234,7 +234,7 @@ fn heavy_trace(calls: usize) -> String {
 #[test]
 fn test_thread_page_budget_counts_tool_calls() {
     let trace = heavy_trace(30);
-    let rows: Vec<EventDetailRow> = (0..10)
+    let rows: Vec<TurnDetailRow> = (0..10)
         .map(|ordinal| row(ordinal, 2).with_tool_calls(trace.clone()))
         .collect();
     let answers_alone = included_under_budget(&cheap_thread(10), 10);
@@ -258,13 +258,13 @@ fn an_expanded_row_serves_its_stored_trace_or_null() {
     let trace = heavy_trace(1);
     let with = row(1, 2).with_tool_calls(trace.clone());
     let served =
-        serde_json::to_value(crate::handler::event::expanded(&with)).expect("a row encodes");
+        serde_json::to_value(crate::handler::turn::expanded(&with)).expect("a row encodes");
     let stored: serde_json::Value = serde_json::from_str(&trace).expect("the fixture is JSON");
     assert_eq!(served["tool_calls"], stored);
 
     let without = row(2, 2);
     let served =
-        serde_json::to_value(crate::handler::event::expanded(&without)).expect("a row encodes");
+        serde_json::to_value(crate::handler::turn::expanded(&without)).expect("a row encodes");
     assert_eq!(
         served.get("tool_calls"),
         Some(&serde_json::Value::Null),

@@ -84,7 +84,7 @@ pub(super) async fn authenticated_chunk(
     assert!(registered.is_empty());
     assert_eq!(
         object.repository,
-        format!("turn:{}", files.case.acquired.event_id)
+        format!("turn:{}", files.case.acquired.turn_id)
     );
     let bytes = storage::encrypt(&files.case.acquired.workspace_id, &object, CONTENT)?;
     upload_bytes(files, reference, &object, bytes).await?;

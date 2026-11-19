@@ -48,9 +48,7 @@ fn assert_scoped_history(rows: &[Value], owner: &Fixture) {
         50
     );
     assert_eq!(
-        rows.iter()
-            .filter(|r| r["charge_type"] == "authoring")
-            .count(),
+        rows.iter().filter(|r| r["charge_type"] == "setup").count(),
         2
     );
     for row in rows {
@@ -119,13 +117,13 @@ fn assert_setup_row(rows: &[Value], setup: &Setup) {
         .iter()
         .find(|r| r["id"] == setup.settlements[0].as_str())
         .expect("settled setup row");
-    assert_eq!(row["authoring_attempt_id"], setup.attempts[0].as_str());
+    assert_eq!(row["run_id"], setup.attempts[0].as_str());
     assert_eq!(
         row["fleet_id"],
         Value::Null,
         "setup can precede fleet creation"
     );
-    assert_eq!(row["event_id"], Value::Null, "setup is not a fleet event");
+    assert_eq!(row["turn_id"], Value::Null, "setup is not a fleet event");
     assert_eq!(row["model"], "setup-model");
     assert_eq!(row["posture"], "platform");
     assert_eq!(row["token_count_input"], 23);

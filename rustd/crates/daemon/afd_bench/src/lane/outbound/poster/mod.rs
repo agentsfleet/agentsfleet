@@ -207,7 +207,7 @@ impl Deliver for Scripted {
             // One delivery per (fleet, event), so the event names the job.
             |behaviour| {
                 self.stamp(
-                    &job.event_id,
+                    &job.turn_id,
                     behaviour,
                     at,
                     delay,

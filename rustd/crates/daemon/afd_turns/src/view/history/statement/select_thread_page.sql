@@ -1,10 +1,10 @@
-SELECT thread_id AS fleet_id, id AS event_id, workspace_id,
+SELECT thread_id AS fleet_id, id AS turn_id, workspace_id,
        actor, kind AS event_type, status, token_count, wall_ms,
-       failure_reason, failure_detail, resumes_turn_id AS resumes_event_id,
+       failure_reason, failure_detail, resumes_turn_id,
        created_at, updated_at,
        (SELECT SUM(charge.charged_nanos)::bigint
           FROM billing.usage_lines charge
-         WHERE charge.event_id = thread.turns.id
+         WHERE charge.turn_id = thread.turns.id
            AND charge.fleet_id = thread.turns.thread_id) AS cost_nanos,
        request_json::text AS request_json, answer_text AS response_text, tool_calls::text AS tool_calls, task_activity, task_activity_truncated
 FROM thread.turns

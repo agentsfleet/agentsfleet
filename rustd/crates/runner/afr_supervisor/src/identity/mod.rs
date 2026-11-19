@@ -8,11 +8,11 @@
 //! on telemetry, and the next run asks again.
 
 use af_observability::semconv::{
-    ATTR_AGENT_ID, ATTR_EVENT_ID, ATTR_RUN_ID, ATTR_RUNNER_CHECKOUT_MS, ATTR_RUNNER_EGRESS_MS,
+    ATTR_AGENT_ID, ATTR_RUN_ID, ATTR_RUNNER_CHECKOUT_MS, ATTR_RUNNER_EGRESS_MS,
     ATTR_RUNNER_FIRST_TOKEN_MS, ATTR_RUNNER_HOST, ATTR_RUNNER_ID, ATTR_RUNNER_MEMORY_MS,
     ATTR_RUNNER_MODEL_MS, ATTR_RUNNER_PREPARE_MS, ATTR_RUNNER_REPORT_MS, ATTR_RUNNER_SANDBOX_MS,
-    ATTR_RUNNER_SANDBOX_WAIT_MS, ATTR_RUNNER_TOOLS_MS, ATTR_SANDBOX_REUSED, RUNNER_SCOPE_NAME,
-    SPAN_RUNNER_RUN,
+    ATTR_RUNNER_SANDBOX_WAIT_MS, ATTR_RUNNER_TOOLS_MS, ATTR_SANDBOX_REUSED, ATTR_TURN_ID,
+    RUNNER_SCOPE_NAME, SPAN_RUNNER_RUN,
 };
 use af_wire::run::RunPayload;
 use af_wire::runner::SelfResponse;
@@ -78,7 +78,7 @@ pub(crate) fn run_span(identity: Option<&Identity>, run: &RunPayload<'_>) -> Spa
     let runner_id = identity.map(|known| &*known.runner_id);
     let host = identity.map(|known| &*known.host);
     let run_id = run.run_id.as_ref();
-    let event_id = run.event.event_id.as_ref();
+    let turn_id = run.event.turn_id.as_ref();
     let fleet_id = run.event.fleet_id.as_ref();
     tracing::info_span!(
         target: RUNNER_SCOPE_NAME,
@@ -86,7 +86,7 @@ pub(crate) fn run_span(identity: Option<&Identity>, run: &RunPayload<'_>) -> Spa
         { ATTR_RUNNER_ID } = runner_id,
         { ATTR_RUNNER_HOST } = host,
         { ATTR_RUN_ID } = run_id,
-        { ATTR_EVENT_ID } = event_id,
+        { ATTR_TURN_ID } = turn_id,
         { ATTR_AGENT_ID } = fleet_id,
         { ATTR_SANDBOX_REUSED } = Empty,
         { ATTR_RUNNER_MEMORY_MS } = Empty,

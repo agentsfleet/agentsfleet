@@ -93,7 +93,7 @@ impl Fixtures {
     /// times a report is re-sent: a line is stored once per `(work, seq)`.
     pub(crate) async fn ledger_rows(&self, event: &Uuid7) -> i64 {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query_scalar("SELECT count(*) FROM billing.usage_lines WHERE event_id = $1")
+        sqlx::query_scalar("SELECT count(*) FROM billing.usage_lines WHERE turn_id = $1")
             .bind(event)
             .fetch_one(&mut *connection)
             .await

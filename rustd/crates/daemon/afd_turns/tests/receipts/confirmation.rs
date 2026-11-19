@@ -25,7 +25,7 @@ async fn notification_failure_cannot_downgrade_committed_acceptance() -> Fallibl
         "each confirmation rang, and each lost ring was logged"
     );
     let (once, again) = confirmed.outcome?;
-    assert_eq!(once.event_id, id);
+    assert_eq!(once.turn_id, id);
     assert_eq!(again, once);
     lane.cleanup().await;
     Ok(())

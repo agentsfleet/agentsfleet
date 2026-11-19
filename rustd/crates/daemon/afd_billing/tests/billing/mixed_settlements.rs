@@ -182,7 +182,7 @@ fn groups(payer: &Account, fleet: &Uuid7) -> [Settlement; 5] {
     let attribution = Attribution::Fleet {
         fleet: fleet.clone(),
         fleet_name: FLEET_NAME.to_owned(),
-        event_id: mint_id(),
+        turn_id: mint_id(),
     };
     // All partitions retain one immutable owner/event header. The other work
     // deliberately uses the same model, proving grouping retains work identity.

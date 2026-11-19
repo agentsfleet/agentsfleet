@@ -183,7 +183,7 @@ async fn receipts(fixture: &Fixture, binding: &TaskBindingsInput, accepted: &Val
         &binding.plan_digest
     );
     let receipt = json!({"fencing_token":fixture.run.fence,"operation_id":mint_id(),
-        "source_admission_id":fixture.run.source,"plan_digest":binding.plan_digest,
+        "source_turn_id":fixture.run.source,"plan_digest":binding.plan_digest,
         "item_id":accepted.pointer("/items/0/item_id").expect("response field exists"),"task":task,
         "mode":"answered","response_text":"I will inspect the failed checks."});
     acknowledge(fixture, &receipt).await;

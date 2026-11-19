@@ -51,7 +51,7 @@ const PROCESSED: &str = "processed";
 /// which reads charges and counts rows, is untouched.
 const OVERFLOWING_LINES: &str = "INSERT INTO billing.usage_lines \
        (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, \
-        event_id, provider, model, posture, requested_at, input_token_count, \
+        turn_id, provider, model, posture, requested_at, input_token_count, \
         cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
         cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
         charged_nanos, settled_at, created_at, updated_at) \
@@ -194,7 +194,7 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
         OVERFLOWING_LINES,
         &[
             Bind::Text(afd_billing::sql::work::FLEET_RUN),
-            Bind::Id(&held.event_id),
+            Bind::Id(&held.turn_id),
             Bind::Text(&i64::MAX.to_string()),
             Bind::Id(run_id),
             Bind::Id(&mint_id()),
@@ -291,7 +291,7 @@ async fn finish_reported_event(held: &Held) {
         FINISH_EVENT,
         &[
             Bind::Id(&held.fleet),
-            Bind::Id(&held.event_id),
+            Bind::Id(&held.turn_id),
             Bind::Text(PROCESSED),
         ],
     )

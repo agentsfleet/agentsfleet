@@ -2,12 +2,12 @@
 use super::*;
 
 fn binding() -> Value {
-    json!({"fencing_token":FENCE,"source_admission_id":ID,"accepted_revision_id":ID,
+    json!({"fencing_token":FENCE,"source_turn_id":ID,"accepted_revision_id":ID,
         "plan_digest":"a".repeat(64),"message_decision_call_id":EFFECT,
         "items":[{"proposed":{"source_start":0,"source_end":5,"action":"conversation","task_id":null,"title":"Reply","interpretation":"Answer the question","target":null},"decision_call_id":null}]})
 }
 fn receipt() -> Value {
-    json!({"fencing_token":FENCE,"operation_id":EFFECT,"source_admission_id":ID,
+    json!({"fencing_token":FENCE,"operation_id":EFFECT,"source_turn_id":ID,
         "plan_digest":"a".repeat(64),"item_id":ID,"task":{"task_id":ID,"generation":7},
         "mode":"answered","response_text":"Private source answer"})
 }

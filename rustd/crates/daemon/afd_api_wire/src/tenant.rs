@@ -167,12 +167,12 @@ pub struct ChargeSummary<'a> {
     /// A value equal to `fleet_id` means no name was captured. Setup chats show the saved
     /// fleet's current name, or null before saving.
     pub fleet_name: Option<Cow<'a, str>>,
-    /// The event that triggered the work, or `null` for a setup chat.
-    pub event_id: Option<Cow<'a, str>>,
-    /// The setup attempt, or `null` for a fleet run. Identifies the charge
+    /// The turn that triggered the work, or `null` for a setup chat.
+    pub turn_id: Option<Cow<'a, str>>,
+    /// The setup run, or `null` for a fleet run. Identifies the charge
     /// without exposing the chat's content or depending on its retention.
-    pub authoring_attempt_id: Option<Cow<'a, str>>,
-    /// `receive`, `stage`, or `authoring` (a settled setup-chat attempt).
+    pub run_id: Option<Cow<'a, str>>,
+    /// `receive`, `stage`, or `setup` (a settled setup-chat run).
     pub charge_type: Cow<'a, str>,
     /// Whose model bill the tokens landed on.
     pub posture: Cow<'a, str>,

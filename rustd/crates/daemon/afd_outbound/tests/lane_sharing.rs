@@ -64,7 +64,7 @@ async fn a_clone_names_the_same_lanes() {
                 destination: DESTINATION.to_owned(),
                 workspace_id: mint_id(),
                 fleet_id: mint_id(),
-                event_id: mint_id(),
+                turn_id: mint_id(),
                 answer: "the run finished".to_owned(),
             },
         }))
@@ -115,7 +115,7 @@ async fn a_delivery_survives_a_stamp_that_cannot_be_recorded() {
                 destination: DESTINATION.to_owned(),
                 workspace_id: mint_id(),
                 fleet_id: mint_id(),
-                event_id: event.clone(),
+                turn_id: event.clone(),
                 answer: "the run finished".to_owned(),
             },
         }))

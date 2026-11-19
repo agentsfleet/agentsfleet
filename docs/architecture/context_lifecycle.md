@@ -266,7 +266,7 @@ Its `compact.rs` replaces and saves working history through an explicit compacti
 These observations come from source inspection, not a captured request from Indy's desktop session.
 
 A message sent while its fleet's run is live now folds into that run.
-The send answers disposition `folded` with `folded_into_event_id`, and the running run claims the fold at its next model call (a native `folds` request).
+The send answers disposition `folded` with `folded_into_turn_id`, and the running run claims the fold at its next model call (a native `folds` request).
 The folded message's own event receives the run's reply when the run reports succeeded.
 
 Dispositions are `started`, `folded` and `queued`.

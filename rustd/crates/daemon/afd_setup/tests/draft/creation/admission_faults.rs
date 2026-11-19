@@ -7,7 +7,7 @@ use super::fixture::{Case, NO_ADMISSIONS, check};
 use af_core::error_code;
 use af_crypto::entropy::Entropy;
 use afd_setup::{Creations, types::Start};
-use afd_turns::Admissions;
+use afd_turns::Turns;
 use sqlx::Connection as _;
 
 /// The initial run every case asks for.
@@ -22,7 +22,7 @@ fn run_now() -> Start {
 async fn an_admission_whose_identity_cannot_be_drawn_fails_the_activation() {
     let c = Case::create().await;
     let (entropy, control) = Entropy::new_mocked();
-    let admissions = Admissions::new(c.base.db.clone(), c.bus.clone(), entropy);
+    let admissions = Turns::new(c.base.db.clone(), c.bus.clone(), entropy);
     let creations = Creations::new(c.setup.clone(), admissions);
     let (_, request) = c.request("entropy-fault", run_now()).await;
     let key = mint();

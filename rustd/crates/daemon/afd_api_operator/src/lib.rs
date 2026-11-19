@@ -35,7 +35,7 @@ pub fn runner_ops_handler_for<D: Services>(verb: RunnerOpsRoute) -> Option<Metho
         RunnerOpsRoute::Get => Some(get(handler::operator::runners::detail::<D>)),
         RunnerOpsRoute::Patch => Some(patch(handler::operator::runner_patch::handle::<D>)),
         RunnerOpsRoute::Delete => Some(delete(handler::operator::runner_delete::handle::<D>)),
-        RunnerOpsRoute::Events => Some(get(handler::operator::events::list::<D>)),
+        RunnerOpsRoute::History => Some(get(handler::operator::events::list::<D>)),
         RunnerOpsRoute::Runs => Some(get(handler::operator::runs::list::<D>)),
         RunnerOpsRoute::TenantRegister => {
             Some(post(handler::operator::tenant_runners::register::<D>))

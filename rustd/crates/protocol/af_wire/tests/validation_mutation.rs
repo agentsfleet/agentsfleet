@@ -30,10 +30,10 @@
               precondition, and failing loudly on it is the correct outcome"
 )]
 
-use af_wire::event::{OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerRequest};
 use af_wire::runner::{
     CHECK_DETAIL_MAX_BYTES, CHECK_NAME_MAX_BYTES, SelftestCheck, SelftestReport,
 };
+use af_wire::turn::{OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerRequest};
 use garde::Validate as _;
 
 /// How many mutations the parser survives per seed corpus entry.

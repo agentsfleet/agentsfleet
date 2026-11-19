@@ -10,7 +10,7 @@ use af_wire::run::RunPayload;
 
 /// The run the daemon sends today.
 const RUN: &str = r#"{"run_id":"l","fencing_token":1,"run_expires_at":"1970-01-01T00:00:00.000Z",
-        "event":{"event_id":"e","fleet_id":"f","workspace_id":"w","actor":"a",
+        "event":{"turn_id":"e","fleet_id":"f","workspace_id":"w","actor":"a",
         "event_type":"chat","request_json":"{}","created_at":"1970-01-01T00:00:00.000Z"},
         "policy":{"network_policy":{"allow":[],"read_only":true,"read_post_paths":[]},
         "tools":[],"secrets_map":null,"mintable":[],"provider":"p","api_key":"k",

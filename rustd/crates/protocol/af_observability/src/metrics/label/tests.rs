@@ -233,8 +233,8 @@ fn fleet_products() -> [(&'static str, usize); 10] {
             fleet_labels::SignupFailure::ALL.len(),
         ),
         (
-            fleet::ADMISSIONS_TOTAL.wire_name(),
-            fleet_labels::AdmissionOutcome::ALL.len(),
+            fleet::TURNS_TOTAL.wire_name(),
+            fleet_labels::IncomingTurnOutcome::ALL.len(),
         ),
         (
             fleet::FLEETS.wire_name(),

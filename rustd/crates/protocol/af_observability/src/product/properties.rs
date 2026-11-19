@@ -21,7 +21,7 @@ const KEY_TENANT_ID: &str = "tenant_id";
 const KEY_FLEET_ID: &str = "fleet_id";
 
 /// The stream entry the run was held from.
-const KEY_EVENT_ID: &str = "event_id";
+const KEY_TURN_ID: &str = "turn_id";
 
 /// The request this daemon answered, for joining a log line to a funnel step.
 const KEY_REQUEST_ID: &str = "request_id";
@@ -148,19 +148,19 @@ impl Telemetry {
             Self::FleetTriggered {
                 workspace_id,
                 fleet_id,
-                event_id,
+                turn_id,
                 source,
                 ..
             } => {
                 put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
                 put(KEY_FLEET_ID, fleet_id.as_str().into());
-                put(KEY_EVENT_ID, event_id.as_str().into());
+                put(KEY_TURN_ID, turn_id.as_str().into());
                 put("source", source.as_str().into());
             }
             Self::FleetCompleted {
                 workspace_id,
                 fleet_id,
-                event_id,
+                turn_id,
                 tokens,
                 wall_ms,
                 exit_status,
@@ -169,12 +169,12 @@ impl Telemetry {
             } => {
                 put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
                 put(KEY_FLEET_ID, fleet_id.as_str().into());
-                put(KEY_EVENT_ID, event_id.as_str().into());
+                put(KEY_TURN_ID, turn_id.as_str().into());
                 put("tokens", (*tokens).into());
                 put("wall_ms", (*wall_ms).into());
                 put("exit_status", exit_status.as_str().into());
                 put("time_to_first_token_ms", (*time_to_first_token_ms).into());
-                put(KEY_INSERT_ID, insert_id(fleet_id, event_id).into());
+                put(KEY_INSERT_ID, insert_id(fleet_id, turn_id).into());
             }
             Self::SignupBootstrapped {
                 tenant_id,
@@ -263,10 +263,10 @@ impl super::InviteEmailOutcome {
 /// failure is dropped by ingestion instead of doubling the run count. The pair
 /// is what identifies a run: one fleet's event ids are unique to it, and the
 /// fleet is what makes the key unique across the deployment.
-fn insert_id(fleet_id: &str, event_id: &str) -> String {
+fn insert_id(fleet_id: &str, turn_id: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(fleet_id.as_bytes());
     hasher.update(HASH_SEPARATOR);
-    hasher.update(event_id.as_bytes());
+    hasher.update(turn_id.as_bytes());
     hex::encode(hasher.finalize())
 }

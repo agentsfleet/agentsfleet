@@ -2,7 +2,7 @@
 //!
 //! A runner run names the turn it executes, so every suite that seeds a run
 //! first needs a turn row. They build a
-//! [`FleetEventSeed`] rather than each spelling the insert, and the column list
+//! [`TurnSeed`] rather than each spelling the insert, and the column list
 //! changes here alone.
 //!
 //! The actor, type and status are arguments because their spellings live above
@@ -28,7 +28,7 @@ const EMPTY_REQUEST: &str = "{}";
 
 /// Who sent an event, what kind it is, and where it stands.
 #[derive(Debug, Clone, Copy)]
-pub struct EventKind<'a> {
+pub struct TurnFacts<'a> {
     /// The actor, as the column stores it.
     pub actor: &'a str,
     /// The event type, as its stored spelling.
@@ -40,26 +40,26 @@ pub struct EventKind<'a> {
 /// One event row under a fleet.
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]
-pub struct FleetEventSeed<'a> {
+pub struct TurnSeed<'a> {
     fleet_id: &'a Uuid7,
     workspace_id: &'a Uuid7,
-    event_id: &'a Uuid7,
-    kind: EventKind<'a>,
+    turn_id: &'a Uuid7,
+    kind: TurnFacts<'a>,
     created_at: Option<Timestamp>,
 }
 
-impl<'a> FleetEventSeed<'a> {
-    /// The event `event_id`, stamped by the database's `now()`.
+impl<'a> TurnSeed<'a> {
+    /// The event `turn_id`, stamped by the database's `now()`.
     pub const fn new(
         fleet_id: &'a Uuid7,
         workspace_id: &'a Uuid7,
-        event_id: &'a Uuid7,
-        kind: EventKind<'a>,
+        turn_id: &'a Uuid7,
+        kind: TurnFacts<'a>,
     ) -> Self {
         Self {
             fleet_id,
             workspace_id,
-            event_id,
+            turn_id,
             kind,
             created_at: None,
         }
@@ -71,7 +71,7 @@ impl<'a> FleetEventSeed<'a> {
         self
     }
 
-    /// Writes the row and answers its `event_id`.
+    /// Writes the row and answers its `turn_id`.
     ///
     /// # Errors
     /// [`crate::Error`] when the insert fails: a missing fleet or workspace, or
@@ -80,7 +80,7 @@ impl<'a> FleetEventSeed<'a> {
         sqlx::query_scalar(INSERT_FLEET_EVENT)
             .bind(self.fleet_id)
             .bind(self.workspace_id)
-            .bind(self.event_id)
+            .bind(self.turn_id)
             .bind(self.kind.actor)
             .bind(self.kind.event_type)
             .bind(self.kind.status)
@@ -94,11 +94,11 @@ impl<'a> FleetEventSeed<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{EventKind, FleetEventSeed};
+    use super::{TurnFacts, TurnSeed};
 
     #[test]
     fn a_seed_stamps_nothing_until_the_suite_backdates_it() {
-        let kind = EventKind {
+        let kind = TurnFacts {
             actor: "test",
             event_type: "chat",
             status: "received",
@@ -108,8 +108,8 @@ mod tests {
             crate::test_util::mint_id(),
             crate::test_util::mint_id(),
         );
-        let seed = FleetEventSeed::new(&fleet, &workspace, &event, kind);
+        let seed = TurnSeed::new(&fleet, &workspace, &event, kind);
 
-        assert_eq!((seed.event_id, seed.created_at), (&event, None));
+        assert_eq!((seed.turn_id, seed.created_at), (&event, None));
     }
 }

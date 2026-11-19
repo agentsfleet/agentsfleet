@@ -178,7 +178,7 @@ fn replay_matches(
 ) -> Result<()> {
     if call.request_digest != digest
         || call.retry_of_decision_call_id.as_ref().map(Uuid7::as_str) != input.retry_of.as_deref()
-        || (operation && call.source_admission_id != input.source_admission_id)
+        || (operation && call.source_turn_id != input.source_turn_id)
     {
         return Err(TaskRefusal::ReplayConflict.into());
     }
@@ -186,8 +186,8 @@ fn replay_matches(
 }
 
 fn digest(input: &DecisionReservationInput) -> Result<String> {
-    let source = (input.assessment.purpose() == DecisionPurpose::Intent)
-        .then_some(&input.source_admission_id);
+    let source =
+        (input.assessment.purpose() == DecisionPurpose::Intent).then_some(&input.source_turn_id);
     let bytes = serde_json::to_vec(&(source, &input.assessment, &input.task, &input.evidence))
         .map_err(af_core::json::Unreadable::from)?;
     Ok(af_core::etag::sha256_hex(&bytes))
@@ -203,7 +203,7 @@ async fn block_profile_switch(
         .as_ref()
         .ok_or(TaskRefusal::DecisionUnavailable)?;
     let subject = context::subject(
-        &input.source_admission_id,
+        &input.source_turn_id,
         &input.assessment,
         current
             .task_id

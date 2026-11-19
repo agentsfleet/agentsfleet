@@ -5,7 +5,7 @@
 use af_core::error_code::{Coded as _, Logged};
 use jiff::Timestamp;
 
-use crate::Admissions;
+use crate::Turns;
 
 /// Deployment backlog ceiling checked against a sampled estimate.
 pub const DEPLOYMENT_BACKLOG_BUDGET: u64 = 100_000;
@@ -20,7 +20,7 @@ const _: () = assert!(
 /// Plain numbers at the boundary rather than a `NonZero`, per the workspace's
 /// reading of the guideline on type families; the compile-time assertion
 /// above holds the default, and a suite that wants a small budget says so
-/// through [`Admissions::with_budgets`].
+/// through [`Turns::with_budgets`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Budgets {
     /// Estimated unsettled admissions across the deployment.
@@ -35,7 +35,7 @@ impl Default for Budgets {
     }
 }
 
-impl Admissions {
+impl Turns {
     /// Refresh when due; retain the previous soft estimate if sampling fails.
     pub(crate) async fn deployment_estimate(&self, now: Timestamp) -> u64 {
         let budget = self.budgets.deployment_backlog;

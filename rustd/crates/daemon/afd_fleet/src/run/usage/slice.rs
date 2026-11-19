@@ -27,7 +27,7 @@ pub(crate) struct Slice {
     /// The fleet's name when the lines were written; `None` once purged.
     pub fleet_name: Option<String>,
     /// The event the run answered.
-    pub event_id: Uuid7,
+    pub turn_id: Uuid7,
 }
 
 /// The run time one metering pass measured on a draft-owned run.
@@ -63,7 +63,7 @@ pub(crate) struct SliceColumns {
     /// Absent from the shared statements, which read no owner's table.
     #[sqlx(default)]
     fleet_id: Option<Uuid7>,
-    event_id: Option<Uuid7>,
+    turn_id: Option<Uuid7>,
     #[sqlx(default)]
     fleet_name: Option<String>,
     runtime_seq: Option<i64>,
@@ -81,7 +81,7 @@ impl SliceColumns {
             workspace_id: self.workspace_id?,
             fleet_id: self.fleet_id?,
             fleet_name: self.fleet_name,
-            event_id: self.event_id?,
+            turn_id: self.turn_id?,
         })
     }
 
@@ -95,7 +95,7 @@ impl SliceColumns {
             runtime_ms: self.d_ms?,
             tenant_id: self.tenant_id?,
             workspace_id: self.workspace_id?,
-            message_id: self.event_id?,
+            message_id: self.turn_id?,
         })
     }
 }

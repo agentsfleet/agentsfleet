@@ -7,7 +7,7 @@
 use super::seed::seed_provider_resolution;
 use super::*;
 
-use af_core::event::label;
+use af_core::turn::label;
 
 /// A fleet whose first repeated action already crosses its runaway threshold.
 const RUNAWAY_AT_ONE: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"gates":{"anomaly_rules":[{"pattern":"same_action","threshold_count":1,"threshold_window_s":60}]}}}"#;
@@ -36,7 +36,7 @@ async fn a_runaway_trip_archives_the_fleet_and_ends_its_event() {
         .await
         .expect("the archived fleet stays readable");
     assert_eq!(status, ARCHIVED, "the runaway archived its fleet");
-    let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.event_id)
+    let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id)
         .await
         .expect("the tripping event has a settled row, not a pending one");
     assert_eq!(status, STATUS_GATE_BLOCKED, "the event is ended");

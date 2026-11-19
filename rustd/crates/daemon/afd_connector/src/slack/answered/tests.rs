@@ -15,7 +15,7 @@ const BOT_USER: &str = "U0BOTAF01";
 fn marker() -> AnswerMarker {
     AnswerMarker {
         fleet_id: "0195b4ba-8d3a-7a11-8abc-000000000003".to_owned(),
-        event_id: "1760000000001-0".to_owned(),
+        turn_id: "1760000000001-0".to_owned(),
         part: None,
     }
 }
@@ -45,9 +45,9 @@ fn a_posted_stamp_reads_back_as_its_own_answer() {
 fn only_the_same_answer_counts() {
     let marker = marker();
     let others = [
-        r#"{"ts":"1","user":"U0BOTAF01","metadata":{"event_type":"agentsfleet_answer","event_payload":{"fleet_id":"0195b4ba-8d3a-7a11-8abc-000000000003","event_id":"1760000000002-0"}}}"#,
-        r#"{"ts":"1","user":"U0BOTAF01","metadata":{"event_type":"agentsfleet_answer","event_payload":{"fleet_id":"0195b4ba-8d3a-7a11-8abc-000000000009","event_id":"1760000000001-0"}}}"#,
-        r#"{"ts":"1","user":"U0BOTAF01","metadata":{"event_type":"task_created","event_payload":{"fleet_id":"0195b4ba-8d3a-7a11-8abc-000000000003","event_id":"1760000000001-0"}}}"#,
+        r#"{"ts":"1","user":"U0BOTAF01","metadata":{"event_type":"agentsfleet_answer","event_payload":{"fleet_id":"0195b4ba-8d3a-7a11-8abc-000000000003","turn_id":"1760000000002-0"}}}"#,
+        r#"{"ts":"1","user":"U0BOTAF01","metadata":{"event_type":"agentsfleet_answer","event_payload":{"fleet_id":"0195b4ba-8d3a-7a11-8abc-000000000009","turn_id":"1760000000001-0"}}}"#,
+        r#"{"ts":"1","user":"U0BOTAF01","metadata":{"event_type":"task_created","event_payload":{"fleet_id":"0195b4ba-8d3a-7a11-8abc-000000000003","turn_id":"1760000000001-0"}}}"#,
         r#"{"ts":"1","user":"U0BOTAF01","text":"a person's reply"}"#,
     ];
     for other in others {

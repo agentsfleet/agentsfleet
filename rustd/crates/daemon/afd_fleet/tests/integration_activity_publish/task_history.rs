@@ -15,7 +15,7 @@ fn progress(id: &str, completed: u32) -> TaskActivity {
     TaskActivity {
         activity_id: id.to_owned(),
         task_id: None,
-        source_admission_id: None,
+        source_turn_id: None,
         operation: TaskActivityOperation::Capture,
         phase: TaskActivityPhase::Uploading,
         provider: None,
@@ -37,7 +37,7 @@ async fn saved(run: &Held) -> TaskActivityHistory {
          FROM thread.turns WHERE thread_id=$1 AND id=$2",
     )
     .bind(&run.fleet)
-    .bind(&run.event_id)
+    .bind(&run.turn_id)
     .fetch_one(
         &mut *run
             .fixtures
@@ -56,9 +56,9 @@ async fn saved(run: &Held) -> TaskActivityHistory {
 async fn write(run: &Held, progress: TaskActivity) -> Option<Json<TaskActivityHistory>> {
     let target = afd_fleet::run::activity::Target {
         fleet_id: run.fleet.clone(),
-        event_id: run.event_id.clone(),
+        turn_id: run.turn_id.clone(),
         run_created_at: run.now,
-        event_created_at: run.now,
+        turn_created_at: run.now,
         timing_eligible: true,
         fence: run.fence.as_i64(),
     };
@@ -175,7 +175,7 @@ async fn contended_event_drops_progress_without_waiting_or_consuming_sequence() 
         .expect("lock transaction");
     sqlx::query("SELECT id FROM thread.turns WHERE thread_id=$1 AND id=$2 FOR UPDATE")
         .bind(&run.fleet)
-        .bind(&run.event_id)
+        .bind(&run.turn_id)
         .fetch_one(&mut *tx)
         .await
         .expect("hold event");

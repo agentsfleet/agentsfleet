@@ -21,7 +21,7 @@ async fn an_archive_on_another_replica_cancels_and_settles_the_native_run() -> T
         native.heartbeat().await;
         native.ready().await;
         let held = signals::offer(&mut native).await?;
-        assert_eq!(held.event, fixture.scene.event_id);
+        assert_eq!(held.event, fixture.scene.turn_id);
         fixture.operator.archive(&fixture.scene).await?;
         signals::cancelled(&mut native, &held).await?;
         assert_marked(&fixture, &held).await?;
@@ -45,7 +45,7 @@ async fn a_lost_cancel_refuses_its_run_and_renews_its_sibling_in_one_batch() -> 
         let mut native = fixture.native(transport).await;
         let held = pair(&fixture, &mut native).await?;
         let [cancelled, live] = &held;
-        assert_eq!(cancelled.event, fixture.scene.event_id);
+        assert_eq!(cancelled.event, fixture.scene.turn_id);
         assert_eq!(live.event, sibling);
         lost_archive(&fixture).await?;
         assert_marked(&fixture, cancelled).await?;
@@ -72,7 +72,7 @@ async fn pair(
         )
         .await;
     let mut held = [signals::offer(native).await?, signals::offer(native).await?];
-    held.sort_by_key(|run| run.event != fixture.scene.event_id);
+    held.sort_by_key(|run| run.event != fixture.scene.turn_id);
     Ok(held)
 }
 

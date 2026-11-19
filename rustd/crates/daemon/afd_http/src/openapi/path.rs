@@ -147,31 +147,31 @@ pub struct Schedule {
     pub schedule_id: String,
 }
 
-/// One event in a fleet's history.
+/// One turn in a fleet's history.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
-pub struct Event {
+pub struct Turn {
     /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
     /// Fleet identifier (version 7 universally unique identifier, or UUID).
     pub fleet_id: String,
-    /// Event identifier (version 7 universally unique identifier, or UUID).
-    pub event_id: String,
+    /// Turn identifier (version 7 universally unique identifier, or UUID).
+    pub turn_id: String,
 }
 
-/// One tool call of one event.
+/// One item of one turn: a tool call.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
-pub struct ToolCall {
+pub struct Item {
     /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
     /// Fleet identifier (version 7 universally unique identifier, or UUID).
     pub fleet_id: String,
-    /// Event identifier (version 7 universally unique identifier, or UUID).
-    pub event_id: String,
+    /// Turn identifier (version 7 universally unique identifier, or UUID).
+    pub turn_id: String,
     /// Tool call identifier from the activity stream, in `{fence}:{n}` format. Keep it
     /// unchanged and URL-encode it.
-    pub call_id: String,
+    pub item_id: String,
 }
 
 /// One memory a fleet holds.

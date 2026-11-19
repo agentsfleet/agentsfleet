@@ -48,7 +48,7 @@ impl Runs {
                         deferred += 1;
                         let error_code = failure.code();
                         tracing::warn!(event = "turn_checkpoint_retention_deferred",
-                            event_id = %candidate.event, %error_code);
+                            turn_id = %candidate.event, %error_code);
                     }
                 }
             }

@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 #[derive(sqlx::FromRow)]
 struct InterpretationRow {
-    source_admission_id: Uuid7,
+    source_turn_id: Uuid7,
     plan_digest: String,
     message: String,
     item_id: Uuid7,
@@ -78,9 +78,9 @@ pub(super) async fn read(
                 .transpose()?,
         };
         let accepted = interpretations
-            .entry(item.source_admission_id.clone())
+            .entry(item.source_turn_id.clone())
             .or_insert_with(|| TaskAcceptedInterpretation {
-                source_admission_id: item.source_admission_id.into(),
+                source_turn_id: item.source_turn_id.into(),
                 plan_digest: item.plan_digest,
                 message: item.message,
                 items: Vec::new(),

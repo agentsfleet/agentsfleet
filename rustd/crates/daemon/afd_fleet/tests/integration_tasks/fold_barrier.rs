@@ -52,7 +52,7 @@ async fn claim_around_bound_continuations(case: &Case) {
     let ids: Vec<&str> = claimed
         .inputs
         .iter()
-        .map(|input| input.event_id.as_ref())
+        .map(|input| input.turn_id.as_ref())
         .collect();
     assert_eq!(
         ids,
@@ -67,9 +67,9 @@ async fn clear_task_binding(case: &Case) {
     sqlx::query(
         "WITH reset AS (UPDATE thread.runs SET task_id = NULL, task_generation = NULL, \
          task_stop_generation = NULL, task_started_at = NULL, task_runtime_accounted_at = NULL, \
-         task_execution_deadline_at = NULL WHERE id = $1 RETURNING event_id) \
+         task_execution_deadline_at = NULL WHERE id = $1 RETURNING turn_id) \
          UPDATE thread.turns a SET task_id = NULL, task_item_id = NULL, task_generation = NULL \
-         FROM reset WHERE a.id = reset.event_id",
+         FROM reset WHERE a.id = reset.turn_id",
     )
     .bind(&case.held.issued.run_id)
     .execute(
@@ -93,7 +93,7 @@ async fn waiting_task_bound(case: &Case) -> i64 {
          AND a.sequence > (SELECT sequence FROM thread.turns WHERE id = $2)",
     )
     .bind(&case.scope.fleet_id)
-    .bind(&case.held.event_id)
+    .bind(&case.held.turn_id)
     .fetch_one(
         &mut *case
             .held

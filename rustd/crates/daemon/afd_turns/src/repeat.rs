@@ -1,6 +1,6 @@
 //! The row a producer's key already holds, read back.
 //!
-//! [`crate::Admissions::admit`] answers a repeat itself — its one statement
+//! [`crate::Turns::admit`] answers a repeat itself — its one statement
 //! reads the key before any gate and hands back the first row, digest and
 //! fleet included, as [`crate::Admitted::stored`]. A same-key send that
 //! committed while this one waited on the fleet lock is invisible to that read,
@@ -11,7 +11,7 @@ use af_core::id::Uuid7;
 use jiff::Timestamp;
 
 use crate::error::{Result, query};
-use crate::{Admissions, Producer, sql};
+use crate::{Producer, Turns, sql};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_FIND_REPEATED: &str = "find a repeated admission";
@@ -27,7 +27,7 @@ pub struct Repeated {
     /// `UUIDv7`, as text.
     pub id: Uuid7,
     /// The payload digest it was admitted with, which a retry is checked
-    /// against ([`crate::Admission::payload_digest`]).
+    /// against ([`crate::IncomingTurn::payload_digest`]).
     pub digest: String,
     /// The fleet the row was admitted for.
     pub fleet: Uuid7,
@@ -36,7 +36,7 @@ pub struct Repeated {
     pub created_at: Timestamp,
 }
 
-impl Admissions {
+impl Turns {
     /// The admission `producer` recorded under `key`, or `None` when the key
     /// is new.
     ///

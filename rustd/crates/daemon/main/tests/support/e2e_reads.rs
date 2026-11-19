@@ -187,7 +187,7 @@ pub(crate) async fn balance(scene: &Scenario) -> Option<i64> {
 pub(crate) async fn ledger_rows(scene: &Scenario) -> i64 {
     count_lines(
         scene,
-        "SELECT count(*) FROM billing.usage_lines WHERE event_id = $1",
+        "SELECT count(*) FROM billing.usage_lines WHERE turn_id = $1",
     )
     .await
 }
@@ -197,7 +197,7 @@ pub(crate) async fn line_output_tokens(scene: &Scenario) -> i64 {
     count_lines(
         scene,
         "SELECT COALESCE(sum(output_token_count), 0)::bigint FROM billing.usage_lines \
-         WHERE event_id = $1",
+         WHERE turn_id = $1",
     )
     .await
 }
@@ -210,7 +210,7 @@ pub(crate) async fn line_output_tokens(scene: &Scenario) -> i64 {
 pub(crate) async fn unsettled_lines(scene: &Scenario) -> i64 {
     count_lines(
         scene,
-        "SELECT count(*) FROM billing.usage_lines WHERE event_id = $1 AND settled_at IS NULL",
+        "SELECT count(*) FROM billing.usage_lines WHERE turn_id = $1 AND settled_at IS NULL",
     )
     .await
 }
@@ -224,7 +224,7 @@ async fn count_lines(scene: &Scenario, statement: &'static str) -> i64 {
         .await
         .expect("a pooled connection");
     sqlx::query(statement)
-        .bind(&scene.event_id)
+        .bind(&scene.turn_id)
         .fetch_one(&mut *connection)
         .await
         .expect("the usage count must scene")

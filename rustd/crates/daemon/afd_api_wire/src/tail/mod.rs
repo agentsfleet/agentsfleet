@@ -1,20 +1,20 @@
 //! The frames the daemon itself publishes on a fleet's live tail.
 //!
 //! The runner forwards its mid-run frames through [`af_wire::activity`]; these
-//! are the daemon's own. `event_admitted` says a person's message was accepted,
+//! are the daemon's own. `turn_admitted` says a person's message was accepted,
 //! before any runner has it; the brackets open and close a run —
-//! `event_received` when the run verb records the row, `event_complete` when
+//! `turn_received` when the run verb records the row, `turn_complete` when
 //! a report or a gate refusal ends it — and the gate frames say when a human
 //! was asked and when they answered. All of them ride `fleet:{id}:activity`
 //! beside the runner's. The dashboard's stream registry switches on every
 //! `kind` spelling here (`ui/packages/app/lib/api/events.ts`); the CLI's steer
-//! tail reads `event_complete` and passes over the rest
-//! (`cli/src/commands/fleet/steer-events.ts`).
+//! tail reads `turn_complete` and passes over the rest
+//! (`cli/src/commands/fleet/steer-turns.ts`).
 //!
 //! # Every frame is self-sufficient
 //!
 //! A watcher folds a frame into what it shows and issues no read to complete
-//! it. So the completion carries the terminal row exactly as the events list
+//! it. So the completion carries the terminal row exactly as the turns list
 //! would serve it, plus the two facts about the fleet a run can change: its
 //! lifecycle status, and how many approvals wait on it. The gate frames carry
 //! the count for the same reason — the moment a gate opens is the moment an
@@ -36,16 +36,16 @@
 //! forwards (`afd_sse::Frame::tagged`). A completion that carried the row's
 //! own `fleet_id` would put the key on the wire twice on that stream — the
 //! same value, but a duplicate key is one a strict decoder refuses — so the
-//! completion carries [`TailRow`], the events-list row with its two scope
+//! completion carries [`TailRow`], the turns-list row with its two scope
 //! columns left off.
 
 use std::borrow::Cow;
 
 use serde::Serialize;
 
-use af_wire::event::EventSummary;
+use af_wire::turn::TurnSummary;
 
-/// The terminal row as a completion carries it: [`EventSummary`] without the
+/// The terminal row as a completion carries it: [`TurnSummary`] without the
 /// two scope columns the channel already names.
 ///
 /// Field for field the listing's shape and order past those two, so the
@@ -54,13 +54,13 @@ use af_wire::event::EventSummary;
 /// summary's; the test below pins that nothing but the scope is dropped.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TailRow<'a> {
-    /// The canonical event identifier.
-    pub event_id: Cow<'a, str>,
-    /// Who or what produced the event.
+    /// The canonical turn identifier.
+    pub turn_id: Cow<'a, str>,
+    /// Who or what produced the turn.
     pub actor: Cow<'a, str>,
-    /// How the event entered the system, as stored.
+    /// How the turn entered the system, as stored.
     pub event_type: Cow<'a, str>,
-    /// Where the event's run got to, as stored.
+    /// Where the turn's run got to, as stored.
     pub status: Cow<'a, str>,
     /// Tokens the run spent, absent until a runner reports.
     pub tokens: Option<i64>,
@@ -70,23 +70,23 @@ pub struct TailRow<'a> {
     pub failure_label: Option<Cow<'a, str>>,
     /// The operator-readable cause line, absent when none was carried.
     pub failure_detail: Option<Cow<'a, str>>,
-    /// The event this one continues, set on a continuation.
-    pub resumes_event_id: Option<Cow<'a, str>>,
+    /// The turn this one continues, set on a continuation.
+    pub resumes_turn_id: Option<Cow<'a, str>>,
     /// When the row was created.
     #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// When the row last changed.
     #[serde(with = "af_wire::instant")]
     pub updated_at: jiff::Timestamp,
-    /// What this event actually cost, summed over its telemetry rows.
+    /// What this turn actually cost, summed over its telemetry rows.
     #[serde(with = "af_wire::nanos::option")]
     pub cost_nanos: Option<i64>,
 }
 
-impl<'a> From<EventSummary<'a>> for TailRow<'a> {
-    fn from(row: EventSummary<'a>) -> Self {
-        let EventSummary {
-            event_id,
+impl<'a> From<TurnSummary<'a>> for TailRow<'a> {
+    fn from(row: TurnSummary<'a>) -> Self {
+        let TurnSummary {
+            turn_id,
             actor,
             event_type,
             status,
@@ -94,14 +94,14 @@ impl<'a> From<EventSummary<'a>> for TailRow<'a> {
             wall_ms,
             failure_label,
             failure_detail,
-            resumes_event_id,
+            resumes_turn_id,
             created_at,
             updated_at,
             cost_nanos,
             ..
         } = row;
         Self {
-            event_id,
+            turn_id,
             actor,
             event_type,
             status,
@@ -109,7 +109,7 @@ impl<'a> From<EventSummary<'a>> for TailRow<'a> {
             wall_ms,
             failure_label,
             failure_detail,
-            resumes_event_id,
+            resumes_turn_id,
             created_at,
             updated_at,
             cost_nanos,
@@ -127,7 +127,7 @@ impl<'a> From<EventSummary<'a>> for TailRow<'a> {
 ///
 /// Both counters ride every frame rather than each riding the frame that moved
 /// it, because they do not move together. `events_processed` is bumped
-/// when a turn's event opens (`trg_turns_count_opened`) — at RECEIVE, not at
+/// when a turn opens (`trg_turns_count_opened`) — at RECEIVE, not at
 /// completion — while `budget_used_nanos` follows the ledger write, which may
 /// update one row many times across a run. Both only ever grow — the
 /// triggers add, and the backfill's conflict arm takes `GREATEST` — so a
@@ -135,7 +135,7 @@ impl<'a> From<EventSummary<'a>> for TailRow<'a> {
 /// right under either clock, and right when frames cross in flight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct FleetCounters {
-    /// Lifetime event count. Server truth, never client arithmetic.
+    /// Lifetime turn count. Server truth, never client arithmetic.
     pub events_processed: i64,
     /// Lifetime spend, in nanos.
     #[serde(with = "af_wire::nanos")]
@@ -148,8 +148,8 @@ pub struct FleetCounters {
 pub enum TailFrame<'a> {
     /// A committed replacement attempt; later fenced output repairs a lost hint.
     RunRestarted {
-        /// Stable admission/event receiving the replacement attempt.
-        event_id: Cow<'a, str>,
+        /// Stable turn receiving the replacement attempt.
+        turn_id: Cow<'a, str>,
         /// Complete decimal slot fence, safe for JavaScript comparison.
         fencing_token: Cow<'a, str>,
         /// Issue commit's stored timestamp.
@@ -168,14 +168,14 @@ pub enum TailFrame<'a> {
     /// Published once, by the steer route, after the admission commits and
     /// before the 202, so every screen on the fleet shows the message while
     /// it waits. A replayed send publishes nothing: its first send did.
-    EventAdmitted {
-        /// The canonical event identifier, the one the 202 answers with.
-        event_id: Cow<'a, str>,
+    TurnAdmitted {
+        /// The canonical turn identifier, the one the 202 answers with.
+        turn_id: Cow<'a, str>,
         /// Who sent the message.
         actor: Cow<'a, str>,
-        /// How the event entered the system.
+        /// How the turn entered the system.
         event_type: Cow<'a, str>,
-        /// What was typed, at most [`af_wire::event::STEER_MESSAGE_MAX_BYTES`].
+        /// What was typed, at most [`af_wire::turn::STEER_MESSAGE_MAX_BYTES`].
         /// Another fleet's steer leads with its sender line, so its message
         /// runs past that bound by the length of that line.
         message: Cow<'a, str>,
@@ -184,19 +184,19 @@ pub enum TailFrame<'a> {
         created_at: jiff::Timestamp,
     },
     /// The narrative log opened: a run is about to start.
-    EventReceived {
-        /// The canonical event identifier.
-        event_id: Cow<'a, str>,
-        /// Who or what produced the event.
+    TurnReceived {
+        /// The canonical turn identifier.
+        turn_id: Cow<'a, str>,
+        /// Who or what produced the turn.
         actor: Cow<'a, str>,
-        /// How the event entered the system.
+        /// How the turn entered the system.
         event_type: Cow<'a, str>,
         /// When the row was created.
         #[serde(with = "af_wire::instant")]
         created_at: jiff::Timestamp,
         /// What a person typed, or another fleet's sender line and words, on
         /// a steer only: absent for every other actor, for a person's text
-        /// above [`af_wire::event::STEER_MESSAGE_MAX_BYTES`], or when the
+        /// above [`af_wire::turn::STEER_MESSAGE_MAX_BYTES`], or when the
         /// stored body does not parse.
         #[serde(skip_serializing_if = "Option::is_none")]
         message: Option<Cow<'a, str>>,
@@ -211,8 +211,8 @@ pub enum TailFrame<'a> {
         counters: Option<FleetCounters>,
     },
     /// The narrative log closed: the run ended, and here is the row.
-    EventComplete {
-        /// The terminal row, field for field as the events list serves it,
+    TurnComplete {
+        /// The terminal row, field for field as the turns list serves it,
         /// less the scope the channel names.
         ///
         /// Boxed so the enum stays the size of its other arms: a completion
@@ -222,7 +222,7 @@ pub enum TailFrame<'a> {
         event: Box<TailRow<'a>>,
         /// Canonical final answer when small enough to ride the live frame.
         /// Absent when the run left no reply or the reply is too large;
-        /// clients then read the event detail.
+        /// clients then read the turn detail.
         #[serde(skip_serializing_if = "Option::is_none")]
         final_reply: Option<Cow<'a, str>>,
         /// The fleet's lifecycle status after the run.
@@ -243,8 +243,8 @@ pub enum TailFrame<'a> {
     GateOpened {
         /// The gate's row identifier.
         gate_id: Cow<'a, str>,
-        /// The event the gate holds.
-        event_id: Cow<'a, str>,
+        /// The turn the gate holds.
+        turn_id: Cow<'a, str>,
         /// How many approvals wait on the fleet, this one included.
         pending_approvals: i64,
         /// Where the fleet's counters stand after this frame — absolute, so
@@ -261,9 +261,9 @@ pub enum TailFrame<'a> {
     GateResolved {
         /// The gate's row identifier.
         gate_id: Cow<'a, str>,
-        /// The event the gate held, or `null` for a gate that held no run —
-        /// a standing grant raised at install time parks no event.
-        event_id: Option<Cow<'a, str>>,
+        /// The turn the gate held, or `null` for a gate that held no run —
+        /// a standing grant raised at install time parks no turn.
+        turn_id: Option<Cow<'a, str>>,
         /// Where the gate now stands: approved, denied, timed out.
         status: Cow<'a, str>,
         /// Who answered — a person, or the sweeper.

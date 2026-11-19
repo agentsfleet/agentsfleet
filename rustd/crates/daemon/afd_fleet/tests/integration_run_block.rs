@@ -77,7 +77,7 @@ async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
     let fixtures = Fixtures::create().await;
     let acquired = received(&fixtures).await;
     let fleet = &acquired.fleet_id;
-    let event = &acquired.event_id;
+    let event = &acquired.turn_id;
 
     let ended = fixtures
         .runs()
@@ -118,7 +118,7 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
     let fixtures = Fixtures::create().await;
     let acquired = received(&fixtures).await;
     let fleet = &acquired.fleet_id;
-    let event = &acquired.event_id;
+    let event = &acquired.turn_id;
     let runs = fixtures.runs();
 
     let first = runs
@@ -148,7 +148,7 @@ async fn test_a_refusal_with_no_instruction_stores_null_rather_than_empty() {
     let fixtures = Fixtures::create().await;
     let acquired = received(&fixtures).await;
     let fleet = &acquired.fleet_id;
-    let event = &acquired.event_id;
+    let event = &acquired.turn_id;
 
     fixtures
         .runs()
