@@ -17,7 +17,7 @@ use super::{COLUMN_STATUS, Error, ErrorKind, Result};
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_vault::Error => Vault,
-    afd_turns::Error => Admission,
+    afd_turns::Error => TurnWrite,
     af_fleet_runtime::Error => ConfigUnreadable,
     af_crypto::error::Error => Entropy,
     af_core::error::Error => Identifier,
@@ -63,7 +63,7 @@ pub(crate) fn stored_status(stored: &str) -> Result<FleetStatus> {
 /// documents as refusable, so no failure is fabricated and none needs a
 /// datastore.
 ///
-/// [`ErrorKind::Admission`] appears twice on purpose. Its answer branches on
+/// [`ErrorKind::TurnWrite`] appears twice on purpose. Its answer branches on
 /// `afd_turns::Error::is_datastore_unavailable`, so one sample would
 /// leave half of that decision — and the 503-versus-500 the HTTP edge turns
 /// on — unread.
@@ -144,14 +144,14 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("vault", ErrorKind::Vault { source: vault }.into()),
         (
             "admission unreachable",
-            ErrorKind::Admission {
+            ErrorKind::TurnWrite {
                 source: unreachable,
             }
             .into(),
         ),
         (
             "admission answered",
-            ErrorKind::Admission { source: answered }.into(),
+            ErrorKind::TurnWrite { source: answered }.into(),
         ),
         (
             "config unreadable",

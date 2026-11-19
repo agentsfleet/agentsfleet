@@ -31,7 +31,7 @@ af_core::error_lifts!(Error, ErrorKind:
     af_inference::Error => Inference,
     rig_core::ProviderError => Sdk,
     afd_runner::Error => Runner,
-    afd_turns::Error => Admission,
+    afd_turns::Error => TurnWrite,
     afd_approval::Error => Approval,
     afd_fleet_lifecycle::Error => Lifecycle,
     afd_billing::Error => Billing,
@@ -79,7 +79,7 @@ impl Error {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Credential { source } => source.code(),
             ErrorKind::Runner { source } => source.code(),
-            ErrorKind::Admission { source } => source.code(),
+            ErrorKind::TurnWrite { source } => source.code(),
             ErrorKind::Approval { source } => source.code(),
             ErrorKind::Lifecycle { source } => source.code(),
             ErrorKind::Billing { source } => source.code(),
@@ -114,7 +114,7 @@ impl Error {
             | ErrorKind::Model
             | ErrorKind::Balance
             | ErrorKind::Runner { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::Approval { .. }
             | ErrorKind::Lifecycle { .. }
             | ErrorKind::Token
@@ -157,7 +157,7 @@ impl Error {
             | ErrorKind::Model
             | ErrorKind::Balance
             | ErrorKind::Runner { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::Approval { .. }
             | ErrorKind::Lifecycle { .. }
             | ErrorKind::Token
@@ -203,7 +203,7 @@ impl Error {
             | ErrorKind::Model
             | ErrorKind::Balance
             | ErrorKind::Runner { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::Approval { .. }
             | ErrorKind::Lifecycle { .. }
             | ErrorKind::Token
@@ -252,7 +252,7 @@ impl Error {
             | ErrorKind::Gone
             | ErrorKind::Balance
             | ErrorKind::Runner { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::Approval { .. }
             | ErrorKind::Lifecycle { .. }
             | ErrorKind::Token

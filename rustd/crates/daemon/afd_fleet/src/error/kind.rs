@@ -71,7 +71,7 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
     #[error("task continuation admission failed")]
-    Admission {
+    TurnWrite {
         #[source]
         source: afd_turns::Error,
     },

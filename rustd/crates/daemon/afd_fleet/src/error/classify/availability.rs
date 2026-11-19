@@ -35,7 +35,7 @@ impl Error {
             | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::DecisionRequest { .. }
             | ErrorKind::DecisionDeadline { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::UsageCount { .. }
@@ -98,7 +98,7 @@ impl Error {
             | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::DecisionRequest { .. }
             | ErrorKind::DecisionDeadline { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::UsageCount { .. }
@@ -166,7 +166,7 @@ impl Error {
             | ErrorKind::DecisionDeadline { .. }
             | ErrorKind::TaskReadTimeout { .. }
             | ErrorKind::TaskStatementCancelled { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::UsageCount { .. }

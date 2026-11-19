@@ -14,7 +14,7 @@ use super::{Error, ErrorKind};
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     af_crypto::error::Error => Entropy,
-    afd_turns::Error => Admission,
+    afd_turns::Error => TurnWrite,
 );
 
 /// Reports a statement that would not run, naming what it was doing.
@@ -73,7 +73,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("entropy", ErrorKind::Entropy { source: entropy }.into()),
         (
             "admission",
-            ErrorKind::Admission { source: admission }.into(),
+            ErrorKind::TurnWrite { source: admission }.into(),
         ),
     ]
 }

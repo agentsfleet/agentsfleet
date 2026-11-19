@@ -33,7 +33,7 @@ impl Error {
             | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::TaskReadTimeout { .. }
             | ErrorKind::TaskStatementCancelled { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::UsageCount { .. }

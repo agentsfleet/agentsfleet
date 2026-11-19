@@ -196,7 +196,7 @@ pub(crate) enum ErrorKind {
 
     /// A sweeper's event could not be admitted, or a replay could not run.
     #[error("the event could not be admitted")]
-    Admission {
+    TurnWrite {
         /// The ledger failure underneath.
         #[from]
         source: afd_turns::Error,
@@ -234,7 +234,7 @@ impl Error {
             // The ledger already decided what a caller is told, and answering
             // a second sentence for one condition is the drift the shared
             // constants in `af_core::error` exist to prevent.
-            ErrorKind::Admission { source } => source.detail(),
+            ErrorKind::TurnWrite { source } => source.detail(),
         }
     }
 
@@ -245,7 +245,7 @@ impl Error {
     pub const fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
             ErrorKind::Datastore { .. } | ErrorKind::TimedOut { .. } => true,
-            ErrorKind::Admission { source } => source.is_datastore_unavailable(),
+            ErrorKind::TurnWrite { source } => source.is_datastore_unavailable(),
             ErrorKind::DecisionModelId { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
@@ -310,7 +310,7 @@ impl Error {
             | ErrorKind::RequestDigest { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Datastore { .. }
             | ErrorKind::TimedOut { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
-            ErrorKind::Admission { source } => source.code(),
+            ErrorKind::TurnWrite { source } => source.code(),
         }
     }
 }

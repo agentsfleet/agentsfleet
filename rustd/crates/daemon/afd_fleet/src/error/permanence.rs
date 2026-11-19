@@ -65,7 +65,7 @@ impl Error {
             | ErrorKind::TaskReadTimeout { .. }
             | ErrorKind::TaskStatementCancelled { .. }
             | ErrorKind::Runner { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::Authoring { .. }
             | ErrorKind::Context { .. }
             | ErrorKind::Billing { .. }

@@ -60,7 +60,7 @@ impl Error {
             ErrorKind::Billing { ref source } => source.code(),
             ErrorKind::Runner { ref source } => source.code(),
             ErrorKind::Authoring { ref source } => source.code(),
-            ErrorKind::Admission { ref source }
+            ErrorKind::TurnWrite { ref source }
             | ErrorKind::TaskControlAdmission { ref source, .. } => source.code(),
             ErrorKind::Context { ref source } => source.code(),
             ErrorKind::Credential { ref source } => source.code(),

@@ -35,7 +35,7 @@ impl Error {
             // The ledger already decided what a caller is told, and answering
             // a second sentence for one condition is the drift the shared
             // constants in `af_core::error` exist to prevent.
-            ErrorKind::Admission { source } => (source.code(), source.detail()),
+            ErrorKind::TurnWrite { source } => (source.code(), source.detail()),
             ErrorKind::Query { .. } | ErrorKind::RowUnreadable { .. } => {
                 (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)
             }

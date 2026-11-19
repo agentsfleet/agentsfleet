@@ -13,7 +13,7 @@ use super::{Error, ErrorKind};
 // through [`query`] and [`stored_json`] instead of a blanket lift.
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_turns::Error => Admission,
+    afd_turns::Error => TurnWrite,
     af_crypto::error::Error => Entropy,
     af_core::error::Error => Identifier,
 );

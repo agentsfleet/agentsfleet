@@ -9,7 +9,7 @@
 //!
 //! # A gate answered but not continued is its own incident
 //!
-//! [`ErrorKind::Admission`] is distinct from [`ErrorKind::Datastore`] because
+//! [`ErrorKind::TurnWrite`] is distinct from [`ErrorKind::Datastore`] because
 //! the remedies differ: a decision Postgres recorded whose continuation would
 //! not admit is a run a person unblocked and nothing restarted, which an
 //! operator resolves by retrying the decision.
@@ -75,7 +75,7 @@ pub(crate) enum ErrorKind {
     /// The continuation's acceptance could not be recorded — see the module
     /// note.
     #[error("the continuation could not be admitted")]
-    Admission {
+    TurnWrite {
         #[source]
         source: afd_turns::Error,
     },
@@ -98,7 +98,7 @@ impl Error {
             // The ledger already decided what a caller is told, and answering
             // a second sentence for one condition is the drift the shared
             // constants in `af_core::error` exist to prevent.
-            ErrorKind::Admission { source } => (source.code(), source.detail()),
+            ErrorKind::TurnWrite { source } => (source.code(), source.detail()),
         }
     }
 
@@ -126,7 +126,7 @@ impl Error {
     pub const fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
-            ErrorKind::Admission { source } => source.is_datastore_unavailable(),
+            ErrorKind::TurnWrite { source } => source.is_datastore_unavailable(),
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Entropy { .. } => false,

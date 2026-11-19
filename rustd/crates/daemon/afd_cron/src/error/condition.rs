@@ -23,7 +23,7 @@ impl Error {
             | ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::Identifier { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::UpstreamUnreachable { .. }
             | ErrorKind::UpstreamRefused { .. }
             | ErrorKind::RowUnreadable { .. }
@@ -55,7 +55,7 @@ impl Error {
             | ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::Identifier { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::UpstreamUnreachable { .. }
             | ErrorKind::UpstreamRefused { .. }
             | ErrorKind::RowUnreadable { .. }

@@ -42,7 +42,7 @@ impl Error {
             ErrorKind::Memory { ref source } => source.detail(),
             ErrorKind::Runner { ref source } => source.detail(),
             ErrorKind::Authoring { ref source } => source.detail(),
-            ErrorKind::Admission { ref source } | ErrorKind::TaskControlAdmission { ref source, .. } => source.detail(),
+            ErrorKind::TurnWrite { ref source } | ErrorKind::TaskControlAdmission { ref source, .. } => source.detail(),
             ErrorKind::Datastore { .. } | ErrorKind::TaskReadTimeout { .. } | ErrorKind::TaskStatementCancelled { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller

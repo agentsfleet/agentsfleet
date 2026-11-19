@@ -13,7 +13,7 @@ use super::{Error, ErrorKind};
 // [`query`] instead of a blanket lift.
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_turns::Error => Admission,
+    afd_turns::Error => TurnWrite,
     af_crypto::error::Error => Identifier,
     reqwest::Error => UpstreamUnreachable,
     serde_json::Error => Json,
@@ -155,11 +155,11 @@ fn wrapping_kinds() -> Vec<(&'static str, Error)> {
         ),
         (
             "admission",
-            ErrorKind::Admission { source: admission }.into(),
+            ErrorKind::TurnWrite { source: admission }.into(),
         ),
         (
             "admission gone",
-            ErrorKind::Admission {
+            ErrorKind::TurnWrite {
                 source: admission_gone,
             }
             .into(),

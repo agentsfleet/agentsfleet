@@ -105,7 +105,7 @@ pub(crate) enum ErrorKind {
     /// here is the database refusing the row, which IS a fire this daemon
     /// did not accept.
     #[error("the fire could not be admitted")]
-    Admission {
+    TurnWrite {
         #[source]
         source: afd_turns::Error,
     },
@@ -339,7 +339,7 @@ impl Error {
             | ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::Identifier { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::UpstreamUnreachable { .. }
             | ErrorKind::UpstreamRefused { .. }
             | ErrorKind::RowUnreadable { .. }
