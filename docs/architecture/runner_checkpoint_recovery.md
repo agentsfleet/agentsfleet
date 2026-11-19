@@ -92,7 +92,7 @@ The authoring broker assembles protected context, resolves the provider key, rec
 An authoring runner receives a scoped capability; it receives no provider key through that lease.
 The daemon's `[inference]` settings govern these brokered requests; the runner's matching fields govern its direct provider requests.
 
-Fleet execution uses `guffbolt::drive`; private authoring currently has a separate loop in `afr_supervisor/src/authoring/turn.rs`.
+Fleet runs use `guffbolt::drive`; private authoring currently has a separate loop in `afr_supervisor/src/authoring/turn.rs`.
 Using the shared loop and changing provider-request placement are independent changes.
 The `Conversation::sample` implementation determines where a provider request runs.
 

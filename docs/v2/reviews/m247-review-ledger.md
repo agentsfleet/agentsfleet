@@ -22,6 +22,7 @@ Dimension 6.6 remains deferred and unperformed.
 
 This move does not grade the remaining acceptance checks as passed.
 R13 benchmarks, R14 greater-than-99% coverage and final automated acceptance remain open.
+
 The SQL repair dispositions and measured costs are recorded below.
 The review closures are pushed at `2a88201a9`, including merge `b4c2d789c` of M246 main.
 
@@ -31,11 +32,11 @@ The latest runtime-policy unit run passed 5,791 Rust checks: 1,834 runner, 203 d
 Application coverage reached 100% across 529 production files before the latest main reconciliation.
 This does not establish Rust coverage or coverage of the final patch.
 
-Indy changed the execution order: "I feel you can go straight to this and have the CI gate run this and hence push the PR".
+Indy reordered the checks: "I feel you can go straight to this and have the CI gate run this and hence push the PR".
 The selected work was "refreshed benchmarks, SQL performance comparison".
 Full repository verification, acceptance and greater-than-99% coverage remain required before merge readiness.
 
-The optimized recovery build at `4ff9ee21b` ended before benchmark execution.
+The optimized recovery build at `4ff9ee21b` ended before the benchmarks ran.
 The compiler processes exited with signal 9; its cause is unconfirmed.
 That attempt contributes no timing sample or recovery verdict.
 
@@ -55,7 +56,7 @@ Both default-feature and all-features compilation checks passed before the funct
 That candidate also passed 84 focused checks: four runner configuration, 71 recovery and nine problem-registry checks.
 
 The function-refactor candidate passed workspace Clippy with all features and targets, followed by the default-feature daemon and runner check.
-Its focused execution and the final repository checks remain separately tracked.
+Its focused run and the final repository checks remain separately tracked.
 These observations establish neither formal equivalence nor final coverage.
 
 The current main tree is `aa1f741ef684a775a8e9e7ad3a070e3a67834303`, identical to its tested parent `596e82243309263c335bcf39cbeaa8bca1a1ff2f`.
@@ -105,30 +106,11 @@ A matched `dist` run on the rig remains due.
 
 ### One lease machinery and one inference path
 
-Indy widened this pull request on Nov 19, 2026: "why are these different? I undestand where it landed. I just need one."
-Setup chats called the model from the daemon, while fleet runs call it from the runner through `guffbolt`.
-He also asked for reuse: "Most platform infrastructure or plumbing work is there, i need you to use that."
+Indy widened the work on Nov 19, 2026, then moved it out of this pull request.
+His words: "PR853 - descope with feedback that the next large refactor will do this".
 
-The approved structure keeps conversations separate and shares everything from the lease down.
-`runner.fleet_slots` becomes `runner.slots`, owned by either a fleet or a draft, and `runner.leases` names `slot_id` and `work_id`.
-Indy: "1. Structure - Yes agree 2. everything into #853 3. CI limit okay inrease 4. Okay acceptance post-merge".
-
-The lease statements split into shared statements plus per-kind statements in one transaction; Indy chose this over draft-only statements: "How about B."
-The fleet claim, renewal and report paths gain statements, so their benchmarks are due again.
-Setup follows the fleet rules: "slot_id change is fine", an expired lease is re-offered, and the wallet gate replaces reservation.
-
-On reservation Indy said: "you need to follow the fleet gate balance of settlement. Reserving upfront is politaclly stupid."
-The setup stop rules go, by his choice of "Drop them, natural loop": no call cap, correction limit, output cap or per-call timeout.
-The daemon profiles lose `[inference]` and `[authoring.turn]`; the runner profile's inference settings govern both kinds.
-
-The setup tool follows the durable task's `propose_change`: the root loop offers `propose_setup` and handles the call.
-The runner validates the proposal, and the accepted setup rides the run report beside the answer; Indy: "i dont want daeomon in".
-Edit intent is one decision-model call on the runner, billed as an ordinary usage line of the lease.
-Indy first picked the reserved decision call, then replaced it with "Usage line, drop the table" when the two choices were shown to conflict.
-
-Dropped tables: `authoring.attempts`, `authoring.dispatches`, `authoring.edit_decisions`, `authoring.activity_receipts`, `authoring.answer_receipts`, `billing.authoring_report_receipts` and `memory.context_checkpoints`.
-Acceptance for this pull request runs after merge, once a trusted development deploy signs a `0.78.0` toolbox.
-None of this redesign is built yet; this entry records the decisions, and later entries record each step's evidence.
+The `guffbolt` harness, setup on the lease path and the thread, turn and run model ship in the follow-up.
+Its spec records each decision in his words.
 
 ### Coverage at `a76c03993`
 
@@ -148,7 +130,7 @@ The paused-clock regression failed on the prior driver at the sixty-five-second 
 
 The focused checks passed six sweeper tests and Clippy for the three affected daemon packages with all features and targets.
 Source lint passed forty-four rule tests and a clean scan; the repository shell-lint target also passed.
-The first focused integration invocation stopped at local infrastructure startup, before integration execution; its corrected invocation is tracked separately.
+The first focused integration invocation stopped at local infrastructure startup, before the integration tests ran; its corrected invocation is tracked separately.
 
 The current remote integration failures also identified stale startup, credential, lease-shape, supervision-order and migration-wait fixtures.
 The startup fixture now stages the shipping runner profile and points its owned service at that copy.
@@ -162,7 +144,7 @@ Acceptance stopped before product checks because the available signed toolbox di
 The signature and version checks remain enforced.
 Its separate stale-lock cleanup defect is repaired by unlinking the acquired lock file, matching the existing exclusive-create protocol.
 
-Indy requested an adversarial review of maintenance placement and authoring orchestration before further architectural changes.
+Indy requested an adversarial review of maintenance placement and the authoring flow before further architectural changes.
 Authoring currently uses its own runner loop and sends scoped model requests back to the daemon's provider broker.
 The review must assess a `guffbolt` authoring adapter, runner-owned provider sends and separate bounded maintenance workers while preserving authority and accounting.
 
@@ -208,8 +190,8 @@ The API query's workspace filter returned one row from one workspace.
 Synthetic ciphertext does not prove decryption, and query plans do not prove concurrent race safety.
 
 The saved source hashes match the repaired credential, authoring, memory and vault queries after the main reconciliation.
-All thirteen subsequent audit-stamp statements prepared successfully under `api_runtime`; their exact hashes are retained in the artifact.
-This artifact does not claim every SQL statement received an execution plan.
+All thirteen subsequent audit-stamp statements prepared successfully under `api_runtime`; their exact hashes are retained in the baseline file.
+This file does not claim every SQL statement received a query plan.
 
 ### Post-M246 verification
 
@@ -533,6 +515,7 @@ The reported deployed Appearance failure remains unreproduced.
 
 Runner-delivery and retry implementation is recorded in the transport extension below.
 The lease-health extension below is under validation.
+
 A configurable maximum lease runtime must be saved when each lease is issued.
 Reading each replica's current runtime setting would break the promised immutable ceiling during a profile change.
 
@@ -597,6 +580,7 @@ Runner        -> bounded call loop -> accepted correction allowance
 
 The compiled protocol ceilings remain eight calls, five minutes and one correction.
 Human replies and late approvals receive no new expiry rule.
+
 The clean focused run passed 1570 datastore-free tests and 402 live checks.
 The source fingerprint is `5f4cc7c8606328c9be93aae9b96ece9d05c6a95b5bca73ea9aa7bfa8b8d2649c`.
 Workspace Rust lint and the unused-dependency check passed.
@@ -635,6 +619,7 @@ Full repository verification, greater-than-99% coverage, acceptance and performa
 
 The full Rust unit lanes passed 1834 runner tests, 203 daemon tests and 3754 library tests: 5791 total.
 App coverage passed at 100% across 529 production files, covering all 10,403 measured lines.
+
 The overall unit command was cancelled during website coverage after the owner requested benchmarks first and the remaining checks in CI.
 Rust coverage has not yet been measured on this candidate; the greater-than-99% requirement remains open.
 
