@@ -478,7 +478,7 @@ Every runner-reported figure is capped at `MAX_RUN`. For a reclaimed event, `que
 
 The segments do not partition the round trip; the sandbox wait runs beside the model's time. A start the span cannot place falls back to the end less the reported `wall_ms`. Per-fleet p95 and p99 come from Tempo on `gen_ai.agent.id` (`playbooks/operations/observability/002_round_trip_percentiles.md`).
 
-Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complete`, `run_to_report` and `report_to_complete`. They sit beside its first-chunk stages and are recorded at the publish.
+Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complete`, `assign_to_report` and `report_to_complete`. They sit beside its first-chunk stages and are recorded at the publish.
 
 **Daemon verb spans name the stages a chat crosses.** A verb builds a stage clock from `af_observability`'s `verb_span` module at its entry. It marks each boundary it reaches and records one root span when it ends, on every exit. The span goes through the global tracer, asked for at record time, as `fleet.delivery` does.
 
@@ -531,10 +531,10 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 |---|---|---|---|
 | Steer admitted (`afd_api_tenant` steer handler, `afd_turns`) | `fleet_steer_failed` on refusal | `agentsfleet_admissions_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | `fleet.steer` with `admit` and `announce` |
 | Wake ring (`afd_bus::wake`) | `admission_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
-| Run issued (`afd_fleet` run delivery) | `runner_run_issued` with `queue_wait_ms`; `run_window_read_failed` | Gateway claim attempts and candidate counts; `delivery_stage{event_to_run}` | `fleet.offer` with its stages; none for an empty pass |
+| Run issued (`afd_fleet` run delivery) | `runner_run_issued` with `queue_wait_ms`; `run_window_read_failed` | Gateway claim attempts and candidate counts; `delivery_stage{event_to_assign}` | `fleet.offer` with its stages; none for an empty pass |
 | Fold claimed (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_run_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |
 | Run (runner `run_loop`) | `run_completed` / `run_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.run` with its segment attributes, same condition |
-| Report settled (`afd_fleet` run report) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{run_to_report, report_to_complete, event_to_complete}` | `fleet.report` with its stages; `fleet.delivery` with segment attributes |
+| Report settled (`afd_fleet` run report) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{assign_to_report, report_to_complete, event_to_complete}` | `fleet.report` with its stages; `fleet.delivery` with segment attributes |
 | First chunk (`afd_fleet` run activity) | none | `delivery_stage{run_to_first_chunk, event_to_first_chunk, run_to_first_chunk}` | none |
 | Automatic quarantine or lift (`afd_runner`) | `runner_cordoned`, `runner_cordon_lifted` after commit | `agentsfleet_runner_cordon_changes_total{change}` with `cordoned` or `lifted` | none |
 | Paired recovery (`afr_supervisor`) | `respawn_checkpoint_committed`, `respawn_checkpoint_restored` with event, run, fence and checkpoint identity | no checkpoint latency series yet | existing run span |

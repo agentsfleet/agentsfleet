@@ -12,7 +12,7 @@ use crate::run::affinity::Fence;
 use crate::run::settle::Reported;
 
 const DELIVERY_STAGE: &str = "agentsfleet_fleet_delivery_stage_seconds";
-const STAGES: [&str; 3] = ["event_to_complete", "run_to_report", "report_to_complete"];
+const STAGES: [&str; 3] = ["event_to_complete", "assign_to_report", "report_to_complete"];
 
 /// When the fixture event was created.
 const fn created() -> Timestamp {
