@@ -21,7 +21,8 @@ The [specification](../done/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN
 Dimension 6.6 remains deferred and unperformed.
 
 This move does not grade the remaining acceptance checks as passed.
-R13 benchmarks, R14 greater-than-99% coverage, final automated acceptance and the SQL repairs below remain open.
+R13 benchmarks, R14 greater-than-99% coverage and final automated acceptance remain open.
+The SQL repair dispositions and measured costs are recorded below.
 The review closures are pushed at `2a88201a9`, including merge `b4c2d789c` of M246 main.
 
 ### Current shipping checks
@@ -63,6 +64,52 @@ Its [coverage run](https://github.com/agentsfleet/agentsfleet/actions/runs/44375
 
 Those runs name the tested parent revision explicitly; no new run on the merge commit is claimed.
 The final branch's greater-than-99% patch and per-file requirement still needs its own reports.
+
+### Refreshed recovery observations
+
+The [refreshed samples](../../../bench/baselines/lease-recovery-api.refresh.rig.json) use the optimized production and harness build at `7bc027bed`.
+The checkout's later integration-fixture repair changed no included production or benchmark input.
+The record retains the executable hash, harness input hashes, exact commands and failure evidence.
+
+| Shared workspace cohort | Frozen baseline `d4823563e8` | Refreshed `7bc027bed` | Refreshed last fleet |
+| --- | --- | --- | --- |
+| 1 fleet | 5.479 s | 3.971 s | 3.971 s |
+| 10 fleets, nearest-rank median | 24.765 s | 6.278 s | 6.308 s |
+| 100 fleets | 12 resumed within the observation window | Preparation timed out before checkpoint commitment | No recovery observation |
+
+Times start at lease expiry and end at the first resumed model request.
+The one-fleet replacement settled at 4.052 seconds; all ten replacements in the second cohort settled with fence two.
+Each row represents one run, with an API-only checkpoint and no workspace file transfer.
+
+The hundred-fleet attempt reached connected source runners and one hundred active leases, with no ready checkpoint when preparation timed out.
+Its exact cause remains unverified; no scale success or recovery latency follows from that failed preparation.
+These measurements precede the subsequent adaptive-maintenance repair and do not establish final-tree performance.
+
+### Maintenance and fixture follow-up
+
+The shared sweeper driver read its next interval before the completed pass updated its backlog state.
+Moving that read after the pass makes the next wait adopt the new interval immediately.
+The paused-clock regression failed on the prior driver at the sixty-five-second boundary, then passed after the repair.
+
+The focused checks passed six sweeper tests and Clippy for the three affected daemon packages with all features and targets.
+Source lint passed forty-four rule tests and a clean scan; the repository shell-lint target also passed.
+The first focused integration invocation stopped at local infrastructure startup, before integration execution; its corrected invocation is tracked separately.
+
+The current remote integration failures also identified stale startup, credential, lease-shape, supervision-order and migration-wait fixtures.
+The startup fixture now stages the shipping runner profile and points its owned service at that copy.
+The credential control now declares its integration and issued setup revision, preserving the original refusal assertions.
+
+Its native definition name is now the slug `credential-isolation`; the earlier display-style name failed admission with `InvalidName`.
+On Nov 19, 2026 the focused live run passed all five cases: migration lock, both authoring-mint cases, lease shape and supervision order.
+The startup fixture needs systemd on Linux, so the kernel coverage job is its proof.
+
+Acceptance stopped before product checks because the available signed toolbox did not admit runner version `0.78.0`.
+The signature and version checks remain enforced.
+Its separate stale-lock cleanup defect is repaired by unlinking the acquired lock file, matching the existing exclusive-create protocol.
+
+Indy requested an adversarial review of maintenance placement and authoring orchestration before further architectural changes.
+Authoring currently uses its own runner loop and sends scoped model requests back to the daemon's provider broker.
+The review must assess a `guffbolt` authoring adapter, runner-owned provider sends and separate bounded maintenance workers while preserving authority and accounting.
 
 ### Populated SQL comparison
 

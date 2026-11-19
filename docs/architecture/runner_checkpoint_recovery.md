@@ -77,6 +77,25 @@ Daemon provider connection and parsed-stream inactivity limits live under `[infe
 The same checked values configure both the physical client and semantic stream reader.
 Customizing them creates a separate provider pool, preserving the storage and GitHub timeout policy.
 
+`[inference]` configures outbound provider requests; it does not define a local model server.
+The daemon and runner each read their own profile and construct their own HTTP clients.
+
+```text
+Fleet execution:
+  runner agent loop -> selected external provider
+
+Private setup:
+  runner authoring loop -> daemon scoped model broker -> selected external provider
+```
+
+The authoring broker assembles protected context, resolves the provider key, records dispatch identity and usage, and returns normalized results.
+An authoring runner receives a scoped capability; it receives no provider key through that lease.
+The daemon's `[inference]` settings govern these brokered requests; the runner's matching fields govern its direct provider requests.
+
+Fleet execution uses `guffbolt::drive`; private authoring currently has a separate loop in `afr_supervisor/src/authoring/turn.rs`.
+Using the shared loop and changing provider-request placement are independent changes.
+The `Conversation::sample` implementation determines where a provider request runs.
+
 `[outbound.retries]` controls inline vendor-delivery attempts and exponential pauses.
 Exhausting that budget leaves the durable obligation available to later claims.
 The delivery scan cadence remains under `[maintenance.outbound_delivery]`.
