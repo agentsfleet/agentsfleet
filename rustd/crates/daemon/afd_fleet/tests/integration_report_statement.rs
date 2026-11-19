@@ -244,13 +244,13 @@ async fn one_statement_report_replay_returns_stored_outcome() {
         .count();
     assert_eq!((settled, repeated), (1, COPIES - 1));
     assert_eq!(runtime_lines(&held).await.len(), 1, "one runtime line");
-    let obligations = scalar(
+    let deliveries = scalar(
         &held,
-        "SELECT count(*) FROM fleet.obligations WHERE event_id = $1",
+        "SELECT count(*) FROM fleet.deliveries WHERE event_id = $1",
         &held.event_id,
     )
     .await;
-    assert_eq!(obligations, 1, "one obligation");
+    assert_eq!(deliveries, 1, "one delivery");
     held.fixtures.cleanup().await;
 }
 

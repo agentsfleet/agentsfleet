@@ -1,4 +1,4 @@
-//! Pre-claim refusal survives reload with a bounded action and no obligation.
+//! Pre-claim refusal survives reload with a bounded action and no delivery.
 
 use super::{claim, fixture, funded, queue};
 use af_core::error_code;

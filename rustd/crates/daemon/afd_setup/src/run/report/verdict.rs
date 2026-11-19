@@ -1,4 +1,4 @@
-//! Unknown obligations take precedence over any ordinary retryable outcome.
+//! Unknown deliveries take precedence over any ordinary retryable outcome.
 
 use af_wire::authoring::{FailureReason, Outcome};
 

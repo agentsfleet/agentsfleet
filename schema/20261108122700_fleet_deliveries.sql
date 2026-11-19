@@ -1,7 +1,7 @@
 -- An answer owed to a destination until delivered or abandoned. A lane is one (provider,
 -- workspace) pair ordered by `sequence`. Every claim writes a fresh `receipt` and every later
 -- write matches it, so a lapsed holder's late write changes nothing.
-CREATE TABLE fleet.obligations (
+CREATE TABLE fleet.deliveries (
     id              UUID PRIMARY KEY,
     sequence        BIGINT GENERATED ALWAYS AS IDENTITY,
     fleet_id        UUID   NOT NULL REFERENCES fleet.fleets(id) ON DELETE CASCADE,
@@ -18,11 +18,11 @@ CREATE TABLE fleet.obligations (
     abandoned_at    TIMESTAMPTZ(3),
     created_at      TIMESTAMPTZ(3) NOT NULL,
     updated_at      TIMESTAMPTZ(3) NOT NULL,
-    CONSTRAINT uq_obligations_fleet_id_event_id UNIQUE (fleet_id, event_id)
+    CONSTRAINT uq_deliveries_fleet_id_event_id UNIQUE (fleet_id, event_id)
 );
 
-CREATE INDEX idx_obligations_open_lane
-    ON fleet.obligations (provider, workspace_id, sequence)
+CREATE INDEX idx_deliveries_open_lane
+    ON fleet.deliveries (provider, workspace_id, sequence)
     WHERE delivered_at IS NULL AND abandoned_at IS NULL;
 
-GRANT SELECT, INSERT, UPDATE ON fleet.obligations TO api_runtime;
+GRANT SELECT, INSERT, UPDATE ON fleet.deliveries TO api_runtime;

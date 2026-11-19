@@ -26,22 +26,22 @@ const RUN_SPACING_MS: i64 = 10 * SLICE_MS;
 
 /// One owed row, as the ledger holds it.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Obligation {
+pub(crate) struct Delivery {
     pub(crate) provider: String,
     pub(crate) destination: Option<String>,
     pub(crate) event_id: Uuid7,
     pub(crate) answer: String,
 }
 
-/// Every obligation this fleet holds, oldest first.
-pub(crate) async fn obligations(fixtures: &Fixtures, fleet: &Uuid7) -> Vec<Obligation> {
+/// Every delivery this fleet holds, oldest first.
+pub(crate) async fn deliveries(fixtures: &Fixtures, fleet: &Uuid7) -> Vec<Delivery> {
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "SELECT provider, destination, event_id, answer FROM fleet.obligations \
+        "SELECT provider, destination, event_id, answer FROM fleet.deliveries \
          WHERE fleet_id = $1 ORDER BY created_at, sequence",
     )
     .bind(fleet)
@@ -49,7 +49,7 @@ pub(crate) async fn obligations(fixtures: &Fixtures, fleet: &Uuid7) -> Vec<Oblig
     .await
     .expect("the ledger answers")
     .into_iter()
-    .map(|row| Obligation {
+    .map(|row| Delivery {
         provider: row.try_get(0).expect("provider is text"),
         destination: row.try_get(1).expect("destination is nullable text"),
         event_id: row.try_get(2).expect("event_id is a uuid"),
@@ -155,14 +155,14 @@ impl Stage {
             .await
             .expect("a pooled connection");
         sqlx::query_scalar(
-            "SELECT receipt FROM fleet.obligations
+            "SELECT receipt FROM fleet.deliveries
           WHERE fleet_id = $1 AND event_id = $2",
         )
         .bind(&self.fleet)
         .bind(event)
         .fetch_optional(&mut *connection)
         .await
-        .expect("the obligation read answers")
+        .expect("the delivery read answers")
     }
 
     /// Admits one event from `producer`, stating `reply`.

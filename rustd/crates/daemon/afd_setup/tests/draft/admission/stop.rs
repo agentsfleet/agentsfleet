@@ -1,4 +1,4 @@
-//! Stop racing a send or a claim never doubles a run or drops an obligation,
+//! Stop racing a send or a claim never doubles a run or drops an delivery,
 //! and the report a runner retained across the Stop settles exactly once.
 
 use super::{Fixture, claim, mint, now, queue};
@@ -12,7 +12,7 @@ use afd_setup::{
 const RUNTIME_DEBIT_NANOS: i64 = 100;
 
 /// `(active attempts, their reserved nanos)` for one draft.
-async fn obligations(f: &Fixture, draft: &Draft) -> (i64, i64) {
+async fn deliveries(f: &Fixture, draft: &Draft) -> (i64, i64) {
     sqlx::query_as(
         "SELECT count(*), COALESCE(sum(reserved_nanos),0)::bigint FROM authoring.attempts \
          WHERE draft_id=$1 AND status='active'",
@@ -20,7 +20,7 @@ async fn obligations(f: &Fixture, draft: &Draft) -> (i64, i64) {
     .bind(&draft.id)
     .fetch_one(&mut *f.connection().await)
     .await
-    .expect("owned obligations")
+    .expect("owned deliveries")
 }
 
 async fn balance(f: &Fixture) -> i64 {
@@ -90,7 +90,7 @@ async fn send_racing_stop_admits_new_work_and_the_retained_report_settles_once()
     let f = super::funded(2).await;
     let draft = queue(&f, "First").await;
     let first = claim(&f, &draft).await.expect("first request admitted");
-    let held = obligations(&f, &draft).await;
+    let held = deliveries(&f, &draft).await;
     assert_eq!(held.0, 1);
     assert!(held.1 > 0, "admission reserved a bound");
     let second = SendMessage {
@@ -112,13 +112,13 @@ async fn send_racing_stop_admits_new_work_and_the_retained_report_settles_once()
             .expect("new request can run after Stop"),
     };
     assert_eq!(second.sequence, "2");
-    let both = obligations(&f, &draft).await;
+    let both = deliveries(&f, &draft).await;
     assert_eq!(both.0, 2, "both attempts retain accounting");
     assert!(both.1 > held.1, "the old bound survives new admission");
     assert!(claim(&f, &draft).await.is_none(), "no duplicate admission");
     settle_once(&f, &first).await;
     assert_eq!(
-        obligations(&f, &draft).await.0,
+        deliveries(&f, &draft).await.0,
         1,
         "new attempt still owns its hold"
     );
@@ -128,7 +128,7 @@ async fn send_racing_stop_admits_new_work_and_the_retained_report_settles_once()
         .await
         .expect("Stop current turn");
     settle_once(&f, &second).await;
-    assert_eq!(obligations(&f, &draft).await, (0, 0));
+    assert_eq!(deliveries(&f, &draft).await, (0, 0));
     f.cleanup().await;
 }
 
@@ -168,13 +168,13 @@ async fn settle_once(f: &Fixture, first: &Claimed) {
 /// stopped; both leave at most one attempt holding its whole bound.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn claim_racing_stop_keeps_at_most_one_accounting_obligation() {
+async fn claim_racing_stop_keeps_at_most_one_accounting_delivery() {
     let f = super::funded(2).await;
     let draft = queue(&f, "Second").await;
     let (claimed, stopped) =
         tokio::join!(claim(&f, &draft), f.drafts.cancel(f.access(), &draft.id, 1));
     assert_eq!(stopped.expect("Stop commits").cancelled_through, "1");
-    let (live, reserved) = obligations(&f, &draft).await;
+    let (live, reserved) = deliveries(&f, &draft).await;
     assert_eq!(live, i64::from(claimed.is_some()));
     assert_eq!(
         reserved > 0,
@@ -192,7 +192,7 @@ async fn claim_racing_stop_keeps_at_most_one_accounting_obligation() {
             .await
             .expect("report after Stop");
         assert!(ack.settled);
-        assert_eq!(obligations(&f, &draft).await, (0, 0));
+        assert_eq!(deliveries(&f, &draft).await, (0, 0));
     }
     f.cleanup().await;
 }

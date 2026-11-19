@@ -6,7 +6,7 @@
 //! A worker that returns `Err` up its loop stops delivering. So a failure to
 //! POST, a bot token that is gone, an event row that vanished — none of them
 //! are errors: they are [`crate::Verdict`]s, which the lane acts on by
-//! stamping, releasing or abandoning the obligation. Only what stops the
+//! stamping, releasing or abandoning the delivery. Only what stops the
 //! worker from claiming or recording reaches this type: the host would not
 //! draw the entropy a claim token is minted from, the ledger's pool would not
 //! answer, or the ledger refused a claim, stamp, release or abandon.
@@ -38,11 +38,11 @@ pub(crate) enum ErrorKind {
         source: af_crypto::error::Error,
     },
 
-    /// The obligation ledger's pool would not hand out a connection.
+    /// The delivery ledger's pool would not hand out a connection.
     ///
     /// The ledger is the queue, so an unanswered pool stops claims until it
     /// answers again; nothing owed is lost meanwhile.
-    #[error("the ledger holding the delivery obligations would not answer")]
+    #[error("the ledger holding the delivery deliveries would not answer")]
     Ledger {
         #[source]
         source: afd_db::Error,

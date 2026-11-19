@@ -110,7 +110,7 @@ pub struct Limits {
 pub struct Run<C> {
     /// Durable run identity.
     pub run_id: String,
-    /// Content-free accounting obligation identity.
+    /// Content-free accounting delivery identity.
     pub attempt_id: String,
     /// Private source conversation identity.
     pub draft_id: String,

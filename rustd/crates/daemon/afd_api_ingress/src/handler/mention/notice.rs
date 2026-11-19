@@ -106,7 +106,7 @@ async fn owner<D: Services>(
 
 /// The channel's carrier: its oldest runnable fleet, whatever the notice is
 /// about. An archived fleet is never chosen, since it could not carry the
-/// obligation, so a channel with no runnable fleet has no carrier.
+/// delivery, so a channel with no runnable fleet has no carrier.
 fn carrier(subscribers: &[Subscriber]) -> Option<&Subscriber> {
     subscribers
         .iter()

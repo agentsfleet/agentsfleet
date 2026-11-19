@@ -133,7 +133,7 @@ impl Delivery {
         let (_, accepted) = self.reports.try_recv().unwrap();
         assert_eq!(
             &accepted, expected,
-            "settlement retries the same accounting obligation"
+            "settlement retries the same accounting delivery"
         );
         assert!(
             self.reports.try_recv().is_err(),

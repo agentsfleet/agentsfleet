@@ -80,12 +80,11 @@ async fn closed_retention_waits_for_a_live_authoring_run_then_purges_at_expiry()
         .await
         .expect("purge after live boundary");
     assert_eq!(f.counts().await, (0, 0, 0));
-    let obligations: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE id=$1")
-            .bind(a.id)
-            .fetch_one(&mut *f.connection().await)
-            .await
-            .expect("accounting remains");
-    assert_eq!(obligations, 1);
+    let deliveries: i64 = sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE id=$1")
+        .bind(a.id)
+        .fetch_one(&mut *f.connection().await)
+        .await
+        .expect("accounting remains");
+    assert_eq!(deliveries, 1);
     f.cleanup().await;
 }

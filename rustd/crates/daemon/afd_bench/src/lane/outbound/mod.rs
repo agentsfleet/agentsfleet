@@ -4,7 +4,7 @@
 //! # The shape of a run
 //!
 //! Owe N answers across D destination fleets, then start the real `Worker` and
-//! let it claim and drain them from `fleet.obligations`. Every job is
+//! let it claim and drain them from `fleet.deliveries`. Every job is
 //! paid by one workspace, so they share one (provider, workspace) lane and
 //! deliver one at a time: each job's latency includes the time every earlier
 //! job spent, which is exactly the head-of-line cost this lane measures.
@@ -41,7 +41,7 @@ use af_crypto::entropy::Entropy;
 use afd_connector::Provider;
 use afd_db::Db;
 use afd_db::test_util::{FleetSeed, TenantSeed, WorkspaceSeed};
-use afd_outbound::obligation::{self, Delivery};
+use afd_outbound::delivery::{self, Delivery};
 use afd_outbound::{Posters, Worker};
 use tokio_util::sync::CancellationToken;
 
@@ -139,7 +139,7 @@ pub async fn run(
         owe_all(&stores.database, &payer, &destinations, parameters.jobs).await?;
 
     let drained = drain(stores, poster.clone(), parameters).await?;
-    ledger.swept(sweep::outbound_obligations(&stores.database, &owed.rows).await?);
+    ledger.swept(sweep::outbound_deliveries(&stores.database, &owed.rows).await?);
 
     let mut report = Report::new(Lane::Outbound, profile, provenance);
     report.created = true;
@@ -202,12 +202,12 @@ async fn parents(database: &Db, prefix: &RunPrefix, destinations: &[&String]) ->
 /// What the owe loop handed out, under the two names each job goes by.
 ///
 /// The poster sees a job as the event it answers, so the latency clock is
-/// keyed by event; the sweep deletes by obligation row. One map keyed by row
+/// keyed by event; the sweep deletes by delivery row. One map keyed by row
 /// would never match a stamp, and every latency would silently drop out.
 struct Owed {
     /// When each job was owed, by the event it answers.
     queued_at: HashMap<Uuid7, Instant>,
-    /// Every obligation row this run inserted, for the sweep.
+    /// Every delivery row this run inserted, for the sweep.
     rows: Vec<Uuid7>,
 }
 
@@ -231,7 +231,7 @@ async fn owe_all(
         let event = crate::lane::run::seed::identifier(KIND_ANSWERED, index)?;
         let row = entropy.uuid7(af_core::clock::now())?;
         let token = entropy.uuid7(af_core::clock::now())?;
-        obligation::owe(
+        delivery::owe(
             &mut connection,
             &row,
             &token,

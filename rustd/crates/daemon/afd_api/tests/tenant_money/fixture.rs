@@ -51,7 +51,7 @@ impl Setup {
                 .execute(&mut *connection).await.expect("a settled setup line, including a paid failed attempt");
             sqlx::query("UPDATE authoring.attempts SET status='settled',usage_unknown=false,outcome=$2 WHERE id=$1")
                 .bind(attempt).bind(outcome)
-                .execute(&mut *connection).await.expect("settled obligation");
+                .execute(&mut *connection).await.expect("settled delivery");
         }
         sqlx::query(
             "UPDATE billing.usage_lines SET created_at=to_timestamp(101) WHERE tenant_id=$1",

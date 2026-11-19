@@ -20,7 +20,7 @@ use std::time::Duration;
 use af_core::id::Uuid7;
 use afd_connector::Provider;
 use afd_db::test_util::mint_id;
-use afd_outbound::obligation::{self, Delivery};
+use afd_outbound::delivery::{self, Delivery};
 use tokio_util::sync::CancellationToken;
 
 use self::ledger::{DESTINATION, Lane, Ledger, POLL, sql, until};
@@ -98,7 +98,7 @@ async fn lapsed_claim_is_retaken_and_the_late_stamp_refused() -> Result<(), &'st
     let lane = ledger.lane().await;
     ledger.owe(&lane, "only").await;
 
-    let first = obligation::claim(&ledger.database, 8, &mint_id())
+    let first = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the first claim");
     let [first] = first.as_slice() else {
@@ -106,11 +106,11 @@ async fn lapsed_claim_is_retaken_and_the_late_stamp_refused() -> Result<(), &'st
     };
     sql(
         &ledger.database,
-        "UPDATE fleet.obligations SET claim_expires_at = now() - interval '1 second' WHERE id = $1",
+        "UPDATE fleet.deliveries SET claim_expires_at = now() - interval '1 second' WHERE id = $1",
         &[&first.id],
     )
     .await;
-    let second = obligation::claim(&ledger.database, 8, &mint_id())
+    let second = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the retake");
     let [second] = second.as_slice() else {
@@ -118,11 +118,11 @@ async fn lapsed_claim_is_retaken_and_the_late_stamp_refused() -> Result<(), &'st
     };
     assert_eq!(second.id, first.id);
 
-    let stale_stamp = obligation::stamp_delivered(&ledger.database, first)
+    let stale_stamp = delivery::stamp_delivered(&ledger.database, first)
         .await
         .expect("the late stamp runs");
     assert!(!stale_stamp, "the first holder's late stamp updates 0 rows");
-    let current = obligation::stamp_delivered(&ledger.database, second)
+    let current = delivery::stamp_delivered(&ledger.database, second)
         .await
         .expect("the holder's stamp runs");
     assert!(current, "the current holder stamps");
@@ -181,17 +181,17 @@ async fn an_empty_answer_owes_nothing_and_a_repeat_owes_once() {
         answer,
     };
     assert!(
-        !obligation::owe(&mut connection, &mint_id(), &mint_id(), delivery(""))
+        !delivery::owe(&mut connection, &mint_id(), &mint_id(), delivery(""))
             .await
             .expect("owe")
     );
     assert!(
-        obligation::owe(&mut connection, &mint_id(), &mint_id(), delivery("x"))
+        delivery::owe(&mut connection, &mint_id(), &mint_id(), delivery("x"))
             .await
             .expect("owe")
     );
     assert!(
-        !obligation::owe(&mut connection, &mint_id(), &mint_id(), delivery("x"))
+        !delivery::owe(&mut connection, &mint_id(), &mint_id(), delivery("x"))
             .await
             .expect("owe")
     );
@@ -210,7 +210,7 @@ async fn a_late_commit_waits_behind_a_held_claim() -> Result<(), &'static str> {
     let (early, early_event) = owe_uncommitted(&ledger, &lane, "early").await;
     let late_event = ledger.owe(&lane, "late").await;
 
-    let first = obligation::claim(&ledger.database, 8, &mint_id())
+    let first = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the first claim");
     let [holding] = first.as_slice() else {
@@ -219,16 +219,16 @@ async fn a_late_commit_waits_behind_a_held_claim() -> Result<(), &'static str> {
     assert_eq!(holding.outgoing.event_id, late_event);
     early.commit().await.expect("the earlier report commits");
 
-    let while_held = obligation::claim(&ledger.database, 8, &mint_id())
+    let while_held = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the second claim");
     assert!(while_held.is_empty(), "a held lane offers nothing more");
     assert!(
-        obligation::stamp_delivered(&ledger.database, holding)
+        delivery::stamp_delivered(&ledger.database, holding)
             .await
             .expect("the holder stamps")
     );
-    let after = obligation::claim(&ledger.database, 8, &mint_id())
+    let after = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the claim after delivery");
     let [next] = after.as_slice() else {
@@ -251,7 +251,7 @@ async fn owe_uncommitted(
         .await
         .expect("the report's transaction");
     let event = mint_id();
-    obligation::owe(
+    delivery::owe(
         &mut report,
         &mint_id(),
         &mint_id(),
@@ -285,7 +285,7 @@ async fn claimers_released_together_hold_one_row_per_lane() {
         let (database, barrier) = (ledger.database.clone(), std::sync::Arc::clone(&barrier));
         claims.spawn(async move {
             barrier.wait().await;
-            obligation::claim(&database, 8, &mint_id())
+            delivery::claim(&database, 8, &mint_id())
                 .await
                 .expect("a claim")
                 .len()

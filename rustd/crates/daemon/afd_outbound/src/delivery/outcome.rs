@@ -1,6 +1,6 @@
-//! What a delivery cycle did to an obligation: counted, delivered, or given up.
+//! What a delivery cycle did to an delivery: counted, delivered, or given up.
 //!
-//! Split from `obligation.rs` at the file cap, along the line its own note
+//! Split from `delivery.rs` at the file cap, along the line its own note
 //! draws between OWING an answer and DELIVERING one. Everything here runs on
 //! the holder's side, once per cycle, and each write matches the holder's
 //! token, so a holder whose claim lapsed changes nothing.
@@ -17,7 +17,7 @@ const CONTEXT_STAMP: &str = "stamp delivered";
 const CONTEXT_COUNT: &str = "count delivery attempt";
 
 /// Statement name, for the context an abandon failure carries.
-const CONTEXT_ABANDON: &str = "abandon obligation";
+const CONTEXT_ABANDON: &str = "abandon delivery";
 
 /// Why an answer was given up on.
 ///
@@ -48,7 +48,7 @@ impl AbandonReason {
     }
 }
 
-/// Record that this holder has taken the obligation for a delivery cycle,
+/// Record that this holder has taken the delivery for a delivery cycle,
 /// and hold the claim for a fresh [`CLAIM_TTL`](super::CLAIM_TTL) from now.
 ///
 /// Answers the count this call produced, or `None` when the row was already

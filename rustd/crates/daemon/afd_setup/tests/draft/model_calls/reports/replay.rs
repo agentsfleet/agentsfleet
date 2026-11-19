@@ -184,5 +184,5 @@ async fn attempt_status(f: &Fixture, a: &Attempt) -> String {
         .bind(&a.id)
         .fetch_one(&mut *f.connection().await)
         .await
-        .expect("the accounting obligation outlives private rows")
+        .expect("the accounting delivery outlives private rows")
 }

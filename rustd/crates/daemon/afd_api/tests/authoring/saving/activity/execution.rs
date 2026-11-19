@@ -38,7 +38,7 @@ async fn assert_no_work(saved: &Saved) {
          (SELECT count(*) FROM runner.runs WHERE fleet_id=$1),
          (SELECT count(*) FROM runner.slots WHERE fleet_id=$1),
          (SELECT count(*) FROM billing.usage_lines WHERE fleet_id=$1),
-         (SELECT count(*) FROM fleet.obligations WHERE fleet_id=$1)",
+         (SELECT count(*) FROM fleet.deliveries WHERE fleet_id=$1)",
     )
     .bind(&saved.fleet)
     .fetch_one(&mut *saved.case.base.db.acquire().await.expect("work connection"))

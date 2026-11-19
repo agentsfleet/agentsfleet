@@ -1,5 +1,5 @@
 -- The fleet's report: `shared/settle_run.sql` with the fleet's usage lines, admission,
--- event, obligation, session and tool records in the same statement. A change to the
+-- event, delivery, session and tool records in the same statement. A change to the
 -- shared bookkeeping belongs in both.
 --
 -- A terminal report in one statement: every write the report's
@@ -32,7 +32,7 @@
 -- $32 failure label · $33 failure detail · $34 tool calls · $35 the status an
 -- open event holds · $36 the pending gate status · $37 the session document ·
 -- $38 the hold the runner asked for · $39 the hold's idle cap ·
--- $40 the obligation's id · $41 its receipt ·
+-- $40 the delivery's id · $41 its receipt ·
 -- $42 the connectors an answer can be owed to · $43 the audit row's id ·
 -- $44 its event type · $45 its metadata · $46 the fleet · $47 its workspace ·
 -- $48 the longest runtime one line may claim · $49 the runtime line kind ·
@@ -207,7 +207,7 @@ WITH scope AS MATERIALIZED (
   WHERE s.fleet_id = m.fleet_id AND s.fencing_token = m.fencing_token
   RETURNING s.hold_expires_at
 ), owed AS (
-  INSERT INTO fleet.obligations
+  INSERT INTO fleet.deliveries
     (id, fleet_id, workspace_id, provider, destination, event_id, answer,
      receipt, claim_expires_at, delivered_at, attempt_count, created_at, updated_at)
   -- A run that wrote nothing owes nothing, unless it failed: then its thread
@@ -218,7 +218,7 @@ WITH scope AS MATERIALIZED (
   CROSS JOIN settled d
   WHERE d.reply_provider = ANY($42::text[])
     AND COALESCE(NULLIF($29::text, ''), $51::text) IS NOT NULL
-  ON CONFLICT ON CONSTRAINT uq_obligations_fleet_id_event_id DO NOTHING
+  ON CONFLICT ON CONSTRAINT uq_deliveries_fleet_id_event_id DO NOTHING
   RETURNING id
 ), audit AS (
   INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)

@@ -16,7 +16,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::obligation::Outgoing;
+use crate::delivery::Outgoing;
 use afd_connector::Provider;
 use backon::Retryable as _;
 use tokio_util::sync::CancellationToken;

@@ -4,7 +4,7 @@
 //! Split from [`super`], which holds the poster, so the vendor call and the
 //! classification of its answer read apart. Nothing here makes a request.
 
-use crate::obligation::Outgoing;
+use crate::delivery::Outgoing;
 use afd_connector::slack::Thread;
 
 use super::{

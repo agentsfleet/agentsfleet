@@ -5,8 +5,8 @@
 )]
 
 use super::*;
+use crate::delivery::{Claimed, Outgoing};
 use crate::lanes::LANE_DEPTH;
-use crate::obligation::{Claimed, Outgoing};
 use af_core::id::Uuid7;
 
 mod capacity;

@@ -23,7 +23,7 @@ closed_set! {
         DecisionRecord => "decision_record",
         /// Release reservations natively proved unsent after their deadline.
         DecisionSweep => "decision_sweep",
-        /// Acknowledge accepted input at its original obligation.
+        /// Acknowledge accepted input at its original delivery.
         InputReceipt => "input_receipt",
         /// Allocate and issue one native exact-head publication.
         EffectPublish => "effect_publish",

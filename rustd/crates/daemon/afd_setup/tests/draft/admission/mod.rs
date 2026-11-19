@@ -2,13 +2,13 @@
 
 mod capacity;
 mod context;
+mod deliveries;
 mod discovery;
 mod failure;
 mod fixture;
 mod funnel;
 mod history;
 mod identity;
-mod obligations;
 mod offered;
 mod placement;
 mod platform;

@@ -23,7 +23,7 @@ use crate::fixture::RunPrefix;
 const DELETE_RUNNERS: &str = include_str!("sql/delete_runners.sql");
 
 /// A run's owed answers, by row id.
-const DELETE_OBLIGATIONS: &str = include_str!("sql/delete_obligations.sql");
+const DELETE_DELIVERIES: &str = include_str!("sql/delete_deliveries.sql");
 
 /// A run's fleets; their revisions, events and slots go with them.
 const DELETE_FLEETS: &str = include_str!("sql/delete_fleets.sql");
@@ -81,17 +81,17 @@ async fn rows(database: &Db, pattern: &str) -> Result<u64> {
 ///
 /// The happy path: the lane holds every id it owed, so it removes exactly
 /// those. A run that failed before it could is covered by [`everything`]:
-/// deleting the run's fleets cascades to their obligations.
+/// deleting the run's fleets cascades to their deliveries.
 ///
 /// # Errors
 ///
 /// Whatever Postgres refused.
-pub async fn outbound_obligations(database: &Db, ids: &[Uuid7]) -> Result<u64> {
+pub async fn outbound_deliveries(database: &Db, ids: &[Uuid7]) -> Result<u64> {
     if ids.is_empty() {
         return Ok(0);
     }
     let mut connection = database.acquire().await?;
-    let removed = sqlx::query(DELETE_OBLIGATIONS)
+    let removed = sqlx::query(DELETE_DELIVERIES)
         .bind(ids)
         .execute(&mut *connection)
         .await?;

@@ -94,7 +94,7 @@ pub trait TaskLifecycle: Send + Sync + std::fmt::Debug {
     ) -> TaskFuture<'a, af_wire::task::CheckpointPlan>;
     /// Reconcile issued effects using bounded expiring read-only custody, including after deletion.
     fn maintain_effects(&self) -> TaskFuture<'_, super::EffectMaintenance>;
-    /// Acknowledge accepted input application or its own original reply obligation.
+    /// Acknowledge accepted input application or its own original reply delivery.
     fn accept_input<'a>(
         &'a self,
         run: TaskRun<'a>,

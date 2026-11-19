@@ -25,7 +25,7 @@
 //! is the isolation that does the work; a database per test was belt over
 //! braces, and the braces are the ones holding.
 //!
-//! **The obligation it puts on a test:** assert on rows you MINTED, never on a
+//! **The delivery it puts on a test:** assert on rows you MINTED, never on a
 //! table's whole contents. A count must carry a workspace or a tenant in its
 //! predicate. `SELECT count(*) FROM …` with no `WHERE` is a test that will pass
 //! alone and fail beside its neighbours.

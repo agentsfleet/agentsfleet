@@ -73,7 +73,7 @@ pub(super) async fn attempts(f: &Fixture) -> i64 {
         .bind(&f.workspace)
         .fetch_one(&mut *f.connection().await)
         .await
-        .expect("owned obligations")
+        .expect("owned deliveries")
 }
 
 pub(super) async fn balance(f: &Fixture, nanos: i64) {

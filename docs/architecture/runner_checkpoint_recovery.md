@@ -97,7 +97,7 @@ Using the shared loop and changing provider-request placement are independent ch
 The `Conversation::sample` implementation determines where a provider request runs.
 
 `[outbound.retries]` controls inline vendor-delivery attempts and exponential pauses.
-Exhausting that budget leaves the durable obligation available to later claims.
+Exhausting that budget leaves the durable delivery available to later claims.
 The delivery scan cadence remains under `[maintenance.outbound_delivery]`.
 
 The runner owns a separate profile at `deploy/baremetal/agentsfleet-runner.toml`.

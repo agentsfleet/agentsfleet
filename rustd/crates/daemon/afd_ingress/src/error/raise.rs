@@ -21,7 +21,7 @@ af_core::error_lifts!(Error, ErrorKind:
     af_fleet_runtime::Error => ConfigUnreadable,
     af_crypto::error::Error => Entropy,
     af_core::error::Error => Identifier,
-    afd_outbound::error::Error => Obligation,
+    afd_outbound::error::Error => Delivery,
 );
 
 /// Reports a statement that failed, naming what it was doing.
@@ -165,15 +165,15 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             ErrorKind::Identifier { source: identifier }.into(),
         ),
         (
-            "obligation unreachable",
-            ErrorKind::Obligation {
+            "delivery unreachable",
+            ErrorKind::Delivery {
                 source: ledger_outage,
             }
             .into(),
         ),
         (
-            "obligation answered",
-            ErrorKind::Obligation {
+            "delivery answered",
+            ErrorKind::Delivery {
                 source: ledger_answered,
             }
             .into(),

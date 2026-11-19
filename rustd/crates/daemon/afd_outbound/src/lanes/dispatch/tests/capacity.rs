@@ -3,7 +3,7 @@
 use std::future::ready;
 use std::task::{Context, Poll, Waker};
 
-use crate::obligation::Outgoing;
+use crate::delivery::Outgoing;
 use af_core::env::MapEnv;
 use afd_db::{
     Db,

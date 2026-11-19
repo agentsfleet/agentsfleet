@@ -21,7 +21,7 @@ categories.workspace = true
 # that crate's `test-util`. Building the sample by hand instead would let this
 # crate's idea of a ledger outage drift from the ledger's. `af_crypto`'s is
 # the mocked entropy source a failed draw for a binding id is sampled from, and
-# `afd_outbound`'s the ledger failures a notice's obligation can raise.
+# `afd_outbound`'s the ledger failures a notice's delivery can raise.
 test-util = ["afd_turns/test-util", "af_core/test-util", "af_crypto/test-util", "afd_outbound/test-util"]
 
 [dependencies]
@@ -33,8 +33,8 @@ afd_turns.workspace = true
 # The Slack thread a mention's fleet is told: the read and its reasons live
 # with the connector that holds the token, and this crate composes the result.
 afd_connector.workspace = true
-# The obligation ledger a notice is owed through: the one module that owns
-# `fleet.obligations`, so a notice and an answer are owed alike.
+# The delivery ledger a notice is owed through: the one module that owns
+# `fleet.deliveries`, so a notice and an answer are owed alike.
 afd_outbound.workspace = true
 # Identifiers, the instant a delivery is stamped with, and the registry codes.
 af_core = { workspace = true, features = ["sqlx"] }

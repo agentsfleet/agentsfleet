@@ -154,11 +154,11 @@ async fn failed(f: &Fixture, draft: &Draft) -> Failure {
 }
 
 // Value: protects=unknown provider usage never locks the chat: fresh text is accepted and claimed
-// while the old attempt's obligation stays recorded; fails_when=Send or claim waits behind an
+// while the old attempt's delivery stays recorded; fails_when=Send or claim waits behind an
 // attempt only accounting still holds; seam=physical provider only.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn unknown_work_keeps_its_obligation_while_a_fresh_message_runs() {
+async fn unknown_work_keeps_its_delivery_while_a_fresh_message_runs() {
     let f = funded(2).await;
     let operation = mint();
     let draft = f
@@ -201,7 +201,7 @@ async fn unknown_work_keeps_its_obligation_while_a_fresh_message_runs() {
         .bind(&draft.id)
         .fetch_one(&mut *f.connection().await)
         .await
-        .expect("old obligation retained");
+        .expect("old delivery retained");
     assert_eq!(retained, (2, true), "the unknown usage is still owed");
     assert_eq!(
         failed(&f, &draft).await.recovery_action,
@@ -249,7 +249,7 @@ async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
         .bind(&draft.id)
         .fetch_one(&mut *f.connection().await)
         .await
-        .expect("old obligation retained");
+        .expect("old delivery retained");
     assert_eq!(retained, (2, true));
     assert_eq!(
         failed(&f, &draft).await.recovery_action,

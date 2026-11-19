@@ -1,4 +1,4 @@
-//! Late source obligations must revoke a goal report when acknowledgement fails.
+//! Late source deliveries must revoke a goal report when acknowledgement fails.
 use super::*;
 use std::sync::atomic::AtomicUsize;
 

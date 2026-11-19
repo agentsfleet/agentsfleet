@@ -5,7 +5,7 @@ use std::future::pending;
 use std::time::Duration;
 
 use super::hold_claim;
-use crate::obligation::{CLAIM_RENEW, CLAIM_TTL};
+use crate::delivery::{CLAIM_RENEW, CLAIM_TTL};
 
 #[tokio::test(start_paused = true)]
 async fn a_renewal_that_never_answers_gives_the_claim_up_before_it_lapses() {

@@ -291,7 +291,7 @@ async fn unresolved_model_context_leaves_source_unanswered_and_blocks_actions() 
     );
     assert!(
         output.recovery.is_some(),
-        "pending obligations remain recoverable"
+        "pending deliveries remain recoverable"
     );
     Ok(())
 }

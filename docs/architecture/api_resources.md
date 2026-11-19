@@ -393,7 +393,7 @@ No separate model-call read route or raw provider response exists.
    Exact completed replay rechecks live authorization and returns the saved result without another provider call or charge.
    Changed-body reuse returns REPLAY.
 
-   A crash after dispatch intent, a lost provider reply, or missing usage marks the obligation unknown and fences further calls. Never redispatch that intent.
+   A crash after dispatch intent, a lost provider reply, or missing usage marks the delivery unknown and fences further calls. Never redispatch that intent.
 
 6. Stop, delete, membership/model revocation, terminal settlement, and expiry invalidate the capability through the guarded attempt state. Authorization commits are the dispatch boundary: revocation first prevents dispatch; a previously authorized call may finish upstream and incur usage. Its late text cannot publish after fencing.
 
@@ -412,7 +412,7 @@ The [shared chat explanation](shared_chat_verification.md#backend-ownership) des
 The authoring capability grants no runtime tools, memory, schedules, fleet messages or credential minting.
 Fleet runtime credentials retain their separate path through `afd_fleet`'s run answer and `af_providers`' connect module.
 
-`Meter={knowledge:"known"|"unknown",calls,input_tokens?,output_tokens?,runtime_ms,provider_cost_nanos?}` is cumulative, monotone, and bound-checked against pinned model prices. Daemon dispatch receipts supply authoritative provider usage; runner meters cannot replace those facts or clear an unknown obligation. Unknown usage is never relabeled known by local estimates.
+`Meter={knowledge:"known"|"unknown",calls,input_tokens?,output_tokens?,runtime_ms,provider_cost_nanos?}` is cumulative, monotone, and bound-checked against pinned model prices. Daemon dispatch receipts supply authoritative provider usage; runner meters cannot replace those facts or clear an unknown delivery. Unknown usage is never relabeled known by local estimates.
 
 Report/cancel/deletion share the guarded attempt row; terminal replay can confirm accounting without resurrecting text. Daemon claim and both renewal kinds share host capacity enforcement. Details and deletion-copy limits: [runner design](runner_fleet.md#authoring-runs).
 
@@ -458,7 +458,7 @@ The following codes name the route tables' error categories. Read the operation'
 | GONE | `UZ-AUTHOR-013` | 410 | Accepted resource was purged; recreation is refused within the original 24-hour replay window. |
 | PROVIDER | `UZ-AUTHOR-014` | 502 | Provider failed with known usage; store bounded failure and permit explicit retry. |
 | UNKNOWN | `UZ-AUTHOR-015` | 409 | Dispatch/usage unresolved; retain its bound. Stop permits a new message beyond its cutoff while accounting remains unresolved. |
-| TIMEOUT | `UZ-AUTHOR-016` | 504 | Attempt timed out; safe retry only when its provider obligation is resolved. |
+| TIMEOUT | `UZ-AUTHOR-016` | 504 | Attempt timed out; safe retry only when its provider delivery is resolved. |
 | DEPENDENCY | Existing `UZ-INTERNAL-001` | 503 | Required datastore unavailable; no guessed success. |
 
 Oversized HTTP envelopes use existing `UZ-REQ-002` with its registered413. Validation detail names the offending field without echoing private message content. Provider failures become message state and accounting knowledge, not a fabricated completion.

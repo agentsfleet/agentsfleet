@@ -1,4 +1,4 @@
-//! `fleet.obligations` — every statement that touches the table, and the
+//! `fleet.deliveries` — every statement that touches the table, and the
 //! shapes that address it.
 //!
 //! # Why one module owns the table
@@ -44,9 +44,9 @@ const _: () = assert!(
 pub const CLAIM_RENEW_MAX: Duration = Duration::from_secs(CLAIM_TTL.as_secs() / 3);
 
 /// Statement name, for the context a claim failure carries.
-const CONTEXT_CLAIM: &str = "claim obligations";
+const CONTEXT_CLAIM: &str = "claim deliveries";
 /// Statement name, for the context a renewal or release failure carries.
-const CONTEXT_HOLD: &str = "hold obligation claim";
+const CONTEXT_HOLD: &str = "hold delivery claim";
 /// Statement name, for the context an owe failure carries.
 const CONTEXT_OWE: &str = "owe delivery";
 
@@ -97,7 +97,7 @@ pub struct Outgoing {
 /// One claimed answer, as the holder delivers it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Claimed {
-    /// The obligation row.
+    /// The delivery row.
     pub id: Uuid7,
     /// What the row asks to be posted.
     pub outgoing: Outgoing,
@@ -115,7 +115,7 @@ struct ClaimedRow {
 
 /// Owe this answer its delivery, on the caller's connection.
 ///
-/// Runs inside the report's transaction, so the obligation and the result it
+/// Runs inside the report's transaction, so the delivery and the result it
 /// describes share one fate. The row is written with the report's own token
 /// and an expired claim, so it is free to claim the moment the transaction
 /// commits.

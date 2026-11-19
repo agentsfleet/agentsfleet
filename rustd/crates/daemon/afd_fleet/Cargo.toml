@@ -86,7 +86,7 @@ scopeguard.workspace = true
 # `sql::event` and into the crate named for it, so `afd_approval` could reach
 # them without depending on runs, money, policy and four sweepers.
 afd_turns.workspace = true
-# Owns `fleet.obligations`: the report path commits an obligation through
+# Owns `fleet.deliveries`: the report path commits an delivery through
 # it. The edge runs fleet -> outbound and never back.
 afd_outbound.workspace = true
 # The one masker the product carries: an interim message is scrubbed of the
@@ -95,7 +95,7 @@ afd_outbound.workspace = true
 af_secrets.workspace = true
 # The admission producer identity and stored reply destination.
 # The connector a reply destination names, parsed from the admission row
-# once, so an obligation carries the type and never a model provider's
+# once, so an delivery carries the type and never a model provider's
 # string. Already in this crate's graph through `afd_outbound`.
 afd_connector.workspace = true
 # The HOST's plane. The run is issued TO a runner, so the run statements

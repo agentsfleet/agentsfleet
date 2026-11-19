@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use af_core::test_util::trace::Capture;
 use afd_db::test_util::mint_id;
+use afd_outbound::delivery;
 use afd_outbound::lanes::MAX_DELIVERY_CYCLES;
-use afd_outbound::obligation;
 use afd_outbound::{Lanes, Posters};
 use tokio_util::sync::CancellationToken;
 
@@ -50,7 +50,7 @@ async fn an_unknown_connector_is_abandoned_unaddressable() {
     let event = ledger.owe(&lane, "nowhere").await;
     crate::sql(
         &ledger.database,
-        "UPDATE fleet.obligations SET provider = 'retired' WHERE event_id = $1",
+        "UPDATE fleet.deliveries SET provider = 'retired' WHERE event_id = $1",
         &[&event],
     )
     .await;
@@ -95,7 +95,7 @@ async fn spent_cycles_abandon_the_answer() {
     let event = ledger.owe(&lane, "spent").await;
     crate::sql(
         &ledger.database,
-        "UPDATE fleet.obligations SET attempt_count = 11 WHERE event_id = $1",
+        "UPDATE fleet.deliveries SET attempt_count = 11 WHERE event_id = $1",
         &[&event],
     )
     .await;
@@ -221,7 +221,7 @@ async fn a_refusal_for_a_row_another_holder_took_is_neither_stamped_nor_announce
     let ledger = Ledger::create().await;
     let lane = ledger.lane().await;
     let event = ledger.owe(&lane, "taken before refused").await;
-    let claimed = obligation::claim(&ledger.database, 8, &mint_id())
+    let claimed = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the claim");
     assert_eq!(claimed.len(), 1, "one row is claimed");
@@ -270,10 +270,6 @@ async fn a_refusal_for_a_row_another_holder_took_is_neither_stamped_nor_announce
         0,
         "nothing to announce"
     );
-    assert_eq!(
-        said("outbound_obligation_abandon_failed"),
-        0,
-        "the write ran"
-    );
+    assert_eq!(said("outbound_delivery_abandon_failed"), 0, "the write ran");
     ledger.cleanup().await;
 }

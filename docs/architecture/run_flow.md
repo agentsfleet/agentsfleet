@@ -118,7 +118,7 @@ After commit, a bounded wake publish on `af.wake.<shard>` starts a gateway claim
 
 An expired slot exposes the same unsettled row. Redelivery preserves its event identity, original time and prior billing identity.
 
-A report settles the admission in the transaction that records usage, terminal state, checkpoint, slot release and any outbound obligation.
+A report settles the admission in the transaction that records usage, terminal state, checkpoint, slot release and any outbound delivery.
 See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) for budgets, notifications and recovery limits.
 
 ---
@@ -148,7 +148,7 @@ The daemon captures reported memory under the run fence before the settlement tr
 
 A plain chat's report then commits in one statement, `commit_report.sql`, under the run row lock with no host lock. Its runtime line is a `runtime`-kind usage line numbered by its slice's start, read from the locked run row. Each host's renewals run as one fenced statement per tick.
 
-Settlement records usage, event outcome, session checkpoint, admission completion, slot release and any outbound obligation.
+Settlement records usage, event outcome, session checkpoint, admission completion, slot release and any outbound delivery.
 Only a successful report settles folded messages through `folded_through_sequence`.
 
 Connection loss preserves pending reports in memory while the runner reconnects.
@@ -299,7 +299,7 @@ The write rules admit a fix on the repair branch and one draft PR, and no commen
 **Deferrals** — Dimension 6.3's review post: no `afd_gate` rule admits `POST …/pulls/{number}/reviews`, so the post is refused today. > Indy (2026-10-04 11:49): "6.3 The PR review gets posted from the runner? SKILL.md? I want to experience the test and decide, so make me record that and add this as parked." — context: the runner posts it, the `github-pr-reviewer/definition.json` instructions' step 4 sending `POST …/pulls/{number}/reviews` through `http_request`; a write binding admits only `/git/blobs`, `/git/trees`, `/git/commits`, the locked ref and the locked draft (`rustd/crates/daemon/afd_gate/src/policy/egress/write.rs`), so the runner refuses the post before it leaves and the test asserts that; Dimension 6.3 stays open until Indy runs it, and this supersedes the Oct 03 "move it to done" for 6.3. > Indy (2026-10-03 15:32): "you just tell me crap, increase the scope, so the refusal of review must be ignored for now. If that blocks the spec to move to done, then record Indys wording and move it to done."
 ```
 
-**The other reply path, also not for GitHub.** The report owes a `fleet.obligations` delivery only when the admission recorded a reply destination. That is `afd_fleet`'s run commit and `schema/20261108125100_fleet_admissions.sql`.
+**The other reply path, also not for GitHub.** The report owes a `fleet.deliveries` delivery only when the admission recorded a reply destination. That is `afd_fleet`'s run commit and `schema/20261108125100_fleet_admissions.sql`.
 
 A failed run that wrote no answer owes that destination one fixed notice. So does an event refused at a gate, and one ended after its runs kept lapsing (`afd_fleet`'s run `unanswered` module). A clean run that wrote nothing still owes nothing.
 

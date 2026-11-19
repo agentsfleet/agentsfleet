@@ -2,7 +2,7 @@
 //!
 //! A plain chat's report is one statement ([`crate::run::sql::report_statement`]):
 //! the metered slice and its lines, the run and admission settled, the
-//! event closed, the session checkpointed, the slot released, the obligation
+//! event closed, the session checkpointed, the slot released, the delivery
 //! owed and the audit row, under the run's own row lock and no host lock
 //!. A durable task's settlement and a run's folds stay statements
 //! of their own in the same transaction, after it: the task's settlement reads
@@ -18,8 +18,8 @@ use jiff::Timestamp;
 use sqlx::{Acquire as _, PgConnection};
 
 use crate::error::{Result, query};
+use crate::run::delivery::Owing;
 use crate::run::fold::Folds;
-use crate::run::obligation::Owing;
 use crate::run::report::RunTokens;
 use crate::run::settle::Reported;
 use crate::run::sql::report_statement::{ReportAnswer, ReportStatement, SettledReport};
@@ -83,7 +83,7 @@ pub enum Committed {
         /// The row this report ended, for the frame the caller announces;
         /// `None` when the event was already terminal.
         closed: Option<Box<Closed>>,
-        /// The delivery obligation this report newly owed, for the caller to
+        /// The delivery delivery this report newly owed, for the caller to
         /// wake the outbound workers about.
         owed: Option<Owing>,
         /// The task's notice, when its settlement replaced the answer.
@@ -178,14 +178,10 @@ impl Runs {
             .iter()
             .map(|_line| self.entropy().uuid7(now))
             .collect::<core::result::Result<Vec<_>, _>>()?;
-        let [runtime_line_id, obligation_id, obligation_receipt, audit_id] =
+        let [runtime_line_id, delivery_id, delivery_receipt, audit_id] =
             [(); 4].map(|()| self.entropy().uuid7(now));
-        let (runtime_line_id, obligation_id, obligation_receipt, audit_id) = (
-            runtime_line_id?,
-            obligation_id?,
-            obligation_receipt?,
-            audit_id?,
-        );
+        let (runtime_line_id, delivery_id, delivery_receipt, audit_id) =
+            (runtime_line_id?, delivery_id?, delivery_receipt?, audit_id?);
         let outcome = &report.outcome;
         let checkpoint =
             crate::run::finalize::checkpoint_document(report.last_event_id, report.last_response);
@@ -220,8 +216,8 @@ impl Runs {
             sandbox_idle_hold: self.clock().sandbox_idle_hold(),
             host_digest,
             host_connection,
-            obligation_id: &obligation_id,
-            obligation_receipt: &obligation_receipt,
+            delivery_id: &delivery_id,
+            delivery_receipt: &delivery_receipt,
             audit_id: &audit_id,
             audit_metadata: serde_json::json!({
                 afd_runner::sql::meta::RUN_ID: report.run_id.as_str(),
@@ -285,7 +281,7 @@ impl Runs {
             charged: settled.charged,
             tokens: settled.tokens,
             closed: settled.closed.map(Box::new),
-            owed: settled.owed.map(|obligation| Owing { obligation }),
+            owed: settled.owed.map(|delivery| Owing { delivery }),
             notice,
             folds,
         })

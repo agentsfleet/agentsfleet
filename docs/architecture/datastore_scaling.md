@@ -29,7 +29,7 @@ In the kill drills, NATS viewers received `catching_up` within 0.3 s of a node s
 | Decision | Requirement |
 |---|---|
 | Bus | Core NATS, routed as one cluster in one region, with JetStream off. Boot refuses a server that fails any of these. |
-| Durable state | Postgres: admissions, outbound obligations, device-login sessions, OAuth nonces and approval gates. |
+| Durable state | Postgres: admissions, outbound deliveries, device-login sessions, OAuth nonces and approval gates. |
 | Deployment | The Fly apps `agentsfleet-nats-prod` and `agentsfleet-nats-dev` each run two nodes, both in `iad`, with no volume (`.github/workflows/release.yml`, `deploy-dev-fly.yml`). |
 | Rust client | `async-nats` 0.52.0 without default features, so its JetStream module does not compile (`rustd/Cargo.toml`). |
 | Evidence | Compare before and after each change on the same rig and workload. |
@@ -47,7 +47,7 @@ The runtime pages ([`data_flow.md`](./data_flow.md), [`runner_fleet.md`](./runne
 ## Why it exists
 
 A lost bus node must cost latency, never accepted work or an owed reply.
-Keeping every fact in Postgres makes that true: a viewer backfills from `fleet.events`, and a worker claims from `fleet.obligations`.
+Keeping every fact in Postgres makes that true: a viewer backfills from `fleet.events`, and a worker claims from `fleet.deliveries`.
 
 Before M244, the bus also held durable jobs, and all its nodes ran on one machine per environment.
 One machine loss froze every viewer's tail with no signal.
@@ -77,7 +77,7 @@ wake ring or 5 s recovery probe -> offer pass -> Postgres head probe
                          |
         fenced run offered down the runner stream
                          |
-report -> usage + terminal event + settlement + delivery obligation
+report -> usage + terminal event + settlement + delivery delivery
 ```
 
 A producer commits its identity and payload before reporting acceptance. A failed wake publish leaves that acceptance intact.
@@ -106,7 +106,7 @@ A blocked or unavailable head returns no work, and the caller rolls back the slo
 Claims retain held-sandbox preference and spread other candidates randomly. They provide order within each fleet, with no global waiting-time guarantee.
 
 `delivered_at` records admission into runtime history. `settled_at` removes a row from the queue.
-A report settles the admission in the transaction that records usage, terminal state, checkpoint, slot release and any outbound obligation.
+A report settles the admission in the transaction that records usage, terminal state, checkpoint, slot release and any outbound delivery.
 
 An expired slot exposes the same unsettled head to another runner. The original billing identity survives redelivery.
 
@@ -126,8 +126,8 @@ Wake notifications use sixteen `af.wake.<shard>` subjects, the shard a CRC-16/XM
 Each replica keeps a local queue of at most 64 fleets by default (`afd_bus/src/wake/config.rs`).
 A full queue evicts its oldest fleet, and the 5 s recovery probe still finds that fleet's work.
 
-The report path writes the `fleet.obligations` row in its own transaction, then publishes `af.outbound.wake`.
-A worker claims the head row of each `(provider, workspace_id)` lane with `FOR UPDATE SKIP LOCKED` (`afd_outbound/src/obligation/sql/claim_heads.sql`).
+The report path writes the `fleet.deliveries` row in its own transaction, then publishes `af.outbound.wake`.
+A worker claims the head row of each `(provider, workspace_id)` lane with `FOR UPDATE SKIP LOCKED` (`afd_outbound/src/delivery/sql/claim_heads.sql`).
 A claim lasts 30 s, the holder renews it every 10 s, and every replica also claims every 30 s.
 
 Up to eight deliveries run at once across lanes; each lane holds at most 32 jobs (`afd_outbound/src/lanes/mod.rs`).

@@ -35,7 +35,7 @@ pub enum Path {
     Meter,
     /// Authorizing a live-tail post.
     Activity,
-    /// Settling the run: result, slot release, obligation.
+    /// Settling the run: result, slot release, delivery.
     Report,
     /// A live run's ask for the messages its fleet received while it works.
     Fold,

@@ -145,7 +145,7 @@ A runner's work becomes eligible when its slot expires. The next offer pass push
 | Claim decoding fails | The transaction rolls back its slot and admission changes. | Both fences remain unchanged. |
 | Failure after claim commit | Release the claim where possible; otherwise wait for its deadline. | Every write verifies the current slot and admission fences. |
 | Report fails before commit | Retry the report; run, usage and settlement all roll back. | No charge or terminal admission without the report transaction. |
-| Report response lost | The same runner retries and receives the stored outcome. | A repeated report adds no usage line or delivery obligation. |
+| Report response lost | The same runner retries and receives the stored outcome. | A repeated report adds no usage line or delivery delivery. |
 | Sandbox setup fails | The runner reports `fleet_error` as `startup_posture`. | Work never runs without the assigned sandbox. |
 
 A live runner renews through the fenced `/renew` route. Renewal remains credit-gated and bounded by `MAX_RUNTIME`.
@@ -222,7 +222,7 @@ The cutover moved running onto arbitrary hosts (bare metal, a Mac, a pod) that h
 
 ## The split: two binaries, no sidecar
 
-- **`agentsfleetd`**: the control plane. Owns Postgres, its NATS connection, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints claim inbound work from `fleet.admissions`; outbound delivery claims `fleet.obligations` rows.
+- **`agentsfleetd`**: the control plane. Owns Postgres, its NATS connection, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints claim inbound work from `fleet.admissions`; outbound delivery claims `fleet.deliveries` rows.
 
 - **`agentsfleet-runner`**: the host-resident runner plane, one Rust binary. A trusted supervisor runs the run loop and the agent loop, and each run that runs a tool in a sandbox gets one. It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
 
@@ -574,7 +574,7 @@ report -> agentsfleetd: one transaction (settle + terminal state + checkpoint
           activity frame and the af.outbound.wake ping
 ```
 
-The admission settlement, usage, terminal event, checkpoint, slot release and outbound obligation commit together.
+The admission settlement, usage, terminal event, checkpoint, slot release and outbound delivery commit together.
 A failed transaction leaves the run active and unsettled. A lost response is retried against the stored outcome without another charge.
 
 Activity publication and outbound dispatch follow the commit. See [`data_flow.md`](./data_flow.md) §`C. EXECUTE`.
@@ -911,7 +911,7 @@ The gates run before the run is issued and charge nothing. The issued run's hold
 
 ## Datastore topology
 
-PostgreSQL owns the inbound admissions queue, outbound obligations and device-login sessions. Core NATS carries activity, wake notifications, runner commands and the outbound ping.
+PostgreSQL owns the inbound admissions queue, outbound deliveries and device-login sessions. Core NATS carries activity, wake notifications, runner commands and the outbound ping.
 The [datastore design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the queue predicate, limits and failure rules.
 
 A claim takes the fleet slot before its exact oldest unsettled admission. Both fences advance in one transaction.

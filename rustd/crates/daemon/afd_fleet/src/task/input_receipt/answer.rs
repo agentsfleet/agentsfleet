@@ -1,18 +1,18 @@
-//! Input answers reuse event completion and the existing outbound obligation owner.
+//! Input answers reuse event completion and the existing outbound delivery owner.
 
 use crate::{
     Result,
     error::query,
     run::{
         Runs,
-        obligation::ReplyDestination,
+        delivery::ReplyDestination,
         verdict::{Terminal, Verdict},
     },
     task::{TaskRefusal, Tasks, guard::RunRow},
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::task::TaskInputReceiptInput;
-use afd_outbound::obligation::Delivery;
+use afd_outbound::delivery::Delivery;
 use sqlx::PgConnection;
 
 #[derive(sqlx::FromRow)]
@@ -40,7 +40,7 @@ pub(super) async fn finish(
         .bind(&current.workspace_id)
         .fetch_all(&mut *connection)
         .await
-        .map_err(query("read every source-item reply obligation"))?;
+        .map_err(query("read every source-item reply delivery"))?;
     if rows.is_empty() || rows.iter().any(Option::is_none) {
         return Ok(None);
     }

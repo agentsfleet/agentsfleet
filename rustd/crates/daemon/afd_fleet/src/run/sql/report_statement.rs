@@ -56,8 +56,8 @@ pub(crate) struct ReportStatement<'a> {
     pub(crate) sandbox_idle_hold: std::time::Duration,
     pub(crate) host_digest: Option<&'a str>,
     pub(crate) host_connection: Option<&'a Uuid7>,
-    pub(crate) obligation_id: &'a Uuid7,
-    pub(crate) obligation_receipt: &'a Uuid7,
+    pub(crate) delivery_id: &'a Uuid7,
+    pub(crate) delivery_receipt: &'a Uuid7,
     pub(crate) audit_id: &'a Uuid7,
     pub(crate) audit_metadata: serde_json::Value,
     /// What the event's thread is owed when a failed run wrote no answer; a
@@ -101,8 +101,8 @@ impl<'a> ReportStatement<'a> {
             .bind(self.checkpoint)
             .bind(self.held_until.map(jiff::Timestamp::to_sqlx))
             .bind(self.sandbox_idle_hold)
-            .bind(self.obligation_id)
-            .bind(self.obligation_receipt)
+            .bind(self.delivery_id)
+            .bind(self.delivery_receipt)
             .bind(
                 afd_connector::Provider::ALL
                     .iter()

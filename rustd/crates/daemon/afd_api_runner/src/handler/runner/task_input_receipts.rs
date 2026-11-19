@@ -1,4 +1,4 @@
-//! Acknowledge current input application or the original source's reply obligation.
+//! Acknowledge current input application or the original source's reply delivery.
 
 use crate::{auth::RunnerIdentity, services::Services};
 use af_wire::task::TaskInputReceiptInput;
@@ -19,7 +19,7 @@ const MALFORMED: &str = "Input receipt exceeds its supported shape or bounds";
 #[cfg_attr(feature = "openapi", utoipa::path(
     post, path = af_wire::paths::RUN_TASK_INPUT_RECEIPTS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_accept_task_input_receipt", summary = "Acknowledge accepted input and its original reply",
-    description = "Fences apply-here and queued acknowledgements against immutable accepted meaning. Advances the current input cursor once, preserves original delivery obligations and never runs a different task under the current run.",
+    description = "Fences apply-here and queued acknowledgements against immutable accepted meaning. Advances the current input cursor once, preserves original delivery deliveries and never runs a different task under the current run.",
     params(("run_id" = String, Path, description = "Current run UUIDv7.")), request_body = TaskInputReceiptInput,
     responses((status = 201, body = af_wire::task::TaskInputReceiptResult, description = "Accepted input receipt"),
         (status = 200, body = af_wire::task::TaskInputReceiptResult, description = "Immutable receipt replay"),

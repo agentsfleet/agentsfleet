@@ -1,6 +1,6 @@
 //! Best-effort announcements after a report and its admission settle in Postgres.
 //!
-//! Tail frames and outbound wakes cannot undo acceptance of the report. The committed outbound obligation repairs a missed append.
+//! Tail frames and outbound wakes cannot undo acceptance of the report. The committed outbound delivery repairs a missed append.
 
 use af_core::id::Uuid7;
 use af_observability::producers;
@@ -9,8 +9,8 @@ use afd_billing::Nanos;
 use afd_turns::view::Closed;
 use jiff::Timestamp;
 
+use crate::run::delivery::Owing;
 use crate::run::fold::Folds;
-use crate::run::obligation::Owing;
 use crate::run::pull::RunService;
 use crate::run::settle::Reported;
 
@@ -99,11 +99,11 @@ impl RunService {
     /// Ping the outbound workers that an owed answer committed.
     ///
     /// Best-effort by construction, and logged rather than returned: the
-    /// obligation is already committed and claimable, so a lost ping costs
+    /// delivery is already committed and claimable, so a lost ping costs
     /// one claim pass of latency. Failing the report instead would tell a
     /// runner its finished, charged run did not land — and it did.
     pub(super) async fn wake_owed_answer(&self, owing: &Owing) {
-        self.runs.wake_delivery(&owing.obligation).await;
+        self.runs.wake_delivery(&owing.delivery).await;
     }
 
     /// Record and announce what the run's folds settled.

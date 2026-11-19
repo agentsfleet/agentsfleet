@@ -1,4 +1,4 @@
-//! Rebuild outbound delivery from durable obligations in a bounded number of passes.
+//! Rebuild outbound delivery from durable deliveries in a bounded number of passes.
 //! Inbound admissions remain directly discoverable in PostgreSQL.
 
 use std::pin::Pin;

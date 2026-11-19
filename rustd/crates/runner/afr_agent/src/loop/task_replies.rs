@@ -1,4 +1,4 @@
-//! Original-source reply obligations do not depend on which run read the input.
+//! Original-source reply deliveries do not depend on which run read the input.
 
 use super::Harness;
 use af_wire::task::{DecisionTaskVersion, TaskInputAction, TaskInputMode, TaskInputReceiptInput};

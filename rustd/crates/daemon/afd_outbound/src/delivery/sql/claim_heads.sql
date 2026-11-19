@@ -1,6 +1,6 @@
 WITH heads AS (
     SELECT o.id
-      FROM fleet.obligations o
+      FROM fleet.deliveries o
       -- Only the lanes this transaction locked.
       JOIN unnest($4::text[], $5::uuid[]) AS lane (provider, workspace_id)
         ON lane.provider = o.provider AND lane.workspace_id = o.workspace_id
@@ -9,7 +9,7 @@ WITH heads AS (
        AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= statement_timestamp())
        AND NOT EXISTS (
            SELECT 1
-             FROM fleet.obligations e
+             FROM fleet.deliveries e
             WHERE e.provider = o.provider
               AND e.workspace_id = o.workspace_id
               AND e.delivered_at IS NULL AND e.abandoned_at IS NULL
@@ -22,7 +22,7 @@ WITH heads AS (
      LIMIT $1
      FOR UPDATE OF o SKIP LOCKED
 )
-UPDATE fleet.obligations o
+UPDATE fleet.deliveries o
    SET receipt          = $2,
        claim_expires_at = clock_timestamp() + $3::interval,
        updated_at       = now()

@@ -60,7 +60,7 @@ pub(super) async fn apply_notice(
     connection: &mut PgConnection,
     report: &TerminalReport<'_>,
     notice: &str,
-    (obligation_id, receipt): &(Uuid7, Uuid7),
+    (delivery_id, receipt): &(Uuid7, Uuid7),
 ) -> Result<()> {
     let checkpoint = crate::run::finalize::checkpoint_document(report.last_event_id, notice);
     let _events: i64 = sqlx::query_scalar(crate::run::sql::report_statement::APPLY_REPORT_NOTICE)
@@ -68,7 +68,7 @@ pub(super) async fn apply_notice(
         .bind(&report.run.event_id)
         .bind(notice)
         .bind(&checkpoint)
-        .bind(obligation_id)
+        .bind(delivery_id)
         .bind(receipt)
         .bind(
             afd_connector::Provider::ALL

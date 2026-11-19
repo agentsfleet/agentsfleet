@@ -11,7 +11,7 @@ Product thesis: [`high_level.md`](./high_level.md).
 
 `agentsfleetd` replicas serve the API and push work to runners. Each runner host holds one stream to one replica.
 
-Postgres holds every durable fact: admissions, events, runs, outbound obligations, sessions and usage. Core NATS carries disposable signals only, such as the live tail and the wake ring.
+Postgres holds every durable fact: admissions, events, runs, outbound deliveries, sessions and usage. Core NATS carries disposable signals only, such as the live tail and the wake ring.
 
 A lost signal costs latency, never work, because every reader can rebuild its view from Postgres. [`high_level.md`](./high_level.md#how-the-runtime-fits-together) draws the picture, and [`datastore_scaling.md`](./datastore_scaling.md) owns the details.
 
@@ -198,7 +198,7 @@ One-line definitions for quick lookup. The full, canonical definition lives in t
 | **Run** (`runner.runs`, `afd_fleet::run::Runs`) | One runner's time-limited right to run one event, renewed while the run lasts. [(more)](./data_flow.md#one-active-run-per-fleet-the-ownership-model) |
 | **Event** (`fleet.events`) | The history row for one piece of work, written `received` when a run picks it up and closed by the report. [(more)](./data_flow.md#the-five-durable-stores-who-owns-what) |
 | **Report** (`af_wire::protocol::Up::Report`) | The runner's terminal result for one run (`af_wire::report::ReportRequest`), carrying its run and fencing token. [(more)](./data_flow.md#c-execute--run--runner--report) |
-| **Obligation** (`fleet.obligations`) | An answer the fleet owes to a reply destination such as a Slack thread, written with the report and delivered by `afd_outbound`. [(more)](./run_flow.md#4-how-agent-bob-01-can-reply) |
+| **Delivery** (`fleet.deliveries`) | An answer the fleet owes to a reply destination such as a Slack thread, written with the report and delivered by `afd_outbound`. [(more)](./run_flow.md#4-how-agent-bob-01-can-reply) |
 | **Activity channel** (`af.fleet.<fleet_id>.tail`) | The fleet's NATS subject for live-tail frames: at most once, with no history. [(more)](./data_flow.md#two-streams--one-pubsub-channel-and-the-one-that-retired) |
 | **Subscription hub** (`afd_bus::nats`) | The one NATS connection in each `agentsfleetd` process; it subscribes each subject once and copies frames to every local reader, wake listeners included. [(more)](./data_flow.md#two-streams--one-pubsub-channel-and-the-one-that-retired) |
 | **guffbolt** (`rustd/guffbolt`) | The agent harness: the order one loop's turns run in, the window and the model call each turn makes, and the transcript it keeps, over the embedder's conversation and the extension a run of one kind adds, the tools a loop offers, and the children a run starts. The runner embeds it. [(more)](./runner_execution.md#crates) |

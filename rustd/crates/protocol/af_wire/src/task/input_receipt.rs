@@ -1,4 +1,4 @@
-//! Safe-boundary application and source-message reply obligations are separate.
+//! Safe-boundary application and source-message reply deliveries are separate.
 
 use super::DecisionTaskVersion;
 use garde::Validate;

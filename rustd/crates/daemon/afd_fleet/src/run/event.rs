@@ -20,7 +20,7 @@ use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 
 use afd_api_wire::tail::FleetCounters;
-use afd_outbound::obligation::Delivery as Owed;
+use afd_outbound::delivery::Delivery as Owed;
 use afd_turns::view::Closed;
 
 use crate::error::{Result, query};

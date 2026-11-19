@@ -29,7 +29,7 @@ use afd_turns::{Producer, Reply};
 use futures_util::future::join_all;
 use tokio::sync::Barrier;
 
-use crate::integration_report_owes_destination::stage::{Stage, obligations, owed_by, stage};
+use crate::integration_report_owes_destination::stage::{Stage, deliveries, owed_by, stage};
 use crate::report_commit::report;
 use crate::report_seed::SLICE_MS;
 use crate::rows::Row;
@@ -45,7 +45,7 @@ const REFUSERS: usize = 100;
 
 /// The answers the ledger owes this fleet, oldest first.
 async fn answers(stage: &Stage) -> Vec<String> {
-    obligations(&stage.fixtures, &stage.fleet)
+    deliveries(&stage.fixtures, &stage.fleet)
         .await
         .into_iter()
         .map(|owed| owed.answer)

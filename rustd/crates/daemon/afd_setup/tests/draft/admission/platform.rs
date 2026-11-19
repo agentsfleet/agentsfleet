@@ -133,7 +133,7 @@ async fn a_platform_attempt_settles_its_lines_under_the_platform_posture() {
     f.cleanup().await;
 }
 
-// Value: protects=unsafe stored prices cannot overflow or create an uncovered obligation;
+// Value: protects=unsafe stored prices cannot overflow or create an uncovered delivery;
 // fails_when=negative/overflowing provider costs create an attempt instead of owner billing recovery;
 // why_new=workspace admission never prices provider tokens;
 // seam=isolated real Postgres; no_claim=production catalogue corruption.

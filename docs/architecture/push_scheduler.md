@@ -43,7 +43,7 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 | Message folded into a run | `fleet.admissions.input_claim_run_id` and `input_claim_fence` (#803; `claim_inputs.sql` for any other run) | None |
 | Run deadline | `runner.runs.run_expires_at`, one clock | None |
 | Usage and money | `billing.usage_lines` and the billing relay | None |
-| Outbound reply owed | `fleet.obligations` | A NATS ping wakes a worker; a 30 s scan is the backstop |
+| Outbound reply owed | `fleet.deliveries` | A NATS ping wakes a worker; a 30 s scan is the backstop |
 | Device-login session, OAuth nonce | Postgres rows (M244) | None |
 | Live tail, wake-ups, runner commands | Core NATS subjects | Lossy; each has a Postgres backstop (below) |
 
@@ -55,7 +55,7 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 |---|---|
 | M242 | None. Intake holds the fleet row for one statement, and folding rides #803's input claims on `fleet.admissions`. |
 | M243 | The connection a runner holds, on `runner.runners`. A cancel mark on `runner.runs`. |
-| M244 | `identity.device_sessions`, `connector.oauth_nonces`, and claim columns on `fleet.obligations`. |
+| M244 | `identity.device_sessions`, `connector.oauth_nonces`, and claim columns on `fleet.deliveries`. |
 | M245 | `kind` on `billing.usage_lines` (`model`, `runtime`, `decision`), so each line says what it billed and a runtime line is numbered by its slice's start. The platform key cache keys on a digest of the stored key and its endpoint, so the vault gains no column. |
 | M246 | An owner tenant on `runner.runners`, and a receipt table that answers a registration retry. |
 | M251 | The token overlap pair on `runner.runners` and the per-tenant placement setting, as M251_001 designs them. |
@@ -134,7 +134,7 @@ A bus disconnect sends `catching_up` on reconnect, not at the drop (`afd_bus/src
 ### An outbound reply
 
 ```
-report commits ─► fleet.obligations row ─► ping (lossy) ─► worker claims the lane's head row
+report commits ─► fleet.deliveries row ─► ping (lossy) ─► worker claims the lane's head row
                                                         └─ 30 s scan claims it if the ping is lost
 ```
 
@@ -165,7 +165,7 @@ Every NATS subject is at most once. Each one names its Postgres backstop.
 | `af.fleet.<id>.tail`, `af.draft.<id>.events` | Frames missing on screen | Gap signal, then a backfill from Postgres |
 | `af.wake.<shard>` | Work offered up to 5 s late | Each replica's 5 s recovery probe (`OFFER_FALLBACK_TICK`) |
 | `af.runner.<id>.cmd` | A cancel or folded input delayed | The cancel mark, and pending input read at each model call |
-| Outbound ping | A reply sent late | The 30 s obligations scan |
+| Outbound ping | A reply sent late | The 30 s deliveries scan |
 
 ## Milestones
 

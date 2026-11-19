@@ -60,7 +60,7 @@ const CLOCK_SKEW_SECONDS: i64 = 300;
 /// Milliseconds in a second, for reading the instant an event id opens with.
 const MILLIS_PER_SECOND: i64 = 1_000;
 
-/// Which owed answer a posted message is: the obligation's own key.
+/// Which owed answer a posted message is: the delivery's own key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnswerMarker {
     /// The fleet that owes it.

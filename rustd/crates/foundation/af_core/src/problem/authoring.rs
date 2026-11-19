@@ -50,7 +50,7 @@ pub(super) const AUTHORING: &[Problem] = &[
         code: error_code::AUTHORING_TIMEOUT,
         status: 504,
         title: "Authoring attempt timed out",
-        hint: "Retry only after the provider obligation has been resolved.",
+        hint: "Retry only after the provider delivery has been resolved.",
         user_message: Some("This authoring attempt ran out of time."),
     },
     Problem {

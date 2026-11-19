@@ -16,7 +16,7 @@ impl Intake<'_> {
         let context = serde_json::json!({ "original_message": accepted.message,
             "accepted_item": item, "current_task": inputs.current_task, "current_work": inputs.tasks });
         let instructions = format!(
-            "{}\n\nAnswer only this already accepted conversation, status or clarification item. Do not investigate or execute work. Report native task facts accurately; missing evidence remains unknown. Other items in the complete source retain their own obligations. Return a concise plain-text answer for the original person.",
+            "{}\n\nAnswer only this already accepted conversation, status or clarification item. Do not investigate or execute work. Report native task facts accurately; missing evidence remains unknown. Other items in the complete source retain their own deliveries. Return a concise plain-text answer for the original person.",
             self.run.instructions
         );
         let instructions = scrub.clean(instructions).into_inner();

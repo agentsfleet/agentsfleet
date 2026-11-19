@@ -1,4 +1,4 @@
-//! Purging private text preserves content-free replay and accounting obligations.
+//! Purging private text preserves content-free replay and accounting deliveries.
 //!
 //! Attempts intentionally have no draft foreign key. A later accounting report
 //! can settle them, but absence of this draft fences all further private output.

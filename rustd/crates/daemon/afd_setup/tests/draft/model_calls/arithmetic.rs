@@ -25,7 +25,7 @@ async fn an_unfunded_wallet_cannot_dispatch_an_already_admitted_attempt() {
     let error = calls
         .call(&f.runner, &a.run, fixture::request(&a))
         .await
-        .expect_err("current funding must cover active obligations");
+        .expect_err("current funding must cover active deliveries");
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
     assert_eq!(fixture::receipts(&f, &a).await, (0, 0, false));
     assert_eq!(provider.count(), 0);
@@ -52,7 +52,7 @@ async fn a_ceiling_at_the_integer_edge_cannot_authorize_a_physical_request() {
     let mut connection = f.connection().await;
     sqlx::query("INSERT INTO authoring.attempts SELECT (jsonb_populate_record(NULL::authoring.attempts,to_jsonb(source)||jsonb_build_object('id',$2,'run_id',$3,'draft_id',$4))).* FROM authoring.attempts source WHERE id=$1")
         .bind(&a.id).bind(mint()).bind(mint()).bind(&other.draft.id)
-        .execute(&mut *connection).await.expect("second active owned obligation");
+        .execute(&mut *connection).await.expect("second active owned delivery");
     sqlx::query("UPDATE authoring.attempts SET reserved_nanos=$2 WHERE tenant_id=$1")
         .bind(&f.tenant)
         .bind(i64::MAX)
@@ -75,9 +75,9 @@ async fn a_ceiling_at_the_integer_edge_cannot_authorize_a_physical_request() {
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
     assert_eq!(fixture::receipts(&f, &a).await, (0, 0, false));
     assert_eq!(provider.count(), 0);
-    let obligations: (i64, i64) = sqlx::query_as("SELECT count(*)::bigint,sum(call_count)::bigint FROM authoring.attempts WHERE tenant_id=$1")
-        .bind(&f.tenant).fetch_one(&mut *f.connection().await).await.expect("both obligations retained without calls");
-    assert_eq!(obligations, (2, 0));
+    let deliveries: (i64, i64) = sqlx::query_as("SELECT count(*)::bigint,sum(call_count)::bigint FROM authoring.attempts WHERE tenant_id=$1")
+        .bind(&f.tenant).fetch_one(&mut *f.connection().await).await.expect("both deliveries retained without calls");
+    assert_eq!(deliveries, (2, 0));
     f.cleanup().await;
 }
 

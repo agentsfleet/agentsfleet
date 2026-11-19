@@ -61,7 +61,7 @@ pub(super) async fn accept(
             .bind(crate::task::guard::wire(&input.item_id)?)
             .execute(&mut *tx)
             .await
-            .map_err(query("retain fulfilled input reply obligation"))?;
+            .map_err(query("retain fulfilled input reply delivery"))?;
     }
     let completion =
         if input.source_admission_id != current.source_admission_id && response.is_some() {
@@ -73,7 +73,7 @@ pub(super) async fn accept(
     let result = row::result(input, &item, false)?;
     tx.commit()
         .await
-        .map_err(query("commit accepted input and reply obligation"))?;
+        .map_err(query("commit accepted input and reply delivery"))?;
     transaction::recycle(connection);
     if let Some(completion) = completion {
         completion.announce(tasks).await;

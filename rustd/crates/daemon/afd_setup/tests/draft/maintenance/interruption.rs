@@ -1,4 +1,4 @@
-//! Expiry closes the spinner while the original accounting obligation remains.
+//! Expiry closes the spinner while the original accounting delivery remains.
 
 use super::{Attempt, Fixture};
 use af_wire::authoring::FailureReason;
@@ -26,7 +26,7 @@ async fn an_expired_attempt_is_visible_as_waiting_for_accounting_without_freeing
     .bind(&a.id)
     .fetch_one(&mut *f.connection().await)
     .await
-    .expect("retained obligation");
+    .expect("retained delivery");
     assert_eq!(saved, ("awaiting_accounting".into(), 30_000_000, 0));
     let messages = f
         .drafts

@@ -6,7 +6,7 @@
 //! text names the recorded reason and the command that shows the rest, and it
 //! is owed through the ledger an answer is owed through.
 //!
-//! Written to the obligation alone. The event's `response_text` stays what the
+//! Written to the delivery alone. The event's `response_text` stays what the
 //! run said, so a screen rendering the fleet's answer never shows this text as
 //! though the fleet had written it.
 

@@ -179,7 +179,7 @@ Each remote effect has an immutable identity, request digest, expected target st
 | Save checkpoint | Hold publication pins; verify immutable uploads; publish a compatible manifest and convert live pins to references under current generations. |
 | Enter wait | Commit report, usage, recovery pointer, wait and admission settlement before releasing the fleet slot. |
 | Wake | Atomically consume one current wait and append its continuation admission; competing completions and fallback reads return the same result. |
-| Finish | Recheck current target and mandatory evidence; save terminal outcome and existing outbound obligation in settlement. |
+| Finish | Recheck current target and mandatory evidence; save terminal outcome and existing outbound delivery in settlement. |
 | Stop | Advance stop generation; reject new effect intents and wakes; reconcile remote requests already issued. |
 
 Database, R2 and GitHub writes cannot share one transaction.
@@ -294,7 +294,7 @@ Browser reconnection reads current work before offering another attempt.
 Waiting and recovery retain confirmed progress without repeating the entire incident report.
 Status answers label saved evidence freshness.
 
-Reuse existing outbound obligations, trusted destinations, Slack answer markers and repeat-delivery checks.
+Reuse existing outbound deliveries, trusted destinations, Slack answer markers and repeat-delivery checks.
 DT-to-notification correlation belongs in task records by default; `afd_outbound` needs no speculative rewrite.
 Any demonstrated transport gap requires a named spec amendment before source edits.
 
@@ -381,7 +381,7 @@ An input for the current DT can affect its next action group after acceptance.
 An input for another same-fleet DT is saved as queued input and cannot grant the current run that other task's write authority.
 Its first steer consumes an old wait or coalesces with an existing ready admission; duplicate completion events cannot add a second continuation.
 
-Each accepted input gets its own native event/history row and reply obligation through the existing settlement helpers.
+Each accepted input gets its own native event/history row and reply delivery through the existing settlement helpers.
 Report settlement includes each item's response or queued-work receipt and the current task's new covered-input cursor.
 An accepted but unanswered item remains recoverable through native history after worker loss.
 

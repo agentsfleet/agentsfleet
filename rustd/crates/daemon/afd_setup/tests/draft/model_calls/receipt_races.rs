@@ -47,7 +47,7 @@ async fn skipped_indices_and_foreign_dispatch_ids_create_no_physical_intent() {
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn removed_or_already_settled_obligations_cannot_be_recreated_by_a_late_reply() {
+async fn removed_or_already_settled_deliveries_cannot_be_recreated_by_a_late_reply() {
     for removed in [true, false] {
         let f = Fixture::create().await;
         let a = Attempt::start(&f, f.access(), Source::Blank).await;

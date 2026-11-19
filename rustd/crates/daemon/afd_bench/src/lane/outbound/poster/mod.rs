@@ -25,7 +25,7 @@
 //!
 //! # Only this run's jobs count
 //!
-//! The worker claims from the shared `fleet.obligations` table, so a row an
+//! The worker claims from the shared `fleet.deliveries` table, so a row an
 //! earlier, unswept run left behind reaches this poster too. Its destination is one this script
 //! never named, and such a job is answered but never counted: not as an
 //! attempt, not as settled. Counting it would end the drain before this run's
@@ -204,7 +204,7 @@ impl Deliver for Scripted {
                 self.foreign();
                 false
             },
-            // One obligation per (fleet, event), so the event names the job.
+            // One delivery per (fleet, event), so the event names the job.
             |behaviour| {
                 self.stamp(
                     &job.event_id,

@@ -373,7 +373,7 @@ Each run's idle window cost 0 statements, and a chat's activity path cost 0.
 | Run burst | pickup p95 | 491.5 ms | 494.6 ms |
 
 Outbound delivers about 30% slower than the stream reader it replaced.
-The likely cause is unmeasured. The worker claims only lane heads from `fleet.obligations`, so each busy-lane delivery may wait one claim round trip.
+The likely cause is unmeasured. The worker claims only lane heads from `fleet.deliveries`, so each busy-lane delivery may wait one claim round trip.
 
 Counting `agentsfleet_outbound_claims_total{via="scan"}` against deliveries in one run would settle it.
 

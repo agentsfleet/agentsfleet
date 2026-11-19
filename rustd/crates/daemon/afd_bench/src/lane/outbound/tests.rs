@@ -139,7 +139,7 @@ async fn test_the_window_ends_when_the_last_answer_lands_not_when_it_is_asked_fo
 
 /// The latency clock and the poster's stamps meet on the event each job answers.
 ///
-/// The lane once keyed the clock by obligation row while the poster stamped by
+/// The lane once keyed the clock by delivery row while the poster stamped by
 /// event, so no lookup matched and the report silently carried no p95 and no
 /// head-of-line number. Two jobs owed and delivered here must both be timed.
 #[tokio::test]

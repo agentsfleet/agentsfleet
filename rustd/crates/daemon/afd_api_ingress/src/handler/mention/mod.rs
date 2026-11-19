@@ -50,7 +50,7 @@ pub(super) const REASON_TEAM_NOT_MAPPED: &str = "team_not_mapped";
 /// No saved fleet is configured for this channel.
 pub(super) const REASON_CHANNEL_NOT_CONFIGURED: &str = "channel_not_configured";
 /// No active fleet in the channel can carry a notice: an archived fleet
-/// cannot acquire another outbound obligation, so it is never a carrier.
+/// cannot acquire another outbound delivery, so it is never a carrier.
 pub(super) const REASON_NO_ACTIVE_CARRIER: &str = "no_active_notice_carrier";
 
 /// The event a datastore failure on this path is refused under.
@@ -143,7 +143,7 @@ fn unserialisable() -> Refusal {
     )
 }
 
-/// `thread` as the obligation row records it, which both the admitted mention
+/// `thread` as the delivery row records it, which both the admitted mention
 /// and an owed notice write.
 fn address(thread: &Thread) -> Result<String, Refusal> {
     thread.address().map_err(|_unserialisable| unserialisable())

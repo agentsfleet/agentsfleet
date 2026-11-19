@@ -34,7 +34,7 @@
 //!
 //! A claimed job renews nothing until its delivery starts, so a job left
 //! waiting for one of the [`IN_FLIGHT_DELIVERIES`] slots past
-//! [`CLAIM_TTL`](crate::obligation::CLAIM_TTL) could lapse to another
+//! [`CLAIM_TTL`](crate::delivery::CLAIM_TTL) could lapse to another
 //! replica. The worker therefore claims only into [`Lanes::room`]: every job
 //! the lanes hold has a slot, and a row this replica cannot start stays free
 //! for one that can.
@@ -53,7 +53,7 @@
 //! shutdown interrupted, or that the lane had taken and not started, releases
 //! its claim at once, so another replica can take it on its next claim pass.
 //! One still queued behind it keeps its claim until
-//! [`CLAIM_TTL`](crate::obligation::CLAIM_TTL) lapses.
+//! [`CLAIM_TTL`](crate::delivery::CLAIM_TTL) lapses.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -68,7 +68,7 @@ use tokio_util::task::TaskTracker;
 
 use std::time::Duration;
 
-use crate::obligation::{AbandonReason, CLAIM_RENEW, Claimed};
+use crate::delivery::{AbandonReason, CLAIM_RENEW, Claimed};
 use crate::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_policy};
 
 /// Delivery cycles an answer gets before it is abandoned.
@@ -91,8 +91,8 @@ pub const LANE_DEPTH: usize = 32;
 const EVENT_REQUEUED_AT_SHUTDOWN: &str = "outbound_delivery_requeued_at_shutdown";
 const EVENT_DELIVERY_EXHAUSTED: &str = "outbound_delivery_exhausted";
 const EVENT_DELIVERED: &str = "outbound_delivery_delivered";
-const EVENT_STAMP_FAILED: &str = "outbound_obligation_stamp_failed";
-const EVENT_ATTEMPT_COUNT_FAILED: &str = "outbound_obligation_attempt_failed";
+const EVENT_STAMP_FAILED: &str = "outbound_delivery_stamp_failed";
+const EVENT_ATTEMPT_COUNT_FAILED: &str = "outbound_delivery_attempt_failed";
 const EVENT_RELEASE_FAILED: &str = "outbound_claim_release_failed";
 const EVENT_RENEW_FAILED: &str = "outbound_claim_renew_failed";
 const EVENT_CLAIM_LAPSED: &str = "outbound_claim_lapsed";
@@ -122,7 +122,7 @@ impl Destination {
 /// of it and a channel moves the box, not the text.
 type Job = Box<Claimed>;
 
-/// The lanes, over one set of posters and the obligation ledger.
+/// The lanes, over one set of posters and the delivery ledger.
 ///
 /// Cheap to clone: every clone shares the same lanes, ceiling and tracker.
 #[derive(Debug)]
@@ -142,7 +142,7 @@ impl<S> Clone for Lanes<S> {
 struct Inner<S> {
     retries: crate::retry::RetryPolicy,
     posters: Posters<S>,
-    /// The obligation ledger, for stamping what a destination actually took.
+    /// The delivery ledger, for stamping what a destination actually took.
     database: Db,
     permits: Semaphore,
     /// Protects lane membership and publication against retirement. Capacity
@@ -159,7 +159,7 @@ struct Inner<S> {
 }
 
 impl<S: Deliver + 'static> Lanes<S> {
-    /// Lanes delivering through `posters`, stamping obligations in
+    /// Lanes delivering through `posters`, stamping deliveries in
     /// `database`, and stopping on `token`.
     #[must_use]
     pub fn new(posters: Posters<S>, database: Db, token: CancellationToken) -> Self {
@@ -276,7 +276,7 @@ impl<S: Deliver + 'static> Inner<S> {
             crate::abandon::delivery(&self.database, job, AbandonReason::Unaddressable).await;
             return;
         }
-        let attempts = match crate::obligation::count_attempt(&self.database, job).await {
+        let attempts = match crate::delivery::count_attempt(&self.database, job).await {
             Ok(Some(counted)) => Some(counted),
             // Another holder took the row: posting it now would send the
             // answer twice, or beside a later answer to the same workspace.
@@ -321,7 +321,7 @@ impl<S: Deliver + 'static> Inner<S> {
     /// thread; the opposite error — marking delivered what was not — loses the
     /// answer silently.
     async fn stamp_delivered(&self, job: &Claimed, attempts: Option<i64>) {
-        match crate::obligation::stamp_delivered(&self.database, job).await {
+        match crate::delivery::stamp_delivered(&self.database, job).await {
             Ok(true) => {}
             Ok(false) => {
                 Self::lapsed(job, "stamp");

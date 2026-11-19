@@ -253,7 +253,7 @@ async fn a_refusal_is_handed_to_every_waiter_and_cached_by_none() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_rotation_reaches_the_caller_that_caused_it_and_nobody_else() {
-    // The write-back obligation: these providers invalidate the posted refresh
+    // The write-back delivery: these providers invalidate the posted refresh
     // token the moment they issue a successor, so exactly one caller may — and
     // must — persist the replacement. A cache HIT performed no exchange and
     // rotated nothing; reporting one would have a second caller write a value

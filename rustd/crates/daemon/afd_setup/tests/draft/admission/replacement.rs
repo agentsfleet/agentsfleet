@@ -54,11 +54,7 @@ async fn disabled_model_refuses_queued_replacement_and_recovers_after_idle_repla
     let failure = failed.failure.expect("durable bounded failure");
     assert_eq!(failure.error_code, AUTHORING_MODEL);
     assert_eq!(failure.recovery_action, "choose_authoring_model");
-    assert_eq!(
-        fixture::attempts(&f).await,
-        0,
-        "no obligation for a refusal"
-    );
+    assert_eq!(fixture::attempts(&f).await, 0, "no delivery for a refusal");
     let idle = f.drafts.read(f.access(), &draft.id).await.expect("reload");
     // Deleting a tenant model sets every pointer to it NULL, which reads as
     // the platform default; this fixture configures none, so it is no escape.

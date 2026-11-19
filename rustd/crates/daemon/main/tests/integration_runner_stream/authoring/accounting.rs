@@ -1,4 +1,4 @@
-//! Unresolved provider obligations and private deletion cannot erase accounting receipts.
+//! Unresolved provider deliveries and private deletion cannot erase accounting receipts.
 
 use super::{ANSWER, fixture::AuthoringFixture};
 use af_core::{error_code, id::Uuid7};
@@ -7,7 +7,7 @@ use agentsfleetd::supervisor::Supervisor;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn unknown_completion_keeps_its_obligation_until_the_same_report_can_settle() {
+async fn unknown_completion_keeps_its_delivery_until_the_same_report_can_settle() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, true).await;
     let run = fixture.id();

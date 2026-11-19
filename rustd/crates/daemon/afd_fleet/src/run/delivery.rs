@@ -1,7 +1,7 @@
 //! Owing a delivery from inside the report's transaction.
 //!
-//! The table itself lives in [`afd_outbound::obligation`], which owns every
-//! statement that touches `fleet.obligations`. This module is the seam: it
+//! The table itself lives in [`afd_outbound::delivery`], which owns every
+//! statement that touches `fleet.deliveries`. This module is the seam: it
 //! mints the row's identifier from this store's entropy, calls the owner's verb
 //! on the transaction's own connection, and hands the new row's identifier back
 //! so the post-commit path can ring the outbound workers' wake.
@@ -16,11 +16,11 @@
 //! receipt` statements differing by one guard and two structs for the same six
 //! columns — one on each side of the crate boundary. `afd_turns::view::sql` carries
 //! the same lesson in its own note. The owner is the crate that DELIVERS; this
-//! one commits the obligation and then gets out of the way.
+//! one commits the delivery and then gets out of the way.
 
 use af_core::id::Uuid7;
 use afd_connector::Provider;
-use afd_outbound::obligation::{self, Delivery};
+use afd_outbound::delivery::{self, Delivery};
 use jiff::Timestamp;
 use sqlx::PgConnection;
 
@@ -56,8 +56,8 @@ pub struct ReplyDestination {
 /// from what was committed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Owing {
-    /// The obligation row this report wrote.
-    pub obligation: Uuid7,
+    /// The delivery row this report wrote.
+    pub delivery: Uuid7,
 }
 
 impl Runs {
@@ -105,7 +105,7 @@ impl Runs {
     /// Record that this answer is owed to its destination.
     ///
     /// Runs on the caller's connection, inside the report's transaction, so the
-    /// obligation and the result it describes share one fate. A rollback that
+    /// delivery and the result it describes share one fate. A rollback that
     /// un-does the settle un-does this too, which is the property that makes
     /// "committed and charged" and "a delivery is owed" the same instant.
     ///
@@ -127,7 +127,7 @@ impl Runs {
         // The report's own token, so no holder's write matches it until a
         // claim replaces it.
         let token = self.entropy().uuid7(now)?;
-        let written = obligation::owe(connection, &row_id, &token, delivery).await?;
+        let written = delivery::owe(connection, &row_id, &token, delivery).await?;
         Ok(written.then_some(row_id))
     }
 
@@ -157,5 +157,5 @@ impl Runs {
 }
 
 #[cfg(all(test, feature = "test-util"))]
-#[path = "obligation_tests.rs"]
+#[path = "delivery_tests.rs"]
 mod tests;

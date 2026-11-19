@@ -64,7 +64,7 @@ pub(crate) enum ErrorKind {
     Token,
     #[error("the provider failed with known usage")]
     Provider,
-    #[error("the provider obligation remains unresolved")]
+    #[error("the provider delivery remains unresolved")]
     Unknown,
     #[error("the setup edit decision could not complete")]
     Decision {

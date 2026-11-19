@@ -6,7 +6,7 @@ fn authoring_failures_distinguish_input_version_and_uncertain_provider_outcomes(
         (error_code::AUTHORING_TOKEN, 422, "Reduce context"),
         (error_code::AUTHORING_PRECONDITION, 428, "If-Match"),
         (error_code::AUTHORING_STALE, 412, "ETag"),
-        (error_code::AUTHORING_TIMEOUT, 504, "obligation"),
+        (error_code::AUTHORING_TIMEOUT, 504, "delivery"),
         (error_code::AUTHORING_UNKNOWN, 409, "Do not dispatch again"),
         (error_code::AUTHORING_PROVIDER, 502, "known usage"),
         (error_code::AUTHORING_MODEL, 409, "workspace owner"),

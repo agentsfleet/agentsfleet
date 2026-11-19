@@ -9,7 +9,7 @@ use afd_connector::Provider;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, Migrator};
-use afd_outbound::obligation::{self, Delivery};
+use afd_outbound::delivery::{self, Delivery};
 use afd_outbound::{Posters, Worker};
 use afd_state::sql::FLEET_STATUS_ACTIVE;
 
@@ -81,7 +81,7 @@ impl Ledger {
     pub(super) async fn owe(&self, lane: &Lane, answer: &str) -> Uuid7 {
         let event = mint_id();
         let mut connection = self.database.acquire().await.expect("a connection");
-        let written = obligation::owe(
+        let written = delivery::owe(
             &mut connection,
             &mint_id(),
             &mint_id(),
@@ -102,7 +102,7 @@ impl Ledger {
 
     pub(super) async fn delivered(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("a connection");
-        sqlx::query_scalar("SELECT count(*) FROM fleet.obligations WHERE delivered_at IS NOT NULL")
+        sqlx::query_scalar("SELECT count(*) FROM fleet.deliveries WHERE delivered_at IS NOT NULL")
             .fetch_one(&mut *connection)
             .await
             .expect("the count reads")
@@ -126,7 +126,7 @@ impl Ledger {
              attempt_count, receipt, \
              COALESCE(next_attempt_at > now() + interval '20 seconds', false) AS due_later, \
              extract(epoch FROM claim_expires_at)::float8 AS claim_expires \
-             FROM fleet.obligations WHERE event_id = $1",
+             FROM fleet.deliveries WHERE event_id = $1",
         )
         .bind(event)
         .fetch_one(&mut *connection)
@@ -153,7 +153,7 @@ impl Ledger {
     pub(super) async fn steal(&self, event: &Uuid7) {
         sql(
             &self.database,
-            "UPDATE fleet.obligations SET receipt = $2 WHERE event_id = $1",
+            "UPDATE fleet.deliveries SET receipt = $2 WHERE event_id = $1",
             &[event, &thief()],
         )
         .await;

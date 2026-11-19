@@ -56,11 +56,11 @@ impl Error {
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Events { .. }
-            // The obligation is a PostgreSQL row, so a ledger fault reads as a
+            // The delivery is a PostgreSQL row, so a ledger fault reads as a
             // database error and not a queue one. `afd_outbound::Error` can
             // also carry a QUEUE failure, but not on any path that reaches
-            // here: this crate calls only `obligation::owe` and
-            // `obligation::receipt`, and neither touches the stream.
+            // here: this crate calls only `delivery::owe` and
+            // `delivery::receipt`, and neither touches the stream.
             | ErrorKind::Outbound { .. }
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt => DETAIL_DATABASE_ERROR,

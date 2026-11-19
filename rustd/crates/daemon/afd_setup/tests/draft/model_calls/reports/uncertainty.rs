@@ -51,10 +51,7 @@ async fn acknowledged_unknown(f: &Fixture, a: &Attempt, before: i64, request: &R
     assert!(!ack.settled);
     assert_eq!(counts(f, a).await, (0, 1, 0));
     assert_eq!(balance(f).await, before);
-    assert!(
-        outstanding(f, a).await,
-        "unknown usage keeps the obligation"
-    );
+    assert!(outstanding(f, a).await, "unknown usage keeps the delivery");
     let failure = messages(f, a)
         .await
         .into_iter()
@@ -138,5 +135,5 @@ async fn outstanding(f: &Fixture, a: &Attempt) -> bool {
     .bind(&a.draft.id)
     .fetch_one(&mut *f.connection().await)
     .await
-    .expect("attempt obligation")
+    .expect("attempt delivery")
 }

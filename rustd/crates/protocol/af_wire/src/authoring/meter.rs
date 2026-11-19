@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 pub enum Knowledge {
     /// All physical calls have authoritative usage.
     Known,
-    /// At least one physical call has an unresolved obligation.
+    /// At least one physical call has an unresolved delivery.
     Unknown,
 }
 

@@ -16,7 +16,7 @@ pub enum FailureReason {
     ContextTooLarge,
     /// A known-usage provider failure permits a new message.
     ProviderFailed,
-    /// A physical dispatch has an unresolved provider obligation.
+    /// A physical dispatch has an unresolved provider delivery.
     ProviderUsageUnknown,
     /// The attempt exhausted its wall-clock allowance.
     AttemptTimedOut,
@@ -108,7 +108,7 @@ impl std::fmt::Debug for Report {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Reported {
-    /// False while an authoritative provider obligation remains unresolved.
+    /// False while an authoritative provider delivery remains unresolved.
     pub settled: bool,
     /// Whether this report identity was already acknowledged.
     pub replayed: bool,

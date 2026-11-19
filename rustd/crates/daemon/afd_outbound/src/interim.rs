@@ -32,7 +32,7 @@
 //! The poster escapes every text it sends (`crate::slack`), so a line is handed
 //! over as the fleet wrote it and escaped exactly once.
 
-use crate::obligation::Outgoing;
+use crate::delivery::Outgoing;
 use af_core::id::Uuid7;
 use afd_connector::Provider;
 use afd_connector::slack::Part;

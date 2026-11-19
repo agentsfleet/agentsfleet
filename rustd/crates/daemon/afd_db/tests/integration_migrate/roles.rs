@@ -124,7 +124,7 @@ const GRANTS: [(&str, &str, &[Verb]); 89] = [
     ("fleet.tool_calls", "api_runtime", READ_WRITE),
     ("fleet.admissions", "api_runtime", KEPT),
     ("fleet.approval_gates", "api_runtime", KEPT),
-    ("fleet.obligations", "api_runtime", KEPT),
+    ("fleet.deliveries", "api_runtime", KEPT),
     ("fleet.schedules", "api_runtime", READ_WRITE),
     ("fleet.sessions", "api_runtime", READ_WRITE),
     ("fleet.activity_counters", "api_runtime", READ_ONLY),

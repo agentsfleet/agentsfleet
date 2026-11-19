@@ -25,8 +25,8 @@
 //! # What this verb does NOT do
 //!
 //! No activity publish and no outbound wake inside the settle. An owed
-//! answer's obligation row does commit there, through
-//! [`crate::run::obligation`]; the publish and the wake run after the
+//! answer's delivery row does commit there, through
+//! [`crate::run::delivery`]; the publish and the wake run after the
 //! commit, best effort, and a failure is logged, never returned.
 //! No OTLP spans either — the drained amount comes back as a VALUE, the way
 //! [`afd_billing::Accounts::debit_receive`] answers one, and the caller

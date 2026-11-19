@@ -111,9 +111,9 @@ pub(crate) enum ErrorKind {
         source: af_core::error::Error,
     },
 
-    /// A notice's obligation could not be recorded.
+    /// A notice's delivery could not be recorded.
     #[error("the notice could not be owed")]
-    Obligation {
+    Delivery {
         #[source]
         source: afd_outbound::error::Error,
     },
@@ -139,7 +139,7 @@ impl Error {
             ErrorKind::Admission { source } => (source.code(), source.detail()),
             // The ledger decided which of its failures is an outage; the
             // sentence follows the code it chose.
-            ErrorKind::Obligation { source } if source.is_datastore_unavailable() => (
+            ErrorKind::Delivery { source } if source.is_datastore_unavailable() => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 detail::DATABASE_UNAVAILABLE,
             ),
@@ -154,7 +154,7 @@ impl Error {
             | ErrorKind::ConfigUnreadable { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::Identifier { .. }
-            | ErrorKind::Obligation { .. } => (
+            | ErrorKind::Delivery { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::OPERATION_FAILED,
             ),
@@ -184,7 +184,7 @@ impl Error {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Admission { source } => source.is_datastore_unavailable(),
-            ErrorKind::Obligation { source } => source.is_datastore_unavailable(),
+            ErrorKind::Delivery { source } => source.is_datastore_unavailable(),
             _reachable => false,
         }
     }

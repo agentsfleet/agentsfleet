@@ -101,7 +101,7 @@ The binding must match the current workspace and installed team.
 Deleted owners and moved-team bindings cannot supply stale authority.
 Concurrent notices converge on the channel's existing unique binding.
 
-An archived fleet is never chosen as a carrier, because it cannot acquire another outbound obligation.
+An archived fleet is never chosen as a carrier, because it cannot acquire another outbound delivery.
 When no active fleet can carry a notice, the notice is dropped as `no_active_notice_carrier`; that includes a bound carrier that was later archived.
 
 [Notice ownership](../../../rustd/crates/daemon/afd_api_ingress/src/handler/mention/notice.rs) owns those checks and the recorded thread destination.
@@ -126,9 +126,9 @@ A private channel needs `groups:history`, which the app does not request.
 
 ## 6. How the answer comes back
 
-The producer that owns a reply surface records the reply destination on the admission: provider `slack` and the address `{team_id, channel_id, thread_ts}` (the poster requires `channel_id` and `thread_ts`), where `thread_ts` is the mention's `thread_ts`, or its `ts` when it started the thread. The destination travels with the event, and an approval continuation inherits it from the event it resumes. The report transaction owes a delivery only when the event carries a destination, addressed by it. The Slack poster reads the address from the delivery obligation.
+The producer that owns a reply surface records the reply destination on the admission: provider `slack` and the address `{team_id, channel_id, thread_ts}` (the poster requires `channel_id` and `thread_ts`), where `thread_ts` is the mention's `thread_ts`, or its `ts` when it started the thread. The destination travels with the event, and an approval continuation inherits it from the event it resumes. The report transaction owes a delivery only when the event carries a destination, addressed by it. The Slack poster reads the address from the delivery delivery.
 
-The report parses the recorded connector once, so the run's **model** provider never reaches the delivery ledger (`afd_fleet/src/run/obligation.rs`). A job its destination refuses for good, or one out of delivery cycles, is stamped abandoned, and no scan offers it again (`afd_outbound/src/abandon.rs`).
+The report parses the recorded connector once, so the run's **model** provider never reaches the delivery ledger (`afd_fleet/src/run/delivery.rs`). A job its destination refuses for good, or one out of delivery cycles, is stamped abandoned, and no scan offers it again (`afd_outbound/src/abandon.rs`).
 
 A run may say up to eight interim lines before its answer, through `POST /v1/runners/me/runs/{run_id}/messages` (`MESSAGES_PER_RUN_MAX`, `af_wire/src/message_verb/mod.rs`). The run plane fences each line and counts it in `runner.runs.posted_message_count` (`schema/20261108123200_runner_runs.sql`), so a reclaimed run starts a new count.
 
@@ -207,7 +207,7 @@ Both channels subscribe to `agentsfleet/linkwarden`: development selects pull re
 - One Slack event admits at most one event or one notice, across retries.
 - A fleet answers in a channel only when its own reviewed setup names that channel's ID.
 - A delivery is owed only to a destination its producer recorded; a model provider never reaches the delivery ledger.
-- An obligation the destination permanently refuses is abandoned and never re-offered.
+- An delivery the destination permanently refuses is abandoned and never re-offered.
 - Memory is private by default. This scenario grants no shared-memory access; explicit read grants can expose workspace-visible memory from other fleets. See [memory grants](../memory.md).
 - A Slack-requested write run reaches one daemon-issued branch and one draft PR, and never merges or deploys.
 - A write-bound fleet never receives an unaddressed mention.

@@ -14,9 +14,9 @@ use super::{
     EVENT_CLAIM_COMPLETED, EVENT_CLAIM_FAILED, EVENT_CLAIM_STARTED, EVENT_WAKE_CLOSED,
     EVENT_WAKE_SUBSCRIBE_FAILED, Via, Worker, claim_once, pinged, report,
 };
+use crate::delivery::Outgoing;
 use crate::error::query;
 use crate::lanes::Lanes;
-use crate::obligation::Outgoing;
 use crate::poster::{Deliver, Posters, Verdict};
 
 type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;

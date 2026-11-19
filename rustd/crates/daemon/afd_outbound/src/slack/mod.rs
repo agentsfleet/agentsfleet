@@ -48,7 +48,7 @@
 //! job's answer as the fleet wrote it, so an answer that names the channel
 //! shows the name and pages nobody.
 
-use crate::obligation::Outgoing;
+use crate::delivery::Outgoing;
 use af_crypto::secret::SecretString;
 use afd_connector::slack::{AnswerMarker, Part, Stamp, Thread};
 use afd_connector::{Grants, Provider};

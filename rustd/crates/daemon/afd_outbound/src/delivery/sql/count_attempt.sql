@@ -1,4 +1,4 @@
-UPDATE fleet.obligations
+UPDATE fleet.deliveries
    SET attempt_count    = attempt_count + 1,
        claim_expires_at = clock_timestamp() + $3::interval,
        updated_at       = now()

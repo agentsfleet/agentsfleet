@@ -198,7 +198,7 @@ there is no generic repository trait.
  identity.workspaces ◀── fleets ──▶ revisions (head_revision_id)
  fleets ◀── revisions, schedules, sessions (1:1), activity_counters (1:1),
             events ◀── tool_calls, admissions, approval_gates ──▶ connector.integration_grants,
-            obligations, task_items ◀── tasks ◀── task_inputs
+            deliveries, task_items ◀── tasks ◀── task_inputs
 ```
 
 | Table | Purpose | Notes |
@@ -234,7 +234,7 @@ there is no generic repository trait.
 | `events` | One row per delivery into the fleet | `UNIQUE(fleet_id, event_id)`; `task_activity` keeps an array of at most 128 public stages / 120 KB; native sequence and truncation are separate typed columns, within the public 128 KiB ceiling |
 | `admissions` | Sole work queue; retries cannot duplicate work; claims and reports fence each row | optional task/item association; `input_claim_run_id` and `input_claim_fence` stamp a message a live run claimed |
 | `approval_gates` | A risky action waiting for a person |  |
-| `obligations` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; `next_attempt_at` defers a released row |
+| `deliveries` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; `next_attempt_at` defers a released row |
 | `tool_calls` | Full arguments and output of each tool call |  |
 | `activity_counters` | Trigger-maintained dashboard totals |  |
 
@@ -338,7 +338,7 @@ that reads them (rule 7).
 | Draft (user delete or 30-day sweep) | messages, candidates, answer receipts, draft context checkpoint | attempts, dispatches, usage lines, receipts | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, attempts, usage lines | `dispatches.result` and `dispatches.native_reply` of their attempts |
 | Plugin card | its revisions | fleets installed from it; drafts started from it (`source_plugin_revision_id` set NULL) | none |
-| Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner runs; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runner runs for their 30-day window; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
+| Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, deliveries, schedules, grants, channels, memory, slot, live (`active`) runner runs; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runner runs for their 30-day window; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
 | Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | attempts, usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Authoring private results; each removed object first records its location and charged bytes for remote cleanup |
 | Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys, runners with their runs, history and counters | attempts, usage lines, daily usage and run rows, registration receipts (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | Device session (past `expires_at`) | nothing: the row stays, and every read refuses it | none | none; the row holds a sealed ciphertext and a code digest |
@@ -418,7 +418,7 @@ Added by this milestone:
 - **Write-only columns dropped by the M246 audit.** Each was written by a statement and read by none.
   - `fleet.approval_gates`: `spend_count`, `spend_ceiling`, `stated_binding`.
   - `identity.cli_credentials`: `credential_prefix`, `deployment`, `created_from_address`.
-  - `authoring.edit_decisions.snapshot`, `fleet.obligations.abandon_reason`, `fleet.task_bases.retained_bytes`.
+  - `authoring.edit_decisions.snapshot`, `fleet.deliveries.abandon_reason`, `fleet.task_bases.retained_bytes`.
   - `fleet.task_completions`: `conclusion`, `body_digest`.
   - `fleet.task_effect_states.confirmed_at`, `fleet.task_waits.consumed_admission_id`, `fleet.tasks.last_transition_at`.
   - `fleet.task_inputs` and `fleet.task_interpretations`: `accepting_run_id`, `accepting_fence`.

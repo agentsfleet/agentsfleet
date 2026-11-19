@@ -33,7 +33,7 @@ use backon::ExponentialBuilder;
 use garde::Validate;
 use serde::Deserialize;
 
-/// Inline delivery attempts; a durable obligation remains claimable after exhaustion.
+/// Inline delivery attempts; a durable delivery remains claimable after exhaustion.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct RetrySettings {

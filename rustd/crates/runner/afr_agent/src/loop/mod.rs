@@ -108,7 +108,7 @@ impl AgentEngine for Loop {
             let native = serde_json::json!({ "current_task": prepared.inputs.current_task,
                 "accepted_interpretation": prepared.inputs.current_interpretation,
                 "accepted_inputs": prepared.inputs.accepted_inputs });
-            instructions.push_str("\n\nNative task scope: execute only the current task's accepted objective and items marked applies_here. Other accepted items retain their original reply obligations but grant no permission to execute another task. A conversational answer does not complete the task. The coordinator assesses progress after complete action groups.\n");
+            instructions.push_str("\n\nNative task scope: execute only the current task's accepted objective and items marked applies_here. Other accepted items retain their original reply deliveries but grant no permission to execute another task. A conversational answer does not complete the task. The coordinator assesses progress after complete action groups.\n");
             instructions.push_str(&scrub.clean(native.to_string()).into_inner());
         }
         // Every earlier turn passes the scrub the current message does: a

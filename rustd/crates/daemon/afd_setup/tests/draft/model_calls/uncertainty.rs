@@ -1,4 +1,4 @@
-//! Lost acknowledgement preserves the remote effect and its unresolved obligation.
+//! Lost acknowledgement preserves the remote effect and its unresolved delivery.
 
 use super::{
     super::{attempt::Attempt, fixture::Fixture, mint},

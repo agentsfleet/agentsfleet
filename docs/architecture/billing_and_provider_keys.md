@@ -133,7 +133,7 @@ Current chat blocking considers attempts whose message sequence exceeds the draf
 
 A later message can claim only through normal runner capacity and balance checks. Kept liability can still consume either limit. Fence expiry alone never authorizes replacement or proves that provider billing stopped.
 
-Fresh Send refuses while an uncancelled attempt has unknown provider usage. Exact accepted replay is checked first and returns its original sequence. Explicit Stop permits later work without discarding the old obligation.
+Fresh Send refuses while an uncancelled attempt has unknown provider usage. Exact accepted replay is checked first and returns its original sequence. Explicit Stop permits later work without discarding the old delivery.
 
 Parse inference-key header syntax before saving dispatch intent. A definite HTTP 401 authentication rejection records a failed call with known usage. Keep reported usage when supplied; otherwise authentication rejection has no generated tokens.
 

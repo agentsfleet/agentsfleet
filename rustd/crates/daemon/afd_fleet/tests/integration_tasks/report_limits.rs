@@ -291,7 +291,7 @@ async fn a_notice_is_owed_when_the_run_answered_nothing() {
             .expect("the report settles");
 
         let (owed, answered): (Option<String>, String) = sqlx::query_as(
-            "SELECT (SELECT o.answer FROM fleet.obligations o WHERE o.event_id = e.event_id), \
+            "SELECT (SELECT o.answer FROM fleet.deliveries o WHERE o.event_id = e.event_id), \
                     e.response_text FROM fleet.events e WHERE e.event_id = $1",
         )
         .bind(&case.held.event_id)

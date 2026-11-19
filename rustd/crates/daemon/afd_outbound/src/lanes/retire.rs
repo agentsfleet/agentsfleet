@@ -12,7 +12,7 @@ use tokio::sync::mpsc::error::TryRecvError;
 use dashmap::mapref::entry::Entry;
 
 use super::{Destination, Inner, Job};
-use crate::obligation::Claimed;
+use crate::delivery::Claimed;
 use crate::poster::Deliver;
 
 impl<S: Deliver + 'static> Inner<S> {
@@ -102,8 +102,8 @@ mod tests {
     use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
 
+    use crate::delivery::{Claimed, Outgoing};
     use crate::lanes::{Destination, LANE_DEPTH, Lanes};
-    use crate::obligation::{Claimed, Outgoing};
     use crate::poster::{Deliver, Posters, Verdict};
 
     #[derive(Debug)]
