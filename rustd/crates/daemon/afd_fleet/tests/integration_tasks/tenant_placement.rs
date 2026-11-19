@@ -150,7 +150,7 @@ async fn lapse(case: &Case) {
     .await;
     execute(
         case,
-        "UPDATE runner.runs SET status = 'expired' WHERE fleet_id = $1 AND status = 'active'",
+        "UPDATE thread.runs SET status = 'expired' WHERE fleet_id = $1 AND status = 'active'",
         &case.held.fleet,
     )
     .await;
@@ -214,7 +214,7 @@ async fn platform_task_revision_never_runs_on_a_tenant_runner() {
             .await
             .expect("the issue answers");
         assert!(issued.is_none(), "issue refuses the tenant runner too");
-        let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE runner_id = $1")
+        let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE runner_id = $1")
             .bind(&tenant)
             .fetch_one(
                 &mut *case

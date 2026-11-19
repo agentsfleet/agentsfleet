@@ -94,7 +94,7 @@ async fn empty_folds(native: &mut Native, run: &str, fence: u64) {
 }
 
 async fn cancellation(scene: &crate::e2e::Scenario, native: &mut Native, run: &str) {
-    sqlx::query("UPDATE runner.runs SET cancel_requested_at=now() WHERE id=$1")
+    sqlx::query("UPDATE thread.runs SET cancel_requested_at=now() WHERE id=$1")
         .bind(af_core::id::Uuid7::parse(run).expect("issued UUIDv7"))
         .execute(
             &mut *scene

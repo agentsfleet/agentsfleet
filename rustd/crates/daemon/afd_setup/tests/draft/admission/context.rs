@@ -15,7 +15,7 @@ async fn blank(f: &Fixture) -> Draft {
 }
 
 async fn complete(f: &Fixture, draft: &Draft, answer: &str) {
-    sqlx::query("UPDATE authoring.messages SET status='completed',answer_text=$2 WHERE draft_id=$1 AND sequence=1")
+    sqlx::query("UPDATE setup.messages SET status='completed',answer_text=$2 WHERE draft_id=$1 AND sequence=1")
         .bind(&draft.id).bind(answer).execute(&mut *f.connection().await)
         .await.expect("saved prior assistant answer");
 }
@@ -56,7 +56,7 @@ async fn a_blank_draft_keeps_completed_history_in_the_daemon_without_a_candidate
         .collect();
     assert_eq!(actual, [(false, "Next question")]);
     let original: (String, String) = sqlx::query_as(
-        "SELECT user_text,answer_text FROM authoring.messages WHERE draft_id=$1 AND sequence=1",
+        "SELECT user_text,answer_text FROM setup.messages WHERE draft_id=$1 AND sequence=1",
     )
     .bind(draft.id)
     .fetch_one(&mut *f.connection().await)
@@ -86,7 +86,7 @@ async fn saved_history_over_the_old_row_or_transfer_bound_remains_available_for_
             for _ in 2..65 {
                 send(&f, &draft).await;
             }
-            sqlx::query("UPDATE authoring.messages SET status='completed' WHERE draft_id=$1")
+            sqlx::query("UPDATE setup.messages SET status='completed' WHERE draft_id=$1")
                 .bind(&draft.id)
                 .execute(&mut *f.connection().await)
                 .await
@@ -102,7 +102,7 @@ async fn saved_history_over_the_old_row_or_transfer_bound_remains_available_for_
             "Next question"
         );
         let saved: (i64, String) = sqlx::query_as(
-            "SELECT count(*)::bigint,min(answer_text) FROM authoring.messages WHERE draft_id=$1",
+            "SELECT count(*)::bigint,min(answer_text) FROM setup.messages WHERE draft_id=$1",
         )
         .bind(draft.id)
         .fetch_one(&mut *f.connection().await)

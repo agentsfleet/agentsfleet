@@ -96,7 +96,7 @@ async fn seed_authoring(fixtures: &Fixtures, owner: &Bound, attempt: &Uuid7, run
 async fn remove_authoring(fixtures: &Fixtures, attempt: &Uuid7) {
     let owner = fixtures.open(DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("an owner connection");
-    sqlx::query("DELETE FROM authoring.attempts WHERE id = $1")
+    sqlx::query("DELETE FROM setup.attempts WHERE id = $1")
         .bind(attempt)
         .execute(&mut *connection)
         .await

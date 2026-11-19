@@ -261,7 +261,7 @@ pub(crate) async fn abandon(held: &Held) -> i64 {
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "UPDATE runner.runs SET run_expires_at = now() - $2::interval, \
+        "UPDATE thread.runs SET run_expires_at = now() - $2::interval, \
          last_metered_at = now() - $2::interval - $3::interval, \
          created_at = created_at - (last_metered_at - (now() - $2::interval - $3::interval)) \
          WHERE id = $1",

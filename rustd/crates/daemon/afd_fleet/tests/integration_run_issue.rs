@@ -2,7 +2,7 @@
 //! reachable.
 //!
 //! `integration_run_assign.rs` proves how work is FOUND. This proves what
-//! happens once a runner is given it: the `runner.runs` row lands, and
+//! happens once a runner is given it: the `thread.runs` row lands, and
 //! with it the reclaim path becomes reachable at all — reclaim looks for a
 //! still-`active` run, and nothing else writes one.
 //!
@@ -27,7 +27,7 @@ use crate::rows::{LAPSE, Row};
 ///
 /// The distinction is money. A reclaim carries the dead holder's billing
 /// forward and never charges again; a fresh pull would bill the same event a
-/// second time. Reaching this path needs a `runner.runs` row, which is
+/// second time. Reaching this path needs a `thread.runs` row, which is
 /// why this test issues one and the sibling above does not.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -220,7 +220,7 @@ async fn test_a_stale_claim_writes_no_run() {
     assert!(superseded.is_none(), "a superseded fence writes no run");
     let mut connection = fixtures.database.acquire().await.expect("database");
     let active: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM runner.runs WHERE fleet_id = $1 AND status = 'active'",
+        "SELECT count(*) FROM thread.runs WHERE fleet_id = $1 AND status = 'active'",
     )
     .bind(&fleet)
     .fetch_one(&mut *connection)
@@ -278,7 +278,7 @@ async fn a_plain_run_under_a_moved_setup_is_not_written() {
         .expect("the issue answers");
 
     assert!(issued.is_none(), "a moved head writes no run");
-    let written: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE fleet_id = $1")
+    let written: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE fleet_id = $1")
         .bind(&fleet)
         .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
         .await

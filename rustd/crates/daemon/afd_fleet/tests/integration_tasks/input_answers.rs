@@ -145,7 +145,7 @@ async fn assert_pending(case: &Case, source: &Uuid7) {
         .await
         .expect("completion observer");
     let state: (bool, i64, i64) = sqlx::query_as(
-        "SELECT settled_at IS NOT NULL, (SELECT count(*) FROM fleet.events WHERE fleet_id=$2 AND event_id=$1), (SELECT count(*) FROM fleet.deliveries WHERE fleet_id=$2 AND event_id=$1) FROM fleet.admissions WHERE id=$1"
+        "SELECT settled_at IS NOT NULL, (SELECT count(*) FROM fleet.events WHERE fleet_id=$2 AND event_id=$1), (SELECT count(*) FROM thread.deliveries WHERE fleet_id=$2 AND event_id=$1) FROM fleet.admissions WHERE id=$1"
     ).bind(source).bind(&case.scope.fleet_id).fetch_one(&mut *connection).await.expect("incomplete source");
     assert_eq!(
         state,
@@ -181,7 +181,7 @@ async fn assert_completed(case: &Case, source: &Uuid7, reply: Reply<'_>) -> Valu
     .await
     .expect("settled original source");
     assert!(settled);
-    let deliveries: Vec<(String, Option<String>, String)> = sqlx::query_as("SELECT provider,destination,answer FROM fleet.deliveries WHERE fleet_id=$1 AND event_id=$2")
+    let deliveries: Vec<(String, Option<String>, String)> = sqlx::query_as("SELECT provider,destination,answer FROM thread.deliveries WHERE fleet_id=$1 AND event_id=$2")
         .bind(&case.scope.fleet_id).bind(source).fetch_all(&mut *connection).await.expect("original reply deliveries");
     let expected = match reply {
         Reply::To { connector, address } => vec![(
@@ -196,7 +196,7 @@ async fn assert_completed(case: &Case, source: &Uuid7, reply: Reply<'_>) -> Valu
 }
 
 async fn payload(case: &Case) -> Value {
-    sqlx::query_scalar("SELECT to_jsonb(l) FROM runner.runs l WHERE id=$1")
+    sqlx::query_scalar("SELECT to_jsonb(l) FROM thread.runs l WHERE id=$1")
         .bind(&case.held.run_key)
         .fetch_one(
             &mut *case

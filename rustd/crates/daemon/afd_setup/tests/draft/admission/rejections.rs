@@ -21,7 +21,7 @@ use std::sync::{
 
 const KEY: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 const TEXT: &str = "Check setup with this credential";
-const LEDGER: &str = "SELECT a.status,a.usage_unknown,(SELECT count(*) FROM authoring.dispatches WHERE attempt_id=a.id) FROM authoring.attempts a WHERE id=$1";
+const LEDGER: &str = "SELECT a.status,a.usage_unknown,(SELECT count(*) FROM setup.dispatches WHERE attempt_id=a.id) FROM setup.attempts a WHERE id=$1";
 
 #[derive(Debug)]
 struct Provider {

@@ -45,7 +45,7 @@ WITH inserted_runners AS (
        NULL, NULL, '2025-10-09 08:00:00.052+00', '2025-10-09 08:00:00.052+00')
 
 )
-INSERT INTO runner.runs
+INSERT INTO thread.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at, fencing_token, run_expires_at, status, posted_message_count,
    created_at, updated_at)

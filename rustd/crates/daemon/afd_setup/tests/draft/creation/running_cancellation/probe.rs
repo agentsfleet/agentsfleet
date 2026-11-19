@@ -22,7 +22,7 @@ impl Bus for BeforePublish {
         {
             let visible = async {
                 let visible = sqlx::query_scalar(
-                    "SELECT cancel_requested_at IS NOT NULL FROM runner.runs WHERE id = $1",
+                    "SELECT cancel_requested_at IS NOT NULL FROM thread.runs WHERE id = $1",
                 )
                 .bind(run_id)
                 .fetch_one(&mut *self.database.acquire().await?)

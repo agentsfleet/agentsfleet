@@ -29,26 +29,24 @@ SET closed_at = now(), expires_at = date_trunc('milliseconds', clock_timestamp()
 WHERE id = $1";
 
 /// Takes the attempt row's lock and writes nothing.
-const LOCK_ATTEMPT: &str =
-    "SELECT pg_backend_pid() FROM authoring.attempts WHERE id = $1 FOR UPDATE";
+const LOCK_ATTEMPT: &str = "SELECT pg_backend_pid() FROM setup.attempts WHERE id = $1 FOR UPDATE";
 
 /// Takes the draft row's lock and writes nothing.
-const LOCK_DRAFT: &str = "SELECT pg_backend_pid() FROM authoring.drafts WHERE id = $1 FOR UPDATE";
+const LOCK_DRAFT: &str = "SELECT pg_backend_pid() FROM setup.drafts WHERE id = $1 FOR UPDATE";
 
 /// Whether the attempt's run is still live on database time.
 const RUN_LIVE: &str =
-    "SELECT run_expires_at > clock_timestamp() FROM authoring.attempts WHERE id = $1";
+    "SELECT run_expires_at > clock_timestamp() FROM setup.attempts WHERE id = $1";
 
 /// Whether the draft's retention deadline is still ahead on database time.
-const DRAFT_LIVE: &str =
-    "SELECT expires_at > clock_timestamp() FROM authoring.drafts WHERE id = $1";
+const DRAFT_LIVE: &str = "SELECT expires_at > clock_timestamp() FROM setup.drafts WHERE id = $1";
 
 /// Whether any backend is waiting on `$1`'s locks.
 const BLOCKING: &str =
     "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))";
 
 /// The answer receipts a report left for the attempt.
-const ANSWERS: &str = "SELECT count(*) FROM authoring.answer_receipts WHERE attempt_id = $1";
+const ANSWERS: &str = "SELECT count(*) FROM setup.answer_receipts WHERE attempt_id = $1";
 
 /// One row whose deadline the case moves, and the statements that judge it.
 struct Row<'a> {

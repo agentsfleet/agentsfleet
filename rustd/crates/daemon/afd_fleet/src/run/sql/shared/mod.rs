@@ -1,5 +1,5 @@
 //! The run bookkeeping both kinds share: claim, issue, renew, meter, settle
-//! and reclaim on `runner.slots` and `runner.runs`, keyed by a slot's or a
+//! and reclaim on `runner.slots` and `thread.runs`, keyed by a slot's or a
 //! run's id and blind to whose work it is.
 //!
 //! A slot's id is its owner's ([`crate::run::RunOwner`]), and a run
@@ -26,7 +26,7 @@
 //!
 //! # The setup turns the authoring path still runs
 //!
-//! [`INSERT_RUN`]'s census counts `authoring.attempts` beside the runs,
+//! [`INSERT_RUN`]'s census counts `setup.attempts` beside the runs,
 //! as every host census does while the authoring path still issues attempts.
 //! That term goes with the table.
 

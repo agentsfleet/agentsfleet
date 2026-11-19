@@ -84,7 +84,7 @@ const HEAD_REVISION: &str = "SELECT r.revision FROM fleet.fleets f \
      JOIN fleet.revisions r ON r.id = f.head_revision_id WHERE f.id = $1";
 
 /// Links a draft to a saved fleet, as a Save does once activation succeeds.
-const LINK_FLEET: &str = "UPDATE authoring.drafts SET fleet_id = $2 WHERE id = $1";
+const LINK_FLEET: &str = "UPDATE setup.drafts SET fleet_id = $2 WHERE id = $1";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -143,7 +143,7 @@ async fn card(f: &Fixture) -> afd_setup::types::DraftCard {
 }
 
 /// Renames a chat, as an explicit title edit does.
-const RENAME: &str = "UPDATE authoring.drafts SET title = $2 WHERE id = $1";
+const RENAME: &str = "UPDATE setup.drafts SET title = $2 WHERE id = $1";
 
 /// A whole-page search for `text`.
 fn search(text: &str) -> ListQuery {

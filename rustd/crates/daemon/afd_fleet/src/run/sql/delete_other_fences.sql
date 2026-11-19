@@ -1,2 +1,2 @@
-DELETE FROM fleet.tool_calls t
+DELETE FROM thread.items t
 WHERE t.fleet_id = $1 AND t.event_id = $2 AND t.fencing_token <> $3

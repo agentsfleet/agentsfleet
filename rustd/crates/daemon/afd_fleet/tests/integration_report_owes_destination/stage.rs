@@ -41,7 +41,7 @@ pub(crate) async fn deliveries(fixtures: &Fixtures, fleet: &Uuid7) -> Vec<Delive
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "SELECT provider, destination, event_id, answer FROM fleet.deliveries \
+        "SELECT provider, destination, event_id, answer FROM thread.deliveries \
          WHERE fleet_id = $1 ORDER BY created_at, sequence",
     )
     .bind(fleet)
@@ -155,7 +155,7 @@ impl Stage {
             .await
             .expect("a pooled connection");
         sqlx::query_scalar(
-            "SELECT receipt FROM fleet.deliveries
+            "SELECT receipt FROM thread.deliveries
           WHERE fleet_id = $1 AND event_id = $2",
         )
         .bind(&self.fleet)

@@ -1,6 +1,6 @@
 //! The statements the tool-call record verb and settlement run.
 //!
-//! Each one names `fleet.tool_calls` (`schema/1710`).
+//! Each one names `thread.items` (`schema/1710`).
 
 /// The run a record post names, if this runner holds it live, locked for
 /// the length of the post's transaction: [`super::standing::SELECT_STANDING`]

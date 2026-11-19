@@ -12,11 +12,11 @@ WITH instant AS MATERIALIZED (
   SELECT r.id
   FROM runner.runners r CROSS JOIN instant i
   WHERE r.id = $2
-    AND (SELECT count(*) FROM runner.runs l
+    AND (SELECT count(*) FROM thread.runs l
           WHERE l.runner_id = $2 AND l.status = $11
             AND l.run_expires_at > i.checked_at)
-      -- Setup turns the authoring path still runs; this term goes with authoring.attempts.
-      + (SELECT count(*) FROM authoring.attempts a
+      -- Setup turns the authoring path still runs; this term goes with setup.attempts.
+      + (SELECT count(*) FROM setup.attempts a
           WHERE a.runner_id = $2 AND a.status = $11
             AND a.run_expires_at > i.checked_at)
       -- Every other owner's live hold on this host, fleet or draft: a slot's id is its owner's.
@@ -41,7 +41,7 @@ WITH instant AS MATERIALIZED (
 ), inserted AS (
   -- The run starts, and its metering cursor with it, at the clock read after the
   -- slot lock: stamping the earlier instant would bill the lock wait as runtime.
-  INSERT INTO runner.runs
+  INSERT INTO thread.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at, max_runtime_seconds,
    fencing_token, run_expires_at, status, posted_message_count, decision_snapshot, setup_revision_id, created_at, updated_at)
@@ -51,7 +51,7 @@ WITH instant AS MATERIALIZED (
   FROM held h
   CROSS JOIN after_lock a
   JOIN fleet.events e ON e.fleet_id = $3 AND e.event_id = $6
-  -- The scope proof runner.runs holds no foreign key for: a workspace or
+  -- The scope proof thread.runs holds no foreign key for: a workspace or
   -- tenant that is not the fleet's writes no run, so the caller issues none.
   JOIN fleet.fleets f ON f.id = $3 AND f.workspace_id = $4 AND f.tenant_id = $5
   -- The setup the claim assembled is still the head, and a setup that needs
@@ -78,7 +78,7 @@ WITH instant AS MATERIALIZED (
   WHERE id = $2 AND run_version = $17::bigint AND EXISTS (SELECT 1 FROM inserted)
   RETURNING id
 ), audit AS (
-  INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
+  INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)
   SELECT $12, i.runner_id, $13, $14,
          NULL, now()
   FROM inserted i

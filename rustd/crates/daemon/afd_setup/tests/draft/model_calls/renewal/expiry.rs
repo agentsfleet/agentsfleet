@@ -77,7 +77,7 @@ async fn a_renewal_whose_hold_the_biller_cannot_answer_extends_nothing_and_fails
     assert_eq!(refused.code(), error_code::INTERNAL_DB_UNAVAILABLE);
     assert_eq!(snapshot(&f, &a).await, before, "the run is not extended");
     let failure: Option<String> =
-        sqlx::query_scalar("SELECT failure_reason FROM authoring.attempts WHERE id=$1")
+        sqlx::query_scalar("SELECT failure_reason FROM setup.attempts WHERE id=$1")
             .bind(a.id)
             .fetch_one(&mut *f.connection().await)
             .await

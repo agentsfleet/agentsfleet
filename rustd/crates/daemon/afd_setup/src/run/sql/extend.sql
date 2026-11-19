@@ -1,4 +1,4 @@
-UPDATE authoring.attempts
+UPDATE setup.attempts
    SET run_expires_at = LEAST($2::timestamptz + $3::interval, expires_at),
        reported_runtime_ms = $4,
        updated_at = now()

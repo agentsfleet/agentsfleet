@@ -8,7 +8,7 @@
 //!
 //! # Why the retry is exercised through `deliver_with_retry` and not `run`
 //!
-//! `Worker::run` claims rows of `fleet.deliveries`, so its loop needs a live
+//! `Worker::run` claims rows of `thread.deliveries`, so its loop needs a live
 //! Postgres, and `tests/integration_claims/` grades it on the integration lane.
 //! What is provable here without a server is the retry POLICY, which is the part that
 //! decides what a vendor sees — and it is worth proving here because the

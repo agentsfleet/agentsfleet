@@ -1,6 +1,6 @@
 SELECT (
     SELECT count(*)
-    FROM runner.runs l
+    FROM thread.runs l
     LEFT JOIN fleet.fleets f ON f.id = l.fleet_id
     WHERE l.runner_id = r.id AND l.fleet_id IS NOT NULL
       AND (l.workspace_id = $2 OR $2 IS NULL)

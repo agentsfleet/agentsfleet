@@ -24,7 +24,7 @@ SELECT r.id,$3,$4,'sweep:'||r.operation,r.operation,'digest',r.id,
 
 /// This workspace's receipts past the window.
 async fn expired(f: &Fixture) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE workspace_id=$1 AND created_at <= statement_timestamp() - $2::interval")
+    sqlx::query_scalar("SELECT count(*) FROM setup.replay_receipts WHERE workspace_id=$1 AND created_at <= statement_timestamp() - $2::interval")
         .bind(&f.workspace)
         .bind(DAY)
         .fetch_one(&mut *f.connection().await)
@@ -89,7 +89,7 @@ async fn a_message_past_the_window_keeps_its_operation_id_after_its_receipt_is_s
     let created = f.drafts.create(f.access(), request, now()).await;
     let draft = created.expect("create").draft.id;
     sqlx::query(
-        "UPDATE authoring.messages SET created_at = created_at - $2::interval WHERE draft_id=$1",
+        "UPDATE setup.messages SET created_at = created_at - $2::interval WHERE draft_id=$1",
     )
     .bind(&draft)
     .bind(PAST)

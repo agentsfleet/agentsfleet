@@ -6,7 +6,7 @@ use afd_fleet::run::Renewed;
 use sqlx::{Connection as _, Postgres, Transaction};
 use std::time::Duration;
 
-const LOCK: &str = "SELECT pg_backend_pid() FROM runner.runs WHERE id = $1 FOR UPDATE";
+const LOCK: &str = "SELECT pg_backend_pid() FROM thread.runs WHERE id = $1 FOR UPDATE";
 const BLOCKED: &str =
     "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))";
 const WAIT_LIMIT: Duration = Duration::from_secs(5);

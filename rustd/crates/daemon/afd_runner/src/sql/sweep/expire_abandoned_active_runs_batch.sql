@@ -1,5 +1,5 @@
 WITH doomed AS (
-  SELECT id, runner_id FROM runner.runs
+  SELECT id, runner_id FROM thread.runs
   WHERE status = ANY($1::text[]) AND updated_at < statement_timestamp() - $2::interval
   LIMIT $4::bigint
   FOR UPDATE SKIP LOCKED
@@ -13,7 +13,7 @@ WITH doomed AS (
      SET expired_count = runner.lifetime_counters.expired_count + EXCLUDED.expired_count,
          updated_at = EXCLUDED.updated_at
 )
-UPDATE runner.runs AS l
+UPDATE thread.runs AS l
 SET status = $3::text, updated_at = now()
 FROM doomed d
 WHERE l.id = d.id

@@ -44,7 +44,7 @@ async fn an_unaffordable_input_price_refuses_before_reservation_or_dispatch() {
         12,
     )
     .await;
-    sqlx::query("UPDATE authoring.messages SET answer_text=repeat('private evidence ',7000) WHERE draft_id=$1 AND sequence<=12")
+    sqlx::query("UPDATE setup.messages SET answer_text=repeat('private evidence ',7000) WHERE draft_id=$1 AND sequence<=12")
         .bind(draft.id).execute(&mut *f.connection().await).await.expect("twelve valid prior exchanges");
     let error = calls
         .call(
@@ -104,7 +104,7 @@ fn request(run: &Claimed, index: u32) -> ModelCallInput {
 }
 
 async fn durable(f: &Fixture, run: &Claimed) -> (i64, i64) {
-    sqlx::query_as("SELECT a.reserved_nanos,(SELECT count(*) FROM authoring.dispatches d WHERE d.attempt_id=a.id) FROM authoring.attempts a WHERE a.id=$1")
+    sqlx::query_as("SELECT a.reserved_nanos,(SELECT count(*) FROM setup.dispatches d WHERE d.attempt_id=a.id) FROM setup.attempts a WHERE a.id=$1")
         .bind(Uuid7::parse(&run.attempt_id).expect("attempt")).fetch_one(&mut *f.connection().await).await.expect("the attempt's bound and receipts")
 }
 

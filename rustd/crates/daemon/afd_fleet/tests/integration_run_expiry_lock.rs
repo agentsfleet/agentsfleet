@@ -1,7 +1,7 @@
 //! Dimension 4.8 for the run verbs: a run that lapses while a verb waits on
 //! its row lock no longer holds once the verb has the lock.
 //!
-//! Three verbs read `runner.runs` under a lock: the write fence a schedule
+//! Three verbs read `thread.runs` under a lock: the write fence a schedule
 //! write proves itself with (`FOR SHARE`), the tool-call records
 //! (`FOR NO KEY UPDATE`), and the interim message count (an `UPDATE`). The
 //! holder here only locks the row and writes nothing. A holder that wrote it
@@ -37,15 +37,15 @@ use crate::support::Fixtures;
 const LAPSES_IN: Duration = Duration::from_millis(500);
 
 /// Moves the run's deadline to `$2` past database time.
-const RUN_LAPSES: &str = "UPDATE runner.runs \
+const RUN_LAPSES: &str = "UPDATE thread.runs \
 SET run_expires_at = date_trunc('milliseconds', clock_timestamp()) + $2::interval \
 WHERE id = $1";
 
 /// Takes the run row's lock and writes nothing.
-const LOCK_RUN: &str = "SELECT pg_backend_pid() FROM runner.runs WHERE id = $1 FOR UPDATE";
+const LOCK_RUN: &str = "SELECT pg_backend_pid() FROM thread.runs WHERE id = $1 FOR UPDATE";
 
 /// Whether the run is still live on database time.
-const RUN_LIVE: &str = "SELECT run_expires_at > clock_timestamp() FROM runner.runs WHERE id = $1";
+const RUN_LIVE: &str = "SELECT run_expires_at > clock_timestamp() FROM thread.runs WHERE id = $1";
 
 /// Whether any backend is waiting on `$1`'s locks.
 const BLOCKING: &str =

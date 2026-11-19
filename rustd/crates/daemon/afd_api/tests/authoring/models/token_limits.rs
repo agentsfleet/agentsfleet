@@ -124,7 +124,7 @@ fn code(problem: &Value) -> Option<&str> {
 }
 
 async fn spend(model: &Model, output: u32) {
-    sqlx::query("UPDATE authoring.attempts SET output_token_count=$2 WHERE draft_id=$1")
+    sqlx::query("UPDATE setup.attempts SET output_token_count=$2 WHERE draft_id=$1")
         .bind(&model.running.draft)
         .bind(i64::from(output))
         .execute(&mut *model.running.f.db.acquire().await.expect("spend"))
@@ -155,7 +155,7 @@ async fn window(model: &Model, tokens: i32, output: u32) {
     .await
     .expect("registered metadata")
     .expect("owner model exists");
-    sqlx::query("UPDATE authoring.attempts SET model_snapshot=$2::jsonb WHERE draft_id=$1")
+    sqlx::query("UPDATE setup.attempts SET model_snapshot=$2::jsonb WHERE draft_id=$1")
         .bind(&model.running.draft)
         .bind(serde_json::to_string(&live).expect("metadata JSON"))
         .execute(&mut *connection)

@@ -8,7 +8,7 @@ use afd_db::Db;
 const PROBES: &str = "SELECT calls FROM pg_stat_statements \
     WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database()) \
       AND query LIKE $1";
-const PROBE_PATTERN: &str = "%FROM fleet.admissions a%FROM authoring.drafts d%";
+const PROBE_PATTERN: &str = "%FROM fleet.admissions a%FROM setup.drafts d%";
 
 #[derive(Debug, Default)]
 pub(super) struct Witness {

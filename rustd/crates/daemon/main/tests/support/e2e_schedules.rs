@@ -264,7 +264,7 @@ impl Assigned {
         let mut connection = self.connection().await;
         sqlx::query(
             "UPDATE fleet.events SET actor = $2 \
-             WHERE event_id = (SELECT event_id FROM runner.runs WHERE id = $1)",
+             WHERE event_id = (SELECT event_id FROM thread.runs WHERE id = $1)",
         )
         .bind(&self.run_id)
         .bind(format!(

@@ -17,7 +17,7 @@ pub const OUTBOUND_WORKER: &str = "connector:outbound";
 
 /// Starts the answer-delivery worker under `supervisor`.
 ///
-/// It claims owed answers from `fleet.deliveries` when `bus` pings it and on
+/// It claims owed answers from `thread.deliveries` when `bus` pings it and on
 /// its own pass, so it needs no connection of its own.
 pub(crate) fn spawn(
     supervisor: &mut Supervisor,

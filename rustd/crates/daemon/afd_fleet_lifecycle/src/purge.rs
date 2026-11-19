@@ -21,7 +21,7 @@
 //! and `the_purge_itself_runs_as_api_runtime` proves both through a pool that
 //! holds `api_runtime` alone.
 //!
-//! Runner runs are the one child the purge deletes by hand. `runner.runs`
+//! Runner runs are the one child the purge deletes by hand. `thread.runs`
 //! holds no foreign key to the fleet, so a SETTLED run outlives it as runner
 //! history for its own 30-day window, with the fleet shown as deleted. A LIVE
 //! run would name a fleet that no longer exists, so the purge deletes those
@@ -32,7 +32,7 @@
 //! outlives the fleet still naming which fleet it paid for, beside the
 //! `fleet_name` captured when the money moved. Erasing one would falsify the
 //! reconciliation between the charges and the wallet. A setup retry key in
-//! `authoring.replay_receipts` survives too, for the rest of its 24-hour
+//! `setup.replay_receipts` survives too, for the rest of its 24-hour
 //! window: it carries no foreign key, so a late retry finds its resource gone
 //! rather than creating it again (slot 1980).
 //!

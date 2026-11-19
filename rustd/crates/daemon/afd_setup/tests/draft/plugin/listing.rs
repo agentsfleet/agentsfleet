@@ -7,7 +7,7 @@ use afd_setup::types::{Page, PluginCard, PluginQuery};
 use std::collections::BTreeSet;
 
 /// The tables a per-card follow-up read would name.
-const PLUGIN_TABLES: &str = "authoring.plugin_";
+const PLUGIN_TABLES: &str = "setup.plugin_";
 /// The page sizes the walk is read at: the smallest, and a full page.
 const PAGE_SIZES: [u32; 2] = [1, 25];
 /// Cards published: one full page, then two more for a second page to hold.

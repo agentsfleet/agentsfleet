@@ -68,7 +68,7 @@ pub const DELETE_TERMINAL_RUNS_BATCH: &str = include_str!("delete_terminal_runs_
 /// — are never eligible, because they are the record of what a host did over
 /// its whole life and an operator reading a six-month-old incident needs them.
 ///
-/// No row lock: `api_runtime` holds no UPDATE on `runner.events`, so Postgres
+/// No row lock: `api_runtime` holds no UPDATE on `runner.history`, so Postgres
 /// would refuse one, and two sweeps meeting one row only means the second
 /// waits and finds it gone.
 ///

@@ -5,6 +5,6 @@ SELECT l.fleet_id, l.workspace_id,
        -- replica's cache under this version, and the report statement guards
        -- on it.
        (SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1) AS catalogue_version
-FROM runner.runs l
+FROM thread.runs l
 JOIN fleet.events e ON e.event_id = l.event_id
 WHERE l.id = $1 AND l.runner_id = $2

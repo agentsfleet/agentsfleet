@@ -40,7 +40,7 @@ async fn test_completed_event_redelivery_does_not_execute() {
             .fetch_one(&mut *connection)
             .await
             .expect("queue state");
-    let attempts: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE fleet_id = $1")
+    let attempts: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE fleet_id = $1")
         .bind(&run.fleet)
         .fetch_one(&mut *connection)
         .await
@@ -117,7 +117,7 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
 async fn assert_superseded_claim_retained(run: &Held, fence: i64) {
     let state: (bool, Option<i64>, i64, i64) = sqlx::query_as(
         "SELECT a.settled_at IS NOT NULL,a.run_fence,s.fencing_token, \
-         (SELECT count(*) FROM runner.runs WHERE fleet_id=a.fleet_id) \
+         (SELECT count(*) FROM thread.runs WHERE fleet_id=a.fleet_id) \
          FROM fleet.admissions a JOIN runner.slots s ON s.fleet_id=a.fleet_id \
          WHERE a.id=$1 AND s.last_runner_id=$2",
     )

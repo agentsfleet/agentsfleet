@@ -1,7 +1,7 @@
 -- One runner run running one chat turn, with money reserved and the model pinned. No foreign
 -- key to drafts, workspaces, tenants or users: usage lines name the attempt and money outlives
 -- every deletion. NULL `runner_id` means the runner was removed, never that none ran it.
-CREATE TABLE authoring.attempts (
+CREATE TABLE setup.attempts (
     id                      UUID PRIMARY KEY,
     run_id                UUID    NOT NULL,
     runner_id               UUID    REFERENCES runner.runners(id) ON DELETE SET NULL (runner_id),
@@ -37,15 +37,15 @@ CREATE TABLE authoring.attempts (
 );
 
 CREATE INDEX idx_attempts_runner_id_status_run_expires_at
-    ON authoring.attempts (runner_id, status, run_expires_at);
+    ON setup.attempts (runner_id, status, run_expires_at);
 
 -- The expression matches the lapse sweep's own ORDER BY, so the scan reads in order and stops
 -- at its limit.
 CREATE INDEX idx_attempts_status_deadline_id
-    ON authoring.attempts (status, LEAST(run_expires_at, expires_at), id);
+    ON setup.attempts (status, LEAST(run_expires_at, expires_at), id);
 
-CREATE INDEX idx_attempts_tenant_id_status ON authoring.attempts (tenant_id, status);
+CREATE INDEX idx_attempts_tenant_id_status ON setup.attempts (tenant_id, status);
 
-CREATE INDEX idx_attempts_workspace_id ON authoring.attempts (workspace_id);
+CREATE INDEX idx_attempts_workspace_id ON setup.attempts (workspace_id);
 
-GRANT SELECT, INSERT, UPDATE ON authoring.attempts TO api_runtime;
+GRANT SELECT, INSERT, UPDATE ON setup.attempts TO api_runtime;

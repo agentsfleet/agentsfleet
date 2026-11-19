@@ -262,7 +262,7 @@ const fn expected(balance: i64, charged: i64, rows: i64, unsettled: i64) -> Fina
 }
 
 async fn financials(fixture: &Decisions<'_>) -> Financials {
-    sqlx::query_as("SELECT w.balance_nanos AS balance,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.settled_at IS NOT NULL) AS settled_cost,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2) AS decision_rows,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2 AND u.settled_at IS NULL) AS unsettled,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2) AS decision_cost FROM runner.runs l JOIN billing.wallets w ON w.tenant_id=l.tenant_id WHERE l.id=$1")
+    sqlx::query_as("SELECT w.balance_nanos AS balance,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.settled_at IS NOT NULL) AS settled_cost,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2) AS decision_rows,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2 AND u.settled_at IS NULL) AS unsettled,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2) AS decision_cost FROM thread.runs l JOIN billing.wallets w ON w.tenant_id=l.tenant_id WHERE l.id=$1")
         .bind(&fixture.case.held.run_key).bind(LineKind::Decision.as_str())
         .fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("original financial state"))
         .await.expect("complete original wallet and immutable usage")

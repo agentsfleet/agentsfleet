@@ -214,7 +214,7 @@ async fn attempted(fixture: &Fixture, before: i64) -> Result<()> {
 async fn census(fixture: &Fixture) -> Result<(i64, i64)> {
     Ok(sqlx::query_as(
         "SELECT \
-        (SELECT count(*) FROM runner.runs WHERE runner_id=$1), \
+        (SELECT count(*) FROM thread.runs WHERE runner_id=$1), \
         (SELECT count(*) FROM fleet.admissions WHERE id=$2 AND fleet_id=$3 AND settled_at IS NULL)",
     )
     .bind(&fixture.scene.runner_id)

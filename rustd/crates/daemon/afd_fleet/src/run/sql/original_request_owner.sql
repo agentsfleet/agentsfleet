@@ -1,6 +1,6 @@
 WITH owned AS MATERIALIZED (
   SELECT l.created_at, l.run_expires_at, l.tenant_id, l.workspace_id, l.fleet_id, l.event_id
-  FROM runner.runs l JOIN fleet.events e ON e.event_id = l.event_id
+  FROM thread.runs l JOIN fleet.events e ON e.event_id = l.event_id
   WHERE l.id = $1 AND l.runner_id = $2
   FOR UPDATE OF l
 ), instant AS MATERIALIZED (

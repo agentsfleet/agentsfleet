@@ -66,7 +66,7 @@ async fn configured_edit_after_claim_is_rechecked_before_issuing_a_source_run() 
 }
 
 async fn refuse_after_edit(case: &Case, acquired: &Acquired) {
-    let before: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE fleet_id=$1")
+    let before: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE fleet_id=$1")
         .bind(&case.held.fleet)
         .fetch_one(
             &mut *case
@@ -81,7 +81,7 @@ async fn refuse_after_edit(case: &Case, acquired: &Acquired) {
         .expect("run count");
     set(case, false).await;
     assert!(issue(case, acquired).await.is_none());
-    let after: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE fleet_id=$1")
+    let after: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE fleet_id=$1")
         .bind(&case.held.fleet)
         .fetch_one(
             &mut *case

@@ -29,7 +29,7 @@ fn request() -> Renew {
 }
 
 async fn snapshot(f: &Fixture, a: &Attempt) -> (Timestamp, i64, String) {
-    let (expires, runtime, hash): (jiff_sqlx::Timestamp, i64, String) = sqlx::query_as("SELECT run_expires_at,reported_runtime_ms,model_token_hash FROM authoring.attempts WHERE id=$1")
+    let (expires, runtime, hash): (jiff_sqlx::Timestamp, i64, String) = sqlx::query_as("SELECT run_expires_at,reported_runtime_ms,model_token_hash FROM setup.attempts WHERE id=$1")
         .bind(&a.id).fetch_one(&mut *f.connection().await).await.expect("renewal snapshot");
     (expires.to_jiff(), runtime, hash)
 }

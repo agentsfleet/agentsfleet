@@ -1,6 +1,6 @@
 //! A settled run outlives its fleet, and says where an operator can go.
 //!
-//! `runner.runs` holds no foreign key to the fleet or its event, so deleting
+//! `thread.runs` holds no foreign key to the fleet or its event, so deleting
 //! the fleet row (which takes its events with it) leaves the run listed: the
 //! fleet and event columns read null, the outcome is no longer provable, and
 //! the destination is `fleet_deleted`. A live fleet in another account is
@@ -47,7 +47,7 @@ WITH runner AS (
             'anthropic', 'model-a', 'platform', now(), 10, 2, 0, 0, 0, 3, 0, NULL, 15, 0,
             now(), now())
 )
-INSERT INTO runner.runs
+INSERT INTO thread.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at, fencing_token, run_expires_at, status, posted_message_count,
    created_at, updated_at)

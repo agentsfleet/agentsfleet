@@ -42,7 +42,7 @@ async fn test_tool_call_details_grants_allow_runtime() {
             &scene,
             &format!(
                 "SELECT (has_table_privilege('api_runtime', \
-                 'fleet.tool_calls', '{privilege}') \
+                 'thread.items', '{privilege}') \
                  AND $1 IS NOT NULL AND $2 IS NOT NULL)::int::bigint"
             ),
             None,

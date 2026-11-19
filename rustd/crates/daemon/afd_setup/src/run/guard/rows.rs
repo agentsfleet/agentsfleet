@@ -9,7 +9,7 @@ use af_core::id::Uuid7;
 use jiff::Timestamp;
 use std::time::Duration;
 
-/// One `authoring.attempts` row, by column name.
+/// One `setup.attempts` row, by column name.
 #[derive(sqlx::FromRow)]
 pub(crate) struct AttemptRow {
     id: Uuid7,

@@ -197,7 +197,7 @@ async fn two_applies_under_one_key_write_one_revision_and_the_waiter_replays_it(
     let mut holder = c.base.connection().await;
     let mut held = holder.begin().await.expect("holder transaction");
     let pid: i32 =
-        sqlx::query_scalar("SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1 FOR UPDATE")
+        sqlx::query_scalar("SELECT pg_backend_pid() FROM setup.drafts WHERE id=$1 FOR UPDATE")
             .bind(&chat)
             .fetch_one(&mut *held)
             .await

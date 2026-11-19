@@ -179,7 +179,7 @@ After Save, the Fleet is no longer tied to the conversation that created it.
 
 ### §8.2.3 Plugin reuse
 
-The **Plugin** holds reusable setup. An entry is created only when a person explicitly publishes a chat-created candidate (C6 `POST W/plugins`), and every publication is an immutable revision in `authoring.plugin_revisions`. Saving from a Plugin revision pins that exact revision; a later revision never changes a fleet already saved from an earlier one.
+The **Plugin** holds reusable setup. An entry is created only when a person explicitly publishes a chat-created candidate (C6 `POST W/plugins`), and every publication is an immutable revision in `setup.plugin_revisions`. Saving from a Plugin revision pins that exact revision; a later revision never changes a fleet already saved from an earlier one.
 
 Two first scenarios anchor the product flow:
 

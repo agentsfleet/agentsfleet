@@ -22,7 +22,7 @@ WITH origin AS MATERIALIZED (
            (a.input_claim_run_id IS NULL
             OR (a.input_claim_run_id = $9 AND a.input_claim_fence = $10)
             OR NOT EXISTS (
-                SELECT 1 FROM runner.runs claimed
+                SELECT 1 FROM thread.runs claimed
                 JOIN runner.slots s ON s.fleet_id = claimed.fleet_id
                 WHERE claimed.id = a.input_claim_run_id
                   AND claimed.fencing_token = a.input_claim_fence

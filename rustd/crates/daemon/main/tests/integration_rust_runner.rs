@@ -107,7 +107,7 @@ const SETTLE_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// The newest run the fleet was issued, by status.
 const LATEST_RUN_STATUS: &str =
-    "SELECT status FROM runner.runs WHERE fleet_id = $1 ORDER BY created_at DESC LIMIT 1";
+    "SELECT status FROM thread.runs WHERE fleet_id = $1 ORDER BY created_at DESC LIMIT 1";
 
 /// The content one fleet memory key holds.
 const REMEMBERED_CONTENT: &str =

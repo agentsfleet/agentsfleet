@@ -37,7 +37,7 @@ const QUEUED_WITHIN: Duration = Duration::from_secs(10);
 const POLL: Duration = Duration::from_millis(20);
 
 /// Locks the run row the pass is about to bill, answering the holder's pid.
-const HOLD_RUN: &str = "SELECT pg_backend_pid() FROM runner.runs WHERE id = $1 FOR UPDATE";
+const HOLD_RUN: &str = "SELECT pg_backend_pid() FROM thread.runs WHERE id = $1 FOR UPDATE";
 
 /// Sessions queued behind `$1`.
 const WAITERS: &str = "SELECT count(*) FROM pg_stat_activity \
@@ -45,7 +45,7 @@ const WAITERS: &str = "SELECT count(*) FROM pg_stat_activity \
 
 /// What a late report does to the cursor: carries it to the deadline.
 const BILL_TO_DEADLINE: &str =
-    "UPDATE runner.runs SET last_metered_at = run_expires_at WHERE id = $1";
+    "UPDATE thread.runs SET last_metered_at = run_expires_at WHERE id = $1";
 
 async fn isolated() -> Held {
     held_in(Fixtures::create_isolated().await).await
@@ -64,7 +64,7 @@ async fn a_line_the_biller_cannot_settle_waits_for_the_next_pass() {
     let database = &held.fixtures.database;
     let ledger = LedgerBiller::on_system_clock(database.clone());
     orphan(&held).await;
-    sqlx::query("UPDATE runner.runs SET status = $2 WHERE id = $1")
+    sqlx::query("UPDATE thread.runs SET status = $2 WHERE id = $1")
         .bind(&held.run_key)
         .bind(RUN_STATUS_REPORTED)
         .execute(&mut *database.acquire().await.expect("a connection"))

@@ -35,7 +35,7 @@ const HOST_DEGRADED: &str = "cgroup controller missing";
 
 /// Moves the run's runtime cursor past the database clock, so the next
 /// window measures no run time at all.
-const CURSOR_AHEAD: &str = "UPDATE runner.runs \
+const CURSOR_AHEAD: &str = "UPDATE thread.runs \
      SET last_metered_at = now() + interval '1 hour' WHERE id = $1";
 
 /// Ends the held event before its report lands, as a redelivery's first
@@ -58,7 +58,7 @@ const OVERFLOWING_LINES: &str = "INSERT INTO billing.usage_lines \
      SELECT s.id, $1, l.id, s.seq, $7::text, l.tenant_id, l.workspace_id, l.fleet_id, f.name, $2, \
             l.provider, l.model, l.posture, now(), $3::bigint, 0, 0, 0, 0, 0, 0, 0, 0, \
             now(), now(), now() \
-       FROM runner.runs l JOIN fleet.fleets f ON f.id = l.fleet_id \
+       FROM thread.runs l JOIN fleet.fleets f ON f.id = l.fleet_id \
             CROSS JOIN (VALUES (0, $5), (1, $6)) AS s(seq, id) \
       WHERE l.id = $4";
 

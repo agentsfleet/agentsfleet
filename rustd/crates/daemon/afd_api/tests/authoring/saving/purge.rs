@@ -86,7 +86,7 @@ async fn assert_retained_identity(case: &Case, key: &af_core::id::Uuid7) {
             .expect("fleet census");
     assert_eq!(remaining, 0);
     let receipts: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE operation_id=$1")
+        sqlx::query_scalar("SELECT count(*) FROM setup.replay_receipts WHERE operation_id=$1")
             .bind(key)
             .fetch_one(&mut *connection)
             .await

@@ -188,7 +188,7 @@ impl Held {
                                       AND s.last_runner_id = l.runner_id
                                       AND s.fencing_token = l.fencing_token
                                       AND s.run_expires_at > statement_timestamp())
-             FROM runner.runs l WHERE l.id = $1 AND l.runner_id = $2",
+             FROM thread.runs l WHERE l.id = $1 AND l.runner_id = $2",
         )
         .bind(&self.issued.run_id)
         .bind(&self.runner)

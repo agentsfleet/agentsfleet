@@ -4,7 +4,7 @@ WITH held AS MATERIALIZED (
            l.run_expires_at, l.model, l.provider,
            s.fencing_token AS slot_fence, s.run_expires_at AS slot_expires_at,
            f.status AS fleet_status
-    FROM runner.runs l
+    FROM thread.runs l
     JOIN runner.slots s
       ON s.fleet_id = l.fleet_id AND s.last_runner_id = l.runner_id
     JOIN fleet.fleets f ON f.id = l.fleet_id AND f.workspace_id = l.workspace_id

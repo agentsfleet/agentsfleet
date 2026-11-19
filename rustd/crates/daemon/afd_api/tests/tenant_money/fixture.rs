@@ -34,7 +34,7 @@ impl Setup {
         .expect("workspace");
         for (index, attempt) in setup.attempts.iter().enumerate() {
             // No runner: an attempt keeps its row after its runner goes (SET NULL).
-            sqlx::query("INSERT INTO authoring.attempts(id,run_id,runner_id,workspace_id,tenant_id,user_id,draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,run_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,reported_runtime_ms,last_activity_sequence,created_at,updated_at) VALUES($1,$1,NULL,$2,$3,$4,$5,$6,1,$1,'{\"model\":\"setup-model\",\"platform_managed\":true}','awaiting_accounting',to_timestamp(101),to_timestamp(101),999,true,0,0,31,0,to_timestamp(101),to_timestamp(101))")
+            sqlx::query("INSERT INTO setup.attempts(id,run_id,runner_id,workspace_id,tenant_id,user_id,draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,run_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,reported_runtime_ms,last_activity_sequence,created_at,updated_at) VALUES($1,$1,NULL,$2,$3,$4,$5,$6,1,$1,'{\"model\":\"setup-model\",\"platform_managed\":true}','awaiting_accounting',to_timestamp(101),to_timestamp(101),999,true,0,0,31,0,to_timestamp(101),to_timestamp(101))")
                 .bind(attempt).bind(&setup.workspace).bind(&owner.tenant).bind(&setup.creator).bind(&setup.draft)
                 .bind(i64::try_from(index).expect("fixture index")).execute(&mut *connection).await.expect("attempt without retained private draft");
         }
@@ -49,7 +49,7 @@ impl Setup {
                 .bind(settlement).bind(attempt).bind(charged)
                 .bind(&owner.tenant).bind(&setup.workspace)
                 .execute(&mut *connection).await.expect("a settled setup line, including a paid failed attempt");
-            sqlx::query("UPDATE authoring.attempts SET status='settled',usage_unknown=false,outcome=$2 WHERE id=$1")
+            sqlx::query("UPDATE setup.attempts SET status='settled',usage_unknown=false,outcome=$2 WHERE id=$1")
                 .bind(attempt).bind(outcome)
                 .execute(&mut *connection).await.expect("settled delivery");
         }
@@ -74,14 +74,14 @@ impl Setup {
             .bind(&self.creator).bind(&owner.tenant).execute(&mut *connection).await.expect("private chat creator");
         sqlx::query("INSERT INTO fleet.fleets(id,workspace_id,tenant_id,name,status,required_tags,memory_reads_workspace,memory_publishes_workspace,resource_version,created_at,updated_at) VALUES($1,$2,$3,'saved-setup','active','{}',false,false,1,now(),now())")
             .bind(&fleet).bind(&self.workspace).bind(&owner.tenant).execute(&mut *connection).await.expect("public saved fleet");
-        sqlx::query("INSERT INTO authoring.drafts(id,workspace_id,tenant_id,user_id,title,status,source_type,fleet_id,last_message_sequence,cancelled_through_sequence,resource_version,created_at,updated_at) VALUES($1,$2,$3,$4,'private title','closed','blank',$5,0,0,1,now(),now())")
+        sqlx::query("INSERT INTO setup.drafts(id,workspace_id,tenant_id,user_id,title,status,source_type,fleet_id,last_message_sequence,cancelled_through_sequence,resource_version,created_at,updated_at) VALUES($1,$2,$3,$4,'private title','closed','blank',$5,0,0,1,now(),now())")
             .bind(&self.draft).bind(&self.workspace).bind(&owner.tenant).bind(&self.creator).bind(&fleet)
             .execute(&mut *connection).await.expect("private draft linked to saved fleet");
         fleet
     }
 
     pub(super) async fn remove_private_chat(&self, owner: &Fixture) {
-        sqlx::query("DELETE FROM authoring.drafts WHERE id=$1")
+        sqlx::query("DELETE FROM setup.drafts WHERE id=$1")
             .bind(&self.draft)
             .execute(
                 &mut *owner

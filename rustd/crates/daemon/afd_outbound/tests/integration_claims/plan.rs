@@ -13,7 +13,7 @@ const LANES: usize = 100;
 
 /// 10,100 rows dealt round the private database's fleets, one lane each: the
 /// first 10,000 delivered, the last hundred one open head per lane.
-const SEED_DELIVERIES: &str = "INSERT INTO fleet.deliveries (id, fleet_id, workspace_id, \
+const SEED_DELIVERIES: &str = "INSERT INTO thread.deliveries (id, fleet_id, workspace_id, \
     provider, destination, event_id, answer, receipt, claim_expires_at, delivered_at, \
     attempt_count, created_at, updated_at) \
     SELECT ('0195b4ba-8d3a-7a11-8abc-' || lpad(to_hex(n), 12, '0'))::uuid, f.id, \
@@ -34,7 +34,7 @@ async fn claim_reads_the_open_lane_index() {
     }
     sql(&ledger.database, SEED_DELIVERIES, &[]).await;
     let mut connection = ledger.database.acquire().await.expect("a connection");
-    sqlx::query("ANALYZE fleet.deliveries")
+    sqlx::query("ANALYZE thread.deliveries")
         .execute(&mut *connection)
         .await
         .expect("statistics refresh");

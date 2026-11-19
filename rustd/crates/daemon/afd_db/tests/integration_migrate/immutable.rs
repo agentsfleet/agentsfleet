@@ -8,11 +8,11 @@ use super::*;
 
 /// The immutable tables: rows written once, then read or removed.
 const IMMUTABLE: [&str; 24] = [
-    "authoring.activity_receipts",
-    "authoring.answer_receipts",
-    "authoring.candidates",
-    "authoring.plugin_revisions",
-    "authoring.replay_receipts",
+    "setup.activity_receipts",
+    "setup.answer_receipts",
+    "setup.candidates",
+    "setup.plugin_revisions",
+    "setup.replay_receipts",
     "billing.authoring_report_receipts",
     "connector.oauth_nonces",
     "fleet.revisions",
@@ -28,7 +28,7 @@ const IMMUTABLE: [&str; 24] = [
     "identity.memberships",
     "identity.workspaces",
     "model.decision_revisions",
-    "runner.events",
+    "runner.history",
     "runner.registration_receipts",
     "runner.turn_checkpoint_operations",
     "runner.turn_checkpoint_refs",

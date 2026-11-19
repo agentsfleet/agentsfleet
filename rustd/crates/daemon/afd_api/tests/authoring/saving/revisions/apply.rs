@@ -103,7 +103,7 @@ async fn original_instructions(fleet: &Fleet) -> String {
 
 /// How many Plugin rows the fleet's tenant owns.
 async fn plugin_count(fleet: &Fleet) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.plugin_entries WHERE tenant_id=$1")
+    sqlx::query_scalar("SELECT count(*) FROM setup.plugin_entries WHERE tenant_id=$1")
         .bind(&fleet.case.base.tenant)
         .fetch_one(
             &mut *fleet

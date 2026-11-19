@@ -184,7 +184,7 @@ async fn the_draft_root_keeps_money(c: &Case) -> (Uuid7, (i64, i64, i64)) {
         .delete(c.base.access(), &a.draft.id)
         .await
         .expect("the creator deletes the draft");
-    assert_eq!(rows(c, "authoring.drafts", &a.draft.id).await, 0);
+    assert_eq!(rows(c, "setup.drafts", &a.draft.id).await, 0);
     assert_eq!(
         dispatch_output(c, &a.id).await,
         (1, 0, 0),
@@ -192,12 +192,7 @@ async fn the_draft_root_keeps_money(c: &Case) -> (Uuid7, (i64, i64, i64)) {
     );
     assert_eq!(attempt_money(c, &a.id).await, money, "the money stays");
     assert_eq!(
-        id_column(
-            c,
-            "SELECT draft_id FROM authoring.attempts WHERE id=$1",
-            &a.id
-        )
-        .await,
+        id_column(c, "SELECT draft_id FROM setup.attempts WHERE id=$1", &a.id).await,
         Some(a.draft.id.clone()),
         "the attempt keeps the deleted draft's id, now opaque"
     );
@@ -266,7 +261,7 @@ async fn the_sweeps_leave_open_work(c: &Case) {
     assert_eq!(
         id_column(
             c,
-            "SELECT fleet_id FROM authoring.drafts WHERE id=$1",
+            "SELECT fleet_id FROM setup.drafts WHERE id=$1",
             &setup_draft
         )
         .await,
@@ -290,12 +285,12 @@ async fn the_sweeps_leave_open_work(c: &Case) {
         .await
         .expect("the draft sweep runs");
     assert_eq!(
-        rows(c, "authoring.drafts", &open.id).await,
+        rows(c, "setup.drafts", &open.id).await,
         1,
         "an open draft stays"
     );
     assert_eq!(
-        rows(c, "authoring.drafts", &setup_draft).await,
+        rows(c, "setup.drafts", &setup_draft).await,
         1,
         "a draft whose fleet is installing stays"
     );

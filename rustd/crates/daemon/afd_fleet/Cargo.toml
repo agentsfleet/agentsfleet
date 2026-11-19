@@ -86,7 +86,7 @@ scopeguard.workspace = true
 # `sql::event` and into the crate named for it, so `afd_approval` could reach
 # them without depending on runs, money, policy and four sweepers.
 afd_turns.workspace = true
-# Owns `fleet.deliveries`: the report path commits an delivery through
+# Owns `thread.deliveries`: the report path commits an delivery through
 # it. The edge runs fleet -> outbound and never back.
 afd_outbound.workspace = true
 # The one masker the product carries: an interim message is scrubbed of the

@@ -13,7 +13,7 @@
 /// `$1::uuid` because sqlx binds a `&str` as `text` and `fleet.fleets.id` is a
 /// `UUID` column; the cast lets Postgres compare the two.
 ///
-/// Which fleet is executing right now is `runner.runs`, which has the
+/// Which fleet is executing right now is `thread.runs`, which has the
 /// fence and the TTL that make the answer trustworthy; the session row is only
 /// the resume bookmark.
 ///

@@ -65,7 +65,7 @@ async fn membership_revocation_cancels_queued_work_before_any_placement() {
         .expect("committed membership revocation");
     assert!(claim(&f, &created.draft).await.is_none());
     let state: (String, Option<String>) =
-        sqlx::query_as("SELECT status,failure_reason FROM authoring.messages WHERE draft_id=$1")
+        sqlx::query_as("SELECT status,failure_reason FROM setup.messages WHERE draft_id=$1")
             .bind(&created.draft.id)
             .fetch_one(&mut *f.connection().await)
             .await
@@ -94,7 +94,7 @@ async fn a_large_current_request_is_transferred_for_exact_daemon_window_prefligh
         "語".repeat(10_000)
     );
     let dispatches: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches WHERE attempt_id=$1")
+        sqlx::query_scalar("SELECT count(*) FROM setup.dispatches WHERE attempt_id=$1")
             .bind(Uuid7::parse(&run.attempt_id).expect("attempt"))
             .fetch_one(&mut *f.connection().await)
             .await

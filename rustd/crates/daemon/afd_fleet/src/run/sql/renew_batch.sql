@@ -54,10 +54,10 @@ WITH asked AS (
   SELECT h.id
   FROM host h
   CROSS JOIN (SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM host) held) i
-  WHERE (SELECT count(*) FROM runner.runs l
+  WHERE (SELECT count(*) FROM thread.runs l
           WHERE l.runner_id = $1 AND l.status = $25 AND l.run_expires_at > i.checked_at)
-      -- Setup turns the authoring path still runs; this term goes with authoring.attempts.
-      + (SELECT count(*) FROM authoring.attempts a
+      -- Setup turns the authoring path still runs; this term goes with setup.attempts.
+      + (SELECT count(*) FROM setup.attempts a
           WHERE a.runner_id = $1 AND a.status = $25 AND a.run_expires_at > i.checked_at)
       <= h.worker_count
 ), locked_slot AS MATERIALIZED (
@@ -66,7 +66,7 @@ WITH asked AS (
   -- A host that may not renew locks nothing, and every run answers lost.
   SELECT s.fleet_id, s.fencing_token, s.run_expires_at
   FROM runner.slots s
-  JOIN runner.runs l ON l.fleet_id = s.fleet_id
+  JOIN thread.runs l ON l.fleet_id = s.fleet_id
   JOIN asked a ON a.run_id = l.id
   CROSS JOIN census h
   WHERE l.runner_id = $1 AND l.status = $25
@@ -77,7 +77,7 @@ WITH asked AS (
          l.created_at, l.run_expires_at, l.last_metered_at, l.posture, l.provider,
          l.model, l.task_id, l.max_runtime_seconds, l.cancel_requested_at IS NOT NULL AS cancelled,
          s.fencing_token AS live_fence, s.run_expires_at AS slot_expires_at
-  FROM runner.runs l
+  FROM thread.runs l
   JOIN locked_slot s ON s.fleet_id = l.fleet_id
   JOIN asked a ON a.run_id = l.id
   WHERE l.runner_id = $1 AND l.status = $25
@@ -155,7 +155,7 @@ WITH asked AS (
   FROM guard g
   WHERE g.d_ms > 0
 ), moved AS (
-  UPDATE runner.runs l
+  UPDATE thread.runs l
   SET run_expires_at = g.capped, last_metered_at = g.metered_until, updated_at = now()
   FROM guard g
   WHERE l.id = g.id

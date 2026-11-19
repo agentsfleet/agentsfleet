@@ -1,7 +1,7 @@
 //! Owing a delivery from inside the report's transaction.
 //!
 //! The table itself lives in [`afd_outbound::delivery`], which owns every
-//! statement that touches `fleet.deliveries`. This module is the seam: it
+//! statement that touches `thread.deliveries`. This module is the seam: it
 //! mints the row's identifier from this store's entropy, calls the owner's verb
 //! on the transaction's own connection, and hands the new row's identifier back
 //! so the post-commit path can ring the outbound workers' wake.

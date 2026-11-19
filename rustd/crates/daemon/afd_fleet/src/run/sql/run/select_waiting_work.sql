@@ -28,16 +28,16 @@ WITH probe AS (
             -- A setup draft waiting for a turn: a queued message, or a running one a lapsed
             -- draft run left behind (its run's `event_id` is the message), with neither a
             -- live attempt nor a live draft slot holding the draft.
-            SELECT 1 FROM authoring.drafts d
-            JOIN authoring.messages m ON m.draft_id = d.id
+            SELECT 1 FROM setup.drafts d
+            JOIN setup.messages m ON m.draft_id = d.id
             WHERE d.status = $2 AND m.sequence > d.cancelled_through_sequence
               AND (m.status = $3
                    OR (m.status = $6 AND EXISTS (
-                       SELECT 1 FROM runner.runs l
+                       SELECT 1 FROM thread.runs l
                        WHERE l.event_id = m.id AND l.draft_id = d.id)))
-              -- Setup turns the authoring path still runs; this term goes with authoring.attempts.
+              -- Setup turns the authoring path still runs; this term goes with setup.attempts.
               AND NOT EXISTS (
-                  SELECT 1 FROM authoring.attempts t
+                  SELECT 1 FROM setup.attempts t
                   WHERE t.draft_id = d.id AND t.status = $1
                     AND t.run_expires_at > statement_timestamp() AND t.expires_at > statement_timestamp()
               )
@@ -72,16 +72,16 @@ SELECT
           )
           -- The setup branch above, narrowed to the runner's tenant, and re-pointed with it.
           AND NOT EXISTS (
-              SELECT 1 FROM authoring.drafts d
-              JOIN authoring.messages m ON m.draft_id = d.id
+              SELECT 1 FROM setup.drafts d
+              JOIN setup.messages m ON m.draft_id = d.id
               WHERE d.tenant_id = r.tenant_id
                 AND d.status = $2 AND m.sequence > d.cancelled_through_sequence
                 AND (m.status = $3
                      OR (m.status = $6 AND EXISTS (
-                         SELECT 1 FROM runner.runs l
+                         SELECT 1 FROM thread.runs l
                          WHERE l.event_id = m.id AND l.draft_id = d.id)))
                 AND NOT EXISTS (
-                    SELECT 1 FROM authoring.attempts t
+                    SELECT 1 FROM setup.attempts t
                     WHERE t.draft_id = d.id AND t.status = $1
                       AND t.run_expires_at > statement_timestamp() AND t.expires_at > statement_timestamp()
                 )

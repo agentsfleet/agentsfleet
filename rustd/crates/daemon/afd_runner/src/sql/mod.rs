@@ -1,6 +1,6 @@
 //! Every statement the runner plane runs, and the stored vocabulary it writes.
 //!
-//! `runner.runners` and `runner.events` are this crate's tables. The one
+//! `runner.runners` and `runner.history` are this crate's tables. The one
 //! writer OUTSIDE it is `afd_fleet::run::finalize`, which records a
 //! `run_released` runner-event when a run ends — it reads [`meta`] and
 //! [`event_type`] from here, because a key spelled inline at a second write
@@ -31,7 +31,7 @@ pub mod runner_admin;
 pub mod runner_view;
 pub mod sweep;
 
-/// `runner.events.metadata` keys.
+/// `runner.history.metadata` keys.
 ///
 /// One declaration each, imported by every writer (RULE UFS): a key spelled
 /// inline at a second write site is how a consumer's `metadata->>'host_id'`
@@ -73,7 +73,7 @@ pub mod meta {
     pub const KIND: &str = "kind";
 }
 
-/// `runner.events.event_type` values this crate writes.
+/// `runner.history.event_type` values this crate writes.
 ///
 /// `af_wire`'s [`RunnerEventType`](afd_api_wire::admin::RunnerEventType)
 /// carries these values as serde renames, so the strings come from there

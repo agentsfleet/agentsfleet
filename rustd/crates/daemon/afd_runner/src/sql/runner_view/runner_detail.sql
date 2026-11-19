@@ -19,7 +19,7 @@ FROM runner.runners r
 LEFT JOIN (
   SELECT runner_id, COUNT(*)::bigint AS active_count,
          COUNT(DISTINCT fleet_id)::bigint AS active_fleets
-  FROM runner.runs
+  FROM thread.runs
   WHERE runner_id = $1 AND status = $2::text
     AND run_expires_at > statement_timestamp()
   GROUP BY runner_id

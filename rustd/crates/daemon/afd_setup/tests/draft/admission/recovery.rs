@@ -16,7 +16,7 @@ const FIRST: &str = "A request whose provider usage cannot be read";
 const NEXT: &str = "Continue after stopping the old turn";
 const ACTION_RETRY_MESSAGE: &str = "retry_message";
 const ATTEMPTS: &str =
-    "SELECT count(*),bool_or(usage_unknown) FROM authoring.attempts WHERE draft_id=$1";
+    "SELECT count(*),bool_or(usage_unknown) FROM setup.attempts WHERE draft_id=$1";
 
 #[test]
 fn failure_recovery_actions_preserve_the_daemons_reason_and_code() {
@@ -260,13 +260,12 @@ async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
         .cancel(f.access(), &draft.id, 1)
         .await
         .expect("delayed old Stop");
-    let status: String = sqlx::query_scalar(
-        "SELECT status FROM authoring.messages WHERE draft_id=$1 AND sequence=2",
-    )
-    .bind(&draft.id)
-    .fetch_one(&mut *f.connection().await)
-    .await
-    .expect("new turn state");
+    let status: String =
+        sqlx::query_scalar("SELECT status FROM setup.messages WHERE draft_id=$1 AND sequence=2")
+            .bind(&draft.id)
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("new turn state");
     assert_eq!(status, "running");
     f.cleanup().await;
 }

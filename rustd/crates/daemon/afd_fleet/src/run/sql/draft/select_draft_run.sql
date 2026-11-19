@@ -6,5 +6,5 @@
 SELECT l.draft_id, l.event_id, l.workspace_id, l.tenant_id, l.posture, l.provider, l.model,
        l.fencing_token, l.status, l.created_at,
        l.cancel_requested_at IS NOT NULL AS cancelled
-FROM runner.runs l
+FROM thread.runs l
 WHERE l.id = $1 AND l.runner_id = $2 AND l.draft_id IS NOT NULL

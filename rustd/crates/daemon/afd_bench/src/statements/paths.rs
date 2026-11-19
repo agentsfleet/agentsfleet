@@ -185,7 +185,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     // Host: the capacity lock, its census and the run-type record.
     ("SELECT worker_count, status, degraded_reason", Path::Host),
     (
-        "SELECT instant.checked_at, (SELECT count(*) FROM runner.runs",
+        "SELECT instant.checked_at, (SELECT count(*) FROM thread.runs",
         Path::Host,
     ),
     ("UPDATE runner.runners SET run_version", Path::Host),
@@ -196,12 +196,12 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     // Meter.
     (
-        "s.fencing_token, s.run_expires_at FROM runner.slots s JOIN runner.runs",
+        "s.fencing_token, s.run_expires_at FROM runner.slots s JOIN thread.runs",
         Path::Meter,
     ),
     ("INSERT INTO billing.usage_lines", Path::Meter),
     (
-        "posture, provider, model, status, cancel_requested_at IS NOT NULL AS cancelled FROM runner.runs WHERE id",
+        "posture, provider, model, status, cancel_requested_at IS NOT NULL AS cancelled FROM thread.runs WHERE id",
         Path::Meter,
     ),
     // Activity has no fragment: a session authorizes its run once, when it
@@ -228,10 +228,10 @@ const FRAGMENTS: &[(&str, Path)] = &[
         "SELECT reply_provider, reply_address FROM fleet.admissions",
         Path::Report,
     ),
-    ("INSERT INTO runner.events (id, runner_id", Path::Report),
+    ("INSERT INTO runner.history (id, runner_id", Path::Report),
     // Task: the durable-task reads that issue, renewal and report each send.
     (
-        "SELECT task_id, fleet_id, workspace_id FROM runner.runs",
+        "SELECT task_id, fleet_id, workspace_id FROM thread.runs",
         Path::Task,
     ),
     ("SELECT t.id AS task_id, t.status, t.generation", Path::Task),

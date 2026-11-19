@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Source;
 
-/// `authoring.drafts.source_type` for a chat started empty.
+/// `setup.drafts.source_type` for a chat started empty.
 const BLANK: &str = "blank";
 /// See [`BLANK`]: a chat started from an inline definition.
 const DEFINITION: &str = "definition";
@@ -52,7 +52,7 @@ impl From<&Source> for SourcePin {
     }
 }
 
-/// A pin as `authoring.drafts` stores it: its type, and the referenced
+/// A pin as `setup.drafts` stores it: its type, and the referenced
 /// revisions resolved by join. A reference the schema set NULL, because its
 /// card was deleted or its fleet purged, leaves no pin.
 pub(crate) struct PinColumns {

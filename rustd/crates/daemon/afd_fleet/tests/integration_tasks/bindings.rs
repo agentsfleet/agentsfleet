@@ -226,7 +226,7 @@ async fn ownership(case: &Case) {
 /// Native receipts preserve the database ceiling rather than restarting a slice on replay.
 async fn stored_deadline(case: &Case, reply: &TaskBindings) {
     let stored: jiff_sqlx::Timestamp =
-        sqlx::query_scalar("SELECT task_execution_deadline_at FROM runner.runs WHERE id=$1")
+        sqlx::query_scalar("SELECT task_execution_deadline_at FROM thread.runs WHERE id=$1")
             .bind(case.run().run_id)
             .fetch_one(
                 &mut *case

@@ -110,12 +110,12 @@ WITH fleet AS MATERIALIZED (
             prior.delivered_at IS NOT NULL AS redelivered
 ), prior_run AS MATERIALIZED (
   SELECT l.id, l.runner_id, l.tenant_id, l.posture, l.model
-  FROM runner.runs l JOIN stamped a ON a.id = l.event_id
+  FROM thread.runs l JOIN stamped a ON a.id = l.event_id
   WHERE l.fleet_id = $1
   ORDER BY l.fencing_token DESC LIMIT 1
   FOR UPDATE OF l
 ), bumped AS (
-  UPDATE runner.runs l SET status = $7, updated_at = now()
+  UPDATE thread.runs l SET status = $7, updated_at = now()
   FROM prior_run p WHERE l.id = p.id AND l.status = $6
   RETURNING l.runner_id
 ), opened AS (
@@ -175,7 +175,7 @@ SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        b.id AS predecessor_run_id, b.id IS NOT NULL AS reclaimed,
        -- The runs this event was issued before this claim. A report settles
        -- its admission, so each one is a run that lapsed without reporting.
-       (SELECT count(*) FROM runner.runs x
+       (SELECT count(*) FROM thread.runs x
          WHERE x.event_id = a.id AND x.fleet_id = $1) AS earlier_runs,
        f.tenant_id, f.name, f.status, f.head_revision_id,
        f.memory_reads_workspace, f.memory_publishes_workspace,

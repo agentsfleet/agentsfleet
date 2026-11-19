@@ -156,10 +156,10 @@ async fn assert_rows(scene: &Scenario, run_id: &str) {
     // `settled_at` is part of the recorded line shape; the relay fills it.
     relay_settled(scene).await;
     let run = Uuid7::parse(run_id).expect("the daemon answers a canonical run id");
-    assert_shape(scene, "runner.runs", "id = $1", &run, RUN_SHAPE).await;
+    assert_shape(scene, "thread.runs", "id = $1", &run, RUN_SHAPE).await;
     assert_shape(
         scene,
-        "runner.events",
+        "runner.history",
         "runner_id = $1",
         &scene.runner_id,
         EVENT_SHAPE,

@@ -10,7 +10,7 @@ async fn an_expired_attempt_is_visible_as_waiting_for_accounting_without_freeing
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     sqlx::query(
-        "UPDATE authoring.attempts SET reserved_nanos=30000000,run_expires_at='epoch' WHERE id=$1",
+        "UPDATE setup.attempts SET reserved_nanos=30000000,run_expires_at='epoch' WHERE id=$1",
     )
     .bind(&a.id)
     .execute(&mut *f.connection().await)
@@ -20,13 +20,12 @@ async fn an_expired_attempt_is_visible_as_waiting_for_accounting_without_freeing
         .maintain()
         .await
         .expect("production maintenance pass");
-    let saved: (String, i64, i32) = sqlx::query_as(
-        "SELECT status,reserved_nanos,call_count FROM authoring.attempts WHERE id=$1",
-    )
-    .bind(&a.id)
-    .fetch_one(&mut *f.connection().await)
-    .await
-    .expect("retained delivery");
+    let saved: (String, i64, i32) =
+        sqlx::query_as("SELECT status,reserved_nanos,call_count FROM setup.attempts WHERE id=$1")
+            .bind(&a.id)
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("retained delivery");
     assert_eq!(saved, ("awaiting_accounting".into(), 30_000_000, 0));
     let messages = f
         .drafts
@@ -60,7 +59,7 @@ async fn an_expired_attempt_reports_its_message_finished_once_across_passes() {
     use super::super::funnel::{FINISHED, about, only, property};
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE authoring.attempts SET run_expires_at='epoch' WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET run_expires_at='epoch' WHERE id=$1")
         .bind(a.id)
         .execute(&mut *f.connection().await)
         .await
@@ -90,7 +89,7 @@ async fn another_workers_sweep_reports_to_the_same_workspace_recorder() {
     let f = Fixture::create().await;
     let worker = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE authoring.attempts SET run_expires_at=to_timestamp(0) WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET run_expires_at=to_timestamp(0) WHERE id=$1")
         .bind(a.id)
         .execute(&mut *f.connection().await)
         .await
@@ -133,7 +132,7 @@ async fn an_attempt_renewed_while_the_pass_waited_on_its_lock_is_left_running() 
     // this proof's pass must not sweep another proof's.
     let f = Fixture::isolated().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE authoring.attempts SET run_expires_at='epoch' WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET run_expires_at='epoch' WHERE id=$1")
         .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await

@@ -12,7 +12,7 @@ use afd_setup::types::DraftState;
 
 /// The draft a saved fleet points back to, and its state.
 async fn draft_of(c: &Case, fleet: &Uuid7) -> Option<(Uuid7, String)> {
-    sqlx::query_as("SELECT id, status FROM authoring.drafts WHERE fleet_id = $1")
+    sqlx::query_as("SELECT id, status FROM setup.drafts WHERE fleet_id = $1")
         .bind(fleet)
         .fetch_optional(&mut *c.base.connection().await)
         .await
@@ -21,7 +21,7 @@ async fn draft_of(c: &Case, fleet: &Uuid7) -> Option<(Uuid7, String)> {
 
 /// A run's status and whether a cancel was asked of it.
 async fn run_state(c: &Case, run: &Uuid7) -> Option<(String, bool)> {
-    sqlx::query_as("SELECT status, cancel_requested_at IS NOT NULL FROM runner.runs WHERE id = $1")
+    sqlx::query_as("SELECT status, cancel_requested_at IS NOT NULL FROM thread.runs WHERE id = $1")
         .bind(run)
         .fetch_optional(&mut *c.base.connection().await)
         .await
@@ -98,7 +98,7 @@ async fn a_delete_ends_setup_and_work_then_removes_the_fleet() -> TestResult {
     );
     assert_eq!(run_state(&c, &run).await, None, "its live run is gone");
     let restored: (Option<Uuid7>, String) =
-        sqlx::query_as("SELECT fleet_id, status FROM authoring.drafts WHERE id = $1")
+        sqlx::query_as("SELECT fleet_id, status FROM setup.drafts WHERE id = $1")
             .bind(&draft)
             .fetch_one(&mut *c.base.connection().await)
             .await?;

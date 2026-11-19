@@ -4,7 +4,7 @@
 -- `COALESCE(fleet_id, draft_id)`; `fleet_id` alone is read by the fleet's own statements.
 -- No foreign key to fleets, drafts or events: a settled run is history that outlives its
 -- owner. The insert proves scope, and an owner's deletion deletes its active runs itself.
-CREATE TABLE runner.runs (
+CREATE TABLE thread.runs (
     id                          UUID PRIMARY KEY,
     runner_id                   UUID    NOT NULL REFERENCES runner.runners(id) ON DELETE CASCADE,
     fleet_id                    UUID,
@@ -49,29 +49,29 @@ CREATE TABLE runner.runs (
 );
 
 CREATE INDEX idx_runs_event_id_fencing_token
-    ON runner.runs (event_id, fencing_token);
+    ON thread.runs (event_id, fencing_token);
 
 CREATE INDEX idx_runs_fleet_id_status_fencing_token
-    ON runner.runs (fleet_id, status, fencing_token DESC);
+    ON thread.runs (fleet_id, status, fencing_token DESC);
 
 -- The draft kind's lookups by draft, and the live-run delete its deletion runs, as the
 -- index above serves the fleet's. Partial: a fleet run has no draft.
 CREATE INDEX idx_runs_draft_id_status_fencing_token
-    ON runner.runs (draft_id, status, fencing_token DESC) WHERE draft_id IS NOT NULL;
+    ON thread.runs (draft_id, status, fencing_token DESC) WHERE draft_id IS NOT NULL;
 
 CREATE INDEX idx_runs_runner_id_created_at_id
-    ON runner.runs (runner_id, created_at DESC, id DESC);
+    ON thread.runs (runner_id, created_at DESC, id DESC);
 
 CREATE INDEX idx_runs_runner_id_status_run_expires_at
-    ON runner.runs (runner_id, status, run_expires_at);
+    ON thread.runs (runner_id, status, run_expires_at);
 
-CREATE INDEX idx_runs_status_updated_at ON runner.runs (status, updated_at);
+CREATE INDEX idx_runs_status_updated_at ON thread.runs (status, updated_at);
 
 -- Partial, so it holds only the metering backlog: expired runs not yet billed to expiry.
 CREATE INDEX idx_runs_run_expires_at_unbilled
-    ON runner.runs (run_expires_at)
+    ON thread.runs (run_expires_at)
     WHERE last_metered_at < run_expires_at;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON runner.runs TO api_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON thread.runs TO api_runtime;
 
-CREATE INDEX idx_runner_runs_task ON runner.runs (task_id) WHERE task_id IS NOT NULL;
+CREATE INDEX idx_runner_runs_task ON thread.runs (task_id) WHERE task_id IS NOT NULL;

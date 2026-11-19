@@ -1,4 +1,4 @@
-INSERT INTO authoring.drafts
+INSERT INTO setup.drafts
     (id, workspace_id, tenant_id, user_id, title, status, tenant_model_id,
      source_type, source_plugin_revision_id, source_fleet_revision_id, instance_name,
      fleet_id, last_message_sequence, cancelled_through_sequence, resource_version,

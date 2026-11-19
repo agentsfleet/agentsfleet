@@ -1,5 +1,5 @@
 SELECT l.created_at
-FROM runner.runs l
+FROM thread.runs l
 LEFT JOIN fleet.fleets f ON f.id = l.fleet_id
 WHERE l.id = $1
   AND l.runner_id = $2 AND l.fleet_id IS NOT NULL

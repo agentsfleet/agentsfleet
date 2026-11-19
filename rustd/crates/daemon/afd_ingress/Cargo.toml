@@ -34,7 +34,7 @@ afd_turns.workspace = true
 # with the connector that holds the token, and this crate composes the result.
 afd_connector.workspace = true
 # The delivery ledger a notice is owed through: the one module that owns
-# `fleet.deliveries`, so a notice and an answer are owed alike.
+# `thread.deliveries`, so a notice and an answer are owed alike.
 afd_outbound.workspace = true
 # Identifiers, the instant a delivery is stamped with, and the registry codes.
 af_core = { workspace = true, features = ["sqlx"] }

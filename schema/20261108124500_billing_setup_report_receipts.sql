@@ -2,7 +2,7 @@
 -- first acknowledgement. Append-only.
 CREATE TABLE billing.authoring_report_receipts (
     id                 UUID PRIMARY KEY,
-    attempt_id         UUID   NOT NULL REFERENCES authoring.attempts(id) ON DELETE CASCADE,
+    attempt_id         UUID   NOT NULL REFERENCES setup.attempts(id) ON DELETE CASCADE,
     report_id          UUID   NOT NULL,
     accounting_digest  TEXT   NOT NULL,
     acknowledgement    JSONB  NOT NULL,

@@ -1,4 +1,4 @@
-INSERT INTO authoring.attempts
+INSERT INTO setup.attempts
     (id, run_id, runner_id, workspace_id, tenant_id, user_id, draft_id, message_sequence,
      fencing_token, model_token_hash, model_snapshot, status, run_expires_at, expires_at,
      reserved_nanos, usage_unknown, call_count, output_token_count, reported_runtime_ms,

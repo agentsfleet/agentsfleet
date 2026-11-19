@@ -47,7 +47,7 @@ The runtime pages ([`data_flow.md`](./data_flow.md), [`runner_fleet.md`](./runne
 ## Why it exists
 
 A lost bus node must cost latency, never accepted work or an owed reply.
-Keeping every fact in Postgres makes that true: a viewer backfills from `fleet.events`, and a worker claims from `fleet.deliveries`.
+Keeping every fact in Postgres makes that true: a viewer backfills from `fleet.events`, and a worker claims from `thread.deliveries`.
 
 Before M244, the bus also held durable jobs, and all its nodes ran on one machine per environment.
 One machine loss froze every viewer's tail with no signal.
@@ -126,7 +126,7 @@ Wake notifications use sixteen `af.wake.<shard>` subjects, the shard a CRC-16/XM
 Each replica keeps a local queue of at most 64 fleets by default (`afd_bus/src/wake/config.rs`).
 A full queue evicts its oldest fleet, and the 5 s recovery probe still finds that fleet's work.
 
-The report path writes the `fleet.deliveries` row in its own transaction, then publishes `af.outbound.wake`.
+The report path writes the `thread.deliveries` row in its own transaction, then publishes `af.outbound.wake`.
 A worker claims the head row of each `(provider, workspace_id)` lane with `FOR UPDATE SKIP LOCKED` (`afd_outbound/src/delivery/sql/claim_heads.sql`).
 A claim lasts 30 s, the holder renews it every 10 s, and every replica also claims every 30 s.
 

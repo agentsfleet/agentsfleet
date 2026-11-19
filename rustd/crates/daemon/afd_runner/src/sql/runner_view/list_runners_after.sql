@@ -1,7 +1,7 @@
 SELECT r.id AS id, r.host_id, r.sandbox_tier, r.status, r.cordon_reason, r.cordoned_at, r.labels::text AS labels,
        r.last_seen_at, r.created_at, statement_timestamp() AS checked_at,
        EXISTS (
-         SELECT 1 FROM runner.runs l
+         SELECT 1 FROM thread.runs l
          WHERE l.runner_id = r.id AND l.status = $1::text
            AND l.run_expires_at > statement_timestamp()
        ) AS live_run,

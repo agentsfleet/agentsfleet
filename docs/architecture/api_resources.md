@@ -364,7 +364,7 @@ Text is untrusted context; only the fixed proposal tool is callable. The daemon 
 
 Reject provider/model/host/key/header/system/tool-schema override fields.
 
-Native provider replies stay in `authoring.dispatches.native_reply`; the runner receives only text, validated proposals and usage. A saved reply binds its assistant position and the complete normalized conversation prefix through a digest. Later calls must retain that exact prefix before the daemon restores the SDK message, including signed or encrypted reasoning and provider tool identifiers.
+Native provider replies stay in `setup.dispatches.native_reply`; the runner receives only text, validated proposals and usage. A saved reply binds its assistant position and the complete normalized conversation prefix through a digest. Later calls must retain that exact prefix before the daemon restores the SDK message, including signed or encrypted reasoning and provider tool identifiers.
 
 Current membership, model and capability checks precede private reads. Expired or malformed state refuses dispatch. Deletion and private-result expiry clear both the public result and native reply; a fenced late response records usage without either private copy.
 

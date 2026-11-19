@@ -65,11 +65,11 @@ pub(crate) enum Resource {
     Fleet,
     /// `fleet.revisions`: an applied improvement.
     FleetRevision,
-    /// `authoring.drafts`: a started setup chat.
+    /// `setup.drafts`: a started setup chat.
     Draft,
-    /// `authoring.messages`: an accepted message.
+    /// `setup.messages`: an accepted message.
     Message,
-    /// `authoring.plugin_revisions`: a Plugin publication.
+    /// `setup.plugin_revisions`: a Plugin publication.
     PluginRevision,
 }
 

@@ -1,7 +1,7 @@
 WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at), started AS (
     UPDATE fleet.tasks t SET status = $4, used_runs = used_runs + 1,
         resource_version = resource_version + 1, updated_at = now()
-    FROM runner.runs l CROSS JOIN instant
+    FROM thread.runs l CROSS JOIN instant
     WHERE t.id = $2 AND l.id = $1 AND l.fleet_id = t.fleet_id AND l.workspace_id = t.workspace_id
       AND t.generation = $5 AND t.status IN ($3, $4) AND t.terminal_at IS NULL
       AND t.expires_at > instant.at AND t.used_runs < t.max_runs
@@ -12,7 +12,7 @@ WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at), started AS (
             (t.max_running_nanos - t.used_running_nanos)::double precision / $7::bigint))) AS deadline,
         instant.at
 ), bound AS (
-    UPDATE runner.runs l SET task_id = s.id, task_generation = s.generation,
+    UPDATE thread.runs l SET task_id = s.id, task_generation = s.generation,
         task_stop_generation = s.stop_generation, task_started_at = s.at, task_runtime_accounted_at = s.at,
         task_execution_deadline_at = s.deadline, run_expires_at = LEAST(l.run_expires_at, s.deadline), updated_at = now()
     FROM started s WHERE l.id = $1

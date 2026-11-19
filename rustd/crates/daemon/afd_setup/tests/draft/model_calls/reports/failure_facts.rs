@@ -119,7 +119,7 @@ async fn a_forged_capability_cannot_write_failure_evidence_even_after_revocation
         error_code::AUTHORING_FENCE
     );
     let reason: Option<String> =
-        sqlx::query_scalar("SELECT failure_reason FROM authoring.attempts WHERE id=$1")
+        sqlx::query_scalar("SELECT failure_reason FROM setup.attempts WHERE id=$1")
             .bind(a.id)
             .fetch_one(&mut *f.connection().await)
             .await

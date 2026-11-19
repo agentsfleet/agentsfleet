@@ -19,5 +19,5 @@ SELECT id,
        reported_runtime_ms,
        failure_reason,
        max_model_calls, max_wall_seconds, max_proposal_corrections, provider_timeout_seconds
-  FROM authoring.attempts
+  FROM setup.attempts
  WHERE run_id = $1 AND runner_id = $2

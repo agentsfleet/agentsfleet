@@ -69,7 +69,7 @@ pub(super) async fn failure(f: &Fixture, draft: &Draft) -> afd_setup::types::Mes
 }
 
 pub(super) async fn attempts(f: &Fixture) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE workspace_id=$1")
+    sqlx::query_scalar("SELECT count(*) FROM setup.attempts WHERE workspace_id=$1")
         .bind(&f.workspace)
         .fetch_one(&mut *f.connection().await)
         .await
@@ -103,7 +103,7 @@ pub(super) async fn runtime(f: &Fixture, until: Timestamp) -> Uuid7 {
         .insert(&mut *f.connection().await)
         .await
         .expect("owned runtime event");
-    sqlx::query("INSERT INTO runner.runs(id,runner_id,fleet_id,workspace_id,tenant_id,event_id,event_created_at,posture,provider,model,last_metered_at,fencing_token,run_expires_at,status,posted_message_count,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,now(),'tenant','test','test',now(),1,$7,'active',0,now(),now())")
+    sqlx::query("INSERT INTO thread.runs(id,runner_id,fleet_id,workspace_id,tenant_id,event_id,event_created_at,posture,provider,model,last_metered_at,fencing_token,run_expires_at,status,posted_message_count,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,now(),'tenant','test','test',now(),1,$7,'active',0,now(),now())")
         .bind(mint()).bind(&f.runner).bind(&fleet)
         .bind(&f.workspace).bind(&f.tenant).bind(&event).bind(until.to_sqlx())
         .execute(&mut *f.connection().await).await.expect("owned active runtime slot");

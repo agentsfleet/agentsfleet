@@ -60,7 +60,7 @@ impl Case {
             },
         )
         .await;
-        sqlx::query("UPDATE authoring.messages SET user_text=$2 WHERE draft_id=$1")
+        sqlx::query("UPDATE setup.messages SET user_text=$2 WHERE draft_id=$1")
             .bind(&attempt.draft.id)
             .bind(text)
             .execute(&mut *f.connection().await)
@@ -96,7 +96,7 @@ impl Case {
     }
 
     pub(super) async fn journal(&self) -> (String, Option<i64>, bool) {
-        sqlx::query_as("SELECT disposition, charged_nanos, accounted_at IS NOT NULL FROM authoring.edit_decisions WHERE attempt_id=$1")
+        sqlx::query_as("SELECT disposition, charged_nanos, accounted_at IS NOT NULL FROM setup.edit_decisions WHERE attempt_id=$1")
             .bind(&self.attempt.id).fetch_one(&mut *self.f.connection().await).await.expect("persisted decision")
     }
 

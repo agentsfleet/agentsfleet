@@ -1,4 +1,4 @@
-UPDATE authoring.drafts
+UPDATE setup.drafts
    SET title = $2,
        tenant_model_id = $3,
        instance_name = COALESCE($4, instance_name),

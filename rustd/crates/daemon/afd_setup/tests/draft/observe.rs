@@ -9,7 +9,7 @@ use af_core::error_code;
 use afd_setup::{Observation, View};
 
 /// Moves the draft's one message to `status`, as a run or a cutoff does.
-const MESSAGE_STATUS: &str = "UPDATE authoring.messages SET status=$2 WHERE draft_id=$1";
+const MESSAGE_STATUS: &str = "UPDATE setup.messages SET status=$2 WHERE draft_id=$1";
 
 /// Closes the draft for its retention window, as a Save or an apply does.
 const CLOSE: &str = "UPDATE authoring.drafts SET status='closed', closed_at=now(), \
@@ -139,7 +139,7 @@ async fn malformed_stored_state_remains_a_datastore_failure_during_observation()
         .await
         .expect("an idle draft")
         .draft;
-    sqlx::query("UPDATE authoring.drafts SET status='invalid' WHERE id=$1")
+    sqlx::query("UPDATE setup.drafts SET status='invalid' WHERE id=$1")
         .bind(&draft.id)
         .execute(&mut *f.connection().await)
         .await

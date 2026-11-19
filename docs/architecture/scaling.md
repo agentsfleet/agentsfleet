@@ -211,7 +211,7 @@ Each table's own index slot closes that. Every recurring control-plane read belo
 |---|---|---|
 | Liveness sweep, due runners | Sequential scan + top-N sort of `runner.runners`, every cycle | Still a sort, on purpose: `afd_runner`'s `SELECT_DUE_RUNNERS` orders by `updated_at, id` under its batch `LIMIT`, and slot 1800 leaves runner sorts unindexed because runners number about a hundred. M142_001's `idx_runners_updated_at_id` measured 6 shared buffer hits at 20 000 runners; the M154 rebuild dropped it. |
 | Liveness sweep, affinity expiry | Full scan of `runner.fleet_slots`, once **per due runner per cycle** | The runner's active runs, then each slot by its key; `idx_fleet_slots_last_runner_id` covers the `ON DELETE SET NULL` foreign key |
-| Reclaim, prior active run | Scan of `runner.runs` on an unindexed `ON DELETE CASCADE` foreign key | `idx_runs_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
+| Reclaim, prior active run | Scan of `thread.runs` on an unindexed `ON DELETE CASCADE` foreign key | `idx_runs_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
 | Workspace event keyset page | Index scan plus a post-filter on the tiebreak column; under a cached generic plan the cursor and `since` fell behind their `IS NULL` guards into filters | One text per scope, cursor and actor filter; `idx_events_workspace_id_created_at_event_id` with the workspace, cursor and `since` in its index condition, walked in order |
 | Fleet event page and chat thread | A cached generic plan multiplied the workspace and fleet selectivities, expected one row, and read the fleet's whole history into a bitmap scan plus sort | `idx_events_fleet_id_created_at_event_id` walked in order, because `stx_events_workspace_id_fleet_id` (slot 1700) tells the planner the fleet implies the workspace. An actor-filtered page still sorts its matches |
 | Fleet list page | Unserved: the existing index is partial on `status='active'` and the list is not status-filtered | `idx_fleets_workspace_id_created_at_id` |
@@ -223,7 +223,7 @@ Each table's own index slot closes that. Every recurring control-plane read belo
 
 For an unbounded fetch, a bitmap scan plus sort beats an ordered index scan with random heap access. An index only removes a sort where the plan can exit early.
 
-**One anti-pattern this replaced,** worth stating because it reads as an optimisation. The operator runner list resolved each row's run-liveness in a common table expression (CTE) spanning the whole runner table before paginating. PostgreSQL answers that by hashing the *entire* `runner.runs` table once per request: 6 472 buffer hits against a 200 000-row run table.
+**One anti-pattern this replaced,** worth stating because it reads as an optimisation. The operator runner list resolved each row's run-liveness in a common table expression (CTE) spanning the whole runner table before paginating. PostgreSQL answers that by hashing the *entire* `thread.runs` table once per request: 6 472 buffer hits against a 200 000-row run table.
 
 Resolving liveness over the surviving page instead costs 79. When per-row work sits above a `LIMIT`, the cost is usually one whole-table build, not one lookup per row.
 
@@ -256,7 +256,7 @@ Once bus traffic and Postgres request volume fit their machines, the next bottle
 
 ### 1. `agentsfleetd` API replicas + Postgres write throughput (the usual answer now)
 
-The run/report hot path does the durable writes the worker used to do. Those are `INSERT fleet.events`, the usage logged on each `/renew`, the terminal `UPDATE`, `INSERT telemetry` and the checkpoint `UPSERT`. The `runner.runs`/`runner.fleet_slots` bookkeeping rides the same path, and the biller settles the usage afterwards.
+The run/report hot path does the durable writes the worker used to do. Those are `INSERT fleet.events`, the usage logged on each `/renew`, the terminal `UPDATE`, `INSERT telemetry` and the checkpoint `UPSERT`. The `thread.runs`/`runner.fleet_slots` bookkeeping rides the same path, and the biller settles the usage afterwards.
 
 At fleet scale this is the binding axis. Both `agentsfleetd` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per fleet.
 
@@ -373,7 +373,7 @@ Each run's idle window cost 0 statements, and a chat's activity path cost 0.
 | Run burst | pickup p95 | 491.5 ms | 494.6 ms |
 
 Outbound delivers about 30% slower than the stream reader it replaced.
-The likely cause is unmeasured. The worker claims only lane heads from `fleet.deliveries`, so each busy-lane delivery may wait one claim round trip.
+The likely cause is unmeasured. The worker claims only lane heads from `thread.deliveries`, so each busy-lane delivery may wait one claim round trip.
 
 Counting `agentsfleet_outbound_claims_total{via="scan"}` against deliveries in one run would settle it.
 

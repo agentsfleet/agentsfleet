@@ -1,6 +1,6 @@
 -- Accounting for a setup dispatch's extra physical call; it holds no message, instructions or
 -- provider prose. Ids are opaque so the record survives private deletion.
-CREATE TABLE authoring.edit_decisions (
+CREATE TABLE setup.edit_decisions (
     dispatch_id UUID PRIMARY KEY,
     attempt_id UUID NOT NULL,
     tenant_id UUID NOT NULL,
@@ -19,7 +19,7 @@ CREATE TABLE authoring.edit_decisions (
     CONSTRAINT uq_edit_decisions_usage UNIQUE (attempt_id, usage_sequence)
 );
 
-CREATE INDEX idx_edit_decisions_unresolved ON authoring.edit_decisions (attempt_id)
+CREATE INDEX idx_edit_decisions_unresolved ON setup.edit_decisions (attempt_id)
     WHERE accounted_at IS NULL;
 
-GRANT SELECT, INSERT, UPDATE ON authoring.edit_decisions TO api_runtime;
+GRANT SELECT, INSERT, UPDATE ON setup.edit_decisions TO api_runtime;

@@ -12,11 +12,11 @@ SELECT d.id AS id,
        c.revision AS candidate_revision,
        fr.revision AS setup_revision,
        lr.revision AS publication_revision
-  FROM authoring.drafts d
-  LEFT JOIN authoring.candidates c ON c.id = d.head_candidate_id
+  FROM setup.drafts d
+  LEFT JOIN setup.candidates c ON c.id = d.head_candidate_id
   LEFT JOIN fleet.fleets f ON f.id = d.fleet_id
   LEFT JOIN fleet.revisions fr ON fr.id = f.head_revision_id
-  LEFT JOIN authoring.plugin_revisions lr ON lr.id = d.plugin_revision_id
+  LEFT JOIN setup.plugin_revisions lr ON lr.id = d.plugin_revision_id
  WHERE d.workspace_id = $1 AND d.user_id = $2
    AND (d.expires_at IS NULL OR d.expires_at > statement_timestamp())
    AND ($3::text IS NULL OR d.status = $3)
@@ -27,7 +27,7 @@ SELECT d.id AS id,
    -- turns by uq_messages_draft_id_sequence.
    AND ($8::text IS NULL
         OR d.title ILIKE $8 ESCAPE '\'
-        OR EXISTS (SELECT 1 FROM authoring.messages m
+        OR EXISTS (SELECT 1 FROM setup.messages m
                     WHERE m.draft_id = d.id
                       AND (m.user_text ILIKE $8 ESCAPE '\' OR m.answer_text ILIKE $8 ESCAPE '\')))
  ORDER BY d.updated_at DESC, d.id DESC

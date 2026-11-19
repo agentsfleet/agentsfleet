@@ -50,10 +50,10 @@ async fn a_ceiling_at_the_integer_edge_cannot_authorize_a_physical_request() {
         .await
         .expect("second owned draft");
     let mut connection = f.connection().await;
-    sqlx::query("INSERT INTO authoring.attempts SELECT (jsonb_populate_record(NULL::authoring.attempts,to_jsonb(source)||jsonb_build_object('id',$2,'run_id',$3,'draft_id',$4))).* FROM authoring.attempts source WHERE id=$1")
+    sqlx::query("INSERT INTO setup.attempts SELECT (jsonb_populate_record(NULL::setup.attempts,to_jsonb(source)||jsonb_build_object('id',$2,'run_id',$3,'draft_id',$4))).* FROM setup.attempts source WHERE id=$1")
         .bind(&a.id).bind(mint()).bind(mint()).bind(&other.draft.id)
         .execute(&mut *connection).await.expect("second active owned delivery");
-    sqlx::query("UPDATE authoring.attempts SET reserved_nanos=$2 WHERE tenant_id=$1")
+    sqlx::query("UPDATE setup.attempts SET reserved_nanos=$2 WHERE tenant_id=$1")
         .bind(&f.tenant)
         .bind(i64::MAX)
         .execute(&mut *connection)
@@ -75,8 +75,13 @@ async fn a_ceiling_at_the_integer_edge_cannot_authorize_a_physical_request() {
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
     assert_eq!(fixture::receipts(&f, &a).await, (0, 0, false));
     assert_eq!(provider.count(), 0);
-    let deliveries: (i64, i64) = sqlx::query_as("SELECT count(*)::bigint,sum(call_count)::bigint FROM authoring.attempts WHERE tenant_id=$1")
-        .bind(&f.tenant).fetch_one(&mut *f.connection().await).await.expect("both deliveries retained without calls");
+    let deliveries: (i64, i64) = sqlx::query_as(
+        "SELECT count(*)::bigint,sum(call_count)::bigint FROM setup.attempts WHERE tenant_id=$1",
+    )
+    .bind(&f.tenant)
+    .fetch_one(&mut *f.connection().await)
+    .await
+    .expect("both deliveries retained without calls");
     assert_eq!(deliveries, (2, 0));
     f.cleanup().await;
 }
@@ -109,7 +114,7 @@ async fn unrepresentable_provider_cost_is_uncertain_without_private_output_or_re
     }
     assert_eq!(fixture::receipts(&f, &a).await, (1, 1, true));
     assert_eq!(provider.count(), 1);
-    let retained: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1")
+    let retained: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM setup.dispatches WHERE attempt_id=$1")
         .bind(a.id).fetch_one(&mut *f.connection().await).await.expect("unknown accounting fences private output");
     assert_eq!(retained, (true, "unknown".into()));
     f.cleanup().await;

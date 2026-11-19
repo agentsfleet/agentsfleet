@@ -35,7 +35,7 @@ async fn an_offered_choice_admits_queued_work_once_and_a_spent_choice_admits_not
         .await
         .expect("admission answers");
     assert!(spent.is_none(), "the recorded placement spent the choice");
-    sqlx::query("UPDATE authoring.drafts SET expires_at=now()-interval '1 second' WHERE id=$1")
+    sqlx::query("UPDATE setup.drafts SET expires_at=now()-interval '1 second' WHERE id=$1")
         .bind(&second.id)
         .execute(&mut *f.connection().await)
         .await

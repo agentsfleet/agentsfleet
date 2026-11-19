@@ -157,7 +157,7 @@ impl Fixture {
         let millis = i64::try_from(after.as_millis()).expect("a test interval fits");
         let mut connection = self.owner.acquire().await.expect("run update connection");
         sqlx::query(
-            "UPDATE runner.runs \
+            "UPDATE thread.runs \
              SET run_expires_at = clock_timestamp() + $2 * interval '1 millisecond' \
              WHERE runner_id = $1",
         )
@@ -203,7 +203,7 @@ impl Fixture {
         let mut connection = self.owner.acquire().await.expect("cleanup connection");
         // Attempts outlive their runner by design, so a test removes the ones
         // it seeded itself rather than leaving them in the lane.
-        sqlx::query("DELETE FROM authoring.attempts WHERE runner_id = $1")
+        sqlx::query("DELETE FROM setup.attempts WHERE runner_id = $1")
             .bind(&self.runner)
             .execute(&mut *connection)
             .await

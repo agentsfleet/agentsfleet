@@ -43,7 +43,7 @@ impl Fixture {
             token: format!("agt_t{}{}", mint(), mint()).replace('-', ""),
         };
         f.cleanup.record(
-            "DELETE FROM authoring.replay_receipts WHERE workspace_id=$1",
+            "DELETE FROM setup.replay_receipts WHERE workspace_id=$1",
             &f.workspace,
         );
         f.cleanup.record(
@@ -51,7 +51,7 @@ impl Fixture {
             &f.workspace,
         );
         f.cleanup.record(
-            "DELETE FROM authoring.plugin_entries WHERE tenant_id=$1",
+            "DELETE FROM setup.plugin_entries WHERE tenant_id=$1",
             &f.tenant,
         );
         f.cleanup
@@ -98,7 +98,7 @@ impl Fixture {
 
     pub(super) fn own_plugin(&mut self, id: &str) {
         self.cleanup.record(
-            "DELETE FROM authoring.plugin_revisions WHERE plugin_entry_id=$1",
+            "DELETE FROM setup.plugin_revisions WHERE plugin_entry_id=$1",
             &Uuid7::parse(id).expect("a tenant plugin is addressed by its id"),
         );
     }

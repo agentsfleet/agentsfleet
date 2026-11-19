@@ -44,7 +44,7 @@ pub(crate) fn setup_tool(editing: bool) -> serde_json::Value {
     provider::setup_tool(editing)
 }
 
-/// The `authoring.dispatches.status` words, and the knowledge word a receipt's
+/// The `setup.dispatches.status` words, and the knowledge word a receipt's
 /// usage carries when its provider figures are authoritative.
 pub(crate) mod dispatch_status {
     /// Intent recorded; no provider answer yet.

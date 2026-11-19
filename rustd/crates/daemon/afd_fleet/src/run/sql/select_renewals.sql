@@ -10,6 +10,6 @@ SELECT l.id, l.status, l.cancel_requested_at IS NOT NULL AS cancelled,
        l.task_id, l.created_at, f.head_revision_id,
        (SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1)
            AS catalogue_version
-FROM runner.runs l
+FROM thread.runs l
 JOIN fleet.fleets f ON f.id = l.fleet_id
 WHERE l.id = ANY($1::uuid[]) AND l.runner_id = $2

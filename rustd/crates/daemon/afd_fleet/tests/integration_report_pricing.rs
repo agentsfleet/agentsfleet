@@ -33,7 +33,7 @@ async fn closing_cost_counts_the_reports_own_lines() {
          unpriced_token_count, charged_nanos, created_at, updated_at) \
          SELECT uuidv7(), $2, l.id, 7, $4::text, l.tenant_id, l.workspace_id, l.fleet_id, 'Support triage', \
                 l.event_id, l.provider, l.model, l.posture, now(), 0, 0, 0, 0, 0, 0, 0, 0, $3, now(), now() \
-         FROM runner.runs l WHERE l.id = $1",
+         FROM thread.runs l WHERE l.id = $1",
     )
     .bind(&held.issued.run_id)
     .bind(afd_billing::sql::work::FLEET_RUN)

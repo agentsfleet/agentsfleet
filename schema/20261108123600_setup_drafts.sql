@@ -1,7 +1,7 @@
 -- A private setup chat, which exists before any fleet and may never become one. Source and
 -- publication pointers clear on delete, so a card delete or fleet purge never blocks on a draft.
 -- NULL `tenant_model_id` is the platform default; `expires_at` is 30 days after `closed_at`.
-CREATE TABLE authoring.drafts (
+CREATE TABLE setup.drafts (
     id                          UUID PRIMARY KEY,
     workspace_id                UUID   NOT NULL,
     tenant_id                   UUID   NOT NULL,
@@ -11,11 +11,11 @@ CREATE TABLE authoring.drafts (
     tenant_model_id             UUID,
     head_candidate_id           UUID,
     source_type                 TEXT   NOT NULL,
-    source_plugin_revision_id  UUID REFERENCES authoring.plugin_revisions(id) ON DELETE SET NULL,
+    source_plugin_revision_id  UUID REFERENCES setup.plugin_revisions(id) ON DELETE SET NULL,
     source_fleet_revision_id    UUID REFERENCES fleet.revisions(id) ON DELETE SET NULL,
     instance_name               TEXT,
     fleet_id                    UUID REFERENCES fleet.fleets(id) ON DELETE SET NULL,
-    plugin_revision_id         UUID REFERENCES authoring.plugin_revisions(id) ON DELETE SET NULL,
+    plugin_revision_id         UUID REFERENCES setup.plugin_revisions(id) ON DELETE SET NULL,
     last_message_sequence       BIGINT NOT NULL,
     cancelled_through_sequence  BIGINT NOT NULL,
     resource_version            BIGINT NOT NULL,
@@ -32,32 +32,32 @@ CREATE TABLE authoring.drafts (
 );
 
 CREATE INDEX idx_drafts_workspace_id_user_id_updated_at_id
-    ON authoring.drafts (workspace_id, user_id, updated_at DESC, id DESC);
+    ON setup.drafts (workspace_id, user_id, updated_at DESC, id DESC);
 
-CREATE INDEX idx_drafts_user_id ON authoring.drafts (user_id);
+CREATE INDEX idx_drafts_user_id ON setup.drafts (user_id);
 
 -- The offer probe asks whether a connected tenant runner's tenant has setup
 -- work waiting (`afd_fleet/src/run/sql/run/select_waiting_work.sql`).
-CREATE INDEX idx_drafts_tenant_id ON authoring.drafts (tenant_id);
+CREATE INDEX idx_drafts_tenant_id ON setup.drafts (tenant_id);
 
 CREATE INDEX idx_drafts_expires_at_id
-    ON authoring.drafts (expires_at, id) WHERE expires_at IS NOT NULL;
+    ON setup.drafts (expires_at, id) WHERE expires_at IS NOT NULL;
 
-CREATE INDEX idx_drafts_fleet_id ON authoring.drafts (fleet_id) WHERE fleet_id IS NOT NULL;
+CREATE INDEX idx_drafts_fleet_id ON setup.drafts (fleet_id) WHERE fleet_id IS NOT NULL;
 
 CREATE INDEX idx_drafts_source_plugin_revision_id
-    ON authoring.drafts (source_plugin_revision_id) WHERE source_plugin_revision_id IS NOT NULL;
+    ON setup.drafts (source_plugin_revision_id) WHERE source_plugin_revision_id IS NOT NULL;
 
 CREATE INDEX idx_drafts_source_fleet_revision_id
-    ON authoring.drafts (source_fleet_revision_id) WHERE source_fleet_revision_id IS NOT NULL;
+    ON setup.drafts (source_fleet_revision_id) WHERE source_fleet_revision_id IS NOT NULL;
 
 CREATE INDEX idx_drafts_plugin_revision_id
-    ON authoring.drafts (plugin_revision_id) WHERE plugin_revision_id IS NOT NULL;
+    ON setup.drafts (plugin_revision_id) WHERE plugin_revision_id IS NOT NULL;
 
 CREATE INDEX idx_drafts_tenant_model_id
-    ON authoring.drafts (tenant_model_id) WHERE tenant_model_id IS NOT NULL;
+    ON setup.drafts (tenant_model_id) WHERE tenant_model_id IS NOT NULL;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON authoring.drafts TO api_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON setup.drafts TO api_runtime;
 
 CREATE INDEX idx_drafts_head_candidate_id
-    ON authoring.drafts (head_candidate_id) WHERE head_candidate_id IS NOT NULL;
+    ON setup.drafts (head_candidate_id) WHERE head_candidate_id IS NOT NULL;

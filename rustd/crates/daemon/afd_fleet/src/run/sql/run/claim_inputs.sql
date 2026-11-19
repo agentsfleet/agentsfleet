@@ -23,7 +23,7 @@
 WITH run AS MATERIALIZED (
     SELECT l.fleet_id, head.sequence AS head_sequence,
            head.reply_provider, head.reply_address
-    FROM runner.runs l
+    FROM thread.runs l
     JOIN runner.slots s
       ON s.fleet_id = l.fleet_id AND s.last_runner_id = l.runner_id
      AND s.fencing_token = l.fencing_token

@@ -53,7 +53,7 @@ Sections 6 and 7 cover the sandbox and host.
                          g gates: payer → balance → budget → approval (nothing charged)
                          h vault: static secrets + mintable "github"; build ExecutionPolicy
                              (tools, network.allow, origin rules for api.github.com)
-                         i INSERT runner.runs        status=active, fencing_token, expires  ← THE RUN ROW
+                         i INSERT thread.runs        status=active, fencing_token, expires  ← THE RUN ROW
                          j push offer{run:{run_id,fencing_token,run_expires_at,
                                               event{digest},policy,
                                               instructions=instructions_md}}
@@ -114,7 +114,7 @@ After commit, a bounded wake publish on `af.wake.<shard>` starts a gateway claim
 4. Advance the slot and admission fences together. Decode the envelope before committing, so malformed stored data rolls back both fences.
 5. Open runtime history and stamp `delivered_at` under the same current fences.
 6. Read installed configuration, resolve billing and check approval gates. Parked work frees the slot and retains its place in the queue.
-7. Assemble credentials and policy, then issue `runner.runs` under the claimed fence.
+7. Assemble credentials and policy, then issue `thread.runs` under the claimed fence.
 
 An expired slot exposes the same unsettled row. Redelivery preserves its event identity, original time and prior billing identity.
 
@@ -261,7 +261,7 @@ The daemon's `integration_rust_runner_reviews` test verifies zero review POSTs r
 
 **What the operator sees.** The live tail carries `event_received`, `tool_call_started`, `tool_call_completed`, streamed text chunks and `event_complete` ([Runner Fleet](./runner_fleet.md) §"Live activity (the SSE tail)"). The completed frame has `status: failed`, and its output head carries the code.
 
-Durably, the `fleet.events` row is `processed`. Its `response_text` is the model's final answer and its `tool_calls` the trace (`afd_fleet`'s run finalize). `fleet.tool_calls` serves "show all" (`afd_api_runner`).
+Durably, the `fleet.events` row is `processed`. Its `response_text` is the model's final answer and its `tool_calls` the trace (`afd_fleet`'s run finalize). `thread.items` serves "show all" (`afd_api_runner`).
 
 On GitHub: nothing. Memory: whatever `memory_store` wrote, pushed before the report.
 
@@ -299,7 +299,7 @@ The write rules admit a fix on the repair branch and one draft PR, and no commen
 **Deferrals** — Dimension 6.3's review post: no `afd_gate` rule admits `POST …/pulls/{number}/reviews`, so the post is refused today. > Indy (2026-10-04 11:49): "6.3 The PR review gets posted from the runner? SKILL.md? I want to experience the test and decide, so make me record that and add this as parked." — context: the runner posts it, the `github-pr-reviewer/definition.json` instructions' step 4 sending `POST …/pulls/{number}/reviews` through `http_request`; a write binding admits only `/git/blobs`, `/git/trees`, `/git/commits`, the locked ref and the locked draft (`rustd/crates/daemon/afd_gate/src/policy/egress/write.rs`), so the runner refuses the post before it leaves and the test asserts that; Dimension 6.3 stays open until Indy runs it, and this supersedes the Oct 03 "move it to done" for 6.3. > Indy (2026-10-03 15:32): "you just tell me crap, increase the scope, so the refusal of review must be ignored for now. If that blocks the spec to move to done, then record Indys wording and move it to done."
 ```
 
-**The other reply path, also not for GitHub.** The report owes a `fleet.deliveries` delivery only when the admission recorded a reply destination. That is `afd_fleet`'s run commit and `schema/20261108125100_fleet_admissions.sql`.
+**The other reply path, also not for GitHub.** The report owes a `thread.deliveries` delivery only when the admission recorded a reply destination. That is `afd_fleet`'s run commit and `schema/20261108125100_fleet_admissions.sql`.
 
 A failed run that wrote no answer owes that destination one fixed notice. So does an event refused at a gate, and one ended after its runs kept lapsing (`afd_fleet`'s run `unanswered` module). A clean run that wrote nothing still owes nothing.
 

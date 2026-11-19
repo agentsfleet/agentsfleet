@@ -83,7 +83,7 @@ impl Speaking {
             .acquire()
             .await
             .expect("a connection");
-        sqlx::query_scalar("SELECT posted_message_count FROM runner.runs WHERE id = $1")
+        sqlx::query_scalar("SELECT posted_message_count FROM thread.runs WHERE id = $1")
             .bind(&run_id)
             .fetch_one(&mut *connection)
             .await

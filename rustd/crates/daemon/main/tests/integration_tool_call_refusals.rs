@@ -101,7 +101,7 @@ async fn test_tool_call_details_refused_for_a_run_not_held() {
     execute(
         &scene,
         &format!(
-            "UPDATE runner.runs SET run_expires_at = to_timestamp(0) \
+            "UPDATE thread.runs SET run_expires_at = to_timestamp(0) \
              WHERE id = '{run_id}'::uuid AND fleet_id = $1 AND event_id = $2"
         ),
     )

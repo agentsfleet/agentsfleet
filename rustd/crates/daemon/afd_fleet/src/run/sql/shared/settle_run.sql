@@ -23,7 +23,7 @@ WITH hold_host AS MATERIALIZED (
   SELECT s.id, s.fencing_token, s.run_expires_at AS slot_expires_at,
          h.id IS NOT NULL AS hold_authorized
   FROM runner.slots s
-  JOIN runner.runs l ON s.id = COALESCE(l.fleet_id, l.draft_id)
+  JOIN thread.runs l ON s.id = COALESCE(l.fleet_id, l.draft_id)
   LEFT JOIN hold_host h ON h.id = l.runner_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
   FOR UPDATE OF s
@@ -31,7 +31,7 @@ WITH hold_host AS MATERIALIZED (
   SELECT l.id, l.workspace_id, l.tenant_id, l.event_id, l.fencing_token, l.created_at,
          l.run_expires_at, l.last_metered_at,
          s.id AS slot_id, s.fencing_token AS live_fence, s.slot_expires_at, s.hold_authorized
-  FROM runner.runs l
+  FROM thread.runs l
   JOIN locked_slot s ON s.id = COALESCE(l.fleet_id, l.draft_id)
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
   FOR UPDATE OF l
@@ -46,7 +46,7 @@ WITH hold_host AS MATERIALIZED (
   CROSS JOIN instant i
   WHERE p.fencing_token >= p.live_fence
 ), moved AS (
-  UPDATE runner.runs l
+  UPDATE thread.runs l
   SET status = $5,
       last_metered_at = m.metered_until,
       -- The run ended at its settlement. Its cursor then meets its deadline, so it
@@ -80,7 +80,7 @@ WITH hold_host AS MATERIALIZED (
   WHERE s.id = m.slot_id AND s.fencing_token = m.fencing_token
   RETURNING s.hold_expires_at
 ), audit AS (
-  INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
+  INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)
   SELECT $9, $2, $10::text, $11::jsonb, NULL, now() FROM moved
 )
 SELECT
@@ -88,7 +88,7 @@ SELECT
     (SELECT hold_expires_at FROM released) AS accepted_hold,
     -- A locking read answers the latest committed version, so a copy that waited behind
     -- the one that settled sees it settled, not its snapshot.
-    (SELECT l.status FROM runner.runs l WHERE l.id = $1 AND l.runner_id = $2 FOR SHARE)
+    (SELECT l.status FROM thread.runs l WHERE l.id = $1 AND l.runner_id = $2 FOR SHARE)
         AS run_status,
     p.fencing_token >= p.live_fence AS fence_holds,
     m.metered_until AS checked_at, m.created_at AS started_at,

@@ -3,7 +3,7 @@ SET status = $2, issued_at = clock_timestamp(), updated_at = clock_timestamp()
 WHERE c.id = $1 AND c.status = $3 AND c.issued_at IS NULL AND c.accounted_at IS NULL
   AND c.logical_expires_at > clock_timestamp()
   AND EXISTS (
-      SELECT 1 FROM runner.runs l
+      SELECT 1 FROM thread.runs l
       JOIN runner.runners r ON r.id = l.runner_id AND r.status = $9
       JOIN runner.slots s ON s.fleet_id = l.fleet_id
       JOIN fleet.fleets f ON f.id = l.fleet_id AND f.workspace_id = l.workspace_id

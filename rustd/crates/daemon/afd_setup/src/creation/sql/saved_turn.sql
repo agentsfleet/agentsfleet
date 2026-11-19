@@ -1,6 +1,6 @@
 SELECT d.fleet_id AS fleet_id, u.oidc_subject
-  FROM authoring.drafts d
- JOIN authoring.messages m ON m.draft_id = d.id
+  FROM setup.drafts d
+ JOIN setup.messages m ON m.draft_id = d.id
  JOIN identity.users u ON u.id = d.user_id
  WHERE d.id = $1 AND d.workspace_id = $2 AND d.user_id = $3
    AND m.sequence = $4 AND m.save_requested AND m.status = $5

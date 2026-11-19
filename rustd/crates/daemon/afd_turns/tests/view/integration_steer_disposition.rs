@@ -36,7 +36,7 @@ const POLICY: RunnerPolicy<'static> = RunnerPolicy {
 };
 
 const INSERT_RUN: &str = "\
-INSERT INTO runner.runs
+INSERT INTO thread.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at, fencing_token, run_expires_at, status,
    posted_message_count, created_at, updated_at)

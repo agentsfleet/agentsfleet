@@ -1,4 +1,4 @@
-//! `fleet.deliveries` — every statement that touches the table, and the
+//! `thread.deliveries` — every statement that touches the table, and the
 //! shapes that address it.
 //!
 //! # Why one module owns the table

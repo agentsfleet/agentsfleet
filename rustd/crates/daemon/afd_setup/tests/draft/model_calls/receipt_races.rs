@@ -64,9 +64,9 @@ async fn removed_or_already_settled_deliveries_cannot_be_recreated_by_a_late_rep
             .await
             .expect("physical request reached provider");
         let statement = if removed {
-            "DELETE FROM authoring.attempts WHERE id=$1"
+            "DELETE FROM setup.attempts WHERE id=$1"
         } else {
-            "UPDATE authoring.dispatches SET status='completed',usage='{\"knowledge\":\"known\",\"input_tokens\":1,\"output_tokens\":1,\"provider_cost_nanos\":\"3000\"}'::jsonb WHERE attempt_id=$1"
+            "UPDATE setup.dispatches SET status='completed',usage='{\"knowledge\":\"known\",\"input_tokens\":1,\"output_tokens\":1,\"provider_cost_nanos\":\"3000\"}'::jsonb WHERE attempt_id=$1"
         };
         // The concurrent change is scaffolding, so it runs as the lane owner:
         // `api_runtime` holds no DELETE on attempts.
@@ -91,7 +91,7 @@ async fn removed_or_already_settled_deliveries_cannot_be_recreated_by_a_late_rep
                 error_code::AUTHORING_STATE
             }
         );
-        let saved: (i64, i64) = sqlx::query_as("SELECT count(*)::bigint,count(*) FILTER(WHERE result IS NOT NULL OR native_reply IS NOT NULL)::bigint FROM authoring.dispatches WHERE attempt_id=$1")
+        let saved: (i64, i64) = sqlx::query_as("SELECT count(*)::bigint,count(*) FILTER(WHERE result IS NOT NULL OR native_reply IS NOT NULL)::bigint FROM setup.dispatches WHERE attempt_id=$1")
             .bind(a.id).fetch_one(&mut *f.connection().await).await.expect("durable result state");
         assert_eq!(saved, (i64::from(!removed), 0));
         assert_eq!(provider.count(), 1);

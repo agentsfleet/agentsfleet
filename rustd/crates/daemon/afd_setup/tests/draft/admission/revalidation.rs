@@ -58,7 +58,7 @@ async fn a_draft_past_its_retention_admits_nothing() {
     // Its own database: every lane's maintenance pass purges expired drafts.
     let f = fund(Fixture::isolated().await, 1).await;
     let draft = queue(&f, "Queued, then retained past its window").await;
-    sqlx::query("UPDATE authoring.drafts SET expires_at=now()-interval '1 second' WHERE id=$1")
+    sqlx::query("UPDATE setup.drafts SET expires_at=now()-interval '1 second' WHERE id=$1")
         .bind(&draft.id)
         .execute(&mut *f.connection().await)
         .await
@@ -79,7 +79,7 @@ async fn a_draft_row_in_no_known_state_refuses_the_claim_as_a_stored_fault() {
     // Its own database: no other proof's sweep may meet the unreadable row.
     let f = fund(Fixture::isolated().await, 1).await;
     let draft = queue(&f, "Queued under a state this daemon never wrote").await;
-    sqlx::query("UPDATE authoring.drafts SET status='archived' WHERE id=$1")
+    sqlx::query("UPDATE setup.drafts SET status='archived' WHERE id=$1")
         .bind(&draft.id)
         .execute(&mut *f.connection().await)
         .await
@@ -176,9 +176,9 @@ async fn a_claim_whose_non_waiting_lock_fails_otherwise_surfaces_the_datastore_e
     let draft = queue(&f, "Locked under a privilege the API lost").await;
     // `FOR UPDATE` needs UPDATE: the draft's NOWAIT now fails as a permission
     // error, not as a held row, and a failure is no reason to skip.
-    as_owner(&f, "REVOKE UPDATE ON authoring.drafts FROM api_runtime").await;
+    as_owner(&f, "REVOKE UPDATE ON setup.drafts FROM api_runtime").await;
     let refused = f.drafts.claim_queued(&f.runner, &draft.id).await;
-    as_owner(&f, "GRANT UPDATE ON authoring.drafts TO api_runtime").await;
+    as_owner(&f, "GRANT UPDATE ON setup.drafts TO api_runtime").await;
     let refused = refused.expect_err("a lock that failed is not a lock that was held");
     assert_eq!(refused.code(), error_code::INTERNAL_DB_QUERY);
     assert_eq!(attempts(&f).await, 0);

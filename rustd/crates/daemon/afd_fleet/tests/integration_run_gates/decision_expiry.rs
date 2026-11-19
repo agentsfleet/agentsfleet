@@ -128,8 +128,8 @@ async fn assert_no_issuance(fixtures: &Fixtures, runner: &Uuid7) {
         .await
         .expect("read issuance effects");
     let found: Issuance = sqlx::query_as(
-        "SELECT (SELECT count(*) FROM runner.runs WHERE runner_id=$1) AS runs, \
-         (SELECT count(*) FROM runner.events WHERE runner_id=$1 AND event_type=$2) AS acquired_events, \
+        "SELECT (SELECT count(*) FROM thread.runs WHERE runner_id=$1) AS runs, \
+         (SELECT count(*) FROM runner.history WHERE runner_id=$1 AND event_type=$2) AS acquired_events, \
          COALESCE((SELECT acquired_count FROM runner.lifetime_counters WHERE runner_id=$1),0) AS acquisitions")
         .bind(runner).bind(afd_runner::sql::event_type::RUN_ACQUIRED)
         .fetch_one(&mut *connection).await.expect("all native issuance effects");

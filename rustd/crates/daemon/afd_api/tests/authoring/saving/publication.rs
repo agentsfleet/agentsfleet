@@ -68,7 +68,7 @@ async fn publish_candidate(case: &mut Case, request: &Value) -> (String, Value) 
 /// The Plugin revision the setup chat that saved `fleet` published: the
 /// publication Save reused rather than minting a second one.
 async fn installed_pin(case: &Case, fleet: &Uuid7) -> Uuid7 {
-    sqlx::query_scalar("SELECT plugin_revision_id FROM authoring.drafts WHERE fleet_id=$1")
+    sqlx::query_scalar("SELECT plugin_revision_id FROM setup.drafts WHERE fleet_id=$1")
         .bind(fleet)
         .fetch_one(&mut *case.base.db.acquire().await.expect("pin connection"))
         .await

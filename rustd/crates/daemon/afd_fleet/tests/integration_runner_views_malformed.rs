@@ -76,7 +76,7 @@ async fn insert_unknown_event(fixtures: &Fixtures, runner: &Uuid7) {
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO runner.events \
+        "INSERT INTO runner.history \
          (id, runner_id, event_type, metadata, last_seen_at, created_at) \
          VALUES ($1, $2, $3, $4::jsonb, NULL, now())",
     )

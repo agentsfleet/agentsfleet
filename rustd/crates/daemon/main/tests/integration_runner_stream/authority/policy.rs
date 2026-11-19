@@ -88,7 +88,7 @@ async fn a_lost_revocation_push_is_fenced_at_issue_and_the_next_native_heartbeat
             offered.is_err(),
             "revoked cached capacity offered work: {offered:?}"
         );
-        let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE event_id=$1")
+        let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE event_id=$1")
             .bind(&fixture.scene.event_id)
             .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
             .await?;

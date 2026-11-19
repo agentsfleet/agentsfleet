@@ -122,7 +122,7 @@ async fn reconcile(transport: Transport) -> Proof {
     let [(omitted_fleet, omitted_event), (_, marked_event)] = &case.siblings;
     let omitted = case.run(omitted_event)?;
     let marked = case.run(marked_event)?;
-    sqlx::query("UPDATE runner.runs SET cancel_requested_at=statement_timestamp() WHERE id=$1")
+    sqlx::query("UPDATE thread.runs SET cancel_requested_at=statement_timestamp() WHERE id=$1")
         .bind(&marked.id)
         .execute(&mut *case.scene.booted.database.acquire().await?)
         .await?;
@@ -194,7 +194,7 @@ async fn assert_retained_renews(native: &mut Native, run: &Uuid7) {
 
 async fn expire(scene: &Scenario, fleet: &Uuid7, run: &Uuid7) -> Proof {
     let mut connection = scene.booted.database.acquire().await?;
-    sqlx::query("UPDATE runner.runs SET run_expires_at=statement_timestamp()-interval '1 second' WHERE id=$1")
+    sqlx::query("UPDATE thread.runs SET run_expires_at=statement_timestamp()-interval '1 second' WHERE id=$1")
         .bind(run).execute(&mut *connection).await?;
     sqlx::query("UPDATE runner.slots SET run_expires_at=statement_timestamp()-interval '1 second' WHERE fleet_id=$1")
         .bind(fleet).execute(&mut *connection).await?;

@@ -60,7 +60,7 @@ async fn revoked(revoke: Revoke) {
 }
 
 async fn settled_without_private_copy(f: &Fixture, attempt: &Attempt) {
-    let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1")
+    let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM setup.dispatches WHERE attempt_id=$1")
         .bind(&attempt.id).fetch_one(&mut *f.connection().await).await.expect("accounting without private copy");
     assert_eq!(receipt, (true, "known".into()));
     assert_eq!(

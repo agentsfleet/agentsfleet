@@ -1,7 +1,7 @@
 //! Request sequence and its selected model are accepted in the draft transaction.
 //!
 //! A message keeps the operation key that queued it, which its page returns;
-//! the 24-hour retry window is `authoring.replay_receipts`, swept long before
+//! the 24-hour retry window is `setup.replay_receipts`, swept long before
 //! the message goes. Its usage is the attempt's dispatch receipts, summed once
 //! a report was acknowledged, never a message column.
 

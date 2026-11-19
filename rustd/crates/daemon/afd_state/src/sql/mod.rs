@@ -35,7 +35,7 @@ pub const SELECT_CLI_CREDENTIAL: &str = include_str!("select_cli_credential.sql"
 /// runner is degraded when it holds a reason (`degraded_reason IS NOT NULL`).
 pub const SELECT_RUNNER_TOKEN: &str = include_str!("select_runner_token.sql");
 
-/// The status a `runner.runs` row opens in.
+/// The status a `thread.runs` row opens in.
 ///
 /// Declared here rather than at the write site because a report flips a row
 /// OUT of this value and its predicate has to name the same spelling the issue

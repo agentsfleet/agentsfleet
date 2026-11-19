@@ -63,12 +63,12 @@ async fn late_known_usage_does_not_reopen_an_attempt_marked_uncertain() {
 }
 
 async fn retained_fence(f: &Fixture, attempt: &Attempt) {
-    let state: (String,bool) = sqlx::query_as("SELECT a.status,d.result IS NULL FROM authoring.attempts a JOIN authoring.dispatches d ON d.attempt_id=a.id WHERE a.id=$1")
+    let state: (String,bool) = sqlx::query_as("SELECT a.status,d.result IS NULL FROM setup.attempts a JOIN setup.dispatches d ON d.attempt_id=a.id WHERE a.id=$1")
         .bind(&attempt.id).fetch_one(&mut *f.connection().await).await.expect("durable fence and accounting");
     assert_eq!(state, ("awaiting_accounting".into(), true));
 }
 
 async fn age_intent(f: &Fixture, attempt: &Attempt) {
-    sqlx::query("UPDATE authoring.dispatches SET dispatch_expires_at=clock_timestamp()-interval '1 millisecond' WHERE attempt_id=$1")
+    sqlx::query("UPDATE setup.dispatches SET dispatch_expires_at=clock_timestamp()-interval '1 millisecond' WHERE attempt_id=$1")
         .bind(&attempt.id).execute(&mut *f.connection().await).await.expect("simulate unreconciled old intent");
 }

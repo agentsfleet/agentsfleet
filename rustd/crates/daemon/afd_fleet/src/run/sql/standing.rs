@@ -1,7 +1,7 @@
 //! The statements a run-addressed runner verb proves its run with, and
 //! the per-run message count.
 //!
-//! Each names `runner.runs` (`schema/1810`).
+//! Each names `thread.runs` (`schema/1810`).
 
 /// The run a runner verb names, if this runner holds it live.
 ///

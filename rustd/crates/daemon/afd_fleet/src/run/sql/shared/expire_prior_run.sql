@@ -7,13 +7,13 @@
 -- $3 the event or draft message claimed · $4 active status · $5 expired status
 WITH prior_run AS MATERIALIZED (
   SELECT l.id
-  FROM runner.runs l
+  FROM thread.runs l
   WHERE l.event_id = $3 AND COALESCE(l.fleet_id, l.draft_id) = COALESCE($1::uuid, $2::uuid)
   ORDER BY l.fencing_token DESC
   LIMIT 1
   FOR UPDATE OF l
 ), bumped AS (
-  UPDATE runner.runs l SET status = $5, updated_at = now()
+  UPDATE thread.runs l SET status = $5, updated_at = now()
   FROM prior_run p WHERE l.id = p.id AND l.status = $4
   RETURNING l.runner_id
 ), tally AS (
@@ -27,7 +27,7 @@ WITH prior_run AS MATERIALIZED (
 -- The runs this work was issued before this claim. A report settles its work, so each
 -- one is a run that lapsed without reporting.
 SELECT p.id AS predecessor_run_id,
-       (SELECT count(*) FROM runner.runs x
+       (SELECT count(*) FROM thread.runs x
          WHERE x.event_id = $3
            AND COALESCE(x.fleet_id, x.draft_id) = COALESCE($1::uuid, $2::uuid))
            AS earlier_runs

@@ -14,7 +14,7 @@ async fn expired_closed_drafts_are_unreadable_then_purged_without_recreating_pri
         .create(f.access(), request.clone(), now())
         .await
         .expect("create");
-    sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1")
+    sqlx::query("UPDATE setup.drafts SET status='closed',expires_at='epoch' WHERE id=$1")
         .bind(&created.draft.id)
         .execute(&mut *f.connection().await)
         .await
@@ -60,7 +60,7 @@ async fn expired_closed_drafts_are_unreadable_then_purged_without_recreating_pri
 async fn closed_retention_waits_for_a_live_authoring_run_then_purges_at_expiry() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1")
+    sqlx::query("UPDATE setup.drafts SET status='closed',expires_at='epoch' WHERE id=$1")
         .bind(a.draft.id)
         .execute(&mut *f.connection().await)
         .await
@@ -70,7 +70,7 @@ async fn closed_retention_waits_for_a_live_authoring_run_then_purges_at_expiry()
         .await
         .expect("live run blocks physical purge");
     assert_eq!(f.counts().await, (1, 0, 1));
-    sqlx::query("UPDATE authoring.attempts SET run_expires_at='epoch' WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET run_expires_at='epoch' WHERE id=$1")
         .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
@@ -80,7 +80,7 @@ async fn closed_retention_waits_for_a_live_authoring_run_then_purges_at_expiry()
         .await
         .expect("purge after live boundary");
     assert_eq!(f.counts().await, (0, 0, 0));
-    let deliveries: i64 = sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE id=$1")
+    let deliveries: i64 = sqlx::query_scalar("SELECT count(*) FROM setup.attempts WHERE id=$1")
         .bind(a.id)
         .fetch_one(&mut *f.connection().await)
         .await

@@ -1,4 +1,4 @@
-UPDATE authoring.attempts
+UPDATE setup.attempts
    SET status = $2,
        usage_unknown = $3,
        reported_runtime_ms = $4,

@@ -14,7 +14,7 @@ WITH event AS (
   -- unanswered notice included. A clean run that answered nothing owed none,
   -- so the notice is owed in its place, to the admission's reply destination,
   -- as the report statement owes a run's own text.
-  INSERT INTO fleet.deliveries AS o
+  INSERT INTO thread.deliveries AS o
     (id, fleet_id, workspace_id, provider, destination, event_id, answer,
      receipt, claim_expires_at, delivered_at, attempt_count, created_at, updated_at)
   SELECT $5, a.fleet_id, a.workspace_id, a.reply_provider, a.reply_address, a.id,

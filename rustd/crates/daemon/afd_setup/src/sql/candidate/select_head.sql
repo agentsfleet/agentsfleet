@@ -1,4 +1,4 @@
-UPDATE authoring.drafts
+UPDATE setup.drafts
    SET head_candidate_id = $2,
        resource_version = resource_version + 1,
        updated_at = now()

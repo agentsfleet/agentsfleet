@@ -1,4 +1,4 @@
-UPDATE fleet.deliveries
+UPDATE thread.deliveries
    SET claim_expires_at = clock_timestamp() + $3::interval,
        updated_at       = now()
  WHERE id = $1 AND receipt = $2

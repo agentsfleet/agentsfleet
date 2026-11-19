@@ -1,4 +1,4 @@
-SELECT COUNT(*)::bigint FROM runner.events
+SELECT COUNT(*)::bigint FROM runner.history
 WHERE runner_id = $1
   AND ($2::text[] IS NULL OR event_type = ANY($2::text[]))
   AND ($3::timestamptz IS NULL OR created_at >= $3::timestamptz)

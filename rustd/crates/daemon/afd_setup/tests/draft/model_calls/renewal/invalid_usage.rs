@@ -32,7 +32,7 @@ async fn an_exhausted_saved_allowance_cannot_commit_a_failed_renewal() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
-    sqlx::query("UPDATE authoring.attempts SET output_token_count=8193 WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET output_token_count=8193 WHERE id=$1")
         .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await

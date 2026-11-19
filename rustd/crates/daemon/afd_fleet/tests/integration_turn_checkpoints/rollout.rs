@@ -93,7 +93,7 @@ async fn issuing_saves_the_runtime_cap_instead_of_using_a_later_profile() -> Che
     .validate()?;
     case.runs = case.runs.clone().with_clock(RunClock::new(&settings));
     case.replace().await?;
-    let saved: i32 = sqlx::query_scalar("SELECT max_runtime_seconds FROM runner.runs WHERE id=$1")
+    let saved: i32 = sqlx::query_scalar("SELECT max_runtime_seconds FROM thread.runs WHERE id=$1")
         .bind(&case.issued.run_id)
         .fetch_one(&mut *case.fixtures.database.acquire().await?)
         .await?;
@@ -167,7 +167,7 @@ async fn assert_preserved(case: &Case, saved: &af_wire::run::TurnResume) -> Chec
 
 async fn run_deadline(case: &Case) -> Checked<jiff::Timestamp> {
     let stamp: jiff_sqlx::Timestamp =
-        sqlx::query_scalar("SELECT run_expires_at FROM runner.runs WHERE id=$1")
+        sqlx::query_scalar("SELECT run_expires_at FROM thread.runs WHERE id=$1")
             .bind(&case.issued.run_id)
             .fetch_one(&mut *case.fixtures.database.acquire().await?)
             .await?;
@@ -184,7 +184,7 @@ async fn database_time(case: &Case) -> Checked<jiff::Timestamp> {
 async fn expire(case: &Case) -> Checked {
     let mut connection = case.fixtures.database.acquire().await?;
     sqlx::query(
-        "UPDATE runner.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+        "UPDATE thread.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
     )
     .bind(&case.issued.run_id)
     .execute(&mut *connection)

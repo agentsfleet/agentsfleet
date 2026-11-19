@@ -4,13 +4,13 @@ WITH probe AS (
            (EXTRACT(EPOCH FROM l.run_expires_at - l.last_metered_at) * $3::bigint)::bigint AS d_ms,
            -- The runtime line's number, as the meter numbers it: the slice's start.
            (EXTRACT(EPOCH FROM l.last_metered_at - l.created_at) * $3::bigint)::bigint AS runtime_seq
-    FROM runner.runs l
+    FROM thread.runs l
     WHERE l.id = $1 AND l.status <> $2
       AND l.run_expires_at < statement_timestamp()
       AND l.last_metered_at < l.run_expires_at
     FOR UPDATE OF l
 ), moved AS (
-    UPDATE runner.runs l
+    UPDATE thread.runs l
     SET last_metered_at = p.run_expires_at, updated_at = now()
     FROM probe p WHERE l.id = p.id
     RETURNING l.id

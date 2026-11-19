@@ -1,6 +1,6 @@
 -- `fleet_id` and `workspace_id` copy the event's scope, written once with it, so the detail
 -- endpoint authorizes without joining the event. `sequence` orders calls within one run.
-CREATE TABLE fleet.tool_calls (
+CREATE TABLE thread.items (
     id                   UUID PRIMARY KEY,
     workspace_id         UUID    NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
     fleet_id             UUID    NOT NULL REFERENCES fleet.fleets(id) ON DELETE CASCADE,
@@ -15,12 +15,12 @@ CREATE TABLE fleet.tool_calls (
     byte_count           BIGINT  NOT NULL,
     created_at           TIMESTAMPTZ(3)  NOT NULL,
     updated_at           TIMESTAMPTZ(3)  NOT NULL,
-    CONSTRAINT uq_tool_calls_event_id_fencing_token_sequence
+    CONSTRAINT uq_items_event_id_fencing_token_sequence
         UNIQUE (event_id, fencing_token, sequence)
 );
 
-CREATE INDEX idx_tool_calls_workspace_id ON fleet.tool_calls (workspace_id);
+CREATE INDEX idx_items_workspace_id ON thread.items (workspace_id);
 
-CREATE INDEX idx_tool_calls_fleet_id ON fleet.tool_calls (fleet_id);
+CREATE INDEX idx_items_fleet_id ON thread.items (fleet_id);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.tool_calls TO api_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON thread.items TO api_runtime;

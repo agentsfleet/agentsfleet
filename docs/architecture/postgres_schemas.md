@@ -14,7 +14,7 @@ table has one obvious home and one obvious shape.
 ## Rules
 
 1. **Placement.** A table lives in the schema of the product area that owns it. Its name is a
-   plural noun that never repeats the schema name: `authoring.drafts`, never with the schema name repeated as a prefix.
+   plural noun that never repeats the schema name: `setup.drafts`, never with the schema name repeated as a prefix.
    A singleton is named for its one row (`model.catalogue_version`) and says so in its slot.
 2. **Foreign keys** end `_id` and name the table they point at (`user_id`, `draft_id`). A prefix
    names the role when the column alone would not say it (`invited_by_user_id`, `active_grant_id`,
@@ -41,7 +41,7 @@ table has one obvious home and one obvious shape.
    - a deadline, named `*expires_at`;
    - a NULL marker an index or trigger reads;
    - a domain instant the API returns that `updated_at` cannot carry;
-   - an accounting cursor billing reads (`runner.runs.last_metered_at`).
+   - an accounting cursor billing reads (`thread.runs.last_metered_at`).
 5. **One fact, one home.** No JSON blob copies a column; no counter restates another table's number.
    Named exceptions, each with its consistency rule stated in the slot:
    - an aggregate maintained under the same lock or trigger as its source;
@@ -50,7 +50,7 @@ table has one obvious home and one obvious shape.
    - a scope copy a restricted role needs to filter alone.
 6. **Retry keys** (`operation_id` + request digest) are enforced only by receipt tables. When an API
    returns a key for longer than its receipt lives, the row may keep that key as a plain column
-   (`authoring.messages.operation_id`). That column decides no replay.
+   (`setup.messages.operation_id`). That column decides no replay.
 7. **Every column names its reader** before it is created. Accounting and audit records are exempt
    when the slot names the export or verification that reads them.
 8. **A new table** carries a written answer to "why not a column, or an existing table".
@@ -325,7 +325,7 @@ lines, and no `holds` table exists (billing §11).
 
 Money outlives every deletion. `usage_lines` carries opaque `tenant_id`, `workspace_id`,
 `fleet_id` and `authoring_attempt_id` values with no foreign key, and `usage_daily` and
-`runs_daily` carry opaque `tenant_id` and `fleet_id` the same way. `authoring.attempts` keeps
+`runs_daily` carry opaque `tenant_id` and `fleet_id` the same way. `setup.attempts` keeps
 its workspace, tenant and user identifiers without a foreign key.
 
 Erasing a fleet, workspace or account therefore never deletes a charge. The slots name the export
@@ -370,7 +370,7 @@ A column kept with no reader still owes a drop under rule 7.
   `select_cli_credential.sql` reads it during authentication. The mint copies the user's tenant,
   and the reading statement already joins `identity.users`. The column therefore restates
   `identity.users.tenant_id` (rule 5) with no consistency rule in its slot.
-- **`authoring.attempts.settled_nanos`: dropped.** The file `20261108123900_authoring_attempts.sql` declares the table without it. The
+- **`setup.attempts.settled_nanos`: dropped.** The file `20261108123900_setup_attempts.sql` declares the table without it. The
   settled charge is `billing.usage_lines.charged_nanos` (the file `20261108124600_billing_usage_lines.sql`), summed per work type by
   `afd_billing`'s `select_owed.sql`.
 
@@ -380,7 +380,7 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
   `afd_fleet`'s `select_fleet_with_session.sql`.
 - **`model.platform_defaults.base_url`: kept.** The file `20261108121400_model_platform_defaults.sql` declares it; `afd_credential`'s
   `select_active_platform_default.sql` reads it.
-- **`runner.runs.last_metered_at`: kept.** The file `20261108123200_runner_runs.sql` declares it as the run's runtime cursor
+- **`thread.runs.last_metered_at`: kept.** The file `20261108123200_thread_runs.sql` declares it as the run's runtime cursor
   (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `renew_batch.sql` and `commit_report.sql`). The expiry sweep bills the last slice from it (`select_unbilled_expired_runs.sql` and
   `bill_expired_slice.sql`).
 
@@ -390,9 +390,9 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
   by `afd_runner`'s `runner_detail.sql`.
 - **`runner.runners.capability_reported_at`: dropped.** The file `20261108123100_runner_runners.sql` declares the table with
   `capability_report` and no instant beside it.
-- **`authoring.attempts.input_token_count`: dropped.** The file `20261108123900_authoring_attempts.sql` keeps `call_count` and
+- **`setup.attempts.input_token_count`: dropped.** The file `20261108123900_setup_attempts.sql` keeps `call_count` and
   `output_token_count` only; input tokens are counted per request on `billing.usage_lines` (the file `20261108124600_billing_usage_lines.sql`).
-- **`authoring.dispatches.output_allowance`: dropped.** The file `20261108124000_authoring_dispatches.sql` declares the table without it.
+- **`setup.dispatches.output_allowance`: dropped.** The file `20261108124000_setup_dispatches.sql` declares the table without it.
 - **`setup_context`: replaced** by `fleet.revisions.review_context` (the file `20261108122000_fleet_revisions.sql`), written by
   `afd_setup`'s creation `revision.sql` and read by its `locked.sql`.
 
@@ -418,7 +418,7 @@ Added by this milestone:
 - **Write-only columns dropped by the M246 audit.** Each was written by a statement and read by none.
   - `fleet.approval_gates`: `spend_count`, `spend_ceiling`, `stated_binding`.
   - `identity.cli_credentials`: `credential_prefix`, `deployment`, `created_from_address`.
-  - `authoring.edit_decisions.snapshot`, `fleet.deliveries.abandon_reason`, `fleet.task_bases.retained_bytes`.
+  - `setup.edit_decisions.snapshot`, `thread.deliveries.abandon_reason`, `fleet.task_bases.retained_bytes`.
   - `fleet.task_completions`: `conclusion`, `body_digest`.
   - `fleet.task_effect_states.confirmed_at`, `fleet.task_waits.consumed_admission_id`, `fleet.tasks.last_transition_at`.
   - `fleet.task_inputs` and `fleet.task_interpretations`: `accepting_run_id`, `accepting_fence`.

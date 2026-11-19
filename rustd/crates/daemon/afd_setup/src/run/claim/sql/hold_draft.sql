@@ -1,1 +1,1 @@
-SELECT id FROM authoring.drafts WHERE id = $1 FOR UPDATE NOWAIT
+SELECT id FROM setup.drafts WHERE id = $1 FOR UPDATE NOWAIT

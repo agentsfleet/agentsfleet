@@ -5,7 +5,7 @@ WITH wall AS MATERIALIZED (
 ), attempts AS MATERIALIZED (
     SELECT t.id AS task_id, t.fleet_id, t.workspace_id
     FROM fleet.tasks t WHERE t.terminal_at IS NULL AND t.used_runs >= t.max_runs
-      AND NOT EXISTS (SELECT 1 FROM runner.runs l WHERE l.task_id = t.id
+      AND NOT EXISTS (SELECT 1 FROM thread.runs l WHERE l.task_id = t.id
           AND l.status = $2 AND l.run_expires_at > statement_timestamp())
     ORDER BY t.id LIMIT $1
 )

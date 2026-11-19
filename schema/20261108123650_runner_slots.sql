@@ -6,7 +6,7 @@
 CREATE TABLE runner.slots (
     id                          UUID PRIMARY KEY,
     fleet_id                    UUID REFERENCES fleet.fleets(id) ON DELETE CASCADE,
-    draft_id                    UUID REFERENCES authoring.drafts(id) ON DELETE CASCADE,
+    draft_id                    UUID REFERENCES setup.drafts(id) ON DELETE CASCADE,
     last_runner_id              UUID REFERENCES runner.runners(id) ON DELETE SET NULL,
     fencing_token               BIGINT NOT NULL,
     run_expires_at            TIMESTAMPTZ(3) NOT NULL,

@@ -26,7 +26,7 @@ impl Biller for ChangedHistory {
     async fn check(&self, ask: &Ask) -> afd_billing::Result<Funds> {
         let funds = self.ledger.check(ask).await?;
         // The first preparation has committed and dropped its connection here.
-        let written = sqlx::query("UPDATE authoring.messages SET answer_text='changed after measurement' WHERE draft_id=$1 AND sequence=1")
+        let written = sqlx::query("UPDATE setup.messages SET answer_text='changed after measurement' WHERE draft_id=$1 AND sequence=1")
             .bind(&self.draft)
             .execute(&mut *self.db.acquire().await.expect("biller boundary releases the pool"))
             .await.expect("controlled source change between measured funding and dispatch");
@@ -126,26 +126,26 @@ pub(in crate::draft) async fn history_for(
     prior: i64,
 ) {
     let mut connection = f.connection().await;
-    sqlx::query("UPDATE authoring.messages SET sequence=$2 WHERE draft_id=$1")
+    sqlx::query("UPDATE setup.messages SET sequence=$2 WHERE draft_id=$1")
         .bind(draft)
         .bind(prior + 1)
         .execute(&mut *connection)
         .await
         .expect("move current request");
-    sqlx::query("UPDATE authoring.attempts SET message_sequence=$2 WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET message_sequence=$2 WHERE id=$1")
         .bind(attempt)
         .bind(prior + 1)
         .execute(&mut *connection)
         .await
         .expect("pin current request");
-    sqlx::query("UPDATE authoring.drafts SET last_message_sequence=$2 WHERE id=$1")
+    sqlx::query("UPDATE setup.drafts SET last_message_sequence=$2 WHERE id=$1")
         .bind(draft)
         .bind(prior + 1)
         .execute(&mut *connection)
         .await
         .expect("pin draft sequence");
     for sequence in 1..=prior {
-        sqlx::query("INSERT INTO authoring.messages(id,draft_id,sequence,operation_id,status,user_text,answer_text,created_at,updated_at) VALUES($1,$2,$3,$1,'completed',$4,$5,now(),now())")
+        sqlx::query("INSERT INTO setup.messages(id,draft_id,sequence,operation_id,status,user_text,answer_text,created_at,updated_at) VALUES($1,$2,$3,$1,'completed',$4,$5,now(),now())")
             .bind(mint()).bind(draft).bind(sequence)
             .bind(format!("initial-reference investigation step {sequence}: {}", TRACE.repeat(8)))
             .bind(format!("completed evidence {}", TRACE.repeat(2))).execute(&mut *connection).await.expect("owned complete exchange");
@@ -244,11 +244,10 @@ async fn assert_saved(f: &Fixture, attempt: &Attempt, summaries: i64) {
         saved.pointer("/summary/goal").and_then(Value::as_str),
         Some("finish the original investigation")
     );
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.messages WHERE draft_id=$1")
-            .bind(&attempt.draft.id)
-            .fetch_one(&mut *f.connection().await)
-            .await
-            .expect("original history retained");
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM setup.messages WHERE draft_id=$1")
+        .bind(&attempt.draft.id)
+        .fetch_one(&mut *f.connection().await)
+        .await
+        .expect("original history retained");
     assert_eq!(count, 181);
 }

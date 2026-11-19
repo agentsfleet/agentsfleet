@@ -88,7 +88,7 @@ Before returning an edit proposal, the daemon evaluates the newest saved user me
 A no answer uses `ProposalRejection::EditNotRequested`. Yes permits ordinary validation. Unavailable, stale or malformed decisions record a bounded fallback and retain current chat behavior.
 
 The existing `DecisionEvaluator`/`DecisionClient` handles the physical request; the runner catalogue resolver supplies its reviewed profile, and platform-admin Secrets supply fresh credentials.
-A native `authoring.edit_decisions` record binds each check to its dispatch, attempt and candidate version. It contains no message text.
+A native `setup.edit_decisions` record binds each check to its dispatch, attempt and candidate version. It contains no message text.
 
 It commits physical intent before sending and preserves frozen decision pricing and usage independently of private chat deletion.
 The per-call reservation is tentative, using reviewed prices and bounded request/response allowances with the approved USD 0.02 minimum. Actual provider usage remains authoritative, and further decision checks stop on unresolved usage or overage.

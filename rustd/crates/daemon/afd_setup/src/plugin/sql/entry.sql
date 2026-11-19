@@ -5,7 +5,7 @@ SELECT l.id AS id,
        l.head_revision_id AS head_revision_id,
        l.resource_version,
        l.created_at
-  FROM authoring.plugin_entries l
+  FROM setup.plugin_entries l
  WHERE l.id = $1
    AND l.tenant_id = $2
    FOR SHARE

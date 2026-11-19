@@ -3,11 +3,11 @@ WITH instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at
 )
 SELECT instant.checked_at,
-       (SELECT count(*) FROM runner.runs l
+       (SELECT count(*) FROM thread.runs l
          WHERE l.runner_id = $1 AND l.status = $2
            AND l.run_expires_at > instant.checked_at)
-     -- Setup turns the authoring path still runs; this term goes with authoring.attempts.
-     + (SELECT count(*) FROM authoring.attempts a
+     -- Setup turns the authoring path still runs; this term goes with setup.attempts.
+     + (SELECT count(*) FROM setup.attempts a
          WHERE a.runner_id = $1 AND a.status = $2
            AND a.run_expires_at > instant.checked_at) AS occupied,
        (SELECT count(*) FROM runner.slots s

@@ -25,7 +25,7 @@ impl AuthoringFixture {
         Option<sqlx::types::Json<Value>>,
         Option<sqlx::types::Json<Value>>,
     ) {
-        sqlx::query_as("SELECT result,usage FROM authoring.dispatches WHERE attempt_id=$1")
+        sqlx::query_as("SELECT result,usage FROM setup.dispatches WHERE attempt_id=$1")
             .bind(Uuid7::parse(&self.run.attempt_id).expect("attempt id"))
             .fetch_one(
                 &mut *self
@@ -41,7 +41,7 @@ impl AuthoringFixture {
 
     pub(super) async fn answer(&self) -> Option<String> {
         sqlx::query_scalar(
-            "SELECT answer_text FROM authoring.messages WHERE draft_id=$1 AND sequence=1",
+            "SELECT answer_text FROM setup.messages WHERE draft_id=$1 AND sequence=1",
         )
         .bind(Uuid7::parse(&self.run.draft_id).expect("draft id"))
         .fetch_one(
@@ -66,7 +66,7 @@ impl AuthoringFixture {
     }
 
     pub(super) async fn receipts(&self) -> (i64, i64, i64) {
-        sqlx::query_as("SELECT (SELECT count(*) FROM authoring.dispatches WHERE attempt_id=$1), (SELECT count(*) FROM authoring.activity_receipts WHERE attempt_id=$1), (SELECT count(*) FROM billing.authoring_report_receipts WHERE attempt_id=$1)")
+        sqlx::query_as("SELECT (SELECT count(*) FROM setup.dispatches WHERE attempt_id=$1), (SELECT count(*) FROM setup.activity_receipts WHERE attempt_id=$1), (SELECT count(*) FROM billing.authoring_report_receipts WHERE attempt_id=$1)")
             .bind(Uuid7::parse(&self.run.attempt_id).expect("attempt id"))
             .fetch_one(&mut *self.booted.database.acquire().await.expect("receipt read connection"))
             .await.expect("scoped receipt counts")

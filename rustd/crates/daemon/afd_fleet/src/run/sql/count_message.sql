@@ -1,7 +1,7 @@
 WITH run AS MATERIALIZED (
     SELECT l.id, l.fleet_id, l.posted_message_count, l.fencing_token, l.status,
            l.run_expires_at
-    FROM runner.runs l
+    FROM thread.runs l
     WHERE l.id = $1
     FOR NO KEY UPDATE OF l
 ), live AS MATERIALIZED (
@@ -14,7 +14,7 @@ WITH run AS MATERIALIZED (
             (SELECT a.fencing_token FROM runner.slots a WHERE a.fleet_id = run.fleet_id),
             run.fencing_token)
 )
-UPDATE runner.runs l
+UPDATE thread.runs l
 SET posted_message_count = l.posted_message_count + 1, updated_at = now()
 FROM live
 WHERE l.id = live.id

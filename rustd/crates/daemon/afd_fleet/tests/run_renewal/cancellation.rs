@@ -11,7 +11,7 @@ type TestResult<T = ()> = afd_fleet::Result<T, Box<dyn std::error::Error + Send 
 async fn a_cancel_whose_push_is_lost_ends_at_the_next_renewal() -> TestResult {
     let running = Running::create().await;
     let before = snapshot(&running).await;
-    sqlx::query("UPDATE runner.runs SET cancel_requested_at = clock_timestamp() WHERE id = $1")
+    sqlx::query("UPDATE thread.runs SET cancel_requested_at = clock_timestamp() WHERE id = $1")
         .bind(&running.run)
         .execute(&mut *running.fixtures.database.acquire().await?)
         .await?;
@@ -29,13 +29,13 @@ async fn a_cancel_committed_while_renewal_waits_cannot_be_overwritten() -> TestR
     let mut connection = running.fixtures.database.acquire().await?;
     let mut transaction = connection.begin().await?;
     let blocker: i32 =
-        sqlx::query_scalar("SELECT pg_backend_pid() FROM runner.runs WHERE id = $1 FOR UPDATE")
+        sqlx::query_scalar("SELECT pg_backend_pid() FROM thread.runs WHERE id = $1 FOR UPDATE")
             .bind(&running.run)
             .fetch_one(&mut *transaction)
             .await?;
     let cancelling = async {
         wait_for_blocker(&running, blocker).await?;
-        sqlx::query("UPDATE runner.runs SET cancel_requested_at = clock_timestamp() WHERE id = $1")
+        sqlx::query("UPDATE thread.runs SET cancel_requested_at = clock_timestamp() WHERE id = $1")
             .bind(&running.run)
             .execute(&mut *transaction)
             .await?;

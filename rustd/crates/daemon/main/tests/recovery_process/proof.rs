@@ -52,7 +52,7 @@ pub(super) async fn checkpoint(scene: &Scenario, covered: &Uuid7) -> Checked<Uui
 pub(super) async fn deadline(scene: &Scenario) -> Checked<jiff::Timestamp> {
     let mut connection = scene.booted.database.acquire().await?;
     let expiry: jiff_sqlx::Timestamp = sqlx::query_scalar(
-        "SELECT GREATEST(l.run_expires_at,s.run_expires_at) FROM runner.runs l
+        "SELECT GREATEST(l.run_expires_at,s.run_expires_at) FROM thread.runs l
         JOIN runner.slots s ON s.fleet_id=l.fleet_id
         WHERE l.event_id=$1 AND l.runner_id=$2 ORDER BY l.created_at DESC LIMIT 1",
     )
@@ -73,7 +73,7 @@ pub(super) async fn no_early_issue(
             let mut connection = scene.booted.database.acquire().await?;
             let (live, issued): (bool, bool) = sqlx::query_as(
                 "SELECT clock_timestamp()<$3::timestamptz,EXISTS(
-                    SELECT 1 FROM runner.runs WHERE event_id=$1 AND runner_id=$2)",
+                    SELECT 1 FROM thread.runs WHERE event_id=$1 AND runner_id=$2)",
             )
             .bind(&scene.event_id)
             .bind(runner)
@@ -102,8 +102,8 @@ pub(super) async fn replacement(
 ) -> Checked<Winner> {
     let mut connection = scene.booted.database.acquire().await?;
     let (run, fence, previous, issued): (Uuid7, i64, i64, jiff_sqlx::Timestamp) = sqlx::query_as(
-        "SELECT b.id,b.fencing_token,a.fencing_token,b.created_at FROM runner.runs b
-        JOIN runner.runs a ON a.event_id=b.event_id AND a.runner_id=$3
+        "SELECT b.id,b.fencing_token,a.fencing_token,b.created_at FROM thread.runs b
+        JOIN thread.runs a ON a.event_id=b.event_id AND a.runner_id=$3
         WHERE b.event_id=$1 AND b.runner_id=$2",
     )
     .bind(&scene.event_id)
@@ -113,7 +113,7 @@ pub(super) async fn replacement(
     .await?;
     assert_eq!(fence, previous + 1);
     assert!(issued.to_jiff() >= deadline);
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE event_id=$1")
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE event_id=$1")
         .bind(&scene.event_id)
         .fetch_one(&mut *connection)
         .await?;
@@ -196,7 +196,7 @@ pub(super) async fn quarantined(scene: &Scenario) -> Checked {
     .await??;
     let mut connection = scene.booted.database.acquire().await?;
     let events: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT event_type,count(*) FROM runner.events WHERE runner_id=$1 AND event_type=ANY($2::text[]) GROUP BY event_type ORDER BY event_type")
+        "SELECT event_type,count(*) FROM runner.history WHERE runner_id=$1 AND event_type=ANY($2::text[]) GROUP BY event_type ORDER BY event_type")
         .bind(&scene.runner_id).bind(["runner_cordoned", "runner_offline"])
         .fetch_all(&mut *connection).await?;
     assert_eq!(

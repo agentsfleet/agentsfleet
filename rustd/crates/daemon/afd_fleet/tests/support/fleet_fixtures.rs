@@ -117,7 +117,7 @@ impl Fixtures {
     pub(crate) async fn events(&self, runner: &Uuid7) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query_scalar(
-            "SELECT event_type FROM runner.events \
+            "SELECT event_type FROM runner.history \
              WHERE runner_id = $1 ORDER BY created_at, id",
         )
         .bind(runner)
@@ -130,7 +130,7 @@ impl Fixtures {
     pub(crate) async fn event_actors(&self, runner: &Uuid7) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query_scalar(
-            "SELECT metadata ->> 'actor_id' FROM runner.events \
+            "SELECT metadata ->> 'actor_id' FROM runner.history \
              WHERE runner_id = $1 AND metadata ? 'actor_id' ORDER BY created_at, id",
         )
         .bind(runner)

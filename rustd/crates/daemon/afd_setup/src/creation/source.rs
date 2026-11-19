@@ -67,7 +67,7 @@ impl Creations {
 /// [`sql::PLUGIN`]'s row, by column name.
 #[expect(
     clippy::struct_field_names,
-    reason = "`revision` is the `authoring.plugin_revisions` column it decodes"
+    reason = "`revision` is the `setup.plugin_revisions` column it decodes"
 )]
 #[derive(sqlx::FromRow)]
 struct Revision {

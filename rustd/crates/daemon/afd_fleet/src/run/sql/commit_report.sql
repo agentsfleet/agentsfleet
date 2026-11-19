@@ -58,7 +58,7 @@ WITH scope AS MATERIALIZED (
          h.id IS NOT NULL AS hold_authorized
   FROM runner.slots s
   JOIN scope sc ON sc.id = s.fleet_id
-  JOIN runner.runs l ON l.fleet_id = s.fleet_id
+  JOIN thread.runs l ON l.fleet_id = s.fleet_id
   LEFT JOIN hold_host h ON h.id = l.runner_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
   FOR UPDATE OF s
@@ -67,7 +67,7 @@ WITH scope AS MATERIALIZED (
          l.created_at, l.run_expires_at, l.last_metered_at,
          l.posture, l.provider, l.model, l.task_id, a.fencing_token AS live_fence,
          a.slot_expires_at, a.hold_authorized
-  FROM runner.runs l
+  FROM thread.runs l
   JOIN locked_slot a ON a.fleet_id = l.fleet_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
   FOR UPDATE OF l
@@ -147,7 +147,7 @@ WITH scope AS MATERIALIZED (
          COALESCE(sum(output_token_count), 0)::bigint AS output_tokens
   FROM lines
 ), moved AS (
-  UPDATE runner.runs l
+  UPDATE thread.runs l
   SET status = $5,
       last_metered_at = m.metered_until,
       -- The run ended at its report. Its cursor then meets its deadline, so it
@@ -188,7 +188,7 @@ WITH scope AS MATERIALIZED (
             e.resumes_event_id, e.created_at, e.updated_at
 ), dropped AS (
   -- A reclaimed run's records are of a run whose answer does not stand.
-  DELETE FROM fleet.tool_calls t
+  DELETE FROM thread.items t
   USING moved m
   WHERE t.fleet_id = m.fleet_id AND t.event_id = m.event_id AND t.fencing_token <> m.fencing_token
 ), checkpointed AS (
@@ -207,7 +207,7 @@ WITH scope AS MATERIALIZED (
   WHERE s.fleet_id = m.fleet_id AND s.fencing_token = m.fencing_token
   RETURNING s.hold_expires_at
 ), owed AS (
-  INSERT INTO fleet.deliveries
+  INSERT INTO thread.deliveries
     (id, fleet_id, workspace_id, provider, destination, event_id, answer,
      receipt, claim_expires_at, delivered_at, attempt_count, created_at, updated_at)
   -- A run that wrote nothing owes nothing, unless it failed: then its thread
@@ -221,7 +221,7 @@ WITH scope AS MATERIALIZED (
   ON CONFLICT ON CONSTRAINT uq_deliveries_fleet_id_event_id DO NOTHING
   RETURNING id
 ), audit AS (
-  INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
+  INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)
   SELECT $43, $2, $44::text, $45::jsonb, NULL, now() FROM moved
 )
 SELECT
@@ -229,7 +229,7 @@ SELECT
     (SELECT hold_expires_at FROM released) AS accepted_hold,
     -- A locking read answers the latest committed version, so a copy that
     -- waited behind the one that settled sees it settled, not its snapshot.
-    (SELECT l.status FROM runner.runs l WHERE l.id = $1 AND l.runner_id = $2 FOR SHARE)
+    (SELECT l.status FROM thread.runs l WHERE l.id = $1 AND l.runner_id = $2 FOR SHARE)
         AS run_status,
     p.posture AS held_posture, p.provider AS held_provider, p.model AS held_model,
     (SELECT resource_version FROM catalogue) AS catalogue_version,

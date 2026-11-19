@@ -58,7 +58,7 @@ async fn late_reply(delete: bool) {
             error_code::AUTHORING_FENCE
         }
     );
-    let saved: (bool,String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1")
+    let saved: (bool,String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM setup.dispatches WHERE attempt_id=$1")
         .bind(&attempt.id).fetch_one(&mut *f.connection().await).await.expect("late accounting receipt");
     assert_eq!(saved, (true, "known".into()));
     assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
@@ -114,7 +114,7 @@ async fn retiring_a_runner_during_a_call_keeps_known_usage_without_private_outpu
     task.await
         .expect("provider completion")
         .expect_err("private output denied");
-    let saved: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1")
+    let saved: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM setup.dispatches WHERE attempt_id=$1")
         .bind(&attempt.id).fetch_one(&mut *f.connection().await).await.expect("usage receipt");
     assert_eq!(saved, (true, "known".into()));
     tokio::time::timeout(HANG_BOUND, calls.call(&f.runner, &attempt.run, request))

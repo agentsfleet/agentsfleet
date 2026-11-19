@@ -91,7 +91,7 @@ pub(super) async fn calls<T: Transport + 'static>(
     sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1,$2,now(),now())")
         .bind(&f.tenant).bind(crate::draft::FUNDED_NANOS).execute(&mut *connection).await.expect("owned wallet");
     sqlx::query(
-        "UPDATE authoring.attempts SET model_token_hash=$2,reserved_nanos=30000000 WHERE id=$1",
+        "UPDATE setup.attempts SET model_token_hash=$2,reserved_nanos=30000000 WHERE id=$1",
     )
     .bind(&attempt.id)
     .bind(hex::encode(Sha256::digest(CAPABILITY.as_bytes())))
@@ -122,6 +122,6 @@ pub(super) fn request(attempt: &Attempt) -> ModelCallInput {
 }
 
 pub(super) async fn receipts(f: &Fixture, attempt: &Attempt) -> (i64, i32, bool) {
-    sqlx::query_as("SELECT (SELECT count(*) FROM authoring.dispatches WHERE attempt_id=a.id),call_count,usage_unknown FROM authoring.attempts a WHERE id=$1")
+    sqlx::query_as("SELECT (SELECT count(*) FROM setup.dispatches WHERE attempt_id=a.id),call_count,usage_unknown FROM setup.attempts a WHERE id=$1")
         .bind(&attempt.id).fetch_one(&mut *f.connection().await).await.expect("durable receipt state")
 }

@@ -29,7 +29,7 @@ pub(crate) async fn retire_fleet(booted: &Booted, fleet: &Uuid7) {
         .execute(&mut *connection)
         .await
         .expect("the fleet must retire");
-    sqlx::query("UPDATE runner.runs SET status = $3 WHERE fleet_id = $1 AND status = $2")
+    sqlx::query("UPDATE thread.runs SET status = $3 WHERE fleet_id = $1 AND status = $2")
         .bind(fleet)
         .bind(RUN_STATUS_ACTIVE)
         .bind(RUN_STATUS_EXPIRED)

@@ -104,7 +104,7 @@ async fn test_a_fleet_is_discovered_without_any_notification() {
 ///
 /// # Why the lapsed re-poll is a FRESH pull here and not a reclaim
 ///
-/// Reclaim reads `runner.runs` for a still-`active` row, and this
+/// Reclaim reads `thread.runs` for a still-`active` row, and this
 /// suite never writes one: `select` ASSIGNS work, and the row is written by
 /// the issue verb, which does not exist yet. So the fleet has no dead holder
 /// to take work back from, and the pass correctly falls through to the fresh

@@ -82,7 +82,7 @@ async fn platform_admission_reserves_output_and_runtime_before_rolling_input_fun
     assert_eq!(run.model.reference, "platform-default");
     assert_eq!(run.limits.output_per_turn, 8192);
     let (reserved, managed): (i64, bool) = sqlx::query_as(
-        "SELECT reserved_nanos,(model_snapshot->>'platform_managed')::boolean FROM authoring.attempts WHERE id=$1",
+        "SELECT reserved_nanos,(model_snapshot->>'platform_managed')::boolean FROM setup.attempts WHERE id=$1",
     ).bind(Uuid7::parse(&run.attempt_id).expect("the run names its attempt")).fetch_one(&mut *f.connection().await).await.expect("durable priced bound");
     // Measured input is funded before each physical dispatch; admission reserves
     // total output, rounding and the separately priced five-minute runtime.

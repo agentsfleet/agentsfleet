@@ -128,7 +128,7 @@ async fn a_short_payer_stops_on_a_checking_tick_alone() {
 async fn host_batch_refuses_cancel_marked_run() {
     let held = held().await;
     let sibling = held.hold_another().await;
-    sqlx::query("UPDATE runner.runs SET cancel_requested_at = now() WHERE id = $1")
+    sqlx::query("UPDATE thread.runs SET cancel_requested_at = now() WHERE id = $1")
         .bind(&held.issued.run_id)
         .execute(&mut *held.fixtures.database.acquire().await.expect("writer"))
         .await

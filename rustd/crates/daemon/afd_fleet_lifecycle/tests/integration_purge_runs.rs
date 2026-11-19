@@ -1,6 +1,6 @@
 //! A purge takes its fleet's live runs and keeps its settled ones.
 //!
-//! `runner.runs` holds no foreign key to the fleet, so nothing cascades: the
+//! `thread.runs` holds no foreign key to the fleet, so nothing cascades: the
 //! purge deletes the live run itself, because one left behind would name a
 //! fleet that no longer exists to the renew and report paths. The settled run
 //! stays as the runner's history, for its own retention window.
@@ -34,7 +34,7 @@ WITH runner AS (
     VALUES ($3, $2, $7, 'user:a', 'chat', 'processed', '{}'::jsonb, 900,
             NULL, NULL, now(), now())
 )
-INSERT INTO runner.runs
+INSERT INTO thread.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at, fencing_token, run_expires_at,
    status, posted_message_count,
@@ -47,7 +47,7 @@ VALUES
 ";
 
 /// Whether a run row still exists.
-const RUN_EXISTS: &str = "SELECT EXISTS (SELECT 1 FROM runner.runs WHERE id = $1)";
+const RUN_EXISTS: &str = "SELECT EXISTS (SELECT 1 FROM thread.runs WHERE id = $1)";
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]

@@ -35,7 +35,7 @@ pub(crate) async fn purge(
     connection: &mut PgConnection,
     id: &Uuid7,
 ) -> Result<Vec<(Uuid7, Uuid7)>> {
-    // No foreign key reaches runner.runs from a draft, so its live runs go here;
+    // No foreign key reaches thread.runs from a draft, so its live runs go here;
     // its slot goes with the draft's own cascade.
     let killed: Vec<(Uuid7, Uuid7)> = sqlx::query_as(crate::setup_run::DELETE_RUNS)
         .bind(id)

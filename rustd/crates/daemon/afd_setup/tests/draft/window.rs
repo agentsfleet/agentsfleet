@@ -54,7 +54,7 @@ pub(super) async fn refile(
 
 /// The id of the message at `sequence` in `draft`.
 pub(super) async fn message_id(f: &Fixture, draft: &Uuid7, sequence: i64) -> Uuid7 {
-    sqlx::query_scalar("SELECT id FROM authoring.messages WHERE draft_id=$1 AND sequence=$2")
+    sqlx::query_scalar("SELECT id FROM setup.messages WHERE draft_id=$1 AND sequence=$2")
         .bind(draft)
         .bind(sequence)
         .fetch_one(&mut *f.connection().await)
@@ -64,7 +64,7 @@ pub(super) async fn message_id(f: &Fixture, draft: &Uuid7, sequence: i64) -> Uui
 
 /// How many receipts name `resource`.
 pub(super) async fn receipts(f: &Fixture, resource: &Uuid7) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE resource_id=$1")
+    sqlx::query_scalar("SELECT count(*) FROM setup.replay_receipts WHERE resource_id=$1")
         .bind(resource)
         .fetch_one(&mut *f.connection().await)
         .await

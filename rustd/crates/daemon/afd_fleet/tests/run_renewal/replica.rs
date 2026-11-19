@@ -12,7 +12,7 @@ use afd_db::{Db, config::DbRole, test_util::TestDatabase};
 use afd_fleet::run::{Billed, Kind, Runs};
 
 const ORIGINAL: &str = "\
-SELECT e.event_id, l.status FROM runner.runs l JOIN fleet.events e ON e.event_id = l.event_id
+SELECT e.event_id, l.status FROM thread.runs l JOIN fleet.events e ON e.event_id = l.event_id
 WHERE l.id = $1";
 
 pub(super) struct Replica {
@@ -49,7 +49,7 @@ impl Replica {
             Kind::Reclaim,
             "the expired holder's event is taken back, never pulled fresh and billed twice"
         );
-        let tenant: Uuid7 = sqlx::query_scalar("SELECT tenant_id FROM runner.runs WHERE id = $1")
+        let tenant: Uuid7 = sqlx::query_scalar("SELECT tenant_id FROM thread.runs WHERE id = $1")
             .bind(&running.run)
             .fetch_one(&mut *running.fixtures.database.acquire().await.expect("read"))
             .await

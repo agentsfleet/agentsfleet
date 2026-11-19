@@ -62,7 +62,7 @@ async fn a_blocked_authorization_read_closes_at_its_deadline_and_releases_capaci
 }
 
 async fn lock_draft(held: &mut sqlx::Transaction<'_, sqlx::Postgres>, live: &Live) -> i32 {
-    sqlx::query_scalar("SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1 FOR UPDATE")
+    sqlx::query_scalar("SELECT pg_backend_pid() FROM setup.drafts WHERE id=$1 FOR UPDATE")
         .bind(&live.draft)
         .fetch_one(&mut **held)
         .await
@@ -126,9 +126,9 @@ async fn draft_stream_resyncs_when_its_subscription_ends() {
         heartbeat.as_ref(),
         b"event: heartbeat\ndata: {\"kind\":\"heartbeat\"}\n\n"
     );
-    live.mutate("UPDATE authoring.messages SET status='completed' WHERE draft_id=$1")
+    live.mutate("UPDATE setup.messages SET status='completed' WHERE draft_id=$1")
         .await;
-    live.mutate("UPDATE authoring.drafts SET status='closed',closed_at=now(),expires_at=now()+interval '1 day' WHERE id=$1").await;
+    live.mutate("UPDATE setup.drafts SET status='closed',closed_at=now(),expires_at=now()+interval '1 day' WHERE id=$1").await;
     assert!(
         frame(&mut body)
             .await
@@ -227,7 +227,7 @@ impl Bus for Fragile {
 async fn closed_draft_never_emits_a_buffered_private_preview() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
-    live.mutate("UPDATE authoring.drafts SET status='closed',closed_at=now(),expires_at=now()+interval '1 day' WHERE id=$1").await;
+    live.mutate("UPDATE setup.drafts SET status='closed',closed_at=now(),expires_at=now()+interval '1 day' WHERE id=$1").await;
     live.publish(&live.delta("late private text"));
     let last = frame(&mut body).await;
     assert!(last.contains("event: draft.closed\n"), "{last}");

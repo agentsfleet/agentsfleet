@@ -130,7 +130,7 @@ The producer that owns a reply surface records the reply destination on the admi
 
 The report parses the recorded connector once, so the run's **model** provider never reaches the delivery ledger (`afd_fleet/src/run/delivery.rs`). A job its destination refuses for good, or one out of delivery cycles, is stamped abandoned, and no scan offers it again (`afd_outbound/src/abandon.rs`).
 
-A run may say up to eight interim lines before its answer, through `POST /v1/runners/me/runs/{run_id}/messages` (`MESSAGES_PER_RUN_MAX`, `af_wire/src/message_verb/mod.rs`). The run plane fences each line and counts it in `runner.runs.posted_message_count` (`schema/20261108123200_runner_runs.sql`), so a reclaimed run starts a new count.
+A run may say up to eight interim lines before its answer, through `POST /v1/runners/me/runs/{run_id}/messages` (`MESSAGES_PER_RUN_MAX`, `af_wire/src/message_verb/mod.rs`). The run plane fences each line and counts it in `thread.runs.posted_message_count` (`schema/20261108123200_thread_runs.sql`), so a reclaimed run starts a new count.
 
 The daemon posts every Slack text, interim line and answer alike, as literal text. It sends `&`, `<` and `>` as Slack entities (`afd_outbound/src/slack/escape/mod.rs`, called from `SlackPoster::post`). Each line is stamped `agentsfleet_interim` with `{run_id, line}` (`afd_connector/src/slack/answered/mod.rs`), so a repeat finds only its own line and never silences the answer.
 

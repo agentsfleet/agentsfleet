@@ -104,7 +104,7 @@ pub(super) fn cursor(
         .map(|item| {
             Uuid7::parse(&item.id)
                 .map(|id| KeysetCursor::new(item.occurred_at, id))
-                .map_err(crate::error::row_malformed("runner.events", "id"))
+                .map_err(crate::error::row_malformed("runner.history", "id"))
         })
         .transpose()
 }

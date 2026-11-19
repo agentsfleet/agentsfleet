@@ -1,1 +1,1 @@
-DELETE FROM authoring.plugin_entries WHERE id = $1
+DELETE FROM setup.plugin_entries WHERE id = $1

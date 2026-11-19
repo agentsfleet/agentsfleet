@@ -6,6 +6,6 @@ SELECT t.id AS task_id, t.status, t.generation, t.stop_generation,
          AND t.used_running_nanos < t.max_running_nanos AS within_limits,
        NOT EXISTS (SELECT 1 FROM fleet.task_effects e JOIN fleet.task_effect_states s ON s.task_effect_id = e.id
            WHERE e.task_id = t.id AND s.status NOT IN ($3, $4)) AS effects_resolved
-FROM runner.runs l JOIN fleet.tasks t ON t.id = l.task_id AND t.fleet_id = l.fleet_id AND t.workspace_id = l.workspace_id
+FROM thread.runs l JOIN fleet.tasks t ON t.id = l.task_id AND t.fleet_id = l.fleet_id AND t.workspace_id = l.workspace_id
 WHERE l.id = $1 AND l.runner_id = $2
 FOR UPDATE OF t

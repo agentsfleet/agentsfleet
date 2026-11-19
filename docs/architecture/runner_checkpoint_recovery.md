@@ -58,7 +58,7 @@ New defaults apply to new attempts.
 An existing attempt retains its saved limits after reconnect or a replica restart.
 
 ```toml
-[authoring.turn]
+[setup.turn]
 max_model_calls = 8
 max_wall_seconds = 300
 max_proposal_corrections = 1

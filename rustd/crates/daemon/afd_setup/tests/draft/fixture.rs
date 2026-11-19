@@ -150,7 +150,7 @@ impl Fixture {
              SELECT $2,c.draft_id,c.revision+1,c.definition,c.canonical_digest,'retired',now() \
              FROM authoring.candidates c JOIN authoring.drafts d ON d.head_candidate_id=c.id \
              WHERE d.id=$1";
-        const HEAD: &str = "UPDATE authoring.drafts SET head_candidate_id=$2 WHERE id=$1";
+        const HEAD: &str = "UPDATE setup.drafts SET head_candidate_id=$2 WHERE id=$1";
         let retired = mint();
         let mut connection = self.connection().await;
         for statement in [RETIRED, HEAD] {
@@ -182,7 +182,7 @@ impl Fixture {
     pub(super) async fn counts(&self) -> (i64, i64, i64) {
         let mut connection = self.connection().await;
         let mut tx = connection.begin().await.expect("counts transaction");
-        sqlx::query("SELECT id FROM authoring.drafts WHERE workspace_id=$1 FOR UPDATE")
+        sqlx::query("SELECT id FROM setup.drafts WHERE workspace_id=$1 FOR UPDATE")
             .bind(&self.workspace)
             .fetch_all(&mut *tx)
             .await
@@ -204,18 +204,18 @@ impl Fixture {
         // Postgres broke that cycle as a deadlock in this cleanup. Messages,
         // candidates and answer receipts cascade from the draft.
         self.cleanup.record(
-            "DELETE FROM authoring.drafts WHERE workspace_id=$1",
+            "DELETE FROM setup.drafts WHERE workspace_id=$1",
             &self.workspace,
         );
         self.cleanup.record(
-            "DELETE FROM authoring.replay_receipts WHERE workspace_id=$1",
+            "DELETE FROM setup.replay_receipts WHERE workspace_id=$1",
             &self.workspace,
         );
         // Attempts carry no foreign key to the workspace (money outlives it),
         // so no cascade removes them; their dispatches, receipts and
         // settlements go with them.
         self.cleanup.record(
-            "DELETE FROM authoring.attempts WHERE workspace_id=$1",
+            "DELETE FROM setup.attempts WHERE workspace_id=$1",
             &self.workspace,
         );
         self.cleanup
@@ -250,7 +250,7 @@ impl Fixture {
 
     pub(super) fn own_plugin(&mut self, plugin: &Uuid7) {
         self.cleanup
-            .record("DELETE FROM authoring.plugin_entries WHERE id=$1", plugin);
+            .record("DELETE FROM setup.plugin_entries WHERE id=$1", plugin);
     }
 }
 

@@ -1,6 +1,6 @@
 SELECT count(*)
   FROM (SELECT l.fleet_id
-          FROM runner.runs l
+          FROM thread.runs l
           JOIN runner.runners r ON r.id = l.runner_id
          WHERE r.host_id LIKE $1 AND l.status = $2 AND l.fleet_id IS NOT NULL
          GROUP BY l.fleet_id

@@ -189,7 +189,7 @@ pub(crate) enum ErrorKind {
 
     /// The delivery ledger would not answer.
     ///
-    /// `afd_outbound` owns `fleet.deliveries`, and the report path commits
+    /// `afd_outbound` owns `thread.deliveries`, and the report path commits
     /// an delivery through it inside its own transaction — so a failure there
     /// is a failure of THIS transaction and has to reach the caller as one.
     /// Distinct from [`Self::Datastore`] because the delivery is a PostgreSQL

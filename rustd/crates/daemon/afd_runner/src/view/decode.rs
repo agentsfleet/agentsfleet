@@ -23,7 +23,7 @@ use crate::sql;
 use crate::view::{RunnerDetail, RunnerItem};
 
 const TABLE_RUNNERS: &str = "runner.runners";
-const TABLE_EVENTS: &str = "runner.events";
+const TABLE_EVENTS: &str = "runner.history";
 
 /// The columns every runner read selects, by name.
 #[derive(Debug, sqlx::FromRow)]

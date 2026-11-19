@@ -28,7 +28,7 @@ async fn a_failed_http_status_keeps_known_cost_without_publishing_successful_con
         assert_eq!(error.code(), error_code::AUTHORING_PROVIDER);
     }
     assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
-    let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1")
+    let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM setup.dispatches WHERE attempt_id=$1")
         .bind(attempt.id).fetch_one(&mut *f.connection().await).await.expect("retained provider accounting");
     assert_eq!(receipt, (true, "known".into()));
     assert_eq!(provider.count(), 1);
@@ -63,7 +63,7 @@ async fn malformed_proposal_keeps_known_usage_and_replays_a_nonexecutable_refusa
         }
         assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
         let knowledge: String = sqlx::query_scalar(
-            "SELECT usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1",
+            "SELECT usage->>'knowledge' FROM setup.dispatches WHERE attempt_id=$1",
         )
         .bind(&attempt.id)
         .fetch_one(&mut *f.connection().await)

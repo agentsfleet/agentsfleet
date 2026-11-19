@@ -8,11 +8,12 @@
 use super::*;
 
 /// The nine owned schemas. `audit` holds only sqlx's ledger.
-const OWNED_SCHEMAS: [&str; 9] = [
+const OWNED_SCHEMAS: [&str; 10] = [
     "identity",
-    "authoring",
+    "setup",
     "fleet",
     "runner",
+    "thread",
     "connector",
     "model",
     "billing",

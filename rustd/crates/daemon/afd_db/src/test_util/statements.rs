@@ -189,11 +189,11 @@ mod tests {
     #[test]
     fn fragment_sums_matching_statements_only() {
         let ran = Ran(vec![
-            ("SELECT x FROM runner.runs".to_owned(), 2),
-            ("UPDATE runner.runs SET y = $1".to_owned(), 1),
+            ("SELECT x FROM thread.runs".to_owned(), 2),
+            ("UPDATE thread.runs SET y = $1".to_owned(), 1),
             ("SELECT z FROM fleet.events".to_owned(), 5),
         ]);
-        assert_eq!(ran.calls_containing("runner.runs"), 3);
+        assert_eq!(ran.calls_containing("thread.runs"), 3);
         assert_eq!(ran.calls_containing("vault.secrets"), 0);
     }
 }

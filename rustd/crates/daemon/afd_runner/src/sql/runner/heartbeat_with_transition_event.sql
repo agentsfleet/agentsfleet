@@ -25,12 +25,12 @@ WITH locked AS MATERIALIZED (
   FROM lifting p WHERE r.id = p.id
   RETURNING r.id, p.last_seen_at AS previous, p.checked_at, p.lift
 ), online AS (
-  INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
+  INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)
   SELECT $2, id, $3, jsonb_build_object($4::text, regexp_replace(to_char(previous AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS'), '\.?0+$', '') || 'Z'), NULL, checked_at FROM bumped
   WHERE previous = $5::timestamptz OR previous < checked_at - $6::interval
   RETURNING id
 ), lifted AS (
-  INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
+  INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)
   SELECT $12, id, $13, jsonb_build_object($14::text, $15::text), NULL, checked_at FROM bumped WHERE lift
   RETURNING id
 )

@@ -1,4 +1,4 @@
-//! `runner.runners` and `runner.events` — enrolment, liveness, verdict.
+//! `runner.runners` and `runner.history` — enrolment, liveness, verdict.
 //!
 //! Every statement here is runner-scoped: a runner principal authorises only
 //! verbs about itself, so each carries `runner_id` in its predicate and can

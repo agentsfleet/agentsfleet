@@ -6,13 +6,13 @@
 -- holds is skipped; a hash collision between two lanes only skips one a pass.
 WITH candidates AS MATERIALIZED (
     SELECT o.provider, o.workspace_id
-      FROM fleet.deliveries o
+      FROM thread.deliveries o
      WHERE o.delivered_at IS NULL AND o.abandoned_at IS NULL
        AND o.claim_expires_at <= statement_timestamp()
        AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= statement_timestamp())
        AND NOT EXISTS (
            SELECT 1
-             FROM fleet.deliveries e
+             FROM thread.deliveries e
             WHERE e.provider = o.provider
               AND e.workspace_id = o.workspace_id
               AND e.delivered_at IS NULL AND e.abandoned_at IS NULL

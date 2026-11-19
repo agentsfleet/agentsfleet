@@ -1,5 +1,5 @@
 SELECT l.id AS run_id
-FROM runner.runs l
+FROM thread.runs l
 -- Every owner's runs: a fleet's last slice is billed to the fleet, a draft's to its setup
 -- work (`bill_expired_slice.sql`).
 WHERE l.status <> $1

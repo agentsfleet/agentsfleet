@@ -29,7 +29,7 @@ struct Entry {
     created_at: Timestamp,
 }
 
-/// One `authoring.plugin_entries` row, by column name.
+/// One `setup.plugin_entries` row, by column name.
 #[derive(sqlx::FromRow)]
 struct EntryRow {
     id: Uuid7,
@@ -91,7 +91,7 @@ impl Entry {
 
 #[expect(
     clippy::struct_field_names,
-    reason = "`revision` is the `authoring.plugin_revisions` column it decodes"
+    reason = "`revision` is the `setup.plugin_revisions` column it decodes"
 )]
 pub(crate) struct Revision {
     pub(crate) id: Uuid7,
@@ -102,7 +102,7 @@ pub(crate) struct Revision {
     created_at: Timestamp,
 }
 
-/// One `authoring.plugin_revisions` row, by column name.
+/// One `setup.plugin_revisions` row, by column name.
 #[derive(sqlx::FromRow)]
 struct RevisionRow {
     id: Uuid7,

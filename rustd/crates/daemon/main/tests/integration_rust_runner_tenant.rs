@@ -31,7 +31,7 @@ const TENANT_SECRET_ROW: &str = "INSERT INTO vault.secrets \
      secret_ciphertext, secret_tag, kek_version, meta_provider, meta_has_key, created_at, updated_at) \
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, now(), now())";
 
-const RUN_OF_EVENT: &str = "SELECT runner_id, posture FROM runner.runs WHERE event_id = $1";
+const RUN_OF_EVENT: &str = "SELECT runner_id, posture FROM thread.runs WHERE event_id = $1";
 
 /// Registers the tenant's own model with a sealed key and moves the scenario's
 /// fleet onto it.

@@ -140,34 +140,34 @@ impl Fixture {
 
     async fn offline_events(&self) -> i64 {
         self.scalar(
-            "SELECT count(*) FROM runner.events WHERE runner_id = $1 AND event_type = 'runner_offline'",
+            "SELECT count(*) FROM runner.history WHERE runner_id = $1 AND event_type = 'runner_offline'",
             &self.stale,
         ).await
     }
 
     async fn offline_last_seen(&self) -> String {
         self.scalar(
-            "SELECT metadata->>'last_seen_at' FROM runner.events WHERE runner_id = $1 AND event_type = 'runner_offline'",
+            "SELECT metadata->>'last_seen_at' FROM runner.history WHERE runner_id = $1 AND event_type = 'runner_offline'",
             &self.stale,
         ).await
     }
 
     async fn run_exists(&self, run: &Uuid7) -> bool {
         self.scalar(
-            "SELECT EXISTS(SELECT 1 FROM runner.runs WHERE id = $1)",
+            "SELECT EXISTS(SELECT 1 FROM thread.runs WHERE id = $1)",
             run,
         )
         .await
     }
 
     async fn run_state(&self, run: &Uuid7) -> String {
-        self.scalar("SELECT status FROM runner.runs WHERE id = $1", run)
+        self.scalar("SELECT status FROM thread.runs WHERE id = $1", run)
             .await
     }
 
     async fn runner_event_exists(&self, event: &Uuid7) -> bool {
         self.scalar(
-            "SELECT EXISTS(SELECT 1 FROM runner.events WHERE id = $1)",
+            "SELECT EXISTS(SELECT 1 FROM runner.history WHERE id = $1)",
             event,
         )
         .await
@@ -222,7 +222,7 @@ async fn a_backlog_past_one_cycle_brings_the_next_cycle_forward() {
     .await
     .expect("the runner row seeds");
     sqlx::query(
-        "INSERT INTO runner.events (id, runner_id, event_type, metadata, created_at) \
+        "INSERT INTO runner.history (id, runner_id, event_type, metadata, created_at) \
          SELECT uuidv7(), $1, 'run_acquired', '{}', $2::timestamptz \
          FROM generate_series(1, $3::bigint)",
     )
@@ -253,7 +253,7 @@ async fn a_backlog_past_one_cycle_brings_the_next_cycle_forward() {
     assert_eq!(
         fixture
             .scalar::<i64>(
-                "SELECT count(*) FROM runner.events WHERE runner_id = $1",
+                "SELECT count(*) FROM runner.history WHERE runner_id = $1",
                 &fixture.stale,
             )
             .await,

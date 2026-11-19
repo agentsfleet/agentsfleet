@@ -72,7 +72,7 @@ async fn deletion_wipes_text_and_tombstones_the_accepted_creation_key() {
     // The receipt outlives the draft it names; the draft's absence is the
     // tombstone a retry reads as Gone.
     let receipts: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE resource_id=$1")
+        sqlx::query_scalar("SELECT count(*) FROM setup.replay_receipts WHERE resource_id=$1")
             .bind(&created.draft.id)
             .fetch_one(&mut *f.connection().await)
             .await

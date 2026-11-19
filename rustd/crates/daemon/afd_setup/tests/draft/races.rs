@@ -18,7 +18,7 @@ use sqlx::Connection as _;
 use std::sync::Arc;
 
 /// Gates every receipt write behind the holder.
-const GATE: &str = "LOCK TABLE authoring.replay_receipts IN SHARE MODE";
+const GATE: &str = "LOCK TABLE setup.replay_receipts IN SHARE MODE";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

@@ -57,7 +57,7 @@ impl<'a> Decisions<'a> {
             .acquire()
             .await
             .expect("frozen decision fixture");
-        sqlx::query("UPDATE runner.runs SET decision_snapshot=$2 WHERE id=$1")
+        sqlx::query("UPDATE thread.runs SET decision_snapshot=$2 WHERE id=$1")
             .bind(&case.held.run_key)
             .bind(Json(&assignment))
             .execute(&mut *connection)

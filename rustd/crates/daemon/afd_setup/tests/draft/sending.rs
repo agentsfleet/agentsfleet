@@ -38,7 +38,7 @@ async fn draft_with_message(f: &Fixture, key: &Uuid7) -> Uuid7 {
 }
 
 async fn messages(f: &Fixture, draft: &Uuid7) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.messages WHERE draft_id=$1")
+    sqlx::query_scalar("SELECT count(*) FROM setup.messages WHERE draft_id=$1")
         .bind(draft)
         .fetch_one(&mut *f.connection().await)
         .await
@@ -51,7 +51,7 @@ async fn a_send_to_a_draft_being_saved_replays_its_accepted_key_and_refuses_a_ne
     let f = Fixture::create().await;
     let key = mint();
     let draft = draft_with_message(&f, &key).await;
-    sqlx::query("UPDATE authoring.drafts SET status=$2 WHERE id=$1")
+    sqlx::query("UPDATE setup.drafts SET status=$2 WHERE id=$1")
         .bind(&draft)
         .bind(DraftState::Saving.as_str())
         .execute(&mut *f.connection().await)
@@ -88,7 +88,7 @@ async fn a_key_a_racing_writer_files_first_refuses_the_send_and_writes_nothing()
     let draft = draft_with_message(&f, &mint()).await;
     let first = message_id(&f, &draft, 1).await;
     let scope: String =
-        sqlx::query_scalar("SELECT scope FROM authoring.replay_receipts WHERE resource_id=$1")
+        sqlx::query_scalar("SELECT scope FROM setup.replay_receipts WHERE resource_id=$1")
             .bind(&first)
             .fetch_one(&mut *f.connection().await)
             .await

@@ -106,7 +106,7 @@ async fn lapsed_claim_is_retaken_and_the_late_stamp_refused() -> Result<(), &'st
     };
     sql(
         &ledger.database,
-        "UPDATE fleet.deliveries SET claim_expires_at = now() - interval '1 second' WHERE id = $1",
+        "UPDATE thread.deliveries SET claim_expires_at = now() - interval '1 second' WHERE id = $1",
         &[&first.id],
     )
     .await;

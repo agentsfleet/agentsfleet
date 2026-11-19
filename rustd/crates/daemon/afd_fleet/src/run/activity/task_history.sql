@@ -7,7 +7,7 @@ WITH slot AS MATERIALIZED (
       AND s.run_expires_at > statement_timestamp()
     FOR UPDATE OF s SKIP LOCKED
 ), run AS MATERIALIZED (
-    SELECT l.event_id FROM runner.runs l JOIN slot s ON s.fleet_id = l.fleet_id
+    SELECT l.event_id FROM thread.runs l JOIN slot s ON s.fleet_id = l.fleet_id
     WHERE l.id = $4 AND l.runner_id = $5 AND l.fencing_token = $6
       AND l.status = $7 AND l.run_expires_at > statement_timestamp()
     FOR UPDATE OF l SKIP LOCKED

@@ -43,7 +43,7 @@ async fn with_known_call(f: &Fixture) -> Attempt {
 async fn a_report_racing_the_expiry_sweep_settles_once() {
     let f = Fixture::create().await;
     let a = with_known_call(&f).await;
-    sqlx::query("UPDATE authoring.attempts SET run_expires_at=clock_timestamp() WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET run_expires_at=clock_timestamp() WHERE id=$1")
         .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await

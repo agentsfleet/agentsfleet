@@ -200,7 +200,7 @@ async fn seed_recent_history(saved: &Saved, id: &Uuid7) {
             .bind(mint()).bind(id).bind(sequence).bind(mint())
             .execute(&mut *connection).await.expect("settled history");
     }
-    sqlx::query("UPDATE authoring.drafts SET last_message_sequence=15 WHERE id=$1")
+    sqlx::query("UPDATE setup.drafts SET last_message_sequence=15 WHERE id=$1")
         .bind(id)
         .execute(&mut *connection)
         .await

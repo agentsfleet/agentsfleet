@@ -156,7 +156,7 @@ impl Fixtures {
     async fn rotation_actor(&self, runner_id: &Uuid7) -> String {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT metadata ->> 'actor_id' FROM runner.events \
+            "SELECT metadata ->> 'actor_id' FROM runner.history \
              WHERE runner_id = $1 AND event_type = 'runner_token_rotated'",
         )
         .bind(runner_id)

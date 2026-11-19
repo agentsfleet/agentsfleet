@@ -135,7 +135,7 @@ async fn evidence(case: &Case, task: &Uuid7, reason: Option<&str>) -> Value {
     let row: (Option<String>, bool, i64, bool) = sqlx::query_as("SELECT t.status_reason,t.terminal_at IS NOT NULL,(SELECT count(*) FROM billing.usage_lines WHERE work_id=$2),(SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id=$3) FROM fleet.tasks t WHERE t.id=$1")
         .bind(task).bind(&case.held.run_key).bind(&case.held.event_id).fetch_one(&mut *connection).await.expect("committed task and original accounting");
     assert_eq!(row, (reason.map(str::to_owned), true, 1, true));
-    sqlx::query_scalar("SELECT jsonb_build_object('event',(SELECT to_jsonb(e) FROM fleet.events e WHERE e.fleet_id=$1 AND e.event_id=$2),'charges',(SELECT jsonb_agg(to_jsonb(u) ORDER BY u.seq) FROM billing.usage_lines u WHERE u.work_id=$3),'run',(SELECT to_jsonb(l) FROM runner.runs l WHERE l.id=$3))")
+    sqlx::query_scalar("SELECT jsonb_build_object('event',(SELECT to_jsonb(e) FROM fleet.events e WHERE e.fleet_id=$1 AND e.event_id=$2),'charges',(SELECT jsonb_agg(to_jsonb(u) ORDER BY u.seq) FROM billing.usage_lines u WHERE u.work_id=$3),'run',(SELECT to_jsonb(l) FROM thread.runs l WHERE l.id=$3))")
         .bind(&case.scope.fleet_id).bind(&case.held.event_id).bind(&case.held.run_key)
         .fetch_one(&mut *connection).await.expect("original event charge and run snapshot")
 }
@@ -188,7 +188,7 @@ async fn report_after_preparation_deadline(
         observe_report_commit(case, pid).await;
         // Preparation has finished and commit owns the original report. Advance
         // to its actual database deadline, without inventing a runtime cursor.
-        sqlx::query("SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM run_expires_at-clock_timestamp()))) FROM runner.runs WHERE id=$1")
+        sqlx::query("SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM run_expires_at-clock_timestamp()))) FROM thread.runs WHERE id=$1")
             .bind(&case.held.run_key).execute(&mut *held).await.expect("original task runtime reaches its native ceiling");
         held.commit()
             .await
@@ -291,7 +291,7 @@ async fn a_notice_is_owed_when_the_run_answered_nothing() {
             .expect("the report settles");
 
         let (owed, answered): (Option<String>, String) = sqlx::query_as(
-            "SELECT (SELECT o.answer FROM fleet.deliveries o WHERE o.event_id = e.event_id), \
+            "SELECT (SELECT o.answer FROM thread.deliveries o WHERE o.event_id = e.event_id), \
                     e.response_text FROM fleet.events e WHERE e.event_id = $1",
         )
         .bind(&case.held.event_id)

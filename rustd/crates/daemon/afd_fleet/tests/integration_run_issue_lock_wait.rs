@@ -35,7 +35,7 @@ const BLOCKING: &str =
 /// Whether the run's metering cursor starts at or after `$2`, at the
 /// precision the column stores.
 const CURSOR_STARTS_AFTER: &str = "SELECT last_metered_at >= date_trunc('milliseconds', $2::timestamptz) \
-FROM runner.runs WHERE id = $1";
+FROM thread.runs WHERE id = $1";
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]

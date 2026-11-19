@@ -67,7 +67,7 @@ pub(crate) const DELETE_FLEET: &str = include_str!("delete_fleet.sql");
 
 /// Deletes one fleet's live runs inside its purge.
 ///
-/// `$1` fleet · `$2` the live run status. `runner.runs` holds no foreign key
+/// `$1` fleet · `$2` the live run status. `thread.runs` holds no foreign key
 /// to the fleet, so a settled run outlives the purge for its own retention
 /// window; a live one would name a fleet that no longer exists, and goes here.
 pub(crate) const DELETE_ACTIVE_RUNS: &str = include_str!("delete_active_runs.sql");

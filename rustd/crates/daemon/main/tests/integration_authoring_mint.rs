@@ -35,7 +35,7 @@ VALUES($1,$2,$3,$4,$5,$6,$7,1,1,$1,'{}'::jsonb,
 'active',now()+interval '1 minute',now()+interval '1 minute',0,false,0,0,0,0,now(),now())";
 
 const RUNTIME: &str = "\
-INSERT INTO runner.runs(id,runner_id,fleet_id,workspace_id,tenant_id,event_id,
+INSERT INTO thread.runs(id,runner_id,fleet_id,workspace_id,tenant_id,event_id,
 event_created_at,posture,provider,model,last_metered_at,fencing_token,
 run_expires_at,status,setup_revision_id,
 posted_message_count,created_at,updated_at)
@@ -117,8 +117,8 @@ async fn authoring_run_cannot_mint_a_runtime_credential_live_or_revoked() {
     );
 
     for (statement, id) in [
-        ("DELETE FROM authoring.attempts WHERE id=$1", &attempt),
-        ("DELETE FROM runner.runs WHERE id=$1", &runtime_run),
+        ("DELETE FROM setup.attempts WHERE id=$1", &attempt),
+        ("DELETE FROM thread.runs WHERE id=$1", &runtime_run),
     ] {
         sqlx::query(statement)
             .bind(id)

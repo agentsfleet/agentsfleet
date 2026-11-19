@@ -25,7 +25,7 @@ const PROMPT: Duration = Duration::from_secs(10);
 const WORKERS: i32 = 4;
 
 /// Locks one draft row until its transaction ends.
-const HOLD_DRAFT: &str = "SELECT id FROM authoring.drafts WHERE id=$1 FOR UPDATE";
+const HOLD_DRAFT: &str = "SELECT id FROM setup.drafts WHERE id=$1 FOR UPDATE";
 
 /// Locks a tenant's wallet row, the way a ledger write does.
 const HOLD_WALLET: &str = "SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1 FOR UPDATE";

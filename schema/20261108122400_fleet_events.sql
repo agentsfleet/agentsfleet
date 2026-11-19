@@ -10,7 +10,7 @@ CREATE TABLE fleet.events (
     status            TEXT   NOT NULL,
     request_json      JSONB  NOT NULL,
     response_text     TEXT,
-    -- A compact summary; full arguments and output live in `fleet.tool_calls`.
+    -- A compact summary; full arguments and output live in `thread.items`.
     tool_calls        JSONB,
     token_count       BIGINT,
     wall_ms           BIGINT,

@@ -7,7 +7,7 @@ use afd_fleet::run::{Billed, Kind};
 impl Case {
     pub(super) async fn replace(&mut self) -> Checked {
         let mut connection = self.fixtures.database.acquire().await?;
-        sqlx::query("UPDATE runner.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
+        sqlx::query("UPDATE thread.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
             .bind(&self.issued.run_id).execute(&mut *connection).await?;
         sqlx::query("UPDATE runner.slots SET run_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
             .bind(&self.acquired.fleet_id).execute(&mut *connection).await?;

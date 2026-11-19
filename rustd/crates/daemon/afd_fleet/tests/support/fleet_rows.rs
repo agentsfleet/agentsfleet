@@ -25,7 +25,7 @@ pub(crate) const LAPSE: std::time::Duration = af_core::timing::RUN_TTL.saturatin
 pub(crate) enum Row<'a> {
     /// A `runner.runners` row, by runner id.
     Runner(&'a Uuid7),
-    /// A `runner.runs` row, by run id.
+    /// A `thread.runs` row, by run id.
     Run(&'a Uuid7),
     /// A fleet's `runner.slots` row, by fleet id.
     Slot(&'a Uuid7),
@@ -33,7 +33,7 @@ pub(crate) enum Row<'a> {
     Session(&'a Uuid7),
     /// A `fleet.admissions` row, by its id, which is the logical event id.
     Admission(&'a Uuid7),
-    /// An `authoring.attempts` row, by attempt id.
+    /// An `setup.attempts` row, by attempt id.
     Attempt(&'a Uuid7),
     /// A `fleet.events` row, by fleet id and event id.
     Event(&'a Uuid7, &'a Uuid7),
@@ -72,11 +72,11 @@ impl<'a> Row<'a> {
     const fn locate(self) -> (&'static str, &'static str, &'a Uuid7, Option<Second<'a>>) {
         match self {
             Self::Runner(id) => ("runner.runners", "id = $1", id, None),
-            Self::Run(id) => ("runner.runs", "id = $1", id, None),
+            Self::Run(id) => ("thread.runs", "id = $1", id, None),
             Self::Slot(fleet) => ("runner.slots", "fleet_id = $1", fleet, None),
             Self::Session(fleet) => ("fleet.sessions", "fleet_id = $1", fleet, None),
             Self::Admission(id) => ("fleet.admissions", "id = $1", id, None),
-            Self::Attempt(id) => ("authoring.attempts", "id = $1", id, None),
+            Self::Attempt(id) => ("setup.attempts", "id = $1", id, None),
             Self::Event(fleet, event) => (
                 "fleet.events",
                 "fleet_id = $1 AND event_id = $2",

@@ -214,7 +214,7 @@ pub(super) async fn settle_directly(held: &Held, admission: &Uuid7) -> Checked {
 /// Points the held run at a durable task, or at none.
 pub(super) async fn set_run_task(held: &Held, task: Option<&Uuid7>) -> Checked {
     let mut connection = held.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE runner.runs SET task_id = $2 WHERE id = $1")
+    sqlx::query("UPDATE thread.runs SET task_id = $2 WHERE id = $1")
         .bind(&held.issued.run_id)
         .bind(task)
         .execute(&mut *connection)

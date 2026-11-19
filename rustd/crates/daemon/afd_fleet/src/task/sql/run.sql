@@ -6,7 +6,7 @@ WITH held AS MATERIALIZED (
            f.status AS fleet_status, f.name AS fleet_name,
            l.decision_snapshot, COALESCE(r.capability_report @> jsonb_build_object($4::text, true), false) AS capable,
            l.run_expires_at, s.run_expires_at AS slot_expires_at
-    FROM runner.runs l
+    FROM thread.runs l
     JOIN runner.runners r ON r.id = l.runner_id
     JOIN runner.slots s ON s.fleet_id = l.fleet_id
     JOIN fleet.fleets f ON f.id = l.fleet_id AND f.workspace_id = l.workspace_id

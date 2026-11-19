@@ -2,7 +2,7 @@
 -- document's generation and is written with it in the same statement.
 CREATE TABLE memory.context_checkpoints (
     id                  UUID PRIMARY KEY,
-    draft_id            UUID NOT NULL REFERENCES authoring.drafts(id) ON DELETE CASCADE,
+    draft_id            UUID NOT NULL REFERENCES setup.drafts(id) ON DELETE CASCADE,
     resource_version    BIGINT NOT NULL,
     document            JSONB NOT NULL,
     created_at          TIMESTAMPTZ(3) NOT NULL,

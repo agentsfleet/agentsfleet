@@ -68,7 +68,7 @@ async fn assert_only_the_tombstone_remains(fleet: &Fleet, key: &af_core::id::Uui
         .expect("fleet census");
     assert_eq!(fleets, 0, "the replay recreated nothing");
     let receipts: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE operation_id=$1")
+        sqlx::query_scalar("SELECT count(*) FROM setup.replay_receipts WHERE operation_id=$1")
             .bind(key)
             .fetch_one(&mut *connection)
             .await

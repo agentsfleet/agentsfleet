@@ -3,9 +3,9 @@ WITH measured AS MATERIALIZED (
         GREATEST(l.task_runtime_accounted_at, LEAST(l.last_metered_at, l.run_expires_at)) AS until,
         (EXTRACT(EPOCH FROM GREATEST(l.task_runtime_accounted_at, LEAST(l.last_metered_at, l.run_expires_at))
             - l.task_runtime_accounted_at) * $3::bigint)::bigint AS running_nanos
-    FROM runner.runs l WHERE l.id = $1 AND l.task_id IS NOT NULL AND l.task_started_at IS NOT NULL
+    FROM thread.runs l WHERE l.id = $1 AND l.task_id IS NOT NULL AND l.task_started_at IS NOT NULL
 ), cursor AS (
-    UPDATE runner.runs l SET task_runtime_accounted_at = m.until, updated_at = now()
+    UPDATE thread.runs l SET task_runtime_accounted_at = m.until, updated_at = now()
     FROM measured m WHERE l.id = m.id
     RETURNING l.id
 ), totals AS MATERIALIZED (

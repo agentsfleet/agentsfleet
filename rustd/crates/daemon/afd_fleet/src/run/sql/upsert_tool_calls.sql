@@ -1,4 +1,4 @@
-INSERT INTO fleet.tool_calls AS t
+INSERT INTO thread.items AS t
   (id, workspace_id, fleet_id, event_id, fencing_token, sequence, arguments,
    truncated_arguments, output, output_line_count, truncated, byte_count,
    created_at, updated_at)

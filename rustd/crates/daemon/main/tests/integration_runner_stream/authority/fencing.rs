@@ -60,7 +60,7 @@ async fn stale_claim(
 }
 
 async fn assert_unissued(fixture: &Fixture, replacement: Replacement) -> TestResult {
-    let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE event_id=$1")
+    let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE event_id=$1")
         .bind(&fixture.scene.event_id)
         .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
         .await?;
@@ -114,7 +114,7 @@ async fn assert_stale_renewal(
         af_core::error_code::RUN_LOST.as_str()
     );
     let expiry: jiff_sqlx::Timestamp =
-        sqlx::query_scalar("SELECT run_expires_at FROM runner.runs WHERE id=$1")
+        sqlx::query_scalar("SELECT run_expires_at FROM thread.runs WHERE id=$1")
             .bind(af_core::id::Uuid7::parse(&held.run)?)
             .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
             .await?;

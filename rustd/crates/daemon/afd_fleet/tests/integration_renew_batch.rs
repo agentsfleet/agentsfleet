@@ -202,7 +202,7 @@ async fn single_and_batch_renewals_obey_the_saved_runtime_cap()
 -> Result<(), Box<dyn std::error::Error>> {
     let held = crate::report_seed::held().await;
     let run = &held.issued.run_id;
-    sqlx::query("UPDATE runner.runs SET max_runtime_seconds=60, created_at=clock_timestamp()-interval '50 seconds' WHERE id=$1")
+    sqlx::query("UPDATE thread.runs SET max_runtime_seconds=60, created_at=clock_timestamp()-interval '50 seconds' WHERE id=$1")
         .bind(run).execute(&mut *held.fixtures.database.acquire().await?).await?;
     let started = held
         .fixtures

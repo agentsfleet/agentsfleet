@@ -221,7 +221,7 @@ async fn in_order<A: Future, B: Future>(
         .fetch_one(&mut *lock)
         .await
         .expect("lock owner");
-    sqlx::query("SELECT id FROM authoring.drafts WHERE id=$1 FOR UPDATE")
+    sqlx::query("SELECT id FROM setup.drafts WHERE id=$1 FOR UPDATE")
         .bind(draft)
         .fetch_one(&mut *lock)
         .await

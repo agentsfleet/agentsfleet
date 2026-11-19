@@ -240,7 +240,7 @@ async fn dispatch(f: &super::Fixture, calls: &ModelCalls, run: &Claimed) -> Mode
 const AGE: std::time::Duration = std::time::Duration::from_secs(1);
 
 async fn settle(f: &super::Fixture, run: &Claimed) -> af_wire::authoring::Reported {
-    sqlx::query("UPDATE authoring.attempts SET created_at=created_at-$2::interval WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET created_at=created_at-$2::interval WHERE id=$1")
         .bind(id(&run.attempt_id))
         .bind(AGE)
         .execute(&mut *f.connection().await)

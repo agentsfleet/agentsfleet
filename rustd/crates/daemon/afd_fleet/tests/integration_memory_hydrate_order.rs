@@ -26,14 +26,14 @@ const CLOCK_SKEW: std::time::Duration = std::time::Duration::from_secs(1);
 /// Copies the held run as its successor — the fleet's next token, stamped
 /// [`CLOCK_SKEW`] before the held run — and moves the live sequence to it.
 const INSERT_EARLIER_SUCCESSOR: &str = "\
-INSERT INTO runner.runs \
+INSERT INTO thread.runs \
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at, \
    posture, provider, model, last_metered_at, fencing_token, \
    run_expires_at, status, posted_message_count, created_at, updated_at) \
 SELECT $2, runner_id, fleet_id, workspace_id, tenant_id, event_id, \
    event_created_at, posture, provider, model, last_metered_at, \
    fencing_token + 1, run_expires_at, status, 0, created_at - $3::interval, updated_at \
-FROM runner.runs WHERE id = $1 \
+FROM thread.runs WHERE id = $1 \
 RETURNING fencing_token";
 
 #[tokio::test]

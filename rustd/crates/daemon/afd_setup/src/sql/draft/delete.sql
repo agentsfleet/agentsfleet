@@ -1,1 +1,1 @@
-DELETE FROM authoring.drafts WHERE id = $1
+DELETE FROM setup.drafts WHERE id = $1

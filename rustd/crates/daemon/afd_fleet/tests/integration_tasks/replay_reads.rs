@@ -23,7 +23,7 @@ async fn accepted_replays_share_slot_and_run_read_locks() {
             .fetch_one(&mut *reader)
             .await
             .expect("shared slot lock");
-        sqlx::query("SELECT id FROM runner.runs WHERE id=$1 FOR SHARE")
+        sqlx::query("SELECT id FROM thread.runs WHERE id=$1 FOR SHARE")
             .bind(&case.held.run_key)
             .fetch_one(&mut *reader)
             .await

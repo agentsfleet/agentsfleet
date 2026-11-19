@@ -4,7 +4,7 @@
 //! # The shape of a run
 //!
 //! Owe N answers across D destination fleets, then start the real `Worker` and
-//! let it claim and drain them from `fleet.deliveries`. Every job is
+//! let it claim and drain them from `thread.deliveries`. Every job is
 //! paid by one workspace, so they share one (provider, workspace) lane and
 //! deliver one at a time: each job's latency includes the time every earlier
 //! job spent, which is exactly the head-of-line cost this lane measures.

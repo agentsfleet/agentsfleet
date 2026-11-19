@@ -130,7 +130,7 @@ fn api_key(payload: &serde_json::Value) -> Option<&str> {
 const SLOTS_OF_RUNNER: &str = "SELECT count(*) FROM runner.slots WHERE last_runner_id = $1";
 
 async fn runner_runs(fixtures: &Fixtures, runner: &Uuid7) -> Vec<String> {
-    sqlx::query_scalar("SELECT posture FROM runner.runs WHERE runner_id = $1")
+    sqlx::query_scalar("SELECT posture FROM thread.runs WHERE runner_id = $1")
         .bind(runner)
         .fetch_all(&mut *fixtures.database.acquire().await.expect("a connection"))
         .await

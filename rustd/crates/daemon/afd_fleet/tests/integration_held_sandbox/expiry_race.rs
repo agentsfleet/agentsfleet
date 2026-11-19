@@ -144,7 +144,7 @@ async fn pause_hold(held: &Held, blocker: &mut Transaction<'_, Postgres>) -> Che
 async fn shorten_run(held: &Held) -> Checked<jiff_sqlx::Timestamp> {
     let mut connection = held.fixtures.database.acquire().await?;
     let expires: jiff_sqlx::Timestamp = sqlx::query_scalar(
-        "UPDATE runner.runs SET run_expires_at=clock_timestamp()+interval '1400 milliseconds'
+        "UPDATE thread.runs SET run_expires_at=clock_timestamp()+interval '1400 milliseconds'
          WHERE id=$1 RETURNING run_expires_at",
     )
     .bind(&held.issued.run_id)

@@ -405,7 +405,7 @@ uuid = { version = "1.29.3", default-features = false, features = ["v7", "std"] 
 # consumers this workspace does not have.
 #
 # The rolling DAY window is NOT a calendar question and does not use this:
-# `authoring.mdx` documents it as "rolling 24-hour", not "since midnight", so it
+# `setup.mdx` documents it as "rolling 24-hour", not "since midnight", so it
 # stays plain millisecond subtraction in `money::window` where that is legible.
 # `tzdb-zoneinfo` reads the system timezone database rather than bundling one:
 # zero extra crates, zero binary growth, and the deploy image already ships

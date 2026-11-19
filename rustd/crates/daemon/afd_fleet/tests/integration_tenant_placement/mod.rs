@@ -146,7 +146,7 @@ async fn scalar(fixtures: &Fixtures, statement: &'static str, id: &Uuid7) -> i64
 async fn runs_of(fixtures: &Fixtures, runner: &Uuid7) -> i64 {
     scalar(
         fixtures,
-        "SELECT count(*) FROM runner.runs WHERE runner_id = $1",
+        "SELECT count(*) FROM thread.runs WHERE runner_id = $1",
         runner,
     )
     .await

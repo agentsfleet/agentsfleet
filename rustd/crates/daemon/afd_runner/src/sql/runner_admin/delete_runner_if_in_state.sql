@@ -3,7 +3,7 @@ WITH current_row AS (
          -- A live run, or an ended one whose runtime tail is not yet billed: the
          -- delete cascades to runs, so either would lose work or money.
          EXISTS (
-           SELECT 1 FROM runner.runs l
+           SELECT 1 FROM thread.runs l
            WHERE l.runner_id = r.id
              AND (l.status = $3::text OR l.last_metered_at < l.run_expires_at)
          ) AS held

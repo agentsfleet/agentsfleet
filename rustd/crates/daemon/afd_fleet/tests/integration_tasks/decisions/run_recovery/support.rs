@@ -77,7 +77,7 @@ pub(in super::super) async fn expire(case: &Case) {
         .expect("elapsed fixture clock");
     sqlx::query("UPDATE runner.slots SET run_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
         .bind(&case.held.fleet).execute(&mut *connection).await.expect("prior slot elapsed");
-    sqlx::query("UPDATE runner.runs SET status='expired' WHERE id=$1")
+    sqlx::query("UPDATE thread.runs SET status='expired' WHERE id=$1")
         .bind(&case.held.run_key)
         .execute(&mut *connection)
         .await
@@ -93,16 +93,16 @@ pub(in super::super) async fn claim(case: &Case) -> Acquired {
 }
 
 pub(super) async fn assert_issued(case: &Case, task: &Uuid7, run: &Uuid7, fence: i64) {
-    let row: (Uuid7, i64, i64, i64, bool, bool, i32) = sqlx::query_as("SELECT l.task_id,l.task_generation,l.task_stop_generation,l.fencing_token,l.run_expires_at<=l.task_execution_deadline_at AND l.run_expires_at=(SELECT s.run_expires_at FROM runner.slots s WHERE s.fleet_id=l.fleet_id),l.task_execution_deadline_at<=t.expires_at AND l.task_execution_deadline_at<=l.task_started_at+interval '600 seconds',t.used_runs FROM runner.runs l JOIN fleet.tasks t ON t.id=l.task_id WHERE l.id=$1")
+    let row: (Uuid7, i64, i64, i64, bool, bool, i32) = sqlx::query_as("SELECT l.task_id,l.task_generation,l.task_stop_generation,l.fencing_token,l.run_expires_at<=l.task_execution_deadline_at AND l.run_expires_at=(SELECT s.run_expires_at FROM runner.slots s WHERE s.fleet_id=l.fleet_id),l.task_execution_deadline_at<=t.expires_at AND l.task_execution_deadline_at<=l.task_started_at+interval '600 seconds',t.used_runs FROM thread.runs l JOIN fleet.tasks t ON t.id=l.task_id WHERE l.id=$1")
         .bind(run).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("issued ownership observer")).await.expect("ordinary run owns exact task");
     assert_eq!(row, (task.clone(), 1, 0, fence, true, true, 2));
-    let rows: (i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM runner.runs WHERE fleet_id=$1),(SELECT count(*) FROM runner.runs WHERE fleet_id=$1 AND status='active')")
+    let rows: (i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM thread.runs WHERE fleet_id=$1),(SELECT count(*) FROM thread.runs WHERE fleet_id=$1 AND status='active')")
         .bind(&case.scope.fleet_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("single execution observer")).await.expect("old and new runs");
     assert_eq!(rows, (2, 1));
 }
 
 pub(super) async fn assert_blocked(case: &Case, task: &Uuid7) {
-    let row: (String, String, i64, i64, i32, i64) = sqlx::query_as("SELECT status,status_reason,generation,stop_generation,used_runs,(SELECT count(*) FROM runner.runs WHERE fleet_id=$2) FROM fleet.tasks WHERE id=$1")
+    let row: (String, String, i64, i64, i32, i64) = sqlx::query_as("SELECT status,status_reason,generation,stop_generation,used_runs,(SELECT count(*) FROM thread.runs WHERE fleet_id=$2) FROM fleet.tasks WHERE id=$1")
         .bind(task).bind(&case.scope.fleet_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("refusal observer")).await.expect("blocked original task");
     assert_eq!(
         row,

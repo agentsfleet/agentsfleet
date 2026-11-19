@@ -2,11 +2,13 @@
 -- because its own ledger lives there.
 CREATE SCHEMA identity;
 
-CREATE SCHEMA authoring;
+CREATE SCHEMA setup;
 
 CREATE SCHEMA fleet;
 
 CREATE SCHEMA runner;
+
+CREATE SCHEMA thread;
 
 CREATE SCHEMA connector;
 

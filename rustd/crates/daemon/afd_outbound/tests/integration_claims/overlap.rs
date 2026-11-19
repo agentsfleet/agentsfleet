@@ -10,7 +10,7 @@ use crate::{Lane, Ledger, owe_uncommitted};
 async fn live_claims(ledger: &Ledger, lane: &Lane) -> i64 {
     let mut connection = ledger.database.acquire().await.expect("a connection");
     sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.deliveries \
+        "SELECT count(*) FROM thread.deliveries \
          WHERE workspace_id = $1 AND claim_expires_at > clock_timestamp()",
     )
     .bind(&lane.workspace)

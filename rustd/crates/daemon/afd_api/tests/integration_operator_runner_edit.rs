@@ -31,7 +31,7 @@ const STORED_LABELS: &str = "SELECT labels::text FROM runner.runners WHERE id = 
 const WHOLE_ROW: &str = "SELECT to_jsonb(r)::text FROM runner.runners r WHERE r.id = $1";
 
 /// How many events the runner's history holds, for the no-event repeat.
-const EVENT_COUNT: &str = "SELECT count(*)::text FROM runner.events WHERE runner_id = $1";
+const EVENT_COUNT: &str = "SELECT count(*)::text FROM runner.history WHERE runner_id = $1";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

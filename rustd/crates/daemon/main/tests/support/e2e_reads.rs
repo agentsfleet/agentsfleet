@@ -114,7 +114,7 @@ fn populated_columns<'a>(columns: &'a [String], row: &sqlx::postgres::PgRow) -> 
 /// One column of a run row, as text.
 pub(crate) async fn run_column(scene: &Scenario, run: &str, column: &str) -> Option<String> {
     let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM runner.runs WHERE id = $1"
+        "SELECT {column}::text FROM thread.runs WHERE id = $1"
     ));
     let mut connection = scene
         .booted
@@ -265,7 +265,7 @@ pub(crate) async fn run_rows(scene: &Scenario) -> i64 {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("SELECT count(*) FROM runner.runs WHERE runner_id = $1 AND fleet_id = $2")
+    sqlx::query("SELECT count(*) FROM thread.runs WHERE runner_id = $1 AND fleet_id = $2")
         .bind(&scene.runner_id)
         .bind(&scene.fleet)
         .fetch_one(&mut *connection)

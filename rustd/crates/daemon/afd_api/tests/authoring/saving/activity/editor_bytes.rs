@@ -33,7 +33,7 @@ async fn seed_large_history(saved: &Saved, id: &Uuid7) {
             .bind(crate::authoring::mint()).bind(USER_TEXT_BYTES).bind(ANSWER_TEXT_BYTES).execute(&mut *connection)
             .await.expect("valid report-sized history");
     }
-    sqlx::query("UPDATE authoring.drafts SET last_message_sequence=12 WHERE id=$1")
+    sqlx::query("UPDATE setup.drafts SET last_message_sequence=12 WHERE id=$1")
         .bind(id)
         .execute(&mut *connection)
         .await

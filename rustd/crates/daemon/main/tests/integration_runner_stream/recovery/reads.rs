@@ -12,7 +12,7 @@ pub(super) struct Snapshot {
 
 pub(super) async fn snapshot(scene: &Scenario) -> Snapshot {
     let (run, expires_at, owner): (Uuid7,jiff_sqlx::Timestamp,Uuid7) = sqlx::query_as(
-        "SELECT l.id,l.run_expires_at,r.connection_id FROM runner.runs l JOIN runner.runners r ON r.id=l.runner_id WHERE l.event_id=$1 AND l.runner_id=$2 ORDER BY l.created_at DESC LIMIT 1"
+        "SELECT l.id,l.run_expires_at,r.connection_id FROM thread.runs l JOIN runner.runners r ON r.id=l.runner_id WHERE l.event_id=$1 AND l.runner_id=$2 ORDER BY l.created_at DESC LIMIT 1"
     ).bind(&scene.event_id).bind(&scene.runner_id)
     .fetch_one(&mut *scene.booted.database.acquire().await.expect("run observer"))
     .await.expect("real issued run and connection owner");
@@ -24,7 +24,7 @@ pub(super) async fn snapshot(scene: &Scenario) -> Snapshot {
 }
 
 pub(super) async fn reported(scene: &Scenario, run: &Uuid7) -> bool {
-    sqlx::query_scalar("SELECT status=$2 FROM runner.runs WHERE id=$1")
+    sqlx::query_scalar("SELECT status=$2 FROM thread.runs WHERE id=$1")
         .bind(run)
         .bind(afd_state::sql::RUN_STATUS_REPORTED)
         .fetch_one(
@@ -84,7 +84,7 @@ pub(super) async fn process_survives_deadline(pid: u32, deadline: jiff::Timestam
 }
 
 pub(super) async fn assert_settled_once(scene: &Scenario) {
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE event_id=$1")
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE event_id=$1")
         .bind(&scene.event_id)
         .fetch_one(
             &mut *scene

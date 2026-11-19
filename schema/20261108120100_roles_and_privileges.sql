@@ -28,12 +28,12 @@ $$;
 
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
-GRANT ALL ON SCHEMA public, identity, authoring, fleet, runner, connector, model,
+GRANT ALL ON SCHEMA public, identity, setup, fleet, runner, connector, model,
     billing, vault, memory, audit
 TO db_migrator;
 
 -- Runtime roles reach data, never DDL; table grants live with each CREATE TABLE.
-GRANT USAGE ON SCHEMA identity, authoring, fleet, runner, connector, model, billing,
+GRANT USAGE ON SCHEMA identity, setup, fleet, runner, thread, connector, model, billing,
     vault, audit
 TO api_runtime;
 
@@ -44,13 +44,13 @@ GRANT USAGE ON SCHEMA audit TO ops_readonly_human, ops_readonly_fleet;
 -- INHERIT FALSE keeps the membership dormant until `SET ROLE` names it.
 GRANT memory_runtime TO api_runtime WITH INHERIT FALSE, SET TRUE;
 
-REVOKE CREATE ON SCHEMA public, identity, authoring, fleet, runner, connector, model,
+REVOKE CREATE ON SCHEMA public, identity, setup, fleet, runner, connector, model,
     billing, vault, memory, audit
 FROM api_runtime, memory_runtime, ops_readonly_human, ops_readonly_fleet;
 
 -- Not FOR ROLE db_migrator: defaults bind to whichever role runs the migration, and FOR ROLE
 -- needs a membership a managed non-superuser migrator lacks.
 ALTER DEFAULT PRIVILEGES
-    IN SCHEMA identity, authoring, fleet, runner, connector, model, billing, vault,
+    IN SCHEMA identity, setup, fleet, runner, connector, model, billing, vault,
         memory, audit
     REVOKE ALL ON TABLES FROM PUBLIC;

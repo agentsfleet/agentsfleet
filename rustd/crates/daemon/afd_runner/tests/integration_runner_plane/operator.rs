@@ -257,7 +257,7 @@ async fn test_retiring_a_runner_keeps_the_attempts_it_ran_and_their_reservations
         .expect("the attempt outlives its runner");
     assert!(runner_gone, "the attempt names no runner once it retires");
     assert_eq!(reserved, RESERVED_NANOS, "its reservation is untouched");
-    sqlx::query("DELETE FROM authoring.attempts WHERE id = $1")
+    sqlx::query("DELETE FROM setup.attempts WHERE id = $1")
         .bind(&attempt)
         .execute(&mut *connection)
         .await
@@ -384,11 +384,11 @@ async fn a_runner_page_and_its_total_read_one_moment_while_runners_register() {
     };
     register().await.expect("the first runner registers");
 
-    // The page's rows join `runner.runs` and its total does not, so holding
+    // The page's rows join `thread.runs` and its total does not, so holding
     // that table parks the page after its total and before its rows.
     let mut holder = owner.acquire().await.expect("a holding connection");
     let mut hold = sqlx::Acquire::begin(&mut *holder).await.expect("a hold");
-    sqlx::query("LOCK TABLE runner.runs IN ACCESS EXCLUSIVE MODE")
+    sqlx::query("LOCK TABLE thread.runs IN ACCESS EXCLUSIVE MODE")
         .execute(&mut *hold)
         .await
         .expect("the lock");
@@ -398,7 +398,7 @@ async fn a_runner_page_and_its_total_read_one_moment_while_runners_register() {
         async move { runners.tenant(&tenant).list_runners(None, 200).await }
     });
     let waiting = "SELECT count(*) FROM pg_locks \
-                   WHERE NOT granted AND relation = 'runner.runs'::regclass";
+                   WHERE NOT granted AND relation = 'thread.runs'::regclass";
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         loop {
             let parked: i64 = sqlx::query_scalar(waiting)

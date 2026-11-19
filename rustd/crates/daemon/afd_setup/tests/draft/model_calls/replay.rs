@@ -76,7 +76,7 @@ async fn fractional_nanos_round_per_token_class_and_physical_dispatch() {
             matches!(result.usage,ModelUsage::Known {provider_cost_nanos,..} if provider_cost_nanos=="2")
         );
     }
-    let cost: i64 = sqlx::query_scalar("SELECT sum((usage->>'provider_cost_nanos')::bigint)::bigint FROM authoring.dispatches WHERE attempt_id=$1")
+    let cost: i64 = sqlx::query_scalar("SELECT sum((usage->>'provider_cost_nanos')::bigint)::bigint FROM setup.dispatches WHERE attempt_id=$1")
         .bind(&attempt.id).fetch_one(&mut *f.connection().await).await.expect("physical cost receipts");
     assert_eq!(cost, 4);
     assert_eq!(fixture::receipts(&f, &attempt).await, (2, 2, false));
@@ -104,7 +104,7 @@ async fn an_unknown_receipt_refuses_a_retry_the_attempt_flags_would_allow() {
         .call(&f.runner, &attempt.run, request.clone())
         .await
         .expect("first physical result");
-    sqlx::query("UPDATE authoring.dispatches SET status='unknown' WHERE attempt_id=$1")
+    sqlx::query("UPDATE setup.dispatches SET status='unknown' WHERE attempt_id=$1")
         .bind(&attempt.id)
         .execute(&mut *f.connection().await)
         .await
@@ -121,7 +121,7 @@ async fn an_unknown_receipt_refuses_a_retry_the_attempt_flags_would_allow() {
     assert_eq!(provider.count(), 1);
     assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
     let status: String =
-        sqlx::query_scalar("SELECT status FROM authoring.dispatches WHERE attempt_id=$1")
+        sqlx::query_scalar("SELECT status FROM setup.dispatches WHERE attempt_id=$1")
             .bind(attempt.id)
             .fetch_one(&mut *f.connection().await)
             .await

@@ -101,7 +101,7 @@ async fn lost_archive(fixture: &Fixture) -> TestResult {
 
 async fn assert_marked(fixture: &Fixture, held: &signals::Held) -> TestResult {
     let marked: bool =
-        sqlx::query_scalar("SELECT cancel_requested_at IS NOT NULL FROM runner.runs WHERE id=$1")
+        sqlx::query_scalar("SELECT cancel_requested_at IS NOT NULL FROM thread.runs WHERE id=$1")
             .bind(Uuid7::parse(&held.run)?)
             .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
             .await?;

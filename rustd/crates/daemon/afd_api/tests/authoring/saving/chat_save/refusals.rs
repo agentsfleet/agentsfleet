@@ -14,12 +14,11 @@ async fn initial_save_requires_a_message_without_spending_its_operation() {
     input["save"] = json!(true);
     let refused = create(&case, &input).await;
     assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.drafts WHERE workspace_id=$1")
-            .bind(&case.base.workspace)
-            .fetch_one(&mut *case.base.db.acquire().await.expect("draft counts"))
-            .await
-            .expect("draft count");
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM setup.drafts WHERE workspace_id=$1")
+        .bind(&case.base.workspace)
+        .fetch_one(&mut *case.base.db.acquire().await.expect("draft counts"))
+        .await
+        .expect("draft count");
     assert_eq!(count, 0);
     input["message"] = json!("Save this setup");
     assert_eq!(create(&case, &input).await.status(), StatusCode::CREATED);
@@ -88,7 +87,7 @@ async fn retired_policy_refuses_the_save_without_discarding_the_answer() {
         FROM authoring.candidates c JOIN authoring.drafts d ON d.head_candidate_id=c.id WHERE d.id=$1")
         .bind(crate::authoring::id_field(&draft["id"])).bind(&retired)
         .execute(&mut *connection).await.expect("older daemon candidate");
-    sqlx::query("UPDATE authoring.drafts SET head_candidate_id=$2 WHERE id=$1")
+    sqlx::query("UPDATE setup.drafts SET head_candidate_id=$2 WHERE id=$1")
         .bind(crate::authoring::id_field(&draft["id"]))
         .bind(retired)
         .execute(&mut *connection)

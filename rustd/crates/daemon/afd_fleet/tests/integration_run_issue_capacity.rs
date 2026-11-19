@@ -75,8 +75,8 @@ impl Case {
     async fn stamp(&self) -> Checked<Stamp> {
         let mut connection = self.fixtures.database.acquire().await?;
         Ok(sqlx::query_as("SELECT s.hold_expires_at,
-            (SELECT count(*) FROM runner.runs l WHERE l.runner_id=$1 AND l.status='active') AS active,
-            (SELECT count(*) FROM runner.events e WHERE e.runner_id=$1) AS events,
+            (SELECT count(*) FROM thread.runs l WHERE l.runner_id=$1 AND l.status='active') AS active,
+            (SELECT count(*) FROM runner.history e WHERE e.runner_id=$1) AS events,
             r.run_version AS choice, COALESCE(c.acquired_count,0) AS acquired
             FROM runner.slots s JOIN runner.runners r ON r.id=$1
             LEFT JOIN runner.lifetime_counters c ON c.runner_id=r.id WHERE s.fleet_id=$2")

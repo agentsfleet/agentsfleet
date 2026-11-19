@@ -26,7 +26,7 @@ WITH message AS MATERIALIZED (
            l.event_id AS run_event_id
     FROM message m
     JOIN runner.slots s ON s.fleet_id = m.fleet_id
-    JOIN runner.runs l
+    JOIN thread.runs l
       ON l.fleet_id = s.fleet_id AND l.runner_id = s.last_runner_id
      AND l.fencing_token = s.fencing_token AND l.status = $3
     JOIN fleet.admissions head ON head.id = l.event_id

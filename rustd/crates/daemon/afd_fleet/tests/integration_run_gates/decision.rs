@@ -207,7 +207,7 @@ async fn revise_and_check(
 async fn assert_stored(database: &Db, issued: &Issued) {
     let mut connection = database.acquire().await.expect("read committed snapshot");
     let stored: Option<Json<DecisionAssignment>> =
-        sqlx::query_scalar("SELECT decision_snapshot FROM runner.runs WHERE id=$1")
+        sqlx::query_scalar("SELECT decision_snapshot FROM thread.runs WHERE id=$1")
             .bind(&issued.id)
             .fetch_one(&mut *connection)
             .await

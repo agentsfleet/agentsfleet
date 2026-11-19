@@ -151,7 +151,7 @@ async fn one_statement_report_commits_every_write() {
     assert_eq!(lines, 2, "the request line and the runtime line");
     let audits: i64 = scalar(
         &held,
-        "SELECT count(*) FROM runner.events WHERE runner_id = $1 AND event_type = 'run_released'",
+        "SELECT count(*) FROM runner.history WHERE runner_id = $1 AND event_type = 'run_released'",
         &held.runner,
     )
     .await;
@@ -246,7 +246,7 @@ async fn one_statement_report_replay_returns_stored_outcome() {
     assert_eq!(runtime_lines(&held).await.len(), 1, "one runtime line");
     let deliveries = scalar(
         &held,
-        "SELECT count(*) FROM fleet.deliveries WHERE event_id = $1",
+        "SELECT count(*) FROM thread.deliveries WHERE event_id = $1",
         &held.event_id,
     )
     .await;

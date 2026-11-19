@@ -150,7 +150,7 @@ const RUNNER_STATUS_ACTIVE: &str = afd_runner::sql::RUNNER_STATUS_ACTIVE;
 /// A run still in flight.
 const RUN_STATUS_ACTIVE: &str = afd_state::sql::RUN_STATUS_ACTIVE;
 /// One live run, expiring a run TTL from now.
-const LIVE_RUN: &str = "INSERT INTO runner.runs \
+const LIVE_RUN: &str = "INSERT INTO thread.runs \
     (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at, \
      posture, provider, model, last_metered_at, fencing_token, run_expires_at, \
      status, posted_message_count, created_at, updated_at) \
@@ -183,7 +183,7 @@ pub(super) fn fleet_of(item: &str) -> Uuid7 {
 /// What a seeded run looks like afterwards: still live, and whether a
 /// cancel was asked of it.
 pub(super) async fn run_state(case: &Case, run: &Uuid7) -> Option<(String, bool)> {
-    sqlx::query_as("SELECT status, cancel_requested_at IS NOT NULL FROM runner.runs WHERE id = $1")
+    sqlx::query_as("SELECT status, cancel_requested_at IS NOT NULL FROM thread.runs WHERE id = $1")
         .bind(run)
         .fetch_optional(&mut *case.base.db.acquire().await.expect("run connection"))
         .await

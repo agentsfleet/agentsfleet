@@ -283,7 +283,7 @@ async fn commit_read_and_adopt_refuse_foreign_fences_and_expired_runs() -> Check
             foreign(&files, action.clone()).await?;
         }
         let mut connection = files.case.fixtures.database.acquire().await?;
-        sqlx::query("UPDATE runner.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
+        sqlx::query("UPDATE thread.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
             .bind(&files.case.issued.run_id).execute(&mut *connection).await?;
         drop(connection);
         for action in actions {

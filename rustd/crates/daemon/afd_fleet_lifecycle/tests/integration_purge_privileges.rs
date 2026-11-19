@@ -52,7 +52,7 @@ async fn as_api_runtime(connection: &mut sqlx::PgConnection) {
 
 /// The regression: the purge's own statements, in order, under the real role.
 ///
-/// The live-run delete needs DELETE on `runner.runs` and the fleet delete
+/// The live-run delete needs DELETE on `thread.runs` and the fleet delete
 /// needs DELETE on `fleet.fleets` (schema/1500); withholding either fails here.
 #[tokio::test]
 #[ignore = "needs the lane's Postgres"]
@@ -76,7 +76,7 @@ async fn the_purge_statements_all_run_as_api_runtime() {
         .await;
     assert!(
         runs.is_ok(),
-        "api_runtime must hold DELETE on runner.runs: {:?}",
+        "api_runtime must hold DELETE on thread.runs: {:?}",
         runs.err()
     );
     let deleted = sqlx::query(statements::DELETE_FLEET)

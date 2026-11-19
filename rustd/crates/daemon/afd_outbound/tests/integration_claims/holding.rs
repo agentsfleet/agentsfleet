@@ -75,7 +75,7 @@ async fn the_opening_count_extends_a_claim_nobody_retook() -> Result<(), &'stati
     };
     sql(
         &ledger.database,
-        "UPDATE fleet.deliveries SET claim_expires_at = now() - interval '1 second' WHERE id = $1",
+        "UPDATE thread.deliveries SET claim_expires_at = now() - interval '1 second' WHERE id = $1",
         &[&job.id],
     )
     .await;

@@ -27,7 +27,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Control protocol | two registration routes, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, registration with the runner management routes (`public/openapi.json`); `me` resolves from the token | §The control protocol |
 | Registration gate | `runner:register` for a platform runner, `runner:tenant` for a tenant's own | a caller without the scope, session JWT or `agt_t` key alike → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
 | Fresh-mint liveness | `last_seen_at = 0` sentinel | a never-connected runner reads `registered`, not a fake `online` | §Runner state |
-| Runner "status" | three separate categories | `status` enum + derived liveness + append-only `runner.events` | §Runner state |
+| Runner "status" | three separate categories | `status` enum + derived liveness + append-only `runner.history` | §Runner state |
 | Memory isolation | one live holder per fleet | `runner.fleet_slots` keyed by `fleet_id` + time gate + capture-time fencing | §Memory continuity |
 | Memory window | category-pinned byte window | every `core` entry first (newest-first), then the newest non-core entries; deterministic | §Memory continuity |
 | Per-runner metric families | 4, in a fixed 4096-series table | overflow routes to `runner_id="_other"`; bounded footprint; zero Postgres on the OTLP export path | §Observability |
@@ -222,7 +222,7 @@ The cutover moved running onto arbitrary hosts (bare metal, a Mac, a pod) that h
 
 ## The split: two binaries, no sidecar
 
-- **`agentsfleetd`**: the control plane. Owns Postgres, its NATS connection, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints claim inbound work from `fleet.admissions`; outbound delivery claims `fleet.deliveries` rows.
+- **`agentsfleetd`**: the control plane. Owns Postgres, its NATS connection, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints claim inbound work from `fleet.admissions`; outbound delivery claims `thread.deliveries` rows.
 
 - **`agentsfleet-runner`**: the host-resident runner plane, one Rust binary. A trusted supervisor runs the run loop and the agent loop, and each run that runs a tool in a sandbox gets one. It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
 
@@ -403,7 +403,7 @@ Kubernetes needs `status.conditions[]` because dozens of controllers write ortho
 | **Operator intent** | `runner.runners.status` (typed enum) | `active` · `cordoned` · `draining` · `drained` · `revoked` | **yes**. `status != 'active'` is the cordon/revoke auth gate (M84_002) |
 | **Automatic quarantine** | `runner.runners.cordon_reason`, `cordoned_at`, `cordon_healthy_since_at` | `missed_heartbeats`; independent of operator intent | **yes**. Guarded claims read it; valid heartbeats own the return proof |
 | **Runtime liveness** | **derived** at read from `last_seen_at` + runs | `registered` · `online` · `busy` · `offline` | **no**. A pure function; storing it would drift |
-| **History** | `runner.events` (append-only) | `runner_registered` · `run_acquired` · `runner_offline` · `runner_revoked` | **yes**. Answers "last busy?", "runs this period", "offline how long?" |
+| **History** | `runner.history` (append-only) | `runner_registered` · `run_acquired` · `runner_offline` · `runner_revoked` | **yes**. Answers "last busy?", "runs this period", "offline how long?" |
 
 Liveness is honest because **mint stores `last_seen_at = 0`** (the never-connected sentinel). A freshly-minted runner reads **registered**, not a fake **online**, until its first heartbeat moves `last_seen_at` forward (M84_001).
 
@@ -450,11 +450,11 @@ The run write paths maintain the counter row themselves. Each transition's ownin
 
 `acquired` rides the run insert, `succeeded` and `failed` the report claim, and `expired` the reclaim flip. So the tallies are transactional with the rows they count. They are exactly-once under retry, by the same guards that make the transitions exactly-once.
 
-The tallies are constant-time to read however long the history grows. It is the `fleet.activity_counters` shape extended to runners. Only the live-now summary still reads `runner.runs`, scoped to currently-active rows.
+The tallies are constant-time to read however long the history grows. It is the `fleet.activity_counters` shape extended to runners. Only the live-now summary still reads `thread.runs`, scoped to currently-active rows.
 
 Run history: API reference › Fleet (List a runner's runs). Neither item struct carries `token_hash` or `request_json`, so emitting either is a compile error rather than a review catch.
 
-A settled run outlives its fleet's purge and its event's retention. `runner.runs` holds no foreign key to either, and the purge deletes only the fleet's live runs. The history so keeps the run with null fleet and event fields.
+A settled run outlives its fleet's purge and its event's retention. `thread.runs` holds no foreign key to either, and the purge deletes only the fleet's live runs. The history so keeps the run with null fleet and event fields.
 
 Each item carries `destination`: `available` when the fleet exists in the caller's own account, `fleet_deleted`, or `not_permitted`. The dashboard's Open fleet link follows that field, never a fleet name.
 
@@ -464,13 +464,13 @@ The dashboard splits them. The **Runs** tab renders work, one row per run with i
 
 The client asks for the seven-tag lifecycle set (`RUNNER_LIFECYCLE_EVENT_TYPES`, one exported constant) through the comma-separated multi-value `event_type` filter. The activity headline map is keyed on that subset, so a run tag cannot be given a headline at compile time.
 
-`runner.runs` gains a row per claim and another per reclaim.
+`thread.runs` gains a row per claim and another per reclaim.
 A worker turning one short event every `RUN_TTL` adds about 2.5k rows daily.
 At `MAX_WORKER_COUNT`, that becomes about 158k rows.
 
 Two indexes serve the read. `idx_runs_runner_id_created_at_id` answers the page, and `idx_runs_fleet_event_id_fencing_token` answers the per-row reclaim derivation.
 
-On `runner.events`, `idx_events_runner_id_event_type_created_at_id` serves the Activity page's rare-lifecycle-tag filter and its count. That read therefore stops walking the per-run bulk.
+On `runner.history`, `idx_events_runner_id_event_type_created_at_id` serves the Activity page's rare-lifecycle-tag filter and its count. That read therefore stops walking the per-run bulk.
 
 A partial index was rejected there. The tag list binds as a parameter array, and a partial-index predicate cannot be proven against one. Read cost stays flat as history grows, and the index-usage integration lane pins both the shapes and the plans.
 
@@ -510,7 +510,7 @@ The surface shipped; what it should *do* in these four cases did not.
 
 ## Datastore role model: why there is no `runner_runtime`
 
-Access to the runner-domain tables (`runner.runners`, `runner.runs`, `runner.fleet_slots`) is governed at **two independent layers**. Conflating them is the recurring design error. The temptation to mint a `runner_runtime` database role "so the runner tables have an owner" collapses an authorization rule onto an authentication identity.
+Access to the runner-domain tables (`runner.runners`, `thread.runs`, `runner.fleet_slots`) is governed at **two independent layers**. Conflating them is the recurring design error. The temptation to mint a `runner_runtime` database role "so the runner tables have an owner" collapses an authorization rule onto an authentication identity.
 
 | Layer | Mechanism | Answers | Enforced where |
 |-------|-----------|---------|----------------|
@@ -527,7 +527,7 @@ Access to the runner-domain tables (`runner.runners`, `runner.runs`, `runner.fle
    |   Layer 2 - writes runner.* connecting to PG as api_runtime             |
    +-------------------------------------------------------------------------+
                                         v
-            runner.runners . runner.runs . runner.fleet_slots
+            runner.runners . thread.runs . runner.fleet_slots
             GRANT SELECT, INSERT, UPDATE ... TO api_runtime   (the runner schema slots)
             - no worker_runtime grant, no runner_runtime role -
 ```
@@ -669,7 +669,7 @@ The `fleet_id` a push is scoped to is derived server-side from the run `agentsfl
 
 **Multi-run isolation invariant**. Concurrent-run safety (M88_002's worker pool) rests on the per-fleet **affinity slot admitting a single live holder**. That is `runner.fleet_slots` keyed by its `fleet_id` primary key plus the `run_expires_at < now` time gate, plus **capture-time `fencing_token`** rejecting a stale holder.
 
-It is *not* a unique constraint on `runner.runs`. Multiple run rows per fleet are normal, and a slow old holder can transiently coexist with a reclaimer. That is why fencing exists: only one writer durably lands in a fleet's namespace.
+It is *not* a unique constraint on `thread.runs`. Multiple run rows per fleet are normal, and a slow old holder can transiently coexist with a reclaimer. That is why fencing exists: only one writer durably lands in a fleet's namespace.
 
 So a runner's N concurrent runs are always N *distinct* fleets, which means N distinct namespaces. Isolation does **not** rest on `fleet_id` scoping alone.
 
@@ -789,7 +789,7 @@ Each call's full arguments and output ride neither the live tail nor the report.
 
 The runner posts them in batches of at most 256 KiB to `POST /v1/runners/me/runs/{run_id}/tool-calls` under the run's fencing token, before the report. That keeps the report far below the runner routes' 2 MB request limit. That limit is axum's default, and the router mounts runner routes with no other.
 
-The daemon stores them in `fleet.tool_calls`, a child table of `fleet.events`, keyed by fence and call number. Settlement deletes the event's rows from every other fence, because a reclaimed run restarts its call numbers at 1. A failed post costs only the full view; the run settles as before.
+The daemon stores them in `thread.items`, a child table of `fleet.events`, keyed by fence and call number. Settlement deletes the event's rows from every other fence, because a reclaimed run restarts its call numbers at 1. A failed post costs only the full view; the run settles as before.
 
 `call_id` is the runner's own counter for the run. It is minted when a call starts and repeated on each of its frames (`afr_agent`'s ledger).
 
@@ -1152,7 +1152,7 @@ The series are identified by the OpenTelemetry resource attribute carrying the m
 | `last_seen_seconds` | `min by (runner_id)` | ✅ exact. The most-recent sighting wins; a replica that never saw the runner exposes no series, so `min` ignores it |
 | `active_runs` | `sum by (runner_id)` | ⚠️ approximate. The `+1` grant and `−1` release can land on different replicas, so the value is meaningful only in aggregate and a single-replica restart can transiently skew it |
 
-`active_runs` is the one series that cannot be made exact purely in-memory. It is a distributed inc/dec with no routing affinity and no shared counter. Its exact source is the durable run table (`runner.runs`, `run_expires_at` plus the held set), which the **deferred metrics refresher** below reads.
+`active_runs` is the one series that cannot be made exact purely in-memory. It is a distributed inc/dec with no routing affinity and no shared counter. Its exact source is the durable run table (`thread.runs`, `run_expires_at` plus the held set), which the **deferred metrics refresher** below reads.
 
 The cross-replica queries in the table above are the operator's responsibility to apply. This repository ships no dashboards, and any dashboard that graphs `active_runs` must label the panel best-effort under N>1.
 
@@ -1189,7 +1189,7 @@ Authoring is creator-private work. Resolve its workspace owner and recheck creat
 
 Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Authoring messages remain a Postgres queue; NATS carries wake and progress hints, not another authoritative message copy.
 
-The authoring schema slots define creator-private `authoring.drafts`, `authoring.messages`, candidates and replay receipts, plus content-free `authoring.attempts` and dispatch and activity receipts. A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup and Plugin revisions join their existing domains.
+The authoring schema slots define creator-private `setup.drafts`, `setup.messages`, candidates and replay receipts, plus content-free `setup.attempts` and dispatch and activity receipts. A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup and Plugin revisions join their existing domains.
 
 The private progress channel is `draft:{draft_id}:events`.
 The publisher and HTTP reader recheck current access before sending answer previews.

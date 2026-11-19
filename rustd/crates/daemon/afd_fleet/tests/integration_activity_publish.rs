@@ -286,7 +286,7 @@ async fn backdate_run(run: &report_seed::Held) {
         .await
         .expect("database connection");
     sqlx::query(
-        "UPDATE runner.runs
+        "UPDATE thread.runs
          SET created_at = clock_timestamp() - $2::interval,
              event_created_at = clock_timestamp() - $3::interval,
              run_expires_at = clock_timestamp() + $4::interval

@@ -11,14 +11,14 @@ use jiff::Timestamp;
 use sqlx::Connection as _;
 
 const LIVE_HOLDERS: &str = "\
-SELECT id FROM runner.runs
+SELECT id FROM thread.runs
 WHERE fleet_id = $1 AND status = $2 AND run_expires_at > clock_timestamp()";
 const EVENT_RUNS: &str = "\
-SELECT count(*) FROM runner.runs l JOIN fleet.events e ON e.event_id = l.event_id
+SELECT count(*) FROM thread.runs l JOIN fleet.events e ON e.event_id = l.event_id
 WHERE l.fleet_id = $1 AND e.event_id = $2";
 const HOST_OCCUPANCY: &str = "\
 SELECT r.worker_count::bigint,
-  (SELECT count(*) FROM runner.runs l WHERE l.runner_id = r.id AND l.status = $2
+  (SELECT count(*) FROM thread.runs l WHERE l.runner_id = r.id AND l.status = $2
      AND l.run_expires_at > clock_timestamp())
   + (SELECT count(*) FROM authoring.attempts a WHERE a.runner_id = r.id
      AND a.status = $2 AND a.run_expires_at > clock_timestamp())

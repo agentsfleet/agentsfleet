@@ -24,13 +24,12 @@ async fn expiry_during_observed_attempt_wait_denies_renewal_without_meter_advanc
     let before = snapshot(&f, &a).await;
     let mut connection = f.connection().await;
     let mut held = connection.begin().await.expect("attempt blocker");
-    let pid: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM authoring.attempts WHERE id=$1 FOR UPDATE",
-    )
-    .bind(&a.id)
-    .fetch_one(&mut *held)
-    .await
-    .expect("own attempt lock");
+    let pid: i32 =
+        sqlx::query_scalar("SELECT pg_backend_pid() FROM setup.attempts WHERE id=$1 FOR UPDATE")
+            .bind(&a.id)
+            .fetch_one(&mut *held)
+            .await
+            .expect("own attempt lock");
     let expire = async {
         tokio::time::timeout(Duration::from_secs(5), blocked(&f, pid))
             .await
@@ -75,10 +74,10 @@ SET run_expires_at=date_trunc('milliseconds',clock_timestamp())+interval '1 seco
 WHERE id=$1";
 
 // The expiry is read once, before the hold, and the wait compares it with the
-// database clock only: polling `authoring.attempts` while the hold stands would
+// database clock only: polling `setup.attempts` while the hold stands would
 // queue behind any other test's DDL on that table, which itself waits on this
 // renewal — a cross-test wait Postgres cannot see as a deadlock.
-const EXPIRES: &str = "SELECT run_expires_at::text FROM authoring.attempts WHERE id=$1";
+const EXPIRES: &str = "SELECT run_expires_at::text FROM setup.attempts WHERE id=$1";
 /// Whether the attempt's run has run out on database time.
 const LAPSED: &str = "SELECT $1::timestamptz <= clock_timestamp()";
 
@@ -152,7 +151,7 @@ async fn test_a_renewal_waiting_on_a_busy_draft_leaves_the_host_free() {
     let mut connection = f.connection().await;
     let mut held = connection.begin().await.expect("draft holder");
     let pid: i32 =
-        sqlx::query_scalar("SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1 FOR UPDATE")
+        sqlx::query_scalar("SELECT pg_backend_pid() FROM setup.drafts WHERE id=$1 FOR UPDATE")
             .bind(&a.draft.id)
             .fetch_one(&mut *held)
             .await

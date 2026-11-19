@@ -57,7 +57,7 @@ Existing Rig remains the coding-provider dependency; the decision client reuses 
 ## Configuration per runner
 
 Nullable `decision_model_id` in the existing runner assignment selects reviewed decision metadata from the current model catalogue.
-Runner enrollment, edit and heartbeat carry the catalogue identity; run issue freezes `DecisionAssignment` in its payload and `runner.runs.decision_snapshot`.
+Runner enrollment, edit and heartbeat carry the catalogue identity; run issue freezes `DecisionAssignment` in its payload and `thread.runs.decision_snapshot`.
 Unconfigured hosts skip the catalogue read.
 
 Native reservation, one-time credential issuance and receipt accounting are written in `afd_fleet::task::decision`.

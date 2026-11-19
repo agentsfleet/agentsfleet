@@ -15,7 +15,7 @@ use super::{
 
 pub(super) type TestResult<T = ()> = afd_setup::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-const RUN: &str = "INSERT INTO runner.runs \
+const RUN: &str = "INSERT INTO thread.runs \
     (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at, \
      posture, provider, model, last_metered_at, fencing_token, run_expires_at, \
      status, posted_message_count, created_at, updated_at) \

@@ -85,7 +85,7 @@ async fn authoring_placement_refuses_a_foreign_runner() {
     assert_eq!(
         scalar(
             &f,
-            "SELECT count(*) FROM authoring.attempts WHERE runner_id = $1",
+            "SELECT count(*) FROM setup.attempts WHERE runner_id = $1",
             &foreign
         )
         .await,
@@ -95,7 +95,7 @@ async fn authoring_placement_refuses_a_foreign_runner() {
     assert_eq!(
         scalar(
             &f,
-            "SELECT count(*) FROM authoring.messages WHERE draft_id = $1 AND status = 'queued'",
+            "SELECT count(*) FROM setup.messages WHERE draft_id = $1 AND status = 'queued'",
             &draft.id
         )
         .await,

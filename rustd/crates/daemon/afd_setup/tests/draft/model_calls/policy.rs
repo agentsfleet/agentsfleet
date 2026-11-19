@@ -12,7 +12,7 @@ use std::sync::Arc;
 async fn saved_call_cap_allows_receipt_replay_but_refuses_another_physical_call() {
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE authoring.attempts SET max_model_calls=1 WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET max_model_calls=1 WHERE id=$1")
         .bind(&attempt.id)
         .execute(&mut *f.connection().await)
         .await
@@ -48,7 +48,7 @@ async fn saved_call_cap_allows_receipt_replay_but_refuses_another_physical_call(
 async fn an_unreadable_saved_policy_refuses_before_a_provider_effect() {
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE authoring.attempts SET max_model_calls=9 WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET max_model_calls=9 WHERE id=$1")
         .bind(&attempt.id)
         .execute(&mut *f.connection().await)
         .await

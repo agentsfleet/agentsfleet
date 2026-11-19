@@ -69,7 +69,7 @@ pub(crate) async fn scalar(scene: &Scenario, statement: &str, fence: Option<u64>
 pub(crate) async fn rows(scene: &Scenario) -> i64 {
     scalar(
         scene,
-        "SELECT count(*) FROM fleet.tool_calls t \
+        "SELECT count(*) FROM thread.items t \
          JOIN fleet.events e ON e.event_id = t.event_id \
          WHERE t.fleet_id = $1 AND e.event_id = $2",
         None,
@@ -81,7 +81,7 @@ pub(crate) async fn rows(scene: &Scenario) -> i64 {
 async fn rows_at(scene: &Scenario, fence: u64) -> i64 {
     scalar(
         scene,
-        "SELECT count(*) FROM fleet.tool_calls t \
+        "SELECT count(*) FROM thread.items t \
          JOIN fleet.events e ON e.event_id = t.event_id \
          WHERE t.fleet_id = $1 AND e.event_id = $2 AND t.fencing_token = $3",
         Some(fence),
@@ -209,7 +209,7 @@ async fn plant_dead_record(scene: &Scenario, fence: u64) {
     execute(
         scene,
         &format!(
-            "INSERT INTO fleet.tool_calls \
+            "INSERT INTO thread.items \
              (id, workspace_id, fleet_id, event_id, fencing_token, sequence, arguments, \
               truncated_arguments, output, output_line_count, truncated, byte_count, \
               created_at, updated_at) \

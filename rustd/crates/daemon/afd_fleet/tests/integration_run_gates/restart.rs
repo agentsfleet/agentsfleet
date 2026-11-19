@@ -75,7 +75,7 @@ async fn one_hundred_contending_claimers_publish_one_committed_restart() -> Chec
     assert_eq!(frame["event_id"], event.as_str());
     assert_eq!(frame["fencing_token"], selected.fence.as_i64().to_string());
     let created: jiff_sqlx::Timestamp = sqlx::query_scalar(
-        "SELECT created_at FROM runner.runs WHERE fleet_id=$1 AND fencing_token=$2",
+        "SELECT created_at FROM thread.runs WHERE fleet_id=$1 AND fencing_token=$2",
     )
     .bind(chat.fleet())
     .bind(selected.fence.as_i64())
@@ -125,7 +125,7 @@ async fn an_issue_refused_after_reservation_publishes_no_restart() -> Checked {
 
 async fn expire(chat: &Chat) -> Checked {
     let mut connection = chat.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE runner.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
+    sqlx::query("UPDATE thread.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
         .bind(chat.fleet()).execute(&mut *connection).await?;
     sqlx::query("UPDATE runner.slots SET run_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
         .bind(chat.fleet()).execute(&mut *connection).await?;
@@ -134,7 +134,7 @@ async fn expire(chat: &Chat) -> Checked {
 
 async fn issued(chat: &Chat) -> Checked<i64> {
     Ok(
-        sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE fleet_id=$1")
+        sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE fleet_id=$1")
             .bind(chat.fleet())
             .fetch_one(&mut *chat.fixtures.database.acquire().await?)
             .await?,

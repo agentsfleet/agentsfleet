@@ -87,7 +87,7 @@ async fn usage_beyond_the_physical_output_or_combined_context_is_uncertain() {
         );
         assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, true));
         assert_eq!(provider.count(), 1);
-        let visible: i64 = sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches WHERE attempt_id=$1 AND (result IS NOT NULL OR native_reply IS NOT NULL)")
+        let visible: i64 = sqlx::query_scalar("SELECT count(*) FROM setup.dispatches WHERE attempt_id=$1 AND (result IS NOT NULL OR native_reply IS NOT NULL)")
             .bind(attempt.id).fetch_one(&mut *f.connection().await).await.expect("private output is fenced");
         assert_eq!(visible, 0);
         f.cleanup().await;
@@ -107,7 +107,7 @@ async fn spent_output_cannot_create_a_dispatch() {
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
-    sqlx::query("UPDATE authoring.attempts SET output_token_count=8192 WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET output_token_count=8192 WHERE id=$1")
         .bind(&attempt.id)
         .execute(&mut *f.connection().await)
         .await

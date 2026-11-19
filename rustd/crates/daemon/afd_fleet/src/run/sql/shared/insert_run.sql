@@ -19,11 +19,11 @@ WITH instant AS MATERIALIZED (
   SELECT r.id
   FROM runner.runners r CROSS JOIN instant i
   WHERE r.id = $2
-    AND (SELECT count(*) FROM runner.runs l
+    AND (SELECT count(*) FROM thread.runs l
           WHERE l.runner_id = $2 AND l.status = $13
             AND l.run_expires_at > i.checked_at)
-      -- Setup turns the authoring path still runs; this term goes with authoring.attempts.
-      + (SELECT count(*) FROM authoring.attempts a
+      -- Setup turns the authoring path still runs; this term goes with setup.attempts.
+      + (SELECT count(*) FROM setup.attempts a
           WHERE a.runner_id = $2 AND a.status = $13
             AND a.run_expires_at > i.checked_at)
       -- Every other owner's live hold on this host, fleet or draft.
@@ -48,7 +48,7 @@ WITH instant AS MATERIALIZED (
 ), inserted AS (
   -- The run and its metering cursor start at the clock read after the slot lock:
   -- stamping the earlier instant would bill the lock wait as runtime.
-  INSERT INTO runner.runs
+  INSERT INTO thread.runs
   (id, runner_id, fleet_id, draft_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at, max_runtime_seconds,
    fencing_token, run_expires_at, status, posted_message_count, decision_snapshot,
@@ -68,7 +68,7 @@ WITH instant AS MATERIALIZED (
   WHERE id = $2 AND run_version = $19::bigint AND EXISTS (SELECT 1 FROM inserted)
   RETURNING id
 ), audit AS (
-  INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
+  INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)
   SELECT $14, i.runner_id, $15, $16, NULL, now()
   FROM inserted i
   RETURNING id

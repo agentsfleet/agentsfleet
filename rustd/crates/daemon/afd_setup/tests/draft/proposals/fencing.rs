@@ -10,7 +10,7 @@ async fn foreign_forged_and_expired_attempts_cannot_publish() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let request = a.initialize(1);
     refuse_foreign_and_forged(&f, &a, &request).await;
-    sqlx::query("UPDATE authoring.attempts SET run_expires_at='epoch' WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET run_expires_at='epoch' WHERE id=$1")
         .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
@@ -136,7 +136,7 @@ async fn a_progress_hint_commits_no_candidate_and_unknown_usage_fences_the_next_
         .await
         .expect("the same hint replays");
     assert!(replayed.replayed);
-    sqlx::query("UPDATE authoring.attempts SET usage_unknown=true WHERE id=$1")
+    sqlx::query("UPDATE setup.attempts SET usage_unknown=true WHERE id=$1")
         .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await

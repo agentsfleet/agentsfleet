@@ -35,7 +35,7 @@ const HIDE_CHARGES: &str =
 
 /// Moves the run's runtime cursor past the database clock, so the window
 /// measures nothing and the renewal logs no line into the hidden column.
-const CURSOR_AHEAD: &str = "UPDATE runner.runs \
+const CURSOR_AHEAD: &str = "UPDATE thread.runs \
      SET last_metered_at = now() + interval '1 hour' WHERE id = $1";
 
 /// Takes the revision table away, so the fleet's ceiling read fails as a

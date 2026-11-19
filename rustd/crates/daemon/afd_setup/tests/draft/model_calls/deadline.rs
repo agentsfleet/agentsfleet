@@ -101,7 +101,7 @@ async fn hold(f: &Fixture, dispatch: &str) -> (PgConnection, i32) {
 
 async fn deadline_receipt(f: &Fixture, dispatch: &Uuid7) {
     let receipt: (String, String, bool) = sqlx::query_as(
-        "SELECT status,failure_cause,result IS NULL AND native_reply IS NULL FROM authoring.dispatches WHERE id=$1")
+        "SELECT status,failure_cause,result IS NULL AND native_reply IS NULL FROM setup.dispatches WHERE id=$1")
         .bind(dispatch).fetch_one(&mut *f.connection().await).await.expect("content-free deadline receipt");
     assert_eq!(receipt, ("unknown".into(), "deadline".into(), true));
 }

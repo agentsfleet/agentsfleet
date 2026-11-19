@@ -124,7 +124,7 @@ async fn cancellation_committed_before_a_new_mint_withholds_credentials() {
     mint_static(&fixtures, &owner)
         .await
         .expect("active control");
-    sqlx::query("UPDATE runner.runs SET cancel_requested_at=clock_timestamp() WHERE id=$1")
+    sqlx::query("UPDATE thread.runs SET cancel_requested_at=clock_timestamp() WHERE id=$1")
         .bind(&owner.run)
         .execute(&mut *fixtures.database.acquire().await.expect("connection"))
         .await
@@ -148,7 +148,7 @@ async fn a_run_without_its_issued_setup_cannot_inherit_the_current_credentials()
     mint_static(&fixtures, &owner)
         .await
         .expect("issued control");
-    sqlx::query("UPDATE runner.runs SET setup_revision_id=NULL WHERE id=$1")
+    sqlx::query("UPDATE thread.runs SET setup_revision_id=NULL WHERE id=$1")
         .bind(&owner.run)
         .execute(&mut *fixtures.database.acquire().await.expect("connection"))
         .await

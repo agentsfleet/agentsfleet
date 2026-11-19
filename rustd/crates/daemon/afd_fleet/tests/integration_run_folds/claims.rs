@@ -158,9 +158,9 @@ async fn test_an_internal_setup_event_is_not_an_admission_head() -> Checked {
     assert!(before.run.live_run.is_some());
     // Moves the run and its event row to an event id no admission holds.
     let changed = sqlx::query(
-        "WITH moved AS (UPDATE fleet.events e SET event_id = $2 FROM runner.runs l \
+        "WITH moved AS (UPDATE fleet.events e SET event_id = $2 FROM thread.runs l \
          WHERE l.id = $1 AND e.event_id = l.event_id RETURNING e.event_id) \
-         UPDATE runner.runs SET event_id = $2 WHERE id = $1 AND EXISTS (SELECT 1 FROM moved)",
+         UPDATE thread.runs SET event_id = $2 WHERE id = $1 AND EXISTS (SELECT 1 FROM moved)",
     )
     .bind(&held.run_key)
     .bind(afd_db::test_util::mint_id())

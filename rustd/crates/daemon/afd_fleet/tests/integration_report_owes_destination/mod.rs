@@ -3,7 +3,7 @@
 //!
 //! Driven end to end through the real verbs: `Admissions::admit` records the
 //! event and its destination, the run path takes it, and `commit_report`
-//! settles it. What is read back is `fleet.deliveries` for this test's
+//! settles it. What is read back is `thread.deliveries` for this test's
 //! own fleet (ISO-1). No suite drove a report into that table before this one,
 //! which is how every non-empty answer came to be owed to `anthropic` unseen.
 //!

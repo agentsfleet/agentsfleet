@@ -83,7 +83,7 @@ impl Attempt {
             .execute(&mut *connection)
             .await
             .expect("admitted attempt row");
-        sqlx::query("UPDATE authoring.messages SET status='running' WHERE draft_id=$1")
+        sqlx::query("UPDATE setup.messages SET status='running' WHERE draft_id=$1")
             .bind(&attempt.draft.id)
             .execute(&mut *connection)
             .await
@@ -105,7 +105,7 @@ impl Attempt {
     }
 
     pub(super) async fn activity_count(&self, f: &Fixture) -> i64 {
-        sqlx::query_scalar("SELECT count(*) FROM authoring.activity_receipts WHERE attempt_id=$1")
+        sqlx::query_scalar("SELECT count(*) FROM setup.activity_receipts WHERE attempt_id=$1")
             .bind(&self.id)
             .fetch_one(&mut *f.connection().await)
             .await

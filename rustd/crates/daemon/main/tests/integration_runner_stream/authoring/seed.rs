@@ -65,15 +65,15 @@ impl Rows {
         let mut cleanup = OwnedRows::new(&TestDatabase::shared());
         for (statement, id) in [
             (
-                "DELETE FROM authoring.drafts WHERE workspace_id=$1",
+                "DELETE FROM setup.drafts WHERE workspace_id=$1",
                 &self.workspace,
             ),
             (
-                "DELETE FROM authoring.replay_receipts WHERE workspace_id=$1",
+                "DELETE FROM setup.replay_receipts WHERE workspace_id=$1",
                 &self.workspace,
             ),
             (
-                "DELETE FROM authoring.attempts WHERE workspace_id=$1",
+                "DELETE FROM setup.attempts WHERE workspace_id=$1",
                 &self.workspace,
             ),
             ("DELETE FROM identity.tenants WHERE id=$1", &self.tenant),

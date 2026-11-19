@@ -9,7 +9,7 @@ WITH inserted AS (
           $17, $19::jsonb, $20::boolean, $23::boolean, $22::uuid, now(), now())
   RETURNING id, created_at
 )
-INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
+INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)
 SELECT $13, id, $14::text,
        jsonb_build_object($15::text, $2::text, $16::text, $4::text, $18::text, $17, $21::text, $20::boolean,
                          $24::text, $25::text),

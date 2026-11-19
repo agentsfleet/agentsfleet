@@ -14,7 +14,7 @@ const PAST_DEADLINE: &str = "UPDATE authoring.attempts \
      WHERE id=$1";
 
 /// The attempt's stored outcome.
-const OUTCOME: &str = "SELECT outcome FROM authoring.attempts WHERE id=$1";
+const OUTCOME: &str = "SELECT outcome FROM setup.attempts WHERE id=$1";
 
 fn timed_out() -> Report {
     let mut request = report();

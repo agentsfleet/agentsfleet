@@ -61,7 +61,7 @@ async fn refused(c: &Case, key: &Uuid7, request: &SaveFleet, why: &str) -> afd_s
 /// Receipts written under `key`: a spent Save key has exactly one.
 async fn receipts(c: &Case, key: &Uuid7) -> i64 {
     sqlx::query_scalar(
-        "SELECT count(*) FROM authoring.replay_receipts WHERE workspace_id=$1 AND operation_id=$2",
+        "SELECT count(*) FROM setup.replay_receipts WHERE workspace_id=$1 AND operation_id=$2",
     )
     .bind(&c.base.workspace)
     .bind(key)
@@ -91,7 +91,7 @@ async fn a_reservation_aborted_after_its_fleet_row_leaves_nothing_and_the_key_cr
     let workspace = &c.base.workspace;
     let refusal = Refusal::install(
         &c.base.owner_url(),
-        "authoring.drafts",
+        "setup.drafts",
         "link",
         workspace.as_str(),
         &format!(

@@ -1,7 +1,7 @@
 //! The run-side writes and the row chain a claim needs to exist.
 //!
 //! `fleet_fixtures.rs` reads columns of any row through [`Row`]; these stage
-//! `runner.runs`, `runner.slots`, and the tenant → workspace → fleet
+//! `thread.runs`, `runner.slots`, and the tenant → workspace → fleet
 //! chain underneath them, through the shared `afd_db` seeds where one exists.
 #![expect(
     clippy::expect_used,
@@ -26,11 +26,11 @@ pub(crate) const COLUMN_RUND_UNTIL: &str = "run_expires_at";
 /// The `runner.slots` sticky hint: which runner last held the fleet.
 pub(crate) const COLUMN_LAST_RUNNER: &str = "last_runner_id";
 
-/// The `runner.runs` column a run's runtime meter last advanced to.
+/// The `thread.runs` column a run's runtime meter last advanced to.
 pub(crate) const COLUMN_LAST_METERED: &str = "last_metered_at";
 
 /// The runtime cursor of `fleet`'s newest run.
-const NEWEST_RUN_METERED: &str = "SELECT last_metered_at FROM runner.runs \
+const NEWEST_RUN_METERED: &str = "SELECT last_metered_at FROM thread.runs \
      WHERE fleet_id = $1 ORDER BY fencing_token DESC LIMIT 1";
 
 /// Whether the workspace a seed would write already exists.
@@ -45,7 +45,7 @@ impl Fixtures {
     /// stopped renewing.
     pub(crate) async fn expire_run(&self, run: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query("UPDATE runner.runs SET status = $2::text WHERE id = $1")
+        sqlx::query("UPDATE thread.runs SET status = $2::text WHERE id = $1")
             .bind(run)
             .bind(afd_state::sql::RUN_STATUS_EXPIRED)
             .execute(&mut *connection)
@@ -57,7 +57,7 @@ impl Fixtures {
     /// sweep leaves a run once it has billed the tail.
     pub(crate) async fn bill_run_tail(&self, run: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query("UPDATE runner.runs SET last_metered_at = run_expires_at WHERE id = $1")
+        sqlx::query("UPDATE thread.runs SET last_metered_at = run_expires_at WHERE id = $1")
             .bind(run)
             .execute(&mut *connection)
             .await
@@ -72,7 +72,7 @@ impl Fixtures {
     /// reason that is neither a lost fence nor a settled run.
     pub(crate) async fn delete_run(&self, run: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query("DELETE FROM runner.runs WHERE id = $1")
+        sqlx::query("DELETE FROM thread.runs WHERE id = $1")
             .bind(run)
             .execute(&mut *connection)
             .await

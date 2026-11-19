@@ -39,11 +39,11 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 | Fact | Store | Copies, and how they are repaired |
 |---|---|---|
 | Message accepted, in order | `fleet.admissions` | The runner's pending input, re-read at each model call |
-| Run assigned, and its fence | `runner.fleet_slots`, `runner.runs` | The runner's stream session, rebuilt from Postgres on reconnect |
+| Run assigned, and its fence | `runner.fleet_slots`, `thread.runs` | The runner's stream session, rebuilt from Postgres on reconnect |
 | Message folded into a run | `fleet.admissions.input_claim_run_id` and `input_claim_fence` (#803; `claim_inputs.sql` for any other run) | None |
-| Run deadline | `runner.runs.run_expires_at`, one clock | None |
+| Run deadline | `thread.runs.run_expires_at`, one clock | None |
 | Usage and money | `billing.usage_lines` and the billing relay | None |
-| Outbound reply owed | `fleet.deliveries` | A NATS ping wakes a worker; a 30 s scan is the backstop |
+| Outbound reply owed | `thread.deliveries` | A NATS ping wakes a worker; a 30 s scan is the backstop |
 | Device-login session, OAuth nonce | Postgres rows (M244) | None |
 | Live tail, wake-ups, runner commands | Core NATS subjects | Lossy; each has a Postgres backstop (below) |
 
@@ -54,12 +54,12 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 | Milestone | Tables |
 |---|---|
 | M242 | None. Intake holds the fleet row for one statement, and folding rides #803's input claims on `fleet.admissions`. |
-| M243 | The connection a runner holds, on `runner.runners`. A cancel mark on `runner.runs`. |
-| M244 | `identity.device_sessions`, `connector.oauth_nonces`, and claim columns on `fleet.deliveries`. |
+| M243 | The connection a runner holds, on `runner.runners`. A cancel mark on `thread.runs`. |
+| M244 | `identity.device_sessions`, `connector.oauth_nonces`, and claim columns on `thread.deliveries`. |
 | M245 | `kind` on `billing.usage_lines` (`model`, `runtime`, `decision`), so each line says what it billed and a runtime line is numbered by its slice's start. The platform key cache keys on a digest of the stored key and its endpoint, so the vault gains no column. |
 | M246 | An owner tenant on `runner.runners`, and a receipt table that answers a registration retry. |
 | M251 | The token overlap pair on `runner.runners` and the per-tenant placement setting, as M251_001 designs them. |
-| M247 | Automatic cordon fields on `runner.runners`, frozen setup revision on `runner.runs`, and six event-owned `runner.turn_*` recovery tables. The prior run ID is diagnostic data from the claim, not a new predecessor column. |
+| M247 | Automatic cordon fields on `runner.runners`, frozen setup revision on `thread.runs`, and six event-owned `runner.turn_*` recovery tables. The prior run ID is diagnostic data from the claim, not a new predecessor column. |
 
 ## Recovery and scheduling fairness
 
@@ -134,7 +134,7 @@ A bus disconnect sends `catching_up` on reconnect, not at the drop (`afd_bus/src
 ### An outbound reply
 
 ```
-report commits ─► fleet.deliveries row ─► ping (lossy) ─► worker claims the lane's head row
+report commits ─► thread.deliveries row ─► ping (lossy) ─► worker claims the lane's head row
                                                         └─ 30 s scan claims it if the ping is lost
 ```
 

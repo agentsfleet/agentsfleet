@@ -14,7 +14,7 @@ use crate::seed::{ACTOR, MODEL, POSTURE, PROVIDER, REQUEST_JSON, seeded_parts, s
 use crate::support::Fixtures;
 
 /// The host's live runs.
-const LIVE: &str = "SELECT count(*) FROM runner.runs \
+const LIVE: &str = "SELECT count(*) FROM thread.runs \
     WHERE runner_id = $1 AND status = 'active' AND run_expires_at > now()";
 
 /// The host's placement choice revision.

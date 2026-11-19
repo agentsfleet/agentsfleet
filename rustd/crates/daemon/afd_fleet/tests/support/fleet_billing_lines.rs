@@ -33,13 +33,13 @@ pub(crate) async fn orphan(held: &Held) {
     .expect("the line is logged");
 
     let mut connection = database.acquire().await.expect("a pooled connection");
-    sqlx::query("UPDATE runner.runs SET status = $2 WHERE id = $1")
+    sqlx::query("UPDATE thread.runs SET status = $2 WHERE id = $1")
         .bind(&held.run_key)
         .bind(afd_fleet::run::sql::RUN_STATUS_EXPIRED)
         .execute(&mut *connection)
         .await
         .expect("the run ends unreported");
-    for (table, key) in [("billing.usage_lines", "work_id"), ("runner.runs", "id")] {
+    for (table, key) in [("billing.usage_lines", "work_id"), ("thread.runs", "id")] {
         sqlx::query(sqlx::AssertSqlSafe(
             AGED.replace("{table}", table).replace("{key}", key),
         ))

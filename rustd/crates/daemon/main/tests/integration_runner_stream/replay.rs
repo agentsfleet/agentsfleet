@@ -70,7 +70,7 @@ async fn wait_for_settlement(scene: &crate::e2e::Scenario, id: &str) {
     tokio::time::timeout(STREAM_ANSWER_TIMEOUT, async {
         loop {
             let committed: bool =
-                sqlx::query_scalar("SELECT status = 'reported' FROM runner.runs WHERE id=$1")
+                sqlx::query_scalar("SELECT status = 'reported' FROM thread.runs WHERE id=$1")
                     .bind(af_core::id::Uuid7::parse(id).expect("issued run identity"))
                     .fetch_one(
                         &mut *scene

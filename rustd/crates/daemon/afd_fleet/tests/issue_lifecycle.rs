@@ -69,7 +69,7 @@ impl Selected {
     }
 
     async fn assert_empty(&self) -> TestResult {
-        let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE runner_id = $1")
+        let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE runner_id = $1")
             .bind(&self.runner)
             .fetch_one(&mut *self.fixtures.database.acquire().await?)
             .await?;
