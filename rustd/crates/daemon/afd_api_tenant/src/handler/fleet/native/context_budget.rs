@@ -16,7 +16,7 @@ pub(super) struct Boundaries {
     pub(super) messages: Vec<String>,
 }
 
-pub(super) fn capture(conversations: &[afd_authoring::Conversation]) -> Vec<Boundaries> {
+pub(super) fn capture(conversations: &[afd_setup::Conversation]) -> Vec<Boundaries> {
     conversations
         .iter()
         .map(|value| {

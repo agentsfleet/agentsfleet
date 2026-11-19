@@ -23,10 +23,10 @@ use super::{config, platform};
 /// the creations that admit a finished draft.
 #[derive(Debug)]
 pub(super) struct Authoring {
-    pub(super) drafts: afd_authoring::Drafts,
-    pub(super) setup: afd_authoring::Setup,
-    pub(super) creations: afd_authoring::Creations,
-    pub(super) models: afd_authoring::ModelCalls,
+    pub(super) drafts: afd_setup::Drafts,
+    pub(super) setup: afd_setup::Setup,
+    pub(super) creations: afd_setup::Creations,
+    pub(super) models: afd_setup::ModelCalls,
 }
 
 /// Builds the authoring surfaces over `drafts`, each over the one before it.
@@ -38,22 +38,22 @@ pub(super) struct Authoring {
 /// admissions ledger — so the order below is the dependency order, not a
 /// preference.
 pub(super) fn authoring(
-    drafts: afd_authoring::Drafts,
+    drafts: afd_setup::Drafts,
     kek: &Arc<Kek>,
     providers: &Providers,
     admissions: &Admissions,
-    transport: afd_authoring::Network,
+    transport: afd_setup::Network,
     decisions: Option<&af_core::id::Uuid7>,
 ) -> Authoring {
-    let setup = afd_authoring::Setup::new(drafts.clone(), Arc::clone(kek));
+    let setup = afd_setup::Setup::new(drafts.clone(), Arc::clone(kek));
     let decision_client = transport.guarded_client();
     let mut models =
-        afd_authoring::ModelCalls::new(drafts.clone(), providers.clone(), Arc::new(transport))
+        afd_setup::ModelCalls::new(drafts.clone(), providers.clone(), Arc::new(transport))
             .with_progress(admissions.streams());
     if let Some(admin) = decisions {
         models = models.with_decisions(admin.clone(), decision_client);
     }
-    let creations = afd_authoring::Creations::new(setup.clone(), admissions.clone());
+    let creations = afd_setup::Creations::new(setup.clone(), admissions.clone());
     Authoring {
         drafts,
         setup,

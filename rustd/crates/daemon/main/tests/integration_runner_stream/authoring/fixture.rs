@@ -3,12 +3,12 @@
 use af_core::{clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::{authoring as wire, lease::TaggedLease, protocol::Down};
-use afd_authoring::{
+use afd_db::test_util::{OwnedRows, mint_id};
+use afd_runner::{Runners, capacity::authority::Decision};
+use afd_setup::{
     Access, Drafts,
     types::{CreateDraft, Source},
 };
-use afd_db::test_util::{OwnedRows, mint_id};
-use afd_runner::{Runners, capacity::authority::Decision};
 use afr_supervisor::{config::Config, test_util::Session};
 use agentsfleetd::{serve::Booted, supervisor::Supervisor};
 use std::sync::Arc;

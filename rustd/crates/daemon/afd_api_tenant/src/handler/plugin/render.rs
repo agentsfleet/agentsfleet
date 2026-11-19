@@ -2,7 +2,7 @@
 
 use af_fleet_runtime::Definition;
 use afd_api_wire::plugin as wire;
-use afd_authoring::types;
+use afd_setup::types;
 use axum::{
     Json,
     response::{IntoResponse as _, Response},

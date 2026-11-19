@@ -283,9 +283,9 @@ This gives each layer one job:
 
 ### Where a grant comes from
 
-A grant is **requested at Save**. When a saved fleet's readiness review finds a declared credential's grant missing, setup activation asks for it (`afd_authoring`'s creation activate). The request writes a `pending` `connector.integration_grants` row and raises an approval card in one transaction (`afd_approval`'s grant statements).
+A grant is **requested at Save**. When a saved fleet's readiness review finds a declared credential's grant missing, setup activation asks for it (`afd_setup`'s creation activate). The request writes a `pending` `connector.integration_grants` row and raises an approval card in one transaction (`afd_approval`'s grant statements).
 
-The fleet stays `installing` until every readiness check, the grant included, is ready (`afd_authoring`'s creation progress). The lease path asks the same way the first time a delivery reaches a credential with no grant (`afd_fleet`'s lease deliver).
+The fleet stays `installing` until every readiness check, the grant included, is ready (`afd_setup`'s creation progress). The lease path asks the same way the first time a delivery reaches a credential with no grant (`afd_fleet`'s lease deliver).
 
 Either way, the decision belongs to the approval-gate machine this codebase already ships. That machine is an inbox and a detail page with an evidence tree. It also has resolve buttons, a webhook, a timeout sweeper and an append-only audit.
 

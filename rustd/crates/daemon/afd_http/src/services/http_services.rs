@@ -105,11 +105,11 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     fn fleets(&self) -> &Self::Fleets;
 
     /// Creator-private setup shared by browser and terminal conversation clients.
-    fn authoring(&self) -> &afd_authoring::Drafts;
+    fn authoring(&self) -> &afd_setup::Drafts;
     /// Human-reviewed native setup over the same private state and process key.
-    fn authoring_setup(&self) -> &afd_authoring::Setup;
+    fn authoring_setup(&self) -> &afd_setup::Setup;
     /// Retained native Save, checked activation and initial-run recovery.
-    fn creations(&self) -> &afd_authoring::Creations;
+    fn creations(&self) -> &afd_setup::Creations;
 
     /// What the workspace secret surface acts through.
     ///

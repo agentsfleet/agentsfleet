@@ -9,8 +9,8 @@ use crate::{
 use afd_api_wire::authoring::{
     Accepted, Cancellation, CancellationRequest, CursorPage, Message, MessageRequest,
 };
-use afd_authoring::types::MessageQuery;
 use afd_http::handler::{Refusal, authoring_refusal};
+use afd_setup::types::MessageQuery;
 use axum::{
     Json,
     body::Bytes,

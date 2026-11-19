@@ -11,7 +11,7 @@ impl SessionServices {
         &self,
         request_id: NonZeroU64,
         lease: &str,
-        request: afd_authoring::ModelCallInput,
+        request: afd_setup::ModelCallInput,
     ) -> Result<()> {
         // The runner bounds its answer wait. This tracked work still owns its frame,
         // slot and registration until known provider usage reaches the receipt.
@@ -38,7 +38,7 @@ impl SessionServices {
         &self,
         request_id: NonZeroU64,
         lease: &str,
-        request: afd_authoring::ActivityInput,
+        request: afd_setup::ActivityInput,
     ) -> Result<()> {
         let result = self
             .operation(Operation::Activity, async {

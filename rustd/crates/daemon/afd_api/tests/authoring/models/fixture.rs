@@ -3,7 +3,7 @@
 use super::super::{attempt::Running, mint};
 use af_core::id::Uuid7;
 use afd_auth::Scope;
-use afd_authoring::{ProviderRequest, ProviderResponse, Transport};
+use afd_setup::{ProviderRequest, ProviderResponse, Transport};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 use std::sync::{
@@ -27,7 +27,7 @@ pub(super) struct Provider {
 
 #[async_trait::async_trait]
 impl Transport for Provider {
-    async fn send(&self, request: ProviderRequest) -> afd_authoring::Result<ProviderResponse> {
+    async fn send(&self, request: ProviderRequest) -> afd_setup::Result<ProviderResponse> {
         let body: Value = serde_json::from_slice(request.body()).expect("fixed provider JSON");
         assert_eq!(body.get("store"), Some(&Value::Bool(false)));
         assert_eq!(body.get("parallel_tool_calls"), Some(&Value::Bool(false)));

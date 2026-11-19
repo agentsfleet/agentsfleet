@@ -5,8 +5,8 @@ use crate::lane::lease::seed::RunnerIdentity;
 use crate::{datastores::Datastores, error::Result};
 use af_crypto::{entropy::Entropy, secret::Kek};
 use af_wire::lease::AcceptedKinds;
-use afd_authoring::{Creations, Drafts, ModelCalls, Network, Setup};
 use afd_gateway::{Gateway, GatewayDependencies, test_util::Session};
+use afd_setup::{Creations, Drafts, ModelCalls, Network, Setup};
 use std::sync::Arc;
 
 pub(in crate::lane::lease) fn gateway(

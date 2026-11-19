@@ -94,7 +94,7 @@ async-trait.workspace = true
 # The harness's frozen instant and every stamp a fixture writes.
 jiff.workspace = true
 hex.workspace = true
-afd_authoring.workspace = true
+afd_setup.workspace = true
 # The harness stubs the runner plane, whose request and report types are the
 # shared protocol.
 af_wire.workspace = true

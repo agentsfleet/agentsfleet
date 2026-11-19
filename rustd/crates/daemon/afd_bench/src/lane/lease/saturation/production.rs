@@ -17,8 +17,8 @@ use af_wire::{
     lease::{AcceptedKinds, TaggedLease},
     protocol::{Down, Up},
 };
-use afd_authoring::Drafts;
 use afd_gateway::{Gateway, test_util::Session};
+use afd_setup::Drafts;
 use std::{collections::BTreeMap, num::NonZeroU64, sync::Arc};
 use tokio::sync::{Mutex, watch};
 use tokio_util::sync::CancellationToken;

@@ -4,7 +4,7 @@
 //! counters, ingress status and purge — because they are one store and a suite
 //! that stubbed them separately would be stubbing an implementation detail.
 //! Setup writes (Save, Apply, rename, status) belong to the native setup
-//! authority, `afd_authoring::Creations`, never to this seam. Every method
+//! authority, `afd_setup::Creations`, never to this seam. Every method
 //! takes ALREADY-PARSED values, so no implementation carries a validation arm.
 
 use std::collections::{BTreeMap, BTreeSet};

@@ -19,9 +19,9 @@ use af_wire::{
     },
     policy::{ExecutionPolicy, NetworkPolicy},
 };
-use afd_authoring::setup_lease::{SetupAdmission, SetupHint, SetupOwed, SetupTurn, setup_tool};
 use afd_billing::rates::Posture;
 use afd_runner::capacity::choice::Ticket;
+use afd_setup::setup_lease::{SetupAdmission, SetupHint, SetupOwed, SetupTurn, setup_tool};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;
@@ -83,7 +83,7 @@ impl LeaseService {
     /// Reports a datastore that would not answer, and a key that would not open.
     pub async fn claim_draft(
         &self,
-        drafts: &afd_authoring::Drafts,
+        drafts: &afd_setup::Drafts,
         runner: &Uuid7,
         ticket: Ticket,
         now: Timestamp,
@@ -100,7 +100,7 @@ impl LeaseService {
 
     async fn claim_one(
         &self,
-        drafts: &afd_authoring::Drafts,
+        drafts: &afd_setup::Drafts,
         runner: &Uuid7,
         hint: &SetupHint,
         ticket: Ticket,
@@ -200,7 +200,7 @@ impl LeaseService {
     async fn take_slot(
         &self,
         tx: &mut sqlx::PgConnection,
-        drafts: &afd_authoring::Drafts,
+        drafts: &afd_setup::Drafts,
         runner: &Uuid7,
         turn: &SetupTurn,
         owed: &mut SetupOwed,

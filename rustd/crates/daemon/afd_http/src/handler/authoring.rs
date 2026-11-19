@@ -2,7 +2,7 @@
 
 use super::{Refusable, Refusal};
 use af_core::error_code::ErrorCode;
-use afd_authoring::Error;
+use afd_setup::Error;
 
 const EVENT: &str = "authoring_request_refused";
 

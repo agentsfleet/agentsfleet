@@ -8,7 +8,7 @@ pub(crate) mod remove;
 mod render;
 
 use crate::auth::{Owned, PersonIdentity};
-use afd_authoring::Access;
+use afd_setup::Access;
 use serde::Deserialize;
 
 #[derive(Deserialize)]

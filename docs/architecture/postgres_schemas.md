@@ -181,7 +181,7 @@ there is no generic repository trait.
 - **Retention.** Closing a draft stamps `closed_at` and `expires_at = closed_at + 30 days` (an API
   field); the sweeper deletes past `expires_at`. The sweep cascades messages, candidates and answer
   receipts and keeps attempts and dispatches (result and native reply scrubbed).
-- **Retry window.** A replay receipt answers its key for 24 hours from `created_at` (`afd_authoring::replay::REPLAY_WINDOW`). Inside the window, the same key and body return the first result. A different body or user is refused; a deleted resource returns Gone.
+- **Retry window.** A replay receipt answers its key for 24 hours from `created_at` (`afd_setup::replay::REPLAY_WINDOW`). Inside the window, the same key and body return the first result. A different body or user is refused; a deleted resource returns Gone.
 - At or after the boundary, the key is new. The next claim deletes the expired receipt and files its own. `Drafts::maintain` sweeps the rest in bounded batches, waiting for concurrent receipt deletion.
 - The message API returns `messages.operation_id`, written at acceptance, because the turn outlives its receipt.
 - **Lapse sweep.** `idx_attempts_status_deadline_id` indexes `(status, LEAST(lease_expires_at,
@@ -394,7 +394,7 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
   `output_token_count` only; input tokens are counted per request on `billing.usage_lines` (the file `20261108124600_billing_usage_lines.sql`).
 - **`authoring.dispatches.output_allowance`: dropped.** The file `20261108124000_authoring_dispatches.sql` declares the table without it.
 - **`setup_context`: replaced** by `fleet.revisions.review_context` (the file `20261108122000_fleet_revisions.sql`), written by
-  `afd_authoring`'s creation `revision.sql` and read by its `locked.sql`.
+  `afd_setup`'s creation `revision.sql` and read by its `locked.sql`.
 
 Added by this milestone:
 

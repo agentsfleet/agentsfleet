@@ -55,7 +55,7 @@ pub(crate) async fn purge<D: Services>(
     services
         .creations()
         .delete(
-            afd_authoring::Access {
+            afd_setup::Access {
                 workspace: &owned.workspace,
                 subject: person.subject(),
             },

@@ -134,7 +134,7 @@ pub(crate) enum ErrorKind {
     #[error("private authoring admission could not complete")]
     Authoring {
         #[source]
-        source: afd_authoring::Error,
+        source: afd_setup::Error,
     },
     #[error("the datastore backing the runner plane would not answer")]
     Datastore {

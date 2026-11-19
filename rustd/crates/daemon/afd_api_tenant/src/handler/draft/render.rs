@@ -2,7 +2,7 @@
 
 use af_fleet_runtime::Definition;
 use afd_api_wire::authoring as wire;
-use afd_authoring::{Cancellation, types};
+use afd_setup::{Cancellation, types};
 
 pub(crate) fn draft(value: types::Draft) -> wire::Draft<Definition, types::Review> {
     wire::Draft {

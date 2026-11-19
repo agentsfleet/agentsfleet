@@ -3,7 +3,7 @@
 //!
 //! The wire parser reads any number of edits; the batch validator refuses one
 //! over either cap; the published schema must refuse exactly the same batch.
-//! The daemon's own validator, `afd_authoring::DraftPatch`, declares the same
+//! The daemon's own validator, `afd_setup::DraftPatch`, declares the same
 //! two garde bounds over the same constants as `EditBatch` read here.
 
 #![expect(

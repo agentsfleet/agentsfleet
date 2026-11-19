@@ -7,8 +7,8 @@ use crate::{
 };
 #[cfg(feature = "openapi")]
 use afd_api_wire::authoring::{CursorPage, Draft, DraftCard};
-use afd_authoring::types::ListQuery;
 use afd_http::handler::{Refusal, authoring_refusal};
+use afd_setup::types::ListQuery;
 use axum::{
     Json,
     extract::{Path, Query, State, rejection::QueryRejection},

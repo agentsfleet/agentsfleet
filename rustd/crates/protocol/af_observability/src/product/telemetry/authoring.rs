@@ -10,7 +10,7 @@
 //!
 //! # A step is reported once, after its commit
 //!
-//! The reporter decides that, not this type: `afd_authoring` reports a step
+//! The reporter decides that, not this type: `afd_setup` reports a step
 //! only after the transaction that made it true commits, and never for a replay
 //! of an operation that already committed.
 

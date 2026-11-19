@@ -58,7 +58,7 @@ activity, closed browser tabs, and blocked analytics scripts cannot then turn
 a browser click into conversion truth. Join only through opaque identifiers
 within the authorized workspace.
 
-The daemon reports each step from `afd_authoring` after the commit that made it
+The daemon reports each step from `afd_setup` after the commit that made it
 true, attributed to the person's identity-provider subject. Every property is a
 UUID or a fixed word, and `af_observability`'s authoring telemetry tests pin
 each event's exact key set.

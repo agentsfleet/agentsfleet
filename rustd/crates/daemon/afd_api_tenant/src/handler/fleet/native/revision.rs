@@ -8,8 +8,8 @@ use crate::{
     services::Services,
 };
 use afd_api_wire::fleet as wire;
-use afd_authoring::types::{AppliedRevision, ApplyRevision};
 use afd_http::handler::authoring_refusal;
+use afd_setup::types::{AppliedRevision, ApplyRevision};
 use axum::{
     Json,
     body::Bytes,

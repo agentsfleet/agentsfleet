@@ -63,7 +63,7 @@ pub struct BootConfig {
     pub(super) connector_endpoint: Option<String>,
     /// A test boot's provider HTTP boundary; never an environment option.
     #[cfg(feature = "test-util")]
-    pub(super) authoring_transport: Option<afd_authoring::Network>,
+    pub(super) authoring_transport: Option<afd_setup::Network>,
 }
 
 /// Where product events go, when this deployment sends any.
@@ -83,7 +83,7 @@ impl BootConfig {
     /// Pins provider HTTP to the boundary owned by this integration test.
     #[cfg(feature = "test-util")]
     #[must_use]
-    pub fn with_authoring_transport(mut self, transport: afd_authoring::Network) -> Self {
+    pub fn with_authoring_transport(mut self, transport: afd_setup::Network) -> Self {
         self.authoring_transport = Some(transport);
         self
     }
@@ -91,7 +91,7 @@ impl BootConfig {
     /// The explicitly supplied provider boundary, if this is a test boot.
     #[cfg(feature = "test-util")]
     #[must_use]
-    pub fn authoring_transport(&self) -> Option<afd_authoring::Network> {
+    pub fn authoring_transport(&self) -> Option<afd_setup::Network> {
         self.authoring_transport.clone()
     }
 

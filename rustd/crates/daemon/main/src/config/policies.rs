@@ -24,7 +24,7 @@ pub(super) fn read(
                 .map_err(|report| invalid(format!("inference: {report}")))?,
         ),
         tasks: afd_fleet::task::policy::TaskPolicy::new(&tasks),
-        authoring: afd_authoring::turn_policy::TurnPolicy::new(&authoring),
+        authoring: afd_setup::turn_policy::TurnPolicy::new(&authoring),
         maintenance: super::maintenance::MaintenancePolicy::resolve(settings.maintenance)
             .map_err(|report| invalid(format!("maintenance: {report}")))?,
         telemetry: garde::Unvalidated::new(settings.telemetry.otlp)

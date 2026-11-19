@@ -43,13 +43,13 @@ use super::{
 };
 
 impl Services for Fleet {
-    fn authoring(&self) -> &afd_authoring::Drafts {
+    fn authoring(&self) -> &afd_setup::Drafts {
         &self.authoring
     }
-    fn authoring_setup(&self) -> &afd_authoring::Setup {
+    fn authoring_setup(&self) -> &afd_setup::Setup {
         &self.authoring_setup
     }
-    fn creations(&self) -> &afd_authoring::Creations {
+    fn creations(&self) -> &afd_setup::Creations {
         &self.creations
     }
     type Auth = Planes<Directory, MockCapabilities, MockVerifier>;

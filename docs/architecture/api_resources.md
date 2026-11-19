@@ -158,7 +158,7 @@ Grant checks record actual approved access; missing approval cannot be logged as
 
 `Start` request is `{kind:"none"}` or `{kind:"run_now",message}` (message 1..32,768 UTF-8 bytes). Result is `{kind:"none"}` or `{kind:"run_now",state:"pending"|"accepted"|"blocked",event_id?,error_code?}`. Derive the initial admission's one identity from creation, not another client key.
 
-`start.accepted` requires confirmation of the committed initial admission with the expected event identity (`afd_authoring`'s start confirm). Ordinary fleet-message acceptance also requires a committed admission. Wake notifications are best effort.
+`start.accepted` requires confirmation of the committed initial admission with the expected event identity (`afd_setup`'s start confirm). Ordinary fleet-message acceptance also requires a committed admission. Wake notifications are best effort.
 
 Neither acceptance nor a wake notification means completed work.
 

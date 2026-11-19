@@ -8,7 +8,7 @@
 //! it, which is a table and not a dependency.
 //!
 //! Setup is not here. Every fleet is written by the native setup authority,
-//! `afd_authoring::Creations` — a person's reviewed Save, an explicit Apply,
+//! `afd_setup::Creations` — a person's reviewed Save, an explicit Apply,
 //! and the daemon's own system setup for a channel's resident — so one parser
 //! and one storage shape decide what a fleet may do.
 //!

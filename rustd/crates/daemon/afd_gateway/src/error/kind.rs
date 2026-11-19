@@ -109,7 +109,7 @@ pub(crate) enum ErrorKind {
     #[error("The authoring service could not complete the operation.")]
     Authoring {
         #[source]
-        source: afd_authoring::Error,
+        source: afd_setup::Error,
     },
     #[error("The runner stream worker stopped before completing its work.")]
     Worker {

@@ -15,7 +15,7 @@ use crate::{
     services::Services,
 };
 use af_core::id::Uuid7;
-use afd_authoring::Access;
+use afd_setup::Access;
 use axum::{response::Response, routing::MethodRouter};
 use http::{HeaderValue, header};
 use serde::Deserialize;

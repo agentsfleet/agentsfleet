@@ -20,7 +20,7 @@ pub(super) fn spawn(
     startup: &super::schedule::Startup,
     settings: crate::config::maintenance::AuthoringCleanup,
 ) {
-    let drafts = afd_authoring::Drafts::new(database.clone(), Entropy::new(), biller)
+    let drafts = afd_setup::Drafts::new(database.clone(), Entropy::new(), biller)
         .with_analytics(analytics.clone());
     let mut interval = startup.interval(
         super::AUTHORING,
@@ -39,11 +39,11 @@ pub(super) fn spawn(
 
 /// One maintenance pass, logged: what it advanced, or that its store is gone
 /// and the next tick retries.
-async fn maintain(drafts: &afd_authoring::Drafts) {
+async fn maintain(drafts: &afd_setup::Drafts) {
     // Attempt expiry runs on `sweeper:expiry`'s clock; this one keeps the
     // privacy purges and the replay receipts.
     match drafts.housekeep().await {
-        Ok(counts) if counts != afd_authoring::Maintenance::default() => {
+        Ok(counts) if counts != afd_setup::Maintenance::default() => {
             {
                 let (event, purged_drafts, expired_results, expired_receipts, message) = (
                     &COMPLETED,
@@ -89,7 +89,7 @@ mod tests {
     #[tokio::test]
     async fn a_pass_with_no_store_waits_for_it() {
         let database = unreachable_db();
-        let drafts = afd_authoring::Drafts::new(
+        let drafts = afd_setup::Drafts::new(
             database.clone(),
             Entropy::new(),
             crate::billing::biller(database, af_observability::Analytics::silent()),

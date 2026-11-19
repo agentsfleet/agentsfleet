@@ -9,8 +9,8 @@ use crate::{
     services::Services,
 };
 use afd_api_wire::plugin as wire;
-use afd_authoring::types;
 use afd_http::handler::authoring_refusal;
+use afd_setup::types;
 use axum::{
     body::Bytes,
     extract::{Path, State},

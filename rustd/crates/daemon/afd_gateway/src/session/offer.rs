@@ -124,7 +124,7 @@ impl SessionServices {
 /// Serialization finishes while the policy's borrowed inputs still exist.
 fn encode_offer(
     encoder: &mut Encoder,
-    lease: TaggedLease<'_, afd_authoring::types::Candidate>,
+    lease: TaggedLease<'_, afd_setup::types::Candidate>,
     offered: Offered,
 ) -> Result<Offered> {
     serde_json::to_writer(encoder, &Message::Offer { lease })?;

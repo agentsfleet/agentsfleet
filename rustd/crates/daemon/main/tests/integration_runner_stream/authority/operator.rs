@@ -71,8 +71,8 @@ impl Operator {
         Ok(())
     }
 
-    pub(super) fn access<'a>(&'a self, run: &'a Scenario) -> afd_authoring::Access<'a> {
-        afd_authoring::Access {
+    pub(super) fn access<'a>(&'a self, run: &'a Scenario) -> afd_setup::Access<'a> {
+        afd_setup::Access {
             workspace: &run.workspace,
             subject: self.user.as_str(),
         }

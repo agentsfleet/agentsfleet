@@ -40,13 +40,13 @@ use jiff::Timestamp;
 use super::{Authenticator, ServingPlane};
 
 impl Services for ServingPlane {
-    fn authoring(&self) -> &afd_authoring::Drafts {
+    fn authoring(&self) -> &afd_setup::Drafts {
         &self.authoring.drafts
     }
-    fn authoring_setup(&self) -> &afd_authoring::Setup {
+    fn authoring_setup(&self) -> &afd_setup::Setup {
         &self.authoring.setup
     }
-    fn creations(&self) -> &afd_authoring::Creations {
+    fn creations(&self) -> &afd_setup::Creations {
         &self.authoring.creations
     }
     type Auth = Authenticator;

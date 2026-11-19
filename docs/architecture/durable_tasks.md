@@ -686,7 +686,7 @@ Save confirmed, refused or unknown outcome even if stop or lease expiry occurs d
 A repeated confirmed request returns its receipt; an unknown result blocks another send until authoritative reconciliation.
 Reconciliation may read remote evidence through supervised maintenance; it cannot autonomously dispatch a queued write.
 
-This follows the existing synchronous authoring model-call pattern in `afd_authoring`'s model dispatch module.
+This follows the existing synchronous authoring model-call pattern in `afd_setup`'s model dispatch module.
 No client `/dispatch` request, background publisher queue or generic operations service is proposed.
 The POST finishes with a confirmed result or named failure; it does not return early and publish later.
 

@@ -47,9 +47,9 @@ fn plane_with(admin: Option<af_core::id::Uuid7>) -> ServingPlane {
     ServingPlane::new(PlaneParts {
         runtime: crate::preflight::runtime::read(&af_core::env::MapEnv::default())
             .expect("default runtime settings"),
-        authoring_transport: afd_authoring::Network::new()
+        authoring_transport: afd_setup::Network::new()
             .expect("fixed transport builds without a network request"),
-        storage_client: afd_authoring::Network::new()
+        storage_client: afd_setup::Network::new()
             .expect("storage transport builds without a request")
             .guarded_client(),
         database,

@@ -38,7 +38,7 @@ members = [
     "crates/daemon/afd_api_wire",
     "crates/daemon/afd_approval",
     "crates/daemon/afd_auth",
-    "crates/daemon/afd_authoring",
+    "crates/daemon/afd_setup",
     "crates/daemon/afd_bench",
     "crates/daemon/afd_billing",
     "crates/daemon/afd_bus",
@@ -136,7 +136,7 @@ afd_api_runner = { path = "crates/daemon/afd_api_runner" }
 afd_api_tenant = { path = "crates/daemon/afd_api_tenant" }
 afd_approval = { path = "crates/daemon/afd_approval" }
 afd_auth = { path = "crates/daemon/afd_auth" }
-afd_authoring = { path = "crates/daemon/afd_authoring" }
+afd_setup = { path = "crates/daemon/afd_setup" }
 # What a lease costs and what a tenant has. Split out of `afd_fleet` because it
 # reads the `billing.*` schema rather than `core.*`, and only the admission gate
 # calls it — the runner plane's other 23,000 lines never ask about money.

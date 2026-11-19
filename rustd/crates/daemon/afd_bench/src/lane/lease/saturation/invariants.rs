@@ -18,7 +18,7 @@ use crate::error::{ErrorKind, Result};
 use crate::fixture::RunPrefix;
 use af_core::id::Uuid7;
 
-/// An attempt still running, as `afd_authoring` spells it.
+/// An attempt still running, as `afd_setup` spells it.
 ///
 /// Spelled here because the authoring crate keeps its status type private;
 /// the census is the only reader outside it, and a rename there makes this

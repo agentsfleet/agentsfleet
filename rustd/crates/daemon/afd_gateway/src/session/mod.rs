@@ -37,7 +37,7 @@ pub(crate) use offers::{ClaimRequest, OfferMode, OfferOutcome};
 
 use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
 
-type Message<'a> = Down<'a, afd_authoring::types::Candidate, Definition, ConfigOp, InstructionEdit>;
+type Message<'a> = Down<'a, afd_setup::types::Candidate, Definition, ConfigOp, InstructionEdit>;
 type Request<'a> = af_wire::protocol::Up<'a, Definition, ConfigOp, InstructionEdit>;
 
 /// The scheduler reads only eligibility, available workers and locality preferences.
@@ -194,9 +194,9 @@ pub(crate) struct SessionServices {
     pub(crate) handle: Arc<SessionHandle>,
     authority: Authority,
     leases: afd_fleet::lease::LeaseService,
-    drafts: afd_authoring::Drafts,
-    models: afd_authoring::ModelCalls,
-    creations: afd_authoring::Creations,
+    drafts: afd_setup::Drafts,
+    models: afd_setup::ModelCalls,
+    creations: afd_setup::Creations,
     cache: cache::LeaseCache,
     output: StreamWriters,
     accepted: AcceptedKinds,

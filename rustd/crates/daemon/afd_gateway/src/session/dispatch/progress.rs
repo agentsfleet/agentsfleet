@@ -7,7 +7,7 @@ use af_wire::{
     activity::{ActivityFrame, ActivityRequest, StreamTextKind},
     fold::FoldRequest,
 };
-use afd_authoring::setup_lease::PreviewChunk;
+use afd_setup::setup_lease::PreviewChunk;
 use garde::Validate as _;
 
 use super::super::{Message, SessionServices, context::answer};

@@ -14,9 +14,9 @@ use super::{
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_wire::lease::{AcceptedKinds, LeaseKind};
-use afd_authoring::{Claimed, Drafts, types::Draft};
 use afd_db::{Db, config::DbRole};
 use afd_fleet::lease::Renewed;
+use afd_setup::{Claimed, Drafts, types::Draft};
 use std::time::Duration;
 
 /// Every ordering finishes inside this, or the test fails rather than hangs.

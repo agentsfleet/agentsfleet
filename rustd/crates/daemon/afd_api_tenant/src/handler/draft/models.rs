@@ -7,8 +7,8 @@ use crate::{
 };
 #[cfg(feature = "openapi")]
 use afd_api_wire::authoring::{CursorPage, WorkspaceModel};
-use afd_authoring::types::ModelsQuery;
 use afd_http::handler::{Refusal, authoring_refusal};
+use afd_setup::types::ModelsQuery;
 use axum::{
     Json,
     extract::{Query, State, rejection::QueryRejection},

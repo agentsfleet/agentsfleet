@@ -8,7 +8,7 @@ use af_core::id::Uuid7;
 use af_fleet_runtime::FleetConfig;
 use af_fleet_runtime::config::Trigger;
 use afd_api_wire::fleet::{FleetResponse, WebhookUrl};
-use afd_authoring::SavedFleet;
+use afd_setup::SavedFleet;
 use axum::{
     Json,
     response::{IntoResponse as _, Response},
@@ -42,8 +42,8 @@ pub(super) async fn response<D: Services>(
 
 pub(super) type NativeFleet<'s> = FleetResponse<
     af_fleet_runtime::Definition,
-    afd_authoring::SetupProgress,
-    afd_authoring::types::StartOutcome,
+    afd_setup::SetupProgress,
+    afd_setup::types::StartOutcome,
     afd_api_wire::schedule::View<'s>,
 >;
 

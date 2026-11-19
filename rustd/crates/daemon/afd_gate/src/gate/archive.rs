@@ -27,7 +27,7 @@ impl Gates {
     /// positive is permanent, the price of a trip that the runaway it stopped
     /// cannot undo. Live leases are not cancelled here: the candidate query
     /// admits no new one, and the archive path that cancels leases lives in
-    /// `afd_authoring`, which this crate does not reach.
+    /// `afd_setup`, which this crate does not reach.
     ///
     /// # Errors
     /// Reports a datastore that would not answer the archive. The caller absorbs

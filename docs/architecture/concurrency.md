@@ -93,7 +93,7 @@ The supervisor in the daemon binary (`rustd/crates/daemon/main`) owns process-li
 
 `Supervisor::spawn` supplies a cancellation token and retains each handle. Shutdown waits for each handle and reports tasks exceeding the ten-second join deadline. The supervised `bus_shutdown` task shuts the NATS connection down on cancellation.
 
-Private answer previews use a request-owned publisher (`afd_authoring`'s preview publisher). Its `AbortOnDropHandle` aborts the task on cancellation or unwind; normal completion allows a two-second drain. Publication rechecks access before sending each preview.
+Private answer previews use a request-owned publisher (`afd_setup`'s preview publisher). Its `AbortOnDropHandle` aborts the task on cancellation or unwind; normal completion allows a two-second drain. Publication rechecks access before sending each preview.
 
 The inventory is asserted, not described. `test_boot_to_ready_on_compose`
 (the daemon's `integration_serve` test) compares a booted
@@ -336,7 +336,7 @@ Renewals never wait on each other. A credential rotation fences every renewal be
 
 The funds check reads the wallet without a lock, once per payer every third tick. The setup chat renewal still holds the runner row before extending deadlines.
 
-A setup chat renewal takes draft → attempt → runner instead (`afd_authoring`'s lease renew). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
+A setup chat renewal takes draft → attempt → runner instead (`afd_setup`'s lease renew). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
 
 The claim is the one path that holds a host and then asks for a draft. It never waits for the draft (below).
 
@@ -350,7 +350,7 @@ Commit dispatch intent before network I/O, and release every database lock befor
 
 Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
 
-No setup chat path locks the wallet row. The claim gate reads the balance less every unsettled line, without a lock (`afd_authoring`'s model budget, `afd_billing`'s `select_balance.sql`). The only authoring wallet lock left is fleet creation's at Save (`afd_authoring`'s creation `wallet.sql`).
+No setup chat path locks the wallet row. The claim gate reads the balance less every unsettled line, without a lock (`afd_setup`'s model budget, `afd_billing`'s `select_balance.sql`). The only authoring wallet lock left is fleet creation's at Save (`afd_setup`'s creation `wallet.sql`).
 
 Stop and delete take draft → attempt and never later take the runner guard.
 
@@ -366,7 +366,7 @@ The decision sweep defers a candidate whose fleet row is locked to its next pass
 
 ### The setup chat claim never waits on a row
 
-A claim walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_authoring`'s lease claim). Each locks the host row, then the creator's user row, then the draft.
+A claim walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_setup`'s lease claim). Each locks the host row, then the creator's user row, then the draft.
 
 Every draft writer takes that draft lock too: a sent message, an edit, an applied revision, a review. A claim that waited on a busy draft held its host row throughout, and every tenant behind that draft waited with it:
 
@@ -384,7 +384,7 @@ BEFORE — the claim waits                      AFTER — the claim skips
 ```
 
 
-`authorize` takes the creator's row `FOR SHARE NOWAIT`, then the draft's `FOR UPDATE NOWAIT`, inside a savepoint (`afd_authoring`'s claim selection). That is the order the reads after it lock them. The statements are `hold_user.sql` and `hold_draft.sql`.
+`authorize` takes the creator's row `FOR SHARE NOWAIT`, then the draft's `FOR UPDATE NOWAIT`, inside a savepoint (`afd_setup`'s claim selection). That is the order the reads after it lock them. The statements are `hold_user.sql` and `hold_draft.sql`.
 
 A refused lock raises `55P03 lock_not_available`. Rolling the savepoint back keeps the claim's transaction, and its host lock, usable for the next candidate. A released savepoint keeps its row locks until the claim commits, so the reads after it never wait.
 
@@ -394,4 +394,4 @@ The skip logs `authoring_claim_draft_skipped` at `debug`, because under contenti
 
 No lease was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
 
-The proofs are `afd_authoring`'s `skipping` admission tests. A claim can still be a deadlock victim on a lock it does wait for. That lock is the catalogue its model read shares (the `revalidation` admission tests).
+The proofs are `afd_setup`'s `skipping` admission tests. A claim can still be a deadlock victim on a lock it does wait for. That lock is the catalogue its model read shares (the `revalidation` admission tests).

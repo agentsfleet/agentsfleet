@@ -7,8 +7,8 @@ use crate::{
     services::Services,
 };
 use afd_api_wire::{authoring::CursorPage, plugin as wire};
-use afd_authoring::types::PluginQuery;
 use afd_http::handler::authoring_refusal;
+use afd_setup::types::PluginQuery;
 use axum::{
     Json,
     extract::{Path, Query, RawQuery, State, rejection::QueryRejection},

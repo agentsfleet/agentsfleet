@@ -13,7 +13,7 @@ use super::{
     seat::{FUNDED, Seat},
 };
 use crate::rows::Row;
-use afd_authoring::{Claimed, Drafts};
+use afd_setup::{Claimed, Drafts};
 
 use af_core::{clock, id::Uuid7};
 use af_wire::authoring::{Accounting, Knowledge, Outcome, Report, Reported};
@@ -166,7 +166,7 @@ async fn report_and_relay(
     drafts: &Drafts,
     lease: &Claimed,
     biller: &LedgerBiller,
-) -> afd_authoring::Result<Reported> {
+) -> afd_setup::Result<Reported> {
     let attempt = WorkKey::AuthoringAttempt(Uuid7::parse(&lease.attempt_id).expect("a v7 attempt"));
     let reported = drafts
         .report(&running.runner, &lease_id(lease), accounting(lease))

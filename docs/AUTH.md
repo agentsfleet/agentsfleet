@@ -1039,11 +1039,11 @@ Missing, foreign and creator-private drafts return the same nondisclosing 404.
 | Publish a private candidate as a Plugin | `plugins:write` | Current membership and creator identity |
 
 The route scopes live in `afd_http/src/route/{workspace,fleet}.rs`.
-`afd_authoring/src/access.rs` and `sql/draft/lock.sql` enforce the inner identity boundary.
+`afd_setup/src/access.rs` and `sql/draft/lock.sql` enforce the inner identity boundary.
 [Fleet definitions](architecture/fleet_definitions.md) describes review, Save, Apply and publication.
 
 The setup review is where credential presence matters: it reports each named
-credential and why the setup needs it (`rustd/crates/daemon/afd_authoring/src/review/credentials/`).
+credential and why the setup needs it (`rustd/crates/daemon/afd_setup/src/review/credentials/`).
 Named runtime secret values resolve at lease time inside `agentsfleetd` and
 ride the runner lease envelope described above. Capability comes from the
 server-built `ExecutionPolicy` and workspace credential grants.
@@ -1053,7 +1053,7 @@ Before each scoped dispatch, `agentsfleetd` checks the selected model against
 the admitted snapshot and opens only that model's vault credential.
 
 The daemon commits dispatch intent before sending the provider request
-(`afd_authoring/src/model/dispatch/mod.rs`, `afd_credential/src/provider/registered/key.rs`).
+(`afd_setup/src/model/dispatch/mod.rs`, `afd_credential/src/provider/registered/key.rs`).
 The inference key stays in the daemon. The authoring runner receives a scoped
 capability, and neither the browser nor sandbox receives the key.
 

@@ -99,9 +99,9 @@ async fn activity_history<D: Services>(
 
 async fn current<D: Services>(
     services: &D,
-    identity: afd_authoring::Access<'_>,
+    identity: afd_setup::Access<'_>,
     fleet: &af_core::id::Uuid7,
-) -> Result<(afd_authoring::SavedFleet, Vec<afd_cron::Schedule>), Refusal> {
+) -> Result<(afd_setup::SavedFleet, Vec<afd_cron::Schedule>), Refusal> {
     let saved = services
         .creations()
         .read(identity, fleet)
@@ -139,8 +139,8 @@ fn activity_page(receipts: Vec<afd_events::EventDetailRow>) -> CursorPage<SetupA
 }
 
 fn conversation(
-    value: afd_authoring::Conversation,
-) -> Conversation<af_fleet_runtime::Definition, afd_authoring::types::Review> {
+    value: afd_setup::Conversation,
+) -> Conversation<af_fleet_runtime::Definition, afd_setup::types::Review> {
     Conversation {
         draft: draft::render::draft(value.draft),
         messages: value

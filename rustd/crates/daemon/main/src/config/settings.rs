@@ -44,7 +44,7 @@ pub(super) struct Outbound {
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Authoring {
-    pub turn: afd_authoring::turn_policy::TurnSettings,
+    pub turn: afd_setup::turn_policy::TurnSettings,
 }
 
 #[derive(Default, Deserialize)]

@@ -115,7 +115,7 @@ An accepted edit retains the model's conversational answer. A tool-only reply co
 
 Only a missing candidate permits full initialization. First drawer input uses a typed Definition with visible defaults. Empty instructions remain editable but block Save and publication.
 
-Implementation: `afd_authoring`'s model-provider edits, `af_fleet_runtime`'s definition edit module, and `afr_supervisor`'s authoring proposal and turn modules.
+Implementation: `afd_setup`'s model-provider edits, `af_fleet_runtime`'s definition edit module, and `afr_supervisor`'s authoring proposal and turn modules.
 
 First generated instructions are at most 12,288 characters; later edited instructions at most 32,768 characters. These character ceilings never replace the tokenizer checks.
 

@@ -21,7 +21,7 @@ pub(super) struct Inputs<'a> {
     pub(super) identity: (Capabilities, Sessions, SignupWriteback),
     pub(super) broker: Arc<afd_credential::credential::Broker>,
     pub(super) live: Live,
-    pub(super) authoring_transport: afd_authoring::Network,
+    pub(super) authoring_transport: afd_setup::Network,
     pub(super) storage_client: reqwest::Client,
     pub(super) vendor_client: reqwest::Client,
     pub(super) schedule_client: reqwest::Client,

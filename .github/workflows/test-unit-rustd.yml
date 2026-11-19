@@ -135,7 +135,7 @@ jobs:
       - name: Install the pinned Miri toolchain
         run: rustup toolchain install "$MIRI_TOOLCHAIN" --profile minimal --component miri
       - name: Check preview, daemon and runner secret wiping under Miri
-        run: cargo +"$MIRI_TOOLCHAIN" miri test --locked -p afd_authoring --test secret_wiping
+        run: cargo +"$MIRI_TOOLCHAIN" miri test --locked -p afd_setup --test secret_wiping
         working-directory: rustd
 
   lint-rustd:

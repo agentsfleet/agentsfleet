@@ -34,7 +34,7 @@ pub(super) fn spawn(
         database: database.clone(),
         biller: Arc::clone(&biller),
         entropy: Entropy::new(),
-        drafts: afd_authoring::Drafts::new(database.clone(), Entropy::new(), biller)
+        drafts: afd_setup::Drafts::new(database.clone(), Entropy::new(), biller)
             .with_analytics(analytics.clone()),
     };
     let mut interval = startup.interval(
@@ -57,7 +57,7 @@ struct Passes {
     database: Db,
     biller: Arc<dyn Biller>,
     entropy: Entropy,
-    drafts: afd_authoring::Drafts,
+    drafts: afd_setup::Drafts,
 }
 
 impl Passes {
@@ -152,7 +152,7 @@ mod tests {
         let passes = Passes {
             biller: std::sync::Arc::clone(&biller),
             entropy: Entropy::new(),
-            drafts: afd_authoring::Drafts::new(database.clone(), Entropy::new(), biller),
+            drafts: afd_setup::Drafts::new(database.clone(), Entropy::new(), biller),
             database,
         };
         assert_eq!(

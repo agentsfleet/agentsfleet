@@ -3,10 +3,10 @@
 use super::*;
 
 pub(super) struct Stores {
-    pub(super) drafts: afd_authoring::Drafts,
-    pub(super) setup: afd_authoring::Setup,
-    pub(super) models: afd_authoring::ModelCalls,
-    pub(super) creations: afd_authoring::Creations,
+    pub(super) drafts: afd_setup::Drafts,
+    pub(super) setup: afd_setup::Setup,
+    pub(super) models: afd_setup::ModelCalls,
+    pub(super) creations: afd_setup::Creations,
 }
 
 pub(super) fn stores(
@@ -14,22 +14,21 @@ pub(super) fn stores(
     ledger: &afd_admission::Admissions,
     providers: &HarnessProviders,
 ) -> Stores {
-    let drafts = afd_authoring::Drafts::new(
+    let drafts = afd_setup::Drafts::new(
         database.clone(),
         Entropy::new(),
         Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
             database.clone(),
         )),
     );
-    let setup = afd_authoring::Setup::new(drafts.clone(), Arc::new(Kek::from_bytes(FIXTURE_KEK)));
+    let setup = afd_setup::Setup::new(drafts.clone(), Arc::new(Kek::from_bytes(FIXTURE_KEK)));
     Stores {
-        creations: afd_authoring::Creations::new(setup.clone(), ledger.clone()),
-        models: afd_authoring::ModelCalls::new(
+        creations: afd_setup::Creations::new(setup.clone(), ledger.clone()),
+        models: afd_setup::ModelCalls::new(
             drafts.clone(),
             providers.store().clone(),
             Arc::new(
-                afd_authoring::Network::new()
-                    .expect("fixed provider client builds without sending"),
+                afd_setup::Network::new().expect("fixed provider client builds without sending"),
             ),
         ),
         drafts,
@@ -40,9 +39,9 @@ pub(super) fn stores(
 impl Fleet {
     pub(crate) fn with_authoring_transport(
         mut self,
-        transport: Arc<dyn afd_authoring::Transport>,
+        transport: Arc<dyn afd_setup::Transport>,
     ) -> Self {
-        self.authoring_models = afd_authoring::ModelCalls::new(
+        self.authoring_models = afd_setup::ModelCalls::new(
             self.authoring.clone(),
             self.providers.store().clone(),
             transport,

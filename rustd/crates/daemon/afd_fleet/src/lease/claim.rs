@@ -22,7 +22,7 @@ impl LeaseService {
     /// path ([`crate::lease::draft`]), any other the authoring attempt path.
     pub async fn claim_with<T, F>(
         &self,
-        drafts: &afd_authoring::Drafts,
+        drafts: &afd_setup::Drafts,
         mut request: OfferRequest<'_>,
         accepted: AcceptedKinds,
         draft_leases: bool,
@@ -31,7 +31,7 @@ impl LeaseService {
     ) -> Result<Option<T>>
     where
         T: Send,
-        F: for<'a> FnMut(TaggedLease<'a, afd_authoring::types::Candidate>, Offered) -> T + Send,
+        F: for<'a> FnMut(TaggedLease<'a, afd_setup::types::Candidate>, Offered) -> T + Send,
     {
         if request.degraded {
             return Ok(None);

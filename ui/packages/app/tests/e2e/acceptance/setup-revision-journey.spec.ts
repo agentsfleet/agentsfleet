@@ -30,7 +30,7 @@ const FIRST_WORD = "ACK";
 const SECOND_WORD = "DONE";
 const DESCRIPTION_MARK = "replies with one line";
 const STALE_INSTRUCTIONS = "Reply with the single word STALE.";
-// `afd_authoring` refuses a save whose source revision is no longer the fleet's head.
+// `afd_setup` refuses a save whose source revision is no longer the fleet's head.
 const SOURCE_REVISION_CHANGED = "UZ-AUTHOR-002";
 const CONFLICT = 409;
 const JOURNEY_TIMEOUT_MS = 600_000;

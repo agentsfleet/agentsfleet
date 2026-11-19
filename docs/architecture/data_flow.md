@@ -401,7 +401,7 @@ A fresh Send refuses uncancelled unknown provider usage after checking exact rep
 
 Save keeps the watermark while the draft enters `saving`; activation closes it. An archive during setup that restores `editing` also keeps the watermark, so old proposals and answers stay fenced. Old reports may still settle their original attempt.
 
-Already accepted candidate edits stay available for the person's review; Stop does not undo them. `afd_authoring` owns the Stop implementation, the publication guard, and the creation regression tests that define these boundaries.
+Already accepted candidate edits stay available for the person's review; Stop does not undo them. `afd_setup` owns the Stop implementation, the publication guard, and the creation regression tests that define these boundaries.
 
 POST fleets includes a UUIDv7 `Idempotency-Key`, immutable source, reviewed name, digest and start choice. Authorization precedes recording the normalized body and fleet identity. Changed-body reuse returns 409.
 

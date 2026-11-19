@@ -45,7 +45,7 @@ async fn resume<D: Services>(
     person: &PersonIdentity,
     fleet: &Uuid7,
 ) {
-    let access = afd_authoring::Access {
+    let access = afd_setup::Access {
         workspace,
         subject: person.subject(),
     };

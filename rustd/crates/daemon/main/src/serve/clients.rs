@@ -15,7 +15,7 @@ use crate::error::BootFailure;
 #[derive(Debug)]
 pub(super) struct Clients {
     /// Scoped authoring calls have their own fixed-origin client and no retries.
-    pub(super) authoring: afd_authoring::Network,
+    pub(super) authoring: afd_setup::Network,
     /// Storage and GitHub retain their own timeout policy when inference changes.
     pub(super) storage: reqwest::Client,
     /// The credential broker's vendor token exchanges.
@@ -46,7 +46,7 @@ impl Clients {
         timeouts: af_inference::Timeouts,
     ) -> Result<Self, BootFailure> {
         if timeouts != af_inference::Timeouts::DEFAULT {
-            self.authoring = afd_authoring::Network::configured(timeouts)?;
+            self.authoring = afd_setup::Network::configured(timeouts)?;
         }
         Ok(self)
     }
@@ -57,7 +57,7 @@ impl Clients {
         vendor: impl Fn() -> reqwest::Result<reqwest::Client>,
         schedule: impl FnOnce() -> reqwest::Result<reqwest::Client>,
     ) -> Result<Self, BootFailure> {
-        let authoring = afd_authoring::Network::new()?;
+        let authoring = afd_setup::Network::new()?;
         Ok(Self {
             storage: authoring.guarded_client(),
             authoring,

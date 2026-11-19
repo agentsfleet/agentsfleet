@@ -16,10 +16,10 @@ use std::sync::Arc;
 
 use af_core::clock::Clock;
 use af_stream::Budget;
-use afd_authoring::Drafts;
 use afd_bus::{Handle, wake::Wake};
 use afd_fleet::lease::LeaseService;
 use afd_runner::Runners;
+use afd_setup::Drafts;
 use afd_sse::StreamLimit;
 use tokio::time::Instant;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -44,9 +44,9 @@ pub struct GatewayDependencies {
     /// Existing private authoring owner.
     pub drafts: Drafts,
     /// Scoped provider invocations share the daemon's key owner and dispatch ledger.
-    pub models: afd_authoring::ModelCalls,
+    pub models: afd_setup::ModelCalls,
     /// Authoring completion retains native Save/Apply and accounting behavior.
-    pub creations: afd_authoring::Creations,
+    pub creations: afd_setup::Creations,
     /// The same bus used by every production publisher.
     pub bus: Handle,
     /// The same stream ceiling used by browser streams.

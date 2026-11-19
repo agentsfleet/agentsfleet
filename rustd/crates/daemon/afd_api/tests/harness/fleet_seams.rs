@@ -122,7 +122,7 @@ impl Fleet {
     ) -> Self {
         self.secrets = self.secrets.with_activity_streams(bus.clone());
         self.memories = self.memories.with_activity_streams(bus.clone());
-        self.creations = afd_authoring::Creations::new(
+        self.creations = afd_setup::Creations::new(
             self.authoring_setup.clone(),
             afd_admission::Admissions::for_tests(database.clone(), bus).with_budgets(budgets),
         );

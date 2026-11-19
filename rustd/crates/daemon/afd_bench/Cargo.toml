@@ -41,7 +41,7 @@ afd_approval.workspace = true
 # The setup chat half of the production poll: `Plane::claim` admits chat
 # work through `Drafts`, and the saturation shape seeds its drafts through
 # `Drafts::create`, the route's own write path.
-afd_authoring.workspace = true
+afd_setup.workspace = true
 # The live set a wall's viewers re-read every tick, read beside the poll so the
 # saturation shape measures the two competing for one pool.
 afd_fleet_lifecycle.workspace = true

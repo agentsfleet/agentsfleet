@@ -241,10 +241,10 @@ const FIXTURE_APP_URL: &str = "https://app.fixture.test";
 #[derive(Debug)]
 pub(crate) struct Fleet {
     native: Option<Db>,
-    authoring: afd_authoring::Drafts,
-    authoring_setup: afd_authoring::Setup,
-    creations: afd_authoring::Creations,
-    authoring_models: afd_authoring::ModelCalls,
+    authoring: afd_setup::Drafts,
+    authoring_setup: afd_setup::Setup,
+    creations: afd_setup::Creations,
+    authoring_models: afd_setup::ModelCalls,
     ready: ReadyInputs,
     mock_directory: MockDirectory,
     directory: Directory,

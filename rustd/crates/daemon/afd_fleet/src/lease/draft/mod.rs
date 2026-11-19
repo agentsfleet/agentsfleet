@@ -6,7 +6,7 @@
 //! draft's id) fences it, its `event_id` is the draft message it runs, and the
 //! runner reaches the daemon only through the same fenced verbs a fleet lease
 //! uses. The draft's own rows (which message, its finish, the one candidate)
-//! are `afd_authoring::setup_lease`'s, written in these transactions.
+//! are `afd_setup::setup_lease`'s, written in these transactions.
 //!
 //! What differs from a fleet's lease:
 //! - No fleet gates and no fleet budget: the payer's balance is checked, and
@@ -19,7 +19,7 @@
 //!   reoffered and reruns its message from the start, at most
 //!   [`af_core::limits::EVENT_LEASES_MAX`] leases, then the message fails.
 //! - Offered only to a protocol v3 runner; a v2 runner keeps the authoring
-//!   attempt path (`afd_authoring::lease`) until the runner's setup agent
+//!   attempt path (`afd_setup::lease`) until the runner's setup agent
 //!   replaces it.
 
 mod claim;

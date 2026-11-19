@@ -61,9 +61,9 @@ Sections 6 and 7 cover the sandbox and host.
 
 ### Save writes the fleet and its setup, then activates once ready
 
-Save (`POST /v1/workspaces/{ws}/fleets`, C1 in [`api_resources.md`](./api_resources.md)) commits the `fleet.fleets` row as `installing`. The reviewed Definition becomes its first `fleet.revisions` row (`afd_authoring`'s creation reserve). Nothing touches a queue or an approval before that commit.
+Save (`POST /v1/workspaces/{ws}/fleets`, C1 in [`api_resources.md`](./api_resources.md)) commits the `fleet.fleets` row as `installing`. The reviewed Definition becomes its first `fleet.revisions` row (`afd_setup`'s creation reserve). Nothing touches a queue or an approval before that commit.
 
-Setup then advances in bounded steps (`afd_authoring`'s creation activate).
+Setup then advances in bounded steps (`afd_setup`'s creation activate).
 A missing grant raises a pending approval card (`afd_approval`'s setup request).
 Approving it retries setup (`afd_api_tenant`'s approval resolve).
 
@@ -71,7 +71,7 @@ Approving it retries setup (`afd_api_tenant`'s approval resolve).
 Once setup checks pass, a locked recheck activates the fleet.
 A requested initial admission commits in that same transaction.
 
-With start `none` (`afd_authoring`'s creation types), Save writes no admission, event, lease or affinity row.
+With start `none` (`afd_setup`'s creation types), Save writes no admission, event, lease or affinity row.
 
 The fleet's display name ("agent-bob-01") is `fleet.fleets.name`. The lease reads it into `Installed.name` (`afd_fleet`'s lease install); nothing in routing reads it.
 

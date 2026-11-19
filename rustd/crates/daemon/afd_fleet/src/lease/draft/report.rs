@@ -41,7 +41,7 @@ impl LeaseService {
     /// that would not answer.
     pub async fn report_draft(
         &self,
-        creations: &afd_authoring::Creations,
+        creations: &afd_setup::Creations,
         runner: &Uuid7,
         request: &ReportRequest<'_>,
         now: Timestamp,
@@ -120,11 +120,11 @@ impl LeaseService {
             None => requested(&pricing, &lease_id, &lease, requests, now)?,
         };
         self.log_draft(&mut tx, settlement.as_ref(), now).await?;
-        let mut owed = afd_authoring::setup_lease::SetupOwed::default();
+        let mut owed = afd_setup::setup_lease::SetupOwed::default();
         let announcement = match &scope {
             Some(scope) => {
                 let answer = Some(request.response_text.as_ref()).filter(|text| !text.is_empty());
-                let finish = afd_authoring::setup_lease::SetupFinish {
+                let finish = afd_setup::setup_lease::SetupFinish {
                     completed: succeeded,
                     answer,
                     proposal: setup.proposal.as_ref(),

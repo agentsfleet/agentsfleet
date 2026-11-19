@@ -135,7 +135,7 @@ fn runner_and_authoring_failures_keep_their_crates_classification() {
     let authoring = afd_db::error::one_of_each_kind()
         .into_iter()
         .map(|(kind, database)| {
-            let setup = afd_authoring::Error::from(database);
+            let setup = afd_setup::Error::from(database);
             let decided = (
                 setup.code(),
                 setup.detail(),

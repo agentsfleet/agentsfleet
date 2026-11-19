@@ -32,7 +32,7 @@ test-util = [
   "afd_admission/test-util",
   # The pointed admission a mixed-kind lease suite places its own queued turn
   # with, beside a runtime lease on the same host.
-  "afd_authoring/test-util",
+  "afd_setup/test-util",
 ]
 
 # Each dependency is added by the module that uses it, for the reason
@@ -57,7 +57,7 @@ bytes.workspace = true
 futures-util.workspace = true
 af_context = { workspace = true, features = ["postgres"] }
 # The shared poll admits private setup through its production-domain owner.
-afd_authoring.workspace = true
+afd_setup.workspace = true
 # The thread a chat lease reads its turns from is a trait object, so a read
 # that fails is tested with a failing implementation.
 async-trait.workspace = true

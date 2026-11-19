@@ -27,7 +27,7 @@ export interface FleetRow {
 export class FleetNotFoundError extends Error {}
 
 // An archived fleet refuses every further transition as a state conflict:
-// `transition` in `afd_authoring/src/creation/patch.rs` answers UZ-AGT-020, a
+// `transition` in `afd_setup/src/creation/patch.rs` answers UZ-AGT-020, a
 // 409 carrying `current_state: archived`, while a GET still returns the fleet.
 // Delete has no status precondition, so it has no refusal of its own.
 //

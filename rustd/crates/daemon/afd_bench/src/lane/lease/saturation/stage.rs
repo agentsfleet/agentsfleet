@@ -21,11 +21,11 @@ use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use af_wire::event::EventType;
-use afd_authoring::Access;
-use afd_authoring::Drafts;
-use afd_authoring::types::{CreateDraft, Source};
 use afd_credential::provider::PLATFORM_MODEL_REF;
 use afd_db::test_util::{UserSeed, WalletSeed};
+use afd_setup::Access;
+use afd_setup::Drafts;
+use afd_setup::types::{CreateDraft, Source};
 
 use crate::datastores::Datastores;
 use crate::error::{Result, seed_refused};

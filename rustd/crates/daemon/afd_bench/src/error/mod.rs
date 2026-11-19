@@ -52,7 +52,7 @@ af_core::error_lifts!(Error, ErrorKind:
     afd_events::Error => SteerPathFaulted,
     afd_fleet::Error => LeasePathFaulted,
     afd_outbound::Error => OutboundPathFaulted,
-    afd_authoring::Error => AuthoringPathFaulted,
+    afd_setup::Error => AuthoringPathFaulted,
     afd_fleet_lifecycle::Error => LiveSetFaulted,
     afd_admission::Error => LedgerUnreadable,
     afd_runner::Error => RunnerUnenrollable,

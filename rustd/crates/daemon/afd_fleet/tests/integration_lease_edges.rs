@@ -242,7 +242,7 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
 async fn test_a_runner_with_no_lease_or_no_host_row_gets_no_work() {
     let held = held().await;
     let plane = held.fixtures.plane();
-    let drafts = afd_authoring::Drafts::new(
+    let drafts = afd_setup::Drafts::new(
         held.fixtures.database.clone(),
         Entropy::new(),
         std::sync::Arc::clone(&plane.biller),

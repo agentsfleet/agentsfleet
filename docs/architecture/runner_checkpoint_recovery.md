@@ -125,7 +125,7 @@ Worker capacity remains assigned per runner in PostgreSQL.
 | Production files | Owner or change | Effect |
 | --- | --- | --- |
 | `af_inference/src/{timeouts,stream}.rs` | `TimeoutSettings`, `Timeouts`, `TurnControl::timeouts` | Share checked physical and semantic inactivity limits |
-| `afd_authoring/src/model/provider/{mod,network/mod,dispatch}.rs`, `dispatch/funding.rs` | `Transport::timeouts`, `Network::configured`, `complete`, `Funding::confirm` | Pass the selected policy through single-send generation and counting |
+| `afd_setup/src/model/provider/{mod,network/mod,dispatch}.rs`, `dispatch/funding.rs` | `Transport::timeouts`, `Network::configured`, `complete`, `Funding::confirm` | Pass the selected policy through single-send generation and counting |
 | `main/src/config/{settings,policies}.rs`, `preflight/runtime.rs`, `serve/clients.rs`, `plane/*` | Checked operational snapshot and separate storage pool owner | Inject daemon settings without changing storage timeouts |
 | `af_providers/src/{retry/settings,connect/mod,transport/mod,turn/mod,turn/progress}.rs` | `RetrySettings`, `RetryPolicy`, `Connector::configured`, `Turns::with_settings` | Bound sends and eligible reopenings independently |
 | `afr_supervisor/src/config/runtime.rs`, `client/*`, `downlink/*`, `uplink/renewals/*`, `authoring/renew.rs` | `RuntimeSettings`, `RuntimePolicy`, `ControlPlane::retrying`, `run_with_interval` | Apply runner-local retry and cadence settings |

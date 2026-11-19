@@ -35,7 +35,7 @@ required-features = ["test-util"]
 # M-TEST-UTIL. Unlocks the mockable cores the boot path reads through.
 test-util = [
     "afd_admin/test-util",
-    "afd_authoring/test-util",
+    "afd_setup/test-util",
     "afd_api/test-util",
     "afd_auth/test-util",
     "afd_connector/test-util",
@@ -88,7 +88,7 @@ jiff.workspace = true
 # policy and the sweepers.
 afd_approval.workspace = true
 afd_auth.workspace = true
-afd_authoring.workspace = true
+afd_setup.workspace = true
 # The Postgres credential directory the shell authenticates against.
 # The live-stream surface the plane hands the router: the pub/sub hub and the
 # instance's concurrent-stream ceiling, composed once at boot.

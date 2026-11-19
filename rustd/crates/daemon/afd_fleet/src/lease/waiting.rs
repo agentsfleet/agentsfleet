@@ -2,7 +2,7 @@
 //! tenant runners have none of it to take.
 
 use af_core::id::Uuid7;
-use afd_authoring::types::{DraftState, MessageState};
+use afd_setup::types::{DraftState, MessageState};
 
 use super::sql;
 use crate::Result;

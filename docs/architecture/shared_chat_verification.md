@@ -93,7 +93,7 @@ The pool's existing five-second acquisition deadline remains unchanged.
 
 ### Private setup delivery
 
-`afd_authoring`'s preview `Publisher` consumes a bounded preview queue.
+`afd_setup`'s preview `Publisher` consumes a bounded preview queue.
 The first answer text is flushed immediately.
 Later text is coalesced on a 50-millisecond interval.
 
@@ -317,7 +317,7 @@ It does not claim that every unchanged operation has a new tracing span.
 | `afr_tools` | `Handler` and `Typed<H>`; serde and schemars | Shared argument parsing and cached schema; tool-run logs remain with the agent boundary |
 | `agentsfleet_runner` | Boot, shutdown and failure rendering | Existing terminal errors carry registry codes |
 | `af_inference` | Shared provider stream, transport, failure recovery and log filtering | Paired content-free lifecycle and timing records |
-| `afd_authoring` | Dispatch, receipt, private publisher and lease guards | Paired private preview traces; no connection held during provider or bus waits |
+| `afd_setup` | Dispatch, receipt, private publisher and lease guards | Paired private preview traces; no connection held during provider or bus waits |
 | `af_crypto` | Secret ownership and hex decoding | Existing zeroize and hex implementations; no secret accessor logging |
 | `afd_sse` | Subscription tail and gap handling | Existing bounded hub subscription and coded close record retained |
 | `afd_bus` | Signal publication over core NATS, since M244 | A failed publish logs its error code and reason (`tail_frame_dropped`); no payload logging |
@@ -367,7 +367,7 @@ The private-stream survivor replaces one cancellation-or-closure check with an A
 Its changed behavior requires a running message at or below the cancellation cutoff, or a running message in a closed draft.
 Production operations prevent both states under the same draft lock used by observation.
 
-Those operations are `afd_authoring`'s message cancel, lease claim selection, draft patch and observe modules.
+Those operations are `afd_setup`'s message cancel, lease claim selection, draft patch and observe modules.
 The original defensive checks remain.
 
 The Miri run used nightly commit `1a2c4797ef2570bd76ca5dee34449169bc7dc457`, matching the workflow's dated pin.

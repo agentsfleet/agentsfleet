@@ -5,13 +5,13 @@
 use super::fixture::Running;
 use af_core::{clock, id::Uuid7, money::NANOS_PER_USD};
 use af_crypto::{aad::Aad, entropy::Entropy, envelope::Sealer, secret::Kek};
-use afd_authoring::{
-    Access, Claimed, Drafts,
-    types::{CreateDraft, Draft, Source},
-};
 use afd_db::{
     Db,
     test_util::{ModelSeed, mint_id},
+};
+use afd_setup::{
+    Access, Claimed, Drafts,
+    types::{CreateDraft, Draft, Source},
 };
 
 /// The seated model routes through the Responses API.

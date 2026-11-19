@@ -53,7 +53,7 @@ pub(super) async fn boot(
     boundary: Option<&Boundary>,
 ) -> (Booted, Provider) {
     let provider = Provider::open(blocked).await;
-    let transport = afd_authoring::Network::new()
+    let transport = afd_setup::Network::new()
         .expect("guarded client")
         .with_test_endpoint(provider.endpoint.clone())
         .expect("provider boundary");

@@ -21,7 +21,7 @@ pub(super) struct Common {
     pub(super) task_master: Arc<Kek>,
     pub(super) admissions: Admissions,
     pub(super) biller: Arc<dyn Biller>,
-    pub(super) drafts: afd_authoring::Drafts,
+    pub(super) drafts: afd_setup::Drafts,
 }
 
 impl Common {
@@ -36,7 +36,7 @@ impl Common {
         let admissions = Admissions::new(parts.database.clone(), parts.bus.clone(), Entropy::new());
         let biller = crate::billing::biller(parts.database.clone(), parts.analytics.clone());
         let drafts =
-            afd_authoring::Drafts::new(parts.database.clone(), Entropy::new(), Arc::clone(&biller))
+            afd_setup::Drafts::new(parts.database.clone(), Entropy::new(), Arc::clone(&biller))
                 .with_analytics(parts.analytics.clone())
                 .with_clock(parts.runtime.clock)
                 .with_turn_policy(parts.runtime.operations.authoring)

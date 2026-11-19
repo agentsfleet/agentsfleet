@@ -16,7 +16,7 @@ pub async fn boot_with_authoring_boundary<E: EnvSource + ?Sized>(
     env: &E,
     port: u16,
     supervisor: &mut Supervisor,
-    transport: afd_authoring::Network,
+    transport: afd_setup::Network,
 ) -> Result<Booted, BootFailure> {
     let config = preflight(env)?.with_authoring_transport(transport);
     let analytics = open_analytics(config.posthog()).await;

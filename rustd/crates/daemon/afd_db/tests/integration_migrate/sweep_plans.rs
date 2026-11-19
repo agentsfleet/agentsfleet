@@ -10,8 +10,8 @@ use sqlx::AssertSqlSafe;
 
 use super::*;
 
-/// The lapse sweep (`afd_authoring` maintenance): `$1` status, `$2` limit.
-const ATTEMPT_CANDIDATES: &str = afd_authoring::Drafts::EXPIRED_ATTEMPTS_QUERY;
+/// The lapse sweep (`afd_setup` maintenance): `$1` status, `$2` limit.
+const ATTEMPT_CANDIDATES: &str = afd_setup::Drafts::EXPIRED_ATTEMPTS_QUERY;
 
 /// The metering sweep (`afd_fleet` lease): `$1` status, `$2` grace, `$3` limit.
 const UNBILLED_LEASES: &str = afd_fleet::lease::billing_sweep::UNBILLED_LEASES_QUERY;
