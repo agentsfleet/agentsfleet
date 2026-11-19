@@ -123,9 +123,10 @@ The daemon profiles lose `[inference]` and `[authoring.turn]`; the runner profil
 
 The setup tool follows the durable task's `propose_change`: the root loop offers `propose_setup` and handles the call.
 The runner validates the proposal, and the accepted setup rides the run report beside the answer; Indy: "i dont want daeomon in".
-Edit intent reuses the existing decision call, by his choice of "Approve, reuse decision call", so `authoring.edit_decisions` stays.
+Edit intent is one decision-model call on the runner, billed as an ordinary usage line of the lease.
+Indy first picked the reserved decision call, then replaced it with "Usage line, drop the table" when the two choices were shown to conflict.
 
-Dropped tables: `authoring.attempts`, `authoring.dispatches`, `authoring.activity_receipts`, `authoring.answer_receipts`, `billing.authoring_report_receipts` and `memory.context_checkpoints`.
+Dropped tables: `authoring.attempts`, `authoring.dispatches`, `authoring.edit_decisions`, `authoring.activity_receipts`, `authoring.answer_receipts`, `billing.authoring_report_receipts` and `memory.context_checkpoints`.
 Acceptance for this pull request runs after merge, once a trusted development deploy signs a `0.78.0` toolbox.
 None of this redesign is built yet; this entry records the decisions, and later entries record each step's evidence.
 
