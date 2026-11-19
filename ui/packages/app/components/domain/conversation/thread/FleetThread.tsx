@@ -27,7 +27,7 @@ import { FleetConnectionIndicator, useArrivalCue } from "../chrome/FleetConnecti
 import { useFleetPendingSends } from "../delivery/useFleetPendingSends";
 import { useCurrentUser } from "@/lib/auth/client";
 import { ACTOR } from "@/lib/events/event-summary";
-import { useMessageDelivery } from "../delivery/useFleetMessageDelivery";
+import { useMessageDelivery, useOpenFleet } from "../delivery/useFleetMessageDelivery";
 import { useFleetSteerQueue } from "../delivery/useFleetSteerQueue";
 import { reportsOwnRun } from "../../activity/replies/fleetReplyMessage";
 import { FleetConversationLayout } from "../../shared/summary/FleetWorkSidebar";
@@ -119,7 +119,7 @@ function OwnedFleetThread(props: FleetThreadProps) {
   );
 }
 
-function useThreadRuntime({workspaceId, fleetId, initial, viewer, senderNames, setupRevision, archived = false}: FleetThreadProps) {
+function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, senderNames, setupRevision, archived = false}: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
   // Connection chrome disappears after its arrival cue settles.
   const arrived = useArrivalCue(stream.connectionStatus);
@@ -128,17 +128,21 @@ function useThreadRuntime({workspaceId, fleetId, initial, viewer, senderNames, s
   const subject = identity.isLoaded ? identity.userId : identity.userId ?? viewer;
   const names = useMemo(() => senderNamesFrom(subject, senderNames), [subject, senderNames]);
   const ledger = useFleetPendingSends({ subject, workspaceId, fleetId });
+  const openFleet = useOpenFleet(workspaceId);
   // Stable registry methods keep delivery independent of streamed frames.
   const delivery = useMessageDelivery({
     workspaceId,
     fleetId,
+    fleetName: senderLabel, openFleet,
     sentAs: subject === null ? undefined : `${ACTOR.STEER_PREFIX}${subject}`,
     appendOptimistic: stream.appendOptimistic,
     reconcileOptimistic: stream.reconcileOptimistic,
     discardOptimistic: stream.discardOptimistic,
     writers: ledger.writers,
   });
-  const previews = useFleetUploadPreviews({workspaceId, fleetId, subject, events: stream.events, onNew: delivery.onNew});
+  // The runtime built below: its composer takes a refused draft back, and an upload reads what it sends.
+  const runtimeRef = useRef<AssistantRuntime | null>(null);
+  const previews = useFleetUploadPreviews({workspaceId, fleetId, subject, events: stream.events, onNew: delivery.onNew, runtime: runtimeRef});
   const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent, previews.groupBreaks);
   const setupEventId = useMemo(() => stream.events.findLast(event => {
     if (event.status !== FLEET_ACTIVITY.status) return false;
@@ -147,11 +151,10 @@ function useThreadRuntime({workspaceId, fleetId, initial, viewer, senderNames, s
       && activity.kind === ACTIVITY_KIND.setupSaved
       && activity.revision === setupRevision;
   })?.id, [stream.events, setupRevision]);
-  // Queueing permits another send while this viewer's newest reply runs.
-  const runtimeRef = useRef<AssistantRuntime | null>(null);
   const messages = useMemo(() => mergePreviewEntries(entries, previews.entries), [entries, previews.entries]);
   const convertMessage = useCallback((entry: FleetConversationEntry) => entry.kind === "upload-preview" ? entry.message : convertEntry(entry), [convertEntry]);
   const adapters = useMemo(() => ({attachments: previews.attachments}), [previews.attachments]);
+  // Queueing permits another send while this viewer's newest reply runs.
   const queue = useFleetSteerQueue(previews.onNew, runtimeRef);
   const isRunning = useMemo(() => reportsOwnRun(stream.events, subject), [stream.events, subject]);
   const adapter = useMemo(

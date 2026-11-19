@@ -1,11 +1,12 @@
 "use client";
 
-import { chatMessageText } from "@/lib/chat-message-text";
-import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
+import { chatComposerText, chatMessageText } from "@/lib/chat-message-text";
+import { MessageNotSentError, type AppendMessage, type AssistantRuntime, type AttachmentAdapter, type ThreadMessageLike } from "@assistant-ui/react";
 import type { FleetThreadEntry } from "../thread/useFleetThreadEntries";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ENTRY_KIND } from "@/lib/events/event-grouping";
+import { parseChatAddress } from "@/lib/chat-address";
 import { PreviewAttachmentAdapter } from "@/lib/api/preview-attachment-adapter";
 import { UPLOAD_PREVIEW_LABEL } from "@/lib/api/upload-preview";
 import { RENDER_KIND, RENDER_KIND_KEY, REPLY_ID_SUFFIX } from "../thread/useFleetThreadEntries";
@@ -13,7 +14,9 @@ import { RENDER_KIND, RENDER_KIND_KEY, REPLY_ID_SUFFIX } from "../thread/useFlee
 type Anchor = Pick<FleetEvent, "id" | "submittedAtMs">;
 type PreviewEntry = {kind: "upload-preview"; key: string; anchors: readonly Anchor[]; message: ThreadMessageLike};
 export type FleetConversationEntry = FleetThreadEntry | PreviewEntry;
-type Props = {workspaceId: string; fleetId: string; subject: string | null; events: readonly Anchor[]; onNew: (message: AppendMessage) => Promise<void>};
+type Props = {workspaceId: string; fleetId: string; subject: string | null; events: readonly Anchor[]; onNew: (message: AppendMessage) => Promise<void>;
+  /** The runtime whose composer sends the files, read as an upload starts. */
+  runtime?: RefObject<AssistantRuntime | null>};
 type AnchorIndex = {ids: Map<string, number>; local: Map<number, number>};
 const MAX_PREVIEW_TURNS = 4;
 const MAX_ANCHORS = 16;
@@ -21,15 +24,16 @@ const EMPTY_PREVIEWS: readonly PreviewEntry[] = [];
 const EMPTY_BREAKS: ReadonlySet<string> = new Set();
 
 /** Temporary receipts share the runtime, but never enter the durable event store. */
-export function useFleetUploadPreviews({workspaceId, fleetId, subject, events, onNew}: Props) {
+export function useFleetUploadPreviews({workspaceId, fleetId, subject, events, onNew, runtime}: Props) {
   const owner = JSON.stringify([workspaceId, fleetId, subject]);
-  const attachments = useMemo(() => new PreviewAttachmentAdapter(workspaceId, fleetId, subject), [workspaceId, fleetId, subject]);
+  const adapter = useMemo(() => new PreviewAttachmentAdapter(workspaceId, fleetId, subject), [workspaceId, fleetId, subject]);
+  const attachments = useMemo(() => refusingAddressedUploads(adapter, runtime), [adapter, runtime]);
   const [preview, setPreview] = useState<{owner: string; entries: PreviewEntry[]}>({owner, entries: []});
   const currentEvents = useRef(events);
   useLayoutEffect(() => {currentEvents.current = events;}, [events]);
-  useEffect(() => {attachments.connect(); return () => attachments.dispose();}, [attachments]);
+  useEffect(() => {adapter.connect(); return () => adapter.dispose();}, [adapter]);
   const receive = useCallback(async (message: AppendMessage) => {
-    attachments.signal.throwIfAborted();
+    adapter.signal.throwIfAborted();
     const files = message.attachments ?? [];
     if (!files.length) return onNew(message);
     if (!subject) throw new Error("Sign in before uploading a preview.");
@@ -45,8 +49,8 @@ export function useFleetUploadPreviews({workspaceId, fleetId, subject, events, o
         metadata: {custom: {actor: "fleet", status: "processed", previewUpload: true}}}},
     ];
     setPreview(previous => ({owner, entries: [...(previous.owner === owner ? previous.entries.filter(entry => !entries.some(next => next.key === entry.key)) : []), ...entries].slice(-MAX_PREVIEW_TURNS * 2)}));
-    attachments.consume(files);
-  }, [attachments, owner, subject, onNew]);
+    adapter.consume(files);
+  }, [adapter, owner, subject, onNew]);
   const entries = preview.owner === owner ? preview.entries : EMPTY_PREVIEWS;
   const groupBreaks = useMemo(() => {
     if (!entries.length) return EMPTY_BREAKS;
@@ -79,6 +83,22 @@ export function mergePreviewEntries(entries: FleetThreadEntry[], previews: reado
   const result: FleetConversationEntry[] = [...(slots.get(-1) ?? [])];
   entries.forEach((entry, position) => result.push(entry, ...(slots.get(position) ?? [])));
   return result;
+}
+
+// An upload belongs to the open fleet, so a message addressed to a fleet by
+// name takes none: each of its files is refused before it is sent, and the
+// composer gets the draft back with them.
+function refusingAddressedUploads(adapter: PreviewAttachmentAdapter, runtime: Props["runtime"]): AttachmentAdapter {
+  return {
+    accept: adapter.accept,
+    add: state => adapter.add(state),
+    remove: attachment => adapter.remove(attachment),
+    send: (attachment, options) => {
+      const sending = runtime?.current?.thread.composer.getState().submission;
+      if (sending !== undefined && parseChatAddress(chatComposerText(sending)) !== null) return Promise.reject(new MessageNotSentError());
+      return adapter.send(attachment, options);
+    },
+  };
 }
 
 function indexAnchor(index: AnchorIndex, event: Anchor, position: number): void {

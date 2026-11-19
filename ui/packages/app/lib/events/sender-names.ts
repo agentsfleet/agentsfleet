@@ -1,11 +1,11 @@
 import type { WorkspaceMember } from "@/lib/api/tenant-members";
-import { baseActorOf, isSteerBy, senderLabelFor } from "./event-summary";
+import { ACTOR, baseActorOf, isSteerBy, senderLabelFor } from "./event-summary";
 
 // Who a thread's messages came from, by name. The viewer's own read "You"; a
 // member of the fleet's account reads their display name, matched on the actor
-// their messages record (`GET /v1/workspaces/{id}/members` names it); anyone
-// else keeps the label `senderLabelFor` gives, which never renders an account
-// identifier.
+// their messages record (`GET /v1/workspaces/{id}/members` names it); another
+// fleet's steer reads "Another fleet"; anyone else keeps the label
+// `senderLabelFor` gives, which never renders an account identifier.
 
 /** What a person's own messages read as. */
 export const OWN_SENDER = "You";
@@ -41,9 +41,11 @@ export function nameSender(actor: string, fleetName: string, names: SenderNames)
   return names.byActor.get(base) ?? senderLabelFor(actor, fleetName);
 }
 
-/** Whether `actor` is a teammate the thread names: someone else, by name. Only
- * then is a label worth showing; every other turn keeps its chrome-free row. */
+/** Whether `actor`'s label is worth showing: a teammate the thread names, or
+ * another fleet, whose turn would otherwise read as a person's. Every other
+ * turn keeps its chrome-free row. */
 export function isNamedTeammate(actor: string, names: SenderNames): boolean {
   const base = baseActorOf(actor);
+  if (base.startsWith(ACTOR.FLEET_STEER_PREFIX)) return true;
   return !isSteerBy(base, names.viewer) && names.byActor.has(base);
 }

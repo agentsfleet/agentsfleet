@@ -23,8 +23,9 @@ import {
 // `webhook:<source>` (`actor` in
 // rustd/crates/daemon/afd_api_ingress/src/handler/webhook/mod.rs), a platform identity
 // such as `github-app` (`ACTOR_APP_GITHUB` in
-// rustd/crates/daemon/afd_api_ingress/src/handler/webhook/app_route.rs), and the
-// runtime's own actors.
+// rustd/crates/daemon/afd_api_ingress/src/handler/webhook/app_route.rs), another
+// fleet's steer, `fleet:<sender_fleet_id>` (`FLEET_ACTOR_PREFIX` in
+// rustd/crates/daemon/afd_events/src/steer/fleet.rs), and the runtime's own actors.
 
 export const ACTOR = {
   STEER_PREFIX: "steer:",
@@ -33,6 +34,8 @@ export const ACTOR = {
   PENDING_STEER: "steer:pending",
   WEBHOOK_PREFIX: "webhook:",
   API_STEER: "steer:api",
+  // Never the bare `fleet` below, which is this fleet's own reply.
+  FLEET_STEER_PREFIX: "fleet:",
   FLEET: "fleet",
   CRON: "cron",
   CONTINUATION: "continuation",
@@ -63,6 +66,7 @@ export const SENDER = {
   OPERATOR: "Operator",
   API: "API",
   GITHUB_APP: "GitHub App",
+  ANOTHER_FLEET: "Another fleet",
   FLEET_FALLBACK: "Fleet",
   SCHEDULE: "Schedule",
   CONTINUATION: "Continuation",
@@ -78,7 +82,8 @@ export function roleFor(actor: string): MessageRole {
   // A continuation carries the trigger it resumed; a resumed steer is still the
   // operator's turn.
   const base = actor.startsWith("continuation:") ? actor.slice("continuation:".length) : actor;
-  if (base.startsWith(ACTOR.STEER_PREFIX)) return "user";
+  // Another fleet's steer is a turn put to this fleet, as a person's is.
+  if (base.startsWith(ACTOR.STEER_PREFIX) || base.startsWith(ACTOR.FLEET_STEER_PREFIX)) return "user";
   if (base === ACTOR.FLEET) return "assistant";
   return "system";
 }
@@ -120,6 +125,8 @@ export function senderLabelFor(actor: string, fleetName?: string): string {
   if (base === ACTOR.CONTINUATION) return SENDER.CONTINUATION;
   if (base === ACTOR.CONFIG_RELOAD) return SENDER.CONFIG_RELOAD;
   if (base === ACTOR.GATE_BLOCKED) return SENDER.APPROVAL_GATE;
+  // The message's first line names the sending fleet; the label names its kind.
+  if (base.startsWith(ACTOR.FLEET_STEER_PREFIX)) return SENDER.ANOTHER_FLEET;
   // A connector actor such as `slack:<member-id>`: name the source, drop the id.
   const colon = base.indexOf(":");
   if (colon > 0) return sourceOf(base.slice(0, colon));

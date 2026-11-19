@@ -65,6 +65,7 @@ function delivery(appendOptimistic: (text: string, actor: string) => string = ()
   const ctx = {
     workspaceId: WORKSPACE,
     fleetId: FLEET,
+    fleetName: "release-watch", openFleet: vi.fn(),
     appendOptimistic,
     reconcileOptimistic: vi.fn(),
     discardOptimistic: vi.fn(),
