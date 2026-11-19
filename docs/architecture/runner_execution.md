@@ -228,7 +228,7 @@ The model picks by function calling, and the router runs the handler where its r
 
 A model call to a name outside the policy is a tool error the model sees, and the run continues. The scheduling tools write rows in `fleet.schedules` through the daemon; nothing in the runner sleeps or ticks.
 
-The scheduling tools and `message` reach `agentsfleetd` through `afr_tools::LeaseVerbs`, which the supervisor implements over its control plane. The supervisor adds the lease's id and fencing token to each call, one attempt each. A tool never holds the token, and the model decides whether to try again; no retry loop does.
+The scheduling tools, `message`, `fleet_activity` and `fleet_steer` reach `agentsfleetd` through `afr_tools::LeaseVerbs`, which the supervisor implements over its control plane. The supervisor adds the lease's id and fencing token to each call, one attempt each. A tool never holds the token, and the model decides whether to try again; no retry loop does.
 
 | Tool | Runtime | Needs |
 |---|---|---|
@@ -237,6 +237,8 @@ The scheduling tools and `message` reach `agentsfleetd` through `afr_tools::Leas
 | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | supervisor | the loaded store and the fenced push |
 | `update_plan` | supervisor | nothing |
 | `message` | supervisor, through a runner verb, to the event's thread | the messages verb |
+| `fleet_activity` | supervisor, through a runner verb | the fleets verb: the workspace's fleets, and one fleet's events with 1 KiB excerpts |
+| `fleet_steer` | supervisor, through a runner verb, as a chat message on another fleet in the workspace | the steers verb: the target answers in the sender's thread and reads a first line naming the sender; never the sending fleet |
 | `schedule`, `cron_add`, `cron_list`, `cron_remove`, `cron_update`, `cron_run`, `cron_runs` | supervisor, through a runner verb onto the daemon's plane that QStash fires | the verb; QStash keeps the clock and the runner owns no timer |
 | `delegate`, `spawn`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent` | the loop itself, beside the turn: a child is a nested loop sharing the lease's sandbox, memory, key, budget and call counter, polled inside the run so it ends with it | Codex's `spawn_agent`, `wait_agent` and `send_input` shape; depth 2, four running and sixteen started per run |
 | `shell`, `exec_command`, `write_stdin` | sandbox, through the executor | `shell`: one process on pipes, its group killed at its timeout; `exec_command` and `write_stdin`: a session per process, on a pseudo-terminal when asked, at most 64 per lease. Every byte of output is forwarded as it arrives, behind a bounded queue a flooding process waits on, and drained for a bounded grace once the leader ends; what a call has not read is kept as a 512 KiB head and tail, the middle counted, and each call drains it. A call says when the output was still open at the end, a gap's marker sits where it fell, a write to a process gone by then says it was not delivered and answers its ending, or runs on until it lands, and a write the process would not take says so and runs on; the executor's own sentence stays on the host, and whatever an executor failure says to a model is rendered to at most 4 KiB (`WIRE_MESSAGE_MAX_BYTES`), a refusal's message and a result that would not decode alike, since the socket's other end is not trusted with the length of what a model reads |

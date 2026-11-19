@@ -74,7 +74,7 @@ The route does not use historical channel fleets as fallback responders.
 1. Validate the signed event and resolve its Slack team to the current workspace.
 2. Drop bot messages, unsupported event types and replayed deliveries through the existing ingress rules.
 3. Read the channel's reviewed fleet subscriptions.
-4. Match an explicit leading fleet name or choose the sole eligible unaddressed subscriber.
+4. Match an explicit leading fleet name against each subscriber's saved name, the `fleet.fleets` name rather than its definition's, or choose the sole eligible unaddressed subscriber.
 5. Admit the selected fleet or record the fixed routing notice described below.
 
 | Subscription state | Native outcome |
@@ -222,4 +222,4 @@ Nothing here is proven live. The Slack registration playbook's live check, a thr
 The [durable repair scenario](durable-repair.md) extends the addressed manual path with later-CI continuation, existing-PR authority, worker recovery and Jev goal evaluation. M236 contains source for these capabilities; combined live acceptance remains unfinished. Saving setup alone does not demonstrate them.
 
 A scheduled Grafana diagnosis needs a configured notification destination and explicit repair authority.
-The fleet receives no implicit cross-fleet handoff or arbitrary channel routing.
+The fleet receives no implicit cross-fleet handoff or arbitrary channel routing. An explicit one is `fleet_steer`, in the [chief of staff scenario](chief-of-staff.md).
