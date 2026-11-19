@@ -60,7 +60,7 @@ WITH asked AS (
   -- CTE runs when first read, and an issue holds the host row and then a slot.
   -- A host that may not renew locks nothing, and every lease answers lost.
   SELECT s.fleet_id, s.fencing_token, s.lease_expires_at
-  FROM runner.fleet_slots s
+  FROM runner.slots s
   JOIN runner.leases l ON l.fleet_id = s.fleet_id
   JOIN asked a ON a.lease_id = l.id
   CROSS JOIN census h
@@ -156,7 +156,7 @@ WITH asked AS (
   WHERE l.id = g.id
   RETURNING l.id, l.lease_expires_at
 ), slot AS (
-  UPDATE runner.fleet_slots s
+  UPDATE runner.slots s
   SET lease_expires_at = g.capped, updated_at = now()
   FROM guard g
   WHERE s.fleet_id = g.fleet_id AND s.fencing_token = g.fencing_token

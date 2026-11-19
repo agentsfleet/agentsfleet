@@ -1,5 +1,5 @@
 WITH slot AS MATERIALIZED (
-  SELECT s.fleet_id FROM runner.fleet_slots s
+  SELECT s.fleet_id FROM runner.slots s
   WHERE s.fleet_id = $1 AND s.fencing_token = $3
   FOR UPDATE OF s
 ), admission AS (

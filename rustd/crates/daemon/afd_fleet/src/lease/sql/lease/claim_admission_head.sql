@@ -8,22 +8,22 @@ WITH fleet AS MATERIALIZED (
     -- below is never written, so a foreign claim changes nothing.
     AND (placed.platform_owned OR placed.tenant_id = f.tenant_id)
 ), locked_slot AS MATERIALIZED (
-  SELECT s.fleet_id FROM runner.fleet_slots s
+  SELECT s.fleet_id FROM runner.slots s
   WHERE s.fleet_id = $1
   FOR UPDATE OF s SKIP LOCKED
 ), instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM locked_slot) locked
 ), slot AS (
-  INSERT INTO runner.fleet_slots AS s
-    (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
+  INSERT INTO runner.slots AS s
+    (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
      created_at, updated_at)
-  SELECT $1, $2, 1, instant.checked_at + $3::interval, NULL, now(), now()
+  SELECT $1, $1, $2, 1, instant.checked_at + $3::interval, NULL, now(), now()
   FROM instant
   WHERE EXISTS (SELECT 1 FROM fleet)
     AND EXISTS (SELECT 1 FROM runner.runners host WHERE host.id = $2 AND host.cordon_reason IS NULL)
     AND (EXISTS (SELECT 1 FROM locked_slot)
-         OR NOT EXISTS (SELECT 1 FROM runner.fleet_slots WHERE fleet_id = $1))
-  ON CONFLICT (fleet_id) DO UPDATE
+         OR NOT EXISTS (SELECT 1 FROM runner.slots WHERE fleet_id = $1))
+  ON CONFLICT (id) DO UPDATE
     SET last_runner_id = EXCLUDED.last_runner_id,
         fencing_token = s.fencing_token + 1,
         lease_expires_at = clock_timestamp() + $3::interval,

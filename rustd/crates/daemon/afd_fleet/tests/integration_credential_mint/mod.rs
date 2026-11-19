@@ -204,11 +204,11 @@ async fn supersede(fixtures: &Fixtures, fleet: &Uuid7) {
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO runner.fleet_slots
-           (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
+        "INSERT INTO runner.slots
+           (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
             created_at, updated_at)
-         VALUES ($1, NULL, $2, now() + $3::interval, NULL, now(), now())
-         ON CONFLICT (fleet_id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token",
+         VALUES ($1, $1, NULL, $2, now() + $3::interval, NULL, now(), now())
+         ON CONFLICT (id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token",
     )
     .bind(fleet)
     .bind(FIXTURE_FENCE + 1)

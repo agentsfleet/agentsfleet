@@ -44,9 +44,9 @@ VALUES ($1, $2, $3, $4, $5, $6, now(),
         'platform', 'test', 'test', now(), 1, now() + interval '1 hour', $7, 0, now(), now())";
 
 const INSERT_SLOT: &str = "\
-INSERT INTO runner.fleet_slots
-  (fleet_id, last_runner_id, fencing_token, lease_expires_at, created_at, updated_at)
-VALUES ($1, $2, 1, now() + interval '1 hour', now(), now())";
+INSERT INTO runner.slots
+  (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, created_at, updated_at)
+VALUES ($1, $1, $2, 1, now() + interval '1 hour', now(), now())";
 
 /// Sends the person's message, keyed by `operation` when it has one.
 async fn send(

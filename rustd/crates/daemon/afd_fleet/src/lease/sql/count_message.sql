@@ -11,7 +11,7 @@ WITH lease AS MATERIALIZED (
       AND lease.fencing_token = $3 AND lease.status = $4
       AND lease.lease_expires_at > clock_timestamp()
       AND lease.fencing_token >= COALESCE(
-            (SELECT a.fencing_token FROM runner.fleet_slots a WHERE a.fleet_id = lease.fleet_id),
+            (SELECT a.fencing_token FROM runner.slots a WHERE a.fleet_id = lease.fleet_id),
             lease.fencing_token)
 )
 UPDATE runner.leases l

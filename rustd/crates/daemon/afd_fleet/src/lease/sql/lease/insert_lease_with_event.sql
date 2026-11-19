@@ -14,13 +14,13 @@ WITH instant AS MATERIALIZED (
       + (SELECT count(*) FROM authoring.attempts a
           WHERE a.runner_id = $2 AND a.status = $11
             AND a.lease_expires_at > i.checked_at)
-      + (SELECT count(*) FROM runner.fleet_slots s
+      + (SELECT count(*) FROM runner.slots s
           WHERE s.last_runner_id = $2 AND s.fleet_id <> $3
             AND s.hold_expires_at IS NOT NULL
             AND s.hold_expires_at > i.checked_at)
       < r.worker_count
 ), held AS (
-  UPDATE runner.fleet_slots
+  UPDATE runner.slots
   SET hold_expires_at = NULL, updated_at = now()
   WHERE fleet_id = $3 AND fencing_token = $10
     AND lease_expires_at > (SELECT checked_at FROM instant)

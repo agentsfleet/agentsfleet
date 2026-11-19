@@ -75,7 +75,7 @@ pub(in super::super) async fn expire(case: &Case) {
         .acquire()
         .await
         .expect("elapsed fixture clock");
-    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
+    sqlx::query("UPDATE runner.slots SET lease_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
         .bind(&case.held.fleet).execute(&mut *connection).await.expect("prior slot elapsed");
     sqlx::query("UPDATE runner.leases SET status='expired' WHERE id=$1")
         .bind(&case.held.lease_key)
@@ -94,7 +94,7 @@ pub(in super::super) async fn claim(case: &Case) -> Acquired {
 }
 
 pub(super) async fn assert_issued(case: &Case, task: &Uuid7, lease: &Uuid7, fence: i64) {
-    let row: (Uuid7, i64, i64, i64, bool, bool, i32) = sqlx::query_as("SELECT l.task_id,l.task_generation,l.task_stop_generation,l.fencing_token,l.lease_expires_at<=l.task_execution_deadline_at AND l.lease_expires_at=(SELECT s.lease_expires_at FROM runner.fleet_slots s WHERE s.fleet_id=l.fleet_id),l.task_execution_deadline_at<=t.expires_at AND l.task_execution_deadline_at<=l.task_started_at+interval '600 seconds',t.used_leases FROM runner.leases l JOIN fleet.tasks t ON t.id=l.task_id WHERE l.id=$1")
+    let row: (Uuid7, i64, i64, i64, bool, bool, i32) = sqlx::query_as("SELECT l.task_id,l.task_generation,l.task_stop_generation,l.fencing_token,l.lease_expires_at<=l.task_execution_deadline_at AND l.lease_expires_at=(SELECT s.lease_expires_at FROM runner.slots s WHERE s.fleet_id=l.fleet_id),l.task_execution_deadline_at<=t.expires_at AND l.task_execution_deadline_at<=l.task_started_at+interval '600 seconds',t.used_leases FROM runner.leases l JOIN fleet.tasks t ON t.id=l.task_id WHERE l.id=$1")
         .bind(lease).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("issued ownership observer")).await.expect("ordinary lease owns exact task");
     assert_eq!(row, (task.clone(), 1, 0, fence, true, true, 2));
     let rows: (i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM runner.leases WHERE fleet_id=$1),(SELECT count(*) FROM runner.leases WHERE fleet_id=$1 AND status='active')")

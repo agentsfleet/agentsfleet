@@ -1,6 +1,6 @@
 WITH locked_slot AS MATERIALIZED (
     SELECT s.fleet_id, s.fencing_token, s.lease_expires_at
-    FROM runner.fleet_slots s JOIN runner.leases l ON l.fleet_id = s.fleet_id
+    FROM runner.slots s JOIN runner.leases l ON l.fleet_id = s.fleet_id
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
     FOR UPDATE OF s
 ), probe AS (
@@ -60,7 +60,7 @@ WITH locked_slot AS MATERIALIZED (
     FROM guard g WHERE l.id = g.id
     RETURNING l.lease_expires_at AS capped
 ), slot AS (
-    UPDATE runner.fleet_slots a
+    UPDATE runner.slots a
     SET lease_expires_at = g.capped,
         updated_at = now()
     FROM guard g WHERE a.fleet_id = g.fleet_id

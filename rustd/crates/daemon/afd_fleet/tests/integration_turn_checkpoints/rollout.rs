@@ -138,11 +138,10 @@ async fn execution_deadline(case: &Case) -> Checked<jiff::Timestamp> {
 }
 
 async fn assert_preserved(case: &Case, saved: &af_wire::lease::TurnResume) -> Checked {
-    let fence: i64 =
-        sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id=$1")
-            .bind(&case.acquired.fleet_id)
-            .fetch_one(&mut *case.fixtures.database.acquire().await?)
-            .await?;
+    let fence: i64 = sqlx::query_scalar("SELECT fencing_token FROM runner.slots WHERE fleet_id=$1")
+        .bind(&case.acquired.fleet_id)
+        .fetch_one(&mut *case.fixtures.database.acquire().await?)
+        .await?;
     assert_eq!(u64::try_from(fence)?, case.acquired.fence.as_u64());
     assert_eq!(
         case.counts().await?.3.map(|id| id.to_string()).as_deref(),
@@ -187,7 +186,7 @@ async fn expire(case: &Case) -> Checked {
     let mut connection = case.fixtures.database.acquire().await?;
     sqlx::query("UPDATE runner.leases SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
         .bind(&case.issued.lease_id).execute(&mut *connection).await?;
-    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
+    sqlx::query("UPDATE runner.slots SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
         .bind(&case.acquired.fleet_id).execute(&mut *connection).await?;
     Ok(())
 }

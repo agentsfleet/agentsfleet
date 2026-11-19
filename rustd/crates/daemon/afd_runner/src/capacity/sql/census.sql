@@ -9,7 +9,7 @@ SELECT instant.checked_at,
      + (SELECT count(*) FROM authoring.attempts a
          WHERE a.runner_id = $1 AND a.status = $2
            AND a.lease_expires_at > instant.checked_at) AS occupied,
-       (SELECT count(*) FROM runner.fleet_slots s
+       (SELECT count(*) FROM runner.slots s
          WHERE $4::boolean AND s.last_runner_id = $1
            AND s.hold_expires_at IS NOT NULL
            AND s.hold_expires_at > instant.checked_at

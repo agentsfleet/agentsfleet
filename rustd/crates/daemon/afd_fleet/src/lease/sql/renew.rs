@@ -5,7 +5,7 @@
 //! # Why BOTH rows move, in one statement
 //!
 //! Reclaimability and the kill deadline live on different rows.
-//! `runner.fleet_slots.lease_expires_at` is what the claim checks, and
+//! `runner.slots.lease_expires_at` is what the claim checks, and
 //! `runner.leases.lease_expires_at` is when the runner stops its child.
 //! Advancing one without the other gets a healthy run reclaimed at the TTL
 //! while its runner still believes it holds the lease — so both move to the

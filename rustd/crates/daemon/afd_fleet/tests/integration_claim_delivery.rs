@@ -21,7 +21,7 @@ use crate::support::Fixtures;
 /// many event rows it has.
 const DELIVERY: &str = "SELECT a.lease_fence, a.delivered_at IS NOT NULL, s.fencing_token, \
     (SELECT count(*) FROM fleet.events e WHERE e.event_id = a.id) \
-    FROM fleet.admissions a LEFT JOIN runner.fleet_slots s ON s.fleet_id = a.fleet_id \
+    FROM fleet.admissions a LEFT JOIN runner.slots s ON s.fleet_id = a.fleet_id \
     WHERE a.id = $1";
 
 /// What [`DELIVERY`] answers.

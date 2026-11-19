@@ -113,7 +113,7 @@ async fn eligibility(
 ) -> Checked<BTreeMap<Uuid7, i64>> {
     let events: Vec<_> = fleets.iter().map(|f| f.event.clone()).collect();
     let mut conn = run.booted.database.acquire().await?;
-    let rows: Vec<(Uuid7,i64)> = sqlx::query_as("SELECT l.fleet_id,(extract(epoch from greatest(l.lease_expires_at,s.lease_expires_at))*1000)::bigint FROM runner.leases l JOIN runner.fleet_slots s ON s.fleet_id=l.fleet_id AND l.fencing_token=s.fencing_token WHERE l.event_id=ANY($1::uuid[]) AND l.runner_id=ANY($2::uuid[])")
+    let rows: Vec<(Uuid7,i64)> = sqlx::query_as("SELECT l.fleet_id,(extract(epoch from greatest(l.lease_expires_at,s.lease_expires_at))*1000)::bigint FROM runner.leases l JOIN runner.slots s ON s.fleet_id=l.fleet_id AND l.fencing_token=s.fencing_token WHERE l.event_id=ANY($1::uuid[]) AND l.runner_id=ANY($2::uuid[])")
         .bind(&events).bind(sources).fetch_all(&mut *conn).await?;
     let eligible: BTreeMap<_, _> = rows.into_iter().collect();
     if eligible.len() != fleets.len() {

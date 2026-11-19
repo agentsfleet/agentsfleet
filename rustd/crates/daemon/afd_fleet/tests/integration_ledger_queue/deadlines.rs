@@ -163,7 +163,7 @@ async fn lapse(fixtures: &Fixtures, action: &Uuid7) {
 async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) {
     let mut connection = fixtures.database.acquire().await.expect("claim connection");
     let before: i64 =
-        sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id=$1")
+        sqlx::query_scalar("SELECT fencing_token FROM runner.slots WHERE fleet_id=$1")
             .bind(fleet)
             .fetch_one(&mut *connection)
             .await
@@ -193,11 +193,10 @@ async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7
     tx.rollback()
         .await
         .expect("empty claim rolls back the slot");
-    let after: i64 =
-        sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id=$1")
-            .bind(fleet)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("slot after refusal");
+    let after: i64 = sqlx::query_scalar("SELECT fencing_token FROM runner.slots WHERE fleet_id=$1")
+        .bind(fleet)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("slot after refusal");
     assert_eq!(after, before);
 }

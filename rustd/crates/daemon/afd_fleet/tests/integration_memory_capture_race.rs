@@ -74,13 +74,11 @@ async fn change_authority(
     supersede: bool,
 ) {
     if supersede {
-        sqlx::query(
-            "UPDATE runner.fleet_slots SET fencing_token=fencing_token+1 WHERE fleet_id=$1",
-        )
-        .bind(&run.fleet)
-        .execute(&mut *connection)
-        .await
-        .expect("replacement fence");
+        sqlx::query("UPDATE runner.slots SET fencing_token=fencing_token+1 WHERE fleet_id=$1")
+            .bind(&run.fleet)
+            .execute(&mut *connection)
+            .await
+            .expect("replacement fence");
         memories
             .capture_on(
                 connection,

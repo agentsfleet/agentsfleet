@@ -43,8 +43,13 @@ async fn prior_lease_lookup_probes_the_lease_event_index_for_fresh_and_reclaimed
     for table in ["fleet.events", "runner.leases"] {
         run(&mut tx, &format!("ANALYZE {table}")).await;
     }
-    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at=now()-interval '1 second' WHERE fleet_id=$1")
-        .bind(&held.fleet).execute(&mut *tx).await.expect("expired slot");
+    sqlx::query(
+        "UPDATE runner.slots SET lease_expires_at=now()-interval '1 second' WHERE fleet_id=$1",
+    )
+    .bind(&held.fleet)
+    .execute(&mut *tx)
+    .await
+    .expect("expired slot");
     run(&mut tx, super::FORCE_GENERIC).await;
     for fresh in [false, true] {
         run(&mut tx, "SAVEPOINT claim_probe").await;

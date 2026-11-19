@@ -52,7 +52,7 @@ WITH scope AS MATERIALIZED (
 ), locked_slot AS MATERIALIZED (
   SELECT s.fleet_id, s.fencing_token, s.lease_expires_at AS slot_expires_at,
          h.id IS NOT NULL AS hold_authorized
-  FROM runner.fleet_slots s
+  FROM runner.slots s
   JOIN scope sc ON sc.id = s.fleet_id
   JOIN runner.leases l ON l.fleet_id = s.fleet_id
   LEFT JOIN hold_host h ON h.id = l.runner_id
@@ -193,7 +193,7 @@ WITH scope AS MATERIALIZED (
   ON CONFLICT (fleet_id) DO UPDATE
     SET context_json = EXCLUDED.context_json, updated_at = now()
 ), released AS (
-  UPDATE runner.fleet_slots s
+  UPDATE runner.slots s
   SET lease_expires_at = clock_timestamp() - interval '1 millisecond', updated_at = now(),
       hold_expires_at = CASE WHEN m.lease_expires_at > m.checked_at AND m.slot_expires_at > m.checked_at
                              AND m.hold_authorized

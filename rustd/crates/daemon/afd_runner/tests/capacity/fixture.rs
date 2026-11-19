@@ -123,10 +123,10 @@ impl Fixture {
         .await
         .expect("seed a fleet distinct from the live lease");
         sqlx::query(
-            "INSERT INTO runner.fleet_slots \
-             (fleet_id, last_runner_id, fencing_token, lease_expires_at, \
+            "INSERT INTO runner.slots \
+             (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, \
               hold_expires_at, created_at, updated_at) \
-             VALUES ($1, $2, 1, clock_timestamp(), $3, now(), now())",
+             VALUES ($1, $1, $2, 1, clock_timestamp(), $3, now(), now())",
         )
         .bind(&fleet)
         .bind(&self.runner)

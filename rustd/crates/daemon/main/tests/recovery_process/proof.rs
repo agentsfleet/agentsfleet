@@ -53,7 +53,7 @@ pub(super) async fn deadline(run: &Scenario) -> Checked<jiff::Timestamp> {
     let mut connection = run.booted.database.acquire().await?;
     let expiry: jiff_sqlx::Timestamp = sqlx::query_scalar(
         "SELECT GREATEST(l.lease_expires_at,s.lease_expires_at) FROM runner.leases l
-        JOIN runner.fleet_slots s ON s.fleet_id=l.fleet_id
+        JOIN runner.slots s ON s.fleet_id=l.fleet_id
         WHERE l.event_id=$1 AND l.runner_id=$2 ORDER BY l.created_at DESC LIMIT 1",
     )
     .bind(&run.event_id)

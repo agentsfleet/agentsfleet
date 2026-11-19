@@ -73,7 +73,7 @@ where
         let reached = reached();
         async {
         sqlx::query(
-            "UPDATE runner.fleet_slots SET lease_expires_at = clock_timestamp() - interval '1 millisecond' \
+            "UPDATE runner.slots SET lease_expires_at = clock_timestamp() - interval '1 millisecond' \
              WHERE fleet_id = $1",
         )
         .bind(&run.fleet)

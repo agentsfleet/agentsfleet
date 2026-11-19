@@ -112,7 +112,7 @@ async fn held_fleet_on_the_platform_model_waits_for_its_hold() {
     .await;
     execute(
         &fixtures,
-        "UPDATE runner.fleet_slots SET lease_expires_at = clock_timestamp() - interval '1 second', \
+        "UPDATE runner.slots SET lease_expires_at = clock_timestamp() - interval '1 second', \
          hold_expires_at = clock_timestamp() + interval '10 minutes' WHERE fleet_id = $1",
         &fleet,
     )
@@ -141,7 +141,7 @@ async fn held_fleet_on_the_platform_model_waits_for_its_hold() {
 
     execute(
         &fixtures,
-        "UPDATE runner.fleet_slots SET hold_expires_at = clock_timestamp() - interval '1 second' \
+        "UPDATE runner.slots SET hold_expires_at = clock_timestamp() - interval '1 second' \
          WHERE fleet_id = $1",
         &fleet,
     )

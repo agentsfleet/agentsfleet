@@ -21,7 +21,7 @@ WITH probe AS (
                     AND recovery.head_turn_checkpoint_id IS NOT NULL
               ))
               AND NOT EXISTS (
-                  SELECT 1 FROM runner.fleet_slots s
+                  SELECT 1 FROM runner.slots s
                   WHERE s.fleet_id = a.fleet_id AND s.lease_expires_at > statement_timestamp()
               )
         ) OR EXISTS (
@@ -54,7 +54,7 @@ SELECT
                     AND recovery.head_turn_checkpoint_id IS NOT NULL
               ))
                 AND NOT EXISTS (
-                    SELECT 1 FROM runner.fleet_slots s
+                    SELECT 1 FROM runner.slots s
                     WHERE s.fleet_id = a.fleet_id AND s.lease_expires_at > statement_timestamp()
                 )
           )
