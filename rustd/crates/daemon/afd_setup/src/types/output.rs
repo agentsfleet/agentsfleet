@@ -225,7 +225,7 @@ pub struct Page<T> {
 mod tests {
     use super::MessageState;
 
-    /// Funnel steps and the stored `setup.messages.status` spell a state
+    /// Funnel steps and a setup turn's stored `thread.turns.status` spell a state
     /// with `as_str`; rows read back through serde. One drifting arm would turn
     /// a written message into an unreadable one.
     #[test]

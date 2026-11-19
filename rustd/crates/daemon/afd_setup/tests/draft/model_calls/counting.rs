@@ -208,7 +208,7 @@ async fn changed_source_stop_and_revoked_credential_during_count_prevent_paid_di
 async fn mutate(f: &Fixture, attempt: &Attempt, change: Change) {
     match change {
         Change::History => {
-            sqlx::query("UPDATE setup.messages SET answer_text='changed during native count' WHERE draft_id=$1 AND sequence=1")
+            sqlx::query("UPDATE thread.turns SET answer_text='changed during native count' WHERE thread_id=$1 AND sequence=1")
                 .bind(&attempt.draft.id).execute(&mut *f.connection().await).await.expect("source mutation commits");
         }
         Change::Stop => {

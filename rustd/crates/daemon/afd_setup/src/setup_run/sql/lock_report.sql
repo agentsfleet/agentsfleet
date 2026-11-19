@@ -5,7 +5,7 @@
 SELECT d.workspace_id, d.tenant_id, d.user_id, m.sequence, m.status, m.save_requested,
        u.oidc_subject
   FROM setup.drafts d
-  JOIN setup.messages m ON m.draft_id = d.id AND m.id = $2
+  JOIN thread.turns m ON m.thread_id = d.id AND m.id = $2
   JOIN identity.users u ON u.id = d.user_id
  WHERE d.id = $1
    FOR UPDATE OF d

@@ -33,7 +33,7 @@ The `thread` schema holds `threads`, `turns`, `runs`, `items` and `deliveries`. 
 
 ## thread.threads
 
-One row per fleet and one per draft. It replaces `runner.slots` and `fleet.sessions`.
+One row per fleet and one per draft, written in the same statement that creates its owner with fencing token 0 and a lapsed run deadline. It replaces `runner.slots` and `fleet.sessions`.
 
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|
@@ -52,46 +52,50 @@ Publishing a draft creates a new fleet, so the fleet gets its own thread. The dr
 
 ## thread.turns
 
-One row per input on a thread. It replaces `fleet.admissions` and `fleet.events`, which split one fleet input across two rows (`schema/20261108125100_thread_turns.sql`). `setup.messages` folds in next.
+One row per input on a thread. It replaces `fleet.admissions` and `fleet.events`, which split one fleet input across two rows, and `setup.messages`, a setup draft's chat inputs (`schema/20261108125100_thread_turns.sql`).
 
-Intake writes the turn `queued`. The claim that first runs it stamps its fence and opens its event in one update, and the report settles it and closes the event in one update, since one statement may change a row once. A history-only receipt, such as an activity or a model change, is written opened and settled, with no producer, so no claim takes it.
+A fleet's intake writes the turn `queued`. The claim that first runs it stamps its fence and opens its event in one update, and the report settles it and closes the event in one update, since one statement may change a row once. A history-only receipt, such as an activity or a model change, is written opened and settled, with no producer, so no claim takes it.
 
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|
-| `id` | `UUID` PK | no | `admissions.id` = `events.event_id` | the turn id; the wire still calls it `event_id` |
-| `sequence` | `BIGINT` identity | no | `admissions.sequence` | intake order; unique with `thread_id`; a history-only receipt draws one too |
-| `thread_id` | `UUID` | no | `fleet_id` | FK `thread.threads(id)` ON DELETE CASCADE |
-| `workspace_id` | `UUID` | no | `workspace_id` | FK `identity.workspaces(id)` ON DELETE CASCADE |
-| `kind` | `TEXT` | no | `event_type` | `chat`, `webhook`, `schedule`, `continuation`, `activity`, and the rest of the event type vocabulary |
-| `actor` | `TEXT` | no | `actor` | who sent it |
-| `status` | `TEXT` | no | `events.status`, and `queued` before the event opens | see the status map below |
-| `producer`, `producer_key`, `payload_digest` | `TEXT` | yes, all or none | `admissions` | retry dedup, unique `(producer, producer_key)`; a resend with another body is refused. NULL on a history-only receipt |
-| `request_json` | `JSONB` | no | `admissions.request_json`, `events.request_json` | the input itself; readers that decode a string select `request_json::text` |
+| `id` | `UUID` PK | no | `admissions.id` = `events.event_id`; `messages.id` | the turn id; the wire still calls a fleet's `event_id` |
+| `sequence` | `BIGINT` identity by default | no | `admissions.sequence`; `messages.sequence` | unique with `thread_id`. A fleet's turns draw it in intake order, a history-only receipt included; a setup draft numbers its own from 1, because its watermarks and attempts name turns by it |
+| `thread_id` | `UUID` | no | `fleet_id`; `messages.draft_id` | FK `thread.threads(id)` ON DELETE CASCADE |
+| `workspace_id` | `UUID` | no | `workspace_id`; the draft's | FK `identity.workspaces(id)` ON DELETE CASCADE |
+| `kind` | `TEXT` | no | `event_type`; `chat` for a setup turn | `chat`, `webhook`, `schedule`, `continuation`, `activity`, and the rest of the event type vocabulary |
+| `actor` | `TEXT` | no | `actor`; the sender's OIDC subject for a setup turn | who sent it |
+| `status` | `TEXT` | no | `events.status`, and `queued` before the event opens; `messages.status` | see the status map below |
+| `producer`, `producer_key`, `payload_digest` | `TEXT` | yes, all or none | `admissions` | retry dedup, unique `(producer, producer_key)`; a resend with another body is refused. NULL on a history-only receipt and on a setup turn, so `producer IS NOT NULL` is an admitted fleet input |
+| `request_json` | `JSONB` | no | `admissions.request_json`, `events.request_json`; `messages.user_text` as `{"message": …}` | the input itself; readers that decode a string select `request_json::text` |
 | `reply_provider`, `reply_address` | `TEXT` | yes | `admissions.reply_*` | where a connector answer goes; both or neither |
-| `answer_text` | `TEXT` | yes | `events.response_text` | the answer |
+| `answer_text` | `TEXT` | yes | `events.response_text`, `messages.answer_text` | the answer |
 | `tool_calls` | `JSONB` | yes | `events.tool_calls` | the compact trace summary the thread page reads; full detail is in `thread.items` |
 | `token_count`, `wall_ms` | `BIGINT` | yes | `events` | usage shown on the turn; NULL until a run reports |
-| `failure_reason`, `failure_detail` | `TEXT` | yes | `events` | why a turn failed |
+| `failure_reason`, `failure_detail` | `TEXT` | yes | `events`, `messages.failure_reason` | why a turn failed |
 | `resumes_turn_id` | `UUID` | yes | `events.resumes_event_id` | FK `thread.turns(id)` ON DELETE SET NULL: a continuation names the turn it resumes |
 | `run_fence`, `input_claim_run_id`, `input_claim_fence` | `BIGINT`, `UUID`, `BIGINT` | yes | `admissions` | the fence of the claim that took the turn as its head, and of the run whose conversation folded it in. No foreign key: a fence outlives its run |
 | `opened_at` | `TIMESTAMPTZ(3)` | yes | new | when the fleet's event opened; history reads and the activity counter read only opened turns |
-| `parked_at`, `interpreted_at`, `settled_at` | `TIMESTAMPTZ(3)` | yes | `admissions` | waiting on an approval; read by a task; finished |
+| `parked_at`, `interpreted_at`, `settled_at` | `TIMESTAMPTZ(3)` | yes | `admissions`; `messages.finished_at` | waiting on an approval; read by a task; finished. A setup turn settles when it finishes |
 | `task_id`, `task_item_id`, `task_generation` | `UUID`, `UUID`, `BIGINT` | yes | `admissions` | composite FKs `(task_id, thread_id, workspace_id)` to `fleet.tasks` and `(task_item_id, thread_id, workspace_id)` to `fleet.task_items`, ON DELETE SET NULL on the id column, as today |
 | `task_activity`, `task_activity_sequence`, `task_activity_truncated` | `JSONB`, `BIGINT`, `BOOLEAN` | no | `events` | bounded task progress, at most 128 entries |
+| `operation_id` | `UUID` | yes | `messages.operation_id` | a setup turn's request operation. Not a `producer_key`: it is a minted `UUID` the wire returns, and it is not unique, because the retry window lives in `setup.replay_receipts` and the same key queues a new turn once it passes |
+| `tenant_model_id` | `UUID` | yes | `messages` | FK `model.tenant_models(id)` ON DELETE SET NULL: the model a setup turn chose; NULL is the platform default |
+| `candidate_id` | `UUID` | yes | `messages` | FK `setup.candidates(id)` ON DELETE SET NULL: the candidate a setup turn wrote |
+| `save_requested`, `save_error_code` | `BOOLEAN`, `TEXT` | no, yes | `messages` | a setup turn that saves the head, and why a checked save was refused |
 
-Indexes: `(thread_id, sequence)` unique; `(producer, producer_key)` unique; `(thread_id, created_at, id)`, `(thread_id, actor, created_at, id)` and `(thread_id, kind, created_at, id)` for history pages; `(workspace_id, created_at, id)` for the workspace stream; `(thread_id, sequence) WHERE settled_at IS NULL` for assignment; `(thread_id, reply_provider, reply_address, sequence) WHERE settled_at IS NULL` for one conversation's next turns; `(task_id, task_generation, settled_at, sequence)` for tasks; `task_item_id` and `resumes_turn_id` for their foreign keys.
+Indexes: `(thread_id, sequence)` unique; `(producer, producer_key)` unique; `(thread_id, created_at, id)`, `(thread_id, actor, created_at, id)` and `(thread_id, kind, created_at, id)` for history pages; `(workspace_id, created_at, id)` for the workspace stream; `(thread_id, sequence) WHERE settled_at IS NULL` for assignment; `(thread_id, reply_provider, reply_address, sequence) WHERE settled_at IS NULL` for one conversation's next turns; `(task_id, task_generation, settled_at, sequence)` for tasks; `(status, thread_id) WHERE producer IS NULL AND settled_at IS NULL` for the setup drafts with a turn waiting or running; `task_item_id`, `resumes_turn_id`, `tenant_model_id` and `candidate_id` for their foreign keys.
 
 Two triggers, `trg_turns_count_inserted_opened` and `trg_turns_count_opened`, bump `fleet.activity_counters.event_count` once per turn, when its event opens.
 
-The fleet's thread is written with the fleet, so a turn always has one. A turn's `created_at` is its intake instant, so a webhook's event now sorts at intake rather than at its first claim.
+A fleet's thread is written with the fleet, and a draft's with the draft, so a turn always has one. A setup turn never opens a fleet event, so the history reads and the activity counter skip it, and the fleet queue reads that scan across threads require `producer IS NOT NULL`. A turn's `created_at` is its intake instant, so a webhook's event now sorts at intake rather than at its first claim.
 
 `admissions.delivered_at` is dropped: a redelivery is a turn whose `run_fence` is already set, and `thread.deliveries` is the one record of delivery. `admissions.event_created_at` is dropped, because it always equalled `created_at`.
 
-Still to come, from the design: the setup columns `tenant_model_id`, `candidate_id`, `save_requested` and `save_error_code` with `setup.messages`; one `run_id` replacing `run_fence` and the input claim pair; and the status renames below, which wait for the public-surface rename because the stored words reach the wire.
+Still to come, from the design: one `run_id` replacing `run_fence` and the input claim pair, and the status renames below, which wait for the public-surface rename because the stored words reach the wire.
 
 ### Status map
 
-The stored words are the event words today, plus `queued`. The rename column is the target.
+A fleet turn stores the event words today, plus `queued`; a setup turn stores the setup words. The target column is the rename.
 
 | Stored today | Meaning | Target |
 |--------------|---------|--------|
@@ -101,7 +105,7 @@ The stored words are the event words today, plus `queued`. The rename column is 
 | `gate_blocked` | refused at a gate, or waiting with `parked_at` set | `waiting` |
 | `processed` | answered | `answered` |
 | `fleet_error` | failed | `failed` |
-| `queued`, `running`, `completed`, `failed`, `cancelled` on `setup.messages` | a setup draft's turn | `queued`, `running`, `answered`, `failed`, `cancelled` |
+| `queued`, `running`, `completed`, `failed`, `cancelled` on a setup turn | a setup draft's turn | `queued`, `running`, `answered`, `failed`, `cancelled` |
 
 ## thread.runs
 

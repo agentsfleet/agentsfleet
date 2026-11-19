@@ -24,11 +24,11 @@ SELECT d.id AS id,
    AND ($5::timestamptz IS NULL OR (d.updated_at, d.id) < ($5::timestamptz, $6))
    -- Search: the title, or any turn of the chat. The creator filter above has
    -- already narrowed to one person's chats, and each probe walks one chat's
-   -- turns by uq_messages_draft_id_sequence.
+   -- turns by uq_turns_thread_id_sequence.
    AND ($8::text IS NULL
         OR d.title ILIKE $8 ESCAPE '\'
-        OR EXISTS (SELECT 1 FROM setup.messages m
-                    WHERE m.draft_id = d.id
-                      AND (m.user_text ILIKE $8 ESCAPE '\' OR m.answer_text ILIKE $8 ESCAPE '\')))
+        OR EXISTS (SELECT 1 FROM thread.turns m
+                    WHERE m.thread_id = d.id
+                      AND ((m.request_json->>'message') ILIKE $8 ESCAPE '\' OR m.answer_text ILIKE $8 ESCAPE '\')))
  ORDER BY d.updated_at DESC, d.id DESC
  LIMIT $7

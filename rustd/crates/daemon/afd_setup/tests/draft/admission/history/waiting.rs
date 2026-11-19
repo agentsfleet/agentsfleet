@@ -98,7 +98,7 @@ impl Held {
     }
 
     async fn stored(&self) -> (i64, i64) {
-        sqlx::query_as("SELECT count(*), count(r.id) FROM setup.messages m LEFT JOIN setup.replay_receipts r ON r.resource_id=m.id AND r.scope=$2 WHERE m.draft_id=$1")
+        sqlx::query_as("SELECT count(*), count(r.id) FROM thread.turns m LEFT JOIN setup.replay_receipts r ON r.resource_id=m.id AND r.scope=$2 WHERE m.thread_id=$1")
             .bind(&self.hot.id).bind(format!("{}:draft:{}:message", self.fixture.workspace, self.hot.id))
             .fetch_one(&mut *self.fixture.connection().await).await.expect("durable accepted messages and receipts")
     }

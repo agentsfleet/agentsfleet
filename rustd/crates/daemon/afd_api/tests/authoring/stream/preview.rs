@@ -105,7 +105,7 @@ async fn malformed_unbounded_foreign_and_nonrunning_deltas_are_withheld() {
 async fn stopped_message_preview_is_withheld_before_a_new_running_message() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
-    live.mutate("UPDATE setup.messages SET status='cancelled' WHERE draft_id=$1")
+    live.mutate("UPDATE thread.turns SET status='cancelled' WHERE thread_id=$1")
         .await;
     live.mutate("UPDATE setup.drafts SET cancelled_through_sequence=1 WHERE id=$1")
         .await;
@@ -125,7 +125,7 @@ async fn stopped_message_preview_is_withheld_before_a_new_running_message() {
     )
     .await;
     assert_eq!(response.status(), http::StatusCode::ACCEPTED);
-    live.mutate("UPDATE setup.messages SET status='running' WHERE draft_id=$1 AND sequence=2")
+    live.mutate("UPDATE thread.turns SET status='running' WHERE thread_id=$1 AND sequence=2")
         .await;
     assert!(frame(&mut body).await.contains("event: message.running\n"));
     let mut marker = live.delta("new message answer");

@@ -69,7 +69,7 @@ async fn malformed_foreign_and_nonrunning_summary_notices_never_reach_the_privat
 async fn stopping_a_message_withholds_its_buffered_summary_notice() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
-    live.mutate("UPDATE setup.messages SET status='cancelled' WHERE draft_id=$1")
+    live.mutate("UPDATE thread.turns SET status='cancelled' WHERE thread_id=$1")
         .await;
     live.mutate("UPDATE setup.drafts SET cancelled_through_sequence=1 WHERE id=$1")
         .await;

@@ -10,8 +10,9 @@
 WITH probe AS (
     SELECT (
         EXISTS (
+            -- An admitted fleet turn: a setup draft's turn has no producer.
             SELECT 1 FROM thread.turns a
-            WHERE a.settled_at IS NULL
+            WHERE a.settled_at IS NULL AND a.producer IS NOT NULL
               AND ($5::boolean OR NOT EXISTS (
                   SELECT 1 FROM thread.turns saved
                   JOIN runner.turn_recovery recovery ON recovery.turn_id = saved.id
@@ -29,7 +30,7 @@ WITH probe AS (
             -- draft run left behind (its run's `event_id` is the message), with neither a
             -- live attempt nor a live draft slot holding the draft.
             SELECT 1 FROM setup.drafts d
-            JOIN setup.messages m ON m.draft_id = d.id
+            JOIN thread.turns m ON m.thread_id = d.id
             WHERE d.status = $2 AND m.sequence > d.cancelled_through_sequence
               AND (m.status = $3
                    OR (m.status = $6 AND EXISTS (
@@ -73,7 +74,7 @@ SELECT
           -- The setup branch above, narrowed to the runner's tenant, and re-pointed with it.
           AND NOT EXISTS (
               SELECT 1 FROM setup.drafts d
-              JOIN setup.messages m ON m.draft_id = d.id
+              JOIN thread.turns m ON m.thread_id = d.id
               WHERE d.tenant_id = r.tenant_id
                 AND d.status = $2 AND m.sequence > d.cancelled_through_sequence
                 AND (m.status = $3

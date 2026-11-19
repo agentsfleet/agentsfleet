@@ -156,7 +156,6 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("20261108123600_setup_drafts.sql"),
     migration!("20261108123650_thread_threads.sql"),
     migration!("20261108123700_setup_candidates.sql"),
-    migration!("20261108123800_setup_messages.sql"),
     migration!("20261108123900_setup_attempts.sql"),
     migration!("20261108124000_setup_dispatches.sql"),
     migration!("20261108124100_setup_activity_receipts.sql"),

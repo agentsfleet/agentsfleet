@@ -65,7 +65,7 @@ async fn membership_revocation_cancels_queued_work_before_any_placement() {
         .expect("committed membership revocation");
     assert!(claim(&f, &created.draft).await.is_none());
     let state: (String, Option<String>) =
-        sqlx::query_as("SELECT status,failure_reason FROM setup.messages WHERE draft_id=$1")
+        sqlx::query_as("SELECT status,failure_reason FROM thread.turns WHERE thread_id=$1")
             .bind(&created.draft.id)
             .fetch_one(&mut *f.connection().await)
             .await

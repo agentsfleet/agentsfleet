@@ -130,7 +130,7 @@ async fn delayed_database_keeps_one_hundred_sends_within_the_existing_pool_budge
 }
 
 async fn stored(f: &Fixture, draft: &af_core::id::Uuid7) -> (i64, i64, i64) {
-    sqlx::query_as("SELECT (SELECT count(*) FROM setup.messages WHERE draft_id=d.id), (SELECT count(*) FROM setup.replay_receipts WHERE scope=$2), d.last_message_sequence FROM setup.drafts d WHERE d.id=$1")
+    sqlx::query_as("SELECT (SELECT count(*) FROM thread.turns WHERE thread_id=d.id), (SELECT count(*) FROM setup.replay_receipts WHERE scope=$2), d.last_message_sequence FROM setup.drafts d WHERE d.id=$1")
         .bind(draft)
         .bind(format!("{}:draft:{draft}:message", f.workspace))
         .fetch_one(&mut *f.connection().await)

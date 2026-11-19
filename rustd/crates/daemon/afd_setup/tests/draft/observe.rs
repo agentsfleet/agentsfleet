@@ -9,7 +9,7 @@ use af_core::error_code;
 use afd_setup::{Observation, View};
 
 /// Moves the draft's one message to `status`, as a run or a cutoff does.
-const MESSAGE_STATUS: &str = "UPDATE setup.messages SET status=$2 WHERE draft_id=$1";
+const MESSAGE_STATUS: &str = "UPDATE thread.turns SET status=$2 WHERE thread_id=$1";
 
 /// Closes the draft for its retention window, as a Save or an apply does.
 const CLOSE: &str = "UPDATE authoring.drafts SET status='closed', closed_at=now(), \

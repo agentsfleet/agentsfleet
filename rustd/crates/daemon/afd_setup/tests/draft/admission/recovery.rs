@@ -261,7 +261,7 @@ async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
         .await
         .expect("delayed old Stop");
     let status: String =
-        sqlx::query_scalar("SELECT status FROM setup.messages WHERE draft_id=$1 AND sequence=2")
+        sqlx::query_scalar("SELECT status FROM thread.turns WHERE thread_id=$1 AND sequence=2")
             .bind(&draft.id)
             .fetch_one(&mut *f.connection().await)
             .await

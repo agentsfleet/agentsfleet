@@ -40,20 +40,18 @@ impl AuthoringFixture {
     }
 
     pub(super) async fn answer(&self) -> Option<String> {
-        sqlx::query_scalar(
-            "SELECT answer_text FROM setup.messages WHERE draft_id=$1 AND sequence=1",
-        )
-        .bind(Uuid7::parse(&self.run.draft_id).expect("draft id"))
-        .fetch_one(
-            &mut *self
-                .booted
-                .database
-                .acquire()
-                .await
-                .expect("answer read connection"),
-        )
-        .await
-        .expect("saved private message")
+        sqlx::query_scalar("SELECT answer_text FROM thread.turns WHERE thread_id=$1 AND sequence=1")
+            .bind(Uuid7::parse(&self.run.draft_id).expect("draft id"))
+            .fetch_one(
+                &mut *self
+                    .booted
+                    .database
+                    .acquire()
+                    .await
+                    .expect("answer read connection"),
+            )
+            .await
+            .expect("saved private message")
     }
 
     pub(super) async fn charges(&self) -> Vec<(i64, i64, i64, i64)> {

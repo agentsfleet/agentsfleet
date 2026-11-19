@@ -30,6 +30,10 @@ const SEQUENCE_EXHAUSTED: &str = "message sequence is exhausted";
 /// keeps the wallet bounded while the person keeps talking.
 const ADMIT: &str = include_str!("../sql/message/admit.sql");
 
+/// A setup draft's turn is a person's chat message, so `thread.turns.kind`
+/// stores the chat event type for it.
+const TURN_KIND: &str = af_wire::event::EventType::Chat.as_str();
+
 #[derive(sqlx::FromRow)]
 struct Admission {
     prior: Option<sqlx::types::Json<replay::Receipt>>,
@@ -153,6 +157,7 @@ impl Drafts {
             .bind(&digest)
             .bind(replay::REPLAY_WINDOW)
             .bind(request.save)
+            .bind(TURN_KIND)
             .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -221,6 +226,9 @@ pub(crate) async fn insert(connection: &mut PgConnection, insertion: Insertion<'
         .bind(model::tenant_model(insertion.model)?)
         .bind(insertion.text)
         .bind(insertion.save)
+        .bind(insertion.workspace)
+        .bind(&insertion.person.id)
+        .bind(TURN_KIND)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;

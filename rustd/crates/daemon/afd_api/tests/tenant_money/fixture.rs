@@ -80,6 +80,9 @@ impl Setup {
         sqlx::query("INSERT INTO setup.drafts(id,workspace_id,tenant_id,user_id,title,status,source_type,fleet_id,last_message_sequence,cancelled_through_sequence,resource_version,created_at,updated_at) VALUES($1,$2,$3,$4,'private title','closed','blank',$5,0,0,1,now(),now())")
             .bind(&self.draft).bind(&self.workspace).bind(&owner.tenant).bind(&self.creator).bind(&fleet)
             .execute(&mut *connection).await.expect("private draft linked to saved fleet");
+        // A draft's thread is written with it too, as draft creation writes it.
+        sqlx::query("INSERT INTO thread.threads(id,draft_id,fencing_token,run_expires_at,created_at,updated_at) VALUES($1,$1,0,clock_timestamp()-interval '1 millisecond',now(),now())")
+            .bind(&self.draft).execute(&mut *connection).await.expect("private draft's thread");
         fleet
     }
 

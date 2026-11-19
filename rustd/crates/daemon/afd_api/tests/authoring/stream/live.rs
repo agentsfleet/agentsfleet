@@ -52,7 +52,7 @@ impl Live {
             .to_owned();
         let document = json_body(created).await;
         let draft = Uuid7::parse(document["id"].as_str().expect("draft")).expect("draft UUIDv7");
-        sqlx::query("UPDATE setup.messages SET status='running' WHERE draft_id=$1")
+        sqlx::query("UPDATE thread.turns SET status='running' WHERE thread_id=$1")
             .bind(&draft)
             .execute(&mut *f.db.acquire().await.expect("message connection"))
             .await

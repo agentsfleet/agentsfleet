@@ -83,7 +83,7 @@ impl Attempt {
             .execute(&mut *connection)
             .await
             .expect("admitted attempt row");
-        sqlx::query("UPDATE setup.messages SET status='running' WHERE draft_id=$1")
+        sqlx::query("UPDATE thread.turns SET status='running' WHERE thread_id=$1")
             .bind(&attempt.draft.id)
             .execute(&mut *connection)
             .await

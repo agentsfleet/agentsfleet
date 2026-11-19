@@ -27,7 +27,7 @@ async fn complete_history_at_and_around_full_pages_dispatches_once_without_losin
             .expect("working notes census");
         assert_eq!(checkpoints, 0);
         let messages: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM setup.messages WHERE draft_id=$1")
+            sqlx::query_scalar("SELECT count(*) FROM thread.turns WHERE thread_id=$1")
                 .bind(attempt.draft.id)
                 .fetch_one(&mut *f.connection().await)
                 .await

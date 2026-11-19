@@ -89,7 +89,7 @@ async fn a_message_past_the_window_keeps_its_operation_id_after_its_receipt_is_s
     let created = f.drafts.create(f.access(), request, now()).await;
     let draft = created.expect("create").draft.id;
     sqlx::query(
-        "UPDATE setup.messages SET created_at = created_at - $2::interval WHERE draft_id=$1",
+        "UPDATE thread.turns SET created_at = created_at - $2::interval WHERE thread_id=$1",
     )
     .bind(&draft)
     .bind(PAST)

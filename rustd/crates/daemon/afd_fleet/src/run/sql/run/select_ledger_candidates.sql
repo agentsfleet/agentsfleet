@@ -14,7 +14,7 @@ WITH instant AS MATERIALIZED (
     AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
          OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
     -- Table-wide: an empty ledger answers before any fleet is read.
-    AND EXISTS (SELECT 1 FROM thread.turns WHERE settled_at IS NULL)
+    AND EXISTS (SELECT 1 FROM thread.turns WHERE settled_at IS NULL AND producer IS NOT NULL)
     -- Per fleet: only fleets with unsettled work reach the joins below, so the
     -- scan grows with the backlog rather than with the active fleets.
     AND EXISTS (

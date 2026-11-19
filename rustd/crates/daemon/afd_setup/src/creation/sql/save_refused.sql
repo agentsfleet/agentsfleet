@@ -1,2 +1,2 @@
-UPDATE setup.messages SET save_error_code = $3, updated_at = now()
- WHERE draft_id = $1 AND sequence = $2
+UPDATE thread.turns SET save_error_code = $3, updated_at = now()
+ WHERE thread_id = $1 AND sequence = $2

@@ -107,7 +107,7 @@ pub(super) async fn seed(f: &Fixture, runner: &Uuid7, run: &Uuid7, draft: &Uuid7
         .execute(&mut *connection)
         .await
         .expect("admitted fixture attempt");
-    sqlx::query("UPDATE setup.messages SET status='running' WHERE draft_id=$1")
+    sqlx::query("UPDATE thread.turns SET status='running' WHERE thread_id=$1")
         .bind(draft)
         .execute(&mut *connection)
         .await

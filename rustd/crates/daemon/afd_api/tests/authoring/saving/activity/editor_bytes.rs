@@ -27,8 +27,9 @@ async fn editor_bounds_complete_response_bytes_without_losing_recent_turns() {
 async fn seed_large_history(saved: &Saved, id: &Uuid7) {
     let mut connection = saved.case.base.db.acquire().await.expect("large history");
     for sequence in 1..=12_i64 {
-        sqlx::query("INSERT INTO authoring.messages(id,draft_id,sequence,operation_id,status,user_text,answer_text,created_at,updated_at,finished_at)
-            VALUES($1,$2,$3,$4,'completed',repeat('u',$5),repeat('a',$6),now(),now(),now())")
+        sqlx::query("INSERT INTO thread.turns(id,thread_id,workspace_id,sequence,operation_id,kind,actor,status,request_json,answer_text,created_at,updated_at,settled_at)
+            SELECT $1,d.id,d.workspace_id,$3,$4,'chat',u.oidc_subject,'completed',jsonb_build_object('message',repeat('u',$5)),repeat('a',$6),now(),now(),now()
+            FROM setup.drafts d JOIN identity.users u ON u.id=d.user_id WHERE d.id=$2")
             .bind(crate::authoring::mint()).bind(id).bind(sequence)
             .bind(crate::authoring::mint()).bind(USER_TEXT_BYTES).bind(ANSWER_TEXT_BYTES).execute(&mut *connection)
             .await.expect("valid report-sized history");

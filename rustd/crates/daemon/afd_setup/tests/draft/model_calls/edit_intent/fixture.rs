@@ -60,7 +60,7 @@ impl Case {
             },
         )
         .await;
-        sqlx::query("UPDATE setup.messages SET user_text=$2 WHERE draft_id=$1")
+        sqlx::query("UPDATE thread.turns SET request_json=jsonb_build_object('message',$2::text) WHERE thread_id=$1")
             .bind(&attempt.draft.id)
             .bind(text)
             .execute(&mut *f.connection().await)

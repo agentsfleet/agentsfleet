@@ -154,7 +154,7 @@ async fn a_refusal_while_a_dispatch_is_in_flight_shows_its_usage_as_unknown() {
         .expect_err("the pinned model is gone");
     assert_eq!(refused.code(), error_code::AUTHORING_MODEL);
     let reason: Option<String> =
-        sqlx::query_scalar("SELECT failure_reason FROM setup.messages WHERE draft_id=$1")
+        sqlx::query_scalar("SELECT failure_reason FROM thread.turns WHERE thread_id=$1")
             .bind(attempt.draft.id)
             .fetch_one(&mut *f.connection().await)
             .await

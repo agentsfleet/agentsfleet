@@ -95,7 +95,7 @@ async fn authoring_placement_refuses_a_foreign_runner() {
     assert_eq!(
         scalar(
             &f,
-            "SELECT count(*) FROM setup.messages WHERE draft_id = $1 AND status = 'queued'",
+            "SELECT count(*) FROM thread.turns WHERE thread_id = $1 AND status = 'queued'",
             &draft.id
         )
         .await,

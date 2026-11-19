@@ -3,24 +3,24 @@ SELECT m.sequence,
        m.save_error_code,
        m.operation_id AS operation_id,
        m.status,
-       m.user_text,
+       m.request_json->>'message' AS user_text,
        m.answer_text,
        m.candidate_id AS candidate_id,
        m.failure_reason,
        (SELECT d.failure_cause FROM setup.attempts a
           JOIN setup.dispatches d ON d.attempt_id = a.id
-         WHERE a.draft_id = m.draft_id AND a.message_sequence = m.sequence
+         WHERE a.draft_id = m.thread_id AND a.message_sequence = m.sequence
            AND d.failure_cause IS NOT NULL
          ORDER BY d.sequence DESC LIMIT 1) AS failure_cause,
        m.created_at,
-       m.finished_at,
+       m.settled_at AS finished_at,
        role.ordinal,
        u.reported_runtime_ms,
        u.input_tokens,
        u.output_tokens,
        u.provider_nanos,
        u.known
-  FROM setup.messages m
+  FROM thread.turns m
  CROSS JOIN generate_series(0, 1) AS role(ordinal)
   LEFT JOIN LATERAL (
         SELECT a.reported_runtime_ms,
@@ -39,12 +39,12 @@ SELECT m.sequence,
                                     WHERE e.attempt_id = a.id AND e.accounted_at IS NULL) AS known
           FROM setup.attempts a
           LEFT JOIN setup.dispatches d ON d.attempt_id = a.id
-         WHERE a.draft_id = m.draft_id AND a.message_sequence = m.sequence
+         WHERE a.draft_id = m.thread_id AND a.message_sequence = m.sequence
            AND EXISTS (SELECT 1 FROM billing.authoring_report_receipts rr
                         WHERE rr.attempt_id = a.id)
          GROUP BY a.id, a.reported_runtime_ms
        ) u ON true
- WHERE m.draft_id = $1
+ WHERE m.thread_id = $1
    AND (m.sequence, role.ordinal) > ($2::bigint, $3::integer)
    AND (role.ordinal = 0 OR m.status NOT IN ($4, $5) OR m.answer_text IS NOT NULL)
  ORDER BY m.sequence, role.ordinal

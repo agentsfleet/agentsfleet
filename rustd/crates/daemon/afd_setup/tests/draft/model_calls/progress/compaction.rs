@@ -158,9 +158,9 @@ async fn changed_or_removed_history_withholds_late_notes_but_settles_known_usage
             ContextState::Summarizing
         );
         let mutation = if remove {
-            "DELETE FROM setup.messages WHERE draft_id=$1 AND sequence < 181"
+            "DELETE FROM thread.turns WHERE thread_id=$1 AND sequence < 181"
         } else {
-            "UPDATE setup.messages SET answer_text='changed-private-history' WHERE draft_id=$1 AND sequence=1"
+            "UPDATE thread.turns SET answer_text='changed-private-history' WHERE thread_id=$1 AND sequence=1"
         };
         sqlx::query(mutation)
             .bind(&attempt.draft.id)

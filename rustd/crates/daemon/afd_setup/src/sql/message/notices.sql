@@ -4,7 +4,7 @@ SELECT m.sequence,
        m.failure_reason,
        (SELECT d.failure_cause FROM setup.attempts a
           JOIN setup.dispatches d ON d.attempt_id = a.id
-         WHERE a.draft_id = m.draft_id AND a.message_sequence = m.sequence
+         WHERE a.draft_id = m.thread_id AND a.message_sequence = m.sequence
            AND d.failure_cause IS NOT NULL
          ORDER BY d.sequence DESC LIMIT 1) AS failure_cause,
        u.reported_runtime_ms,
@@ -12,7 +12,7 @@ SELECT m.sequence,
        u.output_tokens,
        u.provider_nanos,
        u.known
-  FROM setup.messages m
+  FROM thread.turns m
   LEFT JOIN LATERAL (
         SELECT a.reported_runtime_ms,
                (COALESCE(sum((d.usage->>'input_tokens')::bigint), 0) +
@@ -30,11 +30,11 @@ SELECT m.sequence,
                                     WHERE e.attempt_id = a.id AND e.accounted_at IS NULL) AS known
           FROM setup.attempts a
           LEFT JOIN setup.dispatches d ON d.attempt_id = a.id
-         WHERE a.draft_id = m.draft_id AND a.message_sequence = m.sequence
+         WHERE a.draft_id = m.thread_id AND a.message_sequence = m.sequence
            AND EXISTS (SELECT 1 FROM billing.authoring_report_receipts rr
                         WHERE rr.attempt_id = a.id)
          GROUP BY a.id, a.reported_runtime_ms
        ) u ON true
- WHERE m.draft_id = $1
+ WHERE m.thread_id = $1
  ORDER BY m.sequence DESC
  LIMIT $2

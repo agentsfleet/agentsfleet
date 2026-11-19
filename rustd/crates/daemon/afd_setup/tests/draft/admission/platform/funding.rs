@@ -44,7 +44,7 @@ async fn an_unaffordable_input_price_refuses_before_reservation_or_dispatch() {
         12,
     )
     .await;
-    sqlx::query("UPDATE setup.messages SET answer_text=repeat('private evidence ',7000) WHERE draft_id=$1 AND sequence<=12")
+    sqlx::query("UPDATE thread.turns SET answer_text=repeat('private evidence ',7000) WHERE thread_id=$1 AND sequence<=12")
         .bind(draft.id).execute(&mut *f.connection().await).await.expect("twelve valid prior exchanges");
     let error = calls
         .call(

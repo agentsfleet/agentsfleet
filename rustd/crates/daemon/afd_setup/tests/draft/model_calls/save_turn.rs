@@ -23,7 +23,7 @@ async fn a_save_message_refuses_what_the_model_proposes_and_replays_the_refusal(
         },
     )
     .await;
-    sqlx::query("UPDATE setup.messages SET save_requested = true WHERE draft_id = $1")
+    sqlx::query("UPDATE thread.turns SET save_requested = true WHERE thread_id = $1")
         .bind(&a.draft.id)
         .execute(&mut *f.connection().await)
         .await

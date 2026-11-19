@@ -1,1 +1,1 @@
-SELECT sequence FROM setup.messages WHERE id = $1 AND draft_id = $2
+SELECT sequence FROM thread.turns WHERE id = $1 AND thread_id = $2

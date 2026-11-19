@@ -56,7 +56,7 @@ async fn missing_or_invalid_model_settings_deny_renewal_with_durable_recovery() 
         assert_eq!(error.current_state(), Some("unavailable"));
         assert_eq!(snapshot(&f, &a).await, before);
         let saved: (String, String) =
-            sqlx::query_as("SELECT status,failure_reason FROM setup.messages WHERE draft_id=$1")
+            sqlx::query_as("SELECT status,failure_reason FROM thread.turns WHERE thread_id=$1")
                 .bind(&a.draft.id)
                 .fetch_one(&mut *f.connection().await)
                 .await

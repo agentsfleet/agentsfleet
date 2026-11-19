@@ -38,7 +38,7 @@ async fn draft_with_message(f: &Fixture, key: &Uuid7) -> Uuid7 {
 }
 
 async fn messages(f: &Fixture, draft: &Uuid7) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM setup.messages WHERE draft_id=$1")
+    sqlx::query_scalar("SELECT count(*) FROM thread.turns WHERE thread_id=$1")
         .bind(draft)
         .fetch_one(&mut *f.connection().await)
         .await

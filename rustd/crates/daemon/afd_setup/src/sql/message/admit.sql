@@ -1,7 +1,7 @@
 WITH prior AS MATERIALIZED (
     SELECT r.user_id AS user_id, r.request_digest,
            r.resource_id,
-           EXISTS (SELECT 1 FROM setup.messages m WHERE m.id = r.resource_id) AS live
+           EXISTS (SELECT 1 FROM thread.turns m WHERE m.id = r.resource_id) AS live
       FROM setup.replay_receipts r
      WHERE r.scope = $11 AND r.operation_id = $4
        AND r.created_at > statement_timestamp() - $13::interval
@@ -16,11 +16,14 @@ WITH prior AS MATERIALIZED (
        AND EXISTS (SELECT 1 FROM eligible)
     RETURNING id
 ), message AS (
-    INSERT INTO setup.messages
-        (id, draft_id, sequence, operation_id, status, tenant_model_id,
-         user_text, save_requested, created_at, updated_at)
-    SELECT $3, $1, e.sequence, $4, $5, $6,
-           $7, $14, now(), now()
+    -- A setup turn draws its sequence from the draft, names its sender by subject and
+    -- carries its text as the body a steer carries.
+    INSERT INTO thread.turns
+        (id, thread_id, workspace_id, sequence, operation_id, kind, actor, status,
+         tenant_model_id, request_json, save_requested, created_at, updated_at)
+    SELECT $3, $1, $9, e.sequence, $4, $15,
+           (SELECT u.oidc_subject FROM identity.users u WHERE u.id = $10), $5, $6,
+           jsonb_build_object('message', $7::text), $14, now(), now()
       -- Finish deleting an expired receipt before its unique key is reused.
       FROM eligible e CROSS JOIN (SELECT count(*) FROM expired) expired_done
     RETURNING id
@@ -41,6 +44,6 @@ WITH prior AS MATERIALIZED (
     RETURNING last_message_sequence
 )
 SELECT (SELECT row_to_json(prior) FROM prior) AS prior,
-       (SELECT m.sequence FROM setup.messages m JOIN prior p ON m.id = p.resource_id
-         WHERE m.draft_id = $1) AS prior_sequence,
+       (SELECT m.sequence FROM thread.turns m JOIN prior p ON m.id = p.resource_id
+         WHERE m.thread_id = $1) AS prior_sequence,
        (SELECT last_message_sequence FROM advanced) AS sequence

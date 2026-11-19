@@ -8,7 +8,7 @@ SELECT d.id AS id,
        d.tenant_id AS tenant_id,
        d.user_id AS user_id
   FROM setup.drafts d
-  JOIN setup.messages m ON m.draft_id = d.id
+  JOIN thread.turns m ON m.thread_id = d.id
   JOIN host h ON h.platform_owned OR h.tenant_id = d.tenant_id
  WHERE d.status = $1 AND m.status = $2 AND m.sequence > d.cancelled_through_sequence
    -- Only the newest attempt above the watermark can still be running, and

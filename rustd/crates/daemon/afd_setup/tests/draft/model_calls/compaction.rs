@@ -26,7 +26,7 @@ impl Biller for ChangedHistory {
     async fn check(&self, ask: &Ask) -> afd_billing::Result<Funds> {
         let funds = self.ledger.check(ask).await?;
         // The first preparation has committed and dropped its connection here.
-        let written = sqlx::query("UPDATE setup.messages SET answer_text='changed after measurement' WHERE draft_id=$1 AND sequence=1")
+        let written = sqlx::query("UPDATE thread.turns SET answer_text='changed after measurement' WHERE thread_id=$1 AND sequence=1")
             .bind(&self.draft)
             .execute(&mut *self.db.acquire().await.expect("biller boundary releases the pool"))
             .await.expect("controlled source change between measured funding and dispatch");
@@ -126,7 +126,7 @@ pub(in crate::draft) async fn history_for(
     prior: i64,
 ) {
     let mut connection = f.connection().await;
-    sqlx::query("UPDATE setup.messages SET sequence=$2 WHERE draft_id=$1")
+    sqlx::query("UPDATE thread.turns SET sequence=$2 WHERE thread_id=$1")
         .bind(draft)
         .bind(prior + 1)
         .execute(&mut *connection)
@@ -145,7 +145,7 @@ pub(in crate::draft) async fn history_for(
         .await
         .expect("pin draft sequence");
     for sequence in 1..=prior {
-        sqlx::query("INSERT INTO setup.messages(id,draft_id,sequence,operation_id,status,user_text,answer_text,created_at,updated_at) VALUES($1,$2,$3,$1,'completed',$4,$5,now(),now())")
+        sqlx::query("INSERT INTO thread.turns(id,thread_id,workspace_id,sequence,operation_id,kind,actor,status,request_json,answer_text,created_at,updated_at) SELECT $1,d.id,d.workspace_id,$3,$1,'chat',u.oidc_subject,'completed',jsonb_build_object('message',$4::text),$5,now(),now() FROM setup.drafts d JOIN identity.users u ON u.id=d.user_id WHERE d.id=$2")
             .bind(mint()).bind(draft).bind(sequence)
             .bind(format!("initial-reference investigation step {sequence}: {}", TRACE.repeat(8)))
             .bind(format!("completed evidence {}", TRACE.repeat(2))).execute(&mut *connection).await.expect("owned complete exchange");
@@ -244,7 +244,7 @@ async fn assert_saved(f: &Fixture, attempt: &Attempt, summaries: i64) {
         saved.pointer("/summary/goal").and_then(Value::as_str),
         Some("finish the original investigation")
     );
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM setup.messages WHERE draft_id=$1")
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.turns WHERE thread_id=$1")
         .bind(&attempt.draft.id)
         .fetch_one(&mut *f.connection().await)
         .await

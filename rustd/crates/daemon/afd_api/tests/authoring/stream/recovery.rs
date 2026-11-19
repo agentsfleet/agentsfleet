@@ -126,7 +126,7 @@ async fn draft_stream_resyncs_when_its_subscription_ends() {
         heartbeat.as_ref(),
         b"event: heartbeat\ndata: {\"kind\":\"heartbeat\"}\n\n"
     );
-    live.mutate("UPDATE setup.messages SET status='completed' WHERE draft_id=$1")
+    live.mutate("UPDATE thread.turns SET status='completed' WHERE thread_id=$1")
         .await;
     live.mutate("UPDATE setup.drafts SET status='closed',closed_at=now(),expires_at=now()+interval '1 day' WHERE id=$1").await;
     assert!(

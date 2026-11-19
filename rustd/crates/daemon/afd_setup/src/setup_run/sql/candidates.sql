@@ -12,9 +12,10 @@ WITH host AS MATERIALIZED (
   -- A tenant's runner is offered only its tenant's drafts, and an unknown runner none.
   SELECT platform_owned, tenant_id FROM runner.runners WHERE id = $6
 ), waiting AS (
-  SELECT DISTINCT m.draft_id
-    FROM setup.messages m
-   WHERE m.status IN ($2, $3)
+  -- A setup turn has no producer; an unsettled one is queued or running.
+  SELECT DISTINCT m.thread_id AS draft_id
+    FROM thread.turns m
+   WHERE m.status IN ($2, $3) AND m.producer IS NULL AND m.settled_at IS NULL
 )
 SELECT d.id AS id, d.workspace_id AS workspace_id, d.tenant_id AS tenant_id,
        d.user_id AS user_id
@@ -23,8 +24,8 @@ SELECT d.id AS id, d.workspace_id AS workspace_id, d.tenant_id AS tenant_id,
   JOIN host h ON h.platform_owned OR h.tenant_id = d.tenant_id
   CROSS JOIN LATERAL (
     SELECT m.id, m.status, m.tenant_model_id, m.created_at
-      FROM setup.messages m
-     WHERE m.draft_id = d.id AND m.sequence > d.cancelled_through_sequence
+      FROM thread.turns m
+     WHERE m.thread_id = d.id AND m.sequence > d.cancelled_through_sequence
        AND m.status IN ($2, $3)
      ORDER BY m.sequence
      LIMIT 1

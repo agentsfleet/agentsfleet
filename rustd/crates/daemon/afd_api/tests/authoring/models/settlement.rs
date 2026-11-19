@@ -33,7 +33,7 @@ async fn runner_renews_and_accounts_after_creator_deletes_private_text() {
     assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
     let input = json!({"kind":"accounting","fence":"1","report_id":mint(),"outcome":"completed","usage":usage});
     replay_accounting(&model, &reports, &input).await;
-    let private: i64 = sqlx::query_scalar("SELECT count(*) FROM setup.messages WHERE draft_id=$1")
+    let private: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.turns WHERE thread_id=$1")
         .bind(&r.draft)
         .fetch_one(&mut *r.f.db.acquire().await.expect("private read"))
         .await
