@@ -246,3 +246,6 @@ fn encrypted() -> Result<Encrypted> {
 
 #[path = "upload_tests.rs"]
 mod upload_tests;
+
+#[path = "capture_tests.rs"]
+mod capture_tests;
