@@ -103,6 +103,42 @@ That run used the `fast-profile` build on a MacBook, so its timings are not comp
 Its nearest-rank median was 5.590 seconds, and its last fleet resumed 6.277 seconds after lease expiry.
 A matched `dist` run on the rig remains due.
 
+### One lease machinery and one inference path
+
+Indy widened this pull request on Nov 19, 2026: "why are these different? I undestand where it landed. I just need one."
+Setup chats called the model from the daemon, while fleet runs call it from the runner through `guffbolt`.
+He also asked for reuse: "Most platform infrastructure or plumbing work is there, i need you to use that."
+
+The approved structure keeps conversations separate and shares everything from the lease down.
+`runner.fleet_slots` becomes `runner.slots`, owned by either a fleet or a draft, and `runner.leases` names `slot_id` and `work_id`.
+Indy: "1. Structure - Yes agree 2. everything into #853 3. CI limit okay inrease 4. Okay acceptance post-merge".
+
+The lease statements split into shared statements plus per-kind statements in one transaction; Indy chose this over draft-only statements: "How about B."
+The fleet claim, renewal and report paths gain statements, so their benchmarks are due again.
+Setup follows the fleet rules: "slot_id change is fine", an expired lease is re-offered, and the wallet gate replaces reservation.
+
+On reservation Indy said: "you need to follow the fleet gate balance of settlement. Reserving upfront is politaclly stupid."
+The setup stop rules go, by his choice of "Drop them, natural loop": no call cap, correction limit, output cap or per-call timeout.
+The daemon profiles lose `[inference]` and `[authoring.turn]`; the runner profile's inference settings govern both kinds.
+
+The setup tool follows the durable task's `propose_change`: the root loop offers `propose_setup` and handles the call.
+The runner validates the proposal, and the accepted setup rides the run report beside the answer; Indy: "i dont want daeomon in".
+Edit intent reuses the existing decision call, by his choice of "Approve, reuse decision call", so `authoring.edit_decisions` stays.
+
+Dropped tables: `authoring.attempts`, `authoring.dispatches`, `authoring.activity_receipts`, `authoring.answer_receipts`, `billing.authoring_report_receipts` and `memory.context_checkpoints`.
+Acceptance for this pull request runs after merge, once a trusted development deploy signs a `0.78.0` toolbox.
+None of this redesign is built yet; this entry records the decisions, and later entries record each step's evidence.
+
+### Coverage at `a76c03993`
+
+The first complete grade of this branch failed both floors in [run 44461889749](https://github.com/agentsfleet/agentsfleet/actions/runs/44461889749).
+Changed lines: 9,290 of 9,974 covered, 93.1422%; whole tree: 115,338 of 118,115 lines, 97.6489%.
+Earlier runs never reached this grade, because a coverage shard was cancelled at its twenty-minute limit after its tests passed.
+
+Of the 684 uncovered changed lines, 368 are in `afr_supervisor`, 140 in `afd_fleet` and 73 in `afr_agent`.
+Most are checkpoint capture and restore paths: `recovery/turn/capture.rs` has 92 and `recovery/turn/session.rs` has 64.
+Indy's greater-than-99% requirement allows at most 99 uncovered changed lines, and 169 of 356 touched files are under 99.01%.
+
 ### Maintenance and fixture follow-up
 
 The shared sweeper driver read its next interval before the completed pass updated its backlog state.
