@@ -27,7 +27,7 @@ pub(super) const ATTEMPT: &str = include_str!("attempt.sql");
 ///
 /// `$1` draft, `$2` sequence, `$3` status, `$4` answer, `$5` candidate,
 /// `$6` failure reason, `$7` the running status.
-pub(super) const MESSAGE: &str = include_str!("message.sql");
+pub(crate) const MESSAGE: &str = include_str!("message.sql");
 
 /// Replaces an unknown-usage failure once its usage became known.
 ///

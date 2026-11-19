@@ -82,6 +82,7 @@ impl Drafts {
         let draft = read::project(&mut tx, locked).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
         if request.message.is_some() && !replayed {
+            self.wake_setup(&id).await;
             let step = AuthoringStep::MessageAccepted { draft_id: id };
             self.reached(access, step);
         }

@@ -26,6 +26,7 @@ pub mod coverage;
 pub(crate) mod deadline;
 mod decision;
 mod deliver;
+pub mod draft;
 pub mod envelope;
 pub mod event;
 pub mod fence;

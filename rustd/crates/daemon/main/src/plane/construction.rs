@@ -39,7 +39,8 @@ impl Common {
             afd_authoring::Drafts::new(parts.database.clone(), Entropy::new(), Arc::clone(&biller))
                 .with_analytics(parts.analytics.clone())
                 .with_clock(parts.runtime.clock)
-                .with_turn_policy(parts.runtime.operations.authoring);
+                .with_turn_policy(parts.runtime.operations.authoring)
+                .with_bus(parts.bus.clone());
         Self {
             providers,
             github_client,

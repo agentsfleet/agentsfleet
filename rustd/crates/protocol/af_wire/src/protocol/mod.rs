@@ -6,8 +6,51 @@ mod up;
 pub use down::{Answer, Down, RenewalAnswer};
 pub use up::{Renewal, Up};
 
-/// Negotiated before the server accepts a runner session.
-pub const VERSION: &str = "agentsfleet.runner.v2";
+/// The newest revision, negotiated before the server accepts a runner session.
+///
+/// It adds draft-owned leases on the common lease path: a v3 runner may be
+/// offered a [`crate::lease::LeasePayload`] whose `owner` names a setup draft.
+/// The daemon accepts every [`Revision`] and answers the one the runner sent.
+pub const VERSION: &str = "agentsfleet.runner.v3";
+/// The revision before setup rode the common lease path: its runner is never
+/// offered a draft-owned lease, and keeps the separate authoring lease.
+pub const VERSION_V2: &str = "agentsfleet.runner.v2";
+
+/// One protocol revision a daemon accepts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Revision {
+    /// [`VERSION_V2`].
+    V2,
+    /// [`VERSION`].
+    V3,
+}
+
+impl Revision {
+    /// The header spelling of this revision.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::V2 => VERSION_V2,
+            Self::V3 => VERSION,
+        }
+    }
+
+    /// The revision `raw` names, or `None` for one this build does not speak.
+    #[must_use]
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            VERSION_V2 => Some(Self::V2),
+            VERSION => Some(Self::V3),
+            _ => None,
+        }
+    }
+
+    /// Whether a runner on this revision may be offered a draft-owned lease.
+    #[must_use]
+    pub const fn offers_draft_leases(self) -> bool {
+        matches!(self, Self::V3)
+    }
+}
 /// Application version; independent of the negotiated HTTP version.
 pub const VERSION_HEADER: &str = "agentsfleet-runner-protocol";
 /// Which independently flow-controlled request this stream serves.

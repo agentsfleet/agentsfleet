@@ -22,13 +22,27 @@ impl Drafts {
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         read::lock(&mut tx, access, &person, id).await?;
-        purge(&mut tx, id).await?;
+        let killed = purge(&mut tx, id).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
+        self.announce_cancelled(killed).await;
         Ok(())
     }
 }
 
-pub(crate) async fn purge(connection: &mut PgConnection, id: &Uuid7) -> Result<()> {
+/// Deletes the draft and its active draft leases, answering each deleted
+/// lease's runner and id so the caller can tell the runner to stop.
+pub(crate) async fn purge(
+    connection: &mut PgConnection,
+    id: &Uuid7,
+) -> Result<Vec<(Uuid7, Uuid7)>> {
+    // No foreign key reaches runner.leases from a draft, so its live leases go here;
+    // its slot goes with the draft's own cascade.
+    let killed: Vec<(Uuid7, Uuid7)> = sqlx::query_as(crate::setup_lease::DELETE_LEASES)
+        .bind(id)
+        .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
+        .fetch_all(&mut *connection)
+        .await
+        .map_err(query(CONTEXT))?;
     sqlx::query(sql::draft::WIPE_DISPATCHES)
         .bind(id)
         .execute(&mut *connection)
@@ -39,5 +53,5 @@ pub(crate) async fn purge(connection: &mut PgConnection, id: &Uuid7) -> Result<(
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;
-    Ok(())
+    Ok(killed)
 }

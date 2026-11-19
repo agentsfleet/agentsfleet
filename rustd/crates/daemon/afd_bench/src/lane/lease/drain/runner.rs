@@ -317,6 +317,7 @@ const fn chunk(seq: u64) -> ActivityFrame<'static> {
 fn processed<'a>(lease: &'a LeasePayload<'a>, folded_through: Option<i64>) -> ReportRequest<'a> {
     ReportRequest {
         folded_through_sequence: folded_through,
+        setup: None,
         task: None,
         lease_id: Cow::Borrowed(&lease.lease_id),
         event_id: Cow::Borrowed(&lease.event.event_id),

@@ -205,6 +205,7 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
     .await;
     let failed = ReportRequest {
         folded_through_sequence: None,
+        setup: None,
         outcome: Outcome::FleetError,
         failure_detail: Cow::Borrowed("the child exited 1"),
         ..processed(&held, None)
@@ -261,6 +262,7 @@ async fn test_a_runner_with_no_lease_or_no_host_row_gets_no_work() {
                 recovery: None,
             },
             AcceptedKinds::ALL,
+            false,
             &mut af_observability::verb_span::VerbClock::untimed(),
             |_lease, _metadata| (),
         )

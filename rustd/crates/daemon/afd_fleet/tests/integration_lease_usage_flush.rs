@@ -98,6 +98,7 @@ async fn lines_across_renewals_and_the_report_are_billed_once_each() {
     renew(&held, &plane, LINES_MAX, 2 * LINES_MAX).await;
     let report = ReportRequest {
         folded_through_sequence: None,
+        setup: None,
         requests: requests(&held, REPORT_FROM, LINES),
         ..processed(&held, None)
     };
@@ -148,6 +149,7 @@ async fn a_report_whose_lines_write_the_cache_counts_the_writes() {
     };
     let report = ReportRequest {
         folded_through_sequence: None,
+        setup: None,
         requests: RequestLines(vec![line(0), line(1)]),
         ..processed(&held, None)
     };

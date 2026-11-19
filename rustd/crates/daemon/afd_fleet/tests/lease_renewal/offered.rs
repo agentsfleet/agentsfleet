@@ -31,6 +31,7 @@ async fn test_a_poll_accepting_both_kinds_places_the_owed_authoring_turn() {
                 recovery: None,
             },
             AcceptedKinds::ALL,
+            false,
             &mut af_observability::verb_span::VerbClock::untimed(),
             |lease, _metadata| match lease {
                 TaggedLease::Authoring(lease) => Some(lease),

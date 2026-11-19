@@ -24,6 +24,11 @@ use crate::{
     error::{self, ErrorKind},
 };
 
+/// The protocol revision this runner speaks. It stays v2 until the setup lease
+/// agent lands: a v3 runner is offered draft-owned leases, which this runner
+/// cannot yet run.
+const SPOKEN: &str = protocol::VERSION_V2;
+
 pub(crate) struct Pipe {
     pub(crate) writer: DuplexStream,
     pub(crate) reader: Reader<IncomingReader>,
@@ -116,7 +121,7 @@ impl Opening<'_> {
         body: Outgoing,
     ) -> Result<Request<Outgoing>> {
         let mut request = Request::post(self.config.endpoint.uri().clone())
-            .header(protocol::VERSION_HEADER, protocol::VERSION)
+            .header(protocol::VERSION_HEADER, SPOKEN)
             .header(protocol::STREAM_KIND_HEADER, kind.as_str());
         if let Some(owner) = owner {
             request = request.header(protocol::SESSION_HEADER, owner.as_str());
@@ -264,7 +269,7 @@ impl Opening<'_> {
             .headers()
             .get(protocol::VERSION_HEADER)
             .and_then(|value| value.to_str().ok())
-            != Some(protocol::VERSION)
+            != Some(SPOKEN)
         {
             return Err(ErrorKind::StreamProtocol.into());
         }

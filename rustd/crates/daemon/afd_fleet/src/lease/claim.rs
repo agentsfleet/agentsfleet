@@ -16,11 +16,16 @@ impl LeaseService {
     ///
     /// # Errors
     /// Preserves host selection, policy, billing and durable placement failures.
+    ///
+    /// `draft_leases` is whether the runner's protocol revision takes a
+    /// draft-owned lease: such a runner gets setup work on the common lease
+    /// path ([`crate::lease::draft`]), any other the authoring attempt path.
     pub async fn claim_with<T, F>(
         &self,
         drafts: &afd_authoring::Drafts,
         mut request: OfferRequest<'_>,
         accepted: AcceptedKinds,
+        draft_leases: bool,
         clock: &mut VerbClock<OfferStage>,
         mut emit: F,
     ) -> Result<Option<T>>
@@ -38,6 +43,19 @@ impl LeaseService {
         };
         for kind in ticket.order() {
             match kind {
+                LeaseKind::Authoring if draft_leases => {
+                    clock.restart_if_staged();
+                    if let Some(offer) = self
+                        .claim_draft(drafts, request.runner, ticket, request.now)
+                        .await?
+                    {
+                        clock.mark(OfferStage::Claim);
+                        let metadata = offer.offered();
+                        let encoded = emit(TaggedLease::Fleet(Box::new(offer.payload())), metadata);
+                        clock.mark(OfferStage::Encode);
+                        return Ok(Some(encoded));
+                    }
+                }
                 LeaseKind::Authoring => {
                     // A fleet claim the gates refused earlier in this pass
                     // keeps its own span; this claim starts a fresh one, so
@@ -50,6 +68,7 @@ impl LeaseService {
                             expires_at: lease.expires_at,
                             target: None,
                             reported: None,
+                            draft: None,
                         };
                         let encoded = emit(TaggedLease::Authoring(Box::new(lease)), metadata);
                         clock.mark(OfferStage::Encode);

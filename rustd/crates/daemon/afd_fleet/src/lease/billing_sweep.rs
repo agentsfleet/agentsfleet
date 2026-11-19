@@ -1,4 +1,4 @@
-//! The billing relay's two passes over fleet leases: bill the last slice of a
+//! The billing relay's two passes over leases, a fleet's or a draft's: bill the last slice of a
 //! lease that ended unreported ([`bill_expired_leases`]), and settle every
 //! logged line ([`settle_lines`]).
 //!
@@ -263,10 +263,16 @@ async fn log_last_slice(
     };
     let pricing = Pricing::runtime_only(posture, billed.provider, billed.model);
     // A matched row is the probe row, and the slice is read off it, so it is
-    // always present here.
-    let settlement = slice
-        .into_slice()
-        .map_or(Ok(None), |slice| pricing.settlement(lease, slice, &[]))?;
+    // always present here. A draft's lease bills its setup work, not a fleet.
+    let settlement = if billed.draft_id.is_some() {
+        slice.into_draft_slice().map_or(Ok(None), |slice| {
+            pricing.draft_settlement(lease, slice, &[])
+        })?
+    } else {
+        slice
+            .into_slice()
+            .map_or(Ok(None), |slice| pricing.settlement(lease, slice, &[]))?
+    };
     usage::log_measured(&mut transaction, entropy, now, settlement.as_ref()).await?;
     transaction.commit().await.map_err(query(CONTEXT_EXPIRED))?;
     Ok(settlement)
@@ -275,6 +281,8 @@ async fn log_last_slice(
 /// What an expired lease's last slice is priced under, by column name.
 #[derive(Debug, sqlx::FromRow)]
 struct ExpiredLease {
+    /// Set on a draft-owned lease.
+    draft_id: Option<Uuid7>,
     posture: String,
     provider: String,
     model: String,

@@ -16,11 +16,11 @@ use crate::{
     types::{CANCELLED, DraftState, EDITING, QUEUED},
 };
 
-pub(super) struct Hint {
-    pub(super) id: Uuid7,
-    pub(super) workspace_id: Uuid7,
-    pub(super) tenant_id: Uuid7,
-    pub(super) user_id: Uuid7,
+pub(crate) struct Hint {
+    pub(crate) id: Uuid7,
+    pub(crate) workspace_id: Uuid7,
+    pub(crate) tenant_id: Uuid7,
+    pub(crate) user_id: Uuid7,
 }
 
 /// [`sql::CANDIDATES`]'s row, by column name.
@@ -86,13 +86,44 @@ pub(super) async fn authorize(
     hint: &Hint,
     owed: &mut Owed,
 ) -> Result<Authorized> {
-    if !held(connection, hint).await? {
-        return Ok(Authorized::Locked);
-    }
-    Ok(selected(connection, hint, owed)
+    let draft = match lock_draft(connection, hint, owed).await? {
+        DraftLock::Locked(draft) => *draft,
+        DraftLock::Passed => return Ok(Authorized::Passed),
+        DraftLock::Busy => return Ok(Authorized::Locked),
+    };
+    Ok(select_message(connection, draft)
         .await?
         .map_or(Authorized::Passed, |selected| {
             Authorized::Selected(Box::new(selected))
+        }))
+}
+
+/// What taking one candidate's creator and draft found, before any message is
+/// chosen: the step the authoring attempt claim and the draft lease claim share.
+pub(crate) enum DraftLock {
+    /// The creator still holds the draft, which is locked for this claim.
+    Locked(Box<read::Locked>),
+    /// Nothing this candidate may admit now.
+    Passed,
+    /// Another transaction holds its creator or its draft.
+    Busy,
+}
+
+/// Takes the creator's row and the draft's without waiting, proves the
+/// creator still holds the draft, and locks it; a revoked creator's queued
+/// messages are cancelled on the way.
+pub(crate) async fn lock_draft(
+    connection: &mut PgConnection,
+    hint: &Hint,
+    owed: &mut Owed,
+) -> Result<DraftLock> {
+    if !held(connection, hint).await? {
+        return Ok(DraftLock::Busy);
+    }
+    Ok(selected(connection, hint, owed)
+        .await?
+        .map_or(DraftLock::Passed, |draft| {
+            DraftLock::Locked(Box::new(draft))
         }))
 }
 
@@ -136,7 +167,7 @@ async fn selected(
     connection: &mut PgConnection,
     hint: &Hint,
     owed: &mut Owed,
-) -> Result<Option<Selected>> {
+) -> Result<Option<read::Locked>> {
     let Some(subject) = subject(connection, hint).await? else {
         return Ok(None);
     };
@@ -154,12 +185,11 @@ async fn selected(
         }
         Err(error) => return Err(error),
     };
-    let locked = match read::lock(connection, access, &person, &hint.id).await {
-        Ok(locked) => locked,
-        Err(error) if error.code() == error_code::AUTHORING_NOT_FOUND => return Ok(None),
-        Err(error) => return Err(error),
-    };
-    select_message(connection, locked).await
+    match read::lock(connection, access, &person, &hint.id).await {
+        Ok(locked) => Ok(Some(locked)),
+        Err(error) if error.code() == error_code::AUTHORING_NOT_FOUND => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 async fn subject(connection: &mut PgConnection, hint: &Hint) -> Result<Option<String>> {

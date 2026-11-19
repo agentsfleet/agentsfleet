@@ -8,7 +8,8 @@ use afd_fleet::lease::{Offered, Reported, Target};
 use jiff::Timestamp;
 use std::collections::HashMap;
 
-/// A target exists only for fleet work; authoring uses its separate private progress service.
+/// A target exists only for fleet work; a draft's lease names its draft, and an authoring
+/// attempt uses its separate private progress service.
 #[derive(Debug, Clone)]
 pub(super) struct LeaseRecord {
     pub(super) id: Uuid7,
@@ -17,6 +18,9 @@ pub(super) struct LeaseRecord {
     pub(super) cancelled: bool,
     /// What the lease's report reads, kept from the offer.
     pub(super) reported: Option<Reported>,
+    /// The draft a draft-owned lease runs a turn of: its renewals, report and
+    /// live answer take the draft's path.
+    pub(super) draft: Option<Uuid7>,
 }
 
 impl From<Offered> for LeaseRecord {
@@ -27,6 +31,7 @@ impl From<Offered> for LeaseRecord {
             target: offered.target,
             cancelled: false,
             reported: offered.reported,
+            draft: offered.draft.map(|target| target.draft_id),
         }
     }
 }
@@ -41,6 +46,7 @@ struct LiveLeaseRow {
     event_created_at: Option<jiff_sqlx::Timestamp>,
     fencing_token: i64,
     cancelled: bool,
+    draft_id: Option<Uuid7>,
 }
 
 impl TryFrom<&LiveLeaseRow> for LeaseRecord {
@@ -65,6 +71,7 @@ impl TryFrom<&LiveLeaseRow> for LeaseRecord {
             target,
             cancelled: row.cancelled,
             reported: None,
+            draft: row.draft_id.clone(),
         })
     }
 }

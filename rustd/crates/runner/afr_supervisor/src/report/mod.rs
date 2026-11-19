@@ -118,6 +118,7 @@ pub(crate) fn report<'a>(
         // Only a processed run's folds settle with its answer; any other
         // ending leaves them for the fleet's next run.
         folded_through_sequence: folded_through(ending, outcome),
+        setup: None,
         memory: Vec::new(),
     }
 }

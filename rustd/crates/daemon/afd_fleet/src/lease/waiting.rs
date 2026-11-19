@@ -48,6 +48,7 @@ pub async fn waiting(
         .bind(MessageState::Queued.as_str())
         .bind(runners)
         .bind(resume_from_checkpoint)
+        .bind(MessageState::Running.as_str())
         .fetch_one(connection)
         .await
         .map_err(query(CONTEXT_WAITING))

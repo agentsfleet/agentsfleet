@@ -55,6 +55,7 @@ pub(crate) fn report<'a>(
 ) -> ReportRequest<'a> {
     ReportRequest {
         folded_through_sequence: None,
+        setup: None,
         task: None,
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
         event_id: Cow::Borrowed(held.event_id.as_str()),

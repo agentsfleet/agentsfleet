@@ -5,7 +5,7 @@ mod prepare;
 mod receipt;
 mod retained;
 mod settle;
-mod sql;
+pub(crate) mod sql;
 mod usage;
 pub(crate) mod verdict;
 
@@ -71,7 +71,7 @@ impl Drafts {
             && let (Some(creations), Some(private)) = (creations, private.as_ref())
         {
             // Keep optional setup writes out of the accounting future's inline size.
-            announcement.append(Box::pin(creations.save_turn_on(&mut tx, private)).await?);
+            announcement.append(Box::pin(creations.save_turn_on(&mut tx, private.into())).await?);
         }
         let streams = creations.map(crate::Creations::activity_streams);
         afd_events::activity::commit(tx, announcement, streams.as_ref())
@@ -79,7 +79,7 @@ impl Drafts {
             .map_err(query(CONTEXT))?;
         owed.settle(&self.analytics);
         if let Some(creations) = creations {
-            Box::pin(creations.finish_saved_turn(&attempt)).await?;
+            Box::pin(creations.finish_saved_turn(&(&attempt).into())).await?;
         }
         Ok(ack)
     }

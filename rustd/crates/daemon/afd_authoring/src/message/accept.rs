@@ -113,6 +113,7 @@ impl Drafts {
         };
         tx.commit().await.map_err(query(CONTEXT))?;
         if !accepted.replayed {
+            self.wake_setup(id).await;
             let draft_id = id.clone();
             let step = AuthoringStep::MessageAccepted { draft_id };
             self.reached(access, step);

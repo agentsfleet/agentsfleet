@@ -1,7 +1,7 @@
 //! One retained fleet identity moves through bounded setup requests and checked activation.
 
 mod activate;
-mod chat_save;
+pub(crate) mod chat_save;
 mod conversations;
 mod delete;
 mod patch;
@@ -27,7 +27,7 @@ pub use system::SystemSetup;
 /// Native Save and explicit setup recovery; it never spawns a creation worker.
 #[derive(Debug, Clone)]
 pub struct Creations {
-    setup: Setup,
+    pub(crate) setup: Setup,
     admissions: Admissions,
     grants: IntegrationGrants,
     schedules: afd_cron::Schedules,

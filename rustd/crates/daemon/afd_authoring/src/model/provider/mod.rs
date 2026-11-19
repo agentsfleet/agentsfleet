@@ -23,6 +23,7 @@ pub(in crate::model) use dispatch::{Outbound, complete};
 pub(in crate::model) use rejections::validate_key;
 
 pub use network::Network;
+pub(in crate::model) use tools::tool as setup_tool;
 
 /// The Responses API keys and item kinds this adapter both writes and reads.
 ///

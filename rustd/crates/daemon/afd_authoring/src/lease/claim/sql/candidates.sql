@@ -20,6 +20,9 @@ SELECT d.id AS id,
                             ORDER BY a.message_sequence DESC
                             LIMIT 1) latest
                     WHERE latest.status <> ALL($3::text[]))
+   -- Nor one a draft lease holds: a live slot's id is its draft's.
+   AND NOT EXISTS (SELECT 1 FROM runner.slots s
+                    WHERE s.id = d.id AND s.lease_expires_at > statement_timestamp())
  GROUP BY d.id
  ORDER BY min(m.created_at), d.id
  LIMIT $4

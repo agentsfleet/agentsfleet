@@ -57,6 +57,13 @@ impl SessionServices {
             }
             ids.push(lease_id);
         }
+        // A draft's lease renews on its own path; the fleet batch reads fleet rows.
+        let (drafts, entries): (Vec<Entry>, Vec<Entry>) = entries
+            .into_iter()
+            .partition(|entry| self.cache.draft(&entry.lease_id).is_some());
+        if !drafts.is_empty() {
+            self.answer_drafts(drafts, deadline, &mut replies).await;
+        }
         if !entries.is_empty() {
             self.answer_batch(entries, funds_due, deadline, &mut replies)
                 .await;
@@ -141,6 +148,45 @@ impl SessionServices {
                         *reply = Some(refused.clone());
                     }
                 }
+            }
+        }
+    }
+}
+
+impl SessionServices {
+    /// Renews each draft-owned lease of the frame on the draft path, under the
+    /// frame's deadline, and fills its reply.
+    async fn answer_drafts(
+        &self,
+        entries: Vec<Entry>,
+        deadline: Instant,
+        replies: &mut [Option<Answer<'static, RenewResponse>>],
+    ) {
+        for entry in entries {
+            let now = self.gateway.inner.dependencies.wall_clock.now();
+            let outcome: Result<RenewResponse> = self
+                .operation_until(Operation::Renewal, deadline, async {
+                    Ok(self
+                        .leases
+                        .renew_draft(&self.handle.runner, &entry.lease_id, &entry.request, now)
+                        .await?)
+                })
+                .await
+                .map(|lease_expires_at| RenewResponse {
+                    lease_expires_at,
+                    recorded_through: entry.recorded_through,
+                });
+            match &outcome {
+                Ok(response) => self.cache.renew(&entry.lease_id, response.lease_expires_at),
+                Err(error) => {
+                    crate::Gateway::observe(error, Operation::Renewal);
+                    if !error.retryable() {
+                        self.cache.forget(&entry.lease_id);
+                    }
+                }
+            }
+            if let Some(reply) = replies.get_mut(entry.index) {
+                *reply = Some(answer(outcome));
             }
         }
     }

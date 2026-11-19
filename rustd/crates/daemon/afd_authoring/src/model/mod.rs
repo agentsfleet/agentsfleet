@@ -19,6 +19,7 @@ mod receipt;
 mod sql;
 
 pub use dispatch::ModelCalls;
+pub(crate) use progress::DELTA_BYTES;
 pub use progress::{CONTEXT_EVENT, ContextNotice, DELTA_EVENT, Delta, TextKind};
 pub use provider::{Network, ProviderRequest, ProviderResponse, Transport};
 
@@ -36,6 +37,12 @@ pub type ModelCallResult = af_wire::authoring::ModelResult<Definition, ConfigOp,
 
 #[cfg(test)]
 pub(crate) use af_inference::input_tokens;
+
+/// The `propose_setup` tool's definition, as the daemon broker offers it and a
+/// setup lease hands it to the runner.
+pub(crate) fn setup_tool(editing: bool) -> serde_json::Value {
+    provider::setup_tool(editing)
+}
 
 /// The `authoring.dispatches.status` words, and the knowledge word a receipt's
 /// usage carries when its provider figures are authoritative.

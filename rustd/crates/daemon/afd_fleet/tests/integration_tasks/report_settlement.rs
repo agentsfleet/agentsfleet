@@ -12,6 +12,7 @@ use std::{borrow::Cow, sync::Arc};
 pub(super) fn request(case: &Case, task: Option<TaskReport>) -> ReportRequest<'_> {
     ReportRequest {
         folded_through_sequence: None,
+        setup: None,
         task,
         lease_id: Cow::Borrowed(case.held.lease_key.as_str()),
         event_id: Cow::Borrowed(case.held.event_id.as_str()),

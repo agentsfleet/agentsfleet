@@ -1,6 +1,6 @@
 //! Authoring machine mutations share the same live subject and lease fence.
 
-mod claim;
+pub(crate) mod claim;
 pub(crate) mod failure;
 pub(crate) mod guard;
 pub(crate) mod meter;

@@ -21,10 +21,7 @@ impl TryFrom<&HeaderMap> for StreamHeaders {
     type Error = crate::Error;
 
     fn try_from(headers: &HeaderMap) -> Result<Self> {
-        let version = required(headers, protocol::VERSION_HEADER)?;
-        if version != protocol::VERSION {
-            return Err(ErrorKind::UnsupportedVersion.into());
-        }
+        revision(headers)?;
         let kind = StreamKind::parse(required(headers, protocol::STREAM_KIND_HEADER)?)
             .ok_or(ErrorKind::UnknownStream)?;
         let session = one(headers, protocol::SESSION_HEADER)?
@@ -47,6 +44,14 @@ impl TryFrom<&HeaderMap> for StreamHeaders {
             }
         }
     }
+}
+
+/// The protocol revision a stream's request names, refused unless this
+/// daemon speaks it. Every stream names one; the session runs on its control
+/// stream's.
+pub(crate) fn revision(headers: &HeaderMap) -> Result<protocol::Revision> {
+    protocol::Revision::parse(required(headers, protocol::VERSION_HEADER)?)
+        .ok_or_else(|| ErrorKind::UnsupportedVersion.into())
 }
 
 /// A secondary lane binds to the authenticated session and never carries its own bearer.

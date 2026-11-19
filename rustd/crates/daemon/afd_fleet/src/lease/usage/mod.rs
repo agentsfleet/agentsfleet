@@ -25,7 +25,7 @@ use jiff::Timestamp;
 
 use crate::error::{Result, posture_corrupt, sequence_corrupt};
 
-pub(crate) use self::slice::{Slice, SliceColumns, log_measured};
+pub(crate) use self::slice::{DraftSlice, Slice, SliceColumns, log_measured};
 
 /// Logged when a pass could not read its prices and logged its tokens
 /// unpriced.
@@ -221,32 +221,15 @@ impl Pricing {
         slice: Slice,
         requests: &[RequestUsage],
     ) -> Result<Option<Settlement>> {
-        // The longest runtime one line may claim, which the renewal and report
-        // statements cap their own slices at, so the three charge alike.
-        let runtime_ms = count(slice.runtime_ms).min(RUNTIME_MS_MAX);
-        let runtime = (runtime_ms > 0)
-            .then(|| -> Result<UsageLine> {
-                let seq = u32::try_from(slice.runtime_seq).map_err(|_range| sequence_corrupt())?;
-                Ok(UsageLine::runtime(seq, slice.checked_at, runtime_ms))
-            })
-            .transpose()?;
-        let lines: Vec<UsageLine> = requests
-            .iter()
-            .map(|request| request.line())
-            .chain(runtime)
-            .collect();
-        if lines.is_empty() {
-            return Ok(None);
-        }
-        let window = Window {
-            from: slice.started_at,
-            until: slice.checked_at,
+        let measured = Measured {
+            runtime_seq: slice.runtime_seq,
+            runtime_ms: slice.runtime_ms,
+            started_at: slice.started_at,
+            checked_at: slice.checked_at,
         };
-        let rater = Rater::new(&self.book, self.posture, window);
-        let priced = lines
-            .iter()
-            .map(|line| rater.rate(line))
-            .collect::<afd_billing::Result<Vec<_>>>()?;
+        let Some(priced) = self.priced(&measured, requests)? else {
+            return Ok(None);
+        };
         Ok(Some(Settlement {
             work: WorkKey::FleetLease(lease_id.clone()),
             payer: Account {
@@ -266,6 +249,91 @@ impl Pricing {
             lines: priced,
         }))
     }
+
+    /// [`Self::settlement`] for a draft-owned lease: its lines are setup
+    /// work's (`authoring`), name the lease as their work and the draft
+    /// message as their event, and bump no fleet's budget.
+    ///
+    /// # Errors
+    /// As [`Self::settlement`].
+    pub(crate) fn draft_settlement(
+        &self,
+        lease_id: &Uuid7,
+        slice: DraftSlice,
+        requests: &[RequestUsage],
+    ) -> Result<Option<Settlement>> {
+        let measured = Measured {
+            runtime_seq: slice.runtime_seq,
+            runtime_ms: slice.runtime_ms,
+            started_at: slice.started_at,
+            checked_at: slice.checked_at,
+        };
+        let Some(priced) = self.priced(&measured, requests)? else {
+            return Ok(None);
+        };
+        Ok(Some(Settlement {
+            work: WorkKey::AuthoringAttempt(lease_id.clone()),
+            payer: Account {
+                tenant: slice.tenant_id,
+                workspace: slice.workspace_id,
+            },
+            attribution: Attribution::SetupLease {
+                message: slice.message_id,
+            },
+            provider: self.provider.clone(),
+            model: self.model.clone(),
+            posture: self.posture,
+            lines: priced,
+        }))
+    }
+
+    /// `requests` and the measured run time priced as one pass's lines: one
+    /// per request, at its own tier and time, plus a runtime-only line
+    /// numbered by its slice's start when the slice measured run time. `None`
+    /// when there is neither: logging nothing spends no line number.
+    fn priced(
+        &self,
+        measured: &Measured,
+        requests: &[RequestUsage],
+    ) -> Result<Option<Vec<afd_billing::price::RatedLine>>> {
+        // The longest runtime one line may claim, which the renewal and report
+        // statements cap their own slices at, so the three charge alike.
+        let runtime_ms = count(measured.runtime_ms).min(RUNTIME_MS_MAX);
+        let runtime = (runtime_ms > 0)
+            .then(|| -> Result<UsageLine> {
+                let seq =
+                    u32::try_from(measured.runtime_seq).map_err(|_range| sequence_corrupt())?;
+                Ok(UsageLine::runtime(seq, measured.checked_at, runtime_ms))
+            })
+            .transpose()?;
+        let lines: Vec<UsageLine> = requests
+            .iter()
+            .map(|request| request.line())
+            .chain(runtime)
+            .collect();
+        if lines.is_empty() {
+            return Ok(None);
+        }
+        let window = Window {
+            from: measured.started_at,
+            until: measured.checked_at,
+        };
+        let rater = Rater::new(&self.book, self.posture, window);
+        Ok(Some(
+            lines
+                .iter()
+                .map(|line| rater.rate(line))
+                .collect::<afd_billing::Result<Vec<_>>>()?,
+        ))
+    }
+}
+
+/// The clock half of a measured slice, whoever owns its lease.
+struct Measured {
+    runtime_seq: i64,
+    runtime_ms: i64,
+    started_at: Timestamp,
+    checked_at: Timestamp,
 }
 
 /// What one settlement's lines cost, for the caller that reports a charge.

@@ -37,7 +37,9 @@ pub use self::recording::RecordingBiller;
 pub enum WorkKey {
     /// A fleet run's lease.
     FleetLease(Uuid7),
-    /// A setup-chat attempt.
+    /// A setup-chat attempt, or a draft-owned lease: setup work's own id. A
+    /// draft lease's lines keep this kind, so the charges page still shows
+    /// them as `authoring` with the lease as their `authoring_attempt_id`.
     AuthoringAttempt(Uuid7),
 }
 
@@ -83,6 +85,13 @@ pub enum Attribution {
     },
     /// A setup-chat attempt; the attempt is the work itself.
     SetupChat,
+    /// A draft-owned lease's setup turn: the lease is the work, and the line
+    /// names the draft message it ran as its `event_id`, so a line reaches its
+    /// draft through the lease and its message directly.
+    SetupLease {
+        /// The draft message the lease ran.
+        message: Uuid7,
+    },
 }
 
 /// A request to check that `payer` can fund `next` more for `work`.

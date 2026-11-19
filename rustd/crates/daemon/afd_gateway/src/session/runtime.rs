@@ -56,6 +56,7 @@ impl ConfirmedSession {
             self.cache,
             streams.writers,
             self.hello.accepted,
+            self.hello.revision,
         ));
         reconcile(&services, &self.hello.running).await?;
         streams
@@ -146,6 +147,7 @@ impl SessionServices {
         cache: super::cache::LeaseCache,
         output: super::StreamWriters,
         accepted: af_wire::lease::AcceptedKinds,
+        revision: af_wire::protocol::Revision,
     ) -> Self {
         let dependencies = &gateway.inner.dependencies;
         Self {
@@ -169,6 +171,7 @@ impl SessionServices {
             cache,
             output,
             accepted,
+            draft_leases: revision.offers_draft_leases(),
             checkpoint_verifications: tokio::sync::Semaphore::new(2),
             renewal_ticks: std::sync::atomic::AtomicU64::new(0),
             handle,

@@ -67,6 +67,7 @@ fn created() -> SystemTime {
 fn request() -> ReportRequest<'static> {
     ReportRequest {
         folded_through_sequence: None,
+        setup: None,
         task: None,
         lease_id: Cow::Borrowed("01924f4e-0000-7000-8000-00000000fee7"),
         event_id: Cow::Borrowed("event-fixture"),

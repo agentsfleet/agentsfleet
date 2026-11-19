@@ -3,7 +3,11 @@
 use std::num::NonZeroU64;
 
 use af_core::id::Uuid7;
-use af_wire::{activity::ActivityRequest, fold::FoldRequest};
+use af_wire::{
+    activity::{ActivityFrame, ActivityRequest, StreamTextKind},
+    fold::FoldRequest,
+};
+use afd_authoring::setup_lease::PreviewChunk;
 use garde::Validate as _;
 
 use super::super::{Message, SessionServices, context::answer};
@@ -22,10 +26,11 @@ impl SessionServices {
                 return Err(crate::error::ErrorKind::Protocol.into());
             }
         }
-        let Some(target) = self
-            .cache
-            .target(&id, self.gateway.inner.dependencies.wall_clock.now())
-        else {
+        let now = self.gateway.inner.dependencies.wall_clock.now();
+        if self.cache.live_draft(&id, now) {
+            return self.setup_preview(&id, &request.frames).await;
+        }
+        let Some(target) = self.cache.target(&id, now) else {
             return Ok(());
         };
         // A slow cosmetic publisher never holds control, renewal or report workers.
@@ -34,6 +39,38 @@ impl SessionServices {
                 Ok(self
                     .leases
                     .activity_for_target(&self.handle.runner, &id, &target, &request.frames)
+                    .await?)
+            })
+            .await
+        {
+            crate::Gateway::observe(&error, Operation::Activity);
+        }
+        Ok(())
+    }
+
+    /// A draft lease's answer chunks, republished on its draft's private
+    /// stream. Cosmetic: a refused publish is observed, never returned.
+    async fn setup_preview(&self, lease: &Uuid7, frames: &[ActivityFrame<'_>]) -> Result<()> {
+        let chunks: Vec<PreviewChunk<'_>> = frames
+            .iter()
+            .filter_map(|frame| match frame {
+                ActivityFrame::FleetResponseChunk(chunk)
+                    if chunk.text_kind == StreamTextKind::Answer =>
+                {
+                    Some(PreviewChunk {
+                        stream_seq: chunk.stream_seq,
+                        stream_start: chunk.stream_start,
+                        text: chunk.text.as_ref(),
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+        if let Err(error) = self
+            .operation(Operation::Activity, async {
+                Ok(self
+                    .drafts
+                    .publish_setup_preview(&self.handle.runner, lease, &chunks)
                     .await?)
             })
             .await

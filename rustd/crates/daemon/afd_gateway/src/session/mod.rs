@@ -155,6 +155,8 @@ impl SessionHandle {
 struct Hello {
     request_id: NonZeroU64,
     accepted: AcceptedKinds,
+    /// The protocol revision the control stream named.
+    revision: af_wire::protocol::Revision,
     running: Vec<Uuid7>,
     credits: usize,
     unconfirmed: Option<Uuid7>,
@@ -198,6 +200,8 @@ pub(crate) struct SessionServices {
     cache: cache::LeaseCache,
     output: StreamWriters,
     accepted: AcceptedKinds,
+    /// Whether this runner's revision may be offered a draft-owned lease.
+    draft_leases: bool,
     checkpoint_verifications: tokio::sync::Semaphore,
     /// Renewal frames this session has answered, for
     /// [`afd_fleet::lease::renew::funds_due`]'s cadence.

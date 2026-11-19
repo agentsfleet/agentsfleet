@@ -110,6 +110,7 @@ impl SessionServices {
                         &self.drafts,
                         request,
                         self.accepted,
+                        self.draft_leases,
                         clock,
                         |lease, metadata| encode_offer(encoder, lease, metadata),
                     )

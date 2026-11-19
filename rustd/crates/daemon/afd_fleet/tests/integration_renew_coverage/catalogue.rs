@@ -67,6 +67,7 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
     held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
     let report = ReportRequest {
         folded_through_sequence: None,
+        setup: None,
         requests: af_wire::usage::RequestLines(vec![request(&held, 0, 12_000, 3_000, 500)]),
         ..processed(&held, None)
     };

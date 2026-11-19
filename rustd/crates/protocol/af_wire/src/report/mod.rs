@@ -212,6 +212,11 @@ pub struct ReportRequest<'a> {
     /// past 262144 bytes in total are dropped and counted, never refused.
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
     pub memory: Vec<crate::memory::MemoryDelta<'a>>,
+    /// A draft-owned lease's setup outcome; present exactly on such a lease's
+    /// report. The daemon re-checks its base and Definition in the report
+    /// transaction and writes at most one candidate.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub setup: Option<crate::lease::SetupReport<'a>>,
 }
 
 /// The exact local hold the daemon accepted with a terminal report.

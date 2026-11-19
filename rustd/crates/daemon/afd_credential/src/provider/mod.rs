@@ -57,7 +57,9 @@ pub use self::entries::{
     Added, Boundary, CatalogueRate, Entry, PricedDefault, RegistryPage, RegistryRow, Removed,
     Retargeted,
 };
-pub use self::registered::{PLATFORM_MODEL_REF, RegisteredModel, registered_model};
+pub use self::registered::{
+    PLATFORM_MODEL_REF, RegisteredModel, RegisteredRoute, registered_model,
+};
 pub use self::resolved::{Dialled, Resolved};
 pub use self::runtime::{RuntimeModel, runtime_model};
 pub use self::secret_kind::SecretKind;

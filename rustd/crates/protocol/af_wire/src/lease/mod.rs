@@ -2,6 +2,7 @@
 
 mod kinds;
 mod payload;
+mod setup;
 mod turn_checkpoint;
 
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,9 @@ pub use kinds::{AcceptedKinds, LeaseKind};
 pub use payload::{
     ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, HISTORY_BYTES_MAX, HISTORY_TURNS_MAX,
     LeasePayload, TURN_TEXT_BYTES_MAX, Turn,
+};
+pub use setup::{
+    Owner, SETUP_DEFINITION_BYTES_MAX, SetupCandidate, SetupProposal, SetupReport, SetupWork,
 };
 pub use turn_checkpoint::{
     FoldRef, TURN_CHECKPOINT_BYTES, TURN_CHECKPOINT_FORMAT, TURN_CHECKPOINT_PAGE_BYTES,
@@ -23,7 +27,9 @@ pub use turn_checkpoint::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TaggedLease<'a, C = serde_json::Value> {
-    /// Installed fleet work, with its runtime policy.
+    /// Work on the common lease path, with its runtime policy: an installed
+    /// fleet's event, or, on protocol v3, a setup draft's message
+    /// ([`LeasePayload::owner`]).
     Fleet(#[serde(borrow)] Box<LeasePayload<'a>>),
     /// Private setup work, with access to the daemon's scoped model endpoint.
     Authoring(Box<crate::authoring::Lease<C>>),

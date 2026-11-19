@@ -4,8 +4,11 @@ use af_observability::{metrics::label::fleet::ReadyWake, producers};
 use crate::{Handle, Subject};
 
 /// Publish only after commit; failure cannot reject work already accepted.
-pub async fn publish(bus: &Handle, fleet: Uuid7) {
-    let payload = fleet.to_string();
+///
+/// `owner` is the waiting work's owner, a fleet or a setup draft, named by its
+/// slot's id: one wake key serves both kinds.
+pub async fn publish(bus: &Handle, owner: Uuid7) {
+    let payload = owner.to_string();
     let shard = crc16::State::<crc16::XMODEM>::calculate(payload.as_bytes()) % super::SHARDS;
     let outcome = tokio::time::timeout(
         READY_WAKE_DEADLINE,

@@ -25,6 +25,7 @@ mod privacy;
 mod replay;
 mod review;
 mod setup;
+pub mod setup_lease;
 mod sql;
 pub mod turn_policy;
 pub mod types;

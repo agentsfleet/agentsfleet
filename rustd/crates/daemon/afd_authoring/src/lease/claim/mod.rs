@@ -2,7 +2,7 @@
 
 mod context;
 mod issue;
-mod selection;
+pub(crate) mod selection;
 mod sql;
 
 use af_core::id::Uuid7;

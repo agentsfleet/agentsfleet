@@ -1,6 +1,7 @@
 //! Guard reads acquire wallet, current subject, draft and attempt in that order.
 
-/// Current chat work, excluding accounting retained below the Stop watermark.
+/// Current chat work, excluding accounting retained below the Stop watermark:
+/// a running attempt, or a draft lease's live slot.
 ///
 /// `$1` draft, `$2` settled status, `$3` Stop watermark; caller holds the draft lock.
 pub(super) const PENDING: &str = include_str!("pending.sql");

@@ -8385,7 +8385,7 @@
             "schema": {
               "type": "string"
             },
-            "example": "agentsfleet.runner.v2"
+            "example": "agentsfleet.runner.v3"
           },
           {
             "name": "agentsfleet-runner-kind",
@@ -27274,6 +27274,51 @@
           "unknown"
         ]
       },
+      "LeaseOwnerRef": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "An installed fleet's event.",
+            "required": [
+              "fleet_id",
+              "kind"
+            ],
+            "properties": {
+              "fleet_id": {
+                "type": "string",
+                "description": "The fleet."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "fleet"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A setup draft's queued message.",
+            "required": [
+              "draft_id",
+              "kind"
+            ],
+            "properties": {
+              "draft_id": {
+                "type": "string",
+                "description": "The draft."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "draft"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Whose work a lease runs.\n\nAbsent on a fleet's lease, whose owner is the fleet its `event` names, so a\nfleet offer reads as it did before drafts shared the path."
+      },
       "LeasePayload": {
         "type": "object",
         "description": "Work assigned to a runner. Return its `fencing_token` with updates; the server rejects\nolder tokens after reassignment.",
@@ -27351,6 +27396,17 @@
             "description": "Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
+          "owner": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LeaseOwnerRef",
+                "description": "Whose work this is. Absent on a fleet's lease, whose owner is the fleet\n`event.fleet_id` names. A draft's lease names the draft here, and its\n`event` is the draft's message: `event_id` the message, `fleet_id` the\ndraft. Offered only to a protocol v3 runner."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "policy": {
             "$ref": "#/components/schemas/ExecutionPolicy",
             "description": "What the run is permitted to do."
@@ -27358,6 +27414,17 @@
           "resume_hold": {
             "type": "boolean",
             "description": "True when the runner can reuse its latest held sandbox for a new event. Reassigned\nevents and expired or outdated sandboxes require a fresh sandbox."
+          },
+          "setup": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SetupWork",
+                "description": "A draft's setup turn: present exactly when `owner` names a draft."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "setup_revision_id": {
             "type": [
@@ -30827,6 +30894,67 @@
           }
         },
         "additionalProperties": false
+      },
+      "SetupCandidate": {
+        "type": "object",
+        "description": "The setup a draft's turn starts from.",
+        "required": [
+          "id",
+          "revision",
+          "definition"
+        ],
+        "properties": {
+          "definition": {
+            "type": "object",
+            "description": "The head candidate's Definition."
+          },
+          "id": {
+            "type": "string",
+            "description": "The head candidate's identifier: a report's base names it."
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The head candidate's revision: a report's base names it.",
+            "minimum": 0
+          }
+        }
+      },
+      "SetupWork": {
+        "type": "object",
+        "description": "What a draft-owned offer carries beside its message and history.",
+        "required": [
+          "sequence",
+          "save_requested",
+          "tool"
+        ],
+        "properties": {
+          "candidate": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SetupCandidate",
+                "description": "The draft's head candidate, absent before its first setup."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "save_requested": {
+            "type": "boolean",
+            "description": "The person asked to save with this message: the turn proposes nothing,\nand the report saves the head candidate."
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The message's position in the draft's conversation.",
+            "minimum": 0
+          },
+          "tool": {
+            "type": "object",
+            "description": "The `propose_setup` tool's definition: its description and parameters."
+          }
+        }
       },
       "SharedMemory": {
         "type": "object",

@@ -159,5 +159,6 @@ fn metadata(issued: &Issued, admitted: &AdmittedFleetWork) -> Offered {
             event_created_at: acquired.event_created_at,
             catalogue_version: Some(acquired.opened.catalogue_version),
         }),
+        draft: None,
     }
 }

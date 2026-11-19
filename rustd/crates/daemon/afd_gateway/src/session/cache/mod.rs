@@ -42,6 +42,7 @@ impl CachedLeases {
                 loaded.cancelled |= record.cancelled;
                 loaded.target = record.target.or_else(|| loaded.target.take());
                 loaded.reported = record.reported.or_else(|| loaded.reported.take());
+                loaded.draft = record.draft.or_else(|| loaded.draft.take());
             }
             Entry::Vacant(_) if held >= LEASES_MAX => {
                 return Err(ErrorKind::Protocol.into());
@@ -123,6 +124,23 @@ impl LeaseCache {
             .get(lease)
             .filter(|record| !record.cancelled && record.expires_at > now)
             .and_then(|record| record.target.clone())
+    }
+
+    /// The draft `lease` runs a turn of, when it is a draft-owned lease.
+    pub(super) fn draft(&self, lease: &Uuid7) -> Option<Uuid7> {
+        self.0
+            .read()
+            .records
+            .get(lease)
+            .and_then(|record| record.draft.clone())
+    }
+
+    /// Whether `lease` is a live, uncancelled draft-owned lease, so its live
+    /// answer may be published.
+    pub(super) fn live_draft(&self, lease: &Uuid7, now: Timestamp) -> bool {
+        self.0.read().records.get(lease).is_some_and(|record| {
+            record.draft.is_some() && !record.cancelled && record.expires_at > now
+        })
     }
 
     /// What `lease`'s report reads, when the offer left it here.

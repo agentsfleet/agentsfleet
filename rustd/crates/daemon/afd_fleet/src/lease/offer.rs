@@ -61,4 +61,6 @@ pub struct Offered {
     /// reports without reading the lease again. `None`
     /// for authoring, and after a rebuild from the database.
     pub reported: Option<super::Reported>,
+    /// The draft a draft-owned lease runs a turn of; `None` for a fleet's.
+    pub draft: Option<super::draft::DraftTarget>,
 }

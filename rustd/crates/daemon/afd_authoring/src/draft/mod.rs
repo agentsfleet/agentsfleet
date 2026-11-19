@@ -37,6 +37,11 @@ pub struct Drafts {
     /// daemon is assembled.
     pub(crate) biller: Arc<dyn Biller>,
     pub(crate) authority: Option<afd_runner::capacity::authority::Authority>,
+    /// Carries the hints a draft lease needs after a commit: the wake that
+    /// offers an accepted message, the Cancel a Stop or a deletion sends, and
+    /// a setup lease's live answer. `None` publishes nothing; the 5 s probe
+    /// still finds the work.
+    pub(crate) bus: Option<afd_bus::Handle>,
 }
 
 impl Drafts {
@@ -69,6 +74,39 @@ impl Drafts {
             senders: Cache::new(MAX_CACHED_SEND_GATES),
             biller,
             authority: None,
+            bus: None,
+        }
+    }
+
+    /// Publishes this service's wake, Cancel and live-answer hints on `bus`.
+    #[must_use]
+    pub fn with_bus(mut self, bus: afd_bus::Handle) -> Self {
+        self.bus = Some(bus);
+        self
+    }
+
+    /// Hints, after the commit that queued a message on `draft`, that a draft
+    /// lease may take it. One wake key names the owner, fleet or draft, by its
+    /// slot's id. Lossy: a lost hint costs one 5 s probe.
+    pub(crate) async fn wake_setup(&self, draft: &Uuid7) {
+        if let Some(bus) = &self.bus {
+            afd_bus::wake::publish(bus, draft.clone()).await;
+        }
+    }
+
+    /// Sends Cancel to each runner whose draft lease a commit just killed or
+    /// deleted. A hint: the durable mark or the missing row refuses the
+    /// runner's next renewal either way.
+    pub(crate) async fn announce_cancelled(&self, cancelled: Vec<(Uuid7, Uuid7)>) {
+        let Some(bus) = &self.bus else {
+            return;
+        };
+        for (runner, lease_id) in cancelled {
+            let subject = afd_bus::Subject::RunnerCommand(runner.clone());
+            let publication = afd_bus::Command::Cancel { lease_id }
+                .publish(bus, &runner)
+                .await;
+            afd_bus::observe_notification(&subject, publication);
         }
     }
 

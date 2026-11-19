@@ -136,7 +136,7 @@ impl Leases {
 /// falls through to `Lost` alongside it.
 /// The columns of [`sql::meter::METER_LEASE`]'s answer a renewal reads.
 #[derive(sqlx::FromRow)]
-struct RenewAnswer {
+pub(crate) struct RenewAnswer {
     probe_found: i64,
     new_until: Option<jiff_sqlx::Timestamp>,
     hard_cap: Option<jiff_sqlx::Timestamp>,
@@ -144,13 +144,13 @@ struct RenewAnswer {
 
 impl RenewAnswer {
     /// The new deadline, when both rows advanced.
-    fn extended(&self) -> Option<Timestamp> {
+    pub(crate) fn extended(&self) -> Option<Timestamp> {
         self.new_until.map(jiff_sqlx::Timestamp::to_jiff)
     }
 
     /// The outcome of a renewal that did NOT advance, judged against
     /// `checked_at`, the database's own instant read under the host lock.
-    fn verdict(&self, checked_at: Timestamp) -> Renewed {
+    pub(crate) fn verdict(&self, checked_at: Timestamp) -> Renewed {
         if self.probe_found == 0 {
             return Renewed::Lost;
         }

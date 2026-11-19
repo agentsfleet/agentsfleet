@@ -79,6 +79,8 @@ impl Session {
             cache,
             pipes.writers,
             accepted,
+            // The fixture runner speaks the revision today's runner does.
+            af_wire::protocol::Revision::V2,
         ));
         let mut session = Self {
             services,

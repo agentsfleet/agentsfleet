@@ -69,7 +69,16 @@ impl Drafts {
                 .await
                 .map_err(query(CONTEXT))?;
         }
+        // A draft lease running a message this Stop finished is killed with it.
+        let killed: Vec<(Uuid7, Uuid7)> = sqlx::query_as(crate::setup_lease::CANCEL_LEASES)
+            .bind(id)
+            .bind(cutoff)
+            .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(query(CONTEXT))?;
         tx.commit().await.map_err(query(CONTEXT))?;
+        self.announce_cancelled(killed).await;
         // One step per row this Stop moved: a retried Stop matches none.
         for _ in &stopped {
             let draft_id = id.clone();

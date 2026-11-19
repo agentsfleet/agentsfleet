@@ -48,6 +48,9 @@ pub async fn log_lines<'e>(
             event_id,
         } => (Some(fleet), Some(fleet_name.as_str()), Some(event_id), None),
         Attribution::SetupChat => (None, None, None, Some(settlement.work.id())),
+        Attribution::SetupLease { message } => {
+            (None, None, Some(message), Some(settlement.work.id()))
+        }
     };
     let lines = &settlement.lines;
     let unpriced = lines

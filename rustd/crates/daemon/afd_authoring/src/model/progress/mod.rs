@@ -17,7 +17,7 @@ pub(super) use publish::Publisher;
 pub(super) const CAPACITY: usize = 32;
 pub(super) const FLUSH: std::time::Duration = std::time::Duration::from_millis(50);
 /// Maximum private answer bytes in one preview frame.
-pub(super) const DELTA_BYTES: usize = 4096;
+pub(crate) const DELTA_BYTES: usize = 4096;
 /// Private answer event name, shared by the publisher and HTTP adapter.
 pub const DELTA_EVENT: &str = "message.delta";
 

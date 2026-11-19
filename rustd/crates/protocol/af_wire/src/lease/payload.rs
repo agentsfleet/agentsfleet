@@ -86,4 +86,13 @@ pub struct LeasePayload<'a> {
     /// daemon claimed it. False lets the run skip its first fold ask; a
     /// message that lands after the claim folds on the ask after the answer.
     pub inputs_waiting: bool,
+    /// Whose work this is. Absent on a fleet's lease, whose owner is the fleet
+    /// `event.fleet_id` names. A draft's lease names the draft here, and its
+    /// `event` is the draft's message: `event_id` the message, `fleet_id` the
+    /// draft. Offered only to a protocol v3 runner.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<super::Owner<'a>>,
+    /// A draft's setup turn: present exactly when `owner` names a draft.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub setup: Option<super::SetupWork<'a>>,
 }

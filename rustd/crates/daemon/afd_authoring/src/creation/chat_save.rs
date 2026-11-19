@@ -13,6 +13,45 @@ use af_wire::authoring::{Report, Reported};
 use afd_events::activity::Announcement;
 use sqlx::{Connection as _, PgConnection};
 
+/// The turn a save request rides: its locked draft, its message, and the
+/// report's clock. The attempt path and the draft lease path both build one.
+pub(crate) struct SaveTurn<'a> {
+    pub(crate) draft: &'a draft::read::Locked,
+    pub(crate) sequence: i64,
+    pub(crate) now: jiff::Timestamp,
+}
+
+impl<'a> From<&'a Guarded> for SaveTurn<'a> {
+    fn from(guarded: &'a Guarded) -> Self {
+        Self {
+            draft: &guarded.draft,
+            sequence: guarded.attempt.message_sequence,
+            now: guarded.now,
+        }
+    }
+}
+
+/// Which completed save request a report's after-commit step finishes.
+pub(crate) struct SavedKey {
+    pub(crate) draft_id: Uuid7,
+    pub(crate) workspace_id: Uuid7,
+    pub(crate) user_id: Uuid7,
+    pub(crate) tenant_id: Uuid7,
+    pub(crate) sequence: i64,
+}
+
+impl From<&Attempt> for SavedKey {
+    fn from(attempt: &Attempt) -> Self {
+        Self {
+            draft_id: attempt.draft_id.clone(),
+            workspace_id: attempt.workspace_id.clone(),
+            user_id: attempt.user_id.clone(),
+            tenant_id: attempt.tenant_id.clone(),
+            sequence: attempt.message_sequence,
+        }
+    }
+}
+
 #[derive(sqlx::FromRow)]
 struct SavedTurn {
     fleet_id: Uuid7,
@@ -37,17 +76,16 @@ impl Creations {
     pub(crate) async fn save_turn_on(
         &self,
         connection: &mut PgConnection,
-        guarded: &Guarded,
+        turn: SaveTurn<'_>,
     ) -> Result<Announcement> {
-        let attempt = &guarded.attempt;
-        if !message::accepted(connection, &attempt.draft_id, attempt.message_sequence)
+        if !message::accepted(connection, &turn.draft.id, turn.sequence)
             .await?
             .save_requested
         {
             return Ok(Announcement::default());
         }
         let mut savepoint = connection.begin().await.map_err(query(CONTEXT))?;
-        match self.write_turn(&mut savepoint, guarded).await {
+        match self.write_turn(&mut savepoint, &turn).await {
             Ok(announcement) => {
                 savepoint.commit().await.map_err(query(CONTEXT))?;
                 Ok(announcement)
@@ -58,8 +96,8 @@ impl Creations {
                     return Err(error);
                 }
                 sqlx::query(include_str!("sql/save_refused.sql"))
-                    .bind(&attempt.draft_id)
-                    .bind(attempt.message_sequence)
+                    .bind(&turn.draft.id)
+                    .bind(turn.sequence)
                     .bind(error.code().as_str())
                     .execute(connection)
                     .await
@@ -72,9 +110,9 @@ impl Creations {
     async fn write_turn(
         &self,
         connection: &mut PgConnection,
-        guarded: &Guarded,
+        turn: &SaveTurn<'_>,
     ) -> Result<Announcement> {
-        let locked = &guarded.draft;
+        let locked = turn.draft;
         draft::idle(connection, locked).await?;
         let id = locked.head_candidate_id.as_ref().ok_or(ErrorKind::State {
             current: "no_candidate",
@@ -106,7 +144,7 @@ impl Creations {
             connection,
             &captured.context,
             &captured.candidate,
-            guarded.now,
+            turn.now,
         )
         .await?;
         if let Some(SourcePin::Fleet { fleet_id, .. }) = &locked.source_pin {
@@ -120,8 +158,8 @@ impl Creations {
                 &row,
                 &captured,
                 &checked,
-                &self.setup.drafts.mint(guarded.now)?,
-                guarded.now,
+                &self.setup.drafts.mint(turn.now)?,
+                turn.now,
             )
             .await
         } else {
@@ -131,11 +169,11 @@ impl Creations {
             };
             self.insert(
                 connection,
-                &self.setup.drafts.mint(guarded.now)?,
+                &self.setup.drafts.mint(turn.now)?,
                 &captured,
                 instance,
                 &checked,
-                guarded.now,
+                turn.now,
             )
             .await
         }
@@ -147,7 +185,7 @@ impl Creations {
     /// A report replayed after a daemon stopped between activation and the sweep finds its
     /// draft closed, and only the sweep is owed: it pushes the schedules not yet synced and
     /// does nothing for the rest, so running it again is harmless.
-    pub(crate) async fn finish_saved_turn(&self, attempt: &Attempt) -> Result<()> {
+    pub(crate) async fn finish_saved_turn(&self, attempt: &SavedKey) -> Result<()> {
         let mut connection = self.setup.drafts.database.acquire().await?;
         let mut owed = None;
         for (state, activation_owed) in [(DraftState::Saving, true), (DraftState::Closed, false)] {
@@ -175,14 +213,14 @@ impl Creations {
 /// The save request `attempt` finished, while its draft is in `state`.
 async fn saved_turn(
     connection: &mut PgConnection,
-    attempt: &Attempt,
+    attempt: &SavedKey,
     state: DraftState,
 ) -> Result<Option<SavedTurn>> {
     sqlx::query_as(include_str!("sql/saved_turn.sql"))
         .bind(&attempt.draft_id)
         .bind(&attempt.workspace_id)
         .bind(&attempt.user_id)
-        .bind(attempt.message_sequence)
+        .bind(attempt.sequence)
         .bind(MessageState::Completed.as_str())
         .bind(state.as_str())
         .bind(&attempt.tenant_id)
