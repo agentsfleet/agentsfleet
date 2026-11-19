@@ -5,7 +5,7 @@ use std::sync::Arc;
 use af_core::timing::{READY_WAKE_DEADLINE, STREAM_ANSWER_TIMEOUT};
 use afd_bus::{Command, Received, Subject};
 
-use super::{SessionHandle, SessionServices};
+use super::{ConnectionHandle, ConnectionServices};
 use crate::{Gateway, Operation, Result};
 
 /// Announce committed ownership with a bounded best-effort publish.
@@ -26,7 +26,7 @@ pub(super) async fn announce(gateway: &Gateway, runner: &af_core::id::Uuid7) -> 
 }
 
 /// Reconnect only the subscription. The database backstop does not depend on broker availability.
-pub(super) async fn listen(services: Arc<SessionServices>) -> Result<()> {
+pub(super) async fn listen(services: Arc<ConnectionServices>) -> Result<()> {
     let mut retry = std::time::Duration::from_millis(100);
     let mut lost = false;
     loop {
@@ -74,7 +74,10 @@ pub(super) async fn listen(services: Arc<SessionServices>) -> Result<()> {
 }
 
 /// Typed commands survive decoding; gaps request a complete authority and cancellation refresh.
-async fn receive(handle: &SessionHandle, subscription: &mut afd_bus::Subscription) -> Result<()> {
+async fn receive(
+    handle: &ConnectionHandle,
+    subscription: &mut afd_bus::Subscription,
+) -> Result<()> {
     loop {
         tokio::select! {
             biased;
@@ -95,7 +98,7 @@ async fn receive(handle: &SessionHandle, subscription: &mut afd_bus::Subscriptio
     }
 }
 
-impl SessionServices {
+impl ConnectionServices {
     /// Recheck reloads ownership and policy; Cancel confirms just its durable lease marker.
     pub(super) async fn command(&self, command: Command) -> Result<()> {
         match command {

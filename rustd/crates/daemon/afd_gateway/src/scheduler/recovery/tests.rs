@@ -3,9 +3,9 @@
 use super::probe_ticks;
 use crate::scheduler::Probe;
 use crate::{
+    connection::{ClaimRequest, ConnectionHandle, OfferOutcome},
     registry::{Registration, Registry},
     scheduler::notifications,
-    session::{ClaimRequest, OfferOutcome, SessionHandle},
 };
 use af_core::{id::Uuid7, timing::OFFER_FALLBACK_TICK};
 use afd_bus::wake::Wake;
@@ -31,8 +31,8 @@ impl ReplicaFixture {
         let mut registrations = Vec::new();
         for number in 1..=50 {
             let id = Uuid7::parse(&format!("019f0000-0000-7000-8000-{number:012x}"))?;
-            let (session, claims) = SessionHandle::fixture_with_claims(id.clone(), id);
-            registrations.push(registry.register_fixture(&session)?);
+            let (connection, claims) = ConnectionHandle::fixture_with_claims(id.clone(), id);
+            registrations.push(registry.register_fixture(&connection)?);
             requests.push(claims);
         }
         Ok(Self {

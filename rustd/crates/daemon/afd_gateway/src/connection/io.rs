@@ -61,7 +61,7 @@ impl StreamAttachment {
         )
     }
 
-    /// The reader and writer now belong to their supervising session.
+    /// The reader and writer now belong to their supervising connection.
     pub(super) fn into_io(self, budget: Budget, stop: CancellationToken) -> StreamIo {
         StreamIo {
             kind: self.kind,
@@ -77,7 +77,7 @@ pub(crate) struct IncomingFrame {
     pub(crate) frame: OwnedFrame,
 }
 
-/// Four validated queues also keep activity's empty response open for the whole session.
+/// Four validated queues also keep activity's empty response open for the whole connection.
 #[derive(Clone)]
 pub(crate) struct StreamWriters(BTreeMap<StreamKind, WriteQueue>);
 
@@ -134,7 +134,7 @@ pub(super) async fn read_stream(
             () = stop.cancelled() => return Ok(()),
             frame = reader.next() => frame?.ok_or(ErrorKind::Closed)?,
         };
-        // Drain stops the next read, but a completed frame already belongs to this session.
+        // Drain stops the next read, but a completed frame already belongs to this connection.
         // Dropping the receiver on hard shutdown still releases a blocked handoff.
         incoming
             .send(IncomingFrame { kind, frame })

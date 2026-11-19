@@ -1,12 +1,12 @@
-//! Session failures preserve domain and transport causes behind the shared error shell.
+//! Runner connection failures preserve domain and transport causes behind the shared error shell.
 
 use crate::Operation;
 
-/// Fallible session operations retain the service that refused them.
+/// Fallible connection operations retain the service that refused them.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 af_core::error_shell!(
-    /// A safe session failure with its original cause and captured backtrace.
+    /// A safe connection failure with its original cause and captured backtrace.
     pub struct Error(ErrorKind);
 );
 

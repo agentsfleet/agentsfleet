@@ -3,7 +3,7 @@
 use super::requester::{Held, Host, Offered};
 use super::stage::WORKERS;
 use crate::lane::lease::{
-    drain::{native, session},
+    drain::{connection, native},
     seed::RunnerIdentity,
 };
 use crate::{
@@ -17,7 +17,7 @@ use af_wire::{
     lease::{AcceptedKinds, TaggedLease},
     protocol::{Down, Up},
 };
-use afd_gateway::{Gateway, test_util::Session};
+use afd_gateway::{Gateway, test_util::RunnerConnection};
 use afd_setup::Drafts;
 use std::{collections::BTreeMap, num::NonZeroU64, sync::Arc};
 use tokio::sync::{Mutex, watch};
@@ -45,13 +45,13 @@ pub(super) struct Connected {
 }
 
 struct ConnectedHost {
-    session: Mutex<Session>,
+    session: Mutex<RunnerConnection>,
     generations: Mutex<watch::Receiver<afd_bus::wake::Generation>>,
 }
 
 impl Production {
     pub(super) fn new(stores: &Datastores, kek: &Arc<Kek>) -> Result<Self> {
-        let (gateway, drafts) = session::gateway(stores, kek)?;
+        let (gateway, drafts) = connection::gateway(stores, kek)?;
         Ok(Self { gateway, drafts })
     }
 
@@ -65,7 +65,7 @@ impl Production {
         let listeners = wake.listen(&stores.bus, &stop).await?;
         let mut hosts = BTreeMap::new();
         for runner in runners {
-            let session = session::open(
+            let session = connection::open(
                 &self.gateway,
                 runner,
                 AcceptedKinds::ALL,

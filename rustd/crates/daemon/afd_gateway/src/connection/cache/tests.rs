@@ -81,7 +81,7 @@ fn a_durable_cancel_still_applies_when_another_update_wins_the_refresh() -> Resu
 }
 
 /// A recheck can read the issue transaction's commit before the offer records
-/// the lease; the offer's own insert must not end the session as a protocol error.
+/// the lease; the offer's own insert must not end the connection as a protocol error.
 #[test]
 fn an_offer_records_a_lease_a_concurrent_refresh_already_loaded() -> Result<()> {
     let cache = LeaseCache::default();
@@ -119,7 +119,7 @@ fn held(index: usize, expires_at: Timestamp) -> Result<Offered> {
 }
 
 /// A host at its worker bound gets a lease back after one lapses; the lapsed
-/// record, which the next refresh would drop, must not end the session.
+/// record, which the next refresh would drop, must not end the connection.
 #[test]
 fn a_full_host_records_a_new_lease_once_a_lapsed_one_is_dropped() -> Result<()> {
     let now = Timestamp::UNIX_EPOCH + jiff::SignedDuration::from_hours(1);

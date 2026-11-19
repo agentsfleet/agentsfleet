@@ -4,7 +4,7 @@ use core::time::Duration;
 use std::sync::Arc;
 use std::time::Instant;
 
-use afd_gateway::test_util::Session;
+use afd_gateway::test_util::RunnerConnection;
 
 use super::burst::Pickups;
 use super::runner::{self, Shared, Tally};
@@ -26,7 +26,7 @@ use crate::statements::{self, QueryCost, StatementCost};
 /// One window of every runner at once, with its cost either side.
 pub(super) struct Window {
     pub(super) tally: Tally,
-    pub(super) sessions: Vec<Session>,
+    pub(super) sessions: Vec<RunnerConnection>,
     length: Duration,
     cost: StatementCost,
     /// Each statement's calls in the window, for the split by path.
@@ -46,7 +46,7 @@ pub(super) struct Shape {
 /// Drive every runner until `shape.target` events are reported or
 /// `shape.length` passes.
 pub(super) async fn window(
-    sessions: Vec<Session>,
+    sessions: Vec<RunnerConnection>,
     stores: &Datastores,
     shape: Shape,
     abort: &Arc<Abort>,
@@ -90,11 +90,11 @@ pub(super) async fn window(
 
 /// Each host keeps its own in-process session across the measured windows.
 async fn run_sessions(
-    sessions: Vec<Session>,
+    sessions: Vec<RunnerConnection>,
     shared: &Arc<Shared>,
     wake: &afd_bus::wake::Wake,
     idle: bool,
-) -> Result<(Tally, Vec<Session>)> {
+) -> Result<(Tally, Vec<RunnerConnection>)> {
     let mut tasks = tokio::task::JoinSet::new();
     for session in sessions {
         let shared = Arc::clone(shared);

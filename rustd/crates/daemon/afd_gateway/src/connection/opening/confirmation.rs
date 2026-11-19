@@ -1,19 +1,19 @@
-//! Only an exact confirmation can turn a proposal into a database-issued session authority.
+//! Only an exact confirmation can turn a proposal into a database-issued connection authority.
 
-use super::super::{ConfirmedSession, Message, SessionOpening, cache::LeaseCache};
+use super::super::{ConfirmedConnection, ConnectionOpening, Message, cache::LeaseCache};
 use super::allowed;
 use crate::{
     Operation, Result,
-    connection::Binding,
+    binding::Binding,
     error::{ErrorKind, within},
 };
 use af_wire::protocol::{StreamKind, Up};
 use garde::Validate as _;
 use tokio::sync::mpsc;
 
-impl SessionOpening {
-    /// Keep proposal exchange separate from the committed session's transport supervision.
-    pub(in super::super) async fn confirm(mut self) -> Result<ConfirmedSession> {
+impl ConnectionOpening {
+    /// Keep proposal exchange separate from the committed connection's transport supervision.
+    pub(in super::super) async fn confirm(mut self) -> Result<ConfirmedConnection> {
         self.send_prepared().await?;
         self.receive_confirmation().await?;
         let authority = within(
@@ -48,7 +48,7 @@ impl SessionOpening {
             authority: authority.clone(),
             attachments,
         })?;
-        Ok(ConfirmedSession {
+        Ok(ConfirmedConnection {
             gateway: self.gateway,
             context: self.context,
             runner: self.runner,

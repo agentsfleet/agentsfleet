@@ -1,4 +1,4 @@
-//! The physical session supplies authority; runners never choose event or object namespaces.
+//! The physical connection supplies authority; runners never choose event or object namespaces.
 
 use std::num::NonZeroU64;
 
@@ -7,10 +7,10 @@ use af_wire::lease::{TurnCheckpointAction, TurnCheckpointCommand};
 use afd_fleet::lease::turn_checkpoint::{TurnCheckpointRefusal, TurnLease};
 use tokio::{sync::SemaphorePermit, time::Instant};
 
-use super::super::{Message, SessionServices, context::answer};
+use super::super::{ConnectionServices, Message, context::answer};
 use crate::{Operation, Result};
 
-impl SessionServices {
+impl ConnectionServices {
     pub(in super::super) async fn turn_checkpoint(
         &self,
         request_id: NonZeroU64,
@@ -57,7 +57,7 @@ impl SessionServices {
 
     fn verification_permits(&self) -> Result<(SemaphorePermit<'_>, SemaphorePermit<'_>)> {
         let unavailable = |_closed| afd_fleet::Error::from(TurnCheckpointRefusal::Unavailable);
-        let session = self
+        let connection = self
             .checkpoint_verifications
             .try_acquire()
             .map_err(unavailable)?;
@@ -67,6 +67,6 @@ impl SessionServices {
             .checkpoint_verifications
             .try_acquire()
             .map_err(unavailable)?;
-        Ok((session, replica))
+        Ok((connection, replica))
     }
 }

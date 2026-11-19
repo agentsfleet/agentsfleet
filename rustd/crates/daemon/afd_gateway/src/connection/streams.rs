@@ -72,7 +72,7 @@ pub(super) struct StreamSetup {
     pub(super) deadline: Instant,
 }
 
-pub(super) struct SessionStreams {
+pub(super) struct ConnectionStreams {
     pub(super) frames: StreamReceivers,
     pub(super) writers: StreamWriters,
     pub(super) workers: JoinSet<Result<()>>,
@@ -88,7 +88,7 @@ struct StreamAssembly {
     read_stop: CancellationToken,
 }
 
-impl SessionStreams {
+impl ConnectionStreams {
     /// Three secondary requests must attach before the common opening deadline.
     pub(super) async fn attach(
         control: StreamIo,
@@ -170,7 +170,7 @@ mod tests {
     //! Drain consumes completed reads while preserving the independent operation limits.
 
     use super::StreamReceivers;
-    use crate::session::{io::IncomingFrame, requests::RequestSlots};
+    use crate::connection::{io::IncomingFrame, requests::RequestSlots};
     use af_stream::Budget;
     use af_wire::protocol::StreamKind;
     use serde_json::json;

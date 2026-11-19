@@ -1,6 +1,6 @@
 [package]
 name = "afd_gateway"
-description = "Authenticated native runner sessions over the shared domain services."
+description = "Authenticated native runner connections over the shared domain services."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

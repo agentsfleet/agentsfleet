@@ -1,6 +1,6 @@
 //! The initial read owns its permit and proposal while Postgres remains unchanged.
 
-use super::super::{Hello, SessionOpening, StreamAttachment, io::StreamIo};
+use super::super::{ConnectionOpening, Hello, StreamAttachment, io::StreamIo};
 use super::{allowed, request::ControlRequest};
 use crate::{
     ConnectionContext, Gateway, Operation, Result,
@@ -60,7 +60,7 @@ impl Hello {
 }
 
 impl ControlOpening {
-    /// A session consumes one shared permit; secondary streams consume none.
+    /// A connection consumes one shared permit; secondary streams consume none.
     pub(super) fn new(
         gateway: &Gateway,
         runner: Runner,
@@ -97,7 +97,7 @@ impl ControlOpening {
     }
 
     /// Reading hello and proposing ownership share one absolute opening deadline.
-    pub(super) async fn prepare(mut self) -> Result<SessionOpening> {
+    pub(super) async fn prepare(mut self) -> Result<ConnectionOpening> {
         let hello = self.read_hello().await?;
         let prepared = within(
             &self.context.native.stop,
@@ -121,7 +121,7 @@ impl ControlOpening {
             },
         )
         .await?;
-        Ok(SessionOpening {
+        Ok(ConnectionOpening {
             gateway: self.gateway,
             context: self.context,
             runner: self.runner,

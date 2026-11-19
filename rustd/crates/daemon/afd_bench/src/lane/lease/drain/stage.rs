@@ -111,12 +111,12 @@ impl Staged {
     pub(super) async fn sessions(
         &self,
         stores: &Datastores,
-    ) -> Result<Vec<afd_gateway::test_util::Session>> {
-        let (gateway, _) = super::session::gateway(stores, &self.kek)?;
+    ) -> Result<Vec<afd_gateway::test_util::RunnerConnection>> {
+        let (gateway, _) = super::connection::gateway(stores, &self.kek)?;
         let mut sessions = Vec::with_capacity(self.runners.len());
         for runner in &self.runners {
             sessions.push(
-                super::session::open(&gateway, runner, af_wire::lease::AcceptedKinds::FLEET, 1)
+                super::connection::open(&gateway, runner, af_wire::lease::AcceptedKinds::FLEET, 1)
                     .await?,
             );
         }

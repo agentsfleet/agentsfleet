@@ -60,13 +60,13 @@ impl AuthenticatedRunnerStream {
 /// A native connection proves continuity; the common registry proves a new bearer.
 #[derive(Debug)]
 pub enum ConnectionCredentials {
-    /// No session has authenticated on this connection yet.
+    /// No runner has authenticated on this connection yet.
     Bearer,
     /// A secondary stream belongs to the connection's already proved runner.
-    Session {
+    Bound {
         /// Runner already authenticated on this physical connection.
         runner: Runner,
-        /// Secondary stream and session checked by its connection owner.
+        /// Secondary stream checked by its connection owner.
         kind: AuthenticatedRunnerStream,
     },
 }
@@ -126,7 +126,7 @@ impl<D: Services> RequestAuthentication for RunnerStreamAuthentication<D> {
         };
         match native.0.credentials(&parts.headers) {
             Ok(ConnectionCredentials::Bearer) => self.initial(parts, route).await,
-            Ok(ConnectionCredentials::Session { runner, kind }) => {
+            Ok(ConnectionCredentials::Bound { runner, kind }) => {
                 parts.extensions.insert(kind);
                 Ok(Some(Principal::Runner(runner)))
             }

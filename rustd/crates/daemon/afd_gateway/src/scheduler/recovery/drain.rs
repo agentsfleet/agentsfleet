@@ -1,8 +1,8 @@
-//! Give each credited session one claim at a time and bound concurrent claims.
+//! Give each credited connection one claim at a time and bound concurrent claims.
 
 use crate::{
     Gateway, Operation, Result,
-    session::{OfferMode, OfferOutcome, SessionHandle},
+    connection::{ConnectionHandle, OfferMode, OfferOutcome},
 };
 use futures_util::{StreamExt as _, stream::FuturesUnordered};
 use std::{collections::VecDeque, sync::Arc};
@@ -11,28 +11,28 @@ use tokio_util::sync::CancellationToken;
 const EXTRA_PAGES_PER_HOST: usize = 4;
 
 struct Host {
-    session: Arc<SessionHandle>,
+    connection: Arc<ConnectionHandle>,
     credits: usize,
     extra_pages: usize,
 }
 
 impl Host {
-    fn new(session: Arc<SessionHandle>) -> Self {
-        let credits = session.snapshot.lock().credits;
+    fn new(connection: Arc<ConnectionHandle>) -> Self {
+        let credits = connection.snapshot.lock().credits;
         Self {
-            session,
+            connection,
             credits,
             extra_pages: EXTRA_PAGES_PER_HOST,
         }
     }
 
     async fn claim(self) -> (Self, Result<OfferOutcome>) {
-        let outcome = self.session.claim(OfferMode::Recovery).await;
+        let outcome = self.connection.claim(OfferMode::Recovery).await;
         (self, outcome)
     }
 
     fn ready(&self) -> bool {
-        self.credits > 0 && self.session.snapshot.lock().credits > 0
+        self.credits > 0 && self.connection.snapshot.lock().credits > 0
     }
 
     fn advance(&mut self, outcome: Result<OfferOutcome>) -> bool {
@@ -41,7 +41,7 @@ impl Host {
             Ok(OfferOutcome::Deferred) if self.extra_pages > 0 => self.extra_pages -= 1,
             Ok(OfferOutcome::Empty | OfferOutcome::Deferred) => return false,
             Err(failure) => {
-                // The session may have committed a lease before its reply was lost.
+                // The connection may have committed a lease before its reply was lost.
                 Gateway::observe(&failure, Operation::Offer);
                 return false;
             }
@@ -51,11 +51,11 @@ impl Host {
 }
 
 pub(super) async fn drain(
-    sessions: Vec<Arc<SessionHandle>>,
+    connections: Vec<Arc<ConnectionHandle>>,
     claims: usize,
     stop: &CancellationToken,
 ) {
-    let mut queue: VecDeque<_> = sessions.into_iter().map(Host::new).collect();
+    let mut queue: VecDeque<_> = connections.into_iter().map(Host::new).collect();
     let mut running = FuturesUnordered::new();
     loop {
         while running.len() < claims {

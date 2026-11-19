@@ -14,7 +14,7 @@ use af_wire::{
     lease::TaggedLease,
     protocol::{Down, Renewal, Up},
 };
-use afd_gateway::test_util::Session;
+use afd_gateway::test_util::RunnerConnection;
 use std::num::NonZeroU64;
 
 use super::burst::Pickups;
@@ -107,10 +107,10 @@ impl Tally {
 /// # Errors
 /// Preserves frame, domain and histogram failures.
 pub(super) async fn drive(
-    mut session: Session,
+    mut session: RunnerConnection,
     shared: &Shared,
     mut generations: tokio::sync::watch::Receiver<afd_bus::wake::Generation>,
-) -> Result<(Tally, Session)> {
+) -> Result<(Tally, RunnerConnection)> {
     let mut tally = Tally::new()?;
     let abort = shared.abort.token();
     while shared.open() {
@@ -132,7 +132,7 @@ pub(super) async fn drive(
 }
 
 /// The offer and all following operations use one gateway-owned target cache.
-async fn step(session: &mut Session, shared: &Shared, tally: &mut Tally) -> Result<bool> {
+async fn step(session: &mut RunnerConnection, shared: &Shared, tally: &mut Tally) -> Result<bool> {
     session.ready(1).await?;
     let started = Instant::now();
     let Some(frame) = session.offer().await? else {
@@ -181,7 +181,7 @@ async fn step(session: &mut Session, shared: &Shared, tally: &mut Tally) -> Resu
 
 /// Renew, publish and fold through the same native dispatch used by the listener.
 async fn run_turn(
-    session: &mut Session,
+    session: &mut RunnerConnection,
     lease: &LeasePayload<'_>,
     shared: &Shared,
 ) -> Result<Option<i64>> {
@@ -206,7 +206,7 @@ async fn run_turn(
 /// What a run sends around its one model call: the ask before it, unless
 /// the lease says nothing waits, and the ask after its answer.
 async fn around_one_call(
-    session: &mut Session,
+    session: &mut RunnerConnection,
     lease: &LeasePayload<'_>,
     shared: &Shared,
 ) -> Result<Option<i64>> {
@@ -218,7 +218,11 @@ async fn around_one_call(
     Ok((through > 0).then_some(through))
 }
 
-async fn renew(session: &mut Session, lease: &LeasePayload<'_>, renewals: u64) -> Result<()> {
+async fn renew(
+    session: &mut RunnerConnection,
+    lease: &LeasePayload<'_>,
+    renewals: u64,
+) -> Result<()> {
     for _ in 0..renewals {
         let frame = session
             .request(&Up::RenewBatch {
@@ -248,7 +252,7 @@ async fn renew(session: &mut Session, lease: &LeasePayload<'_>, renewals: u64) -
 }
 
 async fn fold(
-    session: &mut Session,
+    session: &mut RunnerConnection,
     lease: &LeasePayload<'_>,
     shared: &Shared,
     hold: Duration,
@@ -264,7 +268,7 @@ async fn fold(
 
 /// One fold ask after `through`, answering the last sequence it read.
 async fn ask(
-    session: &mut Session,
+    session: &mut RunnerConnection,
     lease: &LeasePayload<'_>,
     shared: &Shared,
     mut through: i64,

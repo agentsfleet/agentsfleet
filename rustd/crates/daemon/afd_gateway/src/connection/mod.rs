@@ -101,11 +101,11 @@ impl SchedulingState {
     }
 }
 
-/// Shared notifications carry no authority; the session retains the database-issued proof.
+/// Shared notifications carry no authority; the connection retains the database-issued proof.
 #[derive(Debug)]
-pub(crate) struct SessionHandle {
+pub(crate) struct ConnectionHandle {
     pub(crate) runner: Uuid7,
-    pub(crate) connection: Uuid7,
+    pub(crate) connection_id: Uuid7,
     pub(crate) snapshot: Mutex<SchedulingState>,
     pub(crate) stop: CancellationToken,
     pub(crate) drain: CancellationToken,
@@ -118,7 +118,7 @@ pub(crate) struct SessionHandle {
     pub(crate) commands: mpsc::Sender<afd_bus::Command>,
 }
 
-impl SessionHandle {
+impl ConnectionHandle {
     fn apply_policy(&self, degraded: bool) {
         let recovered = {
             let mut state = self.snapshot.lock();
@@ -163,7 +163,7 @@ struct Hello {
 }
 
 /// This state owns a proposal; it cannot issue work before confirmation.
-pub(crate) struct SessionOpening {
+pub(crate) struct ConnectionOpening {
     gateway: Gateway,
     context: Arc<ConnectionContext>,
     runner: Runner,
@@ -175,7 +175,7 @@ pub(crate) struct SessionOpening {
 }
 
 /// Ownership is committed before this value exists; it still owns the one admission permit.
-struct ConfirmedSession {
+struct ConfirmedConnection {
     gateway: Gateway,
     context: Arc<ConnectionContext>,
     runner: Runner,
@@ -189,9 +189,9 @@ struct ConfirmedSession {
 }
 
 /// Bound service clones reuse the same pools, bus and transaction-level owner checks.
-pub(crate) struct SessionServices {
+pub(crate) struct ConnectionServices {
     gateway: Gateway,
-    pub(crate) handle: Arc<SessionHandle>,
+    pub(crate) handle: Arc<ConnectionHandle>,
     authority: Authority,
     leases: afd_fleet::lease::LeaseService,
     drafts: afd_setup::Drafts,
@@ -203,7 +203,7 @@ pub(crate) struct SessionServices {
     /// Whether this runner's revision may be offered a draft-owned lease.
     draft_leases: bool,
     checkpoint_verifications: tokio::sync::Semaphore,
-    /// Renewal frames this session has answered, for
+    /// Renewal frames this connection has answered, for
     /// [`afd_fleet::lease::renew::funds_due`]'s cadence.
     renewal_ticks: std::sync::atomic::AtomicU64,
 }
@@ -220,20 +220,20 @@ pub(crate) async fn open(
 mod credits_tests;
 
 #[cfg(test)]
-impl SessionHandle {
-    pub(crate) fn fixture(runner: Uuid7, connection: Uuid7) -> Arc<Self> {
-        Self::fixture_with_claims(runner, connection).0
+impl ConnectionHandle {
+    pub(crate) fn fixture(runner: Uuid7, connection_id: Uuid7) -> Arc<Self> {
+        Self::fixture_with_claims(runner, connection_id).0
     }
 
     pub(crate) fn fixture_with_claims(
         runner: Uuid7,
-        connection: Uuid7,
+        connection_id: Uuid7,
     ) -> (Arc<Self>, mpsc::Receiver<ClaimRequest>) {
         let (commands, _) = mpsc::channel(1);
         let (claims, requests) = mpsc::channel(1);
-        let session = Arc::new(Self {
+        let connection = Arc::new(Self {
             runner,
-            connection,
+            connection_id,
             snapshot: Mutex::new(SchedulingState {
                 ready: true,
                 degraded: false,
@@ -255,6 +255,6 @@ impl SessionHandle {
             rechecks: Notify::new(),
             commands,
         });
-        (session, requests)
+        (connection, requests)
     }
 }

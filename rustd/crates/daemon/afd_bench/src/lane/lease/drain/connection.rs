@@ -5,7 +5,7 @@ use crate::lane::lease::seed::RunnerIdentity;
 use crate::{datastores::Datastores, error::Result};
 use af_crypto::{entropy::Entropy, secret::Kek};
 use af_wire::lease::AcceptedKinds;
-use afd_gateway::{Gateway, GatewayDependencies, test_util::Session};
+use afd_gateway::{Gateway, GatewayDependencies, test_util::RunnerConnection};
 use afd_setup::{Creations, Drafts, ModelCalls, Network, Setup};
 use std::sync::Arc;
 
@@ -50,8 +50,8 @@ pub(in crate::lane::lease) async fn open(
     runner: &RunnerIdentity,
     kinds: AcceptedKinds,
     credits: usize,
-) -> Result<Session> {
-    Ok(Session::open(
+) -> Result<RunnerConnection> {
+    Ok(RunnerConnection::open(
         gateway,
         runner.id.clone(),
         runner.digest.clone(),

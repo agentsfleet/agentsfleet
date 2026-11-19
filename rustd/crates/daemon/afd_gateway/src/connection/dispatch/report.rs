@@ -7,10 +7,10 @@ use af_observability::verb_span::{ReportStage, VerbClock};
 use af_wire::report::{ReportRequest, ReportResponse};
 use garde::Validate as _;
 
-use super::super::{Message, SessionServices, context::answer};
+use super::super::{ConnectionServices, Message, context::answer};
 use crate::{Operation, Result};
 
-impl SessionServices {
+impl ConnectionServices {
     pub(in super::super) async fn report(
         &self,
         request_id: NonZeroU64,

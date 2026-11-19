@@ -2,6 +2,7 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
+mod binding;
 mod connection;
 mod error;
 mod observations;
@@ -9,7 +10,6 @@ mod operation;
 mod registry;
 mod scheduler;
 mod service;
-mod session;
 mod stream_headers;
 
 use std::sync::Arc;
@@ -24,7 +24,7 @@ use afd_sse::StreamLimit;
 use tokio::time::Instant;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-pub use connection::ConnectionContext;
+pub use binding::ConnectionContext;
 pub use error::{Error, Result};
 pub use operation::Operation;
 
@@ -33,9 +33,9 @@ pub mod test_util;
 
 /// Boot-selected handles; no service opens another pool or broker connection here.
 pub struct GatewayDependencies {
-    /// Recovery budgets resolved before registering native sessions.
+    /// Recovery budgets resolved before registering native connections.
     pub recovery: RecoverySettings,
-    /// Existing shared pool for gateway-owned recovery, cache and session registration SQL.
+    /// Existing shared pool for gateway-owned recovery, cache and connection registration SQL.
     pub database: afd_db::Db,
     /// Host policy, liveness and guarded connection ownership.
     pub runners: Runners,
@@ -61,7 +61,7 @@ pub struct GatewayDependencies {
     pub analytics: af_observability::Analytics,
 }
 
-/// Bounded daemon scheduler work; one session still owns one claim at a time.
+/// Bounded daemon scheduler work; one connection still owns one claim at a time.
 #[derive(Debug, Clone, Copy)]
 pub struct RecoverySettings {
     /// Maximum active claims across credited hosts.
@@ -97,7 +97,7 @@ pub(crate) struct Inner {
     accounting_stop: CancellationToken,
 }
 
-/// Cloneable session opening and shutdown owner for one daemon replica.
+/// Cloneable connection opening and shutdown owner for one daemon replica.
 #[derive(Clone)]
 pub struct Gateway {
     inner: Arc<Inner>,
@@ -141,10 +141,10 @@ impl Gateway {
         scheduler::run(self.clone(), stop).await
     }
 
-    /// Stop offers, finish accepted requests and close every session by one deadline.
+    /// Stop offers, finish accepted requests and close every connection by one deadline.
     ///
     /// # Errors
-    /// Returns the drain timeout after cancelling any session still serving.
+    /// Returns the drain timeout after cancelling any connection still serving.
     pub async fn drain(&self, deadline: Instant) -> Result<()> {
         self.inner.registry.begin_drain();
         self.inner.tasks.close();
@@ -167,7 +167,7 @@ impl afd_http::services::RunnerStreams for Gateway {
         runner: afd_auth::principal::Runner,
         request: axum::extract::Request,
     ) -> axum::response::Response {
-        match session::open(self, runner, request).await {
+        match connection::open(self, runner, request).await {
             Ok(response) => response,
             Err(error) => {
                 Self::observe(&error, Operation::Opening);

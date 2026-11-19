@@ -1,12 +1,12 @@
-//! Provisional and committed session states each have one small, explicit ownership transition.
+//! Provisional and committed connection states each have one small, explicit ownership transition.
 
 use super::{
-    ConfirmedSession, Message, SchedulingState, SessionHandle, SessionOpening, SessionServices,
-    commands,
+    ConfirmedConnection, ConnectionHandle, ConnectionOpening, ConnectionServices, Message,
+    SchedulingState, commands,
     events::EventSource,
     opening,
-    streams::{SessionStreams, StreamSetup},
-    supervisor::SessionSupervisor,
+    streams::{ConnectionStreams, StreamSetup},
+    supervisor::ConnectionSupervisor,
 };
 use crate::Result;
 use af_wire::protocol::{PENDING_MAX, StreamKind};
@@ -14,7 +14,7 @@ use std::sync::Arc;
 use tokio::sync::{Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 
-impl SessionOpening {
+impl ConnectionOpening {
     /// Any failure or dropped opening cancels all native streams, including a partly read hello.
     pub(super) async fn run(self) -> Result<()> {
         let _cancel_on_exit = self.context.native.stop.clone().drop_guard();
@@ -22,7 +22,7 @@ impl SessionOpening {
     }
 }
 
-impl ConfirmedSession {
+impl ConfirmedConnection {
     /// Registration and the admission permit live until every supervised task has joined.
     async fn run(mut self) -> Result<()> {
         let (commands_tx, commands_rx) = mpsc::channel(PENDING_MAX);
@@ -48,8 +48,8 @@ impl ConfirmedSession {
             stop: handle.stop.clone(),
             deadline: self.deadline,
         };
-        let mut streams = SessionStreams::attach(self.io, self.attachments, setup).await?;
-        let services = Arc::new(SessionServices::connected(
+        let mut streams = ConnectionStreams::attach(self.io, self.attachments, setup).await?;
+        let services = Arc::new(ConnectionServices::connected(
             self.gateway.clone(),
             Arc::clone(&handle),
             self.authority,
@@ -62,7 +62,7 @@ impl ConfirmedSession {
         streams
             .workers
             .spawn(commands::listen(Arc::clone(&services)));
-        let mut supervisor = SessionSupervisor::new(services);
+        let mut supervisor = ConnectionSupervisor::new(services);
         let mut events = EventSource {
             frames: streams.frames,
             commands: commands_rx,
@@ -82,10 +82,10 @@ impl ConfirmedSession {
         &self,
         commands: mpsc::Sender<afd_bus::Command>,
         claims: mpsc::Sender<super::ClaimRequest>,
-    ) -> SessionHandle {
-        SessionHandle {
+    ) -> ConnectionHandle {
+        ConnectionHandle {
             runner: self.runner.id().clone(),
-            connection: self.authority.connection().clone(),
+            connection_id: self.authority.connection().clone(),
             stop: self.context.native.stop.clone(),
             drain: CancellationToken::new(),
             liveness: super::liveness::Liveness::new(
@@ -111,7 +111,7 @@ impl ConfirmedSession {
         }
     }
 
-    /// Only committed ownership is advertised as welcome; headers alone prove no session authority.
+    /// Only committed ownership is advertised as welcome; headers alone prove no connection authority.
     async fn welcome(&mut self) -> Result<()> {
         let welcome = Message::Welcome {
             request_id: self.hello.request_id,
@@ -139,10 +139,10 @@ impl ConfirmedSession {
     }
 }
 
-impl SessionServices {
+impl ConnectionServices {
     pub(crate) fn connected(
         gateway: crate::Gateway,
-        handle: Arc<SessionHandle>,
+        handle: Arc<ConnectionHandle>,
         authority: afd_runner::capacity::authority::Authority,
         cache: super::cache::LeaseCache,
         output: super::StreamWriters,
@@ -181,7 +181,7 @@ impl SessionServices {
 }
 
 /// A missing lease is cancelled; an unlisted durable lease is left to lapse rather than replaying secrets.
-async fn reconcile(services: &SessionServices, running: &[af_core::id::Uuid7]) -> Result<()> {
+async fn reconcile(services: &ConnectionServices, running: &[af_core::id::Uuid7]) -> Result<()> {
     for (lease, code) in services.cache.reconciliation(
         running,
         services.gateway.inner.dependencies.wall_clock.now(),

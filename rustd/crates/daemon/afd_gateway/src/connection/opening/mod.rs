@@ -1,4 +1,4 @@
-//! HTTP opening selects a typed control or secondary request before starting any session task.
+//! HTTP opening selects a typed control or secondary request before starting any connection task.
 
 mod confirmation;
 mod control;

@@ -5,10 +5,10 @@ use std::num::NonZeroU64;
 use af_wire::{protocol::Answer, runner::HeartbeatRequest};
 use afd_runner::heartbeat::holds;
 
-use super::super::{Message, SessionServices, context::answer, opening::allowed};
+use super::super::{ConnectionServices, Message, context::answer, opening::allowed};
 use crate::{Operation, Result};
 
-impl SessionServices {
+impl ConnectionServices {
     pub(in super::super) async fn heartbeat(
         &self,
         request_id: NonZeroU64,

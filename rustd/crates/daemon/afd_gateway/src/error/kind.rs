@@ -1,11 +1,11 @@
-//! Typed session failures retain their service and transport causes.
+//! Typed connection failures retain their service and transport causes.
 
 use crate::Operation;
 use afd_runner::capacity::authority::Refusal;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
-    #[error("The message is not valid for this runner stream or session state.")]
+    #[error("The message is not valid for this runner stream or connection state.")]
     Protocol,
     #[error("The runner stream value could not be represented.")]
     Conversion {
@@ -28,16 +28,16 @@ pub(crate) enum ErrorKind {
     UnknownStream,
     #[error("Authenticate the control kind before attaching the remaining streams.")]
     ControlBearerMissing,
-    #[error("Send the bearer only on control; secondary streams use the authenticated session.")]
+    #[error("Send the bearer only on control; secondary streams use the authenticated connection.")]
     UnexpectedBearer,
-    #[error("The runner session header must contain a valid UUIDv7 identifier.")]
-    SessionIdentifier {
+    #[error("The runner connection header must contain a valid UUIDv7 identifier.")]
+    ConnectionIdentifier {
         #[source]
         source: af_core::error::Error,
     },
-    #[error("This stream does not belong to the authenticated connection.")]
+    #[error("This stream does not belong to the authenticated connection_id.")]
     Binding,
-    #[error("The {kind:?} kind is already attached to this connection.")]
+    #[error("The {kind:?} kind is already attached to this connection_id.")]
     DuplicateStream { kind: af_wire::protocol::StreamKind },
     #[error("This daemon has no available runner stream slots. Retry later.")]
     Capacity { carrying: usize, capacity: usize },

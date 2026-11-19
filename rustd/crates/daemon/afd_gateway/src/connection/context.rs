@@ -12,10 +12,10 @@ use garde::Validate as _;
 use serde::Serialize;
 use tokio::time::Instant;
 
-use super::{Message, SessionServices};
+use super::{ConnectionServices, Message};
 use crate::{Operation, Result, error::within};
 
-impl SessionServices {
+impl ConnectionServices {
     pub(super) async fn send(&self, message: &Message<'_>) -> Result<()> {
         let deadline = Instant::now() + STREAM_ANSWER_TIMEOUT;
         let kind = message.stream_kind();

@@ -12,9 +12,9 @@ const AUTHORIZATION_HEADER: &str = "authorization";
 #[derive(Debug)]
 pub(crate) enum StreamHeaders {
     Control { previous: Option<Uuid7> },
-    Work { session: Uuid7 },
-    Reports { session: Uuid7 },
-    Activity { session: Uuid7 },
+    Work { connection: Uuid7 },
+    Reports { connection: Uuid7 },
+    Activity { connection: Uuid7 },
 }
 
 impl TryFrom<&HeaderMap> for StreamHeaders {
@@ -24,8 +24,10 @@ impl TryFrom<&HeaderMap> for StreamHeaders {
         revision(headers)?;
         let kind = StreamKind::parse(required(headers, protocol::STREAM_KIND_HEADER)?)
             .ok_or(ErrorKind::UnknownStream)?;
-        let session = one(headers, protocol::SESSION_HEADER)?
-            .map(|raw| Uuid7::parse(raw).map_err(|source| ErrorKind::SessionIdentifier { source }))
+        let connection = one(headers, protocol::SESSION_HEADER)?
+            .map(|raw| {
+                Uuid7::parse(raw).map_err(|source| ErrorKind::ConnectionIdentifier { source })
+            })
             .transpose()?;
         let bearer = one(headers, AUTHORIZATION_HEADER)?.is_some();
         match kind {
@@ -33,33 +35,37 @@ impl TryFrom<&HeaderMap> for StreamHeaders {
                 if !bearer {
                     return Err(ErrorKind::ControlBearerMissing.into());
                 }
-                Ok(Self::Control { previous: session })
+                Ok(Self::Control {
+                    previous: connection,
+                })
             }
-            StreamKind::Work => secondary(bearer, session).map(|session| Self::Work { session }),
+            StreamKind::Work => {
+                secondary(bearer, connection).map(|connection| Self::Work { connection })
+            }
             StreamKind::Reports => {
-                secondary(bearer, session).map(|session| Self::Reports { session })
+                secondary(bearer, connection).map(|connection| Self::Reports { connection })
             }
             StreamKind::Activity => {
-                secondary(bearer, session).map(|session| Self::Activity { session })
+                secondary(bearer, connection).map(|connection| Self::Activity { connection })
             }
         }
     }
 }
 
 /// The protocol revision a stream's request names, refused unless this
-/// daemon speaks it. Every stream names one; the session runs on its control
+/// daemon speaks it. Every stream names one; the connection runs on its control
 /// stream's.
 pub(crate) fn revision(headers: &HeaderMap) -> Result<protocol::Revision> {
     protocol::Revision::parse(required(headers, protocol::VERSION_HEADER)?)
         .ok_or_else(|| ErrorKind::UnsupportedVersion.into())
 }
 
-/// A secondary lane binds to the authenticated session and never carries its own bearer.
-fn secondary(bearer: bool, session: Option<Uuid7>) -> Result<Uuid7> {
+/// A secondary lane binds to the authenticated connection and never carries its own bearer.
+fn secondary(bearer: bool, connection: Option<Uuid7>) -> Result<Uuid7> {
     if bearer {
         return Err(ErrorKind::UnexpectedBearer.into());
     }
-    Ok(session.ok_or(ErrorKind::MissingHeader {
+    Ok(connection.ok_or(ErrorKind::MissingHeader {
         header: protocol::SESSION_HEADER,
     })?)
 }
@@ -74,12 +80,12 @@ impl StreamHeaders {
         }
     }
 
-    pub(crate) fn session(&self) -> Option<&Uuid7> {
+    pub(crate) fn connection(&self) -> Option<&Uuid7> {
         match self {
             Self::Control { previous } => previous.as_ref(),
-            Self::Work { session } | Self::Reports { session } | Self::Activity { session } => {
-                Some(session)
-            }
+            Self::Work { connection }
+            | Self::Reports { connection }
+            | Self::Activity { connection } => Some(connection),
         }
     }
 }
@@ -129,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn control_carries_the_bearer_and_secondary_lanes_bind_the_session() {
+    fn control_carries_the_bearer_and_secondary_lanes_bind_the_connection() {
         let control = StreamHeaders::try_from(&headers(&[
             (protocol::STREAM_KIND_HEADER, b"control"),
             ("authorization", b"Bearer agt_r_fixture"),
@@ -159,7 +165,7 @@ mod tests {
                 bound
                     .as_ref()
                     .ok()
-                    .and_then(StreamHeaders::session)
+                    .and_then(StreamHeaders::connection)
                     .map(af_core::id::Uuid7::as_str),
                 Some(SESSION)
             );

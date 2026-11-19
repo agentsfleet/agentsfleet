@@ -7,10 +7,10 @@ use af_wire::{lease::TaggedLease, protocol::StreamKind};
 use afd_fleet::lease::{OfferRequest, Offered, RecoveryScan};
 use tokio::time::Instant;
 
-use super::{Message, OfferMode, OfferOutcome, SchedulingState, SessionServices};
+use super::{ConnectionServices, Message, OfferMode, OfferOutcome, SchedulingState};
 use crate::{Operation, Result};
 
-impl SessionServices {
+impl ConnectionServices {
     /// Reserve before policy assembly, then transfer the same charged bytes to the writer.
     pub(crate) async fn offer(&self, mode: OfferMode) -> Result<OfferOutcome> {
         let Some(state) = self.offer_state() else {

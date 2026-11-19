@@ -5,7 +5,7 @@
 
 use std::sync::atomic::Ordering;
 
-use super::super::{Message, SessionServices, context::answer};
+use super::super::{ConnectionServices, Message, context::answer};
 use crate::{Operation, Result};
 use af_core::{id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
 use af_wire::{
@@ -26,7 +26,7 @@ struct Entry {
     recorded_through: Option<u32>,
 }
 
-impl SessionServices {
+impl ConnectionServices {
     /// Answers every lease of one renewal frame from one batch.
     pub(in super::super) async fn renew(
         &self,
@@ -139,7 +139,7 @@ impl SessionServices {
                     }
                 }
             }
-            // The frame missed its deadline or the session is closing: every
+            // The frame missed its deadline or the connection is closing: every
             // lease it named answers the same refusal, which the runner retries.
             Err(error) => {
                 let refused = answer::<RenewResponse>(Err(error));
@@ -153,7 +153,7 @@ impl SessionServices {
     }
 }
 
-impl SessionServices {
+impl ConnectionServices {
     /// Renews each draft-owned lease of the frame on the draft path, under the
     /// frame's deadline, and fills its reply.
     async fn answer_drafts(

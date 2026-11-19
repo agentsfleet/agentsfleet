@@ -16,7 +16,7 @@ use afd_runner::capacity::authority::Authority;
 use http::HeaderMap;
 
 use crate::{
-    Result, error::ErrorKind, session::StreamAttachmentSender, stream_headers::StreamHeaders,
+    Result, connection::StreamAttachmentSender, error::ErrorKind, stream_headers::StreamHeaders,
 };
 
 pub(crate) struct Binding {
@@ -78,7 +78,7 @@ impl ConnectionContext {
     pub(crate) fn binding(&self, opening: &StreamHeaders) -> Result<&Binding> {
         self.binding
             .get()
-            .filter(|binding| opening.session() == Some(binding.authority.connection()))
+            .filter(|binding| opening.connection() == Some(binding.authority.connection()))
             .ok_or_else(|| ErrorKind::Binding.into())
     }
 
@@ -111,7 +111,7 @@ impl RunnerConnectionAuthentication for ConnectionContext {
             return Ok(ConnectionCredentials::Bearer);
         }
         self.authorize_secondary(headers)
-            .map(|(runner, kind)| ConnectionCredentials::Session { runner, kind })
+            .map(|(runner, kind)| ConnectionCredentials::Bound { runner, kind })
             .map_err(|error| error.response().into())
     }
 }

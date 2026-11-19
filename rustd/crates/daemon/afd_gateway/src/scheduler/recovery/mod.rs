@@ -83,9 +83,9 @@ pub(super) async fn waiting_work(
         Instant::now() + STREAM_ANSWER_TIMEOUT,
         Operation::Recheck,
         async {
-            let mut connection = gateway.inner.dependencies.database.acquire().await?;
+            let mut connection_id = gateway.inner.dependencies.database.acquire().await?;
             Ok(waiting(
-                &mut connection,
+                &mut connection_id,
                 runners,
                 gateway
                     .inner

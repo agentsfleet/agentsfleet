@@ -28,7 +28,7 @@ impl Error {
         match self.kind() {
             ErrorKind::Authority { refusal } => refusal.code(),
             ErrorKind::UnsupportedVersion => error_code::RUN_PROTOCOL_UNSUPPORTED,
-            ErrorKind::Identifier { .. } | ErrorKind::SessionIdentifier { .. } => {
+            ErrorKind::Identifier { .. } | ErrorKind::ConnectionIdentifier { .. } => {
                 error_code::UUIDV7_INVALID_ID_SHAPE
             }
             ErrorKind::MissingHeader { .. }
@@ -67,22 +67,22 @@ impl Error {
             ErrorKind::MissingHeader { .. } | ErrorKind::RepeatedHeader { .. }
             | ErrorKind::HeaderEncoding { .. } | ErrorKind::UnsupportedVersion
             | ErrorKind::UnknownStream | ErrorKind::ControlBearerMissing
-            | ErrorKind::UnexpectedBearer | ErrorKind::SessionIdentifier { .. } => self.kind().to_string().into(),
-            ErrorKind::Protocol | ErrorKind::Conversion { .. } => "The message is not valid for this stream or session state.".into(),
-            ErrorKind::Binding => "Attach this kind to the physical connection that authenticated its session.".into(),
+            | ErrorKind::UnexpectedBearer | ErrorKind::ConnectionIdentifier { .. } => self.kind().to_string().into(),
+            ErrorKind::Protocol | ErrorKind::Conversion { .. } => "The message is not valid for this stream or connection state.".into(),
+            ErrorKind::Binding => "Attach this kind to the physical connection_id that authenticated its connection.".into(),
             ErrorKind::DuplicateStream { kind } => format!("The {} kind is already attached. Open each kind once.", kind.as_str()).into(),
             ErrorKind::Identifier { .. } => "The message contains an invalid UUIDv7 identifier.".into(),
             ErrorKind::Bounds { .. } => "The message exceeds the permitted size, entry count or field bounds.".into(),
             ErrorKind::Json { .. } => "The message is not valid JSON for this runner protocol.".into(),
             ErrorKind::Authority { refusal: Refusal::Credential } => "The runner credential is no longer valid. Update it before reconnecting.".into(),
             ErrorKind::Authority { refusal: Refusal::Revoked } => "This runner is no longer active. Check its administrative status.".into(),
-            ErrorKind::Authority { refusal: Refusal::Superseded } => "Another connection owns this runner. Stop this process to avoid competing connections.".into(),
+            ErrorKind::Authority { refusal: Refusal::Superseded } => "Another connection_id owns this runner. Stop this process to avoid competing connections.".into(),
             ErrorKind::Capacity { .. } => "This daemon has no available stream slots. Retry after the advertised delay.".into(),
             ErrorKind::Timeout { operation, .. } => format!("The stream timed out while {operation}. Retain the last confirmed lease deadline.").into(),
-            ErrorKind::Closed | ErrorKind::ChannelSend { .. } | ErrorKind::Completion { .. } | ErrorKind::Transport { .. } => "The connection ended. Reconnect before the last confirmed lease deadline.".into(),
+            ErrorKind::Closed | ErrorKind::ChannelSend { .. } | ErrorKind::Completion { .. } | ErrorKind::Transport { .. } => "The connection_id ended. Reconnect before the last confirmed lease deadline.".into(),
             ErrorKind::Database { .. } | ErrorKind::Query { .. } => "The database did not confirm the operation. Retain the last confirmed lease deadline.".into(),
             ErrorKind::Bus { .. } => "The notification broker is unavailable. Database recovery remains active.".into(),
-            ErrorKind::Worker { .. } => "A session worker stopped. Reconnect before the last confirmed lease deadline.".into(),
+            ErrorKind::Worker { .. } => "A connection worker stopped. Reconnect before the last confirmed lease deadline.".into(),
             ErrorKind::Http { .. } => "The server could not construct its response. Retry with backoff.".into(),
             ErrorKind::Fleet { source } => source.detail().into(),
             ErrorKind::Runner { source } => source.detail().into(),
@@ -104,7 +104,7 @@ impl Error {
             | ErrorKind::UnknownStream
             | ErrorKind::ControlBearerMissing
             | ErrorKind::UnexpectedBearer
-            | ErrorKind::SessionIdentifier { .. }
+            | ErrorKind::ConnectionIdentifier { .. }
             | ErrorKind::Binding
             | ErrorKind::DuplicateStream { .. }
             | ErrorKind::Identifier { .. }
@@ -147,7 +147,7 @@ impl Error {
             | ErrorKind::UnknownStream
             | ErrorKind::ControlBearerMissing
             | ErrorKind::UnexpectedBearer
-            | ErrorKind::SessionIdentifier { .. } => "metadata",
+            | ErrorKind::ConnectionIdentifier { .. } => "metadata",
             ErrorKind::Protocol
             | ErrorKind::Conversion { .. }
             | ErrorKind::Identifier { .. }

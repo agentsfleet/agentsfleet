@@ -1,9 +1,10 @@
 //! One handler schedules bounded effects; every effect remains in the owner's task set.
 
 use super::{
-    Message, SessionServices,
+    ConnectionServices, Message,
     events::{
-        EventHandler, EventSource, OperationCompletion, SessionEvent, ShutdownReason, join_result,
+        ConnectionEvent, EventHandler, EventSource, OperationCompletion, ShutdownReason,
+        join_result,
     },
     io::IncomingFrame,
     offers::{OfferMode, OfferOutcome, OfferTrigger},
@@ -23,8 +24,8 @@ use tracing::Instrument as _;
 
 /// Busy flags represent the only two coalesced background operations.
 /// Request identity and capacity are instead held by drop-owned guards.
-pub(super) struct SessionSupervisor {
-    pub(super) services: Arc<SessionServices>,
+pub(super) struct ConnectionSupervisor {
+    pub(super) services: Arc<ConnectionServices>,
     pub(super) jobs: JoinSet<Result<OperationCompletion>>,
     pub(super) slots: RequestSlots,
     pub(super) offer_running: bool,
@@ -33,11 +34,11 @@ pub(super) struct SessionSupervisor {
     span: tracing::Span,
 }
 
-impl SessionSupervisor {
-    pub(super) fn new(services: Arc<SessionServices>) -> Self {
+impl ConnectionSupervisor {
+    pub(super) fn new(services: Arc<ConnectionServices>) -> Self {
         let runner_id = services.handle.runner.as_str();
-        let connection_id = services.handle.connection.as_str();
-        let span = tracing::debug_span!("runner_session", runner_id, connection_id);
+        let connection_id = services.handle.connection_id.as_str();
+        let span = tracing::debug_span!("runner_connection", runner_id, connection_id);
         Self {
             services,
             jobs: JoinSet::new(),
@@ -87,7 +88,7 @@ impl SessionSupervisor {
         }
         .instrument(self.span.clone());
         if work {
-            // A physical provider call must finish its receipt after the session closes.
+            // A physical provider call must finish its receipt after the connection closes.
             // The tracked request retains its frame charge, slot and request registration.
             let owner = gateway.inner.tasks.spawn(request);
             self.jobs.spawn(async move { owner.await? });
@@ -220,19 +221,23 @@ impl SessionSupervisor {
     }
 }
 
-impl EventHandler for SessionSupervisor {
-    fn handle(&mut self, event: SessionEvent) -> Result<ControlFlow<ShutdownReason>> {
+impl EventHandler for ConnectionSupervisor {
+    fn handle(&mut self, event: ConnectionEvent) -> Result<ControlFlow<ShutdownReason>> {
         match event {
-            SessionEvent::Frame(frame) => self.request(frame)?,
-            SessionEvent::Completed(completion) => self.completed(completion),
-            SessionEvent::Command(command) => self.command(command),
-            SessionEvent::OfferRequested(trigger) => self.offer(trigger),
-            SessionEvent::DrainRequested => return Ok(ControlFlow::Break(ShutdownReason::Drain)),
-            SessionEvent::Superseded => return Ok(ControlFlow::Break(ShutdownReason::Superseded)),
-            SessionEvent::Disconnected => {
+            ConnectionEvent::Frame(frame) => self.request(frame)?,
+            ConnectionEvent::Completed(completion) => self.completed(completion),
+            ConnectionEvent::Command(command) => self.command(command),
+            ConnectionEvent::OfferRequested(trigger) => self.offer(trigger),
+            ConnectionEvent::DrainRequested => {
+                return Ok(ControlFlow::Break(ShutdownReason::Drain));
+            }
+            ConnectionEvent::Superseded => {
+                return Ok(ControlFlow::Break(ShutdownReason::Superseded));
+            }
+            ConnectionEvent::Disconnected => {
                 return Ok(ControlFlow::Break(ShutdownReason::Disconnected));
             }
-            SessionEvent::Silent => return Ok(ControlFlow::Break(ShutdownReason::Silent)),
+            ConnectionEvent::Silent => return Ok(ControlFlow::Break(ShutdownReason::Silent)),
         }
         Ok(ControlFlow::Continue(()))
     }

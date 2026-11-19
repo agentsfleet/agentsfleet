@@ -1,10 +1,10 @@
-//! In-process gateway sessions for local measurement and fixtures.
+//! In-process gateway connections for local measurement and fixtures.
 //!
 //! The measured gateway keeps its production cache, authority, dispatch and frame writers.
 //! Listener authentication, the replica registry and scheduler have separate native tests.
 
-use crate::session::{
-    OfferMode, OfferOutcome, SchedulingState, SessionHandle, SessionServices,
+use crate::connection::{
+    ConnectionHandle, ConnectionServices, OfferMode, OfferOutcome, SchedulingState,
     cache::LeaseCache,
     io::{self, IncomingFrame, StreamWriters},
     liveness::Liveness,
@@ -29,9 +29,9 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 /// A local caller drives real gateway operations without network or background probes.
-/// Dropping the session cancels and aborts its owned frame writers.
-pub struct Session {
-    services: Arc<SessionServices>,
+/// Dropping the connection cancels and aborts its owned frame writers.
+pub struct RunnerConnection {
+    services: Arc<ConnectionServices>,
     readers: BTreeMap<StreamKind, Reader<DuplexStream>>,
     budget: Budget,
     requests: Arc<RequestTracker>,
@@ -39,15 +39,15 @@ pub struct Session {
     revision: u64,
 }
 
-impl std::fmt::Debug for Session {
+impl std::fmt::Debug for RunnerConnection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Session")
+        f.debug_struct("RunnerConnection")
             .field("runner", &self.services.handle.runner)
             .finish_non_exhaustive()
     }
 }
 
-impl Session {
+impl RunnerConnection {
     /// Acquire the enrolled identity and rebuild its real lease targets before measurement.
     ///
     /// # Errors
@@ -72,7 +72,7 @@ impl Session {
         let budget = Budget::default();
         let pipes = Pipes::new(&stop, &budget)?;
         let handle = handle(&authority, credits, stop);
-        let services = Arc::new(SessionServices::connected(
+        let services = Arc::new(ConnectionServices::connected(
             gateway.clone(),
             handle,
             authority,
@@ -82,7 +82,7 @@ impl Session {
             // The fixture runner speaks the revision today's runner does.
             af_wire::protocol::Revision::V2,
         ));
-        let mut session = Self {
+        let mut connection = Self {
             services,
             readers: pipes.readers,
             budget,
@@ -90,8 +90,8 @@ impl Session {
             workers: pipes.workers,
             revision: 0,
         };
-        session.ready(credits).await?;
-        Ok(session)
+        connection.ready(credits).await?;
+        Ok(connection)
     }
 
     /// Advertise capacity through the production revision and observed-offer checks.
@@ -186,21 +186,21 @@ impl Session {
         self.shutdown().await;
     }
 
-    /// Cancel and join writers while retaining the caller's session allocation.
+    /// Cancel and join writers while retaining the caller's connection allocation.
     pub async fn shutdown(&mut self) {
         self.services.handle.stop.cancel();
         self.workers.shutdown().await;
     }
 }
 
-impl Drop for Session {
+impl Drop for RunnerConnection {
     fn drop(&mut self) {
         self.services.handle.stop.cancel();
         self.workers.abort_all();
     }
 }
 
-/// No registry runs in this measurement; the session still owns its bounded writers.
+/// No registry runs in this measurement; the connection still owns its bounded writers.
 struct Pipes {
     readers: BTreeMap<StreamKind, Reader<DuplexStream>>,
     writers: StreamWriters,
@@ -238,12 +238,12 @@ fn handle(
     authority: &afd_runner::capacity::authority::Authority,
     credits: usize,
     stop: CancellationToken,
-) -> Arc<SessionHandle> {
+) -> Arc<ConnectionHandle> {
     let (commands, _) = mpsc::channel(1);
     let (claims, _) = mpsc::channel(1);
-    Arc::new(SessionHandle {
+    Arc::new(ConnectionHandle {
         runner: authority.runner().clone(),
-        connection: authority.connection().clone(),
+        connection_id: authority.connection().clone(),
         stop,
         drain: CancellationToken::new(),
         liveness: Liveness::default(),

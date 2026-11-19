@@ -8,11 +8,11 @@ use std::sync::{
 use af_core::id::Uuid7;
 use dashmap::DashMap;
 
-use crate::{Result, error::ErrorKind, session::SessionHandle};
+use crate::{Result, connection::ConnectionHandle, error::ErrorKind};
 
 #[derive(Debug, Default)]
 pub(crate) struct Registry {
-    sessions: DashMap<Uuid7, Arc<SessionHandle>>,
+    connections: DashMap<Uuid7, Arc<ConnectionHandle>>,
     draining: AtomicBool,
 }
 
@@ -20,12 +20,12 @@ impl Registry {
     /// The host lock orders local insertion with every durable ownership transition.
     pub(crate) async fn register_current(
         self: &Arc<Self>,
-        session: &Arc<SessionHandle>,
+        connection: &Arc<ConnectionHandle>,
         authority: &afd_runner::capacity::authority::Authority,
         database: &afd_db::Db,
     ) -> Result<Registration> {
         let mut tx = sqlx::Transaction::begin(database.acquire().await?, None).await?;
-        if afd_runner::capacity::lock_host(&mut tx, (&session.runner, authority), None)
+        if afd_runner::capacity::lock_host(&mut tx, (&connection.runner, authority), None)
             .await?
             .is_none()
         {
@@ -34,88 +34,94 @@ impl Registry {
             }
             .into());
         }
-        let registration = self.register(session)?;
+        let registration = self.register(connection)?;
         tx.commit().await?;
         Ok(registration)
     }
 
-    fn register(self: &Arc<Self>, session: &Arc<SessionHandle>) -> Result<Registration> {
+    fn register(self: &Arc<Self>, connection: &Arc<ConnectionHandle>) -> Result<Registration> {
         if self.draining.load(Ordering::Acquire) {
             return Err(ErrorKind::Closed.into());
         }
-        let runner = session.runner.clone();
-        let connection = session.connection.clone();
-        if let Some(old) = self.sessions.insert(runner.clone(), Arc::clone(session)) {
+        let runner = connection.runner.clone();
+        let connection_id = connection.connection_id.clone();
+        if let Some(old) = self
+            .connections
+            .insert(runner.clone(), Arc::clone(connection))
+        {
             old.supersede();
         }
         if self.draining.load(Ordering::Acquire) {
-            session.drain.cancel();
+            connection.drain.cancel();
         }
         Ok(Registration {
             registry: Arc::clone(self),
             runner,
-            connection,
+            connection_id,
         })
     }
 
     /// Busy hosts retain the request until returned capacity completes a recovery scan.
     pub(crate) fn request_recovery(&self, recovery: afd_bus::wake::Recovery) {
-        for session in &self.sessions {
-            session.snapshot.lock().recovery_pending = Some(recovery);
+        for connection in &self.connections {
+            connection.snapshot.lock().recovery_pending = Some(recovery);
         }
     }
 
     /// Every connected runner, for the probe that names the idle tenant ones.
     pub(crate) fn runners(&self) -> Vec<Uuid7> {
-        self.sessions
+        self.connections
             .iter()
             .map(|entry| entry.key().clone())
             .collect()
     }
 
-    /// Sessions a pass may ask to claim, skipping the `idle` runners.
+    /// Connections a pass may ask to claim, skipping the `idle` runners.
     pub(crate) fn candidates(
         &self,
         fleets: &std::collections::HashSet<Uuid7>,
         idle: &std::collections::HashSet<Uuid7>,
-    ) -> Vec<Arc<SessionHandle>> {
-        let mut sessions: Vec<_> = self
-            .sessions
+    ) -> Vec<Arc<ConnectionHandle>> {
+        let mut connections: Vec<_> = self
+            .connections
             .iter()
             .filter_map(|entry| {
-                let session = Arc::clone(entry.value());
-                let state = session.snapshot.lock();
+                let connection = Arc::clone(entry.value());
+                let state = connection.snapshot.lock();
                 if !state.ready
                     || state.degraded
                     || state.credits == 0
-                    || session.stop.is_cancelled()
-                    || session.drain.is_cancelled()
-                    || session.is_superseded()
-                    || idle.contains(&session.runner)
+                    || connection.stop.is_cancelled()
+                    || connection.drain.is_cancelled()
+                    || connection.is_superseded()
+                    || idle.contains(&connection.runner)
                 {
                     return None;
                 }
                 let holds = state.held.iter().any(|fleet| fleets.contains(fleet));
                 let key = (!holds, state.last_offer);
                 drop(state);
-                Some((key, session))
+                Some((key, connection))
             })
             .collect();
         // Capture each key once: concurrent Ready updates must not change the sort order mid-sort.
-        sessions.sort_by_key(|(key, _)| *key);
-        sessions.into_iter().map(|(_, session)| session).collect()
+        connections.sort_by_key(|(key, _)| *key);
+        connections
+            .into_iter()
+            .map(|(_, connection)| connection)
+            .collect()
     }
 
     pub(crate) fn begin_drain(&self) {
         self.draining.store(true, Ordering::Release);
-        for session in &self.sessions {
-            session.drain.cancel();
+        for connection in &self.connections {
+            connection.drain.cancel();
         }
     }
 
     pub(crate) fn cancel_all(&self) {
-        for session in &self.sessions {
-            session.stop.cancel();
+        for connection in &self.connections {
+            connection.stop.cancel();
         }
     }
 
@@ -126,24 +132,24 @@ impl Registry {
     #[cfg(test)]
     pub(crate) fn register_fixture(
         self: &Arc<Self>,
-        session: &Arc<SessionHandle>,
+        connection: &Arc<ConnectionHandle>,
     ) -> Result<Registration> {
-        self.register(session)
+        self.register(connection)
     }
 }
 
 pub(crate) struct Registration {
     registry: Arc<Registry>,
     runner: Uuid7,
-    connection: Uuid7,
+    connection_id: Uuid7,
 }
 
 impl Drop for Registration {
     fn drop(&mut self) {
         self.registry
-            .sessions
+            .connections
             .remove_if(&self.runner, |_, current| {
-                current.connection == self.connection
+                current.connection_id == self.connection_id
             });
     }
 }

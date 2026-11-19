@@ -90,7 +90,7 @@ fn acknowledgement_cannot_name_an_offer_the_daemon_never_sent() {
 }
 
 #[test]
-fn only_a_rise_in_available_workers_starts_a_session_pass() -> Result<()> {
+fn only_a_rise_in_available_workers_starts_a_connection_pass() -> Result<()> {
     let mut state = state();
     let mut revision = NonZeroU64::MIN;
     assert!(state.availability(2, revision, 0)?);
@@ -120,22 +120,22 @@ fn only_a_rise_in_available_workers_starts_a_session_pass() -> Result<()> {
 #[tokio::test]
 async fn recovery_from_a_policy_recheck_wakes_one_capacity_pass() -> Result<()> {
     let runner = af_core::id::Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
-    let connection = af_core::id::Uuid7::parse("019f0000-0000-7000-8000-000000000002")?;
-    let session = super::SessionHandle::fixture(runner, connection);
-    session.snapshot.lock().degraded = true;
-    session.apply_policy(false);
+    let connection_id = af_core::id::Uuid7::parse("019f0000-0000-7000-8000-000000000002")?;
+    let connection = super::ConnectionHandle::fixture(runner, connection_id);
+    connection.snapshot.lock().degraded = true;
+    connection.apply_policy(false);
     assert!(matches!(
-        futures_util::poll!(Box::pin(session.offers.notified())),
+        futures_util::poll!(Box::pin(connection.offers.notified())),
         std::task::Poll::Ready(())
     ));
-    session.apply_policy(false);
+    connection.apply_policy(false);
     assert!(matches!(
-        futures_util::poll!(Box::pin(session.offers.notified())),
+        futures_util::poll!(Box::pin(connection.offers.notified())),
         std::task::Poll::Pending
     ));
-    session.apply_policy(true);
+    connection.apply_policy(true);
     assert!(matches!(
-        futures_util::poll!(Box::pin(session.offers.notified())),
+        futures_util::poll!(Box::pin(connection.offers.notified())),
         std::task::Poll::Pending
     ));
     Ok(())

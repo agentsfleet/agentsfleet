@@ -1,7 +1,7 @@
-//! A recovery hint fills real session credits without another five-second probe.
+//! A recovery hint fills real connection credits without another five-second probe.
 
 use super::*;
-use crate::session::OfferMode;
+use crate::connection::OfferMode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::{sync::Notify, task::JoinSet};
 
@@ -24,11 +24,11 @@ async fn drain_burst(fleets: usize) -> TestResult {
     let mut hosts = JoinSet::new();
     let maximum = af_wire::protocol::LEASES_MAX;
     for number in 1..=fleets.div_ceil(maximum) {
-        let session = SessionFixture::new(number)?;
-        session.handle.snapshot.lock().credits = maximum;
-        registrations.push(session.register(&registry)?);
+        let connection = ConnectionFixture::new(number)?;
+        connection.handle.snapshot.lock().credits = maximum;
+        registrations.push(connection.register(&registry)?);
         hosts.spawn(serve_host(
-            session,
+            connection,
             Arc::clone(&remaining),
             Arc::clone(&completed),
         ));
@@ -84,12 +84,12 @@ async fn claims_drained(completed: &Notify, remaining: &AtomicUsize) {
 }
 
 async fn serve_host(
-    mut session: SessionFixture,
+    mut connection: ConnectionFixture,
     remaining: Arc<AtomicUsize>,
     completed: Arc<Notify>,
 ) -> TestResult {
-    while let Some(answer) = session.requests.recv().await {
-        let available = session.handle.snapshot.lock().credits > 0;
+    while let Some(answer) = connection.requests.recv().await {
+        let available = connection.handle.snapshot.lock().credits > 0;
         let issued = available
             && remaining
                 .try_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
@@ -97,7 +97,7 @@ async fn serve_host(
                 })
                 .is_ok();
         if issued {
-            session.handle.snapshot.lock().credits -= 1;
+            connection.handle.snapshot.lock().credits -= 1;
         }
         let _finished = answer.reply.send(if issued {
             OfferOutcome::Issued
@@ -112,9 +112,9 @@ async fn serve_host(
 #[tokio::test(start_paused = true)]
 async fn a_slow_host_does_not_hold_back_a_different_eligible_host() -> TestResult {
     let registry = Arc::new(Registry::default());
-    let mut slow = SessionFixture::new(1)?;
+    let mut slow = ConnectionFixture::new(1)?;
     tokio::time::advance(Duration::from_millis(1)).await;
-    let mut healthy = SessionFixture::new(2)?;
+    let mut healthy = ConnectionFixture::new(2)?;
     let _slow = slow.register(&registry)?;
     let _healthy = healthy.register(&registry)?;
     let wake = Wake::default();
@@ -148,8 +148,8 @@ async fn a_slow_host_does_not_hold_back_a_different_eligible_host() -> TestResul
 #[tokio::test(start_paused = true)]
 async fn an_ordinary_ring_can_reach_a_free_host_while_recovery_is_waiting() -> TestResult {
     let registry = Arc::new(Registry::default());
-    let mut slow = SessionFixture::new(1)?;
-    let mut healthy = SessionFixture::new(2)?;
+    let mut slow = ConnectionFixture::new(1)?;
+    let mut healthy = ConnectionFixture::new(2)?;
     healthy
         .handle
         .snapshot
@@ -199,7 +199,7 @@ async fn an_ordinary_ring_can_reach_a_free_host_while_recovery_is_waiting() -> T
 #[tokio::test(start_paused = true)]
 async fn a_new_recovery_wake_survives_the_previous_pass_finishing() -> TestResult {
     let registry = Arc::new(Registry::default());
-    let mut host = SessionFixture::new(1)?;
+    let mut host = ConnectionFixture::new(1)?;
     let _registration = host.register(&registry)?;
     let wake = Wake::default();
     let stop = CancellationToken::new();

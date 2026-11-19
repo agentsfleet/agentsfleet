@@ -1,9 +1,9 @@
-//! Real session request queues expose pass order and bounds without a database.
+//! Real connection request queues expose pass order and bounds without a database.
 
 use super::{Probe, notifications, pass};
 use crate::{
+    connection::{ClaimRequest, ConnectionHandle, OfferOutcome},
     registry::{Registration, Registry},
-    session::{ClaimRequest, OfferOutcome, SessionHandle},
 };
 use af_core::id::Uuid7;
 use afd_bus::wake::Wake;
@@ -18,20 +18,20 @@ mod probes;
 
 #[path = "burst_tests.rs"]
 mod burst;
-/// A probe that finds work and names no runner idle: every session is asked.
+/// A probe that finds work and names no runner idle: every connection is asked.
 fn everyone() -> Probe {
     Probe::Waiting(HashSet::new())
 }
 
-struct SessionFixture {
-    handle: Arc<SessionHandle>,
+struct ConnectionFixture {
+    handle: Arc<ConnectionHandle>,
     requests: mpsc::Receiver<ClaimRequest>,
 }
 
-impl SessionFixture {
+impl ConnectionFixture {
     fn new(number: usize) -> TestResult<Self> {
         let id = Uuid7::parse(&format!("019f0000-0000-7000-8000-{number:012x}"))?;
-        let (handle, requests) = SessionHandle::fixture_with_claims(id.clone(), id);
+        let (handle, requests) = ConnectionHandle::fixture_with_claims(id.clone(), id);
         Ok(Self { handle, requests })
     }
 
@@ -51,8 +51,8 @@ impl SessionFixture {
 #[tokio::test(start_paused = true)]
 async fn rings_coalesce_into_one_claim_pass() -> TestResult {
     let registry = Arc::new(Registry::default());
-    let mut session = SessionFixture::new(1)?;
-    let _registration = session.register(&registry)?;
+    let mut connection = ConnectionFixture::new(1)?;
+    let _registration = connection.register(&registry)?;
     let wake = Wake::default();
     let stop = CancellationToken::new();
     let job = tokio::spawn({
@@ -62,23 +62,23 @@ async fn rings_coalesce_into_one_claim_pass() -> TestResult {
         async move { notifications(&registry, &wake, 8, stop, |_| async { Ok(everyone()) }).await }
     });
     tokio::task::yield_now().await;
-    wake.ring(session.handle.runner.clone());
-    let first = session.request().await?;
+    wake.ring(connection.handle.runner.clone());
+    let first = connection.request().await?;
     for _ in 0..100 {
-        wake.ring(session.handle.runner.clone());
+        wake.ring(connection.handle.runner.clone());
     }
     first
         .reply
         .send(OfferOutcome::Empty)
         .map_err(|unsent| format!("first pass lost its answer {unsent:?}"))?;
-    session
+    connection
         .request()
         .await?
         .reply
         .send(OfferOutcome::Empty)
         .map_err(|unsent| format!("second pass lost its answer {unsent:?}"))?;
     let extra = tokio::select! {
-        request = session.requests.recv() => {
+        request = connection.requests.recv() => {
             assert!(request.is_some(), "fixture request queue stays open");
             true
         }
@@ -95,8 +95,8 @@ async fn rings_coalesce_into_one_claim_pass() -> TestResult {
 
 #[tokio::test(start_paused = true)]
 async fn a_one_ring_pass_ends_at_its_first_lease() -> TestResult {
-    let mut first = SessionFixture::new(1)?;
-    let mut second = SessionFixture::new(2)?;
+    let mut first = ConnectionFixture::new(1)?;
+    let mut second = ConnectionFixture::new(2)?;
     let job = tokio::spawn(pass(
         vec![Arc::clone(&first.handle), Arc::clone(&second.handle)],
         1,
@@ -125,17 +125,17 @@ async fn a_one_ring_pass_ends_at_its_first_lease() -> TestResult {
 
 #[tokio::test(start_paused = true)]
 async fn an_empty_pass_over_five_sessions_makes_five_claims() -> TestResult {
-    let mut sessions = (1..=5)
-        .map(SessionFixture::new)
+    let mut connections = (1..=5)
+        .map(ConnectionFixture::new)
         .collect::<TestResult<Vec<_>>>()?;
-    let candidates = sessions
+    let candidates = connections
         .iter()
-        .map(|session| Arc::clone(&session.handle))
+        .map(|connection| Arc::clone(&connection.handle))
         .collect();
     let job = tokio::spawn(pass(candidates, 100));
     let mut claims = 0;
-    for session in &mut sessions {
-        session
+    for connection in &mut connections {
+        connection
             .request()
             .await?
             .reply
@@ -145,8 +145,8 @@ async fn an_empty_pass_over_five_sessions_makes_five_claims() -> TestResult {
     }
     job.await??;
     assert_eq!(claims, 5);
-    assert!(sessions.iter_mut().all(|session| matches!(
-        session.requests.try_recv(),
+    assert!(connections.iter_mut().all(|connection| matches!(
+        connection.requests.try_recv(),
         Err(mpsc::error::TryRecvError::Empty)
     )));
     Ok(())
@@ -154,8 +154,8 @@ async fn an_empty_pass_over_five_sessions_makes_five_claims() -> TestResult {
 
 #[tokio::test(start_paused = true)]
 async fn a_ring_reaches_a_later_eligible_host_when_the_first_claim_is_empty() -> TestResult {
-    let mut first = SessionFixture::new(1)?;
-    let mut second = SessionFixture::new(2)?;
+    let mut first = ConnectionFixture::new(1)?;
+    let mut second = ConnectionFixture::new(2)?;
     let job = tokio::spawn(pass(
         vec![Arc::clone(&first.handle), Arc::clone(&second.handle)],
         1,
@@ -181,9 +181,9 @@ async fn a_ring_reaches_a_later_eligible_host_when_the_first_claim_is_empty() ->
 }
 
 #[tokio::test(start_paused = true)]
-async fn several_rings_spend_one_budget_across_sessions() -> TestResult {
-    let mut first = SessionFixture::new(1)?;
-    let mut second = SessionFixture::new(2)?;
+async fn several_rings_spend_one_budget_across_connections() -> TestResult {
+    let mut first = ConnectionFixture::new(1)?;
+    let mut second = ConnectionFixture::new(2)?;
     let job = tokio::spawn(pass(
         vec![Arc::clone(&first.handle), Arc::clone(&second.handle)],
         3,
@@ -218,8 +218,8 @@ async fn several_rings_spend_one_budget_across_sessions() -> TestResult {
 
 #[tokio::test(start_paused = true)]
 async fn an_unknown_claim_outcome_stops_the_pass_before_another_host() -> TestResult {
-    let mut first = SessionFixture::new(1)?;
-    let mut second = SessionFixture::new(2)?;
+    let mut first = ConnectionFixture::new(1)?;
+    let mut second = ConnectionFixture::new(2)?;
     let job = tokio::spawn(pass(
         vec![Arc::clone(&first.handle), Arc::clone(&second.handle)],
         1,
@@ -238,10 +238,10 @@ async fn an_unknown_claim_outcome_stops_the_pass_before_another_host() -> TestRe
 #[tokio::test(start_paused = true)]
 async fn candidates_prefer_locality_then_the_longest_waiting_host() -> TestResult {
     let registry = Arc::new(Registry::default());
-    let first = SessionFixture::new(1)?;
+    let first = ConnectionFixture::new(1)?;
     tokio::time::advance(Duration::from_secs(1)).await;
-    let second = SessionFixture::new(2)?;
-    let local = SessionFixture::new(3)?;
+    let second = ConnectionFixture::new(2)?;
+    let local = ConnectionFixture::new(3)?;
     let _first = first.register(&registry)?;
     let _second = second.register(&registry)?;
     let _local = local.register(&registry)?;
@@ -251,13 +251,13 @@ async fn candidates_prefer_locality_then_the_longest_waiting_host() -> TestResul
         .lock()
         .held
         .push(local.handle.runner.clone());
-    let sessions = registry.candidates(
+    let connections = registry.candidates(
         &HashSet::from([local.handle.runner.clone()]),
         &HashSet::new(),
     );
-    let order: Vec<_> = sessions
+    let order: Vec<_> = connections
         .into_iter()
-        .map(|session| session.runner.clone())
+        .map(|connection| connection.runner.clone())
         .collect();
     assert_eq!(
         order,
@@ -270,7 +270,7 @@ async fn candidates_prefer_locality_then_the_longest_waiting_host() -> TestResul
     first.handle.request_offer();
     let oldest = registry.candidates(&HashSet::new(), &HashSet::new());
     assert_eq!(
-        oldest.first().map(|session| &session.runner),
+        oldest.first().map(|connection| &connection.runner),
         Some(&first.handle.runner)
     );
     Ok(())
@@ -279,18 +279,18 @@ async fn candidates_prefer_locality_then_the_longest_waiting_host() -> TestResul
 #[tokio::test]
 async fn draining_or_superseded_sessions_are_not_scheduled() -> TestResult {
     let registry = Arc::new(Registry::default());
-    let draining = SessionFixture::new(1)?;
-    let superseded = SessionFixture::new(2)?;
-    let eligible = SessionFixture::new(3)?;
+    let draining = ConnectionFixture::new(1)?;
+    let superseded = ConnectionFixture::new(2)?;
+    let eligible = ConnectionFixture::new(3)?;
     let _draining = draining.register(&registry)?;
     let _superseded = superseded.register(&registry)?;
     let _eligible = eligible.register(&registry)?;
     draining.handle.drain.cancel();
     superseded.handle.supersede();
-    let sessions = registry.candidates(&HashSet::new(), &HashSet::new());
-    assert_eq!(sessions.len(), 1);
+    let connections = registry.candidates(&HashSet::new(), &HashSet::new());
+    assert_eq!(connections.len(), 1);
     assert_eq!(
-        sessions.first().map(|session| &session.runner),
+        connections.first().map(|connection| &connection.runner),
         Some(&eligible.handle.runner)
     );
     Ok(())

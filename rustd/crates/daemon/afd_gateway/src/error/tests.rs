@@ -23,7 +23,7 @@ fn refused_bindings_and_malformed_messages_never_ask_for_a_retry() -> Proof {
         (
             Error::from(ErrorKind::Binding),
             error_code::AUTH_FORBIDDEN,
-            "Attach this kind to the physical connection that authenticated its session.",
+            "Attach this kind to the physical connection_id that authenticated its connection.",
             "binding",
         ),
         (
@@ -74,7 +74,7 @@ async fn transient_failures_keep_the_lease_deadline_and_ask_for_a_retry() -> Pro
     assert_class(
         &closed,
         error_code::INTERNAL_OPERATION_FAILED,
-        "The connection ended. Reconnect before the last confirmed lease deadline.",
+        "The connection_id ended. Reconnect before the last confirmed lease deadline.",
         true,
         "closed",
     );
@@ -86,18 +86,18 @@ async fn transient_failures_keep_the_lease_deadline_and_ask_for_a_retry() -> Pro
         true,
         "database",
     );
-    let session_worker = tokio::spawn(std::future::pending::<()>());
-    session_worker.abort();
+    let connection_worker = tokio::spawn(std::future::pending::<()>());
+    connection_worker.abort();
     let worker = Error::from(
-        session_worker
+        connection_worker
             .await
             .err()
-            .ok_or("the aborted session worker joined")?,
+            .ok_or("the aborted connection worker joined")?,
     );
     assert_class(
         &worker,
         error_code::INTERNAL_OPERATION_FAILED,
-        "A session worker stopped. Reconnect before the last confirmed lease deadline.",
+        "A connection worker stopped. Reconnect before the last confirmed lease deadline.",
         true,
         "worker",
     );
@@ -124,7 +124,7 @@ fn every_operation_keeps_its_metric_label_and_sentence() {
         (
             Operation::Opening,
             "opening",
-            "confirming the runner connection",
+            "confirming the runner connection_id",
         ),
         (Operation::Offer, "offer", "offering work"),
         (Operation::Heartbeat, "heartbeat", "recording a heartbeat"),
@@ -135,7 +135,7 @@ fn every_operation_keeps_its_metric_label_and_sentence() {
         (Operation::Report, "report", "settling a report"),
         (Operation::Folds, "folds", "reading pending inputs"),
         (Operation::Write, "write", "sending a response"),
-        (Operation::Drain, "drain", "closing the runner session"),
+        (Operation::Drain, "drain", "closing the runner connection"),
     ];
     for (operation, label, sentence) in table {
         assert_eq!(operation.as_str(), label);

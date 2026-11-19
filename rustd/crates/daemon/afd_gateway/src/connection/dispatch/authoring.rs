@@ -1,12 +1,12 @@
 //! Authoring shares the confirmed connection and the existing accounting owners.
 
-use super::super::{Message, SessionServices, context::answer};
+use super::super::{ConnectionServices, Message, context::answer};
 use crate::{Operation, Result, error::ErrorKind};
 use af_core::id::Uuid7;
 use af_wire::authoring::{Renew, Report};
 use std::num::NonZeroU64;
 
-impl SessionServices {
+impl ConnectionServices {
     pub(in super::super) async fn authoring_model(
         &self,
         request_id: NonZeroU64,

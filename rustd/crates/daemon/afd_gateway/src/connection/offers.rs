@@ -1,6 +1,6 @@
-//! A replica pass awaits one claim at a time through the session's existing operation owner.
+//! A replica pass awaits one claim at a time through the connection's existing operation owner.
 
-use super::SessionHandle;
+use super::ConnectionHandle;
 use crate::{
     Operation, Result,
     error::{closed_send, within},
@@ -32,7 +32,7 @@ pub(super) enum OfferTrigger {
     Pass(ClaimRequest),
 }
 
-impl SessionHandle {
+impl ConnectionHandle {
     pub(crate) async fn claim(&self, mode: OfferMode) -> Result<OfferOutcome> {
         if self.stop.is_cancelled() || self.drain.is_cancelled() || self.superseded.is_cancelled() {
             return Ok(OfferOutcome::Empty);

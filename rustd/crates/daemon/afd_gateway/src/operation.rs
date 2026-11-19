@@ -1,6 +1,6 @@
 //! Finite operation names shared by human errors, metrics and traces.
 
-/// The session operation that failed; never derived from a payload or identifier.
+/// The connection operation that failed; never derived from a payload or identifier.
 #[derive(Debug, Clone, Copy)]
 pub enum Operation {
     /// Read and confirm connection ownership.
@@ -25,7 +25,7 @@ pub enum Operation {
     TurnCheckpoint,
     /// Write and flush a complete frame.
     Write,
-    /// Finish accepted requests and close the session.
+    /// Finish accepted requests and close the connection.
     Drain,
 }
 
@@ -53,7 +53,7 @@ impl Operation {
 impl std::fmt::Display for Operation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Opening => "confirming the runner connection",
+            Self::Opening => "confirming the runner connection_id",
             Self::Offer => "offering work",
             Self::Heartbeat => "recording a heartbeat",
             Self::Recheck => "checking the current owner",
@@ -64,7 +64,7 @@ impl std::fmt::Display for Operation {
             Self::TurnCheckpoint => "saving or restoring a turn checkpoint",
             Self::Write => "sending a response",
             Self::Model => "calling the authoring model",
-            Self::Drain => "closing the runner session",
+            Self::Drain => "closing the runner connection",
         })
     }
 }

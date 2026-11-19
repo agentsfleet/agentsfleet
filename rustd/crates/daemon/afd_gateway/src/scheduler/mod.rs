@@ -5,8 +5,8 @@ mod subscriptions;
 
 use crate::{
     Gateway, Result,
+    connection::{ConnectionHandle, OfferMode, OfferOutcome},
     registry::Registry,
-    session::{OfferMode, OfferOutcome, SessionHandle},
 };
 use af_core::id::Uuid7;
 use afd_bus::wake::Wake;
@@ -48,7 +48,7 @@ pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
 /// One ordinary probe can skip every tenant runner with no eligible work.
 #[derive(Debug)]
 pub(crate) enum Probe {
-    /// No session can claim pending work.
+    /// No connection can claim pending work.
     Nothing,
     /// Work waits; these tenant runners cannot claim it.
     Waiting(HashSet<Uuid7>),
@@ -98,11 +98,11 @@ async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
                 HashSet::new()
             }
         };
-        let sessions = registry.candidates(&wake.fleets(), &idle);
+        let connections = registry.candidates(&wake.fleets(), &idle);
         tokio::select! {
             biased;
             () = stop.cancelled() => return Ok(()),
-            result = pass(sessions, budget) => {
+            result = pass(connections, budget) => {
                 if let Err(error) = result {
                     Gateway::observe(&error, crate::Operation::Offer);
                 }
@@ -112,10 +112,10 @@ async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
 }
 
 /// Empty claims advance the walk; successful claims spend the pass's lease budget.
-async fn pass(sessions: Vec<Arc<SessionHandle>>, mut budget: u64) -> Result<()> {
-    for session in sessions {
+async fn pass(connections: Vec<Arc<ConnectionHandle>>, mut budget: u64) -> Result<()> {
+    for connection in connections {
         while budget > 0 {
-            if session.claim(OfferMode::Ordinary).await? != OfferOutcome::Issued {
+            if connection.claim(OfferMode::Ordinary).await? != OfferOutcome::Issued {
                 break;
             }
             budget -= 1;

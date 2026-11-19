@@ -5,7 +5,7 @@ use std::sync::Arc;
 use af_wire::protocol::Up;
 use garde::Validate as _;
 
-use super::{Message, Request, SessionServices, io::IncomingFrame};
+use super::{ConnectionServices, Message, Request, io::IncomingFrame};
 use crate::{Result, error::ErrorKind};
 
 mod authoring;
@@ -15,9 +15,9 @@ mod renewal;
 mod report;
 mod turn_checkpoint;
 
-impl SessionServices {
+impl ConnectionServices {
     #[tracing::instrument(
-        name = "runner_session_dispatch",
+        name = "runner_connection_dispatch",
         level = "debug",
         skip_all,
         fields(stream_kind = incoming.kind.as_str(), request_id = tracing::field::Empty,

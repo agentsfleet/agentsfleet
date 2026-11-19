@@ -48,7 +48,7 @@ mod tests {
     use std::task::Poll;
 
     #[tokio::test(start_paused = true)]
-    async fn a_session_without_heartbeats_closes_after_two_intervals() {
+    async fn a_connection_without_heartbeats_closes_after_two_intervals() {
         let clock = Liveness::default();
         let silent = clock.silence();
         tokio::pin!(silent);

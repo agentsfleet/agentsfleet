@@ -1,0 +1,95 @@
+//! Typed event selection is separate from connection decisions, following Exonum's handler pattern.
+
+use super::offers::{ClaimRequest, OfferTrigger};
+use super::{io::IncomingFrame, streams::StreamReceivers, supervisor::ConnectionSupervisor};
+use crate::{Result, error::ErrorKind};
+use af_wire::protocol::StreamKind;
+use afd_bus::Command;
+use std::ops::ControlFlow;
+use tokio::{
+    sync::mpsc,
+    task::{JoinError, JoinSet},
+};
+
+/// Events carry their domain meaning; command variants are not reduced to an anonymous wake.
+pub(super) enum ConnectionEvent {
+    Frame(IncomingFrame),
+    Completed(OperationCompletion),
+    Command(Command),
+    OfferRequested(OfferTrigger),
+    DrainRequested,
+    Superseded,
+    Disconnected,
+    Silent,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum OperationCompletion {
+    Request,
+    Offer,
+    Command,
+}
+
+pub(super) enum ShutdownReason {
+    Drain,
+    Superseded,
+    Disconnected,
+    Silent,
+}
+
+/// The handler owns state transitions; the event source owns asynchronous selection.
+pub(super) trait EventHandler {
+    fn handle(&mut self, event: ConnectionEvent) -> Result<ControlFlow<ShutdownReason>>;
+}
+
+pub(super) struct EventSource {
+    pub(super) frames: StreamReceivers,
+    pub(super) commands: mpsc::Receiver<Command>,
+    pub(super) claims: mpsc::Receiver<ClaimRequest>,
+}
+
+impl EventSource {
+    /// Control remains independent of data queues; background signals cannot spawn duplicate jobs.
+    pub(super) async fn next(
+        &mut self,
+        connection: &mut ConnectionSupervisor,
+        workers: &mut JoinSet<Result<()>>,
+    ) -> Result<ConnectionEvent> {
+        let handle = &connection.services.handle;
+        tokio::select! {
+            biased;
+            () = handle.stop.cancelled() => Ok(ConnectionEvent::Disconnected),
+            () = handle.superseded.cancelled() => Ok(ConnectionEvent::Superseded),
+            () = handle.drain.cancelled() => Ok(ConnectionEvent::DrainRequested),
+            () = handle.liveness.silence() => Ok(ConnectionEvent::Silent),
+            done = connection.jobs.join_next(), if !connection.jobs.is_empty() => Ok(ConnectionEvent::Completed(join_result(done)?)),
+            done = workers.join_next(), if !workers.is_empty() => { join_result(done)?; Err(ErrorKind::Closed.into()) }
+            command = self.commands.recv(), if !connection.command_running => {
+                Ok(ConnectionEvent::Command(command.ok_or(ErrorKind::Closed)?))
+            }
+            () = handle.rechecks.notified(), if !connection.command_running => Ok(ConnectionEvent::Command(Command::Recheck)),
+            frame = self.frames.control.recv(), if connection.slots.available(StreamKind::Control) => frame_event(frame),
+            claim = self.claims.recv(), if !connection.offer_running => {
+                Ok(ConnectionEvent::OfferRequested(OfferTrigger::Pass(claim.ok_or(ErrorKind::Closed)?)))
+            }
+            () = handle.offers.notified(), if !connection.offer_running => Ok(ConnectionEvent::OfferRequested(OfferTrigger::Ready)),
+            frame = self.frames.reports.recv(), if connection.slots.available(StreamKind::Reports) => frame_event(frame),
+            frame = self.frames.work.recv(), if connection.slots.available(StreamKind::Work) => frame_event(frame),
+            frame = self.frames.activity.recv() => frame_event(frame),
+        }
+    }
+}
+
+fn frame_event(frame: Option<IncomingFrame>) -> Result<ConnectionEvent> {
+    frame
+        .map(ConnectionEvent::Frame)
+        .ok_or_else(|| ErrorKind::Closed.into())
+}
+
+/// Name the three task exit layers rather than hiding them in chained question marks.
+pub(super) fn join_result<T>(
+    joined: Option<std::result::Result<Result<T>, JoinError>>,
+) -> Result<T> {
+    let task = joined.ok_or(ErrorKind::Closed)?;
+    task?
+}

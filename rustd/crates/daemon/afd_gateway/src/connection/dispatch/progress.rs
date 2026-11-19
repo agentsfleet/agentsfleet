@@ -10,10 +10,10 @@ use af_wire::{
 use afd_setup::setup_lease::PreviewChunk;
 use garde::Validate as _;
 
-use super::super::{Message, SessionServices, context::answer};
+use super::super::{ConnectionServices, Message, context::answer};
 use crate::{Operation, Result};
 
-impl SessionServices {
+impl ConnectionServices {
     pub(in super::super) async fn progress(
         &self,
         lease: &str,

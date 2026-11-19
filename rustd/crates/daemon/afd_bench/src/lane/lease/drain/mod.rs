@@ -1,10 +1,10 @@
 //! Measure complete production lease and report cycles, followed by connected idle sessions.
 
 pub mod burst;
+pub(in crate::lane::lease) mod connection;
 pub(in crate::lane::lease) mod native;
 pub(in crate::lane::lease) mod platform;
 mod runner;
-pub(in crate::lane::lease) mod session;
 mod settled;
 pub(in crate::lane::lease) mod stage;
 mod summary;
@@ -16,7 +16,7 @@ pub use self::summary::summary;
 use core::time::Duration;
 use std::sync::Arc;
 
-use afd_gateway::test_util::Session;
+use afd_gateway::test_util::RunnerConnection;
 
 use self::turn::Turn;
 use self::window::{Shape, Window, window};
@@ -171,7 +171,7 @@ async fn measure(
 
 /// Include the serving path's admission settlement in its drain cost.
 async fn drain(
-    sessions: Vec<Session>,
+    sessions: Vec<RunnerConnection>,
     parameters: Parameters,
     stores: &Datastores,
     events: u64,
