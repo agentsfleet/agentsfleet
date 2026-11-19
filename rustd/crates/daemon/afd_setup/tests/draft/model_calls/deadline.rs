@@ -13,7 +13,7 @@ use std::{sync::Arc, time::Duration};
 const INSTALL: [&str; 2] = [
     "CREATE FUNCTION public.hold_dispatch() RETURNS trigger LANGUAGE plpgsql AS $$ \
      BEGIN PERFORM pg_advisory_xact_lock(hashtext(NEW.id::text)::bigint); RETURN NEW; END $$",
-    "CREATE TRIGGER hold_dispatch BEFORE INSERT ON authoring.dispatches \
+    "CREATE TRIGGER hold_dispatch BEFORE INSERT ON setup.dispatches \
      FOR EACH ROW EXECUTE FUNCTION public.hold_dispatch()",
 ];
 

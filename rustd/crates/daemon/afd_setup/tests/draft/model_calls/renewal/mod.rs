@@ -11,7 +11,7 @@ use af_wire::authoring::{Knowledge, Meter, Renew};
 use jiff::Timestamp;
 
 /// Expires the attempt's run at database time, the clock the guard reads.
-const EXPIRE_NOW: &str = "UPDATE authoring.attempts \
+const EXPIRE_NOW: &str = "UPDATE setup.attempts \
 SET run_expires_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1";
 
 fn request() -> Renew {

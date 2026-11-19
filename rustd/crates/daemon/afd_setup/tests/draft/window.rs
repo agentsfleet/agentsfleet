@@ -24,10 +24,10 @@ pub(super) const PAST: Duration = DAY.saturating_add(Duration::from_hours(1));
 /// own id in one statement.
 const REFILE: &str = "\
 WITH old AS (
- DELETE FROM authoring.replay_receipts WHERE operation_id=$1 AND resource_id=$2
+ DELETE FROM setup.replay_receipts WHERE operation_id=$1 AND resource_id=$2
  RETURNING *
 )
-INSERT INTO authoring.replay_receipts
+INSERT INTO setup.replay_receipts
  (id,workspace_id,user_id,scope,operation_id,request_digest,resource_id,created_at)
 SELECT id,workspace_id,$3,scope,operation_id,request_digest,resource_id,
        statement_timestamp() - $4::interval

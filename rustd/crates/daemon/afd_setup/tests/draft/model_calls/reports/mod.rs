@@ -51,9 +51,9 @@ async fn balance(f: &Fixture) -> i64 {
 
 async fn counts(f: &Fixture, a: &Attempt) -> (i64, i64, i64) {
     sqlx::query_as(
-        "SELECT (SELECT count(*) FROM authoring.attempts WHERE id=$1 AND outcome IS NOT NULL), \
+        "SELECT (SELECT count(*) FROM setup.attempts WHERE id=$1 AND outcome IS NOT NULL), \
         (SELECT count(*) FROM billing.authoring_report_receipts WHERE attempt_id=$1), \
-        (SELECT count(*) FROM authoring.answer_receipts WHERE attempt_id=$1)",
+        (SELECT count(*) FROM setup.answer_receipts WHERE attempt_id=$1)",
     )
     .bind(&a.id)
     .fetch_one(&mut *f.connection().await)

@@ -48,7 +48,7 @@ const INSERT_LINE: &str = "INSERT INTO billing.usage_lines \
              now(), 0, 0, 0, 0, 0, 0, 0, 0, $5, now(), now())";
 
 /// A receipt two days old, past the one-day replay window.
-const INSERT_EXPIRED_RECEIPT: &str = "INSERT INTO authoring.replay_receipts \
+const INSERT_EXPIRED_RECEIPT: &str = "INSERT INTO setup.replay_receipts \
      (id, workspace_id, user_id, scope, operation_id, request_digest, resource_id, created_at) \
      VALUES ($1, $2, $2, $3, $1, 'digest', $2, \
              now() - interval '2 days')";
@@ -57,7 +57,7 @@ const INSERT_EXPIRED_RECEIPT: &str = "INSERT INTO authoring.replay_receipts \
 /// receipt survives.
 const LEFT_BEHIND: &str = "SELECT \
      (SELECT count(*) FROM billing.usage_lines WHERE tenant_id = $1 AND settled_at IS NULL), \
-     (SELECT count(*) FROM authoring.replay_receipts WHERE id = $2)";
+     (SELECT count(*) FROM setup.replay_receipts WHERE id = $2)";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

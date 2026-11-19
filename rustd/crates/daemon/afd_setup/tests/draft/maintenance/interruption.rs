@@ -115,8 +115,8 @@ async fn another_workers_sweep_reports_to_the_same_workspace_recorder() {
 /// The attempt's stored status, and its message's.
 async fn statuses(f: &Fixture, a: &Attempt) -> (String, String) {
     sqlx::query_as(
-        "SELECT a.status, m.status FROM authoring.attempts a \
-         JOIN authoring.messages m ON m.draft_id=a.draft_id AND m.sequence=a.message_sequence \
+        "SELECT a.status, m.status FROM setup.attempts a \
+         JOIN thread.turns m ON m.thread_id=a.draft_id AND m.sequence=a.message_sequence \
          WHERE a.id=$1",
     )
     .bind(&a.id)
@@ -143,7 +143,7 @@ async fn an_attempt_renewed_while_the_pass_waited_on_its_lock_is_left_running() 
         .await
         .expect("renewal transaction");
     let pid: i32 = sqlx::query_scalar(
-        "UPDATE authoring.attempts SET run_expires_at=now()+interval '1 minute' \
+        "UPDATE setup.attempts SET run_expires_at=now()+interval '1 minute' \
          WHERE id=$1 RETURNING pg_backend_pid()",
     )
     .bind(&a.id)
@@ -175,8 +175,8 @@ async fn an_expired_attempt_whose_message_already_finished_keeps_that_finish() {
     let f = Fixture::isolated().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     sqlx::query(
-        "WITH stopped AS (UPDATE authoring.messages SET status='cancelled' WHERE draft_id=$2) \
-         UPDATE authoring.attempts SET run_expires_at='epoch' WHERE id=$1",
+        "WITH stopped AS (UPDATE thread.turns SET status='cancelled' WHERE thread_id=$2) \
+         UPDATE setup.attempts SET run_expires_at='epoch' WHERE id=$1",
     )
     .bind(&a.id)
     .bind(&a.draft.id)

@@ -12,7 +12,7 @@ use afd_setup::{Observation, View};
 const MESSAGE_STATUS: &str = "UPDATE thread.turns SET status=$2 WHERE thread_id=$1";
 
 /// Closes the draft for its retention window, as a Save or an apply does.
-const CLOSE: &str = "UPDATE authoring.drafts SET status='closed', closed_at=now(), \
+const CLOSE: &str = "UPDATE setup.drafts SET status='closed', closed_at=now(), \
      expires_at=now()+interval '1 day' WHERE id=$1";
 
 async fn view(f: &Fixture, draft: &af_core::id::Uuid7) -> View {

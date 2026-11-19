@@ -28,7 +28,7 @@ const RESERVED_NANOS: i64 = 4_200;
 /// Whether an attempt still names a runner, and what it reserved.
 const READ_ATTEMPT: &str = "\
 SELECT runner_id IS NULL AS runner_gone, reserved_nanos
-FROM authoring.attempts WHERE id = $1";
+FROM setup.attempts WHERE id = $1";
 
 /// A bind the sandbox validator accepts.
 const BIND_PATH: &str = "/srv/models";

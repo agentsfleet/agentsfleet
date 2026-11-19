@@ -35,7 +35,7 @@ async fn references(case: &Case, id: &Uuid7) -> Option<PluginReferences> {
     sqlx::query_as(
         "SELECT plugin_revision_id AS plugin_revision_id,
                 source_plugin_revision_id AS source_plugin_revision_id
-           FROM authoring.drafts WHERE id = $1",
+           FROM setup.drafts WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&mut *case.base.db.acquire().await.expect("draft connection"))
@@ -46,8 +46,8 @@ async fn references(case: &Case, id: &Uuid7) -> Option<PluginReferences> {
 /// The card's entry and revision rows still stored.
 async fn stored(case: &Case, plugin: &Uuid7) -> (i64, i64) {
     sqlx::query_as(
-        "SELECT (SELECT count(*) FROM authoring.plugin_entries WHERE id = $1),
-                (SELECT count(*) FROM authoring.plugin_revisions WHERE plugin_entry_id = $1)",
+        "SELECT (SELECT count(*) FROM setup.plugin_entries WHERE id = $1),
+                (SELECT count(*) FROM setup.plugin_revisions WHERE plugin_entry_id = $1)",
     )
     .bind(plugin)
     .fetch_one(&mut *case.base.db.acquire().await.expect("card connection"))

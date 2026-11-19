@@ -27,7 +27,7 @@ const DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 const OVERLONG_ID_LEN: usize = 4_096;
 
 const AUTHORING: &str = "\
-INSERT INTO authoring.attempts(id,run_id,runner_id,workspace_id,tenant_id,user_id,
+INSERT INTO setup.attempts(id,run_id,runner_id,workspace_id,tenant_id,user_id,
 draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
 run_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
 reported_runtime_ms,last_activity_sequence,created_at,updated_at)
@@ -102,7 +102,7 @@ async fn authoring_run_cannot_mint_a_runtime_credential_live_or_revoked() {
     assert!(live.get("token").is_none(), "no credential in a refusal");
 
     sqlx::query(
-        "UPDATE authoring.attempts SET status='cancelled',run_expires_at=now() \
+        "UPDATE setup.attempts SET status='cancelled',run_expires_at=now() \
          WHERE id=$1",
     )
     .bind(&attempt)

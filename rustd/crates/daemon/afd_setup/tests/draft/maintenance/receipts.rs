@@ -16,7 +16,7 @@ const PASSES: usize = 20;
 
 /// Files one expired receipt per id in `$1`, each under its own key.
 const EXPIRED: &str = "\
-INSERT INTO authoring.replay_receipts
+INSERT INTO setup.replay_receipts
  (id,workspace_id,user_id,scope,operation_id,request_digest,resource_id,created_at)
 SELECT r.id,$3,$4,'sweep:'||r.operation,r.operation,'digest',r.id,
        statement_timestamp() - $5::interval

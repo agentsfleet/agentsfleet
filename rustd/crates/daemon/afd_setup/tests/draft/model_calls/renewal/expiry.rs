@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 /// Leaves the attempt ten seconds live from database time: long enough to
 /// renew, short enough that a renewal visibly extends it.
-const SHORTEN: &str = "UPDATE authoring.attempts \
+const SHORTEN: &str = "UPDATE setup.attempts \
 SET run_expires_at=date_trunc('milliseconds',clock_timestamp())+interval '10 seconds' \
 WHERE id=$1";
 

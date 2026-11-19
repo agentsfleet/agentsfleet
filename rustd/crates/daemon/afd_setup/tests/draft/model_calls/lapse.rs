@@ -19,12 +19,12 @@ use std::{sync::Arc, time::Duration};
 const LAPSES_IN: Duration = Duration::from_millis(500);
 
 /// Moves the attempt's run deadline to `$2` past database time.
-const RUN_LAPSES: &str = "UPDATE authoring.attempts \
+const RUN_LAPSES: &str = "UPDATE setup.attempts \
 SET run_expires_at = date_trunc('milliseconds', clock_timestamp()) + $2::interval \
 WHERE id = $1";
 
 /// Closes the draft with its retention deadline `$2` past database time.
-const DRAFT_LAPSES: &str = "UPDATE authoring.drafts \
+const DRAFT_LAPSES: &str = "UPDATE setup.drafts \
 SET closed_at = now(), expires_at = date_trunc('milliseconds', clock_timestamp()) + $2::interval \
 WHERE id = $1";
 

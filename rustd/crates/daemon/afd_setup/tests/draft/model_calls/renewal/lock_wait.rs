@@ -69,7 +69,7 @@ async fn blocked(f: &Fixture, pid: i32) {
 }
 
 /// Leaves the attempt's run one second live on database time.
-const ONE_SECOND_LEFT: &str = "UPDATE authoring.attempts \
+const ONE_SECOND_LEFT: &str = "UPDATE setup.attempts \
 SET run_expires_at=date_trunc('milliseconds',clock_timestamp())+interval '1 second' \
 WHERE id=$1";
 

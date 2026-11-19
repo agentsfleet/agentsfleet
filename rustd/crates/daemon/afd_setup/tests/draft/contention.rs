@@ -14,7 +14,7 @@ WITH RECURSIVE blocked(pid) AS (
  SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid=ANY(pg_blocking_pids(a.pid))
 )
 SELECT count(*) FROM pg_stat_activity WHERE pid IN (SELECT pid FROM blocked WHERE pid<>$1)
-AND query LIKE '%FROM authoring.drafts%'";
+AND query LIKE '%FROM setup.drafts%'";
 const LIMIT: Duration = Duration::from_secs(5);
 
 #[tokio::test]

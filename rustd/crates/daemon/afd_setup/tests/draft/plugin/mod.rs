@@ -82,8 +82,8 @@ impl Case {
     }
 
     async fn counts(&self) -> (i64, i64, i64) {
-        sqlx::query_as("SELECT (SELECT count(*) FROM authoring.plugin_entries WHERE tenant_id=$1),
-        (SELECT count(*) FROM authoring.plugin_revisions r JOIN authoring.plugin_entries l ON l.id=r.plugin_entry_id WHERE l.tenant_id=$1),
+        sqlx::query_as("SELECT (SELECT count(*) FROM setup.plugin_entries WHERE tenant_id=$1),
+        (SELECT count(*) FROM setup.plugin_revisions r JOIN setup.plugin_entries l ON l.id=r.plugin_entry_id WHERE l.tenant_id=$1),
         (SELECT count(*) FROM fleet.fleets WHERE tenant_id=$1)")
             .bind(&self.base.tenant).fetch_one(&mut *self.base.connection().await).await.expect("owned counts")
     }

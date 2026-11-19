@@ -22,7 +22,7 @@ use std::time::Duration;
 /// Every ordering finishes inside this, or the test fails rather than hangs.
 const DEADLOCK_BOUND: Duration = Duration::from_secs(30);
 const LIVE_AUTHORING: &str = "\
-SELECT run_id FROM authoring.attempts
+SELECT run_id FROM setup.attempts
 WHERE runner_id = $1 AND status = $2 AND run_expires_at > clock_timestamp()";
 
 /// Where A's late renewal lands relative to B's authoring admission.

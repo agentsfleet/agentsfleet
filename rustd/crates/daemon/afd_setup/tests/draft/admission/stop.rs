@@ -14,7 +14,7 @@ const RUNTIME_DEBIT_NANOS: i64 = 100;
 /// `(active attempts, their reserved nanos)` for one draft.
 async fn deliveries(f: &Fixture, draft: &Draft) -> (i64, i64) {
     sqlx::query_as(
-        "SELECT count(*), COALESCE(sum(reserved_nanos),0)::bigint FROM authoring.attempts \
+        "SELECT count(*), COALESCE(sum(reserved_nanos),0)::bigint FROM setup.attempts \
          WHERE draft_id=$1 AND status='active'",
     )
     .bind(&draft.id)

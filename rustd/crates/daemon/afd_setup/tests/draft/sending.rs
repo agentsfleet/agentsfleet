@@ -24,7 +24,7 @@ const POLLS: usize = 100;
 /// Files a receipt for key `$4` in scope `$3` as the racing writer; `$1` id,
 /// `$2` workspace, `$5` user, `$6` resource.
 const RACER: &str = "\
-INSERT INTO authoring.replay_receipts
+INSERT INTO setup.replay_receipts
  (id,workspace_id,user_id,scope,operation_id,request_digest,resource_id,created_at)
 VALUES ($1,$2,$5,$3,$4,'racer',$6,now())";
 

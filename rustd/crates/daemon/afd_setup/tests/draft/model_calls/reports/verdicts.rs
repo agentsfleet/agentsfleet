@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 /// Moves the attempt's wall-clock deadline behind database time, leaving its
 /// run live.
-const PAST_DEADLINE: &str = "UPDATE authoring.attempts \
+const PAST_DEADLINE: &str = "UPDATE setup.attempts \
      SET expires_at=date_trunc('milliseconds',clock_timestamp())-interval '1 second' \
      WHERE id=$1";
 

@@ -57,7 +57,7 @@ async fn run_pins_oldest_message_model_candidate_and_only_hashes_its_capability(
     assert_eq!(run.model_access.token.len(), 43);
     let saved: (String, i64, jiff_sqlx::Timestamp, jiff_sqlx::Timestamp) = sqlx::query_as(
         "SELECT model_token_hash, reserved_nanos, expires_at, run_expires_at \
-         FROM authoring.attempts WHERE id = $1",
+         FROM setup.attempts WHERE id = $1",
     )
     .bind(Uuid7::parse(&run.attempt_id).expect("the run names its attempt"))
     .fetch_one(&mut *f.connection().await)

@@ -49,7 +49,7 @@ fn settling_report() -> Report {
 /// `(attempts with an outcome, usage lines, settled usage lines)` for `attempt`.
 async fn attempt_money(c: &Case, attempt: &Uuid7) -> (i64, i64, i64) {
     sqlx::query_as(
-        "SELECT (SELECT count(*) FROM authoring.attempts WHERE id=$1 AND outcome IS NOT NULL), \
+        "SELECT (SELECT count(*) FROM setup.attempts WHERE id=$1 AND outcome IS NOT NULL), \
          (SELECT count(*) FROM billing.usage_lines WHERE work_type=$2 AND work_id=$1), \
          (SELECT count(settled_at) FROM billing.usage_lines WHERE work_type=$2 AND work_id=$1)",
     )
@@ -64,7 +64,7 @@ async fn attempt_money(c: &Case, attempt: &Uuid7) -> (i64, i64, i64) {
 async fn dispatch_output(c: &Case, attempt: &Uuid7) -> (i64, i64, i64) {
     sqlx::query_as(
         "SELECT count(*), count(result), count(native_reply) \
-         FROM authoring.dispatches WHERE attempt_id=$1",
+         FROM setup.dispatches WHERE attempt_id=$1",
     )
     .bind(attempt)
     .fetch_one(&mut *c.base.connection().await)
@@ -103,7 +103,7 @@ async fn column(c: &Case, statement: &'static str, id: &Uuid7) -> Option<String>
 /// A model call's dispatch, holding private output, on `attempt`.
 async fn dispatch_with_output(c: &Case, attempt: &Uuid7) {
     sqlx::query(
-        "INSERT INTO authoring.dispatches (id, attempt_id, sequence, request_digest, status, \
+        "INSERT INTO setup.dispatches (id, attempt_id, sequence, request_digest, status, \
          result, usage, native_reply, private_expires_at, dispatch_expires_at, created_at, updated_at) \
          VALUES ($1, $2, 1, 'fixture', 'known', $3::jsonb, '{}'::jsonb, $3::jsonb, \
          now() + interval '1 day', now() + interval '30 seconds', now(), now())",
@@ -270,7 +270,7 @@ async fn the_sweeps_leave_open_work(c: &Case) {
     );
     for (draft, status) in [(&open.id, None), (&setup_draft, Some("closed"))] {
         sqlx::query(
-            "UPDATE authoring.drafts SET status=COALESCE($2, status), expires_at='epoch' \
+            "UPDATE setup.drafts SET status=COALESCE($2, status), expires_at='epoch' \
              WHERE id=$1",
         )
         .bind(draft)

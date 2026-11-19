@@ -9,7 +9,7 @@ use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
 const ATTEMPT: &str = "\
-INSERT INTO authoring.attempts(id,run_id,runner_id,workspace_id,tenant_id,user_id,
+INSERT INTO setup.attempts(id,run_id,runner_id,workspace_id,tenant_id,user_id,
 draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
 run_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
 reported_runtime_ms,last_activity_sequence,created_at,updated_at)
