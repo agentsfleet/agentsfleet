@@ -200,6 +200,6 @@ impl Conversation for Scripted {
 pub(super) fn answered(ending: &Ending<Failure>) -> Option<&str> {
     match ending {
         Ending::Answered(text) => Some(text),
-        Ending::Failed(_) | Ending::Stopped => None,
+        Ending::Failed(_) | Ending::Stopped | Ending::Waiting(_) => None,
     }
 }

@@ -13,8 +13,9 @@ use crate::conversation::Conversation;
 use crate::extension::{Answer, Budget, Extension};
 use crate::model::Model as _;
 use crate::observe::{Observe as _, TurnEnd, TurnOutcome};
+use crate::tool::{ErrorCode, ToolOutput};
 use crate::transcript::Message;
-use crate::turn::{Ending, Turn};
+use crate::turn::{Ending, Turn, Waiting};
 use crate::window::{Fitted, Window};
 
 /// What joins two answering turns' text in one [`Ending::Answered`].
@@ -26,12 +27,17 @@ const EVENT_INPUT_TAKEN: &str = "loop_input_taken";
 const EVENT_BUDGET_SPENT: &str = "loop_budget_spent";
 /// The loop ended.
 const EVENT_ENDED: &str = "loop_ended";
+/// What a second question in one turn reads back: one is asked at a time.
+const ONE_QUESTION: &str = "another call of this turn already asked the person a question; \
+                            ask this one after the answer arrives";
 
 /// Runs `conversation`'s turns, with `extension`'s additions, to their end.
 ///
 /// The extension's budget bounds the whole loop: a loop it stops ends
-/// [`Ending::Stopped`], and the extension hears of it. Whatever ends the
-/// loop, its observer hears the ending once.
+/// [`Ending::Stopped`], and the extension hears of it. A call that asks the
+/// person a question ends the loop [`Ending::Waiting`] once its turn's other
+/// calls ran, and a state still waiting ends it so again without a model
+/// call. Whatever ends the loop, its observer hears the ending once.
 pub async fn drive<C, E>(
     conversation: &mut C,
     extension: &mut E,
@@ -42,11 +48,35 @@ where
     E: Extension<C>,
 {
     let mut begun = 0;
-    let ending = match extension.budget(conversation) {
-        Budget::Unbounded => turns(conversation, extension, state, &mut begun).await,
+    let ending = if let Some(waiting) = state.waiting.clone() {
+        Ending::Waiting(waiting)
+    } else {
+        let budget = extension.budget(conversation);
+        bounded(conversation, extension, state, &mut begun, budget).await
+    };
+    let (kind, event) = (ending.kind(), EVENT_ENDED);
+    tracing::debug!(turns = begun, ending = kind, event);
+    conversation.observer().loop_ended(begun, &ending);
+    ending
+}
+
+/// Every turn, under the extension's `budget`.
+async fn bounded<C, E>(
+    conversation: &mut C,
+    extension: &mut E,
+    state: &mut DriveState,
+    begun: &mut u64,
+    budget: Budget,
+) -> Ending<C::Failure>
+where
+    C: Conversation + ?Sized,
+    E: Extension<C>,
+{
+    match budget {
+        Budget::Unbounded => turns(conversation, extension, state, begun).await,
         Budget::Spent => Ending::Stopped,
         Budget::Within(limit) => {
-            let bounded = turns(conversation, extension, state, &mut begun);
+            let bounded = turns(conversation, extension, state, begun);
             match tokio::time::timeout(limit, bounded).await {
                 Ok(ending) => ending,
                 Err(_elapsed) => {
@@ -57,11 +87,7 @@ where
                 }
             }
         }
-    };
-    let (kind, event) = (ending.kind(), EVENT_ENDED);
-    tracing::debug!(turns = begun, ending = kind, event);
-    conversation.observer().loop_ended(begun, &ending);
-    ending
+    }
 }
 
 /// Every turn, in order, until one ends the loop. `begun` counts the turns
@@ -102,11 +128,15 @@ async fn turns<C: Conversation + ?Sized, E: Extension<C>>(
                 Next::Done => break Ending::Answered(state.answers.join(ANSWER_JOIN)),
             }
         }
-        let results = run_calls(conversation, &turn).await;
+        let (results, asked) = run_calls(conversation, &turn).await;
         remember(conversation, turn, results);
         state.completed();
         if conversation.stop().is_cancelled() {
             break Ending::Stopped;
+        }
+        if let Some(waiting) = asked {
+            state.waiting = Some(waiting.clone());
+            break Ending::Waiting(waiting);
         }
         if let Some(ending) = extension.after_group(conversation).await {
             break ending;
@@ -173,13 +203,30 @@ async fn sample<C: Conversation + ?Sized>(
 
 /// Runs `turn`'s calls in order, or answers each unrun when the turn was
 /// cut, and answers their results: fewer than its calls when the loop was
-/// stopped partway.
-async fn run_calls<C: Conversation + ?Sized>(conversation: &mut C, turn: &Turn) -> Vec<Message> {
+/// stopped partway. A call that asked the person a question has no result
+/// yet: it is the question the run waits on, and a second question in the
+/// same turn is answered that one is asked at a time.
+async fn run_calls<C: Conversation + ?Sized>(
+    conversation: &mut C,
+    turn: &Turn,
+) -> (Vec<Message>, Option<Waiting>) {
     let mut results = Vec::with_capacity(turn.calls.len());
+    let mut asked: Option<Waiting> = None;
     for call in &turn.calls {
-        let Some(output) = call::run(&*conversation, call, turn.cut).await else {
+        let Some(mut output) = call::run(&*conversation, call, turn.cut).await else {
             break;
         };
+        if let Some(question) = output.asks.take() {
+            if asked.is_none() {
+                asked = Some(Waiting {
+                    call_id: call.id.clone(),
+                    question,
+                });
+                conversation.called().await;
+                continue;
+            }
+            output = ToolOutput::failed(ErrorCode::QUESTION_PENDING, ONE_QUESTION);
+        }
         // The image a call read rides its result alone.
         results.push(Message::ToolResult {
             call_id: call.id.clone(),
@@ -188,7 +235,7 @@ async fn run_calls<C: Conversation + ?Sized>(conversation: &mut C, turn: &Turn) 
         });
         conversation.called().await;
     }
-    results
+    (results, asked)
 }
 
 /// Keeps what the model said and called, scrubbed by the embedder, then the

@@ -10,25 +10,27 @@ use std::sync::Arc;
 
 use af_egress::Transport;
 
-use crate::error::{self, Result};
-use crate::handler::Typed;
-use crate::http_request::HttpRequest;
-use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
-use crate::nested::Nested;
-use crate::plan::UpdatePlan;
-use crate::pushover::Pushover;
-use crate::runtime::{CatalogTool, Runtime};
-use crate::sandbox::{
-    ApplyPatch, Browser, BrowserOpen, ExecCommand, FileAppend, FileDelete, FileEdit,
-    FileEditHashed, FileRead, FileReadHashed, FileWrite, Git, Image, Screenshot, Shell, WriteStdin,
+use guffbolt::tools::browser::{Browse, BrowserOpen, Screenshot};
+use guffbolt::tools::files::{
+    ApplyPatch, FileAppend, FileDelete, FileEdit, FileEditHashed, FileRead, FileReadHashed,
+    FileWrite, ImageTool,
 };
+use guffbolt::tools::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStoreTool};
+use guffbolt::tools::plan::UpdatePlan;
+use guffbolt::tools::process::{ExecCommand, Git, Shell, WriteStdin};
+use guffbolt::tools::web::{HttpRequest, Pushover, WebFetch};
+
+use crate::error::{self, Result};
+use crate::generic::Generic;
+use crate::handler::Typed;
+use crate::nested::Nested;
+use crate::runtime::{CatalogTool, Runtime};
 use crate::selection::Offered;
 use crate::selection::Selection;
 use crate::verbs::{
     CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate, FleetActivity, FleetSteer,
     Message, ScheduleOnce,
 };
-use crate::web_fetch::WebFetch;
 
 /// One published tool: its name and the runtime it executes in.
 ///
@@ -206,34 +208,35 @@ impl Catalog {
     }
 
     /// A catalog hosting every handler this runner carries, its egress tools
-    /// sending through `transport`.
+    /// sending through `transport`. The generic ones are `guffbolt`'s, each
+    /// lent the lease's sandbox, guard and memory per call.
     #[must_use]
     pub fn hosted(transport: Arc<dyn Transport>) -> Self {
         Self::new(vec![
-            Typed::boxed(HttpRequest::new(Arc::clone(&transport))),
-            Typed::boxed(WebFetch::new(Arc::clone(&transport))),
-            Typed::boxed(Pushover::new(transport)),
-            Typed::boxed(MemoryStore),
-            Typed::boxed(MemoryRecall),
-            Typed::boxed(MemoryList),
-            Typed::boxed(MemoryForget),
-            Typed::boxed(UpdatePlan),
-            Typed::boxed(Shell),
-            Typed::boxed(ExecCommand),
-            Typed::boxed(WriteStdin),
-            Typed::boxed(Git),
-            Typed::boxed(FileRead),
-            Typed::boxed(FileReadHashed),
-            Typed::boxed(FileWrite),
-            Typed::boxed(FileAppend),
-            Typed::boxed(FileDelete),
-            Typed::boxed(FileEdit),
-            Typed::boxed(FileEditHashed),
-            Typed::boxed(ApplyPatch),
-            Typed::boxed(Image),
-            Typed::boxed(BrowserOpen),
-            Typed::boxed(Browser),
-            Typed::boxed(Screenshot),
+            Generic::sending(HttpRequest, Arc::clone(&transport)),
+            Generic::sending(WebFetch, Arc::clone(&transport)),
+            Generic::sending(Pushover, transport),
+            Generic::boxed(MemoryStoreTool),
+            Generic::boxed(MemoryRecall),
+            Generic::boxed(MemoryList),
+            Generic::boxed(MemoryForget),
+            Generic::boxed(UpdatePlan),
+            Generic::boxed(Shell),
+            Generic::boxed(ExecCommand),
+            Generic::boxed(WriteStdin),
+            Generic::boxed(Git),
+            Generic::boxed(FileRead),
+            Generic::boxed(FileReadHashed),
+            Generic::boxed(FileWrite),
+            Generic::boxed(FileAppend),
+            Generic::boxed(FileDelete),
+            Generic::boxed(FileEdit),
+            Generic::boxed(FileEditHashed),
+            Generic::boxed(ApplyPatch),
+            Generic::boxed(ImageTool),
+            Generic::boxed(BrowserOpen),
+            Generic::boxed(Browse),
+            Generic::boxed(Screenshot),
             Typed::boxed(Message),
             Typed::boxed(FleetSteer),
             Typed::boxed(FleetActivity),

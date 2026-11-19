@@ -2,6 +2,7 @@
 
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
+use serde::{Deserialize, Serialize};
 
 use crate::model::{Chunk, TextKind, Usage};
 use crate::transcript::{Call, Replay};
@@ -89,6 +90,23 @@ pub enum Ending<F> {
     Failed(F),
     /// The loop was stopped before it could answer.
     Stopped,
+    /// A call asked the person a question, and the run waits for the answer:
+    /// the embedder delivers the question, and resumes the run with
+    /// [`crate::DriveState::resume`] once it has an answer.
+    Waiting(Waiting),
+}
+
+/// A question a call asked the person, which the run waits on.
+///
+/// Saved with the run's [`crate::DriveState`], so a run resumed later knows
+/// which call the answer belongs to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Waiting {
+    /// The call that asked, whose result the answer becomes.
+    pub call_id: String,
+    /// What it asked.
+    pub question: String,
 }
 
 impl<F> Ending<F> {
@@ -99,6 +117,7 @@ impl<F> Ending<F> {
             Self::Answered(_) => "answered",
             Self::Failed(_) => "failed",
             Self::Stopped => "stopped",
+            Self::Waiting(_) => "waiting",
         }
     }
 }

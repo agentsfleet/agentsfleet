@@ -15,6 +15,7 @@ use afr_executor::Client;
 use guffbolt::ToolOutput;
 use serde_json::json;
 
+use crate::SandboxEnv;
 use crate::catalog::{Catalog, EXEC_COMMAND, WRITE_STDIN};
 use crate::lease::Lease;
 use crate::runtime::ToolErrorCode;
@@ -77,7 +78,7 @@ async fn test_exec_session_survives_across_calls() {
         [format!("one\n{running}"), format!("two\n{running}")]
     );
     assert_eq!(
-        lease.sessions.close_all(&client).await,
+        lease.sessions.close_all(&SandboxEnv::new(&client)).await,
         1,
         "the run's end kills cat"
     );
@@ -161,7 +162,13 @@ async fn test_a_session_is_heard_past_its_first_half_mebibyte() {
     let answered = call_in(write, &live.client, &lease, arguments).await;
 
     assert!(answered.text.contains("said-go\n"), "{}", answered.text);
-    assert_eq!(lease.sessions.close_all(&live.client).await, 1);
+    assert_eq!(
+        lease
+            .sessions
+            .close_all(&SandboxEnv::new(&live.client))
+            .await,
+        1
+    );
     live.stop().await;
 }
 
@@ -209,6 +216,12 @@ async fn test_a_write_the_process_will_not_take_says_so_and_runs_on() {
             super::INPUT_REFUSED
         )
     );
-    assert_eq!(lease.sessions.close_all(&live.client).await, 1);
+    assert_eq!(
+        lease
+            .sessions
+            .close_all(&SandboxEnv::new(&live.client))
+            .await,
+        1
+    );
     live.stop().await;
 }

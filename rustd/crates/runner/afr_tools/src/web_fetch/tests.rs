@@ -6,16 +6,16 @@ use serde_json::{Value, json};
 
 use super::{DEFAULT_MAX_CHARS, WebFetch};
 use crate::egress::SharedTransport;
-use crate::handler::Typed;
-use crate::http_request::HttpRequest;
+use crate::generic::Generic;
 use crate::runtime::ToolErrorCode;
 use crate::testing::{MINTED, Run, call, replying};
+use guffbolt::tools::web::HttpRequest;
 
 const PAGE: &str = "https://demo.es.example/docs";
 
 async fn fetch(transport: SharedTransport, arguments: Value) -> ToolOutput {
     let run = Run::new(false);
-    let tool = Typed::boxed(WebFetch::new(transport));
+    let tool = Generic::sending(WebFetch, transport);
     let lease = run.lease();
     call(tool.as_ref(), &lease, arguments).await
 }
@@ -96,7 +96,7 @@ async fn should_mask_a_minted_token_a_page_spells_in_entities() {
     let run = Run::new(false);
     let lease = run.lease();
     let (minting, _sent) = replying(200, "ok");
-    let request = Typed::boxed(HttpRequest::new(minting));
+    let request = Generic::sending(HttpRequest, minting);
     let read = json!({
         "url": "https://api.github.com/repos/acme/widgets/",
         "headers": {"Authorization": "Bearer ${secrets.github.token}"},
@@ -107,7 +107,7 @@ async fn should_mask_a_minted_token_a_page_spells_in_entities() {
         page.content_type = Some("text/html".to_owned());
         Ok(page)
     });
-    let fetch = Typed::boxed(WebFetch::new(Arc::new(page)));
+    let fetch = Generic::sending(WebFetch, Arc::new(page));
 
     let output = call(fetch.as_ref(), &lease, json!({"url": PAGE})).await;
 

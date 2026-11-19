@@ -11,11 +11,11 @@ use af_wire::memory::{
 use afr_memory::{Hydrated, Seed};
 use serde_json::json;
 
-use crate::handler::Typed;
+use crate::generic::Generic;
 use crate::lease::Lease;
-use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
 use crate::runtime::ToolErrorCode;
 use crate::testing::call;
+use guffbolt::tools::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStoreTool};
 
 fn hydrated() -> Vec<MemoryDelta<'static>> {
     vec![MemoryDelta {
@@ -35,10 +35,10 @@ async fn the_four_tools_share_one_lease_memory() {
         &crate::verbs::CLOSED,
     );
     let (store, recall, list, forget) = (
-        Typed::boxed(MemoryStore),
-        Typed::boxed(MemoryRecall),
-        Typed::boxed(MemoryList),
-        Typed::boxed(MemoryForget),
+        Generic::boxed(MemoryStoreTool),
+        Generic::boxed(MemoryRecall),
+        Generic::boxed(MemoryList),
+        Generic::boxed(MemoryForget),
     );
 
     let stored = call(
@@ -90,21 +90,21 @@ async fn empty_answers_say_what_was_looked_for() {
     let lease = Lease::default();
 
     let recalled = call(
-        Typed::boxed(MemoryRecall).as_ref(),
+        Generic::boxed(MemoryRecall).as_ref(),
         &lease,
         json!({"query": "deploy"}),
     )
     .await;
     assert_eq!(recalled.text, "nothing remembered matches deploy");
     let listed = call(
-        Typed::boxed(MemoryList).as_ref(),
+        Generic::boxed(MemoryList).as_ref(),
         &lease,
         json!({"category": "daily"}),
     )
     .await;
     assert_eq!(listed.text, "nothing remembered");
     let forgot = call(
-        Typed::boxed(MemoryForget).as_ref(),
+        Generic::boxed(MemoryForget).as_ref(),
         &lease,
         json!({"key": "ghost"}),
     )
@@ -114,7 +114,7 @@ async fn empty_answers_say_what_was_looked_for() {
 
 #[tokio::test]
 async fn a_store_the_daemon_would_skip_is_refused_with_its_code() {
-    let store = Typed::boxed(MemoryStore);
+    let store = Generic::boxed(MemoryStoreTool);
     let lease = Lease::default();
 
     let empty = call(store.as_ref(), &lease, json!({"key": "", "content": "c"})).await;
@@ -149,7 +149,7 @@ async fn a_store_the_daemon_would_skip_is_refused_with_its_code() {
 #[tokio::test]
 async fn recall_never_answers_more_than_its_ceiling() {
     let lease = Lease::default();
-    let store = Typed::boxed(MemoryStore);
+    let store = Generic::boxed(MemoryStoreTool);
     for at in 0..RECALL_LIMIT_MAX + 10 {
         call(
             store.as_ref(),
@@ -160,14 +160,14 @@ async fn recall_never_answers_more_than_its_ceiling() {
     }
 
     let recalled = call(
-        Typed::boxed(MemoryRecall).as_ref(),
+        Generic::boxed(MemoryRecall).as_ref(),
         &lease,
         json!({"query": "k", "limit": 500}),
     )
     .await;
     assert_eq!(recalled.text.lines().count(), RECALL_LIMIT_MAX);
     let defaulted = call(
-        Typed::boxed(MemoryRecall).as_ref(),
+        Generic::boxed(MemoryRecall).as_ref(),
         &lease,
         json!({"query": "k"}),
     )

@@ -21,7 +21,7 @@ guffbolt = { git = "https://github.com/agentsfleet/agentsfleet" }
 ## How a loop runs
 
 ```text
-drive(conversation, extension, state) ──► Ending: Answered | Failed | Stopped
+drive(conversation, extension, state) ──► Ending: Answered | Failed | Stopped | Waiting
 
 every turn:  take input ─► before_model ─► window ─► model call ─► after_turn
 no calls:    on_answer ─► remember ─► take input again; new input runs one more turn
@@ -204,6 +204,7 @@ async fn main() {
         Ending::Answered(text) => assert_eq!(text, "Noted: Deploy the fix.\n\nUse staging."),
         Ending::Failed(why) => panic!("{why}"),
         Ending::Stopped => panic!("nothing stopped this loop"),
+        Ending::Waiting(waiting) => panic!("no call asked: {waiting:?}"),
     }
     assert_eq!(chat.notes.into_inner().unwrap(), ["Deploy the fix.\n\nUse staging."]);
 }
@@ -337,7 +338,7 @@ A tool implements `Describe`, which gives the model its name, description and pa
 
 `Tools` holds one loop's tools, offers them to the model in order and dispatches a call by name. A call to a name it holds no tool for is answered `[tool_not_offered]`. `Tools::hold` keeps a tool callable without offering it.
 
-A tool answers with a `ToolOutput`: the text the model reads, an exit code, an `ErrorCode` and an `Image` to show the model. `guffbolt` answers a call from a turn cut at the output limit with `ToolOutput::cut`, `[output_limit_reached]`, and never runs it.
+A tool answers with a `ToolOutput`: the text the model reads, an exit code, an `ErrorCode`, an `Image` to show the model and a question it asks the person. `guffbolt` answers a call from a turn cut at the output limit with `ToolOutput::cut`, `[output_limit_reached]`, and never runs it.
 
 ## Sub-agents
 
@@ -517,7 +518,7 @@ impl Raise for Run {
             match drive(&mut child, &mut Plain, &mut DriveState::default()).await {
                 Ending::Answered(text) => Status::Done(text),
                 Ending::Failed(why) => Status::Failed(why),
-                Ending::Stopped => Status::Interrupted,
+                Ending::Stopped | Ending::Waiting(_) => Status::Interrupted,
             }
         })
     }
@@ -552,6 +553,7 @@ async fn main() {
         Ending::Answered(text) => assert_eq!(text, "Done: Check the build."),
         Ending::Failed(why) => panic!("{why}"),
         Ending::Stopped => panic!("nothing stopped this run"),
+        Ending::Waiting(waiting) => panic!("no call asked: {waiting:?}"),
     }
 }
 ```
@@ -566,11 +568,173 @@ A `Pause` holds new children back, and is granted only while no child runs, unwi
 
 `guffbolt::input` types a message as text plus image, audio, video or document parts. Your `MediaReader` turns each part into text the model reads. `Unread` names each part to the model until you read that kind.
 
+## Asking the person
+
+A call that answers `ToolOutput::asks` asks the person a question. The loop runs the rest of that turn's calls, then ends `Ending::Waiting` with the asking call's id and its question, and nothing waits inside the run. Deliver the question however your product reaches people. When the answer arrives, `DriveState::resume` makes it that call's result, and the next `drive` goes on from there. A state saved while waiting resumes the same way later, in another process.
+
+```rust
+use guffbolt::{Conversation, DriveState, Ending, Plain, drive};
+
+/// Drives `chat` to its end, putting each question to the person through
+/// `ask` and resuming with the answer.
+async fn answered<C: Conversation>(
+    chat: &mut C,
+    state: &mut DriveState,
+    ask: impl Fn(&str) -> String,
+) -> Ending<C::Failure> {
+    loop {
+        match drive(chat, &mut Plain, state).await {
+            Ending::Waiting(waiting) => {
+                let answer = ask(&waiting.question);
+                state.resume(chat.transcript(), answer);
+            }
+            ending => return ending,
+        }
+    }
+}
+```
+
+## The `tools` feature
+
+The `tools` feature adds tools that work on a machine and on the network. Each tool reaches the outside world only through a seam you fill: `Env` for processes and files, `Outbound` for network requests, `MemoryStore` for memories. `Local` fills all three for a harness on your own machine.
+
+```toml
+[dependencies]
+guffbolt = { git = "https://github.com/agentsfleet/agentsfleet", features = ["tools"] }
+```
+
+| Seam | Tools | Local default |
+|---|---|---|
+| `Env` | `shell`, `exec_command`, `write_stdin`, `git`, `file_read`, `file_read_hashed`, `file_write`, `file_append`, `file_delete`, `file_edit`, `file_edit_hashed`, `apply_patch`, `image`, `ls`, `find`, `grep`, `browser_open`, `browser`, `screenshot` | `LocalEnv`: this host's processes, the files under one directory |
+| `Outbound` | `http_request`, `web_fetch`, `pushover`, MCP servers over HTTP | `LocalOutbound`: HTTPS only, to the hosts an `Allowlist` names |
+| `MemoryStore` | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | `LocalMemory`: one process's map |
+| none | `update_plan`, `ask_user`, `tool_search`, `current_time`, `sleep` | |
+
+A tool is a `Handler`: its arguments are a type, and the model is told that type's JSON Schema. `Typed` makes a handler a `Tool` lent a `tools::Context` per call, and `tools::standard()` boxes every tool that needs nothing else.
+
+```rust,no_run
+use guffbolt::Tool as _;
+use guffbolt::tools::outbound::Allowlist;
+use guffbolt::tools::process::Shell;
+use guffbolt::tools::{Local, Typed};
+use serde_json::json;
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> std::io::Result<()> {
+    let local = Local::new("run-1", ".", Allowlist::Hosts(vec!["docs.rs".to_owned()]))?;
+    let shell = Typed::new(Shell);
+
+    let output = shell.call(&json!({ "command": "echo hi" }), local.context()).await;
+    assert_eq!(output.text, "hi\n");
+    Ok(())
+}
+```
+
+`LocalEnv` runs every command as the user that runs the harness, with that user's reach. Run untrusted work in a sandbox, and give its tools an `Env` that sends each call there. Never give them `LocalEnv` on a host that holds a secret a command must not read, such as a provider key.
+
+### Env
+
+An `Env` starts a process and hands back its events, writes to it and kills it, and reads, writes, appends, deletes and lists files under one root. Every path is relative to `Env::root`, and the environment refuses one that leaves it, by name or through a link. A process's unread output is kept as its first and last 512 KiB, and the middle is counted. `exec_command` and `write_stdin` keep a process open across calls in the run's `Sessions`. Close them with `Sessions::close_all` when the run ends.
+
+### Outbound
+
+Every network request goes through `Outbound`, which admits it, rewrites it or refuses it, and masks the secrets it placed out of the answer. A tool that places a credential itself asks `Outbound::secret`, and an MCP client asks `Outbound::connect` before it connects. A refusal is the code and sentence the model reads.
+
+```rust
+use std::pin::Pin;
+
+use guffbolt::tools::code;
+use guffbolt::tools::outbound::{Admitted, Outbound, OutboundFuture, Refused, Request, Response};
+
+/// A hook for a run that must not reach the network.
+#[derive(Debug)]
+struct Offline;
+
+impl Outbound for Offline {
+    fn send<'a>(&'a self, tool: &'a str, request: Request) -> OutboundFuture<'a, Response> {
+        let why = format!("{tool} may not reach {}: this run is offline", request.url);
+        Box::pin(std::future::ready(Err(Refused::new(code::HOST_NOT_ALLOWED, why))))
+    }
+
+    fn mask(&self, text: String) -> Pin<Box<dyn Future<Output = String> + Send + '_>> {
+        Box::pin(std::future::ready(text))
+    }
+
+    fn secret<'a>(&'a self, _tool: &'a str, name: &'a str, _field: &'a str) -> OutboundFuture<'a, String> {
+        let why = format!("this run holds no secret {name}");
+        Box::pin(std::future::ready(Err(Refused::new(code::SECRET_NOT_FOUND, why))))
+    }
+
+    fn connect<'a>(&'a self, _tool: &'a str, url: &'a str) -> OutboundFuture<'a, Admitted> {
+        let why = format!("{url}: this run is offline");
+        Box::pin(std::future::ready(Err(Refused::new(code::HOST_NOT_ALLOWED, why))))
+    }
+}
+```
+
+### MemoryStore
+
+The memory tools read and write a `MemoryStore`. A store keeps its own lock, so every method takes `&self`. `LocalMemory` is a map that lives as long as the process. Save `LocalMemory::entries` and seed the next run with `LocalMemory::seeded` to keep memories between runs.
+
+```rust
+use guffbolt::Tool as _;
+use guffbolt::tools::memory::{LocalMemory, Memory, MemoryRecall, Reach};
+use guffbolt::tools::outbound::Allowlist;
+use guffbolt::tools::{Local, Typed};
+use serde_json::json;
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> std::io::Result<()> {
+    let mut local = Local::new("run-2", ".", Allowlist::Any)?;
+    local.memory = LocalMemory::seeded(vec![Memory {
+        key: "deploy:target".to_owned(),
+        content: "staging first".to_owned(),
+        category: "core".to_owned(),
+        reach: Reach::Fleet,
+    }]);
+    let recall = Typed::new(MemoryRecall);
+
+    let output = recall.call(&json!({ "query": "deploy" }), local.context()).await;
+    assert_eq!(output.text, "deploy:target (core): staging first");
+    Ok(())
+}
+```
+
+### MCP servers
+
+`tools::mcp` is a Model Context Protocol (MCP) client over the official `rmcp` SDK. `Server::stdio` starts a server through your `Env`, so it runs where your commands run. `Server::http` connects over streamable HTTP once your `Outbound` admits the URL. `Server::tools` offers each of the server's tools as `mcp__<server>__<tool>`. `ListMcpResources`, `ListMcpResourceTemplates` and `ReadMcpResource` list and read its resources.
+
+```rust,no_run
+use std::sync::Arc;
+
+use guffbolt::tools::env::{Env, LocalEnv, Spawn};
+use guffbolt::tools::mcp::{ReadMcpResource, Server};
+use guffbolt::tools::{ContextTool, Typed};
+
+async fn connect() -> Result<Vec<Box<ContextTool>>, Box<dyn std::error::Error>> {
+    let env: Arc<dyn Env> = Arc::new(LocalEnv::new(".")?);
+    let spawn = Spawn::program("npx").args(["-y", "@modelcontextprotocol/server-everything"]);
+    let server = Arc::new(Server::stdio("everything", env, &spawn).await?);
+    let mut tools: Vec<Box<ContextTool>> = Vec::new();
+    for tool in server.tools().await? {
+        tools.push(Box::new(tool));
+    }
+    tools.push(Box::new(Typed::new(ReadMcpResource::new(vec![server]))));
+    Ok(tools)
+}
+```
+
+### Deferred tools
+
+A run with many tools, such as every tool of several MCP servers, can hold most of them unoffered with `Tools::hold`. `tool_search` searches their names and descriptions, and loads the best matches. Offer every loaded tool from the next model call, by asking `Deferred::is_loaded` in your `offered`.
+
 ## Dependencies
 
 `guffbolt` depends on `tokio` for the time budget, the race against the stop and its children's channels, and on `tokio-util` for the stop's token. It uses `tracing` for its `debug` records and your spans, and `futures-util` for a model's stream of chunks and a run's set of children. `serde` and `serde_json` carry the transcript and the loop's saved progress, a call's arguments and a provider's replay record.
 
-`bytes` carries an image a call read. `guffbolt` links no model client, HTTP stack or secret store.
+`bytes` carries an image a call read. Without `tools`, `guffbolt` links no model client, HTTP stack or secret store.
+
+The `tools` feature adds `reqwest` for `LocalOutbound` and MCP over HTTP, `rmcp` for the MCP client, `schemars` for each tool's schema, `regex` for `grep` and `find`, `html2text` for `web_fetch`, `jiff` for `current_time`, `thiserror` for the vendored `apply_patch` parser, and Tokio's process, file and runtime features for `LocalEnv`.
 
 A provider's record of a turn rides it as an opaque `Replay`. `guffbolt` saves it and hands it back unopened to the provider that wrote it.
 

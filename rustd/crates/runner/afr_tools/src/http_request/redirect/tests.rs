@@ -8,7 +8,7 @@ use af_egress::{Outbound, Transport};
 use serde_json::json;
 
 use super::HttpRequest;
-use crate::handler::Typed;
+use crate::generic::Generic;
 use crate::runtime::ToolErrorCode;
 use crate::testing::{Run, call};
 
@@ -34,7 +34,7 @@ async fn should_expose_incomplete_source_reads_before_the_body() {
                 Ok(response)
             }
         });
-        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
+        let tool = Generic::sending(HttpRequest, Arc::new(transport));
         let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
         let (notices, body) = output
             .text
@@ -61,7 +61,7 @@ async fn should_read_text_through_admitted_redirects() {
                 Ok(inbound(200, LOG))
             }
         });
-        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
+        let tool = Generic::sending(HttpRequest, Arc::new(transport));
         let output = call(
             tool.as_ref(),
             &run.lease(),
@@ -93,7 +93,7 @@ async fn should_strip_headers_across_redirect_origins() {
             |target| redirected(302, request.url(), &target),
         ))
     });
-    let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
+    let tool = Generic::sending(HttpRequest, Arc::new(transport));
     let output = call(
         tool.as_ref(),
         &run.lease(),
@@ -141,7 +141,7 @@ async fn should_refuse_redirect_before_transmission() {
         let (transport, sent) = RecordingTransport::answering(move |request| {
             Ok(redirected(302, request.url(), target))
         });
-        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
+        let tool = Generic::sending(HttpRequest, Arc::new(transport));
         let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
         assert_eq!(output.error_code, Some(expected.into()));
         assert!(
@@ -165,7 +165,7 @@ async fn should_keep_unaffected_clients_single_hop() {
         let run = Run::new(false);
         let (transport, sent) =
             RecordingTransport::answering(|request| Ok(redirected(302, request.url(), "/another")));
-        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
+        let tool = Generic::sending(HttpRequest, Arc::new(transport));
         let mut arguments = json!({"url": format!("https://{GRAFANA}/logs"), "method": method});
         if let Some(body) = body {
             arguments
@@ -196,7 +196,7 @@ impl Transport for Never {
 async fn should_bound_the_whole_http_read_deadline() {
     let capture = af_core::test_util::trace::Capture::install();
     let run = Run::new(true);
-    let tool = Typed::boxed(HttpRequest::new(Arc::new(Never)));
+    let tool = Generic::sending(HttpRequest, Arc::new(Never));
     let lease = run.lease();
     let output = call(tool.as_ref(), &lease, json!({"url": INITIAL})).await;
     assert_eq!(
@@ -236,7 +236,7 @@ async fn should_follow_mixed_case_get_and_mask_success_and_error_echoes() {
                 Ok(response)
             }
         });
-        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
+        let tool = Generic::sending(HttpRequest, Arc::new(transport));
         let output = call(
             tool.as_ref(),
             &run.lease(),
@@ -285,7 +285,7 @@ async fn should_retain_safe_context_when_redirects_stop() {
             };
             Ok(redirected(302, request.url(), &target))
         });
-        let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
+        let tool = Generic::sending(HttpRequest, Arc::new(transport));
         let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
         let code = if case == 0 {
             ToolErrorCode::InvalidArguments
@@ -318,7 +318,7 @@ impl Transport for SlowHops {
 #[tokio::test(start_paused = true)]
 async fn should_share_one_deadline_across_redirect_hops() {
     let run = Run::new(true);
-    let tool = Typed::boxed(HttpRequest::new(Arc::new(SlowHops)));
+    let tool = Generic::sending(HttpRequest, Arc::new(SlowHops));
     let began = tokio::time::Instant::now();
     let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
     assert_eq!(

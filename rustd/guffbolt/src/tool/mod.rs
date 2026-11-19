@@ -49,6 +49,8 @@ impl ErrorCode {
     pub const CHILD_NOT_FOUND: Self = Self("child_not_found");
     /// The child ended on a failure of its own, which the output carries.
     pub const CHILD_FAILED: Self = Self("child_failed");
+    /// Another call of the same turn already asked the person a question.
+    pub const QUESTION_PENDING: Self = Self("question_pending");
 
     /// The code spelled `spelling`.
     #[must_use]
@@ -118,6 +120,10 @@ pub struct ToolOutput {
     pub error_code: Option<ErrorCode>,
     /// The image the call read, which rides its result alone.
     pub image: Option<Image>,
+    /// The question a call asks the person: the loop ends
+    /// [`crate::Ending::Waiting`] once the turn's other calls ran, and the
+    /// call's result is the answer the run is resumed with.
+    pub asks: Option<String>,
 }
 
 impl ToolOutput {
@@ -129,6 +135,7 @@ impl ToolOutput {
             exit_code: None,
             error_code: None,
             image: None,
+            asks: None,
         }
     }
 
@@ -142,6 +149,21 @@ impl ToolOutput {
             exit_code: None,
             error_code: Some(code),
             image: None,
+            asks: None,
+        }
+    }
+
+    /// A call that asks the person `question`: the model reads the answer,
+    /// once the embedder resumes the run with it.
+    #[must_use]
+    pub fn asks(question: impl Into<String>) -> Self {
+        let question = question.into();
+        Self {
+            text: question.clone(),
+            exit_code: None,
+            error_code: None,
+            image: None,
+            asks: Some(question),
         }
     }
 
@@ -244,6 +266,13 @@ impl<T: Describe + ?Sized> Tools<T> {
     /// The specs offered, in order.
     pub fn specs(&self) -> impl Iterator<Item = ToolSpec<'_>> {
         self.offered.iter().map(|tool| tool.spec())
+    }
+
+    /// The specs held unoffered, in the order they were held: what a
+    /// deferred tool's search looks through, and what an embedder offers
+    /// once a search loaded it.
+    pub fn held_specs(&self) -> impl Iterator<Item = ToolSpec<'_>> {
+        self.unoffered.iter().map(|tool| tool.spec())
     }
 
     /// Runs one call to `name`, lending it `cx`; a name the loop holds no tool

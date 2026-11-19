@@ -54,6 +54,8 @@ fn status(shared: &Shared<'_>, ending: Ending) -> Status {
     match ending {
         Ending::Answered(text) => Status::Done(shared.scrub.text(&text).into_owned()),
         Ending::Failed(failure) => Status::Failed(failure.detail()),
-        Ending::Stopped => Status::Interrupted,
+        // A child asks its parent, never the person: a question it waits on
+        // ends it the way a stop does.
+        Ending::Stopped | Ending::Waiting(_) => Status::Interrupted,
     }
 }

@@ -11,7 +11,7 @@ use tokio::sync::Notify;
 
 use super::HttpRequest;
 use crate::egress::SharedTransport;
-use crate::handler::Typed;
+use crate::generic::Generic;
 use crate::runtime::ToolErrorCode;
 use crate::testing::{HOUR, MINTED, Run, call, replying};
 
@@ -35,7 +35,7 @@ async fn request_through(
     arguments: Value,
 ) -> ToolOutput {
     let run = Run::new(read_only);
-    let tool = Typed::boxed(HttpRequest::new(transport));
+    let tool = Generic::sending(HttpRequest, transport);
     let lease = run.lease();
     call(tool.as_ref(), &lease, arguments).await
 }
@@ -146,7 +146,7 @@ async fn test_mintable_credential_minted_once() {
     let capture = Capture::install();
     let run = Run::new(false);
     let (transport, sent) = replying(200, "[]");
-    let tool = Typed::boxed(HttpRequest::new(transport));
+    let tool = Generic::sending(HttpRequest, transport);
     let lease = run.lease();
     let read = json!({"url": "https://api.github.com/repos/acme/widgets/pulls", "headers": {"Authorization": GITHUB_AUTH}});
 
@@ -213,7 +213,7 @@ async fn should_mask_a_minted_token_the_upstream_echoes() {
     let run = Run::new(false);
     let (transport, _sent) =
         RecordingTransport::answering(|_outbound| Ok(inbound(200, &format!("token={MINTED}"))));
-    let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
+    let tool = Generic::sending(HttpRequest, Arc::new(transport));
     let lease = run.lease();
 
     let output = call(
@@ -298,7 +298,7 @@ async fn should_leave_the_guard_free_while_a_request_is_in_flight() {
     let run = Run::new(false);
     let gated = Arc::new(Gated::default());
     let transport: SharedTransport = Arc::clone(&gated) as SharedTransport;
-    let tool = Typed::boxed(HttpRequest::new(transport));
+    let tool = Generic::sending(HttpRequest, transport);
     let lease = run.lease();
     let probe = async {
         gated.sending.notified().await;

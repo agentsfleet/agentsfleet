@@ -40,8 +40,9 @@ af_providers.workspace = true
 # The loop's order of turns, the model call each one makes, each tool call's
 # start and end, the transcript it keeps and the run's children: this crate is
 # its conversation, its observer and what raises each child, and a durable
-# task is its extension.
-guffbolt.workspace = true
+# task is its extension. Its `tools` give the nested tools their schema and
+# their argument parse, and the sessions a run's end closes.
+guffbolt = { workspace = true, features = ["tools"] }
 # Every secret value masked in one pass over a frame, an output or a reply.
 af_secrets.workspace = true
 # The catalog a run is offered from, and the handlers the router calls.

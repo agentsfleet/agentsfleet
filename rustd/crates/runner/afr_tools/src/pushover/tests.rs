@@ -4,13 +4,13 @@ use guffbolt::ToolOutput;
 use serde_json::{Value, json};
 
 use super::{MESSAGES_URL, Pushover};
-use crate::handler::Typed;
+use crate::generic::Generic;
 use crate::runtime::ToolErrorCode;
 use crate::testing::{Run, call, replying};
 
 async fn notify(run: &Run, arguments: Value) -> (ToolOutput, Vec<Sent>) {
     let (transport, sent) = replying(200, r#"{"status":1}"#);
-    let tool = Typed::boxed(Pushover::new(transport));
+    let tool = Generic::sending(Pushover, transport);
     let lease = run.lease();
     let output = call(tool.as_ref(), &lease, arguments).await;
     (output, sent.try_iter().collect())

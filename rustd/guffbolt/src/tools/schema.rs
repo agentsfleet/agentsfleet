@@ -4,6 +4,8 @@ use schemars::JsonSchema;
 use schemars::generate::SchemaSettings;
 use serde::{Deserialize, Deserializer};
 
+use crate::tool::ToolSpec;
+
 /// The key a generated schema names its type under, which no provider reads.
 const TITLE: &str = "title";
 
@@ -36,8 +38,8 @@ impl Schema {
 
     /// The tool named `name` under this schema, as the model is offered it.
     #[must_use]
-    pub const fn spec<'a>(&'a self, name: &'a str) -> guffbolt::ToolSpec<'a> {
-        guffbolt::ToolSpec {
+    pub const fn spec<'a>(&'a self, name: &'a str) -> ToolSpec<'a> {
+        ToolSpec {
             name,
             description: self.description,
             parameters: &self.parameters,
@@ -87,7 +89,7 @@ impl<'de> Deserialize<'de> for NoArguments {
 /// Reads the empty object and refuses every key by name, in the words serde's
 /// own `deny_unknown_fields` uses for a struct with no fields. Written by hand
 /// because that derive expands to a variantless enum, which the lints refuse.
-pub(crate) fn empty_object<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(), D::Error> {
+fn empty_object<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(), D::Error> {
     std::collections::BTreeMap::<UnknownField, serde_json::Value>::deserialize(deserializer)
         .map(|_keys| ())
 }

@@ -8,11 +8,12 @@
 use serde_json::json;
 
 use super::{CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate};
+use crate::generic::Generic;
 use crate::handler::Typed;
-use crate::http_request::HttpRequest;
 use crate::runtime::{CatalogTool, ToolErrorCode};
 use crate::testing::{Asked, MINTED, OwnedCall, RecordingVerbs, Run, call, lease_with, replying};
 use crate::verbs::Unanswered;
+use guffbolt::tools::web::HttpRequest;
 
 /// A schedule id, as `cron_list` names one.
 const SCHEDULE: &str = "0199a0b0-0000-7000-8000-0000000000aa";
@@ -114,7 +115,7 @@ async fn a_minted_token_is_masked_out_of_a_schedule_message() {
         "url": "https://api.github.com/repos/acme/widgets/",
         "headers": {"Authorization": "Bearer ${secrets.github.token}"},
     });
-    let request = Typed::boxed(HttpRequest::new(minting));
+    let request = Generic::sending(HttpRequest, minting);
     assert_eq!(call(request.as_ref(), &lease, read).await.error_code, None);
 
     let leaky = format!("retry with {MINTED}");

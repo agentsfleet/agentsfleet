@@ -3,6 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::transcript::{Message, Transcript};
+use crate::turn::Waiting;
+
 /// The answers a loop accepted and the turns it completed, carried from one
 /// run of a conversation to the run that resumes it.
 ///
@@ -14,6 +17,10 @@ use serde::{Deserialize, Serialize};
 pub struct DriveState {
     pub(super) answers: Vec<String>,
     completed_turns: u64,
+    /// The question the run waits on; absent from a saved state that waits
+    /// on none, so a state saved before a run could wait reads the same.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) waiting: Option<Waiting>,
 }
 
 impl DriveState {
@@ -35,6 +42,30 @@ impl DriveState {
     #[must_use]
     pub const fn completed_turns(&self) -> u64 {
         self.completed_turns
+    }
+
+    /// The question the run waits on, if any.
+    #[must_use]
+    pub const fn waiting(&self) -> Option<&Waiting> {
+        self.waiting.as_ref()
+    }
+
+    /// Answers the question the run waits on with `answer`, which the model
+    /// reads as the asking call's result on the next model call, and hands
+    /// back the question answered; `None`, changing nothing, when the run
+    /// waits on none. Drive the loop again afterwards to resume it.
+    pub fn resume(
+        &mut self,
+        transcript: &mut Transcript,
+        answer: impl Into<String>,
+    ) -> Option<Waiting> {
+        let waiting = self.waiting.take()?;
+        transcript.push(Message::ToolResult {
+            call_id: waiting.call_id.clone(),
+            output: answer.into(),
+            image: None,
+        });
+        Some(waiting)
     }
 
     pub(super) const fn completed(&mut self) {

@@ -1,9 +1,9 @@
 //! `interrupt_agent`: one spawned child ended where it is.
 
 use afr_tools::nested::Named;
-use afr_tools::parsed;
 use guffbolt::ToolOutput;
 use guffbolt::agents::{State, not_found};
+use guffbolt::tools::parsed;
 use serde_json::Value;
 
 use super::answer::json;

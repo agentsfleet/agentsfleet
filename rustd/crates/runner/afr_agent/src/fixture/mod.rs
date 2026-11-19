@@ -12,8 +12,8 @@ use std::time::Duration;
 
 use af_wire::activity::ActivityFrame;
 use af_wire::lease::LeasePayload;
-use afr_tools::NoArguments;
-use afr_tools::{CatalogTool, Entry, Schema, ToolContext};
+use afr_tools::{CatalogTool, Entry, ToolContext};
+use guffbolt::tools::{NoArguments, Schema};
 use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
 
 pub(crate) use self::model::{Script, Sent, Unreachable, call, ended, say, spent, spent_caching};
@@ -204,6 +204,7 @@ impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Exits {
             exit_code: Some(self.code),
             error_code: None,
             image: None,
+            asks: None,
         }))
     }
 }

@@ -7,11 +7,11 @@
 use std::borrow::Cow;
 
 use af_wire::activity::ActivityFrame;
-use afr_tools::NoArguments;
 use afr_tools::catalog::{MEMORY_RECALL, UPDATE_PLAN};
-use afr_tools::{CatalogTool, Schema, ToolContext};
+use afr_tools::{CatalogTool, ToolContext};
 use bytes::Bytes;
 use guffbolt::Message;
+use guffbolt::tools::{NoArguments, Schema};
 use guffbolt::{Describe, Image, ImageKind, Tool, ToolFuture, ToolOutput, ToolSpec};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;

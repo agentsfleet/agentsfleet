@@ -45,7 +45,7 @@ pub(crate) struct List {}
 
 impl<'de> Deserialize<'de> for List {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        crate::schema::empty_object(deserializer).map(|()| Self {})
+        guffbolt::tools::NoArguments::deserialize(deserializer).map(|_none| Self {})
     }
 }
 

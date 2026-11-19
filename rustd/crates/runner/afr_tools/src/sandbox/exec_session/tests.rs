@@ -14,14 +14,16 @@ use bytes::Bytes;
 use serde_json::{Value, json};
 use tokio::time::Instant;
 
-use super::{EMPTY_WRITE_YIELD_MIN, ExecCommand, WriteStdin, YIELD_DEFAULT, YIELD_MAX, YIELD_MIN};
-use crate::handler::Typed;
+use super::{
+    EMPTY_WRITE_YIELD_MIN, ExecCommand, WriteStdin, YIELD_DEFAULT, YIELD_MAX, YIELD_MIN, session,
+};
+use crate::generic::Generic;
 use crate::lease::Lease;
 use crate::runtime::{CatalogTool, ToolErrorCode};
-use crate::sandbox::oneshot::EVENT_OUT_OF_MEMORY;
-use crate::sandbox::sessions::SESSIONS_PER_LEASE_MAX;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::call_in;
+use guffbolt::tools::process::oneshot::EVENT_OUT_OF_MEMORY;
+use guffbolt::tools::process::sessions::SESSIONS_PER_RUN_MAX;
 
 /// The id the scripted executor gives its first process.
 pub(super) const FIRST: ProcessId = ProcessId::new(1);
@@ -63,11 +65,11 @@ pub(super) fn named_lease() -> Lease<'static> {
 }
 
 pub(super) fn exec() -> Box<CatalogTool> {
-    Typed::boxed(ExecCommand)
+    Generic::boxed(ExecCommand)
 }
 
 pub(super) fn write() -> Box<CatalogTool> {
-    Typed::boxed(WriteStdin)
+    Generic::boxed(WriteStdin)
 }
 
 /// `exec_command`'s arguments for `cmd`, waiting `yield_ms` when given.
@@ -115,7 +117,10 @@ async fn test_exec_command_keeps_a_running_process_as_a_session() {
         YIELD_DEFAULT,
         "a running process is read for the whole yield"
     );
-    assert!(lease.sessions.get(FIRST).is_some(), "it stays open");
+    assert!(
+        lease.sessions.get(session(FIRST)).is_some(),
+        "it stays open"
+    );
     let spawn = only_spawn(&executor);
     assert_eq!(spawn.argv(), ["/bin/sh", "-c", DEV_SERVER]);
     assert!(!spawn.on_terminal(), "pipes unless the model asks");
@@ -147,7 +152,10 @@ async fn should_answer_at_once_with_the_exit_of_a_process_that_ends_in_its_yield
     assert_eq!(output.text, "built\nProcess exited with code 2");
     assert_eq!(output.exit_code, Some(2));
     assert_eq!(started.elapsed(), Duration::ZERO);
-    assert!(lease.sessions.get(FIRST).is_none(), "no session is left");
+    assert!(
+        lease.sessions.get(session(FIRST)).is_none(),
+        "no session is left"
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -189,18 +197,17 @@ async fn should_hold_a_yield_between_the_shortest_and_the_longest() {
 /// killed to make room, as Codex does.
 #[tokio::test(start_paused = true)]
 async fn test_exec_command_makes_room_past_the_session_cap() {
-    let executor = ScriptedExecutor::new(
-        (0..=SESSIONS_PER_LEASE_MAX).map(|_| ScriptedProcess::stays_open("")),
-    );
+    let executor =
+        ScriptedExecutor::new((0..=SESSIONS_PER_RUN_MAX).map(|_| ScriptedProcess::stays_open("")));
     let lease = Lease::default();
-    for _ in 0..SESSIONS_PER_LEASE_MAX {
+    for _ in 0..SESSIONS_PER_RUN_MAX {
         open(&executor, &lease, "sleep 600").await;
     }
 
     let opened = call_in(&*exec(), &executor, &lease, opening("one more", None)).await;
 
     assert_eq!(opened.error_code, None, "{opened:?}");
-    assert_eq!(executor.spawned().len(), SESSIONS_PER_LEASE_MAX + 1);
+    assert_eq!(executor.spawned().len(), SESSIONS_PER_RUN_MAX + 1);
     assert_eq!(executor.killed(), [FIRST], "the least recently used goes");
 }
 
@@ -294,7 +301,7 @@ async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
         "answered as the process ended, not at the yield"
     );
     assert!(
-        lease.sessions.get(FIRST).is_none(),
+        lease.sessions.get(session(FIRST)).is_none(),
         "an ended session leaves"
     );
 }

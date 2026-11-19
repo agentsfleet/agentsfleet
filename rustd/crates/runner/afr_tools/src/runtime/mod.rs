@@ -3,10 +3,8 @@
 
 use std::fmt;
 
-use guffbolt::ToolOutput;
-use serde::de::DeserializeOwned;
-
 use afr_executor::Executor;
+use guffbolt::tools::code;
 
 use crate::lease::Lease;
 
@@ -25,6 +23,8 @@ pub enum Runtime {
 ///
 /// The router builds it per call and hands the executor only to a sandbox-side
 /// handler, so a supervisor-side one cannot reach the sandbox by construction.
+/// A generic tool reaches that executor as its `guffbolt` environment, and
+/// nothing else: no handler here runs a command on the runner's host.
 /// The lease's state is shared: a run's child loops call tools at the same
 /// time as their parent, so each part a call changes sits behind its own lock
 /// ([`Lease`]).
@@ -142,35 +142,35 @@ impl ToolErrorCode {
         match self {
             Self::NotOffered => guffbolt::ErrorCode::NOT_OFFERED.as_str(),
             Self::HostedToolUnavailable => "hosted_tool_unavailable",
-            Self::SandboxUnavailable => "sandbox_unavailable",
-            Self::InvalidArguments => "invalid_arguments",
-            Self::MemoryFull => "memory_full",
-            Self::HttpsRequired => "https_required",
-            Self::MethodNotAllowed => "method_not_allowed",
-            Self::HostNotAllowed => "host_not_allowed",
+            Self::SandboxUnavailable => code::SANDBOX_UNAVAILABLE.as_str(),
+            Self::InvalidArguments => code::INVALID_ARGUMENTS.as_str(),
+            Self::MemoryFull => code::MEMORY_FULL.as_str(),
+            Self::HttpsRequired => code::HTTPS_REQUIRED.as_str(),
+            Self::MethodNotAllowed => code::METHOD_NOT_ALLOWED.as_str(),
+            Self::HostNotAllowed => code::HOST_NOT_ALLOWED.as_str(),
             Self::AddressNotAllowed => "address_not_allowed",
             Self::CredentialPlacementNotAllowed => "credential_placement_not_allowed",
             Self::CredentialHostNotAllowed => "credential_host_not_allowed",
-            Self::SecretNotFound => "secret_not_found",
+            Self::SecretNotFound => code::SECRET_NOT_FOUND.as_str(),
             Self::RequestPolicyNotAllowed => "request_policy_not_allowed",
             Self::CredentialMintRefused => "credential_mint_refused",
-            Self::UpstreamUnreachable => "upstream_unreachable",
-            Self::UpstreamStatus => "upstream_status",
-            Self::WorkspaceMemoryNotGranted => "workspace_memory_not_granted",
-            Self::TimedOut => "timed_out",
-            Self::OutOfMemory => "out_of_memory",
+            Self::UpstreamUnreachable => code::UPSTREAM_UNREACHABLE.as_str(),
+            Self::UpstreamStatus => code::UPSTREAM_STATUS.as_str(),
+            Self::WorkspaceMemoryNotGranted => code::WORKSPACE_MEMORY_NOT_GRANTED.as_str(),
+            Self::TimedOut => code::TIMED_OUT.as_str(),
+            Self::OutOfMemory => code::OUT_OF_MEMORY.as_str(),
             Self::Interrupted => guffbolt::ErrorCode::INTERRUPTED.as_str(),
-            Self::SessionNotFound => "session_not_found",
-            Self::SubcommandNotAllowed => "subcommand_not_allowed",
-            Self::PathNotAllowed => "path_not_allowed",
-            Self::FileNotFound => "file_not_found",
-            Self::FileTooLarge => "file_too_large",
-            Self::TextNotFound => "text_not_found",
-            Self::HashMismatch => "hash_mismatch",
-            Self::PatchInvalid => "patch_invalid",
-            Self::NotAnImage => "not_an_image",
-            Self::ImageInputUnavailable => "image_input_unavailable",
-            Self::BrowserUnavailable => "browser_unavailable",
+            Self::SessionNotFound => code::SESSION_NOT_FOUND.as_str(),
+            Self::SubcommandNotAllowed => code::SUBCOMMAND_NOT_ALLOWED.as_str(),
+            Self::PathNotAllowed => code::PATH_NOT_ALLOWED.as_str(),
+            Self::FileNotFound => code::FILE_NOT_FOUND.as_str(),
+            Self::FileTooLarge => code::FILE_TOO_LARGE.as_str(),
+            Self::TextNotFound => code::TEXT_NOT_FOUND.as_str(),
+            Self::HashMismatch => code::HASH_MISMATCH.as_str(),
+            Self::PatchInvalid => code::PATCH_INVALID.as_str(),
+            Self::NotAnImage => code::NOT_AN_IMAGE.as_str(),
+            Self::ImageInputUnavailable => code::IMAGE_INPUT_UNAVAILABLE.as_str(),
+            Self::BrowserUnavailable => code::BROWSER_UNAVAILABLE.as_str(),
             Self::ScheduleCapReached => "schedule_cap_reached",
             Self::ScheduleNotFleetOwned => "schedule_not_fleet_owned",
             Self::ScheduleNotRunnable => "schedule_not_runnable",
@@ -192,24 +192,6 @@ impl fmt::Display for ToolErrorCode {
 impl From<ToolErrorCode> for guffbolt::ErrorCode {
     fn from(code: ToolErrorCode) -> Self {
         Self::new(code.as_str())
-    }
-}
-
-/// `arguments` as `A`, or the refusal the model reads when they do not parse
-/// as `A`'s schema. The one place a call's arguments are parsed, whether a
-/// handler runs them or the loop does.
-///
-/// # Errors
-/// The arguments break the schema: a field missing, mistyped, or not named.
-pub fn parsed<A: DeserializeOwned>(arguments: &serde_json::Value) -> Result<A, ToolOutput> {
-    match A::deserialize(arguments) {
-        Ok(arguments) => Ok(arguments),
-        // The refusal carries serde's sentence to the model; no error chain
-        // leaves here, since a parse the model got wrong is the model's to read.
-        Err(refused) => Err(ToolOutput::failed(
-            ToolErrorCode::InvalidArguments,
-            &refused.to_string(),
-        )),
     }
 }
 

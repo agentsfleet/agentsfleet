@@ -10,18 +10,20 @@ use afr_executor::{Ending, Spawn};
 use serde_json::json;
 
 use super::Shell;
-use crate::handler::Typed;
+use crate::generic::Generic;
 use crate::lease::Lease;
 use crate::runtime::{CatalogTool, ToolErrorCode};
-use crate::sandbox::oneshot::{EVENT_OUT_OF_MEMORY, EVENT_TIMED_OUT, TIMEOUT_DEFAULT, TIMEOUT_MAX};
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::{call, call_in};
+use guffbolt::tools::process::oneshot::{
+    EVENT_OUT_OF_MEMORY, EVENT_TIMED_OUT, TIMEOUT_DEFAULT, TIMEOUT_MAX,
+};
 
 /// Two sleeps in one process group, the shell waiting on the second.
 const SLEEP_TWICE: &str = "sleep 60 & sleep 60";
 
 fn shell() -> Box<CatalogTool> {
-    Typed::boxed(Shell)
+    Generic::boxed(Shell)
 }
 
 /// The one spawn `executor` was asked for.

@@ -538,6 +538,11 @@ regex-automata = { version = "0.4.18", default-features = false, features = ["st
 # go, links keep their target. A real HTML parser rather than a hand-written
 # tag scanner.
 html2text = { version = "0.17.4", default-features = false }
+# The Model Context Protocol client `guffbolt`'s tools reach a server through:
+# the official SDK, Codex's and pi's choice. Client side only; a stdio server
+# runs through the harness's own `Env`, so the SDK's child-process transport is
+# left out, and a remote one speaks streamable HTTP over the `reqwest` above.
+rmcp = { version = "3.11.0", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }
 
 # The model providers' wire: Anthropic Messages, OpenAI Responses and every
 # OpenAI-compatible chat dialect, streamed, with tool calls assembled, usage

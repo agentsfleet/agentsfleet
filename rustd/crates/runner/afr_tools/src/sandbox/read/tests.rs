@@ -12,8 +12,8 @@ use super::{LINES_DEFAULT, Page};
 use crate::catalog::FILE_READ;
 use crate::lease::Lease;
 use crate::runtime::ToolErrorCode;
-use crate::sandbox::output;
 use crate::testing::{Live, call_in, hosted, offered};
+use guffbolt::tools::process::output;
 
 /// The file the live reads page through.
 const NUMBERS: &str = "numbers.txt";

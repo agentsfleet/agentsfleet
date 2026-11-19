@@ -5,7 +5,8 @@ mod process;
 use super::Harness;
 use af_wire::task::{TaskEffectInput, TaskFileChange, TaskTarget};
 use afr_executor::Spawn;
-use afr_tools::{Schema, ToolErrorCode};
+use afr_tools::{SandboxEnv, ToolErrorCode};
+use guffbolt::tools::Schema;
 use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
 use serde::Deserialize;
 use std::{sync::LazyLock, time::Duration};
@@ -143,7 +144,14 @@ impl Harness<'_, '_> {
             .peek()
             .ok_or_else(|| refused("Publication requires the task workspace."))?;
         // No background session may keep editing while this root validates.
-        if self.shared.lease.sessions.close_all(executor).await > 0 {
+        if self
+            .shared
+            .lease
+            .sessions
+            .close_all(&SandboxEnv::new(executor))
+            .await
+            > 0
+        {
             return Err(refused(
                 "Open commands were stopped. Review their output, then request validation again.",
             ));

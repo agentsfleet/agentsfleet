@@ -10,15 +10,16 @@ use afr_executor::Ending;
 use bytes::Bytes;
 use tokio::time::Instant;
 
+use super::session;
 use super::tests::{
     CAT, EXIT, FIRST, FIRST_RUNNING, LEASE_ID, ONE, REPL, named_lease, open, write, writing,
 };
 use super::{INPUT_REFUSED, WRITE_UNDELIVERED, YIELD_MIN};
 use crate::lease::Lease;
 use crate::runtime::ToolErrorCode;
-use crate::sandbox::oneshot::EVENT_OUT_OF_MEMORY;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::call_in;
+use guffbolt::tools::process::oneshot::EVENT_OUT_OF_MEMORY;
 
 /// A process that ended between the look before a write and the write
 /// itself: the write finds no process, and the call answers its ending,
@@ -42,7 +43,10 @@ async fn should_answer_the_ending_of_a_process_gone_by_the_time_of_a_write() {
         executor.written(),
         [(FIRST, Bytes::from_static(EXIT.as_bytes()))]
     );
-    assert!(lease.sessions.get(FIRST).is_none(), "the session is closed");
+    assert!(
+        lease.sessions.get(session(FIRST)).is_none(),
+        "the session is closed"
+    );
 }
 
 /// A process the kernel killed for memory while a write was on its way is
@@ -92,7 +96,10 @@ async fn should_read_a_process_gone_by_a_write_as_running_until_its_ending() {
     assert_eq!(first.text, format!("{WRITE_UNDELIVERED}\n{FIRST_RUNNING}"));
     assert_eq!(first.error_code, None);
     assert_eq!(next.text, "Process exited with code 0");
-    assert!(lease.sessions.get(FIRST).is_none(), "closed by the ending");
+    assert!(
+        lease.sessions.get(session(FIRST)).is_none(),
+        "closed by the ending"
+    );
 }
 
 /// A process that would not take the write says why, on the line before its
@@ -107,7 +114,7 @@ async fn should_say_why_a_write_was_refused_and_run_on() {
 
     assert_eq!(output.text, format!("{INPUT_REFUSED}\n{FIRST_RUNNING}"));
     assert_eq!(output.error_code, None);
-    assert!(lease.sessions.get(FIRST).is_some(), "runs on");
+    assert!(lease.sessions.get(session(FIRST)).is_some(), "runs on");
 }
 
 /// A write refused for no reason of the process's own is the sandbox gone,
@@ -126,7 +133,7 @@ async fn should_answer_any_other_refusal_at_once_and_keep_the_session() {
         output.error_code,
         Some(ToolErrorCode::SandboxUnavailable.into())
     );
-    assert!(lease.sessions.get(FIRST).is_some());
+    assert!(lease.sessions.get(session(FIRST)).is_some());
 }
 
 #[tokio::test(start_paused = true)]
@@ -145,7 +152,7 @@ async fn should_read_a_write_to_a_process_the_executor_lost_as_running() {
         output.text
     );
     assert!(
-        lease.sessions.get(FIRST).is_some(),
+        lease.sessions.get(session(FIRST)).is_some(),
         "left for the run's end to close"
     );
 }

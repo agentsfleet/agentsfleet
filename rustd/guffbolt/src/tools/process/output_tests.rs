@@ -1,11 +1,12 @@
 use std::time::Duration;
 
-use afr_executor::{EDGE_BYTES, Ending, Events, Feed, Process, ProcessId, Stream};
+use crate::tool::ErrorCode;
+use crate::tools::code;
+use crate::tools::env::{EDGE_BYTES, Ending, Feed, Process, ProcessId, Stream, pipe};
 use bytes::Bytes;
 use tokio::time::Instant;
 
 use super::{Collected, budget, edges, error_code, status, with_line};
-use crate::runtime::ToolErrorCode;
 
 /// Output a process prints and keeps running after.
 const STILL_GOING: &str = "still going";
@@ -16,13 +17,13 @@ const KIB: usize = 1024;
 
 /// A process that already said `output`, and the feed that keeps it open.
 fn process(output: &[&str]) -> (Process, Feed) {
-    let (feed, events) = Events::channel();
+    let (feed, events) = pipe();
     for text in output {
         feed.output(Stream::Stdout, Bytes::copy_from_slice(text.as_bytes()));
     }
     let process = Process {
         id: ProcessId::new(1),
-        events,
+        events: Box::new(events),
     };
     (process, feed)
 }
@@ -219,14 +220,11 @@ fn should_word_each_ending_as_codex_does() {
 fn should_fail_only_a_process_that_did_not_end_by_itself() {
     assert_eq!(error_code(Ending::Exited(1)), None);
     assert_eq!(error_code(Ending::Signaled(9)), None);
-    assert_eq!(error_code(Ending::TimedOut), Some(ToolErrorCode::TimedOut));
-    assert_eq!(
-        error_code(Ending::OutOfMemory),
-        Some(ToolErrorCode::OutOfMemory)
-    );
+    assert_eq!(error_code(Ending::TimedOut), Some(code::TIMED_OUT));
+    assert_eq!(error_code(Ending::OutOfMemory), Some(code::OUT_OF_MEMORY));
     assert_eq!(
         error_code(Ending::Interrupted),
-        Some(ToolErrorCode::Interrupted)
+        Some(ErrorCode::INTERRUPTED)
     );
 }
 

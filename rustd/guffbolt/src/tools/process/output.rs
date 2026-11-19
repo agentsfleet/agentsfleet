@@ -2,7 +2,7 @@
 //! arrived, cut in the middle to a budget, and a status line last.
 //!
 //! What a call has not read yet is kept as a head and a tail
-//! (`afr_executor`'s edges), and a call reads only once it is done waiting,
+//! (the environment's edges), and a call reads only once it is done waiting,
 //! so it holds those edges at most, whatever the process said meanwhile; the
 //! next call starts from where this one stopped. This budget is the model's,
 //! and smaller. Output that fits it carries a marker where each gap fell;
@@ -12,10 +12,11 @@
 //! stays the command's own first lines, and it is worded as Codex words it,
 //! so a model trained on Codex's harness reads it unprompted.
 
-use afr_executor::{EDGE_BYTES, Ending, Process, ProcessEvent};
 use tokio::time::Instant;
 
-use crate::runtime::ToolErrorCode;
+use crate::tool::ErrorCode;
+use crate::tools::code;
+use crate::tools::env::{EDGE_BYTES, Ending, Process, ProcessEvent};
 
 /// The bytes one token is taken to cover: Codex's estimate.
 const BYTES_PER_TOKEN: usize = 4;
@@ -25,11 +26,11 @@ const OUTPUT_TOKENS_DEFAULT: usize = 10_000;
 /// How a process that exited reads.
 const EXITED: &str = "Process exited with code";
 /// How a session still running reads.
-pub(super) const RUNNING: &str = "Process running with session ID";
+pub const RUNNING: &str = "Process running with session ID";
 /// How a process a signal ended reads.
 const SIGNALED: &str = "Process killed by signal";
 /// How a process the executor killed at its timeout reads.
-pub(super) const TIMED_OUT: &str = "Process timed out";
+pub const TIMED_OUT: &str = "Process timed out";
 /// How a process the kernel killed for its sandbox's memory reads.
 const OUT_OF_MEMORY: &str = "Process killed: out of memory";
 /// How a process whose ending never reached the caller reads.
@@ -46,7 +47,7 @@ const OUTPUT_TOKENS_MAX: usize = (2 * EDGE_BYTES).div_euclid(BYTES_PER_TOKEN);
 /// A process's output as it arrived, whichever stream carried it, and the
 /// bytes dropped unread between its head and tail.
 #[derive(Debug, Default)]
-pub(super) struct Collected {
+pub struct Collected {
     bytes: Vec<u8>,
     /// Where in `bytes` each gap fell, and the bytes it dropped.
     gaps: Vec<(usize, u64)>,
@@ -57,18 +58,14 @@ pub(super) struct Collected {
 impl Collected {
     /// Waits until `process` ends or `deadline` passes, then reads what
     /// arrived; `None` while it still runs.
-    pub(super) async fn until(
-        &mut self,
-        process: &mut Process,
-        deadline: Instant,
-    ) -> Option<Ending> {
+    pub async fn until(&mut self, process: &mut Process, deadline: Instant) -> Option<Ending> {
         let _still_running = tokio::time::timeout_at(deadline, process.events.finished()).await;
         self.arrived(process)
     }
 
     /// Takes what already arrived, without waiting: the ending when it was
     /// among it, and `Interrupted` for events that finished with none.
-    pub(super) fn arrived(&mut self, process: &mut Process) -> Option<Ending> {
+    pub fn arrived(&mut self, process: &mut Process) -> Option<Ending> {
         let (events, finished) = process.events.take_ready();
         for event in events {
             if let Some(ending) = self.take(event) {
@@ -103,7 +100,8 @@ impl Collected {
     /// whole, a marker where each gap fell; what does not is its first and
     /// last halves around one marker counting every byte not shown. Output
     /// left behind at the process's end is said last.
-    pub(super) fn text(&self, budget: usize) -> String {
+    #[must_use]
+    pub fn text(&self, budget: usize) -> String {
         let whole = String::from_utf8_lossy(&self.bytes);
         let shown = if whole.len() > budget {
             self.cut(&whole, budget)
@@ -174,7 +172,8 @@ fn edges(text: &str, budget: usize) -> (&str, &str) {
 }
 
 /// `text` with `line` after it, on a line of its own.
-pub(super) fn with_line(mut text: String, line: &str) -> String {
+#[must_use]
+pub fn with_line(mut text: String, line: &str) -> String {
     if !text.is_empty() && !text.ends_with('\n') {
         text.push('\n');
     }
@@ -184,7 +183,8 @@ pub(super) fn with_line(mut text: String, line: &str) -> String {
 
 /// The bytes a call reads back for `tokens` tokens, or for the default when
 /// the model names none.
-pub(super) fn budget(tokens: Option<usize>) -> usize {
+#[must_use]
+pub fn budget(tokens: Option<usize>) -> usize {
     tokens
         .unwrap_or(OUTPUT_TOKENS_DEFAULT)
         .min(OUTPUT_TOKENS_MAX)
@@ -192,7 +192,8 @@ pub(super) fn budget(tokens: Option<usize>) -> usize {
 }
 
 /// How a process that ended as `ending` reads.
-pub(super) fn status(ending: Ending) -> String {
+#[must_use]
+pub fn status(ending: Ending) -> String {
     match ending {
         Ending::Exited(code) => format!("{EXITED} {code}"),
         Ending::Signaled(signal) => format!("{SIGNALED} {signal}"),
@@ -203,14 +204,16 @@ pub(super) fn status(ending: Ending) -> String {
 }
 
 /// The code a call fails with when its process did not end by itself.
-pub(super) const fn error_code(ending: Ending) -> Option<ToolErrorCode> {
+#[must_use]
+pub const fn error_code(ending: Ending) -> Option<ErrorCode> {
     match ending {
-        Ending::TimedOut => Some(ToolErrorCode::TimedOut),
-        Ending::OutOfMemory => Some(ToolErrorCode::OutOfMemory),
-        Ending::Interrupted => Some(ToolErrorCode::Interrupted),
+        Ending::TimedOut => Some(code::TIMED_OUT),
+        Ending::OutOfMemory => Some(code::OUT_OF_MEMORY),
+        Ending::Interrupted => Some(ErrorCode::INTERRUPTED),
         Ending::Exited(_) | Ending::Signaled(_) => None,
     }
 }
 
 #[cfg(test)]
+#[path = "output_tests.rs"]
 mod tests;

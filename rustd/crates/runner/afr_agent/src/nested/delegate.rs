@@ -1,8 +1,8 @@
 //! `delegate`: a child run to its answer, which is the call's output.
 
 use afr_tools::nested::Task;
-use afr_tools::parsed;
 use guffbolt::ToolOutput;
+use guffbolt::tools::parsed;
 use serde_json::Value;
 
 use super::start::start;

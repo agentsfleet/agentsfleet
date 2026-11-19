@@ -9,7 +9,7 @@ use afr_executor::Spawn;
 use serde_json::{Value, json};
 
 use super::{EVENT_REFUSED, GIT_REFUSED_SUBCOMMANDS, Git, subcommand};
-use crate::handler::Typed;
+use crate::generic::Generic;
 use crate::lease::Lease;
 use crate::runtime::{CatalogTool, ToolErrorCode};
 use crate::sandbox::{Checkout, ScriptedExecutor, ScriptedProcess};
@@ -19,7 +19,7 @@ use crate::testing::{Live, call, call_in};
 const WIDGETS: &str = "widgets";
 
 fn git() -> Box<CatalogTool> {
-    Typed::boxed(Git)
+    Generic::boxed(Git)
 }
 
 /// `git`'s arguments for `args`.

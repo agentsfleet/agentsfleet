@@ -1,12 +1,15 @@
-use af_egress::RESPONSE_MAX_BYTES;
-use af_egress::testing::inbound;
+use crate::tools::outbound::{RESPONSE_MAX_BYTES, Response};
 
 #[test]
 fn should_omit_a_truncated_body_without_hiding_its_incomplete_status() {
     let body = "x".repeat(RESPONSE_MAX_BYTES);
-    let mut response = inbound(200, &body);
-    response.truncated = true;
-    response.content_type = Some("text/plain".to_owned());
+    let response = Response {
+        status: 200,
+        body: body.clone(),
+        truncated: true,
+        content_type: Some("text/plain".to_owned()),
+        ..Response::default()
+    };
 
     let output = super::render(&response);
 

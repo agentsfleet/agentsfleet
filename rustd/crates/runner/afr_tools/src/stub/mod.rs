@@ -8,7 +8,7 @@ use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
 
 use crate::catalog::Entry;
 use crate::runtime::{CatalogTool, Runtime, ToolContext, ToolErrorCode};
-use crate::schema::{NoArguments, Schema};
+use guffbolt::tools::{NoArguments, Schema};
 
 /// The file a sandbox-side stub reads.
 pub const STUB_PATH: &str = "stub.txt";

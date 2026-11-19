@@ -6,7 +6,7 @@ use serde_json::json;
 
 use super::{NoArguments, Stub};
 use crate::catalog::UPDATE_PLAN;
-use crate::schema::Schema;
+use guffbolt::tools::Schema;
 
 #[test]
 fn test_stub_schema_is_derived() {

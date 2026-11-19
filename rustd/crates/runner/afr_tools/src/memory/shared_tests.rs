@@ -6,11 +6,11 @@ use af_wire::memory::SharedMemory;
 use afr_memory::{Hydrated, Seed};
 use serde_json::json;
 
-use crate::handler::Typed;
+use crate::generic::Generic;
 use crate::lease::Lease;
-use crate::memory::{MemoryForget, MemoryRecall, MemoryStore};
 use crate::runtime::ToolErrorCode;
 use crate::testing::call;
+use guffbolt::tools::memory::{MemoryForget, MemoryRecall, MemoryStoreTool};
 
 /// The fleet that published the shared entry these tests read.
 const WRITER: &str = "ticket-3";
@@ -39,7 +39,7 @@ async fn test_workspace_store_needs_publish() {
     );
 
     let refused = call(
-        Typed::boxed(MemoryStore).as_ref(),
+        Generic::boxed(MemoryStoreTool).as_ref(),
         &lease,
         json!({"key": "deploy_target", "content": "iad", "visibility": "workspace"}),
     )
@@ -72,7 +72,7 @@ async fn a_publisher_stores_a_share_and_it_is_pushed_as_one() {
     );
 
     let stored = call(
-        Typed::boxed(MemoryStore).as_ref(),
+        Generic::boxed(MemoryStoreTool).as_ref(),
         &lease,
         json!({"key": "deploy_target", "content": "iad", "visibility": "workspace"}),
     )
@@ -96,7 +96,7 @@ async fn test_recall_names_the_writer_of_a_shared_entry() {
     );
 
     let recalled = call(
-        Typed::boxed(MemoryRecall).as_ref(),
+        Generic::boxed(MemoryRecall).as_ref(),
         &lease,
         json!({"query": "deploy"}),
     )
@@ -121,7 +121,7 @@ async fn test_forget_leaves_another_fleets_entry() {
     );
 
     let forgot = call(
-        Typed::boxed(MemoryForget).as_ref(),
+        Generic::boxed(MemoryForget).as_ref(),
         &lease,
         json!({"key": "deploy_target"}),
     )
@@ -129,7 +129,7 @@ async fn test_forget_leaves_another_fleets_entry() {
     assert_eq!(forgot.text, "nothing remembered under deploy_target");
 
     let recalled = call(
-        Typed::boxed(MemoryRecall).as_ref(),
+        Generic::boxed(MemoryRecall).as_ref(),
         &lease,
         json!({"query": "deploy"}),
     )
@@ -153,7 +153,7 @@ async fn a_publisher_naming_fleet_reach_keeps_the_entry_to_itself() {
     );
 
     let stored = call(
-        Typed::boxed(MemoryStore).as_ref(),
+        Generic::boxed(MemoryStoreTool).as_ref(),
         &lease,
         json!({"key": "deploy_target", "content": "iad", "visibility": "fleet"}),
     )

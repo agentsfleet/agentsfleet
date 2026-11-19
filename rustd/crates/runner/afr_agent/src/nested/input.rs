@@ -1,9 +1,9 @@
 //! `send_input`: a message for a spawned child's next turn.
 
 use afr_tools::nested::Input;
-use afr_tools::parsed;
 use guffbolt::ToolOutput;
 use guffbolt::agents::{Accepted, not_found};
+use guffbolt::tools::parsed;
 use serde_json::Value;
 
 use super::answer::json;

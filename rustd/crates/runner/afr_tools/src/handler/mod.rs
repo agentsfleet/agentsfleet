@@ -9,13 +9,13 @@
 
 use std::fmt;
 
+use guffbolt::tools::{Schema, parsed};
 use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 
 use crate::catalog::Entry;
-use crate::runtime::{CatalogTool, ToolContext, parsed};
-use crate::schema::Schema;
+use crate::runtime::{CatalogTool, ToolContext};
 
 /// One tool's behaviour, given arguments that parsed.
 #[async_trait::async_trait]

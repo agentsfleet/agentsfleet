@@ -16,8 +16,8 @@
 use std::sync::LazyLock;
 
 use afr_tools::nested::{Input, Named, Nested, Task, Wait};
-use afr_tools::{NoArguments, Schema};
 use guffbolt::agents::Caps;
+use guffbolt::tools::{NoArguments, Schema};
 use guffbolt::{Describe, Tool, ToolFuture, ToolSpec};
 
 pub(crate) use self::recovery::ChildRecovery;

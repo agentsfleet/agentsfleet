@@ -10,7 +10,7 @@
 //!    │ installs an Extension: what a run of its kind adds, or Plain
 //!    │ implements Raise: the loop each child of the run runs, polled beside the root
 //!    ▼
-//!  drive(conversation, extension, state) ──► Ending: Answered | Failed | Stopped
+//!  drive(conversation, extension, state) ──► Ending: Answered | Failed | Stopped | Waiting
 //!    every turn:  take input ─► before_model ─► window ─► model call ─► after_turn
 //!    no calls:    on_answer ─► remember ─► take input again: more input runs another turn
 //!    calls:       run them ─► remember ─► after_group
@@ -59,6 +59,16 @@
 //! A run's children are [`agents`]: loops a tool call starts, each the
 //! embedder's own over a narrower set of its parent's tools. The root polls
 //! them in its own future, so they end with it, and each ends once.
+//!
+//! A call that asks the person a question ([`ToolOutput::asks`]) ends the
+//! loop [`Ending::Waiting`] once its turn's other calls ran; nothing waits
+//! inside the run, and [`DriveState::resume`] answers it later.
+//!
+//! The `tools` feature adds `tools`: commands, files, patches, the web,
+//! memory, MCP servers, questions, deferred tools and the clock, each run
+//! through a seam the embedder fills (`tools::Env`, `tools::Outbound`,
+//! `tools::MemoryStore`), with host-process defaults for a standalone
+//! harness.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
@@ -70,6 +80,8 @@ pub mod input;
 mod model;
 mod observe;
 mod tool;
+#[cfg(feature = "tools")]
+pub mod tools;
 mod transcript;
 mod turn;
 mod window;
@@ -83,11 +95,13 @@ pub use self::tool::{
     Describe, ErrorCode, Image, ImageKind, Tool, ToolFuture, ToolOutput, ToolSpec, Tools,
 };
 pub use self::transcript::{Call, Message, Replay, Transcript};
-pub use self::turn::{Ending, Listen, Turn};
+pub use self::turn::{Ending, Listen, Turn, Waiting};
 pub use self::window::{Fitted, Window};
 
 /// The README's examples, compiled and run as doctests by the unit lane, so
-/// the crate's page cannot drift from its code.
-#[cfg(doctest)]
+/// the crate's page cannot drift from its code. The page shows the `tools`
+/// feature too, so its examples compile with every feature on, as the lane
+/// builds them.
+#[cfg(all(doctest, feature = "tools"))]
 #[doc = include_str!("../README.md")]
 pub struct ReadmeDoctests;

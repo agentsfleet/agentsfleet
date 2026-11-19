@@ -6,7 +6,7 @@
 use guffbolt::ToolOutput;
 use serde_json::json;
 
-use super::{Target, tag};
+use super::tag;
 use crate::catalog::{FILE_EDIT_HASHED, FILE_READ_HASHED};
 use crate::lease::Lease;
 use crate::runtime::ToolErrorCode;
@@ -203,22 +203,6 @@ async fn a_tag_matching_twice_nearby_is_refused() {
         "x\nx\nx\n"
     );
     live.stop().await;
-}
-
-#[tokio::test]
-async fn a_tag_that_does_not_parse_or_names_line_zero_is_invalid() {
-    for given in ["10:abc", "L10abc", "L10:ab", "L0:abc", "Lten:abc", ""] {
-        let refused = Target::parse(given).unwrap_err();
-
-        assert_eq!(
-            refused.error_code,
-            Some(ToolErrorCode::InvalidArguments.into()),
-            "{given:?}"
-        );
-        assert!(refused.text.contains("is not a tag"), "{}", refused.text);
-    }
-    let parsed = Target::parse("L12:abc").unwrap();
-    assert_eq!((parsed.line, parsed.hash), (12, "abc"));
 }
 
 #[tokio::test]

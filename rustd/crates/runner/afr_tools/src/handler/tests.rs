@@ -5,15 +5,15 @@
 
 use serde_json::json;
 
-use crate::handler::Typed;
+use crate::generic::Generic;
 use crate::lease::Lease;
-use crate::memory::MemoryRecall;
 use crate::runtime::ToolErrorCode;
 use crate::testing::call;
+use guffbolt::tools::memory::MemoryRecall;
 
 #[test]
 fn a_typed_schema_is_one_flat_object_that_refuses_unknown_arguments() {
-    let tool = Typed::boxed(MemoryRecall);
+    let tool = Generic::boxed(MemoryRecall);
     let parameters = tool.spec().parameters;
 
     assert_eq!(parameters["type"], "object");
@@ -27,7 +27,7 @@ fn a_typed_schema_is_one_flat_object_that_refuses_unknown_arguments() {
 
 #[tokio::test]
 async fn arguments_that_do_not_parse_are_refused_before_the_handler_runs() {
-    let tool = Typed::boxed(MemoryRecall);
+    let tool = Generic::boxed(MemoryRecall);
     let lease = Lease::default();
 
     for refused in [

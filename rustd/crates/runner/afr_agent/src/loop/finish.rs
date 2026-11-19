@@ -10,6 +10,9 @@ use crate::engine::RunOutput;
 
 /// What a run stopped by its lease reports as its detail.
 pub(super) const DETAIL_STOPPED: &str = "the run was stopped before it finished";
+/// What a run that asked the person a question fails with: no lease carries
+/// a question to its person yet, so the run cannot wait on one.
+pub(super) const DETAIL_WAITING: &str = "the run asked a question this lease cannot deliver";
 /// The event a run's end logs when it killed sessions still open.
 pub(super) const EVENT_SESSIONS_INTERRUPTED: &str = "sessions_interrupted";
 
@@ -97,6 +100,13 @@ impl Harness<'_, '_> {
                 };
                 (ResultOutcome::Failed(stopped), String::new())
             }
+            Ending::Waiting(_) => {
+                let waiting = Failure {
+                    class: None,
+                    detail: DETAIL_WAITING.into(),
+                };
+                (ResultOutcome::Failed(waiting), String::new())
+            }
         };
         let usage = shared.meter.read();
         let (trace, records) = shared.ledger.finish();
@@ -158,7 +168,12 @@ impl Harness<'_, '_> {
         let Some(executor) = self.shared.executor.peek() else {
             return;
         };
-        let sessions = self.shared.lease.sessions.close_all(executor).await;
+        let sessions = self
+            .shared
+            .lease
+            .sessions
+            .close_all(&afr_tools::SandboxEnv::new(executor))
+            .await;
         if sessions > 0 {
             let lease_id = self.shared.lease_id;
             let event = EVENT_SESSIONS_INTERRUPTED;

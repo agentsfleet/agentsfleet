@@ -3,6 +3,7 @@
 
 use serde_json::json;
 
+use super::session;
 use super::tests::{CAT, CHARS, FIRST, SESSION_ID, exec, opening, write, writing};
 use crate::lease::Lease;
 use crate::runtime::ToolErrorCode;
@@ -74,5 +75,5 @@ async fn should_refuse_without_a_sandbox_or_when_the_spawn_is_refused() {
         "a refused spawn reads the executor's reason, got {:?}",
         refused.text
     );
-    assert!(lease.sessions.get(FIRST).is_none());
+    assert!(lease.sessions.get(session(FIRST)).is_none());
 }

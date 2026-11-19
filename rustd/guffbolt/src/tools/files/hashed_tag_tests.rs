@@ -1,7 +1,13 @@
 //! Hashline's tags on text alone: the hash, the lines it is taken over, and
 //! the radius a tag is looked for in.
 
+#![expect(
+    clippy::unwrap_used,
+    reason = "test module: a failed precondition should fail the test loudly"
+)]
+
 use super::{Line, Located, Target, lines, tag, tagged};
+use crate::tools::code;
 
 /// The tag is Fowler–Noll–Vo 1a over the trimmed line before, a bar, and the
 /// trimmed line, keeping twelve bits as three hex digits.
@@ -65,4 +71,20 @@ fn a_tag_is_looked_for_within_the_radius_only() {
         Located::Missing,
         "fifty-one away is not"
     );
+}
+
+#[test]
+fn a_tag_that_does_not_parse_or_names_line_zero_is_invalid() {
+    for given in ["10:abc", "L10abc", "L10:ab", "L0:abc", "Lten:abc", ""] {
+        let refused = Target::parse(given).unwrap_err();
+
+        assert_eq!(
+            refused.error_code,
+            Some(code::INVALID_ARGUMENTS),
+            "{given:?}"
+        );
+        assert!(refused.text.contains("is not a tag"), "{}", refused.text);
+    }
+    let parsed = Target::parse("L12:abc").unwrap();
+    assert_eq!((parsed.line, parsed.hash), (12, "abc"));
 }
