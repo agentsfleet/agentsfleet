@@ -42,34 +42,46 @@ pub(super) async fn apply(
             ));
         }
     };
-    if let Some(detail) = initial_refusal(proposal) {
-        tracing::info!(
-            event = "setup_proposal_outcome",
-            sequence,
-            outcome = "refused",
-            refusal = "invalid_first_setup",
-            field = detail.field()
-        );
-        return Ok((
-            ModelMessage::Tool {
-                call_id: call_id.clone(),
-                text: invalid_setup(&detail),
-            },
-            false,
-        ));
+    if let Some(reply) = initial_reply(proposal, call_id, sequence) {
+        return Ok((reply, false));
     }
-    let request = ActivityRequest {
-        fence: lease.fence.clone(),
-        sequence: lease.sequence.clone(),
-        activity_sequence: sequence.to_string(),
-        event: ActivityEvent::Proposal {
-            proposal: proposal.clone(),
+    let (text, accepted) = submit(plane, id, lease, sequence, proposal).await?;
+    Ok((
+        ModelMessage::Tool {
+            call_id: call_id.clone(),
+            text,
         },
-    };
+        accepted,
+    ))
+}
+
+fn initial_reply(proposal: &Proposal, call_id: &str, sequence: u64) -> Option<ModelMessage> {
+    let detail = initial_refusal(proposal)?;
+    tracing::info!(
+        event = "setup_proposal_outcome",
+        sequence,
+        outcome = "refused",
+        refusal = "invalid_first_setup",
+        field = detail.field()
+    );
+    Some(ModelMessage::Tool {
+        call_id: call_id.to_owned(),
+        text: invalid_setup(&detail),
+    })
+}
+
+async fn submit(
+    plane: &ControlPlane,
+    id: &Uuid7,
+    lease: &Lease<Value>,
+    sequence: u64,
+    proposal: &Proposal,
+) -> Result<(String, bool)> {
+    let request = request(lease, sequence, proposal);
     let receipt = plane
         .retrying(|| plane.authoring_activity(id, &request))
         .await;
-    let (text, accepted) = match receipt {
+    Ok(match receipt {
         Ok(receipt) if receipt.accepted => {
             tracing::info!(
                 event = "setup_proposal_outcome",
@@ -96,14 +108,18 @@ pub(super) async fn apply(
             )
         }
         Err(failure) => return Err(failure),
-    };
-    Ok((
-        ModelMessage::Tool {
-            call_id: call_id.clone(),
-            text,
+    })
+}
+
+fn request(lease: &Lease<Value>, sequence: u64, proposal: &Proposal) -> ActivityRequest {
+    ActivityRequest {
+        fence: lease.fence.clone(),
+        sequence: lease.sequence.clone(),
+        activity_sequence: sequence.to_string(),
+        event: ActivityEvent::Proposal {
+            proposal: proposal.clone(),
         },
-        accepted,
-    ))
+    }
 }
 
 /// Proves a first setup with the daemon's own validator before submitting it.

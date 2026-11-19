@@ -1,7 +1,7 @@
 ---
 type: reference
 audience: contributor
-verified: 2026-11-18
+verified: 2026-11-19
 product_version: 0.78.0
 executable: false
 ---
@@ -44,6 +44,25 @@ Record its new harness hash alongside the historical fixture hashes; the timing 
 
 Main revision `055aef441` is reconciled in `228a3d31f`.
 The merge retains three protocol constants used by the new task policy: `ITEMS_MAX`, `OBJECTIVE_MAX_BYTES` and `TITLE_MAX_BYTES`.
+
+The [saved source review](../../../bench/baselines/m247-source-review.rig.json) closed all 95 earlier reading gaps and reviewed the subsequent method extractions separately.
+The standards review's syntax-tree scan covered 609 changed Rust files.
+All twelve function-size findings are repaired, with no query-order, ownership or policy change found in the focused recheck.
+
+The final parser proof borrows checkpoint text through validated `RootInput`; it does not clone the plaintext.
+Both default-feature and all-features compilation checks passed before the function refactor.
+That candidate also passed 84 focused checks: four runner configuration, 71 recovery and nine problem-registry checks.
+
+The function-refactor candidate passed workspace Clippy with all features and targets, followed by the default-feature daemon and runner check.
+Its focused execution and the final repository checks remain separately tracked.
+These observations establish neither formal equivalence nor final coverage.
+
+The current main tree is `aa1f741ef684a775a8e9e7ad3a070e3a67834303`, identical to its tested parent `596e82243309263c335bcf39cbeaa8bca1a1ff2f`.
+That parent's [unit run](https://github.com/agentsfleet/agentsfleet/actions/runs/44375381092) passed 1,777 runner, 172 daemon and 3,706 daemon-library checks.
+Its [coverage run](https://github.com/agentsfleet/agentsfleet/actions/runs/44375381207) covered 108,098 of 110,293 lines, or 98.0098%.
+
+Those runs name the tested parent revision explicitly; no new run on the merge commit is claimed.
+The final branch's greater-than-99% patch and per-file requirement still needs its own reports.
 
 ### Populated SQL comparison
 

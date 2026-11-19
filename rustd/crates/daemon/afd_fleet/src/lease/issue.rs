@@ -100,6 +100,7 @@ impl Leases {
     ///
     /// # Errors
     /// As [`Self::issue`].
+    /// A full host, moved fence or moved choice rolls back without issuing a lease.
     pub async fn issue_for_revision(
         &self,
         runner_id: &Uuid7,
@@ -119,11 +120,7 @@ impl Leases {
         else {
             return Ok(None);
         };
-        if !self.permits_issue(host) {
-            return Ok(None);
-        }
-        if let Some(refusal) = placement_refusal(host, &billed) {
-            afd_runner::capacity::refused_placement(runner_id, refusal, LeaseKind::Fleet.as_str());
+        if !self.permits_issue(host, runner_id, &billed) {
             return Ok(None);
         }
         let (lease_id, event_row_id) = self.mint(now)?;
@@ -154,8 +151,6 @@ impl Leases {
         .insert(&mut transaction)
         .await?
         else {
-            // A full host, a moved fence or a moved choice wrote nothing that
-            // commits: the transaction rolls back with this return.
             return Ok(None);
         };
         let Some((task, expires_at)) =
@@ -178,11 +173,24 @@ impl Leases {
 
     /// Whether the locked host may take this lease before the insert counts
     /// its workers and rechecks the claim's deadline itself.
-    fn permits_issue(&self, host: afd_runner::capacity::Held) -> bool {
-        host.can_claim()
-            && self.ticket().is_none_or(|ticket| {
+    fn permits_issue(
+        &self,
+        host: afd_runner::capacity::Held,
+        runner_id: &Uuid7,
+        billed: &Billed<'_>,
+    ) -> bool {
+        if !host.can_claim()
+            || !self.ticket().is_none_or(|ticket| {
                 ticket.permits_revision(host.lease_version(), LeaseKind::Fleet)
             })
+        {
+            return false;
+        }
+        if let Some(refusal) = placement_refusal(host, billed) {
+            afd_runner::capacity::refused_placement(runner_id, refusal, LeaseKind::Fleet.as_str());
+            return false;
+        }
+        true
     }
 
     /// Draw the independent lease and audit identities.

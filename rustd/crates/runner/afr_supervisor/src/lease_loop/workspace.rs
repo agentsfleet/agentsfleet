@@ -67,13 +67,14 @@ impl LeaseRun<'_> {
     /// Admits the lease's sandbox, then runs its build and its turn together
     /// and hands the sandbox back with the turn's ending. A held sandbox keeps
     /// the repositories as its last lease left them.
+    /// The sandbox cell outlives the build and turn; the executor slot bounds its borrow.
+    /// Sandbox setup timing covers admission through the build's completion.
     pub(super) async fn sandboxed(
         &self,
         memory: Seed<'_>,
         sink: ActivitySink,
         prepared_task: Option<&afr_agent::PreparedTask>,
     ) -> Worked {
-        // Timed from here to the build's end, whichever way it ends.
         let setup = self.timeline.start(Segment::Sandbox);
         let admitted = match self.admitted(prepared_task).await {
             Ok(admitted) => admitted,
@@ -91,8 +92,6 @@ impl LeaseRun<'_> {
             plan: admitted.plan.as_ref(),
             stop: &stop,
         };
-        // The cell outlives the build that fills it and the turn that borrows
-        // its executor through the slot; the slot's scope ends the borrow.
         let cell = OnceLock::new();
         let (ending, held) = {
             let slot = ExecutorSlot::pending();

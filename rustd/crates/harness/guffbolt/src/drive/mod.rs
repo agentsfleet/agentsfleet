@@ -48,15 +48,11 @@ where
 }
 
 /// Every turn, in order, until one ends the loop.
-async fn turns<C, E>(
+async fn turns<C: Conversation + ?Sized, E: Extension<C>>(
     conversation: &mut C,
     extension: &mut E,
     state: &mut DriveState,
-) -> Ending<C::Failure>
-where
-    C: Conversation + ?Sized,
-    E: Extension<C>,
-{
+) -> Ending<C::Failure> {
     let mut number: u64 = 0;
     let ending = loop {
         number += 1;

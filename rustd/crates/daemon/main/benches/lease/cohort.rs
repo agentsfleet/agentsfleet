@@ -32,7 +32,7 @@ pub(super) async fn population(run: &Scenario, model: &Model, n: usize) -> Check
         workspace: run.workspace.clone(),
         event: run.event_id.clone(),
     }];
-    for _ in 1..n {
+    for index in 1..n {
         let (id, tenant, workspace) = if layout == "shared" {
             (mint_id(), run.tenant.clone(), run.workspace.clone())
         } else {
@@ -41,7 +41,7 @@ pub(super) async fn population(run: &Scenario, model: &Model, n: usize) -> Check
         e2e_seed::seed_fleet(
             &run.booted,
             &id,
-            "Recovery verification",
+            &format!("Recovery verification {index}"),
             &workspace,
             &tenant,
             e2e_seed::FLEET_CONFIG_JSON,

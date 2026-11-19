@@ -57,13 +57,19 @@ struct Driver {
     completed_turns: u64,
 }
 
+#[derive(Validate)]
+struct RootInput<'a> {
+    #[garde(dive)]
+    root: &'a TurnPrivateRoot,
+}
+
 pub(super) fn validate(
     root: &TurnPrivateRoot,
     scope: &TurnScope,
     folds: &[FoldRef],
     origin: Option<(&str, &str)>,
 ) -> Result<()> {
-    let root = garde::Unvalidated::new(root)
+    let root = garde::Unvalidated::new(RootInput { root })
         .validate()
         .map_err(invalid("root byte bounds"))?;
     let saved = history(&root)?;
@@ -95,8 +101,8 @@ pub(super) fn validate(
     Ok(())
 }
 
-fn history(root: &garde::Valid<&TurnPrivateRoot>) -> Result<garde::Valid<History>> {
-    let saved: History = serde_json::from_str(&root.history).map_err(invalid("root JSON"))?;
+fn history(root: &garde::Valid<RootInput<'_>>) -> Result<garde::Valid<History>> {
+    let saved: History = serde_json::from_str(&root.root.history).map_err(invalid("root JSON"))?;
     garde::Unvalidated::new(saved)
         .validate()
         .map_err(invalid("root header and fold bounds"))

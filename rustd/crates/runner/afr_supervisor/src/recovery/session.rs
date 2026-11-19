@@ -172,12 +172,7 @@ impl Session<'_> {
         Ok(())
     }
 
-    /// Authorize at most four unique objects once, then restore concurrently.
-    /// The result preserves manifest order, including repeated content chunks.
-    pub(super) async fn download_batch(
-        &mut self,
-        ids: &[String],
-    ) -> Result<Vec<super::window::Chunk>> {
+    async fn restore_objects(&mut self, ids: &[String]) -> Result<Vec<Object>> {
         if ids.is_empty() || ids.len() > 4 {
             return Err(error::config("checkpoint restore batch exceeds its bound"));
         }
@@ -223,6 +218,16 @@ impl Session<'_> {
                 .ok_or_else(|| error::config("checkpoint ciphertext length is invalid"))?;
             self.progress.discover(&object.object_id, length, false);
         }
+        Ok(objects)
+    }
+
+    /// Authorize at most four unique objects once, then restore concurrently.
+    /// The result preserves manifest order, including repeated content chunks.
+    pub(super) async fn download_batch(
+        &mut self,
+        ids: &[String],
+    ) -> Result<Vec<super::window::Chunk>> {
+        let objects = self.restore_objects(ids).await?;
         self.progress(
             af_wire::activity::TaskActivityOperation::Restore,
             af_wire::activity::TaskActivityPhase::Restoring,

@@ -43,10 +43,7 @@ pub(super) async fn execute(
             checkpoint,
             objects: input,
         } => {
-            let ids = input
-                .iter()
-                .map(|object| guard::id(&TurnId(object.object_id.clone())))
-                .collect::<Result<Vec<_>>>()?;
+            let ids = upload_ids(input)?;
             (checkpoint, CheckpointTransferPurpose::Upload, ids, false)
         }
         TurnCheckpointAction::Authorize {
@@ -59,10 +56,7 @@ pub(super) async fn execute(
     let mut connection = transaction::acquire(leases.pool()).await?;
     let mut custody =
         FileOwner::lock(leases, &mut connection, presented, reference, purpose).await?;
-    let registered = objects::scoped(&mut custody, &ids).await?;
-    if let TurnCheckpointAction::Uploads { objects: input, .. } = &request.action {
-        freeze(&mut custody, &registered, input).await?;
-    }
+    freeze_uploads(&mut custody, request, &ids).await?;
     let registered = objects::scoped(&mut custody, &ids).await?;
     objects::protect(&mut custody, &ids).await?;
     let pin = custody.pin.wire();
@@ -85,6 +79,25 @@ pub(super) async fn execute(
     } else {
         TurnCheckpointResponse::Uploads(items)
     })
+}
+
+async fn freeze_uploads(
+    custody: &mut FileOwner<'_>,
+    request: &TurnCheckpointCommand,
+    ids: &[Uuid7],
+) -> Result<()> {
+    let registered = objects::scoped(custody, ids).await?;
+    if let TurnCheckpointAction::Uploads { objects: input, .. } = &request.action {
+        freeze(custody, &registered, input).await?;
+    }
+    Ok(())
+}
+
+fn upload_ids(input: &[CheckpointUpload]) -> Result<Vec<Uuid7>> {
+    input
+        .iter()
+        .map(|object| guard::id(&TurnId(object.object_id.clone())))
+        .collect()
 }
 
 async fn freeze(

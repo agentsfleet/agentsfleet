@@ -135,6 +135,34 @@ impl Restore<'_> {
         restored
     }
 
+    fn checked_plan(
+        &self,
+        checkpoint: &Uuid7,
+        response: af_wire::task::CheckpointAuthorizations,
+    ) -> Result<CheckpointPlan> {
+        let unexpected = !response.objects.is_empty();
+        // Wrapped so each unexpected object's data key is wiped as it drops.
+        response
+            .objects
+            .into_iter()
+            .map(Object::from)
+            .for_each(drop);
+        let plan = response.plan;
+        if unexpected
+            || plan.checkpoint_id != checkpoint.as_str()
+            || plan.format_version != CHECKPOINT_FORMAT
+            || plan.toolbox_digest != self.toolbox
+            || plan.mode != CheckpointMode::Incremental
+            || plan.covered_input_sequence > self.task.covered_input_sequence
+            || plan.effect_watermark > self.task.confirmed_effect_watermark
+        {
+            return Err(error::config(
+                "checkpoint bootstrap is incompatible with current task",
+            ));
+        }
+        Ok(plan)
+    }
+
     async fn restore(
         &self,
         activity: &str,
@@ -165,26 +193,7 @@ impl Restore<'_> {
                 },
             )
             .await?;
-        let unexpected = !response.objects.is_empty();
-        // Wrapped so each unexpected object's data key is wiped as it drops.
-        response
-            .objects
-            .into_iter()
-            .map(Object::from)
-            .for_each(drop);
-        let plan = response.plan;
-        if unexpected
-            || plan.checkpoint_id != checkpoint.as_str()
-            || plan.format_version != CHECKPOINT_FORMAT
-            || plan.toolbox_digest != self.toolbox
-            || plan.mode != CheckpointMode::Incremental
-            || plan.covered_input_sequence > self.task.covered_input_sequence
-            || plan.effect_watermark > self.task.confirmed_effect_watermark
-        {
-            return Err(error::config(
-                "checkpoint bootstrap is incompatible with current task",
-            ));
-        }
+        let plan = self.checked_plan(&checkpoint, response)?;
         let mut session = Session {
             plane: self.plane,
             lease: self.lease,

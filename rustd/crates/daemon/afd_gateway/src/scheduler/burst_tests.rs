@@ -33,17 +33,7 @@ async fn drain_burst(fleets: usize) -> TestResult {
             Arc::clone(&completed),
         ));
     }
-    let scheduler = tokio::spawn({
-        let registry = Arc::clone(&registry);
-        let wake = wake.clone();
-        let stop = stop.clone();
-        async move {
-            notifications(&registry, &wake, 8, stop, |_| async {
-                Ok(super::everyone())
-            })
-            .await
-        }
-    });
+    let scheduler = schedule(&registry, &wake, &stop);
     tokio::task::yield_now().await;
     let started = tokio::time::Instant::now();
     wake.recheck();
@@ -63,6 +53,24 @@ async fn drain_burst(fleets: usize) -> TestResult {
     assert!(started.elapsed() < af_core::timing::OFFER_FALLBACK_TICK);
     drop(registrations);
     Ok(())
+}
+
+fn schedule(
+    registry: &Arc<Registry>,
+    wake: &Wake,
+    stop: &CancellationToken,
+) -> tokio::task::JoinHandle<crate::Result<()>> {
+    tokio::spawn({
+        let registry = Arc::clone(registry);
+        let wake = wake.clone();
+        let stop = stop.clone();
+        async move {
+            notifications(&registry, &wake, 8, stop, |_| async {
+                Ok(super::everyone())
+            })
+            .await
+        }
+    })
 }
 
 async fn claims_drained(completed: &Notify, remaining: &AtomicUsize) {

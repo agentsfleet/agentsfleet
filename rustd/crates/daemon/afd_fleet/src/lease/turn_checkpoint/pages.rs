@@ -40,10 +40,7 @@ pub(super) async fn write(
         return Err(TurnCheckpointRefusal::Incompatible.into());
     };
     let id = guard::id(page_id)?;
-    let body = serde_json::to_vec(contents).map_err(af_core::json::Unreadable::from)?;
-    if af_core::etag::sha256_hex(&body) != *digest {
-        return Err(TurnCheckpointRefusal::Incompatible.into());
-    }
+    let body = encoded_page(contents, digest)?;
     let mut connection = transaction::acquire(leases.pool()).await?;
     let mut custody = FileOwner::lock(
         leases,
@@ -77,6 +74,14 @@ pub(super) async fn write(
     custody.commit().await?;
     transaction::recycle(connection);
     Ok(TurnCheckpointResponse::PageWritten(contents.clone()))
+}
+
+fn encoded_page(contents: &CheckpointPage, digest: &str) -> Result<Vec<u8>> {
+    let body = serde_json::to_vec(contents).map_err(af_core::json::Unreadable::from)?;
+    if af_core::etag::sha256_hex(&body) != digest {
+        return Err(TurnCheckpointRefusal::Incompatible.into());
+    }
+    Ok(body)
 }
 
 pub(super) async fn read(

@@ -80,12 +80,7 @@ pub(crate) fn prepare(
             .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
         kind: descriptor.kind.clone(),
         format_version: format,
-        accounted_bytes: i64::try_from(
-            descriptor.size
-                + u64::try_from(af_crypto::TAG_LEN)
-                    .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
-        )
-        .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
+        accounted_bytes: accounted_bytes(descriptor.size)?,
         dek_ciphertext: pg_bytes(envelope.wrapped_dek()),
         dek_nonce: pg_bytes(envelope.dek_nonce()),
         dek_tag: pg_bytes(envelope.dek_tag()),
@@ -95,6 +90,14 @@ pub(crate) fn prepare(
         kek_version: envelope.kek_version(),
         object_nonce: pg_bytes(wrapped.nonce()),
     })
+}
+
+fn accounted_bytes(size: u64) -> Result<i64> {
+    Ok(i64::try_from(
+        size + u64::try_from(af_crypto::TAG_LEN)
+            .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
+    )
+    .map_err(|_overflow| TaskRefusal::LimitExhausted)?)
 }
 
 fn pg_bytes(bytes: &[u8]) -> String {
