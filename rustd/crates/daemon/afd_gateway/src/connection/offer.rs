@@ -1,7 +1,7 @@
 //! Offer issue, encoding and delivery each have one ownership boundary.
 
 use af_core::timing::STREAM_ANSWER_TIMEOUT;
-use af_observability::verb_span::{OfferStage, VerbClock};
+use af_observability::verb_span::{AssignStage, VerbClock};
 use af_stream::Encoder;
 use af_wire::{protocol::StreamKind, run::TaggedRun};
 use afd_fleet::run::{OfferRequest, Offered, RecoveryScan};
@@ -25,7 +25,7 @@ impl ConnectionServices {
         )
         .await?;
         // After the reserve, so output backpressure is not read as claim time.
-        let mut clock = VerbClock::<OfferStage>::start();
+        let mut clock = VerbClock::<AssignStage>::start();
         // A pass that reaches no stage leaves no span (the clock's own rule):
         // the 5 s probe's empty answer, and a claim that failed before
         // selecting. A claim the gates refused reached a stage and keeps one.
@@ -47,7 +47,7 @@ impl ConnectionServices {
             .output
             .send(StreamKind::Work, frame, &self.handle.stop, deadline)
             .await;
-        clock.mark(OfferStage::Send);
+        clock.mark(AssignStage::Send);
         sent?;
         Ok(OfferOutcome::Issued)
     }
@@ -64,7 +64,7 @@ impl ConnectionServices {
         mode: OfferMode,
         state: &SchedulingState,
         encoder: &mut Encoder,
-        clock: &mut VerbClock<OfferStage>,
+        clock: &mut VerbClock<AssignStage>,
     ) -> Result<(Option<Offered>, bool)> {
         let mut scan = (mode == OfferMode::Recovery)
             .then(|| std::mem::take(&mut *self.handle.recovery_scan.lock()));
@@ -92,7 +92,7 @@ impl ConnectionServices {
         &self,
         state: &SchedulingState,
         encoder: &mut Encoder,
-        clock: &mut VerbClock<OfferStage>,
+        clock: &mut VerbClock<AssignStage>,
         recovery: Option<&mut RecoveryScan>,
     ) -> Result<Option<Offered>> {
         let request = OfferRequest {
@@ -103,7 +103,7 @@ impl ConnectionServices {
             recovery,
         };
         let issued = self
-            .operation(Operation::Offer, async {
+            .operation(Operation::Assign, async {
                 Ok(self
                     .runs
                     .claim_with(
@@ -127,6 +127,6 @@ fn encode_offer(
     run: TaggedRun<'_, afd_setup::types::Candidate>,
     offered: Offered,
 ) -> Result<Offered> {
-    serde_json::to_writer(encoder, &Message::Offer { run })?;
+    serde_json::to_writer(encoder, &Message::Run { run })?;
     Ok(offered)
 }

@@ -4,7 +4,7 @@ use super::{Case, Checked, files, storage::Files};
 use crate::support::Fixtures;
 use af_core::id::Uuid7;
 use af_crypto::{aad::Aad, envelope::Sealer, secret::Kek};
-use af_wire::run::{TurnCheckpointRef, TurnId};
+use af_wire::run::{CheckpointOperationId, TurnCheckpointRef};
 use afd_fleet::task::{CheckpointMaintenanceCursor, TaskLifecycle as _};
 
 #[tokio::test]
@@ -143,7 +143,7 @@ async fn used_identity(files: &Files) -> Checked<Uuid7> {
         files,
         &TurnCheckpointRef {
             checkpoint_id: plan.checkpoint_id,
-            pin_id: TurnId(plan.pin.id),
+            pin_id: CheckpointOperationId(plan.pin.id),
         },
     )
     .await?;

@@ -1,8 +1,8 @@
 //! Ordinary private state binds to its original event and the matching workspace.
 
 use af_wire::run::{
-    FoldRef, RunPayload, TURN_CHECKPOINT_BYTES, TURN_CHECKPOINT_FORMAT, TurnId, TurnResume,
-    TurnScope, TurnWorkspace,
+    CheckpointOperationId, FoldRef, RunPayload, TURN_CHECKPOINT_BYTES, TURN_CHECKPOINT_FORMAT,
+    TurnResume, TurnScope, TurnWorkspace,
 };
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -176,10 +176,10 @@ fn scope(run: &RunPayload<'_>, workspace: TurnWorkspace) -> Result<TurnScope> {
         .as_ref()
         .ok_or_else(|| recovery_invalid("ordinary recovery has no issued setup witness"))?;
     let scope = TurnScope {
-        workspace_id: TurnId(run.event.workspace_id.to_string()),
-        fleet_id: TurnId(run.event.fleet_id.to_string()),
-        event_id: TurnId(run.event.event_id.to_string()),
-        setup_revision_id: TurnId(revision.to_string()),
+        workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
+        fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
+        event_id: CheckpointOperationId(run.event.event_id.to_string()),
+        setup_revision_id: CheckpointOperationId(revision.to_string()),
         workspace,
     };
     scope.validate()?;

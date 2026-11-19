@@ -41,7 +41,7 @@ async fn hydrate_rides_out_a_blip() {
     let counted = Arc::clone(&attempts);
     let (plane, _calls) = plane(move |_call| {
         if counted.fetch_add(1, Ordering::SeqCst) == 0 {
-            Answer::Fail(error::unavailable(Verb::Hydrate, 503))
+            Answer::Fail(error::unavailable(Verb::Load, 503))
         } else {
             json(&MemoryHydrateResponse {
                 memory: answer().memory,

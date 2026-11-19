@@ -35,9 +35,9 @@ pub(crate) enum ErrorKind {
         #[source]
         source: af_core::error::Error,
     },
-    #[error("This stream does not belong to the authenticated connection_id.")]
+    #[error("This stream does not belong to the authenticated connection.")]
     Binding,
-    #[error("The {kind:?} kind is already attached to this connection_id.")]
+    #[error("The {kind:?} kind is already attached to this connection.")]
     DuplicateStream { kind: af_wire::protocol::StreamKind },
     #[error("This daemon has no available runner stream slots. Retry later.")]
     Capacity { carrying: usize, capacity: usize },

@@ -265,7 +265,7 @@ pub(super) async fn protect(custody: &mut FileOwner<'_>, ids: &[Uuid7]) -> Resul
     custody.fresh().await
 }
 
-pub(super) fn ids(ids: &[af_wire::run::TurnId]) -> Result<Vec<Uuid7>> {
+pub(super) fn ids(ids: &[af_wire::run::CheckpointOperationId]) -> Result<Vec<Uuid7>> {
     let values = ids.iter().map(guard::id).collect::<Result<Vec<_>>>()?;
     if values.iter().collect::<BTreeSet<_>>().len() != values.len() {
         return Err(TurnCheckpointRefusal::Conflict.into());

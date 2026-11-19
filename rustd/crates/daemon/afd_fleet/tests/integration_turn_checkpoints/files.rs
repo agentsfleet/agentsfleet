@@ -7,8 +7,9 @@ use super::{
 };
 use af_wire::{
     run::{
-        TurnCheckpointAction as Action, TurnCheckpointPlan, TurnCheckpointRef,
-        TurnCheckpointResponse as Response, TurnId, TurnPrivateRoot, TurnResume, TurnWorkspace,
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointPlan,
+        TurnCheckpointRef, TurnCheckpointResponse as Response, TurnPrivateRoot, TurnResume,
+        TurnWorkspace,
     },
     task::{
         CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext,
@@ -27,7 +28,7 @@ async fn ordinary_files_and_root_publish_under_real_private_sdk_custody() -> Che
     let (plan, history) = begin(&files).await?;
     let reference = TurnCheckpointRef {
         checkpoint_id: plan.checkpoint_id.clone(),
-        pin_id: TurnId(plan.pin.id.clone()),
+        pin_id: CheckpointOperationId(plan.pin.id.clone()),
     };
     let object = authenticated_chunk(&files, &reference).await?;
     let descriptor = publish(&files, plan, history, reference, &object.object_id).await?;
@@ -91,7 +92,7 @@ pub(super) async fn authenticated_chunk(
         .execute(Action::Authorize {
             checkpoint: reference.clone(),
             purpose: CheckpointTransferPurpose::Upload,
-            object_ids: vec![TurnId(object.object_id)],
+            object_ids: vec![CheckpointOperationId(object.object_id)],
         })
         .await?
     else {
@@ -163,7 +164,7 @@ async fn read(files: &Files, descriptor: TurnResume, digest: &str) -> Checked {
     assert_eq!(saved.descriptor, descriptor);
     let reference = TurnCheckpointRef {
         checkpoint_id: descriptor.checkpoint_id,
-        pin_id: TurnId(saved.pin.id),
+        pin_id: CheckpointOperationId(saved.pin.id),
     };
     let page_id = saved.page_ids.first().ok_or("reader page")?.clone();
     let Response::PageRead(page) = files
@@ -184,7 +185,12 @@ async fn read(files: &Files, descriptor: TurnResume, digest: &str) -> Checked {
         Action::Authorize {
             checkpoint: reference.clone(),
             purpose: CheckpointTransferPurpose::Restore,
-            object_ids: file.objects.iter().cloned().map(TurnId).collect(),
+            object_ids: file
+                .objects
+                .iter()
+                .cloned()
+                .map(CheckpointOperationId)
+                .collect(),
         },
     )
     .await?
@@ -276,7 +282,7 @@ async fn corrupt_uploaded_ciphertext_never_becomes_verified_or_a_recovery_head()
     let (plan, _history) = begin(&files).await?;
     let reference = TurnCheckpointRef {
         checkpoint_id: plan.checkpoint_id,
-        pin_id: TurnId(plan.pin.id),
+        pin_id: CheckpointOperationId(plan.pin.id),
     };
     let Response::Objects(mut objects) = files
         .execute(Action::Objects {
@@ -300,7 +306,7 @@ async fn corrupt_uploaded_ciphertext_never_becomes_verified_or_a_recovery_head()
         Action::Authorize {
             checkpoint: reference,
             purpose: CheckpointTransferPurpose::Upload,
-            object_ids: vec![TurnId(object.object_id.clone())],
+            object_ids: vec![CheckpointOperationId(object.object_id.clone())],
         },
     ))?;
     let failure = files

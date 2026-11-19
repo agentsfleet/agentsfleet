@@ -23,7 +23,7 @@ fn refused_bindings_and_malformed_messages_never_ask_for_a_retry() -> Proof {
         (
             Error::from(ErrorKind::Binding),
             error_code::AUTH_FORBIDDEN,
-            "Attach this kind to the physical connection_id that authenticated its connection.",
+            "Attach this kind to the physical connection that authenticated its connection.",
             "binding",
         ),
         (
@@ -74,7 +74,7 @@ async fn transient_failures_keep_the_run_deadline_and_ask_for_a_retry() -> Proof
     assert_class(
         &closed,
         error_code::INTERNAL_OPERATION_FAILED,
-        "The connection_id ended. Reconnect before the last confirmed run deadline.",
+        "The connection ended. Reconnect before the last confirmed run deadline.",
         true,
         "closed",
     );
@@ -124,9 +124,9 @@ fn every_operation_keeps_its_metric_label_and_sentence() {
         (
             Operation::Opening,
             "opening",
-            "confirming the runner connection_id",
+            "confirming the runner connection",
         ),
-        (Operation::Offer, "offer", "offering work"),
+        (Operation::Assign, "assign", "assigning work"),
         (Operation::Heartbeat, "heartbeat", "recording a heartbeat"),
         (Operation::Recheck, "recheck", "checking the current owner"),
         (Operation::Renewal, "renewal", "renewing work"),

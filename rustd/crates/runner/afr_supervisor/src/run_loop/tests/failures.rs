@@ -24,14 +24,14 @@ async fn a_run_that_cannot_start_reports_why() {
     let cases: [(Special, Verb); 2] = [
         (
             |call| {
-                (call.verb == Verb::Hydrate)
-                    .then(|| Answer::Fail(error::refused(Verb::Hydrate, 403, None)))
+                (call.verb == Verb::Load)
+                    .then(|| Answer::Fail(error::refused(Verb::Load, 403, None)))
             },
-            Verb::Hydrate,
+            Verb::Load,
         ),
         (
-            |call| (call.verb == Verb::Hydrate).then(|| Answer::Reply(Bytes::from_static(b"["))),
-            Verb::Hydrate,
+            |call| (call.verb == Verb::Load).then(|| Answer::Reply(Bytes::from_static(b"["))),
+            Verb::Load,
         ),
     ];
     for (special, stopped_at) in cases {

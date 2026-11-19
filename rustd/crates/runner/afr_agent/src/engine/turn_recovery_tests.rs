@@ -1,11 +1,11 @@
 //! Exact event, workspace and incorporated inputs are proved before root restoration.
 
 use super::{RootRecovery, TurnRecovery, TurnSnapshot};
-use af_wire::run::{FoldRef, RunPayload, TurnId, TurnResume, TurnWorkspace};
+use af_wire::run::{CheckpointOperationId, FoldRef, RunPayload, TurnResume, TurnWorkspace};
 use guffbolt::{Message, Replay};
 
-fn id(number: u32) -> TurnId {
-    TurnId(format!("019f0000-0000-7000-8000-{number:012x}"))
+fn id(number: u32) -> CheckpointOperationId {
+    CheckpointOperationId(format!("019f0000-0000-7000-8000-{number:012x}"))
 }
 
 fn payload() -> RunPayload<'static> {

@@ -7,7 +7,9 @@ use super::super::{
 use super::session::TurnSession;
 use crate::{Result, error};
 use af_wire::{
-    run::{TurnCheckpointAction as Action, TurnCheckpointResponse as Response, TurnId},
+    run::{
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointResponse as Response,
+    },
     task::{CheckpointEntry, CheckpointTransferPurpose},
 };
 use futures_util::{StreamExt as _, TryStreamExt as _, stream};
@@ -29,7 +31,7 @@ struct Bounds {
 impl TurnSession<'_, '_> {
     pub(super) async fn restore_files(
         &mut self,
-        pages: &[TurnId],
+        pages: &[CheckpointOperationId],
         digest: &str,
         destination: (PathBuf, (u32, u32)),
         permit: Option<&afr_agent::FileRecoveryPermit>,
@@ -55,7 +57,7 @@ impl TurnSession<'_, '_> {
 
     async fn manifest(
         &mut self,
-        pages: &[TurnId],
+        pages: &[CheckpointOperationId],
         digest: &str,
     ) -> Result<BTreeMap<String, CheckpointEntry>> {
         if pages.is_empty() {

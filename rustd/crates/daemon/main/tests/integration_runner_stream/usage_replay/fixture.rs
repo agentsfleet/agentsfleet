@@ -41,7 +41,7 @@ pub(super) async fn offers(session: &Session, first: &Uuid7, second: &Uuid7) -> 
             .expect("pushed offer deadline")
             .expect("pushed offer");
         let message: Down<'_> = frame.decode().expect("strict native offer");
-        let Down::Offer {
+        let Down::Run {
             run: TaggedRun::Fleet(run),
         } = message
         else {

@@ -5,8 +5,8 @@ use crate::support::Fixtures;
 use af_core::{error_code, id::Uuid7};
 use af_wire::{
     run::{
-        TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response,
-        TurnId, TurnResume, TurnWorkspace,
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
+        TurnCheckpointResponse as Response, TurnResume, TurnWorkspace,
     },
     task::CheckpointEntry,
 };
@@ -31,7 +31,7 @@ pub(super) async fn isolated() -> Checked<Files> {
 async fn generation(
     files: &Files,
     workspace: TurnWorkspace,
-    expected: Option<TurnId>,
+    expected: Option<CheckpointOperationId>,
 ) -> Checked<(Pending, Vec<(String, String)>)> {
     let pages: Vec<Vec<CheckpointEntry>> = match &workspace {
         TurnWorkspace::ApiOnly => Vec::new(),
@@ -52,7 +52,7 @@ async fn generation(
 async fn publish(
     files: &Files,
     workspace: TurnWorkspace,
-    expected: Option<TurnId>,
+    expected: Option<CheckpointOperationId>,
 ) -> Checked<(Pending, Box<TurnResume>)> {
     let (pending, digests) = generation(files, workspace, expected).await?;
     let Response::Committed(saved) = pending.commit(files, &digests).await? else {
@@ -182,7 +182,7 @@ async fn reader_retention(workspace: TurnWorkspace, expire: bool) -> Checked {
     };
     let reference = TurnCheckpointRef {
         checkpoint_id: first.checkpoint_id.clone(),
-        pin_id: TurnId(read.pin.id.clone()),
+        pin_id: CheckpointOperationId(read.pin.id.clone()),
     };
     renew(&files, &reference, &read.pin).await?;
     let (_, second) = publish(&files, workspace.clone(), Some(first.checkpoint_id.clone())).await?;
@@ -275,7 +275,7 @@ async fn commit_read_and_adopt_refuse_foreign_fences_and_expired_runs() -> Check
             Action::Adopt {
                 checkpoint: TurnCheckpointRef {
                     checkpoint_id: saved.checkpoint_id.clone(),
-                    pin_id: TurnId(read.pin.id),
+                    pin_id: CheckpointOperationId(read.pin.id),
                 },
             },
         ];

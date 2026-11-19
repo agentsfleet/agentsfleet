@@ -1,6 +1,6 @@
 //! A native claim selects fleet work while retaining the policy borrow.
 
-use af_observability::verb_span::{OfferStage, VerbClock};
+use af_observability::verb_span::{AssignStage, VerbClock};
 use af_wire::run::RunPayload;
 use afd_runner::capacity::choice::Ticket;
 
@@ -21,7 +21,7 @@ impl RunService {
         &self,
         request: &mut OfferRequest<'_>,
         ticket: Option<Ticket>,
-        clock: &mut VerbClock<OfferStage>,
+        clock: &mut VerbClock<AssignStage>,
         mut emit: F,
     ) -> Result<Option<T>>
     where
@@ -48,7 +48,7 @@ impl RunService {
             no_work(request.runner, "no leasable work");
             return Ok(None);
         };
-        clock.mark(OfferStage::Claim);
+        clock.mark(AssignStage::Claim);
         let mut chosen = self.clone();
         chosen.runs = chosen.runs.with_ticket(ticket);
         chosen

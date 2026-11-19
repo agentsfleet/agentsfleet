@@ -22,7 +22,7 @@ use std::sync::Arc;
     params(
         ("agentsfleet-runner-protocol" = String, Header, description = "Required runner protocol revision", example = json!(af_wire::protocol::VERSION)),
         ("agentsfleet-runner-kind" = String, Header, description = "control, work, reports or activity"),
-        ("agentsfleet-runner-session" = Option<String>, Header, description = "Previous owner on control reconnect; welcome owner on secondary requests"),
+        ("agentsfleet-runner-connection" = Option<String>, Header, description = "Previous owner on control reconnect; welcome owner on secondary requests"),
     ),
     responses(
         (status = 200, description = "Length-prefixed session frames", body = String, content_type = "application/octet-stream"),

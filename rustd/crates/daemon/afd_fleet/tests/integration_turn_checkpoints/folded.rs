@@ -9,8 +9,8 @@ use super::{
 };
 use af_core::id::Uuid7;
 use af_wire::run::{
-    FoldRef, TurnCheckpointAction as Action, TurnCheckpointBegin, TurnCheckpointRef,
-    TurnCheckpointResponse as Response, TurnId, TurnResume, TurnWorkspace,
+    CheckpointOperationId, FoldRef, TurnCheckpointAction as Action, TurnCheckpointBegin,
+    TurnCheckpointRef, TurnCheckpointResponse as Response, TurnResume, TurnWorkspace,
 };
 use sqlx::Connection as _;
 
@@ -109,7 +109,7 @@ async fn publish(files: &Files) -> Checked<(Box<TurnResume>, FoldRef)> {
     };
     let reference = TurnCheckpointRef {
         checkpoint_id: plan.checkpoint_id,
-        pin_id: TurnId(plan.pin.id),
+        pin_id: CheckpointOperationId(plan.pin.id),
     };
     let manifest = empty_manifest(files, &reference, &plan.page_ids).await?;
     let Response::Committed(saved) = files
@@ -129,7 +129,7 @@ async fn publish(files: &Files) -> Checked<(Box<TurnResume>, FoldRef)> {
 async fn empty_manifest(
     files: &Files,
     reference: &TurnCheckpointRef,
-    page_ids: &[TurnId],
+    page_ids: &[CheckpointOperationId],
 ) -> Checked<String> {
     let page_id = page_ids.first().ok_or("page")?.clone();
     let page = af_wire::task::CheckpointPage {
@@ -203,7 +203,7 @@ async fn incorporate(files: &Files) -> Checked<FoldRef> {
     assert_eq!(claimed.inputs.len(), 1);
     assert_eq!(input.event_id, admitted.stored.id.as_str());
     Ok(FoldRef {
-        event_id: TurnId(input.event_id.to_string()),
+        event_id: CheckpointOperationId(input.event_id.to_string()),
         sequence: input.sequence,
     })
 }
@@ -221,7 +221,7 @@ async fn read(files: &Files, saved: Box<TurnResume>) -> Checked<TurnCheckpointRe
     assert_eq!(read.folds.len(), 1);
     Ok(TurnCheckpointRef {
         checkpoint_id: read.descriptor.checkpoint_id,
-        pin_id: TurnId(read.pin.id),
+        pin_id: CheckpointOperationId(read.pin.id),
     })
 }
 

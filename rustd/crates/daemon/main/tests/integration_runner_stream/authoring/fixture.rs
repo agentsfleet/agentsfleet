@@ -226,7 +226,7 @@ async fn queue(drafts: &Drafts, rows: &Rows, session: &Session) -> wire::Run<ser
         .expect("authoring offer");
     let message: Down<'_> = frame.decode().expect("native offer decode");
     let run = match message {
-        Down::Offer {
+        Down::Run {
             run: TaggedRun::Authoring(run),
         } => Some(*run),
         _ => None,

@@ -9,8 +9,8 @@ use crate::{
 use af_core::{clock, id::Uuid7};
 use af_wire::{
     run::{
-        TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRef,
-        TurnCheckpointResponse as Response, TurnId, TurnScope, TurnWorkspace,
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointCommand,
+        TurnCheckpointRef, TurnCheckpointResponse as Response, TurnScope, TurnWorkspace,
     },
     task::{
         CheckpointEntry, CheckpointFile, CheckpointObject, CheckpointObjectStatus, CheckpointPage,
@@ -118,10 +118,10 @@ fn page(entries: Vec<CheckpointEntry>) -> CheckpointPage {
 
 fn scope() -> TurnScope {
     TurnScope {
-        workspace_id: TurnId(ID.to_owned()),
-        fleet_id: TurnId(ID.to_owned()),
-        event_id: TurnId(ID.to_owned()),
-        setup_revision_id: TurnId(ID.to_owned()),
+        workspace_id: CheckpointOperationId(ID.to_owned()),
+        fleet_id: CheckpointOperationId(ID.to_owned()),
+        event_id: CheckpointOperationId(ID.to_owned()),
+        setup_revision_id: CheckpointOperationId(ID.to_owned()),
         workspace: TurnWorkspace::Files {
             toolbox_digest: "a".repeat(64),
         },
@@ -145,8 +145,8 @@ async fn restore(
     let native = NativeTurn::new(&plane, &run, 1, &default_transfers);
     let scope = scope();
     let reference = TurnCheckpointRef {
-        checkpoint_id: TurnId(ID.to_owned()),
-        pin_id: TurnId(PAGE.to_owned()),
+        checkpoint_id: CheckpointOperationId(ID.to_owned()),
+        pin_id: CheckpointOperationId(PAGE.to_owned()),
     };
     let mut session = TurnSession::new(&native, &scope, reference, pin(), &stop)?;
     if let Some(transfers) = transfers {
@@ -154,7 +154,7 @@ async fn restore(
     }
     session
         .restore_files(
-            &[TurnId(PAGE.to_owned())],
+            &[CheckpointOperationId(PAGE.to_owned())],
             &manifest,
             (
                 root.to_owned(),

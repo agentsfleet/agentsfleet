@@ -138,7 +138,7 @@ async fn step(session: &mut RunnerConnection, shared: &Shared, tally: &mut Tally
     let Some(frame) = session.offer().await? else {
         return Ok(false);
     };
-    let Down::Offer {
+    let Down::Run {
         run: TaggedRun::Fleet(run),
     } = native::decode(&frame)?
     else {

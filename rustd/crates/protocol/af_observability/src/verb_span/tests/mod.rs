@@ -15,7 +15,7 @@ use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::trace::{SdkTracer, SdkTracerProvider, SpanData, SpanExporter};
 
 use super::{
-    CaptureStage, HydrateStage, OfferStage, ReportStage, Stage, SteerStage, Ticks, VerbClock,
+    AssignStage, CaptureStage, HydrateStage, ReportStage, Stage, SteerStage, Ticks, VerbClock,
 };
 use crate::semconv;
 
@@ -230,11 +230,11 @@ fn test_every_stage_key_belongs_to_its_verb() {
         (
             "agentsfleet.offer.",
             [
-                OfferStage::Claim,
-                OfferStage::Admit,
-                OfferStage::Issue,
-                OfferStage::Encode,
-                OfferStage::Send,
+                AssignStage::Claim,
+                AssignStage::Admit,
+                AssignStage::Issue,
+                AssignStage::Encode,
+                AssignStage::Send,
             ]
             .map(Stage::key)
             .to_vec(),

@@ -173,7 +173,7 @@ impl Session {
             request = request.header(http::header::AUTHORIZATION, format!("Bearer {token}"));
         }
         if let Some(owner) = owner {
-            request = request.header(protocol::SESSION_HEADER, owner);
+            request = request.header(protocol::CONNECTION_HEADER, owner);
         }
         let mut request = request.body(body).expect("native stream request");
         request.extensions_mut().insert(Arc::clone(&self.context));

@@ -71,7 +71,7 @@ stages!(
 
 stages!(
     /// An offer that selected work, from the claim to the stream write.
-    OfferStage, semconv::SPAN_FLEET_OFFER {
+    AssignStage, semconv::SPAN_FLEET_OFFER {
         /// Selection and the slot claim.
         Claim => semconv::ATTR_OFFER_CLAIM_MS,
         /// Delivery, payer, provider and gates.

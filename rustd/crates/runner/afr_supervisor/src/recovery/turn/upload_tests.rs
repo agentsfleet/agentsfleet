@@ -28,8 +28,8 @@ async fn ordinary_uploads_share_one_authorization_and_one_readback_request() -> 
     let transfers = server.transfers();
     let native = NativeTurn::new(&plane, &run, 1, &transfers);
     let reference = TurnCheckpointRef {
-        checkpoint_id: TurnId(ID.to_owned()),
-        pin_id: TurnId(PAGE.to_owned()),
+        checkpoint_id: CheckpointOperationId(ID.to_owned()),
+        pin_id: CheckpointOperationId(PAGE.to_owned()),
     };
     let mut session = TurnSession::new(&native, &scope(), reference, pin(), &stop)?;
     session.upload_batch(pending).await?;

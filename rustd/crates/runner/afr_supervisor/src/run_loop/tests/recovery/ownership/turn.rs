@@ -2,20 +2,20 @@
 //! quiescent, thaws whatever it froze, and asks the native owner nothing.
 
 use super::*;
-use af_wire::run::{TurnId, TurnResume, TurnScope, TurnWorkspace};
+use af_wire::run::{CheckpointOperationId, TurnResume, TurnScope, TurnWorkspace};
 
 /// The fixture run, offered an ordinary file checkpoint instead of a task.
 fn offered() -> Result<Fixture> {
     let mut fixture = Fixture::new(|_call| None)?;
     fixture.run.turn_resume = Some(TurnResume {
-        checkpoint_id: TurnId(ID.to_owned()),
+        checkpoint_id: CheckpointOperationId(ID.to_owned()),
         generation: 1,
         format_version: af_wire::run::TURN_CHECKPOINT_FORMAT,
         scope: TurnScope {
-            workspace_id: TurnId(fixture.run.event.workspace_id.to_string()),
-            fleet_id: TurnId(fixture.run.event.fleet_id.to_string()),
-            event_id: TurnId(fixture.run.event.event_id.to_string()),
-            setup_revision_id: TurnId(ID.to_owned()),
+            workspace_id: CheckpointOperationId(fixture.run.event.workspace_id.to_string()),
+            fleet_id: CheckpointOperationId(fixture.run.event.fleet_id.to_string()),
+            event_id: CheckpointOperationId(fixture.run.event.event_id.to_string()),
+            setup_revision_id: CheckpointOperationId(ID.to_owned()),
             workspace: TurnWorkspace::Files {
                 toolbox_digest: api_toolbox(),
             },

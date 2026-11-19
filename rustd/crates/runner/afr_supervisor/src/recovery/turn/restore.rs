@@ -3,8 +3,8 @@
 use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
 use af_wire::run::{
-    RunPayload, TurnCheckpointAction as Action, TurnCheckpointRead, TurnCheckpointRef,
-    TurnCheckpointResponse as Response, TurnId, TurnWorkspace,
+    CheckpointOperationId, RunPayload, TurnCheckpointAction as Action, TurnCheckpointRead,
+    TurnCheckpointRef, TurnCheckpointResponse as Response, TurnWorkspace,
 };
 use afr_agent::TurnRecovery;
 use garde::Validate as _;
@@ -43,7 +43,7 @@ impl NativeTurn<'_> {
         };
         let reference = TurnCheckpointRef {
             checkpoint_id: saved.descriptor.checkpoint_id.clone(),
-            pin_id: TurnId(saved.pin.id.clone()),
+            pin_id: CheckpointOperationId(saved.pin.id.clone()),
         };
         let checked = async {
             validate(&saved, offer, &workspace)?;

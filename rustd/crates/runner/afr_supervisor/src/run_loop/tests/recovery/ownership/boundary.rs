@@ -27,10 +27,12 @@ async fn an_oversized_ordinary_workspace_skips_after_thaw_without_stopping() -> 
     let mut request = snapshot(&fixture)?;
     request.state = RecoveryState::Turn(afr_agent::TurnSnapshot {
         scope: af_wire::run::TurnScope {
-            workspace_id: af_wire::run::TurnId(fixture.run.event.workspace_id.to_string()),
-            fleet_id: af_wire::run::TurnId(fixture.run.event.fleet_id.to_string()),
-            event_id: af_wire::run::TurnId(fixture.run.event.event_id.to_string()),
-            setup_revision_id: af_wire::run::TurnId(ID.to_owned()),
+            workspace_id: af_wire::run::CheckpointOperationId(
+                fixture.run.event.workspace_id.to_string(),
+            ),
+            fleet_id: af_wire::run::CheckpointOperationId(fixture.run.event.fleet_id.to_string()),
+            event_id: af_wire::run::CheckpointOperationId(fixture.run.event.event_id.to_string()),
+            setup_revision_id: af_wire::run::CheckpointOperationId(ID.to_owned()),
             workspace: af_wire::run::TurnWorkspace::Files {
                 toolbox_digest: "a".repeat(64),
             },

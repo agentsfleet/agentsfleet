@@ -1,8 +1,8 @@
 //! Acknowledgements preserve the exact generation and the requested operation kind.
 
 use super::{
-    FoldRef, TURN_CHECKPOINT_FORMAT, TurnCheckpointKind, TurnId, TurnPrivateRoot, TurnResume,
-    TurnScope,
+    CheckpointOperationId, FoldRef, TURN_CHECKPOINT_FORMAT, TurnCheckpointKind, TurnPrivateRoot,
+    TurnResume, TurnScope,
 };
 use crate::task::{CheckpointObject, CheckpointPage, CheckpointPin};
 use garde::Validate;
@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 pub struct TurnCheckpointPlan {
     /// Allocated identity survives exact operation replay.
     #[garde(dive)]
-    pub checkpoint_id: TurnId,
+    pub checkpoint_id: CheckpointOperationId,
     /// Strictly increasing within the event.
     #[garde(range(min = 1, max = i64::MAX as u64))]
     pub generation: u64,
@@ -26,10 +26,10 @@ pub struct TurnCheckpointPlan {
     pub scope: TurnScope,
     /// Publication compares this exact head again.
     #[garde(dive)]
-    pub expected_head: Option<TurnId>,
+    pub expected_head: Option<CheckpointOperationId>,
     /// Complete ordered pages, allocated before their first write.
     #[garde(length(max = 64), dive)]
-    pub page_ids: Vec<TurnId>,
+    pub page_ids: Vec<CheckpointOperationId>,
     /// Writer custody for this capture.
     #[garde(dive)]
     pub pin: CheckpointPin,
@@ -53,7 +53,7 @@ pub struct TurnCheckpointRead {
     pub pin: CheckpointPin,
     /// Ordered file pages; empty for explicit API-only state.
     #[garde(length(max = 64), dive)]
-    pub page_ids: Vec<TurnId>,
+    pub page_ids: Vec<CheckpointOperationId>,
     /// Complete authenticated private root; debug output is redacted.
     #[garde(dive)]
     pub root: TurnPrivateRoot,

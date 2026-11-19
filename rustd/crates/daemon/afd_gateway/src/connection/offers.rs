@@ -41,7 +41,7 @@ impl ConnectionHandle {
         within(
             &self.stop,
             Instant::now() + STREAM_ANSWER_TIMEOUT,
-            Operation::Offer,
+            Operation::Assign,
             async {
                 self.claims
                     .send(ClaimRequest { mode, reply })

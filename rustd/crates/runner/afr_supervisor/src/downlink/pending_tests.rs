@@ -36,13 +36,13 @@ struct NoHttp;
 #[test]
 fn turn_replies_require_run_operation_kind_and_matching_success_variant() -> serde_json::Result<()>
 {
-    use af_wire::run::{TurnCheckpointKind, TurnId};
+    use af_wire::run::{CheckpointOperationId, TurnCheckpointKind};
     let run = "01900000-0000-7000-8000-000000000001";
     let operation = "01900000-0000-7000-8000-000000000002";
     let other = "01900000-0000-7000-8000-000000000003";
     let expected = Expected::TurnCheckpoint {
         run: Uuid7::parse(run).expect("fixture UUID"),
-        operation: TurnId(operation.into()),
+        operation: CheckpointOperationId(operation.into()),
         kind: TurnCheckpointKind::PinRelease,
     };
     let original = json!({"type":"turn_checkpoint","request_id":2,"run_id":run,

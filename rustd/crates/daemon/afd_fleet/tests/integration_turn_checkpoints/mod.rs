@@ -17,8 +17,8 @@ use crate::integration_tasks::decisions::checkpoint_server as storage_server;
 
 use af_core::{error_code, id::Uuid7};
 use af_wire::run::{
-    TurnCheckpointAction, TurnCheckpointBegin, TurnCheckpointCommand, TurnCheckpointPlan, TurnId,
-    TurnWorkspace,
+    CheckpointOperationId, TurnCheckpointAction, TurnCheckpointBegin, TurnCheckpointCommand,
+    TurnCheckpointPlan, TurnWorkspace,
 };
 use afd_fleet::run::{Acquired, Billed, Issued, Runs, turn_checkpoint::TurnRun};
 
@@ -88,7 +88,7 @@ impl Case {
     fn command(&self) -> TurnCheckpointCommand {
         TurnCheckpointCommand {
             fencing_token: self.acquired.fence.as_u64(),
-            operation_id: TurnId(afd_db::test_util::mint_id().as_str().to_owned()),
+            operation_id: CheckpointOperationId(afd_db::test_util::mint_id().as_str().to_owned()),
             action: TurnCheckpointAction::Begin(TurnCheckpointBegin {
                 expected_head: None,
                 format_version: 1,
@@ -169,7 +169,7 @@ async fn a_lost_begin_acknowledgement_reuses_the_exact_generation_and_pin() -> C
     );
     assert_eq!(first.scope.setup_revision_id.0, case.setup.as_str());
     assert_eq!(first.scope.workspace, TurnWorkspace::ApiOnly);
-    assert_eq!(first.page_ids, Vec::<TurnId>::new());
+    assert_eq!(first.page_ids, Vec::<CheckpointOperationId>::new());
     assert!(first.pin.expires_at <= first.pin.operation_deadline);
     assert_eq!(case.counts().await?, (1, 1, 2, None));
     Ok(())

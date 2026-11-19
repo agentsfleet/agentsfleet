@@ -51,7 +51,7 @@ fn rig() -> Rig {
 async fn offer(rig: &Rig, id: &str, fleet: &str) -> TestResult<Offered> {
     let (budget, _) = Budget::duplex(MemoryLimits::default());
     let session = CancellationToken::new();
-    let message: Down<'_> = Down::Offer {
+    let message: Down<'_> = Down::Run {
         run: TaggedRun::<serde_json::Value>::Fleet(Box::new(payload(id, fleet))),
     };
     let frame = af_stream::encode(

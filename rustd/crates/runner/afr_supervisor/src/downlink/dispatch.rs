@@ -46,7 +46,7 @@ impl Dispatch<'_> {
             return Err(ErrorKind::StreamProtocol.into());
         }
         match message {
-            Down::Offer { ref run } => {
+            Down::Run { ref run } => {
                 let id: &str = match run {
                     TaggedRun::Fleet(run) => run.run_id.as_ref(),
                     TaggedRun::Authoring(run) => run.run_id.as_str(),
@@ -63,7 +63,7 @@ impl Dispatch<'_> {
                     self.early_cancel.insert(id);
                 }
             }
-            Down::Assignment { .. } => {
+            Down::Policy { .. } => {
                 self.assignments.send_replace(Some(Arc::new(frame)));
             }
             Down::GoAway { error_code: None } => return Ok(Progress::Reconnect),
@@ -246,7 +246,7 @@ mod tests {
                 run_id: RUN_ID.into(),
                 error_code: af_core::error_code::RUN_CANCELLED.as_str().into(),
             },
-            Down::Offer {
+            Down::Run {
                 run: TaggedRun::<serde_json::Value>::Fleet(Box::new(payload(RUN_ID, FLEET_ID))),
             },
         ];

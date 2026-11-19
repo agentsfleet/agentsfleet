@@ -42,7 +42,7 @@ impl Host {
             Ok(OfferOutcome::Empty | OfferOutcome::Deferred) => return false,
             Err(failure) => {
                 // The connection may have committed a run before its reply was lost.
-                Gateway::observe(&failure, Operation::Offer);
+                Gateway::observe(&failure, Operation::Assign);
                 return false;
             }
         }

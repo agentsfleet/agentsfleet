@@ -11,7 +11,7 @@ async fn the_http_client_sends_the_token_and_the_right_method() {
         .await
         .unwrap();
     let read = api
-        .send(call(Verb::Hydrate, "/v1/memory", None))
+        .send(call(Verb::Load, "/v1/memory", None))
         .await
         .unwrap();
     api.send(call(Verb::Mint, "/v1/credentials", None))

@@ -16,10 +16,10 @@ pub use setup::{
     Owner, SETUP_DEFINITION_BYTES_MAX, SetupCandidate, SetupProposal, SetupReport, SetupWork,
 };
 pub use turn_checkpoint::{
-    FoldRef, TURN_CHECKPOINT_BYTES, TURN_CHECKPOINT_FORMAT, TURN_CHECKPOINT_PAGE_BYTES,
-    TurnCheckpointAction, TurnCheckpointBegin, TurnCheckpointCommand, TurnCheckpointKind,
-    TurnCheckpointPlan, TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointResponse, TurnId,
-    TurnMessageSize, TurnPrivateRoot, TurnResume, TurnScope, TurnWorkspace,
+    CheckpointOperationId, FoldRef, TURN_CHECKPOINT_BYTES, TURN_CHECKPOINT_FORMAT,
+    TURN_CHECKPOINT_PAGE_BYTES, TurnCheckpointAction, TurnCheckpointBegin, TurnCheckpointCommand,
+    TurnCheckpointKind, TurnCheckpointPlan, TurnCheckpointRead, TurnCheckpointRef,
+    TurnCheckpointResponse, TurnMessageSize, TurnPrivateRoot, TurnResume, TurnScope, TurnWorkspace,
 };
 
 /// Placement identifies the execution authority carried by a pushed offer.

@@ -40,8 +40,8 @@ pub(super) fn sent(calls: &mut test_support::Calls) -> Checked<Vec<Action>> {
 
 pub(super) fn reference() -> TurnCheckpointRef {
     TurnCheckpointRef {
-        checkpoint_id: TurnId(ID.to_owned()),
-        pin_id: TurnId(PAGE.to_owned()),
+        checkpoint_id: CheckpointOperationId(ID.to_owned()),
+        pin_id: CheckpointOperationId(PAGE.to_owned()),
     }
 }
 
@@ -170,7 +170,7 @@ struct Restored {
 /// against the pages' own manifest root when `offered` is `None`.
 async fn restore_pages(pages: Vec<CheckpointPage>, offered: Option<String>) -> Checked<Restored> {
     let ids: Vec<_> = (0..pages.len())
-        .map(|index| TurnId(format!("019f0000-0000-7000-8000-{:012}", index + 200)))
+        .map(|index| CheckpointOperationId(format!("019f0000-0000-7000-8000-{:012}", index + 200)))
         .collect();
     let mut digests = Vec::with_capacity(pages.len());
     for (id, page) in ids.iter().zip(&pages) {

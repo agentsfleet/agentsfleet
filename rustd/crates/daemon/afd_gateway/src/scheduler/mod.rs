@@ -94,7 +94,7 @@ async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
             Ok(Probe::Waiting(runners)) => runners,
             Ok(Probe::Nothing) => continue,
             Err(error) => {
-                Gateway::observe(&error, crate::Operation::Offer);
+                Gateway::observe(&error, crate::Operation::Assign);
                 HashSet::new()
             }
         };
@@ -104,7 +104,7 @@ async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
             () = stop.cancelled() => return Ok(()),
             result = pass(connections, budget) => {
                 if let Err(error) = result {
-                    Gateway::observe(&error, crate::Operation::Offer);
+                    Gateway::observe(&error, crate::Operation::Assign);
                 }
             }
         }

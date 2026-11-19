@@ -60,7 +60,7 @@ pub enum TurnCheckpointKind {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Validate)]
 #[serde(transparent)]
-pub struct TurnId(
+pub struct CheckpointOperationId(
     #[garde(
         length(bytes, min = 36, max = 36),
         pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
@@ -90,16 +90,16 @@ pub enum TurnWorkspace {
 pub struct TurnScope {
     /// Workspace containing the event and encrypted objects.
     #[garde(dive)]
-    pub workspace_id: TurnId,
+    pub workspace_id: CheckpointOperationId,
     /// Fleet owning the stable event.
     #[garde(dive)]
-    pub fleet_id: TurnId,
+    pub fleet_id: CheckpointOperationId,
     /// Stable root event across every replacement run.
     #[garde(dive)]
-    pub event_id: TurnId,
+    pub event_id: CheckpointOperationId,
     /// Setup frozen during run issuance, independent of the later fleet head.
     #[garde(dive)]
-    pub setup_revision_id: TurnId,
+    pub setup_revision_id: CheckpointOperationId,
     /// API-only or complete files; a building workspace has no saved variant.
     #[garde(dive)]
     pub workspace: TurnWorkspace,
@@ -112,7 +112,7 @@ pub struct TurnScope {
 pub struct FoldRef {
     /// Logical admission claimed and incorporated by the writer.
     #[garde(dive)]
-    pub event_id: TurnId,
+    pub event_id: CheckpointOperationId,
     /// Monotonic conversation position.
     #[garde(range(min = 1))]
     pub sequence: i64,
@@ -125,7 +125,7 @@ pub struct FoldRef {
 pub struct TurnResume {
     /// Immutable event-owned generation identity.
     #[garde(dive)]
-    pub checkpoint_id: TurnId,
+    pub checkpoint_id: CheckpointOperationId,
     /// Allocated monotonically, including failed and retired generations.
     #[garde(range(min = 1, max = i64::MAX as u64))]
     pub generation: u64,

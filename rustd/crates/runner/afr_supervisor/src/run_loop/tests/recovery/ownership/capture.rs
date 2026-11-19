@@ -3,7 +3,7 @@
 
 use super::*;
 use af_wire::report::FailureClass;
-use af_wire::run::{TurnId, TurnScope, TurnWorkspace};
+use af_wire::run::{CheckpointOperationId, TurnScope, TurnWorkspace};
 use futures_util::FutureExt as _;
 
 /// A run whose native owner answers every turn checkpoint with `failure`.
@@ -24,10 +24,10 @@ fn turn(fixture: &Fixture) -> Result<RecoverySnapshot> {
     let mut request = snapshot(fixture)?;
     request.state = RecoveryState::Turn(afr_agent::TurnSnapshot {
         scope: TurnScope {
-            workspace_id: TurnId(fixture.run.event.workspace_id.to_string()),
-            fleet_id: TurnId(fixture.run.event.fleet_id.to_string()),
-            event_id: TurnId(fixture.run.event.event_id.to_string()),
-            setup_revision_id: TurnId(ID.to_owned()),
+            workspace_id: CheckpointOperationId(fixture.run.event.workspace_id.to_string()),
+            fleet_id: CheckpointOperationId(fixture.run.event.fleet_id.to_string()),
+            event_id: CheckpointOperationId(fixture.run.event.event_id.to_string()),
+            setup_revision_id: CheckpointOperationId(ID.to_owned()),
             workspace: TurnWorkspace::ApiOnly,
         },
         previous: None,

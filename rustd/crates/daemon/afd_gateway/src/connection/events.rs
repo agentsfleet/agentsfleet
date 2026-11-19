@@ -26,7 +26,7 @@ pub(super) enum ConnectionEvent {
 #[derive(Clone, Copy)]
 pub(super) enum OperationCompletion {
     Request,
-    Offer,
+    Assign,
     Command,
 }
 
@@ -69,10 +69,10 @@ impl EventSource {
             }
             () = handle.rechecks.notified(), if !connection.command_running => Ok(ConnectionEvent::Command(Command::Recheck)),
             frame = self.frames.control.recv(), if connection.slots.available(StreamKind::Control) => frame_event(frame),
-            claim = self.claims.recv(), if !connection.offer_running => {
+            claim = self.claims.recv(), if !connection.assign_running => {
                 Ok(ConnectionEvent::OfferRequested(OfferTrigger::Pass(claim.ok_or(ErrorKind::Closed)?)))
             }
-            () = handle.offers.notified(), if !connection.offer_running => Ok(ConnectionEvent::OfferRequested(OfferTrigger::Ready)),
+            () = handle.offers.notified(), if !connection.assign_running => Ok(ConnectionEvent::OfferRequested(OfferTrigger::Ready)),
             frame = self.frames.reports.recv(), if connection.slots.available(StreamKind::Reports) => frame_event(frame),
             frame = self.frames.work.recv(), if connection.slots.available(StreamKind::Work) => frame_event(frame),
             frame = self.frames.activity.recv() => frame_event(frame),

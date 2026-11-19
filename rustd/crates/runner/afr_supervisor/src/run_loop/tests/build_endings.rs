@@ -20,7 +20,7 @@ use crate::test_support::GRANTED_UNTIL;
 /// renewal: the run is cut before its build starts.
 fn slow_hydrate_and_lost_renewal(call: &Call) -> Option<Answer> {
     match call.verb {
-        Verb::Hydrate => match daemon(|_call| None)(call) {
+        Verb::Load => match daemon(|_call| None)(call) {
             Answer::Reply(bytes) => Some(Answer::Late(RENEWAL_TICK.saturating_mul(2), bytes)),
             other => Some(other),
         },

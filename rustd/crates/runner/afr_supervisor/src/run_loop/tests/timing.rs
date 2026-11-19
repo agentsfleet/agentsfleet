@@ -113,7 +113,7 @@ async fn test_each_segment_times_its_own_step() {
     let capture = Capture::install();
     let rig = Rig::new(
         daemon(move |call| match call.verb {
-            Verb::Hydrate => Some(late(call, HYDRATE_TAKES)),
+            Verb::Load => Some(late(call, HYDRATE_TAKES)),
             Verb::Report => Some(late(call, REPORT_TAKES)),
             _ => None,
         }),
@@ -194,8 +194,8 @@ async fn test_unstarted_segment_is_absent() {
     let capture = Capture::install();
     let rig = Rig::new(
         daemon(|call| {
-            (call.verb == Verb::Hydrate)
-                .then(|| Answer::Fail(crate::error::refused(Verb::Hydrate, 503, None)))
+            (call.verb == Verb::Load)
+                .then(|| Answer::Fail(crate::error::refused(Verb::Load, 503, None)))
         }),
         FakeEngine::default(),
         FakeAgent::new(Behaviour::Answer),
@@ -241,7 +241,7 @@ async fn test_no_memory_read_on_a_window_run() {
 
     rig.run(&windowed).await.unwrap();
 
-    let read = rig.calls().iter().any(|call| call.verb == Verb::Hydrate);
+    let read = rig.calls().iter().any(|call| call.verb == Verb::Load);
     let line = capture.only(EVENT_COMPLETED);
     assert_eq!((read, millis(&line, MEMORY_MS)), (false, None));
 }
@@ -252,7 +252,7 @@ async fn test_memory_read_without_a_window() {
     let capture = Capture::install();
     let mut rig = Rig::new(
         move |call: &Call| {
-            if call.verb == Verb::Hydrate {
+            if call.verb == Verb::Load {
                 late(call, HYDRATE_TAKES)
             } else {
                 daemon(|_call| None)(call)
@@ -267,7 +267,7 @@ async fn test_memory_read_without_a_window() {
     let reads = rig
         .calls()
         .iter()
-        .filter(|call| call.verb == Verb::Hydrate)
+        .filter(|call| call.verb == Verb::Load)
         .count();
     let line = capture.only(EVENT_COMPLETED);
     assert_eq!((reads, millis(&line, MEMORY_MS)), (1, ms(HYDRATE_TAKES)));

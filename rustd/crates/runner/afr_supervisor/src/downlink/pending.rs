@@ -26,7 +26,7 @@ pub(crate) enum Expected {
     Folds(af_core::id::Uuid7),
     TurnCheckpoint {
         run: af_core::id::Uuid7,
-        operation: af_wire::run::TurnId,
+        operation: af_wire::run::CheckpointOperationId,
         kind: af_wire::run::TurnCheckpointKind,
     },
     AuthoringModel {

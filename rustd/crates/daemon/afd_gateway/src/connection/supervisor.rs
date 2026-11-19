@@ -28,7 +28,7 @@ pub(super) struct ConnectionSupervisor {
     pub(super) services: Arc<ConnectionServices>,
     pub(super) jobs: JoinSet<Result<OperationCompletion>>,
     pub(super) slots: RequestSlots,
-    pub(super) offer_running: bool,
+    pub(super) assign_running: bool,
     pub(super) command_running: bool,
     requests: Arc<RequestTracker>,
     span: tracing::Span,
@@ -43,7 +43,7 @@ impl ConnectionSupervisor {
             services,
             jobs: JoinSet::new(),
             slots: RequestSlots::default(),
-            offer_running: false,
+            assign_running: false,
             command_running: false,
             requests: Arc::new(RequestTracker::default()),
             span,
@@ -99,14 +99,14 @@ impl ConnectionSupervisor {
     }
 
     fn offer(&mut self, trigger: OfferTrigger) {
-        self.offer_running = true;
+        self.assign_running = true;
         let services = Arc::clone(&self.services);
         self.jobs.spawn(
             async move {
                 let mode = match &trigger {
                     OfferTrigger::Ready => OfferMode::Ordinary,
                     OfferTrigger::Pass(request) if !request.reply.is_closed() => request.mode,
-                    OfferTrigger::Pass(_) => return Ok(OperationCompletion::Offer),
+                    OfferTrigger::Pass(_) => return Ok(OperationCompletion::Assign),
                 };
                 let outcome = if mode == OfferMode::Ordinary
                     && services.handle.snapshot.lock().recovery_pending.is_some()
@@ -128,7 +128,7 @@ impl ConnectionSupervisor {
                         }
                     }
                 }
-                Ok(OperationCompletion::Offer)
+                Ok(OperationCompletion::Assign)
             }
             .instrument(self.span.clone()),
         );
@@ -158,7 +158,7 @@ impl ConnectionSupervisor {
     fn completed(&mut self, completion: OperationCompletion) {
         match completion {
             OperationCompletion::Request => {}
-            OperationCompletion::Offer => self.offer_running = false,
+            OperationCompletion::Assign => self.assign_running = false,
             OperationCompletion::Command => self.command_running = false,
         }
     }

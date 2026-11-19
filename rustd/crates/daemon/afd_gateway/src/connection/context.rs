@@ -108,7 +108,7 @@ impl ConnectionServices {
             })
             .await?;
         self.apply_policy(&beat);
-        self.send(&Message::Assignment {
+        self.send(&Message::Policy {
             response: self.policy(&beat)?,
         })
         .await?;

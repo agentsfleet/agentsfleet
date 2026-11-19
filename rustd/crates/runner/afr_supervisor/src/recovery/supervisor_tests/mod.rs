@@ -12,7 +12,7 @@ use super::TestHttpsServer;
 use crate::test_support::{self, Behaviour, FLEET_ID, FakeAgent, FakeEngine, Freezer, RUN_ID, Rig};
 use af_core::clock;
 use af_wire::{
-    run::{TurnId, TurnScope, TurnWorkspace},
+    run::{CheckpointOperationId, TurnScope, TurnWorkspace},
     task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointTransfer},
 };
 use afr_tools::{Catalog, catalog::FILE_READ, stub::Stub};
@@ -90,10 +90,10 @@ async fn run(outcome: Outcome) -> Checked {
 
 fn scope(run: &af_wire::run::RunPayload<'_>) -> TurnScope {
     TurnScope {
-        event_id: TurnId(run.event.event_id.to_string()),
-        fleet_id: TurnId(run.event.fleet_id.to_string()),
-        workspace_id: TurnId(run.event.workspace_id.to_string()),
-        setup_revision_id: TurnId(ID.to_owned()),
+        event_id: CheckpointOperationId(run.event.event_id.to_string()),
+        fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
+        workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
+        setup_revision_id: CheckpointOperationId(ID.to_owned()),
         workspace: TurnWorkspace::Files {
             toolbox_digest: "b".repeat(64),
         },

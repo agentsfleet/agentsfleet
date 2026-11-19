@@ -93,7 +93,7 @@ async fn acquire(scene: &Scenario) -> Proof<[Run; 3]> {
 async fn offered(session: &Session) -> Proof<Run> {
     let frame = tokio::time::timeout(Duration::from_secs(5), session.offer()).await??;
     let message: Down<'_> = frame.decode()?;
-    let Down::Offer {
+    let Down::Run {
         run: TaggedRun::Fleet(run),
     } = message
     else {

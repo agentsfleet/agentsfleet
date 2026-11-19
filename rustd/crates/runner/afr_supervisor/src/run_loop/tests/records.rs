@@ -32,7 +32,7 @@ async fn test_records_post_before_report() {
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
 
     let calls = rig.calls();
-    let records = position(&calls, Verb::Records).unwrap();
+    let records = position(&calls, Verb::Items).unwrap();
     assert!(
         records < position(&calls, Verb::Report).unwrap(),
         "and before the report"
@@ -56,7 +56,7 @@ async fn test_records_post_before_report() {
 async fn a_failed_records_post_leaves_the_report_untouched() {
     let capture = Capture::install();
     let mut rig = rig(|call| {
-        (call.verb == Verb::Records).then(|| Answer::Fail(error::refused(Verb::Records, 409, None)))
+        (call.verb == Verb::Items).then(|| Answer::Fail(error::refused(Verb::Items, 409, None)))
     });
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
@@ -89,6 +89,6 @@ async fn a_run_with_no_calls_posts_no_records_and_no_trace() {
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
 
     let calls = rig.calls();
-    assert_eq!(position(&calls, Verb::Records), None);
+    assert_eq!(position(&calls, Verb::Items), None);
     assert!(reported(&calls).get(TRACE_FIELD).is_none());
 }

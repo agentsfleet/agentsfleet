@@ -33,7 +33,7 @@ pub(crate) async fn next_offer(scene: &Scenario) -> Offered {
         loop {
             let frame = client.offer().await.expect("the native owner remains live");
             let message: af_wire::protocol::Down<'_> = frame.decode().expect("the offer decodes");
-            let af_wire::protocol::Down::Offer {
+            let af_wire::protocol::Down::Run {
                 run: af_wire::run::TaggedRun::Fleet(run),
             } = message
             else {

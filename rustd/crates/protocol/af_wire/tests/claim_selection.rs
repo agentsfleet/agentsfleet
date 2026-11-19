@@ -70,6 +70,6 @@ fn test_claim_reply_requires_a_supported_discriminator() {
             "{body}"
         );
     }
-    serde_json::from_str::<Down<'_>>(r#"{"type":"offer","run":null}"#)
+    serde_json::from_str::<Down<'_>>(r#"{"type":"run","run":null}"#)
         .expect_err("an offer must contain a native run");
 }

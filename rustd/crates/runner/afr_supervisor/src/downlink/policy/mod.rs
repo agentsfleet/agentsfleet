@@ -133,7 +133,7 @@ impl<'a> Heartbeat<'a> {
                     let frame = updates.borrow_and_update().clone();
                     if let Some(frame) = frame {
                         let result = match frame.decode::<Down<'_>>() {
-                            Ok(Down::Assignment { response }) => self.apply(&response),
+                            Ok(Down::Policy { response }) => self.apply(&response),
                             Ok(_) => Err(ErrorKind::StreamProtocol.into()),
                             Err(error) => Err(error.into()),
                         };

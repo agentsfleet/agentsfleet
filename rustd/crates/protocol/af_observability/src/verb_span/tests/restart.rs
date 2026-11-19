@@ -9,7 +9,7 @@ use opentelemetry_sdk::trace::SpanData;
 
 use super::{Collected, EVENT_ID, FLEET_ID, Moved, millis, tracer};
 use crate::semconv;
-use crate::verb_span::{OfferStage, VerbClock};
+use crate::verb_span::{AssignStage, VerbClock};
 
 /// The event a span names, if it names one.
 fn event_of(span: &SpanData) -> Option<String> {
@@ -26,13 +26,13 @@ fn test_a_restart_records_the_first_span_and_starts_a_fresh_one() {
     let collected = Collected::default();
     let (provider, tracer) = tracer(&collected);
     let ticks = Moved::new();
-    let mut clock = VerbClock::<OfferStage, Moved>::start_on(ticks.clone());
+    let mut clock = VerbClock::<AssignStage, Moved>::start_on(ticks.clone());
     clock.identify(EVENT_ID, FLEET_ID);
     ticks.advance(Duration::from_millis(5));
-    clock.mark(OfferStage::Claim);
+    clock.mark(AssignStage::Claim);
     clock.restart_if_staged_on(|| provider.tracer(semconv::SCOPE_NAME));
     ticks.advance(Duration::from_millis(7));
-    clock.mark(OfferStage::Claim);
+    clock.mark(AssignStage::Claim);
     clock.record_on(&tracer);
 
     let spans = collected.spans();
@@ -58,12 +58,12 @@ fn test_a_clock_that_reached_no_stage_keeps_its_start_and_identity_on_restart() 
     let collected = Collected::default();
     let (provider, tracer) = tracer(&collected);
     let ticks = Moved::new();
-    let mut clock = VerbClock::<OfferStage, Moved>::start_on(ticks.clone());
+    let mut clock = VerbClock::<AssignStage, Moved>::start_on(ticks.clone());
     clock.identify(EVENT_ID, FLEET_ID);
     ticks.advance(Duration::from_millis(4));
     clock.restart_if_staged_on(|| provider.tracer(semconv::SCOPE_NAME));
     ticks.advance(Duration::from_millis(6));
-    clock.mark(OfferStage::Claim);
+    clock.mark(AssignStage::Claim);
     clock.record_on(&tracer);
 
     let spans = collected.spans();
@@ -81,13 +81,13 @@ fn test_an_untimed_clock_restarts_without_recording_or_asking_for_a_tracer() {
     let collected = Collected::default();
     let (provider, tracer) = tracer(&collected);
     let asked = Cell::new(false);
-    let mut untimed = VerbClock::<OfferStage>::untimed();
-    untimed.mark(OfferStage::Claim);
+    let mut untimed = VerbClock::<AssignStage>::untimed();
+    untimed.mark(AssignStage::Claim);
     untimed.restart_if_staged_on(|| {
         asked.set(true);
         provider.tracer(semconv::SCOPE_NAME)
     });
-    untimed.mark(OfferStage::Claim);
+    untimed.mark(AssignStage::Claim);
     untimed.record_on(&tracer);
 
     assert!(!asked.get(), "an untimed clock asked for a tracer");

@@ -134,12 +134,12 @@ impl ControlPlane {
     /// Posts one body of finished calls' full records, already encoded.
     pub(crate) async fn tool_calls(&self, run_id: &Uuid7, body: Bytes) -> Result<()> {
         let path = run_path(run_id, paths::RUN_TOOL_CALLS_SUFFIX);
-        self.send(Verb::Records, path, Some(body)).await.map(drop)
+        self.send(Verb::Items, path, Some(body)).await.map(drop)
     }
 
     /// Reads a fleet's memory.
     pub(crate) async fn hydrate(&self, fleet_id: &Uuid7) -> Result<Body> {
-        self.send(Verb::Hydrate, memory_path(fleet_id), None).await
+        self.send(Verb::Load, memory_path(fleet_id), None).await
     }
 
     /// Writes a fleet's memory back, fenced by the run's token.

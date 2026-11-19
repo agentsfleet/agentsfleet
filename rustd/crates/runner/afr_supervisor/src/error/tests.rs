@@ -14,7 +14,7 @@ use crate::client::{Method, Verb};
 
 #[test]
 fn every_verb_logs_under_its_own_family() {
-    for verb in [Verb::Hydrate, Verb::Capture, Verb::Recall] {
+    for verb in [Verb::Load, Verb::Capture, Verb::Recall] {
         assert_eq!(verb.code(), error_code::MEM_UNAVAILABLE, "{verb:?}");
     }
     let internal = Verb::ALL
@@ -38,7 +38,7 @@ fn every_verb_logs_under_its_own_family() {
             "{verb:?} logs in lower snake case"
         );
     }
-    assert!(Verb::Hydrate.method() == Method::Get && Verb::Report.method() == Method::Post);
+    assert!(Verb::Load.method() == Method::Get && Verb::Report.method() == Method::Post);
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn a_refusal_without_a_known_code_falls_back_by_status_then_verb() {
     let unknown = raise::refused_with_body(Verb::Renew, 409, br#"{"error_code":"UZ-NOPE-999"}"#);
     let unreadable = raise::refused_with_body(Verb::Report, 400, b"<html>");
     let unauthorized = raise::refused(Verb::Heartbeat, 401, None);
-    let absent = raise::refused(Verb::Hydrate, 404, None);
+    let absent = raise::refused(Verb::Load, 404, None);
 
     assert_eq!(unknown.code(), error_code::RUN_LOST);
     assert_eq!(unreadable.code(), error_code::INTERNAL_OPERATION_FAILED);
@@ -85,7 +85,7 @@ fn a_stopped_runner_names_its_refused_token() {
 
 #[test]
 fn a_blip_is_retryable_and_names_its_verb_family() {
-    let busy = raise::unavailable(Verb::Hydrate, 503);
+    let busy = raise::unavailable(Verb::Load, 503);
 
     assert!(busy.is_retryable());
     assert!(!busy.is_unauthorized());
@@ -100,7 +100,7 @@ async fn a_transport_failure_is_retryable() {
         .send()
         .await
         .unwrap_err();
-    let failure = raise::transport(Verb::Hydrate)(unreachable);
+    let failure = raise::transport(Verb::Load)(unreachable);
 
     assert!(failure.is_retryable());
     assert_eq!(failure.code(), error_code::MEM_UNAVAILABLE);

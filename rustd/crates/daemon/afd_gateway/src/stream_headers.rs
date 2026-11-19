@@ -24,7 +24,7 @@ impl TryFrom<&HeaderMap> for StreamHeaders {
         revision(headers)?;
         let kind = StreamKind::parse(required(headers, protocol::STREAM_KIND_HEADER)?)
             .ok_or(ErrorKind::UnknownStream)?;
-        let connection = one(headers, protocol::SESSION_HEADER)?
+        let connection = one(headers, protocol::CONNECTION_HEADER)?
             .map(|raw| {
                 Uuid7::parse(raw).map_err(|source| ErrorKind::ConnectionIdentifier { source })
             })
@@ -66,7 +66,7 @@ fn secondary(bearer: bool, connection: Option<Uuid7>) -> Result<Uuid7> {
         return Err(ErrorKind::UnexpectedBearer.into());
     }
     Ok(connection.ok_or(ErrorKind::MissingHeader {
-        header: protocol::SESSION_HEADER,
+        header: protocol::CONNECTION_HEADER,
     })?)
 }
 
@@ -139,7 +139,7 @@ mod tests {
         let control = StreamHeaders::try_from(&headers(&[
             (protocol::STREAM_KIND_HEADER, b"control"),
             ("authorization", b"Bearer agt_r_fixture"),
-            (protocol::SESSION_HEADER, SESSION.as_bytes()),
+            (protocol::CONNECTION_HEADER, SESSION.as_bytes()),
         ]));
         let control = control.map_err(|error| error.to_string());
         assert!(
@@ -151,7 +151,7 @@ mod tests {
             (StreamKind::Reports, b"reports"),
             (StreamKind::Activity, b"activity"),
         ] {
-            let mut map = headers(&[(protocol::SESSION_HEADER, SESSION.as_bytes())]);
+            let mut map = headers(&[(protocol::CONNECTION_HEADER, SESSION.as_bytes())]);
             map.append(
                 protocol::STREAM_KIND_HEADER,
                 HeaderValue::from_bytes(name).unwrap_or(HeaderValue::from_static("")),
@@ -184,29 +184,29 @@ mod tests {
             (
                 &[
                     (protocol::STREAM_KIND_HEADER, b"work"),
-                    (protocol::SESSION_HEADER, SESSION.as_bytes()),
+                    (protocol::CONNECTION_HEADER, SESSION.as_bytes()),
                     ("authorization", b"Bearer agt_r_fixture"),
                 ],
                 |kind| matches!(kind, ErrorKind::UnexpectedBearer),
             ),
             (
                 &[(protocol::STREAM_KIND_HEADER, b"reports")],
-                |kind| matches!(kind, ErrorKind::MissingHeader { header } if *header == protocol::SESSION_HEADER),
+                |kind| matches!(kind, ErrorKind::MissingHeader { header } if *header == protocol::CONNECTION_HEADER),
             ),
             (
                 &[
                     (protocol::STREAM_KIND_HEADER, b"activity"),
-                    (protocol::SESSION_HEADER, SESSION.as_bytes()),
-                    (protocol::SESSION_HEADER, SESSION.as_bytes()),
+                    (protocol::CONNECTION_HEADER, SESSION.as_bytes()),
+                    (protocol::CONNECTION_HEADER, SESSION.as_bytes()),
                 ],
-                |kind| matches!(kind, ErrorKind::RepeatedHeader { header } if *header == protocol::SESSION_HEADER),
+                |kind| matches!(kind, ErrorKind::RepeatedHeader { header } if *header == protocol::CONNECTION_HEADER),
             ),
             (
                 &[
                     (protocol::STREAM_KIND_HEADER, b"work"),
-                    (protocol::SESSION_HEADER, b"\xff"),
+                    (protocol::CONNECTION_HEADER, b"\xff"),
                 ],
-                |kind| matches!(kind, ErrorKind::HeaderEncoding { header, .. } if *header == protocol::SESSION_HEADER),
+                |kind| matches!(kind, ErrorKind::HeaderEncoding { header, .. } if *header == protocol::CONNECTION_HEADER),
             ),
         ];
         for (pairs, expected) in cases {

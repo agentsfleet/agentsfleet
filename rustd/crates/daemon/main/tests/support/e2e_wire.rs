@@ -96,7 +96,7 @@ pub(crate) async fn wait_for_offer(scene: &Scenario, event_id: &Uuid7) -> (Strin
         loop {
             let frame = client.offer().await.expect("the native owner remains live");
             let message: af_wire::protocol::Down<'_> = frame.decode().expect("the offer decodes");
-            let af_wire::protocol::Down::Offer {
+            let af_wire::protocol::Down::Run {
                 run: af_wire::run::TaggedRun::Fleet(run),
             } = message
             else {
@@ -177,7 +177,7 @@ where
         frame = client.offer() => {
             let frame = frame.expect("the native owner remains live");
             let message: af_wire::protocol::Down<'_> = frame.decode().expect("the offer decodes");
-            if let af_wire::protocol::Down::Offer { run: af_wire::run::TaggedRun::Fleet(run) } = message {
+            if let af_wire::protocol::Down::Run { run: af_wire::run::TaggedRun::Fleet(run) } = message {
                 assert_ne!(run.event.fleet_id, scene.fleet.as_str(), "a refused fleet must not be issued");
             }
             false

@@ -5,8 +5,9 @@ use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
 use af_wire::{
     run::{
-        TurnCheckpointAction as Action, TurnCheckpointBegin, TurnCheckpointRef,
-        TurnCheckpointResponse as Response, TurnId, TurnPrivateRoot, TurnResume, TurnWorkspace,
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointBegin,
+        TurnCheckpointRef, TurnCheckpointResponse as Response, TurnPrivateRoot, TurnResume,
+        TurnWorkspace,
     },
     task::{CheckpointObjectStatus, CheckpointPage},
 };
@@ -40,7 +41,7 @@ impl NativeTurn<'_> {
         plan.validate()?;
         let reference = TurnCheckpointRef {
             checkpoint_id: plan.checkpoint_id.clone(),
-            pin_id: TurnId(plan.pin.id.clone()),
+            pin_id: CheckpointOperationId(plan.pin.id.clone()),
         };
         let result = async {
             if plan.scope != snapshot.scope
@@ -73,7 +74,7 @@ impl NativeTurn<'_> {
     ) -> Result<TurnResume> {
         let reference = TurnCheckpointRef {
             checkpoint_id: plan.checkpoint_id.clone(),
-            pin_id: TurnId(plan.pin.id.clone()),
+            pin_id: CheckpointOperationId(plan.pin.id.clone()),
         };
         let mut session = TurnSession::new(
             self,
@@ -121,7 +122,7 @@ impl TurnSession<'_, '_> {
     async fn capture_files(
         &mut self,
         catalog: Catalog,
-        page_ids: &[TurnId],
+        page_ids: &[CheckpointOperationId],
     ) -> Result<Vec<(String, String)>> {
         let mut ids = BTreeMap::new();
         let chunks: Vec<_> = catalog.chunks.iter().collect();
@@ -166,7 +167,7 @@ impl TurnSession<'_, '_> {
 
     async fn write_file_pages(
         &mut self,
-        page_ids: &[TurnId],
+        page_ids: &[CheckpointOperationId],
         pages: Vec<CheckpointPage>,
     ) -> Result<Vec<(String, String)>> {
         if pages.len() != page_ids.len() {

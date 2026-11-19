@@ -111,7 +111,7 @@ pub(super) async fn secondary(
         let request = Request::post(endpoint.uri().clone())
             .header(protocol::VERSION_HEADER, protocol::VERSION)
             .header(protocol::STREAM_KIND_HEADER, kind.as_str())
-            .header(protocol::SESSION_HEADER, owner)
+            .header(protocol::CONNECTION_HEADER, owner)
             .body(body)
             .expect("secondary metadata");
         let response = connection

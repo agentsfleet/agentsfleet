@@ -31,7 +31,7 @@ use super::seed::{seed_gate, seed_provider_resolution, seed_write_gate};
 use super::*;
 
 use af_core::event::label;
-use af_observability::verb_span::{OfferStage, VerbClock};
+use af_observability::verb_span::{AssignStage, VerbClock};
 use afd_fleet::run::OfferRequest;
 use afd_gate::policy::repair;
 
@@ -94,7 +94,7 @@ async fn test_a_refused_delivery_marks_the_issue_stage_and_none_after_it() {
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     seed_gate(&fixtures, &seeded, STATUS_APPROVED).await;
 
-    let mut clock = VerbClock::<OfferStage>::start();
+    let mut clock = VerbClock::<AssignStage>::start();
     let mut offered = 0;
     let answer = fixtures
         .plane()
@@ -122,7 +122,7 @@ async fn test_a_refused_delivery_marks_the_issue_stage_and_none_after_it() {
     assert_eq!(offered, 0, "a refused delivery built an offer");
     assert_eq!(
         clock.reached(),
-        [OfferStage::Claim, OfferStage::Admit, OfferStage::Issue],
+        [AssignStage::Claim, AssignStage::Admit, AssignStage::Issue],
         "a refusal ends the issue stage where the delivery returns"
     );
 

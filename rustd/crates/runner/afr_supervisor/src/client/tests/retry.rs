@@ -23,7 +23,7 @@ async fn selected_daemon_attempt_limit_bounds_the_actual_retry_loop() {
     let result: crate::Result<()> = plane
         .retrying(|| {
             sends.fetch_add(1, Ordering::SeqCst);
-            async { Err(error::unavailable(Verb::Hydrate, 503)) }
+            async { Err(error::unavailable(Verb::Load, 503)) }
         })
         .await;
     assert!(result.unwrap_err().is_retryable());
@@ -42,7 +42,7 @@ async fn a_blip_is_retried_and_a_refusal_is_not() {
             let attempt = counted.fetch_add(1, Ordering::SeqCst);
             async move {
                 if attempt < 2 {
-                    Err(error::unavailable(Verb::Hydrate, 503))
+                    Err(error::unavailable(Verb::Load, 503))
                 } else {
                     Ok(attempt)
                 }
@@ -54,7 +54,7 @@ async fn a_blip_is_retried_and_a_refusal_is_not() {
     let refused = plane
         .retrying(|| {
             refused_count.fetch_add(1, Ordering::SeqCst);
-            async { Err::<(), _>(error::refused(Verb::Hydrate, 403, None)) }
+            async { Err::<(), _>(error::refused(Verb::Load, 403, None)) }
         })
         .await;
     let exhausted = plane

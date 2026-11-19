@@ -77,13 +77,13 @@ pub enum Down<
         heartbeat_interval_ms: u32,
     },
     /// A committed operator change pushes policy without inventing a request id.
-    Assignment {
+    Policy {
         /// Current complete heartbeat policy, capability verdict and hold releases.
         #[serde(borrow)]
         response: HeartbeatResponse<'a>,
     },
-    /// Work issued under the runner's available capacity.
-    Offer {
+    /// A run assigned under the runner's available capacity.
+    Run {
         /// Fleet or authoring work, with its existing payload.
         #[serde(borrow)]
         run: TaggedRun<'a, C>,
@@ -183,7 +183,7 @@ pub enum Down<
         #[serde(borrow)]
         run_id: Cow<'a, str>,
         /// Stable identity retained when an acknowledgement is lost.
-        operation_id: crate::run::TurnId,
+        operation_id: crate::run::CheckpointOperationId,
         /// Echoed even for refusals, so another operation cannot satisfy this request.
         kind: crate::run::TurnCheckpointKind,
         /// Full response or safe registered refusal.
@@ -215,13 +215,13 @@ impl<C, D, O, I> Down<'_, C, D, O, I> {
             Self::ReportAck { .. }
             | Self::AuthoringReportAck { .. }
             | Self::TurnCheckpoint { .. } => StreamKind::Reports,
-            Self::Offer { .. }
+            Self::Run { .. }
             | Self::Folded { .. }
             | Self::AuthoringModelResult { .. }
             | Self::AuthoringActivityAck { .. } => StreamKind::Work,
             Self::Welcome { .. }
             | Self::Prepared { .. }
-            | Self::Assignment { .. }
+            | Self::Policy { .. }
             | Self::Heartbeat { .. }
             | Self::Pong { .. }
             | Self::Renewed { .. }
@@ -247,10 +247,9 @@ impl<C, D, O, I> Down<'_, C, D, O, I> {
             | Self::ReportAck { request_id, .. }
             | Self::TurnCheckpoint { request_id, .. }
             | Self::Folded { request_id, .. } => Some(*request_id),
-            Self::Offer { .. }
-            | Self::Assignment { .. }
-            | Self::Cancel { .. }
-            | Self::GoAway { .. } => None,
+            Self::Run { .. } | Self::Policy { .. } | Self::Cancel { .. } | Self::GoAway { .. } => {
+                None
+            }
         }
     }
 }

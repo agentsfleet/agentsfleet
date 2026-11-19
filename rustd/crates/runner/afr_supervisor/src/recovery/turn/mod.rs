@@ -11,8 +11,8 @@ mod session;
 use af_core::{clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::run::{
-    RunPayload, TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRead,
-    TurnCheckpointRef, TurnCheckpointResponse as Response, TurnId, TurnWorkspace,
+    CheckpointOperationId, RunPayload, TurnCheckpointAction as Action, TurnCheckpointCommand,
+    TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointResponse as Response, TurnWorkspace,
 };
 use afr_agent::TurnRecovery;
 use zeroize::Zeroizing;
@@ -47,7 +47,7 @@ impl<'a> NativeTurn<'a> {
     fn request(&self, action: Action) -> Result<TurnCheckpointCommand> {
         Ok(TurnCheckpointCommand {
             fencing_token: self.fence,
-            operation_id: TurnId(Entropy::new().uuid7(clock::now())?.to_string()),
+            operation_id: CheckpointOperationId(Entropy::new().uuid7(clock::now())?.to_string()),
             action,
         })
     }
@@ -65,7 +65,7 @@ impl<'a> NativeTurn<'a> {
     ) -> Result<TurnRecovery> {
         let reference = TurnCheckpointRef {
             checkpoint_id: saved.descriptor.checkpoint_id.clone(),
-            pin_id: TurnId(saved.pin.id),
+            pin_id: CheckpointOperationId(saved.pin.id),
         };
         let result = async {
             let mut recovered = TurnRecovery {

@@ -124,7 +124,7 @@ impl Opening<'_> {
             .header(protocol::VERSION_HEADER, SPOKEN)
             .header(protocol::STREAM_KIND_HEADER, kind.as_str());
         if let Some(owner) = owner {
-            request = request.header(protocol::SESSION_HEADER, owner.as_str());
+            request = request.header(protocol::CONNECTION_HEADER, owner.as_str());
         }
         if kind == StreamKind::Control {
             request = request.header(AUTHORIZATION, self.authorization);

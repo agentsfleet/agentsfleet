@@ -5,8 +5,8 @@ use crate::support::Fixtures;
 use af_core::id::Uuid7;
 use af_wire::{
     run::{
-        TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response,
-        TurnId,
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
+        TurnCheckpointResponse as Response,
     },
     task::{CheckpointObjectStatus, CheckpointPlaintext},
 };
@@ -25,7 +25,7 @@ async fn turn_references_survive_an_orphan_snapshot_and_release_shared_quota_onl
     let (plan, history) = files::begin(&files).await?;
     let reference = TurnCheckpointRef {
         checkpoint_id: plan.checkpoint_id.clone(),
-        pin_id: TurnId(plan.pin.id.clone()),
+        pin_id: CheckpointOperationId(plan.pin.id.clone()),
     };
     let tasks = tasks(&files);
     race(&files, &tasks, &object, &reference).await?;
@@ -68,7 +68,7 @@ async fn orphan(files: &Files) -> Checked<Uuid7> {
     let (plan, _) = files::begin(files).await?;
     let reference = TurnCheckpointRef {
         checkpoint_id: plan.checkpoint_id,
-        pin_id: TurnId(plan.pin.id),
+        pin_id: CheckpointOperationId(plan.pin.id),
     };
     let object = files::authenticated_chunk(files, &reference).await?;
     files

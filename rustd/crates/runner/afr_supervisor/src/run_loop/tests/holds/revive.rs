@@ -209,7 +209,7 @@ fn next_run_cut(call: &Call) -> Option<Answer> {
 /// fleet's next run: that run is cut before its build starts.
 fn next_run_cut_while_its_memory_loads(call: &Call) -> Option<Answer> {
     match call.verb {
-        Verb::Hydrate => match daemon(|_call| None)(call) {
+        Verb::Load => match daemon(|_call| None)(call) {
             Answer::Reply(bytes) => Some(Answer::Late(
                 af_core::timing::RENEWAL_TICK.saturating_mul(2),
                 bytes,

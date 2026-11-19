@@ -1,7 +1,7 @@
 //! Parent, connection, slot, run and admission locks precede recovery ownership.
 
 use af_core::id::Uuid7;
-use af_wire::run::{TurnId, TurnScope, TurnWorkspace};
+use af_wire::run::{CheckpointOperationId, TurnScope, TurnWorkspace};
 use sqlx::{Connection as _, PgConnection, Postgres, Transaction};
 
 use super::{TurnCheckpointRefusal, TurnRun};
@@ -105,10 +105,10 @@ impl<'a> TurnRunGuard<'a> {
 
     pub(super) fn scope(&self, workspace: TurnWorkspace) -> TurnScope {
         TurnScope {
-            workspace_id: TurnId(self.current.workspace_id.as_str().to_owned()),
-            fleet_id: TurnId(self.current.fleet_id.as_str().to_owned()),
-            event_id: TurnId(self.current.event_id.as_str().to_owned()),
-            setup_revision_id: TurnId(self.setup.as_str().to_owned()),
+            workspace_id: CheckpointOperationId(self.current.workspace_id.as_str().to_owned()),
+            fleet_id: CheckpointOperationId(self.current.fleet_id.as_str().to_owned()),
+            event_id: CheckpointOperationId(self.current.event_id.as_str().to_owned()),
+            setup_revision_id: CheckpointOperationId(self.setup.as_str().to_owned()),
             workspace,
         }
     }
@@ -171,7 +171,7 @@ async fn admission(connection: &mut PgConnection, current: &Current) -> Result<(
     Ok(())
 }
 
-pub(super) fn id(value: &TurnId) -> Result<Uuid7> {
+pub(super) fn id(value: &CheckpointOperationId) -> Result<Uuid7> {
     Uuid7::parse(&value.0).map_err(|_invalid| TurnCheckpointRefusal::Incompatible.into())
 }
 

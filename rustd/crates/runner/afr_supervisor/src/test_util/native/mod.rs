@@ -237,7 +237,7 @@ where
             if let Some(run) = run {
                 send(
                     &mut writer,
-                    &serde_json::json!({"type":"offer", "run":run}),
+                    &serde_json::json!({"type":"run", "run":run}),
                     &budget,
                     kind,
                     stop,

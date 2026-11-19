@@ -36,7 +36,7 @@ pub(super) async fn offered(scene: &Scenario) -> Offered {
         .decode::<Down<'_>>()
         .expect("the current offer schema");
     let run = match decoded {
-        Down::Offer {
+        Down::Run {
             run: TaggedRun::Fleet(run),
         } => Some(run),
         _ => None,

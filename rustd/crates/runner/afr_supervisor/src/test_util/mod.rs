@@ -99,7 +99,7 @@ impl Healthy {
             ) => Value::Null,
             Some(Verb::Heartbeat) => self.heartbeat(),
             Some(Verb::Renew) => self.renewed(),
-            Some(Verb::Hydrate) => value(&MemoryHydrateResponse {
+            Some(Verb::Load) => value(&MemoryHydrateResponse {
                 memory: Vec::new(),
                 shared: Vec::new(),
                 publish: false,
@@ -112,7 +112,7 @@ impl Healthy {
                 memory: Vec::new(),
                 shared: Vec::new(),
             }),
-            Some(Verb::Records) => value(&ToolCallRecordsStored {
+            Some(Verb::Items) => value(&ToolCallRecordsStored {
                 stored_count: 1,
                 skipped_count: 0,
             }),
@@ -192,9 +192,9 @@ fn routed(method: &str, path: &str) -> Option<Verb> {
     let memory = path.starts_with(RUNNER_MEMORY);
     match (path, held) {
         (RUNNER_SELF, _) => Some(Verb::Me),
-        (_, Some(RUN_TOOL_CALLS_SUFFIX)) => Some(Verb::Records),
+        (_, Some(RUN_TOOL_CALLS_SUFFIX)) => Some(Verb::Items),
         _ if memory && path.ends_with(RUNNER_MEMORY_RECALL_SUFFIX) => Some(Verb::Recall),
-        _ if memory && method == GET => Some(Verb::Hydrate),
+        _ if memory && method == GET => Some(Verb::Load),
         _ if memory => Some(Verb::Capture),
         _ => None,
     }

@@ -10,7 +10,7 @@
 use std::time::Instant;
 
 use af_core::id::Uuid7;
-use af_observability::verb_span::{OfferStage, VerbClock};
+use af_observability::verb_span::{AssignStage, VerbClock};
 use af_wire::run::RunPayload;
 use jiff::Timestamp;
 
@@ -39,7 +39,7 @@ impl RunService {
         runner_id: &Uuid7,
         now: Timestamp,
         began: Instant,
-        clock: &mut VerbClock<OfferStage>,
+        clock: &mut VerbClock<AssignStage>,
         emit: &mut F,
     ) -> Result<Option<T>>
     where
@@ -53,14 +53,14 @@ impl RunService {
         };
         clock.identify(held.event_id.as_str(), held.fleet_id.as_str());
         let admitted = self.admit_claimed(acquired, runner_id, now).await;
-        clock.mark(OfferStage::Admit);
+        clock.mark(AssignStage::Admit);
         let pass = match admitted.map(Step::proceed) {
             Ok(Ok(admitted)) => {
                 let delivered = {
                     let mut timed = |run: RunPayload<'_>, offered: Offered| {
-                        clock.mark(OfferStage::Issue);
+                        clock.mark(AssignStage::Issue);
                         let encoded = emit(run, offered);
-                        clock.mark(OfferStage::Encode);
+                        clock.mark(AssignStage::Encode);
                         encoded
                     };
                     self.deliver_with(runner_id, admitted, now, began, &mut timed)
@@ -70,7 +70,7 @@ impl RunService {
                 // refusal or a fault), it ends here, so that attempt's time is
                 // not left unexplained; a stage already marked keeps its first
                 // reading.
-                clock.mark(OfferStage::Issue);
+                clock.mark(AssignStage::Issue);
                 delivered
             }
             Ok(Err(ended)) => Ok(ended),

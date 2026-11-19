@@ -228,10 +228,10 @@ pub(crate) fn daemon(
     let replies: std::collections::HashMap<_, _> = [
         Verb::Heartbeat,
         Verb::Renew,
-        Verb::Hydrate,
+        Verb::Load,
         Verb::Capture,
         Verb::Recall,
-        Verb::Records,
+        Verb::Items,
         Verb::Me,
         Verb::Activity,
         Verb::Report,

@@ -7,8 +7,9 @@ use af_crypto::{
 };
 use af_wire::{
     run::{
-        RunPayload, TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRead,
-        TurnCheckpointResponse as Response, TurnId, TurnPrivateRoot, TurnResume, TurnScope,
+        CheckpointOperationId, RunPayload, TurnCheckpointAction as Action, TurnCheckpointCommand,
+        TurnCheckpointRead, TurnCheckpointResponse as Response, TurnPrivateRoot, TurnResume,
+        TurnScope,
     },
     task::{
         CheckpointObject, CheckpointObjectStatus, CheckpointPage, CheckpointPin,
@@ -49,7 +50,7 @@ pub(super) fn checkpoint(
     let page_digest = sha256_hex(&serde_json::to_vec(page)?);
     Ok(TurnCheckpointRead {
         descriptor: TurnResume {
-            checkpoint_id: TurnId(ID.to_owned()),
+            checkpoint_id: CheckpointOperationId(ID.to_owned()),
             generation: 1,
             format_version: 1,
             scope,
@@ -62,7 +63,7 @@ pub(super) fn checkpoint(
             operation_deadline: expiry,
             resource_version: 1,
         },
-        page_ids: vec![TurnId(PAGE.to_owned())],
+        page_ids: vec![CheckpointOperationId(PAGE.to_owned())],
         root,
         folds: Vec::new(),
     })

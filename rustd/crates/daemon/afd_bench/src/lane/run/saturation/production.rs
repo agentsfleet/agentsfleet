@@ -121,10 +121,10 @@ impl Host for Connected {
             return Ok(Offered::Nothing);
         };
         match native::decode(&frame)? {
-            Down::Offer {
+            Down::Run {
                 run: TaggedRun::Fleet(_),
             } => Ok(Offered::Fleet),
-            Down::Offer {
+            Down::Run {
                 run: TaggedRun::Authoring(run),
             } => Ok(Offered::Chat(Held {
                 run: Uuid7::parse(&run.run_id)?,

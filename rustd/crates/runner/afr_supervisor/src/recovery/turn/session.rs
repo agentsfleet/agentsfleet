@@ -11,8 +11,8 @@ use crate::{Result, error};
 use af_core::{clock, id::Uuid7};
 use af_wire::{
     run::{
-        TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response,
-        TurnId, TurnScope,
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
+        TurnCheckpointResponse as Response, TurnScope,
     },
     task::{CheckpointPin, CheckpointPlaintext, CheckpointTransferPurpose},
 };
@@ -123,7 +123,7 @@ impl<'a, 'native> TurnSession<'a, 'native> {
             .command(Action::Authorize {
                 checkpoint: self.reference.clone(),
                 purpose,
-                object_ids: ids.iter().cloned().map(TurnId).collect(),
+                object_ids: ids.iter().cloned().map(CheckpointOperationId).collect(),
             })
             .await?
         else {

@@ -41,7 +41,7 @@ pub(super) async fn read(
         page_ids: plan
             .page_ids
             .iter()
-            .map(|id| af_wire::run::TurnId(id.as_str().to_owned()))
+            .map(|id| af_wire::run::CheckpointOperationId(id.as_str().to_owned()))
             .collect(),
         root: bytes,
         folds: covered,

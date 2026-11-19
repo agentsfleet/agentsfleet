@@ -5,8 +5,8 @@ use std::sync::Arc;
 use af_core::id::Uuid7;
 use af_crypto::secret::Kek;
 use af_wire::run::{
-    TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointRef, TurnCheckpointResponse, TurnId,
-    TurnPrivateRoot, TurnResume, TurnScope, TurnWorkspace,
+    CheckpointOperationId, TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointRef,
+    TurnCheckpointResponse, TurnPrivateRoot, TurnResume, TurnScope, TurnWorkspace,
 };
 use afd_fleet::run::turn_checkpoint::TurnCheckpoints;
 use serde_json::json;
@@ -15,10 +15,10 @@ use super::{Case, Checked, valid};
 
 pub(super) fn root(case: &Case, workspace: TurnWorkspace) -> TurnPrivateRoot {
     let scope = TurnScope {
-        workspace_id: TurnId(case.acquired.workspace_id.as_str().to_owned()),
-        fleet_id: TurnId(case.acquired.fleet_id.as_str().to_owned()),
-        event_id: TurnId(case.acquired.event_id.as_str().to_owned()),
-        setup_revision_id: TurnId(case.setup.as_str().to_owned()),
+        workspace_id: CheckpointOperationId(case.acquired.workspace_id.as_str().to_owned()),
+        fleet_id: CheckpointOperationId(case.acquired.fleet_id.as_str().to_owned()),
+        event_id: CheckpointOperationId(case.acquired.event_id.as_str().to_owned()),
+        setup_revision_id: CheckpointOperationId(case.setup.as_str().to_owned()),
         workspace,
     };
     TurnPrivateRoot {
@@ -34,7 +34,7 @@ pub(super) fn root(case: &Case, workspace: TurnWorkspace) -> TurnPrivateRoot {
 pub(super) fn command(case: &Case, action: TurnCheckpointAction) -> TurnCheckpointCommand {
     TurnCheckpointCommand {
         fencing_token: case.acquired.fence.as_u64(),
-        operation_id: TurnId(afd_db::test_util::mint_id().as_str().to_owned()),
+        operation_id: CheckpointOperationId(afd_db::test_util::mint_id().as_str().to_owned()),
         action,
     }
 }
@@ -51,7 +51,7 @@ pub(super) async fn publish(
     let plan = case.begin(begin).await?;
     let checkpoint = TurnCheckpointRef {
         checkpoint_id: plan.checkpoint_id.clone(),
-        pin_id: TurnId(plan.pin.id.clone()),
+        pin_id: CheckpointOperationId(plan.pin.id.clone()),
     };
     let commit = valid(command(
         case,
@@ -111,7 +111,7 @@ async fn read_and_adopt(
     assert_eq!(saved.folds, Vec::new());
     let reference = TurnCheckpointRef {
         checkpoint_id: descriptor.checkpoint_id.clone(),
-        pin_id: TurnId(saved.pin.id),
+        pin_id: CheckpointOperationId(saved.pin.id),
     };
     let adopt = valid(command(
         case,

@@ -6,7 +6,7 @@ pub enum Operation {
     /// Read and confirm connection ownership.
     Opening,
     /// Place one new run.
-    Offer,
+    Assign,
     /// Reconcile liveness and assigned policy.
     Heartbeat,
     /// Refresh authority after a broker command or gap.
@@ -35,7 +35,7 @@ impl Operation {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Opening => "opening",
-            Self::Offer => "offer",
+            Self::Assign => "assign",
             Self::Heartbeat => "heartbeat",
             Self::Recheck => "recheck",
             Self::Renewal => "renewal",
@@ -53,8 +53,8 @@ impl Operation {
 impl std::fmt::Display for Operation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Opening => "confirming the runner connection_id",
-            Self::Offer => "offering work",
+            Self::Opening => "confirming the runner connection",
+            Self::Assign => "assigning work",
             Self::Heartbeat => "recording a heartbeat",
             Self::Recheck => "checking the current owner",
             Self::Renewal => "renewing work",

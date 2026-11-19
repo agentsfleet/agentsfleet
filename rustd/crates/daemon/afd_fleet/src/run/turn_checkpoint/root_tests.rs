@@ -1,7 +1,7 @@
 //! The daemon's header proof cannot substitute another scope or folded prefix.
 
 use af_core::error_code;
-use af_wire::run::{FoldRef, TurnId, TurnPrivateRoot, TurnScope, TurnWorkspace};
+use af_wire::run::{CheckpointOperationId, FoldRef, TurnPrivateRoot, TurnScope, TurnWorkspace};
 use serde_json::json;
 use std::error::Error as _;
 
@@ -12,10 +12,10 @@ const OTHER: &str = "01900000-0000-7000-8000-000000000002";
 
 fn scope() -> TurnScope {
     TurnScope {
-        workspace_id: TurnId(ID.into()),
-        fleet_id: TurnId(ID.into()),
-        event_id: TurnId(ID.into()),
-        setup_revision_id: TurnId(ID.into()),
+        workspace_id: CheckpointOperationId(ID.into()),
+        fleet_id: CheckpointOperationId(ID.into()),
+        event_id: CheckpointOperationId(ID.into()),
+        setup_revision_id: CheckpointOperationId(ID.into()),
         workspace: TurnWorkspace::ApiOnly,
     }
 }
@@ -39,10 +39,10 @@ fn saved_roots_bind_the_issued_model_and_each_scope_dimension() -> crate::Result
     for field in 0..4 {
         let mut changed = original.clone();
         match field {
-            0 => changed.workspace_id = TurnId(OTHER.into()),
-            1 => changed.fleet_id = TurnId(OTHER.into()),
-            2 => changed.event_id = TurnId(OTHER.into()),
-            _ => changed.setup_revision_id = TurnId(OTHER.into()),
+            0 => changed.workspace_id = CheckpointOperationId(OTHER.into()),
+            1 => changed.fleet_id = CheckpointOperationId(OTHER.into()),
+            2 => changed.event_id = CheckpointOperationId(OTHER.into()),
+            _ => changed.setup_revision_id = CheckpointOperationId(OTHER.into()),
         }
         assert!(
             root::validate(&bytes, &changed, &[], None)
@@ -66,7 +66,7 @@ fn saved_roots_bind_the_issued_model_and_each_scope_dimension() -> crate::Result
 fn a_root_cannot_silently_advance_only_its_fold_cursor() -> crate::Result<()> {
     let scope = scope();
     let fold = FoldRef {
-        event_id: TurnId(OTHER.into()),
+        event_id: CheckpointOperationId(OTHER.into()),
         sequence: 3,
     };
     let bytes = saved(&scope, std::slice::from_ref(&fold));

@@ -1,8 +1,8 @@
 //! Every turn request carries a stable semantic operation and the live attempt fence.
 
 use super::{
-    FoldRef, TURN_CHECKPOINT_BYTES, TURN_CHECKPOINT_FORMAT, TURN_CHECKPOINT_PAGE_BYTES,
-    TurnCheckpointKind, TurnId, TurnResume, TurnWorkspace,
+    CheckpointOperationId, FoldRef, TURN_CHECKPOINT_BYTES, TURN_CHECKPOINT_FORMAT,
+    TURN_CHECKPOINT_PAGE_BYTES, TurnCheckpointKind, TurnResume, TurnWorkspace,
 };
 use crate::task::{
     CheckpointPage, CheckpointPlaintext, CheckpointTransferPurpose, CheckpointUpload,
@@ -33,7 +33,7 @@ impl std::fmt::Debug for TurnPrivateRoot {
 pub struct TurnCheckpointBegin {
     /// Exact last acknowledged head; absence means no previous checkpoint.
     #[garde(dive)]
-    pub expected_head: Option<TurnId>,
+    pub expected_head: Option<CheckpointOperationId>,
     /// Independent private root format.
     #[garde(range(min = TURN_CHECKPOINT_FORMAT, max = TURN_CHECKPOINT_FORMAT))]
     pub format_version: u32,
@@ -63,10 +63,10 @@ pub struct TurnCheckpointBegin {
 pub struct TurnCheckpointRef {
     /// Native plan identity.
     #[garde(dive)]
-    pub checkpoint_id: TurnId,
+    pub checkpoint_id: CheckpointOperationId,
     /// Current reader or writer custody.
     #[garde(dive)]
-    pub pin_id: TurnId,
+    pub pin_id: CheckpointOperationId,
 }
 
 /// One bounded native operation; expected response kind is derived from its action.
@@ -78,7 +78,7 @@ pub struct TurnCheckpointCommand {
     pub fencing_token: u64,
     /// Reconnect retries retain this identity with new transport request IDs.
     #[garde(dive)]
-    pub operation_id: TurnId,
+    pub operation_id: CheckpointOperationId,
     /// No operation may select another event or arbitrary bucket path.
     #[garde(dive)]
     pub action: TurnCheckpointAction,
@@ -118,7 +118,7 @@ pub enum TurnCheckpointAction {
         purpose: CheckpointTransferPurpose,
         /// Registered immutable objects within this generation.
         #[garde(length(min = 1, max = 256), dive)]
-        object_ids: Vec<TurnId>,
+        object_ids: Vec<CheckpointOperationId>,
     },
     /// Publish one bounded immutable page.
     PageWrite {
@@ -127,7 +127,7 @@ pub enum TurnCheckpointAction {
         checkpoint: TurnCheckpointRef,
         /// Preallocated page identity from the plan.
         #[garde(dive)]
-        page_id: TurnId,
+        page_id: CheckpointOperationId,
         /// Digest of the serialized page contents.
         #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]+$"))]
         digest: String,
@@ -142,7 +142,7 @@ pub enum TurnCheckpointAction {
         checkpoint: TurnCheckpointRef,
         /// Exact immutable page identity.
         #[garde(dive)]
-        page_id: TurnId,
+        page_id: CheckpointOperationId,
     },
     /// Renew without extending the original operation deadline.
     PinRenew {

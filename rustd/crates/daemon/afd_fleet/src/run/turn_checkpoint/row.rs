@@ -1,7 +1,9 @@
 //! Pending plan rows are scoped to the proved event before they become responses.
 
 use af_core::id::Uuid7;
-use af_wire::run::{FoldRef, TurnCheckpointPlan, TurnId, TurnResume, TurnScope, TurnWorkspace};
+use af_wire::run::{
+    CheckpointOperationId, FoldRef, TurnCheckpointPlan, TurnResume, TurnScope, TurnWorkspace,
+};
 use garde::Validate as _;
 
 use super::{TurnCheckpointRefusal, guard::TurnRunGuard, pins::Pin};
@@ -69,18 +71,18 @@ impl Plan {
             _ => return Err(TurnCheckpointRefusal::Incompatible.into()),
         };
         Ok(TurnCheckpointPlan {
-            checkpoint_id: TurnId(self.id.as_str().to_owned()),
+            checkpoint_id: CheckpointOperationId(self.id.as_str().to_owned()),
             generation: self.generation,
             format_version: self.format_version,
             scope: owner.scope(workspace),
             expected_head: self
                 .expected_head_id
                 .as_ref()
-                .map(|id| TurnId(id.as_str().to_owned())),
+                .map(|id| CheckpointOperationId(id.as_str().to_owned())),
             page_ids: self
                 .page_ids
                 .iter()
-                .map(|id| TurnId(id.as_str().to_owned()))
+                .map(|id| CheckpointOperationId(id.as_str().to_owned()))
                 .collect(),
             pin: pin.wire(),
             history_digest: self
@@ -121,7 +123,7 @@ impl Plan {
             .iter()
             .zip(sequences)
             .map(|(id, sequence)| FoldRef {
-                event_id: TurnId(id.as_str().to_owned()),
+                event_id: CheckpointOperationId(id.as_str().to_owned()),
                 sequence: *sequence,
             })
             .collect())
@@ -132,7 +134,7 @@ impl Plan {
             return Err(TurnCheckpointRefusal::Incompatible.into());
         }
         let descriptor = TurnResume {
-            checkpoint_id: TurnId(self.id.as_str().to_owned()),
+            checkpoint_id: CheckpointOperationId(self.id.as_str().to_owned()),
             generation: self.generation,
             format_version: self.format_version,
             scope: self.scope(owner)?,

@@ -16,8 +16,8 @@ use crate::{
 use af_core::id::Uuid7;
 use af_wire::{
     run::{
-        TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointRef, TurnCheckpointResponse,
-        TurnId,
+        CheckpointOperationId, TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointRef,
+        TurnCheckpointResponse,
     },
     task::{CheckpointTransferPurpose, CheckpointUpload},
 };
@@ -95,7 +95,7 @@ async fn freeze_uploads(
 fn upload_ids(input: &[CheckpointUpload]) -> Result<Vec<Uuid7>> {
     input
         .iter()
-        .map(|object| guard::id(&TurnId(object.object_id.clone())))
+        .map(|object| guard::id(&CheckpointOperationId(object.object_id.clone())))
         .collect()
 }
 

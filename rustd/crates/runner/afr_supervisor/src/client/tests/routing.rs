@@ -38,14 +38,14 @@ async fn every_verb_goes_to_its_own_path() {
         (Verb::Renew, "/v1/runners/me/stream".to_owned(), true),
         (Verb::Activity, "/v1/runners/me/stream".to_owned(), true),
         (Verb::Report, "/v1/runners/me/stream".to_owned(), true),
-        (Verb::Hydrate, memory.clone(), false),
+        (Verb::Load, memory.clone(), false),
         (Verb::Capture, memory, true),
         (
             Verb::Mint,
             "/v1/runners/me/credentials/mint".to_owned(),
             true,
         ),
-        (Verb::Records, format!("{run_root}/tool-calls"), true),
+        (Verb::Items, format!("{run_root}/tool-calls"), true),
     ];
     routes.sort_by_key(|route| format!("{:?}", route.0));
     expected.sort_by_key(|route| format!("{:?}", route.0));

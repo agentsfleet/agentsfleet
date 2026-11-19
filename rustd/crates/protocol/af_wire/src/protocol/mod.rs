@@ -56,7 +56,7 @@ pub const VERSION_HEADER: &str = "agentsfleet-runner-protocol";
 /// Which independently flow-controlled request this stream serves.
 pub const STREAM_KIND_HEADER: &str = "agentsfleet-runner-kind";
 /// Previous owner on a reconnecting control stream; current owner on secondary streams.
-pub const SESSION_HEADER: &str = "agentsfleet-runner-session";
+pub const CONNECTION_HEADER: &str = "agentsfleet-runner-connection";
 /// Maximum JSON payload, excluding its four-byte length prefix.
 pub const MESSAGE_BYTES_MAX: usize = 2 * 1024 * 1024;
 /// The host worker bound also limits running runs and renewal entries.

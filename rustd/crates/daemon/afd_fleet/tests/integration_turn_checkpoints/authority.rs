@@ -6,8 +6,8 @@ use super::{
 use af_core::{clock, error_code, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::run::{
-    TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response, TurnId,
-    TurnWorkspace,
+    CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
+    TurnCheckpointResponse as Response, TurnWorkspace,
 };
 use afd_auth::{credential::CredentialKind, minted::Minted};
 use afd_db::test_util::mint_id;
@@ -151,7 +151,7 @@ async fn prepare(files: &Files, operation: Operation) -> Checked<Action> {
             Ok(Action::Adopt {
                 checkpoint: TurnCheckpointRef {
                     checkpoint_id: read.descriptor.checkpoint_id,
-                    pin_id: TurnId(read.pin.id),
+                    pin_id: CheckpointOperationId(read.pin.id),
                 },
             })
         }

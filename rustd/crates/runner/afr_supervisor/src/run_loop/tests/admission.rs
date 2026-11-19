@@ -78,7 +78,7 @@ async fn test_unhosted_tool_refuses_run() {
         "no sandbox was built"
     );
     assert_eq!(
-        position(&calls, Verb::Hydrate),
+        position(&calls, Verb::Load),
         None,
         "refused before anything was prepared for it"
     );
@@ -170,7 +170,7 @@ async fn a_run_without_saved_inference_settings_is_refused_before_anything_start
     assert_eq!(report[FAILURE_REASON], STARTUP_POSTURE);
     assert_eq!(report[FAILURE_DETAIL], DETAIL_UNHOSTED_PROVIDER);
     assert_no_model_call(&rig);
-    assert_eq!(position(&calls, Verb::Hydrate), None);
+    assert_eq!(position(&calls, Verb::Load), None);
     let refused = capture.only(EVENT_UNHOSTED_PROVIDER);
     assert_eq!(refused.level, tracing::Level::ERROR);
     assert_eq!(refused.field(FIELD_NAME), Some(UNSPOKEN_PROVIDER));
@@ -200,7 +200,7 @@ async fn a_private_persisted_endpoint_refuses_the_run_before_any_model_or_sandbo
         "invalid settings are a configuration refusal"
     );
     assert_no_model_call(&rig);
-    assert_eq!(position(&calls, Verb::Hydrate), None);
+    assert_eq!(position(&calls, Verb::Load), None);
     let refused = capture.only(EVENT_UNHOSTED);
     assert_eq!(refused.level, tracing::Level::ERROR);
     assert_eq!(refused.field(FIELD_NAME), None);
@@ -248,7 +248,7 @@ async fn a_refusal_naming_nothing_still_ends_the_run_before_anything_starts() {
     let report = reported(&calls);
     assert_eq!(report[FAILURE_REASON], STARTUP_POSTURE);
     assert_eq!(report[FAILURE_DETAIL], DETAIL_CONFIGURATION);
-    assert_eq!(position(&calls, Verb::Hydrate), None);
+    assert_eq!(position(&calls, Verb::Load), None);
     let refused = capture.only(EVENT_UNHOSTED);
     assert_eq!(refused.level, tracing::Level::ERROR);
     assert_eq!(refused.field(FIELD_NAME), None, "there is nothing to name");

@@ -59,7 +59,7 @@ pub(crate) enum Verb {
     /// A run's terminal result.
     Report,
     /// A fleet's memory at run start.
-    Hydrate,
+    Load,
     /// A fleet's memory written back.
     Capture,
     /// A search of a fleet's memory past the window.
@@ -67,7 +67,7 @@ pub(crate) enum Verb {
     /// A scoped credential for a held run.
     Mint,
     /// Finished calls' full records for a held run.
-    Records,
+    Items,
     /// The runner's own row: which runner this is, as the daemon names it.
     Me,
     /// A schedule created for the held fleet.
@@ -142,11 +142,11 @@ impl Verb {
         Self::Renew,
         Self::Activity,
         Self::Report,
-        Self::Hydrate,
+        Self::Load,
         Self::Capture,
         Self::Recall,
         Self::Mint,
-        Self::Records,
+        Self::Items,
         Self::Me,
         Self::ScheduleCreate,
         Self::ScheduleList,
@@ -181,7 +181,7 @@ impl Verb {
     /// The method this verb is sent with.
     pub(crate) const fn method(self) -> Method {
         match self {
-            Self::Hydrate
+            Self::Load
             | Self::Me
             | Self::ScheduleList
             | Self::ScheduleRuns
@@ -209,7 +209,7 @@ impl Verb {
             | Self::Capture
             | Self::Recall
             | Self::Mint
-            | Self::Records
+            | Self::Items
             | Self::ScheduleCreate
             | Self::ScheduleRun
             | Self::Message
@@ -239,11 +239,11 @@ impl Verb {
             Self::Renew => "renew",
             Self::Activity => "activity",
             Self::Report => "report",
-            Self::Hydrate => "hydrate",
+            Self::Load => "hydrate",
             Self::Capture => "capture",
             Self::Recall => "recall",
             Self::Mint => "mint",
-            Self::Records => "records",
+            Self::Items => "records",
             Self::Me => "me",
             Self::ScheduleCreate => "schedule_create",
             Self::ScheduleList => "schedule_list",
@@ -279,7 +279,7 @@ impl Verb {
     /// The registry code a failure of this verb is logged under.
     pub(crate) const fn code(self) -> ErrorCode {
         match self {
-            Self::Hydrate | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
+            Self::Load | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
             Self::Open
             | Self::Heartbeat
             | Self::AuthoringModel
@@ -290,7 +290,7 @@ impl Verb {
             | Self::Activity
             | Self::Report
             | Self::Mint
-            | Self::Records
+            | Self::Items
             | Self::Me
             | Self::ScheduleCreate
             | Self::ScheduleList

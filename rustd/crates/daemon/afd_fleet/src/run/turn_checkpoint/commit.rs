@@ -79,7 +79,7 @@ fn readable(
     folds: &[FoldRef],
 ) -> Result<()> {
     let descriptor = af_wire::run::TurnResume {
-        checkpoint_id: af_wire::run::TurnId(plan.id.as_str().to_owned()),
+        checkpoint_id: af_wire::run::CheckpointOperationId(plan.id.as_str().to_owned()),
         generation: plan.generation,
         format_version: plan.format_version,
         scope: plan.scope(owner)?,
@@ -95,7 +95,7 @@ fn readable(
         page_ids: plan
             .page_ids
             .iter()
-            .map(|id| af_wire::run::TurnId(id.as_str().to_owned()))
+            .map(|id| af_wire::run::CheckpointOperationId(id.as_str().to_owned()))
             .collect(),
         root: root.clone(),
         folds: folds.to_vec(),

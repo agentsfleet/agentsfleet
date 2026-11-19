@@ -9,8 +9,9 @@ use crate::{
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::run::{
-    FoldRef, RunPayload, TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRead,
-    TurnCheckpointResponse as Response, TurnId, TurnScope, TurnWorkspace,
+    CheckpointOperationId, FoldRef, RunPayload, TurnCheckpointAction as Action,
+    TurnCheckpointCommand, TurnCheckpointRead, TurnCheckpointResponse as Response, TurnScope,
+    TurnWorkspace,
 };
 use af_wire::task::CheckpointPage;
 use std::time::Duration;
@@ -31,10 +32,10 @@ fn api_only() -> Checked<(RunPayload<'static>, TurnCheckpointRead)> {
     run.event.workspace_id = ID.into();
     run.setup_revision_id = Some(ID.into());
     let scope = TurnScope {
-        event_id: TurnId(run.event.event_id.to_string()),
-        fleet_id: TurnId(run.event.fleet_id.to_string()),
-        workspace_id: TurnId(run.event.workspace_id.to_string()),
-        setup_revision_id: TurnId(ID.to_owned()),
+        event_id: CheckpointOperationId(run.event.event_id.to_string()),
+        fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
+        workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
+        setup_revision_id: CheckpointOperationId(ID.to_owned()),
         workspace: TurnWorkspace::ApiOnly,
     };
     let page = CheckpointPage {
@@ -71,7 +72,7 @@ fn owner(
                 }
                 Action::Adopt { .. } if fault == Some(Fault::ChangedAdopt) => {
                     Ok(Response::Adopted(vec![FoldRef {
-                        event_id: TurnId(ID.to_owned()),
+                        event_id: CheckpointOperationId(ID.to_owned()),
                         sequence: 1,
                     }]))
                 }
@@ -177,7 +178,9 @@ async fn an_api_only_restore_that_cannot_be_trusted_releases_its_pin_unadopted()
         let stop = CancellationToken::new();
         let expected = match case {
             "files" => {
-                saved.page_ids = vec![TurnId("019f0000-0000-7000-8000-000000000012".to_owned())];
+                saved.page_ids = vec![CheckpointOperationId(
+                    "019f0000-0000-7000-8000-000000000012".to_owned(),
+                )];
                 "API-only recovery unexpectedly contains files"
             }
             "changed offer" => {

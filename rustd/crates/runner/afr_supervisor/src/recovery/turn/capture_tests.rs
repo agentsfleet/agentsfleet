@@ -219,13 +219,18 @@ impl Remote {
             begin.page_count
         };
         let plan = TurnCheckpointPlan {
-            checkpoint_id: TurnId(format!("019f0000-0000-7000-8000-{:012}", generation + 20)),
+            checkpoint_id: CheckpointOperationId(format!(
+                "019f0000-0000-7000-8000-{:012}",
+                generation + 20
+            )),
             generation,
             format_version: af_wire::run::TURN_CHECKPOINT_FORMAT,
             scope: scope(),
             expected_head: begin.expected_head,
             page_ids: (0..pages)
-                .map(|index| TurnId(format!("019f0000-0000-7000-8000-{:012}", index + 100)))
+                .map(|index| {
+                    CheckpointOperationId(format!("019f0000-0000-7000-8000-{:012}", index + 100))
+                })
                 .collect(),
             history_digest: begin.history_digest,
             replayed: false,
@@ -368,7 +373,7 @@ async fn a_file_backed_capture_uploads_each_missing_chunk_and_commits_its_pages(
     // A capture under another scope than the acknowledged head is refused
     // before it asks the owner for anything.
     let mut foreign = scope();
-    foreign.fleet_id = TurnId(PAGE.to_owned());
+    foreign.fleet_id = CheckpointOperationId(PAGE.to_owned());
     let refused = native
         .capture(snapshot(foreign), Some(root.path().to_owned()), &stop)
         .await;

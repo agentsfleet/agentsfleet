@@ -120,7 +120,7 @@ impl Worker {
             return Ok(true);
         }
         let egress = self.assignment.borrow().egress.clone();
-        let Down::Offer { run } = offer.frame.decode::<Down<'_>>()? else {
+        let Down::Run { run } = offer.frame.decode::<Down<'_>>()? else {
             return Err(crate::error::ErrorKind::StreamProtocol.into());
         };
         match run {

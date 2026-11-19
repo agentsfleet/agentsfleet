@@ -2,8 +2,9 @@
 
 use super::*;
 use af_wire::run::{
-    TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointPlan, TurnCheckpointRef,
-    TurnCheckpointResponse as Response, TurnId, TurnResume, TurnScope, TurnWorkspace,
+    CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointCommand,
+    TurnCheckpointPlan, TurnCheckpointRef, TurnCheckpointResponse as Response, TurnResume,
+    TurnScope, TurnWorkspace,
 };
 use afr_agent::TurnSnapshot;
 use zeroize::Zeroizing;
@@ -115,10 +116,10 @@ fn drained(calls: &mut Calls) -> Vec<Call> {
 fn snapshot() -> TurnSnapshot {
     TurnSnapshot {
         scope: TurnScope {
-            workspace_id: TurnId(ID.to_owned()),
-            fleet_id: TurnId(ID.to_owned()),
-            event_id: TurnId(ID.to_owned()),
-            setup_revision_id: TurnId(ID.to_owned()),
+            workspace_id: CheckpointOperationId(ID.to_owned()),
+            fleet_id: CheckpointOperationId(ID.to_owned()),
+            event_id: CheckpointOperationId(ID.to_owned()),
+            setup_revision_id: CheckpointOperationId(ID.to_owned()),
             workspace: TurnWorkspace::ApiOnly,
         },
         previous: None,
@@ -132,7 +133,7 @@ struct Ledger {
     plan: Option<TurnCheckpointPlan>,
     allocated: u64,
     commit_reply: CommitReply,
-    commit_operations: Vec<TurnId>,
+    commit_operations: Vec<CheckpointOperationId>,
     allow_abandon: bool,
     abandonments: Vec<TurnCheckpointRef>,
 }
@@ -205,7 +206,7 @@ impl Ledger {
         let plan = self.plan.as_ref().unwrap();
         TurnCheckpointRef {
             checkpoint_id: plan.checkpoint_id.clone(),
-            pin_id: TurnId(plan.pin.id.clone()),
+            pin_id: CheckpointOperationId(plan.pin.id.clone()),
         }
     }
 
@@ -228,7 +229,7 @@ impl Ledger {
         self.allocated += 1;
         let deadline = clock::after(clock::now(), Duration::from_mins(15));
         let plan = TurnCheckpointPlan {
-            checkpoint_id: TurnId(format!(
+            checkpoint_id: CheckpointOperationId(format!(
                 "019f0000-0000-7000-8000-{:012}",
                 self.allocated + 10
             )),
