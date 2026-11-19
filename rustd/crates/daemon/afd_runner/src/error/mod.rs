@@ -199,7 +199,7 @@ pub(crate) enum ErrorKind {
     Admission {
         /// The ledger failure underneath.
         #[from]
-        source: afd_admission::Error,
+        source: afd_turns::Error,
     },
 }
 

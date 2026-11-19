@@ -153,7 +153,7 @@ impl Creations {
         super::start::store(&mut tx, access, fleet, &initial).await?;
         close_saved_drafts(&mut tx, fleet).await?;
         let number = row.head_revision.to_string();
-        let announcement = afd_events::activity::record_on(
+        let announcement = afd_turns::view::activity::record_on(
             &mut tx,
             access.workspace,
             fleet,
@@ -163,7 +163,7 @@ impl Creations {
         )
         .await
         .map_err(query(CONTEXT))?;
-        afd_events::activity::commit(tx, announcement, Some(&self.admissions.streams()))
+        afd_turns::view::activity::commit(tx, announcement, Some(&self.admissions.streams()))
             .await
             .map_err(query(CONTEXT))?;
         // Only the commit whose guarded update moved `installing` to `active`

@@ -1,6 +1,6 @@
 //! Which messages a claim answers, in which order, and to whom.
 
-use afd_admission::{Producer, Reply};
+use afd_turns::{Producer, Reply};
 
 use super::support::{
     Checked, STEER_JSON, STEER_TEXT, WEBHOOK_JSON, claim, claim_as_holder, park, send, send_as,
@@ -42,7 +42,7 @@ async fn test_a_live_run_claims_a_persons_messages_oldest_first() -> Checked {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_message_no_person_sent_stops_the_fold() -> Checked {
-    let machine = afd_events::ACTOR_MACHINE;
+    let machine = afd_turns::view::ACTOR_MACHINE;
     for (producer, actor) in [
         (Producer::Webhook, crate::seed::ACTOR),
         (Producer::GateContinuation, crate::seed::ACTOR),

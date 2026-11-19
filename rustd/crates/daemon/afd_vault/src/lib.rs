@@ -178,9 +178,9 @@ impl Vault {
     pub async fn commit_activity(
         &self,
         transaction: sqlx::Transaction<'static, sqlx::Postgres>,
-        announcement: afd_events::activity::Announcement,
+        announcement: afd_turns::view::activity::Announcement,
     ) -> Result<(), sqlx::Error> {
-        afd_events::activity::commit(transaction, announcement, self.activity_streams.as_ref())
+        afd_turns::view::activity::commit(transaction, announcement, self.activity_streams.as_ref())
             .await
     }
 

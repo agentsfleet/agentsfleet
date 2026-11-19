@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use af_core::error_code;
 use afd_api_wire::team::{MemberSummary, WorkspaceMember};
-use afd_events::steer_actor;
 use afd_http::handler::{IdPath, IdSegment};
 use afd_tenant::team::Member;
+use afd_turns::view::steer_actor;
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};

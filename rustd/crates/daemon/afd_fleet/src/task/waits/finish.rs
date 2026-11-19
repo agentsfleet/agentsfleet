@@ -88,7 +88,7 @@ async fn apply(
     connection: &mut PgConnection,
     owner: &Wait,
     probe: &Probe,
-    prepared: Option<afd_admission::PreparedAdmission<'_>>,
+    prepared: Option<afd_turns::PreparedAdmission<'_>>,
 ) -> Result<bool> {
     if !owner.within_limits {
         claim::stop(
@@ -188,7 +188,7 @@ async fn consume(
     connection: &mut PgConnection,
     owner: &Wait,
     probe: &Probe,
-    prepared: Option<afd_admission::PreparedAdmission<'_>>,
+    prepared: Option<afd_turns::PreparedAdmission<'_>>,
     snapshot: &Snapshot,
 ) -> Result<bool> {
     let Some(prepared) = prepared else {

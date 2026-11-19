@@ -73,7 +73,7 @@ pub(crate) enum ErrorKind {
     #[error("task continuation admission failed")]
     Admission {
         #[source]
-        source: afd_admission::Error,
+        source: afd_turns::Error,
     },
     #[error("a stored task document is malformed")]
     TaskDocument {
@@ -101,7 +101,7 @@ pub(crate) enum ErrorKind {
     TaskControlAdmission {
         state: af_wire::task::TaskState,
         #[source]
-        source: afd_admission::Error,
+        source: afd_turns::Error,
     },
     #[error("the task mutation was refused")]
     TaskMutation {
@@ -184,7 +184,7 @@ pub(crate) enum ErrorKind {
     #[error("the event store could not answer for the runner plane")]
     Events {
         #[source]
-        source: afd_events::Error,
+        source: afd_turns::view::Error,
     },
 
     /// The delivery ledger would not answer.

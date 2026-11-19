@@ -60,7 +60,7 @@ fn subsystem_failures_retain_their_original_classification_and_typed_cause() {
         let code = source.code();
         samples.push((source.into(), code));
     }
-    for (_, source) in afd_admission::error::one_of_each_kind() {
+    for (_, source) in afd_turns::error::one_of_each_kind() {
         let code = source.code();
         samples.push((source.into(), code));
     }

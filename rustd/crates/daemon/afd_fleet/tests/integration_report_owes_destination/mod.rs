@@ -16,9 +16,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
 use afd_fleet::lease::Committed;
+use afd_turns::{Producer, Reply};
 
 use crate::report_commit::{RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES};
 use crate::seed::PROVIDER;

@@ -1,8 +1,8 @@
 //! Transaction start order must not move new work ahead of an unfinished run.
 
 use af_core::id::Uuid7;
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_fleet::lease::{Acquired, Kind, Leases};
+use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 use sqlx::Connection as _;
 
 use super::{next, reclaim::issue};

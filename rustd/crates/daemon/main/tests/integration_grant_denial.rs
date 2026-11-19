@@ -103,7 +103,7 @@ async fn deny(run: &Scenario) {
     Inbox::new(
         run.booted.database.clone(),
         run.booted.bus.clone(),
-        afd_admission::Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone()),
+        afd_turns::Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone()),
     )
     .resolve(
         actions.first().expect("card").as_str(),

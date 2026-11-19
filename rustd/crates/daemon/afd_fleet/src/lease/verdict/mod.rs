@@ -19,7 +19,7 @@
 
 use af_wire::report::{FailureClass, Outcome};
 
-use afd_events::sql::MAX_FAILURE_DETAIL_BYTES;
+use afd_turns::view::sql::MAX_FAILURE_DETAIL_BYTES;
 
 /// The runner's verdict, in the shape the terminal row needs.
 ///

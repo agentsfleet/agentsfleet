@@ -7,11 +7,11 @@
 
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
-use afd_admission::Repeated;
 use afd_api::services::WebhookIngress;
 use afd_db::test_util::mint_id;
 use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed, NoticeOwner, Subscriber};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Result as IngressResult, Surface};
+use afd_turns::Repeated;
 use jiff::Timestamp;
 
 use super::{HarnessIngress, Recorded, Scripted};

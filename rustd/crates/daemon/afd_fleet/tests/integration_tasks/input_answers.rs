@@ -5,9 +5,9 @@ use af_wire::{
     event::EventType,
     task::{DecisionTaskVersion, TaskInputMode, TaskInputReceiptInput, TaskLimits},
 };
-use afd_admission::{Admission, Key, Producer, Reply};
 use afd_connector::Provider;
 use afd_fleet::task::{TaskBinding, TaskLifecycle as _};
+use afd_turns::{Admission, Key, Producer, Reply};
 use serde_json::{Value, json};
 
 use super::fixture::{Case, GOALS, exercise};
@@ -80,7 +80,7 @@ async fn scenario(case: &Case, reply: Reply<'_>) {
 
 async fn source(case: &Case, reply: Reply<'_>) -> Uuid7 {
     let key = afd_db::test_util::mint_id();
-    let actor = afd_events::steer_actor("native_task_owner");
+    let actor = afd_turns::view::steer_actor("native_task_owner");
     let request = json!({"message": GOALS.join("; ")}).to_string();
     let admitted = case
         .admissions
@@ -244,7 +244,7 @@ async fn replay(case: &Case, accepted: &[garde::Valid<TaskInputReceiptInput>]) {
 fn assert_event(event: &Value) {
     assert_eq!(
         event.get("actor"),
-        Some(&json!(afd_events::steer_actor("native_task_owner")))
+        Some(&json!(afd_turns::view::steer_actor("native_task_owner")))
     );
     assert_eq!(
         event.get("request_json"),

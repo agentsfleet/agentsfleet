@@ -1,9 +1,9 @@
 //! An answer or expiry waits for a park that has written but not committed.
 
 use af_core::id::Uuid7;
-use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_db::config::DbRole;
+use afd_turns::Admissions;
 use sqlx::Row as _;
 
 use super::{WITHIN, enqueue, next, parking::seed_gate};

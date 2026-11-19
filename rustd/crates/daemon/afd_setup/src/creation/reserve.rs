@@ -127,9 +127,9 @@ impl Creations {
             )
             .await?
             .ok_or(ErrorKind::Gone)?;
-            (id, afd_events::activity::Announcement::default())
+            (id, afd_turns::view::activity::Announcement::default())
         };
-        afd_events::activity::commit(tx, announcement, Some(&self.admissions.streams()))
+        afd_turns::view::activity::commit(tx, announcement, Some(&self.admissions.streams()))
             .await
             .map_err(query(CONTEXT))?;
         Ok(id)
@@ -174,7 +174,7 @@ impl Creations {
         instance: Instance<'_>,
         checked: &crate::types::Review,
         now: Timestamp,
-    ) -> Result<afd_events::activity::Announcement> {
+    ) -> Result<afd_turns::view::activity::Announcement> {
         let revision = self.setup.drafts.mint(now)?;
         insert_fleet(connection, id, &revision, captured, &instance).await?;
         let accepted = Accepted::from_review(captured, checked);
@@ -227,7 +227,7 @@ pub(super) async fn insert_revision(
     fleet: &Uuid7,
     definition: &af_fleet_runtime::Definition,
     head: Head<'_>,
-) -> Result<afd_events::activity::Announcement> {
+) -> Result<afd_turns::view::activity::Announcement> {
     sqlx::query(sql::REVISION)
         .bind(head.id)
         .bind(fleet)
@@ -243,7 +243,7 @@ pub(super) async fn insert_revision(
         .await
         .map_err(query(CONTEXT))?;
     let number = head.number.to_string();
-    let announcement = afd_events::activity::record_on(
+    let announcement = afd_turns::view::activity::record_on(
         connection,
         &head.accepted.context.workspace_id,
         fleet,

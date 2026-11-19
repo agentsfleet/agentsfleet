@@ -7,9 +7,9 @@
 use std::error::Error;
 
 use af_core::id::Uuid7;
-use afd_admission::{Admission, Admissions, Key, PersonSteer, Producer, Reply, RunFacts};
 use afd_fleet::lease::fold::Folds;
 use afd_fleet::lease::{Committed, Verdict};
+use afd_turns::{Admission, Admissions, Key, PersonSteer, Producer, Reply, RunFacts};
 
 use crate::report_commit::{RESPONSE_ACCEPTED, report};
 use crate::report_seed::Held;
@@ -89,7 +89,7 @@ pub(super) async fn workspace_of(held: &Held) -> Checked<Uuid7> {
 
 /// The actor a person's steer to the held fleet records.
 pub(super) fn person() -> String {
-    afd_events::steer_actor("fixture-person")
+    afd_turns::view::steer_actor("fixture-person")
 }
 
 /// Admits one message from `producer` to the held fleet: a steer from a
@@ -144,9 +144,9 @@ pub(super) async fn send_as(
             reply,
         })
         .await?;
-    let pattern = format!("{}%", afd_events::ACTOR_PREFIX);
+    let pattern = format!("{}%", afd_turns::view::ACTOR_PREFIX);
     let person = PersonSteer {
-        machine_actor: afd_events::ACTOR_MACHINE,
+        machine_actor: afd_turns::view::ACTOR_MACHINE,
         actor_pattern: &pattern,
     };
     // The facts are a steer's: only a steer reads them.

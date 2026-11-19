@@ -141,7 +141,7 @@ pub(crate) const REASON_APPROVAL_WEBHOOK: &str = "resolved by approval webhook";
 /// The actor names the PROVIDER and no person. A delivery carries a sender's
 /// login and recording that would let an actor-shaped assertion certify that a
 /// human woke this fleet when a webhook did — the same reasoning
-/// `afd_events::ACTOR_MACHINE` carries for an api-key wake.
+/// `afd_turns::view::ACTOR_MACHINE` carries for an api-key wake.
 const ACTOR_PREFIX: &str = "webhook:";
 
 /// The actor a delivery from `source` records.

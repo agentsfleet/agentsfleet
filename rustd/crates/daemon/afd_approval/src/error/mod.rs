@@ -77,7 +77,7 @@ pub(crate) enum ErrorKind {
     #[error("the continuation could not be admitted")]
     Admission {
         #[source]
-        source: afd_admission::Error,
+        source: afd_turns::Error,
     },
 }
 

@@ -147,7 +147,7 @@ impl Inbox {
             Ok(None)
         };
         let counters =
-            afd_events::fleet_counters_best_effort(&self.database, &resolved.fleet_id).await;
+            afd_turns::view::fleet_counters_best_effort(&self.database, &resolved.fleet_id).await;
         self.announce(Answer {
             fleet_id: &resolved.fleet_id,
             gate_id: resolved.gate_id.as_str(),
@@ -187,12 +187,12 @@ impl Inbox {
         let kind = af_wire::event::EventType::Continuation.as_str();
         let admitted = self
             .admissions
-            .admit(afd_admission::Admission {
-                producer: afd_admission::Producer::GateContinuation,
+            .admit(afd_turns::Admission {
+                producer: afd_turns::Producer::GateContinuation,
                 // The gate's ACTION, which a retried resolve repeats: two
                 // people answering one gate, or one person's retry, continue
                 // the run exactly once.
-                key: afd_admission::Key::Repeated(resolved.action_id.as_str()),
+                key: afd_turns::Key::Repeated(resolved.action_id.as_str()),
                 fleet: &resolved.fleet_id,
                 workspace: &resolved.workspace_id,
                 actor: actor.as_str(),
@@ -200,7 +200,7 @@ impl Inbox {
                 request_json: CONTINUATION_BODY,
                 // The run a gate parked answers where it would have: a thread
                 // that asked before the gate still gets the answer after it.
-                reply: afd_admission::Reply::Inherit { event_id },
+                reply: afd_turns::Reply::Inherit { event_id },
             })
             .await?;
 
@@ -243,7 +243,7 @@ impl Inbox {
         event_id: &Uuid7,
     ) -> Result<(bool, Option<FleetCounters>)> {
         let mut connection = self.database.acquire().await?;
-        let landed = sqlx::query_as::<_, Landed>(afd_events::sql::INSERT_FLEET_EVENT)
+        let landed = sqlx::query_as::<_, Landed>(afd_turns::view::sql::INSERT_FLEET_EVENT)
             .bind(&resolved.fleet_id)
             .bind(stored_id)
             .bind(&resolved.workspace_id)
@@ -257,7 +257,8 @@ impl Inbox {
             .map_err(error::query(CONTEXT_CONTINUE))?;
         let inserted = landed.inserted;
         let counters = if inserted {
-            afd_events::fleet_counters_best_effort_on(&mut connection, &resolved.fleet_id).await
+            afd_turns::view::fleet_counters_best_effort_on(&mut connection, &resolved.fleet_id)
+                .await
         } else {
             None
         };

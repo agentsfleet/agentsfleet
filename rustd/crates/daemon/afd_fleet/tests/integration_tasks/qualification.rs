@@ -5,8 +5,8 @@ use std::ops::Range;
 use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
 use af_wire::task::TaskLimits;
-use afd_admission::Producer;
 use afd_fleet::task::{PreparedPlan, PreparedTask, TaskLifecycle as _};
+use afd_turns::Producer;
 
 use super::fixture::{Case, GOALS, exercise, items, questions};
 
@@ -25,14 +25,14 @@ async fn source_authority(case: &Case) {
         TaskLimits::default(),
     );
     refused(case, &missing, error_code::TASK_NOT_FOUND).await;
-    let human = afd_events::steer_actor("native_task_owner");
+    let human = afd_turns::view::steer_actor("native_task_owner");
     let source = case.source(Producer::Steer, &human).await;
     let unclaimed = case.source_plan(source.clone(), "unclaimed", 2, TaskLimits::default());
     refused(case, &unclaimed, error_code::TASK_STALE_STATE).await;
     for (producer, actor) in [
         (Producer::Webhook, human.as_str()),
         (Producer::Steer, "service:automation"),
-        (Producer::Steer, afd_events::ACTOR_MACHINE),
+        (Producer::Steer, afd_turns::view::ACTOR_MACHINE),
     ] {
         let source = case.source(producer, actor).await;
         case.claim(&source).await;

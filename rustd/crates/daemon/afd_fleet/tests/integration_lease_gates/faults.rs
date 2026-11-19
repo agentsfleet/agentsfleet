@@ -59,7 +59,7 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
             af_core::event::status::PROCESSED,
         )
         .await;
-    let before = afd_events::fleet_counters(&fixtures.database, &seeded.fleet)
+    let before = afd_turns::view::fleet_counters(&fixtures.database, &seeded.fleet)
         .await
         .expect("counters");
     fixtures
@@ -83,7 +83,7 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
     );
     assert!(fixtures.admission_settled(&seeded.event_id).await);
     assert_eq!(
-        afd_events::fleet_counters(&fixtures.database, &seeded.fleet)
+        afd_turns::view::fleet_counters(&fixtures.database, &seeded.fleet)
             .await
             .expect("unchanged counters"),
         before

@@ -54,7 +54,7 @@ async fn turn_references_survive_an_orphan_snapshot_and_release_shared_quota_onl
 }
 
 fn tasks(files: &Files) -> Tasks {
-    let admissions = afd_admission::Admissions::new(
+    let admissions = afd_turns::Admissions::new(
         files.case.fixtures.database.clone(),
         files.case.fixtures.bus().clone(),
         af_crypto::entropy::Entropy::new(),

@@ -147,7 +147,7 @@ impl Fixture {
             .bind(&id)
             .bind(&self.fleets.first().expect("seeded fleet").0)
             .bind(&self.workspace)
-            .bind(afd_admission::Producer::Steer.as_str())
+            .bind(afd_turns::Producer::Steer.as_str())
             .bind(af_wire::event::EventType::Chat.as_str())
             .bind(ordinal == 1)
             .bind(ordinal == 3)

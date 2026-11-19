@@ -167,7 +167,7 @@ impl Gates {
         .await
         .map_err(query(CONTEXT_PARK))?;
         let counters =
-            afd_events::fleet_counters_best_effort_on(&mut connection, request.fleet_id).await;
+            afd_turns::view::fleet_counters_best_effort_on(&mut connection, request.fleet_id).await;
         Ok(Recorded {
             gate_id,
             pending_approvals,

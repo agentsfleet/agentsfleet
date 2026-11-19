@@ -1,6 +1,6 @@
 //! What a gate looks like coming out of the table, and what a decision reports.
 //!
-//! Split from [`super`] along the seam `afd_events::history::row` already
+//! Split from [`super`] along the seam `afd_turns::view::history::row` already
 //! draws: the types and their decoders here, the verbs that run statements
 //! there. The two change for different reasons — a column added moves this
 //! file, a verb added moves that one — and holding them apart is what keeps

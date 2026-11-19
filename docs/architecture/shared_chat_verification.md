@@ -151,7 +151,7 @@ The browser can close after admission without losing that choice. A checked save
 
 Activation follows the commit and retries on report replay. Current access is checked again before activation.
 
-`afd_events::activity::commit` owns the transaction through commit, releases its connection, then announces committed receipts. Rollbacks and exact replays emit no new receipts.
+`afd_turns::activity::commit` owns the transaction through commit, releases its connection, then announces committed receipts. Rollbacks and exact replays emit no new receipts.
 
 The returned announcement is marked `must_use`. This catches accidental discard; it does not prevent a caller deliberately discarding it or pairing another transaction.
 

@@ -160,7 +160,7 @@ impl Leases {
             .bind(crate::task::DECISION_POLICY_PATH)
             .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(af_core::event::status::RECEIVED)
-            .bind(afd_admission::Producer::Steer.as_str())
+            .bind(afd_turns::Producer::Steer.as_str())
             .bind(self.checkpoint_resume_enabled())
             .bind(afd_credential::provider::PLATFORM_MODEL_REF)
             .fetch_optional(&mut *transaction)

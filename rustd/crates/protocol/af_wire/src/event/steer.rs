@@ -41,7 +41,7 @@ pub struct SteerRequest<'a> {
     // A timeout does not prove an operation failed, and a server cannot tell a
     // retried POST from a second press — the bytes are identical — so only the
     // caller can say which it is. The ledger keys the admission
-    // `<fleet_id>:<operation_id>` (`afd_events::steer`), so a retry conflicts on
+    // `<fleet_id>:<operation_id>` (`afd_turns::view::steer`), so a retry conflicts on
     // `UNIQUE (producer, producer_key)` and is answered from the first row.
     // Optional on purpose: a human in a terminal has no operation to name, and
     // forcing one would make every caller invent a value whose only job is to

@@ -17,19 +17,19 @@ categories.workspace = true
 # `from_parts` seams `GatePolicy` and `RepositoryBinding` carry — see
 # `Binding::stored` for why a shortcut would have nothing to shorten.
 # Forwarded rather than bare: `error::one_of_each_kind` samples an admission
-# failure through `afd_admission`'s own sample builder, which lives behind
+# failure through `afd_turns`'s own sample builder, which lives behind
 # that crate's `test-util`. Building the sample by hand instead would let this
 # crate's idea of a ledger outage drift from the ledger's. `af_crypto`'s is
 # the mocked entropy source a failed draw for a binding id is sampled from, and
 # `afd_outbound`'s the ledger failures a notice's obligation can raise.
-test-util = ["afd_admission/test-util", "af_core/test-util", "af_crypto/test-util", "afd_outbound/test-util"]
+test-util = ["afd_turns/test-util", "af_core/test-util", "af_crypto/test-util", "afd_outbound/test-util"]
 
 [dependencies]
 # Where a verified delivery is accepted before anything is queued. The
 # ledger's unique index is the idempotency boundary the Lua claim key used to
 # be, and unlike that key it does not expire and does not live in the queue it
 # protects.
-afd_admission.workspace = true
+afd_turns.workspace = true
 # The Slack thread a mention's fleet is told: the read and its reasons live
 # with the connector that holds the token, and this crate composes the result.
 afd_connector.workspace = true
@@ -83,7 +83,7 @@ afd_db = { workspace = true, features = ["test-util"] }
 serde_json.workspace = true
 # The unreachable admissions ledger and its bus, and `Capture`, which reads back
 # that a refused credential name logs nothing.
-afd_admission = { workspace = true, features = ["test-util"] }
+afd_turns = { workspace = true, features = ["test-util"] }
 afd_bus = { workspace = true, features = ["test-util"] }
 af_core = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["macros", "rt"] }

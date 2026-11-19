@@ -75,18 +75,18 @@ pub(super) async fn admit(
     message: &str,
 ) -> Checked<Uuid7> {
     let body = json!({"message":message}).to_string();
-    let actor = format!("{}recovery-check", afd_events::ACTOR_PREFIX);
+    let actor = format!("{}recovery-check", afd_turns::view::ACTOR_PREFIX);
     let accepted =
-        afd_admission::Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone())
-            .admit(afd_admission::Admission {
-                producer: afd_admission::Producer::Steer,
-                key: afd_admission::Key::Unrepeatable,
+        afd_turns::Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone())
+            .admit(afd_turns::Admission {
+                producer: afd_turns::Producer::Steer,
+                key: afd_turns::Key::Unrepeatable,
                 fleet,
                 workspace,
                 actor: &actor,
                 event_type: af_wire::event::EventType::Chat,
                 request_json: &body,
-                reply: afd_admission::Reply::None,
+                reply: afd_turns::Reply::None,
             })
             .await?;
     Ok(accepted.stored.id)

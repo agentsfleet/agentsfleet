@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use afd_cron::{Change, NewSchedule, Schedule, Source};
-use afd_events::{EventDetailRow, History};
+use afd_turns::view::{EventDetailRow, History};
 use serde_json::{Value, json};
 
 use crate::support::{CronLane, SEED_AT};
@@ -72,7 +72,7 @@ pub(super) async fn thread(lane: &CronLane) -> Vec<EventDetailRow> {
             &lane.workspace_id(),
             &lane.fleet_id(),
             None,
-            afd_events::THREAD_MAX_LIMIT,
+            afd_turns::view::THREAD_MAX_LIMIT,
         )
         .await
         .expect("reload native fleet history")
@@ -83,7 +83,7 @@ pub(super) async fn receipts(lane: &CronLane) -> Vec<Value> {
         .await
         .into_iter()
         .filter_map(|event| {
-            if event.row.event_type != afd_events::activity::EVENT_TYPE_ACTIVITY {
+            if event.row.event_type != afd_turns::view::activity::EVENT_TYPE_ACTIVITY {
                 return None;
             }
             assert_eq!(

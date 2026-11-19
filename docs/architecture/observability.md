@@ -529,7 +529,7 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 
 | Step | Logs | Metrics | Trace |
 |---|---|---|---|
-| Steer admitted (`afd_api_tenant` steer handler, `afd_admission`) | `fleet_steer_failed` on refusal | `agentsfleet_admissions_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | `fleet.steer` with `admit` and `announce` |
+| Steer admitted (`afd_api_tenant` steer handler, `afd_turns`) | `fleet_steer_failed` on refusal | `agentsfleet_admissions_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | `fleet.steer` with `admit` and `announce` |
 | Wake ring (`afd_bus::wake`) | `admission_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
 | Lease issued (`afd_fleet` lease delivery) | `runner_lease_issued` with `queue_wait_ms`; `lease_window_read_failed` | Gateway claim attempts and candidate counts; `delivery_stage{event_to_lease}` | `fleet.offer` with its stages; none for an empty pass |
 | Fold claimed (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_lease_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |

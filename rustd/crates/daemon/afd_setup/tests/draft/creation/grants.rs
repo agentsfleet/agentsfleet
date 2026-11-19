@@ -3,9 +3,9 @@
 use super::super::{fixture::now, mint};
 use super::fixture::{Case, NO_ADMISSIONS, check};
 use af_crypto::{entropy::Entropy, secret::Kek};
-use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, IntegrationGrants, Origin, Resolution, Wanted};
 use afd_setup::types::{CheckKind, SaveSource, Start};
+use afd_turns::Admissions;
 use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::json;
 use std::sync::Arc;

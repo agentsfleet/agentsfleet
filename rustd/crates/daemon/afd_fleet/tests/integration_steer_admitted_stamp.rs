@@ -17,8 +17,8 @@
 
 use af_core::event::status;
 use af_core::id::Uuid7;
-use afd_events::{Cursor, History, Steer};
 use afd_fleet::lease::Delivery;
+use afd_turns::view::{Cursor, History, Steer};
 
 use crate::recovery_seed::{admission, ledger, producer_key};
 use crate::rows::Row;

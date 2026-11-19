@@ -13,7 +13,7 @@ use af_wire::lease::{
     ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, HISTORY_BYTES_MAX, HISTORY_TURNS_MAX,
     TURN_TEXT_BYTES_MAX, Turn,
 };
-use afd_events::{Cursor, EventDetailRow};
+use afd_turns::view::{Cursor, EventDetailRow};
 use jiff::Timestamp;
 
 use super::{EVENT_HISTORY_UNAVAILABLE, Thread, turns_before, within_caps};
@@ -77,13 +77,13 @@ impl Thread for Fake {
         _fleet: &Uuid7,
         _at: &Cursor,
         limit: i64,
-    ) -> afd_events::Result<Vec<EventDetailRow>> {
+    ) -> afd_turns::view::Result<Vec<EventDetailRow>> {
         self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let limit = usize::try_from(limit).unwrap();
         self.rows
             .as_ref()
             .map(|rows| rows.iter().take(limit).cloned().collect())
-            .ok_or_else(|| afd_events::error::one_of_each_kind().remove(0).1)
+            .ok_or_else(|| afd_turns::view::error::one_of_each_kind().remove(0).1)
     }
 }
 

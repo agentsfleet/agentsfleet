@@ -194,7 +194,7 @@ impl Refusable for afd_vault::Error {
     }
 }
 
-impl Refusable for afd_events::Error {
+impl Refusable for afd_turns::view::Error {
     fn code(&self) -> ErrorCode {
         Self::code(self)
     }

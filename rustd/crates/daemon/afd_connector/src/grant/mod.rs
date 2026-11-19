@@ -257,7 +257,7 @@ impl Grants {
         name: &SecretName,
         body: &SecretBody,
         now: Timestamp,
-    ) -> Result<afd_events::activity::Announcement> {
+    ) -> Result<afd_turns::view::activity::Announcement> {
         match self
             .vault
             .create_in(transaction, workspace, name, body, now)

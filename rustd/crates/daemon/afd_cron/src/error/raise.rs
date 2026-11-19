@@ -13,7 +13,7 @@ use super::{Error, ErrorKind};
 // [`query`] instead of a blanket lift.
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_admission::Error => Admission,
+    afd_turns::Error => Admission,
     af_crypto::error::Error => Identifier,
     reqwest::Error => UpstreamUnreachable,
     serde_json::Error => Json,
@@ -249,7 +249,7 @@ fn raised_kinds() -> Vec<(&'static str, Error)> {
     ]
 }
 
-/// One `afd_admission` sample, by the label that crate gives it.
+/// One `afd_turns` sample, by the label that crate gives it.
 ///
 /// By label because the two this builder needs sit on opposite sides of
 /// `is_datastore_unavailable`, and picking either by index makes this sample
@@ -259,10 +259,10 @@ fn raised_kinds() -> Vec<(&'static str, Error)> {
     clippy::expect_used,
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
-fn admission_sample(label: &str) -> afd_admission::Error {
-    afd_admission::error::one_of_each_kind()
+fn admission_sample(label: &str) -> afd_turns::Error {
+    afd_turns::error::one_of_each_kind()
         .into_iter()
         .find(|(named, _)| *named == label)
         .map(|(_, error)| error)
-        .expect("afd_admission declares this kind")
+        .expect("afd_turns declares this kind")
 }

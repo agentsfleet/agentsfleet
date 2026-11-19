@@ -170,23 +170,23 @@ fn history(
 }
 
 async fn incorporate(files: &Files) -> Checked<FoldRef> {
-    let admissions = afd_admission::Admissions::new(
+    let admissions = afd_turns::Admissions::new(
         files.case.fixtures.database.clone(),
         files.case.fixtures.bus().clone(),
         af_crypto::entropy::Entropy::new(),
     );
     let body = serde_json::json!({"message": MESSAGE}).to_string();
-    let actor = afd_events::steer_actor("checkpoint-owner");
+    let actor = afd_turns::view::steer_actor("checkpoint-owner");
     let admitted = admissions
-        .admit(afd_admission::Admission {
-            producer: afd_admission::Producer::Steer,
-            key: afd_admission::Key::Unrepeatable,
+        .admit(afd_turns::Admission {
+            producer: afd_turns::Producer::Steer,
+            key: afd_turns::Key::Unrepeatable,
             fleet: &files.case.acquired.fleet_id,
             workspace: &files.case.acquired.workspace_id,
             actor: &actor,
             event_type: af_wire::event::EventType::Chat,
             request_json: &body,
-            reply: afd_admission::Reply::None,
+            reply: afd_turns::Reply::None,
         })
         .await?;
     let claimed = files

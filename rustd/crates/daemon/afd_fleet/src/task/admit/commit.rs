@@ -10,7 +10,7 @@ use super::{
     write::{Writer, Written},
 };
 use crate::{Result, error::query};
-use afd_admission::PreparedAdmission;
+use afd_turns::PreparedAdmission;
 
 pub(super) struct Committed {
     pub bindings: TaskBindings,

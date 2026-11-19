@@ -16,7 +16,7 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-afd_admission.workspace = true
+afd_turns.workspace = true
 af_observability.workspace = true
 # Identifiers, the clock a liveness instant is stamped with, the registry codes.
 af_core = { workspace = true, features = ["sqlx"] }
@@ -55,7 +55,7 @@ tracing.workspace = true
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's
 # suite reaches this crate's seam with no datastore behind it.
 test-util = [
-    "afd_admission/test-util",
+    "afd_turns/test-util",
     "af_core/test-util",
     "afd_db/test-util",
 ]
@@ -64,7 +64,7 @@ test-util = [
 afd_admin = { workspace = true, features = ["test-util"] }
 tokio-util = { workspace = true, features = ["rt"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "test-util"] }
-afd_admission = { workspace = true, features = ["test-util"] }
+afd_turns = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
 af_observability = { workspace = true, features = ["test-util"] }
 

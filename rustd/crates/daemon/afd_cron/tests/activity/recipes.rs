@@ -97,7 +97,7 @@ async fn save(lane: &CronLane, revision: i64, recipes: &[Recipe]) {
         )
         .await
         .expect("replace pinned recipes");
-    afd_events::activity::commit(tx, announcement, None)
+    afd_turns::view::activity::commit(tx, announcement, None)
         .await
         .expect("same history commit");
 }

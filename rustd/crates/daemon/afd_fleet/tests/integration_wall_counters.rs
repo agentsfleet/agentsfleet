@@ -83,7 +83,7 @@ async fn parked() -> Parked {
         .counters
         .expect("a first delivery carries the counters its claim moved");
     assert_eq!(
-        afd_events::fleet_counters(&fixtures.database, &fleet)
+        afd_turns::view::fleet_counters(&fixtures.database, &fleet)
             .await
             .expect("the counters read back"),
         counters,
@@ -173,7 +173,7 @@ async fn a_parked_event_moves_no_budget() {
             .expect("the ledger answers a count");
     assert_eq!(ledger_rows, 0, "a park charges nothing");
 
-    let after = afd_events::fleet_counters(&run.fixtures.database, &run.fleet)
+    let after = afd_turns::view::fleet_counters(&run.fixtures.database, &run.fleet)
         .await
         .expect("the counters read");
     assert_eq!(

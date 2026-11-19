@@ -9,9 +9,9 @@ use af_wire::{
     event::EventType,
     task::TaskLimits,
 };
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_db::test_util::TestDatabase;
 use afd_fleet::task::{PreparedPlan, PreparedTask, TaskLease, TaskScope, Tasks};
+use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 use futures_util::FutureExt as _;
 use serde_json::json;
 
@@ -37,7 +37,7 @@ pub(super) struct Case {
 
 impl Case {
     async fn create(lane: &TestDatabase) -> Self {
-        let actor = afd_events::steer_actor("native_task_owner");
+        let actor = afd_turns::view::steer_actor("native_task_owner");
         let request = json!({"message": GOALS.join("; ")}).to_string();
         let held = held_admission(
             Fixtures::create_in(lane.shared_handle()).await,
@@ -129,7 +129,7 @@ impl Case {
     /// The forthcoming input API owns this claim in production. Seeding it here
     /// exercises the existing binder's claim/fence validation without faking it.
     pub(super) async fn claimed_source(&self) -> Uuid7 {
-        let actor = afd_events::steer_actor("native_task_owner");
+        let actor = afd_turns::view::steer_actor("native_task_owner");
         let source = self.source(Producer::Steer, &actor).await;
         self.claim(&source).await;
         source

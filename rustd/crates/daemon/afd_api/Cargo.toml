@@ -102,7 +102,7 @@ af_wire.workspace = true
 # test-util seam shortens the send deadline for the stalled-relay case.
 afd_mail = { workspace = true, features = ["test-util"] }
 # The admission ledger every producer seam in the harness writes through.
-afd_admission = { workspace = true, features = ["test-util"] }
+afd_turns = { workspace = true, features = ["test-util"] }
 # The signup fixture signs a Svix delivery, whose tag is base64 over the
 # HMAC. Encoding it is the only way the suite can present a signature the
 # vendored verifier accepts, which is what makes a passing case a round trip.
@@ -170,7 +170,6 @@ afd_db = { workspace = true, features = ["test-util"] }
 # A library dependency too, but named again here for its feature: the thread
 # handler's page arithmetic is decided over `EventDetailRow`, which is
 # `#[non_exhaustive]`, so the unit tests need that crate's fixture seam.
-afd_events = { workspace = true, features = ["test-util"] }
 # Live-router integration tests resolve both operator and runner credentials
 # through the production Postgres directory.
 afd_state.workspace = true

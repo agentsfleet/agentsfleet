@@ -1,8 +1,8 @@
 //! A gate answer committed during a lock wait must prevent the delayed park.
 
 use af_core::id::Uuid7;
-use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, Resolution};
+use afd_turns::Admissions;
 use sqlx::Connection as _;
 
 use super::{WITHIN, enqueue, next};

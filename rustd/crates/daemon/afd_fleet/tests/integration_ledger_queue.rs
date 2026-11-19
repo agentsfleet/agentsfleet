@@ -43,7 +43,7 @@ async fn enqueue(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) -> Uuid7
         .bind(&id)
         .bind(fleet)
         .bind(workspace)
-        .bind(afd_admission::Producer::Steer.as_str())
+        .bind(afd_turns::Producer::Steer.as_str())
         .bind(af_wire::event::EventType::Chat.as_str())
         .bind(fixtures.enrolled_at().to_sqlx())
         .execute(

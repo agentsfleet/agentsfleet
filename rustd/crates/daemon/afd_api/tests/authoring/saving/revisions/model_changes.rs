@@ -224,7 +224,7 @@ async fn a_failed_live_notice_keeps_the_model_save_committed_and_replayable() {
         .with_fleet_queue_budgets(
             fleet.case.base.db.clone(),
             afd_bus::test_util::unreachable(),
-            afd_admission::Budgets::default(),
+            afd_turns::Budgets::default(),
         )
         .router();
     let key = mint();

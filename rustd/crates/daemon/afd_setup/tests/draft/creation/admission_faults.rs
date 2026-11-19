@@ -6,8 +6,8 @@ use super::super::{fixture::now, mint};
 use super::fixture::{Case, NO_ADMISSIONS, check};
 use af_core::error_code;
 use af_crypto::entropy::Entropy;
-use afd_admission::Admissions;
 use afd_setup::{Creations, types::Start};
+use afd_turns::Admissions;
 use sqlx::Connection as _;
 
 /// The initial run every case asks for.

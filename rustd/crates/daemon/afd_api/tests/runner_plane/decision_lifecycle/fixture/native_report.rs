@@ -5,9 +5,9 @@ use crate::harness::{self, Fleet, native::Session};
 use af_crypto::entropy::Entropy;
 use af_observability::Telemetry;
 use af_wire::protocol::StreamKind;
-use afd_admission::Admissions;
 use afd_auth::scope::ScopeSet;
 use afd_fleet::lease::Leases;
+use afd_turns::Admissions;
 use serde_json::{Value, json};
 
 // Value: protects=acknowledged failed native reports emit their completion outcomes;

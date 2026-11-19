@@ -2,7 +2,7 @@
 //! cap, and a message that is already settled.
 
 use af_wire::fold::FOLDS_PER_CLAIM_MAX;
-use afd_admission::Producer;
+use afd_turns::Producer;
 
 use super::support::{
     Checked, Claimed, STEER_JSON, STEER_TEXT, claim_as_holder, send, set_lease_task,

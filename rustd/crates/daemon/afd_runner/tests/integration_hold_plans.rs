@@ -12,7 +12,7 @@
 //! The plan is asked of a database of this test's own, migrated from
 //! `schema/`, seeded with mostly unheld slots in a transaction that rolls
 //! back, and analysed, so its statistics describe the spread and nothing else:
-//! the shape `afd_events`' `integration_list_plans/mod.rs` set. That suite asks
+//! the shape `afd_turns`' `integration_list_plans/mod.rs` set. That suite asks
 //! `EXPLAIN (GENERIC_PLAN)`, which cannot type every parameter; here the text
 //! is prepared with the types sqlx binds and explained with generic plans
 //! forced.

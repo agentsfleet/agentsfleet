@@ -13,9 +13,9 @@
 )]
 
 use af_crypto::entropy::Entropy;
-use afd_admission::Admissions;
-use afd_events::{Filter, History, Steer, prefix_to_like, steer_actor};
 use afd_tenant::preference::Preferences;
+use afd_turns::Admissions;
+use afd_turns::view::{Filter, History, Steer, prefix_to_like, steer_actor};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 

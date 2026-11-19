@@ -25,7 +25,7 @@ impl Creations {
         checked: &Review,
         revision: &Uuid7,
         now: Timestamp,
-    ) -> Result<afd_events::activity::Announcement> {
+    ) -> Result<afd_turns::view::activity::Announcement> {
         let number = row
             .head_revision
             .checked_add(1)

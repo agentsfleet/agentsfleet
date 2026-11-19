@@ -4,9 +4,9 @@
 //! parameters, two mutual exclusions, and a window that resolves against the
 //! clock. The handlers beside it read a page and render it.
 //!
-//! # The refusals are this module's sentences, not `afd_events`'s
+//! # The refusals are this module's sentences, not `afd_turns`'s
 //!
-//! `afd_events::Error` carries a sentence for a cursor it did not mint, and it
+//! `afd_turns::view::Error` carries a sentence for a cursor it did not mint, and it
 //! is not the one this surface publishes — and `parse_since` answers with the
 //! same variant a bad cursor does, so one sentence could not serve both. The
 //! parse happens HERE, at two call sites that each know which parameter they
@@ -27,7 +27,7 @@ use std::borrow::Cow;
 use af_core::id::Uuid7;
 use af_core::paging::Ceiling;
 use af_validate::{Limit, Sentences};
-use afd_events::{
+use afd_turns::view::{
     Cursor, DEFAULT_LIMIT, Filter, MAX_LIMIT, glob_to_like, parse_since, prefix_to_like,
 };
 use const_format::concatcp;

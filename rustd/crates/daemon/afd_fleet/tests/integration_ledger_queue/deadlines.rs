@@ -1,9 +1,9 @@
 //! Event deadlines allow recovery; standing access still needs a human answer.
 
 use af_core::id::Uuid7;
-use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_fleet::lease::sql::{self, queue::CLAIM_HEAD};
+use afd_turns::Admissions;
 use sqlx::Connection as _;
 
 use super::{enqueue, next, parking::seed_gate};
@@ -183,7 +183,7 @@ async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
         .bind(sql::FLEET_STATUS_ACTIVE)
         .bind(af_core::event::status::RECEIVED)
-        .bind(afd_admission::Producer::Steer.as_str())
+        .bind(afd_turns::Producer::Steer.as_str())
         .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
         .fetch_optional(&mut *tx)

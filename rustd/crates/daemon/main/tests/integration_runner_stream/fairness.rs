@@ -8,13 +8,13 @@ use crate::{
     e2e_seed, wire,
 };
 use af_core::{id::Uuid7, timing::OFFER_FALLBACK_TICK};
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_db::{
     Db, Migrator,
     config::DbRole,
     test_util::{FleetSeed, TenantSeed, TestDatabase, WalletSeed, WorkspaceSeed, mint_id},
 };
 use afd_fleet_lifecycle::FleetStatus;
+use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 use agentsfleetd::supervisor::Supervisor;
 use std::sync::{
     Arc,

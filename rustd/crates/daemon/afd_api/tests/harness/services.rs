@@ -19,7 +19,6 @@ use afd_auth::mock::{MockCapabilities, MockVerifier};
 use afd_billing::tenant::Billing;
 use afd_connector::Connectors;
 use afd_credential::provider::Providers;
-use afd_events::{History, Steer};
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_memory::Memories;
@@ -31,6 +30,7 @@ use afd_tenant::models::Models;
 use afd_tenant::preference::Preferences;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
+use afd_turns::view::{History, Steer};
 use afd_vault::Vault as SecretVault;
 use jiff::Timestamp;
 

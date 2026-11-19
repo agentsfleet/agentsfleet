@@ -10,12 +10,12 @@ use af_wire::runner::{
     AssignedPolicy, CapabilityReport, HeartbeatRequest, HeldFleets, NetworkPolicy, RegisterRequest,
     SandboxTier,
 };
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_bus::Handle;
 use afd_db::Db;
 use afd_db::test_util::{FleetSeed, TenantSeed, WorkspaceSeed};
 use afd_runner::Runners;
 use afd_runner::heartbeat::holds::prove;
+use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 use jiff::Timestamp;
 
 use crate::error::{Result, seed_refused};

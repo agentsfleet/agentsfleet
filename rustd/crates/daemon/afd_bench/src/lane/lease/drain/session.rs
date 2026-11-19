@@ -25,7 +25,7 @@ pub(in crate::lane::lease) fn gateway(
         Arc::new(Network::new()?),
     );
     let admissions =
-        afd_admission::Admissions::new(stores.database.clone(), stores.bus.clone(), Entropy::new());
+        afd_turns::Admissions::new(stores.database.clone(), stores.bus.clone(), Entropy::new());
     let creations = Creations::new(Setup::new(drafts.clone(), Arc::clone(kek)), admissions);
     let gateway = Gateway::new(GatewayDependencies {
         recovery: afd_gateway::RecoverySettings::default(),

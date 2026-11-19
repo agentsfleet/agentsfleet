@@ -102,7 +102,7 @@ async fn locked_lease(
         .bind(presented.runner_id)
         .bind(LEASE_STATUS_ACTIVE)
         .bind(af_wire::task::CAPABILITY)
-        .bind(afd_admission::Producer::SlackMention.as_str())
+        .bind(afd_turns::Producer::SlackMention.as_str())
         .bind(afd_connector::Provider::Slack.id())
         .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
         .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)

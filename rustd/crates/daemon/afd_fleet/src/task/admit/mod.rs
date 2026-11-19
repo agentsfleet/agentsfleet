@@ -75,7 +75,7 @@ pub(super) async fn bind(
 async fn prepare_admissions<'a>(
     tasks: &Tasks,
     continuations: &'a [Option<prepare::Wake>],
-) -> Result<Vec<Option<afd_admission::PreparedAdmission<'a>>>> {
+) -> Result<Vec<Option<afd_turns::PreparedAdmission<'a>>>> {
     // Budget sampling precedes locks; staging uses the caller's transaction.
     let mut prepared = Vec::with_capacity(continuations.len());
     for wake in continuations {

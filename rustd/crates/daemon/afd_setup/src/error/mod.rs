@@ -31,7 +31,7 @@ af_core::error_lifts!(Error, ErrorKind:
     af_inference::Error => Inference,
     rig_core::ProviderError => Sdk,
     afd_runner::Error => Runner,
-    afd_admission::Error => Admission,
+    afd_turns::Error => Admission,
     afd_approval::Error => Approval,
     afd_fleet_lifecycle::Error => Lifecycle,
     afd_billing::Error => Billing,

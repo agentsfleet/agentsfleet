@@ -1,7 +1,7 @@
 //! History-only facts never create runnable or billable work or model turns.
 
 use super::fixture::*;
-use afd_events::{Cursor, History};
+use afd_turns::view::{Cursor, History};
 use http::{Method, StatusCode};
 use serde_json::json;
 

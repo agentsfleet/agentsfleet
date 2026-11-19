@@ -11,12 +11,10 @@ use std::sync::Arc;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use afd_admin::{Models as AdminModels, PlatformKeys};
-use afd_admission::Admissions;
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::tenant::Billing;
 use afd_credential::provider::Providers;
 use afd_db::Db;
-use afd_events::History;
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_ingress::Ingress;
@@ -28,6 +26,8 @@ use afd_tenant::preference::Preferences;
 use afd_tenant::signup::Signups;
 use afd_tenant::team::Team;
 use afd_tenant::workspace::Workspaces;
+use afd_turns::Admissions;
+use afd_turns::view::History;
 use afd_vault::Vault as SecretVault;
 
 use super::platform;
@@ -103,7 +103,7 @@ pub(super) struct Activity {
     pub(super) approvals: Inbox,
     pub(super) grants: IntegrationGrants,
     pub(super) events: History,
-    pub(super) steering: afd_events::Steer,
+    pub(super) steering: afd_turns::view::Steer,
     pub(super) ingress: Ingress,
 }
 
@@ -120,7 +120,7 @@ pub(super) fn activity(database: &Db, kek: &Arc<Kek>, admissions: &Admissions) -
         approvals: Inbox::new(database.clone(), admissions.streams(), admissions.clone()),
         grants: IntegrationGrants::new(database.clone(), Entropy::new()),
         events: History::new(database.clone()),
-        steering: afd_events::Steer::new(admissions.clone()),
+        steering: afd_turns::view::Steer::new(admissions.clone()),
         ingress: Ingress::new(
             database.clone(),
             SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),

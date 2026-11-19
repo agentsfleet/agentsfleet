@@ -1,8 +1,8 @@
 //! Approval continuation and retry release their outer connection.
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 use crate::lane::{Lane, Window};
-use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, Resolution};
+use afd_turns::Admissions;
 const OPERATOR: &str = "human:fixture";
 const NOTE: &str = "approved";
 

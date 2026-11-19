@@ -1,7 +1,7 @@
 //! Source identity is proved from native admissions, never model prose.
 
 use af_core::id::Uuid7;
-use afd_admission::Producer;
+use afd_turns::Producer;
 use sqlx::PgConnection;
 
 use super::super::{PreparedPlan, TaskLease, TaskRefusal, guard::LeaseRow, sql};
@@ -72,8 +72,8 @@ pub(in crate::task) fn check_human(source: &Source) -> Result<()> {
         };
     }
     if source.producer != Producer::Steer.as_str()
-        || !afd_events::is_steer_actor(&source.actor)
-        || source.actor == afd_events::ACTOR_MACHINE
+        || !afd_turns::view::is_steer_actor(&source.actor)
+        || source.actor == afd_turns::view::ACTOR_MACHINE
     {
         return Err(TaskRefusal::InvalidTarget.into());
     }
@@ -136,7 +136,7 @@ pub(in crate::task) fn message_for<'a>(
     reason = "test: an unmet precondition should fail the test loudly"
 )]
 mod tests {
-    use afd_admission::Producer;
+    use afd_turns::Producer;
 
     use super::{Source, check_human};
 

@@ -143,8 +143,8 @@ async fn wrong_source(fixture: &Decisions<'_>, task: &DecisionTaskVersion, befor
     let source = fixture
         .case
         .source(
-            afd_admission::Producer::Steer,
-            &afd_events::steer_actor("goal-owner"),
+            afd_turns::Producer::Steer,
+            &afd_turns::view::steer_actor("goal-owner"),
         )
         .await;
     let source_before = admission(fixture, &source).await;

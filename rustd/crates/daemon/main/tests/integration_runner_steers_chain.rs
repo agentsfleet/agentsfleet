@@ -15,8 +15,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use af_core::id::Uuid7;
 use af_wire::event::{EventType, sender_line};
-use afd_admission::Admissions;
-use afd_events::{Steer, Steered, steer_actor};
+use afd_turns::Admissions;
+use afd_turns::view::{Steer, Steered, steer_actor};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::Value;
 

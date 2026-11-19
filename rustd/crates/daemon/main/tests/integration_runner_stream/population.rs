@@ -7,9 +7,9 @@ use crate::{
     e2e_seed,
 };
 use af_core::{clock, id::Uuid7};
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_db::test_util::{FleetSeed, mint_id};
 use afd_fleet_lifecycle::FleetStatus;
+use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 
 pub(super) async fn sibling(run: &Scenario, name: &str) -> (Uuid7, Uuid7) {
     let fleet = seed_sibling(run, name).await;

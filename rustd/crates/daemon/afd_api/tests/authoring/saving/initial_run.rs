@@ -17,7 +17,7 @@ const RUN_NOW: &str = "Investigate the failed build.";
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn resume_after_reload_recovers_a_capacity_blocked_initial_run_once() {
     let logs = af_core::test_util::trace::Capture::install();
-    let case = Case::with_budgets(afd_admission::Budgets {
+    let case = Case::with_budgets(afd_turns::Budgets {
         deployment_backlog: 0,
     })
     .await;

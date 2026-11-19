@@ -19,13 +19,13 @@ import {
 
 // ── Actor vocabulary ──────────────────────────────────────────────────────
 // Mirrors what the server writes: `steer:<user_id>` / `steer:api`
-// (`steer_actor` / `ACTOR_MACHINE` in rustd/crates/daemon/afd_events/src/steer/mod.rs),
+// (`steer_actor` / `ACTOR_MACHINE` in rustd/crates/daemon/afd_turns/src/steer/mod.rs),
 // `webhook:<source>` (`actor` in
 // rustd/crates/daemon/afd_api_ingress/src/handler/webhook/mod.rs), a platform identity
 // such as `github-app` (`ACTOR_APP_GITHUB` in
 // rustd/crates/daemon/afd_api_ingress/src/handler/webhook/app_route.rs), another
 // fleet's steer, `fleet:<sender_fleet_id>` (`FLEET_ACTOR_PREFIX` in
-// rustd/crates/daemon/afd_events/src/steer/fleet.rs), and the runtime's own actors.
+// rustd/crates/daemon/afd_turns/src/steer/fleet.rs), and the runtime's own actors.
 
 export const ACTOR = {
   STEER_PREFIX: "steer:",
@@ -204,7 +204,7 @@ export const OUTCOME = {
   FAILED: "The run failed.",
   // "Completed." and nothing more. This is reached for a processed row, and
   // the rows that reach it never carry the body: the page read is proven not
-  // to select `response_text` (afd_events history/statement/mod.rs asserts it), and
+  // to select `response_text` (afd_turns history/statement/mod.rs asserts it), and
   // a completion frame carries the terminal row without it. A `null` here means
   // UNREAD, never "no reply", so no sentence may claim one was never recorded.
   // The one surface that holds the body — the event detail dialog — says
@@ -272,7 +272,7 @@ export function outcomeForCompletion(
  * fleet's answer. A durable event row is one conversation turn: the actor and
  * `request_json` name the trigger (an operator's steer, a webhook, a cron),
  * and `response_text` carries the fleet's reply written back onto the SAME row
- * (`UPDATE_FLEET_EVENT_RESULT` in rustd/crates/daemon/afd_events/src/sql.rs UPDATEs
+ * (`UPDATE_FLEET_EVENT_RESULT` in rustd/crates/daemon/afd_turns/src/sql.rs UPDATEs
  * response_text WHERE event_id). So the trigger body
  * comes only from the actor + request payload; the reply is `replyBodyFor`.
  *

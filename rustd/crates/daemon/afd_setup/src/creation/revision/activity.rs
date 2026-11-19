@@ -24,7 +24,7 @@ pub(super) async fn record(
         "model_ref": model,
         "setup_revision": number.to_string(),
     });
-    sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
+    sqlx::query(afd_turns::view::sql::INSERT_FLEET_EVENT)
         .bind(&row.id)
         .bind(revision)
         .bind(&row.workspace_id)

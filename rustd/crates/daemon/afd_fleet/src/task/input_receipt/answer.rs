@@ -23,7 +23,7 @@ struct Source {
 }
 
 pub(super) struct Completion {
-    closed: Option<afd_events::Closed>,
+    closed: Option<afd_turns::view::Closed>,
     owed: Option<Uuid7>,
     answer: String,
 }
@@ -72,7 +72,7 @@ async fn complete_history(
     current: &LeaseRow,
     input: &TaskInputReceiptInput,
     answer: &str,
-) -> Result<Option<afd_events::Closed>> {
+) -> Result<Option<afd_turns::view::Closed>> {
     let source: Source = sqlx::query_as(include_str!("sql/source.sql"))
         .bind(crate::task::guard::wire(&input.source_admission_id)?)
         .bind(&current.fleet_id)
@@ -82,7 +82,7 @@ async fn complete_history(
         .map_err(query("lock original accepted reply source"))?
         .ok_or(TaskRefusal::NotFound)?;
     // Same event owner and received/terminal writers as an ordinary lease report.
-    sqlx::query(afd_events::sql::INSERT_LEASED_FLEET_EVENT)
+    sqlx::query(afd_turns::view::sql::INSERT_LEASED_FLEET_EVENT)
         .bind(&current.fleet_id)
         .bind(crate::task::guard::wire(&input.source_admission_id)?)
         .bind(&current.workspace_id)
@@ -92,7 +92,7 @@ async fn complete_history(
         .bind(Some(&current.source_admission_id))
         .bind(af_core::event::status::RECEIVED)
         .bind(crate::task::guard::wire(&input.source_admission_id)?)
-        .bind(afd_admission::Producer::Steer.as_str())
+        .bind(afd_turns::Producer::Steer.as_str())
         .execute(&mut *connection)
         .await
         .map_err(query("open accepted input history before completing it"))?;

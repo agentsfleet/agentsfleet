@@ -29,7 +29,7 @@ test-util = [
   # private to it.
   "afd_billing/test-util",
   # Admissions::for_tests seeds the real ledger in lease integration tests.
-  "afd_admission/test-util",
+  "afd_turns/test-util",
   # The pointed admission a mixed-kind lease suite places its own queued turn
   # with, beside a runtime lease on the same host.
   "afd_setup/test-util",
@@ -73,7 +73,7 @@ moka.workspace = true
 afd_billing.workspace = true
 # The only writer of `connector.integration_grants`. A delivery that finds no grant
 # asks for one through this crate rather than inserting a row the approval
-# resolve would have to trust — the direction the `afd_events` split below made
+# resolve would have to trust — the direction the `afd_turns` split below made
 # possible, taken the other way.
 afd_approval.workspace = true
 afd_credential.workspace = true
@@ -85,7 +85,7 @@ scopeguard.workspace = true
 # `fleet.events`. The table's statements moved out of this crate's
 # `sql::event` and into the crate named for it, so `afd_approval` could reach
 # them without depending on leases, money, policy and four sweepers.
-afd_events.workspace = true
+afd_turns.workspace = true
 # Owns `fleet.obligations`: the report path commits an obligation through
 # it. The edge runs fleet -> outbound and never back.
 afd_outbound.workspace = true
@@ -94,7 +94,6 @@ afd_outbound.workspace = true
 # can never disagree on what a masked value reads as.
 af_secrets.workspace = true
 # The admission producer identity and stored reply destination.
-afd_admission.workspace = true
 # The connector a reply destination names, parsed from the admission row
 # once, so an obligation carries the type and never a model provider's
 # string. Already in this crate's graph through `afd_outbound`.
@@ -162,7 +161,7 @@ afd_admin = { workspace = true, features = ["test-util"] }
 # (`af_core::test_util::trace`). A dev-dependency feature only.
 af_core = { workspace = true, features = ["test-util"] }
 # The thread row fixture the lease history's caps are proven against.
-afd_events = { workspace = true, features = ["test-util"] }
+afd_turns = { workspace = true, features = ["test-util"] }
 # The credential plane moved out; its client and the zeroizing wrapper are
 # still what the lease suite constructs a stub broker with.
 afd_credential = { workspace = true, features = ["test-util"] }

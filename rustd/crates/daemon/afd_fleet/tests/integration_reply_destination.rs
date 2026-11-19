@@ -18,8 +18,8 @@
 
 use af_core::id::Uuid7;
 use af_wire::event::EventType;
-use afd_admission::{Admission, Admitted, Key, Producer, Reply, sql};
 use afd_db::test_util::mint_id;
+use afd_turns::{Admission, Admitted, Key, Producer, Reply, sql};
 
 use crate::recovery_seed::{admission, ledger, producer_key};
 use crate::seed::seeded_parts;

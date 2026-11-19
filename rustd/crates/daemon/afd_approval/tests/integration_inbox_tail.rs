@@ -96,7 +96,7 @@ async fn assert_swept_frames(lane: &Lane, tail: &mut afd_bus::Subscription) {
     assert_eq!(swept.get("kind"), Some(&json!("gate_resolved")));
     assert_eq!(swept.get("status"), Some(&json!("timed_out")));
     assert_eq!(swept.get("resolved_by"), Some(&json!(SWEEPER)));
-    let counters = afd_events::fleet_counters(&lane.pool, &lane.fleet)
+    let counters = afd_turns::view::fleet_counters(&lane.pool, &lane.fleet)
         .await
         .expect("the counters read back");
     assert_eq!(
@@ -168,7 +168,7 @@ async fn a_bus_that_will_not_take_the_frame_does_not_fail_the_decision() {
     let inbox = Inbox::new(
         lane.pool.clone(),
         afd_bus::test_util::unreachable(),
-        afd_admission::Admissions::for_tests(lane.pool.clone(), afd_bus::test_util::unreachable()),
+        afd_turns::Admissions::for_tests(lane.pool.clone(), afd_bus::test_util::unreachable()),
     );
     let action = lane.seed_gate(Window::Open).await;
 

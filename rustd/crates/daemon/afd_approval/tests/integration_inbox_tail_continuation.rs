@@ -12,8 +12,8 @@
 
 use af_core::id::Uuid7;
 use af_wire::event::EventType;
-use afd_admission::{Admission, Admissions, Key, Producer};
 use afd_approval::{Decision, Inbox, Resolution};
+use afd_turns::{Admission, Admissions, Key, Producer};
 use serde_json::json;
 
 use crate::lane::{Lane, Window};
@@ -39,7 +39,7 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
 
     let approved = lane.seed_gate(Window::Open).await;
     let _still_waiting = lane.seed_gate(Window::Open).await;
-    let before = afd_events::fleet_counters(&lane.pool, &lane.fleet)
+    let before = afd_turns::view::fleet_counters(&lane.pool, &lane.fleet)
         .await
         .expect("the counters read before the resolve");
     let outcome = lane
@@ -123,7 +123,7 @@ async fn a_converged_continuation_announces_nothing() {
 
     // Read AFTER the pre-insert: that row moved the counter legitimately, and
     // what this test asserts is that the RESOLVE moves it no further.
-    let before = afd_events::fleet_counters(&lane.pool, &lane.fleet)
+    let before = afd_turns::view::fleet_counters(&lane.pool, &lane.fleet)
         .await
         .expect("the counters read before the resolve");
 
@@ -207,12 +207,12 @@ async fn preinsert_continuation(lane: &Lane, approved: &Uuid7) -> Uuid7 {
             actor: actor.as_str(),
             event_type: EventType::Continuation,
             request_json: CONTINUATION_BODY,
-            reply: afd_admission::Reply::None,
+            reply: afd_turns::Reply::None,
         })
         .await
         .expect("the admission ledger accepts the continuation");
     // The statement answers `inserted` first, which is the column this reads.
-    let landed: bool = sqlx::query_scalar(afd_events::sql::INSERT_FLEET_EVENT)
+    let landed: bool = sqlx::query_scalar(afd_turns::view::sql::INSERT_FLEET_EVENT)
         .bind(&lane.fleet)
         .bind(&admitted.stored.id)
         .bind(&lane.workspace)

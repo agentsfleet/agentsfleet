@@ -106,7 +106,7 @@ async fn claim_plan(
     .bind(afd_fleet::task::DECISION_POLICY_PATH)
     .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
     .bind(af_core::event::status::RECEIVED)
-    .bind(afd_admission::Producer::Steer.as_str())
+    .bind(afd_turns::Producer::Steer.as_str())
     .bind(true)
     .bind(afd_credential::provider::PLATFORM_MODEL_REF)
     .fetch_one(connection)

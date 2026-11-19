@@ -35,8 +35,8 @@ async fn source_routing(fixture: &Decisions<'_>, task: &DecisionTaskVersion) {
     let source = fixture
         .case
         .source(
-            afd_admission::Producer::Steer,
-            &afd_events::steer_actor("native_decision_owner"),
+            afd_turns::Producer::Steer,
+            &afd_turns::view::steer_actor("native_decision_owner"),
         )
         .await;
     let mut input = (*fixture.reservation(DecisionAssessment::Message, Some(task.clone()))).clone();

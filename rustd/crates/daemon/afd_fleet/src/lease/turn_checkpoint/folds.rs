@@ -24,17 +24,17 @@ pub(super) async fn validate(
     let Some(last) = folds.last() else {
         return Ok(expected);
     };
-    let pattern = format!("{}%", afd_events::ACTOR_PREFIX);
+    let pattern = format!("{}%", afd_turns::view::ACTOR_PREFIX);
     let actual: Vec<ClaimRow> = sqlx::query_as(include_str!("sql/validate_folds.sql"))
         .bind(&owner.current.event_id)
         .bind(&owner.current.fleet_id)
         .bind(&owner.current.workspace_id)
         .bind(last.sequence)
         .bind(16_385_i64)
-        .bind(afd_admission::Producer::Steer.as_str())
-        .bind(afd_events::ACTOR_MACHINE)
+        .bind(afd_turns::Producer::Steer.as_str())
+        .bind(afd_turns::view::ACTOR_MACHINE)
         .bind(pattern)
-        .bind(afd_admission::Producer::SlackMention.as_str())
+        .bind(afd_turns::Producer::SlackMention.as_str())
         .bind(afd_connector::Provider::Slack.id())
         .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
         .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)

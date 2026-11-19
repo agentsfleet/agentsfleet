@@ -42,7 +42,7 @@ async fn closing_cost_counts_the_reports_own_lines() {
     .execute(&mut *held.fixtures.database.acquire().await.expect("biller"))
     .await
     .expect("an earlier line of the event");
-    let before = afd_events::fleet_counters(&held.fixtures.database, &held.fleet)
+    let before = afd_turns::view::fleet_counters(&held.fixtures.database, &held.fleet)
         .await
         .expect("counters");
     let lease = reported(&held).await;

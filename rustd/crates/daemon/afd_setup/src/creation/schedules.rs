@@ -17,7 +17,7 @@ impl Creations {
         version: i64,
         definition: &Definition,
         now: Timestamp,
-    ) -> Result<afd_events::activity::Announcement> {
+    ) -> Result<afd_turns::view::activity::Announcement> {
         let recipes: Vec<_> = definition
             .runtime()
             .triggers()

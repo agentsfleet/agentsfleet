@@ -27,7 +27,7 @@ fn lifted_stores() -> Result<[Error; 6], &'static str> {
         Error::from(afd_gate::Error::from(first_db_error()?)),
         Error::from(afd_credential::Error::from(first_db_error()?)),
         Error::from(afd_billing::Error::from(first_db_error()?)),
-        Error::from(afd_events::Error::from(first_db_error()?)),
+        Error::from(afd_turns::view::Error::from(first_db_error()?)),
         Error::from(afd_outbound::Error::from(first_db_error()?)),
     ])
 }

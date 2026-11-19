@@ -55,7 +55,7 @@ impl Inbox {
         let landed = self
             .admissions
             .find_repeated(
-                afd_admission::Producer::GateContinuation,
+                afd_turns::Producer::GateContinuation,
                 resolved.action_id.as_str(),
             )
             .await?;

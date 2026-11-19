@@ -25,7 +25,7 @@ const_format.workspace = true
 # The schedule store and its vocabulary, which the schedules verb drives.
 afd_cron.workspace = true
 # A schedule's runs are its events, read through the history listing.
-afd_events.workspace = true
+afd_turns.workspace = true
 afd_fleet.workspace = true
 # Run-now refuses a fleet that is not taking work, as the QStash callback does.
 afd_fleet_lifecycle.workspace = true

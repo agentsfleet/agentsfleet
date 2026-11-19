@@ -10,8 +10,8 @@
 )]
 
 use af_core::id::Uuid7;
-use afd_admission::{Admissions, Budgets};
 use afd_approval::{Decision, Inbox, Resolution};
+use afd_turns::{Admissions, Budgets};
 
 use crate::lane::{Lane, Window, sweeper_exclusive};
 

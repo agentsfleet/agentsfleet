@@ -44,7 +44,7 @@ pub(super) fn logins(database: &Db) -> Logins {
     clippy::disallowed_methods,
     reason = "the fixture scheduler client names a reserved .test host that never resolves; a proxy rule and a deadline are not what the router suites prove"
 )]
-pub(super) fn schedules(database: &Db, ledger: &afd_admission::Admissions) -> SchedulePlane {
+pub(super) fn schedules(database: &Db, ledger: &afd_turns::Admissions) -> SchedulePlane {
     SchedulePlane::new(
         ScheduleService::new(
             CronSchedules::new(database.clone(), Entropy::new()),
@@ -60,7 +60,7 @@ pub(super) fn schedules(database: &Db, ledger: &afd_admission::Admissions) -> Sc
     )
 }
 
-pub(super) fn ingress(database: &Db, ledger: &afd_admission::Admissions) -> HarnessIngress {
+pub(super) fn ingress(database: &Db, ledger: &afd_turns::Admissions) -> HarnessIngress {
     HarnessIngress::Unreachable(Box::new(afd_ingress::Ingress::new(
         database.clone(),
         vault(database.clone()),

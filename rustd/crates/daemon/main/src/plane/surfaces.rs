@@ -11,10 +11,10 @@ use std::sync::Arc;
 
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
-use afd_admission::Admissions;
 use afd_credential::provider::Providers;
 use afd_db::Db;
 use afd_tenant::session::Sessions as Logins;
+use afd_turns::Admissions;
 
 use super::config::{LoginConfig, ScheduleConfig};
 use super::{config, platform};

@@ -13,7 +13,7 @@ use af_observability::producers;
 use af_wire::fold::{FOLDS_PER_CLAIM_MAX, FoldRequest, FoldResponse, FoldedInput};
 use sqlx::PgConnection;
 
-use afd_events::Closed;
+use afd_turns::view::Closed;
 
 use crate::error::{Result, query};
 use crate::lease::pull::LeaseService;
@@ -123,10 +123,10 @@ impl Leases {
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(after_sequence)
             .bind(i64::from(FOLDS_PER_CLAIM_MAX))
-            .bind(afd_admission::Producer::Steer.as_str())
-            .bind(afd_events::ACTOR_MACHINE)
-            .bind(format!("{}%", afd_events::ACTOR_PREFIX))
-            .bind(afd_admission::Producer::SlackMention.as_str())
+            .bind(afd_turns::Producer::Steer.as_str())
+            .bind(afd_turns::view::ACTOR_MACHINE)
+            .bind(format!("{}%", afd_turns::view::ACTOR_PREFIX))
+            .bind(afd_turns::Producer::SlackMention.as_str())
             .bind(afd_connector::Provider::Slack.id())
             .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
             .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
@@ -186,7 +186,7 @@ impl Leases {
                 ..Folds::default()
             });
         }
-        sqlx::query(afd_events::sql::OPEN_FOLDED_EVENTS)
+        sqlx::query(afd_turns::view::sql::OPEN_FOLDED_EVENTS)
             .bind(&lease.fleet_id)
             .bind(&settled)
             .bind(&lease.event_id)

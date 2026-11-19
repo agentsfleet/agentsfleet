@@ -258,7 +258,7 @@ export function mergeBackfill(
   // id for its STATUS and figures — an event that straddled an outage may sit
   // here as a partial chunk accumulation, and the durable row is the settled
   // one. It is NOT authoritative for the bodies: the events LIST carries
-  // none (`afd_events` history/statement/mod.rs asserts the select omits
+  // none (`afd_turns` history/statement/mod.rs asserts the select omits
   // `response_text`, and it omits `request_json` too), so taking the row
   // wholesale would blank a message the operator has already read. The live
   // text is kept for the same reason; the calls follow `settleTools`.

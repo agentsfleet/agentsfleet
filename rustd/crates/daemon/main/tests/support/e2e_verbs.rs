@@ -17,9 +17,9 @@
 use std::sync::{Arc, Mutex};
 
 use af_core::id::Uuid7;
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_connector::Provider;
 use afd_connector::test_util::FakeSlack;
+use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 use axum::Router;
 use axum::extract::Path;
 use axum::http::HeaderMap;

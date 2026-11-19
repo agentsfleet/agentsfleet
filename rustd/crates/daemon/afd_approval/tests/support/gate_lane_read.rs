@@ -65,7 +65,7 @@ impl Lane {
             "SELECT settled_at IS NULL FROM fleet.admissions \
              WHERE producer = $1 AND producer_key = $2",
         )
-        .bind(afd_admission::Producer::GateContinuation.as_str())
+        .bind(afd_turns::Producer::GateContinuation.as_str())
         // The admission key is TEXT: the gate's action id, spelled out.
         .bind(action.as_str())
         .fetch_optional(&mut *connection)

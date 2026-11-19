@@ -17,7 +17,7 @@
 //! `afd_api::handler::webhook::github`, beside the route whose policy decides
 //! it. This crate never parses a provider's body.
 //!
-//! # Why it is not part of `afd_events`
+//! # Why it is not part of `afd_turns`
 //!
 //! That crate owns the same table's reads and the steer's append, and it is the
 //! obvious home until you count what would come with this: `afd_vault` drags
@@ -66,8 +66,8 @@ pub mod sql;
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use afd_admission::Admissions;
 use afd_db::Db;
+use afd_turns::Admissions;
 use afd_vault::Vault;
 
 pub use self::app::{Fanout, MAX_FANOUT, replay_id};
@@ -76,10 +76,10 @@ pub use self::deliver::{Delivery, Surface};
 pub use self::error::{Error, Result};
 
 // Re-exported because it is part of [`Ingress::deliver`]'s answer, and a
-// caller that has to name `afd_admission` to read this crate's return type
+// caller that has to name `afd_turns` to read this crate's return type
 // would be a caller depending on a ledger it never opens. `afd_api` states in
 // its own manifest that nothing in it opens a pool, and that stays true here.
-pub use afd_admission::Admitted;
+pub use afd_turns::Admitted;
 
 /// The context a failed fleet read reports under.
 const CONTEXT_BINDING: &str = "resolve a webhook binding";

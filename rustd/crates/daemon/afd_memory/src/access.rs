@@ -154,7 +154,7 @@ impl Directory {
             .fetch_one(&mut *tx)
             .await
             .map_err(query(CONTEXT_GRANT))?;
-        let announcement = afd_events::activity::record_on(
+        let announcement = afd_turns::view::activity::record_on(
             &mut tx,
             workspace,
             fleet,
@@ -165,7 +165,7 @@ impl Directory {
         )
         .await
         .map_err(query(CONTEXT_GRANT))?;
-        afd_events::activity::commit(tx, announcement, streams)
+        afd_turns::view::activity::commit(tx, announcement, streams)
             .await
             .map_err(query(CONTEXT_GRANT))?;
         Ok(Some(access.into()))

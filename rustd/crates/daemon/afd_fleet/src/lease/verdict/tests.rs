@@ -1,6 +1,6 @@
 use af_core::event::status;
 use af_wire::report::{FailureClass, Outcome};
-use afd_events::sql::MAX_FAILURE_DETAIL_BYTES;
+use afd_turns::view::sql::MAX_FAILURE_DETAIL_BYTES;
 
 use super::Verdict;
 

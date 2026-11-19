@@ -186,7 +186,7 @@ impl LeaseService {
             return None;
         }
         // The identifier is passed WHOLE. It used to be parsed as a `Uuid7`
-        // first, which could not succeed: `afd_admission::admit` is the only
+        // first, which could not succeed: `afd_turns::admit` is the only
         // thing that mints one and it spells `<millis>-<sequence>`, so every
         // write-bound delivery lost its branch and the assembly refused the
         // event.

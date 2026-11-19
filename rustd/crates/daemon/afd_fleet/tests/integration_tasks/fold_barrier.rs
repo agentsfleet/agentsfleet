@@ -1,7 +1,7 @@
 //! A live run never folds a message that sits behind a task-bound one.
 
-use afd_admission::Producer;
 use afd_fleet::task::TaskLifecycle as _;
+use afd_turns::Producer;
 
 use super::fixture::{Case, exercise};
 
@@ -16,7 +16,7 @@ async fn a_task_bound_message_stops_a_live_runs_fold() {
 
 async fn claim_around_bound_continuations(case: &Case) {
     let held = &case.held;
-    let actor = afd_events::steer_actor("native_task_owner");
+    let actor = afd_turns::view::steer_actor("native_task_owner");
     let before = case
         .source_message(Producer::Steer, &actor, "check the logs first")
         .await;

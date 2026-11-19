@@ -21,7 +21,6 @@ use af_observability::Analytics;
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::tenant::Billing;
 use afd_credential::provider::Providers;
-use afd_events::History;
 use afd_fleet::lease::LeaseService;
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
@@ -34,6 +33,7 @@ use afd_tenant::models::Models;
 use afd_tenant::preference::Preferences;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
+use afd_turns::view::History;
 use afd_vault::Vault as SecretVault;
 use jiff::Timestamp;
 
@@ -68,7 +68,7 @@ impl Services for ServingPlane {
     type Ingress = afd_ingress::Ingress;
     type Schedules = afd_api::SchedulePlane;
     type Connectors = afd_connector::Connectors;
-    type Steering = afd_events::Steer;
+    type Steering = afd_turns::view::Steer;
     type Memories = Memories;
 
     fn authenticator(&self) -> &Self::Auth {
@@ -168,7 +168,7 @@ impl Services for ServingPlane {
         &self.analytics
     }
 
-    fn steering(&self) -> &afd_events::Steer {
+    fn steering(&self) -> &afd_turns::view::Steer {
         &self.activity.steering
     }
 

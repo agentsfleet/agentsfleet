@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use af_wire::event::EventType;
-use afd_admission::{Admission, Admitted, Key, Producer, Reply};
+use afd_turns::{Admission, Admitted, Key, Producer, Reply};
 
 use crate::Ingress;
 use crate::error::Result;

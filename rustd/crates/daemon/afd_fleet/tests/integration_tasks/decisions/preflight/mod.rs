@@ -72,8 +72,8 @@ async fn proposed(fixture: &Decisions<'_>) -> TaskBindingsInput {
     let case = fixture.case;
     let source = case
         .source_message(
-            afd_admission::Producer::Steer,
-            &afd_events::steer_actor("native_task_owner"),
+            afd_turns::Producer::Steer,
+            &afd_turns::view::steer_actor("native_task_owner"),
             MESSAGE,
         )
         .await;

@@ -313,7 +313,7 @@ fn event_ids(page: &Value) -> Vec<&Value> {
 /// them in, with `event_id` breaking a same-millisecond tie the same way.
 async fn record_event(run: &Scenario, event: &Uuid7, actor: &str) {
     let mut connection = run.booted.database.acquire().await.expect("a connection");
-    sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
+    sqlx::query(afd_turns::view::sql::INSERT_FLEET_EVENT)
         .bind(&run.fleet)
         .bind(event)
         .bind(&run.workspace)

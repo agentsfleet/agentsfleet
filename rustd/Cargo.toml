@@ -29,7 +29,7 @@ resolver = "3"
 members = [
     "crates/foundation/af_config",
     "crates/daemon/afd_admin",
-    "crates/daemon/afd_admission",
+    "crates/daemon/afd_turns",
     "crates/daemon/afd_api",
     "crates/daemon/afd_api_ingress",
     "crates/daemon/afd_api_operator",
@@ -49,7 +49,6 @@ members = [
     "crates/daemon/afd_cron",
     "crates/foundation/af_crypto",
     "crates/daemon/afd_db",
-    "crates/daemon/afd_events",
     "crates/daemon/afd_fleet",
     "crates/daemon/afd_fleet_lifecycle",
     "crates/daemon/afd_fleet_ops",
@@ -125,10 +124,10 @@ memmap2 = { version = "0.9.12", default-features = false }
 afd_admin = { path = "crates/daemon/afd_admin" }
 # The admission ledger: the Postgres row that IS a producer's acceptance, and
 # the queue entry that is only its receipt. Its own crate for the reason
-# `afd_events` gives for existing — one owner per table — and because every
-# producer crate (`afd_events`, `afd_ingress`, `afd_cron`, `afd_approval`,
+# `afd_turns` gives for existing — one owner per table — and because every
+# producer crate (`afd_turns`, `afd_ingress`, `afd_cron`, `afd_approval`,
 # `afd_runner`) admits through it while none of them may depend on another.
-afd_admission = { path = "crates/daemon/afd_admission" }
+afd_turns = { path = "crates/daemon/afd_turns" }
 afd_api = { path = "crates/daemon/afd_api" }
 afd_api_ingress = { path = "crates/daemon/afd_api_ingress" }
 afd_api_operator = { path = "crates/daemon/afd_api_operator" }
@@ -159,7 +158,6 @@ afd_db = { path = "crates/daemon/afd_db" }
 # had no owner: its statements sat in `afd_fleet::sql` behind the whole runner
 # plane, so `afd_approval` copied the insert rather than depend on leases,
 # money, policy and four sweepers to reuse ten lines of SQL.
-afd_events = { path = "crates/daemon/afd_events" }
 afd_fleet = { path = "crates/daemon/afd_fleet" }
 # What a fleet is ALLOWED to do, and the gate a run stops at when the answer
 # needs a person. The lease plane calls down into it at two moments and it
@@ -182,7 +180,7 @@ afd_fleet_lifecycle = { path = "crates/daemon/afd_fleet_lifecycle" }
 afd_fleet_ops = { path = "crates/daemon/afd_fleet_ops" }
 af_fleet_runtime = { path = "crates/protocol/af_fleet_runtime" }
 afd_identity = { path = "crates/daemon/afd_identity" }
-# What a signed delivery is resolved against. Not folded into `afd_events`,
+# What a signed delivery is resolved against. Not folded into `afd_turns`,
 # which owns the same table's reads: this needs the vault and the config
 # parser, and adding them there would put AES-GCM and a configuration
 # document reader behind every history page the dashboard asks for. The same argument

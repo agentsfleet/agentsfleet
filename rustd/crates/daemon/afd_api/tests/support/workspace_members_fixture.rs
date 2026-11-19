@@ -11,9 +11,9 @@ use afd_auth::scope::{Scope, ScopeSet, TENANT_OWNER_GRANT};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
-use afd_events::ACTOR_PREFIX;
 use afd_tenant::test_util::{Signup, delete_accounts, sign_up};
 use afd_tenant::workspace::access::ROLE_MEMBER;
+use afd_turns::view::ACTOR_PREFIX;
 use axum::Router;
 
 use crate::harness::{self, Fleet};

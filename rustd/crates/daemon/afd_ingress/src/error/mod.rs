@@ -74,7 +74,7 @@ pub(crate) enum ErrorKind {
     #[error("the delivery could not be admitted")]
     Admission {
         #[source]
-        source: afd_admission::Error,
+        source: afd_turns::Error,
     },
 
     #[error("the stored fleet document no longer parses")]

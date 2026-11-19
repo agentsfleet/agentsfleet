@@ -3,9 +3,9 @@
 //! model call; a message that lands after the claim folds on the ask after
 //! the answer.
 
-use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
 use afd_fleet::lease::Verdict;
+use afd_turns::{Producer, Reply};
 
 use super::support::{
     Checked, STEER_JSON, STEER_TEXT, claim_as_holder, report_read_through, send, send_to,

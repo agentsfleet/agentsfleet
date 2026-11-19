@@ -248,7 +248,7 @@ Conversation cursors bind creator, workspace, fleet, and ordering. Each conversa
 
 The fleet, conversations, and receipts are bounded independent reads, rather than one database snapshot. Every private conversation checks current membership and creator ownership.
 
-The existing GET F/messages includes undelivered, unsettled steer admissions alongside delivered history in one statement snapshot (`afd_events`'s thread-page statements). It preserves the queued-message shape, logical event ID, ordering, cursor, and authorization across delivery and settlement.
+The existing GET F/messages includes undelivered, unsettled steer admissions alongside delivered history in one statement snapshot (`afd_turns`'s thread-page statements). It preserves the queued-message shape, logical event ID, ordering, cursor, and authorization across delivery and settlement.
 
 A message that folded into a live run keeps its own event. Once the run's report succeeds, that event carries `resumes_event_id`, naming the run, and the run's answer as its reply.
 

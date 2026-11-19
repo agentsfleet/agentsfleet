@@ -5,7 +5,7 @@
 //!
 //! # One ledger statement decides the answer
 //!
-//! The handler reads no fleet and no status of its own. `afd_events::Steer`
+//! The handler reads no fleet and no status of its own. `afd_turns::view::Steer`
 //! hands the message to the admission ledger, whose single statement decides
 //! ownership, a repeat of the caller's operation id, the fleet's status and
 //! the deployment ceiling together. A fleet this workspace does not hold is a
@@ -19,7 +19,7 @@
 //! fleet was archived since, because the message is already on its
 //! way to run. The statement reads the key before it checks the status, and its
 //! own insert answers a repeat, so no lookup runs ahead of it
-//! (`afd_events::steer`).
+//! (`afd_turns::view::steer`).
 //!
 //! # The 202 says where the message went
 //!
@@ -36,8 +36,8 @@ use af_core::error_code;
 use af_validate::Sentences;
 use af_wire::event::{EventType, SteerAccepted, SteerRequest};
 use afd_api_wire::tail::TailFrame;
-use afd_events::Steered;
-use afd_events::disposition::{Placed, SteerDisposition};
+use afd_turns::view::Steered;
+use afd_turns::view::disposition::{Placed, SteerDisposition};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -250,7 +250,7 @@ fn accepted(event_id: String, replayed: bool, placed: Placed) -> Response {
 /// 404, a fleet that takes no work a 409 naming its status, a reused operation
 /// id a 409 naming the state the id is in; everything else renders as its plane
 /// decided.
-fn refuse_steer(error: afd_events::Error) -> Refusal {
+fn refuse_steer(error: afd_turns::view::Error) -> Refusal {
     if error.is_fleet_absent() {
         Refusal::coded(error_code::AGENTSFLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND)
     } else if let Some(status) = error.not_runnable() {
@@ -276,9 +276,9 @@ fn actor_for(person: &afd_auth::principal::Person) -> String {
         // the whole point of a user-scoped credential is that a steer from a
         // terminal is attributable to one.
         PersonCredential::SessionToken { .. } | PersonCredential::CliCredential => {
-            afd_events::steer_actor(person.subject().as_str())
+            afd_turns::view::steer_actor(person.subject().as_str())
         }
-        PersonCredential::TenantApiKey => afd_events::ACTOR_MACHINE.to_owned(),
+        PersonCredential::TenantApiKey => afd_turns::view::ACTOR_MACHINE.to_owned(),
     }
 }
 

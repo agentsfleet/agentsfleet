@@ -112,7 +112,7 @@ impl Error {
 
     /// Whether the ledger could not be reached.
     ///
-    /// The accessor `afd_admission` and its siblings carry, so a crate
+    /// The accessor `afd_turns` and its siblings carry, so a crate
     /// wrapping this error asks the question instead of comparing codes.
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {

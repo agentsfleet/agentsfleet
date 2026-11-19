@@ -169,8 +169,8 @@ impl CronLane {
     ///
     /// Built from the lane's own pool and its bus, so a test names what it is
     /// exercising rather than restating how a ledger is assembled.
-    pub(crate) fn admissions(&self) -> afd_admission::Admissions {
-        afd_admission::Admissions::for_tests(self.database.clone(), self.bus.clone())
+    pub(crate) fn admissions(&self) -> afd_turns::Admissions {
+        afd_turns::Admissions::for_tests(self.database.clone(), self.bus.clone())
     }
 
     /// One connection on the lane, for the direct reads a case needs.

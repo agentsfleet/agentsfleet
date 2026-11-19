@@ -4,7 +4,7 @@
     reason = "a test asserts by panicking, and indexes the JSON it built"
 )]
 
-use afd_events::{CallAddress, ToolCallRow};
+use afd_turns::view::{CallAddress, ToolCallRow};
 
 use super::{detail, parse_call_id};
 

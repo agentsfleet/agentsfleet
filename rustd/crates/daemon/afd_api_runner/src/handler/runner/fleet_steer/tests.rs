@@ -11,8 +11,8 @@ use std::collections::BTreeSet;
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
-use afd_events::FleetSteered;
 use afd_fleet::lease::Standing;
+use afd_turns::view::FleetSteered;
 
 use super::{EVENT_ADMITTED, EVENT_REFUSED, log_admitted, log_refused};
 

@@ -502,7 +502,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
 
    STEER     agentsfleet fleet steer <fleet_id> "morning health check"
                → POST /v1/.../fleets/{id}/messages
-               → one write (afd_admission's admit_one.sql), then one read of run facts:
+               → one write (afd_turns's admit_one.sql), then one read of run facts:
                  INSERT fleet.admissions
                       actor=steer:kishore  type=chat
                       workspace_id=<ws>    request=<msg>
@@ -595,7 +595,7 @@ The callback signature covers its destination URL, exact body and message identi
 Ingress selects the schedule through `Upstash-Schedule-Id`, outside that signature; cryptographic target and revision binding stay unresolved.
 Schedule activity snapshots describe database state at acceptance.
 
-Schedule history uses `afd_api_wire::activity::FleetActivity` and the existing `afd_events::activity` receipt writer.
+Schedule history uses `afd_api_wire::activity::FleetActivity` and the existing `afd_turns::activity` receipt writer.
 `afd_cron::store::history` records create/edit/pause/removal intent and fenced sync outcomes on the schedule transaction.
 Setup recipes append receipts to the author's transaction; confirmed deletion keeps the held description and message.
 
@@ -604,7 +604,7 @@ These receipts admit no work and create no Durable Task.
 The history scope uses `FOR NO KEY UPDATE`, allowing a session's foreign-key check to progress during child-row waits.
 
 An accepted fire stores its message and resolved schedule description on the original cron admission.
-`afd_events::History::thread_page` includes queued `ScheduleFire` and `Steer` admissions, then reads the same identity after leasing.
+`afd_turns::History::thread_page` includes queued `ScheduleFire` and `Steer` admissions, then reads the same identity after leasing.
 
 The app renders the message and recorded outcome directly; native run details become available once the event exists.
 Historical receipt snapshots stay separate from current registration and retry controls.
@@ -823,7 +823,7 @@ lost wake -> the next 5 s recovery probe still reads the ledger
 
 Do not delete the retained fleet on setup failure. Do not claim activation after a zero-row update or submit another initial event on retry.
 
-Undelivered, unsettled steer admissions take part in ordinary message history alongside delivered events in one statement snapshot. That history carries stable event identity and pagination (`afd_events`'s `select_thread_page.sql`). No creation worker is introduced.
+Undelivered, unsettled steer admissions take part in ordinary message history alongside delivered events in one statement snapshot. That history carries stable event identity and pagination (`afd_turns`'s `select_thread_page.sql`). No creation worker is introduced.
 
 ## Proposed Durable Task admission
 

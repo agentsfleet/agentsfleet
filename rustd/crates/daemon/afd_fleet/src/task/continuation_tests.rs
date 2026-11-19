@@ -7,7 +7,7 @@
 )]
 
 use af_core::id::Uuid7;
-use afd_admission::Reply;
+use afd_turns::Reply;
 
 use super::Continuation;
 use crate::{

@@ -38,7 +38,7 @@ async fn archive_marks_running_leases_before_another_replica_receives_the_cancel
         database: case.base.db.clone(),
         observed,
     });
-    let admissions = afd_admission::Admissions::new(
+    let admissions = afd_turns::Admissions::new(
         case.base.db.clone(),
         publisher,
         af_crypto::entropy::Entropy::new(),

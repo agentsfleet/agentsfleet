@@ -10,7 +10,7 @@ use crate::{
 };
 use af_core::{id::Uuid7, problem::Problem};
 use af_wire::authoring::{Report, Reported};
-use afd_events::activity::Announcement;
+use afd_turns::view::activity::Announcement;
 use sqlx::{Connection as _, PgConnection};
 
 /// The turn a save request rides: its locked draft, its message, and the

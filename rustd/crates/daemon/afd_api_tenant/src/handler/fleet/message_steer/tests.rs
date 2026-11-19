@@ -12,7 +12,7 @@
 
 use af_observability::metrics::label::fleet::SteerPlaced;
 use af_wire::event::STEER_MESSAGE_MAX_BYTES;
-use afd_events::disposition::{Placed, SteerDisposition};
+use afd_turns::view::disposition::{Placed, SteerDisposition};
 use axum::body::Bytes;
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
@@ -43,7 +43,7 @@ fn person(credential: PersonCredential) -> Person {
 /// a person created it.
 #[test]
 fn a_steer_is_attributed_to_a_person_only_when_one_sent_it() {
-    let human = afd_events::steer_actor(HUMAN);
+    let human = afd_turns::view::steer_actor(HUMAN);
     let session = person(PersonCredential::SessionToken {
         workspace_scope: None,
     });
@@ -51,7 +51,7 @@ fn a_steer_is_attributed_to_a_person_only_when_one_sent_it() {
     assert_eq!(actor_for(&person(PersonCredential::CliCredential)), human);
     assert_eq!(
         actor_for(&person(PersonCredential::TenantApiKey)),
-        afd_events::ACTOR_MACHINE
+        afd_turns::view::ACTOR_MACHINE
     );
 }
 
@@ -62,7 +62,7 @@ fn a_steer_is_attributed_to_a_person_only_when_one_sent_it() {
 /// "admitted" would tell a caller to stop retrying a message that never landed.
 #[test]
 fn only_a_reused_id_is_answered_as_admitted() {
-    for (label, error) in afd_events::error::one_of_each_kind() {
+    for (label, error) in afd_turns::view::error::one_of_each_kind() {
         let conflict = error.is_operation_conflict();
         let status = refuse_steer(error).into_response().status();
         assert_eq!(

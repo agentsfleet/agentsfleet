@@ -2,9 +2,9 @@
 //! never claimed, never in the way, and never sent this run's answer.
 
 use af_core::id::Uuid7;
-use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
 use afd_fleet::lease::Verdict;
+use afd_turns::{Producer, Reply};
 
 use super::support::{
     Checked, STEER_JSON, STEER_TEXT, Settlement, address_head, claim_as_holder, link_slack_person,

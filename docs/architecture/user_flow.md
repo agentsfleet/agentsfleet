@@ -202,7 +202,7 @@ In addition to the declared triggers, every Fleet always accepts:
 
 - **User steer.** The user asks Claude to run an operational task. Claude invokes `agentsfleet fleet steer {id} "<message>"` or uses the dashboard's composer on `/fleets/{id}`, which POSTs to `/v1/workspaces/{ws}/fleets/{id}/messages`.
 
-  `afd_events::Steer::append` commits a `fleet.admissions` row with `actor=steer:<user>` and sends a best-effort wake notification. Webhook and cron use the same admission ledger.
+  `afd_turns::Steer::append` commits a `fleet.admissions` row with `actor=steer:<user>` and sends a best-effort wake notification. Webhook and cron use the same admission ledger.
 
   The 202 answer names a disposition. A message sent while the fleet's run is live is `folded` into that run, which takes it at its next model call. Otherwise the message has `started` a run of its own, or is `queued` behind the work ahead of it.
 

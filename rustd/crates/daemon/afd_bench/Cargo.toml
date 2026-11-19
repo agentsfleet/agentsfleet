@@ -27,7 +27,7 @@ afd_memory.workspace = true
 # Enrolling the runners a lease is issued to.
 afd_runner.workspace = true
 # The steer ingress path the steer lane drives.
-afd_events.workspace = true
+afd_turns.workspace = true
 # The rest of the lease plane the drain composes: `Plane::lease` walks past the
 # claim into the payer's wallet (`afd_billing`), the provider
 # (`afd_credential`), the vault (`afd_vault`), the approval gate (`afd_gate`)
@@ -72,7 +72,6 @@ af_core = { workspace = true, features = ["sqlx"] }
 # The entropy surface a lease mints its identifiers from.
 # The ledger a steer is admitted through. The lane builds one so its
 # measured cost is the production path's, not a shortcut around it.
-afd_admission.workspace = true
 af_crypto.workspace = true
 # The enrolment request shape a seeded runner is registered with.
 af_wire.workspace = true

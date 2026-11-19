@@ -4,7 +4,7 @@ use super::super::{PreparedItem, PreparedPlan, TaskBinding, TaskLease, Tasks, gu
 use super::{input, insert, prepare::Wake, source::Source};
 use crate::Result;
 use af_core::id::Uuid7;
-use afd_admission::PreparedAdmission;
+use afd_turns::PreparedAdmission;
 
 pub(super) struct Writer<'a> {
     pub tasks: &'a Tasks,

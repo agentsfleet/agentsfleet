@@ -62,7 +62,7 @@ serde_json.workspace = true
 af_inference.workspace = true
 afd_admin.workspace = true
 # The one admission ledger every producer in this process shares.
-afd_admission.workspace = true
+afd_turns.workspace = true
 # The client every credential exchange is posted through. Built here rather than
 # inside the broker because a connection pool and a deadline are composition-root
 # decisions, and one client per process is what a pool IS.
@@ -78,7 +78,6 @@ afd_billing.workspace = true
 afd_credential.workspace = true
 # `signal::shutdown`, the stop `serve` waits on.
 af_core = { workspace = true, features = ["signal", "sqlx"] }
-afd_events.workspace = true
 # The instant `Services::now` hands every handler.
 jiff.workspace = true
 # The composition root: this crate is the one that names which directory,

@@ -18,7 +18,7 @@ use af_wire::lease::{
     ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, HISTORY_BYTES_MAX, HISTORY_TURNS_MAX,
     TURN_TEXT_BYTES_MAX, Turn,
 };
-use afd_events::{Cursor, EventDetailRow, History};
+use afd_turns::view::{Cursor, EventDetailRow, History};
 
 use crate::lease::envelope::Acquired;
 
@@ -40,7 +40,7 @@ pub trait Thread: Send + Sync + Debug {
         fleet: &Uuid7,
         at: &Cursor,
         limit: i64,
-    ) -> afd_events::Result<Vec<EventDetailRow>>;
+    ) -> afd_turns::view::Result<Vec<EventDetailRow>>;
 }
 
 #[async_trait::async_trait]
@@ -51,7 +51,7 @@ impl Thread for History {
         fleet: &Uuid7,
         at: &Cursor,
         limit: i64,
-    ) -> afd_events::Result<Vec<EventDetailRow>> {
+    ) -> afd_turns::view::Result<Vec<EventDetailRow>> {
         Self::finished_before(self, workspace, fleet, at, limit).await
     }
 }

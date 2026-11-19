@@ -21,7 +21,7 @@ use std::sync::Arc;
 use af_core::paging::Ceiling;
 use af_validate::Limit;
 use af_wire::event::ThreadResponse;
-use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
+use afd_turns::view::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
 use axum::Json;
 use axum::extract::{Path, Query, RawQuery, State, rejection::QueryRejection};
 use axum::response::{IntoResponse as _, Response};

@@ -45,7 +45,7 @@ pub(super) async fn claim(
     let task = task_parameters();
     let fleet_active = sql::FLEET_STATUS_ACTIVE;
     let received = af_core::event::status::RECEIVED;
-    let steer = afd_admission::Producer::Steer.as_str();
+    let steer = afd_turns::Producer::Steer.as_str();
     let model = afd_credential::provider::PLATFORM_MODEL_REF;
     explain(connection, &format!("gate_claim('{fleet}','{runner}','{ttl} seconds','{offline} seconds','{runner_active}','{active}','{expired}',{task},'{fleet_active}','{received}','{steer}',true,'{model}')")).await
 }

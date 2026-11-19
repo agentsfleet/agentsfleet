@@ -90,7 +90,7 @@ pub(crate) async fn settle_report(
 #[derive(Debug, Clone)]
 pub struct Tasks {
     leases: Leases,
-    admissions: afd_admission::Admissions,
+    admissions: afd_turns::Admissions,
     dependencies: TaskDependencies,
 }
 
@@ -99,7 +99,7 @@ impl Tasks {
     #[must_use]
     pub const fn new(
         leases: Leases,
-        admissions: afd_admission::Admissions,
+        admissions: afd_turns::Admissions,
         dependencies: TaskDependencies,
     ) -> Self {
         Self {

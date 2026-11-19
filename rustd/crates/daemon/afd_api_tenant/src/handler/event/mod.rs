@@ -36,7 +36,7 @@ use std::sync::Arc;
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_wire::event::{EventDetail, EventsResponse};
-use afd_events::{Cursor, EventDetailRow, EventRow, next_cursor};
+use afd_turns::view::{Cursor, EventDetailRow, EventRow, next_cursor};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};

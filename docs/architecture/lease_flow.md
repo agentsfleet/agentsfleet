@@ -275,7 +275,7 @@ Hard tool and secret policy stays in `policy`. The daemon compiles the egress ru
 
 So writing "post the review" in the instructions (which the fixture already does) changes the model's intent, not the admission.
 
-**A chat message uses the same admission path.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` creates its own `chat` admission (`afd_events`'s steer module).
+**A chat message uses the same admission path.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` creates its own `chat` admission (`afd_turns`'s steer module).
 
 The 202 names a `disposition`: `started`, `folded` or `queued`. With no run live, the message waits for the single affinity slot (`queue::CLAIM_HEAD`, `afd_fleet`'s lease queue). It then starts a run of its own.
 

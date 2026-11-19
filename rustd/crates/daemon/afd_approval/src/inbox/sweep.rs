@@ -116,7 +116,7 @@ impl Inbox {
         } else {
             self.wake_parked_delivery(&swept.fleet).await;
             let counters =
-                afd_events::fleet_counters_best_effort(&self.database, &swept.fleet).await;
+                afd_turns::view::fleet_counters_best_effort(&self.database, &swept.fleet).await;
             read.insert(swept.fleet.clone(), counters);
             counters
         };

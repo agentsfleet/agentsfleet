@@ -116,7 +116,7 @@ impl Fixtures {
                 Arc::new(Registry::default()),
                 Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),
             )),
-            thread: Arc::new(afd_events::History::new(self.database.clone())),
+            thread: Arc::new(afd_turns::view::History::new(self.database.clone())),
         }
     }
 

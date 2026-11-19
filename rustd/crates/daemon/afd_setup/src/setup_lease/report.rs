@@ -13,7 +13,7 @@
 use af_core::{error_code, id::Uuid7};
 use af_fleet_runtime::Definition;
 use af_wire::{authoring::FailureReason, lease::SetupProposal};
-use afd_events::activity::Announcement;
+use afd_turns::view::activity::Announcement;
 use jiff::Timestamp;
 use sqlx::PgConnection;
 
@@ -209,7 +209,7 @@ impl Creations {
         owed: SetupOwed,
     ) -> Result<()> {
         let streams = self.activity_streams();
-        afd_events::activity::commit(transaction, announcement, Some(&streams))
+        afd_turns::view::activity::commit(transaction, announcement, Some(&streams))
             .await
             .map_err(query(sql::CONTEXT))?;
         owed.settle(&self.setup.drafts);

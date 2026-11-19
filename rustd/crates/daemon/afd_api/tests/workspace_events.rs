@@ -87,7 +87,7 @@ const EVENT_ABSENT: Refusal = (
 );
 
 /// What an unreachable datastore earns. Spelled out rather than imported:
-/// `afd_events` keeps the sentence private, and a byte-parity suite wants its
+/// `afd_turns` keeps the sentence private, and a byte-parity suite wants its
 /// own copy of the bytes anyway.
 const DATASTORE_DOWN: Refusal = (
     StatusCode::SERVICE_UNAVAILABLE,

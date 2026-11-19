@@ -83,7 +83,7 @@ async fn activity_history<D: Services>(
     services: &D,
     workspace: &af_core::id::Uuid7,
     fleet: &af_core::id::Uuid7,
-) -> Result<Vec<afd_events::EventDetailRow>, Refusal> {
+) -> Result<Vec<afd_turns::view::EventDetailRow>, Refusal> {
     services
         .events()
         .thread_for_fleet(
@@ -91,7 +91,7 @@ async fn activity_history<D: Services>(
             fleet,
             None,
             26,
-            Some(afd_events::activity::EVENT_TYPE_ACTIVITY),
+            Some(afd_turns::view::activity::EVENT_TYPE_ACTIVITY),
         )
         .await
         .map_err(Refusal::at(READ_FAILED))
@@ -115,11 +115,10 @@ async fn current<D: Services>(
     Ok((saved, schedules))
 }
 
-fn activity_page(receipts: Vec<afd_events::EventDetailRow>) -> CursorPage<SetupActivity> {
-    let next = receipts
-        .get(25)
-        .and_then(|_| receipts.get(24))
-        .map(|last| afd_events::Cursor::after(last.row.created_at, &last.row.event_id).encode());
+fn activity_page(receipts: Vec<afd_turns::view::EventDetailRow>) -> CursorPage<SetupActivity> {
+    let next = receipts.get(25).and_then(|_| receipts.get(24)).map(|last| {
+        afd_turns::view::Cursor::after(last.row.created_at, &last.row.event_id).encode()
+    });
     let activities = receipts
         .into_iter()
         .take(25)

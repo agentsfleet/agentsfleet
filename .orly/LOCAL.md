@@ -122,7 +122,7 @@ repository:
   `--no-banner`, never edited by hand.
 - **Auth:** `afd_auth`, `afd_credential`, `ui/packages/app/lib/auth/**` and the
   device-session statements in `afd_tenant/src/sql/session/`.
-- **Events:** test helpers come from the `afd_events` `test-util` feature.
+- **Events:** test helpers come from the `afd_turns` `test-util` feature.
 
 ## Running lanes here
 

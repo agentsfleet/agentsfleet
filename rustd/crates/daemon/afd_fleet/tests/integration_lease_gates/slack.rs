@@ -8,8 +8,8 @@
 //! makes a redelivery the same event, and so the same branch.
 
 use af_wire::event::EventType;
-use afd_admission::{Admission, Admissions, Admitted, Key, Producer};
 use afd_gate::policy::repair;
+use afd_turns::{Admission, Admissions, Admitted, Key, Producer};
 
 use super::seed::seed_provider_resolution;
 use super::*;

@@ -1,6 +1,6 @@
 //! The one error type this crate returns, and what each failure tells a caller.
 //!
-//! Same shape as [`afd_events::Error`] and `afd_admission::Error`: a struct
+//! Same shape as [`afd_turns::view::Error`] and `afd_turns::Error`: a struct
 //! carrying a captured backtrace over a private kind, with the code and the
 //! sentence decided together in one table rather than spelled at each raise
 //! site. The hull is `af_core::error_shell!`, so nothing here repeats what its

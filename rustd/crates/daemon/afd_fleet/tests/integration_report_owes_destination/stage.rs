@@ -8,9 +8,9 @@ use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
-use afd_admission::{Admission, Key, Producer, Reply};
 use afd_connector::Provider;
 use afd_fleet::lease::{Billed, Committed, Leases, Owing, Reported};
+use afd_turns::{Admission, Key, Producer, Reply};
 use jiff::Timestamp;
 use sqlx::Row as _;
 

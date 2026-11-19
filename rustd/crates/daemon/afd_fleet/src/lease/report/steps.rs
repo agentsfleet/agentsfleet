@@ -6,7 +6,7 @@ use af_core::id::Uuid7;
 use af_observability::producers;
 use af_wire::report::ReportRequest;
 use afd_billing::Nanos;
-use afd_events::Closed;
+use afd_turns::view::Closed;
 use jiff::Timestamp;
 
 use crate::lease::fold::Folds;

@@ -7,8 +7,8 @@ use super::super::{fixture::now, mint};
 use super::fixture::Case;
 use super::grants::{cards, requiring_github};
 use af_crypto::entropy::Entropy;
-use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, Resolution};
+use afd_turns::Admissions;
 
 async fn decided(c: &Case, decision: Decision) -> String {
     c.fund().await;

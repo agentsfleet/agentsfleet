@@ -5,7 +5,7 @@ use af_core::event::status::RECORDED;
 use af_core::id::Uuid7;
 use afd_auth::Scope;
 use afd_db::test_util::{RunnerPolicy, RunnerSeed};
-use afd_events::activity::{ACTOR_ACTIVITY, EVENT_TYPE_ACTIVITY};
+use afd_turns::view::activity::{ACTOR_ACTIVITY, EVENT_TYPE_ACTIVITY};
 use axum::Router;
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
@@ -19,10 +19,10 @@ pub(super) struct Case {
 
 impl Case {
     pub(super) async fn create() -> Self {
-        Self::with_budgets(afd_admission::Budgets::default()).await
+        Self::with_budgets(afd_turns::Budgets::default()).await
     }
 
-    pub(super) async fn with_budgets(budgets: afd_admission::Budgets) -> Self {
+    pub(super) async fn with_budgets(budgets: afd_turns::Budgets) -> Self {
         let base = Fixture::create().await;
         let bus = crate::harness::bus().await;
         let router = base

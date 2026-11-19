@@ -4,11 +4,11 @@
 use af_core::id::Uuid7;
 use af_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use af_wire::runner::{HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
-use afd_admission::Producer;
 use afd_db::test_util::mint_id;
 use afd_fleet::lease::Billed;
 use afd_fleet::task::TaskLifecycle as _;
 use afd_runner::{Registered, RunnerEdit};
+use afd_turns::Producer;
 
 use super::fixture::{Case, exercise};
 use crate::requests::{capable, enrolment_tagged, placement_tag};
@@ -245,7 +245,7 @@ async fn tenant_runner_never_jumps_a_platform_model_head() {
         let chat = case
             .source(
                 Producer::Steer,
-                &afd_events::steer_actor("native_task_owner"),
+                &afd_turns::view::steer_actor("native_task_owner"),
             )
             .await;
         let tenant = tenant_runner(case).await;

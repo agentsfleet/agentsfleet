@@ -12,7 +12,7 @@ use std::sync::Arc;
 use af_core::error_code;
 use af_wire::tool_detail::ToolCallDetail;
 use af_wire::tool_trace::{fenced_call_id, parse_fenced_call_id};
-use afd_events::{CallAddress, ToolCallRow};
+use afd_turns::view::{CallAddress, ToolCallRow};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};

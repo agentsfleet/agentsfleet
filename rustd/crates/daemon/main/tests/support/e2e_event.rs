@@ -11,7 +11,7 @@
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_wire::event::EventType;
-use afd_admission::{Admission, Admissions, Key, Producer};
+use afd_turns::{Admission, Admissions, Key, Producer};
 use agentsfleetd::serve::Booted;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -42,7 +42,7 @@ pub(crate) async fn enqueue(
             actor: ACTOR,
             event_type,
             request_json: REQUEST_JSON,
-            reply: afd_admission::Reply::None,
+            reply: afd_turns::Reply::None,
         })
         .await
         .expect("the ledger must admit the event");

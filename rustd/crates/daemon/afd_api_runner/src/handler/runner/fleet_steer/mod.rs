@@ -7,7 +7,7 @@
 //! that decides the target, a repeat, its status and the deployment ceiling.
 //! The actor names the sending fleet, the stored body names it too, the reply
 //! destination is copied from the event the sender runs, and the key is the
-//! daemon's (`afd_events::steer`).
+//! daemon's (`afd_turns::view::steer`).
 //!
 //! # The lease is proved twice
 //!
@@ -29,10 +29,11 @@ use af_validate::Sentences;
 use af_wire::event::{EventType, STEER_MESSAGE_MAX_BYTES};
 use af_wire::steer_verb::{FleetSteerAccepted, FleetSteerRequest};
 use afd_api_wire::tail::TailFrame;
-use afd_events::{FleetSteer, FleetSteered, Unheld, fleet_actor};
 use afd_fleet::lease::Standing;
 use afd_fleet::lease::message::SteerSender;
 use afd_http::handler::{Refusal, parse_id, read_strict_body};
+use afd_turns::Unheld;
+use afd_turns::view::{FleetSteer, FleetSteered, fleet_actor};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -175,7 +176,7 @@ fn read_request(body: &Bytes) -> Result<FleetSteerRequest<'_>, Refusal> {
 
 /// The steer's answer, or the refusal it earned, logged once with both fleets.
 fn settled(
-    answered: afd_events::Result<Result<FleetSteered, Unheld>>,
+    answered: afd_turns::view::Result<Result<FleetSteered, Unheld>>,
     standing: &Standing,
     target: &Uuid7,
 ) -> Result<FleetSteered, Refusal> {
@@ -204,7 +205,7 @@ fn settled(
 
 /// The refusal an admission that did not land earns, through the accessors
 /// the steer's error already carries.
-fn refusal_of(error: afd_events::Error) -> Refusal {
+fn refusal_of(error: afd_turns::view::Error) -> Refusal {
     if error.is_fleet_absent() {
         Refusal::coded(error_code::AGENTSFLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND)
     } else if let Some(status) = error.not_runnable() {

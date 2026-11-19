@@ -35,7 +35,7 @@ use std::borrow::Cow;
 use af_core::error_code;
 use af_wire::event::{FleetSteerBody, STEER_MESSAGE_MAX_BYTES, SteerRequest};
 use afd_api_wire::tail::{FleetCounters, TailFrame, TailRow};
-use afd_events::{Closed, is_fleet_actor, is_steer_actor};
+use afd_turns::view::{Closed, is_fleet_actor, is_steer_actor};
 use jiff::Timestamp;
 
 use crate::lease::envelope::Acquired;

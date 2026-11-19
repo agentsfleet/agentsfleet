@@ -24,8 +24,8 @@
 
 use af_core::id::Uuid7;
 use af_wire::event::EventType;
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_api_wire::activity::{ScheduleFire, ScheduleFireDescription};
+use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 
 use crate::error::Result;
 use crate::store::FireTarget;
@@ -59,7 +59,7 @@ const ONCE_FIRE: &str = "once";
 /// The event body a fire of a schedule whose message is `message` stores.
 ///
 /// The schedule's message is the author's plain text, and the lease records
-/// every event's body into a `jsonb` column (`afd_events::sql`). Stored as it
+/// every event's body into a `jsonb` column (`afd_turns::view::sql`). Stored as it
 /// was, a message that is not itself JSON failed that cast, so the fired run
 /// was admitted and could never be leased. Wrapped as `{"message": …}`, the
 /// shape a steer and a mention store, the runner reads the schedule's words as
@@ -151,7 +151,7 @@ impl Fire {
         let schedule_id = schedule.as_str();
         let workspace_id = target.workspace.as_str();
         if !replayed {
-            afd_events::activity::announce(&self.admissions.streams(), fleet).await;
+            afd_turns::view::activity::announce(&self.admissions.streams(), fleet).await;
         }
         {
             let (fleet_id, event) = (&fleet, &"schedule_fire_appended");

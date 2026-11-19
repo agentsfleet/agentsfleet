@@ -5,7 +5,7 @@ mod confirm;
 mod recover;
 mod store;
 
-use afd_admission::PreparedAdmission;
+use afd_turns::PreparedAdmission;
 
 pub(super) use store::{key, payload, store};
 

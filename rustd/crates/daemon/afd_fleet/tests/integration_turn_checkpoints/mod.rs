@@ -111,7 +111,7 @@ impl Case {
     }
 
     fn tasks(&self) -> afd_fleet::task::Tasks {
-        let admissions = afd_admission::Admissions::new(
+        let admissions = afd_turns::Admissions::new(
             self.fixtures.database.clone(),
             self.fixtures.bus().clone(),
             af_crypto::entropy::Entropy::new(),

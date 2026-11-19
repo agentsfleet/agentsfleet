@@ -254,7 +254,7 @@ fn two_events_are_never_given_one_branch() {
 fn test_m202_001_every_identifier_the_ledger_mints_is_given_a_branch() {
     // This asserted the opposite — that a non-v7 identifier gets no branch —
     // and called it the fail-safe. It was the defect written down as intent.
-    // `afd_admission::admit` is the only thing that mints an event id and it
+    // `afd_turns::admit` is the only thing that mints an event id and it
     // spells `<millis>-<sequence>`, so "not a v7" described every real event
     // and the branch was dropped for all of them.
     //

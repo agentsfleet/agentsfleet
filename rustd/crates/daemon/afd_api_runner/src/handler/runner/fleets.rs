@@ -25,10 +25,10 @@ use af_core::paging::{
 use af_validate::{Ceiling, Limit};
 use af_wire::event::message_of;
 use af_wire::fleets_verb::{FleetEventItem, FleetEventsPage, FleetItem, FleetsPage, excerpt};
-use afd_events::{Cursor, EventDetailRow};
 use afd_fleet::lease::Standing;
 use afd_fleet_lifecycle::{After, FleetPage, FleetRow};
 use afd_http::handler::{Refusal, decoded_parameter, parameter, parse_id};
+use afd_turns::view::{Cursor, EventDetailRow};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};

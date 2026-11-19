@@ -15,9 +15,9 @@ categories.workspace = true
 test-util = [
   # `handler/fleet/message/tests.rs` builds its thread rows with
   # `EventDetailRow::fixture`, which is `#[cfg(feature = "test-util")]` on
-  # afd_events. Without this forward the lib test does not COMPILE, which the
+  # afd_turns. Without this forward the lib test does not COMPILE, which the
   # unit lane reads as a code fault rather than as a missing feature edge.
-  "afd_events/test-util",
+  "afd_turns/test-util",
   "afd_fleet_lifecycle/test-util",
   "afd_tenant/test-util",
   "afd_vault/test-util",
@@ -45,7 +45,7 @@ af_core.workspace = true
 af_validate.workspace = true
 const_format.workspace = true
 garde.workspace = true
-afd_events.workspace = true
+afd_turns.workspace = true
 # Native task ownership and keyset values used by fleet task reads.
 afd_fleet.workspace = true
 afd_fleet_lifecycle.workspace = true

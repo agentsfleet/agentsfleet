@@ -13,12 +13,12 @@ use super::fixture::{Case, NO_ADMISSIONS, check};
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use afd_admission::{Admissions, Budgets};
 use afd_setup::Creations;
 use afd_setup::{
     SavedFleet,
     types::{DraftState, SaveFleet, Start, StartOutcome, StartState},
 };
+use afd_turns::{Admissions, Budgets};
 
 /// The initial run each case asks for, so a repeated stage would show as a
 /// second admission.

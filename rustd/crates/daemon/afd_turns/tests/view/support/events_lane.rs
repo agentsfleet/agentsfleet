@@ -1,0 +1,168 @@
+//! The lane's database, a connection to the lane's NATS, and the rows every
+//! event hangs from.
+//!
+//! `fleet.events` has foreign keys into `fleet.fleets` and
+//! `identity.workspaces`, so no history test can seed a single row without first
+//! seeding a tenant, a workspace and a fleet. That chain is here rather than in
+//! each suite, because getting it wrong fails with a constraint violation that
+//! names a table the test never mentions.
+//!
+//! # Isolation, and what replaces it
+//!
+//! Postgres is the SHARED lane database — `TestDatabase::shared`, never a
+//! database per test, for the reason `make/test-integration-rustd.mk` states at
+//! length: a database per test meant applying forty-seven schema files per test.
+//! What replaces isolation is that every fixture mints its OWN workspace and
+//! fleet identifiers, so two suites running in parallel address disjoint rows.
+//! The bus is one lane NATS connection per fixture, and a fleet's frames ride
+//! subjects named for that fleet, so no fixture hears another's.
+
+#![expect(
+    clippy::expect_used,
+    reason = "test support: an unmet precondition should fail the test loudly"
+)]
+#![expect(
+    dead_code,
+    reason = "test support: shared by two test binaries, each using a subset"
+)]
+
+use af_core::id::Uuid7;
+use std::time::Duration;
+
+use afd_bus::Handle;
+use afd_db::Db;
+use afd_db::config::DbRole;
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
+
+/// How long a frame crossing the bus is given before the test fails.
+pub(crate) const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
+
+/// A tenant, a workspace and a fleet nothing else in the suite addresses, over
+/// the live database and the lane's NATS.
+pub(crate) struct EventsLane {
+    lane: TestDatabase,
+    pub(crate) database: Db,
+    pub(crate) bus: Handle,
+    pub(crate) tenant: Uuid7,
+    pub(crate) workspace: Uuid7,
+    pub(crate) fleet: Uuid7,
+}
+
+impl EventsLane {
+    /// Opens the database and a bus, and seeds the row chain a fleet event needs.
+    pub(crate) async fn open() -> Self {
+        let lane = TestDatabase::shared();
+        let database = lane.open(DbRole::Api, &[]).await;
+        let bus = afd_bus::test_util::lane()
+            .await
+            .expect("the lane's NATS: run through make test-integration-rustd");
+
+        let seeded = Self {
+            lane,
+            database,
+            bus,
+            tenant: mint_id(),
+            workspace: mint_id(),
+            fleet: mint_id(),
+        };
+        seeded.seed_fleet().await;
+        seeded
+    }
+
+    /// The admission ledger every producer in this suite writes through.
+    ///
+    /// Built from the lane's own pool and bus, so a test names what it is
+    /// exercising rather than restating how a ledger is assembled.
+    pub(crate) fn admissions(&self) -> afd_turns::Admissions {
+        afd_turns::Admissions::for_tests(self.database.clone(), self.bus.clone())
+    }
+
+    /// A pooled connection, or a failed test.
+    pub(crate) async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
+        self.database
+            .acquire()
+            .await
+            .expect("the lane database must hand over a connection")
+    }
+
+    /// Writes one `fleet.events` row, as a runner's report leaves it.
+    ///
+    /// `created_at` is a parameter rather than a clock read: every claim these
+    /// suites make about a `since` window is a claim about ROW TIMESTAMPS, and
+    /// a fixture that stamped rows with "now" could only ever seed one instant.
+    pub(crate) async fn seed_event(&self, event_id: &Uuid7, created_at: Timestamp) {
+        let mut connection = self.connection().await;
+        sqlx::query(
+            "INSERT INTO fleet.events
+               (fleet_id, workspace_id, event_id, actor, event_type, status,
+                request_json, created_at, updated_at)
+             VALUES ($1, $2, $3, 'steer:api', 'chat', 'completed',
+                     '{}'::jsonb, $4, $4)
+             ON CONFLICT (event_id) DO NOTHING",
+        )
+        .bind(&self.fleet)
+        .bind(&self.workspace)
+        .bind(event_id)
+        .bind(created_at.to_sqlx())
+        .execute(&mut *connection)
+        .await
+        .expect("seeding a fleet event");
+    }
+
+    /// Whether the lane holds a row under `event_id`.
+    pub(crate) async fn has_event(&self, event_id: &Uuid7) -> bool {
+        let mut connection = self.connection().await;
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM fleet.events
+             WHERE fleet_id = $1 AND event_id = $2",
+        )
+        .bind(&self.fleet)
+        .bind(event_id)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the count must run");
+        count > 0
+    }
+
+    /// Drops the database this handle created, if it created one.
+    ///
+    /// A no-op on the shared lane, which this fixture does not own. Called
+    /// unconditionally anyway: the call is how a test says it is finished.
+    pub(crate) async fn cleanup(self) {
+        self.lane.cleanup().await;
+    }
+
+    /// Seeds the tenant, workspace and fleet every event hangs from.
+    async fn seed_fleet(&self) {
+        let mut connection = self.connection().await;
+        TenantSeed::new(&self.tenant)
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a tenant");
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a workspace");
+        FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_ACTIVE)
+            .name("events-fixture-fleet")
+            .at(SEEDED_AT)
+            .native_setup()
+            .insert(&mut *connection)
+            .await
+            .expect("seeding a fleet");
+    }
+}
+
+/// The instant the fixture rows are stamped with.
+///
+/// Fixed rather than "now": these rows are the SCAFFOLD, never the subject, and
+/// a fixed stamp keeps a `since` window readable against the row timestamps a
+/// test chooses for itself.
+const SEEDED_AT: Timestamp = Timestamp::constant(1_700_000_000, 0);
+
+/// The status the fixture fleet is seeded live under.
+const FLEET_ACTIVE: &str = "active";

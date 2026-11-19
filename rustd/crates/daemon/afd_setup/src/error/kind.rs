@@ -48,7 +48,7 @@ pub(crate) enum ErrorKind {
     #[error("the initial runtime admission could not be recorded")]
     Admission {
         #[from]
-        source: afd_admission::Error,
+        source: afd_turns::Error,
     },
     #[error("the setup approval request could not be recorded")]
     Approval {

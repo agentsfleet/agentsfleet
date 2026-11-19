@@ -151,7 +151,7 @@ For `R` replicas, that is `R / 5` discovery statements per second.
 This backstop repairs missed disposable notifications; it remains database polling.
 A probe that finds pending work starts an offer pass. Wake traffic never resets the probe's timer.
 
-A wake notification starts an offer pass at once. Admission and gate-answer commits publish on `af.wake.<shard>` (`afd_admission/src/wake.rs`, `afd_approval/src/inbox/resolve/mod.rs`).
+A wake notification starts an offer pass at once. Admission and gate-answer commits publish on `af.wake.<shard>` (`afd_turns/src/wake.rs`, `afd_approval/src/inbox/resolve/mod.rs`).
 
 Before the pass, the same statement names each connected tenant runner whose tenant has nothing waiting.
 The pass skips those runners, since a tenant runner takes only its tenant's work and a claim on one could not lease.

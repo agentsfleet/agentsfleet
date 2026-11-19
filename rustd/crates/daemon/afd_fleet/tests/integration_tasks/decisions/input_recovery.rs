@@ -23,9 +23,9 @@ fn query(case: &Case, cursor: Option<String>, after: Option<u64>) -> garde::Vali
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn human_input_pages_keep_complete_fifo_messages_without_claiming_or_consuming() {
     exercise(async |case| {
-        let actor = afd_events::steer_actor("native_task_owner");
-        let first = case.source_message(afd_admission::Producer::Steer, &actor, "First: café 🦉").await;
-        let second = case.source_message(afd_admission::Producer::Steer, &actor, "Second: preserve middleware").await;
+        let actor = afd_turns::view::steer_actor("native_task_owner");
+        let first = case.source_message(afd_turns::Producer::Steer, &actor, "First: café 🦉").await;
+        let second = case.source_message(afd_turns::Producer::Steer, &actor, "Second: preserve middleware").await;
         let page = case.tasks.inputs(case.lease(), &query(case, None, None)).await.expect("first FIFO page");
         assert_eq!(page.source_admission_id, case.held.event_id);
         assert_eq!(page.current_message.as_deref(), Some(GOALS.join("; ").as_str()));
@@ -53,7 +53,7 @@ async fn human_input_pages_keep_complete_fifo_messages_without_claiming_or_consu
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn malformed_input_cursor_refuses_without_claiming_a_human_source() {
     exercise(async |case| {
-        let source = case.source(afd_admission::Producer::Steer, &afd_events::steer_actor("native_task_owner")).await;
+        let source = case.source(afd_turns::Producer::Steer, &afd_turns::view::steer_actor("native_task_owner")).await;
         for cursor in invalid_cursors(source.as_str()) {
             let error = case.tasks.inputs(case.lease(), &query(case, Some(cursor), None)).await.expect_err("invalid input boundary");
             assert_eq!(error.code(), error_code::INVALID_REQUEST);

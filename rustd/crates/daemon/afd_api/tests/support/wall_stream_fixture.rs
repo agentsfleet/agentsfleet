@@ -75,7 +75,7 @@ async fn announces_counters(opening: &str, fixture: &Fixture) {
         .find_map(|line| line.strip_prefix("data:"))
         .expect("the hello carries a data line");
     let hello: serde_json::Value = serde_json::from_str(data.trim()).expect("the hello is JSON");
-    let counters = afd_events::fleet_counters(&fixture.database, &fixture.fleet)
+    let counters = afd_turns::view::fleet_counters(&fixture.database, &fixture.fleet)
         .await
         .expect("the counters read back");
     assert_eq!(

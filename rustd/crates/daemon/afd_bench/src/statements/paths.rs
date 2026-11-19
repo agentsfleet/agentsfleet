@@ -139,7 +139,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Claim,
     ),
     // Gates.
-    // The one admission statement (afd_admission `admit_one.sql`).
+    // The one admission statement (afd_turns `admit_one.sql`).
     ("WITH locked_fleet AS MATERIALIZED", Path::Gates),
     ("SELECT w.balance_nanos, w.exhausted_at", Path::Gates),
     ("WITH floors AS", Path::Gates),

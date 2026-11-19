@@ -22,10 +22,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use af_core::event::label::{BALANCE_EXHAUSTED, LEASE_EXPIRED};
 use af_core::event::status::FLEET_ERROR;
 use af_wire::report::FailureClass;
-use afd_admission::{Producer, Reply};
 use afd_fleet::lease::admit::Refusal;
 use afd_fleet::lease::event::DETAIL_LEASES_LAPSED;
 use afd_fleet::lease::{Acquired, Committed, Ended, Verdict};
+use afd_turns::{Producer, Reply};
 use futures_util::future::join_all;
 use tokio::sync::Barrier;
 

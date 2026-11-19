@@ -15,9 +15,10 @@
 use af_core::id::Uuid7;
 use afd_api_wire::tail::TailFrame;
 use afd_db::Precondition;
-use afd_events::{
+use afd_turns::Unheld;
+use afd_turns::view::{
     CallAddress, Cursor, EventDetailRow, EventRow, Filter, FleetSteer, FleetSteered, History,
-    Result as EventResult, Steer, Steered, ToolCallRow, Unheld,
+    Result as EventResult, Steer, Steered, ToolCallRow,
 };
 
 /// Everything the event-history routes act through.
@@ -56,7 +57,7 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
     /// One page of a fleet's chat thread, newest first, bodies included.
     ///
     /// The caller asks for one row more than it will serve — see
-    /// [`afd_events::History::thread_page`] on why has-more is a fact here and
+    /// [`afd_turns::view::History::thread_page`] on why has-more is a fact here and
     /// not a guess.
     ///
     /// # Errors
@@ -168,7 +169,7 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
     /// whether an earlier send of the same operation id already admitted it.
     ///
     /// `operation_id` is the CALLER's name for this operation, repeated across
-    /// its retries, or `None` when it has none — see [`afd_events::Steer`].
+    /// its retries, or `None` when it has none — see [`afd_turns::view::Steer`].
     ///
     /// # Errors
     /// Reports a queue that would not take the append.
@@ -185,7 +186,7 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
     /// the sender's lease, proved again inside the admission's transaction.
     ///
     /// # Errors
-    /// As [`afd_events::Steer::append_from_fleet`]: a guard that does not
+    /// As [`afd_turns::view::Steer::append_from_fleet`]: a guard that does not
     /// hold answers `Ok(Err(Unheld))` with nothing written.
     fn append_from_fleet(
         &self,

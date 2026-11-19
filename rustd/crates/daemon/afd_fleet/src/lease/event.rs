@@ -20,8 +20,8 @@ use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 
 use afd_api_wire::tail::FleetCounters;
-use afd_events::Closed;
 use afd_outbound::obligation::Delivery as Owed;
+use afd_turns::view::Closed;
 
 use crate::error::{Result, query};
 use crate::lease::admit::Refusal;
@@ -184,7 +184,7 @@ impl Leases {
         {
             return Err(crate::error::stale_fence());
         }
-        let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_FAILURE)
+        let closed = sqlx::query(afd_turns::view::sql::UPDATE_FLEET_EVENT_FAILURE)
             .bind(&acquired.fleet_id)
             .bind(&acquired.event_id)
             .bind(ending.status)

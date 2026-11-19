@@ -122,8 +122,8 @@ async fn assert_the_retry_commits_all_four(
     slice
 }
 
-async fn assert_closing_carries_the_counters(held: &Held, closed: &afd_events::Closed) {
-    let stored = afd_events::fleet_counters(&held.fixtures.database, &held.fleet)
+async fn assert_closing_carries_the_counters(held: &Held, closed: &afd_turns::view::Closed) {
+    let stored = afd_turns::view::fleet_counters(&held.fixtures.database, &held.fleet)
         .await
         .expect("the counters read back");
     assert_ne!(

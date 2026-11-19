@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use af_wire::event::EventType;
-use afd_admission::{Admission, Key, Producer, Reply};
+use afd_turns::{Admission, Key, Producer, Reply};
 
 use super::{TaskScope, Tasks};
 

@@ -21,8 +21,8 @@ use af_wire::event::EventType;
 use af_wire::lease::{ANSWER_FAILED, ANSWER_FAILED_END};
 use afd_db::Db;
 use afd_db::test_util::{EventKind, FleetEventSeed, FleetSeed, TenantSeed, WorkspaceSeed, mint_id};
-use afd_events::{Cursor, History};
 use afd_fleet::lease::history::turns_before;
+use afd_turns::view::{Cursor, History};
 use jiff::Timestamp;
 use std::time::Duration;
 

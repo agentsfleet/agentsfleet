@@ -15,10 +15,10 @@ use std::borrow::Cow;
 
 use af_wire::message_verb::{MESSAGES_PER_RUN_MAX, MessageRequest};
 use af_wire::tool_detail::ToolCallRecordsRequest;
-use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
 use afd_db::Precondition as _;
 use afd_fleet::lease::write_fence::WriteFence;
+use afd_turns::{Producer, Reply};
 
 use crate::integration_report_owes_destination::stage::stage;
 use crate::report_seed::held;

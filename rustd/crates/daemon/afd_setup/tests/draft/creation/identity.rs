@@ -29,7 +29,7 @@ async fn save_provenance_is_recorded_once_and_bound_to_the_accepted_operation() 
             "SELECT request_json::text FROM fleet.events WHERE fleet_id=$1 AND event_type=$2",
         )
         .bind(&saved.id)
-        .bind(afd_events::activity::EVENT_TYPE_ACTIVITY)
+        .bind(afd_turns::view::activity::EVENT_TYPE_ACTIVITY)
         .fetch_all(&mut *c.base.connection().await)
         .await
         .expect("the durable save receipt reads");
@@ -133,7 +133,7 @@ async fn accepted_key_refuses_changed_body_and_foreign_creator() {
 
 /// A bus no broker answers: the stream stage of Save fails, nothing else.
 fn unreachable(c: &Case) -> afd_setup::Creations {
-    let admissions = afd_admission::Admissions::new(
+    let admissions = afd_turns::Admissions::new(
         c.base.db.clone(),
         afd_bus::test_util::unreachable(),
         af_crypto::entropy::Entropy::new(),

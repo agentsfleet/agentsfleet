@@ -94,7 +94,7 @@ async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
     // The two counters differ (one event, nothing charged), so a closing that
     // swapped their positions would disagree with the read below.
     if let Ended::Now(closed) = &ended {
-        let stored = afd_events::fleet_counters(&fixtures.database, fleet)
+        let stored = afd_turns::view::fleet_counters(&fixtures.database, fleet)
             .await
             .expect("the counters read back");
         assert_ne!(stored.events_processed, stored.budget_used_nanos);

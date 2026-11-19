@@ -71,7 +71,7 @@ async fn queued_schedule_fire_history_survives_reload_and_single_row_promotion()
     );
 }
 
-async fn cron_rows(lane: &CronLane) -> Vec<afd_events::EventDetailRow> {
+async fn cron_rows(lane: &CronLane) -> Vec<afd_turns::view::EventDetailRow> {
     thread(lane)
         .await
         .into_iter()

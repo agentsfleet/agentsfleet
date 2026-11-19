@@ -1,8 +1,8 @@
 //! What a report settles of the messages its run claimed.
 
 use af_core::event::status::PROCESSED;
-use afd_admission::Producer;
 use afd_fleet::lease::Verdict;
+use afd_turns::Producer;
 
 use super::support::{
     Checked, EventRow, STEER_JSON, Settlement, claim_as_holder, report_read_through, send, settled,

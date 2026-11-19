@@ -26,8 +26,8 @@ async fn selected(case: &Case) {
     let fixture = Decisions::create(case).await;
     let source = case
         .source_message(
-            afd_admission::Producer::Steer,
-            &afd_events::steer_actor("native_decision_source"),
+            afd_turns::Producer::Steer,
+            &afd_turns::view::steer_actor("native_decision_source"),
             MESSAGE,
         )
         .await;

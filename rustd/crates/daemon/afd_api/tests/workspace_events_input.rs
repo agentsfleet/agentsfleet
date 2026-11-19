@@ -37,7 +37,7 @@ use crate::harness::detail_of;
 use af_core::error_code;
 use af_core::id::Uuid7;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_events::Cursor;
+use afd_turns::view::Cursor;
 use axum::response::Response;
 use http::{Method, StatusCode};
 use serde_json::Value;
@@ -211,7 +211,7 @@ async fn a_cursor_this_daemon_did_not_mint_is_refused() {
 /// Every window form this daemon reads is accepted.
 #[tokio::test]
 async fn every_window_form_this_daemon_reads_is_accepted() {
-    // The four units `afd_events::parse_since` takes, the zero window that
+    // The four units `afd_turns::view::parse_since` takes, the zero window that
     // means "now", and the absolute form at exactly the length it shape-checks
     // for.
     for suffix in [

@@ -6,7 +6,7 @@ use crate::{
     types::{StartOutcome, StartState},
 };
 use af_core::id::Uuid7;
-use afd_admission::Producer;
+use afd_turns::Producer;
 
 /// An initial run whose committed admission could not be read back yet.
 const EVENT_UNCONFIRMED: &str = "fleet_initial_run_unconfirmed";

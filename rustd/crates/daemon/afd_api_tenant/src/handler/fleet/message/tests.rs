@@ -13,7 +13,7 @@
               restriction set is for the daemon"
 )]
 
-use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
+use afd_turns::view::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
 
 use super::{PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, requested_limit};
 use crate::handler::paging::store_ceiling;

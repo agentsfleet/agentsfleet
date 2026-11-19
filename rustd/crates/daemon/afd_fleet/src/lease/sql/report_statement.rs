@@ -3,7 +3,7 @@
 
 use af_core::id::Uuid7;
 use afd_billing::price::RatedLine;
-use afd_events::Closed;
+use afd_turns::view::Closed;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::{FromRow as _, postgres::PgRow};

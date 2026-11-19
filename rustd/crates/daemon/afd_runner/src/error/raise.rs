@@ -13,7 +13,7 @@ use super::{Error, ErrorKind};
 // through [`query`] and [`stored_json`] instead of a blanket lift.
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_admission::Error => Admission,
+    afd_turns::Error => Admission,
     af_crypto::error::Error => Entropy,
     af_core::error::Error => Identifier,
 );
@@ -136,7 +136,7 @@ pub(crate) fn tenant_managed() -> Error {
 /// is a change in that crate's contract rather than a runtime condition, and
 /// stopping here names it at the sample rather than at whichever assertion
 /// happens to read the wrong value first — the reasoning
-/// `afd_admission::error::one_of_each_kind` states for its own preconditions.
+/// `afd_turns::error::one_of_each_kind` states for its own preconditions.
 #[cfg(feature = "test-util")]
 #[must_use]
 #[expect(
@@ -181,7 +181,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         // ever executed.
         (
             "admission",
-            afd_admission::error::one_of_each_kind()
+            afd_turns::error::one_of_each_kind()
                 .into_iter()
                 .find(|(kind, _error)| *kind == "datastore")
                 .map(|(_kind, error)| Error::from(error))

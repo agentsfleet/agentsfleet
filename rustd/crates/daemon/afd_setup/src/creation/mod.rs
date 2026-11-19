@@ -17,8 +17,8 @@ mod stored;
 mod system;
 
 use crate::Setup;
-use afd_admission::Admissions;
 use afd_approval::IntegrationGrants;
+use afd_turns::Admissions;
 
 pub use progress::{SetupCheck, SetupProgress};
 pub use read::SavedFleet;

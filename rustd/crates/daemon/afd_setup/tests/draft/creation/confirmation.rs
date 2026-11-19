@@ -5,11 +5,11 @@ use super::super::{fixture::now, mint};
 use super::fixture::Case;
 use af_core::{id::Uuid7, test_util::trace::Capture};
 use af_crypto::entropy::Entropy;
-use afd_admission::Admissions;
 use afd_setup::{
     Creations, SavedFleet,
     types::{SaveFleet, Start, StartOutcome, StartState},
 };
+use afd_turns::Admissions;
 
 struct Retained {
     case: Case,

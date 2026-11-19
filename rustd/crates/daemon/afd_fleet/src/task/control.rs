@@ -125,7 +125,7 @@ async fn queue(
     tasks: &Tasks,
     connection: &mut PgConnection,
     task_id: &Uuid7,
-    prepared: Option<afd_admission::PreparedAdmission<'_>>,
+    prepared: Option<afd_turns::PreparedAdmission<'_>>,
     previous: TaskState,
 ) -> Result<()> {
     if let Some(prepared) = prepared {

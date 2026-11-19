@@ -67,7 +67,6 @@ use afd_billing::tenant::Billing;
 use afd_credential::provider::Providers;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_events::{History, Steer};
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_memory::Memories;
@@ -80,6 +79,7 @@ use afd_tenant::models::Models;
 use afd_tenant::preference::Preferences;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
+use afd_turns::view::{History, Steer};
 use afd_vault::Vault as SecretVault;
 use axum::Router;
 use jiff::Timestamp;
@@ -227,7 +227,7 @@ pub(crate) fn unreachable_ingress(database: Db) -> afd_ingress::Ingress {
     afd_ingress::Ingress::new(
         database.clone(),
         vault(database.clone()),
-        afd_admission::Admissions::for_tests(database, afd_bus::test_util::unreachable()),
+        afd_turns::Admissions::for_tests(database, afd_bus::test_util::unreachable()),
     )
 }
 

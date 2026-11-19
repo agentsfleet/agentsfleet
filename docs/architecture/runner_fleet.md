@@ -823,7 +823,7 @@ Each carries what a watcher needs to fold it in without a read. `event_complete`
 
 Frame kinds and fields: API reference › Fleet events (Stream live fleet activity).
 
-Every daemon frame also carries the fleet's activity counters as an absolute snapshot, so the wall's tiles assign rather than add. The closing statement reads them beside the row it ends. Every other publisher reads them once, by primary key off `fleet.activity_counters`, right before its publish (`afd_events::fleet_counters_best_effort`).
+Every daemon frame also carries the fleet's activity counters as an absolute snapshot, so the wall's tiles assign rather than add. The closing statement reads them beside the row it ends. Every other publisher reads them once, by primary key off `fleet.activity_counters`, right before its publish (`afd_turns::fleet_counters_best_effort`).
 
 The opening bracket must read after its insert. That insert fires the counter trigger, and a `RETURNING` on it cannot see the trigger's write.
 

@@ -63,7 +63,7 @@ pub(crate) enum ErrorKind {
     BusUnavailable { source: afd_bus::Error },
 
     #[error("the steer path would not run")]
-    SteerPathFaulted { source: afd_events::Error },
+    SteerPathFaulted { source: afd_turns::view::Error },
 
     #[error("the lease path would not run")]
     LeasePathFaulted { source: afd_fleet::Error },
@@ -72,7 +72,7 @@ pub(crate) enum ErrorKind {
     OutboundPathFaulted { source: afd_outbound::Error },
 
     #[error("the admission ledger would not answer")]
-    LedgerUnreadable { source: afd_admission::Error },
+    LedgerUnreadable { source: afd_turns::Error },
 
     /// Raised rather than summed to zero: a datastore that answered its
     /// statistics command with nothing this crate recognises did not serve

@@ -13,7 +13,6 @@
 
 use af_core::id::Uuid7;
 use af_fleet_runtime::test_util::FixtureSetup;
-use afd_admission::Producer;
 use afd_connector::Provider;
 use afd_db::Db;
 use afd_db::config::DbRole;
@@ -22,6 +21,7 @@ use afd_db::test_util::{
     mint_id,
 };
 use afd_tenant::test_util::{Signup, sign_up};
+use afd_turns::Producer;
 use afd_vault::{SecretBody, SecretName};
 
 use super::harness;

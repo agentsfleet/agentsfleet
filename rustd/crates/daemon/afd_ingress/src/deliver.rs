@@ -8,7 +8,7 @@
 //! it protects.
 //!
 //! Nothing is written to `fleet.events` here, for the reason
-//! `afd_events::steer` states about its own path: the row appears when the
+//! `afd_turns::view::steer` states about its own path: the row appears when the
 //! runner leases the event, and a daemon that inserted one at ingress would
 //! be racing its own runner to describe the same event.
 //!
@@ -34,7 +34,7 @@
 //! fleet from deduplicating against each other.
 
 use af_wire::event::EventType;
-use afd_admission::{Admission, Admitted, Key, Producer, Reply};
+use afd_turns::{Admission, Admitted, Key, Producer, Reply};
 
 use crate::Ingress;
 use crate::binding::Binding;

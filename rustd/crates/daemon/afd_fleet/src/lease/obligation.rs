@@ -14,7 +14,7 @@
 //!
 //! They were, briefly, and the split immediately produced two `UPDATE … SET
 //! receipt` statements differing by one guard and two structs for the same six
-//! columns — one on each side of the crate boundary. `afd_events::sql` carries
+//! columns — one on each side of the crate boundary. `afd_turns::view::sql` carries
 //! the same lesson in its own note. The owner is the crate that DELIVERS; this
 //! one commits the obligation and then gets out of the way.
 
@@ -81,7 +81,7 @@ impl Leases {
             return Ok(None);
         };
         let stored: Option<(String, String)> =
-            sqlx::query_as(afd_admission::sql::SELECT_REPLY_DESTINATION)
+            sqlx::query_as(afd_turns::sql::SELECT_REPLY_DESTINATION)
                 .bind(fleet_id)
                 .bind(&admission)
                 .fetch_optional(&mut *connection)

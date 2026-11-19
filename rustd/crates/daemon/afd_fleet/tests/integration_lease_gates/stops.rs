@@ -4,8 +4,8 @@ use super::seed::{seed_gate, seed_provider_resolution};
 use super::*;
 
 use af_crypto::entropy::Entropy;
-use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, Resolution};
+use afd_turns::Admissions;
 
 use crate::lease_reads::COLUMN_LAST_RUNNER;
 use crate::rows::Row;

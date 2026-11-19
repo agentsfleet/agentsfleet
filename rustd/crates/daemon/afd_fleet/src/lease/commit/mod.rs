@@ -13,7 +13,7 @@
 use af_core::id::Uuid7;
 use afd_billing::Nanos;
 use afd_billing::biller::Settlement;
-use afd_events::Closed;
+use afd_turns::view::Closed;
 use jiff::Timestamp;
 use sqlx::{Acquire as _, PgConnection};
 

@@ -32,10 +32,9 @@ af_fleet_runtime.workspace = true
 af_validate.workspace = true
 af_wire.workspace = true
 afd_runner.workspace = true
-afd_admission.workspace = true
+afd_turns.workspace = true
 afd_approval.workspace = true
 afd_cron.workspace = true
-afd_events.workspace = true
 afd_api_wire.workspace = true
 # The product-analytics reporter the private-chat-to-fleet funnel steps go to,
 # each after the commit that made it true.
@@ -78,7 +77,7 @@ const_format.workspace = true
 af_secrets.workspace = true
 afd_runner = { workspace = true, features = ["test-util"] }
 afd_approval = { workspace = true, features = ["test-util"] }
-afd_admission = { workspace = true, features = ["test-util"] }
+afd_turns = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
 af_observability = { workspace = true, features = ["test-util"] }
 # The mocked entropy source, so a proof can make one draw fail.

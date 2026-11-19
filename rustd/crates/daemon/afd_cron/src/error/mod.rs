@@ -107,7 +107,7 @@ pub(crate) enum ErrorKind {
     #[error("the fire could not be admitted")]
     Admission {
         #[source]
-        source: afd_admission::Error,
+        source: afd_turns::Error,
     },
 
     /// The external scheduler could not be reached at all.

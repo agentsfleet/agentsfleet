@@ -15,7 +15,6 @@ use af_wire::{
     },
     task::{DecisionAssessment, DecisionReservationInput},
 };
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_auth::scope::ScopeSet;
 use afd_db::{
     Db,
@@ -27,6 +26,7 @@ use afd_fleet::{
     task::Tasks,
 };
 use afd_runner::Runners;
+use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 use afd_vault::{Deleted, SecretBody, SecretName};
 use axum::Router;
 use serde_json::{json, value::RawValue};
@@ -263,7 +263,7 @@ async fn admit(admissions: &Admissions, owner: &Owner) -> Uuid7 {
             key: Key::Repeated(key.as_str()),
             fleet: &owner.fleet,
             workspace: &owner.workspace,
-            actor: &afd_events::steer_actor("native_decision_http"),
+            actor: &afd_turns::view::steer_actor("native_decision_http"),
             event_type: EventType::Chat,
             request_json: &body,
             reply: Reply::None,

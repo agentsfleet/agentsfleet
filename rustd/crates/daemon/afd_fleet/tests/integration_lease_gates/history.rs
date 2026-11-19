@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use af_wire::event::EventType;
 use afd_db::test_util::unreachable_db;
-use afd_events::History;
 use afd_fleet::lease::LeaseService;
+use afd_turns::view::History;
 
 use super::chat::{ASKED_LATER, Chat, FIRST_ANSWER, FIRST_MESSAGE, FOLLOW_UP, first_turn};
 use crate::report_seed::SLICE;

@@ -4,12 +4,12 @@ use std::{error::Error as _, time::Duration};
 
 use af_core::{error_code, id::Uuid7};
 use af_crypto::entropy::Entropy;
-use afd_admission::Admissions;
 use afd_db::{Db, config::DbRole};
 use afd_fleet::{
     lease::Leases,
     task::{TaskLifecycle as _, TaskScope, Tasks},
 };
+use afd_turns::Admissions;
 use tokio::time::{Instant, timeout};
 
 use super::fixture::{Case, exercise};

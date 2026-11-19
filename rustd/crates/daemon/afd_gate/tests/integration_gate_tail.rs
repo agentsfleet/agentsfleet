@@ -99,7 +99,7 @@ async fn parked_frame(tail: &mut afd_bus::Subscription) -> serde_json::Value {
 async fn assert_park_counters(fixture: &Fixture, frame: &serde_json::Value) {
     // The park's frame carries where the fleet stands, read on the insert's
     // own connection: the figures on the wire are the database's.
-    let counters = afd_events::fleet_counters(&fixture.database, &fixture.fleet)
+    let counters = afd_turns::view::fleet_counters(&fixture.database, &fixture.fleet)
         .await
         .expect("the counters read back");
     assert_eq!(

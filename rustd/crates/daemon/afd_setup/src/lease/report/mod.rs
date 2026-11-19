@@ -65,7 +65,7 @@ impl Drafts {
                     .await?
             }
         };
-        let mut announcement = afd_events::activity::Announcement::default();
+        let mut announcement = afd_turns::view::activity::Announcement::default();
         if !ack.replayed
             && ack.state == Outcome::Completed
             && let (Some(creations), Some(private)) = (creations, private.as_ref())
@@ -74,7 +74,7 @@ impl Drafts {
             announcement.append(Box::pin(creations.save_turn_on(&mut tx, private.into())).await?);
         }
         let streams = creations.map(crate::Creations::activity_streams);
-        afd_events::activity::commit(tx, announcement, streams.as_ref())
+        afd_turns::view::activity::commit(tx, announcement, streams.as_ref())
             .await
             .map_err(query(CONTEXT))?;
         owed.settle(&self.analytics);

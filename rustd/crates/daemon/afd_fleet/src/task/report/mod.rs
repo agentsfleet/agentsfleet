@@ -65,7 +65,7 @@ impl TaskReportOwner for Tasks {
 #[derive(Debug)]
 pub struct TaskSettlement<'a> {
     plan: &'a PreparedReport,
-    admission: Option<afd_admission::PreparedAdmission<'a>>,
+    admission: Option<afd_turns::PreparedAdmission<'a>>,
 }
 
 impl PreparedReport {

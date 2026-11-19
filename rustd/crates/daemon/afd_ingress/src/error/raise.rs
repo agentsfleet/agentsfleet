@@ -17,7 +17,7 @@ use super::{COLUMN_STATUS, Error, ErrorKind, Result};
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_vault::Error => Vault,
-    afd_admission::Error => Admission,
+    afd_turns::Error => Admission,
     af_fleet_runtime::Error => ConfigUnreadable,
     af_crypto::error::Error => Entropy,
     af_core::error::Error => Identifier,
@@ -64,7 +64,7 @@ pub(crate) fn stored_status(stored: &str) -> Result<FleetStatus> {
 /// datastore.
 ///
 /// [`ErrorKind::Admission`] appears twice on purpose. Its answer branches on
-/// `afd_admission::Error::is_datastore_unavailable`, so one sample would
+/// `afd_turns::Error::is_datastore_unavailable`, so one sample would
 /// leave half of that decision — and the 503-versus-500 the HTTP edge turns
 /// on — unread.
 ///
@@ -110,7 +110,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         .expect("afd_outbound declares a kind that is not an outage")
         .1;
 
-    // Partitioned in one pass rather than searched twice: `afd_admission::Error`
+    // Partitioned in one pass rather than searched twice: `afd_turns::Error`
     // is not `Clone`, so a second search over the same vector would have to
     // rebuild it and the two halves could come from different samples.
     //
@@ -119,17 +119,17 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     // do not learn why", and a `pop()` would have bound whichever kind the
     // ledger happens to list last — so a reordering there would silently move
     // this crate's opaque sample onto the database-error sentence.
-    let (mut outages, answered): (Vec<_>, Vec<_>) = afd_admission::error::one_of_each_kind()
+    let (mut outages, answered): (Vec<_>, Vec<_>) = afd_turns::error::one_of_each_kind()
         .into_iter()
         .partition(|(_label, error)| error.is_datastore_unavailable());
     let unreachable = outages
         .pop()
-        .expect("afd_admission declares an unavailable kind")
+        .expect("afd_turns declares an unavailable kind")
         .1;
     let answered = answered
         .into_iter()
         .find(|(_label, error)| error.code() == af_core::error_code::INTERNAL_OPERATION_FAILED)
-        .expect("afd_admission declares a kind that is opaque rather than an outage")
+        .expect("afd_turns declares a kind that is opaque rather than an outage")
         .1;
 
     vec![

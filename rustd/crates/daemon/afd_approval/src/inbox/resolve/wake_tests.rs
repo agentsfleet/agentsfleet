@@ -8,7 +8,7 @@
 use af_core::error_code;
 use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
-use afd_admission::Admissions;
+use afd_turns::Admissions;
 
 use crate::inbox::Inbox;
 

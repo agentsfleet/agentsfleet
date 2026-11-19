@@ -132,7 +132,7 @@ impl LeaseService {
                 };
                 Box::pin(creations.finish_setup_turn(&mut tx, scope, finish, &mut owed)).await?
             }
-            None => afd_events::activity::Announcement::default(),
+            None => afd_turns::view::activity::Announcement::default(),
         };
         creations
             .commit_setup_report(tx, announcement, owed)

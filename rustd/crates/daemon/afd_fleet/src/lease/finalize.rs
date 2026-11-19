@@ -29,7 +29,7 @@
 //! character boundary at or below the cap.
 
 use af_core::id::Uuid7;
-use afd_events::Closed;
+use afd_turns::view::Closed;
 
 use sqlx::PgConnection;
 
@@ -94,7 +94,7 @@ impl Leases {
             wall_ms,
             tool_calls,
         } = outcome;
-        let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_RESULT)
+        let closed = sqlx::query(afd_turns::view::sql::UPDATE_FLEET_EVENT_RESULT)
             .bind(fleet_id)
             .bind(event_id)
             .bind(verdict.status())
@@ -145,7 +145,7 @@ impl Leases {
             wall_ms,
             tool_calls,
         } = outcome;
-        let rows = sqlx::query(afd_events::sql::CLOSE_FOLDED_EVENTS)
+        let rows = sqlx::query(afd_turns::view::sql::CLOSE_FOLDED_EVENTS)
             .bind(fleet_id)
             .bind(event_ids)
             .bind(verdict.status())

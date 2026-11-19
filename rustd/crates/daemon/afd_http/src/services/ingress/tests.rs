@@ -49,7 +49,7 @@ fn refusing() -> Ingress {
         Entropy::new(),
     );
     let admissions =
-        afd_admission::Admissions::for_tests(database.clone(), afd_bus::test_util::unreachable());
+        afd_turns::Admissions::for_tests(database.clone(), afd_bus::test_util::unreachable());
     Ingress::new(database, vault, admissions)
 }
 

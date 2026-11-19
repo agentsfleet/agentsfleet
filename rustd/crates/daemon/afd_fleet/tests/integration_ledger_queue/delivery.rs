@@ -6,9 +6,9 @@
 
 use af_core::id::Uuid7;
 use af_wire::event::EventType;
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_db::config::DbRole;
 use afd_fleet::lease::Delivery;
+use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 use sqlx::Connection as _;
 
 use super::{STAMPS, WITHIN, enqueue, next};
@@ -34,7 +34,7 @@ async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
     let leases = fixtures.leases_with_dead_bus();
     let owner = fixtures.open(DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("owner");
-    let before = afd_events::fleet_counters(&fixtures.database, &fleet)
+    let before = afd_turns::view::fleet_counters(&fixtures.database, &fleet)
         .await
         .expect("counters");
 
@@ -53,7 +53,7 @@ async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
         "no fence moved"
     );
     assert_eq!(
-        afd_events::fleet_counters(&fixtures.database, &fleet)
+        afd_turns::view::fleet_counters(&fixtures.database, &fleet)
             .await
             .expect("rollback counters"),
         before
@@ -66,7 +66,7 @@ async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
     let acquired = next(&leases, &runner).await.expect("claim");
     assert_eq!(acquired.opened.received.delivery, Delivery::First);
     assert_eq!(delivery_state(&fixtures, &event).await, (1, true));
-    let after = afd_events::fleet_counters(&fixtures.database, &fleet)
+    let after = afd_turns::view::fleet_counters(&fixtures.database, &fleet)
         .await
         .expect("committed counters");
     assert_eq!(after.events_processed, before.events_processed + 1);

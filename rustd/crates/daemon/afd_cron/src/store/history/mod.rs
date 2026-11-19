@@ -4,7 +4,7 @@ mod transaction;
 
 use af_core::id::Uuid7;
 use afd_api_wire::activity::{FleetActivity, ScheduleChange, ScheduleSnapshot};
-use afd_events::activity::Announcement;
+use afd_turns::view::activity::Announcement;
 use sqlx::PgConnection;
 
 use crate::{DesiredStatus, Result, Schedule, SyncStatus, error};
@@ -31,7 +31,7 @@ impl Receipt<'_> {
         connection: &mut PgConnection,
         workspace: &Uuid7,
     ) -> Result<Announcement> {
-        afd_events::activity::record_on(
+        afd_turns::view::activity::record_on(
             connection,
             workspace,
             &self.schedule.fleet_id,

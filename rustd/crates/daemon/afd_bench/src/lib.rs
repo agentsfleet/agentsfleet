@@ -21,7 +21,7 @@
 //! # These lanes measure and change nothing
 //!
 //! Every lane drives the production types directly — `afd_fleet`'s lease path,
-//! `afd_outbound`'s worker, `afd_events`' steer — rather than a copy of them,
+//! `afd_outbound`'s worker, `afd_turns`' steer — rather than a copy of them,
 //! because a reimplementation would measure the reimplementation. Nothing here
 //! is reachable from the daemon, and no measurement is emitted as a metric:
 //! results are files, so a synthetic run can never be mistaken for production

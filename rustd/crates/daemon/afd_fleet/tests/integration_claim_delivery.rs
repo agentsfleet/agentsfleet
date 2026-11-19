@@ -135,7 +135,7 @@ async fn claim_on_archived_fleet_takes_nothing() {
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
         .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
         .bind(status::RECEIVED)
-        .bind(afd_admission::Producer::Steer.as_str())
+        .bind(afd_turns::Producer::Steer.as_str())
         .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
         .fetch_optional(&mut *fixtures.database.acquire().await.expect("claimer"))
@@ -244,7 +244,7 @@ async fn claim_counters_include_its_own_event() {
         "the snapshot plus its own row"
     );
     assert_eq!(
-        afd_events::fleet_counters(&fixtures.database, &fleet)
+        afd_turns::view::fleet_counters(&fixtures.database, &fleet)
             .await
             .expect("committed counters")
             .events_processed,

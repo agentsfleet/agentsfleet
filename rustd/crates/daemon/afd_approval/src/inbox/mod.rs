@@ -32,10 +32,10 @@ mod row;
 mod sweep;
 
 use af_core::id::Uuid7;
-use afd_admission::Admissions;
 use afd_api_wire::approval::GateStatus;
 use afd_bus::Handle;
 use afd_db::Db;
+use afd_turns::Admissions;
 use jiff_sqlx::ToSqlx as _;
 
 pub use self::row::{Cursor, Filter, GateRow, Resolution, Resolved};
