@@ -13,6 +13,16 @@ pub(super) fn read(
         .validate()
         .map_err(|report| invalid(format!("authoring.turn: {report}")))?;
     Ok(OperationalSettings {
+        outbound_retries: afd_outbound::retry::RetryPolicy::new(
+            &garde::Unvalidated::new(settings.outbound.retries)
+                .validate()
+                .map_err(|report| invalid(format!("outbound.retries: {report}")))?,
+        ),
+        inference: af_inference::Timeouts::new(
+            &garde::Unvalidated::new(settings.inference)
+                .validate()
+                .map_err(|report| invalid(format!("inference: {report}")))?,
+        ),
         tasks: afd_fleet::task::policy::TaskPolicy::new(&tasks),
         authoring: afd_authoring::turn_policy::TurnPolicy::new(&authoring),
         maintenance: super::maintenance::MaintenancePolicy::resolve(settings.maintenance)
@@ -30,6 +40,25 @@ mod tests {
     use std::io::Write as _;
 
     type Checked = Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn inference_timeouts_reach_the_effective_policy() -> Checked {
+        let mut file = tempfile::NamedTempFile::new()?;
+        write!(
+            file,
+            "[inference]\nconnect_timeout_seconds=2\nstream_idle_timeout_seconds=7"
+        )?;
+        let environment = MapEnv::default();
+        let config = ConfigBuilder::new(&environment)
+            .file(Some(file.path()))
+            .build()?;
+        assert_eq!(config.runtime.operations.inference.connect().as_secs(), 2);
+        assert_eq!(
+            config.runtime.operations.inference.stream_idle().as_secs(),
+            7
+        );
+        Ok(())
+    }
 
     #[test]
     fn authoring_file_values_reach_the_effective_policy() -> Checked {

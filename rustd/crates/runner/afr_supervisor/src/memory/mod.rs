@@ -13,7 +13,7 @@ use afr_telemetry::record;
 
 use zeroize::Zeroize;
 
-use crate::client::{Body, ControlPlane, retrying};
+use crate::client::{Body, ControlPlane};
 use crate::error::Result;
 
 /// Reads the fleet's memory, retrying a blip.
@@ -21,7 +21,7 @@ use crate::error::Result;
 /// # Errors
 /// A refusal, or a retryable failure that outlasted its attempts.
 pub(crate) async fn hydrate(plane: &ControlPlane, fleet_id: &Uuid7) -> Result<Body> {
-    retrying(|| plane.hydrate(fleet_id)).await
+    plane.retrying(|| plane.hydrate(fleet_id)).await
 }
 
 /// Counts a memory push that did not land, by why.

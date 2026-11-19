@@ -23,6 +23,8 @@ pub struct RuntimeSettings {
 
 #[derive(Debug)]
 pub(crate) struct OperationalSettings {
+    pub(crate) outbound_retries: afd_outbound::retry::RetryPolicy,
+    pub(crate) inference: af_inference::Timeouts,
     pub(crate) telemetry: garde::Valid<af_otlp::PipelineSettings>,
     pub(crate) maintenance: crate::config::maintenance::MaintenancePolicy,
     pub(crate) tasks: afd_fleet::task::policy::TaskPolicy,
@@ -66,6 +68,8 @@ pub(crate) fn read(env: &(impl EnvSource + ?Sized)) -> Result<RuntimeSettings, R
     let operations = OperationalSettings {
         tasks: afd_fleet::task::policy::TaskPolicy::default(),
         authoring: afd_authoring::turn_policy::TurnPolicy::default(),
+        inference: af_inference::Timeouts::DEFAULT,
+        outbound_retries: afd_outbound::retry::RetryPolicy::DEFAULT,
         maintenance: crate::config::maintenance::MaintenancePolicy::resolve(
             crate::config::maintenance::Maintenance::default(),
         )

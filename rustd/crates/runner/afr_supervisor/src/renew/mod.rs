@@ -13,7 +13,7 @@ use afr_agent::Meter;
 use jiff::Timestamp;
 use tokio::time::Instant;
 
-use crate::client::{ControlPlane, retrying};
+use crate::client::ControlPlane;
 use crate::error::Error;
 
 /// Leave time for an uncooperative engine, process-group termination and reaping before
@@ -170,7 +170,7 @@ pub(crate) async fn flush(plane: &ControlPlane, lease_id: &Uuid7, meter: &Meter)
         let spent = RenewRequest {
             requests: meter.unrecorded(),
         };
-        let renewed = retrying(|| plane.renew(lease_id, &spent)).await;
+        let renewed = plane.retrying(|| plane.renew(lease_id, &spent)).await;
         if let Some(seq) = renewed
             .as_ref()
             .ok()

@@ -18,6 +18,43 @@ use rig_core::http_client::{self as rig_http, HttpClientExt as _, MultipartForm}
 
 use super::{Transport, logged};
 
+#[tokio::test]
+async fn configured_http_attempts_cap_physical_sends() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    for attempts in [1, 2, 4] {
+        let seen = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(move || {
+            counted.fetch_add(1, Ordering::SeqCst);
+            async { http::StatusCode::SERVICE_UNAVAILABLE }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let settings = garde::Unvalidated::new(crate::RetrySettings {
+            max_attempts: attempts,
+            initial_backoff_ms: 1,
+            ..crate::RetrySettings::default()
+        })
+        .validate()
+        .unwrap();
+        let transport = Transport::new(reqwest::Client::new(), "lease", "fake")
+            .with_retry(crate::RetryPolicy::new(&settings));
+        let request = rig_http::Request::builder()
+            .uri(format!("http://{address}/"))
+            .body(Bytes::new())
+            .unwrap();
+        let response: rig_http::Response<rig_http::LazyBody<Bytes>> =
+            transport.http().send(request).await.unwrap();
+        assert_eq!(response.status(), http::StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(seen.load(Ordering::SeqCst), attempts);
+        server.abort();
+    }
+}
+
 /// The bytes one chunk of a served reply carries.
 const SERVED_CHUNK: usize = 64 * 1024;
 

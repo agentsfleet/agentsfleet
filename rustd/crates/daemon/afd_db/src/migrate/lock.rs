@@ -66,10 +66,11 @@ impl RetryPolicy {
         Self { attempts, interval }
     }
 
-    /// The longest this policy can wait, which is what the failure reports.
+    /// Planned sleep budget between polls; database request time is additional.
     #[must_use]
     pub const fn budget(&self) -> Duration {
-        self.interval.saturating_mul(self.attempts)
+        self.interval
+            .saturating_mul(self.attempts.saturating_sub(1))
     }
 }
 

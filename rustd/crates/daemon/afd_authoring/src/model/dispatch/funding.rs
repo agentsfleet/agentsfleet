@@ -91,6 +91,7 @@ impl Funding {
         };
         let route =
             af_inference::Configured::new(&self.prepared.inference, self.prepared.context_tokens)?;
+        let timeouts = physical.timeouts();
         let transport =
             af_inference::transport::HttpTransport::new(Arc::new(super::provider::Once {
                 physical,
@@ -98,6 +99,7 @@ impl Funding {
             }));
         let model = &attempt.model_snapshot.model;
         let control = af_inference::stream::TurnControl {
+            timeouts,
             correlation_id: attempt.id.to_string().into(),
             ..Default::default()
         };

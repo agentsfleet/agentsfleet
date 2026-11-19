@@ -6,6 +6,10 @@ use serde::Deserialize;
 #[derive(Default, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct ConfigToml {
+    #[garde(dive)]
+    pub outbound: Outbound,
+    #[garde(dive)]
+    pub inference: af_inference::TimeoutSettings,
     #[garde(skip)]
     pub maintenance: super::maintenance::Maintenance,
     #[garde(skip)]
@@ -28,6 +32,13 @@ pub(super) struct ConfigToml {
     pub telemetry: Telemetry,
     #[garde(dive)]
     pub checkpoint: Checkpoint,
+}
+
+#[derive(Default, Deserialize, Validate)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct Outbound {
+    #[garde(dive)]
+    pub retries: afd_outbound::retry::RetrySettings,
 }
 
 #[derive(Default, Deserialize)]

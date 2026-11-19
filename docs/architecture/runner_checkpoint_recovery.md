@@ -1,7 +1,7 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-11-18
+verified: 2026-11-19
 product_version: 0.78.0
 executable: false
 ---
@@ -72,6 +72,50 @@ These timers bound model work; they add no deadline for a person to answer or ap
 Maintenance settings control job cadence, page sizes and pass deadlines.
 Bounded startup staggering separates replicas' first passes while retaining each job's maximum initial delay.
 OpenTelemetry settings control actual exporter queues, batch sizes, timeouts and export intervals.
+
+Daemon provider connection and parsed-stream inactivity limits live under `[inference]`.
+The same checked values configure both the physical client and semantic stream reader.
+Customizing them creates a separate provider pool, preserving the storage and GitHub timeout policy.
+
+`[outbound.retries]` controls inline vendor-delivery attempts and exponential pauses.
+Exhausting that budget leaves the durable obligation available to later claims.
+The delivery scan cadence remains under `[maintenance.outbound_delivery]`.
+
+The runner owns a separate profile at `deploy/baremetal/agentsfleet-runner.toml`.
+`AGENTSFLEET_RUNNER_CONFIG_FILE` selects it; host deployment installs it, and local acceptance mounts it read-only.
+The runner uses the same shared loader and validates the file before connecting.
+
+```text
+runner profile
+  |-- inference -> guarded client + parsed stream inactivity
+  |-- provider_retries -> HTTP attempt budget + separate opening budget
+  `-- supervisor
+        |-- daemon retry timing and bounded operation attempts
+        |-- native host and authoring renewal cadence
+        `-- shared file-operation admission across all workers
+```
+
+Defaults remain three generation sends per opening and three eligible openings; native token-count sends are separate.
+Bounded daemon operations default to five sends, including the first; reconnect and owed-report loops remain cancellable without a count limit.
+Daemon exponential ceilings apply before jitter; connection recovery also retains its final 30-second clamp.
+
+The shared file-operation default remains two, each with the existing four-transfer window.
+Required restores queue with renewal active; optional capture skips a busy boundary before freezing.
+Worker capacity remains assigned per runner in PostgreSQL.
+
+| Production files | Owner or change | Effect |
+| --- | --- | --- |
+| `af_inference/src/{timeouts,stream}.rs` | `TimeoutSettings`, `Timeouts`, `TurnControl::timeouts` | Share checked physical and semantic inactivity limits |
+| `afd_authoring/src/model/provider/{mod,network/mod,dispatch}.rs`, `dispatch/funding.rs` | `Transport::timeouts`, `Network::configured`, `complete`, `Funding::confirm` | Pass the selected policy through single-send generation and counting |
+| `main/src/config/{settings,policies}.rs`, `preflight/runtime.rs`, `serve/clients.rs`, `plane/*` | Checked operational snapshot and separate storage pool owner | Inject daemon settings without changing storage timeouts |
+| `af_providers/src/{retry/settings,connect/mod,transport/mod,turn/mod,turn/progress}.rs` | `RetrySettings`, `RetryPolicy`, `Connector::configured`, `Turns::with_settings` | Bound sends and eligible reopenings independently |
+| `afr_supervisor/src/config/runtime.rs`, `client/*`, `downlink/*`, `uplink/renewals/*`, `authoring/renew.rs` | `RuntimeSettings`, `RuntimePolicy`, `ControlPlane::retrying`, `run_with_interval` | Apply runner-local retry and cadence settings |
+| `afr_supervisor/src/recovery/admission.rs`, `lib.rs` | `RecoveryResources::configured`, composition | Share file admission across the runner |
+| `runner/main/src/config/mod.rs`, `main.rs`, `host.rs`, `deploy/baremetal/*`, `deploy/local/linux.sh` | Runner profile loading, installation and read-only mounting | Deliver a real profile to each runner binary |
+| `afd_outbound/src/{retry,worker/mod,lanes/mod,poster/mod}.rs`, `main/src/outbound.rs` | Checked retry policy and `deliver_with_policy` | Apply inline delivery limits without replacing durable claims |
+
+This extension adds no SQL column, index or foreign key.
+The migration-lock diagnostic now reports 29 planned sleeps for 30 polls; database request time is additional.
 
 The loader reports overridden environment variable names and their winning source.
 These diagnostics contain no setting values.

@@ -7,7 +7,7 @@ use af_wire::{
     lease::{TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointResponse},
     protocol::{Down, Up},
 };
-use backon::{ExponentialBuilder, Retryable as _};
+use backon::Retryable as _;
 use garde::Validate as _;
 
 use super::{
@@ -37,10 +37,9 @@ impl ControlPlane {
         }
         (|| self.stream.compute(Turn { lease, request }))
             .retry(
-                ExponentialBuilder::default()
-                    .with_min_delay(super::RETRY_FIRST_DELAY)
-                    .with_max_delay(super::RETRY_MAX_DELAY)
-                    .with_max_times(super::RETRY_ATTEMPTS),
+                self.runtime
+                    .backoff()
+                    .with_max_times(self.runtime.attempts() - 1),
             )
             .when(crate::Error::is_retryable)
             .await

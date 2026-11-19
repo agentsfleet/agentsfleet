@@ -9,9 +9,6 @@ use serde_json::Value;
 use std::time::Duration;
 use tokio::time::Instant;
 
-const INTERVAL: Duration = Duration::from_secs(10);
-const RETRY: Duration = Duration::from_millis(250);
-
 pub(super) async fn keep(
     plane: &ControlPlane,
     id: &Uuid7,
@@ -25,7 +22,10 @@ pub(super) async fn keep(
         .stream
         .renewing
         .authoring(id, deadline(lease.expires_at, clock).min(maximum))?;
-    let mut pause = INTERVAL;
+    let settings = plane.runtime.settings();
+    let interval = Duration::from_millis(settings.authoring_renewal_interval_ms);
+    let retry = Duration::from_millis(settings.authoring_renewal_retry_ms);
+    let mut pause = interval;
     loop {
         let expiry = lifetime.deadline();
         let renew_at = (Instant::now() + pause).min(expiry).min(maximum);
@@ -46,10 +46,10 @@ pub(super) async fn keep(
         match response {
             Ok(reply) if !reply.stop_requested => {
                 lifetime.extend(deadline(reply.expires_at, clock).min(maximum));
-                pause = INTERVAL;
+                pause = interval;
             }
             Ok(_) => return Ok(()),
-            Err(failure) if failure.is_retryable() => pause = RETRY,
+            Err(failure) if failure.is_retryable() => pause = retry,
             Err(failure) => return Err(failure),
         }
     }

@@ -31,7 +31,7 @@ impl Common {
             Arc::clone(&parts.kek),
             Entropy::new(),
         );
-        let github_client = parts.authoring_transport.guarded_client();
+        let github_client = parts.storage_client.clone();
         let task_master = Arc::clone(&parts.kek);
         let admissions = Admissions::new(parts.database.clone(), parts.bus.clone(), Entropy::new());
         let biller = crate::billing::biller(parts.database.clone(), parts.analytics.clone());

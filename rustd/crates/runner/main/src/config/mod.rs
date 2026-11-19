@@ -1,0 +1,48 @@
+//! Runner-owned profile types over the application-independent TOML loader.
+
+use af_core::env::EnvSource;
+use garde::Validate;
+use serde::Deserialize;
+use std::{path::PathBuf, process::ExitCode};
+
+/// Optional numeric deployment profile; tokens and bootstrap addresses stay in the environment.
+pub(super) const ENV_CONFIG_FILE: &str = "AGENTSFLEET_RUNNER_CONFIG_FILE";
+
+#[derive(Default, Deserialize, Validate)]
+#[serde(default, deny_unknown_fields)]
+struct Profile {
+    #[garde(dive)]
+    inference: af_inference::TimeoutSettings,
+    #[garde(dive)]
+    provider_retries: af_providers::RetrySettings,
+    #[garde(dive)]
+    supervisor: afr_supervisor::config::RuntimeSettings,
+}
+
+pub(super) struct Settings {
+    pub(super) inference: af_inference::Timeouts,
+    pub(super) provider_retries: af_providers::RetryPolicy,
+    pub(super) supervisor: afr_supervisor::config::RuntimePolicy,
+}
+
+pub(super) fn read(env: &impl EnvSource) -> Result<Settings, ExitCode> {
+    let file = env.get(ENV_CONFIG_FILE).map(PathBuf::from);
+    let profile = af_config::ConfigBuilder::default()
+        .file(file.as_deref())
+        .build::<Profile>()
+        .map_err(|error| super::refused(&error))?;
+    Ok(Settings {
+        inference: af_inference::Timeouts::new(&checked(profile.inference)?),
+        provider_retries: af_providers::RetryPolicy::new(&checked(profile.provider_retries)?),
+        supervisor: afr_supervisor::config::RuntimePolicy::new(&checked(profile.supervisor)?),
+    })
+}
+
+fn checked<T: Validate<Context = ()>>(raw: T) -> Result<garde::Valid<T>, ExitCode> {
+    garde::Unvalidated::new(raw)
+        .validate()
+        .map_err(|report| super::refused(&report))
+}
+
+#[cfg(test)]
+mod tests;

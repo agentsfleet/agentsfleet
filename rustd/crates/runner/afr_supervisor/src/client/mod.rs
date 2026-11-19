@@ -9,13 +9,14 @@
 
 use std::borrow::Cow;
 use std::fmt;
-use std::time::Duration;
 
 use af_core::id::Uuid7;
 use af_wire::credentials::MintCredentialRequest;
 use af_wire::memory::{MemoryPushRequest, MemoryRecallRequest};
 use af_wire::paths;
-use backon::{ExponentialBuilder, Retryable as _};
+#[cfg(test)]
+use backon::ExponentialBuilder;
+use backon::Retryable as _;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
@@ -35,13 +36,6 @@ pub(crate) use self::http::HttpRunnerApi;
 pub(crate) use self::verb::Method;
 pub(crate) use self::verb::Verb;
 
-/// Attempts a retryable call gets before its caller decides what a failure
-/// means: fail the lease's start or leave the caller to retry.
-const RETRY_ATTEMPTS: usize = 4;
-/// The first pause between attempts; each later one doubles, with jitter.
-const RETRY_FIRST_DELAY: Duration = Duration::from_millis(250);
-/// The longest pause between attempts, however many have failed.
-const RETRY_MAX_DELAY: Duration = Duration::from_secs(30);
 const EVENT_STARTED: &str = "daemon_call_started";
 const EVENT_COMPLETED: &str = "daemon_call_completed";
 const EVENT_FAILED: &str = "daemon_call_failed";
@@ -104,12 +98,37 @@ impl Body {
 pub struct ControlPlane {
     api: Box<dyn RunnerApi>,
     pub(crate) stream: crate::uplink::StreamHandle,
+    pub(crate) runtime: crate::config::RuntimePolicy,
 }
 
 impl ControlPlane {
     /// Speaks every verb through `api`.
     pub(crate) fn new(api: Box<dyn RunnerApi>, stream: crate::uplink::StreamHandle) -> Self {
-        Self { api, stream }
+        Self {
+            api,
+            stream,
+            runtime: crate::config::RuntimePolicy::DEFAULT,
+        }
+    }
+
+    pub(crate) const fn with_runtime(mut self, runtime: crate::config::RuntimePolicy) -> Self {
+        self.runtime = runtime;
+        self
+    }
+
+    /// Runs a bounded operation using this runner's checked retry settings.
+    pub(crate) async fn retrying<T, F, Fut>(&self, call: F) -> Result<T>
+    where
+        F: FnMut() -> Fut,
+        Fut: Future<Output = Result<T>>,
+    {
+        call.retry(
+            self.runtime
+                .backoff()
+                .with_max_times(self.runtime.attempts() - 1),
+        )
+        .when(crate::Error::is_retryable)
+        .await
     }
 
     /// Posts one body of finished calls' full records, already encoded.
@@ -207,32 +226,10 @@ fn memory_path(fleet_id: &Uuid7) -> Cow<'static, str> {
     Cow::Owned(format!("{}/{fleet_id}", paths::RUNNER_MEMORY))
 }
 
-/// The one backoff every retried path shares: exponential from
-/// [`RETRY_FIRST_DELAY`], capped at [`RETRY_MAX_DELAY`], jittered so runners
-/// that lost the daemon together do not return together.
+/// Default retry settings for isolated transport tests.
+#[cfg(test)]
 pub(crate) fn backoff() -> ExponentialBuilder {
-    ExponentialBuilder::default()
-        .with_min_delay(RETRY_FIRST_DELAY)
-        .with_max_delay(RETRY_MAX_DELAY)
-        .with_jitter()
-}
-
-/// Jittered pauses for connection recovery and in-memory report delivery.
-pub(crate) fn endless() -> backon::ExponentialBackoff {
-    backon::BackoffBuilder::build(backoff().without_max_times())
-}
-
-/// Runs `call` until it succeeds, fails terminally, or exhausts its attempts.
-///
-/// Only a retryable failure is retried: a 4xx is final on its first answer.
-pub(crate) async fn retrying<T, F, Fut>(call: F) -> Result<T>
-where
-    F: FnMut() -> Fut,
-    Fut: Future<Output = Result<T>>,
-{
-    call.retry(backoff().with_max_times(RETRY_ATTEMPTS))
-        .when(crate::Error::is_retryable)
-        .await
+    crate::config::RuntimePolicy::DEFAULT.backoff()
 }
 
 #[cfg(test)]

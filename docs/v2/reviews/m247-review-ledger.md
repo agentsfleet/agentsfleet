@@ -344,7 +344,7 @@ Four real collector checks passed for span batching, span timing, log batching a
 The browser Appearance check also passed on the current branch.
 The reported deployed Appearance failure remains unreproduced.
 
-Runner-delivery and retry settings still require implementation.
+Runner-delivery and retry implementation is recorded in the transport extension below.
 The lease-health extension below is under validation.
 A configurable maximum lease runtime must be saved when each lease is issued.
 Reading each replica's current runtime setting would break the promised immutable ceiling during a profile change.
@@ -417,6 +417,47 @@ Workspace Rust lint and the unused-dependency check passed.
 The live group covered the complete authoring draft suite and every SQL file's preparation.
 The new checks passed for saved admission limits, capped dispatch, receipt replay and unreadable saved policy.
 The runner's zero-correction check also passed.
+
+
+#### Transport and runner profile extension
+
+The daemon now exposes physical provider timeouts and outbound inline retries in both Fly profiles.
+The runner has its own numeric profile, shared-loader startup validation, host installation and read-only local-container mounting.
+Worker capacity remains assigned by PostgreSQL, and runner tokens remain in the environment.
+
+| Setting group | Defaults | Actual consumers |
+| --- | --- | --- |
+| Daemon and runner `inference` | Connect 10 seconds; stream silence 300 seconds | Guarded physical clients and parsed provider streams; earlier accepted deadlines win |
+| Daemon `outbound.retries` | Three total sends; initial pause 200 milliseconds; exponential ceiling 800 milliseconds | Worker lanes and `deliver_with_policy`; durable obligations survive inline exhaustion |
+| Runner `provider_retries` | Three generation sends per opening; three eligible openings; initial pause 1000 milliseconds; Retry-After ceiling 60 seconds | Provider transport and stream state owner; native counting sends remain separate |
+| Runner `supervisor` retries | Five total bounded sends; initial pause 250 milliseconds; exponential ceiling 30,000 milliseconds | Daemon calls, heartbeat retries, connection recovery and owed reports |
+| Runner `supervisor` renewal | Host tick 5000 milliseconds; authoring tick 10,000 milliseconds; authoring retry 250 milliseconds | Native renewal queue and private authoring owner |
+| Runner `supervisor` file admission | Two concurrent file operations across all workers | Required restores queue; optional capture skips before freezing |
+
+The runner profile contains thirteen explicit values and rejects unknown fields or invalid bounds before connecting.
+Retry counts include the first send; reconnect and owed-report loops retain cancellation and deadline bounds without a count limit.
+Exponential ceilings apply before jitter; connection recovery also retains its final 30-second clamp.
+
+The provider stream state moved into `af_providers/src/turn/progress.rs` without changing its output or known-spend fences.
+The daemon keeps a separate storage client when provider timeouts differ, preserving GitHub and checkpoint-storage timing.
+This extension adds no database column, index or foreign key.
+
+The migration-lock diagnostic now reports 29 planned sleeps for 30 polls; database request time is additional.
+Full repository verification, greater-than-99% coverage, acceptance and performance measurements remain open.
+
+
+The full Rust unit lanes passed 1834 runner tests, 203 daemon tests and 3754 library tests: 5791 total.
+App coverage passed at 100% across 529 production files, covering all 10,403 measured lines.
+The overall unit command was cancelled during website coverage after the owner requested benchmarks first and the remaining checks in CI.
+Rust coverage has not yet been measured on this candidate; the greater-than-99% requirement remains open.
+
+> Owner: "I feel you can go straight to this and have the CI gate run this and hence push the PR"
+
+This changes verification order, without waiving coverage or acceptance.
+
+The companion documentation repair is pushed in [docs PR256](https://github.com/agentsfleet/docs/pull/256) at `7e91d1716ce1daff8d214ff0e418fd54a2ce50d5`.
+Its final gate, documentation checks, secret scan and Greptile passed; the environment-only opt-in thread is resolved.
+Independent standards review found no remaining issues across 62 applicable rules; gstack review passed all three probes and 25 focused documentation tests.
 
 #### Claude configuration review disposition
 
@@ -607,7 +648,8 @@ Indy added the task constants, retry policies and user-turn timing to this confi
 Chosen settings must reach the deployment TOML and their consumers together.
 
 Task settings and migration retries now reach both deployment profiles and their consumers.
-Authoring, inference and delivery retry extensions remain pending.
+Authoring limits and transport retry settings now reach their deployment profiles and consumers.
+Final verification and performance evidence remain tracked separately.
 
 | Proposed configuration | Traced value | Runtime owner and required handling |
 | --- | ---: | --- |

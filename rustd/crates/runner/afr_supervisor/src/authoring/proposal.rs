@@ -1,10 +1,6 @@
 //! The fixed proposal tool commits through the daemon's native validator.
 
-use crate::{
-    Result,
-    client::{ControlPlane, retrying},
-    error,
-};
+use crate::{Result, client::ControlPlane, error};
 use af_core::id::Uuid7;
 use af_fleet_runtime::Definition;
 use af_wire::authoring::{
@@ -70,7 +66,9 @@ pub(super) async fn apply(
             proposal: proposal.clone(),
         },
     };
-    let receipt = retrying(|| plane.authoring_activity(id, &request)).await;
+    let receipt = plane
+        .retrying(|| plane.authoring_activity(id, &request))
+        .await;
     let (text, accepted) = match receipt {
         Ok(receipt) if receipt.accepted => {
             tracing::info!(

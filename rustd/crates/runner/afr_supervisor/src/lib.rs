@@ -138,7 +138,11 @@ pub async fn run(
     probe: HostProbe,
     shutdown: CancellationToken,
 ) -> Result<()> {
-    serve(compose(config, home, engine, agent, probe)?, shutdown).await
+    Box::pin(serve(
+        compose(config, home, engine, agent, probe)?,
+        shutdown,
+    ))
+    .await
 }
 
 /// [`run`], fetching every bound repository from `origin`, which ends in `/`,
@@ -171,7 +175,8 @@ fn compose(
 ) -> Result<Runner> {
     let (stream, downlink, offers) = downlink::Downlink::new(config)?;
     Ok(Runner {
-        plane: ControlPlane::new(Box::new(HttpRunnerApi::new(config)?), stream),
+        plane: ControlPlane::new(Box::new(HttpRunnerApi::new(config)?), stream)
+            .with_runtime(config.runtime()),
         downlink,
         offers,
         home,
@@ -201,6 +206,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         limits,
         clock,
     } = runner;
+    let recovery = recovery::RecoveryResources::configured(plane.runtime)?;
     let lessee = Arc::new(Lessee {
         plane,
         engine,
@@ -212,7 +218,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         clock,
         halt: Halt::new(shutdown),
         whoami: Whoami::default(),
-        recovery: recovery::RecoveryResources::new()?,
+        recovery,
     });
     serve_composed(lessee, downlink, offers, &probe).await
 }

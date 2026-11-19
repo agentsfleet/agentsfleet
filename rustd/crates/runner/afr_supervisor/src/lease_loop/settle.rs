@@ -6,7 +6,6 @@ use af_wire::tool_detail::ToolCallRecord;
 use zeroize::Zeroizing;
 
 use super::{LeaseRun, hold::Fate, segments::Stopwatch};
-use crate::client::retrying;
 use crate::report::{Ending, delivery::until_acknowledged, report};
 use crate::{Result, error, memory::CapturedMemory, records, renew};
 
@@ -57,7 +56,7 @@ impl LeaseRun<'_> {
         request.memory = memory.views();
         request.telemetry.segments = Some(self.timeline.reported(settling.elapsed()));
         let bytes = Zeroizing::new(serde_json::to_vec(&request).map_err(error::encode)?);
-        let response = until_acknowledged(&self.lessee.halt, || async {
+        let response = until_acknowledged(&self.lessee.halt, self.lessee.plane.runtime, || async {
             self.lessee.plane.report(&bytes).await.map(Some)
         })
         .await?;
@@ -89,7 +88,9 @@ impl LeaseRun<'_> {
         let plane = &self.lessee.plane;
         let posted: crate::Result<()> = async {
             for body in records::bodies(self.lease.fencing_token, records)? {
-                retrying(|| plane.tool_calls(&self.ids.lease, body.clone())).await?;
+                plane
+                    .retrying(|| plane.tool_calls(&self.ids.lease, body.clone()))
+                    .await?;
             }
             Ok(())
         }

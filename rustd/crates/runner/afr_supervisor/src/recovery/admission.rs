@@ -7,8 +7,6 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
-const FILE_OPERATIONS: usize = 2;
-
 #[derive(Debug)]
 pub(crate) struct RecoveryResources {
     pub(crate) transfers: Transfers,
@@ -16,10 +14,17 @@ pub(crate) struct RecoveryResources {
 }
 
 impl RecoveryResources {
+    #[cfg(test)]
     pub(crate) fn new() -> Result<Self> {
+        Self::configured(crate::config::RuntimePolicy::DEFAULT)
+    }
+
+    pub(crate) fn configured(policy: crate::config::RuntimePolicy) -> Result<Self> {
         Ok(Self {
             transfers: Transfers::new()?,
-            files: Arc::new(Semaphore::new(FILE_OPERATIONS)),
+            files: Arc::new(Semaphore::new(
+                policy.settings().max_concurrent_file_operations,
+            )),
         })
     }
 
@@ -47,6 +52,24 @@ impl RecoveryResources {
 mod tests {
     use super::*;
     use std::task::Poll;
+
+    #[tokio::test]
+    async fn configured_single_file_slot_is_shared_until_its_last_owner_releases() -> Result<()> {
+        let settings = garde::Unvalidated::new(crate::config::RuntimeSettings {
+            max_concurrent_file_operations: 1,
+            ..crate::config::RuntimeSettings::default()
+        })
+        .validate()?;
+        let resources =
+            RecoveryResources::configured(crate::config::RuntimePolicy::new(&settings))?;
+        let first = resources.file(&CancellationToken::new()).await?;
+        let writer = Arc::clone(&first);
+        drop(first);
+        assert!(resources.try_file().is_none());
+        drop(writer);
+        assert!(resources.try_file().is_some());
+        Ok(())
+    }
 
     #[tokio::test]
     async fn required_work_queues_and_optional_work_skips_a_busy_runner() -> Result<()> {

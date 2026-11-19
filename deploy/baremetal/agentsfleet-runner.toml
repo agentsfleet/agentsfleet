@@ -1,0 +1,25 @@
+# Runner-local settings. Runner work slots and tenant policy are assigned by agentsfleetd.
+# Secrets and API/private-stream bootstrap addresses remain in /etc/default/agentsfleet-runner.
+[inference]
+connect_timeout_seconds = 10
+stream_idle_timeout_seconds = 300
+
+# Independent limits: at most 3 HTTP sends per opening and 3 eligible openings.
+# A paid attempt, known usage or visible output prevents automatic reopening.
+[provider_retries]
+max_attempts = 3
+max_stream_open_attempts = 3
+initial_backoff_ms = 1000
+max_retry_after_seconds = 60
+
+[supervisor]
+# Five total sends = the original first send plus four retries.
+daemon_max_attempts = 5
+daemon_initial_backoff_ms = 250
+daemon_max_backoff_ms = 30_000
+# Reconnect and owed reports retry until cancellation/deadline, without a count limit.
+renewal_interval_ms = 5000
+authoring_renewal_interval_ms = 10_000
+authoring_renewal_retry_ms = 250
+# One shared admission pool per runner; optional captures skip when both slots are busy.
+max_concurrent_file_operations = 2

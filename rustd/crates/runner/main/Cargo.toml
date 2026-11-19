@@ -28,6 +28,10 @@ required-features = ["test-util"]
 test-util = ["af_providers/test-util"]
 
 [dependencies]
+af_config.workspace = true
+af_inference.workspace = true
+garde.workspace = true
+serde.workspace = true
 # The log-level knob both binaries read, declared once, and the stop `run`
 # waits on (`signal`).
 af_core = { workspace = true, features = ["signal"] }

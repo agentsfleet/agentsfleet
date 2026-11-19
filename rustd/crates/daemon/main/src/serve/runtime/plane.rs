@@ -22,6 +22,7 @@ pub(super) struct Inputs<'a> {
     pub(super) broker: Arc<afd_credential::credential::Broker>,
     pub(super) live: Live,
     pub(super) authoring_transport: afd_authoring::Network,
+    pub(super) storage_client: reqwest::Client,
     pub(super) vendor_client: reqwest::Client,
     pub(super) schedule_client: reqwest::Client,
 }
@@ -37,12 +38,14 @@ pub(super) fn build(inputs: Inputs<'_>) -> ServingPlane {
         broker,
         live,
         authoring_transport,
+        storage_client,
         vendor_client,
         schedule_client,
     } = inputs;
     ServingPlane::new(crate::plane::PlaneParts {
         runtime: config.runtime.clone(),
         authoring_transport,
+        storage_client,
         database: database.clone(),
         bus: bus.clone(),
         runner_wake: config.runner_wake().clone(),

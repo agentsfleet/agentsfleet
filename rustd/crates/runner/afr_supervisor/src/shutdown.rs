@@ -80,7 +80,12 @@ mod tests {
         let started = Instant::now();
         shutdown.cancel();
         let reporting = async {
-            let result = until_acknowledged::<(), _, _>(&halt, std::future::pending).await;
+            let result = until_acknowledged::<(), _, _>(
+                &halt,
+                crate::config::RuntimePolicy::DEFAULT,
+                std::future::pending,
+            )
+            .await;
             assert!(
                 result.is_err(),
                 "the expired grace ends pending memory-only delivery"
@@ -98,11 +103,12 @@ mod tests {
         let started = Instant::now();
         shutdown.cancel();
         let reporting = async {
-            let delivered = until_acknowledged(&halt, || async {
-                tokio::time::sleep(Duration::from_secs(2)).await;
-                Ok(Some("acknowledged"))
-            })
-            .await;
+            let delivered =
+                until_acknowledged(&halt, crate::config::RuntimePolicy::DEFAULT, || async {
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    Ok(Some("acknowledged"))
+                })
+                .await;
             assert!(matches!(delivered, Ok("acknowledged")));
         };
         finish(&halt, reporting).await;

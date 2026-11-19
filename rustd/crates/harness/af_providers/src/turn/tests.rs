@@ -19,10 +19,17 @@ const TYPE: &str = "type";
 const ID: &str = "id";
 const INPUT: &str = "input_tokens";
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Generation {
+    Complete,
+    Silent,
+    Truncated,
+}
+
 struct Physical {
     paths: Mutex<Vec<String>>,
     status: u16,
-    silent: bool,
+    generation: Generation,
 }
 
 impl SendRequest for Physical {
@@ -37,12 +44,15 @@ impl SendRequest for Physical {
             .map(|mut paths| paths.push(path.clone()))
             .map_err(|_poisoned| std::io::Error::other("recorder poisoned"));
         let status = self.status;
-        let silent = self.silent;
+        let silent = self.generation == Generation::Silent;
+        let truncated = self.generation == Generation::Truncated;
         Box::pin(async move {
             recorded.map_err(rig_http::Error::instance)?;
             let counting = path.ends_with(INPUT);
             let body = if counting {
                 r#"{"input_tokens":123}"#.to_owned()
+            } else if truncated {
+                String::new()
             } else {
                 let response = serde_json::json!({TYPE:"response.completed","response":{
                     ID:"r","status":"completed","output":[{TYPE:"message","role":"assistant",
@@ -73,10 +83,10 @@ impl SendRequest for Physical {
 }
 
 fn turns(status: u16) -> Result<(Turns, Arc<Physical>)> {
-    turns_with_stream(status, false)
+    turns_with_stream(status, Generation::Complete)
 }
 
-fn turns_with_stream(status: u16, silent: bool) -> Result<(Turns, Arc<Physical>)> {
+fn turns_with_stream(status: u16, generation: Generation) -> Result<(Turns, Arc<Physical>)> {
     let settings = ModelInference {
         api: InferenceApi::Responses,
         base_url: "https://api.openai.com/v1".into(),
@@ -86,7 +96,7 @@ fn turns_with_stream(status: u16, silent: bool) -> Result<(Turns, Arc<Physical>)
     let physical = Arc::new(Physical {
         paths: Mutex::default(),
         status,
-        silent,
+        generation,
     });
     let transport = HttpTransport::new(Arc::<Physical>::clone(&physical));
     let route =
@@ -101,6 +111,8 @@ fn turns_with_stream(status: u16, silent: bool) -> Result<(Turns, Arc<Physical>)
             provider: PROVIDER.into(),
             counting_key: SecretString::new(KEY.into()),
             counting_transport: transport,
+            timeouts: af_inference::Timeouts::DEFAULT,
+            retries: crate::RetryPolicy::DEFAULT,
         },
         physical,
     ))
@@ -117,6 +129,35 @@ fn request(messages: &[crate::provider::Message]) -> Request<'_> {
         max_output_tokens: Some(37),
         single_attempt: true,
     }
+}
+
+#[tokio::test]
+async fn configured_opening_budget_stops_truncated_unpaid_generations()
+-> Result<(), Box<dyn std::error::Error>> {
+    for openings in [1, 2] {
+        let (turns, physical) = turns_with_stream(200, Generation::Truncated)?;
+        let settings = garde::Unvalidated::new(crate::RetrySettings {
+            max_stream_open_attempts: openings,
+            ..crate::RetrySettings::default()
+        })
+        .validate()?;
+        let turns = turns.with_settings(
+            af_inference::Timeouts::DEFAULT,
+            crate::RetryPolicy::new(&settings),
+        );
+        let messages = [crate::provider::Message::User("probe".into())];
+        let mut request = request(&messages);
+        request.single_attempt = false;
+        let chunks: Vec<_> = turns.stream(request).collect().await;
+        assert!(chunks.iter().any(Result::is_err));
+        let paths = physical
+            .paths
+            .lock()
+            .map_err(|_poisoned| "recorder poisoned")?;
+        assert_eq!(paths.len(), openings);
+        assert!(paths.iter().all(|path| path == "/v1/responses"));
+    }
+    Ok(())
 }
 
 #[tokio::test]
@@ -200,7 +241,7 @@ async fn a_silent_runtime_call_records_deadline_and_cancellation_once()
     use crate::testing::{Observed, Tally, scoped};
     let (recorder, received) = Tally::new();
     scoped(recorder, async {
-        let (turns, _physical) = turns_with_stream(200, true)?;
+        let (turns, _physical) = turns_with_stream(200, Generation::Silent)?;
         let messages = [crate::provider::Message::User("probe".into())];
         let expired: Vec<_> = turns.stream(request(&messages)).collect().await;
         assert!(expired.iter().any(Result::is_err));

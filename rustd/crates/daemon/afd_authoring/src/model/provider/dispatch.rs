@@ -39,6 +39,7 @@ pub(in crate::model) async fn complete(
     physical: Arc<dyn Transport>,
 ) -> Result<Completed> {
     let configured = af_inference::Configured::new(&outbound.inference, outbound.context_tokens)?;
+    let timeouts = physical.timeouts();
     let transport = HttpTransport::new(Arc::new(Once {
         physical,
         timeout: outbound.timeout,
@@ -47,6 +48,7 @@ pub(in crate::model) async fn complete(
     let observed_model = outbound.model.clone();
     let observed_provider = outbound.provider.clone();
     let control = TurnControl {
+        timeouts,
         observer: Some(Arc::new(move |timing| {
             use af_inference::stream::FailureCause;
             use af_observability::metrics::label::models::CallOutcome;

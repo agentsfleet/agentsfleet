@@ -36,7 +36,13 @@ The turn stops at eight calls or the admitted output allowance (`afr_supervisor/
 
 When every proposal in the response is accepted, the turn returns the review-ready answer. Save remains a separate human action.
 
-Unknown provider usage ends the turn without another dispatch. Renewal runs every ten seconds, retries retryable failures after 250 milliseconds, and stops at the live deadline (`afr_supervisor/src/authoring/renew.rs`). The attempt also has a 300-second maximum.
+Unknown provider usage ends the turn without another dispatch.
+Private authoring renewal defaults to ten seconds, with a 250-millisecond pause after retryable failure (`afr_supervisor/src/authoring/renew.rs`).
+The runner profile can shorten both intervals; the accepted attempt deadline still wins.
+
+The daemon snapshots the selected call, wall-time, correction and provider-timeout limits with each issued attempt.
+Compiled compatibility ceilings remain eight calls, 300 seconds and one correction.
+Changing a deployment profile affects newly issued attempts.
 
 ## Private content and report retention
 
@@ -198,13 +204,47 @@ A lease carries the selected model's saved inference settings: API format, base 
 
 `rig-core` and `rig-http` speak the three supported API formats, at the version `rustd/Cargo.toml` pins. The transport under rig is the runner's: one HTTP client per runner that follows no redirect. So a turn and its key reach the admitted host and no other.
 
-A bounded retry honours `Retry-After`. A turn that fails before anything visible went out is opened again under the same bound.
+A bounded HTTP retry honours `Retry-After`.
+A separate reopening budget applies before visible output or known spend.
+The defaults allow three generation sends per opening and three eligible openings.
+
+Native token-count requests remain separate and send once per opening.
+Paid authoring dispatches and native decisions retain their single-send rule.
 
 The reasoning a provider signs goes back with the turn that made it. A call from a turn cut at the output limit is answered `output_limit_reached` and never runs.
 
 A call whose arguments are not JSON reaches its tool as the text the model wrote. The tool refuses it with a reason.
 
 rig traces every request and reply whole, before the scrub. So the shared log filter (`af_inference::log_filter`), installed by daemon and runner, holds rig to its warnings at any level. It also turns off the one warning that repeats a provider's error message.
+
+### Startup profiles
+
+Each binary owns its profile types and resolves them through the shared `af_config` loader.
+The loader depends on parsing and validation libraries, without depending on either binary.
+
+```text
+daemon TOML -> af_config -> checked daemon policies
+                            |-- stores and accepted attempt snapshots
+                            |-- maintenance and telemetry clocks
+                            `-- provider pool; storage keeps its own timeout policy
+
+runner TOML -> af_config -> checked runner policies
+                            |-- shared guarded provider pool and retry budgets
+                            |-- native renewal cadence and daemon retries
+                            `-- shared file-operation admission
+```
+
+The runner selects its optional file with `AGENTSFLEET_RUNNER_CONFIG_FILE`.
+Managed host deployment installs `deploy/baremetal/agentsfleet-runner.toml` under `/etc/agentsfleet`; local acceptance mounts the same profile read-only.
+Without a selected file, the runner retains its existing defaults.
+
+Retry counts include the first send.
+The daemon pause ceiling bounds the exponential component before jitter; connection recovery also retains its compiled 30-second final clamp.
+Connection recovery and owed reports remain cancellable, without a retry-count limit.
+
+The shared file-operation default remains two across the whole runner.
+Required restores queue while renewal continues; optional captures skip a busy boundary before freezing.
+The existing four-transfer window and checkpoint wire ceilings remain compiled bounds.
 
 The model key rides the one header its wire names. Everything the model is sent passes the secret scrub first: the instructions, the event's message and the model's own earlier turns.
 

@@ -105,6 +105,16 @@ max_batches = 8
 [maintenance.outbound_delivery]
 interval_seconds = 30
 
+# Physical provider connection and stream inactivity limits; earlier turn deadlines win.
+[outbound.retries]
+max_attempts = 3
+initial_backoff_ms = 200
+max_backoff_ms = 800
+
+[inference]
+connect_timeout_seconds = 10
+stream_idle_timeout_seconds = 300
+
 [authoring.turn]
 max_model_calls = 8
 max_wall_seconds = 300

@@ -6,6 +6,51 @@ use tokio::time::Instant;
 mod recovery;
 
 #[tokio::test(start_paused = true)]
+async fn configured_host_renewal_interval_reaches_the_native_queue() -> crate::Result<()> {
+    let registry = Arc::new(Renewals::default());
+    let (handle, mut peer) = RenewalPeer::new();
+    let lease = Uuid7::parse(crate::test_util::LEASE_ID)?;
+    let started = Instant::now();
+    let _registration = registry.register(
+        &lease,
+        Arc::new(afr_agent::Meter::default()),
+        started + Duration::from_secs(28),
+    )?;
+    let settings = garde::Unvalidated::new(crate::config::RuntimeSettings {
+        renewal_interval_ms: 1000,
+        ..crate::config::RuntimeSettings::default()
+    })
+    .validate()?;
+    let policy = crate::config::RuntimePolicy::new(&settings);
+    let stop = tokio_util::sync::CancellationToken::new();
+    let running = registry.run_with_interval(
+        &handle,
+        stop.clone(),
+        Duration::from_millis(policy.settings().renewal_interval_ms),
+    );
+    let observed = async {
+        let message = peer
+            .outgoing
+            .priority
+            .recv()
+            .await
+            .ok_or(crate::error::ErrorKind::Disconnected)?;
+        assert_eq!(started.elapsed(), Duration::from_secs(1));
+        let af_wire::protocol::Up::RenewBatch { leases, .. } =
+            message.frame.decode::<af_wire::protocol::Up<'_>>()?
+        else {
+            return Err(crate::error::ErrorKind::StreamProtocol.into());
+        };
+        assert_eq!(leases.len(), 1);
+        stop.cancel();
+        Ok::<(), crate::Error>(())
+    };
+    let (ran, observed) = tokio::join!(running, observed);
+    ran?;
+    observed
+}
+
+#[tokio::test(start_paused = true)]
 async fn recovery_shares_confirmed_deadlines_and_retires_them_before_final_delivery()
 -> crate::Result<()> {
     let registry = Arc::new(Renewals::default());

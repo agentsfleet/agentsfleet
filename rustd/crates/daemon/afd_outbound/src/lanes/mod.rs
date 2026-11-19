@@ -69,7 +69,7 @@ use tokio_util::task::TaskTracker;
 use std::time::Duration;
 
 use crate::obligation::{AbandonReason, CLAIM_RENEW, Claimed};
-use crate::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry};
+use crate::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_policy};
 
 /// Delivery cycles an answer gets before it is abandoned.
 pub const MAX_DELIVERY_CYCLES: i64 = 12;
@@ -140,6 +140,7 @@ impl<S> Clone for Lanes<S> {
 
 #[derive(Debug)]
 struct Inner<S> {
+    retries: crate::retry::RetryPolicy,
     posters: Posters<S>,
     /// The obligation ledger, for stamping what a destination actually took.
     database: Db,
@@ -173,8 +174,27 @@ impl<S: Deliver + 'static> Lanes<S> {
         token: CancellationToken,
         renew: Duration,
     ) -> Self {
+        Self::configured(
+            posters,
+            database,
+            token,
+            renew,
+            crate::retry::RetryPolicy::DEFAULT,
+        )
+    }
+
+    /// Lanes with a checked delivery retry budget and claim renewal cadence.
+    #[must_use]
+    pub fn configured(
+        posters: Posters<S>,
+        database: Db,
+        token: CancellationToken,
+        renew: Duration,
+        retries: crate::retry::RetryPolicy,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
+                retries,
                 posters,
                 database,
                 permits: Semaphore::new(IN_FLIGHT_DELIVERIES),
@@ -274,7 +294,7 @@ impl<S: Deliver + 'static> Inner<S> {
         };
         let opening = Attempt::opening(attempts);
         let verdict = tokio::select! {
-            verdict = deliver_with_retry(&self.posters, &job.outgoing, &self.token, opening) => Ok(verdict),
+            verdict = deliver_with_policy(&self.posters, &job.outgoing, &self.token, opening, self.retries) => Ok(verdict),
             lost = self.renewing(job) => Err(lost),
         };
         let verdict = match verdict {
