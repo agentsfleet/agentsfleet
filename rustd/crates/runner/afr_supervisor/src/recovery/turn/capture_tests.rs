@@ -27,6 +27,12 @@ enum Fault {
     WrongBegin,
     /// A renewal answers with a pin the capture was never given.
     ForeignPin,
+    /// A page write is answered with another command's response.
+    WrongPageWrite,
+    /// The commit is answered with another command's response.
+    WrongCommit,
+    /// The commit acknowledges another generation than the one allocated.
+    ChangedCommit,
 }
 
 /// What the native owner saw of the captures it served.
@@ -144,6 +150,9 @@ impl Remote {
                     .collect::<Result<_>>()
                     .map(Response::Authorized)
             }
+            Action::PageWrite { .. } if self.fault == Some(Fault::WrongPageWrite) => {
+                Ok(Response::PinReleased)
+            }
             Action::PageWrite { contents, .. } => {
                 self.pages.push(contents.clone());
                 Ok(Response::PageWritten(
@@ -153,6 +162,9 @@ impl Remote {
                         contents
                     },
                 ))
+            }
+            Action::Commit { .. } if self.fault == Some(Fault::WrongCommit) => {
+                Ok(Response::PinReleased)
             }
             Action::Commit { manifest_root, .. } => {
                 let plan = self
@@ -167,6 +179,12 @@ impl Remote {
                     manifest_root,
                     history_digest: plan.history_digest.clone(),
                 };
+                if self.fault == Some(Fault::ChangedCommit) {
+                    return Ok(Response::Committed(Box::new(TurnResume {
+                        generation: saved.generation + 1,
+                        ..saved
+                    })));
+                }
                 self.head = Some(saved.clone());
                 Ok(Response::Committed(Box::new(saved)))
             }
@@ -552,5 +570,90 @@ async fn a_capture_stops_when_custody_changes_hands_or_has_ended() -> Checked {
         assert_eq!(abandoned, 1, "the allocation is given back once");
         assert_eq!(uploads, 0, "no chunk is sent without custody");
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_page_write_or_commit_answered_with_another_reply_commits_no_head() -> Checked {
+    for (fault, expected, pages) in [
+        (
+            Fault::WrongPageWrite,
+            "turn page write returned another command's response",
+            0,
+        ),
+        (
+            Fault::WrongCommit,
+            "turn commit returned another command's response",
+            1,
+        ),
+        (
+            Fault::ChangedCommit,
+            "turn commit changed the captured generation or root",
+            1,
+        ),
+    ] {
+        // An empty workspace needs no chunk, so the capture goes straight to
+        // its one page.
+        let root = tempfile::tempdir()?;
+        let remote = Arc::new(Mutex::new(Remote::new(
+            Vec::new(),
+            "https://objects.invalid",
+            Some(fault),
+        )?));
+        let (plane, _calls) = capture_plane(Arc::clone(&remote));
+        let lease = Uuid7::parse(ID)?;
+        let transfers = Transfers::new()?;
+        let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+        let stop = CancellationToken::new();
+
+        let refused = native
+            .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
+            .await;
+
+        assert_eq!(test_support::detail(&refused), Some(expected));
+        let owner = remote.lock().map_err(|_poisoned| "the owner panicked")?;
+        assert!(owner.head.is_none(), "a refused capture holds no head");
+        assert_eq!(owner.pages.len(), pages);
+        assert_eq!(
+            owner.abandoned, 1,
+            "a refused commit is settled, so the allocation is given back"
+        );
+        assert!(native.publication.head.is_none());
+        assert!(
+            native.publication.pending.is_none(),
+            "a refusal leaves no uncertain commit to reconcile"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_root_that_is_not_utf8_is_abandoned_before_its_commit() -> Checked {
+    let root = tempfile::tempdir()?;
+    let remote = Arc::new(Mutex::new(Remote::new(
+        Vec::new(),
+        "https://objects.invalid",
+        None,
+    )?));
+    let (plane, _calls) = capture_plane(Arc::clone(&remote));
+    let lease = Uuid7::parse(ID)?;
+    let transfers = Transfers::new()?;
+    let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let stop = CancellationToken::new();
+    let mut binary = snapshot(scope());
+    binary.history = Zeroizing::new(vec![0xff, 0xfe]);
+
+    let refused = native
+        .capture(binary, Some(root.path().to_owned()), &stop)
+        .await;
+
+    assert_eq!(
+        test_support::detail(&refused),
+        Some("ordinary root is not UTF-8")
+    );
+    let owner = remote.lock().map_err(|_poisoned| "the owner panicked")?;
+    assert!(owner.head.is_none());
+    assert_eq!(owner.pages.len(), 1, "the page was written before the root");
+    assert_eq!(owner.abandoned, 1);
     Ok(())
 }

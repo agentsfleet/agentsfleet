@@ -3,9 +3,12 @@
 
 mod capture;
 mod capture_busy;
+mod inventory;
+mod layout;
 mod restore;
 mod session;
 mod turn_ack;
+mod window;
 
 use crate::client::{Call, ControlPlane, Verb};
 use crate::test_support::{Answer, Calls, json, plane};

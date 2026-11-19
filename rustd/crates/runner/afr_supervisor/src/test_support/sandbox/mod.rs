@@ -40,6 +40,10 @@ pub(crate) enum Freezer {
     BusyTenant,
     /// An abandoned file worker has not finished its executor-side work.
     BusyExecutor,
+    /// Its executor cannot answer whether file work is idle.
+    ExecutorUnproved,
+    /// It cannot answer whether a tenant process is still running.
+    QuiescenceUnproved,
     /// Its processes ended after the run, so it no longer reports running.
     Dead,
 }
@@ -216,6 +220,9 @@ impl Sandbox for FakeSandbox {
     }
 
     async fn recovery_quiescent(&self) -> afr_sandbox::Result<bool> {
+        if self.freezer == Freezer::QuiescenceUnproved {
+            return Err(std::io::Error::other(NO_FREEZER).into());
+        }
         Ok(self.freezer != Freezer::BusyTenant)
     }
 

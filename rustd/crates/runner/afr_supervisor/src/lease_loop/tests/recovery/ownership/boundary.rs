@@ -277,3 +277,6 @@ async fn a_vanished_agent_cannot_release_the_owner_before_thaw_finishes() -> Res
     assert_eq!(engine.thawed.load(Ordering::SeqCst), 1);
     Ok(())
 }
+
+#[path = "capture.rs"]
+mod capture_tests;

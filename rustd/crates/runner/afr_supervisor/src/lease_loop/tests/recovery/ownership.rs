@@ -171,6 +171,9 @@ mod requirement_tests;
 #[path = "ownership/boundary.rs"]
 mod boundary_tests;
 
+#[path = "ownership/turn.rs"]
+mod turn_tests;
+
 async fn sandbox(
     root: &std::path::Path,
     freezer: Freezer,

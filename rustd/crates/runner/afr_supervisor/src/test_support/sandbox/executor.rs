@@ -20,6 +20,9 @@ pub(super) struct FakeExecutor {
 #[async_trait::async_trait]
 impl Executor for FakeExecutor {
     async fn recovery_idle(&self) -> afr_executor::Result<bool> {
+        if self.freezer == Freezer::ExecutorUnproved {
+            return Err(std::io::Error::other(EXECUTOR_GONE).into());
+        }
         Ok(self.freezer != Freezer::BusyExecutor)
     }
 

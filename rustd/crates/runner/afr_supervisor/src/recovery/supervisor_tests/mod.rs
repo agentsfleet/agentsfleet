@@ -2,6 +2,7 @@
 
 mod fixture;
 mod model;
+mod native;
 
 use self::{
     fixture::{Checked, FILE, ID},

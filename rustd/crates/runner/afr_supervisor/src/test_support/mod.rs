@@ -83,6 +83,19 @@ pub(crate) fn json<T: Serialize>(value: &T) -> Answer {
     Answer::Reply(Bytes::from(serde_json::to_vec(value).unwrap()))
 }
 
+/// The fixed detail a refusal names, or `None` for a success or a refusal
+/// that carries no detail of its own.
+pub(crate) fn detail<T>(result: &crate::Result<T>) -> Option<&'static str> {
+    use crate::error::ErrorKind;
+    match result.as_ref().err()?.kind() {
+        ErrorKind::Config { detail }
+        | ErrorKind::Boundary { detail, .. }
+        | ErrorKind::CaptureLimit { detail }
+        | ErrorKind::CaptureUnavailable { detail } => Some(*detail),
+        _ => None,
+    }
+}
+
 /// What the fake agent does with a run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Behaviour {

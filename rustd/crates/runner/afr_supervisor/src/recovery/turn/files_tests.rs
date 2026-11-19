@@ -249,3 +249,6 @@ mod upload_tests;
 
 #[path = "capture_tests.rs"]
 mod capture_tests;
+
+#[path = "session_tests.rs"]
+mod session_tests;
