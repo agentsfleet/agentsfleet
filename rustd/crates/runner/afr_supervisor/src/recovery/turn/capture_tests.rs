@@ -25,6 +25,8 @@ enum Fault {
     ChangedPage,
     /// The allocation is answered with another command's response.
     WrongBegin,
+    /// A renewal answers with a pin the capture was never given.
+    ForeignPin,
 }
 
 /// What the native owner saw of the captures it served.
@@ -37,6 +39,11 @@ struct Remote {
     uploaded: bool,
     upload_requests: usize,
     abandoned: usize,
+    /// How long the allocation's pin lasts, and how long the whole capture may.
+    custody: (Duration, Duration),
+    /// The pin the owner currently holds for the allocation.
+    pin: Option<CheckpointPin>,
+    renewals: usize,
 }
 
 impl Remote {
@@ -62,7 +69,30 @@ impl Remote {
             uploaded: false,
             upload_requests: 0,
             abandoned: 0,
+            custody: (Duration::from_mins(15), Duration::from_mins(15)),
+            pin: None,
+            renewals: 0,
         })
+    }
+
+    /// Extends the held pin by a minute, as the owner does for a live capture.
+    fn renew(&mut self, presented: u64) -> Result<Response> {
+        let held = self
+            .pin
+            .as_mut()
+            .ok_or_else(|| error::config("renewal without an allocation"))?;
+        if presented != held.resource_version {
+            return Err(error::config("renewal presented a stale pin version"));
+        }
+        self.renewals += 1;
+        held.resource_version += 1;
+        held.expires_at =
+            clock::after(clock::now(), Duration::from_mins(1)).min(held.operation_deadline);
+        let mut answered = held.clone();
+        if self.fault == Some(Fault::ForeignPin) {
+            answered.id = ID.to_owned();
+        }
+        Ok(Response::PinRenewed(answered))
     }
 
     fn respond(&mut self, request: TurnCheckpointCommand) -> Result<Response> {
@@ -140,6 +170,9 @@ impl Remote {
                 self.head = Some(saved.clone());
                 Ok(Response::Committed(Box::new(saved)))
             }
+            Action::PinRenew {
+                resource_version, ..
+            } => self.renew(resource_version),
             Action::Abandon { .. } => {
                 self.abandoned += 1;
                 self.plan = None;
@@ -178,8 +211,14 @@ impl Remote {
                 .collect(),
             history_digest: begin.history_digest,
             replayed: false,
-            pin: pin(),
+            pin: CheckpointPin {
+                id: PAGE.to_owned(),
+                resource_version: 1,
+                expires_at: clock::after(clock::now(), self.custody.0),
+                operation_deadline: clock::after(clock::now(), self.custody.1),
+            },
         };
+        self.pin = Some(plan.pin.clone());
         self.plan = Some(plan.clone());
         Response::Begun(Box::new(plan))
     }
@@ -434,5 +473,84 @@ async fn a_capture_refuses_a_wrong_reply_or_a_root_its_scope_does_not_name() -> 
             .head
             .is_none()
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_capture_whose_pin_is_about_to_lapse_renews_custody_as_it_works() -> Checked {
+    let Encrypted { objects, payloads } = encrypted()?;
+    let server = Server::simultaneous(payloads).await?;
+    let root = workspace()?;
+    let mut owner = Remote::new(objects, &server.url, None)?;
+    owner.custody.0 = Duration::from_secs(30);
+    let remote = Arc::new(Mutex::new(owner));
+    let (plane, _calls) = capture_plane(Arc::clone(&remote));
+    let lease = Uuid7::parse(ID)?;
+    let transfers = server.transfers();
+    let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let stop = CancellationToken::new();
+
+    let saved = native
+        .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
+        .await?;
+
+    let (head, renewals, version) = {
+        let owner = remote.lock().map_err(|_poisoned| "the owner panicked")?;
+        (
+            owner.head.clone(),
+            owner.renewals,
+            owner.pin.as_ref().map(|pin| pin.resource_version),
+        )
+    };
+    assert_eq!(head.as_ref(), Some(&saved));
+    assert!(
+        renewals > 1,
+        "each step renews a pin inside its last 90 seconds"
+    );
+    assert_eq!(
+        version,
+        u64::try_from(renewals).ok().map(|renewed| renewed + 1),
+        "every renewal presented the version the owner held"
+    );
+    server.finish().await
+}
+
+#[tokio::test]
+async fn a_capture_stops_when_custody_changes_hands_or_has_ended() -> Checked {
+    for (fault, pin_lasts, capture_lasts) in [
+        (
+            Some(Fault::ForeignPin),
+            Duration::from_secs(30),
+            Duration::from_mins(15),
+        ),
+        (None, Duration::ZERO, Duration::ZERO),
+    ] {
+        let Encrypted { objects, .. } = encrypted()?;
+        let root = workspace()?;
+        let mut owner = Remote::new(objects, "https://objects.invalid", fault)?;
+        owner.custody = (pin_lasts, capture_lasts);
+        let remote = Arc::new(Mutex::new(owner));
+        let (plane, _calls) = capture_plane(Arc::clone(&remote));
+        let lease = Uuid7::parse(ID)?;
+        let transfers = Transfers::new()?;
+        let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+        let stop = CancellationToken::new();
+
+        let refused = native
+            .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
+            .await;
+
+        assert!(
+            refused.is_err(),
+            "custody the capture does not hold must end it"
+        );
+        let (head, abandoned, uploads) = {
+            let owner = remote.lock().map_err(|_poisoned| "the owner panicked")?;
+            (owner.head.clone(), owner.abandoned, owner.upload_requests)
+        };
+        assert!(head.is_none(), "nothing is committed without custody");
+        assert_eq!(abandoned, 1, "the allocation is given back once");
+        assert_eq!(uploads, 0, "no chunk is sent without custody");
+    }
     Ok(())
 }
