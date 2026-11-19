@@ -77,7 +77,10 @@ fn a_refusal_is_the_tool_error_with_its_detail() {
     let refused = answered(Err(Unanswered::Refused(Some(
         error_code::MESSAGE_NO_CHANNEL,
     ))));
-    assert_eq!(refused.error_code, Some(ToolErrorCode::MessageNoChannel));
+    assert_eq!(
+        refused.error_code,
+        Some(ToolErrorCode::MessageNoChannel.into())
+    );
     assert!(
         refused.text.starts_with("[message_no_channel] UZ-RUN-019"),
         "{}",

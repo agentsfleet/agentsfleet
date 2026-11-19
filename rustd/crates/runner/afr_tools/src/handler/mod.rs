@@ -9,11 +9,12 @@
 
 use std::fmt;
 
+use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 
 use crate::catalog::Entry;
-use crate::runtime::{Tool, ToolContext, ToolOutput, parsed};
+use crate::runtime::{CatalogTool, ToolContext, parsed};
 use crate::schema::Schema;
 
 /// One tool's behaviour, given arguments that parsed.
@@ -40,7 +41,7 @@ pub(crate) struct Typed<H> {
 impl<H: Handler> Typed<H> {
     /// `handler`, boxed for a catalog.
     #[must_use]
-    pub(crate) fn boxed(handler: H) -> Box<dyn Tool> {
+    pub(crate) fn boxed(handler: H) -> Box<CatalogTool> {
         Box::new(Self {
             handler,
             schema: Schema::of::<H::Arguments>(H::DESCRIPTION),
@@ -48,25 +49,27 @@ impl<H: Handler> Typed<H> {
     }
 }
 
-#[async_trait::async_trait]
-impl<H: Handler> Tool for Typed<H> {
-    fn entry(&self) -> &'static Entry {
-        H::ENTRY
+impl<H: Handler> Describe for Typed<H> {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.schema.spec(H::ENTRY.name())
     }
+}
 
-    fn schema(&self) -> &Schema {
-        &self.schema
-    }
-
-    async fn call(
-        &self,
-        arguments: &serde_json::Value,
-        context: ToolContext<'_, '_>,
-    ) -> ToolOutput {
-        match parsed(arguments) {
-            Ok(arguments) => self.handler.run(arguments, context).await,
-            Err(refused) => refused,
-        }
+impl<'call, 'run, H: Handler> Tool<ToolContext<'call, 'run>> for Typed<H> {
+    fn call<'a>(
+        &'a self,
+        arguments: &'a serde_json::Value,
+        cx: ToolContext<'call, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        ToolContext<'call, 'run>: 'a,
+    {
+        Box::pin(async move {
+            match parsed(arguments) {
+                Ok(arguments) => self.handler.run(arguments, cx).await,
+                Err(refused) => refused,
+            }
+        })
     }
 }
 

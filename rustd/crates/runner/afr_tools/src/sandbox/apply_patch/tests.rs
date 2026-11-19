@@ -3,11 +3,12 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use guffbolt::ToolOutput;
 use serde_json::json;
 
 use crate::catalog::APPLY_PATCH;
 use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 use crate::sandbox::ScriptedExecutor;
 use crate::testing::{Live, call_in, hosted, offered};
 
@@ -140,7 +141,7 @@ async fn a_patch_that_does_not_parse_or_changes_nothing_is_refused() {
 
     assert_eq!(
         unparsed.error_code,
-        Some(ToolErrorCode::PatchInvalid),
+        Some(ToolErrorCode::PatchInvalid.into()),
         "{unparsed:?}"
     );
     assert!(
@@ -150,7 +151,7 @@ async fn a_patch_that_does_not_parse_or_changes_nothing_is_refused() {
     );
     assert_eq!(
         empty.error_code,
-        Some(ToolErrorCode::PatchInvalid),
+        Some(ToolErrorCode::PatchInvalid.into()),
         "{empty:?}"
     );
     assert!(empty.text.contains("changes no file"), "{}", empty.text);
@@ -180,7 +181,7 @@ async fn a_hunk_whose_lines_are_not_in_the_file_lands_nothing() {
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::PatchInvalid),
+        Some(ToolErrorCode::PatchInvalid.into()),
         "{refused:?}"
     );
     assert!(
@@ -219,7 +220,7 @@ async fn a_hunk_on_a_file_the_workspace_does_not_have_reads_file_not_found() {
     for refused in [&update, &delete] {
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::FileNotFound),
+            Some(ToolErrorCode::FileNotFound.into()),
             "{refused:?}"
         );
     }
@@ -246,7 +247,7 @@ async fn a_hunk_path_leaving_the_workspace_is_refused_before_any_call() {
 
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::PathNotAllowed),
+            Some(ToolErrorCode::PathNotAllowed.into()),
             "{refused:?}"
         );
         assert!(

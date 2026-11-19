@@ -10,11 +10,12 @@ use std::time::Duration;
 use af_core::clock::saturating_millis;
 use afr_executor::timing::{CALL_DEADLINE, DRAIN_GRACE, KILL_GRACE};
 use afr_executor::{Ending, Executor, Process, Spawn};
+use guffbolt::ToolOutput;
 use tokio::time::Instant;
 
 use super::files::failed;
 use super::output::{self, Collected};
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 
 /// How long a command runs when the model names no timeout: Codex's
 /// `DEFAULT_EXEC_COMMAND_TIMEOUT_MS`.
@@ -93,7 +94,7 @@ pub(super) async fn run_to_end(
     ToolOutput {
         text,
         exit_code: ending.exit_code(),
-        error_code: output::error_code(ending),
+        error_code: output::error_code(ending).map(Into::into),
         image: None,
     }
 }

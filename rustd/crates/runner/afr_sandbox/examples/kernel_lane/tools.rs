@@ -7,7 +7,8 @@ use std::sync::Arc;
 use af_egress::testing::RecordingTransport;
 use afr_sandbox::{Engine, Limits, SandboxRequest};
 use afr_tools::catalog::SHELL;
-use afr_tools::{Catalog, Lease, ToolContext, ToolErrorCode, ToolOutput};
+use afr_tools::{Catalog, Lease, ToolContext, ToolErrorCode};
+use guffbolt::ToolOutput;
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
 
@@ -99,7 +100,7 @@ pub(crate) fn shell_timeout(lane: &Lane) -> Result<(), Failed> {
     let outputs = shell_calls(lane, "shell-timeout", &calls)?;
     let [timed, left] = answers(&outputs)?;
     expect(
-        timed.error_code == Some(ToolErrorCode::TimedOut),
+        timed.error_code == Some(ToolErrorCode::TimedOut.into()),
         format!("timed_out, got {timed:?}"),
     )?;
     expect(

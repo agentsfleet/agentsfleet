@@ -3,13 +3,13 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use af_providers::{Call, Chunk, Connect, End, Provider, Request, Usage};
-use af_wire::activity::StreamTextKind;
+use af_providers::{Connect, Provider};
 use af_wire::lease::LeasePayload;
 use af_wire::policy::ExecutionPolicy;
 use afr_tools::catalog::FILE_READ;
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
+use guffbolt::{Call, Chunk, End, Request, Usage};
 
 /// A model whose turns are scripted: a call to `file_read`, then an answer.
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ impl Scripted {
             })
         } else {
             Chunk::Text {
-                kind: StreamTextKind::Answer,
+                kind: guffbolt::TextKind::Answer,
                 text: "done".to_owned(),
             }
         };
@@ -47,12 +47,18 @@ impl Connect for Scripted {
         Ok(())
     }
 
-    fn connect(&self, _lease: &LeasePayload<'_>) -> af_providers::Result<Box<dyn Provider>> {
+    fn connect(&self, _lease: &LeasePayload<'_>) -> af_providers::Result<Box<Provider>> {
         Ok(Box::new(self.clone()))
     }
 }
 
-impl Provider for Scripted {
+impl guffbolt::Model for Scripted {
+    type Error = af_providers::Error;
+
+    fn measure(&self, request: Request<'_>) -> af_providers::Result<u64> {
+        af_providers::testing::measure(request)
+    }
+
     fn stream<'a>(&'a self, _request: Request<'a>) -> BoxStream<'a, af_providers::Result<Chunk>> {
         let index = self.0.fetch_add(1, Ordering::SeqCst);
         futures_util::stream::iter(Self::turn(index).into_iter().map(Ok)).boxed()

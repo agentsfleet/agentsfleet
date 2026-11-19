@@ -64,10 +64,10 @@ pub(super) async fn offers(session: &Session, first: &Uuid7, second: &Uuid7) -> 
 pub(super) fn meter(lines: usize, input: u64) -> Arc<Meter> {
     let meter = Arc::new(Meter::default());
     for _ in 0..lines {
-        meter.add(af_providers::Usage {
+        meter.add(guffbolt::Usage {
             input,
             output: 10,
-            ..af_providers::Usage::default()
+            ..guffbolt::Usage::default()
         });
     }
     meter

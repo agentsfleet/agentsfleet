@@ -184,7 +184,7 @@ A renewal that fails after its retries, or records nothing, stops the flush. The
 
 ## Crates
 
-The runner's crates sit in `rustd/crates/runner/`, beside the shared `foundation/`, `protocol/` and `harness/` layers. `af_wire` is the one wire `agentsfleetd` and the runner both speak.
+The runner's crates sit in `rustd/crates/runner/`, beside the shared `foundation/`, `protocol/` and `harness/` layers. The agent harness, `guffbolt`, sits in `rustd/guffbolt/`, outside every layer, because it depends on no crate of the workspace. `af_wire` is the one wire `agentsfleetd` and the runner both speak.
 
 A crate ships with its own layer or a lower one, and `runner/` and `daemon/` never with each other (`rustd/Cargo.toml`). Shared crates take the `af_` prefix; a layer's binary sits in `main/`.
 
@@ -192,9 +192,27 @@ The supervisor implements credential minting over the control plane for `af_egre
 
 `guffbolt` is a library that knows no lease, fleet or task. `drive` takes input before every model call and once more after an answer. A message that arrives while the model writes its answer runs one more turn.
 
-The embedder implements `Conversation`: `afr_agent`'s `Harness` is the input, the window, the model call and the tools. The turn, tool results and failure are the embedder's own types, read through `ModelTurn`. So `guffbolt` depends on `tokio` and `tracing` only, and links no model client or secret store.
+The embedder implements `Conversation`. `afr_agent`'s `Harness` supplies the input, each call's window, the request and what each call is lent. It also scrubs each turn before the transcript keeps it.
+
+Before each model call, `guffbolt` asks the embedder for that call's `Window`, the way pi runs `transformContext`. `afr_agent/src/loop/context` fits it with `af_context`, compacting old groups into notes when they no longer fit. Each window keeps the message the run answers, and the transcript stays whole.
+
+`guffbolt` makes the model call itself. It sends the request to a `Model`, which `af_providers` implements for every wire. It reads the stream into its own `Turn`, runs the turn's calls and keeps both in the `Transcript`.
+
+`guffbolt` opens, runs and ends each tool call itself, so every call ends once. A call the stop cuts short, or whose loop is dropped, ends `interrupted`.
+
+The harness hears this work through `Observe`, and each chunk through `Listen`. It sends the text live, meters the spend, and logs and counts each turn. Its ledger numbers each call and keeps its frames, trace row and record.
+
+The turn's vocabulary is `guffbolt`'s, and a failure is the embedder's own type, so `guffbolt` links no model client or secret store. A provider's record of its reasoning rides each turn as an opaque `Replay`, which only `af_providers` reads.
+
+The tool vocabulary is `guffbolt`'s too. `Describe` names a tool to the model, and `Tool<Cx>` runs one call with what the embedder lends it. `Tools` looks a call up and refuses one it does not hold.
+
+A run's children are `guffbolt`'s as well. `guffbolt::agents` keeps each child's state, inbox and stop, refuses one past the run's caps, and polls every child beside the root.
+
+`afr_agent` raises each child as the run's own loop over a narrowed selection, and logs its start and end. It keeps the six nested tools' names, schemas and parsing, and the caps' values. A recovery saves only ended children, read under a `Pause` that proves the children quiet.
 
 What a run of one kind adds is an `Extension`: a durable task is `afr_agent`'s `Task`, and every other loop installs `Plain`. A message's media parts reach the model through a `MediaReader`; until one reads a kind, `Unread` names the part to the model.
+
+`afr_agent` keeps only what is `agentsfleet`'s own. That is the lease and its durable task, recovery, the frames, trace rows and records each call leaves, and the catalog's tools behind its router.
 
 `afd_api_wire` owns the daemon's tenant, operator and ingress shapes. Changes there do not rebuild the runner protocol.
 

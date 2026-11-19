@@ -3,6 +3,7 @@
 //! `sh -c command` on pipes, in the workspace, under the executor's own
 //! timeout (`oneshot`).
 
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -10,7 +11,7 @@ use super::oneshot::{run_to_end, timeout_of};
 use super::{command, executor_of};
 use crate::catalog::{Entry, SHELL};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolOutput};
+use crate::runtime::ToolContext;
 
 /// `shell`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]

@@ -3,6 +3,7 @@
 
 use crate::{Completed, ExecutionResult, Failure, ResultOutcome};
 use af_wire::memory::MemoryDelta;
+use guffbolt::agents::Pause;
 
 use super::{Ending, Harness};
 use crate::engine::RunOutput;
@@ -41,14 +42,14 @@ impl Harness<'_, '_> {
             return;
         };
         let remembered = matches!(
-            self.messages.last(),
-            Some(af_providers::Message::Assistant { calls, .. }) if calls.is_empty()
+            self.transcript.messages().last(),
+            Some(guffbolt::Message::Assistant { calls, .. }) if calls.is_empty()
         );
         if !remembered {
-            self.messages.push(af_providers::Message::Assistant {
+            self.transcript.push(guffbolt::Message::Assistant {
                 text: self.shared.scrub.text(text).into_owned(),
                 calls: Vec::new(),
-                replay: af_providers::Replay::default(),
+                replay: guffbolt::Replay::default(),
             });
         }
     }
@@ -57,11 +58,7 @@ impl Harness<'_, '_> {
     /// outcome, the answer and the tokens spent, with the calls and the memory
     /// the run leaves for the supervisor to post. The root's end; a child
     /// concludes instead.
-    pub(super) async fn finish(
-        mut self,
-        mut ending: Ending,
-        permit: Option<&crate::nested::CapturePermit>,
-    ) -> RunOutput {
+    pub(super) async fn finish(mut self, mut ending: Ending, pause: Option<&Pause>) -> RunOutput {
         self.close_sessions().await;
         if matches!(ending, Ending::Answered(_))
             && let Err(failure) = self.finish_task_replies().await
@@ -76,7 +73,7 @@ impl Harness<'_, '_> {
             ending = Ending::Answered(self.combined_task_answer(text));
         }
         self.record_answer(&ending);
-        let recovery = self.final_recovery(&mut ending, permit).await;
+        let recovery = self.final_recovery(&mut ending, pause).await;
         let folded_through_sequence = self
             .folded_through()
             .filter(|_| matches!(ending, Ending::Answered(_)));
@@ -130,7 +127,7 @@ impl Harness<'_, '_> {
     async fn final_recovery(
         &mut self,
         ending: &mut Ending,
-        permit: Option<&crate::nested::CapturePermit>,
+        pause: Option<&Pause>,
     ) -> Option<crate::TaskRecovery> {
         let recovery_task = self
             .task
@@ -139,7 +136,7 @@ impl Harness<'_, '_> {
             .and_then(|task| task.inputs.current_task.clone());
         match recovery_task {
             None => None,
-            Some(task) => match self.capture_task_root(task, permit).await {
+            Some(task) => match self.capture_task_root(task, pause).await {
                 Ok(recovery) => Some(recovery),
                 Err(failure) => {
                     tracing::warn!(event = "task_history_capture_failed", error_code = %failure.code());

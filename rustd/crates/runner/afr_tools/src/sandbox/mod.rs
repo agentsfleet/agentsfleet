@@ -12,8 +12,9 @@
 //! go through the executor's file calls instead, under one path gate.
 
 use afr_executor::{Executor, Spawn};
+use guffbolt::ToolOutput;
 
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 mod apply_patch;
 mod browser;
@@ -37,8 +38,8 @@ pub(crate) use self::exec_session::{ExecCommand, WriteStdin};
 pub(crate) use self::files::{FileAppend, FileDelete, FileEdit, FileWrite};
 pub(crate) use self::git::Git;
 pub(crate) use self::hashed::{FileEditHashed, FileReadHashed};
+pub use self::image::IMAGE_MAX_BYTES;
 pub(crate) use self::image::Image;
-pub use self::image::{IMAGE_MAX_BYTES, ImageAttachment, ImageKind};
 pub(crate) use self::read::FileRead;
 pub use self::repositories::{CREDENTIAL_GITHUB, Checkout, checkouts};
 #[cfg(any(test, feature = "test-util"))]

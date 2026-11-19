@@ -5,10 +5,10 @@
 )]
 
 use af_egress::testing::CountingMint;
-use af_providers::Message;
 use af_wire::activity::ActivityFrame;
 use afr_tools::catalog::{FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
+use guffbolt::Message;
 use tokio_util::sync::CancellationToken;
 
 use super::tests::{drive, engine};

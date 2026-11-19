@@ -7,8 +7,8 @@ use af_providers::REPLY_MAX_BYTES;
 use af_wire::activity::{ActivityFrame, StreamTextKind};
 use af_wire::tool_trace::ToolCallStatus;
 use afr_agent::ResultOutcome;
-use afr_tools::ToolErrorCode;
 use afr_tools::catalog::UPDATE_PLAN;
+use guffbolt::ErrorCode;
 use serde_json::{Value, json};
 
 use super::support::wires::{self, Wire};
@@ -101,7 +101,7 @@ async fn a_call_cut_at_the_output_limit_is_answered_and_never_run() {
         ToolCallStatus::Failed
     );
     let answered = wire.results(&fake.seen()[1].body);
-    let refused = format!("[{}] ", ToolErrorCode::OutputLimitReached);
+    let refused = format!("[{}] ", ErrorCode::OUTPUT_LIMIT_REACHED);
     assert!(answered[0].starts_with(&refused), "{answered:?}");
 }
 

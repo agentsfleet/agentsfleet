@@ -3,8 +3,8 @@
 
 use crate::e2e::Scenario;
 use af_core::timing::{ENGINE_STOP_GRACE, LEASE_TTL, STREAM_ANSWER_TIMEOUT};
-use af_providers::Usage;
 use afr_agent::scripted::{ScriptedEngine, Step};
+use guffbolt::Usage;
 use std::{path::Path, time::Duration};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 

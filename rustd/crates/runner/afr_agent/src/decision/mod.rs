@@ -57,7 +57,7 @@ pub(crate) fn identity() -> Result<String> {
 pub(crate) async fn prepare(
     lease: &LeasePayload<'_>,
     verbs: &dyn LeaseVerbs,
-    provider: &dyn af_providers::Provider,
+    provider: &af_providers::Provider,
     meter: &Meter,
     stop: &tokio_util::sync::CancellationToken,
 ) -> Result<PreparedTask> {
@@ -133,7 +133,7 @@ pub(crate) async fn prepare(
 pub(crate) struct Intake<'a> {
     pub(crate) lease: &'a LeasePayload<'a>,
     pub(crate) verbs: &'a dyn LeaseVerbs,
-    pub(crate) provider: &'a dyn af_providers::Provider,
+    pub(crate) provider: &'a af_providers::Provider,
     pub(crate) meter: &'a Meter,
     pub(crate) stop: &'a tokio_util::sync::CancellationToken,
 }

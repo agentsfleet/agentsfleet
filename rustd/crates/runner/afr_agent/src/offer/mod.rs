@@ -1,26 +1,34 @@
-//! What the model is offered: the selection's handlers as the provider's
-//! function specs, and its hosted entries as tools the provider runs.
+//! What the model is offered: the selection's functions as one loop's tools,
+//! and its hosted entries as tools the provider runs.
 //!
 //! The catalog and the providers each own their half; this is the one place
 //! that reads both, so neither crate depends on the other.
 
-use af_providers::{Hosted, ToolSpec};
 use afr_tools::catalog::WEB_SEARCH;
-use afr_tools::{Entry, Selection};
+use afr_tools::{Entry, Offered, Selection};
+use guffbolt::Hosted;
+use guffbolt::Tools;
 
-/// The function specs `selection` offers, one per handler.
-pub(crate) fn specs<'run>(selection: &Selection<'run>) -> Vec<ToolSpec<'run>> {
-    selection
-        .tools()
-        .map(|tool| {
-            let schema = tool.schema();
-            ToolSpec {
-                name: tool.name(),
-                description: schema.description(),
-                parameters: schema.parameters(),
-            }
-        })
-        .collect()
+use crate::nested::NestedTool;
+use crate::router::{LoopTool, Routed};
+
+/// The tools `selection` offers one loop, in the order its policy named
+/// them: each handler as the router runs it, and each nested tool as the loop
+/// runs it.
+pub(crate) fn tools<'s, 'run>(selection: &'s Selection<'run>) -> Tools<LoopTool<'s, 'run>> {
+    Tools::new(
+        selection
+            .offered()
+            .map(|offered| -> Box<LoopTool<'s, 'run>> {
+                match offered {
+                    Offered::Handler(entry, handler) => {
+                        Box::new(Routed::new(handler, entry.runtime()))
+                    }
+                    Offered::Nested(nested) => Box::new(NestedTool::new(nested)),
+                }
+            })
+            .collect(),
+    )
 }
 
 /// The hosted tools `selection` offers, as the provider runs them. An entry

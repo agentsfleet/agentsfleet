@@ -143,7 +143,7 @@ async fn should_refuse_redirect_before_transmission() {
         });
         let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
         let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
-        assert_eq!(output.error_code, Some(expected));
+        assert_eq!(output.error_code, Some(expected.into()));
         assert!(
             output.text.contains("Status: 302")
                 && output.text.contains("Redirect request did not complete")
@@ -174,7 +174,10 @@ async fn should_keep_unaffected_clients_single_hop() {
                 .insert("body".to_owned(), json!(body));
         }
         let output = call(tool.as_ref(), &run.lease(), arguments).await;
-        assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamStatus));
+        assert_eq!(
+            output.error_code,
+            Some(ToolErrorCode::UpstreamStatus.into())
+        );
         assert_eq!(sent.try_iter().count(), 1);
     }
 }
@@ -196,7 +199,10 @@ async fn should_bound_the_whole_http_read_deadline() {
     let tool = Typed::boxed(HttpRequest::new(Arc::new(Never)));
     let lease = run.lease();
     let output = call(tool.as_ref(), &lease, json!({"url": INITIAL})).await;
-    assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamUnreachable));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::UpstreamUnreachable.into())
+    );
     assert!(output.text.contains("deadline exceeded"));
     drop(lease.egress.try_lock().expect("guard released during send"));
     let failed = capture.only("http_read_deadline_exceeded");
@@ -239,7 +245,7 @@ async fn should_follow_mixed_case_get_and_mask_success_and_error_echoes() {
         .await;
         assert_eq!(
             output.error_code,
-            (status != 200).then_some(ToolErrorCode::UpstreamStatus)
+            (status != 200).then_some(ToolErrorCode::UpstreamStatus.into())
         );
         assert!(output.text.contains(LOG) && output.text.contains("job=9"));
         for private in [TARGET, "a*b~c", "a%2Ab~c", "a%2ab~c", "/download?sig="] {
@@ -286,7 +292,7 @@ async fn should_retain_safe_context_when_redirects_stop() {
         } else {
             ToolErrorCode::UpstreamUnreachable
         };
-        assert_eq!(output.error_code, Some(code));
+        assert_eq!(output.error_code, Some(code.into()));
         assert!(output.text.contains("Status: 302") && output.text.contains(reason));
         assert!(output.text.contains("Redirects followed:"));
         assert!(!output.text.contains("private-signature"));
@@ -315,7 +321,10 @@ async fn should_share_one_deadline_across_redirect_hops() {
     let tool = Typed::boxed(HttpRequest::new(Arc::new(SlowHops)));
     let began = tokio::time::Instant::now();
     let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
-    assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamUnreachable));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::UpstreamUnreachable.into())
+    );
     assert!(output.text.contains("deadline exceeded"));
     assert_eq!(began.elapsed(), af_egress::REQUEST_TIMEOUT);
 }

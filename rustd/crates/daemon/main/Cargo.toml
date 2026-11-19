@@ -225,6 +225,8 @@ afr_supervisor = { workspace = true, features = ["test-util"] }
 # that rcgen's test CA signs and hyper serves.
 af_egress = { workspace = true, features = ["test-util"] }
 af_providers = { workspace = true, features = ["test-util"] }
+# The turns and usage those suites script, in the harness's own vocabulary.
+guffbolt.workspace = true
 afr_tools.workspace = true
 futures-util.workspace = true
 rcgen.workspace = true

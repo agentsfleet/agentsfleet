@@ -13,12 +13,12 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 
-use crate::{Call, Chunk, Connect, End, Message, Provider, Request, Usage};
-use af_wire::activity::StreamTextKind;
+use crate::{Connect, Provider};
 use af_wire::lease::LeasePayload;
 use af_wire::policy::ExecutionPolicy;
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
+use guffbolt::{Call, Chunk, End, Message, Model, Request, TextKind, Usage};
 
 /// Tokens every scripted turn reports, so the report's sums are non-zero.
 const TURN_USAGE: Usage = Usage {
@@ -108,12 +108,18 @@ impl Connect for FakeModel {
         Ok(())
     }
 
-    fn connect(&self, _lease: &LeasePayload<'_>) -> crate::Result<Box<dyn Provider>> {
+    fn connect(&self, _lease: &LeasePayload<'_>) -> crate::Result<Box<Provider>> {
         Ok(Box::new(self.clone()))
     }
 }
 
-impl Provider for FakeModel {
+impl Model for FakeModel {
+    type Error = crate::Error;
+
+    fn measure(&self, request: Request<'_>) -> crate::Result<u64> {
+        super::measure(request)
+    }
+
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, crate::Result<Chunk>> {
         let results = (request.messages.iter())
             .filter_map(|message| match message {
@@ -180,7 +186,7 @@ pub fn repair_branch(asked: &Asked) -> Option<&str> {
 #[must_use]
 pub fn say(text: &str) -> Chunk {
     Chunk::Text {
-        kind: StreamTextKind::Answer,
+        kind: TextKind::Answer,
         text: text.to_owned(),
     }
 }

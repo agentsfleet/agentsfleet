@@ -14,8 +14,8 @@
               indexes the JSON it just read"
 )]
 
-use af_providers::Chunk;
 use agentsfleetd::supervisor::Supervisor;
+use guffbolt::Chunk;
 use serde_json::{Value, json};
 
 use crate::definition_code::greeter_origin;

@@ -10,7 +10,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use af_providers::Chunk;
+use guffbolt::Chunk;
 use serde_json::json;
 
 use crate::fake_model::{call, say};

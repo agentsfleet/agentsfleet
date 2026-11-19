@@ -104,9 +104,11 @@ reqwest.workspace = true
 rustls.workspace = true
 tokio-rustls.workspace = true
 # The kernel lane drives the runner's real sandbox-side tools through its
-# catalog, with a lease whose egress sends nothing.
+# catalog, with a lease whose egress sends nothing, and reads what each call
+# answered as the harness's output.
 af_egress = { workspace = true, features = ["test-util"] }
 afr_tools = { workspace = true, features = ["test-util"] }
+guffbolt.workspace = true
 # The supervisor's own host-side checkout, so the kernel lane proves the clone
 # that ships rather than a copy of it. A dev-dependency cycle: the example links
 # the one `afr_sandbox` library the supervisor does.

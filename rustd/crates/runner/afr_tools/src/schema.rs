@@ -34,6 +34,16 @@ impl Schema {
         &self.parameters
     }
 
+    /// The tool named `name` under this schema, as the model is offered it.
+    #[must_use]
+    pub const fn spec<'a>(&'a self, name: &'a str) -> guffbolt::ToolSpec<'a> {
+        guffbolt::ToolSpec {
+            name,
+            description: self.description,
+            parameters: &self.parameters,
+        }
+    }
+
     /// The schema of `T`, the type a call's arguments parse into: one flat
     /// object, with no meta-schema line and no definitions to resolve, which
     /// every provider's function-calling wire reads.

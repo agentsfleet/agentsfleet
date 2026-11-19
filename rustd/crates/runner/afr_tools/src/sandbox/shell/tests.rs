@@ -12,7 +12,7 @@ use serde_json::json;
 use super::Shell;
 use crate::handler::Typed;
 use crate::lease::Lease;
-use crate::runtime::{Tool, ToolErrorCode};
+use crate::runtime::{CatalogTool, ToolErrorCode};
 use crate::sandbox::oneshot::{EVENT_OUT_OF_MEMORY, EVENT_TIMED_OUT, TIMEOUT_DEFAULT, TIMEOUT_MAX};
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::{call, call_in};
@@ -20,7 +20,7 @@ use crate::testing::{call, call_in};
 /// Two sleeps in one process group, the shell waiting on the second.
 const SLEEP_TWICE: &str = "sleep 60 & sleep 60";
 
-fn shell() -> Box<dyn Tool> {
+fn shell() -> Box<CatalogTool> {
     Typed::boxed(Shell)
 }
 
@@ -122,7 +122,7 @@ async fn test_shell_timeout_reports_timed_out_and_logs_it() {
     .await;
 
     assert_eq!(output.text, "started\nProcess timed out after 500 ms");
-    assert_eq!(output.error_code, Some(ToolErrorCode::TimedOut));
+    assert_eq!(output.error_code, Some(ToolErrorCode::TimedOut.into()));
     assert_eq!(output.exit_code, None);
     let logged = capture.only(EVENT_TIMED_OUT);
     assert_eq!(logged.level, tracing::Level::WARN);
@@ -146,7 +146,7 @@ async fn test_oom_ending_reads_out_of_memory() {
     .await;
 
     assert_eq!(output.text, "allocating\nProcess killed: out of memory");
-    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory));
+    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory.into()));
     assert_eq!(output.exit_code, Some(137));
     let logged = capture.only(EVENT_OUT_OF_MEMORY);
     assert_eq!(logged.level, tracing::Level::WARN);
@@ -185,7 +185,7 @@ async fn should_report_a_signal_and_a_lost_ending() {
         lost.text,
         "partial\nProcess interrupted before its ending arrived"
     );
-    assert_eq!(lost.error_code, Some(ToolErrorCode::Interrupted));
+    assert_eq!(lost.error_code, Some(ToolErrorCode::Interrupted.into()));
     assert_eq!(lost.exit_code, None);
 }
 
@@ -225,7 +225,10 @@ async fn should_refuse_without_a_sandbox_or_when_the_executor_refuses() {
         unsandboxed.text,
         "[sandbox_unavailable] this call has no sandbox to run in"
     );
-    assert_eq!(refused.error_code, Some(ToolErrorCode::SandboxUnavailable));
+    assert_eq!(
+        refused.error_code,
+        Some(ToolErrorCode::SandboxUnavailable.into())
+    );
     assert!(
         refused.text.ends_with(": no scripted process left"),
         "the executor's own words, not this host's code: {}",
@@ -246,7 +249,10 @@ async fn should_refuse_an_argument_it_does_not_take_and_run_nothing() {
     )
     .await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
     let spawned = executor.spawned();
     assert!(spawned.is_empty(), "{spawned:?}");
 }

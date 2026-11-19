@@ -5,9 +5,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use af_egress::testing::CountingMint;
-use af_providers::Message;
 use af_wire::lease::LeasePayload;
 use afr_tools::catalog::HTTP_REQUEST;
+use guffbolt::Message;
 use tokio_util::sync::CancellationToken;
 
 use crate::engine::{AgentEngine as _, AgentRun, Meter, RunOutput};

@@ -1,36 +1,108 @@
 //! Nested loops: `delegate`, `spawn`, `wait_agent`, `send_input`,
-//! `list_agents` and `interrupt_agent`, run by the loop beside the turn.
+//! `list_agents` and `interrupt_agent`, tools the loop runs itself.
 //!
 //! A child is the run's loop over a task of the model's, with a selection
 //! narrowed from its parent's: the same provider and key, sandbox, workspace,
 //! memory, call counter and budget, and nothing of its own but its
-//! conversation. The registry keeps every child's state, inbox and stop; the
-//! root loop polls every child's future. A child at the depth cap is offered
-//! none of the six, and the run's caps refuse a fifth running or a
-//! seventeenth started child (`docs/architecture/runner_execution.md` §"Tool
-//! catalog").
+//! conversation. `guffbolt::agents` keeps every child's state, inbox and
+//! stop, refuses a child past the run's caps, and polls every child beside
+//! the root. This module holds what is `agentsfleet`'s: the six tools'
+//! published names, schemas and parsing, the caps' values, the child's loop
+//! and its log (`child.rs`), and the ended children a recovery saves
+//! (`recovery.rs`). A child at the depth cap is offered none of the six, and
+//! the caps refuse a fifth running or a seventeenth started child
+//! (`docs/architecture/runner_execution.md` §"Tool catalog").
 
-use af_providers::Call;
-use afr_tools::ToolOutput;
-use afr_tools::nested::Nested;
+use std::sync::LazyLock;
 
-pub(crate) use self::child::{Guard, Tether, run as child};
-pub(crate) use self::registry::{CapturePermit, ChildRecovery, Registry, Requests, Seat, Status};
+use afr_tools::nested::{Input, Named, Nested, Task, Wait};
+use afr_tools::{NoArguments, Schema};
+use guffbolt::agents::Caps;
+use guffbolt::{Describe, Tool, ToolFuture, ToolSpec};
+
+pub(crate) use self::recovery::ChildRecovery;
 use crate::harness::Harness;
 
-/// Runs `call` when it names one of the six this loop was offered; `None`
-/// for any other call, which is the router's.
-pub(crate) async fn run(harness: &Harness<'_, '_>, call: &Call) -> Option<ToolOutput> {
-    let nested = Nested::of(&call.name).filter(|_| harness.selection.tool(&call.name).is_some())?;
-    let arguments = &call.arguments;
-    Some(match nested {
-        Nested::Delegate => delegate::run(harness, arguments).await,
-        Nested::Spawn => spawn::run(harness, arguments),
-        Nested::WaitAgent => wait::run(harness, arguments).await,
-        Nested::SendInput => input::run(harness, arguments),
-        Nested::ListAgents => list::run(harness, arguments),
-        Nested::InterruptAgent => interrupt::run(harness, arguments),
-    })
+/// How deep a child may be: the root is 0, and a child this deep is offered
+/// no nested tool.
+const NESTED_DEPTH_MAX: u8 = 2;
+/// How many children may run at once.
+const CHILDREN_RUNNING_MAX: usize = 4;
+/// How many children one run may start.
+const CHILDREN_PER_RUN_MAX: u64 = 16;
+/// The run's caps, as its registry enforces them and its recovery bounds
+/// what it restores.
+pub(crate) const CAPS: Caps = Caps {
+    depth: NESTED_DEPTH_MAX,
+    running: CHILDREN_RUNNING_MAX,
+    started: CHILDREN_PER_RUN_MAX,
+};
+
+/// One of the six as a loop holds it: a tool of the loop's own, lent the
+/// loop for each call, offered only where its selection names it.
+#[derive(Debug)]
+pub(crate) struct NestedTool {
+    nested: Nested,
+    schema: &'static Schema,
+}
+
+impl NestedTool {
+    /// `nested`, under the schema it tells the model.
+    pub(crate) fn new(nested: Nested) -> Self {
+        Self {
+            nested,
+            schema: schema(nested),
+        }
+    }
+}
+
+impl Describe for NestedTool {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.schema.spec(self.nested.entry().name())
+    }
+}
+
+impl<'call, 's, 'run> Tool<&'call Harness<'s, 'run>> for NestedTool {
+    fn call<'a>(
+        &'a self,
+        arguments: &'a serde_json::Value,
+        cx: &'call Harness<'s, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        &'call Harness<'s, 'run>: 'a,
+    {
+        // Each runs when the ledger polls it, inside the call's span, never
+        // when the call is looked up.
+        match self.nested {
+            Nested::Delegate => Box::pin(delegate::run(cx, arguments)),
+            Nested::Spawn => Box::pin(async move { spawn::run(cx, arguments) }),
+            Nested::WaitAgent => Box::pin(wait::run(cx, arguments)),
+            Nested::SendInput => Box::pin(async move { input::run(cx, arguments) }),
+            Nested::ListAgents => Box::pin(async move { list::run(cx, arguments) }),
+            Nested::InterruptAgent => Box::pin(async move { interrupt::run(cx, arguments) }),
+        }
+    }
+}
+
+/// What `nested` tells the model: its description over the schema of the
+/// arguments it parses, built once.
+fn schema(nested: Nested) -> &'static Schema {
+    static DELEGATE: LazyLock<Schema> = LazyLock::new(|| Schema::of::<Task>(delegate::DESCRIPTION));
+    static SPAWN: LazyLock<Schema> = LazyLock::new(|| Schema::of::<Task>(spawn::DESCRIPTION));
+    static WAIT_AGENT: LazyLock<Schema> = LazyLock::new(|| Schema::of::<Wait>(wait::DESCRIPTION));
+    static SEND_INPUT: LazyLock<Schema> = LazyLock::new(|| Schema::of::<Input>(input::DESCRIPTION));
+    static LIST_AGENTS: LazyLock<Schema> =
+        LazyLock::new(|| Schema::of::<NoArguments>(list::DESCRIPTION));
+    static INTERRUPT_AGENT: LazyLock<Schema> =
+        LazyLock::new(|| Schema::of::<Named>(interrupt::DESCRIPTION));
+    match nested {
+        Nested::Delegate => &DELEGATE,
+        Nested::Spawn => &SPAWN,
+        Nested::WaitAgent => &WAIT_AGENT,
+        Nested::SendInput => &SEND_INPUT,
+        Nested::ListAgents => &LIST_AGENTS,
+        Nested::InterruptAgent => &INTERRUPT_AGENT,
+    }
 }
 
 mod answer;
@@ -39,7 +111,7 @@ mod delegate;
 mod input;
 mod interrupt;
 mod list;
-mod registry;
+mod recovery;
 mod spawn;
 mod start;
 mod wait;
@@ -67,6 +139,3 @@ mod answer_tests;
 
 #[cfg(test)]
 mod lifetime_tests;
-
-#[cfg(test)]
-mod registry_tests;

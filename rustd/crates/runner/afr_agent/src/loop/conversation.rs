@@ -1,25 +1,14 @@
 //! A loop's conversation between turns: what a parent sent, what the model
-//! said, what the memory checkpoint wrote back, and the cap's last word; and
-//! the loop as `guffbolt` drives it.
+//! said, what the memory checkpoint wrote back; and the loop as `guffbolt`
+//! drives it.
 
-use af_providers::{Call, Message, Replay};
 use af_wire::memory::MemoryDelta;
-use guffbolt::{Prepared, Sampled};
+use guffbolt::{Call, Fitted, Request, ToolFuture, ToolSpec, Transcript, Window};
+use tokio_util::sync::CancellationToken;
 
-use super::{EVENT_CHECKPOINT_FAILED, Harness, INPUT_JOIN};
-use crate::nested::Tether;
-use crate::turn::Turn;
+use super::{EVENT_CHECKPOINT_FAILED, Harness};
 
 impl Harness<'_, '_> {
-    /// What a parent sent a child since the child's last turn.
-    fn sent_by_parent(tether: &mut Tether<'_, '_>) -> Vec<String> {
-        let mut sent = Vec::new();
-        while let Ok(text) = tether.input.try_recv() {
-            sent.push(text);
-        }
-        sent
-    }
-
     /// The messages a person sent the fleet since the root's last claim,
     /// claimed for this run; a stopped loop claims none, and neither does an
     /// ask the lease's claim already answered.
@@ -48,19 +37,6 @@ impl Harness<'_, '_> {
                 folded.text
             })
             .collect()
-    }
-
-    /// Adds `text` to the conversation, scrubbed like anything the model
-    /// wrote, joined onto a user message already waiting so no provider sees
-    /// two in a row.
-    fn join_user(&mut self, text: String) {
-        let text = self.shared.scrub.clean(text).into_inner();
-        if let Some(Message::User(waiting)) = self.messages.last_mut() {
-            waiting.push_str(INPUT_JOIN);
-            waiting.push_str(&text);
-        } else {
-            self.messages.push(Message::User(text));
-        }
     }
 
     /// The last folded message a completed model call read, once the loop
@@ -99,95 +75,102 @@ impl Harness<'_, '_> {
             tracing::warn!(error_code, lease_id, event);
         }
     }
+}
 
-    /// What the model said and called, as the conversation keeps it: scrubbed,
+impl guffbolt::Conversation for Harness<'_, '_> {
+    type Failure = af_providers::Error;
+    type Model = af_providers::Provider;
+    type Observer = Self;
+
+    fn transcript(&mut self) -> &mut Transcript {
+        &mut self.transcript
+    }
+
+    /// What a parent sent a child, or the messages a person sent the root,
+    /// each scrubbed like anything the model wrote.
+    async fn take_input(&mut self) -> Vec<String> {
+        let sent = match self.child.as_mut() {
+            Some(tether) => tether.sent(),
+            None => self.claim_folded().await,
+        };
+        let scrub = self.shared.scrub;
+        sent.into_iter()
+            .map(|text| scrub.clean(text).into_inner())
+            .collect()
+    }
+
+    /// The window `context` fits for the next call: the last compaction's
+    /// notes, the groups that still fit, and the message the loop answers,
+    /// which is never compacted. A fit the stop cut short ends the loop
+    /// stopped; any other failure fails the run as a turn lost mid-way.
+    async fn window(&mut self) -> Fitted<af_providers::Error> {
+        match self.preflight().await {
+            Ok(window) => Fitted::Ready(window),
+            Err(_) if self.stop.is_cancelled() => Fitted::Stopped,
+            Err(error) => Fitted::Failed(af_providers::Error::lost(error)),
+        }
+    }
+
+    fn model(&self) -> &af_providers::Provider {
+        self.shared.provider
+    }
+
+    /// The loop itself, which logs, counts and traces each turn and keeps
+    /// each call in the run's ledger.
+    fn observer(&self) -> &Self {
+        self
+    }
+
+    fn offered(&self) -> Vec<ToolSpec<'_>> {
+        self.router.specs()
+    }
+
+    /// What the window's estimate measured is what is sent.
+    fn request<'a>(&'a self, window: &'a Window, tools: &'a [ToolSpec<'a>]) -> Request<'a> {
+        let shared = self.shared;
+        Request {
+            model: shared.model,
+            instructions: &shared.instructions,
+            messages: &window.messages,
+            tools,
+            hosted: &self.hosted,
+            cache_key: shared.fleet_id,
+            max_output_tokens: window.max_output_tokens,
+            single_attempt: false,
+        }
+    }
+
+    fn dispatch<'a>(&'a self, call: &'a Call) -> ToolFuture<'a> {
+        self.router.dispatch(&call.name, &call.arguments, self)
+    }
+
+    /// What the model said and called, as the transcript keeps it: scrubbed,
     /// so no secret value is ever sent to the model, whoever wrote it. The
     /// router ran each call with the arguments as the model wrote them. The
     /// provider's replay goes back unopened: it is the provider's own record
     /// of its reasoning, signed where the provider signs it.
-    pub(super) fn remembered(&self, text: String, calls: Vec<Call>, replay: Replay) -> Message {
+    fn scrub(&self, text: &mut String, calls: &mut [Call]) {
         let scrub = self.shared.scrub;
-        let calls = calls
-            .into_iter()
-            .map(|call| Call {
-                arguments: scrub.clean_json(call.arguments).into_inner(),
-                ..call
-            })
-            .collect();
-        Message::Assistant {
-            text: scrub.clean(text).into_inner(),
-            calls,
-            replay,
-        }
-    }
-}
-
-impl guffbolt::Conversation for Harness<'_, '_> {
-    type Turn = Turn;
-    type Results = Vec<Message>;
-    type Failure = af_providers::Error;
-
-    async fn take_input(&mut self) -> bool {
-        let sent = match self.child.as_mut() {
-            Some(tether) => Self::sent_by_parent(tether),
-            None => self.claim_folded().await,
-        };
-        let took = !sent.is_empty();
-        for text in sent {
-            self.join_user(text);
-        }
-        took
-    }
-
-    async fn prepare(&mut self) -> Prepared<af_providers::Error> {
-        match self.preflight().await {
-            Ok(()) => Prepared::Ready,
-            Err(_) if self.stop.is_cancelled() => Prepared::Stopped,
-            Err(error) => Prepared::Failed(af_providers::Error::lost(error)),
+        *text = scrub.clean(std::mem::take(text)).into_inner();
+        for call in calls {
+            call.arguments = scrub
+                .clean_json(std::mem::take(&mut call.arguments))
+                .into_inner();
         }
     }
 
-    fn begin_group(&mut self) {
-        self.group_start = self.messages.len();
-    }
-
-    async fn sample(&mut self, number: u64) -> Sampled<Turn, af_providers::Error> {
-        match self.turn(number, false).await {
-            Some(Ok(turn)) => Sampled::Turn(turn),
-            Some(Err(failure)) => Sampled::Failed(failure),
-            None => Sampled::Stopped,
-        }
-    }
-
-    async fn run_calls(&mut self, turn: &Turn) -> Vec<Message> {
-        let mut results = Vec::with_capacity(turn.calls.len());
-        for call in &turn.calls {
-            match self.call(call, turn.cut).await {
-                Some(result) => results.push(result),
-                None => break,
-            }
-            if self.checkpoints.due() {
-                self.checkpoint().await;
-            }
-        }
-        results
-    }
-
-    fn remember(&mut self, turn: Turn, results: Vec<Message>) {
-        let said = self.remembered(turn.text, turn.calls, turn.replay);
-        self.messages.push(said);
-        self.messages.extend(results);
-    }
-
-    fn push_user(&mut self, text: String) {
-        self.messages.push(Message::User(text));
-    }
-
-    fn stopped(&self) -> bool {
-        self.stop.is_cancelled()
+    /// The run's token for the root, its own for a child.
+    fn stop(&self) -> &CancellationToken {
+        &self.stop
     }
 
     fn silent(&self, cut: bool) -> af_providers::Error {
         af_providers::Error::silent(cut)
+    }
+
+    async fn called(&mut self) {
+        if self.checkpoints.due() {
+            self.checkpoint().await;
+        }
     }
 }

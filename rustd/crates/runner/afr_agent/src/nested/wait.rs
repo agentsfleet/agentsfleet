@@ -3,12 +3,18 @@
 use std::time::Duration;
 
 use afr_tools::nested::Wait;
-use afr_tools::{ToolOutput, parsed};
+use afr_tools::parsed;
+use guffbolt::ToolOutput;
+use guffbolt::agents::{State, not_found};
 use serde_json::Value;
 
-use super::answer::{State, json, not_found};
+use super::answer::json;
 use crate::harness::Harness;
 
+/// What `wait_agent` does, as the model reads it.
+pub(super) const DESCRIPTION: &str = "Wait for a spawned child to end and read its answer. \
+        Answers its status, with the answer once it is done, and running when the timeout \
+        passed first.";
 /// How long a wait lasts when the model names no timeout: Codex's.
 const WAIT_DEFAULT: Duration = Duration::from_secs(30);
 /// The longest wait: Codex's hour. Zero is allowed, to only look.

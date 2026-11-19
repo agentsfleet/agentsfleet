@@ -4,6 +4,7 @@
 //! The published list is `docs/architecture/runner_execution.md` §"Tool
 //! catalog", one entry per tool. A lease's `ExecutionPolicy.tools` selects from
 //! it; a name with no handler here refuses the lease, never a quieter tool set.
+//! The nested tools need none: the loop runs them itself.
 
 use std::sync::Arc;
 
@@ -13,14 +14,15 @@ use crate::error::{self, Result};
 use crate::handler::Typed;
 use crate::http_request::HttpRequest;
 use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
-use crate::nested;
+use crate::nested::Nested;
 use crate::plan::UpdatePlan;
 use crate::pushover::Pushover;
-use crate::runtime::{Runtime, Tool};
+use crate::runtime::{CatalogTool, Runtime};
 use crate::sandbox::{
     ApplyPatch, Browser, BrowserOpen, ExecCommand, FileAppend, FileDelete, FileEdit,
     FileEditHashed, FileRead, FileReadHashed, FileWrite, Git, Image, Screenshot, Shell, WriteStdin,
 };
+use crate::selection::Offered;
 use crate::selection::Selection;
 use crate::verbs::{
     CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate, FleetActivity, FleetSteer,
@@ -30,7 +32,7 @@ use crate::web_fetch::WebFetch;
 
 /// One published tool: its name and the runtime it executes in.
 ///
-/// Built only here, so every [`Tool::entry`] names a published tool.
+/// Built only here, so every entry a selection holds names a published tool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Entry {
     name: &'static str,
@@ -193,13 +195,13 @@ pub fn published(name: &str) -> Option<&'static Entry> {
 /// The handlers this runner hosts.
 #[derive(Debug)]
 pub struct Catalog {
-    handlers: Vec<Box<dyn Tool>>,
+    handlers: Vec<Box<CatalogTool>>,
 }
 
 impl Catalog {
     /// A catalog hosting `handlers`. Where two serve one tool, the first is used.
     #[must_use]
-    pub fn new(handlers: Vec<Box<dyn Tool>>) -> Self {
+    pub fn new(handlers: Vec<Box<CatalogTool>>) -> Self {
         Self { handlers }
     }
 
@@ -207,7 +209,7 @@ impl Catalog {
     /// sending through `transport`.
     #[must_use]
     pub fn hosted(transport: Arc<dyn Transport>) -> Self {
-        let mut handlers = vec![
+        Self::new(vec![
             Typed::boxed(HttpRequest::new(Arc::clone(&transport))),
             Typed::boxed(WebFetch::new(Arc::clone(&transport))),
             Typed::boxed(Pushover::new(transport)),
@@ -242,9 +244,7 @@ impl Catalog {
             Typed::boxed(CronUpdate),
             Typed::boxed(CronRun),
             Typed::boxed(CronRuns),
-        ];
-        handlers.extend(nested::tools());
-        Self::new(handlers)
+        ])
     }
 
     /// The tools a lease naming `names` is offered.
@@ -259,18 +259,21 @@ impl Catalog {
                 continue;
             }
             let entry = published(name).ok_or_else(|| error::unhosted(name))?;
-            match entry.runtime {
-                Runtime::Provider => selection.hosted.push(entry),
-                Runtime::Supervisor | Runtime::Sandbox => {
+            match (entry.runtime, Nested::of(name)) {
+                (Runtime::Provider, _) => selection.hosted.push(entry),
+                (Runtime::Supervisor | Runtime::Sandbox, Some(nested)) => {
+                    selection.tools.push(Offered::Nested(nested));
+                }
+                (Runtime::Supervisor | Runtime::Sandbox, None) => {
                     let handler = self.handler(name).ok_or_else(|| error::unhosted(name))?;
-                    selection.tools.push(handler);
+                    selection.tools.push(Offered::Handler(entry, handler));
                 }
             }
         }
         Ok(selection)
     }
 
-    fn handler(&self, name: &str) -> Option<&dyn Tool> {
+    fn handler(&self, name: &str) -> Option<&CatalogTool> {
         self.handlers
             .iter()
             .map(Box::as_ref)

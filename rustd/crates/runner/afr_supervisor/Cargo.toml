@@ -117,6 +117,10 @@ afr_tools = { workspace = true, features = ["test-util"] }
 # this feature; named here so the tests build when this crate is selected
 # alone.
 afr_agent = { workspace = true, features = ["test-util"] }
+# The turns and usage the suites build (`guffbolt`), and the measure the
+# scripted models they drive answer with.
+af_providers = { workspace = true, features = ["test-util"] }
+guffbolt.workspace = true
 # The daemon side of `HttpRunnerApi`'s tests: a real listener, so a status code
 # and a header are proven on the socket rather than assumed by a mock.
 axum = { workspace = true, features = ["json"] }

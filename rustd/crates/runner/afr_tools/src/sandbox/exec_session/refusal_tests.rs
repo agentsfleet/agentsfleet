@@ -20,7 +20,7 @@ async fn should_refuse_a_session_id_that_is_not_a_whole_number() {
 
         assert_eq!(
             output.error_code,
-            Some(ToolErrorCode::InvalidArguments),
+            Some(ToolErrorCode::InvalidArguments.into()),
             "{session_id}"
         );
     }
@@ -61,8 +61,14 @@ async fn should_refuse_without_a_sandbox_or_when_the_spawn_is_refused() {
     )
     .await;
 
-    assert_eq!(opened.error_code, Some(ToolErrorCode::SandboxUnavailable));
-    assert_eq!(written.error_code, Some(ToolErrorCode::SandboxUnavailable));
+    assert_eq!(
+        opened.error_code,
+        Some(ToolErrorCode::SandboxUnavailable.into())
+    );
+    assert_eq!(
+        written.error_code,
+        Some(ToolErrorCode::SandboxUnavailable.into())
+    );
     assert!(
         refused.text.ends_with(": no scripted process left"),
         "a refused spawn reads the executor's reason, got {:?}",

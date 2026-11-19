@@ -12,11 +12,12 @@ use std::sync::Arc;
 use af_egress::REQUEST_TIMEOUT;
 use af_egress::redirect::{Chain, Stop};
 use af_egress::{Draft, Error, Inbound, Refusal, Transport};
+use guffbolt::ToolOutput;
 
 use crate::catalog::Entry;
 use crate::error::Result;
 use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 
 /// The event a refused call logs under, fixed because dashboards match on it.
 const EVENT_TOOL_REFUSED: &str = "tool_refused";

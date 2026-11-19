@@ -26,7 +26,7 @@ Unit tests that must reach a private item stay in `src/` behind `#[cfg(test)]`. 
 
 `test-unit-rustd` is three targets, one per group of layer folders, run in this order:
 
-- `test-unit-rustd-runner`: the `runner/` and `harness/` layers;
+- `test-unit-rustd-runner`: the `runner/` and `harness/` layers, and `guffbolt`, which sits beside them;
 
 - `test-unit-rustd-daemon`: the `agentsfleetd` binary and its suites;
 
@@ -172,7 +172,7 @@ The target is **100%**, project-wide and per flag. TypeScript gates at that targ
 
 | Flag | Paths | Gate |
 |---|---|---|
-| `rust-afd` | `rustd/crates/` | 98% project · 95% patch |
+| `rust-afd` | `rustd/crates/`, `rustd/guffbolt/` | 98% project · 95% patch |
 | `typescript` | `app`, `website`, `cli` | 100% |
 
 Every threshold is 0%, so a gate has no give. A patch status grades only the lines a diff touched, so on a small diff one unhit line reds the build. That is intended, and the answer is a test, never absorbed slack.

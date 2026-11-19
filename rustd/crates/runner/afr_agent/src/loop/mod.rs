@@ -3,27 +3,33 @@
 //!
 //! One [`Harness`] drives one loop: the run's root, or a child a nested tool
 //! started, which is the same loop over a task of the model's with a narrower
-//! selection. What every loop of the run shares is [`Shared`]; the ledger
-//! keeps what each call did. Children are polled beside the root loop, never
-//! spawned, so a run that ends takes every child with it.
+//! selection. `guffbolt` makes each model call, runs and ends each tool call
+//! and keeps the transcript; the harness is its conversation, fits each call's
+//! window (`context`), and hears its work as its observer. What every loop of
+//! the run shares is [`Shared`]; the ledger keeps what each call did.
+//! `guffbolt::agents` polls the children beside the root loop, never spawned,
+//! so a run that ends takes every child with it.
+//! Every tool a loop holds, the nested ones and `propose_change` included,
+//! sits in its router; the loop dispatches none by name.
 //! `docs/architecture/runner_execution.md` §"Tool catalog" is the design.
 
-use af_providers::{Call, Connect, Hosted, Message, ToolSpec};
+use af_providers::Connect;
 use af_secrets::Scrub;
 use af_wire::policy::ExecutionPolicy;
 use afr_tools::{Catalog, Selection};
+use guffbolt::agents::{Agents, Children, Tether};
+use guffbolt::{Hosted, Transcript};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
-use self::children::Children;
 use self::shared::Shared;
 use crate::context::Checkpoints;
 use crate::engine::{AgentEngine, AgentRun, Needs, RunOutput};
 use crate::error::Result;
 use crate::events::Live;
-use crate::nested::{self, Registry, Tether};
+use crate::nested;
 use crate::prompt::Prompt;
-use crate::router::{self, Router};
+use crate::router::Router;
 use crate::spans;
 
 const EVENT_CHECKPOINT_FAILED: &str = "memory_checkpoint_failed";
@@ -32,8 +38,6 @@ const EVENT_TURN_COMPLETED: &str = "provider_turn_completed";
 const EVENT_PROVIDER_FAILED: &str = "provider_turn_failed";
 /// Why a turn the lease stopped did not complete.
 const REASON_STOPPED: &str = "lease_stopped";
-/// What joins two messages a parent sent a child before one turn.
-const INPUT_JOIN: &str = "\n\n";
 
 /// How a loop's turns ended, a failure being the provider's.
 pub(crate) type Ending = guffbolt::Ending<af_providers::Error>;
@@ -115,10 +119,10 @@ impl AgentEngine for Loop {
             memory,
             mut state,
         } = recovery_boundary::prepare_root(&run, &scrub, opening, &prompt.message)?;
-        let (registry, requests) = Registry::new();
-        if let Some(recovered) = &mut state {
-            registry.restore(std::mem::take(&mut recovered.children), &scrub)?;
-        }
+        let (registry, requests) = match &mut state {
+            Some(recovered) => std::mem::take(&mut recovered.children).restored(&scrub)?,
+            None => Agents::new(nested::CAPS),
+        };
         let shared = Shared::new(
             &run,
             &selection,
@@ -142,8 +146,8 @@ impl AgentEngine for Loop {
             let ending = children.beside(&shared, root.drive()).await;
             // Every child is dropped before the ledger closes, so each one's
             // open call ends `interrupted` in the trace the report carries.
-            let permit = children.end_all(&shared);
-            root.finish(ending, permit.as_ref()).await
+            let pause = children.end_all(&shared.registry);
+            root.finish(ending, pause.as_ref()).await
         };
         Ok(driven.instrument(span).await)
     }
@@ -156,7 +160,6 @@ pub(crate) struct Harness<'s, 'run> {
     reconciled_effect_ordinal: u64,
     confirmed_effect_watermark: u64,
     task_report: Option<af_wire::task::TaskReport>,
-    group_start: usize,
     pub(crate) shared: &'s Shared<'run>,
     /// How many loops this one is inside: zero for the root.
     pub(crate) depth: u8,
@@ -165,17 +168,18 @@ pub(crate) struct Harness<'s, 'run> {
     pub(crate) stop: CancellationToken,
     /// The tools this loop is offered; a child's selection narrows it.
     pub(crate) selection: &'s Selection<'run>,
-    router: Router<'s>,
-    specs: Vec<ToolSpec<'s>>,
+    /// Every tool this loop holds, and how a call reaches one.
+    router: Router<'s, 'run>,
     hosted: Vec<Hosted>,
     live: Live<'s>,
     checkpoints: Checkpoints,
     context: context::State,
-    messages: Vec<Message>,
+    /// The conversation `guffbolt` keeps for this loop.
+    transcript: Transcript,
     driver: guffbolt::DriveState,
-    /// The child this loop is, when it is one: its guard, and what its
-    /// parent sent, read into its next turn.
-    pub(crate) child: Option<Tether<'s, 'run>>,
+    /// The child this loop is, when it is one: what its parent sent, read
+    /// into its next turn, and the count of its calls its parent reads.
+    pub(crate) child: Option<Tether<'s>>,
     /// The last folded message this loop took, by sequence; 0 before the
     /// first. A child takes none.
     folded_through: i64,
@@ -200,53 +204,13 @@ impl Harness<'_, '_> {
         self.driver = state;
         ending
     }
-
-    /// Runs one call to its end, or answers it unrun when its turn was `cut`
-    /// at the output limit; `None` when the loop was stopped. A nested tool
-    /// the loop was offered runs here, beside the turn; every other call
-    /// goes to the router.
-    async fn call(&self, call: &Call, cut: bool) -> Option<Message> {
-        let handler = async {
-            if cut {
-                return router::cut(&call.name);
-            }
-            if call.name == publication::NAME {
-                return self.publish_task(&call.arguments).await;
-            }
-            if let Some(output) = nested::run(self, call).await {
-                return output;
-            }
-            let lease = &self.shared.lease;
-            self.router
-                .dispatch(&call.name, &call.arguments, lease)
-                .await
-        };
-        let (text, image) = tokio::select! {
-            biased;
-            () = self.stop.cancelled() => return None,
-            answered = self.shared.ledger.call(call, handler) => answered,
-        };
-        if let Some(child) = &self.child {
-            child.guard.called();
-        }
-        // The image a call read rides its result alone; the ledger, the trace
-        // and the frames saw the text.
-        let image = image.map(attach::image_input);
-        Some(Message::ToolResult {
-            call_id: call.id.clone(),
-            output: text.into_inner(),
-            image,
-        })
-    }
 }
 
-mod attach;
-mod children;
 mod construction;
 mod context;
 mod conversation;
 mod finish;
-mod model_turn;
+mod observe;
 mod publication;
 mod recovery_boundary;
 pub(crate) mod shared;

@@ -9,12 +9,13 @@ use std::borrow::Cow;
 
 use af_wire::memory::{MemoryDelta, PINNED_CATEGORY, RECALL_LIMIT_MAX, Visibility};
 use afr_memory::{Forgotten, Recalled};
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::catalog::{Entry, MEMORY_FORGET, MEMORY_LIST, MEMORY_RECALL, MEMORY_STORE};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 /// How many entries a recall answers with when the model names no limit.
 const RECALL_DEFAULT: usize = 5;

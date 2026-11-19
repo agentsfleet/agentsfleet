@@ -65,10 +65,13 @@ async fn a_file_past_one_read_is_cut_for_reading_and_refused_for_editing() {
     assert_eq!(read.error_code, None);
     assert_eq!(
         edit.error_code,
-        Some(ToolErrorCode::FileTooLarge),
+        Some(ToolErrorCode::FileTooLarge.into()),
         "{edit:?}"
     );
-    assert_eq!(past.error_code, Some(ToolErrorCode::InvalidArguments));
+    assert_eq!(
+        past.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
     assert!(
         past.text.ends_with(&format!(
             "of the first {MAX_READ_BYTES} bytes of big.txt; read the rest with shell"
@@ -107,7 +110,7 @@ async fn a_file_that_is_not_text_is_read_lossily_and_refused_for_editing() {
     assert_eq!(read.text, "\u{fffd}\u{fffd}a");
     assert_eq!(
         edit.error_code,
-        Some(ToolErrorCode::InvalidArguments),
+        Some(ToolErrorCode::InvalidArguments.into()),
         "{edit:?}"
     );
     assert!(edit.text.contains("is not text"), "{}", edit.text);

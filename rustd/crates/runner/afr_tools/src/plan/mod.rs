@@ -6,12 +6,13 @@
 //! every step with its status, which is what the thread shows.
 
 use af_core::spelling::to_spelling;
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::catalog::{Entry, UPDATE_PLAN};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolOutput};
+use crate::runtime::ToolContext;
 
 /// Where a step stands; [`Step::status`]'s doc says what each means, so the
 /// schema stays a plain `enum`.

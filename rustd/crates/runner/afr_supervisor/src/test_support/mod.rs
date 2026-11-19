@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use af_providers::{Connect as _, Connector, Usage};
+use af_providers::{Connect as _, Connector};
 use af_wire::activity::{ActivityFrame, FleetResponseChunk};
 use af_wire::memory::MemoryDelta;
 use af_wire::policy::ExecutionPolicy;
@@ -24,6 +24,7 @@ use afr_tools::Catalog;
 use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
 use bytes::Bytes;
+use guffbolt::Usage;
 use serde::Serialize;
 use tokio::sync::mpsc;
 use tokio::time::Instant;

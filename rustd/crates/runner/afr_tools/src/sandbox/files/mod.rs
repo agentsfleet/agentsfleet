@@ -14,13 +14,14 @@ use std::path::{Component, Path};
 
 use afr_executor::{Executor, MAX_READ_BYTES, WORKSPACE_ROOT};
 use bytes::Bytes;
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::{executor_of, unavailable};
 use crate::catalog::{Entry, FILE_APPEND, FILE_DELETE, FILE_EDIT, FILE_WRITE};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 /// What a path with `..` in it, or an absolute one outside the workspace,
 /// reads back after the path.

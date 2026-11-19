@@ -11,9 +11,9 @@ use af_observability::semconv::{
     ATTR_USAGE_CACHE_READ_TOKENS, ATTR_USAGE_INPUT_TOKENS, ATTR_USAGE_OUTPUT_TOKENS,
     OPERATION_CHAT, OPERATION_EXECUTE_TOOL, OPERATION_INVOKE_AGENT, RUNNER_SCOPE_NAME, provider,
 };
-use af_providers::Usage;
 use af_wire::policy::ExecutionPolicy;
-use afr_tools::ToolErrorCode;
+use guffbolt::ErrorCode;
+use guffbolt::Usage;
 use tracing::Span;
 use tracing::field::Empty;
 
@@ -76,7 +76,7 @@ pub(crate) fn execute_tool(name: &str, call_id: &str) -> Span {
 /// Records why a tool call failed on its span: the closed code the model
 /// reads, never the call's own text. A call that answered with none, a
 /// non-zero exit among them, carries no error type.
-pub(crate) fn failed(span: &Span, code: Option<ToolErrorCode>) {
+pub(crate) fn failed(span: &Span, code: Option<ErrorCode>) {
     if let Some(code) = code {
         span.record(ATTR_ERROR_TYPE, code.as_str());
     }

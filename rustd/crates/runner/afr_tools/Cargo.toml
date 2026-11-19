@@ -35,7 +35,10 @@ bytes.workspace = true
 html2text.workspace = true
 # `schedule` reads an RFC 3339 moment and writes its UTC minute as a cron.
 jiff.workspace = true
-# `Tool` is `dyn`: the catalog holds production handlers, tests hold stubs.
+# Every handler is a `guffbolt` tool lent a lease's context per call, and
+# answers with the harness's output.
+guffbolt.workspace = true
+# A typed handler's `run` and the lease's verbs are `dyn`-safe async traits.
 async-trait.workspace = true
 # A tool's parameters are the JSON Schema of the type its arguments parse into.
 schemars.workspace = true

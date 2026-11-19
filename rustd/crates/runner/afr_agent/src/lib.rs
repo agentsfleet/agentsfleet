@@ -6,8 +6,9 @@
 //! carries and the memory to push. Before any of that, [`AgentEngine::admit`]
 //! refuses a lease naming a tool the engine cannot host and says whether the
 //! lease needs a sandbox. [`Loop`] is the engine that runs the model against the
-//! lease's tools, and the [`Router`] runs each call where its runtime says; a
-//! scripted engine drives the supervisor's lanes.
+//! lease's tools: each loop's router runs a call through `guffbolt`'s tool set,
+//! a catalog handler where its runtime says. A scripted engine drives the
+//! supervisor's lanes.
 
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
@@ -35,7 +36,6 @@ mod spans;
 #[cfg(any(test, feature = "test-util"))]
 pub mod testing;
 mod trace;
-mod turn;
 
 pub use self::engine::{
     AgentEngine, AgentRun, Checkpoint, CommittedRecovery, EventSink, FileRecoveryPermit, Folded,
@@ -45,7 +45,6 @@ pub use self::engine::{
 pub use self::error::{Error, Result, Unhosted};
 pub use self::harness::Loop;
 pub use self::result::{Completed, ExecutionResult, Failure, ResultOutcome};
-pub use self::router::Router;
 // The seam a run's schedule and message tools reach `agentsfleetd` through,
 // re-exported so the supervisor implements it through the crate it drives.
 pub use afr_tools::{LeaseVerbs, ScheduleCall, Unanswered};

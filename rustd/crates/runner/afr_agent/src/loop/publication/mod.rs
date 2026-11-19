@@ -3,14 +3,14 @@
 mod process;
 
 use super::Harness;
-use af_providers::ToolSpec;
 use af_wire::task::{TaskEffectInput, TaskFileChange, TaskTarget};
 use afr_executor::Spawn;
-use afr_tools::{Schema, ToolErrorCode, ToolOutput};
+use afr_tools::{Schema, ToolErrorCode};
+use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
 use serde::Deserialize;
 use std::{sync::LazyLock, time::Duration};
 
-pub(super) const NAME: &str = "propose_change";
+const NAME: &str = "propose_change";
 /// The sandbox program used for both pre-validation and post-validation capture.
 const CANDIDATE_SCRIPT: &str = include_str!("candidate.py");
 static SCHEMA: LazyLock<Schema> = LazyLock::new(|| {
@@ -37,11 +37,29 @@ struct Candidate {
     changes: Vec<TaskFileChange>,
 }
 
-pub(super) fn spec() -> ToolSpec<'static> {
-    ToolSpec {
-        name: NAME,
-        description: SCHEMA.description(),
-        parameters: SCHEMA.parameters(),
+/// `propose_change` as a loop holds it. The root of a task that may publish
+/// offers it; every other loop holds it unoffered, so a call the model makes
+/// anyway reads why publication is unavailable rather than that no such tool
+/// exists.
+#[derive(Debug)]
+pub(super) struct Propose;
+
+impl Describe for Propose {
+    fn spec(&self) -> ToolSpec<'_> {
+        SCHEMA.spec(NAME)
+    }
+}
+
+impl<'call, 's, 'run> Tool<&'call Harness<'s, 'run>> for Propose {
+    fn call<'a>(
+        &'a self,
+        arguments: &'a serde_json::Value,
+        cx: &'call Harness<'s, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        &'call Harness<'s, 'run>: 'a,
+    {
+        Box::pin(cx.publish_task(arguments))
     }
 }
 
@@ -94,7 +112,7 @@ impl Harness<'_, '_> {
             })
     }
 
-    pub(super) async fn publish_task(&self, arguments: &serde_json::Value) -> ToolOutput {
+    async fn publish_task(&self, arguments: &serde_json::Value) -> ToolOutput {
         match self.publication(arguments).await {
             Ok(output) | Err(output) => output,
         }

@@ -1,27 +1,49 @@
-//! Terminal child state and an owned gate that admits no start during capture.
-
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+//! The children a recovered run brings back: ended ones only, with their
+//! results and counters, and no loop, inbox or start of their own.
+//!
+//! A checkpoint is taken only under a [`Pause`], which `guffbolt` grants
+//! while no child runs, unwinds or waits to start; its census is what is
+//! saved here, bounded and scrubbed again on the way back.
 
 use af_secrets::Scrub;
+use afr_tools::Selection;
 use garde::Validate;
+use guffbolt::agents::{Agents, Census, Counted, Pause, Requests, Status};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, oneshot, watch};
-use tokio_util::sync::CancellationToken;
 
-use super::{CHILDREN_PER_RUN_MAX, Child, NESTED_DEPTH_MAX, Registry, Status};
+use super::{CAPS, CHILDREN_PER_RUN_MAX, NESTED_DEPTH_MAX};
 use crate::Result;
 use crate::error::recovery_invalid;
 
-/// The start gate is owned independently of every child or agent future.
-#[derive(Debug)]
-pub(crate) struct CapturePermit {
-    gate: Arc<AtomicBool>,
+/// Where a saved child is, as a checkpoint carries it: `guffbolt`'s status,
+/// each text bounded.
+#[derive(Clone, Serialize, Deserialize, Validate)]
+enum SavedStatus {
+    Running,
+    Done(#[garde(length(bytes, max = 65_536))] String),
+    Failed(#[garde(length(bytes, max = 65_536))] String),
+    Interrupted,
 }
 
-impl Drop for CapturePermit {
-    fn drop(&mut self) {
-        self.gate.store(false, Ordering::Release);
+impl From<Status> for SavedStatus {
+    fn from(status: Status) -> Self {
+        match status {
+            Status::Running => Self::Running,
+            Status::Done(answer) => Self::Done(answer),
+            Status::Failed(detail) => Self::Failed(detail),
+            Status::Interrupted => Self::Interrupted,
+        }
+    }
+}
+
+impl From<SavedStatus> for Status {
+    fn from(saved: SavedStatus) -> Self {
+        match saved {
+            SavedStatus::Running => Self::Running,
+            SavedStatus::Done(answer) => Self::Done(answer),
+            SavedStatus::Failed(detail) => Self::Failed(detail),
+            SavedStatus::Interrupted => Self::Interrupted,
+        }
     }
 }
 
@@ -35,7 +57,29 @@ struct SavedChild {
     #[garde(skip)]
     calls: u64,
     #[garde(dive)]
-    status: Status,
+    status: SavedStatus,
+}
+
+impl From<Counted> for SavedChild {
+    fn from(counted: Counted) -> Self {
+        Self {
+            id: counted.id,
+            depth: counted.depth,
+            calls: counted.calls,
+            status: counted.status.into(),
+        }
+    }
+}
+
+impl From<SavedChild> for Counted {
+    fn from(saved: SavedChild) -> Self {
+        Self {
+            id: saved.id,
+            depth: saved.depth,
+            calls: saved.calls,
+            status: saved.status.into(),
+        }
+    }
 }
 
 /// Terminal results and counters, with no live process, inbox or permission.
@@ -50,86 +94,51 @@ pub(crate) struct ChildRecovery {
     children: Vec<SavedChild>,
 }
 
-impl Registry<'_> {
-    /// Only the child coordinator can supply the actual future/queue census.
-    pub(crate) fn try_capture(&self, no_work: impl FnOnce() -> bool) -> Option<CapturePermit> {
-        let book = self.book();
-        if book.running != 0 || !no_work() || self.capturing.swap(true, Ordering::AcqRel) {
-            return None;
-        }
-        drop(book);
-        Some(CapturePermit {
-            gate: Arc::clone(&self.capturing),
-        })
-    }
-
-    pub(crate) async fn capture_permit(&self) -> Option<CapturePermit> {
-        let (reply, receipt) = oneshot::channel();
-        self.captures.send(reply).ok()?;
-        receipt.await.ok().flatten()
-    }
-
-    pub(crate) fn snapshot(&self, permit: &CapturePermit) -> Result<ChildRecovery> {
-        if !Arc::ptr_eq(&permit.gate, &self.capturing) || !self.capturing.load(Ordering::Acquire) {
-            return Err(recovery_invalid(
-                "the child capture permit belongs to another run",
-            ));
-        }
-        let book = self.book();
-        let saved = ChildRecovery {
-            next: book.next,
-            started: book.started,
-            children: book
-                .children
-                .iter()
-                .map(|(id, child)| SavedChild {
-                    id: *id,
-                    depth: child.depth,
-                    calls: child.calls,
-                    status: child.status.borrow().clone(),
-                })
-                .collect(),
+impl ChildRecovery {
+    /// The children of `agents` as `pause` holds them, as a checkpoint
+    /// saves them.
+    ///
+    /// # Errors
+    /// `pause` is another run's, or the children break the bounds a
+    /// restore checks.
+    pub(crate) fn capture(agents: &Agents<Selection<'_>>, pause: &Pause) -> Result<Self> {
+        let census = agents
+            .census(pause)
+            .ok_or_else(|| recovery_invalid("the child capture permit belongs to another run"))?;
+        let saved = Self {
+            next: census.next,
+            started: census.started,
+            children: census.children.into_iter().map(SavedChild::from).collect(),
         };
         saved.check()?;
         Ok(saved)
     }
 
-    pub(crate) fn restore(&self, mut saved: ChildRecovery, scrub: &Scrub) -> Result<()> {
-        saved.check()?;
-        for child in &mut saved.children {
-            if let Status::Done(text) | Status::Failed(text) = &mut child.status {
+    /// A registry under the run's caps holding these children, each answer
+    /// and detail scrubbed again, and where its root reads each new child.
+    ///
+    /// # Errors
+    /// A child that had not ended, counters that disagree, or a bound
+    /// broken, before or after the scrub.
+    pub(crate) fn restored<'run>(
+        mut self,
+        scrub: &Scrub,
+    ) -> Result<(Agents<Selection<'run>>, Requests<Selection<'run>>)> {
+        self.check()?;
+        for child in &mut self.children {
+            if let SavedStatus::Done(text) | SavedStatus::Failed(text) = &mut child.status {
                 *text = scrub.text(text).into_owned();
             }
         }
-        saved.check()?;
-        let mut book = self.book();
-        if book.started != 0 || self.capturing.load(Ordering::Acquire) {
-            return Err(recovery_invalid("child recovery requires a fresh registry"));
-        }
-        book.next = saved.next;
-        book.started = saved.started;
-        for child in saved.children {
-            let (status, _watched) = watch::channel(child.status);
-            let (input, inbox) = mpsc::unbounded_channel();
-            drop(inbox);
-            let stop = CancellationToken::new();
-            stop.cancel();
-            book.children.insert(
-                child.id,
-                Child {
-                    status,
-                    input,
-                    stop,
-                    depth: child.depth,
-                    calls: child.calls,
-                },
-            );
-        }
-        Ok(())
+        self.check()?;
+        let census = Census {
+            next: self.next,
+            started: self.started,
+            children: self.children.into_iter().map(Counted::from).collect(),
+        };
+        Ok(Agents::restored(CAPS, census))
     }
-}
 
-impl ChildRecovery {
     pub(crate) fn check(&self) -> Result<()> {
         self.validate()?;
         if self.next != self.started
@@ -137,7 +146,7 @@ impl ChildRecovery {
             || self
                 .children
                 .iter()
-                .any(|child| !child.status.is_final() || child.id > self.next)
+                .any(|child| matches!(child.status, SavedStatus::Running) || child.id > self.next)
             || self
                 .children
                 .windows(2)

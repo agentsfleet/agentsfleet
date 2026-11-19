@@ -118,7 +118,10 @@ async fn a_store_the_daemon_would_skip_is_refused_with_its_code() {
     let lease = Lease::default();
 
     let empty = call(store.as_ref(), &lease, json!({"key": "", "content": "c"})).await;
-    assert_eq!(empty.error_code, Some(ToolErrorCode::InvalidArguments));
+    assert_eq!(
+        empty.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
     assert!(
         empty.text.starts_with("[invalid_arguments] key"),
         "{}",
@@ -140,7 +143,7 @@ async fn a_store_the_daemon_would_skip_is_refused_with_its_code() {
         }
     }
     let full = full.map(|output| output.error_code);
-    assert_eq!(full, Some(Some(ToolErrorCode::MemoryFull)));
+    assert_eq!(full, Some(Some(ToolErrorCode::MemoryFull.into())));
 }
 
 #[tokio::test]

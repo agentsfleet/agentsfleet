@@ -1,8 +1,8 @@
 //! Exact event, workspace and incorporated inputs are proved before root restoration.
 
 use super::{RootRecovery, TurnRecovery, TurnSnapshot};
-use af_providers::{Message, Replay};
 use af_wire::lease::{FoldRef, LeasePayload, TurnId, TurnResume, TurnWorkspace};
+use guffbolt::{Message, Replay};
 
 fn id(number: u32) -> TurnId {
     TurnId(format!("019f0000-0000-7000-8000-{number:012x}"))

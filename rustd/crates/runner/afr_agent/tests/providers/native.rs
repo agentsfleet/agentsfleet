@@ -1,8 +1,10 @@
 //! Native provider streams are mocks on real local sockets, with no paid calls.
 
-use af_providers::{Chunk, Connect as _, Connector, Message, Request, ToolSpec};
+use af_providers::{Connect as _, Connector};
 use af_wire::inference::{InferenceApi, ModelInference};
 use futures_util::StreamExt as _;
+use guffbolt::ToolSpec;
+use guffbolt::{Chunk, Message, Request};
 use serde_json::{Value, json};
 
 use super::support::{Fake, KEY, Reply, lease};

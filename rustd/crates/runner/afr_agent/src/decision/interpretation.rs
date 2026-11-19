@@ -2,12 +2,13 @@
 
 use super::{routing::Multiplicity, unavailable};
 use crate::{Meter, Result};
-use af_providers::{Chunk, Message, Provider, Request};
+use af_providers::Provider;
 use af_wire::{
     lease::LeasePayload,
     task::{TaskInputCandidate, TaskProposedItem},
 };
 use futures_util::StreamExt as _;
+use guffbolt::{Chunk, Message, Request, TextKind};
 use tokio_util::sync::CancellationToken;
 
 const MAX_BYTES: usize = 16_384;
@@ -15,7 +16,7 @@ const INSTRUCTIONS: &str = "Interpret the complete human message using the suppl
 
 pub(super) async fn propose(
     lease: &LeasePayload<'_>,
-    provider: &dyn Provider,
+    provider: &Provider,
     meter: &Meter,
     stop: &CancellationToken,
     message: &str,
@@ -65,7 +66,7 @@ pub(super) async fn propose(
 }
 
 pub(crate) async fn collect(
-    provider: &dyn Provider,
+    provider: &Provider,
     request: Request<'_>,
     meter: &Meter,
 ) -> Result<String> {
@@ -76,7 +77,7 @@ pub(crate) async fn collect(
         match chunk? {
             Chunk::Usage(usage) => meter.add(usage),
             Chunk::Text {
-                kind: af_wire::activity::StreamTextKind::Answer,
+                kind: TextKind::Answer,
                 text: part,
             } => {
                 if text.len().saturating_add(part.len()) > MAX_BYTES {

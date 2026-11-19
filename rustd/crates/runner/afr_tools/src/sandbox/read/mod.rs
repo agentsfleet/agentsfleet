@@ -12,6 +12,7 @@
 use std::num::NonZeroUsize;
 
 use afr_executor::MAX_READ_BYTES;
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -19,7 +20,7 @@ use super::files::{Answer, failed, inside, settled};
 use super::{executor_of, output};
 use crate::catalog::{Entry, FILE_READ};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 /// The lines a read carries when the model names no limit.
 const LINES_DEFAULT: usize = 2000;

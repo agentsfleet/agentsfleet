@@ -81,7 +81,7 @@ async fn should_refuse_at_landing_when_the_hunk_through_the_link_no_longer_appli
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::PatchInvalid),
+        Some(ToolErrorCode::PatchInvalid.into()),
         "{refused:?}"
     );
     assert!(refused.text.contains(ALIAS), "{}", refused.text);
@@ -114,7 +114,7 @@ async fn should_read_file_not_found_at_landing_when_an_earlier_hunk_deleted_the_
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::FileNotFound),
+        Some(ToolErrorCode::FileNotFound.into()),
         "{refused:?}"
     );
     assert!(

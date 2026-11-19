@@ -17,7 +17,7 @@ use tokio::time::Instant;
 use super::{EMPTY_WRITE_YIELD_MIN, ExecCommand, WriteStdin, YIELD_DEFAULT, YIELD_MAX, YIELD_MIN};
 use crate::handler::Typed;
 use crate::lease::Lease;
-use crate::runtime::{Tool, ToolErrorCode};
+use crate::runtime::{CatalogTool, ToolErrorCode};
 use crate::sandbox::oneshot::EVENT_OUT_OF_MEMORY;
 use crate::sandbox::sessions::SESSIONS_PER_LEASE_MAX;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
@@ -62,11 +62,11 @@ pub(super) fn named_lease() -> Lease<'static> {
     }
 }
 
-pub(super) fn exec() -> Box<dyn Tool> {
+pub(super) fn exec() -> Box<CatalogTool> {
     Typed::boxed(ExecCommand)
 }
 
-pub(super) fn write() -> Box<dyn Tool> {
+pub(super) fn write() -> Box<CatalogTool> {
     Typed::boxed(WriteStdin)
 }
 
@@ -159,7 +159,7 @@ async fn a_session_killed_for_memory_is_logged_as_a_one_shot_command_is() {
 
     let output = call_in(&*exec(), &executor, &lease, opening(REPL, None)).await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory));
+    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory.into()));
     let logged = capture.only(EVENT_OUT_OF_MEMORY);
     assert_eq!(logged.level, tracing::Level::WARN);
     assert_eq!(logged.field("error_code"), Some("out_of_memory"));
@@ -264,7 +264,10 @@ async fn should_answer_the_ending_of_a_process_that_exited_between_calls() {
         executor.written().is_empty(),
         "nothing written to an ended process"
     );
-    assert_eq!(again.error_code, Some(ToolErrorCode::SessionNotFound));
+    assert_eq!(
+        again.error_code,
+        Some(ToolErrorCode::SessionNotFound.into())
+    );
 }
 
 #[tokio::test(start_paused = true)]

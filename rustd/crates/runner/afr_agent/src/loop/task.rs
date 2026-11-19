@@ -4,9 +4,7 @@
 
 use super::{Ending, Harness};
 use af_wire::task::{TaskDisposition, TaskInputMode, TaskInputReceiptInput, TaskInputsQuery};
-use guffbolt::Budget;
-
-use crate::turn::Turn;
+use guffbolt::{Budget, Turn};
 
 /// What becomes of a task's answer, a failure being the provider's.
 type Answer = guffbolt::Answer<af_providers::Error>;
@@ -201,7 +199,7 @@ impl Harness<'_, '_> {
                     return Err(crate::decision::unavailable());
                 }
                 let text = serde_json::json!({ "accepted_task_input": input });
-                self.messages.push(af_providers::Message::User(
+                self.transcript.push(guffbolt::Message::User(
                     self.shared.scrub.clean(text.to_string()).into_inner(),
                 ));
                 // Durable application follows incorporation. A replacement reconstructs

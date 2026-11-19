@@ -11,11 +11,11 @@ use std::time::Duration;
 use af_core::clock::FixedClock;
 use af_egress::fixture::policy;
 use af_egress::testing::{CountingMint, RecordingTransport};
-use af_providers::{Chunk, Message};
 use af_wire::activity::{ActivityFrame, StreamTextKind};
 use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::catalog::{HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::{Catalog, ToolErrorCode};
+use guffbolt::{Chunk, Message};
 use tokio_util::sync::CancellationToken;
 
 use af_core::test_util::trace::Capture;
@@ -83,7 +83,7 @@ async fn test_unlisted_tool_refused_run_continues() {
 async fn test_answer_streams_as_chunks() {
     let script = Script::new([vec![
         Chunk::Text {
-            kind: StreamTextKind::Reasoning,
+            kind: guffbolt::TextKind::Reasoning,
             text: "checking".to_owned(),
         },
         say("hel"),

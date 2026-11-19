@@ -8,6 +8,7 @@
 //! masks the fleet's stored secrets.
 
 use af_core::id::Uuid7;
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 
@@ -15,7 +16,7 @@ use super::{ScheduleCall, answered};
 use crate::catalog::{CRON_ADD, CRON_LIST, CRON_REMOVE, CRON_RUN, CRON_RUNS, CRON_UPDATE, Entry};
 use crate::egress;
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 /// What a schedule id that is not one reads back.
 const DETAIL_SCHEDULE_ID: &str = "schedule_id must be a schedule's id, as cron_list names it";

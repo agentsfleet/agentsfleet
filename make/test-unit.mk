@@ -8,8 +8,8 @@
 # and `test-unit-rustd` is all three in order: the whole workspace, through the
 # invocations Continuous Integration makes.
 #
-#   runner       the `runner/` and `harness/` layers: the Rust runner and the
-#                harness it embeds
+#   runner       the `runner/` and `harness/` layers and `guffbolt`: the Rust
+#                runner and the harness it embeds
 #   daemon       `agentsfleetd`: the daemon binary and its suites
 #   daemon-libs  every other crate: `daemon/`, `protocol/`, `foundation/`,
 #                `afd_bench` included
@@ -17,14 +17,17 @@
 # Shards by layer folder rather than a list, so a crate added under `crates/`
 # joins its shard with no edit here (`rustd/Cargo.toml`). Each crate is named
 # by its manifest, not its folder: a layer's binary sits in `main/`. `daemon-libs` is the
-# rest of the workspace, so a crate no shard names still runs. `afd_bench` is
-# in `daemon-libs`: the coverage lane drops its LINES as a measuring
-# instrument, but its tests run here, as they always have.
+# rest of the layer folders, so a crate no shard names still runs. `guffbolt`
+# sits beside `crates/`, in no layer folder, so `runner` names it by its own
+# manifest and `daemon-libs`, which reads only the layer folders, never does.
+# `afd_bench` is in `daemon-libs`: the coverage lane drops its LINES as a
+# measuring instrument, but its tests run here, as they always have.
 #
 # Every selection runs through `_rust_lane`, whose zero-tests guard fails a
 # shard that selects nothing.
-_rustd_layer = $(sort $(foreach manifest,$(wildcard $(addprefix $(RUSTD_DIR)/crates/,$(addsuffix /*/Cargo.toml,$(1)))),$(shell awk -F'"' '/^name = /{print $$2; exit}' $(manifest))))
-_RUSTD_UNIT_RUNNER = $(call _rustd_layer,runner harness)
+_rustd_manifest_name = $(shell awk -F'"' '/^name = /{print $$2; exit}' $(1))
+_rustd_layer = $(sort $(foreach manifest,$(wildcard $(addprefix $(RUSTD_DIR)/crates/,$(addsuffix /*/Cargo.toml,$(1)))),$(call _rustd_manifest_name,$(manifest))))
+_RUSTD_UNIT_RUNNER = $(sort $(call _rustd_layer,runner harness) $(call _rustd_manifest_name,$(RUSTD_DIR)/guffbolt/Cargo.toml))
 _RUSTD_UNIT_DAEMON = agentsfleetd
 _RUSTD_UNIT_DAEMON_LIBS = $(filter-out $(_RUSTD_UNIT_RUNNER) $(_RUSTD_UNIT_DAEMON),$(call _rustd_layer,*))
 # --all-features for the same reason lint-rustd carries it: the `test-util`

@@ -8,10 +8,9 @@
 
 use crate::ResultOutcome;
 use af_core::test_util::trace::Capture;
-use af_providers::Message;
 use af_wire::tool_trace::ToolCallStatus;
-use afr_tools::ToolErrorCode;
 use afr_tools::catalog::UPDATE_PLAN;
+use guffbolt::{ErrorCode, Message};
 use tokio_util::sync::CancellationToken;
 
 use super::finish::DETAIL_STOPPED;
@@ -64,7 +63,7 @@ async fn test_a_cut_turns_calls_are_answered_and_never_run() {
     assert!(
         refusal.starts_with(&format!(
             "[{}] update_plan ",
-            ToolErrorCode::OutputLimitReached
+            ErrorCode::OUTPUT_LIMIT_REACHED
         )),
         "{refusal}"
     );

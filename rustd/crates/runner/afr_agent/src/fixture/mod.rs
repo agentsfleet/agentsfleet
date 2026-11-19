@@ -13,7 +13,8 @@ use std::time::Duration;
 use af_wire::activity::ActivityFrame;
 use af_wire::lease::LeasePayload;
 use afr_tools::NoArguments;
-use afr_tools::{Entry, Schema, Tool, ToolContext, ToolOutput};
+use afr_tools::{CatalogTool, Entry, Schema, ToolContext};
+use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
 
 pub(crate) use self::model::{Script, Sent, Unreachable, call, ended, say, spent, spent_caching};
 use af_secrets::{Clean, Scrub};
@@ -89,7 +90,7 @@ pub(crate) struct Canned {
 }
 
 impl Canned {
-    pub(crate) fn boxed(entry: &'static Entry, output: &str) -> Box<dyn Tool> {
+    pub(crate) fn boxed(entry: &'static Entry, output: &str) -> Box<CatalogTool> {
         Box::new(Self {
             entry,
             schema: Schema::of::<NoArguments>(entry.name()),
@@ -98,25 +99,27 @@ impl Canned {
     }
 }
 
-#[async_trait::async_trait]
-impl Tool for Canned {
-    fn entry(&self) -> &'static Entry {
-        self.entry
+impl Describe for Canned {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.schema.spec(self.entry.name())
     }
+}
 
-    fn schema(&self) -> &Schema {
-        &self.schema
-    }
-
-    async fn call(
-        &self,
-        _arguments: &serde_json::Value,
-        _context: ToolContext<'_, '_>,
-    ) -> ToolOutput {
-        if self.output.is_empty() {
-            return std::future::pending().await;
-        }
-        ToolOutput::succeeded(self.output.clone())
+impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Canned {
+    fn call<'a>(
+        &'a self,
+        _arguments: &'a serde_json::Value,
+        _cx: ToolContext<'call, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        ToolContext<'call, 'run>: 'a,
+    {
+        Box::pin(async move {
+            if self.output.is_empty() {
+                return std::future::pending().await;
+            }
+            ToolOutput::succeeded(self.output.clone())
+        })
     }
 }
 
@@ -131,7 +134,7 @@ pub(crate) struct Slow {
 }
 
 impl Slow {
-    pub(crate) fn boxed(entry: &'static Entry, output: &str, delay: Duration) -> Box<dyn Tool> {
+    pub(crate) fn boxed(entry: &'static Entry, output: &str, delay: Duration) -> Box<CatalogTool> {
         Box::new(Self {
             entry,
             schema: Schema::of::<NoArguments>(entry.name()),
@@ -141,23 +144,25 @@ impl Slow {
     }
 }
 
-#[async_trait::async_trait]
-impl Tool for Slow {
-    fn entry(&self) -> &'static Entry {
-        self.entry
+impl Describe for Slow {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.schema.spec(self.entry.name())
     }
+}
 
-    fn schema(&self) -> &Schema {
-        &self.schema
-    }
-
-    async fn call(
-        &self,
-        _arguments: &serde_json::Value,
-        _context: ToolContext<'_, '_>,
-    ) -> ToolOutput {
-        tokio::time::sleep(self.delay).await;
-        ToolOutput::succeeded(self.output.clone())
+impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Slow {
+    fn call<'a>(
+        &'a self,
+        _arguments: &'a serde_json::Value,
+        _cx: ToolContext<'call, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        ToolContext<'call, 'run>: 'a,
+    {
+        Box::pin(async move {
+            tokio::time::sleep(self.delay).await;
+            ToolOutput::succeeded(self.output.clone())
+        })
     }
 }
 
@@ -170,7 +175,7 @@ pub(crate) struct Exits {
 }
 
 impl Exits {
-    pub(crate) fn boxed(entry: &'static Entry, code: i32) -> Box<dyn Tool> {
+    pub(crate) fn boxed(entry: &'static Entry, code: i32) -> Box<CatalogTool> {
         Box::new(Self {
             entry,
             schema: Schema::of::<NoArguments>(entry.name()),
@@ -179,27 +184,27 @@ impl Exits {
     }
 }
 
-#[async_trait::async_trait]
-impl Tool for Exits {
-    fn entry(&self) -> &'static Entry {
-        self.entry
+impl Describe for Exits {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.schema.spec(self.entry.name())
     }
+}
 
-    fn schema(&self) -> &Schema {
-        &self.schema
-    }
-
-    async fn call(
-        &self,
-        _arguments: &serde_json::Value,
-        _context: ToolContext<'_, '_>,
-    ) -> ToolOutput {
-        ToolOutput {
+impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Exits {
+    fn call<'a>(
+        &'a self,
+        _arguments: &'a serde_json::Value,
+        _cx: ToolContext<'call, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        ToolContext<'call, 'run>: 'a,
+    {
+        Box::pin(std::future::ready(ToolOutput {
             text: format!("exited {}", self.code),
             exit_code: Some(self.code),
             error_code: None,
             image: None,
-        }
+        }))
     }
 }
 

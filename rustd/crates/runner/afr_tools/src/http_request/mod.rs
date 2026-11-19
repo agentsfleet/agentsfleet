@@ -9,13 +9,14 @@
 use std::collections::BTreeMap;
 
 use af_egress::{Draft, Inbound, Placement, RESPONSE_MAX_BYTES};
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::catalog::{Entry, HTTP_REQUEST};
 use crate::egress::{self, SharedTransport};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolOutput};
+use crate::runtime::ToolContext;
 
 /// The method a request that names none is sent with.
 const DEFAULT_METHOD: &str = "GET";

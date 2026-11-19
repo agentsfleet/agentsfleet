@@ -1,6 +1,6 @@
-//! What the nested suites share: the six with two tools that answer at
-//! once, the names a lease here is offered, and how one loop's requests and
-//! the run's frames and log are read back.
+//! What the nested suites share: two tools that answer at once beside the
+//! six the loop runs, the names a lease here is offered, and how one loop's
+//! requests and the run's frames and log are read back.
 
 #![expect(
     clippy::unwrap_used,
@@ -10,11 +10,11 @@
 use std::time::Duration;
 
 use af_core::test_util::trace::{Capture, CapturedEvent};
-use af_providers::{Chunk, Message};
 use af_wire::activity::ActivityFrame;
-use afr_tools::Tool;
+use afr_tools::CatalogTool;
 use afr_tools::catalog::{HTTP_REQUEST, MEMORY_RECALL, UPDATE_PLAN};
 use afr_tools::nested::NESTED;
+use guffbolt::{Chunk, Message};
 
 use crate::fixture::{Canned, Script, Sent, call};
 
@@ -58,12 +58,13 @@ pub(super) const BRIEF_MS: u64 = 1000;
 /// How long a slow call stays open, in paused time.
 pub(super) const SLOW_CALL: Duration = Duration::from_secs(10);
 
-/// The six, with a plan tool and a recall tool that answer at once.
-pub(super) fn tools() -> Vec<Box<dyn Tool>> {
-    let mut tools = afr_tools::nested::tools();
-    tools.push(Canned::boxed(&UPDATE_PLAN, "4"));
-    tools.push(Canned::boxed(&MEMORY_RECALL, "recalled"));
-    tools
+/// A plan tool and a recall tool that answer at once; the loop runs the six
+/// itself, so no catalog hosts them.
+pub(super) fn tools() -> Vec<Box<CatalogTool>> {
+    vec![
+        Canned::boxed(&UPDATE_PLAN, "4"),
+        Canned::boxed(&MEMORY_RECALL, "recalled"),
+    ]
 }
 
 /// Every name a lease here is offered: the six, and the two.
@@ -74,8 +75,8 @@ pub(super) fn offered() -> Vec<&'static str> {
     names
 }
 
-/// The six with the two, and a network tool that never answers.
-pub(super) fn stalling_tools() -> Vec<Box<dyn Tool>> {
+/// The two, and a network tool that never answers.
+pub(super) fn stalling_tools() -> Vec<Box<CatalogTool>> {
     let mut tools = tools();
     tools.push(Canned::boxed(&HTTP_REQUEST, ""));
     tools

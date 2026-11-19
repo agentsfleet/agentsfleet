@@ -6,13 +6,14 @@
 //! a real HTML parser (`html2text`).
 
 use af_egress::{Draft, Placement};
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::catalog::{Entry, WEB_FETCH};
 use crate::egress::{self, SharedTransport};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolOutput};
+use crate::runtime::ToolContext;
 
 /// The one method a fetch sends.
 const METHOD: &str = "GET";

@@ -8,13 +8,12 @@
 )]
 
 use bytes::Bytes;
+use guffbolt::{Image, ImageKind, Message};
 use rig_core::message::{
     DocumentSourceKind, ImageMediaType, Message as RigMessage, ToolResultContent, UserContent,
 };
 
 use super::tests::{CALL_ID, OUTPUT, built, conversation};
-use crate::image_input::{ImageInput, ImageKind};
-use crate::provider::Message;
 use af_wire::inference::InferenceApi as Wire;
 
 /// An image a call read goes back inside its result, after the text, as
@@ -26,7 +25,7 @@ fn should_carry_a_tool_results_image_as_base64_content_after_its_text() {
     messages[2] = Message::ToolResult {
         call_id: CALL_ID.to_owned(),
         output: OUTPUT.to_owned(),
-        image: Some(ImageInput {
+        image: Some(Image {
             kind: ImageKind::Png,
             data: Bytes::from_static(b"\x89PNG"),
         }),
@@ -71,7 +70,7 @@ fn should_name_each_image_kinds_media_type() {
         messages[2] = Message::ToolResult {
             call_id: CALL_ID.to_owned(),
             output: OUTPUT.to_owned(),
-            image: Some(ImageInput {
+            image: Some(Image {
                 kind,
                 data: Bytes::from_static(b"\x00"),
             }),

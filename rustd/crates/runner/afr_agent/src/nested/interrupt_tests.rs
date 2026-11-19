@@ -7,13 +7,13 @@
 )]
 
 use af_core::test_util::trace::Capture;
-use af_providers::Chunk;
 use af_wire::tool_trace::ToolCallStatus;
-use afr_tools::ToolErrorCode;
 use afr_tools::catalog::{DELEGATE, HTTP_REQUEST, INTERRUPT_AGENT, SPAWN, WAIT_AGENT};
+use guffbolt::{Chunk, ErrorCode};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
+use super::CHILDREN_RUNNING_MAX;
 use super::child::EVENT_CHILD_ENDED;
 use super::fixture::{
     ANSWER, BRIEF_MS, CHILD_DONE, CHILD_ID, DONE, FIRST_CALL, INTERRUPTED, NEVER, RUNNING,
@@ -21,7 +21,6 @@ use super::fixture::{
     parsed, requests_opening_with, root_requests, spawn_call, stall, stalling_offered,
     stalling_tools,
 };
-use super::registry::CHILDREN_RUNNING_MAX;
 use crate::fixture::{Script, call, lease, say, unbounded};
 use crate::harness::tests::{completions, drive, engine};
 
@@ -221,7 +220,7 @@ async fn test_interrupting_a_finished_child_keeps_its_end() {
         "the end it had"
     );
     let refused = last_result(&root[4]);
-    let capped = format!("[{}]", ToolErrorCode::ChildCapReached.as_str());
+    let capped = format!("[{}]", ErrorCode::CHILD_CAP_REACHED.as_str());
     assert!(refused.starts_with(&capped), "freed twice: {refused}");
     assert_eq!(
         ends_of(&capture, FIRST_CHILD),
@@ -277,7 +276,7 @@ async fn test_an_interrupted_delegated_child_is_the_calls_interruption() {
     );
     let child = requests_opening_with(&script, HANDS_OFF);
     let delegated = last_result(&child[1]);
-    let code = ToolErrorCode::Interrupted.as_str();
+    let code = ErrorCode::INTERRUPTED.as_str();
     let interrupted = format!("[{code}]");
     assert!(delegated.starts_with(&interrupted), "{delegated}");
     assert!(

@@ -34,9 +34,12 @@ backon.workspace = true
 # A turn's request body, shared by every retry without a copy.
 # A tool result's image rides the wire as base64.
 base64.workspace = true
-bytes = { workspace = true, features = ["serde"] }
+bytes.workspace = true
 # A turn streams as a `futures` stream of chunks.
 futures-util.workspace = true
+# The harness's tool vocabulary: the spec a tool is offered under, and the
+# image a call's result carries.
+guffbolt.workspace = true
 # The request and response types rig's HTTP seam speaks.
 http.workspace = true
 # `Retry-After` in its HTTP-date form.

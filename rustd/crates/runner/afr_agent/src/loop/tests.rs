@@ -9,12 +9,12 @@ use std::time::Duration;
 
 use crate::ResultOutcome;
 use af_egress::testing::CountingMint;
-use af_providers::Message;
 use af_wire::activity::ActivityFrame;
 use af_wire::lease::LeasePayload;
 use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::catalog::{HTTP_REQUEST, UPDATE_PLAN};
-use afr_tools::{Catalog, Tool};
+use afr_tools::{Catalog, CatalogTool};
+use guffbolt::Message;
 use tokio_util::sync::CancellationToken;
 
 use super::Loop;
@@ -24,7 +24,7 @@ use crate::fixture::{Canned, Frames, Script, call, lease, say, unbounded};
 use crate::testing::Discard;
 
 /// A loop hosting `tools`, every lease driven by `script`.
-pub(crate) fn engine(tools: Vec<Box<dyn Tool>>, script: &Script) -> Loop {
+pub(crate) fn engine(tools: Vec<Box<CatalogTool>>, script: &Script) -> Loop {
     Loop::new(Catalog::new(tools), script.replay())
 }
 

@@ -1,8 +1,9 @@
 //! SDK diagnostics cannot print provider-controlled private strings.
 
 use af_core::test_util::trace::Capture;
-use af_providers::{Connect as _, Message, Request};
+use af_providers::Connect as _;
 use futures_util::StreamExt as _;
+use guffbolt::{Message, Request};
 use serde_json::json;
 use tracing::level_filters::LevelFilter;
 

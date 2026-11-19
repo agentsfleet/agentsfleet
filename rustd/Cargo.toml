@@ -7,14 +7,17 @@
 #
 #   foundation/  no product knowledge: errors, validation, crypto
 #   protocol/    the types both binaries speak
-#   harness/     the agent harness and the model, secret and egress seams it uses
+#   harness/     the model, secret and egress seams the agent harness drives
 #   runner/      `agentsfleet-runner` (`runner/main`) and the crates only it links
 #   daemon/      `agentsfleetd` (`daemon/main`) and the crates only it links
 #
 # A crate depends on its own layer or a lower one, and `runner/` and `daemon/`
-# never on each other. This root is a VIRTUAL manifest: no `[package]`, so it
-# builds no library or binary of its own. The workspace mechanics (virtual root,
-# explicit member list, the lint rationale below) come from ~/Projects/oss/bun.
+# never on each other. The agent harness, `guffbolt/`, sits beside `crates/`
+# rather than in a layer: it is a standalone harness, publishable on its own,
+# that depends on no crate of this workspace, so any layer may depend on it.
+# This root is a VIRTUAL manifest: no `[package]`, so it builds no library or
+# binary of its own. The workspace mechanics (virtual root, explicit member
+# list, the lint rationale below) come from ~/Projects/oss/bun.
 #
 # Every setting a member could restate lives here instead (M-CARGO-WORKSPACE):
 # members inherit package metadata via `.workspace = true`, dependency versions
@@ -78,7 +81,7 @@ members = [
     "crates/harness/af_providers",
     "crates/runner/afr_sandbox",
     "crates/harness/af_secrets",
-    "crates/harness/guffbolt",
+    "guffbolt",
     "crates/runner/afr_supervisor",
     "crates/runner/afr_telemetry",
     "crates/runner/afr_tools",
@@ -246,8 +249,9 @@ afr_executor = { path = "crates/runner/afr_executor" }
 afr_memory = { path = "crates/runner/afr_memory" }
 af_providers = { path = "crates/harness/af_providers" }
 # The agent harness: one loop's order of turns over the embedder's
-# conversation, and what a run of one kind adds as an extension.
-guffbolt = { path = "crates/harness/guffbolt" }
+# conversation, what a run of one kind adds as an extension, and the tools a
+# loop is offered. Outside the layer folders: it depends on no crate here.
+guffbolt = { path = "guffbolt" }
 afr_sandbox = { path = "crates/runner/afr_sandbox" }
 af_secrets = { path = "crates/harness/af_secrets" }
 afr_supervisor = { path = "crates/runner/afr_supervisor" }

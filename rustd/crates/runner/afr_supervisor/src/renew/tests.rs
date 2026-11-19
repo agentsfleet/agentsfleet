@@ -11,9 +11,9 @@ use std::time::Duration;
 use af_core::clock::{FixedClock, before};
 use af_core::error_code;
 use af_core::id::Uuid7;
-use af_providers::Usage;
 use af_wire::report::{FailureClass, RenewResponse};
 use afr_agent::Meter;
+use guffbolt::Usage;
 use jiff::Timestamp;
 use tokio::time::Instant;
 

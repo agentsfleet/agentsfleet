@@ -3,7 +3,7 @@
 use super::{
     CommittedRecovery, RecoveryReceipt, RecoverySnapshot, RecoveryState, RootRecovery, TaskRecovery,
 };
-use af_providers::Message;
+use guffbolt::Message;
 
 fn fixture() -> crate::Result<(RecoverySnapshot, RecoveryReceipt)> {
     let mut task = super::recovery_tests::task();

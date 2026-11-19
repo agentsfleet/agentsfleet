@@ -99,7 +99,7 @@ async fn test_file_tools_operate_under_workspace() {
     }
     assert_eq!(
         gone.error_code,
-        Some(ToolErrorCode::FileNotFound),
+        Some(ToolErrorCode::FileNotFound.into()),
         "{gone:?}"
     );
     assert!(!live.root.join(TODO).exists());
@@ -133,7 +133,7 @@ async fn test_file_tools_refuse_path_escape() {
 
             assert_eq!(
                 refused.error_code,
-                Some(ToolErrorCode::PathNotAllowed),
+                Some(ToolErrorCode::PathNotAllowed.into()),
                 "{refused:?}"
             );
             assert!(refused.text.contains(PATH_LEAVES), "{}", refused.text);
@@ -166,7 +166,7 @@ async fn a_sandbox_that_cannot_serve_a_file_call_reads_back_as_unavailable() {
 
         assert_eq!(
             failed.error_code,
-            Some(ToolErrorCode::SandboxUnavailable),
+            Some(ToolErrorCode::SandboxUnavailable.into()),
             "{}: {failed:?}",
             entry.name()
         );
@@ -199,7 +199,7 @@ async fn a_link_out_of_the_workspace_is_refused_by_the_executor_under_the_same_c
     for refused in &refusals {
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::PathNotAllowed),
+            Some(ToolErrorCode::PathNotAllowed.into()),
             "{refused:?}"
         );
         assert!(
@@ -230,7 +230,7 @@ async fn a_name_the_workspace_does_not_have_reads_file_not_found() {
     for refused in &refusals {
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::FileNotFound),
+            Some(ToolErrorCode::FileNotFound.into()),
             "{refused:?}"
         );
         assert!(refused.text.contains("no such file"), "{}", refused.text);
@@ -264,12 +264,12 @@ async fn an_edit_needs_old_text_and_finds_it_or_changes_nothing() {
 
     assert_eq!(
         empty.error_code,
-        Some(ToolErrorCode::InvalidArguments),
+        Some(ToolErrorCode::InvalidArguments.into()),
         "{empty:?}"
     );
     assert_eq!(
         absent.error_code,
-        Some(ToolErrorCode::TextNotFound),
+        Some(ToolErrorCode::TextNotFound.into()),
         "{absent:?}"
     );
     assert_eq!(
@@ -324,7 +324,7 @@ async fn a_directory_given_as_a_file_reads_the_executors_own_sentence() {
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::SandboxUnavailable),
+        Some(ToolErrorCode::SandboxUnavailable.into()),
         "{refused:?}"
     );
     assert!(

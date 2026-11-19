@@ -37,7 +37,9 @@ afr_executor.workspace = true
 afr_memory.workspace = true
 # The model a run drives, behind one trait.
 af_providers.workspace = true
-# The loop's order of turns: this crate is its conversation, and a durable
+# The loop's order of turns, the model call each one makes, each tool call's
+# start and end, the transcript it keeps and the run's children: this crate is
+# its conversation, its observer and what raises each child, and a durable
 # task is its extension.
 guffbolt.workspace = true
 # Every secret value masked in one pass over a frame, an output or a reply.
@@ -45,7 +47,7 @@ af_secrets.workspace = true
 # The catalog a run is offered from, and the handlers the router calls.
 afr_tools.workspace = true
 async-trait.workspace = true
-# A turn reads the provider's stream of chunks.
+# A decision reads the provider's stream of chunks.
 futures-util.workspace = true
 serde.workspace = true
 # A tool call's arguments.

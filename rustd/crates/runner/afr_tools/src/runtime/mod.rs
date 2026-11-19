@@ -1,15 +1,14 @@
-//! Where a tool runs, the handler seam, and what a call hands back.
+//! Where a tool runs, what a handler is lent for one call, and why a call
+//! failed.
 
 use std::fmt;
 
+use guffbolt::ToolOutput;
 use serde::de::DeserializeOwned;
 
 use afr_executor::Executor;
 
-use crate::catalog::Entry;
 use crate::lease::Lease;
-use crate::sandbox::ImageAttachment;
-use crate::schema::Schema;
 
 /// Where a tool's handler runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +36,15 @@ pub struct ToolContext<'call, 'run> {
     pub lease: &'call Lease<'run>,
 }
 
+/// One handler the catalog hosts: a `guffbolt` tool lent one lease's
+/// [`ToolContext`] per call, so the same handler serves every lease and every
+/// call. Its runtime is its published entry's, never its own claim.
+pub type CatalogTool = dyn for<'call, 'run> guffbolt::Tool<ToolContext<'call, 'run>>;
+
 /// Why a call failed, in the stable spelling the model and the thread read.
+///
+/// What `guffbolt` refuses itself, a call cut at the output limit and a
+/// child refused or failed, carries `guffbolt::ErrorCode`'s own codes.
 ///
 /// A fieldless vocabulary, kept a plain enum the way `afd_auth::Error` is
 /// (`docs/RUST_ERROR_STANDARD.md` §"The shared hull"): it rides every refused
@@ -50,9 +57,6 @@ pub enum ToolErrorCode {
     HostedToolUnavailable,
     /// A sandbox-side tool was called on a run that has no sandbox.
     SandboxUnavailable,
-    /// The model's turn stopped at its output limit, so the call may have
-    /// been cut mid-argument and was not run.
-    OutputLimitReached,
     /// The call's arguments do not parse as the tool's schema, or break a
     /// bound it declares.
     InvalidArguments,
@@ -129,15 +133,6 @@ pub enum ToolErrorCode {
     AgentsfleetdRefused,
     /// `agentsfleetd` could not be reached.
     AgentsfleetdUnreachable,
-    /// The run already has as many children running, or started, as one run
-    /// may.
-    ChildCapReached,
-    /// A child asked for a tool its parent was not offered.
-    ChildToolNotHeld,
-    /// No child of this run has the id named.
-    ChildNotFound,
-    /// The child ended on a failure of its own, which the output carries.
-    ChildFailed,
 }
 
 impl ToolErrorCode {
@@ -145,10 +140,9 @@ impl ToolErrorCode {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::NotOffered => "tool_not_offered",
+            Self::NotOffered => guffbolt::ErrorCode::NOT_OFFERED.as_str(),
             Self::HostedToolUnavailable => "hosted_tool_unavailable",
             Self::SandboxUnavailable => "sandbox_unavailable",
-            Self::OutputLimitReached => "output_limit_reached",
             Self::InvalidArguments => "invalid_arguments",
             Self::MemoryFull => "memory_full",
             Self::HttpsRequired => "https_required",
@@ -165,7 +159,7 @@ impl ToolErrorCode {
             Self::WorkspaceMemoryNotGranted => "workspace_memory_not_granted",
             Self::TimedOut => "timed_out",
             Self::OutOfMemory => "out_of_memory",
-            Self::Interrupted => "interrupted",
+            Self::Interrupted => guffbolt::ErrorCode::INTERRUPTED.as_str(),
             Self::SessionNotFound => "session_not_found",
             Self::SubcommandNotAllowed => "subcommand_not_allowed",
             Self::PathNotAllowed => "path_not_allowed",
@@ -184,10 +178,6 @@ impl ToolErrorCode {
             Self::MessageLimitReached => "message_limit_reached",
             Self::AgentsfleetdRefused => "agentsfleetd_refused",
             Self::AgentsfleetdUnreachable => "agentsfleetd_unreachable",
-            Self::ChildCapReached => "child_cap_reached",
-            Self::ChildToolNotHeld => "child_tool_not_held",
-            Self::ChildNotFound => "child_not_found",
-            Self::ChildFailed => "child_failed",
         }
     }
 }
@@ -195,6 +185,13 @@ impl ToolErrorCode {
 impl fmt::Display for ToolErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+/// The code a call's output carries, spelled as this vocabulary spells it.
+impl From<ToolErrorCode> for guffbolt::ErrorCode {
+    fn from(code: ToolErrorCode) -> Self {
+        Self::new(code.as_str())
     }
 }
 
@@ -213,79 +210,6 @@ pub fn parsed<A: DeserializeOwned>(arguments: &serde_json::Value) -> Result<A, T
             ToolErrorCode::InvalidArguments,
             &refused.to_string(),
         )),
-    }
-}
-
-/// What one call hands back to the loop.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ToolOutput {
-    /// What the model reads back.
-    pub text: String,
-    /// The process's exit code, for a call that ran one.
-    pub exit_code: Option<i32>,
-    /// Why the call failed, for one that did.
-    pub error_code: Option<ToolErrorCode>,
-    /// The image the call read, which rides its result alone.
-    pub image: Option<ImageAttachment>,
-}
-
-impl ToolOutput {
-    /// A call that succeeded with `text`.
-    #[must_use]
-    pub fn succeeded(text: impl Into<String>) -> Self {
-        Self {
-            text: text.into(),
-            exit_code: None,
-            error_code: None,
-            image: None,
-        }
-    }
-
-    /// A call that failed: the model reads `[code] detail`, so the code
-    /// reaches it with the reason rather than as a bare string.
-    #[must_use]
-    pub fn failed(code: ToolErrorCode, detail: &str) -> Self {
-        Self {
-            text: format!("[{code}] {detail}"),
-            exit_code: None,
-            error_code: Some(code),
-            image: None,
-        }
-    }
-
-    /// The same output, with the image the call read.
-    #[must_use]
-    pub fn with_image(mut self, image: ImageAttachment) -> Self {
-        self.image = Some(image);
-        self
-    }
-}
-
-/// One tool's handler.
-///
-/// Its name and runtime come from the published [`Entry`] it serves, so a
-/// handler cannot claim a runtime the catalog does not give its tool.
-#[async_trait::async_trait]
-pub trait Tool: Send + Sync + fmt::Debug {
-    /// The published tool this handler serves.
-    fn entry(&self) -> &'static Entry;
-
-    /// What the model is told about the tool.
-    fn schema(&self) -> &Schema;
-
-    /// Runs one call. A failure the model caused, or one upstream, is an
-    /// output with an error code: the run continues and the model reads why.
-    async fn call(&self, arguments: &serde_json::Value, context: ToolContext<'_, '_>)
-    -> ToolOutput;
-
-    /// The tool's name.
-    fn name(&self) -> &'static str {
-        self.entry().name()
-    }
-
-    /// Where the handler runs.
-    fn runtime(&self) -> Runtime {
-        self.entry().runtime()
     }
 }
 

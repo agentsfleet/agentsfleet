@@ -1,10 +1,11 @@
 use af_egress::fixture::{PUSHOVER_TOKEN, PUSHOVER_USER};
 use af_egress::testing::Sent;
+use guffbolt::ToolOutput;
 use serde_json::{Value, json};
 
 use super::{MESSAGES_URL, Pushover};
 use crate::handler::Typed;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 use crate::testing::{Run, call, replying};
 
 async fn notify(run: &Run, arguments: Value) -> (ToolOutput, Vec<Sent>) {
@@ -43,7 +44,10 @@ async fn test_pushover_takes_credentials_from_secrets_map() {
         json!({"message": "x", "priority": 3}),
     ] {
         let (output, sent) = notify(&run, refused).await;
-        assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
+        assert_eq!(
+            output.error_code,
+            Some(ToolErrorCode::InvalidArguments.into())
+        );
         assert_eq!(sent, Vec::new());
     }
 }
@@ -55,6 +59,9 @@ async fn should_refuse_when_the_fleet_has_no_pushover_secret() {
 
     let (output, sent) = notify(&run, json!({"message": "x"})).await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::SecretNotFound));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::SecretNotFound.into())
+    );
     assert_eq!(sent, Vec::new());
 }

@@ -7,20 +7,20 @@
 )]
 
 use af_core::test_util::trace::Capture;
-use af_providers::Chunk;
 use af_wire::activity::ActivityFrame;
 use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::catalog::{DELEGATE, SPAWN, WAIT_AGENT};
+use guffbolt::Chunk;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
+use super::CHILDREN_RUNNING_MAX;
 use super::child::EVENT_CHILD_ENDED;
 use super::fixture::{
     BRIEF_MS, CHILD_DONE, CHILD_ID, DONE, FIRST_CALL, INTERRUPTED, NEVER, RUNNING, SECOND_CALL,
     STATUS, TASK_KEY, TIMEOUT_MS, events, last_result, parsed, requests_opening_with, results,
     root_requests, spawn_call, stall, stalling_offered, stalling_tools,
 };
-use super::registry::CHILDREN_RUNNING_MAX;
 use crate::fixture::{Script, Sent, call, lease, say, unbounded};
 use crate::harness::tests::{completions, drive, engine};
 

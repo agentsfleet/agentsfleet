@@ -2,8 +2,8 @@ use rig_core::completion::Usage as Reported;
 use serde_json::{Value, json};
 
 use super::spent;
-use crate::provider::Usage;
 use af_wire::inference::InferenceApi;
+use guffbolt::Usage;
 
 /// The prompt every turn here sends: 500 fresh, 400 read, 100 written.
 const PROMPT: u64 = 1_000;

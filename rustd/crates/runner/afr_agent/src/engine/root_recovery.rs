@@ -1,10 +1,10 @@
 //! Root state paired with one frozen workspace generation.
 
-use af_providers::{Message, Replay};
 use af_wire::lease::FoldRef;
 use afr_memory::MemoryRecovery;
 use garde::Validate;
 use guffbolt::DriveState;
+use guffbolt::{Message, Replay};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 

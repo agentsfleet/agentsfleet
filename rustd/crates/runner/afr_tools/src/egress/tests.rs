@@ -16,7 +16,7 @@ fn should_hand_every_refusal_back_as_an_error_under_its_own_code() {
 
         let output = refused(&HTTP_REQUEST, "lease-1", &failure);
 
-        assert_eq!(output.error_code, Some(code), "{name}");
+        assert_eq!(output.error_code, Some(code.into()), "{name}");
         assert_eq!(
             output.text,
             format!("[{code}] {}", failure.detail()),
@@ -32,7 +32,7 @@ fn should_answer_2xx_as_succeeded_and_anything_else_as_upstream_status() {
     for status in [199, 301, 404, 500] {
         assert_eq!(
             answered(status, String::new()).error_code,
-            Some(ToolErrorCode::UpstreamStatus)
+            Some(ToolErrorCode::UpstreamStatus.into())
         );
     }
 }

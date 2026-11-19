@@ -153,7 +153,10 @@ async fn a_refused_moment_sends_nothing() {
         json!({"at": "2000-01-01T00:00:00Z", "message": "too late"}),
     )
     .await;
-    assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
     let asked = verbs.asked();
     assert!(asked.is_empty(), "{asked:?}");
 }

@@ -8,11 +8,12 @@
 //! that drive Chromium over its pipes arrive with that engine, where each
 //! lease has its own kernel.
 
+use guffbolt::ToolOutput;
 use serde_json::Value;
 
 use crate::catalog::{BROWSER, BROWSER_OPEN, Entry, SCREENSHOT};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 /// What each browser tool reads back after its name.
 const WAITS_FOR_FIRECRACKER: &str =

@@ -11,13 +11,14 @@ use std::ops::RangeInclusive;
 
 use af_egress::{Draft, Error, Placement};
 use af_secrets::FIELD_TOKEN;
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::catalog::{Entry, PUSHOVER};
 use crate::egress::{self, SharedTransport};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 /// Pushover's message endpoint.
 const MESSAGES_URL: &str = "https://api.pushover.net/1/messages.json";

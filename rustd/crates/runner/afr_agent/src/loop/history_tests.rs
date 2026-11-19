@@ -4,10 +4,10 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use af_providers::{Message, Replay};
 use af_wire::event::message_of;
 use af_wire::lease::{LeasePayload, Turn};
 use afr_tools::catalog::DELEGATE;
+use guffbolt::{Message, Replay};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
@@ -152,7 +152,7 @@ async fn test_every_request_keys_the_cache_by_the_fleet() {
         vec![say("done")],
     ])
     .with_child(DELEGATED, [vec![say("read")]]);
-    let engine = engine(afr_tools::nested::tools(), &script);
+    let engine = engine(Vec::new(), &script);
     let lease = lease(&[DELEGATE.name()], unbounded());
 
     drive(&engine, &lease, &CancellationToken::new()).await;

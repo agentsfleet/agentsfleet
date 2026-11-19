@@ -5,13 +5,12 @@
 
 use serde_json::json;
 
-use super::{NESTED, Nested, RUN_BY_THE_LOOP};
-use crate::catalog::{
-    DELEGATE, FILE_READ, INTERRUPT_AGENT, LIST_AGENTS, SEND_INPUT, SPAWN, WAIT_AGENT,
-};
+use super::{NESTED, Nested};
+use crate::catalog::{Catalog, FILE_READ, SPAWN};
+use crate::parsed;
 use crate::runtime::ToolErrorCode;
-use crate::testing::{call, hosted, offered};
-use crate::{Lease, parsed};
+use crate::selection::Offered;
+use crate::testing::hosted;
 
 /// Each of the six is named by its entry, and a sandbox tool is none.
 #[test]
@@ -23,32 +22,27 @@ fn the_six_are_nested_and_a_sandbox_tool_is_not() {
     assert_eq!(Nested::of(FILE_READ.name()), None);
 }
 
-/// A call that reaches a handler, which only the router could make, reads a
-/// refusal naming the loop and the tool rather than running anything: each of
-/// the six, with arguments its schema admits, so the call reaches its `run`.
-#[tokio::test]
-async fn a_handler_refuses_what_only_the_loop_runs() {
-    let (catalog, _sent) = hosted();
-    let names: Vec<&str> = NESTED.iter().map(|entry| entry.name()).collect();
-    let selection = catalog.select(&names).unwrap();
-    let lease = Lease::default();
-    let calls = [
-        (&DELEGATE, json!({"task": "read a.md"})),
-        (&SPAWN, json!({"task": "read b.md", "tools": ["file_read"]})),
-        (&WAIT_AGENT, json!({"child_id": 1, "timeout_ms": 0})),
-        (&SEND_INPUT, json!({"child_id": 2, "message": "stop"})),
-        (&LIST_AGENTS, json!({})),
-        (&INTERRUPT_AGENT, json!({"child_id": 3})),
-    ];
-    assert_eq!(calls.len(), NESTED.len(), "every nested tool is called");
+/// A policy naming the six is offered them, in its order, by any catalog:
+/// the loop runs them, so no handler stands behind them and none is needed.
+#[test]
+fn a_catalog_offers_the_six_with_no_handler_behind_them() {
+    let names: Vec<&str> = NESTED.iter().rev().map(|entry| entry.name()).collect();
+    let (hosting, _sent) = hosted();
 
-    for (entry, arguments) in calls {
-        let name = entry.name();
-        let output = call(offered(&selection, entry), &lease, arguments).await;
+    for catalog in [Catalog::new(Vec::new()), hosting] {
+        let selection = catalog.select(&names).unwrap();
 
-        assert_eq!(output.error_code, Some(ToolErrorCode::NotOffered), "{name}");
-        let refusal = format!("{name} {RUN_BY_THE_LOOP}");
-        assert!(output.text.ends_with(&refusal), "{}", output.text);
+        let offered: Vec<Option<Nested>> = selection
+            .offered()
+            .map(|offered| match offered {
+                Offered::Nested(nested) => Some(nested),
+                Offered::Handler(..) => None,
+            })
+            .collect();
+        let expected: Vec<Option<Nested>> = names.iter().map(|name| Nested::of(name)).collect();
+        assert_eq!(offered, expected);
+        assert!(names.iter().all(|name| selection.tool(name).is_none()));
+        assert!(!selection.needs_sandbox());
     }
 }
 
@@ -61,7 +55,7 @@ fn the_task_schema_refuses_a_field_it_does_not_name() {
 
     assert_eq!(
         refused.err().and_then(|output| output.error_code),
-        Some(ToolErrorCode::InvalidArguments)
+        Some(ToolErrorCode::InvalidArguments.into())
     );
     assert_eq!(
         parsed_task.ok().and_then(|task| task.tools).as_deref(),

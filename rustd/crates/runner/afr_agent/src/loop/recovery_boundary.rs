@@ -1,15 +1,16 @@
 //! Restore and capture keep the private root, memory and child book together.
 
-use af_providers::Message;
 use af_secrets::Scrub;
 use af_wire::task::TaskContext;
 use afr_memory::Hydrated;
+use guffbolt::Message;
+use guffbolt::agents::Pause;
 
 use super::Ending;
 use super::Harness;
 use crate::engine::{AgentRun, RecoveryWitness, RootRecovery};
 use crate::error::recovery_invalid;
-use crate::nested::CapturePermit;
+use crate::nested::ChildRecovery;
 use crate::{
     CommittedRecovery, RecoverySave, RecoverySkip, RecoverySnapshot, RecoveryState, Result,
     TaskRecovery, TurnSnapshot,
@@ -71,11 +72,11 @@ impl Harness<'_, '_> {
     pub(super) async fn capture_task_root(
         &mut self,
         task: TaskContext<'static>,
-        permit: Option<&CapturePermit>,
+        pause: Option<&Pause>,
     ) -> Result<TaskRecovery> {
-        let permit = permit
+        let pause = pause
             .ok_or_else(|| recovery_invalid("child cleanup did not grant a terminal boundary"))?;
-        let root = self.root_snapshot(&self.driver, permit).await?;
+        let root = self.root_snapshot(&self.driver, pause).await?;
         TaskRecovery::capture(
             task,
             self.shared.model,
@@ -84,15 +85,11 @@ impl Harness<'_, '_> {
         )
     }
 
-    async fn root_snapshot(
-        &self,
-        driver: &DriveState,
-        permit: &CapturePermit,
-    ) -> Result<RootRecovery> {
+    async fn root_snapshot(&self, driver: &DriveState, pause: &Pause) -> Result<RootRecovery> {
         Ok(RootRecovery {
-            messages: self.messages.clone(),
+            messages: self.transcript.messages().to_vec(),
             driver: driver.clone(),
-            children: self.shared.registry.snapshot(permit)?,
+            children: ChildRecovery::capture(&self.shared.registry, pause)?,
             memory: self.shared.lease.memory.lock().await.snapshot()?,
             pinned: self.context.pinned,
             folds: self.folded_inputs.clone(),
@@ -115,7 +112,7 @@ impl Harness<'_, '_> {
         } else {
             None
         };
-        let Some(permit) = self.shared.registry.capture_permit().await else {
+        let Some(pause) = self.shared.registry.pause().await else {
             skipped(RecoverySkip::BusyChildren);
             return None;
         };
@@ -130,7 +127,7 @@ impl Harness<'_, '_> {
                 return None;
             }
         };
-        let snapshot = match self.snapshot_state(driver, &permit, workspace).await {
+        let snapshot = match self.snapshot_state(driver, &pause, workspace).await {
             Ok(state) => RecoverySnapshot {
                 lease_id: self.shared.lease_id.to_owned(),
                 event_id: self.shared.payload.event.event_id.to_string(),
@@ -185,10 +182,10 @@ impl Harness<'_, '_> {
     async fn snapshot_state(
         &self,
         driver: &DriveState,
-        permit: &CapturePermit,
+        pause: &Pause,
         workspace: Option<af_wire::lease::TurnWorkspace>,
     ) -> Result<RecoveryState> {
-        let root = self.root_snapshot(driver, permit).await?;
+        let root = self.root_snapshot(driver, pause).await?;
         if let Some(mut task) = self
             .task
             .as_ref()

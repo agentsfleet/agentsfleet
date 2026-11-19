@@ -33,8 +33,9 @@ use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
 use af_core::problem::Problem;
 use af_wire::steer_verb::FleetSteerAccepted;
+use guffbolt::ToolOutput;
 
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 
 mod fleet_steer;
 mod fleets;

@@ -35,9 +35,9 @@ mod web_fetch;
 pub use self::catalog::{Catalog, Entry};
 pub use self::error::{Error, Result};
 pub use self::lease::Lease;
-pub use self::runtime::{Runtime, Tool, ToolContext, ToolErrorCode, ToolOutput, parsed};
+pub use self::runtime::{CatalogTool, Runtime, ToolContext, ToolErrorCode, parsed};
 pub use self::schema::{NoArguments, Schema};
-pub use self::selection::Selection;
+pub use self::selection::{Offered, Selection};
 #[cfg(any(test, feature = "test-util"))]
 pub use self::verbs::{CLOSED, Closed};
 pub use self::verbs::{FleetsCall, LeaseVerbs, ScheduleCall, Unanswered};

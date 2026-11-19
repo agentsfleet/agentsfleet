@@ -6,11 +6,11 @@
 )]
 
 use af_core::test_util::trace::Capture;
-use af_providers::Chunk;
 use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::ToolErrorCode;
 use afr_tools::catalog::{DELEGATE, MEMORY_RECALL, SPAWN, UPDATE_PLAN, WAIT_AGENT};
 use afr_tools::nested::NESTED;
+use guffbolt::Chunk;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 

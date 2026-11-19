@@ -5,13 +5,14 @@ use af_egress::error::one_of_each_kind;
 use af_egress::fixture::{BRANCH, ELASTIC_QUERY, GRAFANA, GRAFANA_TOKEN, LEASE_ID};
 use af_egress::testing::{RecordingTransport, Sent, inbound};
 use af_egress::{Inbound, Outbound, RESPONSE_MAX_BYTES, Transport};
+use guffbolt::ToolOutput;
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
 use super::HttpRequest;
 use crate::egress::SharedTransport;
 use crate::handler::Typed;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 use crate::testing::{HOUR, MINTED, Run, call, replying};
 
 const REFS: &str = "https://api.github.com/repos/acme/widgets/git/refs";
@@ -44,7 +45,10 @@ async fn test_http_request_refuses_unlisted_host() {
     let capture = Capture::install();
     let (output, sent) = request(false, json!({"url": "https://evil.example/exfil"})).await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::HostNotAllowed));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::HostNotAllowed.into())
+    );
     assert_eq!(sent, Vec::new());
     let refused = capture.only("tool_refused");
     assert_eq!(refused.field("lease_id"), Some(LEASE_ID));
@@ -72,7 +76,10 @@ async fn test_http_request_read_only_admits_listed_posts() {
         json!({"url": "https://demo.es.example/_bulk", "method": "POST", "body": "{}"}),
     )
     .await;
-    assert_eq!(other.error_code, Some(ToolErrorCode::MethodNotAllowed));
+    assert_eq!(
+        other.error_code,
+        Some(ToolErrorCode::MethodNotAllowed.into())
+    );
     assert_eq!(sent, Vec::new());
 }
 
@@ -83,7 +90,7 @@ async fn test_http_request_enforces_origin_rules() {
     let (refused, sent) = request(false, other_ref).await;
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::RequestPolicyNotAllowed)
+        Some(ToolErrorCode::RequestPolicyNotAllowed.into())
     );
     assert_eq!(sent, Vec::new());
 
@@ -128,7 +135,7 @@ async fn test_placeholder_substituted_only_in_authorization() {
         let (output, sent) = request(false, misplaced).await;
         assert_eq!(
             output.error_code,
-            Some(ToolErrorCode::CredentialPlacementNotAllowed)
+            Some(ToolErrorCode::CredentialPlacementNotAllowed.into())
         );
         assert_eq!(sent, Vec::new());
     }
@@ -190,7 +197,10 @@ async fn should_hand_a_transport_failure_back_as_upstream_unreachable() {
     )
     .await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamUnreachable));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::UpstreamUnreachable.into())
+    );
     assert!(
         output.text.starts_with("[upstream_unreachable] "),
         "{}",
@@ -240,7 +250,10 @@ async fn should_answer_a_status_outside_2xx_as_failed_with_where_a_redirect_poin
     )
     .await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamStatus));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::UpstreamStatus.into())
+    );
     assert_eq!(
         output.text,
         format!(
@@ -254,7 +267,10 @@ async fn should_answer_a_status_outside_2xx_as_failed_with_where_a_redirect_poin
 async fn should_refuse_arguments_the_schema_does_not_name() {
     let (output, sent) = request(false, json!({"url": ELASTIC_QUERY, "token": "x"})).await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
     assert_eq!(sent, Vec::new());
 }
 

@@ -5,6 +5,7 @@
 //! `agentsfleetd` masks the fleet's stored secrets and posts it: the runner
 //! never holds the channel's credential.
 
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -12,7 +13,7 @@ use super::answered_with;
 use crate::catalog::{Entry, MESSAGE};
 use crate::egress;
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 /// What a line that landed reads back.
 const DELIVERED: &str = "posted to the thread";

@@ -8,11 +8,11 @@
 )]
 
 use af_core::test_util::trace::Capture;
-use af_providers::Message;
 use afr_tools::catalog::{
     DELEGATE, HTTP_REQUEST, MEMORY_RECALL, SEND_INPUT, SPAWN, UPDATE_PLAN, WAIT_AGENT, WEB_SEARCH,
 };
 use afr_tools::nested::NESTED;
+use guffbolt::Message;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 

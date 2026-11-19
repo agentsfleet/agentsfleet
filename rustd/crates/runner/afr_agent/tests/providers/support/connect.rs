@@ -46,7 +46,7 @@ impl Connect for FixtureConnector {
         policy.inference = Some(self.policy(&policy));
         self.inner.admit(&policy)
     }
-    fn connect(&self, lease: &LeasePayload<'_>) -> Result<Box<dyn Provider>> {
+    fn connect(&self, lease: &LeasePayload<'_>) -> Result<Box<Provider>> {
         let mut lease = lease.clone();
         lease.policy.inference = Some(self.policy(&lease.policy));
         self.inner.connect(&lease)

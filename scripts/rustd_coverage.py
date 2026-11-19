@@ -49,6 +49,9 @@ CRATES_SEGMENT = "/crates/"
 LAYERS = frozenset({"foundation", "protocol", "harness", "runner", "daemon"})
 # The folder a layer's binary sits in.
 BINARY = "main"
+# The agent harness sits beside `crates/`, in no layer (`rustd/Cargo.toml`).
+HARNESS = "guffbolt"
+HARNESS_SEGMENT = f"/rustd/{HARNESS}/"
 WORKSPACE_ROOT = "(workspace root)"
 REVISION_SUFFIX = ".rev"
 NOT_TAKEN = "-"
@@ -166,10 +169,11 @@ def totals(merged):
 def crate_of(path):
     """The crate a source path belongs to, past its layer folder.
 
-    A layer's binary sits in `main/`, so it is named with its layer.
+    A layer's binary sits in `main/`, so it is named with its layer; the
+    harness sits beside `crates/` and is named alone.
     """
     if CRATES_SEGMENT not in path:
-        return WORKSPACE_ROOT
+        return HARNESS if HARNESS_SEGMENT in path else WORKSPACE_ROOT
     parts = path.split(CRATES_SEGMENT, 1)[1].split("/")
     if parts[0] not in LAYERS or len(parts) < 2:
         return parts[0]

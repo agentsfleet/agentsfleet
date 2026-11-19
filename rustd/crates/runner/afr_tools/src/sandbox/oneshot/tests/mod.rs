@@ -57,7 +57,7 @@ async fn silent_endings_interrupt_commands_and_fence_later_calls() {
         );
         assert_eq!(
             (output.exit_code, output.error_code),
-            (None, Some(ToolErrorCode::Interrupted))
+            (None, Some(ToolErrorCode::Interrupted.into()))
         );
         let later = tokio::time::timeout(
             PATIENCE,
@@ -67,7 +67,7 @@ async fn silent_endings_interrupt_commands_and_fence_later_calls() {
         .expect("invalid link refuses without waiting for the peer");
         assert_eq!(
             (later.exit_code, later.error_code),
-            (None, Some(ToolErrorCode::SandboxUnavailable))
+            (None, Some(ToolErrorCode::SandboxUnavailable.into()))
         );
         assert_deadline(&capture);
     }
@@ -114,7 +114,7 @@ async fn an_ending_during_cleanup_preserves_the_confirmed_timeout_without_a_seco
     assert_eq!(output.text, "partial\nProcess timed out after 100 ms");
     assert_eq!(
         (output.exit_code, output.error_code),
-        (None, Some(ToolErrorCode::TimedOut))
+        (None, Some(ToolErrorCode::TimedOut.into()))
     );
     assert_eq!(
         capture.only(EVENT_TIMED_OUT).field("timeout_ms"),

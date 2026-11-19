@@ -10,7 +10,8 @@ use afr_tools::catalog::{
     APPLY_PATCH, FILE_APPEND, FILE_DELETE, FILE_EDIT, FILE_EDIT_HASHED, FILE_READ,
     FILE_READ_HASHED, FILE_WRITE, IMAGE, SHELL,
 };
-use afr_tools::{Catalog, Lease, ToolContext, ToolErrorCode, ToolOutput};
+use afr_tools::{Catalog, Lease, ToolContext, ToolErrorCode};
+use guffbolt::ToolOutput;
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
 
@@ -225,7 +226,7 @@ pub(crate) fn file_tools_refuse_link_out(lane: &Lane) -> Result<(), Failed> {
     )?;
     for refused in [read, written, deleted] {
         expect(
-            refused.error_code == Some(ToolErrorCode::PathNotAllowed),
+            refused.error_code == Some(ToolErrorCode::PathNotAllowed.into()),
             format!("path_not_allowed, got {refused:?}"),
         )?;
     }

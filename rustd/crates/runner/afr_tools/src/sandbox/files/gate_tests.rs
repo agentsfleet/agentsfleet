@@ -5,9 +5,11 @@
 
 //! The path gate every file tool, the hashed tools and `apply_patch` share.
 
+use guffbolt::ToolOutput;
+
 use super::tests::{FILE_TOOLS, on};
 use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 use crate::sandbox::ScriptedExecutor;
 use crate::testing::{call, call_in, hosted, offered};
 
@@ -26,12 +28,12 @@ async fn an_empty_path_is_invalid_and_a_call_without_a_sandbox_is_refused() {
 
         assert_eq!(
             empty.error_code,
-            Some(ToolErrorCode::InvalidArguments),
+            Some(ToolErrorCode::InvalidArguments.into()),
             "{empty:?}"
         );
         assert_eq!(
             unsandboxed.error_code,
-            Some(ToolErrorCode::SandboxUnavailable),
+            Some(ToolErrorCode::SandboxUnavailable.into()),
             "{unsandboxed:?}"
         );
     }
@@ -70,12 +72,12 @@ fn every_accepted_path_is_relative_and_never_climbs() {
                     Err(output) => {
                         refused += 1;
                         assert!(
-                            matches!(
-                                output.error_code,
-                                Some(
-                                    ToolErrorCode::PathNotAllowed | ToolErrorCode::InvalidArguments
-                                )
-                            ),
+                            [
+                                ToolErrorCode::PathNotAllowed,
+                                ToolErrorCode::InvalidArguments
+                            ]
+                            .map(|code| Some(code.into()))
+                            .contains(&output.error_code),
                             "{path:?} -> {output:?}"
                         );
                     }
@@ -92,7 +94,7 @@ fn every_accepted_path_is_relative_and_never_climbs() {
     for root in ["/workspace", "/workspace/", ".", "./."] {
         assert_eq!(
             super::inside(root).unwrap_err().error_code,
-            Some(ToolErrorCode::InvalidArguments),
+            Some(ToolErrorCode::InvalidArguments.into()),
             "{root:?} is the workspace itself"
         );
     }

@@ -1,0 +1,42 @@
+[package]
+name = "guffbolt"
+description = "An agent harness: the loop of model calls and tool calls over a conversation the embedder keeps, with a context-window hook, typed tools, run extensions and sub-agents."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme = "README.md"
+# What crates.io lists the harness under; the workspace's keywords name
+# agentsfleet.
+keywords = ["agent", "llm", "ai", "harness", "tool-calling"]
+categories = ["asynchronous"]
+
+[lints]
+workspace = true
+
+[dependencies]
+# An image a call read, shared by the output and the result that carries it,
+# and serialized with the conversation.
+bytes = { workspace = true, features = ["serde"] }
+# A model turn streams as a `futures` stream of chunks.
+futures-util.workspace = true
+# An embedder saves the transcript and the loop's progress through these.
+serde = { workspace = true, features = ["derive"] }
+# A call's arguments, a tool's parameters and a provider's replay record are
+# JSON.
+serde_json.workspace = true
+# A run's time budget, and `select!`, which races each model call and each
+# tool call against the loop's stop. A run's children are started, watched,
+# messaged and paused through its channels.
+tokio = { workspace = true, features = ["macros", "sync", "time"] }
+# The token a loop is stopped by.
+tokio-util.workspace = true
+# The loop's own records, at `debug`: every turn is a hot path (LOG-HOT). An
+# observer's span is what a model call and a tool call run in.
+tracing.workspace = true
+
+[dev-dependencies]
+# `start_paused`, so a budget runs out at once and a test never waits on it.
+tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }

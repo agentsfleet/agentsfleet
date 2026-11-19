@@ -3,8 +3,8 @@ use std::time::Duration;
 use af_wire::report::{FailureClass, Outcome};
 use afr_agent::{ExecutionResult, Failure, ResultOutcome};
 
-use af_providers::Usage;
 use afr_agent::Meter;
+use guffbolt::Usage;
 
 use super::{Ending, narrow, report};
 use crate::test_support::{FENCING, FLEET_ID, LEASE_ID, answer, lease};

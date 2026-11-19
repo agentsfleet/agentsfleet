@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use afr_executor::{Ending, ProcessId, Spawn};
 use bytes::Bytes;
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio::time::Instant;
@@ -22,7 +23,7 @@ use super::sessions::Sessions;
 use super::{command, executor_of, oneshot, unavailable};
 use crate::catalog::{EXEC_COMMAND, Entry, WRITE_STDIN};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 /// The shortest a call waits for output: Codex's `MIN_YIELD_TIME_MS`.
 const YIELD_MIN: Duration = Duration::from_millis(250);
@@ -251,7 +252,7 @@ fn reply(
     ToolOutput {
         text: output::with_line(text, &state),
         exit_code: ended.and_then(Ending::exit_code),
-        error_code: ended.and_then(output::error_code),
+        error_code: ended.and_then(output::error_code).map(Into::into),
         image: None,
     }
 }

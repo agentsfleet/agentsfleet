@@ -15,6 +15,7 @@
 //! and nothing here tries to refuse those routes one by one.
 
 use afr_executor::Spawn;
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -22,7 +23,7 @@ use super::oneshot::{run_to_end, timeout_of};
 use super::{executor_of, with_environment};
 use crate::catalog::{Entry, GIT};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 /// The git the toolbox carries, found on the executor's search path.
 const GIT_PROGRAM: &str = "git";

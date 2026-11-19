@@ -41,7 +41,7 @@ fn a_run_debugs_without_the_leases_secrets() {
 const CACHE_WRITE_FIVE_MINUTE_TOKENS: u32 = 60;
 
 /// One provider turn's usage.
-const TURN: af_providers::Usage = af_providers::Usage {
+const TURN: guffbolt::Usage = guffbolt::Usage {
     input: 30,
     cached_input: 10,
     cache_write: 0,
@@ -108,7 +108,7 @@ fn a_meter_sends_at_most_one_bodys_worth() {
 fn a_meter_line_carries_cache_writes_by_lifetime() {
     let at = af_core::clock::now();
     let meter = Meter::new(std::sync::Arc::new(af_core::clock::FixedClock::at(at)));
-    let writing = af_providers::Usage {
+    let writing = guffbolt::Usage {
         input: 500,
         cached_input: 400,
         cache_write: 5,

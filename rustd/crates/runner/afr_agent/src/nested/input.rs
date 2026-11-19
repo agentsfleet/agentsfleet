@@ -1,11 +1,17 @@
 //! `send_input`: a message for a spawned child's next turn.
 
 use afr_tools::nested::Input;
-use afr_tools::{ToolOutput, parsed};
+use afr_tools::parsed;
+use guffbolt::ToolOutput;
+use guffbolt::agents::{Accepted, not_found};
 use serde_json::Value;
 
-use super::answer::{Accepted, json, not_found};
+use super::answer::json;
 use crate::harness::Harness;
+
+/// What `send_input` does, as the model reads it.
+pub(super) const DESCRIPTION: &str = "Send a running child a message it reads on its next \
+        turn. Answers whether it was accepted; a child that has ended accepts none.";
 
 pub(super) fn run(harness: &Harness<'_, '_>, arguments: &Value) -> ToolOutput {
     let Input { child_id, message } = match parsed(arguments) {

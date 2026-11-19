@@ -47,5 +47,8 @@ async fn a_step_with_an_unknown_status_is_refused() {
 
     let output = call(tool.as_ref(), &Lease::default(), plan).await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
 }

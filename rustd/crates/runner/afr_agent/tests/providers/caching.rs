@@ -4,10 +4,12 @@
 
 use std::collections::HashMap;
 
-use af_providers::{Chunk, Connect, Message, Request, ToolSpec};
+use af_providers::Connect;
 use af_wire::lease::Turn;
 use afr_tools::catalog::UPDATE_PLAN;
 use futures_util::StreamExt as _;
+use guffbolt::ToolSpec;
+use guffbolt::{Chunk, Message, Request};
 use serde_json::value::RawValue;
 use serde_json::{Value, json};
 

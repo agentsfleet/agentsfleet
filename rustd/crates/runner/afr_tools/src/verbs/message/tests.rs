@@ -12,7 +12,7 @@ use crate::verbs::Unanswered;
 async fn posted(
     delivered: Result<bool, Unanswered>,
     text: &str,
-) -> (crate::runtime::ToolOutput, Vec<Asked>) {
+) -> (guffbolt::ToolOutput, Vec<Asked>) {
     let verbs = RecordingVerbs::answering(Ok(String::new()), delivered);
     let lease = lease_with(&verbs);
     let output = call(
@@ -38,7 +38,10 @@ async fn test_message_tool_posts_or_names_gap() {
         "anyone there?",
     )
     .await;
-    assert_eq!(output.error_code, Some(ToolErrorCode::MessageNoChannel));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::MessageNoChannel.into())
+    );
     assert!(output.text.contains("UZ-RUN-019"), "{}", output.text);
 }
 
@@ -47,7 +50,10 @@ async fn test_message_tool_posts_or_names_gap() {
 #[tokio::test]
 async fn an_undelivered_line_is_a_failed_call() {
     let (output, _asked) = posted(Ok(false), "status").await;
-    assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamUnreachable));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::UpstreamUnreachable.into())
+    );
     assert!(output.text.ends_with(NOT_DELIVERED), "{}", output.text);
 }
 
@@ -60,5 +66,8 @@ async fn a_spent_budget_is_its_own_error() {
         "one more",
     )
     .await;
-    assert_eq!(output.error_code, Some(ToolErrorCode::MessageLimitReached));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::MessageLimitReached.into())
+    );
 }

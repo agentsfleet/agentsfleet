@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use af_core::clock;
 use af_core::timing::DAY;
+use guffbolt::ToolOutput;
 use jiff::tz::TimeZone;
 use jiff::{RoundMode, Timestamp, TimestampRound, Unit};
 use schemars::JsonSchema;
@@ -27,7 +28,7 @@ use super::{ScheduleCall, answered};
 use crate::catalog::{Entry, SCHEDULE};
 use crate::egress;
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 /// The zone the expression is written in.
 const UTC: &str = "UTC";

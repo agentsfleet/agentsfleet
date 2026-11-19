@@ -5,6 +5,8 @@
 
 use std::collections::BTreeSet;
 
+use guffbolt::agents::Narrow as _;
+
 use super::*;
 use crate::stub::Stub;
 
@@ -17,8 +19,11 @@ fn catalog() -> Catalog {
     ])
 }
 
-fn names<'a>(selection: &'a Selection<'_>) -> Vec<&'a str> {
-    selection.tools().map(Tool::name).collect()
+fn names(selection: &Selection<'_>) -> Vec<&'static str> {
+    selection
+        .offered()
+        .map(|offered| offered.entry().name())
+        .collect()
 }
 
 #[test]
@@ -28,14 +33,14 @@ fn test_catalog_offers_policy_tools() {
     let selection = catalog.select(&["http_request", "memory_recall"]).unwrap();
 
     assert_eq!(names(&selection), ["http_request", "memory_recall"]);
-    for tool in selection.tools() {
-        let schema = tool.schema();
+    for name in names(&selection) {
+        let spec = selection.tool(name).unwrap().spec();
+        assert_eq!(spec.name, name);
         assert_eq!(
-            schema.description(),
-            tool.name(),
+            spec.description, name,
             "each handler carries its own schema"
         );
-        assert_eq!(schema.parameters()["type"], "object");
+        assert_eq!(spec.parameters["type"], "object");
     }
     assert!(
         selection.tool("update_plan").is_none(),

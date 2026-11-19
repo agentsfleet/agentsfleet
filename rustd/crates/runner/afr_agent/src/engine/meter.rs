@@ -1,8 +1,8 @@
 //! Usage belongs to the current lease and never enters recovered private state.
 
 use af_core::clock::{Clock, SystemClock};
-use af_providers::Usage;
 use af_wire::usage::{LINES_MAX, RequestLines, RequestUsage};
+use guffbolt::Usage;
 use std::sync::{
     Arc, Mutex, MutexGuard, PoisonError,
     atomic::{AtomicU64, Ordering},
@@ -139,7 +139,19 @@ impl Meter {
     }
 }
 
+/// A model call's spend reaches the meter as each usage chunk arrives, so a
+/// turn that fails or is dropped afterwards still has its request line.
+impl guffbolt::Listen for Meter {
+    fn usage(&self, usage: Usage) {
+        self.add(usage);
+    }
+}
+
 /// A count the wire carries in 32 bits, saturated rather than wrapped.
 fn narrow(count: u64) -> u32 {
     u32::try_from(count).unwrap_or(u32::MAX)
 }
+
+#[cfg(test)]
+#[path = "meter_tests.rs"]
+mod tests;

@@ -78,7 +78,7 @@ async fn test_browser_tools_refuse_until_firecracker() {
     for (name, refused) in &refusals {
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::BrowserUnavailable),
+            Some(ToolErrorCode::BrowserUnavailable.into()),
             "{name}: {refused:?}"
         );
         assert_eq!(
@@ -116,7 +116,7 @@ async fn any_arguments_and_no_sandbox_are_refused_the_same_way() {
 
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::BrowserUnavailable),
+            Some(ToolErrorCode::BrowserUnavailable.into()),
             "{refused:?}"
         );
     }

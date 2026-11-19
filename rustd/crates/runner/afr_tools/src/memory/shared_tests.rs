@@ -47,7 +47,7 @@ async fn test_workspace_store_needs_publish() {
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::WorkspaceMemoryNotGranted)
+        Some(ToolErrorCode::WorkspaceMemoryNotGranted.into())
     );
     assert!(
         refused.text.starts_with("[workspace_memory_not_granted]"),

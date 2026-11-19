@@ -5,12 +5,12 @@
 
 //! Edits that name a range by its start and end tags.
 
+use guffbolt::ToolOutput;
 use serde_json::json;
 
 use super::tests::{END_TARGET, GREEK, NEW_TEXT, PATH, TARGET, THREE_LINES, tag_of};
 use crate::catalog::{FILE_EDIT_HASHED, FILE_READ_HASHED};
 use crate::lease::Lease;
-use crate::runtime::ToolOutput;
 use crate::testing::{Live, call_in, hosted, offered};
 
 /// `given` with every `{L<n>}` replaced by line n's tag in `read`.

@@ -16,6 +16,7 @@
 use std::fmt::Write as _;
 
 use bytes::Bytes;
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -23,7 +24,7 @@ use super::executor_of;
 use super::files::{Answer, failed, inside, settled, whole};
 use crate::catalog::{Entry, FILE_EDIT_HASHED, FILE_READ_HASHED};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 /// Fowler–Noll–Vo 1a, 32 bits: the tag hash, taken over the trimmed line
 /// before, [`BETWEEN`], and the trimmed line.

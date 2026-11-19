@@ -1,7 +1,7 @@
 //! Runtime effects retain the shared ordering and the run's real usage meter.
 use super::super::shared::Shared;
 use af_context::{Checkpoint, CheckpointStore, Compaction, PortFuture, Summarizer, Summary};
-use af_providers::{Message, Request};
+use guffbolt::{Message, Request, Turn};
 use tracing::Instrument as _;
 
 mod progress;
@@ -51,11 +51,12 @@ impl Summarizer for Model<'_, '_> {
                 max_output_tokens: Some(task.output_tokens),
                 single_attempt: true,
             };
-            let mut live = crate::events::Live::silent(self.shared.scrub, self.shared.started);
+            // A summary is private: nothing of it streams live, and only its
+            // spend is heard, by the run's meter.
             let turn = tokio::select! {
                 biased;
                 () = self.stop.cancelled() => return Err(af_context::Error::cancelled()),
-                turn = crate::turn::take(self.shared.provider.stream(request), &mut live, self.shared.meter) => turn.map_err(af_context::Error::boundary)?,
+                turn = Turn::read(self.shared.provider.stream(request), self.shared.meter) => turn.map_err(af_context::Error::boundary)?,
             };
             if turn.cut
                 || !turn.finished

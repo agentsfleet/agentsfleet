@@ -1,6 +1,24 @@
 //! Preserve provider replay data only for content the runtime kept unchanged.
 
+use guffbolt::Replay;
 use rig_core::message::{AssistantContent, AssistantMessage};
+use serde::Deserialize as _;
+
+use crate::error::Result;
+
+/// The assistant message a turn's replay recorded: the one this crate wrote
+/// at the turn's end, or none for a turn no provider recorded, which then
+/// replays from its canonical text and calls.
+///
+/// # Errors
+/// The record is not an assistant message rig can read: a replay this crate
+/// did not write fails the request rather than going out without it.
+pub(super) fn original(replay: &Replay) -> Result<AssistantMessage> {
+    if replay.is_empty() {
+        return Ok(AssistantMessage::default());
+    }
+    Ok(AssistantMessage::deserialize(replay.record())?)
+}
 
 /// Restore native items, ordering and origin without undoing secret scrubbing.
 pub(super) fn restore(

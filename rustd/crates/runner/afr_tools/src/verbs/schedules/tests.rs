@@ -10,7 +10,7 @@ use serde_json::json;
 use super::{CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate};
 use crate::handler::Typed;
 use crate::http_request::HttpRequest;
-use crate::runtime::{Tool, ToolErrorCode};
+use crate::runtime::{CatalogTool, ToolErrorCode};
 use crate::testing::{Asked, MINTED, OwnedCall, RecordingVerbs, Run, call, lease_with, replying};
 use crate::verbs::Unanswered;
 
@@ -21,7 +21,7 @@ const SCHEDULE: &str = "0199a0b0-0000-7000-8000-0000000000aa";
 const ANSWER: &str = r#"{"schedule_id":"0199a0b0-0000-7000-8000-0000000000aa"}"#;
 
 /// Calls `tool` with `arguments` and answers what it asked and returned.
-async fn asked(tool: Box<dyn Tool>, arguments: serde_json::Value) -> (Vec<Asked>, String) {
+async fn asked(tool: Box<CatalogTool>, arguments: serde_json::Value) -> (Vec<Asked>, String) {
     let verbs = RecordingVerbs::answering(Ok(ANSWER.to_owned()), Ok(true));
     let lease = lease_with(&verbs);
     let output = call(tool.as_ref(), &lease, arguments).await;
@@ -29,7 +29,7 @@ async fn asked(tool: Box<dyn Tool>, arguments: serde_json::Value) -> (Vec<Asked>
 }
 
 /// The one schedules call `tool` made.
-async fn the_call(tool: Box<dyn Tool>, arguments: serde_json::Value) -> OwnedCall {
+async fn the_call(tool: Box<CatalogTool>, arguments: serde_json::Value) -> OwnedCall {
     let (asked, text) = asked(tool, arguments).await;
     assert_eq!(
         text, ANSWER,
@@ -165,7 +165,10 @@ async fn a_schedule_id_that_is_not_one_never_leaves() {
             json!({"schedule_id": "../../memory"}),
         )
         .await;
-        assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
+        assert_eq!(
+            output.error_code,
+            Some(ToolErrorCode::InvalidArguments.into())
+        );
         assert!(verbs.asked().is_empty(), "{} sent a call", tool.name());
     }
 }
@@ -189,7 +192,7 @@ async fn a_refusal_reaches_the_model_with_its_code() {
     .await;
     assert_eq!(
         output.error_code,
-        Some(ToolErrorCode::ScheduleNotFleetOwned)
+        Some(ToolErrorCode::ScheduleNotFleetOwned.into())
     );
     assert!(output.text.contains("UZ-SCHED-010"), "{}", output.text);
 }

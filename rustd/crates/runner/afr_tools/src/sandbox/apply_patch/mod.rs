@@ -21,6 +21,7 @@ use std::path::{Component, Path, PathBuf};
 
 use afr_executor::{Executor, MAX_READ_BYTES};
 use bytes::Bytes;
+use guffbolt::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -28,7 +29,7 @@ use super::executor_of;
 use super::files::{Answer, failed, inside, settled, too_long, whole};
 use crate::catalog::{APPLY_PATCH, Entry};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 #[path = "../../../vendor/apply_patch/mod.rs"]
 mod codex;

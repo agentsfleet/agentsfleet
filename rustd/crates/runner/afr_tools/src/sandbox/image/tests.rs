@@ -3,12 +3,13 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use guffbolt::{Image, ImageKind, ToolOutput};
 use serde_json::json;
 
-use super::{IMAGE_MAX_BYTES, ImageAttachment, ImageKind};
+use super::{IMAGE_MAX_BYTES, sniffed};
 use crate::catalog::IMAGE;
 use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 use crate::sandbox::ScriptedExecutor;
 use crate::testing::{Live, call, call_in, hosted, offered};
 
@@ -35,7 +36,7 @@ fn bytes_of(kind: ImageKind, length: usize) -> Vec<u8> {
 
 /// Calls `image` on `path` through `live`, with a lease whose wire takes
 /// images or not; the answer and what the lease holds after it.
-async fn viewed(live: &Live, path: &str, images: bool) -> (ToolOutput, Option<ImageAttachment>) {
+async fn viewed(live: &Live, path: &str, images: bool) -> (ToolOutput, Option<Image>) {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[IMAGE.name()]).unwrap();
     let lease = Lease::default().with_image_input(images);
@@ -64,17 +65,17 @@ async fn test_image_refusals_carry_codes() {
 
     assert_eq!(
         too_big.error_code,
-        Some(ToolErrorCode::FileTooLarge),
+        Some(ToolErrorCode::FileTooLarge.into()),
         "{too_big:?}"
     );
     assert_eq!(
         not_image.error_code,
-        Some(ToolErrorCode::NotAnImage),
+        Some(ToolErrorCode::NotAnImage.into()),
         "{not_image:?}"
     );
     assert_eq!(
         no_input.error_code,
-        Some(ToolErrorCode::ImageInputUnavailable),
+        Some(ToolErrorCode::ImageInputUnavailable.into()),
         "{no_input:?}"
     );
     assert!(
@@ -112,7 +113,7 @@ async fn an_image_is_attached_to_the_lease_and_the_text_names_no_bytes() {
     );
     let held = held.unwrap();
     assert_eq!(held.kind, ImageKind::Png);
-    assert_eq!(held.bytes.as_ref(), shot.as_slice());
+    assert_eq!(held.data.as_ref(), shot.as_slice());
     live.stop().await;
 }
 
@@ -129,7 +130,7 @@ async fn a_jpeg_a_gif_and_a_webp_attach_under_their_kinds() {
         let (answer, held) = viewed(&live, name, true).await;
 
         assert_eq!(answer.error_code, None, "{answer:?}");
-        assert!(answer.text.contains(kind.mime()), "{}", answer.text);
+        assert!(answer.text.contains(kind.media_type()), "{}", answer.text);
         assert_eq!(held.map(|held| held.kind), Some(kind));
     }
     live.stop().await;
@@ -138,35 +139,22 @@ async fn a_jpeg_a_gif_and_a_webp_attach_under_their_kinds() {
 #[test]
 fn each_kind_is_told_by_its_first_bytes() {
     // pin test: literal is the contract
-    assert_eq!(
-        ImageKind::sniffed(b"\x89PNG\r\n\x1a\nrest"),
-        Some(ImageKind::Png)
-    );
+    assert_eq!(sniffed(b"\x89PNG\r\n\x1a\nrest"), Some(ImageKind::Png));
     // pin test: literal is the contract
-    assert_eq!(
-        ImageKind::sniffed(&[0xff, 0xd8, 0xff, 0xe0]),
-        Some(ImageKind::Jpeg)
-    );
+    assert_eq!(sniffed(&[0xff, 0xd8, 0xff, 0xe0]), Some(ImageKind::Jpeg));
     // pin test: literal is the contract
-    assert_eq!(ImageKind::sniffed(b"GIF87a"), Some(ImageKind::Gif));
+    assert_eq!(sniffed(b"GIF87a"), Some(ImageKind::Gif));
     // pin test: literal is the contract
+    assert_eq!(sniffed(b"RIFF\x10\0\0\0WEBPVP8 "), Some(ImageKind::Webp));
     assert_eq!(
-        ImageKind::sniffed(b"RIFF\x10\0\0\0WEBPVP8 "),
-        Some(ImageKind::Webp)
-    );
-    assert_eq!(
-        ImageKind::sniffed(b"RIFF\x10\0\0\0WAVEfmt "),
+        sniffed(b"RIFF\x10\0\0\0WAVEfmt "),
         None,
         "a RIFF that is not WebP"
     );
+    assert_eq!(sniffed(b"RIFF"), None, "a RIFF cut before its word");
+    assert_eq!(sniffed(b""), None);
     assert_eq!(
-        ImageKind::sniffed(b"RIFF"),
-        None,
-        "a RIFF cut before its word"
-    );
-    assert_eq!(ImageKind::sniffed(b""), None);
-    assert_eq!(
-        ImageKind::sniffed(b"<svg xmlns"),
+        sniffed(b"<svg xmlns"),
         None,
         "the wires take no SVG from a tool"
     );
@@ -177,7 +165,7 @@ fn each_kind_is_told_by_its_first_bytes() {
             ImageKind::Gif,
             ImageKind::Webp
         ]
-        .map(ImageKind::mime),
+        .map(ImageKind::media_type),
         ["image/png", "image/jpeg", "image/gif", "image/webp"]
     );
 }
@@ -197,17 +185,17 @@ async fn a_missing_image_a_path_out_and_no_sandbox_read_their_codes() {
 
     assert_eq!(
         missing.error_code,
-        Some(ToolErrorCode::FileNotFound),
+        Some(ToolErrorCode::FileNotFound.into()),
         "{missing:?}"
     );
     assert_eq!(
         out.error_code,
-        Some(ToolErrorCode::PathNotAllowed),
+        Some(ToolErrorCode::PathNotAllowed.into()),
         "{out:?}"
     );
     assert_eq!(
         unsandboxed.error_code,
-        Some(ToolErrorCode::SandboxUnavailable),
+        Some(ToolErrorCode::SandboxUnavailable.into()),
         "{unsandboxed:?}"
     );
     assert!(

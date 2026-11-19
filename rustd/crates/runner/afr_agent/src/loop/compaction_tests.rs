@@ -9,7 +9,7 @@ use crate::{
     fixture::{Canned, Frames, call, lease, say, spent, unbounded},
     testing::Discard,
 };
-use af_providers::{Chunk, Connect, End, Message, Provider, Request};
+use af_providers::{Connect, Provider};
 use af_wire::{
     activity::ActivityFrame,
     context::{ContextProgress, ContextState},
@@ -18,6 +18,7 @@ use af_wire::{
 };
 use afr_tools::catalog::UPDATE_PLAN;
 use futures_util::{StreamExt as _, stream::BoxStream};
+use guffbolt::{Chunk, End, Message, Request};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -56,11 +57,13 @@ impl Connect for Model {
     fn admit(&self, _: &ExecutionPolicy<'_>) -> af_providers::Result<()> {
         Ok(())
     }
-    fn connect(&self, _: &LeasePayload<'_>) -> af_providers::Result<Box<dyn Provider>> {
+    fn connect(&self, _: &LeasePayload<'_>) -> af_providers::Result<Box<Provider>> {
         Ok(Box::new(self.clone()))
     }
 }
-impl Provider for Model {
+impl guffbolt::Model for Model {
+    type Error = af_providers::Error;
+
     fn measure(&self, request: Request<'_>) -> af_providers::Result<u64> {
         // The external scripted wire's framing: deterministic pressure after
         // complete tool pairs, independent of machine speed or reported usage.

@@ -139,7 +139,7 @@ impl FullHost {
                 af_core::clock::FixedClock::at(jiff::Timestamp::UNIX_EPOCH),
             )));
             for _ in 0..=af_wire::usage::LINES_MAX {
-                meter.add(af_providers::Usage {
+                meter.add(guffbolt::Usage {
                     input: u64::from(u32::MAX),
                     cached_input: u64::from(u32::MAX),
                     cache_write: u64::from(u32::MAX),

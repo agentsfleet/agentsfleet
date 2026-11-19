@@ -12,11 +12,12 @@ use std::time::Duration;
 
 use af_egress::testing::RecordingTransport;
 use afr_executor::Client;
+use guffbolt::ToolOutput;
 use serde_json::json;
 
 use crate::catalog::{Catalog, EXEC_COMMAND, WRITE_STDIN};
 use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 use crate::testing::{Live, call_in, hosted, offered};
 
 /// How long the suite waits on the executor before failing.
@@ -117,12 +118,12 @@ async fn a_missing_or_escaping_workdir_reads_as_the_callers_mistake() {
 
     assert_eq!(
         missing.error_code,
-        Some(ToolErrorCode::FileNotFound),
+        Some(ToolErrorCode::FileNotFound.into()),
         "{missing:?}"
     );
     assert_eq!(
         escaping.error_code,
-        Some(ToolErrorCode::PathNotAllowed),
+        Some(ToolErrorCode::PathNotAllowed.into()),
         "{escaping:?}"
     );
     live.stop().await;

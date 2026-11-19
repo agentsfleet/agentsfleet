@@ -3,10 +3,10 @@
 
 use std::sync::atomic::AtomicUsize;
 
-use af_providers::Usage;
 use af_wire::report::RenewResponse;
 use af_wire::usage::{LINES_MAX, RequestUsage};
 use afr_agent::scripted::{ScriptedEngine, Step};
+use guffbolt::Usage;
 
 use super::*;
 use crate::test_support::{GRANTED_UNTIL, json};

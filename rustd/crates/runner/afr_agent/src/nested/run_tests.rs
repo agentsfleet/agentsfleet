@@ -15,13 +15,13 @@ use std::sync::Arc;
 use crate::ResultOutcome;
 use af_core::test_util::trace::Capture;
 use af_egress::testing::{CountingMint, RecordingTransport};
-use af_providers::Chunk;
 use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::Catalog;
 use afr_tools::catalog::{
     DELEGATE, HTTP_REQUEST, INTERRUPT_AGENT, LIST_AGENTS, MEMORY_RECALL, MEMORY_STORE, SPAWN,
     UPDATE_PLAN, WAIT_AGENT,
 };
+use guffbolt::Chunk;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
@@ -306,11 +306,11 @@ async fn test_child_run_carries_no_history() {
     let child_first = script
         .sent()
         .into_iter()
-        .find(|sent| sent.messages.first() == Some(&af_providers::Message::User(READS.to_owned())))
+        .find(|sent| sent.messages.first() == Some(&guffbolt::Message::User(READS.to_owned())))
         .unwrap();
     assert_eq!(
         child_first.messages,
-        [af_providers::Message::User(READS.to_owned())],
+        [guffbolt::Message::User(READS.to_owned())],
         "the child's first request holds its task alone"
     );
 }

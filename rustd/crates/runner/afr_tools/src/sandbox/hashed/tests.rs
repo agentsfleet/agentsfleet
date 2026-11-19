@@ -3,12 +3,13 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use guffbolt::ToolOutput;
 use serde_json::json;
 
 use super::{Target, tag};
 use crate::catalog::{FILE_EDIT_HASHED, FILE_READ_HASHED};
 use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 use crate::testing::{Live, call_in, hosted, offered};
 
 /// The argument names the calls spell.
@@ -79,7 +80,7 @@ async fn test_hashed_edit_refuses_stale_hash() {
     assert_eq!(read.error_code, None, "{read:?}");
     assert_eq!(
         stale.error_code,
-        Some(ToolErrorCode::HashMismatch),
+        Some(ToolErrorCode::HashMismatch.into()),
         "{stale:?}"
     );
     assert!(stale.text.contains("no longer matches"), "{}", stale.text);
@@ -169,7 +170,7 @@ async fn an_end_target_before_the_target_or_past_the_end_is_a_mismatch() {
     for refused in [&before, &beyond] {
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::HashMismatch),
+            Some(ToolErrorCode::HashMismatch.into()),
             "{refused:?}"
         );
     }
@@ -193,7 +194,7 @@ async fn a_tag_matching_twice_nearby_is_refused() {
     assert_eq!(hash_of(2), hash_of(3), "the two inner lines hash alike");
     assert_eq!(
         edit.error_code,
-        Some(ToolErrorCode::HashMismatch),
+        Some(ToolErrorCode::HashMismatch.into()),
         "{edit:?}"
     );
     assert!(edit.text.contains("more than once"), "{}", edit.text);
@@ -211,7 +212,7 @@ async fn a_tag_that_does_not_parse_or_names_line_zero_is_invalid() {
 
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::InvalidArguments),
+            Some(ToolErrorCode::InvalidArguments.into()),
             "{given:?}"
         );
         assert!(refused.text.contains("is not a tag"), "{}", refused.text);
@@ -233,7 +234,7 @@ async fn a_target_past_the_end_of_the_file_is_a_mismatch() {
     assert_eq!(read.error_code, None, "{read:?}");
     assert_eq!(
         edit.error_code,
-        Some(ToolErrorCode::HashMismatch),
+        Some(ToolErrorCode::HashMismatch.into()),
         "{edit:?}"
     );
     assert!(edit.text.contains("past the end"), "{}", edit.text);
@@ -258,7 +259,7 @@ async fn an_end_target_found_before_the_target_is_refused() {
 
     assert_eq!(
         edit.error_code,
-        Some(ToolErrorCode::HashMismatch),
+        Some(ToolErrorCode::HashMismatch.into()),
         "{edit:?}"
     );
     assert!(edit.text.contains("was found before"), "{}", edit.text);

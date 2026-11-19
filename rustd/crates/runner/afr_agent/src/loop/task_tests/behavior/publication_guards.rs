@@ -41,7 +41,7 @@ pub(super) async fn execute(
         .await
 }
 
-pub(super) fn publication_call() -> af_providers::Chunk {
+pub(super) fn publication_call() -> guffbolt::Chunk {
     call(
         "publish",
         "propose_change",

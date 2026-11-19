@@ -2,8 +2,8 @@
 
 use super::{Intake, interpretation, unavailable};
 use crate::Result;
-use af_providers::{Message, Request};
 use af_wire::task::{TaskAcceptedInterpretation, TaskInputsResponse, TaskRecoveredItem};
+use guffbolt::{Message, Request};
 
 impl Intake<'_> {
     pub(crate) async fn reply(

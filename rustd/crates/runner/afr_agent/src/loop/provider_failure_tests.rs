@@ -143,16 +143,22 @@ impl af_providers::Connect for Silent {
     fn connect(
         &self,
         _lease: &af_wire::lease::LeasePayload<'_>,
-    ) -> af_providers::Result<Box<dyn af_providers::Provider>> {
+    ) -> af_providers::Result<Box<af_providers::Provider>> {
         Ok(Box::new(Self))
     }
 }
 
-impl af_providers::Provider for Silent {
+impl guffbolt::Model for Silent {
+    type Error = af_providers::Error;
+
+    fn measure(&self, request: guffbolt::Request<'_>) -> af_providers::Result<u64> {
+        af_providers::testing::measure(request)
+    }
+
     fn stream<'a>(
         &'a self,
-        _request: af_providers::Request<'a>,
-    ) -> futures_util::stream::BoxStream<'a, af_providers::Result<af_providers::Chunk>> {
+        _request: guffbolt::Request<'a>,
+    ) -> futures_util::stream::BoxStream<'a, af_providers::Result<guffbolt::Chunk>> {
         use futures_util::StreamExt as _;
         futures_util::stream::pending().boxed()
     }
@@ -184,7 +190,7 @@ async fn a_stopped_turn_is_counted_as_stopped() {
 }
 
 /// Drives a run whose model plays `turns` with an empty-tooled lease.
-async fn outcome_of(turns: Vec<Vec<af_providers::Chunk>>) -> crate::engine::RunOutput {
+async fn outcome_of(turns: Vec<Vec<guffbolt::Chunk>>) -> crate::engine::RunOutput {
     let script = Script::new(turns);
     let engine = engine(Vec::new(), &script);
     let (output, _frames) =

@@ -67,7 +67,7 @@ impl Harness<'_, '_> {
                 if matches!(effect.state, TaskEffectState::Confirmed) {
                     self.confirmed_effect_watermark = effect.ordinal;
                 }
-                self.messages.push(af_providers::Message::User(
+                self.transcript.push(guffbolt::Message::User(
                     self.shared
                         .scrub
                         .clean(

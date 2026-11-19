@@ -8,10 +8,10 @@ use std::time::Duration;
 
 use af_core::test_util::trace::Capture;
 use af_egress::testing::{CountingMint, RecordingTransport};
-use af_providers::Chunk;
 use af_wire::memory::MemoryDelta;
 use afr_tools::Catalog;
 use afr_tools::catalog::{MEMORY_LIST, MEMORY_STORE};
+use guffbolt::Chunk;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 

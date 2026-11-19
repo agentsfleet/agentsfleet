@@ -11,14 +11,14 @@ use serde_json::{Value, json};
 use super::{EVENT_REFUSED, GIT_REFUSED_SUBCOMMANDS, Git, subcommand};
 use crate::handler::Typed;
 use crate::lease::Lease;
-use crate::runtime::{Tool, ToolErrorCode};
+use crate::runtime::{CatalogTool, ToolErrorCode};
 use crate::sandbox::{Checkout, ScriptedExecutor, ScriptedProcess};
 use crate::testing::{Live, call, call_in};
 
 /// The directory the fixture repository is checked out in.
 const WIDGETS: &str = "widgets";
 
-fn git() -> Box<dyn Tool> {
+fn git() -> Box<CatalogTool> {
     Typed::boxed(Git)
 }
 
@@ -108,7 +108,7 @@ async fn test_git_tool_refuses_network_subcommands() {
 
         assert_eq!(
             output.error_code,
-            Some(ToolErrorCode::SubcommandNotAllowed),
+            Some(ToolErrorCode::SubcommandNotAllowed.into()),
             "{refused}"
         );
         assert!(
@@ -142,7 +142,10 @@ async fn should_find_the_subcommand_after_global_options() {
     )
     .await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::SubcommandNotAllowed));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::SubcommandNotAllowed.into())
+    );
 }
 
 #[test]
@@ -191,7 +194,7 @@ async fn should_refuse_without_a_sandbox_and_on_a_refused_spawn() {
 
     assert_eq!(
         unsandboxed.error_code,
-        Some(ToolErrorCode::SandboxUnavailable)
+        Some(ToolErrorCode::SandboxUnavailable.into())
     );
     assert!(
         refused.text.ends_with(": no scripted process left"),
@@ -212,7 +215,10 @@ async fn should_refuse_arguments_that_are_not_a_list_of_strings() {
     )
     .await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
     let spawned = executor.spawned();
     assert!(spawned.is_empty(), "{spawned:?}");
 }
@@ -228,7 +234,7 @@ async fn should_read_file_not_found_when_the_checkout_is_gone() {
 
     assert_eq!(
         missing.error_code,
-        Some(ToolErrorCode::FileNotFound),
+        Some(ToolErrorCode::FileNotFound.into()),
         "{missing:?}"
     );
     live.stop().await;

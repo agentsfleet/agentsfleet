@@ -18,8 +18,7 @@ const MESSAGE: &str = "message";
 const ORIGIN: &str = "origin";
 
 use crate::supervisor_plane::SCHEDULE_ID;
-use af_providers::{Call, Chunk};
-use af_wire::activity::StreamTextKind;
+use guffbolt::{Call, Chunk, TextKind};
 use serde_json::{Value, json};
 
 use af_providers::testing::scripted as existing;
@@ -33,7 +32,7 @@ pub(crate) const ANSWER: &str = "kernel caller proof complete";
 /// One call per turn keeps state-changing calls ordered.
 pub(crate) fn model(calls: &[Call]) -> (existing::FakeModel, existing::Transcript) {
     let answer = Chunk::Text {
-        kind: StreamTextKind::Answer,
+        kind: TextKind::Answer,
         text: ANSWER.to_owned(),
     };
     let turns = calls
@@ -134,7 +133,7 @@ pub(crate) fn refused_calls() -> Vec<Call> {
         ),
     ]
 }
-pub(crate) fn mutations() -> Vec<af_providers::Call> {
+pub(crate) fn mutations() -> Vec<guffbolt::Call> {
     vec![
         call(
             SCHEDULE,

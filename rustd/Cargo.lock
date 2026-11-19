@@ -251,6 +251,7 @@ dependencies = [
  "bytes",
  "futures-util",
  "garde",
+ "guffbolt",
  "http",
  "httpdate",
  "rcgen",
@@ -1453,6 +1454,7 @@ dependencies = [
  "digest-io",
  "futures-util",
  "garde",
+ "guffbolt",
  "hex",
  "hyper",
  "hyper-util",
@@ -1514,6 +1516,7 @@ dependencies = [
  "futures-util",
  "garde",
  "gix",
+ "guffbolt",
  "http",
  "http-body-util",
  "hyper",
@@ -1574,6 +1577,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "garde",
+ "guffbolt",
  "html2text",
  "jiff 1.0.0",
  "rustix 1.1.6",
@@ -1672,6 +1676,7 @@ dependencies = [
  "clap",
  "futures-util",
  "garde",
+ "guffbolt",
  "hyper",
  "hyper-util",
  "jiff 1.0.0",
@@ -4756,8 +4761,12 @@ dependencies = [
 name = "guffbolt"
 version = "0.78.0"
 dependencies = [
+ "bytes",
+ "futures-util",
  "serde",
+ "serde_json",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 

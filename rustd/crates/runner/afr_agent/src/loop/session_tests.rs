@@ -13,7 +13,6 @@ use std::time::Duration;
 use crate::ResultOutcome;
 use af_core::test_util::trace::Capture;
 use af_egress::testing::{CountingMint, RecordingTransport};
-use af_providers::Chunk;
 use af_wire::activity::ActivityFrame;
 use af_wire::lease::LeasePayload;
 use af_wire::tool_trace::ToolCallStatus;
@@ -21,6 +20,7 @@ use afr_executor::ProcessId;
 use afr_tools::Catalog;
 use afr_tools::catalog::EXEC_COMMAND;
 use afr_tools::sandbox::{ScriptedExecutor, ScriptedProcess};
+use guffbolt::Chunk;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 

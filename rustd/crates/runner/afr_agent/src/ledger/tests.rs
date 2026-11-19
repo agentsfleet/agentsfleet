@@ -3,16 +3,18 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use af_providers::Call;
+use std::time::Duration;
+
 use af_wire::activity::ActivityFrame;
 use af_wire::tool_detail::{DETAIL_EVENT_MAX_BYTES, DETAIL_FIELD_MAX_BYTES, ToolCallRecord};
 use af_wire::tool_trace::ToolCallStatus;
-use afr_tools::ToolOutput;
 use afr_tools::catalog::UPDATE_PLAN;
+use guffbolt::{Call, CallEnd, ToolOutput};
+use tracing::Span;
 
 use af_core::test_util::trace::{Capture, CapturedEvent};
 
-use super::{EVENT_RECORD_DROPPED, Ledger};
+use super::{EVENT_RECORD_DROPPED, Ledger, Opened};
 use crate::fixture::{Frames, GITHUB_TOKEN, clean_json, scrub};
 
 /// The lease every call here belongs to.
@@ -33,16 +35,34 @@ fn a_run_without_calls_keeps_a_known_trace_and_no_records() {
     );
 }
 
-/// Runs one call through `ledger`, its handler answering `text`.
-async fn call(ledger: &Ledger<'_>, text: String) {
-    let call = Call {
-        id: String::new(),
-        name: UPDATE_PLAN.name().to_owned(),
-        arguments: serde_json::json!({}),
+/// Ends `call`, which `opened` holds, as `guffbolt` ends it: answering
+/// `output`, or interrupted when there is none. Hands back what the model
+/// reads.
+fn close(
+    ledger: &Ledger<'_>,
+    call: &Call,
+    (opened, span): (Opened, Span),
+    mut output: Option<ToolOutput>,
+) -> Option<ToolOutput> {
+    let end = CallEnd {
+        call,
+        span: &span,
+        duration: Duration::ZERO,
+        output: output.as_mut(),
     };
-    ledger
-        .call(&call, async { ToolOutput::succeeded(text) })
-        .await;
+    ledger.close(opened, end);
+    output
+}
+
+/// Opens `call` and ends it at once, answering `output`, or interrupted
+/// when there is none.
+fn ran(ledger: &Ledger<'_>, call: &Call, output: Option<ToolOutput>) -> Option<ToolOutput> {
+    close(ledger, call, ledger.open(call), output)
+}
+
+/// Runs one call through `ledger`, answering `text`.
+fn call(ledger: &Ledger<'_>, text: String) {
+    ran(ledger, &planned(), Some(ToolOutput::succeeded(text)));
 }
 
 /// What `records` spend of their event's budget.
@@ -50,8 +70,8 @@ fn spent(records: &[ToolCallRecord<'_>]) -> usize {
     records.iter().map(ToolCallRecord::byte_count).sum()
 }
 
-#[tokio::test]
-async fn records_past_the_event_budget_are_not_held_and_a_smaller_one_after_still_is() {
+#[test]
+fn records_past_the_event_budget_are_not_held_and_a_smaller_one_after_still_is() {
     let capture = Capture::install();
     let frames = Frames::default();
     let sink = frames.sink();
@@ -59,9 +79,9 @@ async fn records_past_the_event_budget_are_not_held_and_a_smaller_one_after_stil
     let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
 
     for _ in 0..LARGE_CALLS {
-        call(&ledger, "x".repeat(DETAIL_FIELD_MAX_BYTES)).await;
+        call(&ledger, "x".repeat(DETAIL_FIELD_MAX_BYTES));
     }
-    call(&ledger, "small".to_owned()).await;
+    call(&ledger, "small".to_owned());
     let (_trace, records) = ledger.finish();
     frames.taken();
 
@@ -113,7 +133,7 @@ async fn every_call_is_counted_by_tool_and_how_it_ended() {
 
     scoped(tally, async {
         let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
-        call(&ledger, "planned".to_owned()).await;
+        call(&ledger, "planned".to_owned());
         let made_up = Call {
             id: String::new(),
             name: "made_up_tool".to_owned(),
@@ -123,10 +143,9 @@ async fn every_call_is_counted_by_tool_and_how_it_ended() {
             exit_code: Some(2),
             ..ToolOutput::succeeded("ran".to_owned())
         };
-        ledger.call(&made_up, async { exited }).await;
-        let stalled = ledger.call(&made_up, std::future::pending());
-        // Polled once and dropped: the run ended before the call did.
-        let _interrupted = futures_util::poll!(Box::pin(stalled));
+        ran(&ledger, &made_up, Some(exited));
+        // The run ended before the call did.
+        ran(&ledger, &made_up, None);
     })
     .await;
     frames.taken();
@@ -180,8 +199,8 @@ fn opened_and_ended(frames: &[ActivityFrame<'_>]) -> (Vec<String>, Vec<(String, 
 /// A call's start frame carries its arguments as JSON, scrubbed and
 /// bounded, and arguments that are not an object as `{}`: never an empty
 /// string, which is not JSON.
-#[tokio::test]
-async fn test_a_calls_start_frame_carries_its_arguments_as_json() {
+#[test]
+fn test_a_calls_start_frame_carries_its_arguments_as_json() {
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
@@ -193,9 +212,7 @@ async fn test_a_calls_start_frame_carries_its_arguments_as_json() {
             arguments,
             ..planned()
         };
-        ledger
-            .call(&call, async { ToolOutput::succeeded("") })
-            .await;
+        ran(&ledger, &call, Some(ToolOutput::succeeded("")));
     }
 
     let shown: Vec<Option<serde_json::Value>> = frames
@@ -217,25 +234,21 @@ async fn test_a_calls_start_frame_carries_its_arguments_as_json() {
     );
 }
 
-/// A call opened while another call's handler runs, as a child's call opens
-/// inside its parent's `delegate`, takes the next number from the one
-/// counter, and each ends once, the inner first.
-#[tokio::test]
-async fn a_call_opened_inside_another_takes_the_next_number_and_each_ends_once() {
+/// A call opened while another is open, as a child's call opens inside its
+/// parent's `delegate`, takes the next number from the one counter, and each
+/// ends once, the inner first.
+#[test]
+fn a_call_opened_inside_another_takes_the_next_number_and_each_ends_once() {
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
     let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
     let (outer, inner) = (planned(), planned());
 
-    ledger
-        .call(&outer, async {
-            ledger
-                .call(&inner, async { ToolOutput::succeeded("inner") })
-                .await;
-            ToolOutput::succeeded("outer")
-        })
-        .await;
+    let outer_open = ledger.open(&outer);
+    ran(&ledger, &inner, Some(ToolOutput::succeeded("inner")));
+    let answered = Some(ToolOutput::succeeded("outer"));
+    close(&ledger, &outer, outer_open, answered);
     let (trace, records) = ledger.finish();
 
     let (opened, ended) = opened_and_ended(&frames.taken());
@@ -250,27 +263,23 @@ async fn a_call_opened_inside_another_takes_the_next_number_and_each_ends_once()
     assert_eq!(records.len(), 2);
 }
 
-/// An outer call whose handler is dropped mid-way, as a parent's run ending
-/// drops its `delegate` call and the child inside it, ends both
-/// `interrupted`, once each.
-#[tokio::test]
-async fn dropping_a_call_with_one_open_inside_it_interrupts_both_once() {
+/// An outer call interrupted with one open inside it, as a parent's run
+/// ending drops its `delegate` call and the child inside it, ends both
+/// `interrupted`, once each, and posts no record for either.
+#[test]
+fn interrupting_a_call_with_one_open_inside_it_ends_both_interrupted() {
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
     let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
     let (outer, inner) = (planned(), planned());
 
-    let running = ledger.call(&outer, async {
-        ledger
-            .call(&inner, std::future::pending::<ToolOutput>())
-            .await;
-        ToolOutput::succeeded("never")
-    });
-    let stopped = tokio::time::timeout(std::time::Duration::ZERO, running).await;
-    let (_trace, records) = ledger.finish();
+    let outer_open = ledger.open(&outer);
+    let unanswered = ran(&ledger, &inner, None);
+    close(&ledger, &outer, outer_open, None);
+    let (trace, records) = ledger.finish();
 
-    assert!(stopped.is_err(), "the outer call was still running");
+    assert_eq!(unanswered, None, "the model reads nothing");
     let (opened, ended) = opened_and_ended(&frames.taken());
     assert_eq!(opened, ["1", "2"]);
     let interrupted = ToolCallStatus::Interrupted;
@@ -278,6 +287,8 @@ async fn dropping_a_call_with_one_open_inside_it_interrupts_both_once() {
         ended,
         [("2".to_owned(), interrupted), ("1".to_owned(), interrupted)]
     );
+    let rows: Vec<_> = trace.calls.iter().map(|row| row.status).collect();
+    assert_eq!(rows, [interrupted, interrupted], "each keeps its trace row");
     assert!(records.is_empty(), "an interrupted call posts no record");
 }
 
@@ -300,15 +311,15 @@ async fn a_call_killed_for_memory_is_counted_and_typed_on_its_span() {
         let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
         let killed = ToolOutput {
             exit_code: Some(137),
-            error_code: Some(ToolErrorCode::OutOfMemory),
+            error_code: Some(ToolErrorCode::OutOfMemory.into()),
             ..ToolOutput::succeeded(String::new())
         };
-        ledger.call(&planned(), async { killed }).await;
+        ran(&ledger, &planned(), Some(killed));
         let exited = ToolOutput {
             exit_code: Some(2),
             ..ToolOutput::succeeded(String::new())
         };
-        ledger.call(&planned(), async { exited }).await;
+        ran(&ledger, &planned(), Some(exited));
     })
     .await;
     frames.taken();

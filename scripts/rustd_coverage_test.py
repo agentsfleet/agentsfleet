@@ -72,6 +72,7 @@ class FileGrades(unittest.TestCase):
     def test_missed_lines_roll_up_to_the_crate_inside_its_layer(self):
         report = merged({"/w/rustd/crates/daemon/afd_db/src/lib.rs": {1: 0, 2: 0}, "/w/build.rs": {1: 0}})
         self.assertEqual(judge.missed_by_crate(report), [("afd_db", 2), ("(workspace root)", 1)])
+        self.assertEqual(judge.crate_of("/w/rustd/guffbolt/src/tool/mod.rs"), "guffbolt")
 
     def test_each_layers_binary_rolls_up_under_its_own_name(self):
         report = merged({

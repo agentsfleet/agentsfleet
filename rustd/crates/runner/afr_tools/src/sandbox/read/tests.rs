@@ -5,12 +5,13 @@
 
 use std::fmt::Write as _;
 
+use guffbolt::ToolOutput;
 use serde_json::{Value, json};
 
 use super::{LINES_DEFAULT, Page};
 use crate::catalog::FILE_READ;
 use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 use crate::sandbox::output;
 use crate::testing::{Live, call_in, hosted, offered};
 
@@ -182,7 +183,7 @@ async fn an_offset_or_limit_that_is_zero_or_past_the_end_is_refused() {
     for refused in [&zero_offset, &zero_limit] {
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::InvalidArguments),
+            Some(ToolErrorCode::InvalidArguments.into()),
             "{refused:?}"
         );
     }

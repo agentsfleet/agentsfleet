@@ -7,12 +7,12 @@ use crate::{
     testing::Discard,
 };
 use af_egress::testing::{CountingMint, RecordingTransport};
-use af_providers::Message;
 use af_wire::memory::{MemoryDelta, PINNED_CATEGORY};
 use afr_tools::{
     Catalog,
     catalog::{MEMORY_FORGET, MEMORY_LIST, MEMORY_RECALL, MEMORY_STORE},
 };
+use guffbolt::Message;
 use serde_json::json;
 use std::{borrow::Cow, sync::Arc};
 use tokio_util::sync::CancellationToken;

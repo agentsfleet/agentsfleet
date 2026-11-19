@@ -8,11 +8,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use af_core::env::MapEnv;
-use af_providers::Call;
 use afr_sandbox::{BubblewrapEngine, Engine, Sandbox, SandboxRequest, probe};
 use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
 use afr_supervisor::config::{ENV_STREAM_CA, ENV_STREAM_URL};
 use afr_supervisor::test_util::LEASE_ID;
+use guffbolt::Call;
 use libtest_mimic::Failed;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;

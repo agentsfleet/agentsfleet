@@ -1,8 +1,13 @@
-//! Preflight, compact and continue over the same private working-context engine.
+//! The window `guffbolt` asks for before each model call, fitted by
+//! `af_context`: preflight over the transcript's groups, a compaction when they
+//! no longer fit, and preflight again over the notes it wrote.
+//!
+//! The message the loop answers stays pinned at its place in every window,
+//! and a provider's replay from before the last compaction is dropped, because
+//! the prefix it was recorded over changed. The transcript is never edited.
 use super::Harness;
 use af_context::{Checkpoint, Identity, Plan, Window};
 use af_core::clock::{Clock as _, SystemClock};
-use af_providers::Message;
 use sha2::{Digest as _, Sha256};
 
 mod effects;
@@ -18,8 +23,6 @@ pub(super) struct State {
     checkpoint: Option<Checkpoint>,
     replay_from: usize,
     index: index::Index,
-    pub(super) working: Vec<Message>,
-    pub(super) output: Option<u32>,
 }
 impl State {
     pub(super) const fn new(pinned: usize) -> Self {
@@ -29,23 +32,22 @@ impl State {
             checkpoint: None,
             replay_from: 0,
             index: index::Index::new(pinned),
-            working: Vec::new(),
-            output: None,
         }
     }
 }
 
 impl Harness<'_, '_> {
-    pub(super) async fn preflight(&mut self) -> af_context::Result<()> {
+    /// The next model call's window: what of the transcript fits, after as
+    /// many compactions as fitting it takes.
+    pub(super) async fn preflight(&mut self) -> af_context::Result<guffbolt::Window> {
         let physical = self.shared.model_context_tokens;
         // A scripted provider can deliberately have no physical model. Production
         // connections reject that unresolved policy before a loop starts.
         if physical == 0 {
-            self.context.working.clone_from(&self.messages);
-            return Ok(());
+            return Ok(guffbolt::Window::whole(self.transcript.messages()));
         }
         let (identity, window) = self.context_parameters()?;
-        self.context.index.refresh(&self.messages)?;
+        self.context.index.refresh(self.transcript.messages())?;
         let mut store = effects::Store {
             generation: self
                 .context
@@ -55,7 +57,7 @@ impl Harness<'_, '_> {
         };
         loop {
             let source = source::Source::new(
-                &self.messages,
+                self.transcript.messages(),
                 self.context.pinned,
                 &self.context.index.groups,
                 self.context.replay_from,
@@ -81,9 +83,10 @@ impl Harness<'_, '_> {
                     groups,
                     output_tokens,
                 } => {
-                    self.context.working = source.retained(summary.as_ref(), &groups)?;
-                    self.context.output = Some(output_tokens);
-                    return Ok(());
+                    return Ok(guffbolt::Window {
+                        messages: source.retained(summary.as_ref(), &groups)?,
+                        max_output_tokens: Some(output_tokens),
+                    });
                 }
                 Plan::Compact(task) => {
                     let checkpoint = effects::compact(
@@ -95,7 +98,7 @@ impl Harness<'_, '_> {
                     )
                     .await?;
                     self.context.checkpoint = Some(checkpoint);
-                    self.context.replay_from = self.messages.len();
+                    self.context.replay_from = self.transcript.messages().len();
                 }
             }
         }

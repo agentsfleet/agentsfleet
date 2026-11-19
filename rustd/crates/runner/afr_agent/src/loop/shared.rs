@@ -18,11 +18,11 @@ use afr_executor::ExecutorSource;
 use afr_memory::Hydrated;
 use afr_tools::sandbox::checkouts;
 use afr_tools::{Lease, Selection};
+use guffbolt::agents::Agents;
 use tokio_util::sync::CancellationToken;
 
 use crate::engine::{AgentRun, Checkpoint, EventSink, Meter};
 use crate::ledger::Ledger;
-use crate::nested::Registry;
 
 /// One run's state, as every loop of it sees it.
 pub(crate) struct Shared<'run> {
@@ -38,7 +38,7 @@ pub(crate) struct Shared<'run> {
     pub(crate) model: &'run str,
     /// The provider, as the turn-duration family labels it.
     pub(crate) provider_label: ProviderLabel,
-    pub(crate) provider: &'run dyn Provider,
+    pub(crate) provider: &'run Provider,
     /// Cancelled when the lease ends early; every child's token descends
     /// from it.
     pub(crate) stop: &'run CancellationToken,
@@ -61,7 +61,7 @@ pub(crate) struct Shared<'run> {
     pub(crate) ledger: Ledger<'run>,
     pub(crate) meter: &'run Meter,
     /// Every child of the run: its state, its inbox and its stop.
-    pub(crate) registry: Registry<'run>,
+    pub(crate) registry: Agents<Selection<'run>>,
     /// The system prompt every loop of the run opens with.
     pub(crate) instructions: String,
     pub(crate) started: Instant,
@@ -74,9 +74,9 @@ impl<'run> Shared<'run> {
     pub(crate) fn new(
         run: &AgentRun<'run>,
         selection: &'run Selection<'run>,
-        provider: &'run dyn Provider,
+        provider: &'run Provider,
         scrub: &'run Scrub,
-        registry: Registry<'run>,
+        registry: Agents<Selection<'run>>,
         instructions: String,
         memory: Hydrated<'run>,
     ) -> Self {

@@ -11,7 +11,6 @@ use std::time::Instant;
 
 use crate::{Completed, ExecutionResult, ResultOutcome};
 use af_core::clock::saturating_millis_signed;
-use af_providers::Usage;
 use af_wire::activity::{
     ActivityFrame, FleetResponseChunk, StreamTextKind, ToolCallCompleted, ToolCallStarted,
 };
@@ -19,6 +18,7 @@ use af_wire::memory::MemoryDelta;
 use af_wire::policy::ExecutionPolicy;
 use af_wire::tool_trace::ToolCallStatus;
 use afr_executor::{Ending, Executor, Spawn};
+use guffbolt::Usage;
 
 use crate::engine::{AgentEngine, AgentRun, EventSink, Needs, RunOutput};
 use crate::error::Result;

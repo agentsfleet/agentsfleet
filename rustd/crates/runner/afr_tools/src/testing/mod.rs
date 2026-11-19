@@ -19,13 +19,14 @@ use af_egress::testing::{CountingMint, RecordingTransport, Sent};
 use af_wire::policy::ExecutionPolicy;
 use afr_executor::{Client, Executor};
 use afr_memory::Hydrated;
+use guffbolt::ToolOutput;
 use jiff::Timestamp;
 use tokio::task::JoinHandle;
 
 use crate::catalog::{Catalog, Entry};
 use crate::egress::SharedTransport;
 use crate::lease::Lease;
-use crate::runtime::{Tool, ToolContext, ToolOutput};
+use crate::runtime::{CatalogTool, ToolContext};
 use crate::selection::Selection;
 
 /// When every egress suite's clock starts.
@@ -45,7 +46,7 @@ pub(crate) fn hosted() -> (Catalog, Receiver<Sent>) {
 }
 
 /// The handler `selection` offers for `entry`.
-pub(crate) fn offered<'c>(selection: &Selection<'c>, entry: &Entry) -> &'c dyn Tool {
+pub(crate) fn offered<'c>(selection: &Selection<'c>, entry: &Entry) -> &'c CatalogTool {
     selection
         .tool(entry.name())
         .expect("the runner hosts every sandbox-side tool")
@@ -103,7 +104,7 @@ impl Live {
 
 /// Calls `tool` with `arguments` from the supervisor, with `lease`'s state.
 pub(crate) async fn call(
-    tool: &dyn Tool,
+    tool: &CatalogTool,
     lease: &Lease<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
@@ -120,7 +121,7 @@ pub(crate) async fn call(
 /// Calls `tool` with `arguments` as the router calls a sandbox-side tool:
 /// with `executor`, and `lease`'s state.
 pub(crate) async fn call_in(
-    tool: &dyn Tool,
+    tool: &CatalogTool,
     executor: &dyn Executor,
     lease: &Lease<'_>,
     arguments: serde_json::Value,

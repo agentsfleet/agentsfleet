@@ -8,7 +8,7 @@
 //! cannot be shown an image refuses the call before any read, and a file that
 //! is not one of the four kinds the wires take is refused after it.
 
-use bytes::Bytes;
+use guffbolt::{ImageKind, ToolOutput};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -16,7 +16,7 @@ use super::executor_of;
 use super::files::{Answer, failed, inside, settled};
 use crate::catalog::{Entry, IMAGE};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
 
 /// The most an image may weigh: the Messages wire's cap per image, the
 /// stricter of the two wires that take one.
@@ -33,59 +33,23 @@ const WEBP_MAGIC_AT: usize = 8;
 /// What a call reads back when the model's wire takes no image.
 const NO_IMAGE_INPUT: &str = "this model's wire takes no image in a tool result";
 
-/// The kinds of image the wires take, told by their first bytes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ImageKind {
-    /// Portable Network Graphics.
-    Png,
-    /// Joint Photographic Experts Group.
-    Jpeg,
-    /// Graphics Interchange Format.
-    Gif,
-    /// WebP.
-    Webp,
-}
-
-impl ImageKind {
-    /// The kind `bytes` begin as, if any.
-    fn sniffed(bytes: &[u8]) -> Option<Self> {
-        let webp = bytes.starts_with(RIFF_MAGIC)
-            && bytes
-                .get(WEBP_MAGIC_AT..WEBP_MAGIC_AT + WEBP_MAGIC.len())
-                .is_some_and(|word| word == WEBP_MAGIC);
-        if bytes.starts_with(PNG_MAGIC) {
-            Some(Self::Png)
-        } else if bytes.starts_with(JPEG_MAGIC) {
-            Some(Self::Jpeg)
-        } else if bytes.starts_with(GIF_MAGIC) {
-            Some(Self::Gif)
-        } else if webp {
-            Some(Self::Webp)
-        } else {
-            None
-        }
+/// The kind of image the wires take that `bytes` begin as, if any.
+fn sniffed(bytes: &[u8]) -> Option<ImageKind> {
+    let webp = bytes.starts_with(RIFF_MAGIC)
+        && bytes
+            .get(WEBP_MAGIC_AT..WEBP_MAGIC_AT + WEBP_MAGIC.len())
+            .is_some_and(|word| word == WEBP_MAGIC);
+    if bytes.starts_with(PNG_MAGIC) {
+        Some(ImageKind::Png)
+    } else if bytes.starts_with(JPEG_MAGIC) {
+        Some(ImageKind::Jpeg)
+    } else if bytes.starts_with(GIF_MAGIC) {
+        Some(ImageKind::Gif)
+    } else if webp {
+        Some(ImageKind::Webp)
+    } else {
+        None
     }
-
-    /// The media type the kind is named by.
-    #[must_use]
-    pub const fn mime(self) -> &'static str {
-        match self {
-            Self::Png => "image/png",
-            Self::Jpeg => "image/jpeg",
-            Self::Gif => "image/gif",
-            Self::Webp => "image/webp",
-        }
-    }
-}
-
-/// An image a call read, riding the call's output for the loop to attach to
-/// the call's result.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImageAttachment {
-    /// What kind of image it is.
-    pub kind: ImageKind,
-    /// The bytes, as the file holds them.
-    pub bytes: Bytes,
 }
 
 /// `image`'s arguments.
@@ -132,7 +96,7 @@ async fn view(context: ToolContext<'_, '_>, path: &str) -> Answer {
             &format!("{path} is longer than {IMAGE_MAX_BYTES} bytes"),
         ));
     }
-    let kind = ImageKind::sniffed(&fetched.data).ok_or_else(|| {
+    let kind = sniffed(&fetched.data).ok_or_else(|| {
         ToolOutput::failed(
             ToolErrorCode::NotAnImage,
             &format!("{path} is not a PNG, JPEG, GIF or WebP image"),
@@ -141,11 +105,11 @@ async fn view(context: ToolContext<'_, '_>, path: &str) -> Answer {
     let bytes = fetched.data.len();
     let attached = ToolOutput::succeeded(format!(
         "Attached {path} ({bytes} bytes, {}) for your next turn",
-        kind.mime()
+        kind.media_type()
     ));
-    Ok(attached.with_image(ImageAttachment {
+    Ok(attached.with_image(guffbolt::Image {
         kind,
-        bytes: fetched.data,
+        data: fetched.data,
     }))
 }
 

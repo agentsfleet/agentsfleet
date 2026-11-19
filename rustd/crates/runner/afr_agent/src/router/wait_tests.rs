@@ -17,8 +17,7 @@ use afr_telemetry::testing::{Recorded, Tally, scoped};
 use afr_tools::catalog::{FILE_READ, UPDATE_PLAN};
 use afr_tools::{Lease, ToolErrorCode};
 
-use super::Router;
-use super::tests::{Counting, catalog};
+use super::tests::{Counting, catalog, routed};
 
 /// How long the lease's build takes in each test.
 const BUILD_TAKES: Duration = Duration::from_millis(40);
@@ -48,10 +47,10 @@ async fn a_sandbox_call_mid_build_waits_then_runs_in_that_sandbox() {
     let selection = catalog.select(&[FILE_READ.name()]).unwrap();
     let executor = Counting::default();
     let slot = ExecutorSlot::pending();
-    let router = Router::new(&selection, &slot);
+    let tool = routed(&selection, &FILE_READ);
     let (tally, recorded) = Tally::new();
     let (arguments, lease) = (serde_json::json!({}), Lease::default());
-    let call = router.dispatch(FILE_READ.name(), &arguments, &lease);
+    let call = tool.run(&arguments, &slot, &lease);
     let build = async {
         tokio::time::sleep(BUILD_TAKES).await;
         slot.fill(Ok(&executor))
@@ -75,10 +74,10 @@ async fn a_sandbox_call_mid_build_answers_the_failures_class() {
         let catalog = catalog();
         let selection = catalog.select(&[FILE_READ.name()]).unwrap();
         let slot = ExecutorSlot::pending();
-        let router = Router::new(&selection, &slot);
+        let tool = routed(&selection, &FILE_READ);
         let (tally, recorded) = Tally::new();
         let (arguments, lease) = (serde_json::json!({}), Lease::default());
-        let call = router.dispatch(FILE_READ.name(), &arguments, &lease);
+        let call = tool.run(&arguments, &slot, &lease);
         let build = async {
             tokio::time::sleep(BUILD_TAKES).await;
             slot.fill(Err(class))
@@ -86,7 +85,10 @@ async fn a_sandbox_call_mid_build_answers_the_failures_class() {
 
         let (output, _filled) = bounded(scoped(tally, async { tokio::join!(call, build) })).await;
 
-        assert_eq!(output.error_code, Some(ToolErrorCode::SandboxUnavailable));
+        assert_eq!(
+            output.error_code,
+            Some(ToolErrorCode::SandboxUnavailable.into())
+        );
         assert!(
             output.text.contains(FILE_READ.name()) && output.text.ends_with(class.reason()),
             "{class:?} names its class: {}",
@@ -101,11 +103,11 @@ async fn a_supervisor_call_never_waits_on_the_build() {
     let catalog = catalog();
     let selection = catalog.select(&[UPDATE_PLAN.name()]).unwrap();
     let slot = ExecutorSlot::pending();
-    let router = Router::new(&selection, &slot);
+    let tool = routed(&selection, &UPDATE_PLAN);
 
     let (arguments, lease) = (serde_json::json!({}), Lease::default());
 
-    let call = router.dispatch(UPDATE_PLAN.name(), &arguments, &lease);
+    let call = tool.run(&arguments, &slot, &lease);
     let output = tokio::time::timeout(BUILD_TAKES, call).await;
 
     assert!(
@@ -120,12 +122,12 @@ async fn a_sandbox_call_after_the_build_records_no_wait() {
     let selection = catalog.select(&[FILE_READ.name()]).unwrap();
     let executor = Counting::default();
     let slot = ExecutorSlot::ready(&executor);
-    let router = Router::new(&selection, &slot);
+    let tool = routed(&selection, &FILE_READ);
     let (tally, recorded) = Tally::new();
 
     let (arguments, lease) = (serde_json::json!({}), Lease::default());
 
-    let call = router.dispatch(FILE_READ.name(), &arguments, &lease);
+    let call = tool.run(&arguments, &slot, &lease);
     let output = bounded(scoped(tally, call)).await;
 
     assert_eq!(output.error_code, None, "{}", output.text);

@@ -4,8 +4,10 @@
 //! name and never touches the executor; a sandbox-side one reads
 //! [`STUB_PATH`] through it, so a suite can count that the call crossed.
 
+use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
+
 use crate::catalog::Entry;
-use crate::runtime::{Runtime, Tool, ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{CatalogTool, Runtime, ToolContext, ToolErrorCode};
 use crate::schema::{NoArguments, Schema};
 
 /// The file a sandbox-side stub reads.
@@ -30,38 +32,41 @@ impl Stub {
 
     /// The same, boxed for a catalog.
     #[must_use]
-    pub fn boxed(entry: &'static Entry) -> Box<dyn Tool> {
+    pub fn boxed(entry: &'static Entry) -> Box<CatalogTool> {
         Box::new(Self::new(entry))
     }
-}
 
-#[async_trait::async_trait]
-impl Tool for Stub {
-    fn entry(&self) -> &'static Entry {
-        self.entry
-    }
-
-    fn schema(&self) -> &Schema {
-        &self.schema
-    }
-
-    async fn call(
-        &self,
-        _arguments: &serde_json::Value,
-        context: ToolContext<'_, '_>,
-    ) -> ToolOutput {
-        match (self.runtime(), context.executor) {
+    async fn run(&self, context: ToolContext<'_, '_>) -> ToolOutput {
+        let name = self.entry.name();
+        match (self.entry.runtime(), context.executor) {
             (Runtime::Sandbox, Some(executor)) => match executor.read_file(STUB_PATH, 1).await {
-                Ok(_) => ToolOutput::succeeded(self.name()),
+                Ok(_) => ToolOutput::succeeded(name),
                 Err(failure) => {
                     ToolOutput::failed(ToolErrorCode::SandboxUnavailable, &failure.to_string())
                 }
             },
-            (Runtime::Sandbox, None) => {
-                ToolOutput::failed(ToolErrorCode::SandboxUnavailable, self.name())
-            }
-            (Runtime::Supervisor | Runtime::Provider, _) => ToolOutput::succeeded(self.name()),
+            (Runtime::Sandbox, None) => ToolOutput::failed(ToolErrorCode::SandboxUnavailable, name),
+            (Runtime::Supervisor | Runtime::Provider, _) => ToolOutput::succeeded(name),
         }
+    }
+}
+
+impl Describe for Stub {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.schema.spec(self.entry.name())
+    }
+}
+
+impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Stub {
+    fn call<'a>(
+        &'a self,
+        _arguments: &'a serde_json::Value,
+        cx: ToolContext<'call, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        ToolContext<'call, 'run>: 'a,
+    {
+        Box::pin(self.run(cx))
     }
 }
 

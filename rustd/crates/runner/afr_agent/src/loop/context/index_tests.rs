@@ -1,7 +1,7 @@
 //! Count actual encoder input and verify the mutable tail's source identity.
 #![expect(clippy::unwrap_used, reason = "fixture failure fails the proof")]
 use super::Index;
-use af_providers::{Message, Replay};
+use guffbolt::{Message, Replay};
 
 fn answer() -> Message {
     Message::Assistant {

@@ -23,8 +23,8 @@ use rig_core::completion::Usage as Reported;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::provider::Usage;
 use af_wire::inference::InferenceApi;
+use guffbolt::Usage;
 
 /// Where a Messages reply keeps its cache writes split by lifetime.
 const MESSAGES_CACHE_CREATION: &str = "/usage/cache_creation";

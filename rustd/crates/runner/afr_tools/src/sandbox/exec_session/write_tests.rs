@@ -58,7 +58,7 @@ async fn should_log_a_session_killed_for_memory_during_a_write_under_its_lease()
 
     let output = call_in(&*write(), &executor, &lease, writing(1, ONE, None)).await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory));
+    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory.into()));
     let logged = capture.only(EVENT_OUT_OF_MEMORY);
     assert_eq!(logged.level, tracing::Level::WARN);
     assert_eq!(
@@ -122,7 +122,10 @@ async fn should_answer_any_other_refusal_at_once_and_keep_the_session() {
     let output = call_in(&*write(), &executor, &lease, writing(1, ONE, None)).await;
 
     assert_eq!(started.elapsed(), Duration::ZERO, "nothing to wait for");
-    assert_eq!(output.error_code, Some(ToolErrorCode::SandboxUnavailable));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::SandboxUnavailable.into())
+    );
     assert!(lease.sessions.get(FIRST).is_some());
 }
 

@@ -17,7 +17,7 @@ use af_inference::Configured;
 ///
 /// ```text
 /// LEASE ::= admit [connect TURN*]
-/// TURN  ::= Provider::stream (Chunk)* [failure]
+/// TURN  ::= Model::stream (Chunk)* [failure]
 /// ```
 ///
 /// `admit` runs before anything is prepared for the lease, so a refusal costs
@@ -33,7 +33,7 @@ pub trait Connect: Send + Sync + fmt::Debug {
     ///
     /// # Errors
     /// The selected model's saved inference settings are missing or invalid.
-    fn connect(&self, lease: &LeasePayload<'_>) -> Result<Box<dyn Provider>>;
+    fn connect(&self, lease: &LeasePayload<'_>) -> Result<Box<Provider>>;
 }
 
 /// The production [`Connect`]: one HTTP client every lease's provider shares.
@@ -105,7 +105,7 @@ impl Connect for Connector {
         configured(policy).map(drop)
     }
 
-    fn connect(&self, lease: &LeasePayload<'_>) -> Result<Box<dyn Provider>> {
+    fn connect(&self, lease: &LeasePayload<'_>) -> Result<Box<Provider>> {
         let policy = &lease.policy;
         let route = configured(policy)?;
         let settings = policy

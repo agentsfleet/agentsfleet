@@ -1,8 +1,9 @@
 //! Persisted output ceilings share the context window with the complete prompt.
 
-use af_providers::{Connect as _, Connector, Message, Provider, Request};
+use af_providers::{Connect as _, Connector, Provider};
 use af_wire::inference::{InferenceApi, ModelInference};
 use futures_util::StreamExt as _;
+use guffbolt::{Message, Request};
 
 use super::support::{Fake, lease, wires::Wire};
 
@@ -15,7 +16,7 @@ fn estimated(raw: &[u8]) -> u64 {
     af_inference::input_tokens(MODEL, std::str::from_utf8(raw).unwrap()) as u64
 }
 
-fn provider(fake: &Fake, wire: Wire, budget: u32) -> Box<dyn Provider> {
+fn provider(fake: &Fake, wire: Wire, budget: u32) -> Box<Provider> {
     let mut lease = lease(&wire.provider(), &[], "hello");
     lease.policy.context.context_cap_tokens = budget;
     lease.policy.inference = Some(ModelInference {
