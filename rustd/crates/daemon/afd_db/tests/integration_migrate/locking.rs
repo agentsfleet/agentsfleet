@@ -137,7 +137,7 @@ async fn test_migrate_gives_up_when_the_lock_never_frees() {
     assert!(error.is_migration_refused(), "got {error}");
     assert_eq!(error.code().as_str(), "UZ-STARTUP-005");
     assert!(
-        error.to_string().contains("150"),
+        error.to_string().contains("100ms"),
         "the failure must report how long it waited: {error}"
     );
     assert!(

@@ -37,7 +37,7 @@ cleanup() {
   fi
   if [ -n "${LOCAL_ACCEPTANCE_CA:-}" ]; then acceptance_untrust_certificate "$LOCAL_ACCEPTANCE_CA" || status=$?; fi
   acceptance_adapter_cleanup || status=$?
-  rmdir "$DEV_LOCK" || status=$?
+  rm -- "$DEV_LOCK" || status=$?
   exit "$status"
 }
 trap cleanup EXIT
