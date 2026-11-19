@@ -134,12 +134,12 @@ async fn tenant_runner_completes_a_tenant_model_chat() {
     ));
 
     assert_settled(&scene).await;
-    let (rund_by, posture): (Uuid7, String) = sqlx::query_as(RUN_OF_EVENT)
+    let (assigned_by, posture): (Uuid7, String) = sqlx::query_as(RUN_OF_EVENT)
         .bind(&scene.event_id)
         .fetch_one(&mut *scene.booted.database.acquire().await.expect("a connection"))
         .await
         .expect("the chat's run");
-    assert_eq!(rund_by, runner_id, "the tenant's runner ran the chat");
+    assert_eq!(assigned_by, runner_id, "the tenant's runner ran the chat");
     assert_eq!(posture, afd_billing::sql::posture::SELF_MANAGED);
 
     shutdown.cancel();

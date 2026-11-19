@@ -78,7 +78,7 @@ async fn changed_setup_blocks_reclaimed_task_without_issuing_another_run() {
 /// its event would strand the task as running with nothing left to run it.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_task_whose_runs_lapsed_past_the_plain_cap_is_rund_again() {
+async fn a_task_whose_runs_lapsed_past_the_plain_cap_is_assigned_again() {
     exercise(async |case| {
         let fixture = Decisions::create(case).await;
         let default = support::provider(&fixture).await;

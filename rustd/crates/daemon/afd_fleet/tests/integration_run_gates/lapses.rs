@@ -117,7 +117,7 @@ async fn an_event_whose_every_run_lapsed_is_ended_as_failed_and_frees_the_queue(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_event_one_lapse_short_of_the_cap_is_rund_again() {
+async fn an_event_one_lapse_short_of_the_cap_is_assigned_again() {
     let fixtures = Fixtures::create().await;
     let (seeded, _workspace) = funded(&fixtures).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;

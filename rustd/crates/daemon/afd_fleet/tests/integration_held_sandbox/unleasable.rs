@@ -79,7 +79,7 @@ async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<Uuid7>), 
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_degraded_holders_fleet_is_rund_by_another_runner() {
+async fn test_a_degraded_holders_fleet_is_assigned_by_another_runner() {
     let (taken, after, other) = taken_from(Unfit::Degraded).await;
 
     assert!(
@@ -95,7 +95,7 @@ async fn test_a_degraded_holders_fleet_is_rund_by_another_runner() {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_drained_holders_fleet_is_rund_by_another_runner() {
+async fn test_a_drained_holders_fleet_is_assigned_by_another_runner() {
     let (taken, after, other) = taken_from(Unfit::Drained).await;
 
     assert!(

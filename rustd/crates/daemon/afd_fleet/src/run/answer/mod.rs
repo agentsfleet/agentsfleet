@@ -19,7 +19,7 @@ use crate::run::installed::Installed;
 pub(super) const EVENT_NO_WORK: &str = "runner_run_no_work";
 
 /// The event an issued run is logged under.
-pub(super) const EVENT_RUND: &str = "runner_run_issued";
+pub(super) const EVENT_ASSIGNED: &str = "runner_run_issued";
 
 /// The event a refused delivery is logged under.
 pub(super) const EVENT_REFUSED: &str = "runner_run_refused";

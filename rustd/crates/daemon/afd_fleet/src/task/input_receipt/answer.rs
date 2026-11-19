@@ -81,7 +81,7 @@ async fn complete_history(
         .map_err(query("lock original accepted reply source"))?
         .ok_or(TaskRefusal::NotFound)?;
     // Same event owner and received/terminal writers as an ordinary run report.
-    sqlx::query(afd_turns::view::sql::INSERT_RUND_FLEET_EVENT)
+    sqlx::query(afd_turns::view::sql::INSERT_ASSIGNED_FLEET_EVENT)
         .bind(&current.fleet_id)
         .bind(crate::task::guard::wire(&input.source_admission_id)?)
         .bind(&current.workspace_id)

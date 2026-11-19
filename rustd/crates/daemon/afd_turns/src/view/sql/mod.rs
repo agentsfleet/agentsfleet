@@ -76,7 +76,7 @@ pub(crate) const INSERT_ACCESS_ACTIVITY: &str = include_str!("insert_access_acti
 ///
 /// `$1`–`$8` as [`INSERT_FLEET_EVENT`], then `$9` the admission row's id, or
 /// NULL when the event id is not one, `$10` the steer producer.
-pub const INSERT_RUND_FLEET_EVENT: &str = include_str!("insert_rund_fleet_event.sql");
+pub const INSERT_ASSIGNED_FLEET_EVENT: &str = include_str!("insert_assigned_fleet_event.sql");
 
 /// End an event at a gate, naming what refused it.
 ///
@@ -122,7 +122,7 @@ pub const UPDATE_FLEET_EVENT_RESULT: &str = include_str!("update_fleet_event_res
 
 /// Open, as received, the event of each message a run folded, in one
 /// statement: `$1` fleet, `$2` the messages' ids, `$3` the run's event, `$4`
-/// [`status::RECEIVED`]. See [`INSERT_RUND_FLEET_EVENT`] for one message.
+/// [`status::RECEIVED`]. See [`INSERT_ASSIGNED_FLEET_EVENT`] for one message.
 pub const OPEN_FOLDED_EVENTS: &str = include_str!("open_folded_events.sql");
 
 /// [`UPDATE_FLEET_EVENT_RESULT`] for many events in one statement: `$2` is

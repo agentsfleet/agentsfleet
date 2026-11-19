@@ -21,7 +21,7 @@ use crate::support::Fixtures;
 const SEEDED_NATIVE_CONFIG: &str = r#"{"name":"seeded","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#;
 
 /// The `thread.threads` column a claim's expiry lives in.
-pub(crate) const COLUMN_RUND_UNTIL: &str = "run_expires_at";
+pub(crate) const COLUMN_HELD_UNTIL: &str = "run_expires_at";
 
 /// The `thread.threads` sticky hint: which runner last held the fleet.
 pub(crate) const COLUMN_LAST_RUNNER: &str = "last_runner_id";
@@ -175,7 +175,7 @@ impl Fixtures {
     /// the database clock, so the next claim may take it.
     pub(crate) async fn slot_is_free(&self, fleet: &Uuid7) -> bool {
         let deadline = self
-            .instant(Row::Slot(fleet), COLUMN_RUND_UNTIL)
+            .instant(Row::Slot(fleet), COLUMN_HELD_UNTIL)
             .await
             .expect("the fleet has a slot row");
         deadline < self.database_now().await

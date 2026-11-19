@@ -45,7 +45,7 @@ const ADMITTED_EARLIER: std::time::Duration = std::time::Duration::from_secs(60)
 /// once, as the history row the run wrote, at its admission instant.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_steer_rund_between_pages_stays_on_the_resumed_page() {
+async fn test_steer_assigned_between_pages_stays_on_the_resumed_page() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let steer = Steer::new(ledger(&fixtures));

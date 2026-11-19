@@ -19,7 +19,7 @@ use afd_approval::{Origin, Requested, Wanted};
 
 use crate::error::Result;
 use crate::run::Offered;
-use crate::run::answer::{EVENT_RUND, no_work};
+use crate::run::answer::{EVENT_ASSIGNED, no_work};
 use crate::run::envelope::Acquired;
 use crate::run::pull::{AdmittedFleetWork, Assigned, RunService, Step};
 use af_core::event::label;
@@ -300,7 +300,7 @@ fn log_issued(runner_id: &Uuid7, run_id: &Uuid7, acquired: &Acquired, issued_at:
     let agentsfleet_event_id = acquired.event_id.as_str();
     let queue_wait_ms = queue_wait::of(acquired, issued_at);
     {
-        let (event, message) = (&EVENT_RUND, format_args!("a run was issued"));
+        let (event, message) = (&EVENT_ASSIGNED, format_args!("a run was issued"));
         tracing::info!(
             message,
             event,

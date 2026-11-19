@@ -52,7 +52,7 @@ pub use self::decision_profile::{DecisionSelection, decision_assignment_on};
 pub use self::edit::{RunnerEdit, RunnerEdited};
 pub use self::error::{
     DETAIL_DATABASE_ERROR, DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST,
-    DETAIL_RUNNER_NOT_FOUND, DETAIL_RUNNER_NOT_REVOKED, DETAIL_RUNNER_STILL_RUND,
+    DETAIL_RUNNER_NOT_FOUND, DETAIL_RUNNER_NOT_REVOKED, DETAIL_RUNNER_STILL_RUNNING,
     DETAIL_SELFTEST_REFUSED, Error, Result,
 };
 pub use self::heartbeat::{Beat, NO_REPORT};

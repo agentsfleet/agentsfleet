@@ -212,7 +212,7 @@ impl Error {
             ErrorKind::Rejected { detail } => detail,
             ErrorKind::RunnerVanished | ErrorKind::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
             ErrorKind::RunnerNotRevoked => DETAIL_RUNNER_NOT_REVOKED,
-            ErrorKind::RunnerStillRunning => DETAIL_RUNNER_STILL_RUND,
+            ErrorKind::RunnerStillRunning => DETAIL_RUNNER_STILL_RUNNING,
             ErrorKind::RegistrationKeyReused => DETAIL_REGISTRATION_KEY_REUSED,
             ErrorKind::TenantManaged => DETAIL_TENANT_MANAGED,
             ErrorKind::SelftestRefused => DETAIL_SELFTEST_REFUSED,

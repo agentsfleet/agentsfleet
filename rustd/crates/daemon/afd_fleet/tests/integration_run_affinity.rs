@@ -233,7 +233,7 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
 
     assert_eq!(
         fixtures
-            .instant(Row::Slot(&ids.fleet), crate::run_reads::COLUMN_RUND_UNTIL)
+            .instant(Row::Slot(&ids.fleet), crate::run_reads::COLUMN_HELD_UNTIL)
             .await,
         Some(live.held_until),
         "the live holder's claim must survive a superseded holder's release"

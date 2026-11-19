@@ -68,7 +68,7 @@ async fn test_schedule_run_now_admits_one_event() {
 /// fire stored JSON, as every other producer does.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_scheduled_run_is_rund_with_its_message() {
+async fn test_scheduled_run_is_assigned_with_its_message() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
     let assigned = Assigned::boot(&mut supervisor, &qstash).await;

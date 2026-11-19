@@ -10,7 +10,7 @@ use crate::support::Fixtures;
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_reclaimed_row_is_rund_as_redelivered() {
+async fn test_reclaimed_row_is_assigned_as_redelivered() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [holder, poller]) = seeded_parts::<2>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;

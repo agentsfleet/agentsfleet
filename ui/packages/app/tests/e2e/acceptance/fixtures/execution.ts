@@ -107,7 +107,7 @@ const API_STATUS_PATTERN = /→ (\d{3}):/;
 const DETAIL_NO_REPLY = "the run finished without a reply";
 const DETAIL_GATE_BLOCKED = "the delivery is waiting on an approval no journey granted";
 const DETAIL_RUNNER_OFFLINE = "no runner was online to run the delivery";
-const DETAIL_NEVER_RUND = "an online runner never held the delivery";
+const DETAIL_NEVER_ASSIGNED = "an online runner never held the delivery";
 const DETAIL_REPORT_MISSING = "the run settled and no terminal row followed";
 const DETAIL_STILL_RUNNING =
   "the run was still running when the execution budget expired";
@@ -176,7 +176,7 @@ export function classifyTerminalEvent(row: TerminalObservation): ExecutionVerdic
  */
 export function classifyIdle(runnerLive: boolean): FailedVerdict {
   return runnerLive
-    ? { kind: VERDICT_KIND.product, leg: JOURNEY_LEG.run, detail: DETAIL_NEVER_RUND }
+    ? { kind: VERDICT_KIND.product, leg: JOURNEY_LEG.run, detail: DETAIL_NEVER_ASSIGNED }
     : { kind: VERDICT_KIND.environment, leg: JOURNEY_LEG.run, detail: DETAIL_RUNNER_OFFLINE };
 }
 

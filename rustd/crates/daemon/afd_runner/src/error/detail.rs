@@ -18,7 +18,7 @@ pub const DETAIL_SELFTEST_REFUSED: &str = "revoked runners cannot be asked to se
 /// The refusal a delete of a runner still in service earns.
 pub const DETAIL_RUNNER_NOT_REVOKED: &str = "active runner must be revoked before deletion";
 /// The refusal a delete of a runner still holding a live or unbilled run earns.
-pub const DETAIL_RUNNER_STILL_RUND: &str =
+pub const DETAIL_RUNNER_STILL_RUNNING: &str =
     "runner still holds a live or unbilled run; retry once it is released and billed";
 /// The refusal a registration key reused for a different request earns.
 pub const DETAIL_REGISTRATION_KEY_REUSED: &str =

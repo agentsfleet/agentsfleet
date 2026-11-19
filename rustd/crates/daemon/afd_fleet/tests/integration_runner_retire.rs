@@ -87,7 +87,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
 /// run's own expiry. Once the run is gone the record retires as usual.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_a_rund_runner_keeps_its_record_until_the_run_is_gone() {
+async fn test_a_assigned_runner_keeps_its_record_until_the_run_is_gone() {
     // The one retirement test that takes a run, so the one whose run path
     // publishes on the fixture's bus.
     let fixtures = Fixtures::create().await;
@@ -137,19 +137,19 @@ async fn test_a_rund_runner_keeps_its_record_until_the_run_is_gone() {
         .await
         .expect("an active runner may be revoked");
 
-    let still_rund = fixtures
+    let still_running = fixtures
         .runners()
         .platform()
         .delete_revoked(&runner)
         .await
         .err();
     assert_eq!(
-        still_rund.as_ref().map(afd_runner::Error::code),
+        still_running.as_ref().map(afd_runner::Error::code),
         Some(af_core::error_code::RUNNER_MUST_REVOKE_FIRST)
     );
     assert_eq!(
-        still_rund.as_ref().map(afd_runner::Error::detail),
-        Some(afd_runner::DETAIL_RUNNER_STILL_RUND),
+        still_running.as_ref().map(afd_runner::Error::detail),
+        Some(afd_runner::DETAIL_RUNNER_STILL_RUNNING),
         "the refusal names the run, not the revocation the operator already did"
     );
 

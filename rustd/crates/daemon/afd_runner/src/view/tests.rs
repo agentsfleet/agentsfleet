@@ -46,7 +46,7 @@ fn a_future_heartbeat_is_fresh() {
 }
 
 #[test]
-fn a_never_seen_runner_is_registered_even_while_rund() {
+fn a_never_seen_runner_is_registered_even_while_assigned() {
     // The sentinel outranks a run: a runner that never beat cannot be
     // running anything, so "busy" there would describe a row nothing can make.
     assert_eq!(

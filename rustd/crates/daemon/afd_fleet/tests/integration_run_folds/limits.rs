@@ -10,7 +10,7 @@ use super::support::{
 };
 use crate::report_seed::held;
 use crate::rows::{LAPSE, Row};
-use crate::run_reads::COLUMN_RUND_UNTIL;
+use crate::run_reads::COLUMN_HELD_UNTIL;
 
 /// A run past its own deadline claims nothing, though its slot still names
 /// it: a holder that stopped renewing must not keep reading.
@@ -22,7 +22,7 @@ async fn test_a_run_past_its_deadline_claims_nothing() -> Checked {
     let sent = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     assert_eq!(claim_as_holder(&held, 0).await?, [sent.claimed(STEER_TEXT)]);
     let run = Row::Run(&held.issued.run_id);
-    held.fixtures.age(run, COLUMN_RUND_UNTIL, LAPSE).await;
+    held.fixtures.age(run, COLUMN_HELD_UNTIL, LAPSE).await;
     assert_eq!(claim_as_holder(&held, 0).await?, Vec::new());
     held.fixtures.cleanup().await;
     Ok(())
@@ -38,7 +38,7 @@ async fn test_a_slot_past_its_deadline_claims_nothing() -> Checked {
     let sent = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     assert_eq!(claim_as_holder(&held, 0).await?, [sent.claimed(STEER_TEXT)]);
     let slot = Row::Slot(&held.fleet);
-    held.fixtures.age(slot, COLUMN_RUND_UNTIL, LAPSE).await;
+    held.fixtures.age(slot, COLUMN_HELD_UNTIL, LAPSE).await;
     assert_eq!(claim_as_holder(&held, 0).await?, Vec::new());
     held.fixtures.cleanup().await;
     Ok(())
