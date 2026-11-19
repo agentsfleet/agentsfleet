@@ -118,16 +118,16 @@ describe("lib/api/tenant_billing", () => {
 // one that puts a caller-supplied identifier into a URL segment, which is why
 // the encoding assertion is here rather than left to the route.
 describe("lib/api/events", () => {
-  it("getFleetEvent sends GET with bearer and returns the body the list omits", async () => {
+  it("getFleetTurn sends GET with bearer and returns the body the list omits", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ event_id: "ev_1", request_json: "{\"a\":1}", response_text: "done" }),
+      json: async () => ({ turn_id: "ev_1", request_json: "{\"a\":1}", response_text: "done" }),
     });
     const mod = await import("../lib/api/events");
-    const res = await mod.getFleetEvent("ws_1", "zom_1", "ev_1", "tkn");
+    const res = await mod.getFleetTurn("ws_1", "zom_1", "ev_1", "tkn");
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1/events/ev_1"),
+      expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1/turns/ev_1"),
       expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
@@ -136,10 +136,10 @@ describe("lib/api/events", () => {
     expect(res.response_text).toBe("done");
   });
 
-  it("getFleetEvent percent-encodes an identifier that would otherwise open a path segment", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ event_id: "x" }) });
+  it("getFleetTurn percent-encodes an identifier that would otherwise open a path segment", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ turn_id: "x" }) });
     const mod = await import("../lib/api/events");
-    await mod.getFleetEvent("ws_1", "zom_1", "ev/../admin", "tkn");
+    await mod.getFleetTurn("ws_1", "zom_1", "ev/../admin", "tkn");
     const url = String(fetchMock.mock.calls[0]?.[0]);
     expect(url).toContain("ev%2F..%2Fadmin");
     expect(url).not.toContain("ev/../admin");

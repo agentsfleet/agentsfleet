@@ -7,7 +7,7 @@ import type { Fleet } from "./draft-types";
 import type { DraftView } from "./draft-state";
 
 export const ActivityRowSchema = z.object({
-  event_id: z.string(), event_type: z.string(), status: z.string(),
+  turn_id: z.string(), event_type: z.string(), status: z.string(),
   request_json: z.string(), created_at: Instant,
 });
 const PageSchema = z.object({items: z.array(ActivityRowSchema), next_cursor: z.string().nullable()});

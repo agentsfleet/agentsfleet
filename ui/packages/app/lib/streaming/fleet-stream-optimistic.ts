@@ -38,7 +38,7 @@ export type Reconciled = {
 
 /**
  * Fold the optimistic row onto the server's. When the server row already
- * landed (a live `event_received` beat the 202), the operator's text is
+ * landed (a live `turn_received` beat the 202), the operator's text is
  * grafted onto it — the live frame carries no body, so the optimistic row is
  * the only holder of what was said — and the temp row leaves. Otherwise the
  * temp row simply takes the real identifier and the server's opening status.
@@ -46,9 +46,9 @@ export type Reconciled = {
 export function reconcileRows(
   prev: FleetEvent[],
   tempId: string,
-  realEventId: string,
+  realTurnId: string,
 ): Reconciled {
-  const serverEvent = prev.find((event) => event.id === realEventId);
+  const serverEvent = prev.find((event) => event.id === realTurnId);
   if (serverEvent) {
     const temp = prev.find((event) => event.id === tempId);
     const grafted = temp === undefined ? prev : prev.map((event) => event === serverEvent
@@ -63,7 +63,7 @@ export function reconcileRows(
   return {
     events: prev.map((event) =>
       event.id === tempId
-        ? { ...event, id: realEventId, status: AGENTSFLEET_EVENT_STATUS.RECEIVED }
+        ? { ...event, id: realTurnId, status: AGENTSFLEET_EVENT_STATUS.RECEIVED }
         : event,
     ),
     alreadyComplete: false,
@@ -73,10 +73,10 @@ export function reconcileRows(
 
 /** A send the live run took: named by the server, settled with no reply of its
  * own, and labelled so the operator reads where it went. */
-export function foldRow(prev: FleetEvent[], tempId: string, realEventId: string): FleetEvent[] {
+export function foldRow(prev: FleetEvent[], tempId: string, realTurnId: string): FleetEvent[] {
   return prev.map((event) =>
     event.id === tempId
-      ? { ...event, id: realEventId, status: AGENTSFLEET_EVENT_STATUS.FOLDED, outcome: FOLDED_OUTCOME }
+      ? { ...event, id: realTurnId, status: AGENTSFLEET_EVENT_STATUS.FOLDED, outcome: FOLDED_OUTCOME }
       : event,
   );
 }

@@ -15,7 +15,7 @@ const REPLY: ReplyContext = {
   errored: false,
   running: false,
   queued: false,
-  eventId: "e1",
+  turnId: "e1",
   reasoning: "",
   span: { startedAtMs: null, endedAtMs: null },
   content: [],
@@ -29,7 +29,7 @@ const REPLY_TEXT = "Opened the PR.";
 // One fleet reply through the real renderer, with no transcript around it.
 function Transcriptless({ status, text = REPLY_TEXT, restarted = false, announce = false, attempt = "2" }: { status: FleetEvent["status"]; text?: string; restarted?: boolean; announce?: boolean; attempt?: string }) {
   const event: FleetEvent = {
-    id: REPLY.eventId, role: "assistant", actor: "fleet", text: "", reply: text, outcome: "",
+    id: REPLY.turnId, role: "assistant", actor: "fleet", text: "", reply: text, outcome: "",
     failureLabel: null, failureDetail: null, createdAt: new Date(0), status, runRestarted: restarted ? true : undefined,
     ...(restarted ? { restartAttempt: attempt } : {}),
   };

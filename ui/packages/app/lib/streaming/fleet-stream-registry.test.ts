@@ -38,18 +38,18 @@ describe("fleet-stream-registry — frames that change nothing", () => {
     const listener = vi.fn();
     // A running turn: a settled one drops every tool frame before the registry
     // compares anything, and the silence below would then prove nothing.
-    const running = row({ event_id: "evt_tool", status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+    const running = row({ turn_id: "evt_tool", status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
     const release = subscribe(WS, Z_A, [running], listener);
     const es = sourceAt(0);
     es.open();
     const opened = listener.mock.calls.length;
-    es.emit({ call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_tool", name: "read_file", args_redacted: {} });
-    es.emit({ call_id: "read_file", status: "succeeded", kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "evt_tool", name: "read_file", ms: 7 });
+    es.emit({ call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: "evt_tool", name: "read_file", args_redacted: {} });
+    es.emit({ call_id: "read_file", status: "succeeded", kind: FRAME_KIND.TOOL_CALL_COMPLETED, turn_id: "evt_tool", name: "read_file", ms: 7 });
     const settled = getSnapshot(Z_A);
     const notified = listener.mock.calls.length;
     expect(notified).toBeGreaterThan(opened);
-    es.emit({ call_id: "read_file", status: "succeeded", kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "evt_tool", name: "read_file", ms: 7 });
-    es.emitRaw(JSON.stringify({ call_id: { bad: "name" }, kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_tool", name: { bad: "name" } }));
+    es.emit({ call_id: "read_file", status: "succeeded", kind: FRAME_KIND.TOOL_CALL_COMPLETED, turn_id: "evt_tool", name: "read_file", ms: 7 });
+    es.emitRaw(JSON.stringify({ call_id: { bad: "name" }, kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: "evt_tool", name: { bad: "name" } }));
     expect(getSnapshot(Z_A)).toBe(settled);
     expect(listener).toHaveBeenCalledTimes(notified);
     release();
@@ -61,8 +61,8 @@ describe("fleet-stream-registry — server-rendered seed", () => {
     const t0 = Date.UTC(2026, 4, 15, 18, 0, 0);
     const t1 = Date.UTC(2026, 4, 15, 18, 30, 0);
     const a = subscribe(WS, Z_A, [
-      row({ event_id: "evt_newer", created_at: new Date(t1).toISOString() }),
-      row({ event_id: "evt_older", created_at: new Date(t0).toISOString() }),
+      row({ turn_id: "evt_newer", created_at: new Date(t1).toISOString() }),
+      row({ turn_id: "evt_older", created_at: new Date(t0).toISOString() }),
     ], () => {});
     const snap = getSnapshot(Z_A);
     expect(snap.events.map((e) => e.id)).toEqual(["evt_older", "evt_newer"]);
@@ -73,7 +73,7 @@ describe("fleet-stream-registry — server-rendered seed", () => {
     // A tab left open on a busy fleet must not grow the array without bound,
     // but the cap sheds only settled rows — a pending send is live state.
     const seed = Array.from({ length: 260 }, (_, i) =>
-      row({ event_id: `evt_${i}`, status: "processed", created_at: new Date(Date.UTC(2026, 4, 15, 12, 0, i)).toISOString() }),
+      row({ turn_id: `evt_${i}`, status: "processed", created_at: new Date(Date.UTC(2026, 4, 15, 12, 0, i)).toISOString() }),
     );
     const release = subscribe(WS, Z_A, seed, () => {});
     const tempId = appendOptimistic(Z_A, "one more", "steer:pending");
@@ -96,7 +96,7 @@ describe("fleet-stream-registry — server-rendered seed", () => {
     const tempId = appendOptimistic(Z_A, "buried steer", "steer:pending");
     // A backfill of 260 newer server rows must leave the pending row last.
     const backfill = Array.from({ length: 260 }, (_, i) =>
-      row({ event_id: `srv_${i}`, status: "processed", created_at: new Date(Date.UTC(2026, 4, 15, 18, 0, i)).toISOString() }),
+      row({ turn_id: `srv_${i}`, status: "processed", created_at: new Date(Date.UTC(2026, 4, 15, 18, 0, i)).toISOString() }),
     );
     reconcileServerRows(Z_A, backfill);
 
@@ -115,8 +115,8 @@ describe("fleet-stream-registry — server-rendered seed", () => {
   });
 
   it("ignores the second subscriber's initial rows — the live entry is authoritative", () => {
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_first" })], () => {});
-    const b = subscribe(WS, Z_A, [row({ event_id: "evt_second" })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_first" })], () => {});
+    const b = subscribe(WS, Z_A, [row({ turn_id: "evt_second" })], () => {});
     const ids = getSnapshot(Z_A).events.map((e) => e.id);
     expect(ids).toEqual(["evt_first"]);
     a();
@@ -125,12 +125,12 @@ describe("fleet-stream-registry — server-rendered seed", () => {
 
   it("reconciles a refreshed terminal row with its recorded failure outcome", () => {
     const release = subscribe(WS, Z_A, [
-      row({ event_id: "evt_live", status: "received", response_text: null }),
+      row({ turn_id: "evt_live", status: "received", response_text: null }),
     ], () => {});
 
     reconcileServerRows(Z_A, [
       row({
-        event_id: "evt_live",
+        turn_id: "evt_live",
         status: "fleet_error",
         response_text: null,
         failure_label: "startup_posture",

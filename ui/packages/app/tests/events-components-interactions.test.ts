@@ -10,7 +10,7 @@ describe("EventsList — inspection and page navigation", () => {
     renderList({
       items: [
         row({
-          event_id: "actor",
+          turn_id: "actor",
           actor: "steer:user_3GkbgXjNuJSXbdxttcWCSlPc87k",
         }),
       ],
@@ -70,7 +70,7 @@ describe("EventsList — inspection and page navigation", () => {
     renderList({
       items: [
         row({
-          event_id: "evt_startup_1",
+          turn_id: "evt_startup_1",
           actor: "github-app",
           event_type: "webhook",
           status: "fleet_error",
@@ -143,8 +143,8 @@ describe("EventsList — inspection and page navigation", () => {
   it("renders relative <time> with a standard datetime when created_at is valid; omits when invalid", () => {
     const { container } = renderList({
       items: [
-        row({ event_id: "ok", created_at: new Date(Date.UTC(2026, 0, 2, 3, 4, 0)).toISOString() }),
-        row({ event_id: "bad", created_at: "not-an-instant" }),
+        row({ turn_id: "ok", created_at: new Date(Date.UTC(2026, 0, 2, 3, 4, 0)).toISOString() }),
+        row({ turn_id: "bad", created_at: "not-an-instant" }),
       ],
       next_cursor: null,
     });

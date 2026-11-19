@@ -77,7 +77,7 @@ function sortRows(rows: ThreadMessageLike[]): ThreadMessageLike[] {
 }
 
 function activityMessage(row: SetupActivity): ThreadMessageLike {
-  return {id: `activity:${row.event_id}`, role: "system", createdAt: new Date(row.created_at),
+  return {id: `activity:${row.turn_id}`, role: "system", createdAt: new Date(row.created_at),
     content: [{type: "text", text: setupActivityText(row)}], metadata: {custom: {activity: true}}};
 }
 

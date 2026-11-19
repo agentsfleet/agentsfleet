@@ -2,7 +2,7 @@
 
 import type { FleetSources } from "@/lib/fleet-sources";
 import type { Schedule } from "@/lib/api/draft-types";
-import type { EventDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/events";
 import type { ReactNode } from "react";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
 import FleetThreadDynamic from "@/components/domain/conversation/thread/FleetThreadDynamic";
@@ -20,7 +20,7 @@ type Props = {
   fleetId: string;
   senderLabel: string;
   /** The thread turns the server rendered — the stream takes over from here. */
-  initial: EventDetail[];
+  initial: TurnDetail[];
   /** The status line's figures as the server rendered them. */
   initialSummary: FleetRunSummary;
   approvalsHref: string;

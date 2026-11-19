@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useLayoutEffect, useSyncExternalStore } from "react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
-import type { EventRow } from "@/lib/api/events";
+import type { TurnRow } from "@/lib/api/events";
 import { CONNECTION_STATUS, type ConnectionStatus } from "@/lib/streaming/fleet-stream-registry";
 import { useFleetStreams } from "./FleetStreamProvider";
 import {
@@ -10,13 +10,13 @@ import {
   type FleetEvent,
   type FleetEventStatus,
 } from "@/lib/streaming/fleet-stream-row";
-import { setEventDetailReader } from "@/lib/streaming/fleet-stream-reply-registry";
-import { readEventDetailRoute } from "@/lib/streaming/fleet-stream-detail-reader";
+import { setTurnDetailReader } from "@/lib/streaming/fleet-stream-reply-registry";
+import { readTurnDetailRoute } from "@/lib/streaming/fleet-stream-detail-reader";
 
 // The chat is the only surface that shows reply text, so it installs the read
 // a reply uses when its stream lost the final words: the same-origin route, so
 // a send in flight never holds the read up, nor the read a send.
-setEventDetailReader(readEventDetailRoute);
+setTurnDetailReader(readTurnDetailRoute);
 
 // Public re-exports so existing consumers keep their import surface.
 export {
@@ -32,7 +32,7 @@ export type UseFleetEventStreamResult = {
   events: FleetEvent[];
   connectionStatus: ConnectionStatus;
   appendOptimistic: (text: string, actor: string, sentAs?: string) => string;
-  reconcileOptimistic: (tempId: string, realEventId: string, replayed: boolean, foldedInto?: string | null) => boolean;
+  reconcileOptimistic: (tempId: string, realTurnId: string, replayed: boolean, foldedInto?: string | null) => boolean;
   discardOptimistic: (tempId: string) => void;
   retryConnection: () => void;
   convertEvent: (event: FleetEvent) => ThreadMessageLike;
@@ -52,7 +52,7 @@ export type UseFleetEventStreamResult = {
 export function useFleetEventStream(
   workspaceId: string,
   fleetId: string,
-  initial: EventRow[],
+  initial: TurnRow[],
 ): UseFleetEventStreamResult {
   // Hold the latest `initial` without making it a `subscribe` dependency:
   // a fresh array identity each render must not resubscribe. Updating the
@@ -81,8 +81,8 @@ export function useFleetEventStream(
     [streams, fleetId],
   );
   const reconcileOptimistic = useCallback(
-    (tempId: string, realEventId: string, replayed: boolean, foldedInto: string | null = null) =>
-      streams.reconcileOptimistic(fleetId, tempId, realEventId, replayed, foldedInto),
+    (tempId: string, realTurnId: string, replayed: boolean, foldedInto: string | null = null) =>
+      streams.reconcileOptimistic(fleetId, tempId, realTurnId, replayed, foldedInto),
     [streams, fleetId],
   );
   const discardOptimistic = useCallback(

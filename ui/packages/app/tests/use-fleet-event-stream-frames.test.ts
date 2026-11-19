@@ -76,7 +76,7 @@ describe("useFleetEventStream — conversion and frame edges", () => {
 
   // ── Robustness: invalid/error paths ─────────────────────────────────────
 
-  it("creates a fresh event row when CHUNK arrives before EVENT_RECEIVED", async () => {
+  it("creates a fresh event row when CHUNK arrives before TURN_RECEIVED", async () => {
     const { result } = mount();
     act(() => {
       FakeEventSource.instances[0]!.open();
@@ -88,7 +88,7 @@ describe("useFleetEventStream — conversion and frame edges", () => {
     act(() => {
       FakeEventSource.instances[0]!.emit({
         kind: FRAME_KIND.CHUNK,
-        event_id: "evt_orphan",
+        turn_id: "evt_orphan",
         text: "partial body without a header frame",
         text_kind: "answer",
         stream_seq: 0,

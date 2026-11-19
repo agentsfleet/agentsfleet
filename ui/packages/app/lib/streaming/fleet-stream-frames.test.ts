@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type EventRow, type LiveFrame } from "@/lib/api/events";
+import { type TurnRow, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { HEADLINE, OUTCOME, THREAD_STATUS } from "@/lib/events/event-summary";
 import { maxServerCreatedAt, mergeBackfill, rfc3339Seconds } from "./fleet-stream-frames";
@@ -13,12 +13,12 @@ import { MS_PER_SECOND, evt, row } from "@/tests/helpers/fleet-stream-fixtures";
 describe("mergeBackfill", () => {
   // A waiting row never moves back. A server page read before the
   // runner took the message still says `queued`; the live tab has since seen
-  // `event_received`, and that frame is spent, so a regression here would hold
+  // `turn_received`, and that frame is spent, so a regression here would hold
   // the row at "Queued" until the turn completes.
   it("should keep a received row running when a server page restates it as queued", () => {
     const live = evt({ id: "e1", status: AGENTSFLEET_EVENT_STATUS.RECEIVED, text: "check the tests" });
     const merged = mergeBackfill([live], [
-      row({ event_id: "e1", status: THREAD_STATUS.QUEUED, response_text: null }),
+      row({ turn_id: "e1", status: THREAD_STATUS.QUEUED, response_text: null }),
     ]);
 
     expect(merged).toHaveLength(1);
@@ -31,7 +31,7 @@ describe("mergeBackfill", () => {
   it("should start a send labelled folded when a server page says its run began", () => {
     const live = evt({ id: "e1", status: AGENTSFLEET_EVENT_STATUS.FOLDED, outcome: FOLDED_OUTCOME, text: "and also this" });
     const merged = mergeBackfill([live], [
-      row({ event_id: "e1", status: AGENTSFLEET_EVENT_STATUS.RECEIVED, response_text: null }),
+      row({ turn_id: "e1", status: AGENTSFLEET_EVENT_STATUS.RECEIVED, response_text: null }),
     ]);
 
     expect(merged).toHaveLength(1);
@@ -42,16 +42,16 @@ describe("mergeBackfill", () => {
   it("dedupes by id and sorts the union oldest-first", () => {
     const prev = [evt({ id: "e2", createdAt: new Date(2000) })];
     const merged = mergeBackfill(prev, [
-      row({ event_id: "e1", created_at: new Date(MS_PER_SECOND).toISOString(), response_text: "a" }),
-      row({ event_id: "e2", created_at: "1970-01-01T00:00:02Z" }),
+      row({ turn_id: "e1", created_at: new Date(MS_PER_SECOND).toISOString(), response_text: "a" }),
+      row({ turn_id: "e2", created_at: "1970-01-01T00:00:02Z" }),
     ]);
     expect(merged.map((e) => e.id)).toEqual(["e1", "e2"]);
   });
 
   it("test_backfill_keeps_unchanged_identity", () => {
-    const failed = row({ event_id: "e2", status: AGENTSFLEET_EVENT_STATUS.AGENT_ERROR, created_at: new Date(2 * MS_PER_SECOND).toISOString(), failure_label: "timeout" });
+    const failed = row({ turn_id: "e2", status: AGENTSFLEET_EVENT_STATUS.AGENT_ERROR, created_at: new Date(2 * MS_PER_SECOND).toISOString(), failure_label: "timeout" });
     const page = [
-      row({ event_id: "e1", status: "processed", created_at: new Date(MS_PER_SECOND).toISOString(), request_json: JSON.stringify({ message: "hi" }) }),
+      row({ turn_id: "e1", status: "processed", created_at: new Date(MS_PER_SECOND).toISOString(), request_json: JSON.stringify({ message: "hi" }) }),
       failed,
     ];
     const once = mergeBackfill([], page);
@@ -72,7 +72,7 @@ describe("mergeBackfill", () => {
         evt({ id: "settled", status: "processed", createdAt: new Date(2 * MS_PER_SECOND) }),
         evt({ id: "pending-2", status: "optimistic", clientTimestamp: true, createdAt: new Date(0) }),
       ],
-      [row({ event_id: "server", status: "processed", created_at: new Date(3 * MS_PER_SECOND).toISOString() })],
+      [row({ turn_id: "server", status: "processed", created_at: new Date(3 * MS_PER_SECOND).toISOString() })],
     );
 
     expect(merged.map((event) => event.id)).toEqual([
@@ -93,7 +93,7 @@ describe("mergeBackfill", () => {
       reply: "done, staging is up",
     });
     const [merged] = mergeBackfill([live], [
-      row({ event_id: "e1", status: "processed", response_text: null }),
+      row({ turn_id: "e1", status: "processed", response_text: null }),
     ]);
 
     expect(merged?.text).toBe("redeploy staging");
@@ -113,13 +113,13 @@ describe("mergeBackfill", () => {
     expect(first?.outcome).toBe("Failed a startup safety check");
   });
 
-  // `mergeBackfill` takes `EventRow[]`, and a list row carries no bodies — the
+  // `mergeBackfill` takes `TurnRow[]`, and a list row carries no bodies — the
   // read split exists precisely so a page of them stays off oversized-attribute
   // storage. The factory above over-supplies both, so this is the only case
   // that reaches the payload fallback with the shape production delivers.
   it("a list row carrying no bodies reconstructs against an empty payload", () => {
-    const { request_json: _request, response_text: _response, ...listRow } = row({ event_id: "e9" });
-    const [first] = mergeBackfill([], [listRow as EventRow]);
+    const { request_json: _request, response_text: _response, ...listRow } = row({ turn_id: "e9" });
+    const [first] = mergeBackfill([], [listRow as TurnRow]);
     expect(first?.id).toBe("e9");
     expect(first?.custom?.requestJson).toBe("{}");
   });
@@ -129,7 +129,7 @@ describe("mergeBackfill", () => {
     // text, the durable row carries the full final text + terminal status.
     const prev = [evt({ id: "e1", reply: "partial chu", status: "received" })];
     const merged = mergeBackfill(prev, [
-      row({ event_id: "e1", status: "processed", response_text: "the full final text" }),
+      row({ turn_id: "e1", status: "processed", response_text: "the full final text" }),
     ]);
     expect(merged).toHaveLength(1);
     expect(merged[0]?.reply).toBe("the full final text");
@@ -140,7 +140,7 @@ describe("mergeBackfill", () => {
     const tools = [{ name: "inspect", startedAtMs: 1_000, ms: 12, done: true }];
     const prev = [evt({ id: "e1", status: "received", tools })];
     const merged = mergeBackfill(prev, [
-      row({ event_id: "e1", status: "processed", response_text: "done" }),
+      row({ turn_id: "e1", status: "processed", response_text: "done" }),
     ]);
     expect(merged[0]?.tools).toEqual(tools);
   });
@@ -194,7 +194,7 @@ describe("mergeBackfill", () => {
     // event — a "received" backfill row must not clobber it.
     const prev = [evt({ id: "e1", reply: "live chunks so far", status: "received" })];
     const merged = mergeBackfill(prev, [
-      row({ event_id: "e1", status: "received", response_text: "stale snapshot" }),
+      row({ turn_id: "e1", status: "received", response_text: "stale snapshot" }),
     ]);
     expect(merged).toHaveLength(1);
     expect(merged[0]?.reply).toBe("live chunks so far");
@@ -208,18 +208,18 @@ describe("mergeBackfill", () => {
     const REASONING_ENDED_AT = 9_500;
     const MERGED_AT = 12_000;
     const open = evt({ id: "e1", status: "received", reasoning: "weighing it", reasoningStartedAtMs: REASONING_STARTED_AT });
-    const [closed] = mergeBackfill([open], [row({ event_id: "e1", status: "processed" })], MERGED_AT);
+    const [closed] = mergeBackfill([open], [row({ turn_id: "e1", status: "processed" })], MERGED_AT);
     expect(closed?.reasoning).toBe("weighing it");
     expect(closed?.reasoningStartedAtMs).toBe(REASONING_STARTED_AT);
     expect(closed?.reasoningEndedAtMs).toBe(MERGED_AT);
 
     const ended = evt({ id: "e2", status: "received", reasoning: "done weighing", reasoningStartedAtMs: REASONING_STARTED_AT, reasoningEndedAtMs: REASONING_ENDED_AT });
-    const [kept] = mergeBackfill([ended], [row({ event_id: "e2", status: "processed" })], MERGED_AT);
+    const [kept] = mergeBackfill([ended], [row({ turn_id: "e2", status: "processed" })], MERGED_AT);
     expect(kept?.reasoningEndedAtMs).toBe(REASONING_ENDED_AT);
 
     // A span never opened stays unopened: an answer-only turn gets no chip.
     const plain = evt({ id: "e3", status: "received", reply: "just the answer" });
-    const [unopened] = mergeBackfill([plain], [row({ event_id: "e3", status: "processed" })], MERGED_AT);
+    const [unopened] = mergeBackfill([plain], [row({ turn_id: "e3", status: "processed" })], MERGED_AT);
     expect(unopened?.reasoningStartedAtMs).toBeUndefined();
     expect(unopened?.reasoningEndedAtMs).toBeUndefined();
   });

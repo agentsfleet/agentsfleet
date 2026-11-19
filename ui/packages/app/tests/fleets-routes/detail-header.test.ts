@@ -70,7 +70,7 @@ describe("fleets routes — detail header and summary", () => {
   // of Promise.all and the whole fleet page dies on one bad event.
   it("fleet transcript survives a turn whose detail re-read fails", async () => {
     const listRow = {
-      event_id: "ev_1",
+      turn_id: "ev_1",
       fleet_id: FLEET_ID,
       workspace_id: "ws_1",
       actor: "fleet",
@@ -87,8 +87,8 @@ describe("fleets routes — detail header and summary", () => {
     const respond = mockFetchBilling(happyBilling);
     fetchMock.mockImplementation(async (url: string) => {
       if (url.includes("/messages")) return response({items: [listRow], total: null, next_cursor: null});
-      if (/\/events\/[^/?]+/.test(url)) return response({detail: "detail read failed"}, 500);
-      if (url.includes("/events")) return response({items: [listRow], next_cursor: null});
+      if (/\/turns\/[^/?]+/.test(url)) return response({detail: "detail read failed"}, 500);
+      if (url.includes("/turns")) return response({items: [listRow], next_cursor: null});
       return respond(url);
     });
     const { default: Page } =

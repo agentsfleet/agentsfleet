@@ -33,7 +33,7 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     a();
   });
 
-  it("reconcileOptimistic swaps tempId for the real event_id and clears optimistic", () => {
+  it("reconcileOptimistic swaps tempId for the real turn_id and clears optimistic", () => {
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "x", "steer:k@e2e.com");
     expect(reconcileOptimistic(Z_A, tempId, "evt_real", false)).toBe(false);
@@ -53,7 +53,7 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     expect(row?.status).toBe(AGENTSFLEET_EVENT_STATUS.FOLDED);
     expect(row?.outcome).toBe(FOLDED_OUTCOME);
     // The run reports: the folded send's own event completes with its reply.
-    sourceAt(0).emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_folded", status: AGENTSFLEET_EVENT_STATUS.PROCESSED });
+    sourceAt(0).emit({ kind: FRAME_KIND.TURN_COMPLETE, turn_id: "evt_folded", status: AGENTSFLEET_EVENT_STATUS.PROCESSED });
     expect(getSnapshot(Z_A).events[0]?.status).toBe(AGENTSFLEET_EVENT_STATUS.PROCESSED);
     a();
   });
@@ -77,9 +77,9 @@ describe("fleet-stream-registry — optimistic mutations", () => {
 
     reconcileOptimistic(Z_A, tempId, "evt_mine", false);
     expect(getSnapshot(Z_A).events[0]?.submittedAtMs).toBe(stamped);
-    sourceAt(0).emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_mine", actor: "steer:k@e2e.com", created_at: new Date(Date.UTC(2026, 0, 1)).toISOString() });
+    sourceAt(0).emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_mine", actor: "steer:k@e2e.com", created_at: new Date(Date.UTC(2026, 0, 1)).toISOString() });
     // A frame that lands on the row synchronously, so nothing here waits.
-    sourceAt(0).emit({ call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_mine", name: "read_file", args_redacted: true });
+    sourceAt(0).emit({ call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: "evt_mine", name: "read_file", args_redacted: true });
     expect(getSnapshot(Z_A).events).toHaveLength(1);
     expect(getSnapshot(Z_A).events[0]).toMatchObject({ id: "evt_mine", tools: [{ name: "read_file" }], submittedAtMs: stamped });
     release();
@@ -91,15 +91,15 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     const release = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "keep this turn visible", "steer:k@e2e.com");
     reconcileOptimistic(Z_A, tempId, "evt_ack", false);
-    const newerRow = row({ event_id: "evt_other", status: "processed", created_at: new Date(Date.UTC(2026, 4, 15)).toISOString() });
+    const newerRow = row({ turn_id: "evt_other", status: "processed", created_at: new Date(Date.UTC(2026, 4, 15)).toISOString() });
 
     reconcileServerRows(Z_A, [newerRow]);
     expect(getSnapshot(Z_A).events.at(-1)?.id).toBe("evt_ack");
     expect(getSnapshot(Z_A).events.at(-1)?.clientTimestamp).toBe(true);
 
     sourceAt(0).emit({
-      kind: FRAME_KIND.EVENT_RECEIVED,
-      event_id: "evt_ack",
+      kind: FRAME_KIND.TURN_RECEIVED,
+      turn_id: "evt_ack",
       actor: "steer:k@e2e.com",
       created_at: new Date(clientInstant).toISOString(),
     });
@@ -117,8 +117,8 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     // then lands on the row that holds the operator's text.
     const es = sourceAt(0);
     es.emit({
-      kind: FRAME_KIND.EVENT_RECEIVED,
-      event_id: "evt_early",
+      kind: FRAME_KIND.TURN_RECEIVED,
+      turn_id: "evt_early",
       actor: "steer:k@e2e.com",
     });
     expect(reconcileOptimistic(Z_A, tempId, "evt_early", false)).toBe(false);
@@ -135,7 +135,7 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     const a = subscribe(
       WS,
       Z_A,
-      [row({ event_id: "evt_fast", status: "processed", response_text: "done" })],
+      [row({ turn_id: "evt_fast", status: "processed", response_text: "done" })],
       () => {},
     );
     const tempId = appendOptimistic(Z_A, "fast task", "steer:k@e2e.com");

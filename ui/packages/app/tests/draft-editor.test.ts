@@ -12,7 +12,7 @@ const draft = {...DRAFT, linked_fleet_id: FLEET_ID,
   review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
 const conversation = (id = DRAFT_ID, state = DRAFT_STATE.editing as string) => ({draft: {...draft, id, state},
   messages: [MESSAGE], messages_starting_after: null, truncated: false});
-const activity = (id: string) => ({event_id: id, event_type: "activity", status: "recorded",
+const activity = (id: string) => ({turn_id: id, event_type: "activity", status: "recorded",
   request_json: JSON.stringify({kind: "setup_saved", revision: "1"}), created_at: MESSAGE.created_at});
 const page = () => ({fleet: FLEET_DETAIL, conversations: [conversation()], activities: {items: [activity("saved")], next_cursor: null as string | null}, next_cursor: null as string | null});
 beforeEach(() => fixture.mount());
@@ -61,7 +61,7 @@ it("pages filtered receipts without dropping already visible receipts", async ()
   await client.refreshFleetSetup();
   const first = client.getSnapshot().activities?.[0];
   await client.loadEarlierConversations();
-  expect(client.getSnapshot().activities?.map(item => item.event_id)).toEqual(["new", "old"]);
+  expect(client.getSnapshot().activities?.map(item => item.turn_id)).toEqual(["new", "old"]);
   expect(client.getSnapshot().activities?.[0]).toBe(first);
   expect(new URLSearchParams(fixture.calls.at(-1)?.search).get("event_type")).toBe("activity");
   expect(new URLSearchParams(fixture.calls.at(-1)?.search).get("starting_after")).toBe("older-receipts");

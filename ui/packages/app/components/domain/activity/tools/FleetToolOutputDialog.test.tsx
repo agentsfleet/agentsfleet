@@ -17,7 +17,7 @@ import type { ToolResult } from "../replies/fleetReplyMessage";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 
 const SCOPE = { workspaceId: "ws_1", fleetId: "flt_1" };
-const EVENT_ID = "evt_1";
+const TURN_ID = "evt_1";
 const CALL_ID = "f1:3";
 const VERB = "Requested";
 const TARGET = "GET https://api.example/run";
@@ -47,7 +47,7 @@ function renderDialog(over: { name?: string; outcome?: ToolResult; onClose?: () 
   return render(
     <FleetToolOutputDialog
       scope={SCOPE}
-      eventId={EVENT_ID}
+      turnId={TURN_ID}
       callId={CALL_ID}
       name={over.name ?? TOOL_NAME.HTTP_REQUEST}
       verb={VERB}
@@ -75,7 +75,7 @@ describe("FleetToolOutputDialog", () => {
     expect(screen.getByText("line 224")).toBeTruthy();
     // The id is encoded once, through the same-origin proxy.
     expect(fetchMock).toHaveBeenCalledWith(
-      "/live/v1/workspaces/ws_1/fleets/flt_1/events/evt_1/tool-calls/f1%3A3",
+      "/live/v1/workspaces/ws_1/fleets/flt_1/turns/evt_1/items/f1%3A3",
       expect.objectContaining({ redirect: "manual" }),
     );
     expect(screen.getByRole("button", { name: "Copy output" })).toBeTruthy();

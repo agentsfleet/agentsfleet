@@ -16,10 +16,10 @@ vi.mock("@/lib/api/client", () => ({
   request: vi.fn(),
 }));
 
-import { GET as workspaceEvents } from "../app/live/v1/workspaces/[workspaceId]/events/route";
-import { GET as workspaceStream } from "../app/live/v1/workspaces/[workspaceId]/events/stream/route";
-import { GET as fleetEvents } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/route";
-import { GET as fleetStream } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/stream/route";
+import { GET as workspaceEvents } from "../app/live/v1/workspaces/[workspaceId]/turns/route";
+import { GET as workspaceStream } from "../app/live/v1/workspaces/[workspaceId]/turns/stream/route";
+import { GET as fleetEvents } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/route";
+import { GET as fleetStream } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/stream/route";
 import { GET as fleetTasks } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/tasks/route";
 import { GET as fleetTask } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/tasks/[taskId]/route";
 

@@ -6,7 +6,7 @@ import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
 /** A status hint can affect only its already-running row, never durable history. */
 export function applyContextProgress(prev: FleetEvent[], frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.CONTEXT_PROGRESS }>): FleetEvent[] {
   const progress = readContextProgress({ generation: frame.generation, state: frame.state });
-  const index = prev.findIndex(event => event.id === frame.event_id);
+  const index = prev.findIndex(event => event.id === frame.turn_id);
   const current = prev[index];
   if (!progress || !current || current.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED
     || !advancesContext(current.contextProgress, progress)) return prev;

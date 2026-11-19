@@ -39,7 +39,7 @@ export function recoverGap(entry: LiveEntry, fleetId: string): void {
       // A held turn the page settles lands its live frames first, as if never
       // held: the durable row then settles it and keeps the tools and text
       // they carried, which the list itself never has.
-      landFrames(entry, fleetId, entry.held.releaseTurns(new Set(rows.map((row) => row.event_id))));
+      landFrames(entry, fleetId, entry.held.releaseTurns(new Set(rows.map((row) => row.turn_id))));
       setEvents(entry, (prev) => mergeBackfill(prev, rows));
       watchRunningRows(entry, rows);
       settleRepliesFromBackfill(entry, fleetId, rows, entry.apply, entry.isCurrent);

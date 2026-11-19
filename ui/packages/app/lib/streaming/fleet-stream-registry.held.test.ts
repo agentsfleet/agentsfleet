@@ -19,12 +19,12 @@ const PENDING = "steer:pending";
 const MINE = "evt_mine";
 const ELSEWHERE = "evt_elsewhere";
 
-function announce(eventId: string, actor = OWN): void {
-  sourceAt(0).emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: eventId, actor });
+function announce(turnId: string, actor = OWN): void {
+  sourceAt(0).emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: turnId, actor });
 }
 
-function toolStarted(eventId: string): void {
-  sourceAt(0).emit({ call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: eventId, name: "read_file", args_redacted: true });
+function toolStarted(turnId: string): void {
+  sourceAt(0).emit({ call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: turnId, name: "read_file", args_redacted: true });
 }
 
 function ids(): string[] {
@@ -85,7 +85,7 @@ describe("fleet-stream-registry — turns held on a send's 202", () => {
   it("lands a held turn's activity before a backfill settles it", async () => {
     // The row the gap walk reads back finished while its frames were held; the
     // list carries no tools, so only the held frames can put them on the row.
-    fetchSpy.mockResolvedValue(pageWith([row({ event_id: ELSEWHERE, actor: OWN, status: "processed", response_text: "done" })]));
+    fetchSpy.mockResolvedValue(pageWith([row({ turn_id: ELSEWHERE, actor: OWN, status: "processed", response_text: "done" })]));
     const release = subscribe(WS, Z_A, NO_SEED, () => {});
     const es = sourceAt(0);
     es.open();

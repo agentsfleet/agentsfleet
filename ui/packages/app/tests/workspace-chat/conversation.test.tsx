@@ -48,7 +48,7 @@ it("folds a long request without losing its full text", async () => {
 });
 
 it.each([ACTIVITY_KIND.setupSaved, ACTIVITY_KIND.setupReady])("keeps the saved occurrence and readiness before the next working turn (%s)", kind => {
-  const activity = {event_id: "setup:one", event_type: "activity", status: "recorded",
+  const activity = {turn_id: "setup:one", event_type: "activity", status: "recorded",
     request_json: JSON.stringify({kind, revision: "1"}), created_at: "1970-01-01T00:00:01Z"};
   const view = {...client.getSnapshot(), fleet: FLEET, activities: [activity], messages: [
     MESSAGE, {...MESSAGE, sequence: "2", text: "Change the setup", state: "running" as const, created_at: "1970-01-01T00:00:02Z"},

@@ -71,7 +71,7 @@ it("should accept application traffic as liveness when it suppresses idle heartb
   source.open();
   for (let frame = 0; frame < 100; frame += 1) {
     await vi.advanceTimersByTimeAsync(40_000);
-    source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: `event-${frame}`, actor: "fleet" });
+    source.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: `event-${frame}`, actor: "fleet" });
     expect(source.closed).toBe(false);
     expect(getSnapshot(FLEET).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
   }

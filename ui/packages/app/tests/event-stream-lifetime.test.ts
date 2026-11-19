@@ -4,8 +4,8 @@ const {getToken} = vi.hoisted(() => ({getToken: vi.fn()}));
 vi.mock("@clerk/nextjs/server", () => ({auth: async () => ({getToken})}));
 vi.mock("@/lib/api/client", () => ({API_ORIGIN: "https://api.example.test"}));
 
-import {GET as workspaceStream} from "@/app/live/v1/workspaces/[workspaceId]/events/stream/route";
-import {GET as fleetStream} from "@/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/stream/route";
+import {GET as workspaceStream} from "@/app/live/v1/workspaces/[workspaceId]/turns/stream/route";
+import {GET as fleetStream} from "@/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/stream/route";
 
 const ROTATION_MS = 240_000;
 const HANDSHAKE_MS = 30_000;

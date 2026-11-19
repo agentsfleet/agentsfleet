@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createEntry } from "./fleet-stream-entry";
 import { recoverGap, type LiveEntry } from "./fleet-stream-dispatch";
-import { recoverRunningReplies, setEventDetailReader, watchReply, type EventDetailReader } from "./fleet-stream-reply-registry";
+import { recoverRunningReplies, setTurnDetailReader, watchReply, type TurnDetailReader } from "./fleet-stream-reply-registry";
 import { row, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import type { TaskActivityHistory } from "../task-activity";
 
@@ -12,20 +12,20 @@ const progress: TaskActivityHistory = {items: [{kind: "task_transfer_progress", 
 }}], truncated: false};
 
 function entry(): LiveEntry {
-  const current = createEntry(WS, [row({event_id: EVENT, status: "received"})]);
+  const current = createEntry(WS, [row({turn_id: EVENT, status: "received"})]);
   return Object.assign(current, {isCurrent: () => true,
     apply: (update: Parameters<LiveEntry["apply"]>[0]) => { current.snapshot.events = update(current.snapshot.events); }});
 }
 
-afterEach(() => { setEventDetailReader(null); vi.unstubAllGlobals(); });
+afterEach(() => { setTurnDetailReader(null); vi.unstubAllGlobals(); });
 
 describe("running progress readback", () => {
   it("recovers an event older than an empty gap list while live traffic continues", async () => {
     const current = entry();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ok: true, json: async () => ({items: [], next_cursor: null})}));
-    const read = vi.fn<EventDetailReader>().mockResolvedValue({ok: true,
-      data: row({event_id: EVENT, status: "received", task_activity: progress})});
-    setEventDetailReader(read);
+    const read = vi.fn<TurnDetailReader>().mockResolvedValue({ok: true,
+      data: row({turn_id: EVENT, status: "received", task_activity: progress})});
+    setTurnDetailReader(read);
     current.replyHeard.set(EVENT, Date.now());
     recoverGap(current, Z_A);
     await vi.waitFor(() => expect(current.backfillInFlight).toBe(false));
@@ -36,16 +36,16 @@ describe("running progress readback", () => {
 
   it("waits for an older in-flight read before recovering a newer gap", async () => {
     const current = entry();
-    let answer!: (result: Awaited<ReturnType<EventDetailReader>>) => void;
-    const read = vi.fn<EventDetailReader>()
+    let answer!: (result: Awaited<ReturnType<TurnDetailReader>>) => void;
+    const read = vi.fn<TurnDetailReader>()
       .mockReturnValueOnce(new Promise(resolve => { answer = resolve; }))
-      .mockResolvedValue({ok: true, data: row({event_id: EVENT, status: "received", task_activity: progress})});
-    setEventDetailReader(read);
+      .mockResolvedValue({ok: true, data: row({turn_id: EVENT, status: "received", task_activity: progress})});
+    setTurnDetailReader(read);
     watchReply(current, Z_A, EVENT, current.apply, current.isCurrent, true);
     watchReply(current, Z_A, EVENT, current.apply, current.isCurrent, true);
     const recovery = recoverRunningReplies(current, Z_A, current.apply, current.isCurrent);
     expect(read).toHaveBeenCalledTimes(1);
-    answer({ok: true, data: row({event_id: EVENT, status: "received"})});
+    answer({ok: true, data: row({turn_id: EVENT, status: "received"})});
     await recovery;
     expect(read).toHaveBeenCalledTimes(2);
     expect(current.snapshot.events[0]?.taskActivity).toEqual(progress);
@@ -54,15 +54,15 @@ describe("running progress readback", () => {
 
   it("rechecks ownership after waiting for an older detail read", async () => {
     const current = entry();
-    let answer!: (result: Awaited<ReturnType<EventDetailReader>>) => void;
-    const read = vi.fn<EventDetailReader>().mockReturnValue(new Promise(resolve => { answer = resolve; }));
-    setEventDetailReader(read);
+    let answer!: (result: Awaited<ReturnType<TurnDetailReader>>) => void;
+    const read = vi.fn<TurnDetailReader>().mockReturnValue(new Promise(resolve => { answer = resolve; }));
+    setTurnDetailReader(read);
     let owned = true;
     const isCurrent = () => owned;
     watchReply(current, Z_A, EVENT, current.apply, isCurrent, true);
     const recovery = recoverRunningReplies(current, Z_A, current.apply, isCurrent);
     owned = false;
-    answer({ok: true, data: row({event_id: EVENT, status: "received", task_activity: progress})});
+    answer({ok: true, data: row({turn_id: EVENT, status: "received", task_activity: progress})});
     await recovery;
     expect(read).toHaveBeenCalledTimes(1);
     expect(current.snapshot.events[0]?.taskActivity).toBeUndefined();
@@ -71,8 +71,8 @@ describe("running progress readback", () => {
 
   it("does not read or write for an entry whose subscriber is gone", async () => {
     const current = entry();
-    const read = vi.fn<EventDetailReader>();
-    setEventDetailReader(read);
+    const read = vi.fn<TurnDetailReader>();
+    setTurnDetailReader(read);
     await recoverRunningReplies(current, Z_A, current.apply, () => false);
     expect(read).not.toHaveBeenCalled();
     expect(current.snapshot.events[0]?.taskActivity).toBeUndefined();

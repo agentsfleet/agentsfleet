@@ -2,7 +2,7 @@
 // EventSource cannot set headers, so the browser hits this Route Handler; it
 // resolves the Clerk session, mints an API-audience JWT, and pipes the upstream
 // stream body straight back. Mirror of the per-fleet SSE proxy
-// (../../fleets/[fleetId]/events/stream/route.ts), differing only in the
+// (../../fleets/[fleetId]/turns/stream/route.ts), differing only in the
 // upstream path — one workspace-scoped stream instead of one per fleet.
 //
 // See docs/AUTH.md "UI · SSE stream" for the full sequence.
@@ -41,7 +41,7 @@ export async function GET(req: Request, { params }: Params) {
   }
 
   const upstreamUrl =
-    `${API_ORIGIN}/v1/workspaces/${encodeURIComponent(workspaceId)}/events/stream`;
+    `${API_ORIGIN}/v1/workspaces/${encodeURIComponent(workspaceId)}/turns/stream`;
 
   return proxyEventStream(req, upstreamUrl, token);
 }

@@ -11,7 +11,7 @@ const HISTORY_COUNTS = [100, 1_000];
 // seam=projection only; no_claim=browser paint timing.
 it("retains historical and receipt rows while a current answer changes", () => {
   const project = createDraftThreadProjection();
-  const receipt = {event_id: "saved", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
+  const receipt = {turn_id: "saved", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
     created_at: MESSAGE.created_at, request_json: JSON.stringify({kind: ACTIVITY_KIND.setupSaved, revision: "1"})};
   const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, previousDrafts: [{id: "earlier", cancelledThrough: "0", messages: [MESSAGE]}],
     activities: [receipt], messages: [{...MESSAGE, sequence: "2", role: "assistant" as const, state: "running" as const}]};
@@ -30,7 +30,7 @@ it("places a dated receipt before the undated answer to an optimistic request", 
   const operation = MESSAGE.operation_id;
   const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
     optimistic: {operation, text: "Another request", createdAt: MESSAGE.created_at},
-    activities: [{event_id: "saved", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
+    activities: [{turn_id: "saved", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
       created_at: MESSAGE.created_at, request_json: JSON.stringify({kind: ACTIVITY_KIND.setupSaved, revision: "1"})}]});
   expect(rows.map(row => row.id)).toEqual([`pending:${operation}`, "activity:saved", `pending-answer:${operation}`]);
   expect(rows[1]).toMatchObject({role: "system", content: [{type: "text", text: "Setup saved · v1"}]});

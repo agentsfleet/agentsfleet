@@ -1,5 +1,5 @@
-import { type EventRow } from "@/lib/api/events";
-import { FRAME_KIND, ROUTED_FRAME_KINDS, streamFleetEventsUrl } from "@/lib/api/events-types";
+import { type TurnRow } from "@/lib/api/events";
+import { FRAME_KIND, ROUTED_FRAME_KINDS, streamFleetTurnsUrl } from "@/lib/api/events-types";
 import type { FleetFacts } from "@/lib/events/run-summary";
 import { landFrames, onFrame, recoverGap, type LiveEntry } from "./fleet-stream-dispatch";
 import { mergeFacts } from "./fleet-stream-facts";
@@ -55,7 +55,7 @@ let tempCounter = 0;
 export class FleetStreams {
   readonly #entries = new Map<string, LiveEntry>();
 
-private adopt(workspaceId: string, fleetId: string, initial: EventRow[]): LiveEntry {
+private adopt(workspaceId: string, fleetId: string, initial: TurnRow[]): LiveEntry {
   const entry: LiveEntry = {
     ...createEntry(workspaceId, initial),
     apply: (next, facts) => setEvents(entry, next, facts),
@@ -69,7 +69,7 @@ private adopt(workspaceId: string, fleetId: string, initial: EventRow[]): LiveEn
 private connect(entry: LiveEntry, fleetId: string): void {
   const sweep = (): void => readStalledReplies(entry, fleetId, entry.apply, entry.isCurrent);
   const connection = new ChatConnection({
-    url: streamFleetEventsUrl(entry.workspaceId, fleetId),
+    url: streamFleetTurnsUrl(entry.workspaceId, fleetId),
     events: [...ROUTED_FRAME_KINDS, FRAME_KIND.ACCESS_REVOKED],
     onOpen: (recovered) => { if (recovered) recoverGap(entry, fleetId); },
     onInterrupted: () => markReplyGap(entry),
@@ -110,7 +110,7 @@ private teardown(entry: Entry, fleetId: string): void {
 subscribe(
   workspaceId: string,
   fleetId: string,
-  initial: EventRow[],
+  initial: TurnRow[],
   listener: Listener,
 ): () => void {
   let entry = this.#entries.get(fleetId);
@@ -134,7 +134,7 @@ subscribe(
   return () => {if (subscribed.isCurrent()) this.releaseSubscriber(subscribed, fleetId, listener);};
 }
 
-reconcileServerRows(fleetId: string, rows: EventRow[]): void {
+reconcileServerRows(fleetId: string, rows: TurnRow[]): void {
   const entry = this.#entries.get(fleetId);
   if (!entry || rows.length === 0) return;
   setEvents(entry, (prev) => mergeBackfill(prev, rows));
@@ -181,7 +181,7 @@ appendOptimistic(
 reconcileOptimistic(
   fleetId: string,
   tempId: string,
-  realEventId: string,
+  realTurnId: string,
   replayed: boolean,
   foldedInto: string | null = null,
 ): boolean {
@@ -191,16 +191,16 @@ reconcileOptimistic(
     // The live run took it at its next model call, and that run's report
     // answers it under its own id: the row says it joined the run until then,
     // and its reply is watched like any other send's.
-    setEvents(entry, (prev) => foldRow(prev, tempId, realEventId));
-    watchReply(entry, fleetId, realEventId, entry.apply, entry.isCurrent, false);
+    setEvents(entry, (prev) => foldRow(prev, tempId, realTurnId));
+    watchReply(entry, fleetId, realTurnId, entry.apply, entry.isCurrent, false);
     landFrames(entry, fleetId, entry.held.release(entry.snapshot.events));
     return false;
   }
-  const { events, alreadyComplete, loaded } = reconcileRows(entry.snapshot.events, tempId, realEventId);
+  const { events, alreadyComplete, loaded } = reconcileRows(entry.snapshot.events, tempId, realTurnId);
   setEvents(entry, () => events);
   // A replay's event may have run before this page held it, with no frame left
   // to settle its row, so it is read now. One the page held settles from frames.
-  watchReply(entry, fleetId, realEventId, entry.apply, entry.isCurrent, replayed && !loaded);
+  watchReply(entry, fleetId, realTurnId, entry.apply, entry.isCurrent, replayed && !loaded);
   landFrames(entry, fleetId, entry.held.release(entry.snapshot.events));
   return alreadyComplete;
 }

@@ -1,5 +1,5 @@
 import type {
-  EventRow,
+  TurnRow,
   WorkspaceControlFrame,
   WorkspaceLiveFrame,
 } from "@/lib/api/events";
@@ -255,12 +255,12 @@ export class WorkspaceStore {
   #applyFleetFrame(fleetId: string, frame: WorkspaceLiveFrame) {
     // A tile changes when work starts: a message still waiting for a runner
     // moves nothing a tile shows, and its received frame follows.
-    if (frame.kind === FRAME_KIND.EVENT_ADMITTED) return;
+    if (frame.kind === FRAME_KIND.TURN_ADMITTED) return;
     const held = this.#eventsByFleet.get(fleetId) ?? [];
     // A chunk or a tool call for a row the wall already holds changes nothing
     // a tile shows. Anything else is folded as before: a chunk for a row the
     // wall has not seen opens it, so the feed line reads as it always did.
-    if (isMidRunFrame(frame) && held.some((event) => event.id === frame.event_id)) return;
+    if (isMidRunFrame(frame) && held.some((event) => event.id === frame.turn_id)) return;
     this.#eventsByFleet.set(fleetId, capEvents(applyLiveFrame(held, frame)));
     // Only the four daemon-authored frames carry the snapshot; a runner's
     // mid-run frame says nothing about where the fleet stands.
@@ -297,8 +297,8 @@ export class WorkspaceStore {
     }
   }
 
-  #applyBackfillRows(rows: EventRow[]) {
-    const rowsByFleet = new Map<string, EventRow[]>();
+  #applyBackfillRows(rows: TurnRow[]) {
+    const rowsByFleet = new Map<string, TurnRow[]>();
     for (const row of rows) {
       if (!this.#subscribedFleetIds.has(row.fleet_id)) continue;
       const fleetRows = rowsByFleet.get(row.fleet_id) ?? [];

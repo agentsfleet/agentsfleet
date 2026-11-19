@@ -11,7 +11,7 @@ import { ACTIVITY_KIND, FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
 import { SCHEDULE_SNAPSHOT } from "./helpers/schedule-activity";
 
 const APPROVAL: ActivityElementData = {
-  eventId: "access-request", actor: ACTOR.GATE_BLOCKED, status: "gate_blocked",
+  turnId: "access-request", actor: ACTOR.GATE_BLOCKED, status: "gate_blocked",
   createdAt: new Date("2026-11-11T09:00:00Z"), headline: "Slack access needs approval",
   outcome: OUTCOME.WAITING_APPROVAL, failed: false, details: {kind: "none"}, source: null,
 };

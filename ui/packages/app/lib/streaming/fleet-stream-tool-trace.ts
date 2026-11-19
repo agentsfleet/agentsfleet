@@ -146,8 +146,8 @@ export function interruptOpenCalls(event: FleetEvent): FleetEvent {
 }
 
 /** Whether the turn closed any call itself rather than hearing how it ended. */
-export function closedAnyAtSettle(events: readonly FleetEvent[], eventId: string): boolean {
-  return events.find((event) => event.id === eventId)?.tools?.some((call) => call.closedAtSettle === true) ?? false;
+export function closedAnyAtSettle(events: readonly FleetEvent[], turnId: string): boolean {
+  return events.find((event) => event.id === turnId)?.tools?.some((call) => call.closedAtSettle === true) ?? false;
 }
 
 /**

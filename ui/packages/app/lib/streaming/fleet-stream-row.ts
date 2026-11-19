@@ -1,5 +1,5 @@
 import { readTaskActivityHistory, type TaskActivityHistory } from "../task-activity";
-import type { EventDetail, EventRow } from "@/lib/api/events";
+import type { TurnDetail, TurnRow } from "@/lib/api/events";
 import type { ContextProgress } from "../context-progress";
 import { readNanos } from "@/lib/api/nanos";
 import { FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
@@ -180,19 +180,19 @@ export const EMPTY_PAYLOAD = "{}";
 // payload) and the fleet's reply (from response_text on the same row). Neither
 // clobbers the other, so an operator's own message survives reload and the
 // fleet's answer is never dropped or attributed to the operator.
-export function rowToEvent(row: EventRow | EventDetail): FleetEvent {
+export function rowToEvent(row: TurnRow | TurnDetail): FleetEvent {
   // A backfill row may or may not carry bodies. The events LIST carries none —
   // it is kept off oversized-attribute storage — so a turn reconstructed from
   // it renders its header and outcome, and its text arrives from the live
   // stream or from the single-event read. A caller that already holds details
   // passes them and nothing is lost.
-  const bodies = row as Partial<EventDetail>;
+  const bodies = row as Partial<TurnDetail>;
   const request_json = bodies.request_json ?? EMPTY_PAYLOAD;
   // A list row carries no trace, and a run that recorded none carries null:
   // either way the row says nothing about its calls.
   const trace = readSavedTrace(bodies.tool_calls, Date.parse(row.created_at));
   return {
-    id: row.event_id,
+    id: row.turn_id,
     role: roleFor(row.actor),
     actor: row.actor,
     text: triggerBodyFor({ actor: row.actor, event_type: row.event_type, request_json }),

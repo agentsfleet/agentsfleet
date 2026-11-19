@@ -21,15 +21,15 @@ export class HeldTurns {
 
   /** Takes `frame` when its turn is held, or starts holding a turn it opens. */
   take(frame: LiveFrame, events: readonly FleetEvent[]): boolean {
-    const eventId = "event_id" in frame ? frame.event_id : null;
-    if (eventId === null) return false;
-    const held = this.#frames.get(eventId);
+    const turnId = "turn_id" in frame ? frame.turn_id : null;
+    if (turnId === null) return false;
+    const held = this.#frames.get(turnId);
     if (held !== undefined) {
       held.push(frame);
       return true;
     }
     if (!opensAWaitingSendsTurn(frame, events)) return false;
-    this.#frames.set(eventId, [frame]);
+    this.#frames.set(turnId, [frame]);
     return true;
   }
 
@@ -38,20 +38,20 @@ export class HeldTurns {
    * here awaits its 202. */
   release(events: readonly FleetEvent[]): LiveFrame[] {
     const waiting = events.some(isAwaitingAck);
-    return this.#take((eventId) => !waiting || events.some((event) => event.id === eventId));
+    return this.#take((turnId) => !waiting || events.some((event) => event.id === turnId));
   }
 
-  /** The frames of the held turns among `eventIds`, which a backfill page is
+  /** The frames of the held turns among `turnIds`, which a backfill page is
    * about to settle. */
-  releaseTurns(eventIds: ReadonlySet<string>): LiveFrame[] {
-    return this.#take((eventId) => eventIds.has(eventId));
+  releaseTurns(turnIds: ReadonlySet<string>): LiveFrame[] {
+    return this.#take((turnId) => turnIds.has(turnId));
   }
 
-  #take(free: (eventId: string) => boolean): LiveFrame[] {
+  #take(free: (turnId: string) => boolean): LiveFrame[] {
     const frames: LiveFrame[] = [];
-    for (const [eventId, held] of this.#frames) {
-      if (!free(eventId)) continue;
-      this.#frames.delete(eventId);
+    for (const [turnId, held] of this.#frames) {
+      if (!free(turnId)) continue;
+      this.#frames.delete(turnId);
       frames.push(...held);
     }
     return frames;
@@ -61,8 +61,8 @@ export class HeldTurns {
 // Either frame can open a turn: the admitted frame normally comes first, but a
 // runner can run a send and announce it before the route publishes.
 function opensAWaitingSendsTurn(frame: LiveFrame, events: readonly FleetEvent[]): boolean {
-  if (frame.kind !== FRAME_KIND.EVENT_ADMITTED && frame.kind !== FRAME_KIND.EVENT_RECEIVED) return false;
-  return !events.some((event) => event.id === frame.event_id)
+  if (frame.kind !== FRAME_KIND.TURN_ADMITTED && frame.kind !== FRAME_KIND.TURN_RECEIVED) return false;
+  return !events.some((event) => event.id === frame.turn_id)
     && events.some((event) => isAwaitingAck(event) && event.sentAs === frame.actor);
 }
 

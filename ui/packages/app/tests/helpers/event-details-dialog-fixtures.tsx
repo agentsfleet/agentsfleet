@@ -4,13 +4,13 @@ import { act, render } from "@testing-library/react";
 
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { EventDetailsDialog } from "@/components/domain/events/EventDetailsDialog";
-import type { EventDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/events";
 import { serveDetail } from "./event-details-dialog-served";
 
-export function event(over: Partial<EventDetail> = {}): EventDetail {
+export function event(over: Partial<TurnDetail> = {}): TurnDetail {
   const now = Date.UTC(2026, 3, 28, 10, 30, 0);
   return {
-    event_id: "evt_1",
+    turn_id: "evt_1",
     fleet_id: "fleet_1",
     workspace_id: "ws_1",
     actor: "github-app",
@@ -24,7 +24,7 @@ export function event(over: Partial<EventDetail> = {}): EventDetail {
     cost_nanos: null,
     failure_label: null,
     failure_detail: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     created_at: new Date(now).toISOString(),
     updated_at: new Date(now).toISOString(),
     ...over,
@@ -33,7 +33,7 @@ export function event(over: Partial<EventDetail> = {}): EventDetail {
 
 /// The tree a test mounts, or hands to `rerender` to swap the open row
 /// without serving it a new body.
-export function dialogElement(row: EventDetail) {
+export function dialogElement(row: TurnDetail) {
   return (
     <TooltipProvider>
       <EventDetailsDialog row={row} onOpenChange={vi.fn()} />
@@ -41,7 +41,7 @@ export function dialogElement(row: EventDetail) {
   );
 }
 
-export function renderDialog(row: EventDetail) {
+export function renderDialog(row: TurnDetail) {
   serveDetail(row);
   return render(dialogElement(row));
 }
@@ -49,7 +49,7 @@ export function renderDialog(row: EventDetail) {
 /// Settle the body fetch. The dialog paints its header and metrics from the
 /// row immediately; the request context and the recorded answer arrive a tick
 /// later, so a body assertion has to wait for that tick.
-export async function renderDialogWithBody(row: EventDetail) {
+export async function renderDialogWithBody(row: TurnDetail) {
   let rendered!: ReturnType<typeof renderDialog>;
   await act(async () => {
     rendered = renderDialog(row);

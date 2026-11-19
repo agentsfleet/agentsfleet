@@ -48,7 +48,7 @@ describe("workspace fleet wall provider", () => {
     flushAnimationFrame();
 
     expect(FakeEventSource.instances).toHaveLength(1);
-    expect(source.url).toBe(`/live/v1/workspaces/${WORKSPACE_ID}/events/stream`);
+    expect(source.url).toBe(`/live/v1/workspaces/${WORKSPACE_ID}/turns/stream`);
     expect(view.getByTestId(FLEET_A).textContent).toContain(FEED_SHOWN_LABEL);
     expect(view.getByTestId(FLEET_B).textContent).toContain(NO_FEED_LABEL);
   });
@@ -201,7 +201,7 @@ describe("workspace fleet wall provider", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      `/live/v1/workspaces/${WORKSPACE_ID}/events?limit=${BACKFILL_PAGE_LIMIT}`,
+      `/live/v1/workspaces/${WORKSPACE_ID}/turns?limit=${BACKFILL_PAGE_LIMIT}`,
     );
     expect(view.getByTestId(FLEET_A).textContent).toContain(FEED_SHOWN_LABEL);
     expect(view.getByTestId(FLEET_B).textContent).toContain(FEED_SHOWN_LABEL);

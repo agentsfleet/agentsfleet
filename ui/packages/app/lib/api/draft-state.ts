@@ -65,8 +65,8 @@ export function draftRequestView(request: DraftRequestState): Pick<DraftView, "b
 export function projectDraftView(previous: DraftView, patch: Partial<DraftView>): DraftView {
   const next = {...previous, ...patch};
   if (patch.activities && next.fleet?.id === previous.fleet?.id && next.fleet) {
-    const rows = new Map((previous.activities ?? []).map(row => [row.event_id, row]));
-    for (const row of patch.activities) if (!rows.has(row.event_id)) rows.set(row.event_id, row);
+    const rows = new Map((previous.activities ?? []).map(row => [row.turn_id, row]));
+    for (const row of patch.activities) if (!rows.has(row.turn_id)) rows.set(row.turn_id, row);
     next.activities = [...rows.values()];
   }
   return {...next, saveOperation: savingOperation(next)};

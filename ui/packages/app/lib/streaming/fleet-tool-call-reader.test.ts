@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TOOL_CALL_READ, TOOL_CALL_READ_TIMEOUT_MS, readToolCall } from "./fleet-tool-call-reader";
 
-const AT = { workspaceId: "ws 1", fleetId: "flt_1", eventId: "evt_1", callId: "f1:3" };
-const URL_FOR_AT = "/live/v1/workspaces/ws%201/fleets/flt_1/events/evt_1/tool-calls/f1%3A3";
+const AT = { workspaceId: "ws 1", fleetId: "flt_1", turnId: "evt_1", callId: "f1:3" };
+const URL_FOR_AT = "/live/v1/workspaces/ws%201/fleets/flt_1/turns/evt_1/items/f1%3A3";
 
 afterEach(() => {
   vi.unstubAllGlobals();

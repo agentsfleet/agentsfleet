@@ -15,7 +15,7 @@ afterEach(cleanup);
 const start = {generation: 1, state: CONTEXT_STATE.summarizing};
 const end = {generation: 1, state: CONTEXT_STATE.resuming};
 function status(progress: unknown = start, event = "e0") {
-  const parsed = parseLiveFrame(JSON.stringify({kind: FRAME_KIND.CONTEXT_PROGRESS, event_id: event, ...Object(progress)}));
+  const parsed = parseLiveFrame(JSON.stringify({kind: FRAME_KIND.CONTEXT_PROGRESS, turn_id: event, ...Object(progress)}));
   if (!parsed) throw new Error("Expected JSON status frame");
   return parsed;
 }

@@ -14,7 +14,7 @@
  * can abort the delivery it is about to wait for.
  */
 import { expect, type Page } from "@playwright/test";
-import type { EventDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/events";
 import { REPLY_FIGURES_TEST_ID, RUN_DETAILS_LABEL } from "@/components/domain/activity/replies/FleetReplyFigures";
 import { FIXTURE_KEY } from "./constants";
 import {
@@ -84,13 +84,13 @@ export async function messageFleet(
 export async function awaitTerminalTurn(
   workspaceId: string,
   fleetId: string,
-): Promise<EventDetail> {
+): Promise<TurnDetail> {
   const run = await pollFor<RunLocation>(
     () => observed(JOURNEY_LEG.run, () => findRunFor(fleetId)),
     RUN_TIMEOUT_MS,
   );
   if (run === null) failWith(classifyIdle(await anyRunnerLive()));
-  const terminal = await pollFor<EventDetail>(
+  const terminal = await pollFor<TurnDetail>(
     () =>
       observed(JOURNEY_LEG.execute, () =>
         readTerminalChatTurn(FIXTURE_KEY.regular, workspaceId, fleetId),

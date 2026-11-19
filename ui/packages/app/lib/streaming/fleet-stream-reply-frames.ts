@@ -1,5 +1,5 @@
 import { mergeTaskActivity, readTaskActivityHistory } from "../task-activity";
-import type { EventDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { applyLiveFrame } from "./fleet-stream-frames";
 import { OUTCOME } from "@/lib/events/event-summary";
@@ -9,14 +9,14 @@ import type { ReplyDelta } from "./reply-stream-decoder";
 /** Fold already classified text; model protocol never enters the row. */
 export function applyReplyDelta(
   prev: FleetEvent[],
-  eventId: string,
+  turnId: string,
   delta: ReplyDelta,
   nowMs: number = Date.now(),
 ): FleetEvent[] {
-  const index = prev.findIndex((event) => event.id === eventId);
+  const index = prev.findIndex((event) => event.id === turnId);
   if (index < 0) {
-    const opened = applyLiveFrame(prev, { text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: eventId, text: delta.answer }, nowMs);
-    return opened.map((event) => event.id === eventId
+    const opened = applyLiveFrame(prev, { text_kind: "answer", kind: FRAME_KIND.CHUNK, turn_id: turnId, text: delta.answer }, nowMs);
+    return opened.map((event) => event.id === turnId
       ? stampReasoningSpan({ ...event, reasoning: delta.reasoning, thinking: delta.thinking }, delta, nowMs)
       : event);
   }
@@ -32,11 +32,11 @@ export function applyReplyDelta(
 /** Mark a streamed draft as awaiting its durable ending. */
 export function applyReplyRecovery(
   prev: FleetEvent[],
-  eventId: string,
+  turnId: string,
   clearDraft: boolean,
   nowMs: number = Date.now(),
 ): FleetEvent[] {
-  return prev.map((event) => event.id === eventId ? closeReasoningSpan({
+  return prev.map((event) => event.id === turnId ? closeReasoningSpan({
     ...event,
     reply: clearDraft ? "" : event.reply,
     reasoning: clearDraft ? "" : event.reasoning,
@@ -49,8 +49,8 @@ export function applyReplyRecovery(
 /** An event whose saved row is gone settles with no answer and says why. The
  * unconfirmed draft is dropped, and a row still running ends as failed, so its
  * clock and its wait both stop. */
-export function applyReplyGone(prev: FleetEvent[], eventId: string, nowMs: number = Date.now()): FleetEvent[] {
-  return prev.map((event) => event.id === eventId ? closeReasoningSpan({
+export function applyReplyGone(prev: FleetEvent[], turnId: string, nowMs: number = Date.now()): FleetEvent[] {
+  return prev.map((event) => event.id === turnId ? closeReasoningSpan({
     ...event,
     status: event.status === AGENTSFLEET_EVENT_STATUS.RECEIVED ? AGENTSFLEET_EVENT_STATUS.AGENT_ERROR : event.status,
     reply: "",
@@ -62,23 +62,23 @@ export function applyReplyGone(prev: FleetEvent[], eventId: string, nowMs: numbe
 }
 
 /** A completed tool-result pass gets its authoritative answer from the row. */
-export function applyFinalReply(prev: FleetEvent[], detail: EventDetail, nowMs: number = Date.now()): FleetEvent[] {
-  const index = prev.findIndex((event) => event.id === detail.event_id);
+export function applyFinalReply(prev: FleetEvent[], detail: TurnDetail, nowMs: number = Date.now()): FleetEvent[] {
+  const index = prev.findIndex((event) => event.id === detail.turn_id);
   const event = prev[index];
   if (event === undefined) return [...prev, rowToEvent(detail)];
   const activity = readTaskActivityHistory(detail.task_activity);
-  const next = applyFinalReplyText(prev, detail.event_id, detail.response_text ?? "", nowMs);
-  return activity ? next.map(row => row.id === detail.event_id ? {...row, taskActivity: mergeTaskActivity(row.taskActivity, activity)} : row) : next;
+  const next = applyFinalReplyText(prev, detail.turn_id, detail.response_text ?? "", nowMs);
+  return activity ? next.map(row => row.id === detail.turn_id ? {...row, taskActivity: mergeTaskActivity(row.taskActivity, activity)} : row) : next;
 }
 
 /** The completion frame carries the same saved answer as the detail route. */
 export function applyFinalReplyText(
   prev: FleetEvent[],
-  eventId: string,
+  turnId: string,
   reply: string,
   nowMs: number = Date.now(),
 ): FleetEvent[] {
-  const index = prev.findIndex((event) => event.id === eventId);
+  const index = prev.findIndex((event) => event.id === turnId);
   const event = prev[index];
   if (event === undefined) return prev;
   const next = [...prev];

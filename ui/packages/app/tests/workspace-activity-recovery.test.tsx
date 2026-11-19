@@ -5,7 +5,7 @@ import { ApiError } from "@/lib/api/errors";
 
 const {read, refresh} = vi.hoisted(() => ({read: vi.fn(), refresh: vi.fn()}));
 vi.mock("@/lib/auth/credential", () => ({credential: async () => "session", requireCredential: async () => "session"}));
-vi.mock("@/lib/api/events", () => ({listWorkspaceEvents: read}));
+vi.mock("@/lib/api/events", () => ({listWorkspaceTurns: read}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));
 vi.mock("@/components/domain/events/EventsList", () => ({EventsList: () => <p>Recorded activity</p>}));
 import { EventsData } from "@/app/(dashboard)/w/[workspaceId]/events/page";

@@ -4,7 +4,7 @@
 // registry owns the reader and passes it in, so this module holds no state.
 
 import type { ActionResult } from "@/lib/actions/with-token";
-import type { EventDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/events";
 import { HTTP_STATUS_NOT_FOUND } from "@/lib/api/errors";
 import type { MessageRole } from "@/lib/events/event-summary";
 import type { FleetFacts } from "@/lib/events/run-summary";
@@ -17,7 +17,7 @@ import { applyFinalReply, applyReplyGone } from "./fleet-stream-reply-frames";
 export type ApplyEvents = (next: (prev: FleetEvent[]) => FleetEvent[], facts: Partial<FleetFacts>) => void;
 
 /** Reads one event's saved detail when a streamed reply needs its final text. */
-export type EventDetailReader = (workspaceId: string, fleetId: string, eventId: string) => Promise<ActionResult<EventDetail>>;
+export type TurnDetailReader = (workspaceId: string, fleetId: string, turnId: string) => Promise<ActionResult<TurnDetail>>;
 
 const TRANSIENT_MAX_RETRY_MS = 5_000;
 const FINAL_REPLY_RETRY_MS = [100, 300, TRANSIENT_MAX_RETRY_MS] as const;
@@ -38,26 +38,26 @@ const PERMANENT_DETAIL_STATUSES: ReadonlySet<number> = new Set([400, 401, 403, 4
 export function recoverFinalReply(
   entry: Entry,
   fleetId: string,
-  eventId: string,
+  turnId: string,
   apply: ApplyEvents,
   isCurrent: () => boolean,
-  read: EventDetailReader | null,
+  read: TurnDetailReader | null,
 ): void {
   if (read === null || !isCurrent()) return;
-  if (entry.replyRecoveries.has(eventId)) return;
-  entry.replyRecoveries.add(eventId);
-  const attempt = entry.replyAttempts.get(eventId);
-  const owns = () => isCurrent() && entry.replyAttempts.get(eventId) === attempt;
-  const onRead = (detail: EventDetail) => {
+  if (entry.replyRecoveries.has(turnId)) return;
+  entry.replyRecoveries.add(turnId);
+  const attempt = entry.replyAttempts.get(turnId);
+  const owns = () => isCurrent() && entry.replyAttempts.get(turnId) === attempt;
+  const onRead = (detail: TurnDetail) => {
     apply((prev) => applyDetail(prev, detail), {});
-    entry.replyGaps.delete(eventId);
+    entry.replyGaps.delete(turnId);
   };
   // Keep the draft unavailable once the event is gone.
-  const onGone = () => apply((prev) => applyReplyGone(prev, eventId), {});
-  void readUntilAnswered(entry, fleetId, eventId, owns, read, onRead, onGone)
+  const onGone = () => apply((prev) => applyReplyGone(prev, turnId), {});
+  void readUntilAnswered(entry, fleetId, turnId, owns, read, onRead, onGone)
     .catch(() => {})
     .finally(() => {
-      if (entry.replyAttempts.get(eventId) === attempt) entry.replyRecoveries.delete(eventId);
+      if (entry.replyAttempts.get(turnId) === attempt) entry.replyRecoveries.delete(turnId);
     });
 }
 
@@ -70,15 +70,15 @@ export function recoverFinalReply(
 async function readUntilAnswered(
   entry: Entry,
   fleetId: string,
-  eventId: string,
+  turnId: string,
   isCurrent: () => boolean,
-  read: EventDetailReader,
-  onRead: (detail: EventDetail) => void,
+  read: TurnDetailReader,
+  onRead: (detail: TurnDetail) => void,
   onGone?: () => void,
 ): Promise<void> {
   for (let attempt = 0; isCurrent(); attempt += 1) {
     let retryMs: number = FINAL_REPLY_RETRY_MS[attempt] ?? TRANSIENT_MAX_RETRY_MS;
-    const result = await read(entry.workspaceId, fleetId, eventId).catch(() => null);
+    const result = await read(entry.workspaceId, fleetId, turnId).catch(() => null);
     if (!isCurrent()) return;
     if (result !== null) {
       if (result.ok) {
@@ -101,25 +101,25 @@ async function readUntilAnswered(
 export function readMissingBodies(
   entry: Entry,
   fleetId: string,
-  eventId: string,
+  turnId: string,
   apply: ApplyEvents,
   isCurrent: () => boolean,
-  read: EventDetailReader | null,
+  read: TurnDetailReader | null,
 ): void {
-  const shown = entry.snapshot.events.find((event) => event.id === eventId);
+  const shown = entry.snapshot.events.find((event) => event.id === turnId);
   if (shown === undefined) return;
   // Only an operator's steer carries a message; every turn can carry an answer.
   const missingMessage = shown.role === OPERATOR_ROLE && shown.text.length === 0;
   if (!missingMessage && shown.reply.length > 0) return;
-  if (read === null || entry.bodyReads.has(eventId)) return;
-  entry.bodyReads.add(eventId);
-  recoverFinalReply(entry, fleetId, eventId, apply, isCurrent, read);
+  if (read === null || entry.bodyReads.has(turnId)) return;
+  entry.bodyReads.add(turnId);
+  recoverFinalReply(entry, fleetId, turnId, apply, isCurrent, read);
 }
 
 // A 410 is final. A 404 is final only for an event whose row existed.
-export function isGone(entry: Entry, eventId: string, status: number | undefined): boolean {
+export function isGone(entry: Entry, turnId: string, status: number | undefined): boolean {
   if (status === HTTP_STATUS_GONE) return true;
-  return status === HTTP_STATUS_NOT_FOUND && entry.replyExists.has(eventId);
+  return status === HTTP_STATUS_NOT_FOUND && entry.replyExists.has(turnId);
 }
 
 /**
@@ -133,26 +133,26 @@ export function isGone(entry: Entry, eventId: string, status: number | undefined
 export function refreshSavedTrace(
   entry: Entry,
   fleetId: string,
-  eventId: string,
+  turnId: string,
   apply: ApplyEvents,
   isCurrent: () => boolean,
-  read: EventDetailReader | null,
+  read: TurnDetailReader | null,
 ): void {
-  if (read === null || entry.traceReads.has(eventId)) return;
-  entry.traceReads.add(eventId);
-  const attempt = entry.replyAttempts.get(eventId);
-  const owns = () => isCurrent() && entry.replyAttempts.get(eventId) === attempt;
-  const onRead = (detail: EventDetail) => apply((prev) => mergeBackfill(prev, [detail]), {});
-  void readUntilAnswered(entry, fleetId, eventId, owns, read, onRead).catch(() => {});
+  if (read === null || entry.traceReads.has(turnId)) return;
+  entry.traceReads.add(turnId);
+  const attempt = entry.replyAttempts.get(turnId);
+  const owns = () => isCurrent() && entry.replyAttempts.get(turnId) === attempt;
+  const onRead = (detail: TurnDetail) => apply((prev) => mergeBackfill(prev, [detail]), {});
+  void readUntilAnswered(entry, fleetId, turnId, owns, read, onRead).catch(() => {});
 }
 
 // A saved row over the live one: its status and figures, then its answer.
-export function applyDetail(prev: FleetEvent[], detail: EventDetail): FleetEvent[] {
+export function applyDetail(prev: FleetEvent[], detail: TurnDetail): FleetEvent[] {
   return applyFinalReply(mergeBackfill(prev, [detail]), detail);
 }
 
 /** Ends an event's live pass: its decoder and its expected sequence. */
-export function closeLivePass(entry: Entry, eventId: string): void {
-  entry.replyStreams.get(eventId)?.dispose();
-  entry.replyStreams.delete(eventId);
+export function closeLivePass(entry: Entry, turnId: string): void {
+  entry.replyStreams.get(turnId)?.dispose();
+  entry.replyStreams.delete(turnId);
 }

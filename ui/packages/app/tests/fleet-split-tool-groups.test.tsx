@@ -71,7 +71,7 @@ it("moves the entry to the newest group without remounting an open one", () => {
     toolName: "file_read", args: {path: `src/${id}.ts`}, argsText: JSON.stringify({path: `src/${id}.ts`}), result: {status: "succeeded"}});
   const firstCalls = [nativeCall("a"), nativeCall("b")];
   function Groups({content}: {content: MessageState["content"]}) {
-    const props = {content, running: false, eventId: "stable-calls", wallMs: WALL_MS,
+    const props = {content, running: false, turnId: "stable-calls", wallMs: WALL_MS,
       figures: {wallMs: WALL_MS, tokens: TOKENS, costNanos: COST_NANOS}};
     return <><FleetToolGroup {...props} indices={[0, 1]}>Earlier calls</FleetToolGroup>
       {content.length > 2 ? <FleetToolGroup {...props} indices={[3]}>New call</FleetToolGroup> : null}</>;

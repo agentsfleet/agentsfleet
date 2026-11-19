@@ -12,7 +12,7 @@ describe("EventsList — the standard workspace events table", () => {
   it("collapses repeated identical failures into one row that opens on demand", async () => {
     const failure = (id: string) =>
       row({
-        event_id: id,
+        turn_id: id,
         status: "fleet_error",
         response_text: null,
         failure_label: "startup_posture",
@@ -50,13 +50,13 @@ describe("EventsList — the standard workspace events table", () => {
     renderList({
       items: [
         row({
-          event_id: "s1",
+          turn_id: "s1",
           status: "processed",
           response_text: "reviewed #1",
           failure_label: null,
         }),
         row({
-          event_id: "s2",
+          turn_id: "s2",
           status: "processed",
           response_text: "reviewed #2",
           failure_label: null,
@@ -76,7 +76,7 @@ describe("EventsList — the standard workspace events table", () => {
     const { container } = renderList({
       items: [
         row({
-          event_id: "z1",
+          turn_id: "z1",
           status: "fleet_error",
           response_text: null,
           tokens: 0,
@@ -84,7 +84,7 @@ describe("EventsList — the standard workspace events table", () => {
           cost_nanos: "0",
         }),
         row({
-          event_id: "z2",
+          turn_id: "z2",
           status: "processed",
           tokens: 0,
           wall_ms: 0,
@@ -123,20 +123,20 @@ describe("EventsList — the standard workspace events table", () => {
     renderList({
       items: [
         row({
-          event_id: "a",
+          turn_id: "a",
           status: "processed",
           response_text: "first event",
         }),
         row({
-          event_id: "b",
+          turn_id: "b",
           status: "fleet_error",
           response_text: null,
           failure_label: "boom",
         }),
-        row({ event_id: "c", status: "gate_blocked", response_text: null }),
-        row({ event_id: "d", status: "received", response_text: "rec" }),
+        row({ turn_id: "c", status: "gate_blocked", response_text: null }),
+        row({ turn_id: "d", status: "received", response_text: "rec" }),
         row({
-          event_id: "e",
+          turn_id: "e",
           status: "weird-unknown",
           response_text: "fallback variant",
         }),
@@ -174,21 +174,21 @@ describe("EventsList — the standard workspace events table", () => {
     renderList({
       items: [
         row({
-          event_id: "a",
+          turn_id: "a",
           response_text: "response",
           cost_nanos: "5",
           tokens: 4,
           wall_ms: 3,
         }),
         row({
-          event_id: "b",
+          turn_id: "b",
           response_text: null,
           failure_label: "oom_kill",
           cost_nanos: null,
           tokens: null,
           wall_ms: null,
         }),
-        row({ event_id: "c", response_text: null, failure_label: null }),
+        row({ turn_id: "c", response_text: null, failure_label: null }),
       ],
       next_cursor: null,
     });
@@ -215,7 +215,7 @@ describe("EventsList — the standard workspace events table", () => {
     // standalone row (no count → 0), so the count/no-count branch is covered.
     const failure = (id: string) =>
       row({
-        event_id: id,
+        turn_id: id,
         status: "fleet_error",
         response_text: null,
         failure_label: "startup_posture",
@@ -226,7 +226,7 @@ describe("EventsList — the standard workspace events table", () => {
         failure("g1"),
         failure("g2"),
         row({
-          event_id: "solo",
+          turn_id: "solo",
           status: "processed",
           response_text: "done",
           failure_label: null,
@@ -249,13 +249,13 @@ describe("EventsList — the standard workspace events table", () => {
     renderList({
       items: [
         row({
-          event_id: "f",
+          turn_id: "f",
           status: "fleet_error",
           response_text: "Engine configuration could not be assembled.",
           failure_label: "oom_kill",
         }),
         row({
-          event_id: "g",
+          turn_id: "g",
           status: "gate_blocked",
           response_text: null,
           failure_label: "budget_breach",

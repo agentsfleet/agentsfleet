@@ -1,7 +1,7 @@
 // The live-frame vocabulary and the same-origin stream URLs the streaming layer shares. Dependency-free on purpose: client components read these
 // without pulling the transport, whose retry policy is server-only.
 
-export type EventsQuery = {
+export type TurnsQuery = {
   cursor?: string;
   actor?: string;
   // Prefix filter on the event actor — the server matches `actor LIKE '<prefix>%'`
@@ -15,7 +15,7 @@ export type EventsQuery = {
   limit?: number;
 };
 
-export function buildQuery(opts?: EventsQuery): string {
+export function buildQuery(opts?: TurnsQuery): string {
   if (!opts) return "";
   const params = new URLSearchParams();
   if (opts.cursor) params.set("cursor", opts.cursor);
@@ -35,8 +35,8 @@ export function buildQuery(opts?: EventsQuery): string {
 // `Published` enum in rustd/crates/daemon/afd_fleet/src/run/activity/mod.rs, where the
 // runner's wire vocabulary becomes this one. The two brackets and the two gate
 // frames are the daemon's own `TailFrame` in rustd/crates/daemon/afd_api_wire/src/tail/mod.rs:
-// `event_admitted` when a person's message is accepted, before any runner has
-// it, `event_received` when the run opens the row, `event_complete` with the
+// `turn_admitted` when a person's message is accepted, before any runner has
+// it, `turn_received` when the run opens the row, `turn_complete` with the
 // whole row when a report or a refusal closes it, `gate_opened` and
 // `gate_resolved` when a human is asked and answers. Keep every spelling in
 // sync with those enums.
@@ -45,15 +45,15 @@ export const FRAME_KIND = {
   TASK_DECISION_STARTED: "task_decision_started",
   TASK_DECISION_COMPLETED: "task_decision_completed",
   TASK_TRANSFER_PROGRESS: "task_transfer_progress",
-  EVENT_ADMITTED: "event_admitted",
-  EVENT_RECEIVED: "event_received",
+  TURN_ADMITTED: "turn_admitted",
+  TURN_RECEIVED: "turn_received",
   TOOL_CALL_STARTED: "tool_call_started",
   TOOL_CALL_PROGRESS: "tool_call_progress",
   CHUNK: "chunk",
   RUN_RESTARTED: "run_restarted",
   CONTEXT_PROGRESS: "context_progress",
   TOOL_CALL_COMPLETED: "tool_call_completed",
-  EVENT_COMPLETE: "event_complete",
+  TURN_COMPLETE: "turn_complete",
   GATE_OPENED: "gate_opened",
   GATE_RESOLVED: "gate_resolved",
   HELLO: "hello",
@@ -73,62 +73,62 @@ export const ROUTED_FRAME_KINDS: readonly FrameKind[] = Object.values(FRAME_KIND
 );
 
 // Same-origin URL for the SSE stream. The path is intercepted by the
-// Next Route Handler at app/live/.../events/stream/route.ts which
+// Next Route Handler at app/live/.../turns/stream/route.ts which
 // injects the api-audience Bearer token server-side.
-export function streamFleetEventsUrl(workspaceId: string, fleetId: string): string {
+export function streamFleetTurnsUrl(workspaceId: string, fleetId: string): string {
   return (
     `/live/v1/workspaces/${encodeURIComponent(workspaceId)}` +
-    `/fleets/${encodeURIComponent(fleetId)}/events/stream`
+    `/fleets/${encodeURIComponent(fleetId)}/turns/stream`
   );
 }
 
 // Same-origin URL for the reconnect backfill list. Intercepted by the Next
-// Route Handler at app/live/.../events/route.ts (the non-stream sibling
-// of streamFleetEventsUrl's handler), which injects the Bearer token
+// Route Handler at app/live/.../turns/route.ts (the non-stream sibling
+// of streamFleetTurnsUrl's handler), which injects the Bearer token
 // server-side. The opts type carries exactly the keys that handler forwards
 // upstream — anything wider would be silently dropped at the proxy.
-export function backfillFleetEventsUrl(
+export function backfillFleetTurnsUrl(
   workspaceId: string,
   fleetId: string,
-  opts?: Pick<EventsQuery, "cursor" | "since" | "limit">,
+  opts?: Pick<TurnsQuery, "cursor" | "since" | "limit">,
 ): string {
   return (
     `/live/v1/workspaces/${encodeURIComponent(workspaceId)}` +
-    `/fleets/${encodeURIComponent(fleetId)}/events${buildQuery(opts)}`
+    `/fleets/${encodeURIComponent(fleetId)}/turns${buildQuery(opts)}`
   );
 }
 
 // Same-origin URL for one event's saved row, bodies included. Intercepted by
-// the Route Handler at app/live/.../events/[eventId]/route.ts, which injects
+// the Route Handler at app/live/.../turns/[turnId]/route.ts, which injects
 // the Bearer token server-side.
-export function fleetEventDetailUrl(workspaceId: string, fleetId: string, eventId: string): string {
+export function fleetTurnDetailUrl(workspaceId: string, fleetId: string, turnId: string): string {
   return (
     `/live/v1/workspaces/${encodeURIComponent(workspaceId)}` +
-    `/fleets/${encodeURIComponent(fleetId)}/events/${encodeURIComponent(eventId)}`
+    `/fleets/${encodeURIComponent(fleetId)}/turns/${encodeURIComponent(turnId)}`
   );
 }
 
 // Same-origin URL for one tool call's full arguments and output. Intercepted by
-// the Route Handler at app/live/.../events/[eventId]/tool-calls/[callId]/route.ts.
+// the Route Handler at app/live/.../turns/[turnId]/items/[itemId]/route.ts.
 // A call id is `{fence}:{n}`, so it is encoded like every other segment.
-export function fleetToolCallUrl(workspaceId: string, fleetId: string, eventId: string, callId: string): string {
-  return `${fleetEventDetailUrl(workspaceId, fleetId, eventId)}/tool-calls/${encodeURIComponent(callId)}`;
+export function fleetTurnItemUrl(workspaceId: string, fleetId: string, turnId: string, callId: string): string {
+  return `${fleetTurnDetailUrl(workspaceId, fleetId, turnId)}/items/${encodeURIComponent(callId)}`;
 }
 
 // Same-origin URL for the ONE multiplexed workspace SSE stream. Intercepted by
-// the Next Route Handler at app/live/.../events/stream/route.ts, which mints
+// the Next Route Handler at app/live/.../turns/stream/route.ts, which mints
 // the api-audience Bearer server-side. This is the wall's single connection —
-// it replaces the per-tile streamFleetEventsUrl fan-out.
-export function streamWorkspaceEventsUrl(workspaceId: string): string {
-  return `/live/v1/workspaces/${encodeURIComponent(workspaceId)}/events/stream`;
+// it replaces the per-tile streamFleetTurnsUrl fan-out.
+export function streamWorkspaceTurnsUrl(workspaceId: string): string {
+  return `/live/v1/workspaces/${encodeURIComponent(workspaceId)}/turns/stream`;
 }
 
 // Same-origin URL for the workspace-scoped reconnect backfill list. The wall
-// recovers a gap by paging `fleet.events` for the whole workspace (or one
+// recovers a gap by paging `thread.turns` for the whole workspace (or one
 // fleet via `fleet_id`), the same durable source the per-fleet client uses.
-export function backfillWorkspaceEventsUrl(
+export function backfillWorkspaceTurnsUrl(
   workspaceId: string,
-  opts?: Pick<EventsQuery, "cursor" | "since" | "limit" | "fleet_id">,
+  opts?: Pick<TurnsQuery, "cursor" | "since" | "limit" | "fleet_id">,
 ): string {
-  return `/live/v1/workspaces/${encodeURIComponent(workspaceId)}/events${buildQuery(opts)}`;
+  return `/live/v1/workspaces/${encodeURIComponent(workspaceId)}/turns${buildQuery(opts)}`;
 }

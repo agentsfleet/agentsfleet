@@ -1,4 +1,4 @@
-import type { EventRow } from "@/lib/api/events";
+import type { TurnRow } from "@/lib/api/events";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { ACTOR, EVENT_STATUS } from "./event-summary";
 
@@ -23,7 +23,7 @@ const RUN_FIGURE_KEYS = [
 ] as const;
 
 /** What the strip reads off one run: the list row's outcome and figures. */
-export type RunFigures = Pick<EventRow, (typeof RUN_FIGURE_KEYS)[number]>;
+export type RunFigures = Pick<TurnRow, (typeof RUN_FIGURE_KEYS)[number]>;
 
 export type FleetRunSummary = {
   /** The fleet's lifecycle status as the server last reported it. */
@@ -53,7 +53,7 @@ export const NO_FACTS: FleetFacts = Object.freeze({
 
 /** Any page of rows, newest first. The thread page qualifies: its rows carry
  * bodies the strip ignores. */
-type RowsPage = { items: readonly EventRow[] } | null;
+type RowsPage = { items: readonly TurnRow[] } | null;
 
 /**
  * A null page means the read failed, which the strip reports as unavailable;
@@ -77,7 +77,7 @@ export function buildRunSummary(
 }
 
 /** The strip's view of a list row — only the fields it renders. */
-export function figuresOfRow(row: EventRow): RunFigures {
+export function figuresOfRow(row: TurnRow): RunFigures {
   const figures = Object.fromEntries(RUN_FIGURE_KEYS.map((key) => [key, row[key]])) as RunFigures;
   return { ...figures, created_at: spelled(new Date(row.created_at)) };
 }

@@ -22,7 +22,7 @@ const REQUEST_MS = 400;
 
 // Hostile wire input, through the real parser: it checks only `kind`.
 function completedWith(name: string, ms: number, outcome: Record<string, unknown>, call_id = CALL_ONE): LiveFrame {
-  const frame = parseLiveFrame(JSON.stringify({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name, ms, call_id, ...outcome }));
+  const frame = parseLiveFrame(JSON.stringify({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, turn_id: "e1", name, ms, call_id, ...outcome }));
   if (frame === null) throw new Error("the parser refused a frame it should let through");
   return frame;
 }
@@ -39,29 +39,29 @@ describe("settling a turn's tool calls", () => {
   it("test_settle_prefers_saved_trace", () => {
     const live = [evt({ id: "e1", status: "received", tools: [openCall()] })];
     const trace = { calls: [saved(CALL_ONE), saved(CALL_TWO), saved(CALL_THREE)], omitted_call_count: 0 };
-    const merged = mergeBackfill(live, [row({ event_id: "e1", tool_calls: trace })]);
+    const merged = mergeBackfill(live, [row({ turn_id: "e1", tool_calls: trace })]);
     expect(merged[0]?.tools?.map((call) => [call.callId, call.done])).toEqual([[CALL_ONE, true], [CALL_TWO, true], [CALL_THREE, true]]);
     // The call both lists hold takes the saved outcome, not the live guess.
     expect(merged[0]?.tools?.[0]).toMatchObject({ callId: CALL_ONE, status: TOOL_CALL_STATUS.SUCCEEDED, ms: 12, args: { path: PATH_A } });
     // A page restating the same trace keeps the settled row's object.
-    expect(mergeBackfill(merged, [row({ event_id: "e1", tool_calls: trace })])).toBe(merged);
+    expect(mergeBackfill(merged, [row({ turn_id: "e1", tool_calls: trace })])).toBe(merged);
 
     // No trace recorded: the live rows stay, finished ones untouched.
     const finished = [evt({ id: "e1", status: "received", tools: [openCall({ ms: 9, done: true })] })];
-    const kept = mergeBackfill(finished, [row({ event_id: "e1", tool_calls: null })]);
+    const kept = mergeBackfill(finished, [row({ turn_id: "e1", tool_calls: null })]);
     expect(kept[0]?.tools).toBe(finished[0]?.tools);
     // A list row carries no trace at all, and keeps them the same way.
-    expect(mergeBackfill(finished, [row({ event_id: "e1" })])[0]?.tools).toBe(finished[0]?.tools);
+    expect(mergeBackfill(finished, [row({ turn_id: "e1" })])[0]?.tools).toBe(finished[0]?.tools);
     // A turn shown from its trace keeps the count of calls the trace left out.
     const reloaded = [evt({ id: "e1", status: "received", tools: [openCall({ done: true })], omittedCallCount: 4 })];
-    expect(mergeBackfill(reloaded, [row({ event_id: "e1" })])[0]?.omittedCallCount).toBe(4);
+    expect(mergeBackfill(reloaded, [row({ turn_id: "e1" })])[0]?.omittedCallCount).toBe(4);
   });
 
   it("test_late_completion_replaces_the_settle_guess", () => {
     // The runner's activity is best-effort and its report may overtake it: the
     // turn ends with the call still open, then the call's own completion lands.
     const live = [evt({ id: "e1", status: "received", tools: [openCall({ ms: 300 })] })];
-    const completed = applyLiveFrame(live, { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "e1", status: "processed" }, COMPLETED_AT);
+    const completed = applyLiveFrame(live, { kind: FRAME_KIND.TURN_COMPLETE, turn_id: "e1", status: "processed" }, COMPLETED_AT);
     const late = applyLiveFrame(completed, completedWith(READ, REQUEST_MS, { status: TOOL_CALL_STATUS.SUCCEEDED }, CALL_ONE), REPEAT_AT);
     expect(late[0]?.tools?.[0]).toEqual(openCall({ ms: REQUEST_MS, done: true, status: TOOL_CALL_STATUS.SUCCEEDED }));
     // A missing required status leaves the interrupted guess standing.
@@ -72,7 +72,7 @@ describe("settling a turn's tool calls", () => {
     const first = openCall({callId: CALL_ONE, ms: 100, done: true, status: TOOL_CALL_STATUS.SUCCEEDED});
     const second = openCall({callId: CALL_TWO});
     const live = [evt({id: "e1", status: "received", tools: [first, second]})];
-    const completed = applyLiveFrame(live, {kind: FRAME_KIND.EVENT_COMPLETE, event_id: "e1", status: "processed"}, COMPLETED_AT);
+    const completed = applyLiveFrame(live, {kind: FRAME_KIND.TURN_COMPLETE, turn_id: "e1", status: "processed"}, COMPLETED_AT);
     expect(applyLiveFrame(completed, completedWith(READ, 100, {status: TOOL_CALL_STATUS.SUCCEEDED}, CALL_ONE), REPEAT_AT)).toBe(completed);
     const late = applyLiveFrame(completed, completedWith(READ, REQUEST_MS, {status: TOOL_CALL_STATUS.FAILED}, CALL_TWO), REPEAT_AT);
     expect(late[0]?.tools).toEqual([first, {...second, ms: REQUEST_MS, done: true, status: TOOL_CALL_STATUS.FAILED}]);
@@ -80,19 +80,19 @@ describe("settling a turn's tool calls", () => {
 
   it("test_settle_interrupts_open_live_calls", () => {
     const live = [evt({ id: "e1", status: "received", tools: [openCall({ ms: 300 }), openCall({ callId: CALL_TWO, ms: 9, done: true })] })];
-    const settled = mergeBackfill(live, [row({ event_id: "e1", tool_calls: null })]);
+    const settled = mergeBackfill(live, [row({ turn_id: "e1", tool_calls: null })]);
     expect(settled[0]?.tools).toEqual([
       openCall({ ms: 300, done: true, status: TOOL_CALL_STATUS.INTERRUPTED, closedAtSettle: true }),
       openCall({ callId: CALL_TWO, ms: 9, done: true }),
     ]);
     // The completion frame ends the turn the same way.
-    const completed = applyLiveFrame(live, { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "e1", status: "processed" }, COMPLETED_AT);
+    const completed = applyLiveFrame(live, { kind: FRAME_KIND.TURN_COMPLETE, turn_id: "e1", status: "processed" }, COMPLETED_AT);
     expect(completed[0]?.tools?.[0]).toEqual(openCall({ ms: 300, done: true, status: TOOL_CALL_STATUS.INTERRUPTED, closedAtSettle: true }));
     // A call it heard end stays as it ended: a repeated completion changes nothing.
     expect(applyLiveFrame(completed, completedWith(READ, REQUEST_MS, {}, CALL_TWO), REPEAT_AT)).toBe(completed);
     // A turn with no open call keeps its calls as they were.
     const quiet = [evt({ id: "e1", status: "received", tools: [openCall({ done: true })] })];
-    const ended = applyLiveFrame(quiet, { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "e1", status: "processed" }, COMPLETED_AT);
+    const ended = applyLiveFrame(quiet, { kind: FRAME_KIND.TURN_COMPLETE, turn_id: "e1", status: "processed" }, COMPLETED_AT);
     expect(ended[0]?.tools).toBe(quiet[0]?.tools);
   });
 });

@@ -30,14 +30,14 @@ afterEach(() => cleanup());
 // ── EventsList ─────────────────────────────────────────────────────────────
 
 import { EventsList } from "@/components/domain/events/EventsList";
-import { type EventDetail, type EventsPage } from "@/lib/api/events";
+import { type TurnDetail, type TurnsPage } from "@/lib/api/events";
 
 // Opening a row fetches its bodies through the Server Action — the list row
 // carries none. Fixtures here are detail-shaped, so the action serves back the
 // row under inspection.
-let servedDetail: EventDetail | null = null;
+let servedDetail: TurnDetail | null = null;
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
-  getFleetEventAction: () =>
+  getFleetTurnAction: () =>
     Promise.resolve(
       servedDetail === null
         ? { ok: false as const, error: "not found" }
@@ -45,10 +45,10 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
     ),
 }));
 
-export function row(over: Partial<EventDetail> = {}): EventDetail {
+export function row(over: Partial<TurnDetail> = {}): TurnDetail {
   const now = Date.UTC(2026, 3, 28, 10, 30, 0);
   return {
-    event_id: "evt_1",
+    turn_id: "evt_1",
     fleet_id: "zomb_1234567890ab",
     workspace_id: "ws_1",
     actor: "alice@example.com",
@@ -62,7 +62,7 @@ export function row(over: Partial<EventDetail> = {}): EventDetail {
     cost_nanos: null,
     failure_label: null,
     failure_detail: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     created_at: new Date(now).toISOString(),
     updated_at: new Date(now).toISOString(),
     ...over,
@@ -71,10 +71,10 @@ export function row(over: Partial<EventDetail> = {}): EventDetail {
 
 // The wrapper stands in for a real ancestor: the root layout mounts the app's
 // one TooltipProvider, which the relative `Time` cells here read from.
-export function renderList(initial: EventsPage, fleetId?: string) {
+export function renderList(initial: TurnsPage, fleetId?: string) {
   // Whatever a test inspects, the action serves that row's own bodies back.
   // Every fixture in this file is built detail-shaped by `row()` above.
-  servedDetail = (initial.items[0] as EventDetail | undefined) ?? null;
+  servedDetail = (initial.items[0] as TurnDetail | undefined) ?? null;
   return render(
     React.createElement(EventsList, { initial, pageSize: 25, fleetId }),
     { wrapper: TooltipProvider },

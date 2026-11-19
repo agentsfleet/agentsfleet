@@ -24,7 +24,7 @@ describe("useFleetEventStream", () => {
     mount();
     expect(FakeEventSource.instances.length).toBe(1);
     expect(FakeEventSource.instances[0]!.url).toBe(
-      "/live/v1/workspaces/ws_1/fleets/zomb_1/events/stream",
+      "/live/v1/workspaces/ws_1/fleets/zomb_1/turns/stream",
     );
   });
 
@@ -77,8 +77,8 @@ describe("useFleetEventStream", () => {
     const t0 = Date.UTC(2026, 4, 15, 18, 0, 0);
     const t1 = Date.UTC(2026, 4, 15, 18, 30, 0);
     const { result } = mount([
-      row({ event_id: "evt_newer", created_at: new Date(t1).toISOString(), response_text: "second" }),
-      row({ event_id: "evt_older", created_at: new Date(t0).toISOString(), response_text: "first" }),
+      row({ turn_id: "evt_newer", created_at: new Date(t1).toISOString(), response_text: "second" }),
+      row({ turn_id: "evt_older", created_at: new Date(t0).toISOString(), response_text: "first" }),
     ]);
     await waitFor(() => expect(result.current.events).toHaveLength(2));
     expect(result.current.events.map((e) => e.id)).toEqual(["evt_older", "evt_newer"]);
@@ -111,10 +111,10 @@ describe("useFleetEventStream", () => {
 
   it("maps actor → role: steer:* → user, webhook:* → system, fleet → assistant", async () => {
     const { result } = mount([
-      row({ event_id: "u", actor: "steer:alice@example.com" }),
-      row({ event_id: "w", actor: "webhook:github" }),
-      row({ event_id: "a", actor: "fleet" }),
-      row({ event_id: "c", actor: "cron" }),
+      row({ turn_id: "u", actor: "steer:alice@example.com" }),
+      row({ turn_id: "w", actor: "webhook:github" }),
+      row({ turn_id: "a", actor: "fleet" }),
+      row({ turn_id: "c", actor: "cron" }),
     ]);
     await waitFor(() => expect(result.current.events).toHaveLength(4));
     const byId = new Map(result.current.events.map((e) => [e.id, e]));
@@ -124,13 +124,13 @@ describe("useFleetEventStream", () => {
     expect(byId.get("c")!.role).toBe("system");
   });
 
-  it("appends new live-stream EVENT_RECEIVED frames after the seed", async () => {
-    const { result } = mount([row({ event_id: "evt_seed" })]);
+  it("appends new live-stream TURN_RECEIVED frames after the seed", async () => {
+    const { result } = mount([row({ turn_id: "evt_seed" })]);
     await waitFor(() => expect(result.current.events).toHaveLength(1));
     act(() => {
       FakeEventSource.instances[0]!.emit({
-        kind: FRAME_KIND.EVENT_RECEIVED,
-        event_id: "evt_live",
+        kind: FRAME_KIND.TURN_RECEIVED,
+        turn_id: "evt_live",
         actor: "webhook:github",
       });
     });
@@ -140,19 +140,19 @@ describe("useFleetEventStream", () => {
     expect(result.current.events[1]!.status).toBe("received");
   });
 
-  it("CHUNK frames concatenate text on the assistant message for that event_id", async () => {
+  it("CHUNK frames concatenate text on the assistant message for that turn_id", async () => {
     const { result } = mount();
     act(() => {
       FakeEventSource.instances[0]!.emit({
-        kind: FRAME_KIND.EVENT_RECEIVED,
-        event_id: "evt_run",
+        kind: FRAME_KIND.TURN_RECEIVED,
+        turn_id: "evt_run",
         actor: "fleet",
       });
     });
     act(() => {
       FakeEventSource.instances[0]!.emit({
         kind: FRAME_KIND.CHUNK,
-        event_id: "evt_run",
+        turn_id: "evt_run",
         text: "Hello, ",
         text_kind: "answer",
         stream_seq: 0,
@@ -163,7 +163,7 @@ describe("useFleetEventStream", () => {
     act(() => {
       FakeEventSource.instances[0]!.emit({
         kind: FRAME_KIND.CHUNK,
-        event_id: "evt_run",
+        turn_id: "evt_run",
         text: "world.",
         text_kind: "answer",
         stream_seq: 1,
@@ -174,12 +174,12 @@ describe("useFleetEventStream", () => {
     expect(result.current.events[0]!.role).toBe("assistant");
   });
 
-  it("EVENT_COMPLETE updates the event status to processed", async () => {
+  it("TURN_COMPLETE updates the event status to processed", async () => {
     const { result } = mount();
     act(() => {
       FakeEventSource.instances[0]!.emit({
-        kind: FRAME_KIND.EVENT_RECEIVED,
-        event_id: "evt_done",
+        kind: FRAME_KIND.TURN_RECEIVED,
+        turn_id: "evt_done",
         actor: "fleet",
       });
     });
@@ -190,8 +190,8 @@ describe("useFleetEventStream", () => {
     expect(result.current.events[0]!.outcome).toBe(OUTCOME.WORKING);
     act(() => {
       FakeEventSource.instances[0]!.emit({
-        kind: FRAME_KIND.EVENT_COMPLETE,
-        event_id: "evt_done",
+        kind: FRAME_KIND.TURN_COMPLETE,
+        turn_id: "evt_done",
         status: "processed",
       });
     });
@@ -228,8 +228,8 @@ describe("useFleetEventStream", () => {
     expect(result.current.events[0]!.status).toBe("received");
     expect(result.current.convertEvent(result.current.events[0]!).metadata?.custom?.["queued"]).toBe(true);
     act(() => FakeEventSource.instances[0]!.emit({
-      kind: FRAME_KIND.EVENT_RECEIVED,
-      event_id: "evt_real",
+      kind: FRAME_KIND.TURN_RECEIVED,
+      turn_id: "evt_real",
       actor: "steer:alice@example.com",
       created_at: new Date().toISOString(),
     }));
@@ -248,16 +248,16 @@ describe("useFleetEventStream", () => {
     });
     const source = FakeEventSource.instances[0]!;
     act(() => {
-      source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_first", actor: "steer:alice@example.com", created_at: "1970-01-01T00:00:00.001Z" });
-      source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_first", text: "Saved.", text_kind: "answer", stream_seq: 0, stream_start: true, stream_contiguous: true });
+      source.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_first", actor: "steer:alice@example.com", created_at: "1970-01-01T00:00:00.001Z" });
+      source.emit({ kind: FRAME_KIND.CHUNK, turn_id: "evt_first", text: "Saved.", text_kind: "answer", stream_seq: 0, stream_start: true, stream_contiguous: true });
     });
     await waitFor(() => expect(result.current.events.map((event) => event.reply)).toEqual(["Saved.", ""]));
     expect(result.current.convertEvent(result.current.events[1]!).metadata?.custom?.["queued"]).toBe(true);
 
     act(() => {
-      source.emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_first", status: "processed", final_reply: "Saved." });
-      source.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_second", actor: "steer:alice@example.com", created_at: "1970-01-01T00:00:00.002Z" });
-      source.emit({ kind: FRAME_KIND.CHUNK, event_id: "evt_second", text: "You said remember me.", text_kind: "answer", stream_seq: 0, stream_start: true, stream_contiguous: true });
+      source.emit({ kind: FRAME_KIND.TURN_COMPLETE, turn_id: "evt_first", status: "processed", final_reply: "Saved." });
+      source.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_second", actor: "steer:alice@example.com", created_at: "1970-01-01T00:00:00.002Z" });
+      source.emit({ kind: FRAME_KIND.CHUNK, turn_id: "evt_second", text: "You said remember me.", text_kind: "answer", stream_seq: 0, stream_start: true, stream_contiguous: true });
     });
     await waitFor(() => expect(result.current.events.map((event) => event.reply)).toEqual(["Saved.", "You said remember me."]));
     expect(result.current.convertEvent(result.current.events[1]!).metadata?.custom?.["queued"]).toBe(false);

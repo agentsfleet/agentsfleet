@@ -37,7 +37,7 @@ type StepFields = Pick<ToolStep, "args"> & ToolOutcome;
 /** `prev` with `frame` folded in, or `prev` itself when the frame changes nothing. */
 export function applyToolFrame(prev: FleetEvent[], frame: ToolFrame, nowMs: number): FleetEvent[] {
   const step = readToolStep(frame);
-  return step === null ? prev : applyToolStep(prev, frame.event_id, step, nowMs);
+  return step === null ? prev : applyToolStep(prev, frame.turn_id, step, nowMs);
 }
 
 function readToolStep(frame: ToolFrame): ToolStep | null {
@@ -66,16 +66,16 @@ function timed(named: Pick<ToolStep, "name" | "callId">, value: unknown, done: b
   return { ...named, ms: value, done, opens: false, ...outcome };
 }
 
-/// A frame whose event has not arrived is dropped: `event_received` always
+/// A frame whose event has not arrived is dropped: `turn_received` always
 /// precedes its tool calls, and an invented event would put a message in the
 /// thread the backfill duplicates. The first frame of a call stamps its start.
 function applyToolStep(
   prev: FleetEvent[],
-  eventId: string,
+  turnId: string,
   step: ToolStep,
   nowMs: number,
 ): FleetEvent[] {
-  const index = prev.findIndex((e) => e.id === eventId);
+  const index = prev.findIndex((e) => e.id === turnId);
   const event = prev[index];
   // Narrowed, not asserted: `index === -1` and `event === undefined` are the same
   // fact, and letting the type system see it is cheaper than promising it.

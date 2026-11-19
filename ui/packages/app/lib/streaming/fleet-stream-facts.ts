@@ -31,7 +31,7 @@ const NO_PATCH: Partial<FleetFacts> = Object.freeze({});
  */
 export function factsOf(frame: LiveFrame): Partial<FleetFacts> {
   switch (frame.kind) {
-    case FRAME_KIND.EVENT_COMPLETE:
+    case FRAME_KIND.TURN_COMPLETE:
       return {
         status: fleetStatus(frame.fleet_status),
         pendingApprovals: figure(frame.pending_approvals),

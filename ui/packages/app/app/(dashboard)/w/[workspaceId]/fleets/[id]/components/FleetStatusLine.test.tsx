@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import FleetStatusLine from "./FleetStatusLine";
-import type { EventDetail, EventRow } from "@/lib/api/events";
+import type { TurnDetail, TurnRow } from "@/lib/api/events";
 import {
   METRICS_COST_LABEL,
   METRICS_EMPTY,
@@ -15,9 +15,9 @@ import { TooltipProvider } from "@agentsfleet/design-system";
 
 afterEach(() => cleanup());
 
-function event(over: Partial<EventDetail> = {}): EventDetail {
+function event(over: Partial<TurnDetail> = {}): TurnDetail {
   return {
-    event_id: "evt_1",
+    turn_id: "evt_1",
     fleet_id: "agt_1",
     workspace_id: "ws_1",
     actor: "cron:*",
@@ -30,7 +30,7 @@ function event(over: Partial<EventDetail> = {}): EventDetail {
     wall_ms: 12_000,
     failure_label: null,
     failure_detail: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     cost_nanos: "40000000",
     created_at: "2023-11-14T22:13:20Z",
     updated_at: "2023-11-14T22:13:20Z",
@@ -41,7 +41,7 @@ function event(over: Partial<EventDetail> = {}): EventDetail {
 // Wrapped the way `(dashboard)/layout.tsx` wraps the real tree: the outcome's
 // instant renders `relative`, which carries a tooltip holding the absolute
 // time, and `Tooltip` throws outside a provider.
-function renderLine(latest: EventRow | null, pendingApprovals = 0, summaryAvailable = true, status = "active") {
+function renderLine(latest: TurnRow | null, pendingApprovals = 0, summaryAvailable = true, status = "active") {
   return render(
     <TooltipProvider>
     <FleetStatusLine

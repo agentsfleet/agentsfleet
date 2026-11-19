@@ -91,7 +91,7 @@ it.each([
   {kind: "setup_saved", revision: "1"},
   {kind: "setup_saved", revision: "1", origin: "cli"},
 ])("uses only a matching saved receipt for provenance %#", payload => {
-  const activities = [{event_id: "receipt", event_type: "activity", status: "recorded", request_json: JSON.stringify(payload), created_at: MESSAGE.created_at}];
+  const activities = [{turn_id: "receipt", event_type: "activity", status: "recorded", request_json: JSON.stringify(payload), created_at: MESSAGE.created_at}];
   render(<SetupStatusFlap showPublication view={{...SAVED, activities}} workspace={WORKSPACE} />);
   const cli = payload.kind === "setup_saved" && payload.revision === "1" && payload.origin === "cli";
   expect(screen.getByRole("status").textContent).toContain(cli ? "Setup saved via CLI · v1" : "Setup saved · v1");

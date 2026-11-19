@@ -34,7 +34,7 @@ export const test = base.extend<object, {chatProbe: string}>({
         const query = new URL(request.url, "http://localhost").searchParams;
         const owned = query.get("workspace") === SCHEDULE_EVENT.workspace_id && query.get("fleet") === SCHEDULE_EVENT.fleet_id;
         response.writeHead(owned ? 200 : 404, {"content-type": "application/json"});
-        response.end(JSON.stringify({...SCHEDULE_EVENT, event_id: query.get("event"), response_text: "Native recorded support review."}));
+        response.end(JSON.stringify({...SCHEDULE_EVENT, turn_id: query.get("event"), response_text: "Native recorded support review."}));
       } else {
         response.writeHead(200, {"content-type": "text/html"});
         response.end(`<html data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script type="module" src="/probe.js"></script></body></html>`);

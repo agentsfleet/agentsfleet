@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, vi } from "vitest";
 
 import type {
-  EventRow,
+  TurnRow,
   WorkspaceControlFrame,
   WorkspaceHelloFrame,
   WorkspaceLiveFrame,
@@ -67,11 +67,11 @@ export const lastGreeting = wire.lastGreeting;
 export const warnBackfillFailure = wire.warnBackfillFailure;
 export const runWorkspaceBackfill = wire.runWorkspaceBackfill;
 
-export function received(fleetId: string, eventId: string, counters: object = {}): WorkspaceLiveFrame {
+export function received(fleetId: string, turnId: string, counters: object = {}): WorkspaceLiveFrame {
   return {
-    kind: FRAME_KIND.EVENT_RECEIVED,
+    kind: FRAME_KIND.TURN_RECEIVED,
     fleet_id: fleetId,
-    event_id: eventId,
+    turn_id: turnId,
     actor: TRIGGER_ACTOR,
     event_type: TRIGGER_TYPE,
     created_at: new Date(CREATED_AT_MS).toISOString(),
@@ -79,11 +79,11 @@ export function received(fleetId: string, eventId: string, counters: object = {}
   };
 }
 
-export function completed(fleetId: string, eventId: string, counters: object = {}): WorkspaceLiveFrame {
+export function completed(fleetId: string, turnId: string, counters: object = {}): WorkspaceLiveFrame {
   return {
-    kind: FRAME_KIND.EVENT_COMPLETE,
+    kind: FRAME_KIND.TURN_COMPLETE,
     fleet_id: fleetId,
-    event_id: eventId,
+    turn_id: turnId,
     status: SETTLED,
     created_at: new Date(CREATED_AT_MS).toISOString(),
     updated_at: new Date(CREATED_AT_MS).toISOString(),
@@ -91,18 +91,18 @@ export function completed(fleetId: string, eventId: string, counters: object = {
   };
 }
 
-export function chunk(fleetId: string, eventId: string, text = "…"): WorkspaceLiveFrame {
-  return { text_kind: "answer", kind: FRAME_KIND.CHUNK, fleet_id: fleetId, event_id: eventId, text };
+export function chunk(fleetId: string, turnId: string, text = "…"): WorkspaceLiveFrame {
+  return { text_kind: "answer", kind: FRAME_KIND.CHUNK, fleet_id: fleetId, turn_id: turnId, text };
 }
 
-export function toolStarted(fleetId: string, eventId: string, name: string): WorkspaceLiveFrame {
-  return { call_id: name, kind: FRAME_KIND.TOOL_CALL_STARTED, fleet_id: fleetId, event_id: eventId, name, args_redacted: null };
+export function toolStarted(fleetId: string, turnId: string, name: string): WorkspaceLiveFrame {
+  return { call_id: name, kind: FRAME_KIND.TOOL_CALL_STARTED, fleet_id: fleetId, turn_id: turnId, name, args_redacted: null };
 }
 
 /** A settled durable row, as the backfill list serves one. */
-export function listRow(fleetId: string, eventId: string, createdAtMs = CREATED_AT_MS): EventRow {
+export function listRow(fleetId: string, turnId: string, createdAtMs = CREATED_AT_MS): TurnRow {
   return {
-    event_id: eventId,
+    turn_id: turnId,
     fleet_id: fleetId,
     workspace_id: WORKSPACE_ID,
     actor: TRIGGER_ACTOR,
@@ -112,7 +112,7 @@ export function listRow(fleetId: string, eventId: string, createdAtMs = CREATED_
     wall_ms: null,
     failure_label: null,
     failure_detail: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     cost_nanos: null,
     created_at: new Date(createdAtMs).toISOString(),
     updated_at: new Date(createdAtMs).toISOString(),

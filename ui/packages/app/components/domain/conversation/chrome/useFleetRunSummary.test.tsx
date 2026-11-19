@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
-import { type EventRow, type LiveFrame } from "@/lib/api/events";
+import { type TurnRow, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
 import { streamWrapper, __resetRegistryForTests } from "@/tests/helpers/fleet-streams";
@@ -21,9 +21,9 @@ const SEED_AT = Date.UTC(2026, 4, 15, 18, 30, 0);
 const WORKLOADS = [1, 10, 100];
 const fetchMock = vi.fn();
 
-function row(): EventRow {
+function row(): TurnRow {
   return {
-    event_id: "evt_seed",
+    turn_id: "evt_seed",
     fleet_id: FLEET_ID,
     workspace_id: WORKSPACE_ID,
     actor: "cron:*",
@@ -33,7 +33,7 @@ function row(): EventRow {
     wall_ms: 10,
     failure_label: null,
     failure_detail: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     cost_nanos: null,
     created_at: new Date(SEED_AT).toISOString(),
     updated_at: new Date(SEED_AT).toISOString(),
@@ -84,18 +84,18 @@ afterEach(() => {
 describe("useFleetRunSummary — what a streaming reply costs the strip", () => {
   it.each(WORKLOADS)("%i chunks cost zero strip renders and one completion costs one", async (chunks) => {
     render(React.createElement(Harness), {wrapper: streamWrapper});
-    emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*", created_at: new Date(SEED_AT + 1).toISOString() });
+    emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*", created_at: new Date(SEED_AT + 1).toISOString() });
     const settled = renders;
 
     for (let i = 0; i < chunks; i += 1) {
-      emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_live", text: "word " });
+      emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, turn_id: "evt_live", text: "word " });
     }
     expect(renders).toBe(settled);
 
     emit({
-      kind: FRAME_KIND.EVENT_COMPLETE,
+      kind: FRAME_KIND.TURN_COMPLETE,
       ...row(),
-      event_id: "evt_live",
+      turn_id: "evt_live",
       tokens: 1200,
       created_at: new Date(SEED_AT + 1).toISOString(),
       fleet_status: "active",
@@ -113,9 +113,9 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
     const settled = renders;
     for (let i = 0; i < completions; i += 1) {
       emit({
-        kind: FRAME_KIND.EVENT_COMPLETE,
+        kind: FRAME_KIND.TURN_COMPLETE,
         ...row(),
-        event_id: `evt_${i}`,
+        turn_id: `evt_${i}`,
         tokens: i + 1,
         created_at: new Date(SEED_AT + i + 1).toISOString(),
         fleet_status: INITIAL.status,
@@ -133,16 +133,16 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
   it("a render the strip asked for does not roll back a frame that landed during it", () => {
     const view = render(React.createElement(Harness), {wrapper: streamWrapper});
     emit({
-      kind: FRAME_KIND.EVENT_COMPLETE,
+      kind: FRAME_KIND.TURN_COMPLETE,
       ...row(),
-      event_id: "evt_live",
+      turn_id: "evt_live",
       created_at: new Date(SEED_AT + 1).toISOString(),
       fleet_status: "archived",
       pending_approvals: 0,
     });
     expect(refreshMock).toHaveBeenCalledTimes(1);
     // A gate opens while the round trip is in flight …
-    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", event_id: "evt_live", pending_approvals: 1 });
+    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", turn_id: "evt_live", pending_approvals: 1 });
     // … and the render lands carrying the count the server read before it.
     const landed: FleetRunSummary = { ...INITIAL, status: "archived", pendingApprovals: 0 };
     view.rerender(React.createElement(Harness, { summary: landed }));
@@ -161,9 +161,9 @@ describe("useFleetRunSummary — what a streaming reply costs the strip", () => 
 
   it("a gate frame that restates the count re-renders nothing", () => {
     render(React.createElement(Harness), {wrapper: streamWrapper});
-    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", event_id: "evt_seed", pending_approvals: 1 });
+    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", turn_id: "evt_seed", pending_approvals: 1 });
     const settled = renders;
-    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g2", event_id: "evt_seed", pending_approvals: 1 });
+    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g2", turn_id: "evt_seed", pending_approvals: 1 });
     expect(renders).toBe(settled);
     expect(seen?.pendingApprovals).toBe(1);
   });

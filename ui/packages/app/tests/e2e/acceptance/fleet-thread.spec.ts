@@ -17,7 +17,7 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { SSE_CONTENT_TYPE, sseFrame } from "./fixtures/sse";
 import { auditStream, documentIsMarked, markDocument, streamCount } from "./fixtures/soft-navigation";
-import { FRAME_KIND, streamFleetEventsUrl } from "@/lib/api/events-types";
+import { FRAME_KIND, streamFleetTurnsUrl } from "@/lib/api/events-types";
 import { expectEditSetupAvailable } from "./fixtures/private-chat";
 
 const CHAT_LABEL = "Fleet chat";
@@ -117,7 +117,7 @@ test.describe("fleet thread surface", () => {
       name: `${LAYOUT_PREFIX}${Math.random().toString(36).slice(2, 8)}`,
     });
     await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
-    const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/events/stream`;
+    const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/turns/stream`;
     const release = Promise.withResolvers<void>();
     let streamRequests = 0;
     await page.route((url) => url.pathname === streamPath, async (route) => {
@@ -131,11 +131,11 @@ test.describe("fleet thread surface", () => {
       await route.fulfill({
         contentType: SSE_CONTENT_TYPE,
         body: [
-          sseFrame(FRAME_KIND.EVENT_RECEIVED, {
-            event_id: LONG_REPLY_ID, actor: "webhook:layout-probe", created_at: Date.now() + FUTURE_RUN_OFFSET_MS,
+          sseFrame(FRAME_KIND.TURN_RECEIVED, {
+            turn_id: LONG_REPLY_ID, actor: "webhook:layout-probe", created_at: Date.now() + FUTURE_RUN_OFFSET_MS,
           }),
           sseFrame(FRAME_KIND.CHUNK, {
-            event_id: LONG_REPLY_ID, text: LONG_REPLY, text_kind: "answer",
+            turn_id: LONG_REPLY_ID, text: LONG_REPLY, text_kind: "answer",
             stream_seq: 0, stream_start: true, stream_contiguous: true,
           }),
         ].join(""),
@@ -228,7 +228,7 @@ test.describe("fleet thread surface", () => {
       name: `${REVISIT_PREFIX}${tag}`,
     });
     await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
-    await auditStream(page, streamFleetEventsUrl(workspaceId, fleet.id));
+    await auditStream(page, streamFleetTurnsUrl(workspaceId, fleet.id));
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
     await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });
@@ -306,9 +306,9 @@ test.describe("fleet thread surface", () => {
 });
 
 // Where a turn starts in the thread's frame: the first row its event renders.
-function readTurn(root: Element, eventId: string) {
+function readTurn(root: Element, turnId: string) {
   const viewport = root.querySelector('[role="presentation"]')!;
-  const turn = root.querySelector(`[data-message-id="${eventId}"]`)!;
+  const turn = root.querySelector(`[data-message-id="${turnId}"]`)!;
   return {
     scrollTop: viewport.scrollTop,
     turnTop: turn.getBoundingClientRect().top,

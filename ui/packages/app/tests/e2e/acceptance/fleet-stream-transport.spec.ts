@@ -1,7 +1,7 @@
 /** Native EventSource and the real page; fixture SSE/history responses select
  * delivery failures. Rust integration owns durable publication and recovery. */
 import type { Page } from "@playwright/test";
-import type { EventRow, EventsPage } from "@/lib/api/events";
+import type { TurnRow, TurnsPage } from "@/lib/api/events";
 import { expect, test } from "@playwright/test";
 import { RUN_DETAILS_LABEL } from "@/components/domain/activity/replies/FleetReplyFigures";
 import { FRAME_KIND } from "@/lib/api/events-types";
@@ -14,7 +14,7 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { SSE_CONTENT_TYPE, sseFrame as frame } from "./fixtures/sse";
 
 const FLEET_PREFIX = "stream-transport-spec-";
-const EVENT_ID = "9000000000000-1";
+const TURN_ID = "9000000000000-1";
 const MISSED_ID = "9000000000000-2";
 const STREAMING_ID = "9000000000000-3";
 const LIVE_MARKER = "Live completion delivered once.";
@@ -42,7 +42,7 @@ test("native fleet streaming deduplicates completion and backfills after disconn
   const closing = Promise.withResolvers<void>();
   const createdAt = Date.now() + FUTURE_RUN_OFFSET_MS;
   const href = workspaceHref(workspaceId, `fleets/${fleet.id}`);
-  const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/events/stream`;
+  const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/turns/stream`;
   const historyPath = streamPath.replace(/\/stream$/, "");
   const counts = { streamRequests: 0, deliveredStreams: 0, historyReads: 0, pageRefreshes: 0 };
   const errors: string[] = [];
@@ -51,9 +51,9 @@ test("native fleet streaming deduplicates completion and backfills after disconn
   // (afd_fleet run/bracket.rs `publish_completion`); the browser shows it
   // without a detail read.
   const complete = { ...row, fleet_status: STATUS.ACTIVE, pending_approvals: 0, final_reply: LIVE_MARKER };
-  const overlap: EventRow = { ...row, fleet_id: fleet.id, workspace_id: workspaceId };
-  const history: EventsPage = { items: [
-    { ...overlap, event_id: MISSED_ID, actor: "webhook:stream-recovered",
+  const overlap: TurnRow = { ...row, fleet_id: fleet.id, workspace_id: workspaceId };
+  const history: TurnsPage = { items: [
+    { ...overlap, turn_id: MISSED_ID, actor: "webhook:stream-recovered",
       created_at: new Date(createdAt + 1).toISOString(), tokens: 77,
       status: STATUS.FAILED, failure_label: "transport_loss", failure_detail: MISSED_MARKER },
     overlap,
@@ -70,7 +70,7 @@ test("native fleet streaming deduplicates completion and backfills after disconn
       await resume.promise;
       counts.deliveredStreams += 1;
       await route.fulfill({ contentType: SSE_CONTENT_TYPE, body: frame(FRAME_KIND.GATE_OPENED, {
-        event_id: EVENT_ID, gate_id: "reconnected-gate", pending_approvals: 2,
+        turn_id: TURN_ID, gate_id: "reconnected-gate", pending_approvals: 2,
       }) });
     } else {
       // Finite fixture responses deliberately end. Hold the next attempt so
@@ -153,42 +153,42 @@ test("native fleet streaming deduplicates completion and backfills after disconn
   }
 });
 
-function eventRow(createdAt: number): Omit<EventRow, "fleet_id" | "workspace_id"> {
+function eventRow(createdAt: number): Omit<TurnRow, "fleet_id" | "workspace_id"> {
   return {
-    event_id: EVENT_ID, actor: `webhook:${LIVE_SENDER}`, event_type: "webhook", status: STATUS.PROCESSED,
+    turn_id: TURN_ID, actor: `webhook:${LIVE_SENDER}`, event_type: "webhook", status: STATUS.PROCESSED,
     created_at: new Date(createdAt).toISOString(), updated_at: new Date(createdAt).toISOString(), tokens: LIVE_TOKENS, wall_ms: 2_500,
     cost_nanos: "1250000000", failure_label: null, failure_detail: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
   };
 }
 
 function openingFrames(complete: ReturnType<typeof eventRow>): string {
   return [
-    frame(FRAME_KIND.EVENT_RECEIVED, {
-      event_id: EVENT_ID, actor: complete.actor, created_at: complete.created_at,
+    frame(FRAME_KIND.TURN_RECEIVED, {
+      turn_id: TURN_ID, actor: complete.actor, created_at: complete.created_at,
     }),
     // The runner's chunk shape since typed streaming: an untyped or
     // unsequenced chunk is treated as a gap and never painted.
     frame(FRAME_KIND.CHUNK, {
-      event_id: EVENT_ID, text: LIVE_MARKER, text_kind: "answer",
+      turn_id: TURN_ID, text: LIVE_MARKER, text_kind: "answer",
       stream_seq: 0, stream_start: true, stream_contiguous: true,
     }),
-    frame(FRAME_KIND.EVENT_COMPLETE, complete),
-    frame(FRAME_KIND.EVENT_COMPLETE, complete),
-    `event: ${FRAME_KIND.EVENT_COMPLETE}\ndata: {invalid JSON\n\n`,
-    frame(FRAME_KIND.EVENT_COMPLETE, { event_id: "thin-completion", status: STATUS.PROCESSED }),
+    frame(FRAME_KIND.TURN_COMPLETE, complete),
+    frame(FRAME_KIND.TURN_COMPLETE, complete),
+    `event: ${FRAME_KIND.TURN_COMPLETE}\ndata: {invalid JSON\n\n`,
+    frame(FRAME_KIND.TURN_COMPLETE, { turn_id: "thin-completion", status: STATUS.PROCESSED }),
     // Older than the completed run, so the latest-run figures stay that run's
     // instead of this one's empty ones.
-    frame(FRAME_KIND.EVENT_RECEIVED, {
-      event_id: STREAMING_ID, actor: `webhook:${STREAMING_SENDER}`, created_at: new Date(Date.parse(complete.created_at) - 1).toISOString(),
+    frame(FRAME_KIND.TURN_RECEIVED, {
+      turn_id: STREAMING_ID, actor: `webhook:${STREAMING_SENDER}`, created_at: new Date(Date.parse(complete.created_at) - 1).toISOString(),
     }),
     frame(FRAME_KIND.CHUNK, {
-      event_id: STREAMING_ID, text: STREAMING_MARKER, text_kind: "answer",
+      turn_id: STREAMING_ID, text: STREAMING_MARKER, text_kind: "answer",
       stream_seq: 0, stream_start: true, stream_contiguous: true,
     }),
     // This final count proves every preceding malformed frame was consumed.
     frame(FRAME_KIND.GATE_OPENED, {
-      event_id: EVENT_ID, gate_id: "opening-gate", pending_approvals: 1,
+      turn_id: TURN_ID, gate_id: "opening-gate", pending_approvals: 1,
     }),
   ].join("");
 }

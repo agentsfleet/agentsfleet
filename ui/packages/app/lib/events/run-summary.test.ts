@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EVENTS } from "@/lib/analytics/events";
-import type { EventDetail, EventRow } from "@/lib/api/events";
+import type { TurnDetail, TurnRow } from "@/lib/api/events";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { THREAD_STATUS } from "./event-summary";
 import { buildRunSummary, figuresOfRow, latestFigures, sameFigures } from "./run-summary";
@@ -13,9 +13,9 @@ const OLDER_AT = 1_000;
 const TIED_AT = 2_000;
 const OPTIMISTIC_AT = 9_000;
 
-function row(over: Partial<EventRow> = {}): EventRow {
+function row(over: Partial<TurnRow> = {}): TurnRow {
   return {
-    event_id: "evt_1",
+    turn_id: "evt_1",
     fleet_id: "agt_1",
     workspace_id: "ws_1",
     actor: "cron:*",
@@ -25,7 +25,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
     wall_ms: 12_000,
     failure_label: null,
     failure_detail: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     cost_nanos: "40000000",
     created_at: "2023-11-14T22:13:20Z",
     updated_at: "2023-11-14T22:13:20Z",
@@ -34,7 +34,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
 }
 
 /** The thread's row is the list row plus the two bodies the strip ignores. */
-function turn(over: Partial<EventRow> = {}): EventDetail {
+function turn(over: Partial<TurnRow> = {}): TurnDetail {
   return { ...row(over), request_json: "{}", response_text: "done", tool_calls: null };
 }
 
@@ -67,7 +67,7 @@ describe("buildRunSummary", () => {
     expect(latestFigures([notice])).toBeNull();
   });
   it("the thread page and a live row build the same figures", () => {
-    const fromThread = buildRunSummary(STATUS_ACTIVE, { items: [turn(), turn({ event_id: "evt_0" })] }, PENDING);
+    const fromThread = buildRunSummary(STATUS_ACTIVE, { items: [turn(), turn({ turn_id: "evt_0" })] }, PENDING);
     // The bodies ride along on the thread row but never reach the strip, and
     // the registry's view of the same row reads identically.
     expect(fromThread.latest).toEqual(figuresOfRow(row()));
@@ -77,7 +77,7 @@ describe("buildRunSummary", () => {
   });
 
   it("a message waiting for a runner is not the fleet's latest run", () => {
-    const waiting = turn({ event_id: "evt_2", status: THREAD_STATUS.QUEUED, actor: "steer:user_bob" });
+    const waiting = turn({ turn_id: "evt_2", status: THREAD_STATUS.QUEUED, actor: "steer:user_bob" });
     const summary = buildRunSummary(STATUS_ACTIVE, { items: [waiting, turn()] }, 0);
     expect(summary.latest).toEqual(figuresOfRow(row()));
     // Live, the same: the waiting row never becomes the strip's latest.

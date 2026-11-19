@@ -5,18 +5,18 @@ import { outcomeForStatus, roleFor } from "@/lib/events/event-summary";
 import { AGENTSFLEET_EVENT_STATUS, text, type FleetEvent } from "./fleet-stream-row";
 
 // How a message waiting for a runner reaches the timeline, beside
-// `fleet-stream-frames.ts`: `event_admitted` opens a waiting row the moment the
-// daemon accepts a message, and `event_received` for the same event starts it.
+// `fleet-stream-frames.ts`: `turn_admitted` opens a waiting row the moment the
+// daemon accepts a message, and `turn_received` for the same event starts it.
 // The two can arrive in either order — a runner can run a send and announce
 // it before the route publishes — so an admitted frame for a row already held
 // fills only an empty text and never moves the row back to waiting.
 
-type AdmittedFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_ADMITTED }>;
-type ReceivedFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_RECEIVED }>;
+type AdmittedFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.TURN_ADMITTED }>;
+type ReceivedFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.TURN_RECEIVED }>;
 
 export function applyEventAdmitted(prev: FleetEvent[], frame: AdmittedFrame): FleetEvent[] {
   const message = text(frame.message);
-  const index = prev.findIndex((event) => event.id === frame.event_id);
+  const index = prev.findIndex((event) => event.id === frame.turn_id);
   const existing = prev[index];
   if (existing === undefined) return [...prev, waitingRow(frame, message)];
   if (existing.text.length > 0 || message.length === 0) return prev;
@@ -71,7 +71,7 @@ function awaitsOwnRun(event: FleetEvent): boolean {
 function waitingRow(frame: AdmittedFrame, message: string): FleetEvent {
   const createdAt = instantMs(frame.created_at);
   return {
-    id: frame.event_id,
+    id: frame.turn_id,
     role: roleFor(frame.actor),
     actor: frame.actor,
     text: message,

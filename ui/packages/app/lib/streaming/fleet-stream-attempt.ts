@@ -21,33 +21,33 @@ const OUTPUT_KINDS: ReadonlySet<string> = new Set([
 /** Compare canonical decimal strings without losing a database bigint's precision. */
 export function acceptAttemptFrame(entry: Entry, frame: LiveFrame, apply: ApplyEvents): boolean {
   if (!OUTPUT_KINDS.has(frame.kind)) return true;
-  if (!("event_id" in frame) || typeof frame.event_id !== "string") return false;
-  const eventId = frame.event_id;
-  if (entry.completedReplies.has(eventId) || entry.snapshot.events.some(event =>
-    event.id === eventId && TERMINAL_STATUSES.has(event.status))) return false;
+  if (!("turn_id" in frame) || typeof frame.turn_id !== "string") return false;
+  const turnId = frame.turn_id;
+  if (entry.completedReplies.has(turnId) || entry.snapshot.events.some(event =>
+    event.id === turnId && TERMINAL_STATUSES.has(event.status))) return false;
   const parsed = v.safeParse(FENCE, frame.fencing_token);
   if (!parsed.success) return false;
   const fence = parsed.output;
-  const previous = entry.replyAttempts.get(eventId);
+  const previous = entry.replyAttempts.get(turnId);
   if (previous !== undefined && (fence.length < previous.length
     || (fence.length === previous.length && fence < previous))) return false;
   if (fence !== previous) {
-    entry.replyAttempts.set(eventId, fence);
-    if (previous !== undefined || frame.kind === FRAME_KIND.RUN_RESTARTED) restart(entry, eventId, fence, apply);
+    entry.replyAttempts.set(turnId, fence);
+    if (previous !== undefined || frame.kind === FRAME_KIND.RUN_RESTARTED) restart(entry, turnId, fence, apply);
   }
   return frame.kind !== FRAME_KIND.RUN_RESTARTED;
 }
 
-function restart(entry: Entry, eventId: string, fence: string, apply: ApplyEvents): void {
-  closeLivePass(entry, eventId);
-  entry.replyGaps.delete(eventId);
-  entry.replyRecoveries.delete(eventId);
-  entry.runningReads.delete(eventId);
-  entry.bodyReads.delete(eventId);
-  entry.traceReads.delete(eventId);
+function restart(entry: Entry, turnId: string, fence: string, apply: ApplyEvents): void {
+  closeLivePass(entry, turnId);
+  entry.replyGaps.delete(turnId);
+  entry.replyRecoveries.delete(turnId);
+  entry.runningReads.delete(turnId);
+  entry.bodyReads.delete(turnId);
+  entry.traceReads.delete(turnId);
   apply(prev => applyLiveFrame(prev, {
-    kind: FRAME_KIND.CHUNK, event_id: eventId, text_kind: "answer", text: "",
-  }).map(event => event.id === eventId ? {
+    kind: FRAME_KIND.CHUNK, turn_id: turnId, text_kind: "answer", text: "",
+  }).map(event => event.id === turnId ? {
     ...interruptOpenCalls(event), runRestarted: true, restartAttempt: fence, reply: "", reasoning: "",
     thinking: false, reasoningStartedAtMs: undefined, reasoningEndedAtMs: undefined,
     replyRecovering: false, contextProgress: undefined, contextProgressHidden: undefined,

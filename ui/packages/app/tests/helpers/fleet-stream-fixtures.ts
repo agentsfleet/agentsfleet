@@ -1,4 +1,4 @@
-import type { EventDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/events";
 import { OUTCOME } from "@/lib/events/event-summary";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 
@@ -8,9 +8,9 @@ import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 
 export const MS_PER_SECOND = 1000 as const;
 
-export function row(over: Partial<EventDetail> = {}): EventDetail {
+export function row(over: Partial<TurnDetail> = {}): TurnDetail {
   return {
-    event_id: "e1",
+    turn_id: "e1",
     fleet_id: "z1",
     workspace_id: "ws1",
     actor: "fleet",
@@ -21,11 +21,11 @@ export function row(over: Partial<EventDetail> = {}): EventDetail {
     tokens: null,
     wall_ms: null,
     failure_label: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     created_at: "1970-01-01T00:00:01Z",
     updated_at: "1970-01-01T00:00:01Z",
     ...over,
-  } as EventDetail;
+  } as TurnDetail;
 }
 
 export function evt(over: Partial<FleetEvent> = {}): FleetEvent {

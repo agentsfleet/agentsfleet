@@ -1,5 +1,5 @@
 // Tests for the same-origin event detail proxy route handler at
-// app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/[eventId].
+// app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/[turnId].
 //
 // The one-event sibling of backfill-route.test.ts: same Clerk trust boundary
 // (cookie-authed browser → Bearer-only backend), but one event's saved row,
@@ -31,7 +31,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-import { GET } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/[eventId]/route";
+import { GET } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/[turnId]/route";
 
 const WS = "ws_1";
 const FLEET = "fleet_1";
@@ -41,17 +41,17 @@ const HEADER_CACHE_CONTROL = "cache-control";
 const CONTENT_TYPE_JSON = "application/json";
 const CONTENT_TYPE_TEXT = "text/plain";
 const NO_STORE = "no-store";
-const EVENT_ID = "1790573387481-566";
+const TURN_ID = "1790573387481-566";
 const DOT_DOT = "..";
 const NOT_FOUND_BODY = JSON.stringify({ error: "not found" });
-const UPSTREAM_DETAIL = JSON.stringify({ event_id: EVENT_ID, status: "processed", response_text: "Done." });
+const UPSTREAM_DETAIL = JSON.stringify({ turn_id: TURN_ID, status: "processed", response_text: "Done." });
 
 function makeReq(signal?: AbortSignal): Request {
   return new Request("http://localhost/proxy", { method: "GET", signal });
 }
 
-function paramsOf(workspaceId: string, fleetId: string, eventId: string) {
-  return { params: Promise.resolve({ workspaceId, fleetId, eventId }) };
+function paramsOf(workspaceId: string, fleetId: string, turnId: string) {
+  return { params: Promise.resolve({ workspaceId, fleetId, turnId }) };
 }
 
 function upstreamDetail(): Response {
@@ -63,9 +63,9 @@ describe("event detail route handler — auth", () => {
     // encodeURIComponent leaves '.' intact; a bare '..' segment would
     // dot-normalize inside fetch and steer the token at a different
     // upstream path.
-    const cases = [[DOT_DOT, FLEET, EVENT_ID], [WS, DOT_DOT, EVENT_ID], [WS, FLEET, DOT_DOT], [WS, FLEET, "."]] as const;
-    for (const [ws, fleet, eventId] of cases) {
-      const res = await GET(makeReq(), paramsOf(ws, fleet, eventId));
+    const cases = [[DOT_DOT, FLEET, TURN_ID], [WS, DOT_DOT, TURN_ID], [WS, FLEET, DOT_DOT], [WS, FLEET, "."]] as const;
+    for (const [ws, fleet, turnId] of cases) {
+      const res = await GET(makeReq(), paramsOf(ws, fleet, turnId));
       expect(res.status).toBe(400);
       expect(res.headers.get(HEADER_CACHE_CONTROL)).toBe(NO_STORE);
     }
@@ -78,11 +78,11 @@ describe("event detail route handler — authed proxying", () => {
   it("test_event_detail_route_proxies_authed — mints the token, reads the one event, and streams its row back", async () => {
     getTokenFn.mockResolvedValueOnce("api_jwt_token");
     fetchSpy.mockResolvedValueOnce(upstreamDetail());
-    const res = await GET(makeReq(), paramsOf(WS, FLEET, EVENT_ID));
+    const res = await GET(makeReq(), paramsOf(WS, FLEET, TURN_ID));
     expect(getTokenFn).toHaveBeenCalledWith();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0]!;
-    expect(url).toBe(`https://api.example.test/v1/workspaces/${WS}/fleets/${FLEET}/events/${EVENT_ID}`);
+    expect(url).toBe(`https://api.example.test/v1/workspaces/${WS}/fleets/${FLEET}/turns/${TURN_ID}`);
     const headers = (init as RequestInit).headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer api_jwt_token");
     expect(headers.Accept).toBe(CONTENT_TYPE_JSON);
@@ -98,7 +98,7 @@ describe("event detail route handler — authed proxying", () => {
     fetchSpy.mockResolvedValueOnce(upstreamDetail());
     await GET(makeReq(), paramsOf("ws/../admin", "fleet 1", "evt?x=1"));
     const [url] = fetchSpy.mock.calls[0]!;
-    expect(url).toBe("https://api.example.test/v1/workspaces/ws%2F..%2Fadmin/fleets/fleet%201/events/evt%3Fx%3D1");
+    expect(url).toBe("https://api.example.test/v1/workspaces/ws%2F..%2Fadmin/fleets/fleet%201/turns/evt%3Fx%3D1");
   });
 
 });
@@ -109,7 +109,7 @@ describe("event detail route handler — upstream errors", () => {
     fetchSpy.mockResolvedValueOnce(
       new Response(NOT_FOUND_BODY, { status: 404, headers: { [HEADER_CONTENT_TYPE]: CONTENT_TYPE_JSON } }),
     );
-    const res = await GET(makeReq(), paramsOf(WS, FLEET, EVENT_ID));
+    const res = await GET(makeReq(), paramsOf(WS, FLEET, TURN_ID));
     expect(res.status).toBe(404);
     expect(res.headers.get(HEADER_CONTENT_TYPE)).toBe(CONTENT_TYPE_JSON);
     expect(res.headers.get(HEADER_CACHE_CONTROL)).toBe(NO_STORE);
@@ -121,7 +121,7 @@ describe("event detail route handler — upstream errors", () => {
     fetchSpy.mockResolvedValueOnce(
       new Response("<script>alert(1)</script>", { status: 500, headers: { [HEADER_CONTENT_TYPE]: "text/html" } }),
     );
-    const res = await GET(makeReq(), paramsOf(WS, FLEET, EVENT_ID));
+    const res = await GET(makeReq(), paramsOf(WS, FLEET, TURN_ID));
     expect(res.status).toBe(500);
     expect(res.headers.get(HEADER_CONTENT_TYPE)).toBe(CONTENT_TYPE_TEXT);
   });

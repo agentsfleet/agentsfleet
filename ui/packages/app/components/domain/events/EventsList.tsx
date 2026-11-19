@@ -14,7 +14,7 @@ import {
 } from "@agentsfleet/design-system";
 import { PulseIcon, CaretRightIcon } from "@phosphor-icons/react/ssr";
 import { compareNanos, formatDollars } from "@/lib/money";
-import type { EventRow, EventsPage } from "@/lib/api/events";
+import type { TurnRow, TurnsPage } from "@/lib/api/events";
 import { senderLabelFor } from "@/lib/events/event-summary";
 import { MODEL_CHANGED_LABEL } from "@/lib/events/event-payload";
 import { EVENTS } from "@/lib/analytics/events";
@@ -32,7 +32,7 @@ import { EventDetailsDialog } from "./EventDetailsDialog";
 
 export type EventsListProps = {
   /** The page the Server Component fetched for the cursor in the URL. */
-  initial: EventsPage;
+  initial: TurnsPage;
   pageSize: number;
   fleetId?: string;
 };
@@ -67,9 +67,9 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
 // uses (API keys, secrets, runners, billing). One row per event; the summary
 // column carries the response preview or the plain-language failure reason.
 function createEventColumns(
-  onInspect: (row: EventRow) => void,
+  onInspect: (row: TurnRow) => void,
   runs: RunsColumn,
-): DataTableColumn<EventRow>[] {
+): DataTableColumn<TurnRow>[] {
   return [
     {
       // Leading column: which fleet, by the name it carries everywhere else.
@@ -155,7 +155,7 @@ function createEventColumns(
           variant="ghost"
           size="sm"
           className="min-h-11 sm:min-h-0"
-          aria-label={`Inspect event ${row.event_id}`}
+          aria-label={`Inspect event ${row.turn_id}`}
           onClick={() => onInspect(row)}
         >
           Inspect
@@ -194,7 +194,7 @@ function createEventColumns(
 }
 
 export function EventsList({ initial, pageSize, fleetId }: EventsListProps) {
-  const [selected, setSelected] = useState<EventRow | null>(null);
+  const [selected, setSelected] = useState<TurnRow | null>(null);
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
 
   // The page lives in the URL; the Server Component above already fetched it.
@@ -208,7 +208,7 @@ export function EventsList({ initial, pageSize, fleetId }: EventsListProps) {
   const items = useMemo(
     () =>
       entries.flatMap((entry) =>
-        entry.rows.length < MIN_ROW_GROUP || opened.has(entry.lead.event_id)
+        entry.rows.length < MIN_ROW_GROUP || opened.has(entry.lead.turn_id)
           ? entry.rows
           : [entry.lead],
       ),
@@ -218,15 +218,15 @@ export function EventsList({ initial, pageSize, fleetId }: EventsListProps) {
     const counts = new Map<string, number>();
     for (const entry of entries) {
       if (entry.rows.length >= MIN_ROW_GROUP)
-        counts.set(entry.lead.event_id, entry.rows.length);
+        counts.set(entry.lead.turn_id, entry.rows.length);
     }
     return {
-      countFor: (row) => counts.get(row.event_id) ?? null,
-      isOpen: (row) => opened.has(row.event_id),
+      countFor: (row) => counts.get(row.turn_id) ?? null,
+      isOpen: (row) => opened.has(row.turn_id),
       toggle: (row) =>
         setOpened((prev) => {
           const next = new Set(prev);
-          if (!next.delete(row.event_id)) next.add(row.event_id);
+          if (!next.delete(row.turn_id)) next.add(row.turn_id);
           return next;
         }),
     };
@@ -244,7 +244,7 @@ export function EventsList({ initial, pageSize, fleetId }: EventsListProps) {
         caption={fleetId ? FLEET_EVENTS_LABEL : WORKSPACE_EVENTS_LABEL}
         columns={columns}
         rows={items}
-        rowKey={(row) => `${row.fleet_id}:${row.event_id}`}
+        rowKey={(row) => `${row.fleet_id}:${row.turn_id}`}
         viewportClassName="min-h-0 flex-1 max-h-none"
         pagination={{
           kind: PAGINATION_KIND.page,
@@ -275,14 +275,14 @@ export function EventsList({ initial, pageSize, fleetId }: EventsListProps) {
 
 type RunsColumn = {
   /** How many rows this one stands for, or null when it stands alone. */
-  countFor: (row: EventRow) => number | null;
-  isOpen: (row: EventRow) => boolean;
-  toggle: (row: EventRow) => void;
+  countFor: (row: TurnRow) => number | null;
+  isOpen: (row: TurnRow) => boolean;
+  toggle: (row: TurnRow) => void;
 };
 
 // The count is a control, not a label: it opens to the rows it covers, so an
 // operator never has to take "×15" on trust.
-function RunsCell({ row, runs }: { row: EventRow; runs: RunsColumn }) {
+function RunsCell({ row, runs }: { row: TurnRow; runs: RunsColumn }) {
   const count = runs.countFor(row);
   if (count === null) return null;
   const open = runs.isOpen(row);
@@ -309,7 +309,7 @@ function DimmedWhenAbsent({
   value,
   children,
 }: {
-  row: EventRow;
+  row: TurnRow;
   value: number | string | null;
   children: React.ReactNode;
 }) {
@@ -317,7 +317,7 @@ function DimmedWhenAbsent({
   return <span className="text-muted-foreground/50">{children}</span>;
 }
 
-function EventTimeCell({ row }: { row: EventRow }) {
+function EventTimeCell({ row }: { row: TurnRow }) {
   const created = new Date(row.created_at);
   if (!isFinite(created.getTime())) return null;
   return (

@@ -20,7 +20,7 @@ export function IntegrationActivityElement({data}: {data: ActivityElementData}) 
 }
 
 export function WakeupActivityElement({data}: {data: ActivityElementData}) {
-  return <ActivityRow data={data} annotation={<FleetRunDetails eventId={data.eventId} status={data.status} />} />;
+  return <ActivityRow data={data} annotation={<FleetRunDetails turnId={data.turnId} status={data.status} />} />;
 }
 
 /** Keep decisions in the fleet Summary, backed by its authenticated gate reader. */

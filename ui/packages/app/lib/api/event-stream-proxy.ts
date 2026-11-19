@@ -1,5 +1,5 @@
 // What the two same-origin stream proxies answer an EventSource with: the
-// workspace stream (app/live/v1/workspaces/[workspaceId]/events/stream) and
+// workspace stream (app/live/v1/workspaces/[workspaceId]/turns/stream) and
 // the per-fleet one beneath it. Neither may import the API client, which their
 // tests replace wholesale, so this reads only the frame vocabulary and codes.
 

@@ -101,7 +101,7 @@ it("shows proposed and saved questions in the primary setup screen using the mat
 it("keeps the setup headings in order: the questions take level 2 when the save heading is not shown", () => {
   const client = new DraftClient({account: "owner", workspace: WORKSPACE, subject: "creator"});
   const base = {...EMPTY_DRAFT_VIEW, fleet: {...FLEET, setup_revision: "7", definition: definition(FIXTURE)}};
-  const recorded = {event_id: "setup:seven", event_type: "activity", status: "recorded",
+  const recorded = {turn_id: "setup:seven", event_type: "activity", status: "recorded",
     request_json: JSON.stringify({kind: ACTIVITY_KIND.setupSaved, revision: "7"}), created_at: "1970-01-01T00:00:01Z"};
   try {
     const view = render(<FleetSetup client={client} view={base} workspace={WORKSPACE} />);

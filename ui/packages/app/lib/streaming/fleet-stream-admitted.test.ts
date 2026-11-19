@@ -8,7 +8,7 @@ import { applyLiveFrame } from "./fleet-stream-frames";
 import { foldRow, optimisticRow } from "./fleet-stream-optimistic";
 import { AGENTSFLEET_EVENT_STATUS, FOLDED_OUTCOME, type FleetEvent } from "./fleet-stream-row";
 
-const EVENT_ID = "1725000000000-3";
+const TURN_ID = "1725000000000-3";
 const TEAMMATE = `${ACTOR.STEER_PREFIX}user_bob`;
 const TYPED = "check the tests";
 const ADMITTED_AT = 1_725_000_000_000;
@@ -16,8 +16,8 @@ const RECEIVED_AT = ADMITTED_AT + 5_000;
 
 function admitted(message: string | null = TYPED): LiveFrame {
   return {
-    kind: FRAME_KIND.EVENT_ADMITTED,
-    event_id: EVENT_ID,
+    kind: FRAME_KIND.TURN_ADMITTED,
+    turn_id: TURN_ID,
     actor: TEAMMATE,
     event_type: "chat",
     ...(message === null ? {} : { message }),
@@ -27,8 +27,8 @@ function admitted(message: string | null = TYPED): LiveFrame {
 
 function received(message?: string): LiveFrame {
   return {
-    kind: FRAME_KIND.EVENT_RECEIVED,
-    event_id: EVENT_ID,
+    kind: FRAME_KIND.TURN_RECEIVED,
+    turn_id: TURN_ID,
     actor: TEAMMATE,
     event_type: "chat",
     created_at: new Date(RECEIVED_AT).toISOString(),
@@ -45,7 +45,7 @@ describe("a message waiting for a runner", () => {
     const [row, ...rest] = fold([admitted()]);
     expect(rest).toEqual([]);
     expect(row).toMatchObject({
-      id: EVENT_ID,
+      id: TURN_ID,
       role: "user",
       actor: TEAMMATE,
       text: TYPED,
@@ -106,7 +106,7 @@ describe("a message waiting for a runner", () => {
 // fleet's next run starts the message under its own event.
 describe("a send labelled folded whose run never took it", () => {
   function labelled(): FleetEvent[] {
-    return foldRow([optimisticRow("temp", TYPED, TEAMMATE)], "temp", EVENT_ID);
+    return foldRow([optimisticRow("temp", TYPED, TEAMMATE)], "temp", TURN_ID);
   }
 
   it("starts on its received frame and drops the label", () => {
@@ -116,7 +116,7 @@ describe("a send labelled folded whose run never took it", () => {
     const [started, ...rest] = applyLiveFrame(rows, received());
 
     expect(rest).toEqual([]);
-    expect(started).toMatchObject({ id: EVENT_ID, text: TYPED, status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+    expect(started).toMatchObject({ id: TURN_ID, text: TYPED, status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
     expect(started?.outcome).not.toBe(FOLDED_OUTCOME);
   });
 

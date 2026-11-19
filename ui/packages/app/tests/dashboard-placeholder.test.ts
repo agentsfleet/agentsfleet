@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { mockAuthOnce as mockAuth } from "./helpers/dashboard-mocks";
 import {
   resetDashboardMocks,
-  listWorkspaceEventsMock,
+  listWorkspaceTurnsMock,
 } from "./helpers/dashboard-app-mocks";
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
@@ -133,7 +133,7 @@ describe("placeholder pages", () => {
     // M118: EventsData reads `workspaceId` from the route param (its prop); the
     // no-workspace `notFound()` is gone (the `[workspaceId]` layout guards it).
     mockAuth({ token: "token_abc" });
-    listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
+    listWorkspaceTurnsMock.mockResolvedValue({ items: [], next_cursor: null });
     const { EventsData } =
       await import("../app/(dashboard)/w/[workspaceId]/events/page");
     const { WORKSPACE_EVENTS_LABEL } =
@@ -146,7 +146,7 @@ describe("placeholder pages", () => {
 
   it("events page preserves failed reads instead of reporting no activity", async () => {
     mockAuth({ token: "token_abc" });
-    listWorkspaceEventsMock.mockRejectedValue(new Error("boom"));
+    listWorkspaceTurnsMock.mockRejectedValue(new Error("boom"));
     const { EventsData } =
       await import("../app/(dashboard)/w/[workspaceId]/events/page");
     await expect(EventsData({ workspaceId: "ws_1" })).rejects.toThrow("boom");
@@ -154,7 +154,7 @@ describe("placeholder pages", () => {
 
   it("events page reads the cursor and page size from the URL", async () => {
     mockAuth({ token: "token_abc" });
-    listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
+    listWorkspaceTurnsMock.mockResolvedValue({ items: [], next_cursor: null });
     const mod = await import("../app/(dashboard)/w/[workspaceId]/events/page");
     // The default page awaits searchParams and derives the cursor (the URL
     // branch); EventsData receives it and asks the API for that page.
@@ -171,7 +171,7 @@ describe("placeholder pages", () => {
         pageSize: 50,
       }),
     );
-    expect(listWorkspaceEventsMock).toHaveBeenLastCalledWith(
+    expect(listWorkspaceTurnsMock).toHaveBeenLastCalledWith(
       "ws_1",
       "token_abc",
       expect.objectContaining({ cursor: "tok_1", limit: 50 }),

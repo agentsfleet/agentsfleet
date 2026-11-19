@@ -135,11 +135,11 @@ test("an open but silent native stream is replaced automatically and resumes on 
 test("replacement attempts reset the rendered answer and announce once per observed attempt", async ({page}, info) => {
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await startProbe(page);
-  const event_id = "019f0000-0000-7000-8000-000000000001";
+  const turn_id = "019f0000-0000-7000-8000-000000000001";
   const send = (kind: string, payload: Record<string, unknown>) => currentStream().write(
-    `event: ${kind}\ndata: ${JSON.stringify({kind, event_id, ...payload})}\n\n`);
+    `event: ${kind}\ndata: ${JSON.stringify({kind, turn_id, ...payload})}\n\n`);
   send("heartbeat", {});
-  send("event_received", {actor: "steer:browser-owner", event_type: "chat", message: "Review the interrupted run"});
+  send("turn_received", {actor: "steer:browser-owner", event_type: "chat", message: "Review the interrupted run"});
   const chunk = (fencing_token: string, text: string) => send("chunk", {fencing_token, text,
     text_kind: "answer", stream_start: true, stream_contiguous: true, stream_seq: 0});
   chunk("9", "Old provisional answer");
@@ -159,7 +159,7 @@ test("replacement attempts reset the rendered answer and announce once per obser
   await expect(page.getByText("Replacement after a lost restart notice", {exact: true})).toBeVisible();
   await expect(announcement.locator("span")).not.toHaveAttribute("data-observed");
   chunk("10", "Delayed stale answer");
-  send("event_complete", {status: "processed", final_reply: "Saved winning answer"});
+  send("turn_complete", {status: "processed", final_reply: "Saved winning answer"});
   await expect(page.getByText("Saved winning answer", {exact: true})).toBeVisible();
   await expect(page.getByText("Delayed stale answer", {exact: true})).toHaveCount(0);
   await expect(page.getByText("Run restarted", {exact: true})).toHaveCount(1);

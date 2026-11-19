@@ -73,7 +73,7 @@ export const FleetSchema = z.object({
   definition: DefinitionSchema.optional(), setup: z.object({state: z.string(), checks: z.array(CheckSchema)}),
   start: z.discriminatedUnion("kind", [z.object({kind: z.literal(START_KIND.none)}), z.object({
     kind: z.literal(START_KIND.runNow), state: z.enum(["pending", "accepted", "blocked"]),
-    event_id: z.string().optional(), error_code: z.string().optional(),
+    turn_id: z.string().optional(), error_code: z.string().optional(),
   })]),
   schedules: z.array(ScheduleSchema),
 });

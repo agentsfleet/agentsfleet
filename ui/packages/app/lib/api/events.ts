@@ -1,11 +1,11 @@
 import { request, requestWithRetry } from "./client";
-import { EventsPageSchema, type EventRow, type EventsPage } from "./event-history-schema";
-export type { EventRow, EventsPage } from "./event-history-schema";
+import { TurnsPageSchema, type TurnRow, type TurnsPage } from "./event-history-schema";
+export type { TurnRow, TurnsPage } from "./event-history-schema";
 
 import type { RetryOptions } from "./retry";
 import type { ContextProgress } from "../context-progress";
 import { buildQuery } from "./events-types";
-import type { EventsQuery, FRAME_KIND } from "./events-types";
+import type { TurnsQuery, FRAME_KIND } from "./events-types";
 
 // The fleet-scoped `/v1` routes hang off this segment; the ids are encoded
 // here, once, so a caller-controlled value carrying `/`, `?` or `#` can never
@@ -15,31 +15,31 @@ function fleetScope(workspaceId: string, fleetId: string): string {
   return `/v1/workspaces/${encodeURIComponent(workspaceId)}/fleets/${encodeURIComponent(fleetId)}`;
 }
 
-// Operator-visible event rows from `fleet.events`. Mirrors the
-// server's `EventRow` envelope verbatim (no shim, no rename) — the
+// Operator-visible turn rows from `thread.turns`. Mirrors the
+// server's `TurnRow` envelope verbatim (no shim, no rename) — the
 // dashboard renders the same shape it queries.
 //
 // No request or response body: a page is up to 200 rows, and the list read is
 // deliberately kept off oversized-attribute storage. Anything that needs a body
-// reads one event through `getFleetEvent` below.
+// reads one event through `getFleetTurn` below.
 
-export type EventStatus = "received" | "processed" | "fleet_error" | "gate_blocked";
+export type TurnStatus = "received" | "processed" | "fleet_error" | "gate_blocked";
 
 export type EventType = "chat" | "webhook" | "cron" | "continuation";
 
-export type EventStatusValue = EventStatus | (string & {});
+export type TurnStatusValue = TurnStatus | (string & {});
 
 export type EventTypeValue = EventType | (string & {});
 
 /** One native event address; the server checks both workspace and fleet ownership. */
-export type EventLocator = Pick<EventRow, "workspace_id" | "fleet_id" | "event_id">;
+export type TurnLocator = Pick<TurnRow, "workspace_id" | "fleet_id" | "turn_id">;
 
 /**
  * One event with everything recorded about it — the list row plus the two
  * bodies the list read omits. Fetched when a row is expanded, never for a page:
  * a page is up to 200 rows and would carry every payload to render a table.
  */
-export type EventDetail = EventRow & {
+export type TurnDetail = TurnRow & {
   /** The trigger payload as stored, serialized to JSON text. */
   request_json: string;
   /**
@@ -79,7 +79,7 @@ export type SavedToolCall = {
 
 
 export type ThreadPage = {
-  items: EventDetail[];
+  items: TurnDetail[];
   total: null;
   next_cursor: string | null;
 };
@@ -120,26 +120,26 @@ export async function listFleetMessages(
  * event in another workspace — the server does not distinguish them, so neither
  * can the caller.
  */
-export async function getFleetEvent(
+export async function getFleetTurn(
   workspaceId: string,
   fleetId: string,
-  eventId: string,
+  turnId: string,
   token: string,
-): Promise<EventDetail> {
-  return request<EventDetail>(
-    `${fleetScope(workspaceId, fleetId)}/events/${encodeURIComponent(eventId)}`,
+): Promise<TurnDetail> {
+  return request<TurnDetail>(
+    `${fleetScope(workspaceId, fleetId)}/turns/${encodeURIComponent(turnId)}`,
     { method: "GET" },
     token,
   );
 }
 
-export async function listWorkspaceEvents(
+export async function listWorkspaceTurns(
   workspaceId: string,
   token: string,
-  opts?: EventsQuery,
-): Promise<EventsPage> {
-  return EventsPageSchema.parse(await request<unknown>(
-    `/v1/workspaces/${encodeURIComponent(workspaceId)}/events${buildQuery(opts)}`,
+  opts?: TurnsQuery,
+): Promise<TurnsPage> {
+  return TurnsPageSchema.parse(await request<unknown>(
+    `/v1/workspaces/${encodeURIComponent(workspaceId)}/turns${buildQuery(opts)}`,
     { method: "GET" },
     token,
   ));
@@ -166,8 +166,8 @@ export type ActivityLiveFrame = (
   // 202 names, who sent it, and what they typed. Fields past the identifier
   // are optional on the TYPE because the wire is untrusted.
   | {
-      kind: typeof FRAME_KIND.EVENT_ADMITTED;
-      event_id: string;
+      kind: typeof FRAME_KIND.TURN_ADMITTED;
+      turn_id: string;
       actor: string;
       event_type?: EventTypeValue;
       message?: string;
@@ -178,8 +178,8 @@ export type ActivityLiveFrame = (
   // TYPE because the wire is untrusted; the reducer guards each and falls back.
   // The counters ride here because a receive is when `events_processed` moves.
   | ({
-      kind: typeof FRAME_KIND.EVENT_RECEIVED;
-      event_id: string;
+      kind: typeof FRAME_KIND.TURN_RECEIVED;
+      turn_id: string;
       actor: string;
       event_type?: EventTypeValue;
       created_at?: string;
@@ -189,7 +189,7 @@ export type ActivityLiveFrame = (
 
   | {
       kind: typeof FRAME_KIND.TOOL_CALL_STARTED;
-      event_id: string;
+      turn_id: string;
       name: string;
       args_redacted: unknown;
       /** Shared by every frame of one call. */
@@ -198,21 +198,21 @@ export type ActivityLiveFrame = (
 
   | {
       kind: typeof FRAME_KIND.TOOL_CALL_PROGRESS;
-      event_id: string;
+      turn_id: string;
       name: string;
       elapsed_ms: number;
       call_id: string;
     }
 
-  | { kind: typeof FRAME_KIND.RUN_RESTARTED; event_id: string; restarted_at?: string }
-  | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string; text_kind: StreamTextKind; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
-  | {kind: typeof FRAME_KIND.TASK_DECISION_STARTED | typeof FRAME_KIND.TASK_DECISION_COMPLETED | typeof FRAME_KIND.TASK_TRANSFER_PROGRESS; event_id: string; progress: unknown}
-  | ({ kind: typeof FRAME_KIND.CONTEXT_PROGRESS; event_id: string } & ContextProgress)
+  | { kind: typeof FRAME_KIND.RUN_RESTARTED; turn_id: string; restarted_at?: string }
+  | { kind: typeof FRAME_KIND.CHUNK; turn_id: string; text: string; text_kind: StreamTextKind; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
+  | {kind: typeof FRAME_KIND.TASK_DECISION_STARTED | typeof FRAME_KIND.TASK_DECISION_COMPLETED | typeof FRAME_KIND.TASK_TRANSFER_PROGRESS; turn_id: string; progress: unknown}
+  | ({ kind: typeof FRAME_KIND.CONTEXT_PROGRESS; turn_id: string } & ContextProgress)
 
   // Status is required; output edges and exit codes depend on the tool.
   | {
       kind: typeof FRAME_KIND.TOOL_CALL_COMPLETED;
-      event_id: string;
+      turn_id: string;
       name: string;
       ms: number;
       call_id: string;
@@ -227,10 +227,10 @@ export type ActivityLiveFrame = (
   // the channel names, plus the two fleet facts a run can change — a watcher
   // folds this in and reads nothing. Typed partial past the identifier for
   // the reason the opening bracket is.
-  // The counters sit on this fleet-facts block, never on `EventRow`: the row
+  // The counters sit on this fleet-facts block, never on `TurnRow`: the row
   // carries one event's figures and the snapshot carries the fleet's totals.
-  | ({ kind: typeof FRAME_KIND.EVENT_COMPLETE; event_id: string } & Partial<
-      Omit<EventRow, "event_id" | "fleet_id" | "workspace_id">
+  | ({ kind: typeof FRAME_KIND.TURN_COMPLETE; turn_id: string } & Partial<
+      Omit<TurnRow, "turn_id" | "fleet_id" | "workspace_id">
     > & {
         fleet_status?: string;
         pending_approvals?: number;
@@ -241,7 +241,7 @@ export type ActivityLiveFrame = (
   | ({
       kind: typeof FRAME_KIND.GATE_OPENED;
       gate_id: string;
-      event_id: string;
+      turn_id: string;
       pending_approvals: number;
     } & FleetCountersSnapshot)
 
@@ -250,7 +250,7 @@ export type ActivityLiveFrame = (
   | ({
       kind: typeof FRAME_KIND.GATE_RESOLVED;
       gate_id: string;
-      event_id: string | null;
+      turn_id: string | null;
       status: string;
       resolved_by: string;
       pending_approvals: number;

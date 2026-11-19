@@ -66,7 +66,7 @@ describe("EventDetailsDialog", () => {
     // claims this shape inside the dialog on the live stack; scoped the same
     // way here so the two cannot drift apart without a unit failure first.
     await renderDialogWithBody(event({
-      event_id: "evt_header",
+      turn_id: "evt_header",
       actor: "github-app",
       event_type: "webhook",
     }));
@@ -145,7 +145,7 @@ describe("EventDetailsDialog", () => {
 
   it("orders failure details before context and the honest next step", async () => {
     await renderDialogWithBody(event({
-      event_id: "evt_startup",
+      turn_id: "evt_startup",
       failure_label: "startup_posture",
       request_json: '{"action":"opened"}',
     }));

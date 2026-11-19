@@ -5,14 +5,14 @@ import {
   isZeroMetricOnFailure,
   MIN_ROW_GROUP,
 } from "@/lib/events/event-row-grouping";
-import type { EventDetail, EventRow } from "@/lib/api/events";
+import type { TurnDetail, TurnRow } from "@/lib/api/events";
 
 let seq = 0;
 
-function row(over: Partial<EventDetail> = {}): EventDetail {
+function row(over: Partial<TurnDetail> = {}): TurnDetail {
   seq += 1;
   return {
-    event_id: over.event_id ?? `evt_${seq}`,
+    turn_id: over.turn_id ?? `evt_${seq}`,
     fleet_id: "zomb_1",
     workspace_id: "ws_1",
     actor: over.actor ?? "webhook:github",
@@ -26,13 +26,13 @@ function row(over: Partial<EventDetail> = {}): EventDetail {
     cost_nanos: over.cost_nanos ?? "0",
     failure_label: "failure_label" in over ? over.failure_label ?? null : "startup_posture",
     failure_detail: "failure_detail" in over ? over.failure_detail ?? null : "no instructions configured",
-    resumes_event_id: null,
+    resumes_turn_id: null,
     created_at: over.created_at ?? "2023-11-14T22:13:20Z",
     updated_at: "2023-11-14T22:13:20Z",
   };
 }
 
-function failures(count: number, over: Partial<EventDetail> = {}): EventDetail[] {
+function failures(count: number, over: Partial<TurnDetail> = {}): TurnDetail[] {
   return Array.from({ length: count }, () => row(over));
 }
 
@@ -93,7 +93,7 @@ describe("groupEventRows", () => {
   it("preserves order and loses nothing", () => {
     const rows = [...failures(3), row({ status: "processed", failure_label: null, failure_detail: null })];
     const flattened = groupEventRows(rows).flatMap((entry) => entry.rows);
-    expect(flattened.map((r) => r.event_id)).toEqual(rows.map((r) => r.event_id));
+    expect(flattened.map((r) => r.turn_id)).toEqual(rows.map((r) => r.turn_id));
   });
 
   it("survives an empty page", () => {

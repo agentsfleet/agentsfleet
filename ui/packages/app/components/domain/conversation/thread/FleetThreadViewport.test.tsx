@@ -51,14 +51,14 @@ function Detached() {
   return null;
 }
 
-function View({ eventsCount = 0, messages = NO_MESSAGES, isRunning = false, connectionStatus = CONNECTION_STATUS.LIVE, setup, setupEventId, work }: {
+function View({ eventsCount = 0, messages = NO_MESSAGES, isRunning = false, connectionStatus = CONNECTION_STATUS.LIVE, setup, setupTurnId, work }: {
   eventsCount?: number;
   messages?: ThreadMessageLike[];
   isRunning?: boolean;
   connectionStatus?: ConnectionStatus;
   setup?: ReactNode;
   work?: ReactNode;
-  setupEventId?: string;
+  setupTurnId?: string;
 }) {
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages,
@@ -69,7 +69,7 @@ function View({ eventsCount = 0, messages = NO_MESSAGES, isRunning = false, conn
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <FleetConversationLayout work={work}><FleetThreadViewport
-        setup={setup} setupEventId={setupEventId}
+        setup={setup} setupTurnId={setupTurnId}
         eventsCount={eventsCount}
         connectionStatus={connectionStatus}
         onRetry={() => {}}
@@ -264,7 +264,7 @@ describe("FleetThreadViewport layout", () => {
       {id: "saved", role: "system", content: "Setup saved · v1"},
       {id: "after", role: "user", content: "Check performance"},
     ];
-    const view = render(<View messages={messages} eventsCount={3} setupEventId="saved" setup={<h2>Setup saved · v1</h2>} />);
+    const view = render(<View messages={messages} eventsCount={3} setupTurnId="saved" setup={<h2>Setup saved · v1</h2>} />);
     const history = view.getByRole("log").textContent ?? "";
     expect(history.indexOf("Save this setup")).toBeLessThan(history.indexOf("Setup saved · v1"));
     expect(history.indexOf("Setup saved · v1")).toBeLessThan(history.indexOf("Check performance"));

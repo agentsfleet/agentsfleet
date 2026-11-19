@@ -87,7 +87,7 @@ vi.mock("@/components/domain/conversation/stream/useFleetEventStream", async () 
 });
 
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
-import type { EventDetail, EventRow } from "@/lib/api/events";
+import type { TurnDetail, TurnRow } from "@/lib/api/events";
 // The mocked module spreads the real one, so `convertEvent` is the production
 // converter: a row renders here exactly as the live stream would hand it over.
 import {
@@ -175,7 +175,7 @@ export function appendMessage(text: string): AppendMessage {
   };
 }
 
-export function threadElement(initial: EventRow[] = []) {
+export function threadElement(initial: TurnRow[] = []) {
   return React.createElement(FleetThread, {
     workspaceId: WS,
     fleetId: ZID,
@@ -190,14 +190,14 @@ export function renderThread() {
   return renderThreadWithInitial([]);
 }
 
-export function renderThreadWithInitial(initial: EventRow[]) {
+export function renderThreadWithInitial(initial: TurnRow[]) {
   return render(threadElement(initial));
 }
 
-export function serverEvent(over: Partial<EventDetail> = {}): EventDetail {
+export function serverEvent(over: Partial<TurnDetail> = {}): TurnDetail {
   const now = Date.UTC(2026, 4, 15, 9, 0, 0);
   return {
-    event_id: "event-server-terminal",
+    turn_id: "event-server-terminal",
     fleet_id: ZID,
     workspace_id: WS,
     actor: "fleet",
@@ -210,7 +210,7 @@ export function serverEvent(over: Partial<EventDetail> = {}): EventDetail {
     wall_ms: 10,
     failure_label: null,
     failure_detail: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     cost_nanos: "1",
     created_at: new Date(now).toISOString(),
     updated_at: new Date(now).toISOString(),

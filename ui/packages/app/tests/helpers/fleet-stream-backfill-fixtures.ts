@@ -1,4 +1,4 @@
-import type { EventRow } from "@/lib/api/events";
+import type { TurnRow } from "@/lib/api/events";
 import { afterEach, beforeEach, expect, vi } from "vitest";
 import { FakeEventSource } from "./fake-event-source";
 import { row, sourceAt } from "./fleet-stream-registry-fixtures";
@@ -32,15 +32,15 @@ export function setupBackfillTests(): void {
 }
 
 export function pageWith(
-  items: EventRow[],
+  items: TurnRow[],
   nextCursor: string | null = null,
 ): { ok: true; json: () => Promise<unknown> } {
   return { ok: true, json: () => Promise.resolve({ items, next_cursor: nextCursor }) };
 }
 
 // Rows arrive newest-first, mirroring the upstream `created_at DESC` order.
-export function descRows(ids: string[], newestMs: number): EventRow[] {
-  return ids.map((id, i) => row({ event_id: id, created_at: new Date(newestMs - i * ROW_SPACING_MS).toISOString() }));
+export function descRows(ids: string[], newestMs: number): TurnRow[] {
+  return ids.map((id, i) => row({ turn_id: id, created_at: new Date(newestMs - i * ROW_SPACING_MS).toISOString() }));
 }
 
 export function queryOf(callIndex: number): URLSearchParams {

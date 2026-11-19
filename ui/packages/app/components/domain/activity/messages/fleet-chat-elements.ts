@@ -17,7 +17,7 @@ export type ActivityDetails =
   | {kind: "payload"; json: string};
 
 export type ActivityElementData = {
-  eventId: string;
+  turnId: string;
   actor: string;
   status: string;
   createdAt: Date;

@@ -13,10 +13,10 @@ const RENDER_TIMEOUT_MS = 15_000;
 // route), so settlement is detected by an event row existing and the message
 // text is proven against the detail read the operator's dialog uses.
 interface EventPage {
-  items: Array<{ event_id: string }>;
+  items: Array<{ turn_id: string }>;
 }
 
-interface EventDetail {
+interface TurnDetail {
   request_json: string | null;
 }
 
@@ -44,23 +44,23 @@ test.describe("fleet detail logs", () => {
     const accepted = await persisted;
     expect(accepted.status()).toBe(202);
     const receipt = await accepted.json();
-    expect(receipt).toMatchObject({status: "accepted", replayed: false, event_id: expect.any(String)});
-    const settledEventId = receipt.event_id as string;
+    expect(receipt).toMatchObject({status: "accepted", replayed: false, turn_id: expect.any(String)});
+    const settledTurnId = receipt.turn_id as string;
     const api = clientFor(FIXTURE_KEY.regular);
     await expect
       .poll(
         async () => {
           const events = await api.get<EventPage>(
-            `/v1/workspaces/${ws}/fleets/${seeded.id}/events?limit=100`,
+            `/v1/workspaces/${ws}/fleets/${seeded.id}/turns?limit=100`,
           );
-          return events.items.some(event => event.event_id === settledEventId);
+          return events.items.some(event => event.turn_id === settledTurnId);
         },
         { timeout: RENDER_TIMEOUT_MS },
       )
       .toBe(true);
     // Setup receipts share the timeline; inspect the event this send admitted.
-    const detail = await api.get<EventDetail>(
-      `/v1/workspaces/${ws}/fleets/${seeded.id}/events/${settledEventId}`,
+    const detail = await api.get<TurnDetail>(
+      `/v1/workspaces/${ws}/fleets/${seeded.id}/turns/${settledTurnId}`,
     );
     expect(detail.request_json ?? "").toContain(message);
 
@@ -68,7 +68,7 @@ test.describe("fleet detail logs", () => {
     await page.goto(workspaceHref(ws, "events"));
     const events = page.getByRole("table", { name: "Workspace activity" });
     await expect(events).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await events.getByRole("button", {name: `Inspect event ${settledEventId}`, exact: true}).click();
+    await events.getByRole("button", {name: `Inspect event ${settledTurnId}`, exact: true}).click();
 
     // The detail keeps the outcome and request context prominent without
     // technical identifiers or clipboard controls in the footer.

@@ -261,14 +261,14 @@ describe("FleetThread — tool cells", () => {
       { call_id: "f1:1", name: TOOL_NAME.HTTP_REQUEST, arguments: { method: "POST", url: "https://x" }, status: FAILED, output_head: "denied", output_line_count: 1, duration_ms: DONE_MS },
       { call_id: "f1:2", name: TOOL_NAME.FILE_EDIT, arguments: { path: "d.yaml", old_text: "a\nb", new_text: "a\nc" }, status: SUCCEEDED, duration_ms: DONE_MS },
     ];
-    const settled = { event_id: "evt_reload", actor: "steer:user_abc", status: PROCESSED, response_text: "Done." };
+    const settled = { turn_id: "evt_reload", actor: "steer:user_abc", status: PROCESSED, response_text: "Done." };
     // Live: the same calls frame by frame through the reducer, then the turn settles.
     let live: FleetEvent[] = [{ ...rowToEvent(row({ ...settled, status: RECEIVED })), role: "user" }];
     for (const savedCall of saved) {
       const { call_id, name, arguments: args, duration_ms, ...outcome } = savedCall;
       const frames: LiveFrame[] = [
-        { kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: settled.event_id, name, call_id, args_redacted: args },
-        { kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: settled.event_id, name, call_id, ms: duration_ms, ...outcome },
+        { kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: settled.turn_id, name, call_id, args_redacted: args },
+        { kind: FRAME_KIND.TOOL_CALL_COMPLETED, turn_id: settled.turn_id, name, call_id, ms: duration_ms, ...outcome },
       ];
       for (const frame of frames) live = applyLiveFrame(live, frame, NOW);
     }

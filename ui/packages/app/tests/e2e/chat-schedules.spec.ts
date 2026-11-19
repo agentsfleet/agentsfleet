@@ -24,7 +24,7 @@ test("fleet_schedule_activity_rows_show_confirmed_facts", async ({page, chatProb
   const dialog = page.getByRole("dialog", {name: "Event details"});
   await expect(dialog.getByText("Native recorded support review.", {exact: true})).toBeVisible();
   const address = new URL(reads[0]!);
-  expect(Object.fromEntries(address.searchParams)).toEqual({workspace: SCHEDULE_EVENT.workspace_id, fleet: SCHEDULE_EVENT.fleet_id, event: SCHEDULE_EVENT.event_id});
+  expect(Object.fromEntries(address.searchParams)).toEqual({workspace: SCHEDULE_EVENT.workspace_id, fleet: SCHEDULE_EVENT.fleet_id, event: SCHEDULE_EVENT.turn_id});
   await page.keyboard.press("Escape"); await expect(dialog).not.toBeVisible();
   expect(errors).toEqual([]);
   await info.attach("schedule-activity", {body: await page.screenshot({fullPage: true}), contentType: "image/png"});

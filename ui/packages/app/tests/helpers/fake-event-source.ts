@@ -5,7 +5,7 @@ import { ERROR_CODE } from "@/lib/errors";
 // The one EventSource double for every Server-Sent Events test.
 //
 // It dispatches exactly as a browser does. The daemon names every frame with
-// its payload kind (`event: chunk`, `event: event_complete` — written by
+// its payload kind (`event: chunk`, `event: turn_complete` — written by
 // sse_frame.writeHead), and a NAMED frame reaches ONLY the listeners
 // registered under that name — never `onmessage`. A kind nobody subscribed to
 // is dropped silently while the connection still reports itself live, so a
@@ -65,11 +65,11 @@ export class FakeEventSource {
     // Most fixtures describe a run from its first chunk. Explicit markers
     // exercise late subscribers, gaps, and reclaim on the same event.
     // Fixtures default to the daemon's first attempt; explicit missing fields stay missing.
-    let wire: LiveFrame = "event_id" in frame && !("fencing_token" in frame)
+    let wire: LiveFrame = "turn_id" in frame && !("fencing_token" in frame)
       ? {...frame, fencing_token: "1"} : frame;
     if (frame.kind === FRAME_KIND.CHUNK) {
       const fence = "fencing_token" in wire ? wire.fencing_token : undefined;
-      const stream = `${frame.event_id}:${fence}`;
+      const stream = `${frame.turn_id}:${fence}`;
       const seq = frame.stream_seq ?? this.nextStreamSeq.get(stream) ?? 0;
       wire = {
         ...frame, fencing_token: fence,

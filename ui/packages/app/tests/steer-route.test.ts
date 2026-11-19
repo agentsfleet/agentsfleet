@@ -25,7 +25,7 @@ const FLEET = "fleet_1";
 const TOKEN = "api_jwt_token";
 const OPERATION_ID = "0190a3b4-0000-7000-8000-000000000001";
 const STEER = { message: "deploy the canary", operation_id: OPERATION_ID };
-const ACCEPTED = { status: "accepted", event_id: "1790573387481-566", replayed: false };
+const ACCEPTED = { status: "accepted", turn_id: "1790573387481-566", replayed: false };
 const JSON_TYPE = "application/json";
 // pin test: the statuses are the route's answers to the browser.
 const HTTP = { ACCEPTED: 202, BAD_REQUEST: 400, UNAUTHORIZED: 401, FORBIDDEN: 403, CONFLICT: 409, TOO_LARGE: 413, NOT_JSON: 415, BAD_GATEWAY: 502 } as const;

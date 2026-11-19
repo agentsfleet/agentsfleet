@@ -109,11 +109,11 @@ test("command line: 20 setup messages, save, 20 runtime messages", async () => {
       if (steered.code !== 0) turn.stderr = steered.stderr.slice(-4000);
       const rows = (await runtimeHistory(client, `${base}/fleets/${evidence.fleet}`)).filter((row) => row.event_type === "chat");
       const event = rows.find((row) => Steered.safeParse(JSON.parse(row.request_json)).data?.message === input);
-      turn.reference.event = event?.event_id ?? null; turn.reply = event?.response_text ?? undefined; turn.state = event?.status;
+      turn.reference.event = event?.turn_id ?? null; turn.reply = event?.response_text ?? undefined; turn.state = event?.status;
       expect(steered.code, `runtime turn ${index + 1} exit: ${steered.stderr}`).toBe(0);
       expect(event?.status, `runtime turn ${index + 1}: ${event?.failure_label ?? ""}`).toBe("processed");
       expect(event?.response_text?.trim().length, `runtime turn ${index + 1} reply text`).toBeGreaterThan(0);
-      console.log(JSON.stringify({cli: "runtime", turn: index + 1, event: event?.event_id, status: "PASS"}));
+      console.log(JSON.stringify({cli: "runtime", turn: index + 1, event: event?.turn_id, status: "PASS"}));
     }
 
     // History keeps every input once, in order, with its own reply.
@@ -123,7 +123,7 @@ test("command line: 20 setup messages, save, 20 runtime messages", async () => {
     expect(setupRows.filter((row) => row.role === MESSAGE_ROLE.assistant)).toHaveLength(SETUP_TURNS);
     const runtimeRows = (await runtimeHistory(client, `${base}/fleets/${evidence.fleet}`)).filter((row) => row.event_type === "chat");
     expect(runtimeRows).toHaveLength(RUNTIME_TURNS);
-    expect(new Set(runtimeRows.map((row) => row.event_id)).size).toBe(RUNTIME_TURNS);
+    expect(new Set(runtimeRows.map((row) => row.turn_id)).size).toBe(RUNTIME_TURNS);
     evidence.verdict = "pass";
     passed = true;
   } catch (error) {

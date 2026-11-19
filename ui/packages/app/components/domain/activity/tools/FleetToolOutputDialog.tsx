@@ -39,7 +39,7 @@ const NOTE_CLASS = "text-body-sm text-text-subtle";
 
 type FleetToolOutputDialogProps = {
   scope: FleetScope;
-  eventId: string;
+  turnId: string;
   callId: string;
   name: string;
   /** The cell's header, as its title: the verb in words, the target as a value. */
@@ -51,8 +51,8 @@ type FleetToolOutputDialogProps = {
 
 /** Mounted when "show all" is pressed, so the read starts with it and is
  * dropped with it. */
-export function FleetToolOutputDialog({ scope, eventId, callId, name, verb, target, outcome, onClose }: FleetToolOutputDialogProps) {
-  const read = useToolCallRead(scope, eventId, callId);
+export function FleetToolOutputDialog({ scope, turnId, callId, name, verb, target, outcome, onClose }: FleetToolOutputDialogProps) {
+  const read = useToolCallRead(scope, turnId, callId);
   return (
     // Controlled open, so the only change the dialog asks for is to close.
     <Dialog open onOpenChange={onClose}>
@@ -71,15 +71,15 @@ export function FleetToolOutputDialog({ scope, eventId, callId, name, verb, targ
   );
 }
 
-function useToolCallRead({ workspaceId, fleetId }: FleetScope, eventId: string, callId: string): ToolCallRead | null {
+function useToolCallRead({ workspaceId, fleetId }: FleetScope, turnId: string, callId: string): ToolCallRead | null {
   const [read, setRead] = useState<ToolCallRead | null>(null);
   useEffect(() => {
     const inflight = new AbortController();
-    void readToolCall({ workspaceId, fleetId, eventId, callId }, inflight.signal).then((result) => {
+    void readToolCall({ workspaceId, fleetId, turnId, callId }, inflight.signal).then((result) => {
       if (!inflight.signal.aborted) setRead(result);
     });
     return () => inflight.abort();
-  }, [workspaceId, fleetId, eventId, callId]);
+  }, [workspaceId, fleetId, turnId, callId]);
   return read;
 }
 

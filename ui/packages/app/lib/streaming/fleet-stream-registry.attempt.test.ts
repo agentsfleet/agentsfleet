@@ -7,26 +7,26 @@ import { acceptAttemptFrame } from "./fleet-stream-attempt";
 import { mergeBackfill } from "./fleet-stream-frames";
 import { onFrame } from "./fleet-stream-dispatch";
 import { recoverFinalReply } from "./fleet-stream-detail-recovery";
-import { setEventDetailReader, disposeReplyStreams, settleRepliesFromBackfill } from "./fleet-stream-reply-registry";
+import { setTurnDetailReader, disposeReplyStreams, settleRepliesFromBackfill } from "./fleet-stream-reply-registry";
 import { row, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 
 const EVENT = "evt_retry";
 const entries: LiveEntry[] = [];
 
 function live(): LiveEntry {
-  const entry: LiveEntry = {...createEntry(WS, [row({event_id: EVENT, status: "received", response_text: null})]),
+  const entry: LiveEntry = {...createEntry(WS, [row({turn_id: EVENT, status: "received", response_text: null})]),
     apply: next => { entry.snapshot = {...entry.snapshot, events: next(entry.snapshot.events)}; }, isCurrent: () => true};
   entries.push(entry);
   return entry;
 }
 
 function chunk(fence: string, text: string, sequence = 0): Extract<LiveFrame, {kind: typeof FRAME_KIND.CHUNK}> {
-  return {kind: FRAME_KIND.CHUNK, event_id: EVENT, fencing_token: fence, text,
+  return {kind: FRAME_KIND.CHUNK, turn_id: EVENT, fencing_token: fence, text,
     text_kind: "answer", stream_start: sequence === 0, stream_contiguous: true, stream_seq: sequence};
 }
 
 function hint(fence: string): Extract<LiveFrame, {kind: typeof FRAME_KIND.RUN_RESTARTED}> {
-  return {kind: FRAME_KIND.RUN_RESTARTED, event_id: EVENT, fencing_token: fence};
+  return {kind: FRAME_KIND.RUN_RESTARTED, turn_id: EVENT, fencing_token: fence};
 }
 
 function validActivityFrames(): ActivityLiveFrame[] {
@@ -35,20 +35,20 @@ function validActivityFrames(): ActivityLiveFrame[] {
     phase: "starting", provider: null, model: null, completed: 0, total: null};
   return [
     chunk("1", "replacement output"),
-    {kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: EVENT, call_id: "1:0", name: "shell", args_redacted: {command: "pwd"}},
-    {kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: EVENT, call_id: "1:0", name: "shell", elapsed_ms: 10},
-    {kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: EVENT, call_id: "1:0", name: "shell", ms: 10, status: "succeeded"},
-    {kind: FRAME_KIND.CONTEXT_PROGRESS, event_id: EVENT, generation: 1, state: "summarizing"},
-    {kind: FRAME_KIND.TASK_DECISION_STARTED, event_id: EVENT, progress},
-    {kind: FRAME_KIND.TASK_DECISION_COMPLETED, event_id: EVENT, progress: {...progress, phase: "recorded"}},
-    {kind: FRAME_KIND.TASK_TRANSFER_PROGRESS, event_id: EVENT,
+    {kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: EVENT, call_id: "1:0", name: "shell", args_redacted: {command: "pwd"}},
+    {kind: FRAME_KIND.TOOL_CALL_PROGRESS, turn_id: EVENT, call_id: "1:0", name: "shell", elapsed_ms: 10},
+    {kind: FRAME_KIND.TOOL_CALL_COMPLETED, turn_id: EVENT, call_id: "1:0", name: "shell", ms: 10, status: "succeeded"},
+    {kind: FRAME_KIND.CONTEXT_PROGRESS, turn_id: EVENT, generation: 1, state: "summarizing"},
+    {kind: FRAME_KIND.TASK_DECISION_STARTED, turn_id: EVENT, progress},
+    {kind: FRAME_KIND.TASK_DECISION_COMPLETED, turn_id: EVENT, progress: {...progress, phase: "recorded"}},
+    {kind: FRAME_KIND.TASK_TRANSFER_PROGRESS, turn_id: EVENT,
       progress: {...progress, operation: "capture", phase: "uploading", total: 10}},
   ];
 }
 
 afterEach(() => {
   for (const entry of entries.splice(0)) disposeReplyStreams(entry);
-  setEventDetailReader(null);
+  setTurnDetailReader(null);
 });
 
 describe("attempt ownership on the live tail", () => {
@@ -56,7 +56,7 @@ describe("attempt ownership on the live tail", () => {
     const entry = live();
     onFrame(entry, Z_A, chunk("9007199254740992", "old draft"));
     await vi.waitFor(() => expect(entry.snapshot.events[0]?.reply).toBe("old draft"));
-    onFrame(entry, Z_A, {kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: EVENT,
+    onFrame(entry, Z_A, {kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: EVENT,
       fencing_token: "9007199254740992", call_id: "old:0", name: "shell", args_redacted: {}});
     // The hint was lost. Ordinary output with the next exact bigint still resets.
     onFrame(entry, Z_A, chunk("9007199254740993", "new draft"));
@@ -123,7 +123,7 @@ describe("attempt ownership on the live tail", () => {
     recoverFinalReply(entry, Z_A, EVENT, entry.apply, entry.isCurrent, () => detail.promise);
     onFrame(entry, Z_A, hint("2"));
     onFrame(entry, Z_A, chunk("2", "current output"));
-    detail.resolve({ok: true, data: row({event_id: EVENT, response_text: "OLD SAVED READ"})});
+    detail.resolve({ok: true, data: row({turn_id: EVENT, response_text: "OLD SAVED READ"})});
     await vi.waitFor(() => expect(entry.snapshot.events[0]?.reply).toBe("current output"));
     expect(entry.snapshot.events[0]?.status).toBe("received");
   });
@@ -131,7 +131,7 @@ describe("attempt ownership on the live tail", () => {
   it("does not reopen when a hint overtakes asynchronous completion", async () => {
     const entry = live();
     onFrame(entry, Z_A, chunk("1", "draft"));
-    onFrame(entry, Z_A, {kind: FRAME_KIND.EVENT_COMPLETE, event_id: EVENT, status: "processed", final_reply: "saved"});
+    onFrame(entry, Z_A, {kind: FRAME_KIND.TURN_COMPLETE, turn_id: EVENT, status: "processed", final_reply: "saved"});
     onFrame(entry, Z_A, hint("2"));
     onFrame(entry, Z_A, chunk("2", "too late"));
     await vi.waitFor(() => expect(entry.snapshot.events[0]?.reply).toBe("saved"));
@@ -141,8 +141,8 @@ describe("attempt ownership on the live tail", () => {
 
   it("rejects id-less activity and a saved terminal row, and preserves unrelated rows", () => {
     const entry = live();
-    for (const eventId of [undefined, 7]) {
-      const frame = JSON.parse(JSON.stringify({kind: FRAME_KIND.CHUNK, event_id: eventId, fencing_token: "1"})) as LiveFrame;
+    for (const turnId of [undefined, 7]) {
+      const frame = JSON.parse(JSON.stringify({kind: FRAME_KIND.CHUNK, turn_id: turnId, fencing_token: "1"})) as LiveFrame;
       expect(acceptAttemptFrame(entry, frame, entry.apply)).toBe(false);
     }
     const unrelated = {...entry.snapshot.events[0]!, id: "unrelated"};
@@ -161,7 +161,7 @@ describe("attempt ownership on the live tail", () => {
     entry.snapshot.events[0]!.tools = [{name: "shell", callId: "1:0", done: true,
       startedAtMs: 0, ms: 3, status: "succeeded"}];
     onFrame(entry, Z_A, hint("2"));
-    const detail = row({event_id: EVENT, status: "processed", response_text: "winning reply", tool_calls: null});
+    const detail = row({turn_id: EVENT, status: "processed", response_text: "winning reply", tool_calls: null});
     const {request_json: _request, response_text: _response, tool_calls: _trace, ...listRow} = detail;
     const fromList = mergeBackfill(entry.snapshot.events, [listRow]);
     expect(fromList[0]?.tools).toHaveLength(1);
@@ -176,7 +176,7 @@ describe("attempt ownership on the live tail", () => {
     let current = true;
     entry.isCurrent = () => current;
     onFrame(entry, Z_A, chunk("1", "draft"));
-    onFrame(entry, Z_A, {kind: FRAME_KIND.EVENT_COMPLETE, event_id: EVENT, status: "processed", final_reply: "saved"});
+    onFrame(entry, Z_A, {kind: FRAME_KIND.TURN_COMPLETE, turn_id: EVENT, status: "processed", final_reply: "saved"});
     current = false;
     await vi.waitFor(() => expect(entry.replyStreams.size).toBe(0));
     expect(entry.snapshot.events[0]?.status).toBe("received");
@@ -186,9 +186,9 @@ describe("attempt ownership on the live tail", () => {
     const entry = live();
     onFrame(entry, Z_A, chunk("1", "draft"));
     if (completion === "inline") {
-      onFrame(entry, Z_A, {kind: FRAME_KIND.EVENT_COMPLETE, event_id: EVENT, status: "processed", final_reply: "saved"});
+      onFrame(entry, Z_A, {kind: FRAME_KIND.TURN_COMPLETE, turn_id: EVENT, status: "processed", final_reply: "saved"});
     } else {
-      settleRepliesFromBackfill(entry, Z_A, [row({event_id: EVENT, status: "processed"})], entry.apply, entry.isCurrent);
+      settleRepliesFromBackfill(entry, Z_A, [row({turn_id: EVENT, status: "processed"})], entry.apply, entry.isCurrent);
     }
     disposeReplyStreams(entry);
     const before = entry.snapshot;

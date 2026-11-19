@@ -1,7 +1,7 @@
-// Same-origin backfill proxy for the workspace events list. The wall's
+// Same-origin backfill proxy for the workspace turns list. The wall's
 // reconnect gap-recovery fetch hits this Route Handler instead of the upstream
 // list directly (the browser holds no bearer token). The per-fleet backfill
-// proxy (../fleets/[fleetId]/events/route.ts) differs in the upstream path and
+// proxy (../fleets/[fleetId]/turns/route.ts) differs in the upstream path and
 // in one forwarded key: `fleet_id`, so the wall can page one tile's history or
 // the whole workspace's.
 
@@ -21,5 +21,5 @@ const FORWARDED_QUERY_KEYS = ["cursor", "since", "limit", "fleet_id"] as const;
 
 export async function GET(req: Request, { params }: Params) {
   const { workspaceId } = await params;
-  return proxyJsonGet(req, ["workspaces", workspaceId, "events"], FORWARDED_QUERY_KEYS);
+  return proxyJsonGet(req, ["workspaces", workspaceId, "turns"], FORWARDED_QUERY_KEYS);
 }

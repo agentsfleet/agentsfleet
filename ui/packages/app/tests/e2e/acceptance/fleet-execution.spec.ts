@@ -20,7 +20,7 @@ import { executionInstructions } from "./fixtures/definition";
  * daemon holds — a product failure at the observe leg (RULE ECL).
  */
 import { expect, test, type Page } from "@playwright/test";
-import type { EventDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/events";
 import { signInAs } from "./fixtures/auth";
 import { clientFor } from "./fixtures/api-client";
 import { FIXTURE_KEY } from "./fixtures/constants";
@@ -80,7 +80,7 @@ const TILE_CARD = "[data-kind]";
 
 // The two SSE surfaces the dashboard can open. The wall must open the
 // workspace one, exactly once, and no per-fleet one at all.
-const WORKSPACE_STREAM_SUFFIX = "/events/stream";
+const WORKSPACE_STREAM_SUFFIX = "/turns/stream";
 const FLEET_STREAM_SEGMENT = "/fleets/";
 
 const CHAT_LABEL = "Fleet chat";
@@ -211,7 +211,7 @@ test.describe("fleet execution", () => {
     if (run === null) failWith(classifyIdle(await anyRunnerLive()));
 
     // ── 1.3 The run finishes and its result reaches the thread ──
-    const terminal = await pollFor<EventDetail>(
+    const terminal = await pollFor<TurnDetail>(
       () =>
         observed(JOURNEY_LEG.execute, () =>
           readTerminalChatTurn(FIXTURE_KEY.regular, workspaceId, fleetId),
@@ -235,7 +235,7 @@ test.describe("fleet execution", () => {
     await testInfo.attach("terminal-turn", {
       body: JSON.stringify(
         {
-          event_id: terminal.event_id,
+          turn_id: terminal.turn_id,
           status: terminal.status,
           failure_label: terminal.failure_label,
           failure_detail: terminal.failure_detail,
@@ -271,7 +271,7 @@ test.describe("fleet execution", () => {
     });
     await expect(tileFor(wall, control.id)).toContainText(TILE_IDLE_COPY);
     // A setup receipt may appear on an untouched fleet; execution must not.
-    const controlHistory = await clientFor(FIXTURE_KEY.regular).get<{items: EventDetail[]}>(
+    const controlHistory = await clientFor(FIXTURE_KEY.regular).get<{items: TurnDetail[]}>(
       `/v1/workspaces/${workspaceId}/fleets/${control.id}/messages`,
     );
     expect(controlHistory.items.every(row => row.event_type === ACTIVITY_EVENT)).toBe(true);

@@ -137,17 +137,17 @@ export function renderWall(fleetIds: string[], onRender?: ProfilerOnRenderCallba
 export function activityFrame(fleetId: string) {
   return {
     fleet_id: fleetId,
-    kind: FRAME_KIND.EVENT_RECEIVED,
-    event_id: `event_${fleetId}`,
+    kind: FRAME_KIND.TURN_RECEIVED,
+    turn_id: `event_${fleetId}`,
     actor: FLEET_ACTOR,
   };
 }
 
-export function completionFrame(fleetId: string, eventId: string, eventsProcessed: number) {
+export function completionFrame(fleetId: string, turnId: string, eventsProcessed: number) {
   return {
     fleet_id: fleetId,
-    kind: FRAME_KIND.EVENT_COMPLETE,
-    event_id: eventId,
+    kind: FRAME_KIND.TURN_COMPLETE,
+    turn_id: turnId,
     status: SETTLED,
     created_at: EVENT_CREATED_AT_MS,
     updated_at: EVENT_CREATED_AT_MS,
@@ -156,9 +156,9 @@ export function completionFrame(fleetId: string, eventId: string, eventsProcesse
   };
 }
 
-export function eventRow(fleetId: string, eventId: string) {
+export function eventRow(fleetId: string, turnId: string) {
   return {
-    event_id: eventId,
+    turn_id: turnId,
     fleet_id: fleetId,
     actor: FLEET_ACTOR,
     response_text: "recovered",

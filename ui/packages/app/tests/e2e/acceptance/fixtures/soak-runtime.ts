@@ -16,7 +16,7 @@ const SetupReceipt = z.object({kind: z.enum(["setup_saved", "setup_ready"]), rev
   origin: z.enum(["cli", "dashboard", "chat"]).optional()}).strict();
 const BROWSER_ORIGIN = "dashboard";
 const HTTP_ACCEPTED = 202;
-const AcceptedReceipt = z.object({status: z.literal("accepted"), event_id: z.string(), replayed: z.boolean()});
+const AcceptedReceipt = z.object({status: z.literal("accepted"), turn_id: z.string(), replayed: z.boolean()});
 type ExpectedTurn = {id: string; request: string; answer: string};
 
 export class SoakRuntime {
@@ -37,7 +37,7 @@ export class SoakRuntime {
   /** Continue from the fleet's durable history, as a resumed journey does. */
   async hydrate(): Promise<void> {
     const rows = (await runtimeHistory(this.client, this.scope)).filter(row => row.event_type !== "activity");
-    this.turns = rows.map(row => ({id: row.event_id,
+    this.turns = rows.map(row => ({id: row.turn_id,
       request: z.object({message: z.string()}).parse(JSON.parse(row.request_json)).message,
       answer: row.response_text ?? ""}));
     this.sentCount = this.turns.length;
@@ -73,7 +73,7 @@ export class SoakRuntime {
         await this.hydrate();
         const stored = this.turns.find(turn => turn.request === this.pendingInput);
         if (stored) this.outageEvents.add(stored.id);
-        const row = stored ? (await runtimeHistory(this.client, this.scope)).find(item => item.event_id === stored.id) : undefined;
+        const row = stored ? (await runtimeHistory(this.client, this.scope)).find(item => item.turn_id === stored.id) : undefined;
         Object.assign(record, {stored: Boolean(stored), event: stored?.id ?? this.pendingEvent,
           eventStatus: row?.status ?? null, failureLabel: row?.failure_label ?? null});
         console.error(JSON.stringify({soakFailureSettled: record}));
@@ -100,26 +100,26 @@ export class SoakRuntime {
     const response = await accepted;
     expect(response.status(), "fleet accepted this message").toBe(HTTP_ACCEPTED);
     const receipt = AcceptedReceipt.parse(await response.json());
-    this.pendingEvent = receipt.event_id;
+    this.pendingEvent = receipt.turn_id;
     // The dashboard retries an unconfirmed send under the same identity, and the
     // API answers that retry `replayed`; a new message is one whose event is new.
-    expect(this.turns.some(turn => turn.id === receipt.event_id), "this message has its own event").toBe(false);
+    expect(this.turns.some(turn => turn.id === receipt.turn_id), "this message has its own event").toBe(false);
     let event: SoakEvent | undefined;
     await expect.poll(async () => {
       const rows = (await threadPage(this.client, this.scope)).items;
-      event = rows.find(row => row.event_id === receipt.event_id);
+      event = rows.find(row => row.turn_id === receipt.turn_id);
       return event?.status ?? "absent";
     }, {timeout: SOAK.turnTimeoutMs, intervals: POLL_INTERVALS}).toMatch(TERMINAL);
-    expect(event?.status, `runtime event ${receipt.event_id}: ${event?.failure_label ?? ""}`).toBe(PROCESSED);
+    expect(event?.status, `runtime event ${receipt.turn_id}: ${event?.failure_label ?? ""}`).toBe(PROCESSED);
     expect(event!.fleet_id).toBe(this.fleetId);
     expect(event!.workspace_id).toBe(this.workspace);
     expect(event!.response_text?.trim().length, "a processed reply has text").toBeGreaterThan(0);
-    const reply = this.page.locator(`[data-message-id="${receipt.event_id}${REPLY_ID_SUFFIX}"] [data-role="assistant"]`);
+    const reply = this.page.locator(`[data-message-id="${receipt.turn_id}${REPLY_ID_SUFFIX}"] [data-role="assistant"]`);
     await expect(reply).toBeVisible({timeout: SOAK.turnTimeoutMs});
-    await expandIfFolded(this.page.locator(`[data-message-id="${receipt.event_id}${REPLY_ID_SUFFIX}"]`));
+    await expandIfFolded(this.page.locator(`[data-message-id="${receipt.turn_id}${REPLY_ID_SUFFIX}"]`));
     await expect(reply).toContainText(await visibleReply(this.page, event!.response_text!), {timeout: SOAK.turnTimeoutMs});
     await expect(reply.getByTestId("fleet-reply-figures")).toBeVisible();
-    this.turns.push({id: event!.event_id, request, answer: event!.response_text!});
+    this.turns.push({id: event!.turn_id, request, answer: event!.response_text!});
   }
 
   async assertHistory(revision: number): Promise<void> {
@@ -141,9 +141,9 @@ export class SoakRuntime {
     })).toEqual(expect.arrayContaining(expected));
     const rows = history.filter(row => row.event_type !== "activity");
     expect(rows).toHaveLength(this.turns.length);
-    expect(new Set(rows.map(row => row.event_id)).size).toBe(this.turns.length);
+    expect(new Set(rows.map(row => row.turn_id)).size).toBe(this.turns.length);
     for (const turn of this.turns) {
-      const row = rows.find(item => item.event_id === turn.id);
+      const row = rows.find(item => item.turn_id === turn.id);
       expect(row?.event_type).toBe("chat");
       expect(z.object({message: z.string()}).parse(JSON.parse(row!.request_json)).message).toBe(turn.request);
       // An outage turn is reported from the ledger; only its single stored input is required.

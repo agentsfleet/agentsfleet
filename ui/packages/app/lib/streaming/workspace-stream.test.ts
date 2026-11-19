@@ -63,7 +63,7 @@ const FLEET_B = "z_b";
 const IDLE_RELEASE_MS = 30_000;
 
 function frame(fleetId: string, over: Record<string, unknown> = {}): string {
-  return JSON.stringify({ fleet_id: fleetId, kind: "event_received", event_id: "e1", actor: "a", ...over });
+  return JSON.stringify({ fleet_id: fleetId, kind: "turn_received", turn_id: "e1", actor: "a", ...over });
 }
 
 beforeEach(() => {
@@ -88,7 +88,7 @@ describe("workspace-stream — one connection, demultiplexed by fleet", () => {
     const es = FakeEventSource.instances[0]!;
 
     es.emit({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A] });
-    es.emit({ kind: FRAME_KIND.EVENT_RECEIVED, fleet_id: FLEET_A, event_id: "e1", actor: "a" });
+    es.emit({ kind: FRAME_KIND.TURN_RECEIVED, fleet_id: FLEET_A, turn_id: "e1", actor: "a" });
     es.emit({ kind: FRAME_KIND.CATCHING_UP, dropped: 2 });
 
     expect(onWorkspace.mock.calls.map(([frame]) => frame.kind)).toEqual([
@@ -130,10 +130,10 @@ describe("workspace-stream — one connection, demultiplexed by fleet", () => {
     es.open();
 
     es.emit("not json");
-    es.emit({ kind: FRAME_KIND.EVENT_RECEIVED });
-    es.emit(JSON.stringify({ kind: "event_received", event_id: "e" })); // no fleet_id
+    es.emit({ kind: FRAME_KIND.TURN_RECEIVED });
+    es.emit(JSON.stringify({ kind: "turn_received", turn_id: "e" })); // no fleet_id
     es.emit(JSON.stringify({ fleet_id: FLEET_A })); // no kind
-    es.emit(JSON.stringify({ fleet_id: "", kind: "event_received" })); // empty fleet_id
+    es.emit(JSON.stringify({ fleet_id: "", kind: "turn_received" })); // empty fleet_id
     es.emit(JSON.stringify(["array"]));
     expect(onA).not.toHaveBeenCalled();
 

@@ -105,13 +105,13 @@ export const SECRET_FIELD = {
 // flag before submit; the server re-checks and also blocks SSRF-unsafe hosts.
 export const HTTPS_SCHEME_PREFIX = "https://" as const;
 
-// Runtime event costs and settled setup attempts share the tenant cost history.
-export type ChargeType = "receive" | "stage" | "authoring";
+// Runtime turn costs and settled setup runs share the tenant cost history.
+export type ChargeType = "receive" | "stage" | "setup";
 
 export const CHARGE_TYPE = {
   receive: "receive" as ChargeType,
   stage: "stage" as ChargeType,
-  authoring: "authoring" as ChargeType,
+  setup: "setup" as ChargeType,
 } as const;
 
 export type TenantProvider = {
@@ -161,8 +161,8 @@ export type TenantBillingChargesResponse = {
     fleet_id: string | null;
     /** The saved fleet name; an unsaved setup chat has no fleet name. */
     fleet_name: string | null;
-    event_id: string | null;
-    authoring_attempt_id: string | null;
+    turn_id: string | null;
+    run_id: string | null;
     charge_type: ChargeType;
     posture: ProviderMode;
     model: string;

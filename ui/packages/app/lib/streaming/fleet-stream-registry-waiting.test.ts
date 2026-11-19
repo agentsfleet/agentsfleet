@@ -30,8 +30,8 @@ function waitThenReconnect(): void {
   first.open();
   first.heartbeat();
   first.emit({
-    kind: FRAME_KIND.EVENT_ADMITTED,
-    event_id: STEER_ID,
+    kind: FRAME_KIND.TURN_ADMITTED,
+    turn_id: STEER_ID,
     actor: `${ACTOR.STEER_PREFIX}user_bob`,
     message: "check the tests",
     created_at: new Date(ADMITTED_AT_MS).toISOString(),
@@ -50,10 +50,10 @@ function steerStatus(): string | undefined {
 describe("fleet-stream-registry — a steer held during an outage", () => {
   it("should reach back to the waiting row's admission and settle it from the recovered row", async () => {
     fetchSpy.mockResolvedValueOnce(pageWith([
-      row({ event_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() }),
-      row({ event_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_EVENT_STATUS.PROCESSED }),
+      row({ turn_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() }),
+      row({ turn_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_EVENT_STATUS.PROCESSED }),
     ]));
-    const release = subscribe(WS, Z_A, [row({ event_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() })], () => {});
+    const release = subscribe(WS, Z_A, [row({ turn_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() })], () => {});
 
     waitThenReconnect();
     expect(steerStatus()).toBe(AGENTSFLEET_EVENT_STATUS.QUEUED);
@@ -68,9 +68,9 @@ describe("fleet-stream-registry — a steer held during an outage", () => {
 
   it("should start the waiting row when the recovered row says it is still running", async () => {
     fetchSpy.mockResolvedValueOnce(pageWith([
-      row({ event_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_EVENT_STATUS.RECEIVED }),
+      row({ turn_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_EVENT_STATUS.RECEIVED }),
     ]));
-    const release = subscribe(WS, Z_A, [row({ event_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() })], () => {});
+    const release = subscribe(WS, Z_A, [row({ turn_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() })], () => {});
 
     waitThenReconnect();
     await flushBackfill();
@@ -82,10 +82,10 @@ describe("fleet-stream-registry — a steer held during an outage", () => {
   it("should never move the watermark back to the waiting row's admission", async () => {
     fetchSpy
       .mockResolvedValueOnce(pageWith([
-        row({ event_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_EVENT_STATUS.PROCESSED }),
+        row({ turn_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_EVENT_STATUS.PROCESSED }),
       ]))
       .mockResolvedValueOnce(pageWith([]));
-    const release = subscribe(WS, Z_A, [row({ event_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() })], () => {});
+    const release = subscribe(WS, Z_A, [row({ turn_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() })], () => {});
 
     waitThenReconnect();
     await flushBackfill();

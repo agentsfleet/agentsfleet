@@ -11,7 +11,7 @@ import { row } from "@/tests/helpers/fleet-stream-fixtures";
 import {SCHEDULE} from "@/tests/helpers/draft-fixtures";
 
 const PROPS = {workspaceId: "workspace", fleetId: "fleet", initial: 2};
-const INITIAL = [row({event_id: "recorded", status: "processed", response_text: "Retained answer"})];
+const INITIAL = [row({turn_id: "recorded", status: "processed", response_text: "Retained answer"})];
 let streams: FleetStreams;
 beforeEach(() => {FakeEventSource.install(); streams = new FleetStreams();});
 afterEach(() => {cleanup(); streams.close(); FakeEventSource.uninstall();});

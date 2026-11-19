@@ -13,7 +13,7 @@ vi.mock("@/lib/api/client", () => ({
   API_ORIGIN: "https://api.example.test",
 }));
 
-import { GET } from "../app/live/v1/workspaces/[workspaceId]/events/stream/route";
+import { GET } from "../app/live/v1/workspaces/[workspaceId]/turns/stream/route";
 import { ERROR_CODE } from "@/lib/errors";
 
 const WORKSPACE_ID = "ws_1";
@@ -83,7 +83,7 @@ describe("workspace SSE route", () => {
     const res = await GET(req, paramsOf("ws/../admin"));
 
     const [url, init] = fetchSpy.mock.calls[0]!;
-    expect(url).toBe("https://api.example.test/v1/workspaces/ws%2F..%2Fadmin/events/stream");
+    expect(url).toBe("https://api.example.test/v1/workspaces/ws%2F..%2Fadmin/turns/stream");
     expect((init as RequestInit).headers).toEqual({
       Authorization: `Bearer ${TOKEN}`,
       Accept: CONTENT_TYPE_STREAM,

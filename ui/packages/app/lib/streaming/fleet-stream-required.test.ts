@@ -5,7 +5,7 @@ import { readSavedTrace } from "./fleet-stream-tool-trace";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";
 
 const FIXTURE_CLOCK_MS = 1000;
-const event = {event_id: "e1", name: "shell", ms: 12, status: "succeeded"};
+const event = {turn_id: "e1", name: "shell", ms: 12, status: "succeeded"};
 const seed = [evt({id: "e1"})];
 function apply(payload: Record<string, unknown>) {
   const frame = parseLiveFrame(JSON.stringify(payload));
@@ -19,7 +19,7 @@ describe("required stream fields", () => {
     expect(apply({...event, kind: FRAME_KIND.TOOL_CALL_COMPLETED, call_id: "1:1", status})).toBe(seed);
   });
   it.each([undefined, null, "unknown", 7])("drops a chunk with invalid text_kind %s", (text_kind) => {
-    expect(apply({kind: FRAME_KIND.CHUNK, event_id: "e1", text: "answer", text_kind})).toBe(seed);
+    expect(apply({kind: FRAME_KIND.CHUNK, turn_id: "e1", text: "answer", text_kind})).toBe(seed);
   });
   it.each([undefined, null, "ok", 7])("counts a saved call with invalid status %s as omitted", (status) => {
     const call = {call_id: "1:1", name: "shell", arguments: {}, duration_ms: 12, status};

@@ -135,7 +135,7 @@ describe("private setup proxy", () => {
   });
   it("streams progress without buffering and strips content types outside the allowed set", async () => {
     upstream.mockResolvedValueOnce(new Response("event: message.running\ndata: {}\n\n", {headers: {"Content-Type": "text/event-stream"}}));
-    const stream = await proxy(["drafts", DRAFT_ID, "events", "stream"]);
+    const stream = await proxy(["drafts", DRAFT_ID, "turns", "stream"]);
     expect(stream.headers.get("x-accel-buffering")).toBe("no"); expect(stream.headers.get("vary")).toBe("Cookie");
     expect(await stream.text()).toContain("message.running");
     upstream.mockResolvedValueOnce(new Response("unexpected", {headers: {"Content-Type": "text/html"}}));
@@ -151,7 +151,7 @@ describe("private setup proxy", () => {
     vi.useFakeTimers();
     const owner = new AbortController();
     upstream.mockResolvedValue(new Response("event: message.running\ndata: {}\n\n", {headers: {"Content-Type": "text/event-stream"}}));
-    const stream = await proxy(["drafts", DRAFT_ID, "events", "stream"], {signal: owner.signal});
+    const stream = await proxy(["drafts", DRAFT_ID, "turns", "stream"], {signal: owner.signal});
     const signal: AbortSignal = upstream.mock.calls[0]?.[1].signal;
     await vi.advanceTimersByTimeAsync(31_000);
     expect(signal.aborted).toBe(false); expect(await stream.text()).toContain("message.running");
@@ -165,7 +165,7 @@ describe("private setup proxy", () => {
     upstream.mockResolvedValueOnce(new Response(new ReadableStream({
       start(controller) { controller.enqueue(bytes); }, cancel,
     }), {headers: {"Content-Type": "text/event-stream"}}));
-    const stream = await proxy(["drafts", DRAFT_ID, "events", "stream"]);
+    const stream = await proxy(["drafts", DRAFT_ID, "turns", "stream"]);
     const signal: AbortSignal = upstream.mock.calls[0]?.[1].signal;
     const reader = stream.body!.getReader();
     expect(await reader.read()).toEqual({done: false, value: bytes});
@@ -180,7 +180,7 @@ describe("private setup proxy", () => {
     upstream.mockImplementation((_target: string, init: RequestInit) => new Promise((_resolve, reject) => {
       init.signal?.addEventListener("abort", () => reject(init.signal?.reason), {once: true});
     }));
-    const pending = proxy(["drafts", DRAFT_ID, "events", "stream"]);
+    const pending = proxy(["drafts", DRAFT_ID, "turns", "stream"]);
     await vi.advanceTimersByTimeAsync(30_000);
     expect((await pending).status).toBe(502); expect(vi.getTimerCount()).toBe(0);
   });
@@ -191,7 +191,7 @@ describe("setup route whitelist", () => {
     [["models"], METHOD.get], [["drafts"], METHOD.get], [["drafts"], METHOD.post],
     [["drafts", DRAFT_ID], METHOD.get], [["drafts", DRAFT_ID], METHOD.patch], [["drafts", DRAFT_ID], METHOD.delete],
     [["drafts", DRAFT_ID, "messages"], METHOD.get], [["drafts", DRAFT_ID, "messages"], METHOD.post],
-    [["drafts", DRAFT_ID, "cancellations"], METHOD.post], [["drafts", DRAFT_ID, "events", "stream"], METHOD.get],
+    [["drafts", DRAFT_ID, "cancellations"], METHOD.post], [["drafts", DRAFT_ID, "turns", "stream"], METHOD.get],
     [["fleets"], METHOD.get], [["fleets"], METHOD.post], [["fleets", FLEET_ID], METHOD.get], [["fleets", FLEET_ID], METHOD.patch], [["fleets", FLEET_ID, "revisions"], METHOD.post],
     [["fleets", FLEET_ID, "authoring-context"], METHOD.get],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.patch],

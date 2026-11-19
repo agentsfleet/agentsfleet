@@ -31,17 +31,17 @@ export type SteerRequest = {
 
 // The 202 a steer is answered with. Mirrors `af_wire::event::SteerAccepted`:
 // `replayed` is true when an earlier send of the same operation id already
-// admitted the message, so `event_id` is that send's event and may have run.
+// admitted the message, so `turn_id` is that send's event and may have run.
 export type SteerAccepted = {
   status: string;
-  event_id: string;
+  turn_id: string;
   replayed: boolean;
   // Where the message went. `folded`: the fleet's live run took it, and
-  // `folded_into_event_id` names that run; the message's own event gets the
+  // `folded_into_turn_id` names that run; the message's own event gets the
   // run's reply when that run reports. A daemon that predates the field sends
   // neither, and `postSteer` reads that as `started` and no run.
   disposition: SteerDisposition;
-  folded_into_event_id: string | null;
+  folded_into_turn_id: string | null;
 };
 
 /** Mirrors `af_wire::event::SteerDisposition`. */

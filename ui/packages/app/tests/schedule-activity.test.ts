@@ -18,7 +18,7 @@ it("reloads complete schedule lifecycle facts as non-runnable readable activity"
     {kind: "schedule_expired", status: "expired", sync: "synced"},
   ];
   const rows = facts.map((fact, index) => rowToEvent({...SCHEDULE_EVENT, actor: "system", event_type: "activity", status: "recorded",
-    event_id: `schedule:${index}`, request_json: JSON.stringify({...SCHEDULE_SNAPSHOT, ...fact, secret: "private-diagnostic"})}));
+    turn_id: `schedule:${index}`, request_json: JSON.stringify({...SCHEDULE_SNAPSHOT, ...fact, secret: "private-diagnostic"})}));
   expect(rows.map(row => row.text)).toEqual([
     "Schedule At 9:00 AM (Asia/Kolkata) set up: Review support failures — 東京 🦉 · Registration pending",
     "Schedule At 9:00 AM (Asia/Kolkata) changed: Review support failures — 東京 🦉 · Registration pending",

@@ -27,15 +27,15 @@ const { SEND_TIMEOUT_MS, useMessageDelivery } = await import("./useFleetMessageD
 
 const WORKSPACE = "ws_delivery";
 const FLEET = "fleet_delivery";
-const EVENT_ID = "1790573387481-566";
+const TURN_ID = "1790573387481-566";
 const NO_ROW = "";
 const OPTIMISTIC_ROW = "optim-1";
 const DEPLOY = "deploy";
 const STOP = "stop";
-const ACCEPTED = { ok: true, data: { status: "accepted", event_id: EVENT_ID, replayed: false } };
-const REPLAYED = { ok: true, data: { status: "accepted", event_id: EVENT_ID, replayed: true } };
-const RUN_EVENT_ID = "0190d5c2-7e1a-7000-8000-00000000e00f";
-const FOLDED = { ok: true, data: { status: "accepted", event_id: EVENT_ID, replayed: false, disposition: "folded", folded_into_event_id: RUN_EVENT_ID } };
+const ACCEPTED = { ok: true, data: { status: "accepted", turn_id: TURN_ID, replayed: false } };
+const REPLAYED = { ok: true, data: { status: "accepted", turn_id: TURN_ID, replayed: true } };
+const RUN_TURN_ID = "0190d5c2-7e1a-7000-8000-00000000e00f";
+const FOLDED = { ok: true, data: { status: "accepted", turn_id: TURN_ID, replayed: false, disposition: "folded", folded_into_turn_id: RUN_TURN_ID } };
 const OPERATION_CONFLICT = { ok: false, error: "conflict", status: 409, errorCode: ERROR_CODE.AGENTSFLEET_OPERATION_CONFLICT };
 // Ten seconds into the first send's thirty.
 const LATER_MS = 10_000;
@@ -131,21 +131,21 @@ describe("useMessageDelivery", () => {
     postSteer.mockResolvedValue(REPLAYED);
     const { ctx, hook } = delivery();
     await act(() => hook.result.current.onNew(message(DEPLOY)));
-    expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, EVENT_ID, true, null);
+    expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, TURN_ID, true, null);
   });
 
   it("hands a folded 202 to the reconcile with the run it joined", async () => {
     postSteer.mockResolvedValue(FOLDED);
     const { ctx, hook } = delivery();
     await act(() => hook.result.current.onNew(message(DEPLOY)));
-    expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, EVENT_ID, false, RUN_EVENT_ID);
+    expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, TURN_ID, false, RUN_TURN_ID);
   });
 
   it("a folded 202 that names no run reconciles as an ordinary send", async () => {
-    postSteer.mockResolvedValue({ ok: true, data: { status: "accepted", event_id: EVENT_ID, replayed: false, disposition: "folded", folded_into_event_id: null } });
+    postSteer.mockResolvedValue({ ok: true, data: { status: "accepted", turn_id: TURN_ID, replayed: false, disposition: "folded", folded_into_turn_id: null } });
     const { ctx, hook } = delivery();
     await act(() => hook.result.current.onNew(message(DEPLOY)));
-    expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, EVENT_ID, false, null);
+    expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, TURN_ID, false, null);
   });
 
   it("ignores a Resend for a send the ledger no longer holds", () => {
@@ -304,17 +304,17 @@ describe("a send's performance marks", () => {
     postSteer.mockResolvedValue(ACCEPTED);
     const { hook } = delivery();
     await act(() => hook.result.current.onNew(message(DEPLOY)));
-    sendMarks.frame(chunkOf(EVENT_ID));
-    sendMarks.frame(chunkOf(EVENT_ID));
-    sendMarks.frame(completionOf(EVENT_ID));
+    sendMarks.frame(chunkOf(TURN_ID));
+    sendMarks.frame(chunkOf(TURN_ID));
+    sendMarks.frame(completionOf(TURN_ID));
     expect(markedSends()).toEqual(IN_ORDER.map((name) => [name, sentId(1)]));
   });
 
   it("two overlapping sends leave eight marks, four per id, each id's in order", async () => {
-    const SECOND_EVENT_ID = "1790573387481-567";
+    const SECOND_TURN_ID = "1790573387481-567";
     let answerFirst: (result: typeof ACCEPTED) => void = () => undefined;
     postSteer.mockImplementationOnce(() => new Promise((resolve) => { answerFirst = resolve; }));
-    postSteer.mockResolvedValueOnce({ ok: true, data: { status: "accepted", event_id: SECOND_EVENT_ID, replayed: false } });
+    postSteer.mockResolvedValueOnce({ ok: true, data: { status: "accepted", turn_id: SECOND_TURN_ID, replayed: false } });
     const { hook } = delivery();
     const first = hook.result.current.onNew(message(DEPLOY));
     const second = hook.result.current.onNew(message(STOP));
@@ -324,7 +324,7 @@ describe("a send's performance marks", () => {
       answerFirst(ACCEPTED);
       await Promise.all([first, second]);
     });
-    for (const frame of [chunkOf(SECOND_EVENT_ID), chunkOf(EVENT_ID), completionOf(SECOND_EVENT_ID), completionOf(EVENT_ID)]) sendMarks.frame(frame);
+    for (const frame of [chunkOf(SECOND_TURN_ID), chunkOf(TURN_ID), completionOf(SECOND_TURN_ID), completionOf(TURN_ID)]) sendMarks.frame(frame);
     const marks = markedSends();
     expect(marks).toHaveLength(8);
     for (const operationId of [sentId(1), sentId(2)]) {

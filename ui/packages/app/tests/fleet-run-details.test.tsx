@@ -6,17 +6,17 @@ import { FleetScopeProvider } from "@/components/domain/conversation/stream/Flee
 import { SCHEDULE_EVENT } from "./helpers/schedule-activity";
 
 const read = vi.hoisted(() => vi.fn());
-vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({getFleetEventAction: read}));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({getFleetTurnAction: read}));
 
 beforeEach(() => vi.resetAllMocks());
 afterEach(cleanup);
 
 it("offers no native read without fleet ownership or before an event record exists", () => {
-  const view = render(<FleetRunDetails eventId={SCHEDULE_EVENT.event_id} status="processed" />);
+  const view = render(<FleetRunDetails turnId={SCHEDULE_EVENT.turn_id} status="processed" />);
   expect(screen.queryByRole("button", {name: "Run details"})).toBeNull();
   for (const status of ["queued", "optimistic", "recorded", "future_status", ""]) {
     view.rerender(<FleetScopeProvider workspaceId={SCHEDULE_EVENT.workspace_id} fleetId={SCHEDULE_EVENT.fleet_id}>
-      <FleetRunDetails eventId={SCHEDULE_EVENT.event_id} status={status} />
+      <FleetRunDetails turnId={SCHEDULE_EVENT.turn_id} status={status} />
     </FleetScopeProvider>);
     expect(screen.queryByRole("button", {name: "Run details"})).toBeNull();
   }
@@ -27,18 +27,18 @@ it("loads the exact native run on demand and refreshes the open record after com
   const pending = Promise.withResolvers<{ok: true; data: typeof SCHEDULE_EVENT}>();
   read.mockReturnValue(pending.promise);
   const view = render(<TooltipProvider><FleetScopeProvider workspaceId={SCHEDULE_EVENT.workspace_id} fleetId={SCHEDULE_EVENT.fleet_id}>
-    <FleetRunDetails eventId={SCHEDULE_EVENT.event_id} status="received" />
+    <FleetRunDetails turnId={SCHEDULE_EVENT.turn_id} status="received" />
   </FleetScopeProvider></TooltipProvider>);
   expect(read).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", {name: "Run details"}));
   expect(await screen.findByText("Loading run details…")).toBeTruthy();
   expect(screen.queryByText("No result recorded")).toBeNull();
-  expect(read).toHaveBeenCalledWith(SCHEDULE_EVENT.workspace_id, SCHEDULE_EVENT.fleet_id, SCHEDULE_EVENT.event_id);
+  expect(read).toHaveBeenCalledWith(SCHEDULE_EVENT.workspace_id, SCHEDULE_EVENT.fleet_id, SCHEDULE_EVENT.turn_id);
   await act(async () => {pending.resolve({ok: true, data: {...SCHEDULE_EVENT, status: "received"}}); await pending.promise;});
   expect(await screen.findByLabelText("Event in progress")).toBeTruthy();
   read.mockResolvedValue({ok: true, data: {...SCHEDULE_EVENT, response_text: "Support queue reviewed."}});
   view.rerender(<TooltipProvider><FleetScopeProvider workspaceId={SCHEDULE_EVENT.workspace_id} fleetId={SCHEDULE_EVENT.fleet_id}>
-    <FleetRunDetails eventId={SCHEDULE_EVENT.event_id} status="processed" />
+    <FleetRunDetails turnId={SCHEDULE_EVENT.turn_id} status="processed" />
   </FleetScopeProvider></TooltipProvider>);
   expect(await screen.findByText("Support queue reviewed.")).toBeTruthy();
   expect(screen.getByLabelText("Successful event")).toBeTruthy();
@@ -53,7 +53,7 @@ it("loads the exact native run on demand and refreshes the open record after com
 it("keeps a refused native read distinct from a completed run without a result", async () => {
   read.mockResolvedValue({ok: false, error: "not found"});
   render(<FleetScopeProvider workspaceId={SCHEDULE_EVENT.workspace_id} fleetId={SCHEDULE_EVENT.fleet_id}>
-    <FleetRunDetails eventId={SCHEDULE_EVENT.event_id} status="fleet_error" />
+    <FleetRunDetails turnId={SCHEDULE_EVENT.turn_id} status="fleet_error" />
   </FleetScopeProvider>);
   fireEvent.click(screen.getByRole("button", {name: "Run details"}));
   expect(await screen.findByText("Run details unavailable. Close and try again.")).toBeTruthy();

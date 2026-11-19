@@ -9,7 +9,7 @@ import {
   type FleetStatusSettable,
   type FleetStatusUpdate,
 } from "@/lib/api/fleets";
-import { getFleetEvent as apiGetFleetEvent, type EventDetail } from "@/lib/api/events";
+import { getFleetTurn as apiGetFleetTurn, type TurnDetail } from "@/lib/api/events";
 import { forgetMemory as apiForgetMemory, setMemoryAccess as apiSetMemoryAccess, listAllMemories } from "@/lib/api/memory";
 import type {
   MemoryAccess,
@@ -31,12 +31,12 @@ export async function listFleetsAction(
  * credential never leaves the server (lint: the ast-grep rule
  * app-client-credential).
  */
-export async function getFleetEventAction(
+export async function getFleetTurnAction(
   workspaceId: string,
   fleetId: string,
-  eventId: string,
-): Promise<ActionResult<EventDetail>> {
-  return withToken((t) => apiGetFleetEvent(workspaceId, fleetId, eventId, t));
+  turnId: string,
+): Promise<ActionResult<TurnDetail>> {
+  return withToken((t) => apiGetFleetTurn(workspaceId, fleetId, turnId, t));
 }
 
 export async function setFleetStatusAction(

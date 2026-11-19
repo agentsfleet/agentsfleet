@@ -40,7 +40,7 @@ import { workspacePath } from "@/lib/workspace-routes";
 // renamed or taken since (`useFleetMessageRoute.ts`).
 
 // Placeholder actor on an optimistic row until the stream's matching
-// `EVENT_RECEIVED` lands and reconciliation replaces it with the real
+// `TURN_RECEIVED` lands and reconciliation replaces it with the real
 // authenticated principal.
 const OPTIMISTIC_ACTOR = ACTOR.PENDING_STEER;
 const settledEitherWay = (): void => undefined;
@@ -248,14 +248,14 @@ function useAcknowledgement({ workspaceId, fleetId, reconcileOptimistic, discard
       writers.settle(operationId);
       releaseRoute(workspaceId, operationId);
       // Before the reconcile, which lets this send's held frames land.
-      sendMarks.mark(SEND_MARK.ACCEPTED, operationId, accepted.event_id);
+      sendMarks.mark(SEND_MARK.ACCEPTED, operationId, accepted.turn_id);
       if (target !== fleetId) {
         discardOptimistic(tempId);
         openFleet(target);
         return true;
       }
-      const foldedInto = accepted.disposition === STEER_DISPOSITION.FOLDED ? accepted.folded_into_event_id : null;
-      reconcileOptimistic(tempId, accepted.event_id, accepted.replayed, foldedInto);
+      const foldedInto = accepted.disposition === STEER_DISPOSITION.FOLDED ? accepted.folded_into_turn_id : null;
+      reconcileOptimistic(tempId, accepted.turn_id, accepted.replayed, foldedInto);
       return true;
     },
     [workspaceId, fleetId, reconcileOptimistic, discardOptimistic, openFleet, writers],

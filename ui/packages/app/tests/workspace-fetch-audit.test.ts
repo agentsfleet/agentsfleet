@@ -58,18 +58,18 @@ describe("workspace fetch acceptance audit", () => {
       "/v1/workspaces/ws_1/fleets/zom_1/messages?limit=20",
     );
     recordWorkspaceFetchForAcceptance(
-      "/v1/workspaces/ws_1/fleets/zom_1/events/1700000000000-0",
+      "/v1/workspaces/ws_1/fleets/zom_1/turns/1700000000000-0",
     );
     // The events LIST and the live tail are deliberately unaudited.
-    recordWorkspaceFetchForAcceptance("/v1/workspaces/ws_1/fleets/zom_1/events?limit=25");
-    recordWorkspaceFetchForAcceptance("/v1/workspaces/ws_1/fleets/zom_1/events/stream");
+    recordWorkspaceFetchForAcceptance("/v1/workspaces/ws_1/fleets/zom_1/turns?limit=25");
+    recordWorkspaceFetchForAcceptance("/v1/workspaces/ws_1/fleets/zom_1/turns/stream");
 
     expect(readWorkspaceFetchAudit()).toEqual({
       total: 3,
       byPath: {
         [AUDITED_PATH.workspaceList]: 1,
         [AUDITED_PATH.fleetMessages]: 1,
-        [AUDITED_PATH.fleetEventDetail]: 1,
+        [AUDITED_PATH.fleetTurnDetail]: 1,
       },
     });
   });

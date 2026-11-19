@@ -1,5 +1,5 @@
 // Tests for the same-origin full tool-call read at
-// app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/[eventId]/tool-calls/[callId].
+// app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/[turnId]/items/[itemId].
 //
 // The auth, error and streaming behaviour it shares with its siblings is
 // pinned in event-detail-route.test.ts; this pins what is its own: the fenced
@@ -31,11 +31,11 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-import { GET } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/[eventId]/tool-calls/[callId]/route";
+import { GET } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/[turnId]/items/[itemId]/route";
 
 const WS = "ws_1";
 const FLEET = "fleet_1";
-const EVENT_ID = "1790573387481-566";
+const TURN_ID = "1790573387481-566";
 const CALL_ID = "7:3";
 const HTTP_NOT_FOUND = 404;
 const CONTENT_TYPE_JSON = "application/json";
@@ -44,7 +44,7 @@ const FULL_CALL = JSON.stringify({ call_id: CALL_ID, output: "a\nb", output_line
 
 function call(callId: string): Promise<Response> {
   const req = new Request("http://localhost/proxy", { method: "GET" });
-  return GET(req, { params: Promise.resolve({ workspaceId: WS, fleetId: FLEET, eventId: EVENT_ID, callId }) });
+  return GET(req, { params: Promise.resolve({ workspaceId: WS, fleetId: FLEET, turnId: TURN_ID, itemId: callId }) });
 }
 
 function upstream(body: string, status: number): Response {
@@ -58,7 +58,7 @@ describe("tool call route handler", () => {
     const res = await call(CALL_ID);
     const [url] = fetchSpy.mock.calls[0]!;
     // pin test: literal is the contract
-    expect(url).toBe(`https://api.example.test/v1/workspaces/${WS}/fleets/${FLEET}/events/${EVENT_ID}/tool-calls/7%3A3`);
+    expect(url).toBe(`https://api.example.test/v1/workspaces/${WS}/fleets/${FLEET}/turns/${TURN_ID}/items/7%3A3`);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe(FULL_CALL);
   });

@@ -80,7 +80,7 @@ import { CONNECTION_STATUS, convertEvent } from "../stream/useFleetEventStream";
 import { ANNOUNCEMENT_HOLD_MS, SETTLED_REPLY_STATUS, SPOKEN_REPLY_MAX_CHARS, spokenSummary } from "../../activity/replies/FleetReplyAnnouncements";
 
 const FLUSHES = 100;
-const EVENT_ID = "evt_flush";
+const TURN_ID = "evt_flush";
 const STEER_ACTOR = `steer:${shell.user}`;
 const FINAL_WORD = "done.";
 const SENDER = "reviewer";
@@ -100,7 +100,7 @@ const STABLE = {
 
 function turn(reply: string, status: FleetEvent["status"]): FleetEvent {
   return {
-    id: EVENT_ID,
+    id: TURN_ID,
     role: "user",
     actor: STEER_ACTOR,
     text: "Review the change",

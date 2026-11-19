@@ -5,7 +5,7 @@
 // reason as `fleet-stream-frames.ts`: the registry's lifecycle file stays
 // under the length gate and the model stays readable on its own.
 
-import type { EventRow } from "@/lib/api/events";
+import type { TurnRow } from "@/lib/api/events";
 import {
   NO_FACTS,
   latestFigures,
@@ -98,7 +98,7 @@ export const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
   latest: null,
 }) as FleetStreamSnapshot;
 
-export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
+export function createEntry(workspaceId: string, initial: TurnRow[]): Entry {
   const events = mergeBackfill([], initial);
   return {
     workspaceId,

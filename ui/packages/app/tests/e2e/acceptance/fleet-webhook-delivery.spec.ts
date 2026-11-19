@@ -22,7 +22,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect, test } from "@playwright/test";
-import type { EventsPage } from "@/lib/api/events";
+import type { TurnsPage } from "@/lib/api/events";
 
 import { saveFixtureFleet } from "./fixtures/native-setup";
 import { clientFor } from "./fixtures/api-client";
@@ -85,7 +85,7 @@ const REPLAY_GRACE_MS = POLL_INTERVAL_MS * REPLAY_GRACE_POLLS;
 const JOURNEY_TIMEOUT_MS = 240_000;
 
 interface Accepted {
-  event_id: string;
+  turn_id: string;
   replayed: boolean;
 }
 
@@ -114,8 +114,8 @@ async function deliver(webhookUrl: string, body: Uint8Array, secret: string, del
 }
 
 async function webhookEvents(workspaceId: string, fleetId: string) {
-  const page = await clientFor(FIXTURE_KEY.regular).get<EventsPage>(
-    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/events`,
+  const page = await clientFor(FIXTURE_KEY.regular).get<TurnsPage>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/turns`,
   );
   return page.items.filter((item) => item.event_type === EVENT_TYPE_WEBHOOK);
 }
@@ -200,13 +200,13 @@ test.describe("fleet webhook delivery", () => {
     const first = await deliver(webhookUrl, body, secret, delivery);
     expect(first.status, JSON.stringify(first.body)).toBe(HTTP_ACCEPTED);
     expect(first.body.replayed).toBe(false);
-    expect(first.body.event_id.length).toBeGreaterThan(0);
+    expect(first.body.turn_id.length).toBeGreaterThan(0);
 
     // ── The exact replay, reported as one and naming the same event ──
     const replay = await deliver(webhookUrl, body, secret, delivery);
     expect(replay.status, JSON.stringify(replay.body)).toBe(HTTP_ACCEPTED);
     expect(replay.body.replayed).toBe(true);
-    expect(replay.body.event_id).toBe(first.body.event_id);
+    expect(replay.body.turn_id).toBe(first.body.turn_id);
 
     // ── One durable event, once a runner has taken it ──
     await awaitRun(workspaceId, fleetId);
@@ -217,7 +217,7 @@ test.describe("fleet webhook delivery", () => {
     const rows = await webhookEvents(workspaceId, fleetId);
     expect(rows, "the replay added no second event").toHaveLength(1);
     const [row] = rows;
-    expect(row?.event_id).toBe(first.body.event_id);
+    expect(row?.turn_id).toBe(first.body.turn_id);
     expect(row?.status).not.toBe(EVENT_STATUS.gateBlocked);
   });
 });

@@ -12,10 +12,10 @@ const END = 2000;
 const NAME = "file_read";
 const SUCCESS = TOOL_CALL_STATUS.SUCCEEDED;
 function started(call_id = FIRST, args_redacted: unknown = {}): LiveFrame {
-  return {kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name: NAME, call_id, args_redacted};
+  return {kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: "e1", name: NAME, call_id, args_redacted};
 }
 function completed(call_id = FIRST, ms = 700): LiveFrame {
-  return {kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name: NAME, call_id, ms, status: SUCCESS};
+  return {kind: FRAME_KIND.TOOL_CALL_COMPLETED, turn_id: "e1", name: NAME, call_id, ms, status: SUCCESS};
 }
 function wire(payload: Record<string, unknown>): LiveFrame {
   const frame = parseLiveFrame(JSON.stringify(payload));
@@ -32,7 +32,7 @@ describe("tool frames with required identifiers and outcomes", () => {
   });
   it("keeps a progress update on an open call referentially unchanged", () => {
     const open = applyLiveFrame(seed(), started(), START);
-    expect(applyLiveFrame(open, {kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: "e1", name: NAME, call_id: FIRST, elapsed_ms: 400}, END)).toBe(open);
+    expect(applyLiveFrame(open, {kind: FRAME_KIND.TOOL_CALL_PROGRESS, turn_id: "e1", name: NAME, call_id: FIRST, elapsed_ms: 400}, END)).toBe(open);
   });
   it("uses identifiers to separate same-name calls even with equal timings", () => {
     const done = applyLiveFrame(applyLiveFrame(seed(), started(), START), completed(), END);

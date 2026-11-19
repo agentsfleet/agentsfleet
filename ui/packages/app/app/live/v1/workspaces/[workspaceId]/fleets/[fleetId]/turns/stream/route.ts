@@ -30,7 +30,7 @@ export async function GET(req: Request, { params }: Params) {
 
   const upstreamUrl =
     `${API_ORIGIN}/v1/workspaces/${encodeURIComponent(workspaceId)}` +
-    `/fleets/${encodeURIComponent(fleetId)}/events/stream`;
+    `/fleets/${encodeURIComponent(fleetId)}/turns/stream`;
 
   return proxyEventStream(req, upstreamUrl, token);
 }

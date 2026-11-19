@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type EventRow, type LiveFrame } from "@/lib/api/events";
+import { type TurnRow, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { HEADLINE, OUTCOME } from "@/lib/events/event-summary";
 import { ACTIVITY_KIND, FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
@@ -13,9 +13,9 @@ import { rowToEvent, type FleetEvent } from "./fleet-stream-row";
 
 const OPENED_AT = Date.UTC(2026, 4, 15, 9, 0, 0);
 
-function row(over: Partial<EventRow> = {}): EventRow {
+function row(over: Partial<TurnRow> = {}): TurnRow {
   return {
-    event_id: "e1",
+    turn_id: "e1",
     fleet_id: "z1",
     workspace_id: "ws1",
     actor: "cron:*",
@@ -25,7 +25,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
     wall_ms: 12_000,
     failure_label: null,
     failure_detail: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     cost_nanos: "40000000",
     created_at: new Date(OPENED_AT).toISOString(),
     updated_at: new Date(OPENED_AT).toISOString(),
@@ -33,15 +33,15 @@ function row(over: Partial<EventRow> = {}): EventRow {
   };
 }
 
-function opened(over: Partial<Extract<LiveFrame, { kind: "event_received" }>> = {}): LiveFrame {
-  return { kind: FRAME_KIND.EVENT_RECEIVED, event_id: "e1", actor: "cron:*", ...over };
+function opened(over: Partial<Extract<LiveFrame, { kind: "turn_received" }>> = {}): LiveFrame {
+  return { kind: FRAME_KIND.TURN_RECEIVED, turn_id: "e1", actor: "cron:*", ...over };
 }
 
 function received(): FleetEvent[] {
   return applyLiveFrame([], opened({ event_type: "cron", created_at: new Date(OPENED_AT).toISOString() }));
 }
 
-describe("event_received — the opening bracket", () => {
+describe("turn_received — the opening bracket", () => {
   it("stamps the row with the daemon's instant, never the client clock", () => {
     const [event] = received();
     expect(event?.createdAt.getTime()).toBe(OPENED_AT);
@@ -62,7 +62,7 @@ describe("event_received — the opening bracket", () => {
   });
 });
 
-describe("event_received — a row the browser already holds", () => {
+describe("turn_received — a row the browser already holds", () => {
   it("adopts the daemon's instant on the operator's own steer, and keeps everything else", () => {
     const guessed = OPENED_AT - 90_000;
     const held: FleetEvent = {
@@ -81,10 +81,10 @@ describe("event_received — a row the browser already holds", () => {
   });
 });
 
-describe("event_complete — the closing bracket", () => {
+describe("turn_complete — the closing bracket", () => {
   it("folds the row's figures onto the event so the strip moves without a read", () => {
     const [event] = applyLiveFrame(received(), {
-      kind: FRAME_KIND.EVENT_COMPLETE,
+      kind: FRAME_KIND.TURN_COMPLETE,
       ...row(),
       fleet_status: "active",
       pending_approvals: 0,
@@ -100,7 +100,7 @@ describe("event_complete — the closing bracket", () => {
 
   it("a run the daemon reported no telemetry for reads as unknown, never zero", () => {
     const [event] = applyLiveFrame(received(), {
-      kind: FRAME_KIND.EVENT_COMPLETE,
+      kind: FRAME_KIND.TURN_COMPLETE,
       ...row({ tokens: null, wall_ms: null, cost_nanos: null }),
       fleet_status: "active",
       pending_approvals: 0,
@@ -109,20 +109,20 @@ describe("event_complete — the closing bracket", () => {
   });
 
   it("retains exact streamed costs above safe integers", () => {
-    const [event] = applyLiveFrame(received(), { kind: FRAME_KIND.EVENT_COMPLETE,
+    const [event] = applyLiveFrame(received(), { kind: FRAME_KIND.TURN_COMPLETE,
       ...row({ cost_nanos: "9007199254740993" }), fleet_status: "active", pending_approvals: 0 });
     expect(event?.costNanos).toBe("9007199254740993");
   });
 
   it("a numeric stream cost remains unknown instead of showing an imprecise charge", () => {
-    const [event] = applyLiveFrame(received(), { kind: FRAME_KIND.EVENT_COMPLETE,
+    const [event] = applyLiveFrame(received(), { kind: FRAME_KIND.TURN_COMPLETE,
       ...row(), cost_nanos: 9007199254740992, fleet_status: "active", pending_approvals: 0 } as unknown as LiveFrame);
     expect(event?.costNanos).toBeNull();
   });
 
   it("a refusal closes the row with its label and no figures", () => {
     const [event] = applyLiveFrame(received(), {
-      kind: FRAME_KIND.EVENT_COMPLETE,
+      kind: FRAME_KIND.TURN_COMPLETE,
       ...row({ status: "gate_blocked", failure_label: "balance_exhausted", tokens: null, wall_ms: null, cost_nanos: null }),
       fleet_status: "active",
       pending_approvals: 0,
@@ -133,10 +133,10 @@ describe("event_complete — the closing bracket", () => {
   });
 });
 
-describe("event_complete — a row the timeline never opened", () => {
+describe("turn_complete — a row the timeline never opened", () => {
   it("opens the row from the frame, figures and all, so a late subscriber's strip still moves", () => {
     const events = applyLiveFrame([], {
-      kind: FRAME_KIND.EVENT_COMPLETE,
+      kind: FRAME_KIND.TURN_COMPLETE,
       ...row({ actor: "continuation:e0", event_type: "continuation" }),
       fleet_status: "active",
       pending_approvals: 0,
@@ -153,12 +153,12 @@ describe("event_complete — a row the timeline never opened", () => {
   });
 
   it("carries a continuation's resumed event, and dates an unstamped update by its creation", () => {
-    const stamped = { ...row({ resumes_event_id: "e0" }) } as Partial<EventRow>;
+    const stamped = { ...row({ resumes_turn_id: "e0" }) } as Partial<TurnRow>;
     delete stamped.updated_at;
     const [event] = applyLiveFrame([], {
-      kind: FRAME_KIND.EVENT_COMPLETE,
+      kind: FRAME_KIND.TURN_COMPLETE,
       ...stamped,
-      event_id: "e1",
+      turn_id: "e1",
       fleet_status: "active",
       pending_approvals: 0,
     } as LiveFrame);
@@ -167,13 +167,13 @@ describe("event_complete — a row the timeline never opened", () => {
   });
 
   it("drops a frame too thin to be a row rather than rendering a blank turn", () => {
-    const thin = { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "e9", status: "processed" } as LiveFrame;
+    const thin = { kind: FRAME_KIND.TURN_COMPLETE, turn_id: "e9", status: "processed" } as LiveFrame;
     expect(applyLiveFrame([], thin)).toEqual([]);
   });
 
   it("reads a malformed cause as absent instead of losing the frame", () => {
     const events = applyLiveFrame(received(), {
-      kind: FRAME_KIND.EVENT_COMPLETE,
+      kind: FRAME_KIND.TURN_COMPLETE,
       ...row({ status: "fleet_error" }),
       failure_label: 12,
       failure_detail: { nested: true },
@@ -185,8 +185,8 @@ describe("event_complete — a row the timeline never opened", () => {
 
   it("a status the server never writes marks the turn done", () => {
     const events = applyLiveFrame(received(), {
-      kind: FRAME_KIND.EVENT_COMPLETE,
-      ...row({ status: "exploded" as EventRow["status"] }),
+      kind: FRAME_KIND.TURN_COMPLETE,
+      ...row({ status: "exploded" as TurnRow["status"] }),
       fleet_status: "active",
       pending_approvals: 0,
     });

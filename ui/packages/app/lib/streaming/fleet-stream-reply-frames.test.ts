@@ -57,7 +57,7 @@ describe("applyReplyDelta — reasoning span", () => {
     const answered = applyReplyDelta(rows, EVENT, answer(" How can I help?"), LATER_AT);
     expect(only(answered)).toMatchObject({ reasoningStartedAtMs: REASONING_AT, reasoningEndedAtMs: LATER_AT });
 
-    const completed = applyLiveFrame(rows, { kind: FRAME_KIND.EVENT_COMPLETE, event_id: EVENT, status: "processed" }, LATER_AT);
+    const completed = applyLiveFrame(rows, { kind: FRAME_KIND.TURN_COMPLETE, turn_id: EVENT, status: "processed" }, LATER_AT);
     expect(only(completed).reasoningEndedAtMs).toBe(LATER_AT);
   });
 
@@ -75,7 +75,7 @@ describe("applyReplyDelta — reasoning span", () => {
   it("the completion ends a span the answer never did", () => {
     const thinking = applyReplyDelta([evt({ id: EVENT })], EVENT, reasoning("Only thought."), REASONING_AT);
     const completed = applyLiveFrame(thinking, {
-      kind: FRAME_KIND.EVENT_COMPLETE, event_id: EVENT, status: "processed",
+      kind: FRAME_KIND.TURN_COMPLETE, turn_id: EVENT, status: "processed",
     }, ANSWER_AT);
     expect(only(completed)).toMatchObject({ reasoningEndedAtMs: ANSWER_AT, thinking: false });
     const saved = applyFinalReplyText(thinking, EVENT, "Saved.", LATER_AT);

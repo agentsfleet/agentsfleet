@@ -4,7 +4,7 @@ import {
   type WorkspaceHelloFrame,
   type WorkspaceLiveFrame,
 } from "@/lib/api/events";
-import { FRAME_KIND, ROUTED_FRAME_KINDS, streamWorkspaceEventsUrl } from "@/lib/api/events-types";
+import { FRAME_KIND, ROUTED_FRAME_KINDS, streamWorkspaceTurnsUrl } from "@/lib/api/events-types";
 import { cancelPendingReconnect } from "@/lib/streaming/fleet-stream-reconnect";
 import { isWorkspaceFrame, parseWorkspaceFrame } from "@/lib/streaming/workspace-stream-parse";
 
@@ -90,7 +90,7 @@ function setStatus(entry: Entry, status: WorkspaceConnectionStatus): void {
 }
 
 function startEventSource(entry: Entry): void {
-  const es = new EventSource(streamWorkspaceEventsUrl(entry.workspaceId));
+  const es = new EventSource(streamWorkspaceTurnsUrl(entry.workspaceId));
   entry.eventSource = es;
   es.onopen = () => {
     const isReconnect = entry.hasConnectedOnce;

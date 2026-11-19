@@ -19,7 +19,7 @@ import {
 } from "../stream/useFleetEventStream";
 import { useFleetThreadEntries } from "./useFleetThreadEntries";
 import { mergePreviewEntries, useFleetUploadPreviews, type FleetConversationEntry } from "../composer/useFleetUploadPreviews";
-import type { EventRow } from "@/lib/api/events";
+import type { TurnRow } from "@/lib/api/events";
 import { SenderLabelProvider } from "../../activity/messages/FleetMessageRow";
 import { SenderNamesProvider } from "../../shared/identity/SenderNames";
 import { senderNamesFrom, type SenderName } from "@/lib/events/sender-names";
@@ -54,7 +54,7 @@ export type FleetThreadProps = {
    * this data is fetched in the parent Server Component and passed as a
    * prop; live updates arrive over the cookie-authed SSE route handler.
    */
-  initial: EventRow[];
+  initial: TurnRow[];
   /**
    * The signed-in user as the server rendered the page. The pending-send
    * ledger is keyed by user, and the client learns the user only once its
@@ -88,7 +88,7 @@ export function FleetThread(props: FleetThreadProps) {
 }
 
 function OwnedFleetThread(props: FleetThreadProps) {
-  const {stream, arrived, names, ledger, delivery, runtime, setupEventId, subject, previewCount} = useThreadRuntime(props);
+  const {stream, arrived, names, ledger, delivery, runtime, setupTurnId, subject, previewCount} = useThreadRuntime(props);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
   const taskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
   const work = useMemo(() => <TaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
@@ -105,7 +105,7 @@ function OwnedFleetThread(props: FleetThreadProps) {
                 <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
               </div>}
               <FleetTaskProvider workspaceId={props.workspaceId} fleetId={props.fleetId} subject={taskSubject} revision={stream.tasksSeq} events={stream.events} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
-              <FleetConversationLayout work={work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupEventId={setupEventId}
+              <FleetConversationLayout work={work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupTurnId={setupTurnId}
                 archived={props.archived}
                 eventsCount={stream.events.length + previewCount} connectionStatus={stream.connectionStatus}
                 onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}
@@ -144,7 +144,7 @@ function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, s
   const runtimeRef = useRef<AssistantRuntime | null>(null);
   const previews = useFleetUploadPreviews({workspaceId, fleetId, subject, events: stream.events, onNew: delivery.onNew, runtime: runtimeRef});
   const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent, previews.groupBreaks);
-  const setupEventId = useMemo(() => stream.events.findLast(event => {
+  const setupTurnId = useMemo(() => stream.events.findLast(event => {
     if (event.status !== FLEET_ACTIVITY.status) return false;
     const activity = readFleetActivity(event.custom?.requestJson ?? "");
     return activity
@@ -166,5 +166,5 @@ function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, s
     runtimeRef.current = runtime;
     return () => { runtimeRef.current = null; };
   }, [runtime]);
-  return {stream, arrived, names, ledger, delivery, runtime, setupEventId, subject, previewCount: previews.entries.length};
+  return {stream, arrived, names, ledger, delivery, runtime, setupTurnId, subject, previewCount: previews.entries.length};
 }

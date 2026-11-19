@@ -155,13 +155,13 @@ const PART_FIELDS = new WeakMap<FleetToolCall, PartFields>();
 // reply is converted, and a fresh object breaks every memo that holds it.
 const NO_ARGS: ToolArgs = Object.freeze({});
 
-function toolCallPart(eventId: string, tool: FleetToolCall, index: number): ReplyPart {
+function toolCallPart(turnId: string, tool: FleetToolCall, index: number): ReplyPart {
   const { result, timing } = partFields(tool);
   return {
     type: "tool-call",
     // The runner's own id when it names the call: a saved trace that replaces
     // the live list keeps each call's identity even where positions differ.
-    toolCallId: `${eventId}${TOOL_CALL_ID_INFIX}${tool.callId ?? index}`,
+    toolCallId: `${turnId}${TOOL_CALL_ID_INFIX}${tool.callId ?? index}`,
     toolName: tool.name,
     args: tool.args ?? NO_ARGS,
     ...(result === undefined ? {} : { result, isError: tool.status !== undefined && ERROR_STATUSES.has(tool.status) }),

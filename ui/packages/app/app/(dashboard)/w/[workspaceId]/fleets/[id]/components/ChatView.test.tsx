@@ -2,7 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
-import { type EventDetail, type LiveFrame } from "@/lib/api/events";
+import { type TurnDetail, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import type { FleetRunSummary } from "@/lib/events/run-summary";
 import { __resetRegistryForTests, reconcileServerRows, streamWrapper as StreamOwner } from "@/tests/helpers/fleet-streams";
@@ -38,9 +38,9 @@ const INITIAL_TOKENS = 1500;
 const COMPLETED_TOKENS = 1200;
 const RERENDERED_TOKENS = 900;
 
-function turn(over: Partial<EventDetail> = {}): EventDetail {
+function turn(over: Partial<TurnDetail> = {}): TurnDetail {
   return {
-    event_id: "evt_seed",
+    turn_id: "evt_seed",
     fleet_id: FLEET_ID,
     workspace_id: WORKSPACE_ID,
     actor: "cron:*",
@@ -53,7 +53,7 @@ function turn(over: Partial<EventDetail> = {}): EventDetail {
     wall_ms: 12_000,
     failure_label: null,
     failure_detail: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     cost_nanos: "40000000",
     created_at: new Date(SEED_AT).toISOString(),
     updated_at: new Date(SEED_AT).toISOString(),
@@ -80,10 +80,10 @@ function summary(over: Partial<FleetRunSummary> = {}): FleetRunSummary {
 }
 
 /** The daemon's closing bracket: the whole row plus the two fleet facts. */
-function completion(over: Partial<Extract<LiveFrame, { kind: "event_complete" }>> = {}): LiveFrame {
+function completion(over: Partial<Extract<LiveFrame, { kind: "turn_complete" }>> = {}): LiveFrame {
   return {
-    kind: FRAME_KIND.EVENT_COMPLETE,
-    ...turn({ event_id: "evt_live", tokens: COMPLETED_TOKENS, created_at: new Date(SEED_AT + 60_000).toISOString() }),
+    kind: FRAME_KIND.TURN_COMPLETE,
+    ...turn({ turn_id: "evt_live", tokens: COMPLETED_TOKENS, created_at: new Date(SEED_AT + 60_000).toISOString() }),
     fleet_status: STATUS_ACTIVE,
     pending_approvals: 0,
     ...over,
@@ -99,7 +99,7 @@ function completion(over: Partial<Extract<LiveFrame, { kind: "event_complete" }>
 // layout, so the ancestor has to be supplied here; the alternative, making
 // `Time` provide its own, would give each cell a private delay and break the
 // coordination the single provider exists for.
-function view(initialSummary: FleetRunSummary, initial: EventDetail[] = [turn()], Content = SummaryProbe) {
+function view(initialSummary: FleetRunSummary, initial: TurnDetail[] = [turn()], Content = SummaryProbe) {
   return React.createElement(
     StreamOwner,
     null,
@@ -147,8 +147,8 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
     expect(screen.getByText("1,500")).toBeTruthy();
 
     emit({
-      kind: FRAME_KIND.EVENT_RECEIVED,
-      event_id: "evt_live",
+      kind: FRAME_KIND.TURN_RECEIVED,
+      turn_id: "evt_live",
       actor: "cron:*",
       event_type: "cron",
       created_at: new Date(SEED_AT + 60_000).toISOString(),
@@ -166,7 +166,7 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
 
   it("a revisit whose cached status the server has overtaken does not refresh", async () => {
     const first = render(view(summary({status: STATUS_INSTALLING})));
-    emit({kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*"});
+    emit({kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*"});
     emit(completion({fleet_status: STATUS_ACTIVE}));
     expect(await screen.findByText(STATUS_ACTIVE)).toBeTruthy();
     expect(refreshMock).toHaveBeenCalledOnce();
@@ -181,14 +181,14 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
     render(view(summary()));
     expect(screen.queryByRole("link", { name: /approval/i })).toBeNull();
 
-    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g1", event_id: "evt_seed", pending_approvals: 2 });
+    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g1", turn_id: "evt_seed", pending_approvals: 2 });
     expect(await screen.findByRole("link", { name: /2 approvals waiting/i })).toBeTruthy();
     expect(screen.getByText("1,500")).toBeTruthy();
 
     emit({
       kind: FRAME_KIND.GATE_RESOLVED,
       gate_id: "g1",
-      event_id: "evt_seed",
+      turn_id: "evt_seed",
       status: "approved",
       resolved_by: "human:x",
       pending_approvals: 0,
@@ -201,7 +201,7 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
   it("only a status change refreshes the server-rendered controls, once", async () => {
     render(view(summary()));
 
-    emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*" });
+    emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*" });
     emit(completion({ fleet_status: STATUS_ARCHIVED }));
 
     // The header's lifecycle controls render from the fleet status on the
@@ -211,14 +211,14 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
 
     // A second completion with the same status is not a second refresh.
-    emit(completion({ event_id: "evt_next", fleet_status: STATUS_ARCHIVED }));
+    emit(completion({ turn_id: "evt_next", fleet_status: STATUS_ARCHIVED }));
     await act(async () => {});
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
   it("a server render resets the facts to its own — a kill from the header is not shadowed by an older frame", async () => {
     const { rerender } = render(view(summary()));
-    emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*" });
+    emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*" });
     emit(completion());
     expect(await screen.findByText("1,200")).toBeTruthy();
 
@@ -235,7 +235,7 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
     render(view(summary({ latest: null, latestAvailable: false }), []));
     expect(screen.getByText(METRICS_UNAVAILABLE)).toBeTruthy();
 
-    emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*" });
+    emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*" });
     emit(completion());
     expect(await screen.findByText("1,200")).toBeTruthy();
     expect(screen.queryByText(METRICS_UNAVAILABLE)).toBeNull();
@@ -244,7 +244,7 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
   it("a reconnect backfill's terminal row moves the strip like a frame would", async () => {
     render(view(summary()));
     act(() => {
-      reconcileServerRows(FLEET_ID, [turn({ event_id: "evt_missed", tokens: COMPLETED_TOKENS, created_at: new Date(SEED_AT + 1).toISOString() })]);
+      reconcileServerRows(FLEET_ID, [turn({ turn_id: "evt_missed", tokens: COMPLETED_TOKENS, created_at: new Date(SEED_AT + 1).toISOString() })]);
     });
     expect(await screen.findByText("1,200")).toBeTruthy();
   });

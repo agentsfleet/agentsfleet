@@ -10,7 +10,7 @@ const text = z.string().min(1);
 const RunnerRunSchema = z.object({
   id: text, fleet_id: text, fleet_name: z.string().nullable(), workspace_id: text,
   destination: z.enum(Object.values(RunDestination)),
-  event_id: text, event_type: text.nullable(), actor: text.nullable(),
+  turn_id: text, event_type: text.nullable(), actor: text.nullable(),
   outcome: z.enum(Object.values(RunOutcome)), kind: z.enum(Object.values(RunKind)),
   failure_label: z.string().nullable(), failure_detail: z.string().nullable(),
   fencing_token: count, provider: text, model: text, posture: text,

@@ -9,7 +9,7 @@
 // Three surfaces read this module — the console thread, the console summary
 // strip, and the events table — so the vocabulary cannot drift between them.
 
-import type { EventDetail, EventRow, EventStatusValue } from "@/lib/api/events";
+import type { TurnDetail, TurnRow, TurnStatusValue } from "@/lib/api/events";
 import { FLEET_ACTIVITY, fleetActivityText } from "./fleet-activity";
 // Re-exported below so every consumer keeps importing this one module.
 import {
@@ -225,7 +225,7 @@ const UNFINISHED_REPLY_SENTENCE = "This fleet couldn’t complete the reply.";
  * reads WHICH check failed, not only that one did.
  */
 export function outcomeFor(
-  row: Pick<EventRow, "status" | "failure_label"> & Partial<Pick<EventRow, "failure_detail">>,
+  row: Pick<TurnRow, "status" | "failure_label"> & Partial<Pick<TurnRow, "failure_detail">>,
 ): string {
   if (row.status === EVENT_STATUS.RECEIVED || row.status === THREAD_STATUS.QUEUED) return OUTCOME.WORKING;
   if (row.failure_label) {
@@ -245,7 +245,7 @@ export function outcomeFor(
 }
 
 /** The same floor for a live frame, which carries a status but no durable row. */
-export function outcomeForStatus(status: EventStatusValue): string {
+export function outcomeForStatus(status: TurnStatusValue): string {
   return outcomeFor({ status, failure_label: null });
 }
 
@@ -255,7 +255,7 @@ export function outcomeForStatus(status: EventStatusValue): string {
  * Empty strings mean "no cause" (the publisher's wire convention).
  */
 export function outcomeForCompletion(
-  status: EventStatusValue,
+  status: TurnStatusValue,
   failureLabel: string | undefined,
   failureDetail: string | undefined,
 ): string {
@@ -273,12 +273,12 @@ export function outcomeForCompletion(
  * `request_json` name the trigger (an operator's steer, a webhook, a cron),
  * and `response_text` carries the fleet's reply written back onto the SAME row
  * (`UPDATE_FLEET_EVENT_RESULT` in rustd/crates/daemon/afd_turns/src/sql.rs UPDATEs
- * response_text WHERE event_id). So the trigger body
+ * response_text WHERE turn_id). So the trigger body
  * comes only from the actor + request payload; the reply is `replyBodyFor`.
  *
  * An assistant-actor row has no separate trigger (it IS a reply); returns "".
  */
-export function triggerBodyFor(row: Pick<EventDetail, "actor" | "request_json" | "event_type">): string {
+export function triggerBodyFor(row: Pick<TurnDetail, "actor" | "request_json" | "event_type">): string {
   if (row.event_type === FLEET_ACTIVITY.type) return fleetActivityText(row.request_json);
   const role = roleFor(row.actor);
   if (role === "user") return steerMessageFrom(row.request_json);
@@ -292,7 +292,7 @@ export function triggerBodyFor(row: Pick<EventDetail, "actor" | "request_json" |
  * conversion falls back to `outcomeFor` so a reply-less turn still says what
  * happened rather than rendering blank.
  */
-export function replyBodyFor(row: Pick<EventDetail, "response_text">): string {
+export function replyBodyFor(row: Pick<TurnDetail, "response_text">): string {
   return (row.response_text ?? "").trim();
 }
 

@@ -146,7 +146,7 @@ describe("the tile counters are a snapshot the store assigns", () => {
 
   it("a runner's mid-run frame says nothing about where the fleet stands", () => {
     push(FLEET_A, received(FLEET_A, "e1", STANDING));
-    push(FLEET_A, { text_kind: "answer", kind: FRAME_KIND.CHUNK, fleet_id: FLEET_A, event_id: "e1", text: "…" });
+    push(FLEET_A, { text_kind: "answer", kind: FRAME_KIND.CHUNK, fleet_id: FLEET_A, turn_id: "e1", text: "…" });
     expect(store.snapshot(FLEET_A).counters).toEqual({
       eventsProcessed: STANDING.events_processed,
       spentNanos: STANDING.budget_used_nanos,
@@ -158,7 +158,7 @@ describe("the tile counters are a snapshot the store assigns", () => {
       kind: FRAME_KIND.GATE_OPENED,
       fleet_id: FLEET_A,
       gate_id: "g1",
-      event_id: "e1",
+      turn_id: "e1",
       pending_approvals: 1,
       events_processed: SEVEN_EVENTS,
       budget_used_nanos: SPENT_NANOS,
@@ -168,7 +168,7 @@ describe("the tile counters are a snapshot the store assigns", () => {
       kind: FRAME_KIND.GATE_RESOLVED,
       fleet_id: FLEET_A,
       gate_id: "g1",
-      event_id: "e1",
+      turn_id: "e1",
       status: "approved",
       resolved_by: "someone",
       pending_approvals: 0,
@@ -225,9 +225,9 @@ describe("a message waiting for a runner", () => {
   it("test_wall_ignores_admitted_frame", () => {
     const before = store.snapshot(FLEET_A);
     push(FLEET_A, {
-      kind: FRAME_KIND.EVENT_ADMITTED,
+      kind: FRAME_KIND.TURN_ADMITTED,
       fleet_id: FLEET_A,
-      event_id: "e1",
+      turn_id: "e1",
       actor: "steer:user_bob",
       message: "check the tests",
       created_at: "1970-01-01T00:00:00.001Z",

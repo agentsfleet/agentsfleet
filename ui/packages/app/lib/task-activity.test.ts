@@ -67,7 +67,7 @@ describe("task progress across stream loss", () => {
     const delayed = addTaskActivity(history, stage("uploading", 4));
     expect(latestTaskActivity(delayed).map(item => item.progress.phase)).toEqual(["saved"]);
     const live = evt({id: "e1", taskActivity: history});
-    const changed = applyLiveFrame([live], {...stage("verifying", 10), event_id: "e1"});
+    const changed = applyLiveFrame([live], {...stage("verifying", 10), turn_id: "e1"});
     expect(changed[0]?.status).toBe("received");
     expect(taskActivityLabel(stage("saved"))).toBe("Recovery point saved");
   });

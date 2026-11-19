@@ -49,9 +49,9 @@ function sentBodies(): string[] {
 
 describe("steerFleet — replay", () => {
   it("test_socket_drop_replays_same_operation_id", async () => {
-    fetchMock.mockRejectedValueOnce(socketReset()).mockResolvedValueOnce(answered(HTTP_ACCEPTED, { event_id: "evt_1" }));
+    fetchMock.mockRejectedValueOnce(socketReset()).mockResolvedValueOnce(answered(HTTP_ACCEPTED, { turn_id: "evt_1" }));
     const result = await steerFleet("ws_1", "zom_1", REQUEST, "tok", RETRY);
-    expect(result).toEqual({ event_id: "evt_1" });
+    expect(result).toEqual({ turn_id: "evt_1" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [first, second] = sentBodies();
     // Byte-equal: the daemon's dedup key is in the body, and a replay that

@@ -93,7 +93,7 @@ function setupAnchor(view: DraftView): string | null {
     return activity && (activity.kind === ACTIVITY_KIND.setupSaved || activity.kind === ACTIVITY_KIND.setupReady)
       && activity.revision === view.fleet?.setup_revision;
   });
-  if (saved) return `activity:${saved.event_id}`;
+  if (saved) return `activity:${saved.turn_id}`;
   const previous = view.previousDrafts?.at(-1);
   if (view.fleet && previous) {
     const origin = previous.messages.findLast(message => message.role === MESSAGE_ROLE.assistant);

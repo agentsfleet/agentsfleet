@@ -1,7 +1,7 @@
 import { applyTaskActivity } from "./fleet-stream-task-activity";
 import { mergeTaskActivity, readTaskActivityHistory } from "../task-activity";
 import { instantMs, isInstant } from "@/lib/api/decode";
-import { type EventRow, type LiveFrame } from "@/lib/api/events";
+import { type TurnRow, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { readNanos } from "@/lib/api/nanos";
 import {
@@ -61,13 +61,13 @@ export function applyLiveFrame(
       return applyTaskActivity(prev, frame);
     case FRAME_KIND.CONTEXT_PROGRESS:
       return applyContextProgress(prev, frame);
-    case FRAME_KIND.EVENT_ADMITTED:
+    case FRAME_KIND.TURN_ADMITTED:
       return applyEventAdmitted(prev, frame);
-    case FRAME_KIND.EVENT_RECEIVED:
+    case FRAME_KIND.TURN_RECEIVED:
       return applyEventReceived(prev, frame);
     case FRAME_KIND.CHUNK:
       return applyChunk(prev, frame);
-    case FRAME_KIND.EVENT_COMPLETE:
+    case FRAME_KIND.TURN_COMPLETE:
       return applyEventComplete(prev, frame, nowMs);
     case FRAME_KIND.TOOL_CALL_STARTED:
     case FRAME_KIND.TOOL_CALL_PROGRESS:
@@ -86,13 +86,13 @@ export function applyLiveFrame(
 
 function applyEventReceived(
   prev: FleetEvent[],
-  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_RECEIVED }>,
+  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.TURN_RECEIVED }>,
 ): FleetEvent[] {
   // The daemon stamps the frame with the row's own instant; a frame without
   // one (a malformed payload) falls back to now rather than to an invalid
   // date, so the row still sorts and renders.
   const createdAt = instantMs(frame.created_at);
-  const index = prev.findIndex((e) => e.id === frame.event_id);
+  const index = prev.findIndex((e) => e.id === frame.turn_id);
   const existing = prev[index];
   // A row the browser already holds — the operator's own steer, reconciled
   // to its identifier before the daemon opened it — keeps everything but its
@@ -109,7 +109,7 @@ function applyEventReceived(
   return [
     ...prev,
     {
-      id: frame.event_id,
+      id: frame.turn_id,
       role: roleFor(frame.actor),
       actor: frame.actor,
       // A steer's frame carries what was typed. Any other frame carries no
@@ -138,7 +138,7 @@ function applyChunk(
   if (!["answer", "reasoning"].includes(frame.text_kind) || typeof frame.text !== "string") return prev;
   // Locate once and copy once, matching `applyToolStep` — a streaming reply
   // fires this per chunk, so a second full pass per frame is pure waste.
-  const index = prev.findIndex((e) => e.id === frame.event_id);
+  const index = prev.findIndex((e) => e.id === frame.turn_id);
   const existing = prev[index];
   if (existing === undefined) {
     // A chunk with no prior trigger row: the fleet is replying to something the
@@ -147,7 +147,7 @@ function applyChunk(
     return [
       ...prev,
       {
-        id: frame.event_id,
+        id: frame.turn_id,
         role: "assistant",
         actor: ACTOR.FLEET,
         text: "",
@@ -170,11 +170,11 @@ function applyChunk(
 
 function applyEventComplete(
   prev: FleetEvent[],
-  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_COMPLETE }>,
+  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.TURN_COMPLETE }>,
   nowMs: number,
 ): FleetEvent[] {
   // Locate once, copy once — same shape as `applyToolStep` and `applyChunk`.
-  const index = prev.findIndex((e) => e.id === frame.event_id);
+  const index = prev.findIndex((e) => e.id === frame.turn_id);
   const existing = prev[index];
   // A completion for a row the timeline never opened — a subscriber that
   // connected after the opening, a continued run whose row the resolve wrote,
@@ -224,13 +224,13 @@ function terminalStatus(value: unknown): FleetEventStatus {
 // reads that have no fallback. Anything short of that is not a row.
 function openFromCompletion(
   prev: FleetEvent[],
-  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_COMPLETE }>,
+  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.TURN_COMPLETE }>,
 ): FleetEvent[] {
   if (typeof frame.actor !== "string" || !isInstant(frame.created_at)) return prev;
-  const row: EventRow = {
+  const row: TurnRow = {
     fleet_id: "",
     workspace_id: "",
-    event_id: frame.event_id,
+    turn_id: frame.turn_id,
     actor: frame.actor,
     event_type: text(frame.event_type),
     status: terminalStatus(frame.status),
@@ -238,7 +238,7 @@ function openFromCompletion(
     wall_ms: figure(frame.wall_ms),
     failure_label: text(frame.failure_label) || null,
     failure_detail: text(frame.failure_detail) || null,
-    resumes_event_id: typeof frame.resumes_event_id === "string" ? frame.resumes_event_id : null,
+    resumes_turn_id: typeof frame.resumes_turn_id === "string" ? frame.resumes_turn_id : null,
     created_at: frame.created_at,
     updated_at: isInstant(frame.updated_at) ? frame.updated_at : frame.created_at,
     cost_nanos: readNanos(frame.cost_nanos),
@@ -250,7 +250,7 @@ function openFromCompletion(
 
 export function mergeBackfill(
   prev: FleetEvent[],
-  rows: EventRow[],
+  rows: TurnRow[],
   nowMs: number = Date.now(),
 ): FleetEvent[] {
   const seen = new Set(prev.map((e) => e.id));
@@ -266,13 +266,13 @@ export function mergeBackfill(
   // waiting) never clobbers the live row: the stream is newer than the page.
   // The one exception moves forward only: a "received" row starts a live row
   // still waiting, whose received frame fell in the gap the page recovers.
-  const authoritative = new Map<string, EventRow>();
-  const progress = new Map(rows.map(row => [row.event_id, readTaskActivityHistory("task_activity" in row ? row.task_activity : undefined)]));
+  const authoritative = new Map<string, TurnRow>();
+  const progress = new Map(rows.map(row => [row.turn_id, readTaskActivityHistory("task_activity" in row ? row.task_activity : undefined)]));
   const started = new Set<string>();
   for (const r of rows) {
-    if (!seen.has(r.event_id)) continue;
-    if (TERMINAL_STATUSES.has(r.status)) authoritative.set(r.event_id, r);
-    else if (r.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) started.add(r.event_id);
+    if (!seen.has(r.turn_id)) continue;
+    if (TERMINAL_STATUSES.has(r.status)) authoritative.set(r.turn_id, r);
+    else if (r.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) started.add(r.turn_id);
   }
   const kept = prev.map((e) => {
     const replacement = authoritative.get(e.id);
@@ -302,7 +302,7 @@ export function mergeBackfill(
     // A page restating a row this thread already settled leaves its object alone.
     return sameEvent(settled, e) ? e : settled;
   });
-  const fromBackfill = rows.filter((r) => !seen.has(r.event_id)).map(rowToEvent);
+  const fromBackfill = rows.filter((r) => !seen.has(r.turn_id)).map(rowToEvent);
   // The client's clock can trail the server's. Keep locally submitted turns
   // at the visual tail until an opening or completion frame supplies the
   // server timestamp, even when the Server Action already acknowledged them.
@@ -324,7 +324,7 @@ export function mergeBackfill(
 // dropped frame could push past the rows it never saw.
 export function maxServerCreatedAt(
   current: number | null,
-  rows: EventRow[],
+  rows: TurnRow[],
 ): number | null {
   let max = current;
   for (const r of rows) {

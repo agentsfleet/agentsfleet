@@ -22,7 +22,7 @@ export function fleetChatElements(message: MessageState): readonly FleetChatElem
   const status = readCustomStatus(message);
   switch (message.role) {
     case "system": return [activityElement({
-      eventId: message.id, actor: readActor(message), status, createdAt: message.createdAt,
+      turnId: message.id, actor: readActor(message), status, createdAt: message.createdAt,
       text: readText(message), payload: readRequestJson(message), outcome: messageOutcome(message),
       split: readRenderKind(message) === RENDER_KIND.TRIGGER,
     })];
@@ -33,7 +33,7 @@ export function fleetChatElements(message: MessageState): readonly FleetChatElem
 
 function defaultElement(message: MessageState, notice: string | null): FleetChatElement<"default-activity"> {
   return {kind: CHAT_ELEMENT.DEFAULT, data: {
-    eventId: message.id, actor: readActor(message), status: readCustomStatus(message), createdAt: message.createdAt,
+    turnId: message.id, actor: readActor(message), status: readCustomStatus(message), createdAt: message.createdAt,
     headline: readText(message).trim() || "Activity update", outcome: messageOutcome(message) || undefined,
     failed: readCustomStatus(message) === STATUS_AGENT_ERROR, details: {kind: "none"}, source: null, notice,
   }};
@@ -50,7 +50,7 @@ function operatorElements(message: MessageState, status: string): FleetChatEleme
 }
 
 function recordedActivityElement(record: RecordedActivity): ActivityElement {
-  const element = activityElement({eventId: record.id, actor: record.actor, status: record.status,
+  const element = activityElement({turnId: record.id, actor: record.actor, status: record.status,
     createdAt: record.createdAt, text: record.text, payload: record.custom?.requestJson,
     outcome: eventOutcome(record), split: false});
   // The collapsed row must retain its source reference while its members are hidden.
@@ -58,7 +58,7 @@ function recordedActivityElement(record: RecordedActivity): ActivityElement {
 }
 
 type ActivityInput = {
-  eventId: string; actor: string; status: string; createdAt: Date; text: string;
+  turnId: string; actor: string; status: string; createdAt: Date; text: string;
   payload: string | null | undefined; outcome: string; split: boolean;
 };
 
@@ -70,7 +70,7 @@ function activityElement(input: ActivityInput): ActivityElement {
   const link = recorded || schedule ? null : eventLinkFrom(input.payload);
   const reference = link ? eventReferenceFrom(input.payload) : null;
   const data = {
-    eventId: input.eventId, actor: input.actor, status: input.status, createdAt: input.createdAt,
+    turnId: input.turnId, actor: input.actor, status: input.status, createdAt: input.createdAt,
     title: schedule ? "Woke up on schedule" : activity?.kind === ACTIVITY_KIND.scheduleChanged && activity.change === "created" ? "Scheduled wake-up" : undefined,
     headline: activity?.kind === ACTIVITY_KIND.scheduleChanged && activity.change === "created" ? `${activity.message} · ${activity.description}` : activityHeadline(input.text, reference),
     outcome: input.status === STATUS_IN_FLIGHT || input.split || recorded ? undefined : input.outcome,

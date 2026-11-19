@@ -74,8 +74,8 @@ it("should ignore stale errors, opens and messages after manual replacement", ()
   old.fail();
   old.open();
   old.heartbeat();
-  old.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "stale", actor: "fleet" });
-  old.emitRaw(JSON.stringify({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "stale", actor: "fleet" }));
+  old.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "stale", actor: "fleet" });
+  old.emitRaw(JSON.stringify({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "stale", actor: "fleet" }));
   expect(current().closed).toBe(false);
   expect(getSnapshot(FLEET).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
   expect(getSnapshot(FLEET).events).toEqual([]);
@@ -166,7 +166,7 @@ it("should reject every callback from a torn-down entry after the fleet is resub
   old.open();
   old.fail();
   old.heartbeat();
-  old.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "stale", actor: "fleet" });
+  old.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "stale", actor: "fleet" });
   expect(listener).not.toHaveBeenCalled();
   expect(current().closed).toBe(false);
   expect(fetch).not.toHaveBeenCalled();

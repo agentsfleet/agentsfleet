@@ -1,9 +1,9 @@
 import { addTaskActivity, readTaskActivity } from "../task-activity";
 import type { FleetEvent } from "./fleet-stream-row";
 
-export function applyTaskActivity(previous: FleetEvent[], frame: {event_id: string; kind: string; progress: unknown}): FleetEvent[] {
+export function applyTaskActivity(previous: FleetEvent[], frame: {turn_id: string; kind: string; progress: unknown}): FleetEvent[] {
   const activity = readTaskActivity(frame);
-  const index = previous.findIndex(event => event.id === frame.event_id);
+  const index = previous.findIndex(event => event.id === frame.turn_id);
   const event = previous[index];
   if (!activity || !event) return previous;
   const taskActivity = addTaskActivity(event.taskActivity, activity);

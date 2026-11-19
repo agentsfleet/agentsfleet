@@ -1,6 +1,6 @@
 "use client";
 
-import type { EventRow } from "@/lib/api/events";
+import type { TurnRow } from "@/lib/api/events";
 import type {Schedule} from "@/lib/api/draft-types";
 import type {RunFigures} from "@/lib/events/run-summary";
 import {cn} from "@agentsfleet/design-system";
@@ -8,7 +8,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import { useOptionalFleetStreams } from "../stream/FleetStreamProvider";
 import { CONNECTION_STATUS } from "../stream/useFleetEventStream";
 
-const NO_EVENTS: EventRow[] = [];
+const NO_EVENTS: TurnRow[] = [];
 
 /** The same identity-owned registry as the thread; no separate API reader. */
 export function FleetHeaderStatus({workspaceId, fleetId, initial, schedules = [], latestRun}: {workspaceId: string; fleetId: string; initial: number; schedules?: readonly Schedule[]; latestRun?: RunFigures | null}) {

@@ -1,7 +1,7 @@
 import type { ActionResult } from "@/lib/actions/with-token";
-import type { EventDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/events";
 import { HTTP_STATUS_UNAUTHORIZED } from "@/lib/api/errors";
-import { fleetEventDetailUrl } from "@/lib/api/events-types";
+import { fleetTurnDetailUrl } from "@/lib/api/events-types";
 import { ERROR_CODE } from "@/lib/errors";
 
 // The chat's read of one event's saved row, over the same-origin route rather
@@ -17,15 +17,15 @@ const MALFORMED_DETAIL = "malformed event detail";
 const SIGNED_OUT = "Not authenticated";
 
 /** Reads one event's saved row, in the result shape the registry consumes. */
-export async function readEventDetailRoute(
+export async function readTurnDetailRoute(
   workspaceId: string,
   fleetId: string,
-  eventId: string,
-): Promise<ActionResult<EventDetail>> {
+  turnId: string,
+): Promise<ActionResult<TurnDetail>> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), EVENT_DETAIL_TIMEOUT_MS);
   try {
-    const res = await fetch(fleetEventDetailUrl(workspaceId, fleetId, eventId), {
+    const res = await fetch(fleetTurnDetailUrl(workspaceId, fleetId, turnId), {
       signal: controller.signal,
       // The session check answers a signed-out read with a redirect to
       // sign-in. Followed, the sign-in page fails to parse with no status, and
@@ -50,8 +50,8 @@ export async function readEventDetailRoute(
 
 // The two fields the registry settles a row by. The rest of the row is the
 // daemon's to shape; a body without these is not a row at all.
-function isEventDetail(body: unknown): body is EventDetail {
+function isEventDetail(body: unknown): body is TurnDetail {
   return typeof body === "object" && body !== null
-    && "event_id" in body && typeof body.event_id === "string"
+    && "turn_id" in body && typeof body.turn_id === "string"
     && "status" in body && typeof body.status === "string";
 }

@@ -11,7 +11,7 @@
 // than the page it can see (keyset pagination gives no way to know what the
 // previous page ended with).
 
-import type { EventRow } from "@/lib/api/events";
+import type { TurnRow } from "@/lib/api/events";
 
 /** The status a runner report writes for a failed execution. */
 const STATUS_FAILED = "fleet_error";
@@ -21,9 +21,9 @@ export const MIN_ROW_GROUP = 2;
 
 export type EventRowEntry = {
   /** The row that stands for the entry — the first of a run, in page order. */
-  lead: EventRow;
+  lead: TurnRow;
   /** Every row the entry covers, lead included. Length 1 when it stands alone. */
-  rows: EventRow[];
+  rows: TurnRow[];
 };
 
 /**
@@ -32,7 +32,7 @@ export type EventRowEntry = {
  * class with two different causes is two problems, and a single count would
  * misreport both.
  */
-function sameFailure(a: EventRow, b: EventRow): boolean {
+function sameFailure(a: TurnRow, b: TurnRow): boolean {
   return a.status === STATUS_FAILED
     && b.status === STATUS_FAILED
     && a.actor === b.actor
@@ -44,15 +44,15 @@ function sameFailure(a: EventRow, b: EventRow): boolean {
 }
 
 /** Collapse each run of ≥`MIN_ROW_GROUP` identical consecutive failures. */
-export function groupEventRows(rows: EventRow[]): EventRowEntry[] {
+export function groupEventRows(rows: TurnRow[]): EventRowEntry[] {
   const entries: EventRowEntry[] = [];
   // Accumulate a run and flush it when the next row breaks it — a single
   // `for…of` pass, so no by-index access and no undefined element to guard.
-  const flush = (run: EventRow[]): void => {
+  const flush = (run: TurnRow[]): void => {
     const lead = run[0];
     if (lead !== undefined) entries.push({ lead, rows: run });
   };
-  let run: EventRow[] = [];
+  let run: TurnRow[] = [];
   for (const row of rows) {
     const lead = run[0];
     if (lead !== undefined && sameFailure(lead, row)) {
@@ -67,6 +67,6 @@ export function groupEventRows(rows: EventRow[]): EventRowEntry[] {
 }
 
 /** A metric worth dimming: a failed run's zero is absence, not a measurement. */
-export function isZeroMetricOnFailure(row: EventRow, value: number | string | null): boolean {
+export function isZeroMetricOnFailure(row: TurnRow, value: number | string | null): boolean {
   return row.status === STATUS_FAILED && (value === 0 || value === "0");
 }

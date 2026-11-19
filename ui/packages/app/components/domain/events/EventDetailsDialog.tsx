@@ -19,7 +19,7 @@ import {
 } from "@agentsfleet/design-system";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { PulseIcon, WarningIcon, CheckCircleIcon, XCircleIcon } from "@phosphor-icons/react/ssr";
-import type { EventDetail, EventLocator, EventRow } from "@/lib/api/events";
+import type { TurnDetail, TurnLocator, TurnRow } from "@/lib/api/events";
 import { byInstant } from "@/lib/api/decode";
 import { useEventDetail } from "./use-event-detail";
 import {
@@ -38,7 +38,7 @@ import {
 } from "@/lib/events/event-summary";
 
 type EventDetailsDialogProps = {
-  row: EventRow | EventLocator | null;
+  row: TurnRow | TurnLocator | null;
   refresh?: string;
   onOpenChange: (open: boolean) => void;
 };
@@ -117,7 +117,7 @@ export function EventDetailsDialog({ row, refresh, onOpenChange }: EventDetailsD
   );
 }
 
-function EventDetails({ row, detail }: { row: EventRow; detail: EventDetail | null }) {
+function EventDetails({ row, detail }: { row: TurnRow; detail: TurnDetail | null }) {
   const response = boundedResponse(detail?.response_text ?? null);
   const failure = row.failure_label ? failurePresentationFor(row.failure_label) : null;
   // The chat and result keep a plain sentence; inspect gives operators the
@@ -153,7 +153,7 @@ function RunnerDiagnostic({ detail }: { detail: string }) {
   );
 }
 
-function EventDetailsHeader({ row, result }: { row: EventRow; result: string }) {
+function EventDetailsHeader({ row, result }: { row: TurnRow; result: string }) {
   const actor = senderLabelFor(row.actor);
   const created = new Date(row.created_at);
   return (
@@ -195,7 +195,7 @@ function EventResult({ result, tone }: { result: string; tone: EventTone }) {
   );
 }
 
-function RequestContext({ row, detail }: { row: EventRow; detail: EventDetail | null }) {
+function RequestContext({ row, detail }: { row: TurnRow; detail: TurnDetail | null }) {
   const contextId = useId();
   const actor = senderLabelFor(row.actor);
   // `null` covers both in-flight and failed: the panel says "not recorded"
@@ -281,7 +281,7 @@ function StartupFix({ guidance, hasCause }: { guidance: string; hasCause: boolea
   );
 }
 
-function hasCause(row: EventRow): boolean {
+function hasCause(row: TurnRow): boolean {
   return (row.failure_detail ?? "").trim().length > 0;
 }
 

@@ -8,7 +8,7 @@ import {
   SectionHeader,
 } from "@agentsfleet/design-system";
 import { credential, requireCredential } from "@/lib/auth/credential";
-import { listWorkspaceEvents } from "@/lib/api/events";
+import { listWorkspaceTurns } from "@/lib/api/events";
 import { ApiError } from "@/lib/api/errors";
 import { ZodError } from "zod";
 import { WorkspaceActivityUnavailable } from "./WorkspaceActivityUnavailable";
@@ -29,7 +29,7 @@ export const dynamic = "force-dynamic";
 
 const EVENTS_DESCRIPTION = "Every action your fleets take, as it happens.";
 
-export default async function EventsPage({
+export default async function TurnsPage({
   params,
   searchParams,
 }: {
@@ -87,7 +87,7 @@ export async function EventsData({
   // cache, and a reload lands on the same page.
   let page;
   try {
-    page = await listWorkspaceEvents(workspaceId, token, {
+    page = await listWorkspaceTurns(workspaceId, token, {
       limit: pageSize,
       ...(cursor ? { cursor } : {}),
     });

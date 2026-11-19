@@ -116,7 +116,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
 
   it("renders no operator bubble for a turn whose body the read never carried", () => {
     // The blank-pill regression. A completion frame for a run the timeline
-    // never opened (a reconnect missed its `event_received`) is rebuilt from
+    // never opened (a reconnect missed its `turn_received`) is rebuilt from
     // the events-list shape, which selects no `request_json` and no
     // `response_text` — so the turn arrives with an empty text part. Rendering
     // that as an operator row put an empty pill in the thread beside a bare

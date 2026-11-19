@@ -29,7 +29,7 @@ it("renders the server's cost without opening a stream, then updates and clears 
   expect(FakeEventSource.instances).toHaveLength(0);
   render(<FleetStreamProvider streams={streams}><FleetRunCost {...PROPS} initial={INITIAL} /></FleetStreamProvider>);
   expect(screen.getByText("$0.34 latest run")).toBeTruthy();
-  act(() => streams.reconcileServerRows(PROPS.fleetId, [row({event_id: "new", status: "processed", cost_nanos: "0"})]));
+  act(() => streams.reconcileServerRows(PROPS.fleetId, [row({turn_id: "new", status: "processed", cost_nanos: "0"})]));
   expect(screen.getByText("$0.00 latest run")).toBeTruthy();
   act(() => FakeEventSource.instances[0]?.emitNamed(FRAME_KIND.ACCESS_REVOKED, JSON.stringify({kind: FRAME_KIND.ACCESS_REVOKED})));
   expect(screen.queryByText(/latest run/)).toBeNull();

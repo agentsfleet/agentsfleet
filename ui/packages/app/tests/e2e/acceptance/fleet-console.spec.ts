@@ -109,7 +109,7 @@ test.describe("fleet console", () => {
 /** Observe the page's own stream; this proves only the browser-to-app hop. */
 async function visitFleetAndCheckStream(page: Page, workspaceId: string, fleetId: string) {
   const target = new URL(workspaceHref(workspaceId, `fleets/${fleetId}`), test.info().project.use.baseURL);
-  const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleetId}/events/stream`;
+  const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleetId}/turns/stream`;
   const session = await page.context().newCDPSession(page);
   let observed: { status: number; protocol: string | null; mimeType: string } | undefined;
   try {

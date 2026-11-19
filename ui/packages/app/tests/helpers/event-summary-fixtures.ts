@@ -1,12 +1,12 @@
-import type { EventDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/events";
 import { ACTOR, EVENT_STATUS } from "@/lib/events/event-summary";
 
 export const ACCOUNT_ID = "user_3gkbgxjnujsxbdxttcwcslpc87k";
 export const PLATFORM_IDENTITY = "github-app";
 
-export function row(over: Partial<EventDetail> = {}): EventDetail {
+export function row(over: Partial<TurnDetail> = {}): TurnDetail {
   return {
-    event_id: "e1",
+    turn_id: "e1",
     fleet_id: "f1",
     workspace_id: "ws1",
     actor: ACTOR.FLEET,
@@ -19,7 +19,7 @@ export function row(over: Partial<EventDetail> = {}): EventDetail {
     wall_ms: null,
     failure_label: null,
     failure_detail: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     cost_nanos: null,
     created_at: "1970-01-01T00:00:00.001Z",
     updated_at: "1970-01-01T00:00:00.001Z",

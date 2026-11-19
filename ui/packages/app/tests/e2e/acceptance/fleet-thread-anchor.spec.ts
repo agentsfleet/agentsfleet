@@ -11,7 +11,7 @@ import { withReplyPage } from "./fixtures/reply-page";
 import { sseFrame as frame } from "./fixtures/sse";
 
 const FLEET_NAME = "webhook-delivery-review";
-const EVENT_ID = "9300000000000-1";
+const TURN_ID = "9300000000000-1";
 // Another operator in the workspace: a turn this tab did not send.
 const TEAMMATE = "steer:user_thread_anchor_teammate";
 const COMPOSER_LABEL = "Chat composer";
@@ -43,7 +43,7 @@ const OFFLINE_TEST_MS = 120_000;
 
 test("test_fold_at_bottom_holds_view", async ({ page }) => {
   await withReplyPage(page, FLEET_NAME, async ({ chat, stream, ownActor, sendOwn }) => {
-    await sendOwn(OWN_TURN, EVENT_ID);
+    await sendOwn(OWN_TURN, TURN_ID);
     await stream.send(liveReply(Date.now(), ownActor));
     await stream.send([answer(), complete(ownActor)]);
     const thought = chat.getByRole("button", { name: THOUGHT });
@@ -59,7 +59,7 @@ test("test_fold_at_bottom_holds_view", async ({ page }) => {
 
 test("test_settle_holds_view", async ({ page }) => {
   await withReplyPage(page, FLEET_NAME, async ({ chat, stream, ownActor, sendOwn }) => {
-    await sendOwn(OWN_TURN, EVENT_ID);
+    await sendOwn(OWN_TURN, TURN_ID);
     await stream.send(liveReply(Date.now(), ownActor));
     const thought = chat.getByRole("button", { name: /^Thinking/ });
     await thought.click();
@@ -74,7 +74,7 @@ test("test_settle_holds_view", async ({ page }) => {
 
 test("final answer stays in place when a short reply completes", async ({ page }) => {
   await withReplyPage(page, FLEET_NAME, async ({ chat, stream, ownActor, sendOwn }) => {
-    await sendOwn(OWN_TURN, EVENT_ID);
+    await sendOwn(OWN_TURN, TURN_ID);
     await stream.send([opening(Date.now(), ownActor), { afterMs: 0, body: chunkBody(0, "answer", ANSWER) }]);
     const paragraph = chat.getByText(ANSWER, { exact: true });
     await expect(paragraph).toBeVisible();
@@ -117,8 +117,8 @@ test("run details opens by keyboard without moving the reply", async ({ page }) 
   await withReplyPage(page, FLEET_NAME, async ({ chat, stream }) => {
     await stream.send([opening(Date.now(), TEAMMATE), answer(), {
       afterMs: 0,
-      body: frame(FRAME_KIND.EVENT_COMPLETE, {
-        event_id: EVENT_ID, actor: TEAMMATE, status: "processed", final_reply: ANSWER,
+      body: frame(FRAME_KIND.TURN_COMPLETE, {
+        turn_id: TURN_ID, actor: TEAMMATE, status: "processed", final_reply: ANSWER,
         wall_ms: 12_000, tokens: 1_200, cost_nanos: "40000000",
       }),
     }]);
@@ -293,7 +293,7 @@ function expectHeld(tops: number[]): void {
 }
 
 function opening(createdAt: number, actor: string): TimedFrame {
-  return { afterMs: 0, body: frame(FRAME_KIND.EVENT_RECEIVED, { event_id: EVENT_ID, actor, created_at: createdAt }) };
+  return { afterMs: 0, body: frame(FRAME_KIND.TURN_RECEIVED, { turn_id: TURN_ID, actor, created_at: createdAt }) };
 }
 
 function liveReply(createdAt: number, actor: string): TimedFrame[] {
@@ -311,27 +311,27 @@ function answer(): TimedFrame {
 function complete(actor: string): TimedFrame {
   return {
     afterMs: 0,
-    body: frame(FRAME_KIND.EVENT_COMPLETE, { event_id: EVENT_ID, actor, status: "processed", final_reply: ANSWER }),
+    body: frame(FRAME_KIND.TURN_COMPLETE, { turn_id: TURN_ID, actor, status: "processed", final_reply: ANSWER }),
   };
 }
 
 function chunkBody(seq: number, kind: "reasoning" | "answer", text: string): string {
   return frame(FRAME_KIND.CHUNK, {
-    event_id: EVENT_ID, text, text_kind: kind,
+    turn_id: TURN_ID, text, text_kind: kind,
     stream_seq: seq, stream_start: seq === 0, stream_contiguous: true,
   });
 }
 
 function history(firstCreatedAt: number): TimedFrame[] {
   return Array.from({ length: HISTORY_TURNS }, (_, index) => {
-    const eventId = `${HISTORY_ID_BASE + index}-1`;
+    const turnId = `${HISTORY_ID_BASE + index}-1`;
     const createdAt = firstCreatedAt + index;
     return [
-      { afterMs: 0, body: frame(FRAME_KIND.EVENT_RECEIVED, { event_id: eventId, actor: TEAMMATE, created_at: createdAt }) },
+      { afterMs: 0, body: frame(FRAME_KIND.TURN_RECEIVED, { turn_id: turnId, actor: TEAMMATE, created_at: createdAt }) },
       {
         afterMs: 0,
-        body: frame(FRAME_KIND.EVENT_COMPLETE, {
-          event_id: eventId, actor: TEAMMATE, created_at: createdAt, status: "processed",
+        body: frame(FRAME_KIND.TURN_COMPLETE, {
+          turn_id: turnId, actor: TEAMMATE, created_at: createdAt, status: "processed",
           final_reply: `Settled answer ${index + 1}`,
         }),
       },

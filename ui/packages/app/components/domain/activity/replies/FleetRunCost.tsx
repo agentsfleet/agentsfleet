@@ -1,6 +1,6 @@
 "use client";
 
-import type { EventRow } from "@/lib/api/events";
+import type { TurnRow } from "@/lib/api/events";
 import type { RunFigures } from "@/lib/events/run-summary";
 import { useCallback, useSyncExternalStore } from "react";
 import { readNanos } from "@/lib/api/nanos";
@@ -8,7 +8,7 @@ import { formatBalance } from "@/lib/money";
 import { useOptionalFleetStreams } from "../../conversation/stream/FleetStreamProvider";
 import { CONNECTION_STATUS } from "../../conversation/stream/useFleetEventStream";
 
-const NO_EVENTS: EventRow[] = [];
+const NO_EVENTS: TurnRow[] = [];
 
 /** Reuses the thread's run figures; an unreported cost stays absent. */
 export function FleetRunCost({workspaceId, fleetId, initial = null}: {workspaceId: string; fleetId: string; initial?: RunFigures | null}) {

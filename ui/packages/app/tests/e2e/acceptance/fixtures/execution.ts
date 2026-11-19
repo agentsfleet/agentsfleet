@@ -14,13 +14,13 @@
  * branch red and green without a runner in reach; the journey only calls it.
  */
 import type { RunnerRunResponse, RunnerListResponse } from "@/tests/helpers/runner-control";
-import type { EventDetail, ThreadPage } from "@/lib/api/events";
+import type { TurnDetail, ThreadPage } from "@/lib/api/events";
 import { RunOutcome } from "@/tests/helpers/runner-control-types";
 import { clientFor, type ClientHandle } from "./api-client";
 import { FIXTURE_KEY } from "./constants";
 
 // One spelling each for the statuses and failure classes this module reads
-// (RULE UFS). The event statuses mirror `lib/api/events.ts:EventStatus`; the
+// (RULE UFS). The event statuses mirror `lib/api/events.ts:TurnStatus`; the
 // failure labels mirror `af_wire::report::FailureClass`
 // (rustd/crates/protocol/af_wire/src/report/mod.rs), serialised snake_case — the one type
 // the daemon and the runner both build against.
@@ -95,7 +95,7 @@ export type ExecutionVerdict = { kind: typeof VERDICT_KIND.passed } | FailedVerd
 // The subset of a terminal row the classifier reads. Narrow on purpose: a
 // test hands it four fields, and the journey hands it the thread row.
 export type TerminalObservation = Pick<
-  EventDetail,
+  TurnDetail,
   "status" | "failure_label" | "failure_detail" | "response_text"
 >;
 
@@ -291,7 +291,7 @@ export async function readTerminalChatTurn(
   handle: ClientHandle,
   workspaceId: string,
   fleetId: string,
-): Promise<EventDetail | null> {
+): Promise<TurnDetail | null> {
   const page = await clientFor(handle).get<ThreadPage>(
     `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
   );

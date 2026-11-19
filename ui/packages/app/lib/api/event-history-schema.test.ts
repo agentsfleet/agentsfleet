@@ -1,11 +1,11 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { row } from "@/tests/helpers/event-summary-fixtures";
-import { listWorkspaceEvents } from "./events";
+import { listWorkspaceTurns } from "./events";
 
 const fetchMock = vi.fn<typeof fetch>();
 vi.stubGlobal("fetch", fetchMock);
 afterEach(() => fetchMock.mockReset());
-const readers = [() => listWorkspaceEvents("workspace", "session")];
+const readers = [() => listWorkspaceTurns("workspace", "session")];
 
 it.each(readers)("accepts recorded facts and future event names without losing precision", async (read) => {
   const event = row({event_type: "future_trigger", status: "future_status", cost_nanos: "9007199254740993", created_at: "2026-10-19T00:00:00.125Z"});
@@ -23,7 +23,7 @@ it.each([null, {}, {items: [], next_cursor: 1}, {items: [row({created_at: "bad"}
 });
 
 it("keeps omitted optional measurements unknown", async () => {
-  fetchMock.mockResolvedValue(Response.json({items: [{event_id: "e", fleet_id: "f", workspace_id: "w", actor: "fleet", event_type: "chat",
+  fetchMock.mockResolvedValue(Response.json({items: [{turn_id: "e", fleet_id: "f", workspace_id: "w", actor: "fleet", event_type: "chat",
     status: "received", created_at: "2026-10-19T00:00:00Z", updated_at: "2026-10-19T00:00:00Z"}], next_cursor: null}));
-  expect((await listWorkspaceEvents("w", "session")).items[0]).toMatchObject({tokens: null, wall_ms: null, cost_nanos: null, failure_detail: null});
+  expect((await listWorkspaceTurns("w", "session")).items[0]).toMatchObject({tokens: null, wall_ms: null, cost_nanos: null, failure_detail: null});
 });
