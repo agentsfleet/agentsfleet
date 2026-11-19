@@ -71,7 +71,7 @@ WITH asked AS (
   CROSS JOIN census h
   WHERE l.runner_id = $1 AND l.status = $25
   ORDER BY s.fleet_id
-  FOR UPDATE OF s
+  FOR NO KEY UPDATE OF s
 ), probe AS MATERIALIZED (
   SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token,
          l.created_at, l.run_expires_at, l.last_metered_at, l.posture, l.provider,

@@ -1,4 +1,6 @@
-//! Observe parallel SQL from 100 clients, then release them to race one admission.
+//! 100 clients race one turn. The first to lock the fleet's thread is paused
+//! inside its claim; every other claim skips the locked thread and finishes
+//! with nothing while it waits, and the paused one is the only winner.
 
 use std::sync::Arc;
 
@@ -12,7 +14,6 @@ use super::{WITHIN, enqueue, stamps};
 use crate::{seed::seeded_parts, support::Fixtures};
 
 const CLAIMERS: usize = 100;
-const MIN_PARALLEL: i64 = 4;
 const PAUSE_CLAIMS: &str = "CREATE FUNCTION fleet.pause_claim() RETURNS trigger
     LANGUAGE plpgsql AS $$ BEGIN
       PERFORM pg_advisory_xact_lock_shared(oid::bigint)
@@ -54,8 +55,12 @@ async fn test_concurrent_claims_run_one_row() {
         .await
         .expect("exclusive barrier");
     let tasks = start_claimers(&replicas, &runners);
-    let parallel = parallel_claims(&mut observer, pid).await;
-    assert!(parallel >= MIN_PARALLEL, "parallel SQL: {parallel}");
+    assert_eq!(
+        paused_claims(&mut observer, pid).await,
+        1,
+        "one claim holds the thread"
+    );
+    others_finish(&tasks).await;
     blocker.rollback().await.expect("release claim barrier");
     let winners = winners(tasks).await;
     assert_eq!(winners.len(), 1);
@@ -85,7 +90,8 @@ fn start_claimers(replicas: &[Runs; 2], runners: &[Uuid7; 2]) -> Vec<Claimer> {
         .collect()
 }
 
-async fn parallel_claims(observer: &mut sqlx::PgConnection, pid: i32) -> i64 {
+/// How many claims wait at the paused insert: the one that locked the thread.
+async fn paused_claims(observer: &mut sqlx::PgConnection, pid: i32) -> i64 {
     tokio::time::timeout(WITHIN, async {
         loop {
             let count: i64 = sqlx::query_scalar(BLOCKED)
@@ -93,14 +99,26 @@ async fn parallel_claims(observer: &mut sqlx::PgConnection, pid: i32) -> i64 {
                 .fetch_one(&mut *observer)
                 .await
                 .expect("observe claim waits");
-            if count >= MIN_PARALLEL {
+            if count > 0 {
                 return count;
             }
             tokio::task::yield_now().await;
         }
     })
     .await
-    .expect("multiple claimers reach Postgres together")
+    .expect("a claimer reaches the paused insert")
+}
+
+/// Every claim but the paused one finishes while it waits: they skip the
+/// locked thread rather than queue on it.
+async fn others_finish(tasks: &[Claimer]) {
+    tokio::time::timeout(WITHIN, async {
+        while tasks.iter().filter(|task| task.is_finished()).count() < CLAIMERS - 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the losing claims do not wait on the locked thread");
 }
 
 async fn winners(tasks: Vec<Claimer>) -> Vec<Acquired> {

@@ -1,5 +1,5 @@
 SELECT f.workspace_id, r.definition::text, f.status,
-       r.runtime_model_ref, f.name, s.resume_context::text, r.policy_semantics,
+       r.runtime_model_ref, f.name, s.resume_context::text AS context_json, r.policy_semantics,
        r.id AS revision_id, f.head_revision_id, t.generation AS task_generation,
        current.definition::text AS current_definition
 FROM fleet.fleets f

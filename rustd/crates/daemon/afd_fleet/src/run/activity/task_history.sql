@@ -5,7 +5,7 @@ WITH slot AS MATERIALIZED (
     SELECT s.fleet_id FROM thread.threads s
     WHERE s.fleet_id = $1 AND s.last_runner_id = $5 AND s.fencing_token = $6
       AND s.run_expires_at > statement_timestamp()
-    FOR UPDATE OF s SKIP LOCKED
+    FOR NO KEY UPDATE OF s SKIP LOCKED
 ), run AS MATERIALIZED (
     SELECT l.turn_id FROM thread.runs l JOIN slot s ON s.fleet_id = l.fleet_id
     WHERE l.id = $4 AND l.runner_id = $5 AND l.fencing_token = $6

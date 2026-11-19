@@ -131,7 +131,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     // opens the event and stamps the fence itself), the turn lock, the
     // folded turns' opening and the counters read.
     ("eligible AS MATERIALIZED", Path::Claim),
-    ("FOR UPDATE OF s SKIP LOCKED", Path::Claim),
+    ("FOR NO KEY UPDATE OF s SKIP LOCKED", Path::Claim),
     (
         "UPDATE thread.turns t SET status = CASE WHEN t.opened_at IS NULL",
         Path::Claim,

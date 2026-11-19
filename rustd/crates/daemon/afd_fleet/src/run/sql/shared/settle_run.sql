@@ -26,7 +26,7 @@ WITH hold_host AS MATERIALIZED (
   JOIN thread.runs l ON s.id = COALESCE(l.fleet_id, l.draft_id)
   LEFT JOIN hold_host h ON h.id = l.runner_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
-  FOR UPDATE OF s
+  FOR NO KEY UPDATE OF s
 ), probe AS MATERIALIZED (
   SELECT l.id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token, l.created_at,
          l.run_expires_at, l.last_metered_at,

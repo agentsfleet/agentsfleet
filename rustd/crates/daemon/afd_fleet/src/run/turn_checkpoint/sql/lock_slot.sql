@@ -2,4 +2,4 @@ SELECT s.fleet_id
 FROM thread.threads s
 JOIN thread.runs l ON l.fleet_id = s.fleet_id
 WHERE l.id = $1 AND l.runner_id = $2
-FOR UPDATE OF s
+FOR NO KEY UPDATE OF s

@@ -1,11 +1,11 @@
-//! A claim that loses the fleet's slot to a runner that claimed it first.
+//! A claim that loses the fleet's thread to a runner that claimed it first.
 //!
-//! The candidate scan reads the slot as free, because the other runner's claim
-//! has not committed. This runner's claim then waits on that row, and once the
-//! other commits it finds a live run and takes nothing: no event is read, so
-//! nothing is orphaned, and the poll moves on as if the fleet were never
-//! offered. The other runner's claim is held open in a transaction so the wait
-//! is certain rather than a race the scheduler may or may not produce.
+//! Fleet creation writes the thread, so the other runner's uncommitted claim
+//! holds that row's lock. This runner's claim skips the locked thread rather
+//! than wait on it, and takes nothing: no turn is read, so nothing is orphaned,
+//! and the poll moves on as if the fleet were never offered. The other
+//! runner's claim is held open in a transaction so the lock is certain rather
+//! than a race the scheduler may or may not produce.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs it.
 #![cfg(feature = "test-util")]
@@ -24,22 +24,15 @@ use sqlx::Connection as _;
 use crate::seed::{Seeded, seeded};
 use crate::support::Fixtures;
 
-/// How long the case waits for the poll to queue behind the open claim.
-const QUEUED_WITHIN: Duration = Duration::from_secs(10);
-
-/// How often it looks.
-const POLL: Duration = Duration::from_millis(20);
-
-/// Sessions queued behind `$1`.
-const WAITERS: &str = "SELECT count(*) FROM pg_stat_activity \
-     WHERE $1::integer = ANY(pg_blocking_pids(pid))";
+/// How long a claim that skips the locked thread may take.
+const SKIPPED_WITHIN: Duration = Duration::from_secs(10);
 
 /// Which runner the slot names now.
 const HOLDER: &str = "SELECT last_runner_id FROM thread.threads WHERE fleet_id = $1";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_claim_that_waited_on_a_live_claim_takes_nothing() {
+async fn test_a_claim_behind_a_live_claim_skips_and_takes_nothing() {
     let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
@@ -49,10 +42,6 @@ async fn test_a_claim_that_waited_on_a_live_claim_takes_nothing() {
     let fleet_id = fleet.clone();
     let mut other = fixtures.database.acquire().await.expect("a connection");
     let mut claiming = other.begin().await.expect("a transaction");
-    let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
-        .fetch_one(&mut *claiming)
-        .await
-        .expect("the session names itself");
     sqlx::query(CLAIM_SLOT)
         .bind(&fleet)
         .bind(None::<Uuid7>)
@@ -64,31 +53,16 @@ async fn test_a_claim_that_waited_on_a_live_claim_takes_nothing() {
         .await
         .expect("the other runner's claim wins, uncommitted");
 
-    let poll = tokio::spawn({
-        let (runs, first, named) = (fixtures.runs(), first.clone(), [fleet_id]);
-        async move { runs.select(&first, &named).await }
-    });
-    let deadline = tokio::time::Instant::now() + QUEUED_WITHIN;
-    let mut queued = 0_i64;
-    while queued == 0 && tokio::time::Instant::now() < deadline {
-        queued = sqlx::query_scalar(WAITERS)
-            .bind(pid)
-            .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))
-            .await
-            .expect("the waiters count");
-        tokio::time::sleep(POLL).await;
-    }
+    let polled = tokio::time::timeout(SKIPPED_WITHIN, fixtures.runs().select(&first, &[fleet_id]))
+        .await
+        .expect("the claim skips the locked thread instead of waiting on it")
+        .expect("a lost claim is not a fault");
     claiming
         .commit()
         .await
         .expect("the other runner's claim commits");
     drop(other);
-    let polled = poll
-        .await
-        .expect("the poll joins")
-        .expect("a lost claim is not a fault");
 
-    assert_eq!(queued, 1, "the poll's claim queued behind the open one");
     assert!(polled.is_none(), "the lost claim takes nothing: {polled:?}");
     let holder: Uuid7 = sqlx::query_scalar(HOLDER)
         .bind(&fleet)

@@ -5,7 +5,7 @@ WITH locked_slot AS MATERIALIZED (
     SELECT s.fleet_id, s.fencing_token, s.run_expires_at
     FROM thread.threads s JOIN thread.runs l ON l.fleet_id = s.fleet_id
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
-    FOR UPDATE OF s
+    FOR NO KEY UPDATE OF s
 ), probe AS (
     SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id,
            l.fencing_token, l.created_at, l.run_expires_at, l.last_metered_at, l.max_runtime_seconds,

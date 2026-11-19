@@ -14,7 +14,7 @@ WITH fleet AS MATERIALIZED (
 ), locked_slot AS MATERIALIZED (
   SELECT s.fleet_id FROM thread.threads s
   WHERE s.fleet_id = $1
-  FOR UPDATE OF s SKIP LOCKED
+  FOR NO KEY UPDATE OF s SKIP LOCKED
 ), instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM locked_slot) locked
 ), slot AS (
