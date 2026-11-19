@@ -7,13 +7,10 @@ import { useRouter } from "next/navigation";
 import { MessageNotSentError, type AppendMessage } from "@assistant-ui/react";
 
 import { PENDING_SEND_STATE, type PendingSendOutcome, type PendingSendWriters } from "./useFleetPendingSends";
+import { outcomeOf, releaseRoute, routeOf } from "./useFleetMessageRoute";
 import type { useFleetEventStream } from "../stream/useFleetEventStream";
-import { parseChatAddress } from "@/lib/chat-address";
-import { HTTP_STATUS_UNAUTHORIZED, isDefiniteRefusal } from "@/lib/api/errors";
-import { findFleetByName } from "@/lib/api/fleet-by-name";
-import { postSteer, type SteerResult } from "@/lib/api/fleet-steer";
+import { postSteer } from "@/lib/api/fleet-steer";
 import { STEER_DISPOSITION, overSteerLimit, steerBytesNearLimit, type SteerAccepted } from "@/lib/api/fleets-types";
-import { ERROR_CODE } from "@/lib/errors";
 import { ACTOR } from "@/lib/events/event-summary";
 import { mintOperationId } from "@/lib/streaming/operation-id";
 import { SEND_MARK, sendMarks } from "@/lib/streaming/send-marks";
@@ -38,7 +35,9 @@ import { workspacePath } from "@/lib/workspace-routes";
 // Addressed to this fleet by its own name, it is sent here without the address;
 // to another, the name resolves first, the words go there, and the page opens
 // that fleet's chat. The ledger keeps the words as typed, so every delivery, a
-// Resend's included, reads the address again and never posts them here.
+// Resend's included, reads the address again and never posts them here. A
+// Resend goes to the fleet its first attempt resolved to, even if the name was
+// renamed or taken since (`useFleetMessageRoute.ts`).
 
 // Placeholder actor on an optimistic row until the stream's matching
 // `EVENT_RECEIVED` lands and reconciliation replaces it with the real
@@ -223,7 +222,7 @@ function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: st
         if (deadline.passed()) return unsent();
         dispatched = true;
         try {
-          const route = await within(deadline, routeOf(text, { workspaceId, fleetId, fleetName }, deadline.signal));
+          const route = await within(deadline, routeOf(text, { workspaceId, fleetId, fleetName }, operationId, deadline.signal));
           if (route === null) return ended(PENDING_SEND_STATE.UNKNOWN);
           if (!route.ok) return ended(route.outcome);
           const result = await within(deadline, postSteer(workspaceId, route.fleetId, route.words, operationId, deadline.signal));
@@ -240,32 +239,14 @@ function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: st
   );
 }
 
-/** The open fleet: where a message with no address, or one addressed by its own name, goes. */
-type Here = { workspaceId: string; fleetId: string; fleetName: string };
-/** Where a send's words go, or how it ends without posting them. */
-type Route = { ok: true; fleetId: string; words: string } | { ok: false; outcome: PendingSendOutcome };
-
-// An address with no words after it has nothing to send, so it ends refused
-// before any lookup. Any name but the open fleet's resolves first, and a name
-// no fleet is saved under ends refused with nothing posted.
-async function routeOf(text: string, here: Here, signal: AbortSignal): Promise<Route> {
-  const address = parseChatAddress(text);
-  if (address === null) return { ok: true, fleetId: here.fleetId, words: text };
-  if (address.rest.length === 0) return { ok: false, outcome: PENDING_SEND_STATE.REFUSED };
-  if (address.name === here.fleetName) return { ok: true, fleetId: here.fleetId, words: address.rest };
-  const lookup = await findFleetByName(here.workspaceId, address.name, signal);
-  if (!lookup.ok) return { ok: false, outcome: outcomeOf(lookup) };
-  if (lookup.fleetId === null) return { ok: false, outcome: PENDING_SEND_STATE.REFUSED };
-  return { ok: true, fleetId: lookup.fleetId, words: address.rest };
-}
-
 // The daemon's 202. Settled before the cosmetic reconcile: the daemon holds
 // it, whatever the painting does next. Words another fleet took are its
 // thread's to show, so this one drops its copy and the page opens that chat.
-function useAcknowledgement({ fleetId, reconcileOptimistic, discardOptimistic, openFleet, writers }: DeliveryCtx) {
+function useAcknowledgement({ workspaceId, fleetId, reconcileOptimistic, discardOptimistic, openFleet, writers }: DeliveryCtx) {
   return useCallback(
     (operationId: string, tempId: string, accepted: SteerAccepted, target: string): boolean => {
       writers.settle(operationId);
+      releaseRoute(workspaceId, operationId);
       // Before the reconcile, which lets this send's held frames land.
       sendMarks.mark(SEND_MARK.ACCEPTED, operationId, accepted.event_id);
       if (target !== fleetId) {
@@ -277,7 +258,7 @@ function useAcknowledgement({ fleetId, reconcileOptimistic, discardOptimistic, o
       reconcileOptimistic(tempId, accepted.event_id, accepted.replayed, foldedInto);
       return true;
     },
-    [fleetId, reconcileOptimistic, discardOptimistic, openFleet, writers],
+    [workspaceId, fleetId, reconcileOptimistic, discardOptimistic, openFleet, writers],
   );
 }
 
@@ -325,17 +306,6 @@ function dismissConflictsOf(writers: PendingSendWriters, text: string): void {
   for (const entry of writers.list()) {
     if (entry.state === PENDING_SEND_STATE.CONFLICT && entry.text === text) writers.dismiss(entry.operationId);
   }
-}
-
-// A 401 asks for a sign-in. A reused id is refused for good. Any other client
-// refusal but a timeout means the server saw the request and said no. Anything
-// else — a timeout, a 5xx after the row committed, no status at all — leaves
-// delivery unconfirmed. A failed name lookup ends the same way, with nothing
-// posted.
-function outcomeOf({ status, errorCode }: Pick<Extract<SteerResult, { ok: false }>, "status" | "errorCode">): PendingSendOutcome {
-  if (status === HTTP_STATUS_UNAUTHORIZED) return PENDING_SEND_STATE.SESSION;
-  if (errorCode === ERROR_CODE.AGENTSFLEET_OPERATION_CONFLICT) return PENDING_SEND_STATE.CONFLICT;
-  return isDefiniteRefusal(status) ? PENDING_SEND_STATE.REFUSED : PENDING_SEND_STATE.UNKNOWN;
 }
 
 // A fresh operation id, or null on a platform with no generator: the send is

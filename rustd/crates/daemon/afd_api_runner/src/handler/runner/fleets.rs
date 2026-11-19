@@ -28,7 +28,7 @@ use af_wire::fleets_verb::{FleetEventItem, FleetEventsPage, FleetItem, FleetsPag
 use afd_events::{Cursor, EventDetailRow};
 use afd_fleet::lease::Standing;
 use afd_fleet_lifecycle::{After, FleetPage, FleetRow};
-use afd_http::handler::{Refusal, parameter, parse_id};
+use afd_http::handler::{Refusal, decoded_parameter, parameter, parse_id};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
@@ -105,7 +105,7 @@ pub(crate) async fn list<D: Services>(
     let token = fence(Some(&query))?;
     let limit = Limit::parse(parameter(&query, QUERY_LIMIT), CEILING)
         .map_err(|_break| Refusal::malformed(DETAIL_LIMIT))?;
-    let after = list_cursor(parameter(&query, QUERY_STARTING_AFTER))?;
+    let after = list_cursor(starting_after(&query)?.as_deref())?;
     let lease = proven(&*services, runner.id(), &lease_id, token, EVENT_FAILED).await?;
     let page = services
         .fleets()
@@ -155,7 +155,8 @@ pub(crate) async fn events<D: Services>(
     let token = fence(Some(&query))?;
     let limit = Limit::parse(parameter(&query, QUERY_LIMIT), EVENTS_CEILING)
         .map_err(|_break| Refusal::malformed(DETAIL_EVENTS_LIMIT))?;
-    let cursor = parameter(&query, QUERY_STARTING_AFTER)
+    let cursor = starting_after(&query)?
+        .as_deref()
         .map(Cursor::decode)
         .transpose()
         .map_err(|_unminted| Refusal::malformed(DETAIL_CURSOR))?;
@@ -207,6 +208,13 @@ async fn known<D: Services>(services: &D, lease: &Standing, fleet: &Uuid7) -> Re
         ));
     }
     Ok(())
+}
+
+/// The page cursor the query carries, percent-decoded: the runner form-encodes
+/// it, and a cursor's `:` and `+` arrive as escapes.
+fn starting_after(query: &str) -> Result<Option<Cow<'_, str>>, Refusal> {
+    decoded_parameter(query, QUERY_STARTING_AFTER)
+        .map_err(|_broken| Refusal::malformed(DETAIL_CURSOR))
 }
 
 /// The decoded boundary of the fleets walk, or the refusal a foreign token

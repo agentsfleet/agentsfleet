@@ -207,6 +207,29 @@ describe("an addressed chat message", () => {
     expect(hook.result.current.ledger.writers.list()).toEqual([]);
   });
 
+  it("delivery_resends_to_the_fleet_the_first_attempt_resolved_even_if_the_name_moved", async () => {
+    const OTHER = "0199a801-1000-7000-8000-0000000000c0";
+    let saved = summary(BOB, BOB_NAME);
+    network.mockImplementation(async (url, init) => {
+      if (url.startsWith(LIST_ROUTE)) return listOf(saved);
+      if (url.endsWith("/messages") && init?.method === "POST") return Response.json({ detail: "Unavailable" }, { status: 503 });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { hook, openFleet } = chat();
+    await refused(hook, "@agentbob retry");
+    const [entry] = hook.result.current.ledger.writers.list();
+    if (entry === undefined) throw new Error("the unconfirmed send left no ledger entry");
+    expect(entry.state).toBe(PENDING_SEND_STATE.UNKNOWN);
+    // The name now belongs to another fleet, and the daemon takes the retry.
+    saved = summary(OTHER, BOB_NAME);
+    daemon(() => listOf(saved));
+    act(() => hook.result.current.delivery.resend(entry.operationId));
+    await waitFor(() => expect(openFleet).toHaveBeenCalledExactlyOnceWith(BOB));
+    expect(lookups()).toEqual([BOB_LOOKUP]);
+    expect(posts().map(({ url }) => url)).toEqual([messagesOf(BOB), messagesOf(BOB)]);
+    expect(hook.result.current.ledger.writers.list()).toEqual([]);
+  });
+
   it("opens a fleet's chat at that fleet's page in the workspace", () => {
     const { result } = renderHook(() => useOpenFleet(WORKSPACE));
     result.current(BOB);

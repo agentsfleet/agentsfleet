@@ -15,8 +15,17 @@ use af_core::id::Uuid7;
 use af_wire::fleets_verb::EXCERPT_MAX_BYTES;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::Value;
+use url::form_urlencoded::Serializer;
 
 use crate::steers::Crew;
+
+/// The query that continues a walk the way the supervisor writes it: the
+/// cursor form-encoded, so its `:` arrives as `%3A`.
+fn continuing(cursor: &str) -> String {
+    let mut query = Serializer::new(String::from("&limit=2&"));
+    query.append_pair("starting_after", cursor);
+    query.finish()
+}
 
 /// The page a read answered: its item ids, and the cursor for the next one.
 fn page(answer: &Value, id_key: &str) -> (Vec<String>, Option<String>) {
@@ -80,12 +89,7 @@ async fn fleets_read_walks_its_pages() {
     let (head, cursor) = page(&first, "fleet_id");
     let cursor = cursor.expect("two of four fleets leave a next page");
     let (status, second) = crew
-        .read(&route(
-            &lease,
-            "fleets",
-            fence,
-            &format!("&limit=2&starting_after={cursor}"),
-        ))
+        .read(&route(&lease, "fleets", fence, &continuing(&cursor)))
         .await;
     assert_eq!(status, 200, "{second}");
     let (tail, last) = page(&second, "fleet_id");
@@ -124,12 +128,7 @@ async fn events_read_walks_its_pages_and_cuts_answers() {
     let (head, cursor) = page(&first, "event_id");
     let cursor = cursor.expect("two of three events leave a next page");
     let (_, second) = crew
-        .read(&route(
-            &lease,
-            &events,
-            fence,
-            &format!("&limit=2&starting_after={cursor}"),
-        ))
+        .read(&route(&lease, &events, fence, &continuing(&cursor)))
         .await;
     let (tail, last) = page(&second, "event_id");
     assert_eq!(
@@ -171,6 +170,12 @@ async fn fleets_reads_refuse_a_bad_bound_cursor_and_missing_fence() {
         (
             "fleets",
             "&starting_after=garbage",
+            "The cursor is not valid",
+        ),
+        ("fleets", "&starting_after=%zz", "The cursor is not valid"),
+        (
+            events.as_str(),
+            "&starting_after=%zz",
             "The cursor is not valid",
         ),
     ] {
