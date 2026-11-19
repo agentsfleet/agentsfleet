@@ -160,7 +160,7 @@ async fn test_bracket_publish_bus_down_does_not_fail_the_closing() {
         "the unavailable bus must remain an explicit publication error"
     );
     afd_bus::observe_notification(
-        &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+        &afd_bus::Subject::ThreadItems(closed.row.fleet_id.clone()),
         publication,
     );
 }

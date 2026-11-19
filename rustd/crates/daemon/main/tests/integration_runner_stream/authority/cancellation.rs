@@ -5,6 +5,7 @@ use crate::wire;
 use af_core::{clock, id::Uuid7};
 use af_stream::Transport;
 use af_wire::protocol::StreamKind;
+use afd_bus::Subject;
 use serde_json::json;
 use std::sync::atomic::Ordering;
 
@@ -77,7 +78,10 @@ async fn pair(
 }
 
 async fn lost_archive(fixture: &Fixture) -> TestResult {
-    let (bus, dropped) = faults::dropping(fixture.bus.clone(), fixture.scene.runner_id.clone());
+    let (bus, dropped) = faults::dropping(
+        fixture.bus.clone(),
+        Subject::RunnerCommand(fixture.scene.runner_id.clone()),
+    );
     let creations = fixture.creations(bus)?;
     let access = fixture.operator.access(&fixture.scene);
     let current = creations.read(access, &fixture.scene.fleet).await?;

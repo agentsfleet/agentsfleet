@@ -37,7 +37,7 @@ impl Tailed {
             .await
             .expect("the lane's NATS: scene through make test-integration-rustd");
         let tail = bus
-            .subscribe(&Subject::FleetTail(scene.fleet.clone()))
+            .subscribe(&Subject::ThreadItems(scene.fleet.clone()))
             .await
             .expect("subscribe before forwarding activity");
         settle().await;

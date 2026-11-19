@@ -69,7 +69,7 @@ The daemon reaches NATS over Fly's private network in plaintext `nats://`.
 ### The admissions ledger is the queue
 
 ```text
-producer -> commit fleet.admissions -> publish af.wake.<shard>
+producer -> commit fleet.admissions -> publish af.thread.<thread_id>.wake
                          |
 wake ring or 5 s recovery probe -> offer pass -> Postgres head probe
                          |
@@ -120,13 +120,13 @@ The census publishes `agentsfleet_turn_backlog` and `agentsfleet_turn_backlog_ol
 
 ### Signals on core NATS, facts in Postgres
 
-The live tail publishes on `af.fleet.<fleet_id>.tail`. After a reconnect, a slow consumer or a gap marker, viewers receive `catching_up` and reload durable history.
+The live tail publishes on `af.thread.<thread_id>.items`. After a reconnect, a slow consumer or a gap marker, viewers receive `catching_up` and reload durable history.
 
-Wake notifications use sixteen `af.wake.<shard>` subjects, the shard a CRC-16/XMODEM of the fleet id (`afd_bus/src/wake/publish.rs`).
-Each replica keeps a local queue of at most 64 fleets by default (`afd_bus/src/wake/config.rs`).
-A full queue evicts its oldest fleet, and the 5 s recovery probe still finds that fleet's work.
+Wake notifications publish on `af.thread.<thread_id>.wake`, and each replica reads them all through one `af.thread.*.wake` wildcard subscription (`afd_bus/src/wake/mod.rs`).
+Each replica keeps a local queue of at most 64 threads by default (`afd_bus/src/wake/config.rs`).
+A full queue evicts its oldest thread, and the 5 s recovery probe still finds that thread's work.
 
-The report path writes the `thread.deliveries` row in its own transaction, then publishes `af.outbound.wake`.
+The report path writes the `thread.deliveries` row in its own transaction, then publishes `af.delivery.wake`.
 A worker claims the head row of each `(provider, workspace_id)` lane with `FOR UPDATE SKIP LOCKED` (`afd_outbound/src/delivery/sql/claim_heads.sql`).
 A claim lasts 30 s, the holder renews it every 10 s, and every replica also claims every 30 s.
 

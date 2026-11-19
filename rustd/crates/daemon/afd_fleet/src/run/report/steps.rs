@@ -79,7 +79,7 @@ impl RunService {
                 Err(error) => {
                     // The report is durable. Observe its failed live notification without undoing settlement.
                     afd_bus::observe_notification(
-                        &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                        &afd_bus::Subject::ThreadItems(closed.row.fleet_id.clone()),
                         Err(error),
                     );
                     None
@@ -116,7 +116,7 @@ impl RunService {
         for closed in &folds.closed {
             let publication = self.runs.publish_completion(closed, Some(answer)).await;
             afd_bus::observe_notification(
-                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                &afd_bus::Subject::ThreadItems(closed.row.fleet_id.clone()),
                 publication,
             );
         }

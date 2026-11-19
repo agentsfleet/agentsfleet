@@ -101,7 +101,7 @@ impl Runs {
             fencing_token: Cow::Owned(acquired.fence.as_i64().to_string()),
             restarted_at: issued.created_at,
         };
-        let subject = afd_bus::Subject::FleetTail(acquired.fleet_id.clone());
+        let subject = afd_bus::Subject::ThreadItems(acquired.fleet_id.clone());
         let publication = self.streams().publish_frame(&subject, &frame).await;
         afd_bus::observe_notification(&subject, publication);
     }
@@ -126,7 +126,7 @@ impl Runs {
             message: steer_message(acquired),
             counters,
         };
-        let subject = afd_bus::Subject::FleetTail(acquired.fleet_id.clone());
+        let subject = afd_bus::Subject::ThreadItems(acquired.fleet_id.clone());
         let publication = self.streams().publish_frame(&subject, &frame).await;
         afd_bus::observe_notification(&subject, publication);
     }
@@ -150,7 +150,7 @@ impl Runs {
         };
         self.streams()
             .publish_frame(
-                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                &afd_bus::Subject::ThreadItems(closed.row.fleet_id.clone()),
                 &frame,
             )
             .await

@@ -2,7 +2,7 @@
 //!
 //! ```text
 //!   report path ──► delivery::owe (inside the report's transaction)
-//!                        │  then a lossy af.outbound.wake ping
+//!                        │  then a lossy af.delivery.wake ping
 //!                        ▼
 //!                   Worker::run ── claims lane heads from thread.deliveries
 //!                        │         on the ping, or every CLAIM_PASS

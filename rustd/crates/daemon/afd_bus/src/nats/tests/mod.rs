@@ -10,7 +10,9 @@ use tracing::Level;
 
 use af_observability::metrics::label::bus::GapCause as Cause;
 
-use super::{GAP_ALL, Tuning, debt::Owed, hub::Channels, options_for, signals, spelling};
+use super::{
+    Reads, THREAD_WAKES, Tuning, debt::Owed, hub::Channels, options_for, signals, spelling,
+};
 use crate::{Error, Received, Subject, error::ErrorKind};
 
 mod live_debt;
@@ -23,33 +25,67 @@ const NOWHERE: &str = "nats://127.0.0.1:1";
 /// How long a test waits for the watcher before it fails.
 const BOUND: Duration = Duration::from_secs(10);
 
-/// A fleet's tail subject, as the adapter spells it physically.
-const TAIL: &str = "af.fleet.0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011.tail";
+/// The subject every hub reads, as the adapter spells it unprefixed.
+const GAP: &str = "af.bus.gap";
+
+/// A thread's items subject, as the adapter spells it physically.
+const TAIL: &str = "af.thread.0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011.items";
 
 const ID: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011";
 
+/// Every subject spells its thread noun, the wake wildcard matches exactly
+/// the wake spelling, and a reader names each message's thread back from it.
 #[test]
-fn each_subject_has_its_documented_spelling() -> TestResult {
+fn each_subject_spells_its_thread_noun() -> TestResult {
     let id = Uuid7::parse(ID)?;
+    let spelled = [
+        Subject::ThreadWake(id.clone()),
+        Subject::ThreadItems(id.clone()),
+        Subject::RunnerCommand(id.clone()),
+        Subject::DeliveryWake,
+        Subject::Gap,
+    ]
+    .map(|subject| (spelling(&subject), subject.kind()));
     assert_eq!(
-        spelling(&Subject::FleetTail(id.clone())),
-        format!("af.fleet.{ID}.tail")
+        spelled,
+        [
+            (format!("af.thread.{ID}.wake"), "thread_wake"),
+            (format!("af.thread.{ID}.items"), "thread_items"),
+            (format!("af.runner.{ID}.cmd"), "runner_command"),
+            ("af.delivery.wake".to_owned(), "delivery_wake"),
+            ("af.bus.gap".to_owned(), "gap"),
+        ]
     );
+    assert_eq!(THREAD_WAKES, "af.thread.*.wake");
     assert_eq!(
-        spelling(&Subject::DraftEvents(id.clone())),
-        format!("af.draft.{ID}.events")
+        GAP,
+        spelling(&Subject::Gap),
+        "the tests' gap is the adapter's"
     );
-    assert_eq!(spelling(&Subject::Wake(15)), "af.wake.15");
-    assert_eq!(spelling(&Subject::OutboundWake), "af.outbound.wake");
+    let woken = Subject::ThreadWake(id.clone());
+    let wakes = Reads::ThreadWakes {
+        prefix: "dev.t.".to_owned(),
+    };
     assert_eq!(
-        Subject::OutboundWake.kind(),
-        "outbound_wake",
-        "its telemetry label"
+        wakes.subject(&format!("dev.t.{}", spelling(&woken))),
+        Some(woken),
+        "a wildcard message names its own thread"
     );
-    assert_eq!(
-        spelling(&Subject::RunnerCommand(id)),
-        format!("af.runner.{ID}.cmd")
-    );
+    for elsewhere in [
+        format!("dev.t.{}", spelling(&Subject::ThreadItems(id.clone()))),
+        format!("dev.t.{}", spelling(&Subject::RunnerCommand(id))),
+        "dev.t.af.thread.not-a-thread.wake".to_owned(),
+        format!(
+            "other.{}",
+            spelling(&Subject::ThreadWake(Uuid7::parse(ID)?))
+        ),
+    ] {
+        assert_eq!(
+            wakes.subject(&elsewhere),
+            None,
+            "{elsewhere} is no thread wake"
+        );
+    }
     Ok(())
 }
 
@@ -110,7 +146,7 @@ fn a_settled_reconnect_lifts_the_block_and_an_owed_marker_keeps_it() {
     let now = Instant::now();
     signals.observe(&Event::Disconnected, now);
     signals.observe(&Event::Connected, now);
-    signals.record("dev.t.af.fleet.a.tail", false, now);
+    signals.record("dev.t.af.thread.a.items", false, now);
     let before = signals.disconnects();
     assert!(
         !signals.unblock_if_settled(before),
@@ -146,8 +182,8 @@ fn a_reconnect_and_a_slow_consumer_each_raise_once() {
 #[tokio::test]
 async fn a_raised_cause_gaps_every_local_subscription() -> TestResult {
     let channels = Arc::new(Channels::new(8));
-    let mut first = channels.open("af.wake.1").reader;
-    let mut second = channels.open("af.wake.2").reader;
+    let mut first = channels.open("af.thread.1.wake").reader;
+    let mut second = channels.open("af.thread.2.wake").reader;
     assert_eq!(signals::gap(&channels, Cause::Reconnect), 2);
     assert_eq!(first.recv().await?, Received::Gap);
     assert_eq!(second.recv().await?, Received::Gap);
@@ -164,7 +200,7 @@ async fn client_that_gave_up() -> TestResult<(Client, Subscriber)> {
         .max_reconnects(1)
         .connect(NOWHERE)
         .await?;
-    let opened = client.subscribe(GAP_ALL).await?;
+    let opened = client.subscribe(GAP).await?;
     Ok((client, opened))
 }
 
@@ -183,7 +219,7 @@ async fn client_still_dialling() -> TestResult<(Client, Subscriber)> {
         .retry_on_initial_connect()
         .connect(NOWHERE)
         .await?;
-    let opened = client.subscribe(GAP_ALL).await?;
+    let opened = client.subscribe(GAP).await?;
     Ok((client, opened))
 }
 
@@ -207,14 +243,14 @@ async fn markers_that_will_not_publish_stay_owed_and_are_reported_once() -> Test
     signals.record(TAIL, false, now);
     // Three recent publishes overflow a debt of two, so the disconnect owes
     // every hub a broadcast marker as well as the failed subject's own.
-    for recent in ["af.wake.1", "af.wake.2", "af.wake.3"] {
+    for recent in ["af.thread.1.wake", "af.thread.2.wake", "af.thread.3.wake"] {
         signals.record(recent, true, now);
     }
     signals.observe(&Event::Disconnected, now);
     let before = signals.disconnects();
     let capture = Capture::install();
 
-    let paid = signals::pay(&client, &signals, GAP_ALL).await;
+    let paid = signals::pay(&client, &signals, GAP).await;
 
     assert_eq!(paid, 0, "nothing reached a client that gave up");
     assert_eq!(named(&capture, "bus_gap_marked"), 0);
@@ -279,7 +315,7 @@ async fn markers_a_reconnect_could_not_pay_are_retried_without_another_gap() -> 
         Arc::clone(&channels),
         Arc::clone(&signals),
         everyone,
-        GAP_ALL.to_owned(),
+        GAP.to_owned(),
     ));
     // The reconnect's own payment, then two retries one deadline apart.
     tokio::time::timeout(BOUND, async {
@@ -319,7 +355,7 @@ async fn the_watcher_says_so_and_stops_when_the_broadcast_subscription_ends() ->
 
     tokio::time::timeout(
         BOUND,
-        signals::watch(client, channels, signals, everyone, GAP_ALL.to_owned()),
+        signals::watch(client, channels, signals, everyone, GAP.to_owned()),
     )
     .await?;
 

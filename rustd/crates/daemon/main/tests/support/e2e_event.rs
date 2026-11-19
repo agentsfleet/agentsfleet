@@ -33,7 +33,19 @@ pub(crate) async fn enqueue(
     workspace: &Uuid7,
     event_type: TurnKind,
 ) -> Uuid7 {
-    let admitted = Turns::for_tests(booted.database.clone(), booted.bus.clone())
+    enqueue_over(booted, booted.bus.clone(), fleet, workspace, event_type).await
+}
+
+/// [`enqueue`], with the admission's wake published on `bus`, such as one
+/// that loses it.
+pub(crate) async fn enqueue_over(
+    booted: &Booted,
+    bus: afd_bus::Handle,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+    event_type: TurnKind,
+) -> Uuid7 {
+    let admitted = Turns::for_tests(booted.database.clone(), bus)
         .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Unrepeatable,

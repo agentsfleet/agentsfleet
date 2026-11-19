@@ -1,7 +1,7 @@
 //! What the inbox tells the fleet's live tail.
 //!
 //! A decision and a sweep both move a row and then say so on the fleet's
-//! live tail, `Subject::FleetTail`, count included, so a console watching the
+//! live tail, `Subject::ThreadItems`, count included, so a console watching the
 //! fleet shows how many answers it is still owed without a read. Read back
 //! through the bus's own subscribe on that subject, the one the console's tail
 //! reads, so a publisher that drifted from its reader fails here.

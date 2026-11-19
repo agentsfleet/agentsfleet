@@ -138,7 +138,7 @@ impl Completion {
                 .publish_completion(&closed, Some(&self.answer))
                 .await;
             afd_bus::observe_notification(
-                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                &afd_bus::Subject::ThreadItems(closed.row.fleet_id.clone()),
                 publication,
             );
         }

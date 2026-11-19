@@ -110,7 +110,7 @@ A committed steer wakes the gateway, which pushes an offer to an eligible connec
 | Step | Work on the serving path |
 |---|---|
 | API receives a steer or webhook | Validate identity, access and backlog budget |
-| API accepts the event | Commit `fleet.admissions`, then publish a best-effort `af.wake.<shard>` notification |
+| API accepts the event | Commit `fleet.admissions`, then publish a best-effort `af.thread.<thread_id>.wake` notification |
 | Gateway handles a wake or available capacity | Claim an eligible ledger head and its fleet slot, then push the run over the native session |
 | Runner runs the run | Prepare its sandbox and run the fleet instructions |
 
@@ -151,7 +151,7 @@ For `R` replicas, that is `R / 5` discovery statements per second.
 This backstop repairs missed disposable notifications; it remains database polling.
 A probe that finds pending work starts an offer pass. Wake traffic never resets the probe's timer.
 
-A wake notification starts an offer pass at once. Admission and gate-answer commits publish on `af.wake.<shard>` (`afd_turns/src/wake.rs`, `afd_approval/src/inbox/resolve/mod.rs`).
+A wake notification starts an offer pass at once. Admission and gate-answer commits publish on `af.thread.<thread_id>.wake` (`afd_turns/src/wake.rs`, `afd_approval/src/inbox/resolve/mod.rs`).
 
 Before the pass, the same statement names each connected tenant runner whose tenant has nothing waiting.
 The pass skips those runners, since a tenant runner takes only its tenant's work and a claim on one could not run.

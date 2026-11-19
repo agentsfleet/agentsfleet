@@ -53,6 +53,12 @@ pub trait Bus: Debug + Send + Sync {
     /// # Errors
     /// Returns an unavailable or closed adapter.
     async fn subscribe(&self, subject: &Subject) -> Result<Subscription>;
+    /// Subscribe once to every thread's wake, the wildcard over
+    /// [`Subject::ThreadWake`]; each message names its own thread.
+    ///
+    /// # Errors
+    /// Returns an unavailable or closed adapter.
+    async fn subscribe_thread_wakes(&self) -> Result<Subscription>;
     /// Idempotently close subscriptions and finish the adapter's connection.
     ///
     /// # Errors
@@ -118,6 +124,14 @@ impl Handle {
         self.0.subscribe(subject).await
     }
 
+    /// Open the one subscription that reads every thread's wake.
+    ///
+    /// # Errors
+    /// Preserves the adapter's failure.
+    pub async fn subscribe_thread_wakes(&self) -> Result<Subscription> {
+        self.0.subscribe_thread_wakes().await
+    }
+
     /// Stop this process's signal surface during drain.
     ///
     /// # Errors
@@ -154,8 +168,8 @@ pub fn observe_notification(subject: &Subject, outcome: Result<()>) {
 }
 
 fn dropped(subject: &Subject, error: &Error) {
-    let fleet_id = match subject {
-        Subject::FleetTail(fleet) => Some(fleet.as_str()),
+    let thread_id = match subject {
+        Subject::ThreadItems(thread) => Some(thread.as_str()),
         _other => None,
     };
     let subject_kind = subject.kind();
@@ -163,7 +177,7 @@ fn dropped(subject: &Subject, error: &Error) {
     let reason = error.reason();
     {
         let event = &"tail_frame_dropped";
-        tracing::warn!(event, fleet_id, subject_kind, error_code, reason);
+        tracing::warn!(event, thread_id, subject_kind, error_code, reason);
     };
 }
 

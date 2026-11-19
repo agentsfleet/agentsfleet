@@ -226,8 +226,11 @@ async fn census(fixture: &Fixture) -> Result<(i64, i64)> {
 
 async fn wake(fixture: &Fixture) -> Result<()> {
     let bus = fixture.scene.booted.bus.clone();
-    bus.publish(&Subject::Wake(0), fixture.scene.fleet.as_str())
-        .await?;
+    bus.publish(
+        &Subject::ThreadWake(fixture.scene.fleet.clone()),
+        fixture.scene.fleet.as_str(),
+    )
+    .await?;
     bus.shutdown().await?;
     Ok(())
 }

@@ -111,7 +111,10 @@ async fn revoke_without_delivery(fixture: &Fixture) -> TestResult {
             clock::now(),
         )
         .await?;
-    let (bus, dropped) = faults::dropping(fixture.bus.clone(), fixture.scene.runner_id.clone());
+    let (bus, dropped) = faults::dropping(
+        fixture.bus.clone(),
+        Subject::RunnerCommand(fixture.scene.runner_id.clone()),
+    );
     bus.publish_frame(
         &Subject::RunnerCommand(fixture.scene.runner_id.clone()),
         &Command::Recheck,

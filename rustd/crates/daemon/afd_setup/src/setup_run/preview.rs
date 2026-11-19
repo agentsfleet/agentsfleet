@@ -68,7 +68,7 @@ impl Drafts {
         let Some(publishing) = self.preview_authority(runner, run).await? else {
             return Ok(());
         };
-        let subject = afd_bus::Subject::DraftEvents(publishing.draft_id.clone());
+        let subject = afd_bus::Subject::ThreadItems(publishing.draft_id.clone());
         for chunk in chunks {
             if chunk.text.is_empty() || chunk.text.len() > DELTA_BYTES {
                 continue;

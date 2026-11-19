@@ -198,7 +198,7 @@ fn assert_merged(
 /// subscribed to it, so the returned set is what a connection ACTUALLY
 /// received rather than what the fixture intended it to.
 async fn deliver_live(lane: &TurnsLane, ids: &[Uuid7]) -> Vec<Uuid7> {
-    let activity = Subject::FleetTail(lane.fleet.clone());
+    let activity = Subject::ThreadItems(lane.fleet.clone());
     let mut stream = Box::pin(tail(
         lane.bus
             .subscribe(&activity)

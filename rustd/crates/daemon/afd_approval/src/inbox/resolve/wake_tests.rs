@@ -37,6 +37,6 @@ async fn a_failed_wake_reason_carries_no_code_prefix() {
         logged.field("error_code"),
         Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
     );
-    assert_eq!(logged.field("fleet_id"), Some(FLEET));
+    assert_eq!(logged.field("thread_id"), Some(FLEET));
     logged.assert_uncoded_reason();
 }

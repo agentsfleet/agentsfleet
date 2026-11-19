@@ -136,7 +136,7 @@ impl Gates {
             pending_approvals: recorded.pending_approvals,
             counters: recorded.counters,
         };
-        let subject = afd_bus::Subject::FleetTail(request.fleet_id.clone());
+        let subject = afd_bus::Subject::ThreadItems(request.fleet_id.clone());
         let publication = self.bus().publish_frame(&subject, &frame).await;
         afd_bus::observe_notification(&subject, publication);
     }

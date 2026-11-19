@@ -70,7 +70,7 @@ impl Watched {
     }
 
     fn subject(&self) -> Subject {
-        Subject::FleetTail(self.fixture.fleet.clone())
+        Subject::ThreadItems(self.fixture.fleet.clone())
     }
 
     /// How many viewers hold a subscription on the fleet's tail right now.

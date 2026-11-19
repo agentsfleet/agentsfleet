@@ -213,6 +213,10 @@ impl Bus for Fragile {
         })))
     }
 
+    async fn subscribe_thread_wakes(&self) -> afd_bus::Result<Subscription> {
+        self.inner.subscribe_thread_wakes().await
+    }
+
     async fn shutdown(&self) -> afd_bus::Result<()> {
         self.inner.shutdown().await
     }

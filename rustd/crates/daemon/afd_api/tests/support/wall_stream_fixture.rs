@@ -247,7 +247,7 @@ impl Wall {
     }
 
     pub(crate) async fn publish(&self, count: usize) {
-        let subject = Subject::FleetTail(self.fixture.fleet.clone());
+        let subject = Subject::ThreadItems(self.fixture.fleet.clone());
         for _ in 0..count {
             self.bus
                 .publish(&subject, CHUNK)

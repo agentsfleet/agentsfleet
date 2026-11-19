@@ -266,7 +266,10 @@ impl Hot {
             .expect("hot work commits and publishes its real broker wake");
         self.admissions
             .streams()
-            .publish(&afd_bus::Subject::Wake(0), self.fleet.as_str())
+            .publish(
+                &afd_bus::Subject::ThreadWake(self.fleet.clone()),
+                self.fleet.as_str(),
+            )
             .await
             .expect("the real broker accepts continuous hot notifications");
     }

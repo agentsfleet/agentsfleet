@@ -55,7 +55,7 @@ pub(super) async fn probe_until_ready(
     let deadline = Instant::now() + RUNG_DEADLINE;
     while shared.ready.load(Ordering::Relaxed) < viewers && Instant::now() < deadline {
         publisher
-            .publish(&afd_bus::Subject::FleetTail(fleet.clone()), PROBE)
+            .publish(&afd_bus::Subject::ThreadItems(fleet.clone()), PROBE)
             .await?;
         tokio::time::sleep(PROBE_INTERVAL).await;
     }
@@ -78,7 +78,7 @@ pub(super) async fn publish(
         let stamp = u64::try_from(shared.epoch.elapsed().as_nanos()).unwrap_or(u64::MAX);
         slot.store(stamp, Ordering::Release);
         publisher
-            .publish(&afd_bus::Subject::FleetTail(fleet.clone()), payload)
+            .publish(&afd_bus::Subject::ThreadItems(fleet.clone()), payload)
             .await?;
     }
     wait_for(shared, FRAMES.saturating_mul(viewers), deadline).await;

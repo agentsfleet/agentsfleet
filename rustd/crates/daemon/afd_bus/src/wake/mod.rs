@@ -11,13 +11,10 @@ use af_observability::{metrics::label::fleet::ReadyWake, producers};
 use tokio::{sync::watch, task::JoinSet};
 use tokio_util::sync::CancellationToken;
 
-use crate::{Handle, Received, Result, Subject};
+use crate::{Handle, Received, Result};
 
 pub use config::{DEFAULT_WAKE_QUEUE_CAPACITY, ENV_WAKE_QUEUE_CAPACITY, MAX_WAKE_QUEUE_CAPACITY};
 pub use publish::publish;
-
-/// Independent subjects distribute notifications across the broker's shard slots.
-pub const SHARDS: u16 = 16;
 
 /// Identity of an independent recovery request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,16 +151,15 @@ impl Wake {
         self.generation.subscribe()
     }
 
-    /// Own all shard listeners in the returned task set; dropping it aborts them.
+    /// Own the one listener over every thread's wake in the returned task
+    /// set; dropping it aborts the listener.
     ///
     /// # Errors
-    /// Returns a failed subscription and drops any listeners already opened.
+    /// Returns a failed subscription.
     pub async fn listen(&self, bus: &Handle, stop: &CancellationToken) -> Result<JoinSet<()>> {
+        let subscription = bus.subscribe_thread_wakes().await?;
         let mut workers = JoinSet::new();
-        for shard in 0..SHARDS {
-            let subscription = bus.subscribe(&Subject::Wake(shard)).await?;
-            workers.spawn(receive(self.clone(), subscription, stop.clone()));
-        }
+        workers.spawn(receive(self.clone(), subscription, stop.clone()));
         Ok(workers)
     }
 }

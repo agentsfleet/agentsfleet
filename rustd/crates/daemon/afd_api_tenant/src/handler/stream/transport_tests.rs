@@ -27,7 +27,7 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 /// `payload` as the hub hands it to every reader of its channel.
 fn published(payload: &str) -> Arc<Message> {
     Arc::new(Message {
-        subject: Subject::FleetTail(af_core::id::Uuid7::parse(FLEET).expect("canonical fleet")),
+        subject: Subject::ThreadItems(af_core::id::Uuid7::parse(FLEET).expect("canonical fleet")),
         payload: Arc::new(payload.to_owned()),
     })
 }

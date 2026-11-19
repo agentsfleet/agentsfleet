@@ -26,7 +26,7 @@ fn frame(payload: String) -> Frame {
     Frame::activity(
         1,
         Arc::new(Message {
-            subject: Subject::Wake(0),
+            subject: Subject::DeliveryWake,
             payload: Arc::new(payload),
         }),
     )

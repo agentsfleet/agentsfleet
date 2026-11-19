@@ -214,7 +214,7 @@ async fn an_api_url_that_cannot_form_a_callback_leaves_a_line_saying_so() {
 }
 
 /// The wake listener `ServingPlane::new` builds hears the NATS wake ring: a
-/// ring published on a shard's subject (`af.wake.<shard>`) reaches it. This proves
+/// ring published on a thread's subject (`af.thread.<id>.wake`) reaches it. This proves
 /// the helper the plane calls, not that the plane hands its result to the
 /// run store; that hand-off is one line beside it in `plane/mod.rs`.
 #[cfg(feature = "test-util")]
@@ -231,7 +231,7 @@ async fn test_the_wake_queue_hears_the_shared_bus() {
     let stop = tokio_util::sync::CancellationToken::new();
     let _listeners = wake.listen(&bus, &stop).await.expect("wake subscriptions");
     let rung = Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").expect("fleet");
-    server.publish(&Subject::Wake(6), rung.as_str());
+    server.publish(&Subject::ThreadWake(rung.clone()), rung.as_str());
 
     let deadline = tokio::time::Instant::now() + HEARD_WITHIN;
     let mut taken = None;

@@ -68,7 +68,7 @@ async fn parked() -> Parked {
     // published afterwards cannot race the subscription.
     let tail = fixtures
         .bus()
-        .subscribe(&Subject::FleetTail(fleet.clone()))
+        .subscribe(&Subject::ThreadItems(fleet.clone()))
         .await
         .expect("the tail subscribes");
 

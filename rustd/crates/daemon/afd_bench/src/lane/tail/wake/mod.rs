@@ -4,15 +4,16 @@
 //! # A hub is a replica
 //!
 //! ```text
-//!   ringer ──wake::publish──► NATS ──► hub 1: own connection ─► Wake (16 shards)
+//!   ringer ──wake::publish──► NATS ──► hub 1: own connection ─► Wake (af.thread.*.wake)
 //!                                  ├─► hub 2: own connection ─► Wake
 //!                                  └─► hub N: …
 //! ```
 //!
-//! Each hub is what one `agentsfleetd` replica runs as M243 leaves it: its own
-//! Bus connection ([`Datastores::replica`]) and its own [`Wake`] listening on
-//! every shard. A ring goes to every replica, so the ladder times one ring
-//! from publish to the FIRST hub that takes it, over 1, 2 and 4 hubs.
+//! Each hub is what one `agentsfleetd` replica runs: its own Bus connection
+//! ([`Datastores::replica`]) and its own [`Wake`] listening on every thread's
+//! wake through one wildcard subscription. A ring goes to every replica, so
+//! the ladder times one ring from publish to the FIRST hub that takes it, over
+//! 1, 2 and 4 hubs.
 //!
 //! # A ring is missed, never late
 //!
@@ -25,8 +26,8 @@
 //! # Every hub is proved to hear before a ring is timed
 //!
 //! A subscription reaches the other cluster nodes asynchronously, so each hub
-//! first takes a probe ring of its own, and a warm-up batch then crosses every
-//! shard before the measured rings start.
+//! first takes a probe ring of its own, and a warm-up batch then runs before
+//! the measured rings start.
 
 mod ledger;
 
@@ -57,7 +58,7 @@ const WARMUP: u64 = 64;
 /// Unresolved rings the ringer allows: the doorbell's hint cap.
 pub(super) const WINDOW: usize = DEFAULT_WAKE_QUEUE_CAPACITY;
 
-/// The task role a lost shard listener is reported under.
+/// The task role a lost wake listener is reported under.
 const LISTENER_ROLE: &str = "wake listener";
 
 /// Run every rung and write its three numbers.
@@ -165,7 +166,7 @@ where
     }
 }
 
-/// Wait for every shard listener of one hub to return after the stop.
+/// Wait for one hub's wake listener to return after the stop.
 async fn stopped(listener: &mut JoinSet<()>) -> Result<()> {
     while let Some(done) = listener.join_next().await {
         joined(done, LISTENER_ROLE)?;

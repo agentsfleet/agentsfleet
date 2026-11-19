@@ -95,7 +95,7 @@ fn fleet(id: &str) -> Uuid7 {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_sse_sequencing_semantics() {
     let (bus, server) = open_bus();
-    let activity = Subject::FleetTail(fleet(FLEET));
+    let activity = Subject::ThreadItems(fleet(FLEET));
 
     assert_ordered_frames(&bus, &activity).await;
     assert_reconnect_starts_over(&bus, &server, &activity).await;
@@ -118,7 +118,7 @@ async fn test_sse_sequencing_semantics() {
 async fn test_fleet_stream_opens_with_hello_before_any_activity() {
     let (bus, _server) = open_bus();
     let fleet_id = fleet(FLEET);
-    let activity = Subject::FleetTail(fleet_id.clone());
+    let activity = Subject::ThreadItems(fleet_id.clone());
 
     let live = Live::new(bus.clone(), StreamLimit::new(1));
     let mut stream = Box::pin(live.tail_of(&fleet_id).await);

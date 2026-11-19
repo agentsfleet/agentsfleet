@@ -264,7 +264,7 @@ impl Steer {
             );
             return;
         };
-        let subject = afd_bus::Subject::FleetTail(fleet);
+        let subject = afd_bus::Subject::ThreadItems(fleet);
         let publication = self
             .admissions
             .streams()

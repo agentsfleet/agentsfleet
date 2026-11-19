@@ -58,7 +58,7 @@ pub(crate) async fn tail_of(fleet: &Uuid7) -> Tail {
         .await
         .expect("the lane's NATS: scene through make test-integration-rustd");
     let subscription = bus
-        .subscribe(&Subject::FleetTail(fleet.clone()))
+        .subscribe(&Subject::ThreadItems(fleet.clone()))
         .await
         .expect("the lane's NATS takes the subscription");
     Tail {

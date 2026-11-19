@@ -185,7 +185,7 @@ impl crate::run::Runs {
                 task_id: std::borrow::Cow::Borrowed(task.as_str()),
                 resource_version: super::row::counter(version, "resource_version")?,
             };
-            let subject = afd_bus::Subject::FleetTail(acquired.fleet_id.clone());
+            let subject = afd_bus::Subject::ThreadItems(acquired.fleet_id.clone());
             let publication = self.streams().publish_frame(&subject, &frame).await;
             afd_bus::observe_notification(&subject, publication);
             tracing::info!(

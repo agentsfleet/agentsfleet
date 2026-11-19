@@ -2,7 +2,7 @@
 #![cfg(feature = "test-util")]
 
 mod cancellation;
-mod faults;
+pub(super) mod faults;
 mod fencing;
 mod fixture;
 mod halt;

@@ -110,7 +110,7 @@ pub async fn record_access_on(
 
 /// Notify open tails after durable history commits; failure preserves reload.
 pub async fn announce(streams: &Handle, fleet: &Uuid7) {
-    let subject = afd_bus::Subject::FleetTail(fleet.clone());
+    let subject = afd_bus::Subject::ThreadItems(fleet.clone());
     let publication = streams
         .publish_frame(&subject, &Notice::CatchingUp { dropped: 0 })
         .await;

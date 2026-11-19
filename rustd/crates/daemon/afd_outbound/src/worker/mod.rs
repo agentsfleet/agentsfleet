@@ -3,7 +3,7 @@
 //! depends on a ping arriving.
 //!
 //! ```text
-//!   report commits ──► af.outbound.wake (lossy) ─┐
+//!   report commits ──► af.delivery.wake (lossy) ─┐
 //!                                                 ├─► claim lane heads ─► lanes
 //!   every CLAIM_PASS ─────────────────────────────┘        (FOR UPDATE SKIP LOCKED)
 //! ```
@@ -120,7 +120,7 @@ impl<S: Deliver + 'static> Worker<S> {
             retries,
         } = self;
         let mut wake = bus
-            .subscribe(&Subject::OutboundWake)
+            .subscribe(&Subject::DeliveryWake)
             .await
             .inspect_err(|failure| unpinged(EVENT_WAKE_SUBSCRIBE_FAILED, failure))
             .ok();

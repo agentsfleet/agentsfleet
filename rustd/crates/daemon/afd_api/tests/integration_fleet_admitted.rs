@@ -147,7 +147,7 @@ async fn test_admitted_publish_failure_still_accepts() {
     let (status, accepted) = steer(&bob, &members, &json!({ "message": MESSAGE })).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{accepted}");
     let dropped = log.only(EVENT_FRAME_DROPPED);
-    assert_eq!(dropped.field("fleet_id"), Some(members.fleet.as_str()));
+    assert_eq!(dropped.field("thread_id"), Some(members.fleet.as_str()));
     assert!(
         log.events()
             .iter()

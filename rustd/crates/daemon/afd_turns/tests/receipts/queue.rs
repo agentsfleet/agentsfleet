@@ -22,7 +22,7 @@ const FIELD_EVENT: &str = "event";
 /// The line a lost notification is logged under.
 pub(super) const RING_FAILED: &str = "turn_wake_ring_failed";
 
-/// What the server half sends down a wake shard after the rings it holds.
+/// What the server half sends on the wake wildcard after the rings it holds.
 const DRAINED: &str = "drained";
 
 /// What `work` answered, and every event it logged on this thread.
@@ -56,42 +56,36 @@ impl Run<afd_turns::Result<Admitted>> {
     }
 }
 
-/// A reader on every wake shard of one bus, opened before anything rings, and
-/// the bus's server half.
+/// The one reader of every thread's wake on a bus, opened before anything
+/// rings, and the bus's server half.
 pub(crate) struct Rings {
     server: Server,
-    readers: Vec<Subscription>,
+    reader: Subscription,
 }
 
 impl Rings {
     async fn open(bus: &Handle, server: Server) -> Fallible<Self> {
-        let mut readers = Vec::new();
-        for shard in 0..afd_bus::wake::SHARDS {
-            readers.push(bus.subscribe(&Subject::Wake(shard)).await?);
-        }
-        Ok(Self { server, readers })
+        let reader = bus.subscribe_thread_wakes().await?;
+        Ok(Self { server, reader })
     }
 
-    /// Every fleet rung since the last call.
+    /// Every thread rung since the last call.
     ///
-    /// A reader sees one shard's messages in the order they were sent, so the
-    /// marker the server sends last arrives after every ring already on that
-    /// shard: what comes before it is all the shard holds, with no deadline
-    /// to guess.
+    /// The reader sees the wakes in the order they were sent, so the marker
+    /// the server sends last arrives after every ring already sent: what
+    /// comes before it is all the reader holds, with no deadline to guess.
     pub(crate) async fn taken(&mut self) -> Fallible<Vec<String>> {
-        let Self { server, readers } = self;
+        let Self { server, reader } = self;
         let mut rung = Vec::new();
-        for (shard, reader) in (0..afd_bus::wake::SHARDS).zip(readers.iter_mut()) {
-            server.publish(&Subject::Wake(shard), DRAINED);
-            loop {
-                let Received::Message(message) = reader.recv().await? else {
-                    return Err("a wake reader lost rings it was owed".into());
-                };
-                if message.payload.as_str() == DRAINED {
-                    break;
-                }
-                rung.push(message.payload.as_str().to_owned());
+        server.publish(&Subject::ThreadWake(afd_db::test_util::mint_id()), DRAINED);
+        loop {
+            let Received::Message(message) = reader.recv().await? else {
+                return Err("a wake reader lost rings it was owed".into());
+            };
+            if message.payload.as_str() == DRAINED {
+                break;
             }
+            rung.push(message.payload.as_str().to_owned());
         }
         Ok(rung)
     }
@@ -116,6 +110,10 @@ impl Bus for Silent {
         std::future::pending().await
     }
 
+    async fn subscribe_thread_wakes(&self) -> afd_bus::Result<Subscription> {
+        std::future::pending().await
+    }
+
     async fn shutdown(&self) -> afd_bus::Result<()> {
         Ok(())
     }
@@ -126,8 +124,8 @@ pub(super) fn silent() -> Handle {
     Handle::new(Silent)
 }
 
-/// The lane's admissions over an in-process bus, and a reader on every wake
-/// shard of it, for a case that drives the server half to read the rings.
+/// The lane's admissions over an in-process bus, and its one reader of every
+/// thread's wake, for a case that drives the server half to read the rings.
 pub(super) async fn over_bus(lane: &Lane) -> Fallible<(Rings, Turns)> {
     let (bus, server) = afd_bus::test_util::detached()?;
     let rings = Rings::open(&bus, server).await?;

@@ -55,24 +55,27 @@ impl Hub {
         self.channels.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// A new reader of `subject`.
-    fn reader(&self, subject: &Subject) -> broadcast::Receiver<Received> {
+    /// A new reader of the channel spelled `spelling`.
+    fn reader(&self, spelling: String) -> broadcast::Receiver<Received> {
         self.channels()
-            .entry(crate::nats::spelling(subject))
+            .entry(spelling)
             .or_insert_with(Channel::new)
             .sender
             .subscribe()
     }
 
-    /// Hand `received` to every reader of `subject`. No reader is not an
-    /// error: the bus is at most once.
-    fn send(&self, subject: &Subject, received: Received) {
-        let _ = self
-            .channels()
-            .entry(crate::nats::spelling(subject))
-            .or_insert_with(Channel::new)
-            .sender
-            .send(received);
+    /// Hand `received` to every reader of `subject`, and of the thread-wake
+    /// wildcard when it is a thread's wake, as the broker would. No reader is
+    /// not an error: the bus is at most once.
+    fn send(&self, subject: &Subject, received: &Received) {
+        let mut channels = self.channels();
+        for spelling in spellings(subject) {
+            let _ = channels
+                .entry(spelling)
+                .or_insert_with(Channel::new)
+                .sender
+                .send(received.clone());
+        }
     }
 
     fn deliver(&self, subject: &Subject, payload: &str) {
@@ -80,12 +83,33 @@ impl Hub {
             subject: subject.clone(),
             payload: Arc::new(payload.to_owned()),
         };
-        self.send(subject, Received::Message(Arc::new(message)));
+        self.send(subject, &Received::Message(Arc::new(message)));
     }
 
     fn closed(&self) -> bool {
         self.closed.load(Ordering::Acquire)
     }
+}
+
+/// Every channel a message on `subject` reaches: its own, and the wildcard's
+/// for a thread's wake.
+fn spellings(subject: &Subject) -> Vec<String> {
+    let own = crate::nats::spelling(subject);
+    match subject {
+        Subject::ThreadWake(_) => vec![own, crate::nats::THREAD_WAKES.to_owned()],
+        _other => vec![own],
+    }
+}
+
+/// One channel's readers as a bus stream that ends when the channel closes.
+fn stream_of(receiver: broadcast::Receiver<Received>) -> Subscription {
+    Subscription::new(stream::unfold(Some(receiver), async |state| {
+        let mut receiver = state?;
+        match crate::subscription::received(receiver.recv().await) {
+            Ok(delivered) => Some((Ok(delivered), Some(receiver))),
+            Err(closed) => Some((Err(closed), None)),
+        }
+    }))
 }
 
 /// The adapter half the fixture's [`Handle`] wraps.
@@ -114,17 +138,16 @@ impl Bus for Memory {
         if self.0.closed() {
             return Err(ErrorKind::Closed.into());
         }
-        let receiver = self.0.reader(subject);
-        Ok(Subscription::new(stream::unfold(
-            Some(receiver),
-            async |state| {
-                let mut receiver = state?;
-                match crate::subscription::received(receiver.recv().await) {
-                    Ok(delivered) => Some((Ok(delivered), Some(receiver))),
-                    Err(closed) => Some((Err(closed), None)),
-                }
-            },
-        )))
+        Ok(stream_of(self.0.reader(crate::nats::spelling(subject))))
+    }
+
+    async fn subscribe_thread_wakes(&self) -> Result<Subscription> {
+        if self.0.closed() {
+            return Err(ErrorKind::Closed.into());
+        }
+        Ok(stream_of(
+            self.0.reader(crate::nats::THREAD_WAKES.to_owned()),
+        ))
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -154,6 +177,10 @@ impl Bus for Unreachable {
     }
 
     async fn subscribe(&self, _subject: &Subject) -> Result<Subscription> {
+        Err(ErrorKind::NatsDisconnected.into())
+    }
+
+    async fn subscribe_thread_wakes(&self) -> Result<Subscription> {
         Err(ErrorKind::NatsDisconnected.into())
     }
 
@@ -282,19 +309,22 @@ impl Server {
         self.0.deliver(subject, payload);
     }
 
-    /// Tell every reader of `subject` that frames may be missing, as a broker
-    /// reconnect does. Each call is one gap.
+    /// Tell every reader of `subject` that frames may be missing, as a gap
+    /// marker on it does. Each call is one gap.
     pub fn gap(&self, subject: &Subject) {
-        self.0.send(subject, Received::Gap);
+        self.0.send(subject, &Received::Gap);
     }
 
-    /// How many readers `subject` has right now; a dropped subscription stops
-    /// counting at once.
+    /// How many readers a message on `subject` reaches right now, the
+    /// thread-wake wildcard's included; a dropped subscription stops counting
+    /// at once.
     #[must_use]
     pub fn readers(&self, subject: &Subject) -> usize {
-        self.0
-            .channels()
-            .get(&crate::nats::spelling(subject))
-            .map_or(0, |channel| channel.sender.receiver_count())
+        let channels = self.0.channels();
+        spellings(subject)
+            .iter()
+            .filter_map(|spelling| channels.get(spelling))
+            .map(|channel| channel.sender.receiver_count())
+            .sum()
     }
 }

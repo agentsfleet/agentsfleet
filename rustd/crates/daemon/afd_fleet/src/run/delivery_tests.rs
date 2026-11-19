@@ -41,7 +41,7 @@ async fn a_wake_names_the_owed_row_on_the_outbound_subject() {
     let log = Capture::install();
     let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus opens");
     let mut workers = bus
-        .subscribe(&Subject::OutboundWake)
+        .subscribe(&Subject::DeliveryWake)
         .await
         .expect("the in-process bus subscribes");
     let owed = test_dead::id(2);

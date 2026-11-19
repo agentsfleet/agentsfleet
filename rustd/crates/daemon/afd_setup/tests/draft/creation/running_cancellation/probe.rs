@@ -43,6 +43,10 @@ impl Bus for BeforePublish {
         self.bus.subscribe(subject).await
     }
 
+    async fn subscribe_thread_wakes(&self) -> Result<Subscription> {
+        self.bus.subscribe_thread_wakes().await
+    }
+
     async fn shutdown(&self) -> Result<()> {
         self.bus.shutdown().await
     }

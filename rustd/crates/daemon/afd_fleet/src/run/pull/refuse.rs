@@ -173,7 +173,7 @@ impl RunService {
         if let Ended::Now(closed) = ended {
             let publication = self.runs.publish_completion(&closed, None).await;
             afd_bus::observe_notification(
-                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                &afd_bus::Subject::ThreadItems(closed.row.fleet_id.clone()),
                 publication,
             );
         }

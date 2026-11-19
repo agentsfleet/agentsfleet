@@ -168,7 +168,7 @@ report transaction -> usage + terminal history + session checkpoint
                   -> folded messages' events get the run's reply
        | commit
        +-> live activity
-       +-> af.outbound.wake ping -> outbound worker claims the row -> connector thread
+       +-> af.delivery.wake ping -> outbound worker claims the row -> connector thread
 ```
 
 A lost notification changes priority only. Each replica's recovery probe reads Postgres every 5 s (`OFFER_FALLBACK_TICK`).
@@ -176,7 +176,7 @@ An expired slot exposes the same unsettled admission with its original event and
 
 Outbound delivery claims durable `thread.deliveries` rows in Postgres.
 The report writes each row with a fresh `receipt` token and an already-lapsed claim, so any replica may claim it at once.
-A lost `af.outbound.wake` ping costs latency only: every replica also claims every 30 s (`CLAIM_PASS`).
+A lost `af.delivery.wake` ping costs latency only: every replica also claims every 30 s (`CLAIM_PASS`).
 
 The poster stamps `delivered_at` only after successful delivery. Abandoning an exhausted job must not mark its answer delivered.
 
@@ -272,11 +272,10 @@ Subject spellings come from `afd_bus::nats::spelling` (`rustd/crates/daemon/afd_
 |---|---|---|---|
 | `fleet.admissions` | Postgres ledger | Admission and run/report paths | Durable inbound queue, ordered by admission `sequence` within a fleet. |
 | `thread.deliveries` | Postgres rows, claimed per lane | Outbound worker | Delivers replies; at most one row per `(provider, workspace_id)` lane is held at a time. |
-| `af.fleet.<fleet_id>.tail` | Core NATS subject | Each process's NATS hub | Live frames; a gap or reconnect recovers durable history through the events list. |
-| `af.draft.<draft_id>.events` | Core NATS subject | Draft progress stream | Authoring progress; a lost subscription sends `draft.resync`. |
-| `af.wake.<shard>` | Sixteen core NATS subjects | The gateway's offer scheduler | Starts an offer pass and puts its fleet first. The local queue holds at most 64 distinct fleets by default. |
+| `af.thread.<thread_id>.items` | Core NATS subject | Each process's NATS hub | A fleet's live frames, where a gap or reconnect recovers durable history through the events list, or a draft's authoring progress, where a lost subscription sends `draft.resync`. |
+| `af.thread.<thread_id>.wake` | Core NATS subject, read through one `af.thread.*.wake` wildcard per replica | The gateway's offer scheduler | Starts an offer pass and puts its thread first. The local queue holds at most 64 distinct threads by default. |
 | `af.runner.<runner_id>.cmd` | Core NATS subject | The runner's gateway session | `Recheck` or `Cancel` for one runner host; Postgres stays the authority (`afd_gateway/src/session/commands.rs`). |
-| `af.outbound.wake` | Core NATS subject | Outbound worker | Pings a claim after a report commits; a lost ping waits for the 30 s claim pass. |
+| `af.delivery.wake` | Core NATS subject | Outbound worker | Pings a claim after a report commits; a lost ping waits for the 30 s claim pass. |
 
 A development namespace prefixes every subject with `dev.<namespace>.` (`afd_bus/src/nats/config.rs`).
 
@@ -303,12 +302,12 @@ The runner holds no bus connection; work reaches it down its one stream.
 ```text
 agentsfleetd replica
   one async-nats client (seeds from NATS_URL)
-    +-- publish --> af.fleet.<fleet_id>.tail, af.draft.<draft_id>.events,
-    |               af.wake.<shard>, af.runner.<runner_id>.cmd, af.outbound.wake
+    +-- publish --> af.thread.<thread_id>.items, af.thread.<thread_id>.wake,
+    |               af.runner.<runner_id>.cmd, af.delivery.wake
     +-- hub: one native subscription per subject with local readers
     |     +-- pump --> bounded broadcast --> per-fleet or workspace SSE response bodies
-    |     +-- af.wake.<shard>, sixteen --> bounded wake queue
-    |     +-- af.outbound.wake --> outbound worker --> claim from thread.deliveries
+    |     +-- af.thread.*.wake, one wildcard --> bounded wake queue
+    |     +-- af.delivery.wake --> outbound worker --> claim from thread.deliveries
     +-- gap watcher --> reconnect, slow consumer, Af-Gap markers, af.bus.gap
 ```
 
@@ -728,7 +727,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
                  /live/v1/workspaces/{id}/turns/stream SSE connection
                  shared by the workspace's fleet tiles.
                → agentsfleetd authorizes the workspace and fans in only its
-                 readable af.fleet.<fleet_id>.tail subjects through bounded
+                 readable af.thread.<thread_id>.items subjects through bounded
                  per-subject broadcast receivers.
                → frame kinds and control frames: API reference › Workspaces
                  (Stream live activity for a whole workspace).
@@ -774,7 +773,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 | Layer | Tenant isolation mechanism |
 |---|---|
 | Postgres (`fleet.fleets`, `fleet.events`, etc.) | Enforced in the application, not by the database. `afd_tenant`'s `AUTHORIZE_WORKSPACE` resolves the caller's tenant and the workspace's owner in one statement, and `afd_http`'s ownership layer runs it in front of every route whose path carries a workspace, so no handler can forget it. Every control-plane statement filters by `workspace_id` or `fleet_id` explicitly. **No `ROW LEVEL SECURITY` policy is declared anywhere in `schema/`, and no `current_setting('app.workspace_id')` is read.** Re-adding database policies would need a transaction per request, because `sqlx` returns a connection to the pool between requests and a session-level setting would leak one tenant's identifier onto the next. |
-| NATS live activity (`af.fleet.<fleet_id>.tail`) | Subject named by fleet UUID (globally unique); no cross-tenant collision possible. NATS has no per-subject authorization here. The protection has the row above's shape. The subject is unguessable, and every path to it passes the ownership check. |
+| NATS live activity (`af.thread.<thread_id>.items`) | Subject named by thread UUID (globally unique); no cross-tenant collision possible. NATS has no per-subject authorization here. The protection has the row above's shape. The subject is unguessable, and every path to it passes the ownership check. |
 | Runner ↔ control plane | The `agt_r` token authenticates the runner per call, and a run carries one fleet's event and scoped secrets ([`runner_fleet.md`](./runner_fleet.md) §"Registering a runner"). |
 | Runner supervisor and sandbox | Secrets stay in the supervisor, substituted at send time, and a sandbox holds no credential ([`runner_execution.md`](./runner_execution.md) §"Credentials"). |
 

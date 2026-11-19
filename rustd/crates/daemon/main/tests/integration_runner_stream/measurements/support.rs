@@ -128,7 +128,7 @@ impl Tail {
     pub(super) async fn open(scene: &Scenario) -> Result<Self> {
         let bus = afd_bus::test_util::lane().await?;
         let subscription = bus
-            .subscribe(&Subject::FleetTail(scene.fleet.clone()))
+            .subscribe(&Subject::ThreadItems(scene.fleet.clone()))
             .await?;
         crate::tail::settle().await;
         Ok(Self {

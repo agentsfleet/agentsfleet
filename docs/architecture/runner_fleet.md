@@ -571,7 +571,7 @@ agentsfleet-runner supervisor: admit the policy, take the fleet's turn, load mem
    |
 report -> agentsfleetd: one transaction (settle + terminal state + checkpoint
           + freed slot + the OWED DELIVERY), then, after it commits, the
-          activity frame and the af.outbound.wake ping
+          activity frame and the af.delivery.wake ping
 ```
 
 The admission settlement, usage, terminal event, checkpoint, slot release and outbound delivery commit together.
@@ -759,7 +759,7 @@ At most four batches are queued or in flight. Past that the next batch waits wit
 
 Only a batch that filled while it waited is dropped, counted and logged as `activity_batch_dropped`. A post that fails loses its batch, logs `activity_frame_write_failed` and counts its frames as dropped (`afr_supervisor`'s activity module).
 
-`afd_fleet`'s activity path publishes the ordered batch on the fleet's `af.fleet.<fleet_id>.tail` subject. Each process's hub shares one NATS connection across downstream Server-Sent Events (SSE) viewers.
+`afd_fleet`'s activity path publishes the ordered batch on the fleet's `af.thread.<thread_id>.items` subject. Each process's hub shares one NATS connection across downstream Server-Sent Events (SSE) viewers.
 
 ```text
 agent loop -sink-> activity pump -POST .../activity (no ack)-> agentsfleetd -publish-> NATS -> SSE

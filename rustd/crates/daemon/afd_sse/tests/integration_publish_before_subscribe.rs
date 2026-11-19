@@ -60,7 +60,7 @@ async fn frame_before_interest_is_covered_by_backfill() -> Fallible {
         let fleet = Uuid7::parse(&format!("0195b4ba-8d3a-7f13-8abc-{attempt:012x}"))?;
         let mut tail = live.tail_of(&fleet).await;
         publisher
-            .publish(&Subject::FleetTail(fleet.clone()), FRAME)
+            .publish(&Subject::ThreadItems(fleet.clone()), FRAME)
             .await?;
         let hello = tail.next().await.ok_or("the tail opens")?;
         let catching_up = tail.next().await.ok_or("the tail announces the backfill")?;

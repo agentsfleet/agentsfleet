@@ -721,9 +721,6 @@ http = { version = "1.5.0", default-features = false, features = ["std"] }
 # because `unused_crate_dependencies` makes a crate's manifest a statement about
 # what that crate actually names in its own types.
 bytes = { version = "1.12.1", default-features = false, features = ["std"] }
-# The checksum `afd_bus::wake` shards a fleet's ready wake by, so every
-# replica maps one fleet to the same wake subject.
-crc16 = { version = "0.4.0", default-features = false }
 # A sharded concurrent map: a lookup or a retire locks one shard, not the
 # whole map, and the entry API holds that shard for exactly the check-then-
 # act a per-key race needs. Where a map is keyed by something many tasks

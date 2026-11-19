@@ -216,7 +216,7 @@ async fn time_every_stream(publisher: &Handle, fleets: &[Uuid7], watch: &Watch) 
     // Concurrently, as fleets publish in production: each from its own task,
     // never one waiting on another's reply.
     let sent = futures_util::future::join_all(fleets.iter().map(|fleet| {
-        let subject = afd_bus::Subject::FleetTail(fleet.clone());
+        let subject = afd_bus::Subject::ThreadItems(fleet.clone());
         let frame = &frame;
         async move { publisher.publish(&subject, frame).await }
     }))
@@ -290,7 +290,7 @@ async fn probe_until_heard(
             if !flag.load(Ordering::Relaxed) {
                 silent += 1;
                 publisher
-                    .publish(&afd_bus::Subject::FleetTail(fleet.clone()), PROBE)
+                    .publish(&afd_bus::Subject::ThreadItems(fleet.clone()), PROBE)
                     .await?;
             }
         }

@@ -81,7 +81,7 @@ client          agentsfleetd                       Postgres                     
   │                 │ insert ────────────────────────►│ admission row (accepted)     │
   │                 │◄────────────────────────────────│ live-run facts               │
   │◄────────────────│ started | folded | queued       │                              │
-  │                 │ ping af.wake.<shard> (lossy)    │                              │
+  │                 │ ping af.thread.<id>.wake (lossy)│                              │
   │                 │──── offer on the runner stream ─────────────────────────────►│ idle fleet: start
   │                 │                                 │◄─ claim pending input ───────│ durable-task run:
   │                 │                                 │   under the fence (#803)     │ next safe boundary
@@ -121,9 +121,9 @@ A lost run in the batch never blocks the others. Each answer is fenced, and each
 ### The live tail
 
 ```
-runner ─ Activity frames on its stream ─► replica A ─ publish af.fleet.<id>.tail ─► NATS
-                                                                                     │
-browser ◄─ SSE ◄─ replica B ◄────────────────────── subscribe ───────────────────────┘
+runner ─ Activity frames on its stream ─► replica A ─ publish af.thread.<id>.items ─► NATS
+                                                                                       │
+browser ◄─ SSE ◄─ replica B ◄────────────────────── subscribe ─────────────────────────┘
           backfill once from fleet.events after subscribing
           reconnect or slow consumer ─► gap ─► catching_up ─► backfill again
 ```
@@ -162,8 +162,8 @@ Every NATS subject is at most once. Each one names its Postgres backstop.
 
 | Subject | A lost message costs | Backstop |
 |---|---|---|
-| `af.fleet.<id>.tail`, `af.draft.<id>.events` | Frames missing on screen | Gap signal, then a backfill from Postgres |
-| `af.wake.<shard>` | Work offered up to 5 s late | Each replica's 5 s recovery probe (`OFFER_FALLBACK_TICK`) |
+| `af.thread.<id>.items` | Frames missing on screen | Gap signal, then a backfill from Postgres |
+| `af.thread.<id>.wake` | Work offered up to 5 s late | Each replica's 5 s recovery probe (`OFFER_FALLBACK_TICK`) |
 | `af.runner.<id>.cmd` | A cancel or folded input delayed | The cancel mark, and pending input read at each model call |
 | Outbound ping | A reply sent late | The 30 s deliveries scan |
 

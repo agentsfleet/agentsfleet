@@ -1,7 +1,7 @@
 //! What the gate plane tells the fleet's live tail: a human has been asked.
 //!
 //! A park writes its row and its reference and then says so on the fleet's
-//! tail subject, `af.fleet.{id}.tail`, count included, so a console watching the fleet
+//! items subject, `af.thread.{id}.items`, count included, so a console watching the fleet
 //! shows the gate waiting without a read. Beside the lifecycle suite rather
 //! than inside it, so each file stays about one property.
 #![cfg(feature = "test-util")]
@@ -47,7 +47,7 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     let bus = bus().await;
     let gates = Gates::new(fixture.database.clone(), bus.clone(), Entropy::new());
     let mut tail = bus
-        .subscribe(&Subject::FleetTail(fixture.fleet.clone()))
+        .subscribe(&Subject::ThreadItems(fixture.fleet.clone()))
         .await
         .expect("the lane's NATS subscribes");
     let event = mint_id();

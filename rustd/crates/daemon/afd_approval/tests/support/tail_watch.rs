@@ -41,7 +41,7 @@ pub(crate) const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 /// returns, so every frame published after it reaches the tail.
 pub(crate) async fn tail(lane: &Lane) -> Subscription {
     lane.bus
-        .subscribe(&Subject::FleetTail(lane.fleet.clone()))
+        .subscribe(&Subject::ThreadItems(lane.fleet.clone()))
         .await
         .expect("the lane's bus takes a subscriber")
 }

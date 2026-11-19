@@ -70,7 +70,7 @@ async fn saved_and_ready(reader: &mut Subscription) {
 /// The saved fleet's live tail.
 fn tail(fleet: &Fleet) -> Subject {
     let id = fleet.saved["id"].as_str().expect("fleet ID");
-    Subject::FleetTail(Uuid7::parse(id).expect("the saved fleet ID is a UUIDv7"))
+    Subject::ThreadItems(Uuid7::parse(id).expect("the saved fleet ID is a UUIDv7"))
 }
 
 async fn receive(reader: &mut Subscription) -> String {

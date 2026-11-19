@@ -140,7 +140,7 @@ impl Runs {
     pub async fn wake_delivery(&self, owed: &Uuid7) {
         if let Err(error) = self
             .streams()
-            .publish(&afd_bus::Subject::OutboundWake, owed.as_str())
+            .publish(&afd_bus::Subject::DeliveryWake, owed.as_str())
             .await
         {
             let error_code = error.code().as_str();

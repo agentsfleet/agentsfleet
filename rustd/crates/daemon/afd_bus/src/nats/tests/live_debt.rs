@@ -8,9 +8,7 @@ use std::{
 
 use af_core::test_util::trace::Capture;
 
-use super::{
-    BOUND, GAP_ALL, TAIL, TestResult, client_still_dialling, client_that_has_given_up, named,
-};
+use super::{BOUND, GAP, TAIL, TestResult, client_still_dialling, client_that_has_given_up, named};
 use crate::nats::{Tuning, debt::Owed, hub::Channels, signals};
 
 /// Wait until `capture` holds `count` events named `name`.
@@ -35,7 +33,7 @@ async fn a_publish_that_fails_while_connected_is_paid_without_a_reconnect() -> T
         Arc::clone(&channels),
         Arc::clone(&signals),
         everyone,
-        GAP_ALL.to_owned(),
+        GAP.to_owned(),
     ));
 
     // A publish that timed out on a full client queue: no disconnect follows.
@@ -69,7 +67,7 @@ async fn a_marker_that_fails_while_connected_is_retried_a_deadline_later() -> Te
         Arc::new(Channels::new(8)),
         Arc::clone(&signals),
         everyone,
-        GAP_ALL.to_owned(),
+        GAP.to_owned(),
     ));
 
     signals.record(TAIL, false, Instant::now());

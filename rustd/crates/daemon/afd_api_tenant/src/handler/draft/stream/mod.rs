@@ -49,7 +49,7 @@ pub(crate) async fn open<D: Services>(
         Refusal::at_stream_ceiling(live.carrying(), live.capacity())
     })?;
     let link = live
-        .link(afd_bus::Subject::DraftEvents(draft.clone()))
+        .link(afd_bus::Subject::ThreadItems(draft.clone()))
         .await;
     let stream = body::frames(
         services.authoring().clone(),

@@ -26,7 +26,7 @@ const FLEET_ARCHIVED: &str = afd_fleet_lifecycle::FleetStatus::Archived.as_str()
 /// The line a lost notification is logged under.
 const RING_FAILED: &str = "turn_wake_ring_failed";
 
-/// What the server half sends down a wake shard after the rings it holds.
+/// What the server half sends on the wake wildcard after the rings it holds.
 const DRAINED: &str = "drained";
 
 /// A archived fleet and the rows above it, removed by [`Seeded::cleanup`].
@@ -121,41 +121,33 @@ impl Seeded {
     }
 }
 
-/// A reader on every wake shard of `bus`, opened before anything rings.
-async fn wake_readers(bus: &Handle) -> Vec<Subscription> {
-    let mut readers = Vec::new();
-    for shard in 0..afd_bus::wake::SHARDS {
-        readers.push(
-            bus.subscribe(&Subject::Wake(shard))
-                .await
-                .expect("an open in-process bus takes a reader"),
-        );
-    }
-    readers
+/// The one reader of every thread's wake on `bus`, opened before anything rings.
+async fn wake_reader(bus: &Handle) -> Subscription {
+    bus.subscribe_thread_wakes()
+        .await
+        .expect("an open in-process bus takes a reader")
 }
 
-/// Every fleet rung on `readers` so far.
+/// Every thread rung on `reader` so far.
 ///
-/// A reader sees one shard's messages in the order they were sent, so the
-/// marker `server` sends last arrives after every ring already on that shard:
-/// what comes before it is all the shard holds, with no deadline to guess.
-async fn rung(server: &Server, readers: &mut [Subscription]) -> Vec<String> {
+/// The reader sees the wakes in the order they were sent, so the marker
+/// `server` sends last arrives after every ring already sent: what comes
+/// before it is all the reader holds, with no deadline to guess.
+async fn rung(server: &Server, reader: &mut Subscription) -> Vec<String> {
     let mut rung = Vec::new();
-    for (shard, reader) in (0..afd_bus::wake::SHARDS).zip(readers.iter_mut()) {
-        server.publish(&Subject::Wake(shard), DRAINED);
-        loop {
-            let received = reader
-                .recv()
-                .await
-                .expect("an open in-process bus keeps its readers");
-            let Received::Message(message) = received else {
-                unreachable!("a reader a few rings deep cannot lag, got {received:?}");
-            };
-            if message.payload.as_str() == DRAINED {
-                break;
-            }
-            rung.push(message.payload.as_str().to_owned());
+    server.publish(&Subject::ThreadWake(mint_id()), DRAINED);
+    loop {
+        let received = reader
+            .recv()
+            .await
+            .expect("an open in-process bus keeps its readers");
+        let Received::Message(message) = received else {
+            unreachable!("a reader a few rings deep cannot lag, got {received:?}");
+        };
+        if message.payload.as_str() == DRAINED {
+            break;
         }
+        rung.push(message.payload.as_str().to_owned());
     }
     rung
 }
@@ -174,13 +166,13 @@ async fn a_retry_republishes_a_lost_notification_for_the_same_admission() {
     drop(capture);
     assert!(!first.replayed, "the first call inserts the row");
     assert_eq!(
-        ring.field("fleet_id"),
+        ring.field("thread_id"),
         Some(fleet.fleet.as_str()),
         "the first notification was attempted, and lost"
     );
 
     let (bus, server) = afd_bus::test_util::detached().expect("an in-process bus needs no broker");
-    let mut readers = wake_readers(&bus).await;
+    let mut reader = wake_reader(&bus).await;
     let admissions = Turns::for_tests(fleet.database.clone(), bus);
     let resent = fleet.admit(&admissions, key.as_str()).await;
     assert!(resent.replayed, "the resend replays the key");
@@ -189,7 +181,7 @@ async fn a_retry_republishes_a_lost_notification_for_the_same_admission() {
         "the first call's id stands"
     );
     assert_eq!(
-        rung(&server, &mut readers).await,
+        rung(&server, &mut reader).await,
         [fleet.fleet.as_str()],
         "the retry publishes again"
     );

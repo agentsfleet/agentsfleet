@@ -96,7 +96,7 @@ impl Live {
     }
 
     pub(super) fn subject(&self) -> Subject {
-        Subject::DraftEvents(self.draft.clone())
+        Subject::ThreadItems(self.draft.clone())
     }
 
     /// How many viewers hold a subscription on the draft's events right now.

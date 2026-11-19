@@ -92,7 +92,7 @@ impl Worker {
             Zeroizing::new(serde_json::to_string(&frame).map_err(crate::error::raise::stored)?);
         self.streams
             .publish(
-                &afd_bus::Subject::DraftEvents(frame.draft_id.clone()),
+                &afd_bus::Subject::ThreadItems(frame.draft_id.clone()),
                 &payload,
             )
             .await

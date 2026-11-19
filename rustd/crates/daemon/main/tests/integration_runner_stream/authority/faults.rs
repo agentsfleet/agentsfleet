@@ -1,6 +1,5 @@
-//! Only the selected runner's commands are discarded; every other signal uses the real Bus.
+//! Only one subject's publishes are discarded; every other signal uses the real Bus.
 
-use af_core::id::Uuid7;
 use afd_bus::{Bus, Handle, Subject, Subscription};
 use async_trait::async_trait;
 use std::sync::{
@@ -9,18 +8,22 @@ use std::sync::{
 };
 
 #[derive(Debug)]
-struct LostCommands {
+struct Dropping {
     bus: Handle,
-    runner: Uuid7,
+    subject: Subject,
     lost: Arc<AtomicUsize>,
 }
 
-pub(super) fn dropping(bus: Handle, runner: Uuid7) -> (Handle, Arc<AtomicUsize>) {
+/// `bus`, with every publish on `subject` counted and discarded.
+pub(in crate::integration_runner_stream) fn dropping(
+    bus: Handle,
+    subject: Subject,
+) -> (Handle, Arc<AtomicUsize>) {
     let lost = Arc::new(AtomicUsize::new(0));
     (
-        Handle::new(LostCommands {
+        Handle::new(Dropping {
             bus,
-            runner,
+            subject,
             lost: Arc::clone(&lost),
         }),
         lost,
@@ -28,9 +31,9 @@ pub(super) fn dropping(bus: Handle, runner: Uuid7) -> (Handle, Arc<AtomicUsize>)
 }
 
 #[async_trait]
-impl Bus for LostCommands {
+impl Bus for Dropping {
     async fn publish(&self, subject: &Subject, payload: &str) -> afd_bus::Result<()> {
-        if matches!(subject, Subject::RunnerCommand(runner) if runner == &self.runner) {
+        if subject == &self.subject {
             self.lost.fetch_add(1, Ordering::SeqCst);
             return Ok(());
         }
@@ -46,6 +49,10 @@ impl Bus for LostCommands {
 
     async fn subscribe(&self, subject: &Subject) -> afd_bus::Result<Subscription> {
         self.bus.subscribe(subject).await
+    }
+
+    async fn subscribe_thread_wakes(&self) -> afd_bus::Result<Subscription> {
+        self.bus.subscribe_thread_wakes().await
     }
 
     async fn shutdown(&self) -> afd_bus::Result<()> {

@@ -20,7 +20,7 @@ async fn fresh_issue_and_unissued_reservation_publish_no_restart() -> Checked {
     let mut reader = chat
         .fixtures
         .bus()
-        .subscribe(&Subject::FleetTail(chat.fleet().clone()))
+        .subscribe(&Subject::ThreadItems(chat.fleet().clone()))
         .await?;
     chat.run(&chat.runner, clock::now()).await;
     assert_eq!(restarts(&chat, &mut reader).await?, [] as [Value; 0]);
@@ -49,7 +49,7 @@ async fn one_hundred_contending_claimers_publish_one_committed_restart() -> Chec
     let mut reader = chat
         .fixtures
         .bus()
-        .subscribe(&Subject::FleetTail(chat.fleet().clone()))
+        .subscribe(&Subject::ThreadItems(chat.fleet().clone()))
         .await?;
     let claims: Vec<_> = join_all((0..100).map(|_| chat.claim(&chat.spare)))
         .await
@@ -108,7 +108,7 @@ async fn an_issue_refused_after_reservation_publishes_no_restart() -> Checked {
     let mut reader = chat
         .fixtures
         .bus()
-        .subscribe(&Subject::FleetTail(chat.fleet().clone()))
+        .subscribe(&Subject::ThreadItems(chat.fleet().clone()))
         .await?;
     let answer = chat
         .fixtures
@@ -145,7 +145,7 @@ async fn restarts(chat: &Chat, reader: &mut Subscription) -> Checked<Vec<Value>>
     let barrier = serde_json::json!({"test_barrier":afd_db::test_util::mint_id()}).to_string();
     chat.fixtures
         .bus()
-        .publish(&Subject::FleetTail(chat.fleet().clone()), &barrier)
+        .publish(&Subject::ThreadItems(chat.fleet().clone()), &barrier)
         .await?;
     tokio::time::timeout(Duration::from_secs(5), async {
         let mut frames = Vec::new();

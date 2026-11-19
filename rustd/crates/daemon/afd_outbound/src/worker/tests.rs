@@ -106,7 +106,7 @@ async fn a_wake_that_cannot_subscribe_is_logged() -> TestResult {
 async fn a_closed_wake_is_logged_and_dropped() -> TestResult {
     let capture = Capture::install();
     let (bus, _server) = afd_bus::test_util::detached()?;
-    let subscription = bus.subscribe(&Subject::OutboundWake).await?;
+    let subscription = bus.subscribe(&Subject::DeliveryWake).await?;
     bus.shutdown().await?;
     let mut wake = Some(subscription);
 

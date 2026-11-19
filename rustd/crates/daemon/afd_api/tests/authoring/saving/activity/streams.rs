@@ -17,7 +17,7 @@ pub(super) struct Reader {
 
 impl Reader {
     pub(super) async fn open(saved: &Saved, fleet: &Uuid7) -> Self {
-        let subject = Subject::FleetTail(fleet.clone());
+        let subject = Subject::ThreadItems(fleet.clone());
         let subscription = saved
             .case
             .bus

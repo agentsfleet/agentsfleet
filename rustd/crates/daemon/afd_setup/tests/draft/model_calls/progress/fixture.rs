@@ -80,7 +80,7 @@ impl Live {
 
     pub(super) async fn start(f: &Fixture, attempt: &Attempt) -> Self {
         let (bus, server) = afd_bus::test_util::detached().expect("in-process bus");
-        let subject = Subject::DraftEvents(attempt.draft.id.clone());
+        let subject = Subject::ThreadItems(attempt.draft.id.clone());
         let reader = bus.subscribe(&subject).await.expect("private subscription");
         let (sender, receiver) = mpsc::channel(8);
         let provider = Arc::new(Provider {

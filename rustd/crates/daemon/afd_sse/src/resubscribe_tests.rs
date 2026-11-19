@@ -52,7 +52,7 @@ async fn tail_sends_catching_up_once_after_subscribing() -> TestResult {
         "{}",
         caught_up.data
     );
-    server.publish(&Subject::FleetTail(fleet), r#"{"kind":"turn_admitted"}"#);
+    server.publish(&Subject::ThreadItems(fleet), r#"{"kind":"turn_admitted"}"#);
     let admitted = tail.next().await.ok_or("the published frame")?;
     assert!(
         admitted.data.to_string().contains("turn_admitted"),
@@ -152,6 +152,10 @@ impl Bus for Flaky {
         }
     }
 
+    async fn subscribe_thread_wakes(&self) -> afd_bus::Result<Subscription> {
+        self.live.subscribe_thread_wakes().await
+    }
+
     async fn shutdown(&self) -> afd_bus::Result<()> {
         self.live.shutdown().await
     }
@@ -181,7 +185,7 @@ async fn a_tail_that_failed_to_subscribe_recovers_with_catching_up() -> TestResu
         "catching_up",
         "the viewer backfills the outage"
     );
-    server.publish(&Subject::FleetTail(fleet), r#"{"kind":"turn_admitted"}"#);
+    server.publish(&Subject::ThreadItems(fleet), r#"{"kind":"turn_admitted"}"#);
     let admitted = tail.next().await.ok_or("the published frame")?;
     assert!(admitted.data.to_string().contains("turn_admitted"));
     Ok(())
@@ -196,7 +200,7 @@ async fn a_gap_in_the_tail_is_announced() -> TestResult {
     for _ in 0..2 {
         tail.next().await.ok_or("the opening")?;
     }
-    server.gap(&Subject::FleetTail(fleet));
+    server.gap(&Subject::ThreadItems(fleet));
     let gap = tokio::time::timeout(Duration::from_secs(1), tail.next())
         .await?
         .ok_or("the gap")?;
@@ -216,7 +220,7 @@ async fn a_lagging_viewer_is_told_how_much_it_missed() -> TestResult {
     // Far past any reader's buffer, published before the viewer reads.
     for n in 0..20_000 {
         server.publish(
-            &Subject::FleetTail(fleet.clone()),
+            &Subject::ThreadItems(fleet.clone()),
             &format!(r#"{{"n":{n}}}"#),
         );
     }
@@ -243,7 +247,7 @@ async fn a_link_on_a_closed_bus_is_never_retried() -> TestResult {
     let (bus, _server) = afd_bus::test_util::detached()?;
     bus.shutdown().await?;
     let live = Live::new(bus, StreamLimit::new(4));
-    let mut link = live.link(Subject::FleetTail(Uuid7::parse(FLEET)?)).await;
+    let mut link = live.link(Subject::ThreadItems(Uuid7::parse(FLEET)?)).await;
     assert!(link.is_closed());
     assert!(!link.reopen_if_due().await, "a closed bus is final");
     assert!(link.subscription().is_none());
@@ -258,7 +262,7 @@ async fn a_refused_link_retries_only_once_its_wait_has_passed() -> TestResult {
         live: inner,
     });
     let live = Live::new(flaky, StreamLimit::new(4));
-    let mut link = live.link(Subject::FleetTail(Uuid7::parse(FLEET)?)).await;
+    let mut link = live.link(Subject::ThreadItems(Uuid7::parse(FLEET)?)).await;
     assert!(link.subscription().is_none() && !link.is_closed());
     assert!(!link.reopen_if_due().await, "not before the first wait");
     tokio::time::advance(Duration::from_millis(250)).await;
@@ -271,7 +275,7 @@ async fn a_refused_link_retries_only_once_its_wait_has_passed() -> TestResult {
 async fn a_transient_loss_is_retried_at_once_and_a_closed_one_never() -> TestResult {
     let (bus, _server) = afd_bus::test_util::detached()?;
     let live = Live::new(bus, StreamLimit::new(4));
-    let mut link = live.link(Subject::FleetTail(Uuid7::parse(FLEET)?)).await;
+    let mut link = live.link(Subject::ThreadItems(Uuid7::parse(FLEET)?)).await;
     let Err(elapsed) = tokio::time::timeout(Duration::ZERO, std::future::pending::<()>()).await
     else {
         return Err("a zero deadline elapses".into());

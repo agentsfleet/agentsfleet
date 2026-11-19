@@ -232,7 +232,7 @@ pub fn delivery_stage(stage: DeliveryStage, elapsed: core::time::Duration) {
     }
 }
 
-/// Records a wake ring (`af.wake.<shard>`) that failed to publish, or a gap a
+/// Records a wake ring (`af.thread.<id>.wake`) that failed to publish, or a gap a
 /// replica's wake subscription reported. The work behind it is never lost: the
 /// next Postgres probe still finds it.
 pub fn ready_wake_failed(wake: ReadyWake) {

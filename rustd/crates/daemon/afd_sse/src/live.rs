@@ -119,7 +119,9 @@ impl Live {
     /// the stream and keeps retrying, so the viewer is never left with only
     /// heartbeats.
     pub async fn tail_of(&self, fleet: &af_core::id::Uuid7) -> BoxStream<'static, Frame> {
-        let link = self.link(afd_bus::Subject::FleetTail(fleet.clone())).await;
+        let link = self
+            .link(afd_bus::Subject::ThreadItems(fleet.clone()))
+            .await;
         let opening = [
             Frame::hello(&[fleet.to_string()], &BTreeMap::new()),
             Frame::catching_up(0),

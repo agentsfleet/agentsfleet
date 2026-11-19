@@ -150,7 +150,7 @@ impl Runs {
         }
         if let Err(unreachable_queue) = streams
             .publish_batch(
-                &afd_bus::Subject::FleetTail(target.fleet_id.clone()),
+                &afd_bus::Subject::ThreadItems(target.fleet_id.clone()),
                 &payloads,
             )
             .await
