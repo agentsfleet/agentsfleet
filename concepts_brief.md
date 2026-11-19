@@ -77,7 +77,7 @@ Firecracker alone does not establish a performance improvement over the current 
 
 Use real guests for cancellation, resource-limit, network-denial, command-disconnection and worker-loss proofs.
 Protect each retained task's referenced save; fleet-wide cleanup must not evict another unfinished incident's only generation.
-The [review decisions](docs/architecture/sandbox_evaluation.md#decisions-raised-by-the-independent-concept-review) retain unresolved production limits and compatibility obligations.
+The [review decisions](docs/architecture/sandbox_evaluation.md#decisions-raised-by-the-independent-concept-review) retain unresolved production limits and compatibility deliveries.
 
 ## Goals vs. Non-Goals
 
