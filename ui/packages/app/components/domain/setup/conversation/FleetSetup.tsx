@@ -27,10 +27,12 @@ export function FleetSetup({client, view, workspace}: {client: DraftClient; view
     const activity = setupActivity(row);
     return activity && (activity.kind === ACTIVITY_KIND.setupSaved || activity.kind === ACTIVITY_KIND.setupReady) && activity.revision === revision;
   });
+  // The save heading is the page's `h2`; without it the questions take that level, so no heading skips one.
+  const saveHeading = revision && !recorded ? saveDoneText(revision) : null;
   return <Section className="ph-no-capture ph-no-record my-md gap-sm py-xs" aria-label="Fleet setup">
-    {recorded || !revision ? null : <h2 className="text-body font-semibold text-foreground">{saveDoneText(revision)}</h2>}
+    {saveHeading ? <h2 className="text-body font-semibold text-foreground">{saveHeading}</h2> : null}
     {checks.length ? <SetupChecks checks={checks} label="Configuration readiness" workspace={workspace} definition={definition} onRefresh={() => client.refreshFleetSetup(true)} /> : null}
-    {questions ? <SetupQuestions definition={questions} label={questionLabel(Boolean(proposed), revision)} /> : null}
+    {questions ? <SetupQuestions definition={questions} label={questionLabel(Boolean(proposed), revision)} heading={saveHeading ? "h3" : "h2"} /> : null}
     <p className="text-label text-muted-foreground">{editing ? "Keep chatting. Save changes when you’re ready."
       : revision ? "You can keep chatting here to change the setup."
       : "Keep chatting to refine it. Save and publish when you’re ready."}</p>
