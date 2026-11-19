@@ -51,7 +51,7 @@ export const runnersCommand = (kind: RunnerKind, visibility: Visibility) => {
     ),
     since: sinceFlag, until: eventTimeFlag("until", false),
   }).pipe(Command.withDescription(`Read runner activity (${readScope})`), guardedHandler(({id, limit, startingAfter, eventType, since, until}) =>
-    runnerHistory(id, RunnerHistory.Events, {limit: opt(limit), startingAfter: opt(startingAfter), eventType: opt(eventType), since: opt(since), until: opt(until)})));
+    runnerHistory(id, RunnerHistory.History, {limit: opt(limit), startingAfter: opt(startingAfter), eventType: opt(eventType), since: opt(since), until: opt(until)})));
   const runs = Command.make("runs", {...runnerId, ...platformPagingFlags,
     workspace: requiredIdFlag("workspace", "Filter by workspace").pipe(Flag.optional),
     fleet: requiredTextFlag("fleet", "Filter by fleet ID or exact name").pipe(Flag.optional),

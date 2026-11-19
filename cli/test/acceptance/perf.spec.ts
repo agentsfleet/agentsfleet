@@ -10,7 +10,7 @@
  * on ordinary network jitter against the shared DEV tenant. The budget
  * rationale lives on PER_COMMAND_BUDGET_MS below.
  *
- * It also walks the `events` cursor pages on a freshly-seeded fleet to
+ * It also walks the `turns` cursor pages on a freshly-seeded fleet to
  * prove the pagination read-path stays bounded per page.
  *
  * Identity / hydration mirror lifecycle-with-token.spec.ts exactly: mint a
@@ -23,7 +23,7 @@
  * `AGENTSFLEET_ACCEPTANCE_TARGET` is an https URL; otherwise every test is
  * skipped — matches the unit runner's local invariant.
  *
- * Mutating state (the seeded fleet for the events walk) is run-prefix
+ * Mutating state (the seeded fleet for the turns walk) is run-prefix
  * scoped via ACCEPTANCE_RUN_PREFIX and torn down in afterAll. No global
  * emptiness is ever asserted.
  */
@@ -67,11 +67,11 @@ const PER_COMMAND_BUDGET_MS = 10_000;
 
 // The cursor walk does at most this many page fetches; bounds the test's
 // own runtime and guards against an unterminated pagination loop.
-const MAX_EVENT_PAGES = 3;
+const MAX_TURN_PAGES = 3;
 
-// Small page size so a freshly-seeded fleet (few events) still exercises
+// Small page size so a freshly-seeded fleet (few turns) still exercises
 // the cursor mechanics rather than returning everything in page one.
-const EVENT_PAGE_LIMIT = 2;
+const TURN_PAGE_LIMIT = 2;
 
 // Per-spawn timeout: PER_COMMAND_BUDGET_MS plus headroom so a budget
 // breach surfaces as a recorded slow sample (a clean assertion failure)
@@ -85,7 +85,7 @@ const FLAG_LIMIT = "--limit" as const;
 const COMMAND_FLEET = "fleet" as const;
 const COMMAND_LIST = "list" as const;
 const COMMAND_DOCTOR = "doctor" as const;
-const COMMAND_EVENTS = "events" as const;
+const COMMAND_TURNS = "turns" as const;
 const KEY_ITEMS = "items" as const;
 const KEY_CHECKS = "checks" as const;
 const KEY_NEXT_CURSOR = "next_cursor" as const;
@@ -105,7 +105,7 @@ const MEASURED_COMMANDS: ReadonlyArray<MeasuredCommand> = [
   { label: "doctor --json", args: [COMMAND_DOCTOR, FLAG_JSON], requiredKey: KEY_CHECKS },
 ];
 
-interface EventsPage {
+interface TurnsPage {
   readonly durationMs: number;
   readonly nextCursor: string | null;
 }
@@ -126,13 +126,13 @@ function p50Of(samples: ReadonlyArray<number>): number {
   return sorted[mid] as number;
 }
 
-function eventsArgs(fleetId: string, cursor: string | null): ReadonlyArray<string> {
+function turnsArgs(fleetId: string, cursor: string | null): ReadonlyArray<string> {
   return [
     COMMAND_FLEET,
-    COMMAND_EVENTS,
+    COMMAND_TURNS,
     fleetId,
     FLAG_LIMIT,
-    String(EVENT_PAGE_LIMIT),
+    String(TURN_PAGE_LIMIT),
     FLAG_JSON,
     ...(cursor ? [FLAG_CURSOR, cursor] : []),
   ];
@@ -159,8 +159,8 @@ if (!isLive) {
     // One events page fetch: spawn, assert exit 0 + `items` array + budget,
     // and surface the next cursor (null when the server stops paging). Kept
     // module-adjacent so the cursor-walk test body stays under the length cap.
-    async function fetchEventsPage(fleetId: string, cursor: string | null, pageNo: number): Promise<EventsPage> {
-      const result = await runWithEnv(eventsArgs(fleetId, cursor));
+    async function fetchTurnsPage(fleetId: string, cursor: string | null, pageNo: number): Promise<TurnsPage> {
+      const result = await runWithEnv(turnsArgs(fleetId, cursor));
       assert.equal(result.code, 0, `events page ${pageNo} exited ${result.code}: ${result.stderr}`);
       const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown; next_cursor?: unknown };
       assert.ok(
@@ -235,10 +235,10 @@ if (!isLive) {
       }, SPAWN_TIMEOUT_MS * SAMPLE_COUNT + 5_000);
     }
 
-    // Cursor-walk throughput: seed one fleet, then page `events` with a
+    // Cursor-walk throughput: seed one fleet, then page `turns` with a
     // small limit. Each page fetch must exit 0, carry an `items` array,
     // and clear the per-command budget. The walk terminates when the
-    // server stops returning `next_cursor` or after MAX_EVENT_PAGES —
+    // server stops returning `next_cursor` or after MAX_TURN_PAGES —
     // whichever comes first — so a broken (never-terminating) cursor
     // contract surfaces as a bounded, asserted failure rather than a hang.
     describe("events cursor-walk throughput", () => {
@@ -251,13 +251,13 @@ if (!isLive) {
         fleetId = id;
       }, REMOTE_SETUP_TIMEOUT_MS);
 
-      it(`walks <= ${MAX_EVENT_PAGES} pages, each page under ${PER_COMMAND_BUDGET_MS}ms`, async () => {
+      it(`walks <= ${MAX_TURN_PAGES} pages, each page under ${PER_COMMAND_BUDGET_MS}ms`, async () => {
         const pageDurations: number[] = [];
         let cursor: string | null = null;
         let pages = 0;
 
-        while (pages < MAX_EVENT_PAGES) {
-          const page = await fetchEventsPage(fleetId, cursor, pages + 1);
+        while (pages < MAX_TURN_PAGES) {
+          const page = await fetchTurnsPage(fleetId, cursor, pages + 1);
           pageDurations.push(page.durationMs);
           pages += 1;
           // null next_cursor is the documented "no more pages" terminator.
@@ -272,7 +272,7 @@ if (!isLive) {
           `events worst page ${maxOf(pageDurations)}ms over budget ${PER_COMMAND_BUDGET_MS}ms; ` +
           `pages=${JSON.stringify(pageDurations)}`,
         );
-      }, SPAWN_TIMEOUT_MS * MAX_EVENT_PAGES + 5_000);
+      }, SPAWN_TIMEOUT_MS * MAX_TURN_PAGES + 5_000);
     });
   });
 }

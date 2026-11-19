@@ -65,7 +65,7 @@ export function chatEffect(options: ChatOptions) {
     const setup = new SetupSession(transport, recovery);
     const session = new DraftSession(transport, options.model ?? "", source(options, definition), options.draftId, recovery ? undefined : options.operationId);
     const actions = new ChatActions(session, setup, output, (sequence, state) => waitNotice({
-      url: `${config.apiUrl.replace(/\/$/u, "")}${session.path}/events/stream`, token, sequence, state,
+      url: `${config.apiUrl.replace(/\/$/u, "")}${session.path}/turns/stream`, token, sequence, state,
       ...(config.fetchImpl ? {fetchImpl: config.fetchImpl} : {}),
     }));
     const interactive = !options.noInput && stdin.isTTY && output.format === OUTPUT_FORMAT.text;

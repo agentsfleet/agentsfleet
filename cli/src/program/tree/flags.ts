@@ -49,7 +49,7 @@ const PAGE_SIZE = "Page size" as const;
 
 const LIST_LIMIT_MIN = 1;
 const LIST_LIMIT_MAX = 200;
-const EVENTS_LIMIT_MAX = 500;
+const TURNS_LIMIT_MAX = 500;
 const BILLING_LIMIT_MAX = 100;
 const PLUGIN_LIMIT_MAX = 100;
 
@@ -153,7 +153,7 @@ export const pluginLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, PLUGIN_LIM
   Flag.withDescription(PAGE_SIZE),
   Flag.optional,
 );
-export const eventsLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, EVENTS_LIMIT_MAX).pipe(
+export const turnsLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, TURNS_LIMIT_MAX).pipe(
   Flag.withDescription(PAGE_SIZE),
   Flag.optional,
 );

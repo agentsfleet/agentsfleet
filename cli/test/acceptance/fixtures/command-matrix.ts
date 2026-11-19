@@ -185,7 +185,7 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["fleet", "activate"], missingArgName: "fleet_id" },
   { args: ["fleet", "archive"], missingArgName: "fleet_id" },
   { args: ["fleet", "delete"], missingArgName: "fleet_id" },
-  { args: ["fleet", "events"], missingArgName: "fleet_id" },
+  { args: ["fleet", "turns"], missingArgName: "fleet_id" },
   { args: ["fleet", "steer"], missingArgName: "fleet_id" },
   { args: ["fleet", "memory", "search"], missingArgName: "query" },
   { args: ["secrets", "create"], missingArgName: "name" },

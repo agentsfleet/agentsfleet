@@ -14,9 +14,9 @@
  *
  * # Why no event or log carries the refusal
  *
- * An install-time gate holds no run. Its `event_id` is null, which is what
+ * An install-time gate holds no run. Its `turn_id` is null, which is what
  * `afd_approval/src/sql/resolve_gate.sql` keys the grant update on, and a
- * denial lands no continuation, so `fleet events` has no row to show it in.
+ * denial lands no continuation, so `fleet turns` has no row to show it in.
  * The refusal is visible where this gate's effect lives instead: the grant
  * row and the fleet's status. A run-time gate needs a trigger that declares a
  * write capability, which no fixture in this lane provides.

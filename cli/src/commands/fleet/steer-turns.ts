@@ -4,7 +4,7 @@ import { ToolActivityPrinter } from "./tool-activity.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { Effect, Option, Redacted } from "effect";
 import { CLI_ERROR_TAG, type CliError } from "../../errors/index.ts";
-import { EVENT_STATUS } from "../../constants/event-status.ts";
+import { TURN_STATUS } from "../../constants/turn-status.ts";
 import { authHeaders } from "../../lib/http.ts";
 import {
   streamGet as defaultStreamGet,
@@ -16,14 +16,14 @@ import { CliConfig } from "../../services/config.ts";
 import { HttpClient } from "../../services/http-client.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import {
-  wsFleetEventPath,
-  wsFleetEventsStreamPath,
+  wsFleetTurnPath,
+  wsFleetTurnsStreamPath,
 } from "../../lib/api-paths.ts";
 import { isString, isRecord } from "../../lib/guards.ts";
 
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
-const EVENT_NOT_FOUND_CODE = "UZ-AGT-015";
+const TURN_NOT_FOUND_CODE = "UZ-AGT-015";
 export const STATUS_COMPLETE = "complete" as const;
 export const STATUS_SSE_DISCONNECTED = "sse_disconnected" as const;
 export const STATUS_SSE_ERROR = "sse_error" as const;
@@ -37,12 +37,12 @@ const MS_PER_SECOND = 1000 as const;
 export const KIND_CHUNK = "chunk" as const;
 export const KIND_TOOL_CALL_STARTED = "tool_call_started" as const;
 export const KIND_TOOL_CALL_COMPLETED = "tool_call_completed" as const;
-export const KIND_EVENT_COMPLETE = "event_complete" as const;
+export const KIND_TURN_COMPLETE = "turn_complete" as const;
 
 const BYTES_PER_KIB = 1024;
 // Pre-id buffer caps, sized to one POST round-trip of frames: until the 202
-// names the event nothing can be filtered or rendered, so frames wait here.
-// Overflow drops oldest — the durable events poll stays the recovery backstop.
+// names the turn nothing can be filtered or rendered, so frames wait here.
+// Overflow drops oldest — the durable turn poll stays the recovery backstop.
 export const PRE_ID_BUFFER_MAX_FRAMES = 256;
 export const PRE_ID_BUFFER_MAX_BYTES = 256 * BYTES_PER_KIB;
 // Longest the POST will wait for the tail's subscription to be live. A tail
@@ -66,13 +66,13 @@ export type PolledSteerOutcome =
 type StreamGetFn = typeof defaultStreamGet;
 
 const isTerminal = (status: string): boolean =>
-  status === EVENT_STATUS.PROCESSED ||
-  status === EVENT_STATUS.FLEET_ERROR ||
-  status === EVENT_STATUS.GATE_BLOCKED;
+  status === TURN_STATUS.PROCESSED ||
+  status === TURN_STATUS.FLEET_ERROR ||
+  status === TURN_STATUS.GATE_BLOCKED;
 
 interface SteerFrameHandlers {
   readonly printLine: (line: string) => void;
-  readonly eventId: string;
+  readonly turnId: string;
   readonly presentation: SteerPresentation;
 }
 
@@ -90,11 +90,11 @@ const makeFrameCallback = (
   return (event) => {
   const payload = event.data as Record<string, unknown> | null | undefined;
   if (!isRecord(payload)) return undefined;
-  // Frames without an event_id are dropped too: the daemon stamps every
+  // Frames without a turn_id are dropped too: the daemon stamps every
   // activity frame (activity_publisher), so an id-less frame's ownership is
-  // unknown and rendering it would break the one-event-only invariant.
-  const frameEventId = payload["event_id"];
-  if (frameEventId !== handlers.eventId || !attempt.accept(event.type, payload)) return undefined;
+  // unknown and rendering it would break the one-turn-only invariant.
+  const frameTurnId = payload["turn_id"];
+  if (frameTurnId !== handlers.turnId || !attempt.accept(event.type, payload)) return undefined;
   if (activity.frame(event.type, payload)) return undefined;
   if (tools.frame(event.type, payload)) return undefined;
   if (event.type === KIND_CHUNK && payload["text_kind"] === "reasoning") return undefined;
@@ -102,7 +102,7 @@ const makeFrameCallback = (
     handlers.printLine(`${ui.dim("[claw]")} ${activityText(payload[FIELD_TEXT])}`);
     return undefined;
   }
-  if (event.type === KIND_EVENT_COMPLETE) {
+  if (event.type === KIND_TURN_COMPLETE) {
     if (isString(payload["final_reply"]) && payload["final_reply"]) handlers.printLine(`Final reply:\n${activityText(payload["final_reply"])}`);
     const status = isString(payload[FIELD_STATUS]) ? payload[FIELD_STATUS] : "unknown";
     setOutcome({ kind: STATUS_COMPLETE, status });
@@ -123,11 +123,11 @@ export type TailReadiness =
   | typeof TAIL_SETTLED
   | typeof TAIL_TIMED_OUT;
 
-export interface EventTailHandle {
+export interface TurnTailHandle {
   readonly presentation: SteerPresentation;
   readonly awaitReady: () => Promise<TailReadiness>;
   readonly awaitOutcome: () => Promise<SteerOutcome>;
-  readonly deliverEventId: (id: string) => void;
+  readonly deliverTurnId: (id: string) => void;
   readonly close: () => Promise<void>;
 }
 
@@ -142,7 +142,7 @@ interface PreIdBuffer {
   readonly droppedCount: () => number;
 }
 
-// Buffers every frame until the event id is known, then hands the stream to a
+// Buffers every frame until the turn id is known, then hands the stream to a
 // filtered callback: buffered frames replay through it in arrival order, and
 // `promote` returns false when a replayed frame asks the stream to stop.
 const makePreIdBuffer = (): PreIdBuffer => {
@@ -199,21 +199,21 @@ const boundedReady = (
 };
 
 // Opens the live tail BEFORE the message posts, so no frame of the steered
-// event can be published before a subscriber exists (the activity channel has
+// turn can be published before a subscriber exists (the activity channel has
 // no replay). `awaitOutcome` is a thunk: it reads the outcome only after the
 // stream settles AND any pending replay ran, so a stream that ended pre-id
-// still reports a buffered event_complete instead of a stale disconnect.
-export const openEventTail = (
+// still reports a buffered turn_complete instead of a stale disconnect.
+export const openTurnTail = (
   wsId: string,
   fleetId: string,
   token: Redacted.Redacted<string>,
   streamGet: StreamGetFn,
   signal?: AbortSignal,
-): Effect.Effect<EventTailHandle, never, CliConfig | Output> =>
+): Effect.Effect<TurnTailHandle, never, CliConfig | Output> =>
   Effect.gen(function* () {
     const config = yield* CliConfig;
     const output = yield* Output;
-    const url = `${config.apiUrl.replace(/\/$/, "")}${wsFleetEventsStreamPath(wsId, fleetId)}`;
+    const url = `${config.apiUrl.replace(/\/$/, "")}${wsFleetTurnsStreamPath(wsId, fleetId)}`;
     const headers = authHeaders({ token: Redacted.value(token) });
     const printLine = (line: string): void => {
       if (output.format === OUTPUT_FORMAT.text) Effect.runSync(output.info(line));
@@ -232,14 +232,14 @@ export const openEventTail = (
           detail: err instanceof Error ? err.message : String(err),
         }),
       );
-    const deliverEventId = (id: string): void => {
+    const deliverTurnId = (id: string): void => {
       // Overflow must never be silent: a truncated replay with a retained
-      // event_complete would otherwise pass itself off as the whole reply.
+      // turn_complete would otherwise pass itself off as the whole reply.
       const dropped = buffer.droppedCount();
       if (dropped > 0) {
-        printLine(ui.dim(`${dropped} early frame(s) dropped live — full history: agentsfleet fleet events ${fleetId}`));
+        printLine(ui.dim(`${dropped} early frame(s) dropped live — full history: agentsfleet fleet turns ${fleetId}`));
       }
-      const filtered = makeFrameCallback({ printLine, eventId: id, presentation }, (next) => {
+      const filtered = makeFrameCallback({ printLine, turnId: id, presentation }, (next) => {
         outcome = next;
       });
       if (!buffer.promote(filtered)) ctrl.abort();
@@ -247,13 +247,13 @@ export const openEventTail = (
     return Object.freeze({
       presentation,
       awaitReady: boundedReady(opened, finished),
-      // A buffered event_complete wins over a late stream error — the answer
+      // A buffered turn_complete wins over a late stream error — the answer
       // is already known, so no redundant poll.
       awaitOutcome: (): Promise<SteerOutcome> =>
         finished.then((sseError) =>
           outcome.kind === STATUS_COMPLETE ? outcome : sseError ?? outcome,
         ),
-      deliverEventId,
+      deliverTurnId,
       // Joins the stream's settlement so a failed turn never returns while
       // its client-side teardown is still in flight.
       close: (): Promise<void> => {
@@ -263,10 +263,10 @@ export const openEventTail = (
     });
   });
 
-export const pollEventTerminal = (
+export const pollTurnTerminal = (
   wsId: string,
   fleetId: string,
-  eventId: string,
+  turnId: string,
   token: Redacted.Redacted<string>,
   signal?: AbortSignal,
   presentation?: SteerPresentation,
@@ -280,29 +280,29 @@ export const pollEventTerminal = (
     const activity = presentation?.activity ?? new ActivityPrinter(printLine);
     const tools = presentation?.tools ?? new ToolActivityPrinter(printLine);
     printLine("Reading saved activity after the live stream ended.");
-    // Event IDs are opaque. The owned detail read avoids inferring a clock
-    // from an ID or losing this event behind a busy fleet's newest page.
-    const path = wsFleetEventPath(wsId, fleetId, eventId);
+    // Turn IDs are opaque. The owned detail read avoids inferring a clock
+    // from an ID or losing this turn behind a busy fleet's newest page.
+    const path = wsFleetTurnPath(wsId, fleetId, turnId);
     const deadline = Date.now() + SSE_FALLBACK_TIMEOUT_MS;
     let observed = false;
     while (Date.now() < deadline && !signal?.aborted) { // oxlint-disable-line no-unmodified-loop-condition -- clock + external AbortSignal terminate it
       const remaining = deadline - Date.now();
       const read = yield* http.request<unknown>({ path, token, signal, timeoutMs: remaining, retry: { maxAttempts: 1 } }).pipe(
-        // Admission can return before the exact event reaches the read store.
+        // The send can return before the exact turn reaches the read store.
         Effect.catch((error) => signal?.aborted || error.transient || (!observed &&
-          error._tag === CLI_ERROR_TAG.server && error.status === 404 && error.code === EVENT_NOT_FOUND_CODE)
+          error._tag === CLI_ERROR_TAG.server && error.status === 404 && error.code === TURN_NOT_FOUND_CODE)
           ? Effect.succeed(null) : Effect.fail(error)),
         Effect.timeoutOption(`${remaining} millis`),
       );
       if (Option.isNone(read)) return { kind: STATUS_TIMEOUT } as PolledSteerOutcome;
       const res = read.value;
-      if (isRecord(res) && res.event_id === eventId) activity.history(res["task_activity"]);
-      if (isRecord(res) && res.event_id === eventId && isString(res.status) && isTerminal(res.status)) {
+      if (isRecord(res) && res.turn_id === turnId) activity.history(res["task_activity"]);
+      if (isRecord(res) && res.turn_id === turnId && isString(res.status) && isTerminal(res.status)) {
         tools.history(res["tool_calls"]);
         if (isString(res["response_text"]) && res["response_text"]) printLine(`Final reply:\n${activityText(res["response_text"])}`);
         return { kind: STATUS_COMPLETE, status: res.status } as PolledSteerOutcome;
       }
-      if (isRecord(res) && res.event_id === eventId) observed = true;
+      if (isRecord(res) && res.turn_id === turnId) observed = true;
       if (signal?.aborted) break;
       const pause = Math.min(FALLBACK_POLL_MS, deadline - Date.now());
       if (pause <= 0) break;

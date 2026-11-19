@@ -5,7 +5,7 @@ import { fileActivity } from "./file-activity.ts";
 const KINDS = new Set(["tool_call_started", "tool_call_progress", "tool_call_completed"]);
 const STATUSES = new Set(["succeeded", "failed", "interrupted"]);
 
-/** One owned event's command observations and bounded saved-result readback. */
+/** One owned turn's command observations and bounded saved-result readback. */
 export class ToolActivityPrinter {
   readonly #print: (line: string) => void;
   readonly #seen = new Map<string, string>();

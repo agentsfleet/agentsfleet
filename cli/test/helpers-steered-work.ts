@@ -1,7 +1,7 @@
 import type { TaskDetail } from "../src/commands/fleet/task-read.ts";
 export const WORKSPACE = "01910000-0000-7000-8000-000000000001";
 export const FLEET = "01910000-0000-7000-8000-000000000002";
-export const EVENT = "01910000-0000-7000-8000-000000000003";
+export const TURN = "01910000-0000-7000-8000-000000000003";
 export const TASK = "01910000-0000-7000-8000-000000000004";
 export const HEAD = "a".repeat(40);
 export const COMMIT = "b".repeat(40);

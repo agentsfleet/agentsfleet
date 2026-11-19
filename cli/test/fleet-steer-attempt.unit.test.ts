@@ -1,27 +1,27 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Redacted } from "effect";
 import { AttemptOutput } from "../src/commands/fleet/attempt-output.ts";
-import { openEventTail } from "../src/commands/fleet/steer-events.ts";
+import { openTurnTail } from "../src/commands/fleet/steer-turns.ts";
 import { ActivityPrinter } from "../src/commands/fleet/task-activity.ts";
 import { ToolActivityPrinter } from "../src/commands/fleet/tool-activity.ts";
-import { EVENT_ID, FLEET_ID, OTHER_EVENT_ID, TOKEN, WS_ID, eventStream, makeLayer, makeRecorder } from "./helpers-fleet-steer.ts";
+import { TURN_ID, FLEET_ID, OTHER_TURN_ID, TOKEN, WS_ID, eventStream, makeLayer, makeRecorder } from "./helpers-fleet-steer.ts";
 
 describe("attempt output ownership", () => {
   test("prints one restart line for its own event and attempt", async () => {
     const rec = makeRecorder();
-    const frame = (type: string, fence: string, text = "", event = EVENT_ID) => ({id: null, type,
-      data: {event_id: event, fencing_token: fence, text, text_kind: "answer"}});
-    const handle = await Effect.runPromise(openEventTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), eventStream([
+    const frame = (type: string, fence: string, text = "", event = TURN_ID) => ({id: null, type,
+      data: {turn_id: event, fencing_token: fence, text, text_kind: "answer"}});
+    const handle = await Effect.runPromise(openTurnTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), eventStream([
       frame("chunk", "9007199254740992", "old draft"),
-      frame("run_restarted", "9007199254740993", "", OTHER_EVENT_ID),
+      frame("run_restarted", "9007199254740993", "", OTHER_TURN_ID),
       // Lost hint: the first greater output must separate attempts itself.
       frame("chunk", "9007199254740993", "current draft"),
       frame("run_restarted", "9007199254740993"),
       frame("run_restarted", "9007199254740992"),
       frame("chunk", "9007199254740992", "STALE"),
-      {id: null, type: "event_complete", data: {event_id: EVENT_ID, status: "processed", final_reply: "saved answer"}},
+      {id: null, type: "turn_complete", data: {turn_id: TURN_ID, status: "processed", final_reply: "saved answer"}},
     ])).pipe(Effect.provide(makeLayer(rec))));
-    handle.deliverEventId(EVENT_ID);
+    handle.deliverTurnId(TURN_ID);
     expect((await handle.awaitOutcome()).kind).toBe("complete");
     const output = rec.stdout.join("\n");
     expect(output.split("Run restarted")).toHaveLength(2);
@@ -42,7 +42,7 @@ describe("attempt output ownership", () => {
     expect(output.accept("run_restarted", {fencing_token: "18"})).toBe(false);
     expect(output.accept("context_progress", {fencing_token: "17"})).toBe(false);
     expect(resets).toBe(1);
-    expect(output.accept("event_complete", {})).toBe(true);
+    expect(output.accept("turn_complete", {})).toBe(true);
     expect(output.accept("run_restarted", {fencing_token: "19"})).toBe(false);
     expect(resets).toBe(1);
     const explicit = new AttemptOutput(line => lines.push(line), () => { resets += 1; });

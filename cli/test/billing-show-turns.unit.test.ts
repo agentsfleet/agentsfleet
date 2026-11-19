@@ -1,5 +1,5 @@
 // `billing show` — charge rows folded into events. Receive and stage rows
-// share an event_id and must render as one row; this is the only part of the
+// share an turn_id and must render as one row; this is the only part of the
 // command with arithmetic in it.
 
 import { describe, test, expect } from "bun:test";
@@ -22,7 +22,7 @@ import {
 } from "./helpers-billing-effect.ts";
 
 describe("billingShowEffectFromArgs — grouped events and pagination", () => {
-  test("groups receive+stage rows by event_id and emits the table", async () => {
+  test("groups receive+stage rows by turn_id and emits the table", async () => {
     const rec = makeRecorder();
     const program = billingShowEffectFromArgs({
       limit: undefined,
@@ -52,13 +52,13 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
   });
 
   // Two fleets may legitimately hold one event id: the ledger's arbiter is
-  // (event_id, charge_type, fleet_id), so the id alone stopped being an
+  // (turn_id, charge_type, fleet_id), so the id alone stopped being an
   // identity. Grouping on it alone bills one fleet for another's work.
   test("two fleets sharing one event id render as two rows", async () => {
     const rec = makeRecorder();
     const FIRST = "01990000-0000-7000-8000-0000000000a1";
     const SECOND = "01990000-0000-7000-8000-0000000000a2";
-    const SHARED_EVENT = "1760000000000-1";
+    const SHARED_TURN = "1760000000000-1";
     const program = billingShowEffectFromArgs({
       limit: undefined,
       cursor: undefined,
@@ -75,9 +75,9 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
           }
           return Effect.succeed({
             items: [
-              { ...RECEIVE_ROW, fleet_id: FIRST, event_id: SHARED_EVENT },
-              { ...RECEIVE_ROW, fleet_id: SECOND, event_id: SHARED_EVENT },
-              { ...STAGE_ROW, fleet_id: FIRST, event_id: SHARED_EVENT },
+              { ...RECEIVE_ROW, fleet_id: FIRST, turn_id: SHARED_TURN },
+              { ...RECEIVE_ROW, fleet_id: SECOND, turn_id: SHARED_TURN },
+              { ...STAGE_ROW, fleet_id: FIRST, turn_id: SHARED_TURN },
             ],
           }) as Effect.Effect<unknown, ServerError>;
         }, rec),
@@ -88,7 +88,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
     await runWith(program);
     const rows = rec.tables[0] ?? [];
     expect(rows).toHaveLength(2);
-    expect(rows.every((row) => row["event_id"] === SHARED_EVENT)).toBe(true);
+    expect(rows.every((row) => row["turn_id"] === SHARED_TURN)).toBe(true);
     // The first fleet's receive and stage charges combine into its own row and
     // stop there. Grouping by the event alone would have produced ONE row
     // totalling all three, which is one fleet billed for another's work.
@@ -125,7 +125,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
       balance_nanos: string;
       is_exhausted: boolean;
       events: Array<{
-        event_id: string;
+        turn_id: string;
         receive_nanos: string;
         stage_nanos: string;
         total_nanos: string;
@@ -139,7 +139,7 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
     expect(body.events).toHaveLength(1);
     const ev = body.events[0];
     if (!ev) throw new Error("expected grouped event");
-    expect(ev.event_id).toBe("evt_1");
+    expect(ev.turn_id).toBe("evt_1");
     expect(ev.receive_nanos).toBe(String(ONE_CENT_NANOS));
     expect(ev.stage_nanos).toBe(String(2 * ONE_CENT_NANOS));
     expect(ev.total_nanos).toBe(String(3 * ONE_CENT_NANOS));
@@ -152,8 +152,8 @@ describe("billingShowEffectFromArgs — grouped events and pagination", () => {
     const rec = makeRecorder();
     const items: Array<Record<string, unknown>> = [];
     for (const eid of ["evt_a", "evt_b", "evt_c"]) {
-      items.push({ ...RECEIVE_ROW, event_id: eid, recorded_at: new Date(items.length).toISOString() });
-      items.push({ ...STAGE_ROW, event_id: eid, recorded_at: new Date(items.length).toISOString() });
+      items.push({ ...RECEIVE_ROW, turn_id: eid, recorded_at: new Date(items.length).toISOString() });
+      items.push({ ...STAGE_ROW, turn_id: eid, recorded_at: new Date(items.length).toISOString() });
     }
     const program = billingShowEffectFromArgs({
       limit: "2",

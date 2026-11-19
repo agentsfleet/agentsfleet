@@ -1,5 +1,5 @@
 /**
- * logs-events-live — live `fleet logs` + `fleet events` read paths against a freshly
+ * logs-turns-live — live `fleet logs` + `fleet turns` read paths against a freshly
  * installed fleet (seeded-credentials session, mirrors
  * lifecycle-with-token.spec.ts).
  *
@@ -12,7 +12,7 @@
  *   - `fleet logs --fleet <id> --json` returns a bounded, parseable
  *     `{items, next_cursor}` envelope; the read is time-bounded via
  *     `runFleetctl`'s `timeoutMs` so a wedged backend can't hang the suite
- *   - `fleet events <id> --json` cursor walk: page across the paginator until it
+ *   - `fleet turns <id> --json` cursor walk: page across the paginator until it
  *     stops returning `next_cursor`, asserting (a) no infinite loop — the
  *     walk is capped at MAX_PAGES, (b) cursor monotonicity — a re-emitted
  *     cursor aborts the walk, (c) every page is exit-0 with a parseable
@@ -24,8 +24,8 @@
  *     assertion would flake the moment the timeline is served newest-first.
  *
  * Negative paths (no network residue / structured errors):
- *   - `fleet events` with a missing `<fleet_id>` rejected by the parser
- *   - `fleet logs --limit` out of bounds rejected client-side (EVENTS_LIMIT_BOUNDS)
+ *   - `fleet turns` with a missing `<fleet_id>` rejected by the parser
+ *   - `fleet logs --limit` out of bounds rejected client-side (TURNS_LIMIT_BOUNDS)
  *
  * Teardown: prefix-scoped `cleanWorkspaceFleets` — only this run's fleets
  * are killed; shared-tenant residue from other runs is left untouched and
@@ -61,16 +61,16 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
   AGENT_FLAG,
   CURSOR_FLAG,
-  EVENTS_COMMAND,
+  TURNS_COMMAND,
   ITEMS_KEY,
   JSON_FLAG,
   LIMIT_FLAG,
   LOGS_COMMAND,
   MAX_PAGES,
   NEXT_CURSOR_KEY,
-  walkEventsCursor,
-} from "./fixtures/logs-events-ops.ts";
-import type { EventItem, EventsEnvelope } from "./fixtures/logs-events-ops.ts";
+  walkTurnsCursor,
+} from "./fixtures/logs-turns-ops.ts";
+import type { TurnItem, TurnsEnvelope } from "./fixtures/logs-turns-ops.ts";
 import { API_URL_ENV, NO_COLOR_ENV, STATE_DIR_ENV } from "../../src/constants/env.ts";
 import { isInstant } from "../../src/lib/instant.ts";
 
@@ -78,7 +78,7 @@ const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
 
 // Wire/output literals (RULE UFS — each used >=2x or crosses a boundary).
-const STATE_DIR_PREFIX = "agentsfleet-logs-events-" as const;
+const STATE_DIR_PREFIX = "agentsfleet-logs-turns-" as const;
 const NO_COLOR_ON = "1" as const;
 
 // `logs` is a single bounded HTTP read (not a follow/stream), but cap it
@@ -86,7 +86,7 @@ const NO_COLOR_ON = "1" as const;
 // than hanging the suite. Generous enough for a cold DEV fleet's first page.
 const LOGS_READ_TIMEOUT_MS = 30_000;
 
-// Out-of-bounds limit: EVENTS_LIMIT_BOUNDS is {min:1, max:500}, so 0 trips
+// Out-of-bounds limit: TURNS_LIMIT_BOUNDS is {min:1, max:500}, so 0 trips
 // the client-side `parseIntOption` validator before any network call.
 const OUT_OF_BOUNDS_LIMIT = "0" as const;
 
@@ -101,11 +101,11 @@ const WALK_TIMEOUT_MS = 60_000;
 const CURSOR_ROUNDTRIP_TIMEOUT_MS = 30_000;
 
 if (!isLive) {
-  describe("logs-events-live.spec.ts", () => {
+  describe("logs-turns-live.spec.ts", () => {
     it.skip("requires AGENTSFLEET_ACCEPTANCE_TARGET to be an https URL", () => {});
   });
 } else {
-  describe("logs-events-live — logs tail + events cursor walk", () => {
+  describe("logs-turns-live — logs tail + turns cursor walk", () => {
     let apiUrl = "";
     let sessionJwt = "";
     let stateDir = "";
@@ -191,7 +191,7 @@ if (!isLive) {
 
     describe("events cursor walk", () => {
       it("walks pages to exhaustion without an infinite loop", async () => {
-        const walk = await walkEventsCursor(env, fleetId, (page, idx) => {
+        const walk = await walkTurnsCursor(env, fleetId, (page, idx) => {
           assertEnvelopeShape(page, idx);
           assertTimestampsWellFormed(page, idx);
         });
@@ -206,7 +206,7 @@ if (!isLive) {
       }, WALK_TIMEOUT_MS);
 
       it("emitted cursors are strictly distinct (monotonic, no cycles)", async () => {
-        const walk = await walkEventsCursor(env, fleetId);
+        const walk = await walkTurnsCursor(env, fleetId);
         const unique = new Set(walk.cursors);
         assert.equal(unique.size, walk.cursors.length,
           `cursor sequence had duplicates: ${JSON.stringify(walk.cursors)}`);
@@ -219,7 +219,7 @@ if (!isLive) {
 
       it("a supplied cursor is accepted and re-paginates deterministically", async () => {
         const first = await runWithEnv(
-          [...EVENTS_COMMAND, fleetId, LIMIT_FLAG, CURSOR_PROBE_LIMIT, JSON_FLAG],
+          [...TURNS_COMMAND, fleetId, LIMIT_FLAG, CURSOR_PROBE_LIMIT, JSON_FLAG],
           CURSOR_ROUNDTRIP_TIMEOUT_MS,
         );
         assert.equal(first.code, 0, `events first page exited ${first.code}: ${first.stderr}`);
@@ -227,7 +227,7 @@ if (!isLive) {
         const cursor = typeof firstParsed.next_cursor === "string" ? firstParsed.next_cursor : null;
         if (!cursor) return; // single-page fixture — nothing further to assert.
         const second = await runWithEnv(
-          [...EVENTS_COMMAND, fleetId, LIMIT_FLAG, CURSOR_PROBE_LIMIT, CURSOR_FLAG, cursor, JSON_FLAG],
+          [...TURNS_COMMAND, fleetId, LIMIT_FLAG, CURSOR_PROBE_LIMIT, CURSOR_FLAG, cursor, JSON_FLAG],
           CURSOR_ROUNDTRIP_TIMEOUT_MS,
         );
         assert.equal(second.code, 0, `events --cursor exited ${second.code}: ${second.stderr}`);
@@ -238,8 +238,8 @@ if (!isLive) {
     });
 
     describe("negative paths (no residue)", () => {
-      it("fleet events with no <fleet_id> is rejected before any request", async () => {
-        const result = await expectMissingArg([...EVENTS_COMMAND], env);
+      it("fleet turns with no <fleet_id> is rejected before any request", async () => {
+        const result = await expectMissingArg([...TURNS_COMMAND], env);
         assertNoSecretLeak(result, sessionJwt);
       });
 
@@ -256,10 +256,10 @@ if (!isLive) {
 
 /**
  * Per-page envelope shape: `{items: array, next_cursor: string|null}`.
- * `fetchEventsPage` already guarantees exit-0 and JSON parse — this
+ * `fetchTurnsPage` already guarantees exit-0 and JSON parse — this
  * tightens the structural rules every page must satisfy.
  */
-function assertEnvelopeShape(page: EventsEnvelope, pageIndex: number): void {
+function assertEnvelopeShape(page: TurnsEnvelope, pageIndex: number): void {
   assert.ok(Array.isArray(page.items), `page ${pageIndex}: ${ITEMS_KEY} not an array`);
   const nc = page.nextCursor;
   assert.ok(nc === null || typeof nc === "string", `page ${pageIndex}: ${NEXT_CURSOR_KEY} not string|null`);
@@ -274,8 +274,8 @@ function assertEnvelopeShape(page: EventsEnvelope, pageIndex: number): void {
  * timeline. Rows without a `created_at` are tolerated (not every event
  * row carries one) but a present malformed value is a wire-format failure.
  */
-function assertTimestampsWellFormed(page: EventsEnvelope, pageIndex: number): void {
-  for (const item of page.items as ReadonlyArray<EventItem>) {
+function assertTimestampsWellFormed(page: TurnsEnvelope, pageIndex: number): void {
+  for (const item of page.items as ReadonlyArray<TurnItem>) {
     const raw = item[CREATED_AT_KEY];
     if (raw === undefined || raw === null) continue;
     assert.ok(isInstant(raw),

@@ -9,11 +9,11 @@ const FLEET_ID = "01900000-0000-7000-8000-0000005e4e72";
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_events" }, fn);
 
-describe("events — happy path (human output)", () => {
-  test("`events <fleet_id>` prints section header + one row per event with all status variants", async () => {
+describe("turns — happy path (human output)", () => {
+  test("`turns <fleet_id>` prints section header + one row per turn with all status variants", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, {
             items: [
               { created_at: "2023-11-14T22:13:20Z", actor: "user",  status: "processed",   response_text: "Hello." },
@@ -28,12 +28,12 @@ describe("events — happy path (human output)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["fleet", "events", FLEET_ID],
+          ["fleet", "turns", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const text = out.read();
-        expect(text).toMatch(/events/i);
+        expect(text).toMatch(/turns/i);
         expect(text).toContain("user");
         expect(text).toContain("fleet");
         expect(text).toContain("gate");
@@ -52,10 +52,10 @@ describe("events — happy path (human output)", () => {
     });
   });
 
-  test("`events <fleet_id>` with next_cursor prints pagination hint", async () => {
+  test("`turns <fleet_id>` with next_cursor prints pagination hint", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, {
             items: [{ created_at: "2023-11-14T22:13:20Z", actor: "user", status: "processed", response_text: "ok" }],
             next_cursor: "cur_abc123",
@@ -65,7 +65,7 @@ describe("events — happy path (human output)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["fleet", "events", FLEET_ID],
+          ["fleet", "turns", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -76,22 +76,22 @@ describe("events — happy path (human output)", () => {
     });
   });
 
-  test("`events <fleet_id>` with empty items prints no-events message", async () => {
+  test("`turns <fleet_id>` with empty items prints no-turns message", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, { items: [], next_cursor: null }),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["fleet", "events", FLEET_ID],
+          ["fleet", "turns", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
-        expect(out.read()).toMatch(/no events yet/i);
-        expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`);
+        expect(out.read()).toMatch(/no turns yet/i);
+        expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`);
       });
     });
   });
@@ -99,18 +99,18 @@ describe("events — happy path (human output)", () => {
   test("missing items field (undefined envelope) is treated as empty", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, {}),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["fleet", "events", FLEET_ID],
+          ["fleet", "turns", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
-        expect(out.read()).toMatch(/no events yet/i);
+        expect(out.read()).toMatch(/no turns yet/i);
       });
     });
   });
@@ -118,7 +118,7 @@ describe("events — happy path (human output)", () => {
   test("null created_at and null actor both render as em-dash", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, {
             items: [{ created_at: null, actor: null, status: null, response_text: "msg" }],
             next_cursor: null,
@@ -128,7 +128,7 @@ describe("events — happy path (human output)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["fleet", "events", FLEET_ID],
+          ["fleet", "turns", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -143,7 +143,7 @@ describe("events — happy path (human output)", () => {
     await authedScope(async () => {
       const longText = "A".repeat(200);
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, {
             items: [{ created_at: "2023-11-14T22:13:20Z", actor: "user", status: "processed", response_text: longText }],
             next_cursor: null,
@@ -153,7 +153,7 @@ describe("events — happy path (human output)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["fleet", "events", FLEET_ID],
+          ["fleet", "turns", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -165,18 +165,18 @@ describe("events — happy path (human output)", () => {
   });
 });
 
-describe("events — query parameter forwarding", () => {
+describe("turns — query parameter forwarding", () => {
   test("--actor, --since, --cursor, --limit all forwarded as query params", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, { items: [], next_cursor: null }),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
         await runCli(
-          ["fleet", "events", FLEET_ID, "--actor", "user", "--since", "2h", "--cursor", "tok_xyz", "--limit", "10"],
+          ["fleet", "turns", FLEET_ID, "--actor", "user", "--since", "2h", "--cursor", "tok_xyz", "--limit", "10"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         const search = calls[0]?.search ?? "";
@@ -192,14 +192,14 @@ describe("events — query parameter forwarding", () => {
   test("omitting optional flags keeps default limit=50 and no extra params", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, { items: [], next_cursor: null }),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
         await runCli(
-          ["fleet", "events", FLEET_ID],
+          ["fleet", "turns", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         const search = calls[0]?.search ?? "";
@@ -212,22 +212,22 @@ describe("events — query parameter forwarding", () => {
   });
 });
 
-describe("events — JSON output", () => {
-  test("`events <fleet_id> --json` emits raw API envelope to stdout", async () => {
+describe("turns — JSON output", () => {
+  test("`turns <fleet_id> --json` emits raw API envelope to stdout", async () => {
     await authedScope(async () => {
       const envelope = {
         items: [{ created_at: "2023-11-14T22:13:20Z", actor: "user", status: "processed", response_text: "hi" }],
         next_cursor: "c2",
       };
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, envelope),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["fleet", "events", FLEET_ID, "--json"],
+          ["fleet", "turns", FLEET_ID, "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -241,14 +241,14 @@ describe("events — JSON output", () => {
   test("global `--json` flag also triggers JSON output mode", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, { items: [{ actor: "fleet", status: "processed" }], next_cursor: null }),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["--json", "fleet", "events", FLEET_ID],
+          ["--json", "fleet", "turns", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -259,11 +259,11 @@ describe("events — JSON output", () => {
   });
 });
 
-describe("events — API error paths", () => {
+describe("turns — API error paths", () => {
   test("API 401 (expired token) surfaces error code on stderr and exits non-zero", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(401, {
             error_code: "UZ-AUTH-003", detail: "Token expired",
             request_id: "req_ev_401",
@@ -273,7 +273,7 @@ describe("events — API error paths", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["fleet", "events", FLEET_ID],
+          ["fleet", "turns", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -285,7 +285,7 @@ describe("events — API error paths", () => {
   test("API 500 surfaces error code on stderr and exits non-zero", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(500, {
             error_code: "UZ-INTERNAL-001", detail: "Database unavailable",
             request_id: "req_ev_500",
@@ -295,7 +295,7 @@ describe("events — API error paths", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["fleet", "events", FLEET_ID],
+          ["fleet", "turns", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);

@@ -1,6 +1,6 @@
 /**
- * Owned fixture for the `logs-events-live` slice — a bounded cursor walk
- * over the `fleet events <fleet_id> --json` paginator.
+ * Owned fixture for the `logs-turns-live` slice — a bounded cursor walk
+ * over the `fleet turns <fleet_id> --json` paginator.
  *
  * The shared fixtures (cli.js, teardown.ts, lifecycle.ts) stay untouched;
  * the cursor-walk loop and its envelope shape live here because no other
@@ -21,7 +21,7 @@ type Env = Readonly<Record<string, string>>;
 
 // Both verbs live under `fleet`, so each constant is the whole argv head.
 export const FLEET_COMMAND = "fleet" as const;
-export const EVENTS_COMMAND = [FLEET_COMMAND, "events"] as const;
+export const TURNS_COMMAND = [FLEET_COMMAND, "turns"] as const;
 export const LOGS_COMMAND = [FLEET_COMMAND, "logs"] as const;
 export const JSON_FLAG = "--json" as const;
 export const AGENT_FLAG = "--fleet" as const;
@@ -39,18 +39,18 @@ export const MAX_PAGES = 25;
 
 // Small page size so even a lightly-seeded fleet produces >1 page when it
 // has history, exercising the cursor hand-off. Stays inside the CLI's
-// EVENTS_LIMIT_BOUNDS (1..500).
+// TURNS_LIMIT_BOUNDS (1..500).
 export const PAGE_LIMIT = 5;
 
-export interface EventItem {
+export interface TurnItem {
   readonly created_at?: number | string | null;
   readonly status?: string | null;
   readonly actor?: string | null;
   readonly [key: string]: unknown;
 }
 
-export interface EventsEnvelope {
-  readonly items: ReadonlyArray<EventItem>;
+export interface TurnsEnvelope {
+  readonly items: ReadonlyArray<TurnItem>;
   readonly nextCursor: string | null;
   readonly raw: Record<string, unknown>;
 }
@@ -62,19 +62,19 @@ export interface CursorWalkResult {
   readonly exhausted: boolean;
 }
 
-export type PageVisitor = (envelope: EventsEnvelope, pageIndex: number) => void;
+export type PageVisitor = (envelope: TurnsEnvelope, pageIndex: number) => void;
 
 /**
  * Fetch one `events` page and normalise it into `{items, nextCursor}`.
  * Throws on non-zero exit or unparseable stdout — the caller's per-page
  * assertions stay terse.
  */
-export async function fetchEventsPage(
+export async function fetchTurnsPage(
   env: Env,
   fleetId: string,
   cursor: string | null,
-): Promise<EventsEnvelope> {
-  const args = [...EVENTS_COMMAND, fleetId, LIMIT_FLAG, String(PAGE_LIMIT)];
+): Promise<TurnsEnvelope> {
+  const args = [...TURNS_COMMAND, fleetId, LIMIT_FLAG, String(PAGE_LIMIT)];
   if (cursor) args.push(CURSOR_FLAG, cursor);
   args.push(JSON_FLAG);
   const result = await runFleetctl(args, { env });
@@ -83,7 +83,7 @@ export async function fetchEventsPage(
   }
   const raw = JSON.parse(result.stdout.trim() || "{}") as Record<string, unknown>;
   const rawItems = raw[ITEMS_KEY];
-  const items: EventItem[] = Array.isArray(rawItems) ? (rawItems as EventItem[]) : [];
+  const items: TurnItem[] = Array.isArray(rawItems) ? (rawItems as TurnItem[]) : [];
   const rawCursor = raw[NEXT_CURSOR_KEY];
   const nextCursor = typeof rawCursor === "string" && rawCursor.length > 0 ? rawCursor : null;
   return { items, nextCursor, raw };
@@ -93,9 +93,9 @@ export async function fetchEventsPage(
  * Walk the events cursor from the first page until the server stops
  * returning a `next_cursor`, the page cap is hit, or a non-advancing
  * cursor is detected. Calls `visit` on every page so the caller can run
- * per-page assertions (exit-0 is already guaranteed by `fetchEventsPage`).
+ * per-page assertions (exit-0 is already guaranteed by `fetchTurnsPage`).
  */
-export async function walkEventsCursor(
+export async function walkTurnsCursor(
   env: Env,
   fleetId: string,
   visit?: PageVisitor,
@@ -108,7 +108,7 @@ export async function walkEventsCursor(
   let exhausted = false;
 
   for (pages = 0; pages < MAX_PAGES; pages += 1) {
-    const page = await fetchEventsPage(env, fleetId, cursor);
+    const page = await fetchTurnsPage(env, fleetId, cursor);
     if (visit) visit(page, pages);
     totalItems += page.items.length;
     const next = page.nextCursor;

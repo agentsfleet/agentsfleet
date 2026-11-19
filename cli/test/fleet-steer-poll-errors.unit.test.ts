@@ -3,11 +3,11 @@ import { outputDouble } from "./helpers-output-double.ts";
 import { expect, test } from "bun:test";
 import { Cause, Effect, Exit, Fiber, Layer, Option, Redacted } from "effect";
 import { TestClock } from "effect/testing";
-import { pollEventTerminal, STATUS_TIMEOUT } from "../src/commands/fleet/steer-events.ts";
+import { pollTurnTerminal, STATUS_TIMEOUT } from "../src/commands/fleet/steer-turns.ts";
 import { NetworkError, ServerError } from "../src/errors/index.ts";
 import { HttpClient, httpClientLayer } from "../src/services/http-client.ts";
 import { cliConfigFromValuesLayer } from "../src/services/config.ts";
-import { FLEET_ID, EVENT_ID, WS_ID, TOKEN } from "./helpers-fleet-steer.ts";
+import { FLEET_ID, TURN_ID, WS_ID, TOKEN } from "./helpers-fleet-steer.ts";
 
 test.each([401, 403, 404])("event polling surfaces HTTP %s without another read", async (status) => {
   let reads = 0;
@@ -15,11 +15,11 @@ test.each([401, 403, 404])("event polling surfaces HTTP %s without another read"
   const http = Layer.succeed(HttpClient, {
     request: <T>() => {
       reads++;
-      return reads === 1 ? Effect.fail(failure) : Effect.succeed({event_id: EVENT_ID, status: "processed"} as T);
+      return reads === 1 ? Effect.fail(failure) : Effect.succeed({turn_id: TURN_ID, status: "processed"} as T);
     },
   });
   const result = await Effect.runPromiseExit(
-    pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(Effect.provide(Layer.merge(http, Layer.succeed(Output, outputDouble())))),
+    pollTurnTerminal(WS_ID, FLEET_ID, TURN_ID, Redacted.make(TOKEN)).pipe(Effect.provide(Layer.merge(http, Layer.succeed(Output, outputDouble())))),
   );
   expect(Exit.isFailure(result)).toBe(true);
   const error = Exit.isFailure(result) ? Option.getOrNull(Cause.findErrorOption(result.cause)) : null;
@@ -35,7 +35,7 @@ test("event polling interrupts a stalled read at the overall deadline", async ()
   });
   const result = await Effect.runPromise(Effect.gen(function* () {
     const fiber = yield* Effect.forkChild(
-      pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(Effect.timeout("61 seconds")),
+      pollTurnTerminal(WS_ID, FLEET_ID, TURN_ID, Redacted.make(TOKEN)).pipe(Effect.timeout("61 seconds")),
     );
     yield* TestClock.adjust("61 seconds");
     return yield* Fiber.await(fiber);
@@ -50,10 +50,10 @@ test.each(["CERT_HAS_EXPIRED", "ERR_INVALID_URL"])("event polling surfaces perma
   const config = cliConfigFromValuesLayer({apiUrl: "https://api.test.local", fetchImpl: async () => {
     reads++;
     if (reads === 1) throw Object.assign(new TypeError("fetch failed"), {cause: {code}});
-    return Response.json({event_id: EVENT_ID, status: "processed"});
+    return Response.json({turn_id: TURN_ID, status: "processed"});
   }});
   const result = await Effect.runPromiseExit(
-    pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(
+    pollTurnTerminal(WS_ID, FLEET_ID, TURN_ID, Redacted.make(TOKEN)).pipe(
       Effect.provide(httpClientLayer), Effect.provide(config), Effect.provide(Layer.succeed(Output, outputDouble())),
     ),
   );
@@ -69,10 +69,10 @@ test("event polling recovers from a transient transport failure", async () => {
   const config = cliConfigFromValuesLayer({apiUrl: "https://api.test.local", fetchImpl: async () => {
     reads++;
     if (reads === 1) throw Object.assign(new TypeError("fetch failed"), {code: "ECONNREFUSED"});
-    return Response.json({event_id: EVENT_ID, status: "processed"});
+    return Response.json({turn_id: TURN_ID, status: "processed"});
   }});
   const result = await Effect.runPromise(
-    pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(
+    pollTurnTerminal(WS_ID, FLEET_ID, TURN_ID, Redacted.make(TOKEN)).pipe(
       Effect.provide(httpClientLayer), Effect.provide(config), Effect.provide(Layer.succeed(Output, outputDouble())),
     ),
   );
@@ -87,7 +87,7 @@ test("event polling respects the server's retry opt-out", async () => {
     return Response.json({error: {retry_after_seconds: 0}}, {status: 503});
   }});
   const result = await Effect.runPromiseExit(
-    pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(
+    pollTurnTerminal(WS_ID, FLEET_ID, TURN_ID, Redacted.make(TOKEN)).pipe(
       Effect.provide(httpClientLayer), Effect.provide(config), Effect.provide(Layer.succeed(Output, outputDouble())),
     ),
   );
@@ -104,10 +104,10 @@ test("event polling waits for an admitted event to reach the read store", async 
     reads++;
     return reads === 1
       ? Response.json({error_code: "UZ-AGT-015", detail: "Event not found"}, {status: 404})
-      : Response.json({event_id: EVENT_ID, status: "processed"});
+      : Response.json({turn_id: TURN_ID, status: "processed"});
   }});
   const result = await Effect.runPromise(
-    pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(
+    pollTurnTerminal(WS_ID, FLEET_ID, TURN_ID, Redacted.make(TOKEN)).pipe(
       Effect.provide(httpClientLayer), Effect.provide(config), Effect.provide(Layer.succeed(Output, outputDouble())),
     ),
   );
@@ -119,12 +119,12 @@ test("event polling surfaces disappearance after observing the admitted event", 
   let reads = 0;
   const config = cliConfigFromValuesLayer({apiUrl: "https://api.test.local", fetchImpl: async () => {
     reads++;
-    if (reads === 1) return Response.json({event_id: EVENT_ID, status: "received"});
+    if (reads === 1) return Response.json({turn_id: TURN_ID, status: "received"});
     if (reads === 2) return Response.json({error_code: "UZ-AGT-015", detail: "Event not found"}, {status: 404});
-    return Response.json({event_id: EVENT_ID, status: "processed"});
+    return Response.json({turn_id: TURN_ID, status: "processed"});
   }});
   const result = await Effect.runPromiseExit(
-    pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(
+    pollTurnTerminal(WS_ID, FLEET_ID, TURN_ID, Redacted.make(TOKEN)).pipe(
       Effect.provide(httpClientLayer), Effect.provide(config), Effect.provide(Layer.succeed(Output, outputDouble())),
     ),
   );

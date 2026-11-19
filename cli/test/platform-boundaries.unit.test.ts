@@ -48,7 +48,7 @@ test("renders event history and a continuation cursor", async () => {
 
 test("renders a retained run with its fleet identifier when the name is gone", async () => {
   fixture.respond = () => Response.json({items: [{id: RUNNER_ID, fleet_id: RUNNER_ID, fleet_name: null, workspace_id: RUNNER_ID,
-    destination: "fleet_deleted", event_id: RUNNER_ID, event_type: null, actor: null, outcome: "succeeded", kind: "fresh",
+    destination: "fleet_deleted", turn_id: RUNNER_ID, event_type: null, actor: null, outcome: "succeeded", kind: "fresh",
     failure_label: null, failure_detail: null, fencing_token: 1, provider: "example", model: "reasoning-model", posture: "metered",
     metered_input_tokens: 0, metered_cached_tokens: 0, metered_output_tokens: 0, wall_ms: null,
     run_expires_at: INSTANT, created_at: INSTANT}], total: 1, next_cursor: RUNNER_ID});

@@ -29,14 +29,14 @@ const MAX_PAGES = 10;
 // The text view's continuation line: `(more costs available — re-run with --cursor <token>)`.
 const NEXT_PAGE_HINT = /re-run with --cursor (\S+)\)/u;
 
-const UsageEventSchema = Schema.Struct({
+const UsageWorkSchema = Schema.Struct({
   fleet_id: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  event_id: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  turn_id: Schema.optionalKey(Schema.NullOr(Schema.String)),
   recorded_at: Schema.NullOr(instant),
   total_nanos: Schema.String,
 });
 const UsagePageSchema = Schema.Struct({
-  events: Schema.Array(UsageEventSchema),
+  events: Schema.Array(UsageWorkSchema),
   next_cursor: Schema.NullOr(Schema.String),
 });
 
@@ -53,26 +53,26 @@ export async function readUsagePage(run: Run, limit: number, cursor?: string): P
 }
 
 /**
- * What `usage show --json` charges `fleetId` for `eventId`, in nanos.
+ * What `usage show --json` charges `fleetId` for `turnId`, in nanos.
  *
  * A run writes several ledger rows and a page boundary can fall between them,
  * so the walk adds up every page the work appears on and stops at the first
  * page after them that holds none.
  */
-export async function chargedNanos(run: Run, fleetId: string, eventId: string): Promise<bigint> {
+export async function chargedNanos(run: Run, fleetId: string, turnId: string): Promise<bigint> {
   let cursor: string | undefined;
   let total = 0n;
   let seen = false;
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const read = await readUsagePage(run, PAGE_ROWS, cursor);
-    const mine = read.events.filter((event) => event.fleet_id === fleetId && event.event_id === eventId);
+    const mine = read.events.filter((event) => event.fleet_id === fleetId && event.turn_id === turnId);
     if (seen && mine.length === 0) break;
     for (const event of mine) total += BigInt(event.total_nanos);
     seen ||= mine.length > 0;
     if (read.next_cursor === null) break;
     cursor = read.next_cursor;
   }
-  assert.ok(seen, `usage show --json never listed fleet ${fleetId}'s charge for work ${eventId}`);
+  assert.ok(seen, `usage show --json never listed fleet ${fleetId}'s charge for work ${turnId}`);
   return total;
 }
 

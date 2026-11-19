@@ -58,7 +58,7 @@ export const RunnerEventsSchema = Schema.Struct({
 export const RunnerRunsSchema = Schema.Struct({
   items: Schema.Array(Schema.Struct({
     id: text, fleet_id: text, fleet_name: Schema.NullOr(Schema.String), workspace_id: text,
-    destination: Schema.Enum(RunDestination), event_id: text, event_type: Schema.NullOr(Schema.String), actor: Schema.NullOr(Schema.String),
+    destination: Schema.Enum(RunDestination), turn_id: text, event_type: Schema.NullOr(Schema.String), actor: Schema.NullOr(Schema.String),
     outcome: Schema.Enum(RunOutcome), kind: Schema.Enum(RunKind), failure_label: Schema.NullOr(Schema.String), failure_detail: Schema.NullOr(Schema.String),
     fencing_token: count, provider: text, model: text, posture: text,
     metered_input_tokens: count, metered_cached_tokens: count, metered_output_tokens: count,

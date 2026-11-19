@@ -68,7 +68,7 @@ export const runnerHistory = Effect.fn("runners.history")(function* (id: string,
     fleet: options.fleet, event_type: options.eventType, since, until});
   const body = yield* platformRequest({path: platformPath(ADMIN_RUNNERS_PATH, id, `/${kind}`) + query});
   const output = yield* Output;
-  if (kind === RunnerHistory.Events) {
+  if (kind === RunnerHistory.History) {
     const page = yield* decodePlatform(RunnerEventsSchema, body);
     if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
     yield* output.printEntityTable({id: {key: "id", label: "ID"}, domain: [

@@ -65,23 +65,23 @@ export const wsPluginRevisionsPath = (wsId: string, pluginId: string): string =>
 export const wsPluginRevisionPath = (wsId: string, pluginId: string, revisionId: string): string =>
   `${wsPluginRevisionsPath(wsId, pluginId)}/${enc(revisionId)}`;
 
-// Workspace-scoped per-fleet chat messages (POST → 202 with event_id).
+// Workspace-scoped per-fleet chat messages (POST → 202 with turn_id).
 export const wsFleetMessagesPath = (wsId: string, fleetId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/messages`;
 
-// Workspace-scoped per-fleet event history.
-export const wsFleetEventsPath = (wsId: string, fleetId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/events`;
+// Workspace-scoped per-fleet turn history.
+export const wsFleetTurnsPath = (wsId: string, fleetId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/turns`;
 
-export const wsFleetEventPath = (wsId: string, fleetId: string, eventId: string): string =>
-  `${wsFleetEventsPath(wsId, fleetId)}/${enc(eventId)}`;
+export const wsFleetTurnPath = (wsId: string, fleetId: string, turnId: string): string =>
+  `${wsFleetTurnsPath(wsId, fleetId)}/${enc(turnId)}`;
 
 // Workspace-scoped per-fleet SSE live tail.
-export const wsFleetEventsStreamPath = (
+export const wsFleetTurnsStreamPath = (
   wsId: string,
   fleetId: string,
 ): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/events/stream`;
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/turns/stream`;
 
 // Workspace-scoped per-fleet durable-memory entries (read-only).
 export const wsFleetMemoriesPath = (wsId: string, fleetId: string): string =>

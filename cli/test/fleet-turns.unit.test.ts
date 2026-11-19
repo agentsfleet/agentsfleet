@@ -1,4 +1,4 @@
-// Direct Effect-layer tests for eventsEffectFromFlags — covers the
+// Direct Effect-layer tests for turnsEffectFromFlags — covers the
 // ValidationError guard (missing fleetId) that is unreachable via the
 // normal CLI path because the tree enforces <fleet_id> as a required
 // positional before the handler runs.
@@ -6,7 +6,7 @@
 import { describe, test, expect } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 
-import { eventsEffectFromFlags } from "../src/commands/fleet/events.ts";
+import { turnsEffectFromFlags } from "../src/commands/fleet/turns.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
@@ -66,9 +66,9 @@ const runWith = <E extends CliError>(
     ),
   );
 
-describe("eventsEffectFromFlags — ValidationError guard", () => {
+describe("turnsEffectFromFlags — ValidationError guard", () => {
   test("fails with ValidationError when fleetId is undefined", async () => {
-    const effect = eventsEffectFromFlags({ fleetId: undefined });
+    const effect = turnsEffectFromFlags({ fleetId: undefined });
     const exit = await runWith(effect);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
@@ -77,13 +77,13 @@ describe("eventsEffectFromFlags — ValidationError guard", () => {
       expect(err).toBeInstanceOf(ValidationError);
       if (err instanceof ValidationError) {
         expect(err.detail).toMatch(/fleet_id is required/i);
-        expect(err.suggestion).toMatch(/agentsfleet fleet events/);
+        expect(err.suggestion).toMatch(/agentsfleet fleet turns/);
       }
     }
   });
 
   test("fails with ValidationError when fleetId is empty string", async () => {
-    const effect = eventsEffectFromFlags({ fleetId: "" });
+    const effect = turnsEffectFromFlags({ fleetId: "" });
     const exit = await runWith(effect);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {

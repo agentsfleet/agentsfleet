@@ -1,4 +1,4 @@
-// Unit coverage for the steer event tail (openEventTail): the pre-id buffer
+// Unit coverage for the steer event tail (openTurnTail): the pre-id buffer
 // (replay order, foreign/id-less drop, frame + byte bounds), the post-promote
 // live path, tail lifecycle on success / late error / abort, and the
 // subscription-ready gate. Split from fleet-steer-linecov.unit.test.ts when
@@ -10,19 +10,19 @@ import { Effect, Exit, Redacted } from "effect";
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
 import {
   KIND_CHUNK,
-  KIND_EVENT_COMPLETE,
+  KIND_TURN_COMPLETE,
   PRE_ID_BUFFER_MAX_BYTES,
   PRE_ID_BUFFER_MAX_FRAMES,
   STATUS_COMPLETE,
   STATUS_SSE_DISCONNECTED,
-  openEventTail,
-} from "../src/commands/fleet/steer-events.ts";
-import { EVENT_STATUS } from "../src/constants/event-status.ts";
+  openTurnTail,
+} from "../src/commands/fleet/steer-turns.ts";
+import { TURN_STATUS } from "../src/constants/turn-status.ts";
 import type { HttpRequestInput } from "../src/services/http-client.ts";
 import {
-  EVENT_ID,
+  TURN_ID,
   FLEET_ID,
-  OTHER_EVENT_ID,
+  OTHER_TURN_ID,
   POST,
   SINGLE_MESSAGE,
   TOKEN,
@@ -31,7 +31,7 @@ import {
   makeLayer,
   makeRecorder,
   nullOutput,
-  postedEvent,
+  postedTurn,
   streamFrom,
 } from "./helpers-fleet-steer.ts";
 
@@ -39,10 +39,10 @@ import {
 
 type SteerFrame = Parameters<typeof eventStream>[0][number];
 
-const chunkFrame = (eventId: string, text: string): SteerFrame =>
-  ({ id: null, type: KIND_CHUNK, data: { event_id: eventId, text, fencing_token: "1" } });
-const completeFrame = (eventId: string): SteerFrame =>
-  ({ id: null, type: KIND_EVENT_COMPLETE, data: { event_id: eventId, status: EVENT_STATUS.PROCESSED } });
+const chunkFrame = (turnId: string, text: string): SteerFrame =>
+  ({ id: null, type: KIND_CHUNK, data: { turn_id: turnId, text, fencing_token: "1" } });
+const completeFrame = (turnId: string): SteerFrame =>
+  ({ id: null, type: KIND_TURN_COMPLETE, data: { turn_id: turnId, status: TURN_STATUS.PROCESSED } });
 
 describe("steer — pre-id frames buffer until the POST names the event", () => {
   test("test_pre_id_frames_replayed_in_order", async () => {
@@ -52,9 +52,9 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: eventStream([
-          chunkFrame(EVENT_ID, "first words"),
-          chunkFrame(EVENT_ID, "second words"),
-          completeFrame(EVENT_ID),
+          chunkFrame(TURN_ID, "first words"),
+          chunkFrame(TURN_ID, "second words"),
+          completeFrame(TURN_ID),
         ]),
       }).pipe(Effect.provide(makeLayer(rec))),
     );
@@ -74,11 +74,11 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: eventStream([
-          chunkFrame(OTHER_EVENT_ID, "foreign words"),
+          chunkFrame(OTHER_TURN_ID, "foreign words"),
           // An id-less frame's ownership is unknown — dropped, never rendered.
           { id: null, type: KIND_CHUNK, data: { text: "ghost words" } },
-          chunkFrame(EVENT_ID, "our words"),
-          completeFrame(EVENT_ID),
+          chunkFrame(TURN_ID, "our words"),
+          completeFrame(TURN_ID),
         ]),
       }).pipe(Effect.provide(makeLayer(rec))),
     );
@@ -94,9 +94,9 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
     const overflowBy = 3;
     const frames = Array.from(
       { length: PRE_ID_BUFFER_MAX_FRAMES + overflowBy },
-      (_, i) => chunkFrame(EVENT_ID, `line ${i}`),
+      (_, i) => chunkFrame(TURN_ID, `line ${i}`),
     );
-    frames.push(completeFrame(EVENT_ID));
+    frames.push(completeFrame(TURN_ID));
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, SINGLE_MESSAGE, {}, {
         stdin: streamFrom([], false),
@@ -122,9 +122,9 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: eventStream([
-          chunkFrame(EVENT_ID, `first-giant ${half}`),
-          chunkFrame(EVENT_ID, `second-giant ${half}`),
-          completeFrame(EVENT_ID),
+          chunkFrame(TURN_ID, `first-giant ${half}`),
+          chunkFrame(TURN_ID, `second-giant ${half}`),
+          completeFrame(TURN_ID),
         ]),
       }).pipe(Effect.provide(makeLayer(rec2))),
     );
@@ -138,7 +138,7 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
 // ── Post-promote live path: frames after the id bypass the buffer ─────────
 
 describe("steer — frames after the event is named render live", () => {
-  test("post-promote frames render immediately and event_complete stops the stream", async () => {
+  test("post-promote frames render immediately and turn_complete stops the stream", async () => {
     const rec = makeRecorder();
     let pump: ((frame: SteerFrame) => boolean | void) | undefined;
     let holdOpen: () => void = () => {};
@@ -148,20 +148,20 @@ describe("steer — frames after the event is named render live", () => {
         holdOpen = resolveStream;
       });
     const handle = await Effect.runPromise(
-      openEventTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), manualStream).pipe(
+      openTurnTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), manualStream).pipe(
         Effect.provide(makeLayer(rec)),
       ),
     );
-    handle.deliverEventId(EVENT_ID);
-    pump?.(chunkFrame(EVENT_ID, "live words"));
+    handle.deliverTurnId(TURN_ID);
+    pump?.(chunkFrame(TURN_ID, "live words"));
     // Rendered synchronously through the promoted filter — never buffered.
     expect(rec.stdout.some((l) => l.includes("live words"))).toBe(true);
-    // An id-less event_complete must not terminate the tail — its ownership
+    // An id-less turn_complete must not terminate the tail — its ownership
     // is unknown, so it is dropped (undefined), not forwarded as false.
-    expect(pump?.({ id: null, type: KIND_EVENT_COMPLETE, data: { status: EVENT_STATUS.PROCESSED } })).toBeUndefined();
+    expect(pump?.({ id: null, type: KIND_TURN_COMPLETE, data: { status: TURN_STATUS.PROCESSED } })).toBeUndefined();
     // The stream-stopping false must be forwarded through the live path;
     // dropping it would hang every steer until the 60s SSE timeout.
-    expect(pump?.(completeFrame(EVENT_ID))).toBe(false);
+    expect(pump?.(completeFrame(TURN_ID))).toBe(false);
     holdOpen();
     const outcome = await handle.awaitOutcome();
     expect(outcome.kind).toBe(STATUS_COMPLETE);
@@ -177,14 +177,14 @@ describe("steer — frames after the event is named render live", () => {
         holdOpen = resolveStream;
       });
     const handle = await Effect.runPromise(
-      openEventTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), manualStream).pipe(
+      openTurnTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), manualStream).pipe(
         Effect.provide(makeLayer(rec)),
       ),
     );
-    pump?.(chunkFrame(EVENT_ID, "first words"));
+    pump?.(chunkFrame(TURN_ID, "first words"));
     expect(rec.stdout).toEqual([]);
-    handle.deliverEventId(EVENT_ID);
-    pump?.(chunkFrame(EVENT_ID, "second words"));
+    handle.deliverTurnId(TURN_ID);
+    pump?.(chunkFrame(TURN_ID, "second words"));
     const first = rec.stdout.findIndex((l) => l.includes("first words"));
     const second = rec.stdout.findIndex((l) => l.includes("second words"));
     expect(first).toBeGreaterThanOrEqual(0);
@@ -210,8 +210,8 @@ describe("steer — tail lifecycle on success and late stream error", () => {
       return Promise.resolve();
     };
     const httpReply = <T>(input: HttpRequestInput): T => {
-      if (input.method === POST) return postedEvent<T>();
-      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
+      if (input.method === POST) return postedTurn<T>();
+      return { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } as T;
     };
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, SINGLE_MESSAGE, {}, {
@@ -225,7 +225,7 @@ describe("steer — tail lifecycle on success and late stream error", () => {
     expect(streamSignals[0]?.aborted).toBe(true);
   });
 
-  test("a buffered event_complete wins over a late stream error — no redundant poll", async () => {
+  test("a buffered turn_complete wins over a late stream error — no redundant poll", async () => {
     const rec = makeRecorder();
     let pump: ((frame: SteerFrame) => boolean | void) | undefined;
     let failStream: (err: Error) => void = () => {};
@@ -235,13 +235,13 @@ describe("steer — tail lifecycle on success and late stream error", () => {
         failStream = reject;
       });
     const handle = await Effect.runPromise(
-      openEventTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), failingAfterFrames).pipe(
+      openTurnTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), failingAfterFrames).pipe(
         Effect.provide(makeLayer(rec)),
       ),
     );
-    pump?.(completeFrame(EVENT_ID));
+    pump?.(completeFrame(TURN_ID));
     failStream(new Error("stream torn down"));
-    handle.deliverEventId(EVENT_ID);
+    handle.deliverTurnId(TURN_ID);
     const outcome = await handle.awaitOutcome();
     expect(outcome.kind).toBe(STATUS_COMPLETE);
   });
@@ -262,8 +262,8 @@ describe("steer — a tail that never becomes ready is closed and the poll decid
         options?.signal?.addEventListener("abort", () => resolveStream(), { once: true });
       });
     const httpReply = <T>(input: HttpRequestInput): T => {
-      if (input.method === POST) return postedEvent<T>();
-      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
+      if (input.method === POST) return postedTurn<T>();
+      return { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } as T;
     };
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, SINGLE_MESSAGE, {}, {
@@ -274,7 +274,7 @@ describe("steer — a tail that never becomes ready is closed and the poll decid
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.requests.some((r) => r.method !== POST)).toBe(true);
-    expect(rec.stdout.join("\n")).toContain(`${EVENT_ID} ${EVENT_STATUS.PROCESSED}`);
+    expect(rec.stdout.join("\n")).toContain(`${TURN_ID} ${TURN_STATUS.PROCESSED}`);
     expect(streamSignals[0]?.aborted).toBe(true);
   }, 10_000);
 });
@@ -296,7 +296,7 @@ describe("steer — tail opened with an already-aborted signal", () => {
       sawAbortedSignal = options?.signal?.aborted === true;
     };
     const handle = await Effect.runPromise(
-      openEventTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), signalProbe, ctrl.signal).pipe(
+      openTurnTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), signalProbe, ctrl.signal).pipe(
         Effect.provide(makeLayer(rec)),
       ),
     );
@@ -318,7 +318,7 @@ test("a parent abort after tail open stops the stream without rendering a reply"
       options?.signal?.addEventListener("abort", () => resolve(), { once: true });
     });
   const handle = await Effect.runPromise(
-    openEventTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), pendingStream, parent.signal).pipe(
+    openTurnTail(WS_ID, FLEET_ID, Redacted.make(TOKEN), pendingStream, parent.signal).pipe(
       Effect.provide(makeLayer(rec)),
     ),
   );

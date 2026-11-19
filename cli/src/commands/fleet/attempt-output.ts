@@ -9,7 +9,7 @@ const OUTPUT_KINDS: ReadonlySet<string> = new Set([
   "task_transfer_progress", "run_restarted",
 ]);
 
-/** One event's live attempt; a saved completion permanently closes its output. */
+/** One turn's live attempt; a saved completion permanently closes its output. */
 export class AttemptOutput {
   #fence: string | null = null;
   #terminal = false;
@@ -23,7 +23,7 @@ export class AttemptOutput {
 
   accept(kind: string, payload: Record<string, unknown>): boolean {
     if (this.#terminal) return false;
-    if (kind === "event_complete") this.#terminal = true;
+    if (kind === "turn_complete") this.#terminal = true;
     if (!OUTPUT_KINDS.has(kind)) return true;
     const parsed = Schema.decodeUnknownOption(FENCE)(payload["fencing_token"]);
     if (Option.isNone(parsed)) return false;

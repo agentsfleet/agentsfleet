@@ -27,7 +27,7 @@ export function activityText(text: string): string {
   return safe.length > TEXT_LIMIT ? `${safe.slice(0, TEXT_LIMIT)}\n… output truncated` : safe;
 }
 
-/** One event's replay ownership; duplicate polls do not repeat confirmed stages. */
+/** One turn's replay ownership; duplicate polls do not repeat confirmed stages. */
 export class ActivityPrinter {
   readonly #seen = new Map<string, string>();
   readonly #latest = new Map<string, typeof Progress.Type>();

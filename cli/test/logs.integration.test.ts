@@ -13,7 +13,7 @@ describe("logs (paginated event tail)", () => {
   test("`logs <fleet_id>` with no events prints the empty-state message and exits 0", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, { items: [], next_cursor: null }),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
@@ -24,10 +24,10 @@ describe("logs (paginated event tail)", () => {
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
-        expect(out.read()).toMatch(/no events yet/i);
+        expect(out.read()).toMatch(/no turns yet/i);
         expect(calls).toHaveLength(1);
         expect(calls[0]?.method).toBe("GET");
-        expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`);
+        expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`);
         // The default limit=20 query is preserved on the wire.
         expect(calls[0]?.search).toContain("limit=20");
       });
@@ -37,7 +37,7 @@ describe("logs (paginated event tail)", () => {
   test("`logs <fleet_id>` with events prints one row per event with timestamp + actor + summary", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, {
             items: [
               { created_at: "2023-11-14T22:13:20Z", actor: "user",   status: "processed", response_text: "Hello, world." },
@@ -77,7 +77,7 @@ describe("logs (paginated event tail)", () => {
     // command. The row must degrade to the — literal while the stream continues.
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, {
             items: [
               { created_at: "not-a-real-date", actor: "user", status: "processed", response_text: "still rendered" },

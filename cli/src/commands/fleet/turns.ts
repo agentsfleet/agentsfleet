@@ -1,7 +1,7 @@
-// `agentsfleet fleet events <fleet_id>` — newest-first paginated history print.
+// `agentsfleet fleet turns <fleet_id>` — newest-first paginated history print.
 // Filters: --actor (glob), --since (Go-style duration or RFC 3339),
 // --cursor (opaque base64url from a prior `next_cursor`), --limit.
-// Default: one line per event with ts + actor + status + preview.
+// Default: one line per turn with ts + actor + status + preview.
 // `--json` (or global jsonMode) emits the raw envelope for piping.
 
 import { Effect } from "effect";
@@ -12,32 +12,32 @@ import { OUTPUT_FORMAT, Output } from "../../services/output.ts";
 import { Workspaces } from "../../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "../workspace/guards.ts";
 import { isNumber, isString } from "../../lib/guards.ts";
-import { wsFleetEventsPath } from "../../lib/api-paths.ts";
-import { EVENT_STATUS } from "../../constants/event-status.ts";
+import { wsFleetTurnsPath } from "../../lib/api-paths.ts";
+import { TURN_STATUS } from "../../constants/turn-status.ts";
 import { ui, type UiTheme, EMPTY_CELL, instantCell } from "../../output/index.ts";
 import {
   ValidationError,
   type CliError,
 } from "../../errors/index.ts";
 
-const EVENTS_LISTED = "Fleet events" as const;
+const TURNS_LISTED = "Fleet turns" as const;
 const DEFAULT_LIMIT = 50;
 const PREVIEW_MAX = 80;
 
 
-interface EventRow {
+interface TurnRow {
   readonly created_at?: string | null;
   readonly response_text?: string | null;
   readonly status?: string | null;
   readonly actor?: string | null;
 }
 
-interface EventsResponse {
-  readonly items?: ReadonlyArray<EventRow>;
+interface TurnsResponse {
+  readonly items?: ReadonlyArray<TurnRow>;
   readonly next_cursor?: string | null;
 }
 
-export interface EventsEffectFlags {
+export interface TurnsEffectFlags {
   readonly fleetId?: string | undefined;
   readonly actor?: string | undefined;
   readonly since?: string | undefined;
@@ -46,7 +46,7 @@ export interface EventsEffectFlags {
   readonly json?: boolean | undefined;
 }
 
-const buildQuery = (flags: EventsEffectFlags): string => {
+const buildQuery = (flags: TurnsEffectFlags): string => {
   const qs = new URLSearchParams();
   const limit =
     isString(flags.limit) || isNumber(flags.limit)
@@ -61,9 +61,9 @@ const buildQuery = (flags: EventsEffectFlags): string => {
 
 const renderStatus = (status: string | null | undefined, theme: UiTheme): string => {
   if (!status) return theme.dim(EMPTY_CELL);
-  if (status === EVENT_STATUS.PROCESSED) return theme.ok(status);
-  if (status === EVENT_STATUS.FLEET_ERROR) return theme.err(status);
-  if (status === EVENT_STATUS.GATE_BLOCKED) return theme.warn(status);
+  if (status === TURN_STATUS.PROCESSED) return theme.ok(status);
+  if (status === TURN_STATUS.FLEET_ERROR) return theme.err(status);
+  if (status === TURN_STATUS.GATE_BLOCKED) return theme.warn(status);
   return theme.dim(status);
 };
 
@@ -73,16 +73,16 @@ const previewText = (text: string | null | undefined): string => {
   return oneline.length > PREVIEW_MAX ? `${oneline.slice(0, PREVIEW_MAX - 3)}…` : oneline;
 };
 
-const formatRow = (ev: EventRow): string => {
-  const ts = instantCell(ev.created_at);
-  const status = renderStatus(ev.status, ui);
-  const actor = ev.actor || "—";
-  const preview = previewText(ev.response_text);
+const formatRow = (turn: TurnRow): string => {
+  const ts = instantCell(turn.created_at);
+  const status = renderStatus(turn.status, ui);
+  const actor = turn.actor || "—";
+  const preview = previewText(turn.response_text);
   return `  ${ui.dim(ts)}  ${actor}  ${status}  ${preview}`;
 };
 
-export const eventsEffectFromFlags = (
-  flags: EventsEffectFlags,
+export const turnsEffectFromFlags = (
+  flags: TurnsEffectFlags,
 ): Effect.Effect<
   void,
   CliError,
@@ -97,36 +97,36 @@ export const eventsEffectFromFlags = (
         new ValidationError({
           detail: "fleet_id is required",
           suggestion:
-            "usage: agentsfleet fleet events <fleet_id> [--actor=glob] [--since=2h] [--cursor=...] [--limit=N] [--json]",
+            "usage: agentsfleet fleet turns <fleet_id> [--actor=glob] [--since=2h] [--cursor=...] [--limit=N] [--json]",
         }),
       );
     }
 
     const wsId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
-    const path = `${wsFleetEventsPath(wsId, flags.fleetId)}?${buildQuery(flags)}`;
-    const res = yield* http.request<EventsResponse>({ path, token });
+    const path = `${wsFleetTurnsPath(wsId, flags.fleetId)}?${buildQuery(flags)}`;
+    const res = yield* http.request<TurnsResponse>({ path, token });
 
     // `--json` on this command forces the register regardless of the global
     // flag, so the per-command arm stays beside the service's own.
     if (output.format !== OUTPUT_FORMAT.text || flags.json === true) {
-      yield* output.success(EVENTS_LISTED, { ...res });
+      yield* output.success(TURNS_LISTED, { ...res });
       return;
     }
 
     const items = res.items ?? [];
     if (items.length === 0) {
-      yield* output.info("No events yet.");
+      yield* output.info("No turns yet.");
       return;
     }
 
-    yield* output.printSection("Events");
-    for (const ev of items) {
-      yield* output.info(formatRow(ev));
+    yield* output.printSection("Turns");
+    for (const turn of items) {
+      yield* output.info(formatRow(turn));
     }
     if (res.next_cursor) {
       yield* output.info(
-        ui.dim(`  More: agentsfleet fleet events ${flags.fleetId} --cursor=${res.next_cursor}`),
+        ui.dim(`  More: agentsfleet fleet turns ${flags.fleetId} --cursor=${res.next_cursor}`),
       );
     }
   });

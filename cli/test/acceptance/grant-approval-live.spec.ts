@@ -58,7 +58,7 @@ const BILLING_ARGS = ["usage", "show", JSON_FLAG] as const;
 const BALANCE_FIELD = "balance_nanos" as const;
 const ONE_SHOT_MESSAGE = "respond with a single short acknowledgement and stop" as const;
 const ENVELOPE_STATUS_KEY = "status" as const;
-const ENVELOPE_EVENT_ID_KEY = "event_id" as const;
+const ENVELOPE_TURN_ID_KEY = "turn_id" as const;
 const STATUS_PROCESSED = "processed" as const;
 const GRANT_COMMAND = ["fleet", "grants"] as const;
 const REVOKE_VERB = "revoke" as const;
@@ -103,7 +103,7 @@ if (!isLive) {
     let installGrant: GrantRow | null = null;
     let recovery: typeof recoverySchema.Type | null = null;
     let balanceBeforeNanos = 0n;
-    let steeredEventId = "";
+    let steeredTurnId = "";
 
     async function runWithEnv(args: ReadonlyArray<string>): Promise<RunResult> {
       const result = await runFleetctl(args, { env, timeoutMs: STEER_TIMEOUT_MS });
@@ -233,9 +233,9 @@ if (!isLive) {
       const envelope = trailingJson(result.stdout) as Record<string, unknown>;
       assert.equal(envelope[ENVELOPE_STATUS_KEY], STATUS_PROCESSED,
         `expected ${STATUS_PROCESSED}; got ${JSON.stringify(envelope)}`);
-      const eventId = envelope[ENVELOPE_EVENT_ID_KEY];
-      assert.equal(typeof eventId, "string", `the steer named no work: ${JSON.stringify(envelope)}`);
-      steeredEventId = String(eventId);
+      const turnId = envelope[ENVELOPE_TURN_ID_KEY];
+      assert.equal(typeof turnId, "string", `the steer named no work: ${JSON.stringify(envelope)}`);
+      steeredTurnId = String(turnId);
 
       // Nanos, never a rendered figure: a run costing a fraction of a cent
       // moves the balance and no two-decimal display.
@@ -250,22 +250,22 @@ if (!isLive) {
     }, STEER_TIMEOUT_MS);
 
     it("`usage show` prints the run's charge as a readable row, and the JSON charges this fleet", async () => {
-      assert.ok(steeredEventId, "the steer did not run");
-      const text = await usageTextNaming(runWithEnv, steeredEventId);
+      assert.ok(steeredTurnId, "the steer did not run");
+      const text = await usageTextNaming(runWithEnv, steeredTurnId);
       assert.match(text, /Tenant balance:/u);
       assert.match(text, /activities drained credits:/u);
       // A table row or, on a narrow terminal, a label/value block: either way
       // the stretch of output naming the work also names its total in dollars.
-      const row = text.split(/\n\s*\n/u).find((block) => block.includes(steeredEventId)) ?? "";
+      const row = text.split(/\n\s*\n/u).find((block) => block.includes(steeredTurnId)) ?? "";
       assert.match(row, /TOTAL/u, `the run's row carries no total: ${text}`);
       assert.match(row, DOLLARS, `the run's row carries no dollar figure: ${text}`);
 
-      const charged = await chargedNanos(runWithEnv, fleetId, steeredEventId);
+      const charged = await chargedNanos(runWithEnv, fleetId, steeredTurnId);
       assert.ok(charged > 0n, `usage show charged the run nothing: ${charged} nanos`);
     }, STEER_TIMEOUT_MS);
 
     it("`usage show --cursor` continues to an older charge without repeating the first page's", async () => {
-      assert.ok(steeredEventId, "the steer did not run");
+      assert.ok(steeredTurnId, "the steer did not run");
       const first = await readUsagePage(runWithEnv, 1);
       assert.equal(first.events.length, 1, `a one-row page grouped into ${first.events.length} entries`);
       assert.ok(first.next_cursor, "a full page must offer the cursor that continues it");

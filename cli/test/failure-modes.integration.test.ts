@@ -95,7 +95,7 @@ describe("failure modes — runtime / observability surface", () => {
         // The fleet was saved and started without complaint; the runner died
         // afterwards, so the only place the operator can see it is the event
         // stream.
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(200, {
             items: [
               {
@@ -131,7 +131,7 @@ describe("failure modes — runtime / observability surface", () => {
   test("logs fetched with an expired token returns UZ-AUTH-003 / 401 — user knows to re-login", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
           () => jsonResponse(401,
             errorEnvelope("UZ-AUTH-003", "Token expired — run `agentsfleet login` to refresh")),
       };

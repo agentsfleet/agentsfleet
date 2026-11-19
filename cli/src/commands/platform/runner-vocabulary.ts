@@ -62,7 +62,7 @@ export enum RunDestination {
 }
 
 export enum RunnerHistory {
-  Events = "events",
+  History = "history",
   Runs = "runs",
 }
 
