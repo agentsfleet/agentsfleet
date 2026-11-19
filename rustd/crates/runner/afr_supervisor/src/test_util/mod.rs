@@ -131,7 +131,10 @@ impl Healthy {
                 | Verb::ScheduleDelete
                 | Verb::ScheduleRun
                 | Verb::ScheduleRuns
-                | Verb::Message,
+                | Verb::Message
+                | Verb::FleetList
+                | Verb::FleetEvents
+                | Verb::FleetSteer,
             )
             | None => value(&ReportResponse { ok: true }),
         }

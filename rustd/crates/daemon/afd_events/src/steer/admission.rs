@@ -40,3 +40,47 @@ pub(super) const fn steer_admission<'a>(
         reply: Reply::None,
     }
 }
+
+/// How much of the text's SHA-256 a fleet's operation id carries: the first
+/// 16 bytes, as 32 hexadecimal characters.
+const FLEET_KEY_DIGEST_HEX: usize = 32;
+
+/// The operation id a fleet's steer derives: the sender's event, then a
+/// digest of the masked words.
+///
+/// The same words from the same run are one operation, so a model that
+/// resends after a lost answer gets the first run back. Taken over the
+/// MASKED text, so the key holds nothing derived from a secret value.
+pub(super) fn fleet_operation_id(sender_event: &Uuid7, masked_text: &str) -> String {
+    let digest = af_core::etag::sha256_hex(masked_text.as_bytes());
+    let head = digest.get(..FLEET_KEY_DIGEST_HEX).unwrap_or(&digest);
+    [sender_event.as_str(), head].join(KEY_SEPARATOR)
+}
+
+/// The admission a fleet's steer asks for: a person's steer in every field but
+/// its actor, its body and its reply, and the same on every repeat.
+///
+/// The reply is the sender event's own destination, copied inside the
+/// admission statement, so the target answers in the thread the sender was
+/// asked from.
+pub(super) const fn fleet_steer_admission<'a>(
+    fleet: &'a Uuid7,
+    workspace: &'a Uuid7,
+    actor: &'a str,
+    request_json: &'a str,
+    key: &'a str,
+    sender_event: &'a Uuid7,
+) -> Admission<'a> {
+    Admission {
+        producer: Producer::Steer,
+        key: Key::Repeated(key),
+        fleet,
+        workspace,
+        actor,
+        event_type: EventType::Chat,
+        request_json,
+        reply: Reply::Inherit {
+            event_id: sender_event,
+        },
+    }
+}

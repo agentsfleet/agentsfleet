@@ -1,10 +1,12 @@
 //! The `agentsfleetd` verbs a run's tools reach through: the fleet's own
-//! schedules, and a line said to the event's thread.
+//! schedules, a line said to the event's thread, and the workspace's other
+//! fleets.
 //!
 //! ```text
 //!   cron_* / schedule ──┐
-//!                       ├──► LeaseVerbs ──► agentsfleetd, fenced by the lease
-//!   message ────────────┘        ▲
+//!   message ────────────┤
+//!   fleet_steer ────────┼──► LeaseVerbs ──► agentsfleetd, fenced by the lease
+//!   fleet_activity ─────┘        ▲
 //!                                └── the supervisor's control plane
 //! ```
 //!
@@ -30,9 +32,12 @@ use std::fmt;
 use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
 use af_core::problem::Problem;
+use af_wire::steer_verb::FleetSteerAccepted;
 
 use crate::runtime::{ToolErrorCode, ToolOutput};
 
+mod fleet_steer;
+mod fleets;
 mod message;
 mod once;
 mod schedules;
@@ -40,6 +45,8 @@ mod task;
 
 pub use task::DecisionEvaluation;
 
+pub(crate) use self::fleet_steer::FleetSteer;
+pub(crate) use self::fleets::FleetActivity;
 pub(crate) use self::message::Message;
 pub(crate) use self::once::ScheduleOnce;
 pub(crate) use self::schedules::{CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate};
@@ -98,6 +105,28 @@ pub enum ScheduleCall<'a> {
     Runs {
         /// The schedule.
         schedule: &'a Uuid7,
+        /// How many to read.
+        limit: Option<u32>,
+        /// The `next_cursor` of the page before.
+        starting_after: Option<&'a str>,
+    },
+}
+
+/// One fleets read, as `fleet_activity` asks it: the workspace is the lease's,
+/// so none names one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FleetsCall<'a> {
+    /// List the workspace's fleets, newest first.
+    List {
+        /// How many to read.
+        limit: Option<u32>,
+        /// The `next_cursor` of the page before.
+        starting_after: Option<&'a str>,
+    },
+    /// Read one fleet's events, newest first.
+    Events {
+        /// The fleet.
+        fleet: &'a Uuid7,
         /// How many to read.
         limit: Option<u32>,
         /// The `next_cursor` of the page before.
@@ -189,6 +218,22 @@ pub trait LeaseVerbs: Send + Sync + fmt::Debug {
 
     /// Posts one line to the event's thread and answers whether it landed.
     async fn message(&self, text: &str) -> Result<bool, Unanswered>;
+
+    /// Reads the workspace's fleets, or one fleet's events, and answers the
+    /// reply body as it came.
+    async fn fleets(&self, _call: FleetsCall<'_>) -> Result<String, Unanswered> {
+        Err(Unanswered::Refused(None))
+    }
+
+    /// Puts `text` on another fleet in the workspace and answers the event it
+    /// became.
+    async fn fleet_steer(
+        &self,
+        _fleet: &Uuid7,
+        _text: &str,
+    ) -> Result<FleetSteerAccepted<'static>, Unanswered> {
+        Err(Unanswered::Refused(None))
+    }
 
     /// Read complete native input and accepted recovery meaning at a safe boundary.
     async fn task_inputs(

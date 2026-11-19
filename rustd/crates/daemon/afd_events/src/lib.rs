@@ -54,7 +54,13 @@ pub use self::history::{
 };
 /// Where an accepted steer went.
 pub use self::steer::disposition;
-pub use self::steer::{ACTOR_MACHINE, ACTOR_PREFIX, Steer, Steered, is_steer_actor, steer_actor};
+pub use self::steer::{
+    ACTOR_MACHINE, ACTOR_PREFIX, FLEET_ACTOR_PREFIX, FleetSteer, FleetSteered, Steer, Steered,
+    fleet_actor, is_fleet_actor, is_steer_actor, steer_actor,
+};
+/// What a guarded admission answers when its guard does not hold, for a
+/// caller of [`Steer::append_from_fleet`] that names no admission crate.
+pub use afd_admission::Unheld;
 
 /// Every history read's text, named, so the plan suite can `EXPLAIN` exactly
 /// what `History` runs rather than a copy of it.

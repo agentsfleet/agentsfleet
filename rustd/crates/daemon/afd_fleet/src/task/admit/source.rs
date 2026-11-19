@@ -129,3 +129,41 @@ pub(in crate::task) fn message_for<'a>(
         serde_json::from_str(body).map_err(af_core::json::Unreadable::from)?;
     Ok(human.human_message)
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "test: an unmet precondition should fail the test loudly"
+)]
+mod tests {
+    use afd_admission::Producer;
+
+    use super::{Source, check_human};
+
+    fn steer_from(actor: &str) -> Source {
+        Source {
+            actor: actor.to_owned(),
+            producer: Producer::Steer.as_str().to_owned(),
+            slack_person_allowed: false,
+            request_json: r#"{"message":"fix it"}"#.to_owned(),
+            reply_provider: None,
+            reply_address: None,
+            input_claim_lease_id: None,
+            input_claim_fence: None,
+        }
+    }
+
+    /// Dimension 2.10: a fleet's steer carries the steer producer, and still
+    /// cannot start a durable task, which only a person's message may.
+    #[test]
+    fn check_human_refuses_a_fleet_actor() {
+        let fleet = steer_from("fleet:0190d5c2-7e1a-7000-8000-00000000f001");
+        let refused = check_human(&fleet).expect_err("a fleet's steer is not a person's");
+        assert_eq!(
+            refused.code(),
+            af_core::error_code::TASK_INVALID_TARGET,
+            "the refusal is the invalid-target one"
+        );
+        check_human(&steer_from("steer:user_2abc")).expect("a person's steer may start a task");
+    }
+}

@@ -1,8 +1,8 @@
 //! Runner-control HTTP adapters.
 //!
-//! The stream, self-record, credential, memory, message, schedule,
-//! tool-call, decision and task handlers live here so host protocol changes
-//! compile independently. Heartbeats, leases, renewals, activity and reports
+//! The stream, self-record, credential, memory, message, schedule, fleet steer,
+//! fleets, tool-call, decision and task handlers live here so host protocol
+//! changes compile independently. Heartbeats, leases, renewals, activity and reports
 //! travel on the stream.
 
 #![deny(unused_crate_dependencies)]
@@ -69,5 +69,8 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::ScheduleRuns => get(handler::runner::schedule_run::runs::<D>)
             .post(handler::runner::schedule_run::run::<D>),
         RunnerRoute::Messages => post(handler::runner::message::handle::<D>),
+        RunnerRoute::Steers => post(handler::runner::fleet_steer::handle::<D>),
+        RunnerRoute::Fleets => get(handler::runner::fleets::list::<D>),
+        RunnerRoute::FleetEvents => get(handler::runner::fleets::events::<D>),
     }
 }

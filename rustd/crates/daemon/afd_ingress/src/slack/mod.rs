@@ -81,6 +81,7 @@ impl Ingress {
             .map(|row| {
                 subscribed(
                     row.fleet_id.clone(),
+                    &row.name,
                     &row.status,
                     &row.document,
                     provider,
@@ -97,6 +98,8 @@ impl Ingress {
 struct CandidateRow {
     /// The fleet, as text.
     fleet_id: Uuid7,
+    /// Its saved name: the one the dashboard and the command line show.
+    name: String,
     /// The stored status word.
     status: String,
     /// The head revision's configuration, as JSON text.
@@ -110,11 +113,16 @@ struct CandidateRow {
 /// identifier, which a rename does not change; the provider ignoring case, for
 /// the reason the webhook source is (`binding.rs`).
 ///
+/// A subscriber is addressed by `name`, the fleet's saved name, never by the
+/// name inside its document, which a save can leave different: one fleet then
+/// answers to one name on every surface.
+///
 /// # Errors
 /// A status this build cannot name, and a stored document that no longer
 /// parses — both this deployment's incidents rather than a sender's.
 pub(crate) fn subscribed(
     fleet: Uuid7,
+    name: &str,
     stored_status: &str,
     document: &str,
     provider: &str,
@@ -126,7 +134,7 @@ pub(crate) fn subscribed(
         .is_attached_to(provider, channel)
         .then(|| Subscriber {
             fleet,
-            name: config.name().as_str().to_owned(),
+            name: name.to_owned(),
             runnable: status.is_runnable(),
             addressed_only: config
                 .repository_binding()

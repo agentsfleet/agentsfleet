@@ -3799,6 +3799,313 @@
         ]
       }
     },
+    "/v1/runners/me/leases/{lease_id}/fleets": {
+      "get": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "List the workspace's fleets",
+        "description": "Lists the fleets in the running fleet's workspace, newest first, archived and installing fleets included with their status. Continue with `starting_after` and `limit`.",
+        "operationId": "runner_list_fleets",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Lease identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fencing_token",
+            "in": "query",
+            "description": "Attempt token returned with the lease. Replaced assignments are refused.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Use the previous response's `next_cursor` unchanged.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, 1 to 100. Defaults to 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/fleets/{fleet_id}/events": {
+      "get": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "List one fleet's recent events",
+        "description": "Lists one fleet's events in the running fleet's workspace, newest first. Each row carries at most 1024 bytes of what was asked and what was answered. Waiting messages read `queued`. A fleet outside the workspace returns 404 `UZ-AGT-009`.",
+        "operationId": "runner_list_fleet_events",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Lease identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "The fleet to read: one in the running fleet's workspace.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fencing_token",
+            "in": "query",
+            "description": "Attempt token returned with the lease. Replaced assignments are refused.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Use the previous response's `next_cursor` unchanged.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, 1 to 25. Defaults to 20.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetEventsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/runners/me/leases/{lease_id}/messages": {
       "post": {
         "tags": [
@@ -4687,6 +4994,144 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ScheduleRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/steers": {
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Steer another fleet",
+        "description": "Puts work on another fleet in the running fleet's workspace, as a chat message that names the sender. The target answers in the sender's thread and runs under its own setup. The same words from the same event return the first `event_id` with `replayed` true. A steer to the sender returns 409 `UZ-AGT-018`. A fleet outside the workspace returns 404 `UZ-AGT-009`.",
+        "operationId": "runner_steer_fleet",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Lease identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetSteerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted for publication; delivery to subscribers is not yet confirmed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetSteerAccepted"
                 }
               }
             }
@@ -13633,7 +14078,7 @@
           "Fleets"
         ],
         "summary": "List fleets in a workspace",
-        "description": "Returns visible fleets with the newest fleet first. Omit `starting_after` for the first page. Use the returned `next_cursor` to read the next page. ",
+        "description": "Returns visible fleets with the newest fleet first. Omit `starting_after` for the first page. Use the returned `next_cursor` to read the next page. With `name`, returns the one fleet saved under that name, or no item, and ignores paging.",
         "operationId": "list_fleets",
         "parameters": [
           {
@@ -13641,6 +14086,15 @@
             "in": "path",
             "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "description": "A fleet's saved name, matched exactly: 1 to 64 lower-case letters, digits or hyphens.",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -25931,6 +26385,126 @@
         },
         "additionalProperties": false
       },
+      "FleetEventItem": {
+        "type": "object",
+        "description": "One event of a fleet, as another fleet reads it.",
+        "required": [
+          "event_id",
+          "actor",
+          "event_type",
+          "status",
+          "created_at",
+          "request_excerpt"
+        ],
+        "properties": {
+          "actor": {
+            "type": "string",
+            "description": "Who or what produced it: `steer:<user>`, `fleet:<fleet_id>`, `cron:<id>`."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was admitted."
+          },
+          "event_id": {
+            "type": "string",
+            "description": "The event's identifier."
+          },
+          "event_type": {
+            "type": "string",
+            "description": "How it entered: `chat`, `webhook`, `cron` or `continuation`."
+          },
+          "failure_label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What refused or failed the run. Omitted on a clean one."
+          },
+          "request_excerpt": {
+            "type": "string",
+            "description": "What it was asked, cut to [`EXCERPT_MAX_BYTES`]."
+          },
+          "response_excerpt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What it answered, cut to [`EXCERPT_MAX_BYTES`]. Omitted until it answers."
+          },
+          "status": {
+            "type": "string",
+            "description": "Where its run got to; `queued` while it waits for a runner."
+          }
+        }
+      },
+      "FleetEventsPage": {
+        "type": "object",
+        "description": "One page of a fleet's events, newest first.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetEventItem"
+            },
+            "description": "The events on this page."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass back as `starting_after` for the next page; null on the last one."
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Unknown without a separate count; always null.",
+            "minimum": 0
+          }
+        }
+      },
+      "FleetItem": {
+        "type": "object",
+        "description": "One fleet of the lease's workspace.",
+        "required": [
+          "fleet_id",
+          "name",
+          "status",
+          "events_processed"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What it is for, from its saved setup. Omitted while it has none."
+          },
+          "events_processed": {
+            "type": "string",
+            "description": "How many events it has processed, as a decimal string."
+          },
+          "fleet_id": {
+            "type": "string",
+            "description": "The fleet's identifier: what `fleet_steer` and the events read take."
+          },
+          "name": {
+            "type": "string",
+            "description": "Its saved name in this workspace."
+          },
+          "status": {
+            "type": "string",
+            "description": "Where it stands: `installing`, `active` or `archived`."
+          }
+        }
+      },
       "FleetResponse": {
         "type": "object",
         "description": "Shared fleet resource, returned by create, read and lifecycle changes.",
@@ -26043,6 +26617,54 @@
           }
         }
       },
+      "FleetSteerAccepted": {
+        "type": "object",
+        "description": "What a fleet's steer was answered with.",
+        "required": [
+          "event_id",
+          "replayed"
+        ],
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "description": "The event the steer became on the target fleet."
+          },
+          "replayed": {
+            "type": "boolean",
+            "description": "Whether an earlier send of the same words from the same event already\nadmitted it. When `true`, `event_id` is that send's event."
+          }
+        }
+      },
+      "FleetSteerRequest": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/leases/{lease_id}/steers` request.",
+        "required": [
+          "fencing_token",
+          "fleet_id",
+          "text"
+        ],
+        "properties": {
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The lease's fencing token; a holder the fleet has superseded is refused.",
+            "minimum": 0
+          },
+          "fleet_id": {
+            "type": "string",
+            "description": "The fleet to steer: another fleet in the lease's workspace.",
+            "maxLength": 36,
+            "minLength": 36
+          },
+          "text": {
+            "type": "string",
+            "description": "What to ask it: 1 to 8192 bytes with no NUL character.",
+            "maxLength": 8192,
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
       "FleetSummary": {
         "type": "object",
         "description": "A shared fleet in the workspace directory.",
@@ -26099,6 +26721,38 @@
             "type": "string",
             "format": "date-time",
             "description": "Last mutation."
+          }
+        }
+      },
+      "FleetsPage": {
+        "type": "object",
+        "description": "One page of the lease's workspace's fleets, newest first.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetItem"
+            },
+            "description": "The fleets on this page."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass back as `starting_after` for the next page; null on the last one."
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Unknown without a separate count; always null.",
+            "minimum": 0
           }
         }
       },
@@ -29552,7 +30206,7 @@
             "description": "The replacement token after a `rotate`, shown once."
           }
         ],
-        "description": "The `200` of a runner PATCH, admin or tenant: the runner's state after an\naction or an edit, or its replacement token after a `rotate`. Untagged: the\ntwo shapes already differ (`status` against `runner_token`), so the wire\ncarries no tag and publishes as `oneOf`. `Debug` delegates to each shape's\nown, which redacts the token (`redact.rs`)."
+        "description": "The `200` of a runner PATCH, admin or tenant.\n\nThe runner's state after an action or an edit, or its replacement token\nafter a `rotate`. Untagged: the two shapes already differ (`status` against\n`runner_token`), so the wire carries no tag and publishes as `oneOf`.\n`Debug` delegates to each shape's own, which redacts the token\n(`redact.rs`)."
       },
       "RunnerTokenRotatedResponse": {
         "type": "object",

@@ -70,7 +70,7 @@ fn subscription_follows_the_channel_id() {
     let after = stored("incident", OTHER_CHANNEL, None);
 
     let reached = |document: &str, id: &str| {
-        subscribed(fleet(), active, document, SLACK, &channel(id))
+        subscribed(fleet(), "incident", active, document, SLACK, &channel(id))
             .expect("a readable row")
             .is_some()
     };
@@ -92,6 +92,7 @@ fn subscription_follows_the_channel_id() {
 fn a_subscriber_carries_its_name_status_and_reach() {
     let read_bound = subscribed(
         fleet(),
+        "responder",
         FleetStatus::Active.as_str(),
         &stored("responder", CHANNEL, Some("read")),
         SLACK,
@@ -110,6 +111,7 @@ fn a_subscriber_carries_its_name_status_and_reach() {
 
     let write_bound = subscribed(
         fleet(),
+        "repairer",
         FleetStatus::Archived.as_str(),
         &stored("repairer", CHANNEL, Some("write")),
         SLACK,
@@ -131,9 +133,16 @@ fn the_provider_must_match_ignoring_case() {
     let document = stored("incident", CHANNEL, None);
     let active = FleetStatus::Active.as_str();
     let on = |provider: &str| {
-        subscribed(fleet(), active, &document, provider, &channel(CHANNEL))
-            .expect("a readable row")
-            .is_some()
+        subscribed(
+            fleet(),
+            "incident",
+            active,
+            &document,
+            provider,
+            &channel(CHANNEL),
+        )
+        .expect("a readable row")
+        .is_some()
     };
     assert!(on("SLACK"), "the spelling's case is nobody's authority");
     assert!(
@@ -153,6 +162,7 @@ fn unattached_and_unreadable_rows_are_told_apart() {
     assert_eq!(
         subscribed(
             fleet(),
+            "api-only",
             FleetStatus::Active.as_str(),
             &api_only,
             SLACK,
@@ -164,12 +174,21 @@ fn unattached_and_unreadable_rows_are_told_apart() {
 
     let document = stored("incident", CHANNEL, None);
     assert!(
-        subscribed(fleet(), "hibernating", &document, SLACK, &channel(CHANNEL)).is_err(),
+        subscribed(
+            fleet(),
+            "incident",
+            "hibernating",
+            &document,
+            SLACK,
+            &channel(CHANNEL)
+        )
+        .is_err(),
         "a status this build cannot name is an incident, not an unattached fleet"
     );
     assert!(
         subscribed(
             fleet(),
+            "incident",
             FleetStatus::Active.as_str(),
             "not json",
             SLACK,
@@ -178,4 +197,22 @@ fn unattached_and_unreadable_rows_are_told_apart() {
         .is_err(),
         "a document that no longer parses is an incident too"
     );
+}
+
+/// Dimension 5.2: a fleet saved under a name its document does not carry is
+/// addressed by the saved name, the one the dashboard and the command line
+/// show, so one fleet answers to one name on every surface.
+#[test]
+fn subscribed_names_a_fleet_by_its_saved_name() {
+    let subscriber = subscribed(
+        fleet(),
+        "ci-dev-repairer",
+        FleetStatus::Active.as_str(),
+        &stored("ci-repairer", CHANNEL, Some("write")),
+        SLACK,
+        &channel(CHANNEL),
+    )
+    .expect("a readable row")
+    .expect("attached to the channel");
+    assert_eq!(subscriber.name, "ci-dev-repairer");
 }

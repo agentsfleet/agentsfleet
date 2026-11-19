@@ -159,6 +159,36 @@ pub(crate) async fn seed_fleet(
     config: &str,
     now: Timestamp,
 ) {
+    let tag = scenario_tag(fleet);
+    let seed = Seeded {
+        name,
+        status: FLEET_STATUS_ACTIVE,
+        tag: &tag,
+    };
+    seed_fleet_as(booted, fleet, workspace, tenant, config, now, seed).await;
+}
+
+/// What a seeded fleet row carries beside its identity: its name, its status,
+/// and the one placement tag a runner must hold to be offered its work.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Seeded<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) status: &'a str,
+    pub(crate) tag: &'a str,
+}
+
+/// [`seed_fleet`], with the name, status and placement tag chosen by the
+/// caller: a second fleet a scenario's own runner is offered carries that
+/// runner's tag, [`scenario_tag`] of the scenario's fleet.
+pub(crate) async fn seed_fleet_as(
+    booted: &Booted,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+    tenant: &Uuid7,
+    config: &str,
+    now: Timestamp,
+    seed: Seeded<'_>,
+) {
     let mut connection = booted
         .database
         .acquire()
@@ -183,11 +213,10 @@ pub(crate) async fn seed_fleet(
             .await
             .expect("the workspace row must insert");
     }
-    let tag = scenario_tag(fleet);
-    let tags = [tag.as_str()];
+    let tags = [seed.tag];
     let stored = Stored::of(&crate::e2e_native::definition(config, FIXTURE_INSTRUCTIONS));
-    FleetSeed::new(fleet, workspace, tenant, FLEET_STATUS_ACTIVE)
-        .name(name)
+    FleetSeed::new(fleet, workspace, tenant, seed.status)
+        .name(seed.name)
         .tags(&tags)
         .at(now)
         .setup(stored.revision())

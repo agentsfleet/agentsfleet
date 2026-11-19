@@ -95,3 +95,31 @@ async fn walk(lane: &Lane) -> Vec<FleetRow> {
     }
     walked
 }
+
+/// M252 Dimension 3.3. An archived fleet is still found by its saved name,
+/// and the same name asked from another workspace finds nothing.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs the lane's Postgres"]
+async fn fleets_named_finds_an_archived_fleet_in_its_own_workspace() {
+    let lane = Lane::create().await;
+    let fleet = lane.fleet().await;
+    let name = format!("fleet-{fleet}");
+    let _tag = lane.archive(&fleet).await;
+
+    let found = lane
+        .fleets
+        .named(&lane.workspace, &name)
+        .await
+        .expect("the name read runs")
+        .expect("the archived fleet is found");
+    assert_eq!(found.id, fleet.as_str());
+    assert_eq!(found.status, afd_fleet_lifecycle::FleetStatus::Archived);
+
+    let neighbour = lane.another_workspace().await;
+    let elsewhere = lane
+        .fleets
+        .named(&neighbour, &name)
+        .await
+        .expect("the name read runs");
+    assert!(elsewhere.is_none(), "{elsewhere:?}");
+}

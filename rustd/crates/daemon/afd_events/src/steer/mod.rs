@@ -70,6 +70,8 @@ use crate::error::{Result, operation_conflict};
 
 mod admission;
 use admission::{scoped_key, steer_admission};
+mod fleet;
+pub use fleet::{FLEET_ACTOR_PREFIX, FleetSteer, FleetSteered, fleet_actor, is_fleet_actor};
 
 /// What a refused reuse's warn names as the half that differed: the row sits
 /// on another fleet, or it holds another message or sender.

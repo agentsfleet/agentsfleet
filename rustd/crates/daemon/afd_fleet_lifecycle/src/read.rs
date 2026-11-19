@@ -19,6 +19,9 @@ use crate::{FleetStatus, Fleets, sql};
 /// The context a failed page walk reports under.
 const CONTEXT_PAGE: &str = "list workspace fleets";
 
+/// The context a failed name lookup reports under.
+const CONTEXT_NAMED: &str = "find a workspace fleet by name";
+
 /// What the ingress check was doing, for the operator's log line.
 const CONTEXT_INGRESS: &str = "read a fleet's ingress status";
 
@@ -127,6 +130,27 @@ impl Fleets {
         let more = rows.len() > kept;
         rows.truncate(kept);
         Ok(FleetPage { rows, more })
+    }
+
+    /// The fleet `workspace` holds under the saved name `name`, as a list page
+    /// shows it, or `None` when no fleet there has that name.
+    ///
+    /// The name is the instance's, unique in its workspace, so the answer is
+    /// one fleet or none. A name in another workspace is never read.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, and a row this daemon cannot
+    /// read.
+    pub async fn named(&self, workspace: &Uuid7, name: &str) -> Result<Option<FleetRow>> {
+        let mut connection = self.database.acquire().await?;
+        sqlx::query_as::<_, PageRow>(sql::SELECT_FLEET_BY_NAME)
+            .bind(workspace)
+            .bind(name)
+            .fetch_optional(connection.as_mut())
+            .await
+            .map_err(error::query(CONTEXT_NAMED))?
+            .map(FleetRow::try_from)
+            .transpose()
     }
 
     /// Whether this fleet will take new work, without reading what it is.

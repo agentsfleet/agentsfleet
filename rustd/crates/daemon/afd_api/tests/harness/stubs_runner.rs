@@ -168,6 +168,16 @@ impl Leasing for NoWork {
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
         std::future::ready(Err(afd_fleet::Error::lease_not_found()))
     }
+
+    /// Refused for the reason [`NoWork::standing`] is.
+    fn sender(
+        &self,
+        _standing: &afd_fleet::lease::Standing,
+        _text: &str,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::lease::message::SteerSender>> + Send
+    {
+        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
+    }
 }
 
 impl afd_api::services::RunnerStreams for NoWork {

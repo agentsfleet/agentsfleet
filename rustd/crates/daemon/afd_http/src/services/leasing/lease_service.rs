@@ -2,8 +2,8 @@
 
 use super::{
     Captured, Interim, Leasing, MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest,
-    MemoryRecallResponse, MessageRequest, MintCredentialRequest, Minted, Standing, Timestamp,
-    ToolCallRecordsRequest, ToolCallRecordsStored, Uuid7,
+    MemoryRecallResponse, MessageRequest, MintCredentialRequest, Minted, Standing, SteerSender,
+    Timestamp, ToolCallRecordsRequest, ToolCallRecordsStored, Uuid7,
 };
 use afd_fleet::lease::LeaseService;
 
@@ -83,5 +83,13 @@ impl Leasing for LeaseService {
         text: &str,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
         Self::masked(self, standing, text)
+    }
+
+    fn sender(
+        &self,
+        standing: &Standing,
+        text: &str,
+    ) -> impl Future<Output = afd_fleet::Result<SteerSender>> + Send {
+        Self::sender(self, standing, text)
     }
 }

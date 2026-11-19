@@ -26,6 +26,7 @@ use afd_bus::Handle;
 use afd_db::Db;
 
 pub use self::admission::{Admission, Key, Producer, Reply};
+pub use self::admit::Unheld;
 pub use self::backlog::LedgerBacklog;
 pub use self::budget::Budgets;
 use self::budget::Ceiling;

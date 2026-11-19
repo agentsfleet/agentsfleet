@@ -293,6 +293,13 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::FLEET_STEER_SELF,
+        status: 409,
+        title: "Fleet cannot steer itself",
+        hint: "A fleet's steer goes to another fleet. Answer in this run, or pick another fleet's `fleet_id` from `fleet_activity`.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::MEM_AGENTSFLEET_NOT_FOUND,
         status: 404,
         title: "Fleet not found for memory op",

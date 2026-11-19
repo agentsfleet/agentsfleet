@@ -71,6 +71,18 @@ pub const SCHEDULE_RUNS_SUFFIX: &str = "runs";
 /// the event's thread before the answer. See [`LEASE_ACTIVITY_SUFFIX`].
 pub const LEASE_MESSAGES_SUFFIX: &str = "messages";
 
+/// Trailing segment of the per-lease steers sub-resource: work the leased
+/// fleet puts on another fleet in its workspace. See [`LEASE_ACTIVITY_SUFFIX`].
+pub const LEASE_STEERS_SUFFIX: &str = "steers";
+
+/// Trailing segment of the per-lease fleets sub-resource: the fleets of the
+/// leased fleet's workspace. See [`LEASE_ACTIVITY_SUFFIX`].
+pub const LEASE_FLEETS_SUFFIX: &str = "fleets";
+
+/// Trailing segment of one fleet's recent events, beneath
+/// `{LEASE_FLEETS_SUFFIX}/{fleet_id}`.
+pub const FLEET_EVENTS_SUFFIX: &str = "events";
+
 /// One held lease, the root every per-lease route sits under. The router
 /// matches `{lease_id}`; the runner puts the lease's id in its place.
 const LEASE: &str = concatcp!(RUNNER_LEASES, "/{lease_id}/");
@@ -96,6 +108,15 @@ pub const LEASE_SCHEDULE_RUNS: &str = concatcp!(LEASE_SCHEDULE, "/", SCHEDULE_RU
 
 /// `POST` — a line said to the leased event's thread.
 pub const LEASE_MESSAGES: &str = concatcp!(LEASE, LEASE_MESSAGES_SUFFIX);
+
+/// `POST` — work the leased fleet puts on another fleet in its workspace.
+pub const LEASE_STEERS: &str = concatcp!(LEASE, LEASE_STEERS_SUFFIX);
+
+/// `GET` — the fleets of the leased fleet's workspace.
+pub const LEASE_FLEETS: &str = concatcp!(LEASE, LEASE_FLEETS_SUFFIX);
+
+/// `GET` — one fleet's recent events, as the leased fleet reads them.
+pub const LEASE_FLEET_EVENTS: &str = concatcp!(LEASE_FLEETS, "/{fleet_id}/", FLEET_EVENTS_SUFFIX);
 
 /// Physical decision reservations owned by the existing fenced lease.
 pub const LEASE_TASK_DECISIONS: &str = concatcp!(LEASE, "tasks/decisions");

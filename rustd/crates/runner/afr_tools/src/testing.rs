@@ -187,6 +187,52 @@ pub(crate) enum Asked {
     Schedules(OwnedCall),
     /// A message, as the text that left the runner.
     Message(String),
+    /// A fleets read, field by field.
+    Fleets(OwnedFleetsCall),
+    /// A steer, as the fleet asked and the text that left the runner.
+    Steer {
+        /// The fleet the work was put on.
+        fleet: String,
+        /// The text, as masked.
+        text: String,
+    },
+}
+
+/// A [`crate::verbs::FleetsCall`] with every field owned, compared whole.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum OwnedFleetsCall {
+    List {
+        limit: Option<u32>,
+        starting_after: Option<String>,
+    },
+    Events {
+        fleet: String,
+        limit: Option<u32>,
+        starting_after: Option<String>,
+    },
+}
+
+impl From<crate::verbs::FleetsCall<'_>> for OwnedFleetsCall {
+    fn from(call: crate::verbs::FleetsCall<'_>) -> Self {
+        match call {
+            crate::verbs::FleetsCall::List {
+                limit,
+                starting_after,
+            } => Self::List {
+                limit,
+                starting_after: starting_after.map(str::to_owned),
+            },
+            crate::verbs::FleetsCall::Events {
+                fleet,
+                limit,
+                starting_after,
+            } => Self::Events {
+                fleet: fleet.as_str().to_owned(),
+                limit,
+                starting_after: starting_after.map(str::to_owned),
+            },
+        }
+    }
 }
 
 /// A [`crate::verbs::ScheduleCall`] with every field owned, compared whole.
@@ -265,8 +311,12 @@ impl From<crate::verbs::ScheduleCall<'_>> for OwnedCall {
 pub(crate) struct RecordingVerbs {
     answer: Result<String, crate::verbs::Unanswered>,
     delivered: Result<bool, crate::verbs::Unanswered>,
+    steered: Result<af_wire::steer_verb::FleetSteerAccepted<'static>, crate::verbs::Unanswered>,
     asked: std::sync::Mutex<Vec<Asked>>,
 }
+
+/// The event a recorded steer answers with, unless a suite says otherwise.
+pub(crate) const STEERED_EVENT: &str = "0190d5c2-7e1a-7000-8000-00000000e0f1";
 
 impl RecordingVerbs {
     /// Verbs answering schedules calls with `answer` and messages with
@@ -278,8 +328,21 @@ impl RecordingVerbs {
         Self {
             answer,
             delivered,
+            steered: Ok(af_wire::steer_verb::FleetSteerAccepted {
+                event_id: std::borrow::Cow::Borrowed(STEERED_EVENT),
+                replayed: false,
+            }),
             asked: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    /// The same verbs, answering a steer with `steered`.
+    pub(crate) fn steering(
+        mut self,
+        steered: Result<af_wire::steer_verb::FleetSteerAccepted<'static>, crate::verbs::Unanswered>,
+    ) -> Self {
+        self.steered = steered;
+        self
     }
 
     /// Everything asked so far, in order.
@@ -307,6 +370,26 @@ impl crate::verbs::LeaseVerbs for RecordingVerbs {
     async fn message(&self, text: &str) -> Result<bool, crate::verbs::Unanswered> {
         self.record(Asked::Message(text.to_owned()));
         self.delivered
+    }
+
+    async fn fleets(
+        &self,
+        call: crate::verbs::FleetsCall<'_>,
+    ) -> Result<String, crate::verbs::Unanswered> {
+        self.record(Asked::Fleets(OwnedFleetsCall::from(call)));
+        self.answer.clone()
+    }
+
+    async fn fleet_steer(
+        &self,
+        fleet: &af_core::id::Uuid7,
+        text: &str,
+    ) -> Result<af_wire::steer_verb::FleetSteerAccepted<'static>, crate::verbs::Unanswered> {
+        self.record(Asked::Steer {
+            fleet: fleet.as_str().to_owned(),
+            text: text.to_owned(),
+        });
+        self.steered.clone()
     }
 }
 

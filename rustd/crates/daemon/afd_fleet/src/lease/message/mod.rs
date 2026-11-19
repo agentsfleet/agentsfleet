@@ -20,10 +20,12 @@
 
 use af_core::id::Uuid7;
 use af_secrets::{Scrub, StaticSecrets};
+use af_wire::event::FleetSteerBody;
 use af_wire::message_verb::{MESSAGES_PER_RUN_MAX, MessageRequest};
 use afd_outbound::Interim;
 
 use crate::error::{Result, lease_not_found, message_limit_reached, message_no_channel, query};
+use crate::lease::installed::Installed;
 use crate::lease::pull::LeaseService;
 use crate::lease::sql;
 use crate::lease::sql::standing::COUNT_MESSAGE;
@@ -32,6 +34,22 @@ use crate::lease::store::Leases;
 
 /// Statement name, for the context a count failure carries.
 const CONTEXT_COUNT: &str = "count interim message";
+
+/// Who a fleet's steer is from, and the body it stores.
+///
+/// The body is composed and serialized here, once, from the masked words,
+/// so the stored request, the live frame and the key all read the same text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SteerSender {
+    /// The sender fleet's saved name.
+    pub name: String,
+    /// The text, with the sender fleet's declared static secrets masked.
+    pub text: String,
+    /// The sender line, a newline, then `text`: what the target reads.
+    pub message: String,
+    /// The stored body, `af_wire::event::FleetSteerBody`, serialized.
+    pub request_json: String,
+}
 
 impl LeaseService {
     /// One line for `lease_id`'s thread, fenced, counted and scrubbed.
@@ -101,11 +119,52 @@ impl LeaseService {
     /// Refuses a fleet that is no longer installed. Reports a datastore or
     /// vault that would not answer, and a mask that could not be built.
     pub async fn masked(&self, standing: &Standing, text: &str) -> Result<String> {
-        let installed = self
-            .leases
+        let installed = self.installed_for(standing).await?;
+        self.mask_with(&installed, standing, text).await
+    }
+
+    /// The sender of a fleet's steer, from one read of the installed fleet:
+    /// its saved name, `text` masked as [`LeaseService::masked`] masks it, and
+    /// the body the steer stores.
+    ///
+    /// # Errors
+    /// As [`LeaseService::masked`]: a fleet no longer installed is refused as
+    /// a lease that is not live.
+    pub async fn sender(&self, standing: &Standing, text: &str) -> Result<SteerSender> {
+        let installed = self.installed_for(standing).await?;
+        let text = self.mask_with(&installed, standing, text).await?;
+        let body = FleetSteerBody::new(
+            &text,
+            standing.fleet_id.as_str(),
+            &installed.name,
+            standing.event_id.as_str(),
+        );
+        let request_json = serde_json::to_string(&body).map_err(af_core::json::Unreadable::from)?;
+        let message = body.message.into_owned();
+        Ok(SteerSender {
+            name: installed.name,
+            text,
+            message,
+            request_json,
+        })
+    }
+
+    /// The lease's fleet as installed, or the refusal a fleet that no longer
+    /// runs earns.
+    async fn installed_for(&self, standing: &Standing) -> Result<Installed> {
+        self.leases
             .installed(&standing.fleet_id)
             .await?
-            .ok_or_else(lease_not_found)?;
+            .ok_or_else(lease_not_found)
+    }
+
+    /// `text` with `installed`'s declared static secrets masked.
+    async fn mask_with(
+        &self,
+        installed: &Installed,
+        standing: &Standing,
+        text: &str,
+    ) -> Result<String> {
         let names = installed.credential_names();
         if names.is_empty() {
             return Ok(text.to_owned());

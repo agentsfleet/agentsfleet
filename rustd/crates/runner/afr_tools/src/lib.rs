@@ -40,4 +40,4 @@ pub use self::schema::{NoArguments, Schema};
 pub use self::selection::Selection;
 #[cfg(any(test, feature = "test-util"))]
 pub use self::verbs::{CLOSED, Closed};
-pub use self::verbs::{LeaseVerbs, ScheduleCall, Unanswered};
+pub use self::verbs::{FleetsCall, LeaseVerbs, ScheduleCall, Unanswered};

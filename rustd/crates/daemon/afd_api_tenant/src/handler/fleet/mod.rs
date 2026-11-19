@@ -33,8 +33,10 @@ use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
 use serde_json::value::RawValue;
 
+use af_fleet_runtime::FleetName;
+
 use crate::auth::WorkspaceContext;
-use crate::handler::{Refusal, parameter};
+use crate::handler::{Refusal, decoded_parameter, parameter};
 use crate::services::{Services, WorkspaceFleets as _};
 
 /// The scoped events each verb's failures are logged under.
@@ -55,6 +57,12 @@ const QUERY_STARTING_AFTER: &str = "starting_after";
 /// The `limit` parameter's name.
 const QUERY_LIMIT: &str = "limit";
 
+/// The `name` parameter's name: a fleet's saved name, matched exactly.
+const QUERY_NAME: &str = "name";
+
+/// The refusal a `name` outside a fleet name's bound earns.
+const DETAIL_NAME: &str = "name must be 1 to 64 lower-case letters, digits or hyphens";
+
 /// The refusal a `starting_after` this daemon never issued earns.
 pub const DETAIL_INVALID_CURSOR: &str = "Invalid cursor format";
 
@@ -68,10 +76,12 @@ pub const DETAIL_INVALID_CURSOR: &str = "Invalid cursor format";
     description = concat!(
         "Returns visible fleets with the newest fleet first. Omit ",
         "`starting_after` for the first page. Use the returned `next_cursor` ",
-        "to read the next page. ",
+        "to read the next page. With `name`, returns the one fleet saved under ",
+        "that name, or no item, and ignores paging.",
     ),
     params(
         afd_http::openapi::path::Workspace,
+        ("name" = Option<String>, Query, description = "A fleet's saved name, matched exactly: 1 to 64 lower-case letters, digits or hyphens."),
         ("starting_after" = Option<String>, Query, description = "Use the previous response's `next_cursor` unchanged. Omit for the first page."),
         ("limit" = Option<String>, Query, description = "Page size. Defaults to 20. Clamped to a maximum of 100."),
     ),
@@ -88,6 +98,9 @@ pub(crate) async fn list<D: Services>(
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
     let query = query.unwrap_or_default();
+    if let Some(name) = requested_name(&query)? {
+        return named(&*services, &owned.workspace, &name).await;
+    }
     let limit = limit_or_default(parameter(&query, QUERY_LIMIT));
     let after = parse_cursor(parameter(&query, QUERY_STARTING_AFTER))?;
 
@@ -97,6 +110,38 @@ pub(crate) async fn list<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_LIST))?;
     Ok(Json(page_response(&page)).into_response())
+}
+
+/// The one fleet saved under `name`, in the list's own envelope.
+async fn named<D: Services>(
+    services: &D,
+    workspace: &Uuid7,
+    name: &FleetName,
+) -> Result<Response, Refusal> {
+    let row = services
+        .fleets()
+        .named(workspace, name.as_str())
+        .await
+        .map_err(Refusal::at(EVENT_LIST))?;
+    Ok(Json(FleetsResponse {
+        items: row.iter().map(summary).collect(),
+        total: None,
+        next_cursor: None,
+    })
+    .into_response())
+}
+
+/// The fleet name a request asks for, decoded and bounded as a saved name
+/// is, or `None` when it asks for a page.
+fn requested_name(query: &str) -> Result<Option<FleetName>, Refusal> {
+    let Some(raw) =
+        decoded_parameter(query, QUERY_NAME).map_err(|_broken| Refusal::malformed(DETAIL_NAME))?
+    else {
+        return Ok(None);
+    };
+    FleetName::parse(&raw)
+        .map(Some)
+        .map_err(|_outside| Refusal::malformed(DETAIL_NAME))
 }
 
 /// The page size asked for, clamped, or the default.
