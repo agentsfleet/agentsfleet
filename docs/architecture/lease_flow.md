@@ -257,7 +257,6 @@ The same guidance accompanies `secret_not_found` (`af_egress`'s error module).
 The platform has no refusal-count ceiling; that remains open scope.
 
 The daemon's `integration_rust_runner_reviews` test verifies zero review POSTs reach GitHub and preserves the final denial code.
-The [reviewer scenario](scenarios/github-pr-reviewer.md) records the same boundary.
 
 **What the operator sees.** The live tail carries `event_received`, `tool_call_started`, `tool_call_completed`, streamed text chunks and `event_complete` ([Runner Fleet](./runner_fleet.md) §"Live activity (the SSE tail)"). The completed frame has `status: failed`, and its output head carries the code.
 

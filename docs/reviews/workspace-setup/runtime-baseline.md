@@ -14,7 +14,7 @@ Source-inspected behavior at `ad3ed8f92c739b59df71863dbeec81d621dd7d0a`, on `fea
 
 ## Why it exists
 
-The supplied two-fleet story and [checked walkthrough](scenarios/two-fleets-github-slack.md) are useful review inputs, but source decides ordering, acceptance, billing, and replies. Authoring must reach the existing runtime through reviewed setup rather than replace its event processor.
+The supplied two-fleet story and its checked walkthrough were useful review inputs, but source decides ordering, acceptance, billing, and replies. Authoring must reach the existing runtime through reviewed setup rather than replace its event processor.
 
 ## How it behaves
 
@@ -70,6 +70,5 @@ No new authoring API, migration, installer, or runner capability is implemented 
 
 ## Related pages
 
-- [Two fleets through GitHub and Slack](scenarios/two-fleets-github-slack.md)
 - [API gaps](api.md)
 - [ASCII flow](../../architecture/data_flow.md#fleet-setup-and-runtime-sequence)

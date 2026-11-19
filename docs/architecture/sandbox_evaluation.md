@@ -290,7 +290,7 @@ These are required acceptance proofs for the proposed integration, not capabilit
 ## Repository revisions across events
 
 These proposed sandbox walkthroughs extend existing scenarios; their current behavior remains owned by those pages.
-The [pull request reviewer](scenarios/github-pr-reviewer.md) and [production deployment repair](scenarios/production-deploy-repair.md) provide the starting points.
+The pull request reviewer and production deployment repair fleets provide the starting points.
 [Repeated review](lease_flow.md#5-the-pr-is-fixed-and-pushed-again) already describes a laptop push waking the same fleet through a new event.
 
 Fleet identity, conversation continuity and repository revision have separate lifetimes.
@@ -345,7 +345,7 @@ Reproduce -> bounded patch -> tests -> draft pull request
 Human merge -> existing deployment pipeline
 ```
 
-The existing [incident scenario](scenarios/production-deploy-repair.md#1-start-one-incident) keeps the responder and repairer independent.
+The existing incident design keeps the responder and repairer independent.
 A diagnosis does not automatically wake the repairer; a failed workflow or human steer starts its run.
 The owner proposes an explicit human handoff: show the completed diagnosis and repair proposal, then wait for approval before producing a patch.
 
@@ -360,7 +360,7 @@ If the issue remains, create a private repair branch from that recorded target r
 Ambiguous deployment identity or a failure outside code ends diagnosis-only, following the existing scenario.
 
 Keep the approved repository, target base and daemon-issued repair branch as publication boundaries.
-Preserve the existing [remote reconciliation](scenarios/production-deploy-repair.md#3-diagnose-and-open-one-draft-pr) before retrying a branch or draft creation.
+Preserve the existing remote reconciliation before retrying a branch or draft creation.
 Existing repair publishes Git objects through bounded HTTP requests; publishing a locally tested sandbox patch still needs a trusted implementation.
 
 If `main` advances during work, compare the patch against its new head before presenting it as applicable to current `main`.
@@ -368,7 +368,7 @@ Keep any validated patch and its original base available; do not silently overwr
 A changed base requires renewed testing and current permission checks.
 
 Human merge and the repository's deployment pipeline retain their existing roles.
-[Incident linkage and post-deployment verification](scenarios/production-deploy-repair.md#4-keep-preview-evidence-without-calling-it-production) remain unimplemented.
+Incident linkage and post-deployment verification remain unimplemented.
 A successful workflow alone cannot certify that the original production symptom is resolved.
 
 ### Continue an existing repair draft
@@ -789,7 +789,7 @@ If serial diagnosis cannot meet that bound, revisit fleet concurrency explicitly
 
 Several monitoring fleets are a supported arrangement; one global monitoring fleet is not required.
 Each separately saved monitoring bot is a fleet with its own setup, triggers, permissions, budget and queue.
-The [existing two-fleet scenario](scenarios/two-fleets-github-slack.md#6-pickup-two-runners-two-leases) shows independent fleets running concurrently when worker capacity and permission checks allow.
+Independent fleets run concurrently when worker capacity and permission checks allow.
 
 | Monitoring arrangement | Work admitted and run |
 |---|---|
@@ -801,7 +801,7 @@ For example, a payments monitor and a database monitor can diagnose their respec
 If both subscribe to the same broad alert feed, both can wake for one outage.
 Another outage does not create another fleet or notify every existing fleet by itself.
 
-The [existing incident scenario](scenarios/production-deploy-repair.md#1-start-one-incident) describes scheduled Grafana reads.
+The existing incident design describes scheduled Grafana reads.
 Each due schedule wakes its own fleet, even when another monitoring fleet is already running.
 Reading Grafana with a credential does not itself create an incoming alert subscription.
 

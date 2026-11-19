@@ -1,6 +1,6 @@
 # Scenario — Incident responder in a Slack thread
 
-> Parent: [`README.md`](./README.md) · References: [`github-pr-reviewer.md`](./github-pr-reviewer.md) (the repository subscription this mirrors), [`production-deploy-repair.md`](./production-deploy-repair.md) (the repair crew), [`../connectors.md`](../connectors.md), [`../data_flow.md`](../data_flow.md), [`../memory.md`](../memory.md).
+> Parent: [`README.md`](./README.md) · References: [`../connectors.md`](../connectors.md), [`../data_flow.md`](../data_flow.md), [`../memory.md`](../memory.md).
 >
 > **Built; the drill is pending.** M206_001–003 live in `docs/v2/done/`; M206_004 is in `docs/v2/done/` with its live drills (its own §3) parked until 001–003 reach `api-dev`. Line citations were rechecked against source on 2026-10-14; the scenario's original "today" claims were read at `b1bc6f0c4`.
 
